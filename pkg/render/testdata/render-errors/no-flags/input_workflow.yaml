@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-workflow
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            numNodes: 4
+  orchestration:
+    execution: {}

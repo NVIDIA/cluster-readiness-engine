@@ -1,0 +1,12 @@
+{
+  "avgStepTime": 1.25,
+  "avgTFLOPS": 500.5,
+  "checkpointSaveTime": 3,
+  "goodputRatio": 0.85,
+  "lostWorkTime": 7.5,
+  "nonWarmupTime": 112,
+  "rescheduleTime": 10,
+  "resumeTime": 5,
+  "trainingTime": 120,
+  "warmupTime": 8
+}

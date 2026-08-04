@@ -1,0 +1,102 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# KWOK-simulated AWS GB200 GPU nodes (p6e-gb200.36xlarge).
+#
+# Key labels for CRE detection:
+#   nvidia.com/gpu.product: NVIDIA-GB200                       -> GPU arch "gb200"
+#   nvidia.com/gpu.present: "true"                             -> ncrectl GPU discovery
+#   nvidia.com/gpu.clique: <uuid>                              -> NVLink clique
+#   topology.k8s.aws/network-node-layer-1: <id>                -> physical rack (T1 leaf)
+#   spec.providerID: "aws:///..."                              -> platform "aws"
+#
+# GB200 nodes: 4 GPUs per node, 4 EFA, blackwell family, compute 10.0.
+# Modeled after real AWS p6e-gb200.36xlarge nodes from nodes.yaml.
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: aws-gb200-node-01
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    kubernetes.io/arch: arm64
+    kubernetes.io/hostname: aws-gb200-node-01
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200
+    nvidia.com/gpu.count: "4"
+    nvidia.com/gpu.family: blackwell
+    nvidia.com/gpu.clique: 77542365-05c6-8e8c-bc4a-99782fb4bb77.2
+    nvidia.com/gpu.machine: p6e-gb200.36xlarge
+    node.kubernetes.io/instance-type: p6e-gb200.36xlarge
+    topology.k8s.aws/network-node-layer-1: nn-aws-gb200-rack-01
+spec:
+  providerID: "aws:///us-east-1-dfw-2a/i-0000000000000001"
+status:
+  capacity:
+    cpu: "144"
+    ephemeral-storage: 21455242Mi
+    hugepages-2Mi: 31682Mi
+    memory: 972167616Ki
+    nvidia.com/gpu: "4"
+    vpc.amazonaws.com/efa: "4"
+    pods: "1913"
+  allocatable:
+    cpu: 143570m
+    ephemeral-storage: "20246632876505"
+    hugepages-2Mi: 31682Mi
+    memory: 915716544Ki
+    nvidia.com/gpu: "4"
+    vpc.amazonaws.com/efa: "4"
+    pods: "1913"
+  conditions:
+  - type: Ready
+    status: "True"
+    reason: KubeletReady
+    message: kubelet is posting ready status
+  phase: Running
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: aws-gb200-node-02
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    kubernetes.io/arch: arm64
+    kubernetes.io/hostname: aws-gb200-node-02
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200
+    nvidia.com/gpu.count: "4"
+    nvidia.com/gpu.family: blackwell
+    nvidia.com/gpu.clique: 77542365-05c6-8e8c-bc4a-99782fb4bb77.2
+    nvidia.com/gpu.machine: p6e-gb200.36xlarge
+    node.kubernetes.io/instance-type: p6e-gb200.36xlarge
+    topology.k8s.aws/network-node-layer-1: nn-aws-gb200-rack-01
+spec:
+  providerID: "aws:///us-east-1-dfw-2a/i-0000000000000002"
+status:
+  capacity:
+    cpu: "144"
+    ephemeral-storage: 21455242Mi
+    hugepages-2Mi: 31682Mi
+    memory: 972167616Ki
+    nvidia.com/gpu: "4"
+    vpc.amazonaws.com/efa: "4"
+    pods: "1913"
+  allocatable:
+    cpu: 143570m
+    ephemeral-storage: "20246632876505"
+    hugepages-2Mi: 31682Mi
+    memory: 915716544Ki
+    nvidia.com/gpu: "4"
+    vpc.amazonaws.com/efa: "4"
+    pods: "1913"
+  conditions:
+  - type: Ready
+    status: "True"
+    reason: KubeletReady
+    message: kubelet is posting ready status
+  phase: Running

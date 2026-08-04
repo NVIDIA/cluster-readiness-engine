@@ -1,0 +1,3 @@
+{
+  "summary": "gpuArchitecture=gb200, platform=aws, workloadKind=TrainJob, topology.mode=topology, topology.domainCount=\u003e2"
+}

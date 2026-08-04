@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Certification for NCCL all-to-all communication benchmark on H100.
+#
+# Runs NCCL all-to-all bandwidth test with all matching nodes × 8 GPUs via MPI framework.
+# Platform-specific overrides (EFA, FastRak, InfiniBand) are auto-detected.
+# nodesPerJob auto-selects to all matching nodes.
+#
+# Deploy:
+#   kubectl apply -f cre_v1alpha1_certification_nccl_alltoall.yaml
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  labels:
+    app.kubernetes.io/name: cluster-readiness-engine
+  name: nccl-alltoall-certification
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  categories:
+    - domain: communication
+      variant: nccl-alltoall

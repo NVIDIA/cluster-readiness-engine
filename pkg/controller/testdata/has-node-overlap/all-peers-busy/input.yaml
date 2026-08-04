@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Both nodes of candidate (B,C) are used by running groups.
+# node-B is in running pair (A,B), node-C is in running pair (C,D).
+candidate:
+  name: pair-bc
+  nodes: ["node-B", "node-C"]
+  phase: Pending
+allGroups:
+  - name: pair-ab
+    nodes: ["node-A", "node-B"]
+    phase: Running
+  - name: pair-cd
+    nodes: ["node-C", "node-D"]
+    phase: Running
+  - name: pair-bc
+    nodes: ["node-B", "node-C"]
+    phase: Pending

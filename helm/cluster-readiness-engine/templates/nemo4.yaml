@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# LogProfile for Nemotron 4 / NeMo training logs
+#
+# Parses training step metrics, checkpoint events, and application lifecycle
+# from NeMo framework logs (Nemotron 4 format).
+#
+# Deploy:
+#   kubectl apply -f burnin_v1alpha1_logprofile_nemo4.yaml
+#
+# Usage:
+#   Reference as logProfileRef: "nemo-4-training" in a Job or GoodputMeasurement.
+apiVersion: cre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: nemo-4-training
+  labels:
+    {{- include "cre.labels" . | nindent 4 }}
+spec:
+  warmupSteps: 1
+  timestamp:
+    layout: "2006-01-02T15:04:05.999999999Z"
+  patterns:
+    trainingStep:
+      regex: 'Training epoch (?P<epoch>\d+), iteration\s+(?P<iteration>\d+)/\d+.*global_step:\s*(?P<globalStep>\d+).*reduced_train_loss:\s*(?P<loss>[\d.]+)\s*\|\s*train_step_timing in s:\s*(?P<stepTiming>[\d.]+)(?:.*TFLOPS_per_GPU:\s*(?P<tflops>[\d.eE+\-]+))?'
+      example: 'Training epoch 0, iteration 1/9999 | lr: 1.996e-06 | global_batch_size: 32 | global_step: 1 | max_memory_reserved: 163173105664 | max_memory_allocated: 155718647808 | reduced_train_loss: 12.76 | train_step_timing in s: 4.314 | TFLOPS_per_GPU: 499.6 | consumed_samples: 320'
+      units:
+        stepTiming: s
+    checkpointSave:
+      regex: 'Global Checkpoint Save\s*:\s*Rank:\s*\d+\s*:\s*Iteration:\s*(?P<step>\d+)\s*:.*Save duration:\s*(?P<saveDuration>[\d.]+)s'
+      example: '[NeMo I ...] Global Checkpoint Save : Rank: 0 : Iteration: 199 : Start time: 1771022134.925s : Save duration: 0.309s'
+      units:
+        saveDuration: s
+    checkpointDone:
+      regex: 'Successfully saved checkpoint from iteration\s+(?P<step>\d+)\s+to\s+(?P<path>\S+)'
+      example: '[NeMo I ...] Successfully saved checkpoint from iteration 149 to /path/to/checkpoint'
+    checkpointRestore:
+      regex: 'Restoring model weights from (?P<path>\S+)'
+      example: '[NeMo I ...] Restoring model weights from /path/to/checkpoint/model_weights'
+    applicationStart:
+      regex: '\[NeMo \w .* nemo_logging:\d+\]'
+      example: '[NeMo W 2026-02-14 22:18:07 nemo_logging:405]'

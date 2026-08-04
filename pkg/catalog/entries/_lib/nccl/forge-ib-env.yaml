@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- name: NCCL_DEBUG
+  value: INFO
+- name: CUDA_DEVICE_ORDER
+  value: PCI_BUS_ID
+- name: NCCL_IB_GID_INDEX
+  value: "3"
+- name: NCCL_IB_PCI_RELAXED_ORDERING
+  value: "1"
+- name: NCCL_IB_QPS_PER_CONNECTION
+  value: "4"
+- name: NCCL_IB_SL
+  value: "0"
+- name: NCCL_IB_SPLIT_DATA_ON_QPS
+  value: "0"
+- name: NCCL_SOCKET_IFNAME
+  value: eth0
+- name: OMPI_MCA_coll_hcoll_enable
+  value: "0"
+- name: OMPI_MCA_coll_ucc_enable
+  value: "0"
+- name: OMPI_MCA_orte_keep_fqdn_hostnames
+  value: t
+- name: UCX_IB_PCI_RELAXED_ORDERING
+  value: "on"
+- name: UCX_MEM_EVENTS
+  value: "n"
+- name: UCX_NET_DEVICES
+  value: eth0
+- name: UCX_TLS
+  value: tcp

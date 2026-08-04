@@ -1,0 +1,3 @@
+pattern trainingStep: example does not match regex
+  regex:   ^WILL_NOT_MATCH$
+  example: this line does not match

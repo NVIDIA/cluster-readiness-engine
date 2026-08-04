@@ -1,0 +1,93 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Node
+metadata:
+  name: gcp-h100-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    kubernetes.io/hostname: gcp-h100-node-01
+spec:
+  providerID: "gce://my-project/us-central1-a/gcp-h100-node-01"
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-gcp-h100-overrides
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: base-image:latest
+            command:
+              - python
+              - train.py
+            args:
+              - "--nproc-per-node=4"
+            env:
+              - name: NCCL_DEBUG
+                value: "INFO"
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+  overrides:
+    # GPU architecture override — matches H100
+    - when:
+        gpuArchitecture:
+          equals: "h100"
+      jobTemplate:
+        spec:
+          workload:
+            trainJob:
+              trainer:
+                image: h100-image:latest
+                args:
+                  - "--nproc-per-node=8"
+    # GCP platform override — matches GCP
+    - when:
+        platform:
+          equals: "gcp"
+      jobTemplatePatch:
+        - op: add
+          path: /spec/workload/trainJob/trainer/env/-
+          value:
+            name: LD_LIBRARY_PATH
+            value: "/usr/lib/x86_64-linux-gnu:/usr/local/nvidia/lib64"
+    # Combined GCP + H100 override — matches both
+    - when:
+        platform:
+          equals: "gcp"
+        gpuArchitecture:
+          equals: "h100"
+      dependencies:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: gcp-h100-fastrak-config
+            namespace: default
+          data:
+            NCCL_FASTRAK_IFNAME: "eth1,eth2,eth3,eth4,eth5,eth6,eth7,eth8"
+            NCCL_NET_GDR_LEVEL: "PIX"
+    # AWS override — should NOT match
+    - when:
+        platform:
+          equals: "aws"
+      dependencies:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: aws-efa-config
+            namespace: default
+          data:
+            FI_EFA_USE_DEVICE_RDMA: "1"

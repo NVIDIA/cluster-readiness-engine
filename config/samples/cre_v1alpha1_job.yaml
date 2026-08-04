@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  labels:
+    app.kubernetes.io/name: cluster-readiness-engine
+    app: nemotron-6-8b
+    experiment: 8b_hybrid_granular_moe_bf16_cg_1t
+  name: nemotron-6-8b-burnin
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: ClusterTrainingRuntime
+        name: nemotron-6-8b-runtime
+      trainer:
+        image: nvcr.io/nv-ngc-devops/nemo_megatron_perf_optimization:mcore-moe-pytorch25.06-te2.11.0.dev0-cudnn9.11.0.92-nccl2.28.3-main0807-hybridep-nvfp4-arm
+        command:
+          - /bin/bash
+          - -c
+        args:
+          - |
+            exec torchrun \
+              --nnodes 8 \
+              --nproc-per-node 4 \
+              /mnt/workspace/megatron-lm/pretrain_mamba.py \
+              --mock-data \
+              --num-layers 52 \
+              --hidden-size 4096 \
+              --num-attention-heads 32 \
+              --group-query-attention \
+              --num-query-groups 8 \
+              --seq-length 8192 \
+              --max-position-embeddings 8192 \
+              --micro-batch-size 1 \
+              --global-batch-size 768 \
+              --bf16 \
+              --use-mcore-models \
+              --tensor-model-parallel-size 2 \
+              --pipeline-model-parallel-size 1 \
+              --use-distributed-optimizer \
+              --save /mnt/workspace/checkpoints \
+              --load /mnt/workspace/checkpoints \
+              --tensorboard-dir /mnt/workspace/tensorboard
+        numNodes: 8
+        numProcPerNode: 4

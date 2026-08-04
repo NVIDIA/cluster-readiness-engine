@@ -1,0 +1,135 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Workflow with a job-scoped ConfigMap dependency, a running group, and a
+# failed TrainJob. Same as workflow-delete-with-deps but the ConfigMap dep
+# is job-scoped (scope: job, groupName, iteration set). Tests that
+# handleDeletion() also cleans up job-scoped deps after Jobs are deleted.
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-wf-del-jdeps
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  dependencyRefs:
+    - apiVersion: v1
+      kind: ConfigMap
+      name: test-jdep-config-job
+      namespace: default
+      scope: job
+      groupName: group-0
+      iteration: 1
+  orchestration:
+    totalNodes: 1
+    nodesPerJob: 1
+    totalGroups: 1
+    currentIteration: 1
+    completedIterations: 0
+    groups:
+      - name: group-0
+        nodes:
+          - gpu-node-01
+        phase: Running
+        jobRef:
+          apiVersion: cre.nvidia.com/v1alpha1
+          kind: Job
+          name: test-wf-del-jdeps-group-0-iter-1
+          namespace: default
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-wf-del-jdeps-group-0-iter-1
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: cluster-readiness-engine
+    cre.nvidia.com/workflow: test-wf-del-jdeps
+    cre.nvidia.com/group: group-0
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "True"
+      reason: WorkloadRunning
+      message: "Workload is running"
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+    - type: Succeeded
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+    - type: Failed
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-wf-del-jdeps-group-0-iter-1-workload
+    namespace: default
+---
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-wf-del-jdeps-group-0-iter-1-workload
+  namespace: default
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - python
+      - train.py
+    numNodes: 1
+  suspend: false
+  managedBy: trainer.kubeflow.org/trainjob-controller
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: TrainJobFailed
+      message: "Training job failed"
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+---
+# Job-scoped ConfigMap dependency.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-jdep-config-job
+  namespace: default
+  labels:
+    cre.nvidia.com/workflow: test-wf-del-jdeps
+data:
+  config.yaml: |
+    test: job-scoped-data

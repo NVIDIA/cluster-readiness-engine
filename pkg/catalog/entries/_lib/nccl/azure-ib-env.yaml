@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- name: NCCL_DEBUG
+  value: INFO
+- name: NCCL_IB_PCI_RELAXED_ORDERING
+  value: "1"
+- name: NCCL_SOCKET_IFNAME
+  value: eth0
+- name: NCCL_TOPO_FILE
+  value: /etc/nccl/topo.xml

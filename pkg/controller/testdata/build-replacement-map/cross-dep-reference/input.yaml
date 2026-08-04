@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+suffix: "-job"
+# Job spec does NOT reference the channel template name, but the runtime dep does.
+# The cross-ref is auto-detected because "my-cd-channel" appears in both deps.
+jobSpec: '{"workload":{"trainJob":{"runtimeRef":{"name":"my-runtime","kind":"TrainingRuntime"}}}}'
+deps:
+  - raw: |
+      {"apiVersion":"resource.nvidia.com/v1beta1","kind":"ComputeDomain","metadata":{"name":"my-cd"},"spec":{"channel":{"resourceClaimTemplate":{"name":"my-cd-channel"}},"numNodes":4}}
+  - raw: |
+      {"apiVersion":"trainer.kubeflow.org/v1alpha1","kind":"TrainingRuntime","metadata":{"name":"my-runtime"},"spec":{"template":{"spec":{"replicatedJobs":[{"name":"node","template":{"spec":{"template":{"spec":{"resourceClaims":[{"name":"compute-domain","resourceClaimTemplateName":"my-cd-channel"}]}}}}}]}}}}

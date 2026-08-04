@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Same as workflow-delete-with-deps but with a job-scoped dependency.
+# Tests that handleDeletion() cleans up job-scoped deps after Jobs.
+waitFor:
+  kind: Workflow
+  name: test-wf-del-jdeps
+  namespace: default
+  condition: Failed
+deleteAfterWait:
+  - kind: Workflow
+    name: test-wf-del-jdeps
+    namespace: default
+waitForDeletion:
+  - kind: Workflow
+    name: test-wf-del-jdeps
+    namespace: default
+  - kind: Job
+    name: test-wf-del-jdeps-group-0-iter-1
+    namespace: default
+  - kind: TrainJob
+    name: test-wf-del-jdeps-group-0-iter-1-workload
+    namespace: default
+  - kind: ConfigMap
+    name: test-jdep-config-job
+    namespace: default
+collect: []

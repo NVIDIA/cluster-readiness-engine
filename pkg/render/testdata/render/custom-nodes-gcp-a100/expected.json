@@ -1,0 +1,36 @@
+{
+  "kind": "Workflow",
+  "apiVersion": "cre.nvidia.com/v1alpha1",
+  "metadata": {
+    "name": "test-workflow",
+    "annotations": {
+      "ncrectl.nvidia.com/detected-gpu-architecture": "a100",
+      "ncrectl.nvidia.com/detected-platform": "gcp"
+    }
+  },
+  "spec": {
+    "jobTemplate": {
+      "spec": {
+        "workload": {
+          "trainJob": {
+            "trainer": {
+              "image": "nvcr.io/nvidia/pytorch:24.12-py3",
+              "command": [
+                "/bin/bash",
+                "-c"
+              ],
+              "args": [
+                "torchrun --nnodes 4"
+              ],
+              "numNodes": 4,
+              "numProcPerNode": 4
+            }
+          }
+        }
+      }
+    },
+    "orchestration": {
+      "execution": {}
+    }
+  }
+}

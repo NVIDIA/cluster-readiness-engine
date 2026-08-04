@@ -1,0 +1,1 @@
+node.metadata.annotations['nvsentinel.nvidia.com/status'] == 'unhealthy'

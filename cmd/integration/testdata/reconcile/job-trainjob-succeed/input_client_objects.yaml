@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-trainjob-succeed
+  namespace: default
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: nvcr.io/nvidia/nemo:24.07
+        command:
+          - torchrun
+          - train.py
+        numNodes: 2
+status:
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-trainjob-succeed-workload
+    namespace: default
+---
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-trainjob-succeed-workload
+  namespace: default
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: nvcr.io/nvidia/nemo:24.07
+    command:
+      - torchrun
+      - train.py
+    numNodes: 2
+status:
+  conditions:
+    - type: Complete
+      status: "True"
+      reason: JobCompleted
+      message: "All workers completed"
+      lastTransitionTime: "2026-01-22T10:00:00Z"

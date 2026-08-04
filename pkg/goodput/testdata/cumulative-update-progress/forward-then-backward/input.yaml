@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+operations:
+  - currentStep: 100
+    checkpointStep: 50
+    checkpointTime: "2026-01-22T10:00:00Z"
+  - currentStep: 60
+    checkpointStep: 50
+    checkpointTime: "2026-01-22T10:00:00Z"

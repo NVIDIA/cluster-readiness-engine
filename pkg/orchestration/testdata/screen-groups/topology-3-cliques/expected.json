@@ -1,0 +1,32 @@
+[
+  {
+    "name": "screen-0",
+    "nodes": [
+      "node-a1",
+      "node-a2"
+    ],
+    "domains": [
+      "clique-a"
+    ]
+  },
+  {
+    "name": "screen-1",
+    "nodes": [
+      "node-b1",
+      "node-b2",
+      "node-b3"
+    ],
+    "domains": [
+      "clique-b"
+    ]
+  },
+  {
+    "name": "screen-2",
+    "nodes": [
+      "node-c1"
+    ],
+    "domains": [
+      "clique-c"
+    ]
+  }
+]

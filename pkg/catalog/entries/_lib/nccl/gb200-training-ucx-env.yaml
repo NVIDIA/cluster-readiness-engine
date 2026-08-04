@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- name: UCX_MEM_MMAP_HOOK_MODE
+  value: none
+- name: UCX_MEM_CUDA_HOOK_MODE
+  value: none
+- name: UCX_MEM_MALLOC_HOOKS
+  value: "n"
+- name: UCX_ERROR_SIGNALS
+  value: ""

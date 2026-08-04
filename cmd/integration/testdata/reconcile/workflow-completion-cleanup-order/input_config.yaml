@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Wait for the Workflow to reach Succeeded. The controllers propagate
+# TrainJob success → Job success → Workflow setFinalStatus() → Succeeded.
+# setFinalStatus() should delete Jobs before dependencies (ADR-053).
+# Collect the Workflow to verify it reached Succeeded with deps cleaned up.
+waitFor:
+  kind: Workflow
+  name: test-wf-comp-deps
+  namespace: default
+  condition: Succeeded
+collect:
+  - kind: Workflow
+    name: test-wf-comp-deps
+    namespace: default

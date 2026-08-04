@@ -1,0 +1,47 @@
+metadata:
+  finalizers:
+  - cre.nvidia.com/certification-finalizer
+  labels:
+    app.kubernetes.io/created-by: ncrectl
+    app.kubernetes.io/managed-by: cluster-readiness-engine
+  name: togetherai-h100-nccl
+spec:
+  categories:
+  - domain: communication
+    variant: nccl-all-reduce
+  nodesPerJob: 2
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+status:
+  categoryStatuses:
+  - domain: communication
+    status: Succeeded
+    succeededNodesRef:
+      apiGroup: null
+      kind: ConfigMap
+      name: succeeded-nodes
+    variant: nccl-all-reduce
+    workflowRef:
+      name: togetherai-h100-nccl-comm-5f6d4
+      namespace: default
+  conditions:
+  - lastTransitionTime: null
+    message: ""
+    observedGeneration: 1
+    reason: NotApplicable
+    status: "False"
+    type: InProgress
+  - lastTransitionTime: null
+    message: All certification categories completed successfully
+    observedGeneration: 1
+    reason: AllWorkflowsSucceeded
+    status: "True"
+    type: Succeeded
+  - lastTransitionTime: null
+    message: ""
+    observedGeneration: 1
+    reason: NotApplicable
+    status: "False"
+    type: Failed

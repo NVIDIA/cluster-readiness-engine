@@ -1,0 +1,29 @@
+[
+  {
+    "name": "screen-0",
+    "nodes": [
+      "node-01",
+      "node-02",
+      "node-03",
+      "node-04"
+    ]
+  },
+  {
+    "name": "screen-1",
+    "nodes": [
+      "node-05",
+      "node-06",
+      "node-07",
+      "node-08"
+    ]
+  },
+  {
+    "name": "screen-2",
+    "nodes": [
+      "node-09",
+      "node-10",
+      "node-11",
+      "node-12"
+    ]
+  }
+]

@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: test-logprofile
+spec:
+  timestamp:
+    layout: "2006-01-02T15:04:05.999999999Z"
+  patterns:
+    trainingStep:
+      regex: 'step (?P<globalStep>\d+)'
+      example: "step 100"
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-stall-restart
+  namespace: default
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+  checkpoint:
+    pvcName: test-ckpt-pvc
+    maxRestarts: 3
+  stallMultiplier: 2
+status:
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-stall-restart-workload
+    namespace: default
+---
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-stall-restart-workload
+  namespace: default
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - python
+      - train.py
+    numNodes: 1
+status:
+  conditions:
+    - type: Running
+      status: "True"
+      reason: Running
+      message: "Training is running"
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: GoodputMeasurement
+metadata:
+  name: test-stall-restart-gm
+  namespace: default
+spec:
+  jobRef:
+    apiGroup: cre.nvidia.com
+    kind: Job
+    name: test-stall-restart
+  logProfileRef: test-logprofile
+  sampleInterval: 1s
+status:
+  startTime: "2025-01-01T00:00:00Z"
+  lastStepTimestamp: "2025-01-01T00:00:00Z"
+  avgStepTimeSec: "1.000000"
+  lastCheckpointStep: 100

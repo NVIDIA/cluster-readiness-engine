@@ -1,0 +1,16 @@
+[
+  {
+    "name": "confirm-0",
+    "nodes": [
+      "suspect-1",
+      "healthy-1"
+    ]
+  },
+  {
+    "name": "confirm-1",
+    "nodes": [
+      "suspect-2",
+      "healthy-2"
+    ]
+  }
+]

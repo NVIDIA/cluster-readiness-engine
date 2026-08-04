@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-trainjob-fail
+  namespace: default
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: nvcr.io/nvidia/nemo:24.07
+        command:
+          - torchrun
+          - train.py
+        numNodes: 2
+status:
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-trainjob-fail-workload
+    namespace: default
+---
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-trainjob-fail-workload
+  namespace: default
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: nvcr.io/nvidia/nemo:24.07
+    command:
+      - torchrun
+      - train.py
+    numNodes: 2
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: WorkerFailed
+      message: "Worker crashed"
+      lastTransitionTime: "2026-01-22T10:00:00Z"

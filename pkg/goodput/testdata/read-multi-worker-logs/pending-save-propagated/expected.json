@@ -1,0 +1,39 @@
+{
+  "firstStep": {
+    "elapsedTime": 1,
+    "epoch": 0,
+    "globalStep": 250,
+    "iteration": 250,
+    "loss": 12,
+    "stepTiming": 1,
+    "tflops": 140,
+    "timestamp": "2026-02-05T11:26:00Z"
+  },
+  "lastStep": {
+    "elapsedTime": 1,
+    "epoch": 0,
+    "globalStep": 250,
+    "iteration": 250,
+    "loss": 12,
+    "stepTiming": 1,
+    "tflops": 140,
+    "timestamp": "2026-02-05T11:26:00Z"
+  },
+  "pendingSave": {
+    "path": "/checkpoints",
+    "step": 250,
+    "timestamp": "2026-02-05T11:26:59Z"
+  },
+  "steps": [
+    {
+      "elapsedTime": 1,
+      "epoch": 0,
+      "globalStep": 250,
+      "iteration": 250,
+      "loss": 12,
+      "stepTiming": 1,
+      "tflops": 140,
+      "timestamp": "2026-02-05T11:26:00Z"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "jobTemplate": {
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "test-runtime"
+          },
+          "trainer": {
+            "image": "test-image:latest",
+            "numNodes": 1
+          }
+        }
+      }
+    }
+  },
+  "orchestration": {
+    "execution": {
+      "maxConcurrent": 2
+    },
+    "iterations": 5
+  },
+  "overrides": [
+    {
+      "when": {
+        "gpuArchitecture": {
+          "equals": "h100"
+        }
+      },
+      "orchestration": {
+        "iterations": 5
+      }
+    }
+  ]
+}

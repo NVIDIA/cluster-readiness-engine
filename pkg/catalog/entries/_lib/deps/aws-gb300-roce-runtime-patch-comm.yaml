@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    mlPolicy:
+      mpi:
+        numProcPerNode: {{ .GpusPerNode }}
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    image: public.ecr.aws/hpc-cloud/nccl-tests:latest
+                    resources:
+                      limits:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                      requests:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                    args:
+                    - |-
+                      set -x &&
+                      rm -rf /opt/amazon/efa /opt/amazon/ofi-nccl /opt/aws-ofi-nccl &&
+                      unset NCCL_NET_PLUGIN &&
+                      unset NCCL_TUNER_PLUGIN &&
+                      mkdir -p /var/run/sshd &&
+                      chmod 0755 /var/run/sshd &&
+                      mkdir -p /root/.ssh &&
+                      chmod 700 /root/.ssh &&
+                      cp /tmp/mpi-ssh-raw/* /root/.ssh/ &&
+                      chmod 600 /root/.ssh/id_rsa &&
+                      chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys &&
+                      /usr/sbin/sshd -De
+        - name: launcher
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    image: public.ecr.aws/hpc-cloud/nccl-tests:latest
+            metadata:
+              labels:
+                trainer.kubeflow.org/trainjob-ancestor-step: trainer

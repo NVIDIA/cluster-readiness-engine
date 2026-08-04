@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+category: communication
+subcategory: nccl-alltoall
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+nodesPerJob: 8
+gpusPerNode: 4

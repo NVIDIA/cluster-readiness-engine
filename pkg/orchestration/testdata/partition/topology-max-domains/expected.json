@@ -1,0 +1,48 @@
+[
+  {
+    "name": "group-0",
+    "nodes": [
+      "node-r1-0",
+      "node-r1-1",
+      "node-r2-0",
+      "node-r2-1",
+      "node-r3-0"
+    ],
+    "domains": [
+      "rack-1",
+      "rack-2",
+      "rack-3"
+    ]
+  },
+  {
+    "name": "group-1",
+    "nodes": [
+      "node-r4-0",
+      "node-r4-1",
+      "node-r5-0",
+      "node-r5-1",
+      "node-r6-0"
+    ],
+    "domains": [
+      "rack-4",
+      "rack-5",
+      "rack-6"
+    ]
+  },
+  {
+    "name": "group-2-overflow",
+    "nodes": [
+      "node-r1-0",
+      "node-r3-0",
+      "node-r3-1",
+      "node-r6-0",
+      "node-r6-1"
+    ],
+    "domains": [
+      "rack-1",
+      "rack-3",
+      "rack-6"
+    ],
+    "overflow": true
+  }
+]

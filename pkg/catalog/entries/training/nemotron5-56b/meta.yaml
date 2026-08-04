@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+minGPUs: 32
+parallelism:
+  default:
+    tp: 4
+    pp: 1
+  b200:
+    tp: 4
+    pp: 1
+  h100:
+    tp: 8
+    pp: 1
+  a100:
+    tp: 8
+    pp: 1

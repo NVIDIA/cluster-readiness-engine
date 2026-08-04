@@ -1,0 +1,16 @@
+{
+  "replacements": [
+    {
+      "key": "my-cd",
+      "value": "my-cd-job"
+    },
+    {
+      "key": "my-cd-channel",
+      "value": "my-cd-channel-job"
+    },
+    {
+      "key": "my-runtime",
+      "value": "my-runtime-job"
+    }
+  ]
+}

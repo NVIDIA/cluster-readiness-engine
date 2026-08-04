@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+steps:
+  - globalStep: 0
+    tflops: 100.5
+    isWarmup: true
+  - globalStep: 1
+    tflops: 200.3
+    isWarmup: true

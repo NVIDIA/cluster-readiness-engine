@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+topologyKey: "nvidia.com/gpu.clique"
+nodes:
+  - metadata:
+      name: node-1
+      labels:
+        nvidia.com/gpu.clique: "clique-0"
+  - metadata:
+      name: node-2
+      labels:
+        nvidia.com/gpu.clique: "clique-0"
+  - metadata:
+      name: node-3
+      labels:
+        nvidia.com/gpu.clique: "clique-1"
+  - metadata:
+      name: node-4
+      labels:
+        nvidia.com/gpu.clique: "clique-2"

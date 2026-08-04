@@ -1,0 +1,30 @@
+[2026-02-16 02:05:18.765403] saving checkpoint at iteration     100 to /mnt/workspace/checkpoints in torch_dist format
+Storing distributed optimizer sharded state of type dp_reshardable
+nemotron-6-8b-mock-job-workload-trainer-0-0:110:6465 [1] NCCL INFO Channel 00/1 : 1[1] -> 0[0] via P2P/MNNVL
+nemotron-6-8b-mock-job-workload-trainer-0-0:110:635 [1] NCCL INFO New proxy send connection 64 from local rank 1, transport 0
+nemotron-6-8b-mock-job-workload-trainer-0-0:110:6465 [1] NCCL INFO Connected to proxy localRank 1 -> connection 0xf841a0006d40
+nemotron-6-8b-mock-job-workload-trainer-0-0:112:6466 [3] NCCL INFO Channel 00/1 : 3[3] -> 0[0] via P2P/MNNVL
+nemotron-6-8b-mock-job-workload-trainer-0-0:112:637 [3] NCCL INFO New proxy send connection 64 from local rank 3, transport 0
+nemotron-6-8b-mock-job-workload-trainer-0-0:112:6466 [3] NCCL INFO Connected to proxy localRank 3 -> connection 0xe50d44006d40
+nemotron-6-8b-mock-job-workload-trainer-0-0:111:6467 [2] NCCL INFO Channel 00/1 : 2[2] -> 0[0] via P2P/MNNVL
+nemotron-6-8b-mock-job-workload-trainer-0-0:111:636 [2] NCCL INFO New proxy send connection 64 from local rank 2, transport 0
+nemotron-6-8b-mock-job-workload-trainer-0-0:111:6467 [2] NCCL INFO Connected to proxy localRank 2 -> connection 0xfe7778006d40
+nemotron-6-8b-mock-job-workload-trainer-0-0:110:6465 [1] NCCL INFO Channel 00/1 : 1[1] -> 0[0] via P2P/MNNVL
+nemotron-6-8b-mock-job-workload-trainer-0-0:110:635 [1] NCCL INFO New proxy send connection 64 from local rank 1, transport 0
+nemotron-6-8b-mock-job-workload-trainer-0-0:110:6465 [1] NCCL INFO Connected to proxy localRank 1 -> connection 0xf841a0006d40
+nemotron-6-8b-mock-job-workload-trainer-0-0:112:6466 [3] NCCL INFO Channel 00/1 : 3[3] -> 0[0] via P2P/MNNVL
+nemotron-6-8b-mock-job-workload-trainer-0-0:112:637 [3] NCCL INFO New proxy send connection 64 from local rank 3, transport 0
+nemotron-6-8b-mock-job-workload-trainer-0-0:112:6466 [3] NCCL INFO Connected to proxy localRank 3 -> connection 0xe50d44006d40
+nemotron-6-8b-mock-job-workload-trainer-0-0:111:6467 [2] NCCL INFO Channel 00/1 : 2[2] -> 0[0] via P2P/MNNVL
+nemotron-6-8b-mock-job-workload-trainer-0-0:111:636 [2] NCCL INFO New proxy send connection 64 from local rank 2, transport 0
+nemotron-6-8b-mock-job-workload-trainer-0-0:111:6467 [2] NCCL INFO Connected to proxy localRank 2 -> connection 0xfe7778006d40
+nemotron-6-8b-mock-job-workload-trainer-0-0:110:6465 [1] NCCL INFO Channel 00/1 : 1[1] -> 0[0] via P2P/MNNVL
+nemotron-6-8b-mock-job-workload-trainer-0-0:110:635 [1] NCCL INFO New proxy send connection 64 from local rank 1, transport 0
+nemotron-6-8b-mock-job-workload-trainer-0-0:110:6465 [1] NCCL INFO Connected to proxy localRank 1 -> connection 0xf841a0006d40
+nemotron-6-8b-mock-job-workload-trainer-0-0:112:6466 [3] NCCL INFO Channel 00/1 : 3[3] -> 0[0] via P2P/MNNVL
+nemotron-6-8b-mock-job-workload-trainer-0-0:112:637 [3] NCCL INFO New proxy send connection 64 from local rank 3, transport 0
+nemotron-6-8b-mock-job-workload-trainer-0-0:112:6466 [3] NCCL INFO Connected to proxy localRank 3 -> connection 0xe50d44006d40
+nemotron-6-8b-mock-job-workload-trainer-0-0:111:6467 [2] NCCL INFO Channel 00/1 : 2[2] -> 0[0] via P2P/MNNVL
+nemotron-6-8b-mock-job-workload-trainer-0-0:111:636 [2] NCCL INFO New proxy send connection 64 from local rank 2, transport 0
+nemotron-6-8b-mock-job-workload-trainer-0-0:111:6467 [2] NCCL INFO Connected to proxy localRank 2 -> connection 0xfe7778006d40
+  [2026-02-16 02:06:10.900064] scheduled an async checkpoint save at iteration     100 to /mnt/workspace/checkpoints

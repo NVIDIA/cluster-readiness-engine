@@ -1,0 +1,7 @@
+2026-02-05T16:01:40.326255000Z [before the start of training step] datetime: 2026-02-05 16:01:40.326255
+2026-02-05T16:03:52.889599000Z [2026-02-05 16:03:52.889599] iteration        1/  158945 | consumed samples: 768 | elapsed time per iteration (ms): 132563.1 | throughput per GPU (TFLOP/s/GPU): 138.5 | lm loss: 1.218472E+01
+2026-02-05T17:07:36.379347000Z [2026-02-05 17:07:36.379347] saving checkpoint at iteration     100 to /mnt/workspace/checkpoints in torch_dist format
+2026-02-05T17:07:37.000000000Z Storing distributed optimizer sharded state of type dp_reshardable
+2026-02-05T17:07:38.000000000Z nemotron-6-8b-mock-worker-0:101:1481 [1] NCCL INFO Channel 00/1 : 1[1] -> 0[0] via P2P/MNNVL
+2026-02-05T17:08:12.482363000Z [2026-02-05 17:08:12.482363] scheduled an async checkpoint save at iteration     100 to /mnt/workspace/checkpoints
+2026-02-05T17:13:37.825367000Z [2026-02-05 17:13:37.825367] successfully saved checkpoint from iteration     100 to /mnt/workspace/checkpoints

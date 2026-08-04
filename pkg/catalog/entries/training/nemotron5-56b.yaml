@@ -1,0 +1,349 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+jobTemplate:
+  spec:
+    stallMultiplier: 3
+    startupStallTimeoutSeconds: 1200
+{{- if .EnableCheckpoint }}
+    checkpoint:
+      pvcName: nemotron5-56b-pvc
+      maxRestarts: 3
+{{- end }}
+    workload:
+      trainJob:
+        runtimeRef:
+          name: nemotron5-56b-runtime
+          kind: TrainingRuntime
+        trainer:
+          numNodes: {{ .NodesPerJob }}
+          numProcPerNode: {{ .GpusPerNode }}
+          command:
+            - /bin/bash
+          args:
+            - /config/train.sh
+          image: nvcr.io/nvidia/pytorch:25.08-py3
+        {{- if .ImagePullSecrets }}
+        runtimePatches:
+        - manager: cre.nvidia.com/catalog
+          trainingRuntimeSpec:
+            template:
+              spec:
+                replicatedJobs:
+                - name: node
+                  template:
+                    spec:
+                      template:
+                        spec:
+                          imagePullSecrets:
+                          {{- range .ImagePullSecrets }}
+                          - name: {{ .Name }}
+                          {{- end }}
+        {{- end }}
+    goodputMeasurement:
+      logProfileRef: megatron-training
+      sampleInterval: 10s
+    nodeHealthMonitor:
+      cel:
+        expression: "node.spec.unschedulable == true"
+orchestration:
+  iterations: 1
+dependencies:
+{{- if .EnableCheckpoint }}
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    name: nemotron5-56b-pvc
+    labels:
+      app: nemotron5-56b
+  spec:
+    accessModes:
+    - ReadWriteMany
+    {{- if .StorageClassName }}
+    storageClassName: {{ .StorageClassName }}
+    {{- end }}
+    resources:
+      requests:
+        storage: {{ .StorageSize }}
+{{- end }}
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: nemotron5-56b-runtime
+    labels:
+      trainer.kubeflow.org/framework: torch
+      app: nemotron5-56b
+  spec:
+    mlPolicy:
+      numNodes: {{ .NodesPerJob }}
+      torch:
+        numProcPerNode: {{ .GpusPerNode }}
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            metadata:
+              labels:
+                trainer.kubeflow.org/trainjob-ancestor-step: trainer
+            spec:
+              template:
+                spec:
+                  terminationGracePeriodSeconds: 30
+                  schedulerName: default-scheduler
+                  securityContext:
+                    seccompProfile:
+                      type: RuntimeDefault
+                  initContainers:
+                  - name: megatron-clone
+                    image: nvcr.io/nvidia/pytorch:25.08-py3
+                    command: ["/bin/bash", "-c"]
+                    args:
+                    - |
+                      set -ex
+                      if [ ! -d "/mnt/workspace/megatron-lm/.git" ]; then
+                        git clone --depth 1 -b core_v0.15.2 https://github.com/NVIDIA/Megatron-LM.git /mnt/workspace/megatron-lm
+                      fi
+                      echo "Megatron-LM cloned successfully"
+                    volumeMounts:
+                    - name: workspace
+                      mountPath: /mnt/workspace
+                  containers:
+                  - name: node
+                    image: nvcr.io/nvidia/pytorch:25.08-py3
+                    env:
+                    - name: NVTE_FWD_LAYERNORM_SM_MARGIN
+                      value: "16"
+                    - name: NVTE_BWD_LAYERNORM_SM_MARGIN
+                      value: "16"
+                    - name: NVTE_FUSED_ATTN
+                      value: "0"
+                    - name: TORCHINDUCTOR_WORKER_START
+                      value: fork
+{{ lib "nccl/gb200-training-base-env.yaml" . | indent 20 }}
+                    - name: CUDA_DEVICE_MAX_CONNECTIONS
+                      value: "1"
+                    - name: TORCH_NCCL_AVOID_RECORD_STREAMS
+                      value: "1"
+                    - name: TORCH_NCCL_HIGH_PRIORITY
+                      value: "1"
+{{ lib "nccl/gb200-training-ucx-env.yaml" . | indent 20 }}
+                    - name: EXIT_DURATION_MINS
+                      value: "{{ .ExitDurationMins }}"
+                    - name: ENABLE_CHECKPOINT
+                      value: "{{ .EnableCheckpoint }}"
+                    - name: TRAIN_ITERS
+                      value: "{{ .MaxSteps }}"
+                    - name: SAVE_INTERVAL
+                      value: "{{ .SaveInterval }}"
+                    - name: SAVE_RETAIN_INTERVAL
+                      value: "{{ .SaveRetainInterval }}"
+                    - name: PYTHONPATH
+                      value: /mnt/workspace/megatron-lm
+                    resources:
+                      limits:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        memory: 800Gi
+                        cpu: "128"
+                      requests:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        memory: 500Gi
+                        cpu: "64"
+                    volumeMounts:
+                    - name: workspace
+                      mountPath: /mnt/workspace
+                    - name: shmem
+                      mountPath: /dev/shm
+                    - name: training-config
+                      mountPath: /config
+                  topologySpreadConstraints:
+                  - labelSelector:
+                      matchLabels:
+                        app: nemotron5-56b
+                    maxSkew: 1
+                    topologyKey: kubernetes.io/hostname
+                    whenUnsatisfiable: DoNotSchedule
+                  volumes:
+{{- if .EnableCheckpoint }}
+                  - name: workspace
+                    persistentVolumeClaim:
+                      claimName: nemotron5-56b-pvc
+{{- else }}
+                  - name: workspace
+                    emptyDir:
+                      medium: Memory
+{{- end }}
+                  - name: shmem
+                    emptyDir:
+                      medium: Memory
+                  - name: training-config
+                    configMap:
+                      name: nemotron5-56b-training-config
+                      defaultMode: 0755
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: nemotron5-56b-training-config
+    labels:
+      app: nemotron5-56b
+  data:
+    train.sh: |
+{{ includeTemplate "configs/train.sh" . | indent 6 }}
+overrides:
+# --- AWS (NCCL plugin cleanup) ---
+- when:
+    platform:
+      equals: aws
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            command: ["/bin/bash", "-c"]
+            args:
+            - |-
+              rm -rf /opt/amazon
+              unset NCCL_NET_PLUGIN
+              unset NCCL_TUNER_PLUGIN
+              unset AWS_OFI_NCCL_VERSION
+              exec /bin/bash /config/train.sh
+# --- OCI + L40/L40S (RoCE, no NVLink/NVSwitch) ---
+# Match the OCI RoCE setup used by the NCCL all-reduce test: attach SR-IOV RoCE
+# NICs (deps/oci-mlnxnics-comm.yaml adds the k8s.v1.cni.cncf.io/networks
+# annotation + nvidia.com/mlnxnics resources) and apply the matching NCCL
+# transport env (nccl/oci-roce-env.yaml). Also disable NVLS (NVLink SHARP) +
+# multi-node NVLink since L40S has no NVLink/NVSwitch. Kubeflow merges env by
+# name, overriding the runtime defaults (e.g. NCCL_NVLS_ENABLE=1).
+- when:
+    platform:
+      equals: oci
+    gpuArchitecture:
+      in: [l40, l40s]
+  dependencies:
+{{ lib "deps/oci-mlnxnics-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/oci-roce-env.yaml" . | indent 12 }}
+            - name: NCCL_NVLS_ENABLE
+              value: "0"
+            - name: NCCL_MNNVL_ENABLE
+              value: "0"
+# --- GB200/GB300 (ComputeDomain + DRA) ---
+- when:
+    gpuArchitecture:
+      in: [gb200, gb300]
+  dependencies:
+{{ lib "deps/gb200-compute-domain-and-dra-torch.yaml" . | indent 2 }}
+  orchestration:
+    topology:
+      topologyKey: nvidia.com/gpu.clique
+# --- AWS + GB200 (EFA) ---
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: gb200
+  dependencies:
+{{ lib "deps/aws-gb200-efa-resources-training.yaml" . | indent 2 }}
+# --- AWS + H100 (8 GPUs, TP=8) ---
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: h100
+  dependencies:
+{{ lib "deps/aws-h100-efa-resources-training.yaml" . | indent 2 }}
+# --- GCP + H100 (TCPxo/FastRak) ---
+- when:
+    platform:
+      equals: gcp
+    gpuArchitecture:
+      equals: h100
+  dependencies:
+{{ lib "deps/gcp-h100-tcpxo-runtime-patch.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/gcp-h100-fastrak-env.yaml" . | indent 12 }}
+# --- Azure + A100 (InfiniBand) ---
+- when:
+    platform:
+      equals: azure
+    gpuArchitecture:
+      equals: a100
+  dependencies:
+{{ lib "deps/azure-a100-ib-training.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/azure-a100-ib-env.yaml" . | indent 12 }}
+# --- Azure + H100 (InfiniBand) ---
+- when:
+    platform:
+      equals: azure
+    gpuArchitecture:
+      equals: h100
+  dependencies:
+{{ lib "deps/azure-h100-ib-training.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/azure-h100-ib-training-env.yaml" . | indent 12 }}
+# --- AWS + GB300 (RoCE) ---
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: gb300
+  dependencies:
+{{ lib "deps/gb300-roce-torch.yaml" . | indent 2 }}
+# --- GCP + GB200/GB300 (RoCE) ---
+- when:
+    platform:
+      equals: gcp
+    gpuArchitecture:
+      in: [gb200, gb300]
+  dependencies:
+{{ lib "deps/gcp-gb200-roce-runtime-patch-training.yaml" . | indent 2 }}
+# --- GB300 (RoCE) ---
+- when:
+    platform:
+      equals: gcp
+    gpuArchitecture:
+      equals: gb300
+  dependencies:
+{{ lib "deps/gb300-roce-torch.yaml" . | indent 2 }}
+# --- TogetherAI (InfiniBand) ---
+- when:
+    platform:
+      equals: togetherai
+  dependencies:
+{{ lib "deps/togetherai-ib-runtime-patch.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/togetherai-ib-env.yaml" . | indent 12 }}
+# --- Mistral + GB300 (InfiniBand) ---
+- when:
+    platform:
+      equals: mistral
+    gpuArchitecture:
+      equals: gb300
+  dependencies:
+{{ lib "deps/mistral-gb300-ib-runtime-patch-training.yaml" . | indent 2 }}

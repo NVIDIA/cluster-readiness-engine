@@ -1,0 +1,53 @@
+{
+  "applicationStartTime": "2026-01-22T18:00:00Z",
+  "firstStep": {
+    "epoch": 0,
+    "globalStep": 0,
+    "isWarmup": true,
+    "iteration": 0,
+    "loss": 13.01,
+    "stepTiming": 41.12,
+    "tflops": 37.45,
+    "timestamp": "2026-01-22T18:00:05Z"
+  },
+  "lastLogTimestamp": "2026-01-22T18:00:15Z",
+  "lastStep": {
+    "epoch": 0,
+    "globalStep": 2,
+    "iteration": 2,
+    "loss": 12.1,
+    "stepTiming": 4.28,
+    "tflops": 502.1,
+    "timestamp": "2026-01-22T18:00:15Z"
+  },
+  "steps": [
+    {
+      "epoch": 0,
+      "globalStep": 0,
+      "isWarmup": true,
+      "iteration": 0,
+      "loss": 13.01,
+      "stepTiming": 41.12,
+      "tflops": 37.45,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 1,
+      "iteration": 1,
+      "loss": 12.5,
+      "stepTiming": 4.31,
+      "tflops": 499.6,
+      "timestamp": "2026-01-22T18:00:10Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 2,
+      "iteration": 2,
+      "loss": 12.1,
+      "stepTiming": 4.28,
+      "tflops": 502.1,
+      "timestamp": "2026-01-22T18:00:15Z"
+    }
+  ]
+}

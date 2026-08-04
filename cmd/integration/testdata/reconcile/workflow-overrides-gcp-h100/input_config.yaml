@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: test-gcp-h100-overrides
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Workflow
+    name: test-gcp-h100-overrides
+    namespace: default
+  - kind: Job
+    name: test-gcp-h100-overrides-job
+    namespace: default

@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+nodesPerJob: 4
+topologyKey: "topology.kubernetes.io/rack"
+nodes:
+  - name: node-r1-0
+    labels:
+      topology.kubernetes.io/rack: rack-1
+  - name: node-r1-1
+    labels:
+      topology.kubernetes.io/rack: rack-1
+  - name: node-r1-2
+    labels:
+      topology.kubernetes.io/rack: rack-1
+  - name: node-r1-3
+    labels:
+      topology.kubernetes.io/rack: rack-1
+  - name: node-r2-0
+    labels:
+      topology.kubernetes.io/rack: rack-2
+  - name: node-r2-1
+    labels:
+      topology.kubernetes.io/rack: rack-2
+  - name: node-r2-2
+    labels:
+      topology.kubernetes.io/rack: rack-2
+  - name: node-r2-3
+    labels:
+      topology.kubernetes.io/rack: rack-2
+  - name: node-r3-0
+    labels:
+      topology.kubernetes.io/rack: rack-3
+  - name: node-r3-1
+    labels:
+      topology.kubernetes.io/rack: rack-3
+  - name: node-r3-2
+    labels:
+      topology.kubernetes.io/rack: rack-3
+  - name: node-r3-3
+    labels:
+      topology.kubernetes.io/rack: rack-3
+  - name: node-r4-0
+    labels:
+      topology.kubernetes.io/rack: rack-4
+  - name: node-r4-1
+    labels:
+      topology.kubernetes.io/rack: rack-4
+  - name: node-r4-2
+    labels:
+      topology.kubernetes.io/rack: rack-4
+  - name: node-r4-3
+    labels:
+      topology.kubernetes.io/rack: rack-4

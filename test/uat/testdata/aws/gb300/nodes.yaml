@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# KWOK-simulated AWS GB300 GPU nodes.
+#
+# Key labels for CRE detection:
+#   nvidia.com/gpu.product: NVIDIA-GB300                       -> GPU arch "gb300"
+#   nvidia.com/gpu.present: "true"                             -> ncrectl GPU discovery
+#   nvidia.com/gpu.clique: <uuid>                              -> NVLink clique
+#   topology.k8s.aws/network-node-layer-1: <id>                -> physical rack (T1 leaf)
+#   spec.providerID: "aws:///..."                              -> platform "aws"
+#
+# GB300 nodes: 4 GPUs per node, blackwell family, RoCE networking (no EFA).
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: aws-gb300-node-01
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    kubernetes.io/arch: arm64
+    kubernetes.io/hostname: aws-gb300-node-01
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB300
+    nvidia.com/gpu.count: "4"
+    nvidia.com/gpu.family: blackwell
+    nvidia.com/gpu.clique: a1b2c3d4-e5f6-7890-abcd-ef1234567890.1
+    node.kubernetes.io/instance-type: p7-gb300.72xlarge
+    topology.k8s.aws/network-node-layer-1: nn-aws-gb300-rack-01
+spec:
+  providerID: "aws:///us-east-1a/i-0000000000000001"
+status:
+  capacity:
+    cpu: "192"
+    ephemeral-storage: 21455242Mi
+    memory: 1542553600Ki
+    nvidia.com/gpu: "4"
+    pods: "1913"
+  allocatable:
+    cpu: 191500m
+    ephemeral-storage: "20246632876505"
+    memory: 1486102528Ki
+    nvidia.com/gpu: "4"
+    pods: "1913"
+  conditions:
+  - type: Ready
+    status: "True"
+    reason: KubeletReady
+    message: kubelet is posting ready status
+  phase: Running
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: aws-gb300-node-02
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    kubernetes.io/arch: arm64
+    kubernetes.io/hostname: aws-gb300-node-02
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB300
+    nvidia.com/gpu.count: "4"
+    nvidia.com/gpu.family: blackwell
+    nvidia.com/gpu.clique: a1b2c3d4-e5f6-7890-abcd-ef1234567890.1
+    node.kubernetes.io/instance-type: p7-gb300.72xlarge
+    topology.k8s.aws/network-node-layer-1: nn-aws-gb300-rack-01
+spec:
+  providerID: "aws:///us-east-1a/i-0000000000000002"
+status:
+  capacity:
+    cpu: "192"
+    ephemeral-storage: 21455242Mi
+    memory: 1542553600Ki
+    nvidia.com/gpu: "4"
+    pods: "1913"
+  allocatable:
+    cpu: 191500m
+    ephemeral-storage: "20246632876505"
+    memory: 1486102528Ki
+    nvidia.com/gpu: "4"
+    pods: "1913"
+  conditions:
+  - type: Ready
+    status: "True"
+    reason: KubeletReady
+    message: kubelet is posting ready status
+  phase: Running

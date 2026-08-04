@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+affinity:
+  requiredDuringSchedulingIgnoredDuringExecution:
+    nodeSelectorTerms:
+      - matchExpressions:
+          - key: kubernetes.io/hostname
+            operator: In
+            values:
+              - gpu-node-01
+spec:
+  trainJob:
+    runtimePatches:
+      - manager: cre.nvidia.com/controller
+        trainingRuntimeSpec:
+          template:
+            spec:
+              replicatedJobs:
+                - name: node
+                  template:
+                    spec:
+                      template:
+                        spec:
+                          nodeSelector:
+                            existing: selector

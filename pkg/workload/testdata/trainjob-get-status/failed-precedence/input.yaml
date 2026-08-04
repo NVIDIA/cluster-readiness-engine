@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+kind: TrainJob
+status:
+  conditions:
+    - type: Complete
+      status: "True"
+    - type: Failed
+      status: "True"

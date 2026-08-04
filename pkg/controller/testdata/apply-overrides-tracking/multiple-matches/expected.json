@@ -1,0 +1,14 @@
+{
+  "applied": [
+    {
+      "index": 0,
+      "when": "gpuArchitecture=h100",
+      "patches": "jobTemplate"
+    },
+    {
+      "index": 2,
+      "when": "platform=aws",
+      "patches": "1 dependencies"
+    }
+  ]
+}

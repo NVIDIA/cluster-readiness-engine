@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- apiVersion: resource.nvidia.com/v1beta1
+  kind: ComputeDomain
+  metadata:
+    name: {{ .EntryName }}-compute-domain
+    labels:
+      app: {{ .EntryName }}
+  spec:
+    channel:
+      allocationMode: Single
+      resourceClaimTemplate:
+        name: {{ .EntryName }}-channel
+    numNodes: {{ .NodesPerJob }}
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  resourceClaims:
+                  - name: compute-domain
+                    resourceClaimTemplateName: {{ .EntryName }}-channel
+                  containers:
+                  - name: node
+                    resources:
+                      claims:
+                      - name: compute-domain

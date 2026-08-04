@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# ncrectl installer
+#
+# Usage:
+#   curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
+#   curl -sSL <url> | bash -s -- -d /custom/path
+# ---------------------------------------------------------------------------
+
+# Configuration
+GH_REPO="NVIDIA/cluster-readiness-engine"
+GH_API_URL="https://api.github.com/repos/${GH_REPO}"
+GH_RELEASE_URL="https://github.com/${GH_REPO}/releases/download"
+BIN_NAME="ncrectl"
+INSTALL_DIR="/usr/local/bin"
+
+# Colors
+COLOR_RED='\033[0;31m'
+COLOR_GREEN='\033[0;32m'
+COLOR_RESET='\033[0m'
+
+# ---------------------------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------------------------
+
+usage() {
+  cat <<EOF
+Install utility for ${BIN_NAME}
+
+Usage: $0 [-d install_dir]
+
+Options:
+  -d DIR    Installation directory (default: /usr/local/bin)
+EOF
+  exit 1
+}
+
+err() {
+  printf "${COLOR_RED}Error: %s${COLOR_RESET}\n" "$1" >&2
+  exit 1
+}
+
+msg() {
+  printf "%s\n" "$1" >&2
+}
+
+ok() {
+  printf "${COLOR_GREEN}%s${COLOR_RESET}\n" "$1" >&2
+}
+
+getOS() {
+  case $(uname -s) in
+    Darwin) echo "darwin" ;;
+    Linux)  echo "linux" ;;
+    *)      err "Unsupported operating system: $(uname -s)" ;;
+  esac
+}
+
+getArch() {
+  local arch
+  arch=$(uname -m)
+  case "${arch}" in
+    x86_64)  echo "amd64" ;;
+    aarch64) echo "arm64" ;;
+    arm64)   echo "arm64" ;;
+    *)       err "Unsupported architecture: ${arch}" ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Parse arguments
+# ---------------------------------------------------------------------------
+
+while getopts "d:" opt; do
+  case ${opt} in
+    d) INSTALL_DIR="${OPTARG}" ;;
+    *) usage ;;
+  esac
+done
+
+# ---------------------------------------------------------------------------
+# Detect platform
+# ---------------------------------------------------------------------------
+
+OS=$(getOS)
+ARCH=$(getArch)
+
+msg "OS:   ${OS}"
+msg "Arch: ${ARCH}"
+
+# ---------------------------------------------------------------------------
+# Validate prerequisites
+# ---------------------------------------------------------------------------
+
+if ! command -v curl &>/dev/null; then
+  err "curl is required but not found in PATH"
+fi
+
+# ---------------------------------------------------------------------------
+# Fetch latest version
+# ---------------------------------------------------------------------------
+
+msg "Fetching latest version..."
+
+VERSION=$(curl -sSf "${GH_API_URL}/releases/latest" | \
+  grep -o '"tag_name":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+if [[ -z "${VERSION}" ]]; then
+  err "Failed to determine latest version from GitHub releases"
+fi
+
+msg "Version: ${VERSION}"
+
+# ---------------------------------------------------------------------------
+# Download binary
+# ---------------------------------------------------------------------------
+
+BINARY_NAME="${BIN_NAME}-${OS}-${ARCH}"
+DOWNLOAD_URL="${GH_RELEASE_URL}/${VERSION}/${BINARY_NAME}"
+
+msg "Downloading ${BINARY_NAME}..."
+
+TEMP_DIR=$(mktemp -d)
+trap 'rm -rf "${TEMP_DIR}"' EXIT
+
+if ! curl -fsSL -o "${TEMP_DIR}/${BINARY_NAME}" "${DOWNLOAD_URL}"; then
+  err "Failed to download ${BINARY_NAME} from ${DOWNLOAD_URL}"
+fi
+
+chmod +x "${TEMP_DIR}/${BINARY_NAME}"
+
+# ---------------------------------------------------------------------------
+# Install binary + kubectl plugin symlink
+#
+# kubectl discovers plugins by looking for executables named "kubectl-<name>"
+# on $PATH (see https://kubernetes.io/docs/tasks/extend-kubectl/kubectl-plugins/).
+# A relative symlink lets "kubectl ncrectl ..." work identically to
+# "ncrectl ..." with no separate binary to maintain or upgrade.
+# ---------------------------------------------------------------------------
+
+msg "Installing ${BIN_NAME} to ${INSTALL_DIR}..."
+
+PLUGIN_NAME="kubectl-ncrectl"
+STATUS=0
+
+if [[ -w "${INSTALL_DIR}" ]]; then
+  mv "${TEMP_DIR}/${BINARY_NAME}" "${INSTALL_DIR}/${BIN_NAME}" || STATUS=1
+  if [[ "${STATUS}" -eq 0 ]]; then
+    ln -sf "${BIN_NAME}" "${INSTALL_DIR}/${PLUGIN_NAME}" || STATUS=2
+  fi
+else
+  msg "Permission denied for ${INSTALL_DIR}, trying with sudo..."
+  sudo bash -c "
+    mv '${TEMP_DIR}/${BINARY_NAME}' '${INSTALL_DIR}/${BIN_NAME}' || exit 1
+    ln -sf '${BIN_NAME}' '${INSTALL_DIR}/${PLUGIN_NAME}' || exit 2
+  " < /dev/tty || STATUS=$?
+fi
+
+if [[ "${STATUS}" -eq 1 ]]; then
+  err "Failed to install ${BIN_NAME} to ${INSTALL_DIR}"
+elif [[ "${STATUS}" -eq 2 ]]; then
+  msg "Warning: ${BIN_NAME} installed, but failed to create the kubectl plugin symlink at ${INSTALL_DIR}/${PLUGIN_NAME}."
+  msg "  Create it manually with: sudo ln -sf ${BIN_NAME} ${INSTALL_DIR}/${PLUGIN_NAME}"
+fi
+
+# ---------------------------------------------------------------------------
+# Verify
+# ---------------------------------------------------------------------------
+
+if command -v "${BIN_NAME}" &>/dev/null; then
+  ok "${BIN_NAME} ${VERSION} installed successfully to ${INSTALL_DIR}/${BIN_NAME}"
+  "${BIN_NAME}" --version
+  if [[ -e "${INSTALL_DIR}/${PLUGIN_NAME}" ]]; then
+    msg "Also available as a kubectl plugin: kubectl ncrectl ..."
+  fi
+else
+  msg "${BIN_NAME} installed to ${INSTALL_DIR}/${BIN_NAME}"
+  msg "Note: ${INSTALL_DIR} may not be in your PATH"
+fi

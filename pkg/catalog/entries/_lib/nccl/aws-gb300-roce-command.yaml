@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- /usr/bin/env
+- -u
+- OMPI_MCA_btl_tcp_if_include
+- -u
+- OMPI_MCA_btl_tcp_if_exclude
+- -u
+- OMPI_MCA_oob_tcp_if_include
+- -u
+- OMPI_MCA_oob_tcp_if_exclude
+- /opt/amazon/openmpi/bin/mpirun

@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Certification for NCCL benchmarks on Azure with NVIDIA A100 SXM4 (InfiniBand).
+#
+# Targets nodes with A100 SXM4; platform and GPU are auto-detected (providerID azure://,
+# nvidia.com/gpu.product). The Azure+A100 override applies and injects InfiniBand NCCL
+# settings (NCCL_COLLNET_ENABLE=1, NCCL_IB_HCA=mlx5, NCCL_TOPO_FILE, etc.).
+#
+# Bandwidth thresholds are optional. Use spec.categories[].options.thresholds to enforce
+# minimum bus bandwidth (metric: busBandwidthGBps, unit GB/s). Tune the value for your
+# Azure IB topology.
+#
+# Deploy:
+#   kubectl apply -f cre_v1alpha1_certification_azure_a100_nccl.yaml
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  labels:
+    app.kubernetes.io/name: cluster-readiness-engine
+  name: azure-a100-nccl-certification
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-40GB  # or NVIDIA-A100-SXM4-80GB
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        thresholds:
+          busBandwidthGBps: "value >= 50"  # GB/s; tune per environment
+    - domain: communication
+      variant: nccl-all-gather
+      options:
+        thresholds:
+          busBandwidthGBps: "value >= 50"  # GB/s; tune per environment
+    - domain: communication
+      variant: nccl-alltoall
+      options:
+        thresholds:
+          busBandwidthGBps: "value >= 30"  # GB/s; tune per environment

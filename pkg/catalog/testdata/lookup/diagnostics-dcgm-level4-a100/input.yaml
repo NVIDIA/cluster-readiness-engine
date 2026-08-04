@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+category: diagnostics
+subcategory: dcgm-level4
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-A100-SXM4-40GB
+nodesPerJob: 1
+gpusPerNode: 8

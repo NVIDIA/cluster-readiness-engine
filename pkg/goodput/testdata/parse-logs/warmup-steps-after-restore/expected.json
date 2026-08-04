@@ -1,0 +1,58 @@
+{
+  "applicationStartTime": "2026-01-22T18:00:00Z",
+  "checkpointRestore": {
+    "path": "/checkpoints/step_100/model_weights",
+    "step": 0,
+    "timestamp": "2026-01-22T18:00:01Z"
+  },
+  "firstStep": {
+    "epoch": 0,
+    "globalStep": 100,
+    "isWarmup": true,
+    "iteration": 100,
+    "loss": 8.5,
+    "stepTiming": 38.5,
+    "tflops": 40.2,
+    "timestamp": "2026-01-22T18:00:10Z"
+  },
+  "lastLogTimestamp": "2026-01-22T18:00:20Z",
+  "lastStep": {
+    "epoch": 0,
+    "globalStep": 102,
+    "iteration": 102,
+    "loss": 8.3,
+    "stepTiming": 4.22,
+    "tflops": 503.8,
+    "timestamp": "2026-01-22T18:00:20Z"
+  },
+  "steps": [
+    {
+      "epoch": 0,
+      "globalStep": 100,
+      "isWarmup": true,
+      "iteration": 100,
+      "loss": 8.5,
+      "stepTiming": 38.5,
+      "tflops": 40.2,
+      "timestamp": "2026-01-22T18:00:10Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 101,
+      "iteration": 101,
+      "loss": 8.4,
+      "stepTiming": 4.25,
+      "tflops": 501.3,
+      "timestamp": "2026-01-22T18:00:15Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 102,
+      "iteration": 102,
+      "loss": 8.3,
+      "stepTiming": 4.22,
+      "tflops": 503.8,
+      "timestamp": "2026-01-22T18:00:20Z"
+    }
+  ]
+}

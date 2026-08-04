@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+nodes:
+  - metadata:
+      name: forge-l40-node-01
+      labels:
+        kubernetes.io/hostname: forge-l40-node-01
+    spec:
+      providerID: ""
+  - metadata:
+      name: forge-l40-node-02
+      labels:
+        kubernetes.io/hostname: forge-l40-node-02
+    spec:
+      providerID: ""

@@ -1,0 +1,462 @@
+{
+  "Certification/oci-l40s": {
+    "kind": "Certification",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "oci-l40s",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.product": "NVIDIA-L40S"
+        }
+      },
+      "categories": [
+        {
+          "domain": "communication",
+          "variant": "nccl-all-reduce"
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkflowRunning",
+          "message": "Certification in progress"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "categoryStatuses": [
+        {
+          "domain": "communication",
+          "variant": "nccl-all-reduce",
+          "workflowRef": {
+            "name": "oci-l40s-communication-nc-aad69",
+            "namespace": "default"
+          },
+          "status": "InProgress"
+        }
+      ]
+    }
+  },
+  "Workflow/oci-l40s-communication-nc-aad69": {
+    "kind": "Workflow",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "oci-l40s-communication-nc-aad69",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "cre.nvidia.com/category-domain": "communication",
+        "cre.nvidia.com/category-variant": "nccl-all-reduce",
+        "cre.nvidia.com/certification": "oci-l40s"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "kind": "Certification",
+          "name": "oci-l40s",
+          "uid": "",
+          "controller": true,
+          "blockOwnerDeletion": true
+        }
+      ],
+      "finalizers": [
+        "cre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "nccl-all-reduce-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                "command": [
+                  "timeout",
+                  "3600",
+                  "/usr/local/mpi/bin/mpirun"
+                ],
+                "args": [
+                  "-N",
+                  "4",
+                  "--allow-run-as-root",
+                  "--mca",
+                  "plm_rsh_args",
+                  "-o StrictHostKeyChecking=no",
+                  "-x",
+                  "NCCL_DEBUG=INFO",
+                  "-x",
+                  "NCCL_IB_PCI_RELAXED_ORDERING=1",
+                  "-x",
+                  "NCCL_IB_TC=41",
+                  "-x",
+                  "NCCL_IB_SL=0",
+                  "-x",
+                  "NCCL_IB_QPS_PER_CONNECTION=4",
+                  "-x",
+                  "NCCL_IB_GID_INDEX=3",
+                  "-x",
+                  "NCCL_IB_SPLIT_DATA_ON_QPS=0",
+                  "-x",
+                  "NCCL_SOCKET_IFNAME=eth0",
+                  "-x",
+                  "OMPI_MCA_coll_hcoll_enable=0",
+                  "-x",
+                  "OMPI_MCA_orte_keep_fqdn_hostnames=t",
+                  "/usr/local/bin/all_reduce_perf_mpi",
+                  "-b",
+                  "8",
+                  "-e",
+                  "16G",
+                  "-f",
+                  "2",
+                  "-n",
+                  "100",
+                  "-N",
+                  "10"
+                ],
+                "numNodes": 2,
+                "numProcPerNode": 4
+              },
+              "runtimePatches": [
+                {
+                  "manager": "cre.nvidia.com/catalog",
+                  "trainingRuntimeSpec": {
+                    "template": {
+                      "spec": {
+                        "replicatedJobs": [
+                          {
+                            "name": "node",
+                            "template": {
+                              "spec": {
+                                "template": {
+                                  "spec": {
+                                    "volumes": [
+                                      {
+                                        "name": "dshm",
+                                        "emptyDir": {
+                                          "medium": "Memory"
+                                        }
+                                      }
+                                    ],
+                                    "containers": [
+                                      {
+                                        "name": "node",
+                                        "volumeMounts": [
+                                          {
+                                            "name": "dshm",
+                                            "mountPath": "/dev/shm"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "name": "launcher"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ],
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          },
+          "nodeHealthMonitor": {
+            "cel": {
+              "expression": "node.spec.unschedulable == true"
+            }
+          },
+          "bandwidthMeasurement": {
+            "logProfileRef": "nccl-bandwidth",
+            "sampleInterval": "30s",
+            "testType": "all_reduce"
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.product": "NVIDIA-L40S"
+          }
+        },
+        "execution": {
+          "timeoutPerJob": "1h0m0s"
+        },
+        "iterations": 1
+      },
+      "dependencies": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "metadata": {
+            "labels": {
+              "app": "nccl-all-reduce",
+              "trainer.kubeflow.org/framework": "mpi"
+            },
+            "name": "nccl-all-reduce-runtime"
+          },
+          "spec": {
+            "mlPolicy": {
+              "mpi": {
+                "mpiImplementation": "OpenMPI",
+                "numProcPerNode": 4,
+                "sshAuthMountPath": "/tmp/mpi-ssh-raw"
+              },
+              "numNodes": 1
+            },
+            "template": {
+              "spec": {
+                "network": {
+                  "publishNotReadyAddresses": true
+                },
+                "replicatedJobs": [
+                  {
+                    "name": "node",
+                    "template": {
+                      "spec": {
+                        "template": {
+                          "metadata": {
+                            "annotations": {
+                              "k8s.v1.cni.cncf.io/networks": "network-operator/sriov-net,network-operator/sriov-net"
+                            }
+                          },
+                          "spec": {
+                            "containers": [
+                              {
+                                "args": [
+                                  "set -x \u0026\u0026\napt-get update \u0026\u0026\napt-get install -y --no-install-recommends openssh-server  \u0026\u0026\nmkdir -p /var/run/sshd  \u0026\u0026\nchmod 0755 /var/run/sshd  \u0026\u0026\nmkdir -p /root/.ssh \u0026\u0026\nchmod 700 /root/.ssh \u0026\u0026\ncp /tmp/mpi-ssh-raw/* /root/.ssh/ \u0026\u0026\nchmod 600 /root/.ssh/id_rsa \u0026\u0026\nchmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys \u0026\u0026\n/usr/sbin/sshd -De"
+                                ],
+                                "command": [
+                                  "sh",
+                                  "-c"
+                                ],
+                                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                                "name": "node",
+                                "readinessProbe": {
+                                  "initialDelaySeconds": 5,
+                                  "tcpSocket": {
+                                    "port": 22
+                                  }
+                                },
+                                "resources": {
+                                  "limits": {
+                                    "nvidia.com/gpu": "4",
+                                    "nvidia.com/mlnxnics": "2"
+                                  },
+                                  "requests": {
+                                    "nvidia.com/gpu": "4",
+                                    "nvidia.com/mlnxnics": "2"
+                                  }
+                                },
+                                "securityContext": {
+                                  "capabilities": {
+                                    "add": [
+                                      "IPC_LOCK"
+                                    ]
+                                  }
+                                },
+                                "volumeMounts": [
+                                  {
+                                    "mountPath": "/tmp/mpi-ssh-raw",
+                                    "name": "mpi-ssh-auth",
+                                    "readOnly": true
+                                  }
+                                ]
+                              }
+                            ],
+                            "restartPolicy": "OnFailure"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "dependsOn": [
+                      {
+                        "name": "node",
+                        "status": "Ready"
+                      }
+                    ],
+                    "name": "launcher",
+                    "template": {
+                      "metadata": {
+                        "labels": {
+                          "trainer.kubeflow.org/trainjob-ancestor-step": "trainer"
+                        }
+                      },
+                      "spec": {
+                        "template": {
+                          "spec": {
+                            "containers": [
+                              {
+                                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                                "name": "node",
+                                "resources": {
+                                  "limits": {
+                                    "cpu": "2",
+                                    "memory": "1Gi"
+                                  }
+                                },
+                                "volumeMounts": [
+                                  {
+                                    "mountPath": "/tmp/mpi-ssh-raw",
+                                    "name": "mpi-ssh-auth",
+                                    "readOnly": true
+                                  },
+                                  {
+                                    "mountPath": "/root/.ssh",
+                                    "name": "ssh-keys"
+                                  }
+                                ]
+                              }
+                            ],
+                            "initContainers": [
+                              {
+                                "args": [
+                                  "set -x \u0026\u0026\ncp /tmp/mpi-ssh-raw/* /root/.ssh/ \u0026\u0026\nchmod 600 /root/.ssh/id_rsa \u0026\u0026\nchmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys"
+                                ],
+                                "command": [
+                                  "sh",
+                                  "-c"
+                                ],
+                                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                                "name": "fix-ssh-permissions",
+                                "volumeMounts": [
+                                  {
+                                    "mountPath": "/tmp/mpi-ssh-raw",
+                                    "name": "mpi-ssh-auth",
+                                    "readOnly": true
+                                  },
+                                  {
+                                    "mountPath": "/root/.ssh",
+                                    "name": "ssh-keys"
+                                  }
+                                ]
+                              }
+                            ],
+                            "restartPolicy": "OnFailure",
+                            "volumes": [
+                              {
+                                "emptyDir": {},
+                                "name": "ssh-keys"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ],
+                "successPolicy": {
+                  "operator": "All",
+                  "targetReplicatedJobs": [
+                    "launcher"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Iteration 1/1: 1 groups running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "dependencyRefs": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "name": "nccl-all-reduce-runtime-aad69-job",
+          "namespace": "default",
+          "scope": "job",
+          "groupName": "group-0",
+          "iteration": 1
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 2,
+        "nodesPerJob": 2,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "detectedPlatform": "oci",
+        "detectedGPUArchitecture": "l40s",
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "oci-l40s-node-01",
+              "oci-l40s-node-02"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "oci-l40s-communication-nc-aad69-job",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

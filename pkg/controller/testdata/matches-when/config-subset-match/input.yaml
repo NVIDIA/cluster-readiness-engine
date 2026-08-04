@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+when:
+  config:
+    numNodes: 8
+platform: "aws"
+gpuArchitecture: "h100"
+config:
+  numNodes: 8
+  batchSize: 32
+  framework: "nemo"

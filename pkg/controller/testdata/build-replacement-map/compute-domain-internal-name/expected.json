@@ -1,0 +1,16 @@
+{
+  "replacements": [
+    {
+      "key": "my-cd",
+      "value": "my-cd-group-0-iter-1"
+    },
+    {
+      "key": "my-cd-claim",
+      "value": "my-cd-claim-group-0-iter-1"
+    },
+    {
+      "key": "my-runtime",
+      "value": "my-runtime-group-0-iter-1"
+    }
+  ]
+}

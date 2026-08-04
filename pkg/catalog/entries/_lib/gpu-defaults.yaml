@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Per-node hardware defaults for known GPU architectures.
+# Loaded at init time by pkg/catalog/gpu_defaults.go.
+#
+# - defaults: keyed by GPU architecture string (as returned by gpu.ParseProduct).
+#   gpusPerNode: GPU count per node.
+#   mlnxPerNode: Mellanox NIC count per node (used by IB/RoCE platforms; 0 means
+#                "do not set nvidia.com/mlnxnics" — templates branch on it).
+#
+# - platformOverrides: keyed by platform name then GPU architecture. Fields set
+#   here override the architecture defaults when a node's detected platform
+#   matches. Unspecified fields fall through to the architecture defaults.
+#
+# Unknown architectures resolve to {gpusPerNode: 4, mlnxPerNode: 0} via the
+# Go-side default — see GPUDefaults().
+
+defaults:
+  h100:
+    gpusPerNode: 8
+    mlnxPerNode: 8
+  a100:
+    gpusPerNode: 8
+    mlnxPerNode: 8
+  l40s:
+    gpusPerNode: 8
+    mlnxPerNode: 8
+  l40:
+    gpusPerNode: 8
+    mlnxPerNode: 4
+  b200:
+    gpusPerNode: 8
+    mlnxPerNode: 8
+  gb200:
+    gpusPerNode: 4
+    mlnxPerNode: 8
+  gb300:
+    gpusPerNode: 4
+    mlnxPerNode: 8
+
+platformOverrides:
+  oci:
+    l40s:
+      gpusPerNode: 4
+      mlnxPerNode: 2

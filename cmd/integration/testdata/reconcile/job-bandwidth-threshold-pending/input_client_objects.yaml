@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-bw-pending-workload
+  namespace: default
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - mpirun
+    numNodes: 1
+status:
+  conditions:
+    - type: Complete
+      status: "True"
+      reason: JobCompleted
+      message: "All workers completed"
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-bw-pending
+  namespace: default
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - mpirun
+        numNodes: 1
+  bandwidthMeasurement:
+    logProfileRef: nccl-bandwidth
+    testType: all_reduce
+  thresholds:
+    busBandwidthGBps: "value >= 400"
+status:
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-bw-pending-workload
+    namespace: default
+---
+# BandwidthMeasurement exists but has NO results yet (simulating async log parsing).
+apiVersion: cre.nvidia.com/v1alpha1
+kind: BandwidthMeasurement
+metadata:
+  name: test-bw-pending-bandwidth
+  namespace: default
+spec:
+  jobRef:
+    apiGroup: cre.nvidia.com
+    kind: Job
+    name: test-bw-pending
+  logProfileRef: nccl-bandwidth
+  testType: all_reduce
+status: {}

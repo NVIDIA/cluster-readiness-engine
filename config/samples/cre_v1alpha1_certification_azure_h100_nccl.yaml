@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Certification for multi-node NCCL benchmarks on Azure with NVIDIA H100 (InfiniBand, ND H100 v5).
+#
+# Targets nodes with H100 80GB HBM3; platform and GPU are auto-detected (providerID azure://,
+# nvidia.com/gpu.product). The Azure (non-A100) override contributes the Azure topology configmap
+# and the nvidia.com/mlnxnics: 8 SR-IOV resource request, then the Azure+H100 override layers in
+# the H100-specific UCX/OMPI/NCCL tuning (UCX_TLS=tcp, OMPI_MCA_orte_keep_fqdn_hostnames=t,
+# NCCL_NVLS_ENABLE=1, NCCL_MIN_NCHANNELS=32, NCCL_IB_QPS_PER_CONNECTION=4, NCCL_NET_GDR_LEVEL=5,
+# NCCL_P2P_NET_CHUNKSIZE=2097152, etc.).
+#
+# Bandwidth thresholds are optional. Use spec.categories[].options.thresholds to enforce
+# minimum bus bandwidth (metric: busBandwidthGBps, unit GB/s). Tune the value for your
+# Azure IB topology.
+#
+# Deploy:
+#   kubectl apply -f cre_v1alpha1_certification_azure_h100_nccl.yaml
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  labels:
+    app.kubernetes.io/name: cluster-readiness-engine
+  name: azure-h100-nccl-certification
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        thresholds:
+          busBandwidthGBps: "value >= 150"  # GB/s; tune per environment
+    - domain: communication
+      variant: nccl-all-gather
+      options:
+        thresholds:
+          busBandwidthGBps: "value >= 150"  # GB/s; tune per environment
+    - domain: communication
+      variant: nccl-alltoall
+      options:
+        thresholds:
+          busBandwidthGBps: "value >= 100"  # GB/s; tune per environment

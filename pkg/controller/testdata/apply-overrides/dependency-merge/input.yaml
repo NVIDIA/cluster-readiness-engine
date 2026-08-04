@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+platform: "aws"
+gpuArchitecture: "gb300"
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            name: nemotron-6-8b-runtime
+          trainer:
+            image: test-image:latest
+            numNodes: 4
+  orchestration:
+    iterations: 1
+  dependencies:
+    - apiVersion: resource.nvidia.com/v1beta1
+      kind: ComputeDomain
+      metadata:
+        name: nemotron-compute-domain
+      spec:
+        channel:
+          allocationMode: Single
+          resourceClaimTemplate:
+            name: nemotron-channel
+        numNodes: 4
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: nemotron-runtime
+      spec:
+        mlPolicy:
+          numNodes: 4
+  overrides:
+    - when:
+        gpuArchitecture:
+          equals: "gb300"
+      dependencies:
+        - apiVersion: resource.k8s.io/v1
+          kind: ResourceClaimTemplate
+          metadata:
+            name: nemotron-roce
+          spec:
+            spec:
+              devices:
+                requests:
+                  - name: roce
+                    exactly:
+                      count: 8
+                      deviceClassName: roce.networking.k8s.aws
+        - apiVersion: resource.nvidia.com/v1beta1
+          kind: ComputeDomain
+          metadata:
+            name: nemotron-compute-domain
+          spec:
+            numNodes: 8
+        - apiVersion: trainer.kubeflow.org/v1alpha1
+          kind: TrainingRuntime
+          metadata:
+            name: nemotron-runtime
+          spec:
+            mlPolicy:
+              numNodes: 8
+      jobTemplate:
+        spec:
+          workload:
+            trainJob:
+              trainer:
+                numNodes: 8

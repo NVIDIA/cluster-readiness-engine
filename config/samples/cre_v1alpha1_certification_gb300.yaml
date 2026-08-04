@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: gpu-cluster-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        enableMNNVL: true
+    - domain: communication
+      variant: nccl-all-gather
+      options:
+        enableMNNVL: true
+    - domain: communication
+      variant: nccl-alltoall
+      options:
+        enableMNNVL: true
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        enableMNNVL: false
+    - domain: communication
+      variant: nccl-all-gather
+      options:
+        enableMNNVL: false
+    - domain: communication
+      variant: nccl-alltoall
+      options:
+        enableMNNVL: false
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 50
+        enableMNNVL: true
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 50
+        enableMNNVL: false

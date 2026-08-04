@@ -1,0 +1,15 @@
+[
+  {
+    "name": "group-0",
+    "nodes": [
+      "node-r1-0",
+      "node-r1-1",
+      "node-r2-0",
+      "node-r2-1"
+    ],
+    "domains": [
+      "rack-1",
+      "rack-2"
+    ]
+  }
+]

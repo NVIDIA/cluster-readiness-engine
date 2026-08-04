@@ -1,0 +1,16 @@
+[
+  {
+    "name": "test-cert-diagnostics-dcg-917bf",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "kind": "Workflow",
+    "labels": {
+      "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+      "cre.nvidia.com/category-domain": "diagnostics",
+      "cre.nvidia.com/category-variant": "dcgm-level4",
+      "cre.nvidia.com/certification": "test-cert"
+    },
+    "hasOrchestrationTarget": true,
+    "hasJobTemplate": true,
+    "numDependencies": 1
+  }
+]

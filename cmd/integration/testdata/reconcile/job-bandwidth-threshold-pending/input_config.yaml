@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Job succeeds but bandwidth threshold data isn't available yet.
+# The controller should requeue and NOT set ValidationFailed until
+# BandwidthMeasurement results are populated.
+# We wait for Succeeded (the Job does succeed) and verify no ValidationFailed.
+waitFor:
+  kind: Job
+  name: test-bw-pending
+  namespace: default
+  condition: Succeeded
+collect:
+  - kind: Job
+    name: test-bw-pending
+    namespace: default

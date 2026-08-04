@@ -1,0 +1,139 @@
+{
+  "jobTemplate": {
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "nemotron-6-8b-runtime"
+          },
+          "trainer": {
+            "image": "test-image:latest",
+            "numNodes": 8
+          }
+        }
+      }
+    }
+  },
+  "orchestration": {
+    "execution": {},
+    "iterations": 1
+  },
+  "dependencies": [
+    {
+      "apiVersion": "resource.nvidia.com/v1beta1",
+      "kind": "ComputeDomain",
+      "metadata": {
+        "name": "nemotron-compute-domain"
+      },
+      "spec": {
+        "channel": {
+          "allocationMode": "Single",
+          "resourceClaimTemplate": {
+            "name": "nemotron-channel"
+          }
+        },
+        "numNodes": 8
+      }
+    },
+    {
+      "apiVersion": "trainer.kubeflow.org/v1alpha1",
+      "kind": "TrainingRuntime",
+      "metadata": {
+        "name": "nemotron-runtime"
+      },
+      "spec": {
+        "mlPolicy": {
+          "numNodes": 8
+        }
+      }
+    },
+    {
+      "apiVersion": "resource.k8s.io/v1",
+      "kind": "ResourceClaimTemplate",
+      "metadata": {
+        "name": "nemotron-roce"
+      },
+      "spec": {
+        "spec": {
+          "devices": {
+            "requests": [
+              {
+                "exactly": {
+                  "count": 8,
+                  "deviceClassName": "roce.networking.k8s.aws"
+                },
+                "name": "roce"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "overrides": [
+    {
+      "when": {
+        "gpuArchitecture": {
+          "equals": "gb300"
+        }
+      },
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "trainer": {
+                "numNodes": 8
+              }
+            }
+          }
+        }
+      },
+      "dependencies": [
+        {
+          "apiVersion": "resource.k8s.io/v1",
+          "kind": "ResourceClaimTemplate",
+          "metadata": {
+            "name": "nemotron-roce"
+          },
+          "spec": {
+            "spec": {
+              "devices": {
+                "requests": [
+                  {
+                    "exactly": {
+                      "count": 8,
+                      "deviceClassName": "roce.networking.k8s.aws"
+                    },
+                    "name": "roce"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "apiVersion": "resource.nvidia.com/v1beta1",
+          "kind": "ComputeDomain",
+          "metadata": {
+            "name": "nemotron-compute-domain"
+          },
+          "spec": {
+            "numNodes": 8
+          }
+        },
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "metadata": {
+            "name": "nemotron-runtime"
+          },
+          "spec": {
+            "mlPolicy": {
+              "numNodes": 8
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

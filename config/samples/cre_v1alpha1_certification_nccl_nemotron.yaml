@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Multi-category Certification for NCCL + Nemotron burn-in on H100.
+#
+# Categories are executed sequentially in the order listed:
+#   1. communication/nccl-all-reduce  — NCCL all-reduce bandwidth test
+#   2. communication/nccl-all-gather  — NCCL all-gather bandwidth test
+#   3. communication/nccl-alltoall    — NCCL all-to-all bandwidth test
+#   4. training/nemotron5-8b          — Nemotron 15B pre-training
+#
+# Communication categories auto-select all matching nodes. Training uses
+# per-category options.nodesPerJob override. Global defaults can be set
+# at the spec level (e.g., enableCheckpoint, imagePullSecrets).
+#
+# Deploy:
+#   kubectl apply -f cre_v1alpha1_certification_nccl_nemotron.yaml
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  labels:
+    app.kubernetes.io/name: cluster-readiness-engine
+  name: nccl-nemotron-certification
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: communication
+      variant: nccl-all-gather
+    - domain: communication
+      variant: nccl-alltoall
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        nodesPerJob: 2

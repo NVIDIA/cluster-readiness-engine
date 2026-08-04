@@ -1,0 +1,8 @@
+{
+  "replacements": [
+    {
+      "key": "my-pvc",
+      "value": "my-pvc-job"
+    }
+  ]
+}

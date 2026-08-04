@@ -1,0 +1,7 @@
+[
+  {
+    "key": "nvidia.com/gpu",
+    "operator": "Equal",
+    "value": "true"
+  }
+]

@@ -1,0 +1,85 @@
+{
+  "firstStep": {
+    "elapsedTime": 49.394800000000004,
+    "epoch": 0,
+    "globalStep": 10,
+    "iteration": 10,
+    "loss": 11.72175,
+    "stepTiming": 49.394800000000004,
+    "tflops": 371.8,
+    "timestamp": "2026-02-15T20:20:55.067342Z"
+  },
+  "lastStep": {
+    "elapsedTime": 34.3565,
+    "epoch": 0,
+    "globalStep": 60,
+    "iteration": 60,
+    "loss": 0.009350233,
+    "stepTiming": 34.3565,
+    "tflops": 534.6,
+    "timestamp": "2026-02-15T20:49:48.124778Z"
+  },
+  "logInterval": 10,
+  "steps": [
+    {
+      "elapsedTime": 49.394800000000004,
+      "epoch": 0,
+      "globalStep": 10,
+      "iteration": 10,
+      "loss": 11.72175,
+      "stepTiming": 49.394800000000004,
+      "tflops": 371.8,
+      "timestamp": "2026-02-15T20:20:55.067342Z"
+    },
+    {
+      "elapsedTime": 34.5954,
+      "epoch": 0,
+      "globalStep": 20,
+      "iteration": 20,
+      "loss": 7.365866,
+      "stepTiming": 34.5954,
+      "tflops": 530.9,
+      "timestamp": "2026-02-15T20:26:41.021824Z"
+    },
+    {
+      "elapsedTime": 35.5885,
+      "epoch": 0,
+      "globalStep": 30,
+      "iteration": 30,
+      "loss": 1.386872,
+      "stepTiming": 35.5885,
+      "tflops": 516.1,
+      "timestamp": "2026-02-15T20:32:36.907201Z"
+    },
+    {
+      "elapsedTime": 34.3799,
+      "epoch": 0,
+      "globalStep": 40,
+      "iteration": 40,
+      "loss": 0.05452887,
+      "stepTiming": 34.3799,
+      "tflops": 534.2,
+      "timestamp": "2026-02-15T20:38:20.70658Z"
+    },
+    {
+      "elapsedTime": 34.3852,
+      "epoch": 0,
+      "globalStep": 50,
+      "iteration": 50,
+      "loss": 0.01023553,
+      "stepTiming": 34.3852,
+      "tflops": 534.1,
+      "timestamp": "2026-02-15T20:44:04.559069Z"
+    },
+    {
+      "elapsedTime": 34.3565,
+      "epoch": 0,
+      "globalStep": 60,
+      "iteration": 60,
+      "loss": 0.009350233,
+      "stepTiming": 34.3565,
+      "tflops": 534.6,
+      "timestamp": "2026-02-15T20:49:48.124778Z"
+    }
+  ]
+}

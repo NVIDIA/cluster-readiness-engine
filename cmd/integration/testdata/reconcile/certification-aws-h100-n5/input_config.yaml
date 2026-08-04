@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+generateNodes:
+  count: 8
+  providerID: "aws://us-east-1a/i-0000000000000001"
+  labels:
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+waitFor:
+  kind: Workflow
+  name: aws-h1-training-nemotron5-56b
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: aws-h1
+    namespace: default
+  - kind: Workflow
+    name: aws-h1-training-nemotron5-56b
+    namespace: default
+  - kind: Job
+    name: aws-h1-training-nemotron5-56b-job
+    namespace: default

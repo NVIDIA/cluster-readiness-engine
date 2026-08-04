@@ -1,0 +1,62 @@
+{
+  "jobTemplate": {
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "test-runtime"
+          },
+          "trainer": {
+            "image": "test-image:latest",
+            "args": [
+              "--nproc-per-node=4"
+            ],
+            "env": [
+              {
+                "name": "NCCL_DEBUG",
+                "value": "INFO"
+              }
+            ],
+            "numNodes": 8
+          }
+        }
+      }
+    }
+  },
+  "orchestration": {
+    "execution": {},
+    "iterations": 1
+  },
+  "overrides": [
+    {
+      "when": {
+        "gpuArchitecture": {
+          "equals": "h100"
+        }
+      },
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "trainer": {
+                "env": [
+                  {
+                    "name": "NCCL_DEBUG",
+                    "value": "INFO"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "jobTemplatePatch": [
+        {
+          "op": "replace",
+          "path": "/spec/workload/trainJob/trainer/numNodes",
+          "value": 8
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,118 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: test-state-recovery-logprofile
+spec:
+  timestamp:
+    layout: "2006-01-02T15:04:05.999999999Z"
+  patterns:
+    trainingStep:
+      regex: 'step (?P<globalStep>\d+)'
+      example: "step 100"
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-state-recovery-job
+  namespace: default
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "True"
+      reason: WorkloadRunning
+      message: "Workload is running"
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Failed
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-state-recovery-job-workload
+    namespace: default
+  restartCount: 1
+---
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-state-recovery-job-workload
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: cluster-readiness-engine
+    cre.nvidia.com/job: test-state-recovery-job
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - python
+      - train.py
+    numNodes: 1
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-state-recovery-job-workload-worker-0
+  namespace: default
+  labels:
+    jobset.sigs.k8s.io/jobset-name: test-state-recovery-job-workload
+    batch.kubernetes.io/job-completion-index: "0"
+    cre.nvidia.com/job: test-state-recovery-job
+spec:
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Running
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: GoodputMeasurement
+metadata:
+  name: test-state-recovery-gm
+  namespace: default
+spec:
+  jobRef:
+    apiGroup: cre.nvidia.com
+    kind: Job
+    name: test-state-recovery-job
+  logProfileRef: test-state-recovery-logprofile
+  sampleInterval: 1s
+status:
+  currentStep: 200
+  highestStep: 200
+  lastCheckpointStep: 150
+  interruptionCount: 1
+  lostWorkTimeSec: "300.000000"
+  rescheduleTimeSec: "0.000000"
+  resumeTimeSec: "0.000000"
+  checkpointSaveTimeSec: "0.000000"
+  startTime: "2026-01-22T09:00:00Z"
+  pendingInterruption:
+    tCheckpoint: "2026-01-22T09:55:00Z"
+    tInterrupt: "2026-01-22T10:00:00Z"
+    checkpointStep: 150
+    lastStep: 200
+    tCh: "300.000000"
+    reason: "WorkloadRestarted"

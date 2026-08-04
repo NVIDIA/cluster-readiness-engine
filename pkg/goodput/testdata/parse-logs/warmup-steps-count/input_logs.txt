@@ -1,0 +1,4 @@
+2026-01-22T18:00:00.000000000Z [NeMo I 2026-01-22T18:00:00.000000000Z] Application initialized
+2026-01-22T18:00:05.000000000Z Training epoch 0, iteration 0/9999 | lr: 8.982e-08 | global_batch_size: 32 | global_step: 0 | reduced_train_loss: 13.01 | train_step_timing in s: 41.12 | TFLOPS_per_GPU: 37.45
+2026-01-22T18:00:10.000000000Z Training epoch 0, iteration 1/9999 | lr: 1.796e-07 | global_batch_size: 32 | global_step: 1 | reduced_train_loss: 12.50 | train_step_timing in s: 4.31 | TFLOPS_per_GPU: 499.6
+2026-01-22T18:00:15.000000000Z Training epoch 0, iteration 2/9999 | lr: 2.694e-07 | global_batch_size: 32 | global_step: 2 | reduced_train_loss: 12.10 | train_step_timing in s: 4.28 | TFLOPS_per_GPU: 502.1

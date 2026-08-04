@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Job
+  name: test-bw-threshold-pass
+  namespace: default
+  condition: Succeeded
+collect:
+  - kind: Job
+    name: test-bw-threshold-pass
+    namespace: default

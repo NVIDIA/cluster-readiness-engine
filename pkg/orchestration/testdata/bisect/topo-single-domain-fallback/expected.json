@@ -1,0 +1,19 @@
+{
+  "groups": [
+    {
+      "name": "bisect-3-0a",
+      "nodes": [
+        "node-r4-0",
+        "node-r4-1"
+      ]
+    },
+    {
+      "name": "bisect-3-0b",
+      "nodes": [
+        "node-r4-2",
+        "node-r4-3"
+      ]
+    }
+  ],
+  "converged": false
+}

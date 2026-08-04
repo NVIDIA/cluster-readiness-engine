@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+nodes:
+  - metadata:
+      name: node-1
+    spec:
+      providerID: "metal3://e64b6585-7a91-43bd-8f44-79bca2307a42"

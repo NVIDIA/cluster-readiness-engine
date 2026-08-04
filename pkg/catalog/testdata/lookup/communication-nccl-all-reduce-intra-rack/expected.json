@@ -1,0 +1,28 @@
+{
+  "dependencies": [
+    {
+      "kind": "TrainingRuntime",
+      "name": "nccl-all-reduce-runtime"
+    }
+  ],
+  "found": true,
+  "jobTemplate": {
+    "nodeHealthMonitorCEL": {
+      "expression": "node.spec.unschedulable == true"
+    },
+    "trainJob": {
+      "runtimeRef": "nccl-all-reduce-runtime",
+      "trainerImage": "nvcr.io/nvidia/pytorch:26.01-py3"
+    }
+  },
+  "orchestration": {
+    "iterations": 1,
+    "targetNodeSelector": {
+      "nvidia.com/gpu.product": "NVIDIA-GB200-NVL72"
+    },
+    "topologyKey": "nvidia.com/gpu.clique"
+  },
+  "validationThresholds": {
+    "busBandwidthGBps": "value \u003e= 900"
+  }
+}

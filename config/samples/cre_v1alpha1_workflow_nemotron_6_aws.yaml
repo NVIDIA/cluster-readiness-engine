@@ -1,0 +1,426 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Nemotron-6 8B burn-in workflow for AWS (EKS).
+# Base config targets 4-node p5 (H100); gb300 override scales to 8 nodes with RoCE.
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  labels:
+    app.kubernetes.io/name: cluster-readiness-engine
+    app: nemotron-6-8b
+  name: nemotron-6-8b
+spec:
+  # --- Job Template ---
+  # Defines the TrainJob workload. The runtime (TrainingRuntime) below
+  # provides pod template, scheduling, env vars, and volumes.
+  # The trainer section specifies what to run and how many nodes.
+  jobTemplate:
+    spec:
+      stallMultiplier: 3
+      checkpoint:
+        pvcName: nemotron-workspace-pvc
+        maxRestarts: 6
+      workload:
+        trainJob:
+          runtimeRef:
+            name: nemotron-6-8b-runtime
+            kind: TrainingRuntime
+          trainer:
+            numNodes: 4
+            numProcPerNode: 4
+            command:
+              - /bin/bash
+              - -c
+            # $PET_NNODES and $PET_NPROC_PER_NODE are injected by the TrainJob
+            # controller from trainer.numNodes / numProcPerNode, so the script
+            # does not need to hardcode node counts.
+            args:
+              - |
+                set -e
+
+                # === Setup workspace (runs on all nodes, idempotent) ===
+                echo "Setting up workspace..."
+                mkdir -p /mnt/workspace/{checkpoints,logs,tensorboard,data_cache}
+
+                # Clone Megatron-LM if not present (with lock to avoid race condition)
+                if [ ! -d "/mnt/workspace/megatron-lm/.git" ]; then
+                  echo "Cloning Megatron-LM..."
+                  flock -x /mnt/workspace/.megatron-lock -c '
+                    if [ ! -d "/mnt/workspace/megatron-lm/.git" ]; then
+                      rm -rf /mnt/workspace/megatron-lm
+                      git clone --depth 1 https://github.com/NVIDIA/Megatron-LM.git /mnt/workspace/megatron-lm
+                    fi
+                  ' || {
+                    # Fallback if flock not available
+                    if [ ! -d "/mnt/workspace/megatron-lm/.git" ]; then
+                      rm -rf /mnt/workspace/megatron-lm
+                      git clone --depth 1 https://github.com/NVIDIA/Megatron-LM.git /mnt/workspace/megatron-lm
+                    fi
+                  }
+                fi
+
+                echo "Workspace ready. Starting training..."
+
+                exec torchrun \
+                  --nnodes $PET_NNODES \
+                  --nproc-per-node $PET_NPROC_PER_NODE \
+                  /mnt/workspace/megatron-lm/pretrain_mamba.py \
+                  --enable-cuda-graph \
+                  --cuda-graph-scope mamba attn moe_router \
+                  --moe-pad-experts-for-cuda-graph-inference \
+                  --te-rng-tracker \
+                  --moe-permute-fusion \
+                  --cross-entropy-loss-fusion \
+                  --cross-entropy-fusion-impl native \
+                  --use-fused-weighted-squared-relu \
+                  --moe-token-dispatcher-type alltoall \
+                  --moe-router-score-function sigmoid \
+                  --moe-grouped-gemm \
+                  --num-experts 128 \
+                  --moe-router-topk 6 \
+                  --moe-aux-loss-coeff 1e-4 \
+                  --moe-router-topk-scaling-factor 2.5 \
+                  --moe-router-enable-expert-bias \
+                  --moe-router-dtype fp32 \
+                  --moe-router-load-balancing-type seq_aux_loss \
+                  --moe-router-force-load-balancing \
+                  --mock-data \
+                  --moe-shared-expert-intermediate-size 5376 \
+                  --attention-backend fused \
+                  --num-workers 1 \
+                  --disable-gloo-process-groups \
+                  --ckpt-format torch_dist \
+                  --ckpt-fully-parallel-save \
+                  --ckpt-fully-parallel-load \
+                  --ckpt-assume-constant-structure \
+                  --async-save \
+                  --use-persistent-ckpt-worker \
+                  --squared-relu \
+                  --no-mmap-bin-files \
+                  --distributed-timeout-minutes 10 \
+                  --exit-duration-in-mins $EXIT_DURATION_MINS \
+                  --no-create-attention-mask-in-dataloader \
+                  --overlap-grad-reduce \
+                  --overlap-param-gather \
+                  --sequence-parallel \
+                  --tensor-model-parallel-size 2 \
+                  --expert-model-parallel-size 16 \
+                  --expert-tensor-parallel-size 1 \
+                  --pipeline-model-parallel-size 1 \
+                  --use-distributed-optimizer \
+                  --is-hybrid-model \
+                  --untie-embeddings-and-output-weights \
+                  --init-method-std 0.014 \
+                  --position-embedding-type none \
+                  --num-layers 52 \
+                  --hidden-size 4096 \
+                  --num-attention-heads 32 \
+                  --group-query-attention \
+                  --num-query-groups 8 \
+                  --hybrid-override-pattern "MEMEMEM*EMEMEMEMEM*EMEMEMEMEM*EMEMEMEMEM*EMEMEMEMEME" \
+                  --ffn-hidden-size 2688 \
+                  --kv-channels 128 \
+                  --seq-length 8192 \
+                  --max-position-embeddings 8192 \
+                  --train-samples 122070313 \
+                  --lr-decay-style WSD \
+                  --lr-warmup-samples 3072000 \
+                  --lr-decay-samples 118998313 \
+                  --lr-wsd-decay-style minus_sqrt \
+                  --lr-wsd-decay-samples 18310547 \
+                  --save /mnt/workspace/checkpoints \
+                  --load /mnt/workspace/checkpoints \
+                  --data-cache-path /mnt/workspace/data_cache \
+                  --tiktoken-pattern v2 \
+                  --tokenizer-type TikTokenizer \
+                  --tokenizer-model /workspace/tokenizer.json \
+                  --micro-batch-size 1 \
+                  --global-batch-size 768 \
+                  --lr 8.0e-4 \
+                  --min-lr 8.0e-6 \
+                  --weight-decay 0.1 \
+                  --clip-grad 1.0 \
+                  --attention-dropout 0.0 \
+                  --hidden-dropout 0.0 \
+                  --disable-bias-linear \
+                  --normalization RMSNorm \
+                  --adam-beta1 0.9 \
+                  --adam-beta2 0.95 \
+                  --log-interval 10 \
+                  --log-params-norm \
+                  --log-num-zeros-in-grad \
+                  --log-throughput \
+                  --save-interval 100 \
+                  --save-retain-interval 2000 \
+                  --eval-interval 1000 \
+                  --eval-iters 14 \
+                  --bf16 \
+                  --use-mcore-models \
+                  --spec megatron.core.models.mamba.mamba_layer_specs mamba_stack_spec \
+                  --tensorboard-dir /mnt/workspace/tensorboard
+
+      # Goodput: scrapes training logs every 10s to compute throughput metrics.
+      goodputMeasurement:
+        logProfileRef: megatron-training
+        sampleInterval: 10s
+
+      # Node health: marks a job for rescheduling if any node becomes unschedulable.
+      nodeHealthMonitor:
+        cel:
+          expression: "node.spec.unschedulable == true"
+
+  orchestration:
+    target:
+      nodeSelector:
+        nodeGroup: customer-gpu
+    topology:
+      topologyKey: nvidia.com/gpu.clique
+    iterations: 1
+
+  # --- Dependencies ---
+  # Resources created/managed alongside the workflow or individual jobs.
+  dependencies:
+  # Shared filesystem for checkpoints, logs, and Megatron-LM clone.
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: nemotron-workspace-pvc
+      labels:
+        app: nemotron-6-8b
+    spec:
+      accessModes:
+        - ReadWriteMany
+      storageClassName: dgxc-enterprise-file
+      resources:
+        requests:
+          storage: 10Ti
+
+  # ComputeDomain: reserves a group of GPU nodes for gang scheduling.
+  - apiVersion: resource.nvidia.com/v1beta1
+    kind: ComputeDomain
+    metadata:
+      name: nemotron-6-8b-compute-domain
+      labels:
+        app: nemotron-6-8b
+    spec:
+      channel:
+        allocationMode: Single
+        resourceClaimTemplate:
+          name: nemotron-6-8b-channel
+      numNodes: 4
+
+  # TrainingRuntime: defines the pod template, scheduling constraints,
+  # env vars, and volumes for all TrainJob pods. The TrainJob's trainer section
+  # overrides image/command/args; the runtime provides everything else.
+  # Scope "job" creates a per-job copy so the PVC claimName can be suffixed.
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nemotron-6-8b-runtime
+      labels:
+        trainer.kubeflow.org/framework: torch
+        app: nemotron-6-8b
+    spec:
+      mlPolicy:
+        numNodes: 4
+        torch:
+          numProcPerNode: 4
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              replicas: 1
+              template:
+                metadata:
+                  labels:
+                    trainer.kubeflow.org/trainjob-ancestor-step: trainer
+                spec:
+                  template:
+                    metadata:
+                      labels:
+                        app: nemotron-6-8b
+                    spec:
+                      terminationGracePeriodSeconds: 30
+                      schedulerName: default-scheduler
+                      resourceClaims:
+                        - name: compute-domain
+                          resourceClaimTemplateName: nemotron-6-8b-channel
+                      affinity:
+                        nodeAffinity:
+                          requiredDuringSchedulingIgnoredDuringExecution:
+                            nodeSelectorTerms:
+                            - matchExpressions:
+                              - key: nodeGroup
+                                operator: In
+                                values:
+                                - customer-gpu
+                      topologySpreadConstraints:
+                        - labelSelector:
+                            matchLabels:
+                              app: nemotron-6-8b
+                          maxSkew: 1
+                          topologyKey: kubernetes.io/hostname
+                          whenUnsatisfiable: DoNotSchedule
+                      tolerations:
+                        - key: dedicated
+                          operator: Equal
+                          value: user-workload
+                      imagePullSecrets:
+                        - name: nvidia-ngcuser-pull-secret
+                      securityContext:
+                        seccompProfile:
+                          type: RuntimeDefault
+                      containers:
+                        - name: node
+                          image: nvcr.io/nv-ngc-devops/nemo_megatron_perf_optimization:mcore-moe-pytorch25.06-te2.11.0.dev0-cudnn9.11.0.92-nccl2.28.3-main0807-hybridep-nvfp4-arm-tokenizer
+                          env:
+                            # NVTE: TransformerEngine streaming multiprocessor margins
+                            - name: NVTE_FWD_LAYERNORM_SM_MARGIN
+                              value: "16"
+                            - name: NVTE_BWD_LAYERNORM_SM_MARGIN
+                              value: "16"
+                            - name: TORCHINDUCTOR_WORKER_START
+                              value: "fork"
+                            # NCCL: collective communication tuning
+                            - name: NCCL_DEBUG
+                              value: "INFO"
+                            - name: NCCL_DEBUG_SUBSYS
+                              value: "NET,INIT,GRAPH,NVLS"
+                            - name: NCCL_SOCKET_IFNAME
+                              value: "eth0"
+                            - name: NCCL_IB_SL
+                              value: "1"
+                            - name: NCCL_IB_TIMEOUT
+                              value: "19"
+                            - name: NCCL_P2P_NET_CHUNKSIZE
+                              value: "2097152"
+                            - name: NCCL_SHM_DISABLE
+                              value: "1"
+                            - name: NCCL_NVLS_ENABLE
+                              value: "0"
+                            - name: NCCL_MNNVL_ENABLE
+                              value: "1"
+                            - name: NCCL_NET_GDR_LEVEL
+                              value: "PHB"
+                            # Torch: CUDA and NCCL optimizations
+                            - name: CUDA_DEVICE_MAX_CONNECTIONS
+                              value: "1"
+                            - name: TORCH_NCCL_AVOID_RECORD_STREAMS
+                              value: "1"
+                            - name: TORCH_NCCL_HIGH_PRIORITY
+                              value: "1"
+                            # Training
+                            - name: EXIT_DURATION_MINS
+                              value: "2880"
+                            # Paths
+                            - name: TRITON_CACHE_DIR
+                              value: "/tmp/triton-cache"
+                            - name: PYTHONPATH
+                              value: "/mnt/workspace/megatron-lm"
+                            - name: LD_LIBRARY_PATH
+                              value: "/opt/nccl/build/lib:/usr/local/nvidia/lib64:/usr/lib:/usr/lib64:/usr/local/cuda/lib64:/usr/local/tensorrt/lib"
+                          resources:
+                            limits:
+                              nvidia.com/gpu: 4
+                              memory: "800Gi"
+                              cpu: "128"
+                            requests:
+                              nvidia.com/gpu: 4
+                              memory: "500Gi"
+                              cpu: "64"
+                            claims:
+                              - name: compute-domain
+                          volumeMounts:
+                            - name: workspace
+                              mountPath: /mnt/workspace
+                            - name: triton-cache
+                              mountPath: /tmp/triton-cache
+                            - name: shmem
+                              mountPath: /dev/shm
+                      volumes:
+                        - name: workspace
+                          persistentVolumeClaim:
+                            claimName: nemotron-workspace-pvc
+                        - name: shmem
+                          emptyDir:
+                            medium: Memory
+                        - name: triton-cache
+                          emptyDir:
+                            medium: Memory
+
+  # --- Overrides ---
+  # Applied as JSON merge patches when conditions match.
+  # Only changed fields need to be specified; arrays are replaced wholesale.
+  overrides:
+    # GB300 (NVL72): scale from 4 to 8 nodes and add RoCE networking.
+    - when:
+        gpuArchitecture:
+          equals: "gb300"
+
+      # Scale trainer to 8 nodes and use gb300-specific image.
+      # Args use $PET_NNODES so no script change needed.
+      jobTemplate:
+        spec:
+          workload:
+            trainJob:
+              trainer:
+                numNodes: 8
+
+      # Additional + patched dependencies for gb300.
+      dependencies:
+      # New: RoCE network device claim (8 RoCE devices per node).
+      - apiVersion: resource.k8s.io/v1
+        kind: ResourceClaimTemplate
+        metadata:
+          name: nemotron-6-8b-roce
+          labels:
+            app: nemotron-6-8b
+        spec:
+          spec:
+            devices:
+              requests:
+              - name: roce
+                exactly:
+                  deviceClassName: roce.networking.k8s.aws
+                  count: 8
+
+      # Patch: scale ComputeDomain from 4 to 8 nodes.
+      - apiVersion: resource.nvidia.com/v1beta1
+        kind: ComputeDomain
+        metadata:
+          name: nemotron-6-8b-compute-domain
+        spec:
+          numNodes: 8
+
+      # Patch: scale runtime to 8 nodes and add roce-channel claim to pods.
+      - apiVersion: trainer.kubeflow.org/v1alpha1
+        kind: TrainingRuntime
+        metadata:
+          name: nemotron-6-8b-runtime
+        spec:
+          mlPolicy:
+            numNodes: 8
+          template:
+            spec:
+              replicatedJobs:
+                - name: node
+                  template:
+                    spec:
+                      template:
+                        spec:
+                          resourceClaims:
+                            - name: compute-domain
+                              resourceClaimTemplateName: nemotron-6-8b-channel
+                            - name: roce-channel
+                              resourceClaimTemplateName: nemotron-6-8b-roce
+                          containers:
+                            - name: node
+                              image: nvcr.io/nv-ngc-devops/nemo_megatron_perf_optimization:mcore-moe-pytorch25.06-te2.11.0.dev0-cudnn9.11.0.92-nccl2.28.3-main0807-hybridep-nvfp4-arm-sm103a
+                              env:
+                                - name: EXIT_DURATION_MINS
+                                  value: "2880"
+                              resources:
+                                claims:
+                                  - name: compute-domain
+                                  - name: roce-channel

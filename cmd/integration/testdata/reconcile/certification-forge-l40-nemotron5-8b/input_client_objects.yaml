@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Node
+metadata:
+  name: forge-l40-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-L40
+    kubernetes.io/hostname: forge-l40-node-01
+spec:
+  providerID: ""
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: forge-l40-nemo5
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-L40
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        nodesPerJob: 1

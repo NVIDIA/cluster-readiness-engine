@@ -1,0 +1,3 @@
+CEL compilation error: ERROR: <input>:1:1: undeclared reference to 'undefined_var' (in container '')
+ | undefined_var == true
+ | ^

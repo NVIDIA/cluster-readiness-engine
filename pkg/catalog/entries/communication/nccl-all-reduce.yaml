@@ -1,0 +1,483 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+dependencies:
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    labels:
+      app: nccl-all-reduce
+      trainer.kubeflow.org/framework: mpi
+    name: nccl-all-reduce-runtime
+  spec:
+    mlPolicy:
+      mpi:
+        mpiImplementation: OpenMPI
+        numProcPerNode: {{ .GpusPerNode }}
+        sshAuthMountPath: /tmp/mpi-ssh-raw
+      numNodes: 1
+    template:
+      spec:
+        network:
+          publishNotReadyAddresses: true
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - args:
+                    - |-
+                      set -x &&
+                      apt-get update &&
+                      apt-get install -y --no-install-recommends openssh-server  &&
+                      mkdir -p /var/run/sshd  &&
+                      chmod 0755 /var/run/sshd  &&
+                      mkdir -p /root/.ssh &&
+                      chmod 700 /root/.ssh &&
+                      cp /tmp/mpi-ssh-raw/* /root/.ssh/ &&
+                      chmod 600 /root/.ssh/id_rsa &&
+                      chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys &&
+                      /usr/sbin/sshd -De
+                    command:
+                    - sh
+                    - -c
+                    image: nvcr.io/nvidia/pytorch:26.01-py3
+                    name: node
+                    readinessProbe:
+                      initialDelaySeconds: 5
+                      tcpSocket:
+                        port: 22
+                    resources:
+                      limits:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                      requests:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                    securityContext:
+                      capabilities:
+                        add:
+                        - IPC_LOCK
+                    volumeMounts:
+                    - mountPath: /tmp/mpi-ssh-raw
+                      name: mpi-ssh-auth
+                      readOnly: true
+                  restartPolicy: OnFailure
+        - name: launcher
+          dependsOn:
+          - name: node
+            status: Ready
+          template:
+            metadata:
+              labels:
+                trainer.kubeflow.org/trainjob-ancestor-step: trainer
+            spec:
+              template:
+                spec:
+                  containers:
+                  - image: nvcr.io/nvidia/pytorch:26.01-py3
+                    name: node
+                    resources:
+                      limits:
+                        cpu: "2"
+                        memory: 1Gi
+                    volumeMounts:
+                    - mountPath: /tmp/mpi-ssh-raw
+                      name: mpi-ssh-auth
+                      readOnly: true
+                    - mountPath: /root/.ssh
+                      name: ssh-keys
+                  initContainers:
+                  - args:
+                    - |-
+                      set -x &&
+                      cp /tmp/mpi-ssh-raw/* /root/.ssh/ &&
+                      chmod 600 /root/.ssh/id_rsa &&
+                      chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys
+                    command:
+                    - sh
+                    - -c
+                    image: nvcr.io/nvidia/pytorch:26.01-py3
+                    name: fix-ssh-permissions
+                    volumeMounts:
+                    - mountPath: /tmp/mpi-ssh-raw
+                      name: mpi-ssh-auth
+                      readOnly: true
+                    - mountPath: /root/.ssh
+                      name: ssh-keys
+                  restartPolicy: OnFailure
+                  volumes:
+                  - emptyDir: {}
+                    name: ssh-keys
+        successPolicy:
+          operator: All
+          targetReplicatedJobs:
+          - launcher
+jobTemplate:
+  spec:
+    bandwidthMeasurement:
+      logProfileRef: nccl-bandwidth
+      sampleInterval: 30s
+      testType: all_reduce
+    nodeHealthMonitor:
+      cel:
+        expression: node.spec.unschedulable == true
+    workload:
+      trainJob:
+        runtimePatches:
+        - manager: cre.nvidia.com/catalog
+          trainingRuntimeSpec:
+            template:
+              spec:
+                replicatedJobs:
+                - name: node
+                  template:
+                    spec:
+                      template:
+                        spec:
+                          containers:
+                          - name: node
+                            volumeMounts:
+                            - mountPath: /dev/shm
+                              name: dshm
+                          volumes:
+                          - emptyDir:
+                              medium: Memory
+                            name: dshm
+                - name: launcher
+        runtimeRef:
+          kind: TrainingRuntime
+          name: nccl-all-reduce-runtime
+        trainer:
+          args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 10 }}
+          - -x
+          - NCCL_DEBUG=INFO
+          - -x
+          - NCCL_MNNVL_ENABLE={{ if .EnableMNNVL }}1{{ else }}0{{ end }}
+          - /usr/local/bin/all_reduce_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 10 }}
+          command:
+          - timeout
+          - "3600"
+          - /usr/local/mpi/bin/mpirun
+          image: nvcr.io/nvidia/pytorch:26.01-py3
+          numNodes: {{ .NodesPerJob }}
+          numProcPerNode: {{ .GpusPerNode }}
+orchestration:
+{{- if eq .TestScale "intra-node" }}
+  execution: {}
+{{- else if eq .TestScale "intra-rack" }}
+  topology:
+    topologyKey: nvidia.com/gpu.clique
+    strictDomain: true
+{{- else if eq .TestScale "diagnose" }}
+  diagnose:
+    minGroupSize: {{ .MinGroupSize }}
+    topologyKey: nvidia.com/gpu.clique
+{{- end }}
+{{- if gt .MaxConcurrent 0 }}
+  execution:
+    maxConcurrent: {{ .MaxConcurrent }}
+    timeoutPerJob: {{ .TimeoutPerJob }}
+{{- else }}
+  execution:
+    timeoutPerJob: {{ .TimeoutPerJob }}
+{{- end }}
+  iterations: 1
+{{- if .Thresholds }}
+validation:
+  performance:
+    enabled: true
+{{- if .MeasurementTimeout }}
+    measurementTimeout: {{ .MeasurementTimeout }}
+{{- end }}
+    thresholds:
+      thresholds:
+{{- range $k, $v := .Thresholds }}
+        {{ $k }}: "{{ $v }}"
+{{- end }}
+{{- end }}
+overrides:
+# --- AWS + H100 (EFA) ---
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      notIn: [gb200, gb300]
+  dependencies:
+{{ lib "deps/aws-efa-runtime-patch-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/aws-h100-efa-env.yaml" . | toMpiArgs | indent 12 }}
+            - -x
+            - LD_LIBRARY_PATH
+            - /opt/nccl-tests/build/all_reduce_perf
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+            command:
+            - timeout
+            - "3600"
+            - /opt/amazon/openmpi/bin/mpirun
+            image: public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9
+            numNodes: {{ .NodesPerJob }}
+            numProcPerNode: {{ .GpusPerNode }}
+# --- GCP + H100 (FastRak/TCPXO) ---
+- when:
+    platform:
+      equals: gcp
+    gpuArchitecture:
+      equals: h100
+  dependencies:
+{{ lib "deps/gcp-h100-tcpxo-runtime-patch.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/gcp-h100-fastrak-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_reduce_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- Azure (InfiniBand); excludes A100 (see Azure + A100 override below) ---
+- when:
+    platform:
+      equals: azure
+    gpuArchitecture:
+      notIn: [a100]
+  dependencies:
+{{ lib "deps/azure-ib-with-topo-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/azure-ib-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_reduce_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- Azure + H100 (InfiniBand, ND H100 v5) ---
+# Layers H100-specific UCX/OMPI/NCCL tuning on top of the generic Azure (non-A100)
+# override above (which already contributes the topo configmap + mlnxnics dependency).
+# Args set is a verbatim transcription of the field-validated workflow on Azure H100.
+- when:
+    platform:
+      equals: azure
+    gpuArchitecture:
+      equals: h100
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/azure-h100-ib-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_reduce_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- Azure + A100 (InfiniBand) ---
+- when:
+    platform:
+      equals: azure
+    gpuArchitecture:
+      equals: a100
+  dependencies:
+{{ lib "deps/azure-ib-with-topo-a100-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/azure-a100-ib-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_reduce_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- nscale (OpenStack + RoCE) ---
+- when:
+    platform:
+      equals: nscale
+  dependencies:
+{{ lib "deps/nscale-rdmashare-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/nscale-roce-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_reduce_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- OCI (RoCE) ---
+- when:
+    platform:
+      equals: oci
+  dependencies:
+{{ lib "deps/oci-mlnxnics-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/oci-roce-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_reduce_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- TogetherAI (InfiniBand) ---
+- when:
+    platform:
+      equals: togetherai
+  dependencies:
+{{ lib "deps/togetherai-ib-runtime-patch.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/togetherai-ib-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_reduce_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- GB200/GB300 (ComputeDomain + DRA) ---
+- when:
+    gpuArchitecture:
+      in: [gb200, gb300]
+  dependencies:
+{{ lib "deps/gb200-compute-domain-and-dra-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/gb200-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_reduce_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- AWS + GB200 (EFA) — must come AFTER GB200/GB300 ComputeDomain to override args ---
+# Uses the EFA nccl-tests image (same as H100 EFA) which bundles /opt/amazon/openmpi
+# and the EFA OFI plugin. The node runtime patch adds EFA device resources and the
+# EFA image override. The launcher uses /opt/amazon/openmpi/bin/mpirun from the image.
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: gb200
+  dependencies:
+{{ lib "deps/aws-gb200-efa-runtime-patch-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            image: public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9
+            command:
+            - timeout
+            - "3600"
+            - /opt/amazon/openmpi/bin/mpirun
+            args:
+{{ lib "nccl/aws-gb200-efa-mpirun-args.yaml" . | indent 12 }}
+{{ lib "nccl/aws-gb200-efa-env.yaml" . | toMpiArgs | indent 12 }}
+            - /opt/nccl-tests/build/all_reduce_perf
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+            numNodes: {{ .NodesPerJob }}
+            numProcPerNode: {{ .GpusPerNode }}
+# --- GCP + GB200/GB300 (RoCE) ---
+- when:
+    platform:
+      equals: gcp
+    gpuArchitecture:
+      in: [gb200, gb300]
+  dependencies:
+{{ lib "deps/gcp-gb200-roce-runtime-patch-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/gcp-gb200-roce-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_reduce_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- GB300 (RoCE) ---
+- when:
+    platform:
+      equals: gcp
+    gpuArchitecture:
+      equals: gb300
+  dependencies:
+{{ lib "deps/gb300-roce-comm.yaml" . | indent 2 }}
+# --- AWS + GB300 (RoCE) ---
+# Uses nccl-tests image (sshd pre-installed) with OpenMPI at /opt/amazon/openmpi.
+# Removes EFA/OFI plugins that segfault on RoCE, keeps OpenMPI for orted.
+# MCA transport explicitly set to TCP on eth0 for RoCE connectivity.
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: gb300
+  dependencies:
+{{ lib "deps/gb300-roce-comm.yaml" . | indent 2 }}
+{{ lib "deps/aws-gb300-roce-runtime-patch-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            image: public.ecr.aws/hpc-cloud/nccl-tests:latest
+            command:
+{{ lib "nccl/aws-gb300-roce-command.yaml" . | indent 12 }}
+            args:
+{{ lib "nccl/aws-gb300-roce-mpirun-args.yaml" . | indent 12 }}
+{{ lib "nccl/aws-gb300-roce-env.yaml" . | toMpiArgs | indent 12 }}
+            - /opt/nccl-tests/build/all_reduce_perf
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- Mistral + GB300 (InfiniBand) ---
+- when:
+    platform:
+      equals: mistral
+    gpuArchitecture:
+      equals: gb300
+  dependencies:
+{{ lib "deps/mistral-gb300-ib-runtime-patch-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/mistral-ib-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_reduce_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- Forge + L40 (InfiniBand; no topo file, no NVLink/NVSwitch) ---
+# Forge does not ship a topology XML and L40 has no NVLink/NVSwitch,
+# so this block uses a stripped-down env-var baseline and a mlnxnics-only dependency
+# (no topo configmap).
+- when:
+    platform:
+      equals: forge
+    gpuArchitecture:
+      equals: l40
+  dependencies:
+{{ lib "deps/forge-ib-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/forge-ib-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_reduce_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}

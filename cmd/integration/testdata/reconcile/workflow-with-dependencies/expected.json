@@ -1,0 +1,314 @@
+{
+  "Workflow/nemotron-6-8b-burnin": {
+    "kind": "Workflow",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "nemotron-6-8b-burnin",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "nemotron-6-8b-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "nvcr.io/nv-ngc-devops/nemo_megatron_perf_optimization:mcore-moe-pytorch25.06",
+                "command": [
+                  "/bin/bash",
+                  "-c"
+                ],
+                "args": [
+                  "exec torchrun \\\n  --nnodes 2 \\\n  --nproc-per-node 4 \\\n  /mnt/workspace/megatron-lm/pretrain_mamba.py \\\n  --enable-cuda-graph \\\n  --moe-grouped-gemm \\\n  --num-experts 128 \\\n  --moe-router-topk 6 \\\n  --mock-data \\\n  --tensor-model-parallel-size 2 \\\n  --expert-model-parallel-size 16 \\\n  --pipeline-model-parallel-size 1 \\\n  --use-distributed-optimizer \\\n  --num-layers 52 \\\n  --hidden-size 4096 \\\n  --num-attention-heads 32 \\\n  --group-query-attention \\\n  --num-query-groups 8 \\\n  --seq-length 8192 \\\n  --max-position-embeddings 8192 \\\n  --micro-batch-size 1 \\\n  --global-batch-size 768 \\\n  --bf16 \\\n  --use-mcore-models \\\n  --log-interval 10 \\\n  --save-interval 500\n"
+                ],
+                "numNodes": 2,
+                "resourcesPerNode": {
+                  "limits": {
+                    "cpu": "128",
+                    "memory": "800Gi",
+                    "nvidia.com/gpu": "4"
+                  },
+                  "requests": {
+                    "cpu": "64",
+                    "memory": "500Gi",
+                    "nvidia.com/gpu": "4"
+                  }
+                },
+                "numProcPerNode": 4
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.product": "NVIDIA-GB200"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      },
+      "dependencies": [
+        {
+          "apiVersion": "resource.nvidia.com/v1beta1",
+          "kind": "ComputeDomain",
+          "metadata": {
+            "name": "nemotron-6-8b-compute-domain",
+            "namespace": "default"
+          },
+          "spec": {
+            "channel": {
+              "resourceClaimTemplate": {
+                "name": "nemotron-6-8b-compute-domain"
+              }
+            },
+            "numNodes": 2
+          }
+        },
+        {
+          "apiVersion": "resource.k8s.io/v1",
+          "kind": "ResourceClaimTemplate",
+          "metadata": {
+            "name": "nemotron-6-8b-roce",
+            "namespace": "default"
+          },
+          "spec": {
+            "spec": {
+              "devices": {
+                "requests": [
+                  {
+                    "exactly": {
+                      "count": 8,
+                      "deviceClassName": "roce.networking.k8s.aws"
+                    },
+                    "name": "roce"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "metadata": {
+            "name": "nemotron-6-8b-runtime"
+          },
+          "spec": {
+            "mlPolicy": {
+              "numNodes": 2,
+              "torch": {
+                "numProcPerNode": 4
+              }
+            },
+            "template": {
+              "spec": {
+                "replicatedJobs": [
+                  {
+                    "name": "node",
+                    "replicas": 1,
+                    "template": {
+                      "metadata": {
+                        "labels": {
+                          "trainer.kubeflow.org/trainjob-ancestor-step": "trainer"
+                        }
+                      },
+                      "spec": {
+                        "template": {
+                          "metadata": {
+                            "labels": {
+                              "app": "nemotron-6-8b"
+                            }
+                          },
+                          "spec": {
+                            "containers": [
+                              {
+                                "env": [
+                                  {
+                                    "name": "NVTE_FWD_LAYERNORM_SM_MARGIN",
+                                    "value": "16"
+                                  },
+                                  {
+                                    "name": "NVTE_BWD_LAYERNORM_SM_MARGIN",
+                                    "value": "16"
+                                  },
+                                  {
+                                    "name": "NCCL_DEBUG",
+                                    "value": "INFO"
+                                  },
+                                  {
+                                    "name": "NCCL_SOCKET_IFNAME",
+                                    "value": "eth0"
+                                  },
+                                  {
+                                    "name": "NCCL_IB_SL",
+                                    "value": "1"
+                                  },
+                                  {
+                                    "name": "NCCL_IB_TIMEOUT",
+                                    "value": "19"
+                                  },
+                                  {
+                                    "name": "NCCL_SHM_DISABLE",
+                                    "value": "1"
+                                  },
+                                  {
+                                    "name": "NCCL_NVLS_ENABLE",
+                                    "value": "0"
+                                  },
+                                  {
+                                    "name": "CUDA_DEVICE_MAX_CONNECTIONS",
+                                    "value": "1"
+                                  },
+                                  {
+                                    "name": "TORCH_NCCL_AVOID_RECORD_STREAMS",
+                                    "value": "1"
+                                  }
+                                ],
+                                "image": "nvcr.io/nv-ngc-devops/nemo_megatron_perf_optimization:mcore-moe-pytorch25.06",
+                                "name": "node",
+                                "resources": {
+                                  "limits": {
+                                    "cpu": "128",
+                                    "memory": "800Gi",
+                                    "nvidia.com/gpu": 4
+                                  },
+                                  "requests": {
+                                    "cpu": "64",
+                                    "memory": "500Gi",
+                                    "nvidia.com/gpu": 4
+                                  }
+                                },
+                                "volumeMounts": [
+                                  {
+                                    "mountPath": "/mnt/workspace",
+                                    "name": "workspace"
+                                  },
+                                  {
+                                    "mountPath": "/dev/shm",
+                                    "name": "shmem"
+                                  }
+                                ]
+                              }
+                            ],
+                            "terminationGracePeriodSeconds": 30,
+                            "tolerations": [
+                              {
+                                "key": "dedicated",
+                                "operator": "Equal",
+                                "value": "user-workload"
+                              }
+                            ],
+                            "volumes": [
+                              {
+                                "emptyDir": {},
+                                "name": "workspace"
+                              },
+                              {
+                                "emptyDir": {
+                                  "medium": "Memory"
+                                },
+                                "name": "shmem"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Iteration 1/1: 1 groups running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "dependencyRefs": [
+        {
+          "apiVersion": "resource.nvidia.com/v1beta1",
+          "kind": "ComputeDomain",
+          "name": "nemotron-6-8b-compute-domain",
+          "namespace": "default",
+          "scope": "workflow"
+        },
+        {
+          "apiVersion": "resource.k8s.io/v1",
+          "kind": "ResourceClaimTemplate",
+          "name": "nemotron-6-8b-roce",
+          "namespace": "default",
+          "scope": "workflow"
+        },
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "name": "nemotron-6-8b-runtime-9486b-job",
+          "namespace": "default",
+          "scope": "job",
+          "groupName": "group-0",
+          "iteration": 1
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 2,
+        "nodesPerJob": 2,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "detectedPlatform": "onprem",
+        "detectedGPUArchitecture": "gb200",
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "gpu-node-01",
+              "gpu-node-02"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "nemotron-6-8b-burnin-job",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

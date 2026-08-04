@@ -1,0 +1,9 @@
+{
+  "gvk": {
+    "group": "trainer.kubeflow.org",
+    "kind": "TrainJob",
+    "version": "v1alpha1"
+  },
+  "name": "my-workload",
+  "namespace": "test-ns"
+}

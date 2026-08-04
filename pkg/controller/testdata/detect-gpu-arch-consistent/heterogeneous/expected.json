@@ -1,0 +1,7 @@
+{
+  "gpuArchitecture": "h100",
+  "filteredNodes": [
+    "node-1",
+    "node-3"
+  ]
+}

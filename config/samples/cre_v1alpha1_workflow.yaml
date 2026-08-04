@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  labels:
+    app.kubernetes.io/name: cluster-readiness-engine
+  name: gpu-burnin-workflow
+spec:
+  # Job template defines the workload to run for each execution group.
+  # The controller automatically injects the cre.nvidia.com/job pod label
+  # via runtimePatches — no manual configuration needed.
+  jobTemplate:
+    spec:
+      nodeHealthMonitor:
+        cel:
+          expression: "node.spec.unschedulable == true"
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: ClusterTrainingRuntime
+            name: nccl-test-runtime
+          trainer:
+            image: nvcr.io/nvidia/pytorch:24.12-py3
+            command:
+              - /bin/bash
+              - -c
+            args:
+              - |
+                exec torchrun \
+                  --nnodes 8 \
+                  --nproc-per-node 4 \
+                  /workspace/nccl-tests/build/all_reduce_perf \
+                  -b 8 -e 8G -f 2 -g 1
+            numNodes: 8
+            numProcPerNode: 4
+
+  # Orchestration defines how to group and execute across nodes
+  orchestration:
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+    topology:
+      topologyKey: nvidia.com/gpu.clique
+    execution:
+      maxConcurrent: 2
+      timeoutPerJob: "2h"
+      retryFailedGroups: 1
+    iterations: 3
+
+  # Validation defines performance metrics collection
+  validation:
+    performance:
+      enabled: true
+      plugin: nccl-tests
+      tracking:
+        perNode: true
+        perDomain: true

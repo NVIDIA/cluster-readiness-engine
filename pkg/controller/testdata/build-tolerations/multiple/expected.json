@@ -1,0 +1,12 @@
+[
+  {
+    "key": "nvidia.com/gpu",
+    "operator": "Exists"
+  },
+  {
+    "key": "node.kubernetes.io/unschedulable",
+    "operator": "Equal",
+    "value": "true",
+    "effect": "NoSchedule"
+  }
+]

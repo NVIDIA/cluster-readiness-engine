@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: gb200-cluster-validation
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    # Phase 1: Intra-node NVLink validation
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        testScale: intra-node
+        enableMNNVL: true
+        thresholds:
+          busBandwidthGBps: "value >= 680"
+    - domain: communication
+      variant: nccl-alltoall
+      options:
+        testScale: intra-node
+        enableMNNVL: true
+
+    # Phase 2: Intra-rack NVLink Switch validation
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        testScale: intra-rack
+        enableMNNVL: true
+        thresholds:
+          busBandwidthGBps: "value >= 900"
+    - domain: communication
+      variant: nccl-alltoall
+      options:
+        testScale: intra-rack
+        enableMNNVL: true
+
+    # Phase 3: Inter-rack fault isolation via adaptive fault isolation (AFI).
+    # AFI uses topology-aware hierarchical group testing (O(d log N) probes)
+    # and supersedes the legacy pairwise/combinatorial modes. See ADR-055.
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        testScale: diagnose
+        maxConcurrent: 8
+    - domain: communication
+      variant: nccl-alltoall
+      options:
+        testScale: diagnose
+        maxConcurrent: 8
+
+    # Phase 4: Full-scale stress test
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        testScale: full-scale
+        maxBytes: "32G"
+        numIterations: 10
+        numCycles: 10
+    - domain: communication
+      variant: nccl-alltoall
+      options:
+        testScale: full-scale
+        maxBytes: "32G"
+        numIterations: 10
+        numCycles: 10

@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Job
+  name: test-auto-goodput
+  namespace: default
+  condition: InProgress
+collect:
+  - kind: Job
+    name: test-auto-goodput
+    namespace: default
+  - kind: GoodputMeasurement
+    name: test-auto-goodput-goodput
+    namespace: default

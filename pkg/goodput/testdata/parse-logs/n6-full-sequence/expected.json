@@ -1,0 +1,60 @@
+{
+  "applicationStartTime": "2026-02-05T16:01:40.326255Z",
+  "checkpoints": [
+    {
+      "path": "/mnt/workspace/checkpoints",
+      "saveDuration": 361.44602,
+      "step": 100,
+      "timestamp": "2026-02-05T17:13:37.825367Z"
+    }
+  ],
+  "firstStep": {
+    "elapsedTime": 132.56310000000002,
+    "epoch": 0,
+    "globalStep": 1,
+    "iteration": 1,
+    "loss": 12.18472,
+    "stepTiming": 132.56310000000002,
+    "tflops": 138.5,
+    "timestamp": "2026-02-05T16:03:52.889599Z"
+  },
+  "lastCheckpoint": {
+    "path": "/mnt/workspace/checkpoints",
+    "saveDuration": 361.44602,
+    "step": 100,
+    "timestamp": "2026-02-05T17:13:37.825367Z"
+  },
+  "lastLogTimestamp": "2026-02-05T17:14:00Z",
+  "lastStep": {
+    "elapsedTime": 5,
+    "epoch": 0,
+    "globalStep": 2,
+    "iteration": 2,
+    "loss": 11,
+    "stepTiming": 5,
+    "tflops": 140,
+    "timestamp": "2026-02-05T16:05:00Z"
+  },
+  "steps": [
+    {
+      "elapsedTime": 132.56310000000002,
+      "epoch": 0,
+      "globalStep": 1,
+      "iteration": 1,
+      "loss": 12.18472,
+      "stepTiming": 132.56310000000002,
+      "tflops": 138.5,
+      "timestamp": "2026-02-05T16:03:52.889599Z"
+    },
+    {
+      "elapsedTime": 5,
+      "epoch": 0,
+      "globalStep": 2,
+      "iteration": 2,
+      "loss": 11,
+      "stepTiming": 5,
+      "tflops": 140,
+      "timestamp": "2026-02-05T16:05:00Z"
+    }
+  ]
+}

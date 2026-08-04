@@ -1,0 +1,131 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# KWOK-simulated GCP GB200 GPU nodes (a4x-highgpu-4g).
+#
+# Key labels for CRE detection:
+#   nvidia.com/gpu.product: NVIDIA-GB200           -> GPU arch "gb200"
+#   nvidia.com/gpu.present: "true"                 -> ncrectl GPU discovery
+#   nvidia.com/gpu.clique: <uuid>                  -> topology-aware orchestration
+#   spec.providerID: "gce://..."                   -> platform "gcp"
+#
+# GCP GB200 uses RoCE (rdma-* networks), not TCPXO like GCP H100.
+# Modeled after real GKE a4x-highgpu-4g nodes from nodes.yaml.
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: gcp-gb200-node-01
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    kubernetes.io/arch: arm64
+    kubernetes.io/hostname: gcp-gb200-node-01
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200
+    nvidia.com/gpu.count: "4"
+    nvidia.com/gpu.family: blackwell
+    nvidia.com/gpu.clique: 06c6c12d-cedd-4071-95c2-92398ac50e0b.1
+    nvidia.com/gpu.machine: Google-Compute-Engine
+    node.kubernetes.io/instance-type: a4x-highgpu-4g
+spec:
+  providerID: "gce://nv-dgxck8s-test/us-east4-b/gcp-gb200-node-01"
+status:
+  capacity:
+    cpu: "140"
+    ephemeral-storage: 12482070464Ki
+    memory: 925722688Ki
+    networking.gke.io.networks/gvnic-1: "1"
+    networking.gke.io.networks/gvnic-1.IP: "1"
+    networking.gke.io.networks/rdma-0: "1"
+    networking.gke.io.networks/rdma-0.IP: "1"
+    networking.gke.io.networks/rdma-1: "1"
+    networking.gke.io.networks/rdma-1.IP: "1"
+    networking.gke.io.networks/rdma-2: "1"
+    networking.gke.io.networks/rdma-2.IP: "1"
+    networking.gke.io.networks/rdma-3: "1"
+    networking.gke.io.networks/rdma-3.IP: "1"
+    nvidia.com/gpu: "4"
+    pods: "110"
+  allocatable:
+    cpu: 139580m
+    ephemeral-storage: "11396101938177"
+    memory: 900159552Ki
+    networking.gke.io.networks/gvnic-1: "1"
+    networking.gke.io.networks/gvnic-1.IP: "1"
+    networking.gke.io.networks/rdma-0: "1"
+    networking.gke.io.networks/rdma-0.IP: "1"
+    networking.gke.io.networks/rdma-1: "1"
+    networking.gke.io.networks/rdma-1.IP: "1"
+    networking.gke.io.networks/rdma-2: "1"
+    networking.gke.io.networks/rdma-2.IP: "1"
+    networking.gke.io.networks/rdma-3: "1"
+    networking.gke.io.networks/rdma-3.IP: "1"
+    nvidia.com/gpu: "4"
+    pods: "110"
+  conditions:
+  - type: Ready
+    status: "True"
+    reason: KubeletReady
+    message: kubelet is posting ready status
+  phase: Running
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: gcp-gb200-node-02
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    kubernetes.io/arch: arm64
+    kubernetes.io/hostname: gcp-gb200-node-02
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200
+    nvidia.com/gpu.count: "4"
+    nvidia.com/gpu.family: blackwell
+    nvidia.com/gpu.clique: 06c6c12d-cedd-4071-95c2-92398ac50e0b.1
+    nvidia.com/gpu.machine: Google-Compute-Engine
+    node.kubernetes.io/instance-type: a4x-highgpu-4g
+spec:
+  providerID: "gce://nv-dgxck8s-test/us-east4-b/gcp-gb200-node-02"
+status:
+  capacity:
+    cpu: "140"
+    ephemeral-storage: 12482070464Ki
+    memory: 925722688Ki
+    networking.gke.io.networks/gvnic-1: "1"
+    networking.gke.io.networks/gvnic-1.IP: "1"
+    networking.gke.io.networks/rdma-0: "1"
+    networking.gke.io.networks/rdma-0.IP: "1"
+    networking.gke.io.networks/rdma-1: "1"
+    networking.gke.io.networks/rdma-1.IP: "1"
+    networking.gke.io.networks/rdma-2: "1"
+    networking.gke.io.networks/rdma-2.IP: "1"
+    networking.gke.io.networks/rdma-3: "1"
+    networking.gke.io.networks/rdma-3.IP: "1"
+    nvidia.com/gpu: "4"
+    pods: "110"
+  allocatable:
+    cpu: 139580m
+    ephemeral-storage: "11396101938177"
+    memory: 900159552Ki
+    networking.gke.io.networks/gvnic-1: "1"
+    networking.gke.io.networks/gvnic-1.IP: "1"
+    networking.gke.io.networks/rdma-0: "1"
+    networking.gke.io.networks/rdma-0.IP: "1"
+    networking.gke.io.networks/rdma-1: "1"
+    networking.gke.io.networks/rdma-1.IP: "1"
+    networking.gke.io.networks/rdma-2: "1"
+    networking.gke.io.networks/rdma-2.IP: "1"
+    networking.gke.io.networks/rdma-3: "1"
+    networking.gke.io.networks/rdma-3.IP: "1"
+    nvidia.com/gpu: "4"
+    pods: "110"
+  conditions:
+  - type: Ready
+    status: "True"
+    reason: KubeletReady
+    message: kubelet is posting ready status
+  phase: Running

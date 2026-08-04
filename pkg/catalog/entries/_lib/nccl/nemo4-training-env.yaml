@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- name: NEMO_LOG_MEMORY_USAGE
+  value: "1"
+- name: NVTE_BWD_LAYERNORM_SM_MARGIN
+  value: "16"
+- name: NVTE_FLASH_ATTN
+  value: "1"
+- name: NVTE_FUSED_ATTN
+  value: "1"
+- name: NVTE_FWD_LAYERNORM_SM_MARGIN
+  value: "16"
+- name: TOKENIZERS_PARALLELISM
+  value: "False"
+- name: TORCH_NCCL_AVOID_RECORD_STREAMS
+  value: "1"
+- name: TORCH_NCCL_HIGH_PRIORITY
+  value: "1"
+- name: TORCHELASTIC_LOG_LEVEL
+  value: debug
+- name: TRANSFORMERS_OFFLINE
+  value: "1"

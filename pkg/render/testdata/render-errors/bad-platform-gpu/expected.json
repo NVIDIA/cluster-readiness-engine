@@ -1,0 +1,3 @@
+{
+  "error": "no mock nodes for aws-nonexistent\navailable: aws-gb200, aws-gb300, aws-h100, azure-gb200, azure-gb300, azure-h100, gcp-gb200, gcp-gb300, gcp-h100, mistral-gb300, oci-gb200, oci-gb300, oci-h100"
+}

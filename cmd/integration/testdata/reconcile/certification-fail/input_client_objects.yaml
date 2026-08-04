@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: test-cert-fail
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+      nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+  nodesPerJob: 2
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+status:
+  categoryStatuses:
+    - domain: communication
+      variant: nccl-all-reduce
+      workflowRef:
+        name: test-cert-fail-allreduce-wf
+        namespace: default
+      status: InProgress
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-cert-fail-allreduce-wf
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: cluster-readiness-engine
+    cre.nvidia.com/certification: test-cert-fail
+    cre.nvidia.com/category-domain: communication
+    cre.nvidia.com/category-variant: nccl-all-reduce
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: JobCompleted
+      message: "Job has completed"
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Failed
+      status: "True"
+      reason: JobFailed
+      message: "Job failed"
+      lastTransitionTime: "2026-01-22T10:05:00Z"

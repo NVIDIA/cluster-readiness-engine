@@ -1,0 +1,59 @@
+{
+  "GoodputMeasurement/test-goodput": {
+    "kind": "GoodputMeasurement",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-goodput",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/goodputmeasurement-finalizer"
+      ]
+    },
+    "spec": {
+      "jobRef": {
+        "apiGroup": "cre.nvidia.com",
+        "kind": "Job",
+        "name": "test-goodput-job"
+      },
+      "logProfileRef": "nemotron-4-nemo",
+      "sampleInterval": "1s"
+    },
+    "status": {
+      "currentStep": 102,
+      "highestStep": 102,
+      "lostWorkTimeSec": "0.000000",
+      "rescheduleTimeSec": "0.000000",
+      "resumeTimeSec": "5.123457",
+      "checkpointSaveTimeSec": "2.400000",
+      "lastCheckpointStep": 102,
+      "lastCheckpointTime": "2026-01-22T18:00:10Z",
+      "avgStepTimeSec": "1.128000",
+      "warmupBaseStep": 100,
+      "nonWarmupTimeSec": "3.384000",
+      "lastNonWarmupStep": 102,
+      "applicationStartTime": "2026-01-22T18:00:00Z",
+      "conditions": [
+        {
+          "type": "Measuring",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Referenced Job is running, measurement in progress"
+        }
+      ]
+    }
+  },
+  "metrics": {
+    "burnin_goodput_avg_step_time_seconds": 1.128,
+    "burnin_goodput_avg_tflops_per_gpu": 775.423333,
+    "burnin_goodput_checkpoint_save_time_seconds": 2.4,
+    "burnin_goodput_lost_work_time_seconds": 0,
+    "burnin_goodput_non_warmup_time_seconds": 3.384,
+    "burnin_goodput_ratio": 0,
+    "burnin_goodput_reschedule_time_seconds": 0,
+    "burnin_goodput_resume_time_seconds": 5.123456789,
+    "burnin_goodput_training_time_seconds": 0,
+    "burnin_goodput_warmup_time_seconds": 0
+  }
+}

@@ -1,0 +1,25 @@
+[
+  {
+    "nodeAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": {
+        "nodeSelectorTerms": [
+          {
+            "matchExpressions": [
+              {
+                "key": "kubernetes.io/hostname",
+                "operator": "In",
+                "values": [
+                  "gpu-node-01",
+                  "gpu-node-02"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "targetJobs": [
+      "node"
+    ]
+  }
+]

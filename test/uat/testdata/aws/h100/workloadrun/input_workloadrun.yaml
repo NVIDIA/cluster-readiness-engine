@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: aws-h100-workloadrun
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  image: nvcr.io/nvidia/pytorch:25.08-py3
+  framework:
+    exec:
+      command: ["/bin/bash", "/config/train.sh"]
+  numNodes: 2
+  config:
+    inline:
+      train.sh: |
+        #!/bin/bash
+        set -ex
+        cd /mnt/workspace/megatron-lm
+        torchrun \
+          --nproc_per_node=$PET_NPROC_PER_NODE \
+          --nnodes=$PET_NNODES \
+          pretrain_gpt.py \
+            --num-layers 79 \
+            --hidden-size 8192 \
+            --num-attention-heads 64 \
+            --seq-length 8192 \
+            --micro-batch-size 1 \
+            --train-iters 50 \
+            --bf16
+  initContainers:
+    - name: megatron-clone
+      image: nvcr.io/nvidia/pytorch:25.08-py3
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          if [ ! -d "/mnt/workspace/megatron-lm/.git" ]; then
+            git clone --depth 1 -b core_v0.15.2 \
+              https://github.com/NVIDIA/Megatron-LM.git /mnt/workspace/megatron-lm
+          fi
+      volumeMounts:
+        - mountPath: /mnt/workspace
+          name: workspace
+  volumes:
+    - name: workspace
+      emptyDir:
+        medium: Memory
+  env:
+    - name: PYTHONPATH
+      value: /mnt/workspace/megatron-lm
+    - name: CUDA_DEVICE_MAX_CONNECTIONS
+      value: "1"
+  goodputMeasurement:
+    logProfileRef: megatron-training
+    sampleInterval: 10s

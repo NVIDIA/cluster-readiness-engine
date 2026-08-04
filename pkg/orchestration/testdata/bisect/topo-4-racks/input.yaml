@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+minGroupSize: 2
+round: 1
+topologyKey: topology.kubernetes.io/rack
+nodeLabels:
+  node-r1-0: rack-1
+  node-r1-1: rack-1
+  node-r2-0: rack-2
+  node-r2-1: rack-2
+  node-r3-0: rack-3
+  node-r3-1: rack-3
+  node-r4-0: rack-4
+  node-r4-1: rack-4
+failedGroups:
+  - name: bisect-0-full
+    nodes: [node-r1-0, node-r1-1, node-r2-0, node-r2-1, node-r3-0, node-r3-1, node-r4-0, node-r4-1]

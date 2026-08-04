@@ -1,0 +1,79 @@
+{
+  "BandwidthMeasurement/test-bw": {
+    "kind": "BandwidthMeasurement",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-bw",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/bandwidthmeasurement-finalizer"
+      ]
+    },
+    "spec": {
+      "jobRef": {
+        "apiGroup": "cre.nvidia.com",
+        "kind": "Job",
+        "name": "test-bw-job"
+      },
+      "logProfileRef": "nccl-all-reduce-test",
+      "sampleInterval": "1s",
+      "testType": "all_reduce"
+    },
+    "status": {
+      "results": [
+        {
+          "sizeBytes": 8,
+          "algBW": "0.00",
+          "busBW": "0.00",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 65536,
+          "algBW": "1.13",
+          "busBW": "2.18",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 1048576,
+          "algBW": "15.41",
+          "busBW": "29.87",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 1073741824,
+          "algBW": "397.14",
+          "busBW": "769.45",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 17179869184,
+          "algBW": "476.36",
+          "busBW": "922.94",
+          "samples": 1
+        }
+      ],
+      "conditions": [
+        {
+          "type": "Measuring",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Referenced Job is running, measurement in progress"
+        }
+      ]
+    }
+  },
+  "bandwidthMetrics": {
+    "burnin_nccl_algbw_gbps:1048576": 15.41,
+    "burnin_nccl_algbw_gbps:1073741824": 397.14,
+    "burnin_nccl_algbw_gbps:17179869184": 476.36,
+    "burnin_nccl_algbw_gbps:65536": 1.13,
+    "burnin_nccl_algbw_gbps:8": 0,
+    "burnin_nccl_busbw_gbps:1048576": 29.87,
+    "burnin_nccl_busbw_gbps:1073741824": 769.45,
+    "burnin_nccl_busbw_gbps:17179869184": 922.94,
+    "burnin_nccl_busbw_gbps:65536": 2.18,
+    "burnin_nccl_busbw_gbps:8": 0
+  }
+}

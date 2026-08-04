@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- apiVersion: resource.nvidia.com/v1beta1
+  kind: ComputeDomain
+  metadata:
+    labels:
+      app: {{ .EntryName }}
+    name: {{ .EntryName }}-compute-domain
+  spec:
+    channel:
+      allocationMode: Single
+      resourceClaimTemplate:
+        name: {{ .EntryName }}-channel
+    numNodes: {{ .NodesPerJob }}
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    resources:
+                      claims:
+                      - name: compute-domain-channel
+                    env:
+                    - name: NCCL_MNNVL_ENABLE
+                      value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"
+                  resourceClaims:
+                  - name: compute-domain-channel
+                    resourceClaimTemplateName: {{ .EntryName }}-channel

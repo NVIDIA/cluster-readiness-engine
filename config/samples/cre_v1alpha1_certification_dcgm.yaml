@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Certification for DCGM Level 4 GPU diagnostics.
+#
+# Runs dcgmi diag --run 4 per node to validate GPU health,
+# memory, PCIe bandwidth (DtoH/HtoD), stress, power, and page retirement.
+# nodesPerJob auto-selects to all matching nodes.
+#
+# Deploy:
+#   kubectl apply -f cre_v1alpha1_certification_dcgm.yaml
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  labels:
+    app.kubernetes.io/name: cluster-readiness-engine
+  name: dcgm-level4-certification
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300
+  categories:
+    - domain: diagnostics
+      variant: dcgm-level4

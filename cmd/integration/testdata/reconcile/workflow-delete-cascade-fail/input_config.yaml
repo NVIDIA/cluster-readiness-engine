@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# First wait for the Workflow to reach Failed (controllers propagate
+# TrainJob failure → Job failure → Workflow failure). Then delete the
+# Workflow and verify the entire cascade (Workflow → Job → TrainJob)
+# is cleaned up by the controllers' finalizer logic.
+waitFor:
+  kind: Workflow
+  name: test-wf-del-fail
+  namespace: default
+  condition: Failed
+deleteAfterWait:
+  - kind: Workflow
+    name: test-wf-del-fail
+    namespace: default
+waitForDeletion:
+  - kind: Workflow
+    name: test-wf-del-fail
+    namespace: default
+  - kind: Job
+    name: test-wf-del-fail-group-0-iter-1
+    namespace: default
+  - kind: TrainJob
+    name: test-wf-del-fail-group-0-iter-1-workload
+    namespace: default
+collect: []

@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+trainingTime: 14400
+event:
+  tCheckpoint: "2026-01-22T10:00:00Z"
+  tInterrupt: "2026-01-22T10:15:00Z"
+  tCh: 900
+  tRe: 150
+  tRm: 70
+  reason: Evicted
+  checkpointStep: 300
+  lastStep: 450

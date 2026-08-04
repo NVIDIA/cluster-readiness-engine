@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- name: LD_LIBRARY_PATH
+  value: "/opt/amazon/openmpi/lib:/opt/nccl/build/lib:/opt/amazon/efa/lib:/opt/aws-ofi-nccl/install/lib:/usr/local/nvidia/lib:/opt/amazon/ofi-nccl/lib/aarch64-linux-gnu"
+- name: PATH
+  value: "$PATH:/opt/amazon/efa/bin:/usr/bin"
+- name: NCCL_DEBUG
+  value: INFO
+- name: FI_PROVIDER
+  value: efa
+- name: FI_EFA_USE_DEVICE_RDMA
+  value: "1"
+- name: FI_EFA_FORK_SAFE
+  value: "1"
+- name: NCCL_MNNVL_ENABLE
+  value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"

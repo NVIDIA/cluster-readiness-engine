@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+category: training
+subcategory: nemotron5-8b
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+nodesPerJob: 1
+gpusPerNode: 4

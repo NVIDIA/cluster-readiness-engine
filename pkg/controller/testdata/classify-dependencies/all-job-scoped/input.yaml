@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+jobSpec: '{"workload":{"trainJob":{"runtimeRef":{"name":"my-runtime"}}},"volumes":[{"persistentVolumeClaim":{"claimName":"my-pvc"}}]}'
+deps:
+- raw: '{"apiVersion":"v1","kind":"PersistentVolumeClaim","metadata":{"name":"my-pvc"}}'
+- raw: '{"apiVersion":"trainer.kubeflow.org/v1alpha1","kind":"TrainingRuntime","metadata":{"name":"my-runtime"},"spec":{"template":{"volumes":[{"persistentVolumeClaim":{"claimName":"my-pvc"}}]}}}'

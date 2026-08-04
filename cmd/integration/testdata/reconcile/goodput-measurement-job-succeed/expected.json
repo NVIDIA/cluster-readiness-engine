@@ -1,0 +1,46 @@
+{
+  "GoodputMeasurement/test-gm-succeed": {
+    "kind": "GoodputMeasurement",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-gm-succeed",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/goodputmeasurement-finalizer"
+      ]
+    },
+    "spec": {
+      "jobRef": {
+        "apiGroup": "cre.nvidia.com",
+        "kind": "Job",
+        "name": "test-gm-succeed-job"
+      },
+      "logProfileRef": "test-logprofile",
+      "sampleInterval": "1s"
+    },
+    "status": {
+      "lostWorkTimeSec": "0.000000",
+      "rescheduleTimeSec": "0.000000",
+      "resumeTimeSec": "0.000000",
+      "checkpointSaveTimeSec": "0.000000",
+      "conditions": [
+        {
+          "type": "Complete",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobSucceeded",
+          "message": "Referenced Job completed successfully"
+        },
+        {
+          "type": "Measuring",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobSucceeded",
+          "message": "Measurement completed"
+        }
+      ]
+    }
+  }
+}

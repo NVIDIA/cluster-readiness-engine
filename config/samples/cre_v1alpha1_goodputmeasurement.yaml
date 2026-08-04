@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: GoodputMeasurement
+metadata:
+  labels:
+    app.kubernetes.io/name: cluster-readiness-engine
+  name: goodputmeasurement-sample
+spec:
+  # TODO(user): Add fields here

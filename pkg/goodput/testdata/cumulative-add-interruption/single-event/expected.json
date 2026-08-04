@@ -1,0 +1,7 @@
+{
+  "goodput": 0.93193,
+  "interruptionCount": 1,
+  "lostWorkTime": 900,
+  "rescheduleTime": 150,
+  "resumeTime": 70
+}

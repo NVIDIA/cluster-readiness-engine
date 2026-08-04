@@ -1,0 +1,10 @@
+[
+  {
+    "nodeSelector": {
+      "nvidia.com/gpu.clique": "clique-0"
+    },
+    "targetJobs": [
+      "node"
+    ]
+  }
+]

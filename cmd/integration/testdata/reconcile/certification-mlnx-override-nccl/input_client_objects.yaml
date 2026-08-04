@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Node
+metadata:
+  name: azure-a100-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-A100-SXM4-40GB
+    kubernetes.io/hostname: azure-a100-node-01
+spec:
+  providerID: "azure://test/azure-a100-node-01"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: azure-a100-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-A100-SXM4-40GB
+    kubernetes.io/hostname: azure-a100-node-02
+spec:
+  providerID: "azure://test/azure-a100-node-02"
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: mlnx-override
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-40GB
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      # Per-category override: drop from the Azure A100 default of 8 NICs to 4.
+      # Proves Certification.spec.categories[].options.mlnxPerNode flows through
+      # ResolveOptions into the rendered Workflow spec and mlnxnics resource.
+      options:
+        mlnxPerNode: 4

@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- name: NCCL_DEBUG
+  value: INFO
+- name: NCCL_IB_PCI_RELAXED_ORDERING
+  value: "1"
+- name: NCCL_IGNORE_CPU_AFFINITY
+  value: "1"
+- name: NCCL_SOCKET_IFNAME
+  value: eth0
+- name: NCCL_IB_QPS_PER_CONNECTION
+  value: "2"
+- name: NCCL_IB_SPLIT_DATA_ON_QPS
+  value: "0"
+- name: NCCL_IB_AR_THRESHOLD
+  value: "0"
+- name: NCCL_IB_HCA
+  value: "=mlx5_7:1,mlx5_8:1,mlx5_9:1,mlx5_10:1,mlx5_11:1,mlx5_12:1,mlx5_5:1,mlx5_6:1,mlx5_2:1,mlx5_3:1,mlx5_0:1,mlx5_1:1"
+- name: NCCL_NVLS_ENABLE
+  value: "1"
+- name: NCCL_CUMEM_ENABLE
+  value: "1"

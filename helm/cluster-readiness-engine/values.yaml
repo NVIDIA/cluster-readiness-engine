@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# CRE Helm chart values.
+
+nameOverride: cluster-readiness-engine
+
+manager:
+  replicas: 1
+  image:
+    repository: ghcr.io/nvidia/cluster-readiness-engine/manager
+    tag: ""
+    pullPolicy: IfNotPresent
+  imagePullSecrets: []
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1Gi
+    requests:
+      cpu: 10m
+      memory: 1Gi
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: nvidia.com/gpu.present
+                operator: DoesNotExist
+  tolerations:
+    - operator: Exists
+
+metrics:
+  port: 8443

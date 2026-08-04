@@ -1,0 +1,172 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Node
+metadata:
+  name: topo-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: topo-node-01
+    topology.kubernetes.io/zone: zone-a
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: topo-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: topo-node-02
+    topology.kubernetes.io/zone: zone-a
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: topo-node-03
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: topo-node-03
+    topology.kubernetes.io/zone: zone-b
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: topo-node-04
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: topo-node-04
+    topology.kubernetes.io/zone: zone-b
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-topo-metrics
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+    topology:
+      topologyKey: topology.kubernetes.io/zone
+status:
+  orchestration:
+    totalNodes: 4
+    nodesPerJob: 2
+    totalGroups: 2
+    currentIteration: 1
+    groups:
+      - name: group-0
+        nodes:
+          - topo-node-01
+          - topo-node-02
+        domains:
+          - zone-a
+        phase: Running
+        jobRef:
+          apiVersion: cre.nvidia.com/v1alpha1
+          kind: Job
+          name: test-topo-metrics-job-0
+          namespace: default
+      - name: group-1
+        nodes:
+          - topo-node-03
+          - topo-node-04
+        domains:
+          - zone-b
+        phase: Running
+        jobRef:
+          apiVersion: cre.nvidia.com/v1alpha1
+          kind: Job
+          name: test-topo-metrics-job-1
+          namespace: default
+---
+# group-0 Job: Succeeded
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-topo-metrics-job-0
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: cluster-readiness-engine
+    cre.nvidia.com/workflow: test-topo-metrics
+    cre.nvidia.com/group: group-0
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 2
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: WorkloadCompleted
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "True"
+      reason: WorkloadSucceeded
+      message: "Workload succeeded"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: Failed
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+---
+# group-1 Job: Failed
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-topo-metrics-job-1
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: cluster-readiness-engine
+    cre.nvidia.com/workflow: test-topo-metrics
+    cre.nvidia.com/group: group-1
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 2
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: WorkloadCompleted
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Failed
+      status: "True"
+      reason: WorkloadFailed
+      message: "Workload failed"
+      lastTransitionTime: "2026-01-22T10:05:00Z"

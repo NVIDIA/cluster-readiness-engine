@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# NCCL tuning from the Nscale team's MPIJob nccl-test example (RoCE + rdmashare).
+# Reference: https://github.com/nscaledev/k8s-example-config/blob/b88259814e2faabf4fe65c44f5bef72315494812/examples/nccl-test.yaml
+#
+# On dgxc nscale B200, `NCCL_IB_HCA=mlx5` can select mlx5_bond_0 (RoCE bond) where UCX
+# DEVX fails; exclude it for NCCL. UCX may still open mlx5_bond unless UCX_NET_DEVICES
+# lists real HCAs (ibv_devinfo in pod); below matches mlx5_0..11 port 1 on current SKU.
+- name: NCCL_DEBUG
+  value: INFO
+- name: NCCL_SOCKET_IFNAME
+  value: eth0
+- name: NCCL_IB_QPS_PER_CONNECTION
+  value: "8"
+- name: NCCL_IB_HCA
+  value: "^mlx5_bond"
+- name: UCX_NET_DEVICES
+  value: "mlx5_0:1,mlx5_1:1,mlx5_2:1,mlx5_3:1,mlx5_4:1,mlx5_5:1,mlx5_6:1,mlx5_7:1,mlx5_8:1,mlx5_9:1,mlx5_10:1,mlx5_11:1"
+- name: NCCL_NET_GDR_LEVEL
+  value: "2"

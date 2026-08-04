@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: ns-test-communication-ncc-f2bcd
+  namespace: cert-ns
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: ns-test
+    namespace: cert-ns
+  - kind: Workflow
+    name: ns-test-communication-ncc-f2bcd
+    namespace: cert-ns

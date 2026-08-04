@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: nemo4-warmup-steps
+spec:
+  warmupSteps: 1
+  timestamp:
+    layout: "2006-01-02T15:04:05.999999999Z"
+  patterns:
+    trainingStep:
+      regex: 'Training epoch (?P<epoch>\d+), iteration\s+(?P<iteration>\d+)/\d+.*global_step:\s*(?P<globalStep>\d+).*reduced_train_loss:\s*(?P<loss>[\d.]+)\s*\|\s*train_step_timing in s:\s*(?P<stepTiming>[\d.]+)(?:.*TFLOPS_per_GPU:\s*(?P<tflops>[\d.eE+\-]+))?'
+      example: 'Training epoch 0, iteration 0/9999 | lr: 8.982e-08 | global_batch_size: 32 | global_step: 0 | reduced_train_loss: 13.01 | train_step_timing in s: 42.45 | TFLOPS_per_GPU: 36.27'
+      units:
+        stepTiming: s
+    applicationStart:
+      regex: 'Application initialized'
+      example: '[NeMo I 2026-01-22 10:20:00] Application initialized'

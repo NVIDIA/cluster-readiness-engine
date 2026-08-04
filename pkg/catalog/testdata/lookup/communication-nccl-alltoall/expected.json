@@ -1,0 +1,24 @@
+{
+  "dependencies": [
+    {
+      "kind": "TrainingRuntime",
+      "name": "nccl-alltoall-runtime"
+    }
+  ],
+  "found": true,
+  "jobTemplate": {
+    "nodeHealthMonitorCEL": {
+      "expression": "node.spec.unschedulable == true"
+    },
+    "trainJob": {
+      "runtimeRef": "nccl-alltoall-runtime",
+      "trainerImage": "nvcr.io/nvidia/pytorch:26.01-py3"
+    }
+  },
+  "orchestration": {
+    "iterations": 1,
+    "targetNodeSelector": {
+      "nvidia.com/gpu.product": "NVIDIA-GB200-NVL72"
+    }
+  }
+}

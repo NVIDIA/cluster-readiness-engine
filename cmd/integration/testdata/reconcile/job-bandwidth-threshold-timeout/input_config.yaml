@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Job succeeded long ago but bandwidth measurement data never arrived.
+# The controller should detect the measurement timeout and set ValidationFailed
+# with reason MeasurementTimeout.
+waitFor:
+  kind: Job
+  name: test-bw-timeout
+  namespace: default
+  condition: ValidationFailed
+collect:
+  - kind: Job
+    name: test-bw-timeout
+    namespace: default

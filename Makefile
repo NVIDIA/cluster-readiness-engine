@@ -1,0 +1,421 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Version from git tags (e.g. v1.2.3, v1.2.3-4-gabcdef, or short SHA).
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+# Linker flags to inject version into binaries.
+LDFLAGS ?= -s -w -X main.version=$(VERSION)
+
+# Image configuration
+# Registry and repository for the controller image
+IMAGE_REGISTRY ?= ghcr.io
+IMAGE_REPOSITORY ?= nvidia/cluster-readiness-engine/manager
+IMAGE_TAG ?= $(VERSION)
+# Full image URL
+IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):$(IMAGE_TAG)
+
+# Helm chart directory (used by manifests and helm-* targets).
+HELM_CHART_DIR ?= helm/cluster-readiness-engine
+
+# Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
+ifeq (,$(shell go env GOBIN))
+GOBIN=$(shell go env GOPATH)/bin
+else
+GOBIN=$(shell go env GOBIN)
+endif
+
+# CONTAINER_TOOL defines the container tool to be used for building images.
+# Be aware that the target commands are only tested with Docker which is
+# scaffolded by default. However, you might want to replace it to use other
+# tools. (i.e. podman)
+CONTAINER_TOOL ?= docker
+
+# Comma variable for use in $(subst) to split comma-separated lists.
+comma := ,
+
+# Setting SHELL to bash allows bash commands to be executed by recipes.
+# Options are set to exit when a recipe line exits non-zero or a piped command fails.
+SHELL = /usr/bin/env bash -o pipefail
+.SHELLFLAGS = -ec
+
+.PHONY: all
+all: build
+
+##@ General
+
+# The help target prints out all targets with their descriptions organized
+# beneath their categories. The categories are represented by '##@' and the
+# target descriptions by '##'. The awk command is responsible for reading the
+# entire set of makefiles included in this invocation, looking for lines of the
+# file as xyz: ## something, and then pretty-format the target and help. Then,
+# if there's a line with ##@ something, that gets pretty-printed as a category.
+# More info on the usage of ANSI control characters for terminal formatting:
+# https://en.wikipedia.org/wiki/ANSI_escape_code#SGR_parameters
+# More info on the awk command:
+# http://linuxcommand.org/lc3_adv_awk.php
+
+.PHONY: help
+help: ## Display this help.
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+
+##@ Development
+
+.PHONY: manifests
+manifests: controller-gen ## Generate CRDs and RBAC directly into the Helm chart.
+	mkdir -p "$(HELM_CHART_DIR)/crds" "$(HELM_CHART_DIR)/templates"
+	"$(CONTROLLER_GEN)" rbac:roleName=cre-manager-role crd webhook paths="./..." \
+		output:crd:artifacts:config="$(HELM_CHART_DIR)/crds" \
+		output:rbac:artifacts:config="$(HELM_CHART_DIR)/templates"
+
+.PHONY: generate
+generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
+	"$(CONTROLLER_GEN)" object:headerFile="hack/boilerplate.go.txt" paths="./..."
+
+.PHONY: fmt
+fmt: ## Run go fmt against code.
+	go fmt ./...
+
+.PHONY: vet
+vet: ## Run go vet against code.
+	go vet ./...
+
+.PHONY: test
+test: setup-envtest ## Run unit and integration tests.
+	go test -v $$(go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v /cmd/integration)
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
+	go test ./cmd/integration/ -v -timeout 300s -count=1
+
+.PHONY: test-ci
+test-ci:setup-envtest ## Run tests with JUnit XML and coverage reports for CI.
+	gotestsum --junitfile unit-report.xml -- \
+		-coverprofile=cover-unit.out -covermode=atomic \
+		$$(go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v /cmd/integration)
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
+	gotestsum --junitfile integration-report.xml -- \
+		-coverprofile=cover-integration.out -covermode=atomic \
+		./cmd/integration/ -timeout 300s -count=1
+	go tool cover -func=cover-unit.out
+	gocover-cobertura < cover-unit.out > coverage.xml
+
+.PHONY: test-integration
+test-integration: fmt vet setup-envtest ## Run integration tests.
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
+	go test ./cmd/integration/ -v -timeout 300s -count=1
+
+# E2e tests run against a Kind cluster. CertManager is installed by default; skip with:
+# - CERT_MANAGER_INSTALL_SKIP=true
+KIND_CLUSTER ?= cre-test-e2e
+
+.PHONY: setup-test-e2e
+setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
+	@command -v $(KIND) >/dev/null 2>&1 || { \
+		echo "Kind is not installed. Please install Kind manually."; \
+		exit 1; \
+	}
+	@case "$$($(KIND) get clusters)" in \
+		*"$(KIND_CLUSTER)"*) \
+			echo "Kind cluster '$(KIND_CLUSTER)' already exists. Skipping creation." ;; \
+		*) \
+			echo "Creating Kind cluster '$(KIND_CLUSTER)'..."; \
+			$(KIND) create cluster --name $(KIND_CLUSTER) ;; \
+	esac
+
+.PHONY: run-test-e2e
+run-test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests against the current Kind cluster.
+	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v
+
+.PHONY: test-e2e
+test-e2e: run-test-e2e ## Run the e2e tests. Expected an isolated environment using Kind.
+	$(MAKE) cleanup-test-e2e
+
+.PHONY: cleanup-test-e2e
+cleanup-test-e2e: ## Tear down the Kind cluster used for e2e tests
+	@$(KIND) delete cluster --name $(KIND_CLUSTER)
+
+##@ UAT Tests (Kind + KWOK + Tilt + e2e-framework)
+
+KIND_CLUSTER_UAT ?= cre-test-uat
+KWOK_VERSION ?= v0.7.0
+UAT_IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):uat-test
+
+.PHONY: setup-test-uat
+setup-test-uat: ## Create Kind cluster for UAT tests and wait for it to be ready.
+	@command -v $(KIND) >/dev/null 2>&1 || { echo "Kind is not installed. Please install Kind manually."; exit 1; }
+	@case "$$($(KIND) get clusters)" in \
+		*"$(KIND_CLUSTER_UAT)"*) \
+			echo "Kind cluster '$(KIND_CLUSTER_UAT)' already exists. Skipping creation." ;; \
+		*) \
+			echo "Creating Kind cluster '$(KIND_CLUSTER_UAT)'..."; \
+			$(KIND) create cluster --name $(KIND_CLUSTER_UAT) ;; \
+	esac
+	@echo "Waiting for nodes to be ready..."
+	@$(KUBECTL) wait --for=condition=Ready nodes --all --timeout=120s
+
+.PHONY: tilt-uat
+tilt-uat: setup-test-uat ## Start Tilt for UAT (interactive dev mode with hot reload).
+	cd test/uat && IMG=$(UAT_IMG) KWOK_VERSION=$(KWOK_VERSION) tilt up
+
+.PHONY: tilt-uat-ci
+tilt-uat-ci: setup-test-uat ## Start Tilt for UAT in CI mode (headless, exits after deploy).
+	cd test/uat && IMG=$(UAT_IMG) KWOK_VERSION=$(KWOK_VERSION) tilt ci
+
+.PHONY: test-uat
+test-uat: tilt-uat-ci ## Run UAT tests (Tilt deploys everything, then run tests).
+	KIND_CLUSTER=$(KIND_CLUSTER_UAT) NCRECTL=$(LOCALBIN)/ncrectl \
+		go test -tags=uat ./test/uat/ -v -timeout 1800s -count=1
+	$(MAKE) cleanup-test-uat
+
+.PHONY: test-uat-run
+test-uat-run: ## Run UAT tests against existing Tilt-managed cluster (dev iteration).
+	NCRECTL=$(LOCALBIN)/ncrectl go test -tags=uat ./test/uat/ -v -timeout 1800s -count=1
+
+.PHONY: cleanup-test-uat
+cleanup-test-uat: ## Delete Kind cluster for UAT tests.
+	@$(KIND) delete cluster --name $(KIND_CLUSTER_UAT)
+
+.PHONY: lint
+lint: golangci-lint ## Run golangci-lint linter
+	"$(GOLANGCI_LINT)" run
+
+.PHONY: lint-fix
+lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
+	"$(GOLANGCI_LINT)" run --fix
+
+.PHONY: lint-config
+lint-config: golangci-lint ## Verify golangci-lint linter configuration
+	"$(GOLANGCI_LINT)" config verify
+
+##@ Build
+
+.PHONY: check-clean-version
+check-clean-version: ## Verify VERSION is a clean release tag (no -dirty, -N-gXXX, or dev).
+	@case "$(VERSION)" in \
+	  dev|*-dirty|*-*-g*) \
+	    echo "ERROR: VERSION=$(VERSION) is not a clean release tag."; \
+	    echo "Commit and tag your changes first (e.g., git tag v1.14.0)."; \
+	    exit 1 ;; \
+	esac
+
+
+.PHONY: build
+build: manifests generate fmt vet ## Build manager binary.
+	go build -ldflags "$(LDFLAGS)" -o bin/manager ./cmd/manager/
+
+.PHONY: build-ncrectl
+build-ncrectl: $(LOCALBIN) ## Build ncrectl CLI tool.
+	go build -ldflags "$(LDFLAGS)" -o bin/ncrectl ./cmd/ncrectl/
+	ln -sf ncrectl bin/kubectl-ncrectl
+
+.PHONY: build-ncrectl-cross
+build-ncrectl-cross: $(LOCALBIN) ## Cross-compile ncrectl for all NCRECTL_PLATFORMS (linux, macOS, Windows).
+	@for platform in $(subst $(comma), ,$(NCRECTL_PLATFORMS)); do \
+		os=$${platform%/*}; \
+		arch=$${platform#*/}; \
+		ext=""; if [ "$${os}" = "windows" ]; then ext=".exe"; fi; \
+		echo "Building ncrectl for $${os}/$${arch}..."; \
+		CGO_ENABLED=0 GOOS=$${os} GOARCH=$${arch} \
+			go build -ldflags "$(LDFLAGS)" -o bin/ncrectl-$${os}-$${arch}$${ext} ./cmd/ncrectl/ || exit 1; \
+	done
+
+.PHONY: run
+run: manifests generate fmt vet ## Run a controller from your host.
+	go run ./cmd/manager/
+
+# If you wish to build the manager image targeting other platforms you can use the --platform flag.
+# (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
+# More info: https://docs.docker.com/develop/develop-images/build_enhancements/
+.PHONY: docker-build
+docker-build: ## Build docker image with the manager.
+	$(CONTAINER_TOOL) build --build-arg VERSION=$(VERSION) -t ${IMG} .
+
+.PHONY: docker-push
+docker-push: check-clean-version ## Push docker image with the manager.
+	$(CONTAINER_TOOL) push ${IMG}
+
+# PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
+# architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
+# - be able to use docker buildx. More info: https://docs.docker.com/build/buildx/
+# - have enabled BuildKit. More info: https://docs.docker.com/develop/develop-images/build_enhancements/
+# - be able to push the image to your registry (i.e. if you do not set a valid value via IMG=<myregistry/image:<tag>> then the export will fail)
+# To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
+PLATFORMS ?= linux/arm64,linux/amd64
+
+# Platforms for ncrectl CLI cross-compilation (includes macOS and Windows for end-user workstations).
+NCRECTL_PLATFORMS ?= linux/amd64,linux/arm64,darwin/amd64,darwin/arm64,windows/amd64,windows/arm64
+
+
+.PHONY: docker-build-cross
+docker-build-cross: ## Build multi-arch docker image without pushing (validates the build).
+	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
+	- $(CONTAINER_TOOL) buildx create --name cre-builder
+	$(CONTAINER_TOOL) buildx use cre-builder
+	- $(CONTAINER_TOOL) buildx build --build-arg VERSION=$(VERSION) --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx rm cre-builder
+	rm Dockerfile.cross
+
+.PHONY: docker-buildx
+docker-buildx: #check-clean-version ## Build and push docker image for the manager for cross-platform support
+	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
+	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
+	- $(CONTAINER_TOOL) buildx create --name cre-builder
+	$(CONTAINER_TOOL) buildx use cre-builder
+	- $(CONTAINER_TOOL) buildx build --build-arg VERSION=$(VERSION) --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx rm cre-builder
+	rm Dockerfile.cross
+
+##@ Deployment
+
+##@ Helm
+
+HELM ?= helm
+HELM_PACKAGE_VERSION ?= $(shell echo "$(VERSION)" | sed 's/^v//')
+# OCI registry base for Helm chart publishing.
+# helm push pushes to $(HELM_OCI_REGISTRY)/<chart-name>:<version>.
+HELM_OCI_REGISTRY ?= oci://ghcr.io/nvidia
+
+.PHONY: helm-lint
+helm-lint: install-helm ## Lint the cluster-readiness-engine Helm chart.
+	"$(HELM)" dependency build $(HELM_CHART_DIR) --skip-refresh
+	"$(HELM)" lint $(HELM_CHART_DIR)
+
+.PHONY: helm-package
+helm-package: helm-lint ## Package the cluster-readiness-engine Helm chart.
+	"$(HELM)" package $(HELM_CHART_DIR) \
+		--version "$(HELM_PACKAGE_VERSION)" \
+		--app-version "$(VERSION)"
+
+.PHONY: helm-push
+helm-push: check-clean-version helm-package ## Push the Helm chart to the OCI registry.
+	"$(HELM)" push \
+		cluster-readiness-engine-$(HELM_PACKAGE_VERSION).tgz \
+		$(HELM_OCI_REGISTRY)
+
+##@ Dependencies
+
+## Location to install dependencies to
+LOCALBIN ?= $(shell pwd)/bin
+$(LOCALBIN):
+	mkdir -p "$(LOCALBIN)"
+
+## Tool Binaries
+KUBECTL ?= kubectl
+KIND ?= kind
+CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
+ENVTEST ?= $(LOCALBIN)/setup-envtest
+GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
+
+## Tool Versions
+CONTROLLER_TOOLS_VERSION ?= v0.20.0
+
+#ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
+ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
+  [ -n "$$v" ] || { echo "Set ENVTEST_VERSION manually (controller-runtime replace has no tag)" >&2; exit 1; }; \
+  printf '%s\n' "$$v" | sed -E 's/^v?([0-9]+)\.([0-9]+).*/release-\1.\2/')
+
+#ENVTEST_K8S_VERSION is the version of Kubernetes to use for setting up ENVTEST binaries (i.e. 1.31)
+ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
+  [ -n "$$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api replace has no tag)" >&2; exit 1; }; \
+  printf '%s\n' "$$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
+
+GOLANGCI_LINT_VERSION ?= v2.11.4
+
+.PHONY: controller-gen
+controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
+$(CONTROLLER_GEN): $(LOCALBIN)
+	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
+
+.PHONY: setup-envtest
+setup-envtest: envtest ## Download the binaries required for ENVTEST in the local bin directory.
+	@echo "Setting up envtest binaries for Kubernetes version $(ENVTEST_K8S_VERSION)..."
+	@"$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path || { \
+		echo "Error: Failed to set up envtest binaries for version $(ENVTEST_K8S_VERSION)."; \
+		exit 1; \
+	}
+
+.PHONY: envtest
+envtest: $(ENVTEST) ## Download setup-envtest locally if necessary.
+$(ENVTEST): $(LOCALBIN)
+	$(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(ENVTEST_VERSION))
+
+.PHONY: golangci-lint
+golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
+$(GOLANGCI_LINT): $(LOCALBIN)
+	@test -s $(GOLANGCI_LINT) || \
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
+
+# go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
+# $1 - target path with name of binary
+# $2 - package url which can be installed
+# $3 - specific version of package
+define go-install-tool
+@[ -f "$(1)-$(3)" ] && [ "$$(readlink -- "$(1)" 2>/dev/null)" = "$(1)-$(3)" ] || { \
+set -e; \
+package=$(2)@$(3) ;\
+echo "Downloading $${package}" ;\
+rm -f "$(1)" ;\
+GOBIN="$(LOCALBIN)" go install $${package} ;\
+mv "$(LOCALBIN)/$$(basename "$(1)")" "$(1)-$(3)" ;\
+} ;\
+ln -sf "$$(realpath "$(1)-$(3)")" "$(1)"
+endef
+
+define gomodver
+$(shell go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' $(1) 2>/dev/null)
+endef
+
+##@ Helm Deployment
+
+## Namespace to deploy the Helm release
+HELM_NAMESPACE ?= cluster-readiness-engine
+## Name of the Helm release
+HELM_RELEASE ?= cluster-readiness-engine
+## Additional arguments to pass to helm commands
+HELM_EXTRA_ARGS ?=
+
+.PHONY: install-helm
+install-helm: ## Install Helm when it is not already on PATH.
+	@command -v $(HELM) >/dev/null 2>&1 || bash hack/install-helm.sh
+
+.PHONY: helm-deploy
+helm-deploy: install-helm ## Deploy cluster-readiness-engine Helm chart to the cluster. Specify an image with IMG.
+	$(HELM) upgrade --install $(HELM_RELEASE) $(HELM_CHART_DIR) \
+		--namespace $(HELM_NAMESPACE) \
+		--create-namespace \
+		--set manager.image.repository=$${IMG%:*} \
+		--set manager.image.tag=$${IMG##*:} \
+		--wait \
+		--timeout 5m \
+		$(HELM_EXTRA_ARGS)
+
+.PHONY: helm-uninstall
+helm-uninstall: ## Uninstall the Helm release from the K8s cluster.
+	$(HELM) uninstall $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
+
+# Aliases used by the e2e test suite (kubebuilder convention → Helm-native equivalents).
+.PHONY: install
+install: ## Apply CRDs to the cluster.
+	kubectl apply -f $(HELM_CHART_DIR)/crds/
+
+.PHONY: uninstall
+uninstall: ## Remove CRDs from the cluster.
+	kubectl delete --ignore-not-found -f $(HELM_CHART_DIR)/crds/
+
+.PHONY: deploy
+deploy: install-helm ## Deploy controller via Helm (set IMG=<image>).
+	$(MAKE) helm-deploy HELM_EXTRA_ARGS="$(HELM_EXTRA_ARGS)"
+
+.PHONY: undeploy
+undeploy: ## Undeploy controller via Helm.
+	$(MAKE) helm-uninstall
+
+.PHONY: helm-status
+helm-status: ## Show Helm release status.
+	$(HELM) status $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
+
+.PHONY: helm-history
+helm-history: ## Show Helm release history.
+	$(HELM) history $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
+
+.PHONY: helm-rollback
+helm-rollback: ## Rollback to previous Helm release.
+	$(HELM) rollback $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)

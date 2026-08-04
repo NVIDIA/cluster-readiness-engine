@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Certification for multi-node NCCL benchmarks on Forge with NVIDIA L40 (InfiniBand).
+#
+# Targets nodes with NVIDIA L40 GPUs on Forge-provisioned clusters. Platform is auto-detected
+# via the kubernetes.io/hostname label (Forge clusters always include "forge" in the hostname
+# and have an empty spec.providerID). GPU architecture parses from
+# nvidia.com/gpu.product=NVIDIA-L40 to "l40".
+#
+# The Forge+L40 override layers in a stripped-down NCCL/UCX/OMPI baseline:
+# NCCL_IB_GID_INDEX=3, NCCL_IB_QPS_PER_CONNECTION=4, NCCL_IB_SL=0, NCCL_IB_SPLIT_DATA_ON_QPS=0,
+# NCCL_IB_PCI_RELAXED_ORDERING=1, NCCL_SOCKET_IFNAME=eth0, UCX_TLS=tcp, UCX_NET_DEVICES=eth0,
+# OMPI_MCA_coll_hcoll_enable=0, OMPI_MCA_orte_keep_fqdn_hostnames=t, CUDA_DEVICE_ORDER=PCI_BUS_ID.
+# It does NOT set NCCL_TOPO_FILE (Forge ships no topology XML) or any NVLink/NVSwitch knobs
+# (L40 has no NVLink/NVSwitch — PCIe Gen 4 only).
+#
+# Loopback runs single-GPU intra-node with only CUDA_DEVICE_ORDER+base NCCL knobs.
+# nccl-loopback-nvswitch is intentionally omitted (no NVSwitch on L40).
+#
+# Bandwidth thresholds are optional. Tune to your IB fabric — Forge L40 nodes typically
+# expose 4× ConnectX-7 NICs.
+#
+# Deploy:
+#   kubectl apply -f cre_v1alpha1_certification_forge_l40_nccl.yaml
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  labels:
+    app.kubernetes.io/name: cluster-readiness-engine
+  name: forge-l40-nccl-certification
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-L40
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        thresholds:
+          busBandwidthGBps: "value >= 20"   # GB/s; tune per environment
+    - domain: communication
+      variant: nccl-all-gather
+      options:
+        thresholds:
+          busBandwidthGBps: "value >= 20"   # GB/s; tune per environment
+    - domain: communication
+      variant: nccl-alltoall
+      options:
+        thresholds:
+          busBandwidthGBps: "value >= 15"   # GB/s; tune per environment
+    - domain: communication
+      variant: nccl-loopback

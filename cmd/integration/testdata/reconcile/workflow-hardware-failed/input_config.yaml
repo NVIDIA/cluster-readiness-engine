@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: test-workflow-hw-fail
+  namespace: default
+  condition: Failed
+collect:
+  - kind: Workflow
+    name: test-workflow-hw-fail
+    namespace: default

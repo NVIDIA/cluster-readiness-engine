@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# LogProfile for Megatron-LM LLM benchmark training logs
+#
+# Parses training step metrics from Megatron-LM logs that do not include
+# inline TFLOPS in the iteration line. Captures iteration number, elapsed
+# time, and loss from the standard Megatron iteration format.
+#
+# Compatible with: DeepSeek-V3, GPT-OSS (120B), LLaMA 3.1, Qwen3, and
+# any Megatron-LM model that logs the standard iteration line without
+# "throughput per GPU (TFLOP/s/GPU)".
+#
+# Deploy:
+#   kubectl apply -f megatron-bridge.yaml
+#
+# Usage:
+#   Reference as logProfileRef: "megatron-bridge" in a WorkloadRun or Job.
+apiVersion: cre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: megatron-bridge
+  labels:
+    {{- include "cre.labels" . | nindent 4 }}
+spec:
+  warmupSteps: 5
+  logInterval: 1
+  workerStrategy:
+    type: Multi
+    lifecyclePod: first
+    trainingStepPod: last
+  timestamp:
+    layout: "2006-01-02 15:04:05.999999"
+  patterns:
+    trainingStep:
+      regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?)\]\s+iteration\s+(?P<iteration>\d+)/\s*\d+\s*\|.*elapsed time per iteration \(ms\):\s*(?P<elapsedTime>[\d.]+)\s*\|(?:.*throughput per GPU \(TFLOP/s/GPU\):\s*(?P<tflops>[\d.]+)\s*\|)?.*lm loss:\s*(?P<loss>[\d.eE+\-]+)'
+      example: '[2026-04-10 05:07:38] iteration        2/      50 | consumed samples:        16384 | elapsed time per iteration (ms): 26333.1 | throughput per GPU (TFLOP/s/GPU): 194.2 | lm loss: 1.189539E+01'
+      units:
+        elapsedTime: ms
+    checkpointSave:
+      regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?)\]\s+saving checkpoint at iteration\s+(?P<step>\d+)\s+to\s+(?P<path>\S+)'
+      example: '[2026-02-05 17:07:36.379347] saving checkpoint at iteration     100 to /mnt/workspace/checkpoints in torch_dist format'
+    checkpointDone:
+      regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?)\]\s+scheduled an async checkpoint save at iteration\s+(?P<step>\d+)\s+to\s+(?P<path>\S+)'
+      example: '[2026-02-05 17:08:12.482363] scheduled an async checkpoint save at iteration     100 to /mnt/workspace/checkpoints'
+    checkpointRestore:
+      regex: 'Loading checkpoint from (?P<path>\S+)'
+      example: 'Loading checkpoint from /mnt/workspace/checkpoints'
+    applicationStart:
+      regex: 'using world size: \d+, data-parallel size: \d+, context-parallel size: \d+,.* tensor-model-parallel size: \d+, pipeline-model-parallel size: \d+'
+      example: 'using world size: 512, data-parallel size: 8, context-parallel size: 1, tensor-model-parallel size: 1, pipeline-model-parallel size: 4'

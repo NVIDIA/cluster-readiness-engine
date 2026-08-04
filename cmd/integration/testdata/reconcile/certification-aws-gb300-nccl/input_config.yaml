@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: aws-nc-g3-communication-n-a39c5
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: aws-nc-g3
+    namespace: default
+  - kind: Workflow
+    name: aws-nc-g3-communication-n-a39c5
+    namespace: default

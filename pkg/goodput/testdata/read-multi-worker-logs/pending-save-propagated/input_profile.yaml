@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: nemo6-multi-worker
+spec:
+  timestamp:
+    layout: "2006-01-02 15:04:05.999999"
+  workerStrategy:
+    type: Multi
+    replicatedJobName: worker
+  patterns:
+    trainingStep:
+      regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\]\s+iteration\s+(?P<iteration>\d+)/\s*\d+\s*\|.*elapsed time per iteration \(ms\):\s*(?P<elapsedTime>[\d.]+)\s*\|.*throughput per GPU \(TFLOP/s/GPU\):\s*(?P<tflops>[\d.]+)\s*\|.*lm loss:\s*(?P<loss>[\d.eE+\-]+)'
+      example: '[2026-02-05 11:26:00.000000] iteration      250/  158945 | consumed samples: 768 | elapsed time per iteration (ms): 1000.0 | throughput per GPU (TFLOP/s/GPU): 140.0 | lm loss: 1.200000E+01'
+      units:
+        elapsedTime: ms
+    checkpointSave:
+      regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\]\s+saving checkpoint at iteration\s+(?P<step>\d+)\s+to\s+(?P<path>\S+)'
+      example: '[2026-02-05 11:26:59.000000] saving checkpoint at iteration     250 to /checkpoints in torch_dist format'
+    checkpointDone:
+      regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\]\s+scheduled an async checkpoint save at iteration\s+(?P<step>\d+)\s+to\s+(?P<path>\S+)'
+      example: '[2026-02-05 11:27:22.000000] scheduled an async checkpoint save at iteration     250 to /checkpoints'
