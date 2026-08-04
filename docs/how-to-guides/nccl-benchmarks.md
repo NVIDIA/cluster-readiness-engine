@@ -24,7 +24,7 @@ The controller measures bus bandwidth for each collective and compares against p
 ## Via WorkloadRun (ad hoc)
 
 ```yaml
-apiVersion: excalibur.nvidia.com/v1alpha1
+apiVersion: cre.nvidia.com/v1alpha1
 kind: WorkloadRun
 metadata:
   name: nccl-all-reduce

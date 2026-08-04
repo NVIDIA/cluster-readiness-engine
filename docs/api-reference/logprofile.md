@@ -11,7 +11,7 @@ description: CRD reference for the LogProfile resource.
 ## Example
 
 ```yaml
-apiVersion: excalibur.nvidia.com/v1alpha1
+apiVersion: cre.nvidia.com/v1alpha1
 kind: LogProfile
 metadata:
   name: nemo-training
@@ -42,7 +42,7 @@ _Generated from CRD schema — coming soon._
 
 ## Built-in profiles
 
-The following LogProfiles are installed by `xcalctl setup init`:
+The following LogProfiles are installed by `ncrectl setup init`:
 
 | Name | Framework |
 |------|-----------|

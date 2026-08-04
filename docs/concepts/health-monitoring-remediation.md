@@ -26,7 +26,7 @@ Custom detectors can be registered by implementing the `NodeFailureDetector` int
 
 When a `Certification` fails, the controller auto-creates a `Remediation` resource targeting the affected nodes. The `Remediation` controller:
 
-1. **Taints** the nodes with `excalibur.nvidia.com/preflight-failed:NoExecute` — evicts existing workloads and prevents new scheduling
+1. **Taints** the nodes with `cre.nvidia.com/preflight-failed:NoExecute` — evicts existing workloads and prevents new scheduling
 2. **Cordons** the nodes — marks them unschedulable
 3. **Sets conditions** on the node objects documenting the failure reason
 

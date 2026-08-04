@@ -10,12 +10,12 @@ description: Run a distributed training or NCCL workload without writing a full 
 
 ## Before you begin
 
-[Install xcalctl and set up the cluster](./install.md) before continuing.
+[Install ncrectl and set up the cluster](./install.md) before continuing.
 
 ## Define a WorkloadRun
 
 ```yaml
-apiVersion: excalibur.nvidia.com/v1alpha1
+apiVersion: cre.nvidia.com/v1alpha1
 kind: WorkloadRun
 metadata:
   name: nccl-all-reduce
@@ -34,18 +34,18 @@ spec:
 ## Run it
 
 ```bash
-xcalctl workloadrun run \
+ncrectl workloadrun run \
   --image-pull-secret ngc-secret \
   --wait \
   nccl-all-reduce.yaml
 ```
 
-xcalctl auto-detects the platform and GPU architecture from the cluster's node labels, applies the appropriate overrides, and streams log output until the workload completes.
+ncrectl auto-detects the platform and GPU architecture from the cluster's node labels, applies the appropriate overrides, and streams log output until the workload completes.
 
 ## View results
 
 ```bash
-xcalctl workloadrun report nccl-all-reduce
+ncrectl workloadrun report nccl-all-reduce
 ```
 
 For workloads with `bandwidthMeasurement` configured, the report includes per-bus bandwidth results parsed from the NCCL output.

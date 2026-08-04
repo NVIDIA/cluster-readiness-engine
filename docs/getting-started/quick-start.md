@@ -6,11 +6,11 @@ description: Certify a GPU cluster end-to-end in minutes.
 {/* SPDX-License-Identifier: Apache-2.0 */}
 
 
-This guide walks through a full cluster certification: install xcalctl, run the certification suite, and review the results.
+This guide walks through a full cluster certification: install ncrectl, run the certification suite, and review the results.
 
 ## Before you begin
 
-[Install xcalctl and set up the cluster](./install.md) before continuing.
+[Install ncrectl and set up the cluster](./install.md) before continuing.
 
 You will also need an NGC API key to pull the certification workload images.
 
@@ -19,7 +19,7 @@ You will also need an NGC API key to pull the certification workload images.
 Create a `certification.yaml` targeting your GPU nodes:
 
 ```yaml
-apiVersion: excalibur.nvidia.com/v1alpha1
+apiVersion: cre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: gpu-cluster-cert
@@ -38,10 +38,10 @@ spec:
 
 ## Run the certification
 
-Use `xcalctl certification run` to handle the full lifecycle — apply the manifest, wait for completion, print the report, and clean up:
+Use `ncrectl certification run` to handle the full lifecycle — apply the manifest, wait for completion, print the report, and clean up:
 
 ```bash
-xcalctl certification run \
+ncrectl certification run \
   --cert-file certification.yaml \
   --image-pull-secret ngc-secret \
   --wait
@@ -49,10 +49,10 @@ xcalctl certification run \
 
 ## Review the results
 
-When the certification completes, xcalctl prints a pass/fail summary per node group and category. A full report is available with:
+When the certification completes, ncrectl prints a pass/fail summary per node group and category. A full report is available with:
 
 ```bash
-xcalctl certification report gpu-cluster-cert
+ncrectl certification report gpu-cluster-cert
 ```
 
 Failed categories indicate nodes that did not meet performance thresholds. The controller automatically taints and cordons those nodes so production workloads avoid them.

@@ -40,8 +40,8 @@ The `init()` registration is picked up automatically as long as the package is b
 ## Verify
 
 ```bash
-go build -o bin/xcalctl ./tools/xcalctl/
-./bin/xcalctl certification render --platform aws /tmp/my-cert.yaml
+go build -o bin/ncrectl ./tools/ncrectl/
+./bin/ncrectl certification render --platform aws /tmp/my-cert.yaml
 ```
 
 Check the rendered Workflow for correct resource requests, env vars, and override annotations.

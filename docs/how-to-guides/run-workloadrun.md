@@ -11,7 +11,7 @@ description: Run an ad-hoc distributed workload against a specific set of nodes.
 ## Basic example
 
 ```yaml
-apiVersion: excalibur.nvidia.com/v1alpha1
+apiVersion: cre.nvidia.com/v1alpha1
 kind: WorkloadRun
 metadata:
   name: my-workload
@@ -25,7 +25,7 @@ spec:
 ```
 
 ```bash
-xcalctl workloadrun run --image-pull-secret ngc-secret --wait my-workload.yaml
+ncrectl workloadrun run --image-pull-secret ngc-secret --wait my-workload.yaml
 ```
 
 ## Targeting specific nodes
@@ -57,7 +57,7 @@ spec:
 ## View results
 
 ```bash
-xcalctl workloadrun report my-workload
+ncrectl workloadrun report my-workload
 ```
 
 See [API Reference: WorkloadRun](../api-reference/workloadrun.md) for the full spec.

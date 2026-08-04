@@ -8,7 +8,7 @@ description: Platform-specific guides for running a full cluster certification o
 
 ## Before you begin
 
-- [Install xcalctl and set up the controller](../getting-started/install.md)
+- [Install ncrectl and set up the controller](../getting-started/install.md)
 - Confirm your kubeconfig points at the target cluster
 - Have an NGC API key available for image pulls
 
@@ -17,7 +17,7 @@ description: Platform-specific guides for running a full cluster certification o
 ### GB200 (EFA interconnect)
 
 ```yaml
-apiVersion: excalibur.nvidia.com/v1alpha1
+apiVersion: cre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: gb200-cert
@@ -36,7 +36,7 @@ spec:
 ```
 
 ```bash
-xcalctl certification run --cert-file gb200-cert.yaml --wait
+ncrectl certification run --cert-file gb200-cert.yaml --wait
 ```
 
 The controller auto-detects AWS + GB200 and applies EFA-specific resources (`hugepages-2Mi`, `vpc.amazonaws.com/efa: 4`, EFA hostPath volume) automatically.
@@ -69,10 +69,10 @@ _Content coming soon._
 
 ```bash
 # Watch overall status
-kubectl get certifications.excalibur.nvidia.com -w
+kubectl get certifications.cre.nvidia.com -w
 
 # Watch individual workflows
-kubectl get workflows.excalibur.nvidia.com -w
+kubectl get workflows.cre.nvidia.com -w
 
 # Tail controller logs
 kubectl logs -n cluster-readiness-engine deploy/cluster-readiness-engine-controller -f
@@ -81,7 +81,7 @@ kubectl logs -n cluster-readiness-engine deploy/cluster-readiness-engine-control
 ## Reviewing results
 
 ```bash
-xcalctl certification report <name>
+ncrectl certification report <name>
 ```
 
 - **Passed** — all categories met their thresholds. Cluster is ready.

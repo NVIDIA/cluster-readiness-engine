@@ -6,7 +6,7 @@ description: Kubernetes CRD reference for the Cluster Readiness Engine.
 {/* SPDX-License-Identifier: Apache-2.0 */}
 
 
-The Cluster Readiness Engine defines the following custom resources under the `excalibur.nvidia.com/v1alpha1` API group.
+The Cluster Readiness Engine defines the following custom resources under the `cre.nvidia.com/v1alpha1` API group.
 
 | Resource | Scope | Purpose |
 |----------|-------|---------|

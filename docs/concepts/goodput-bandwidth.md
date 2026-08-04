@@ -14,7 +14,7 @@ Goodput is the fraction of elapsed time during which a training job is making us
 
 A `LogProfile` (cluster-scoped) defines named regex capture groups that match log lines from a training framework. The goodput calculator uses the captured timestamps and step counts to determine when the job was making progress.
 
-Built-in LogProfiles are installed by `xcalctl setup init` for supported frameworks (NeMo, PyTorch Lightning, etc.).
+Built-in LogProfiles are installed by `ncrectl setup init` for supported frameworks (NeMo, PyTorch Lightning, etc.).
 
 ### Interpreting goodput
 
@@ -30,4 +30,4 @@ Each catalog entry defines expected bandwidth thresholds per GPU architecture. A
 
 ### Report
 
-`xcalctl certification report` and `xcalctl workloadrun report` display measured vs. expected bandwidth with a pass/fail indicator per collective operation.
+`ncrectl certification report` and `ncrectl workloadrun report` display measured vs. expected bandwidth with a pass/fail indicator per collective operation.

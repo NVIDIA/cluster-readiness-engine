@@ -9,8 +9,8 @@ description: Read and act on certification and WorkloadRun reports.
 ## Get a report
 
 ```bash
-xcalctl certification report <name>
-xcalctl workloadrun report <name>
+ncrectl certification report <name>
+ncrectl workloadrun report <name>
 ```
 
 ## Report structure
@@ -46,7 +46,7 @@ Below-threshold results indicate a network issue — degraded link, misconfigure
 ## Remediated nodes
 
 ```bash
-kubectl get remediations.excalibur.nvidia.com
+kubectl get remediations.cre.nvidia.com
 kubectl describe remediation <name>
 ```
 

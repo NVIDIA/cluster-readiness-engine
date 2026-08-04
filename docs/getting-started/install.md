@@ -1,6 +1,6 @@
 ---
 title: Install
-description: Install the xcalctl CLI and set up the Cluster Readiness Engine controller on your Kubernetes cluster.
+description: Install the ncrectl CLI and set up the Cluster Readiness Engine controller on your Kubernetes cluster.
 ---
 {/* SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}
 {/* SPDX-License-Identifier: Apache-2.0 */}
@@ -22,15 +22,15 @@ curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/dow
 Verify the installation:
 
 ```bash
-xcalctl version
+ncrectl version
 ```
 
 ## Set up the cluster
 
-`xcalctl setup init` installs all controller dependencies (Kubeflow Trainer, CRDs, the controller deployment, and built-in LogProfiles) in a single step.
+`ncrectl setup init` installs all controller dependencies (Kubeflow Trainer, CRDs, the controller deployment, and built-in LogProfiles) in a single step.
 
 ```bash
-xcalctl setup init
+ncrectl setup init
 ```
 
 The command will:
@@ -45,7 +45,7 @@ The command will:
 If your cluster requires an NGC image pull secret to pull the certification workload images, pass it during setup:
 
 ```bash
-xcalctl setup init --image-pull-secret ngc-secret
+ncrectl setup init --image-pull-secret ngc-secret
 ```
 
 ## Verify
@@ -59,13 +59,13 @@ kubectl get pods -n cluster-readiness-engine
 Check that the CRDs are installed:
 
 ```bash
-kubectl get crds | grep excalibur.nvidia.com
+kubectl get crds | grep cre.nvidia.com
 ```
 
 ## Uninstall
 
 ```bash
-xcalctl setup reset
+ncrectl setup reset
 ```
 
 This removes the controller, CRDs, and all associated resources. It does not remove Kubeflow Trainer.

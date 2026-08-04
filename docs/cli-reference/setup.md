@@ -1,17 +1,17 @@
 ---
-title: xcalctl setup
+title: ncrectl setup
 description: Install and uninstall the Cluster Readiness Engine controller and its dependencies.
 ---
 {/* SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}
 {/* SPDX-License-Identifier: Apache-2.0 */}
 
 
-## xcalctl setup init
+## ncrectl setup init
 
 Installs all controller dependencies and deploys the controller.
 
 ```bash
-xcalctl setup init [flags]
+ncrectl setup init [flags]
 ```
 
 ### What it installs
@@ -32,23 +32,23 @@ xcalctl setup init [flags]
 ### Example
 
 ```bash
-xcalctl setup init --image-pull-secret ngc-secret
+ncrectl setup init --image-pull-secret ngc-secret
 ```
 
-## xcalctl setup status
+## ncrectl setup status
 
 Shows the current installation status of each component.
 
 ```bash
-xcalctl setup status
+ncrectl setup status
 ```
 
-## xcalctl setup reset
+## ncrectl setup reset
 
 Uninstalls the controller and CRDs. Does not remove Kubeflow Trainer.
 
 ```bash
-xcalctl setup reset [--namespace cluster-readiness-engine]
+ncrectl setup reset [--namespace cluster-readiness-engine]
 ```
 
 <Warning>
