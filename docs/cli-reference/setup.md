@@ -8,7 +8,7 @@ description: Install and uninstall the Cluster Readiness Engine controller and i
 
 ## ncrectl setup init
 
-Installs all controller dependencies and deploys the controller.
+Installs CRE via Helm and its dependencies on the target cluster.
 
 ```bash
 ncrectl setup init [flags]
@@ -16,23 +16,36 @@ ncrectl setup init [flags]
 
 ### What it installs
 
-1. Kubeflow Trainer (required for `TrainJob` workloads)
-2. Cluster Readiness Engine CRDs
-3. Controller deployment
-4. Built-in LogProfiles for supported frameworks
+Runs two phases in order:
+
+| Phase | What |
+|-------|------|
+| `deps` | Kubeflow Trainer v2.2.0 |
+| `helm` | CRE Helm chart (CRDs, controller, built-in LogProfiles) pulled from GHCR |
+
+Use `--skip-phases=deps` to skip Kubeflow Trainer if it is already installed.
 
 ### Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--image-pull-secret` | — | Name of an existing pull secret for NGC images |
-| `--namespace` | `cluster-readiness-engine` | Namespace to install into |
-| `--dry-run` | `false` | Print resources without applying |
+| `--image-pull-secret` | — | GitHub token — the CLI creates a `ghcr.io` pull secret and uses it to authenticate the Helm chart pull |
+| `--image` | — | Override the controller image (default: `ghcr.io/nvidia/cluster-readiness-engine/manager:<version>`) |
+| `--skip-phases` | — | Comma-separated phases to skip (e.g., `deps`) |
+| `--version` | — | Helm chart version to install (required for dev builds) |
+| `--auto-approve` | `false` | Skip the interactive confirmation prompt (for CI/automation) |
 
 ### Example
 
 ```bash
-ncrectl setup init --image-pull-secret ngc-secret
+# Standard install
+ncrectl setup init
+
+# With GHCR authentication
+ncrectl setup init --image-pull-secret $GITHUB_TOKEN
+
+# Skip Kubeflow Trainer (already installed)
+ncrectl setup init --skip-phases=deps
 ```
 
 ## ncrectl setup status
@@ -45,12 +58,41 @@ ncrectl setup status
 
 ## ncrectl setup reset
 
-Uninstalls the controller and CRDs. Does not remove Kubeflow Trainer.
+Removes CRE and its dependencies from the target cluster. Kubeflow Trainer is removed by default.
 
 ```bash
-ncrectl setup reset [--namespace cluster-readiness-engine]
+ncrectl setup reset [flags]
+```
+
+### What it removes
+
+Runs three phases in order:
+
+| Phase | What |
+|-------|------|
+| `cr` | All CRE custom resource instances (Certifications, Workflows, Jobs, Remediations) |
+| `helm` | CRE Helm release (CRDs, controller, LogProfiles) |
+| `deps` | Kubeflow Trainer |
+
+Use `--skip-phases=deps` to keep Kubeflow Trainer.
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--skip-phases` | — | Comma-separated phases to skip (e.g., `deps`) |
+| `--auto-approve` | `false` | Skip the interactive confirmation prompt |
+
+### Example
+
+```bash
+# Full uninstall (including Kubeflow Trainer)
+ncrectl setup reset
+
+# Keep Kubeflow Trainer
+ncrectl setup reset --skip-phases=deps
 ```
 
 <Warning>
-`reset` deletes all Certification, Workflow, Job, and Remediation resources in the namespace. This is irreversible.
+`reset` deletes all Certification, Workflow, Job, and Remediation resources. This is irreversible.
 </Warning>

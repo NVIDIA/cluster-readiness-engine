@@ -56,6 +56,10 @@ navigation:
         path: cli-reference/certification.md
       - page: workloadrun
         path: cli-reference/workloadrun.md
+      - page: cluster
+        path: cli-reference/cluster.md
+      - page: workflow
+        path: cli-reference/workflow.md
 
   - section: API Reference
     contents:

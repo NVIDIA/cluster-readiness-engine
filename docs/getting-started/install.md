@@ -27,25 +27,21 @@ ncrectl version
 
 ## Set up the cluster
 
-`ncrectl setup init` installs all controller dependencies (Kubeflow Trainer, CRDs, the controller deployment, and built-in LogProfiles) in a single step.
+`ncrectl setup init` installs the controller and its dependencies in two phases:
+
+1. **deps** — Kubeflow Trainer (required for `TrainJob` workloads)
+2. **helm** — CRE Helm chart (CRDs, controller deployment, built-in LogProfiles)
 
 ```bash
 ncrectl setup init
 ```
 
-The command will:
+### GHCR authentication
 
-1. Install Kubeflow Trainer (required for `TrainJob` workloads)
-2. Install the Cluster Readiness Engine CRDs
-3. Deploy the controller
-4. Install built-in LogProfiles for supported frameworks
-
-### Image pull secret
-
-If your cluster requires an NGC image pull secret to pull the certification workload images, pass it during setup:
+The controller image and Helm chart are pulled from GHCR. Pass a GitHub token to authenticate — the CLI creates the pull secret for you:
 
 ```bash
-ncrectl setup init --image-pull-secret ngc-secret
+ncrectl setup init --image-pull-secret $GITHUB_TOKEN
 ```
 
 ## Verify
@@ -68,4 +64,8 @@ kubectl get crds | grep cre.nvidia.com
 ncrectl setup reset
 ```
 
-This removes the controller, CRDs, and all associated resources. It does not remove Kubeflow Trainer.
+This removes all CRE custom resources, the controller, CRDs, and Kubeflow Trainer. To keep Kubeflow Trainer, pass `--skip-phases=deps`:
+
+```bash
+ncrectl setup reset --skip-phases=deps
+```

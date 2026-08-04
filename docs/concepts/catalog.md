@@ -6,11 +6,11 @@ description: How the certification catalog maps domain/variant pairs to workload
 {/* SPDX-License-Identifier: Apache-2.0 */}
 
 
-The catalog is the registry of all supported certification categories. It maps `{domain, variant}` pairs to `WorkflowSpec` builders — the concrete workload definitions that run during certification.
+The catalog is the registry of all supported certification categories. It maps `{domain, variant}` pairs to workload definitions — the concrete specs that run during certification.
 
 ## Structure
 
-Each catalog entry lives in `internal/catalog/entries/<domain>/<variant>/` and registers itself via a Go `init()` function. There is no config file or central manifest; adding a new category means adding a new Go file.
+Each catalog entry is a YAML file at `pkg/catalog/entries/<domain>/<variant>.yaml`. The file defines the base workload spec (dependencies, job template, orchestration) plus platform- and GPU-specific overrides. The catalog loader discovers entries by scanning that directory tree at startup.
 
 ## Domains and variants
 
@@ -19,10 +19,11 @@ Each catalog entry lives in `internal/catalog/entries/<domain>/<variant>/` and r
 | `communication` | `nccl-all-reduce` | All-reduce collective bandwidth |
 | `communication` | `nccl-all-gather` | All-gather collective bandwidth |
 | `communication` | `nccl-alltoall` | All-to-all collective bandwidth |
-| `training` | `nemotron4-15b` | End-to-end training throughput (NeMo, 15B param model) |
-| `training` | `nemotron6` | End-to-end training throughput (NeMo, Nemotron 6) |
-
-_This table is a stub — full catalog reference TBD._
+| `communication` | `nccl-loopback` | Loopback bandwidth (single-node NVLink/NVSwitch) |
+| `communication` | `nccl-loopback-nvswitch` | Loopback bandwidth via NVSwitch fabric |
+| `diagnostics` | `dcgm-level4` | DCGM level-4 diagnostics |
+| `training` | `nemotron5-8b` | End-to-end training throughput (NeMo, Nemotron 5 8B) |
+| `training` | `nemotron5-56b` | End-to-end training throughput (NeMo, Nemotron 5 56B) |
 
 ## Selecting categories
 
@@ -34,12 +35,18 @@ spec:
     - domain: communication
       variant: nccl-all-reduce
     - domain: training
-      variant: nemotron4-15b
+      variant: nemotron5-8b
+```
+
+To see all available categories from the CLI:
+
+```bash
+ncrectl certification list-categories
 ```
 
 ## Overrides
 
-Catalog entries define a base `WorkflowSpec`. Platform-specific and GPU-specific overrides are applied at render time based on the detected environment. See [Platform Detection & Overrides](./platform-detection.md) for override semantics.
+Catalog entries define a base workload spec. Platform-specific and GPU-specific overrides within the same YAML are applied at render time based on the detected environment. See [Platform Detection & Overrides](./platform-detection.md) for override semantics.
 
 ## Adding a custom entry
 
