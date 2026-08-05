@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Documentation Request
+description: Request new or missing documentation
+title: "[Docs]: "
+labels: ["area/docs", "needs-triage"]
+
+body:
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Please review existing [documentation issues](https://github.com/NVIDIA/cluster-readiness-engine/issues?q=is%3Aopen+is%3Aissue+label%3Aarea%2Fdocs) before submitting.
+      options:
+        - label: I searched existing documentation and open documentation issues
+          required: true
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our [Code of Conduct](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/CODE_OF_CONDUCT.md).
+      options:
+        - label: I agree to follow the project's Code of Conduct
+          required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - Critical (currently preventing usage)
+        - High
+        - Medium
+        - Low (would be nice)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Documentation Area
+      options:
+        - Installation / Deployment
+        - Configuration
+        - API / CRDs
+        - Catalog / Workloads
+        - CLI (ncrectl)
+        - Controller / Reconcilers
+        - Runbooks
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: missing_docs
+    attributes:
+      label: Missing Documentation
+      description: What future or missing documentation would help?
+      placeholder: A command, configuration option, or workflow is mentioned but not explained.
+    validations:
+      required: true
+
+  - type: textarea
+    id: searched_locations
+    attributes:
+      label: Where did you look?
+      description: List docs, files, or links you checked before opening this request.
+      placeholder: |
+        - README.md
+        - docs/designs/
+        - site/content/docs/
+    validations:
+      required: false
