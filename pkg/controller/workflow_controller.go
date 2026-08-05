@@ -519,31 +519,30 @@ func buildTolerations(selectors []burninv1alpha1.TaintSelector) []corev1.Tolerat
 
 // hasRunningGroups returns true if any group is in Running phase.
 // isBelowBandwidthThreshold checks if a Job's BandwidthMeasurement peak BusBW
-// fails the given CEL threshold expression. Returns (below, pending) where
-// pending=true means a measurement exists but has no results yet.
-func (r *WorkflowReconciler) isBelowBandwidthThreshold(ctx context.Context, jobName, namespace, expr string) (below bool, pending bool) {
+// fails the given CEL threshold expression. Returns (below, pending, err) where:
+//   - pending=true means to requeue and try again later (BM absent or has no results yet)
+//   - err!=nil means the gate could not be evaluated; the caller should fail closed
+func (r *WorkflowReconciler) isBelowBandwidthThreshold(ctx context.Context, jobName, namespace, expr string) (below bool, pending bool, err error) {
 	var bwList burninv1alpha1.BandwidthMeasurementList
-	if err := r.List(ctx, &bwList, client.InNamespace(namespace)); err != nil {
-		return false, false
+	if listErr := r.List(ctx, &bwList, client.InNamespace(namespace)); listErr != nil {
+		return false, false, fmt.Errorf("list BandwidthMeasurements: %w", listErr)
 	}
 	for _, bm := range bwList.Items {
 		if bm.Spec.JobRef.Name != jobName {
 			continue
 		}
 		if len(bm.Status.Results) == 0 {
-			return false, true
+			return false, true, nil
 		}
-		last := bm.Status.Results[len(bm.Status.Results)-1]
-		var measured float64
-		_, _ = fmt.Sscanf(last.BusBW, "%f", &measured)
-		passed, err := threshold.Evaluate(measured, expr)
-		if err != nil {
-			logf.FromContext(ctx).Error(err, "Failed to evaluate bandwidth threshold", "job", jobName)
-			return false, false
+		measured := maxBusBandwidth(bm.Status.Results)
+		passed, evalErr := threshold.Evaluate(measured, expr)
+		if evalErr != nil {
+			return false, false, fmt.Errorf("evaluate bandwidth threshold for job %s: %w", jobName, evalErr)
 		}
-		return !passed, false
+		return !passed, false, nil
 	}
-	return false, false
+	// No BandwidthMeasurement found for this job yet — requeue and wait for it.
+	return false, true, nil
 }
 
 // deleteWorkloadForJob deletes the workload (e.g., TrainJob) referenced by a Job
@@ -2219,7 +2218,14 @@ func (r *WorkflowReconciler) collectDiagnoseRoundResults(
 		switch g.Phase {
 		case burninv1alpha1.GroupSucceeded:
 			if bwThresholdExpr != "" && g.JobRef != nil {
-				below, pending := r.isBelowBandwidthThreshold(ctx, g.JobRef.Name, workflow.Namespace, bwThresholdExpr)
+				below, pending, bwErr := r.isBelowBandwidthThreshold(ctx, g.JobRef.Name, workflow.Namespace, bwThresholdExpr)
+				if bwErr != nil {
+					log.Error(bwErr, "Bandwidth threshold could not be evaluated, treating group as failed", "group", g.Name)
+					failedGroups = append(failedGroups, orchestration.Group{
+						Name: g.Name, Nodes: g.Nodes, Domains: g.Domains,
+					})
+					continue
+				}
 				if pending {
 					log.V(1).Info("Bandwidth measurement pending for group, requeueing", "group", g.Name)
 					return nil, true

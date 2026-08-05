@@ -1,0 +1,130 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Regression test for the bandwidth gate fail-open bug (issue #5).
+# The busBandwidthGBps threshold expression is syntactically invalid CEL.
+# Previously threshold.Evaluate returning an error caused isBelowBandwidthThreshold
+# to return (false, false) — passing the gate. After the fix it returns an error
+# which causes the group to be treated as failed (fail closed).
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-a1
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.clique: clique-a
+    kubernetes.io/hostname: node-a1
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-a2
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.clique: clique-a
+    kubernetes.io/hostname: node-a2
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-bw-invalid-expr
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - mpirun
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+    diagnose:
+      minGroupSize: 2
+      topologyKey: nvidia.com/gpu.clique
+  validation:
+    performance:
+      enabled: true
+      thresholds:
+        thresholds:
+          busBandwidthGBps: "not valid cel!!!"
+status:
+  orchestration:
+    totalNodes: 2
+    nodesPerJob: 2
+    totalGroups: 1
+    currentIteration: 1
+    detectedPlatform: onprem
+    detectedGPUArchitecture: unknown
+    diagnose:
+      stage: intra-screening
+      round: 0
+    groups:
+      - name: screen-0
+        nodes: [node-a1, node-a2]
+        domains: [clique-a]
+        phase: Running
+        jobRef:
+          apiVersion: cre.nvidia.com/v1alpha1
+          kind: Job
+          name: test-bw-invalid-expr-screen-0-iter-1
+          namespace: default
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-bw-invalid-expr-screen-0-iter-1
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: cluster-readiness-engine
+    cre.nvidia.com/workflow: test-bw-invalid-expr
+    cre.nvidia.com/group: screen-0
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - mpirun
+        numNodes: 2
+status:
+  conditions:
+    - type: Succeeded
+      status: "True"
+      reason: WorkloadCompleted
+      message: "Workload completed"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: Failed
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: BandwidthMeasurement
+metadata:
+  name: test-bw-invalid-expr-screen-0-bw
+  namespace: default
+spec:
+  jobRef:
+    apiGroup: cre.nvidia.com
+    kind: Job
+    name: test-bw-invalid-expr-screen-0-iter-1
+  logProfileRef: nccl-bandwidth
+  testType: all_reduce
+status:
+  results:
+    - sizeBytes: 17179869184
+      algBW: "300.00"
+      busBW: "500.00"
+      samples: 5

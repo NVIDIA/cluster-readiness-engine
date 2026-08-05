@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# screen-1 has no BandwidthMeasurement; the workflow must requeue without
+# advancing past intra-screening or marking any nodes healthy.
+waitFor:
+  kind: Workflow
+  name: test-bw-missing-bm
+  namespace: default
+  condition: InProgress
+collect:
+  - kind: Workflow
+    name: test-bw-missing-bm
+    namespace: default

@@ -1,0 +1,139 @@
+{
+  "Workflow/test-bw-invalid-expr": {
+    "kind": "Workflow",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-bw-invalid-expr",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "mpirun"
+                ],
+                "numNodes": 2
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "diagnose": {
+          "minGroupSize": 2,
+          "topologyKey": "nvidia.com/gpu.clique"
+        },
+        "execution": {},
+        "iterations": 1
+      },
+      "validation": {
+        "performance": {
+          "enabled": true,
+          "tracking": {},
+          "thresholds": {
+            "thresholds": {
+              "busBandwidthGBps": "not valid cel!!!"
+            }
+          }
+        }
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "IterationsFailed",
+          "message": "No healthy reference node; 2 suspects marked failed"
+        }
+      ],
+      "failedNodesRef": {
+        "apiGroup": null,
+        "kind": "ConfigMap",
+        "name": "failed-nodes"
+      },
+      "orchestration": {
+        "totalNodes": 2,
+        "nodesPerJob": 2,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "completedIterations": 1,
+        "detectedPlatform": "onprem",
+        "detectedGPUArchitecture": "unknown",
+        "diagnose": {
+          "stage": "complete",
+          "round": 1,
+          "suspectNodes": [
+            "node-a1",
+            "node-a2"
+          ],
+          "screeningResults": {
+            "clique-a": {
+              "nodes": [
+                "node-a1",
+                "node-a2"
+              ],
+              "passed": false
+            }
+          }
+        },
+        "groups": [
+          {
+            "name": "screen-0",
+            "nodes": [
+              "node-a1",
+              "node-a2"
+            ],
+            "domains": [
+              "clique-a"
+            ],
+            "phase": "Succeeded",
+            "jobRef": {
+              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "test-bw-invalid-expr-screen-0-iter-1",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
