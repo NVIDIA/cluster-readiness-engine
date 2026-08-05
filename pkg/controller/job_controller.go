@@ -270,13 +270,20 @@ func (r *JobReconciler) reconcileWorkload(ctx context.Context, job *burninv1alph
 
 	// If we already have a workload reference in status, check its status
 	if job.Status.WorkloadRef != nil {
+		// These stay non-fatal so a measurement problem cannot block workload
+		// status updates. Correctness is preserved by checkPerformanceThresholds,
+		// which fails closed when a configured threshold has no measured value.
+		// The event exists so a persistent creation failure is visible rather
+		// than only appearing later as an opaque MeasurementTimeout.
 		if err := r.ensureGoodputMeasurement(ctx, job); err != nil {
 			logf.FromContext(ctx).Error(err, "Failed to ensure GoodputMeasurement")
-			// Non-fatal: don't block workload status updates
+			r.warnf(job, ReasonMeasurementCreationError,
+				"Failed to ensure GoodputMeasurement: %v", err)
 		}
 		if err := r.ensureBandwidthMeasurement(ctx, job); err != nil {
 			logf.FromContext(ctx).Error(err, "Failed to ensure BandwidthMeasurement")
-			// Non-fatal: don't block workload status updates
+			r.warnf(job, ReasonMeasurementCreationError,
+				"Failed to ensure BandwidthMeasurement: %v", err)
 		}
 		return r.updateStatusFromWorkload(ctx, job)
 	}
@@ -333,10 +340,8 @@ func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *burninv
 		// Do not mark the Job as Failed — creation errors are transient
 		// (e.g. webhook denial because TrainingRuntime isn't ready yet).
 		log.Error(err, "Failed to create workload, will retry", "kind", gvk.Kind, "name", workloadName)
-		if r.Recorder != nil {
-			r.Recorder.Eventf(job, nil, corev1.EventTypeWarning, ReasonWorkloadCreationError,
-				ReasonWorkloadCreationError, "Failed to create %s/%s: %v", gvk.Kind, workloadName, err)
-		}
+		r.warnf(job, ReasonWorkloadCreationError,
+			"Failed to create %s/%s: %v", gvk.Kind, workloadName, err)
 		return ctrl.Result{}, fmt.Errorf("failed to create workload: %w", err)
 	}
 
@@ -1255,6 +1260,18 @@ func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *bur
 	}
 
 	return nil
+}
+
+// warnf emits a Warning event if the Recorder is configured. Every Job-tier
+// event is a warning; the Workflow reconciler's eventf takes an explicit type
+// because it emits Normal events too.
+//
+// Safe to call when Recorder is nil (e.g. in unit tests, or any embedding that
+// constructs JobReconciler directly).
+func (r *JobReconciler) warnf(obj runtime.Object, reason, messageFmt string, args ...any) {
+	if r.Recorder != nil {
+		r.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, reason, reason, messageFmt, args...)
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.
