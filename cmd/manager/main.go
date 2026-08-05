@@ -179,6 +179,7 @@ func newRootCommand() *cobra.Command {
 				Client:    mgr.GetClient(),
 				Scheme:    mgr.GetScheme(),
 				Clientset: clientset,
+				Recorder:  mgr.GetEventRecorder("job-controller"),
 			}).SetupWithManager(mgr); err != nil {
 				return fmt.Errorf("unable to create controller Job: %w", err)
 			}

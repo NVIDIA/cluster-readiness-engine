@@ -77,6 +77,13 @@ const (
 	ReasonWorkloadCreationError = "WorkloadCreationError"
 	ReasonWorkloadStalled       = "WorkloadStalled"
 
+	// ReasonMeasurementCreationError indicates a GoodputMeasurement or
+	// BandwidthMeasurement child resource could not be created. Handling is
+	// non-fatal, so this event is the operator-visible signal; a threshold that
+	// depends on the missing measurement still fails closed via
+	// ReasonMeasurementTimeout.
+	ReasonMeasurementCreationError = "MeasurementCreationError"
+
 	ReasonHardwareFailureDetected = "HardwareFailureDetected"
 )
 
