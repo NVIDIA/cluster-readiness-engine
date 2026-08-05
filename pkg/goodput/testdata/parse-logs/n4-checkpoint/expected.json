@@ -1,0 +1,17 @@
+{
+  "checkpoints": [
+    {
+      "path": "/path/to/checkpoint",
+      "saveDuration": 439.017,
+      "step": 149,
+      "timestamp": "2026-01-22T18:14:30.123Z"
+    }
+  ],
+  "lastCheckpoint": {
+    "path": "/path/to/checkpoint",
+    "saveDuration": 439.017,
+    "step": 149,
+    "timestamp": "2026-01-22T18:14:30.123Z"
+  },
+  "lastLogTimestamp": "2026-01-22T18:14:41.123Z"
+}

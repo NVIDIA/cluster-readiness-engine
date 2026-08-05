@@ -1,0 +1,32 @@
+{
+  "dependencies": [
+    {
+      "kind": "TrainingRuntime",
+      "name": "nemotron5-56b-runtime"
+    },
+    {
+      "kind": "ConfigMap",
+      "name": "nemotron5-56b-training-config"
+    }
+  ],
+  "found": true,
+  "jobTemplate": {
+    "goodputMeasurement": {
+      "logProfileRef": "megatron-training",
+      "sampleInterval": "10s"
+    },
+    "nodeHealthMonitorCEL": {
+      "expression": "node.spec.unschedulable == true"
+    },
+    "trainJob": {
+      "runtimeRef": "nemotron5-56b-runtime",
+      "trainerImage": "nvcr.io/nvidia/pytorch:25.08-py3"
+    }
+  },
+  "orchestration": {
+    "iterations": 1,
+    "targetNodeSelector": {
+      "nvidia.com/gpu.product": "NVIDIA-GB200-NVL72"
+    }
+  }
+}

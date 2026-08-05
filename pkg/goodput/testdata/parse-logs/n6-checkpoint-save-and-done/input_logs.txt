@@ -1,0 +1,2 @@
+2026-02-05T17:07:36.379347000Z [2026-02-05 17:07:36.379347] saving checkpoint at iteration     100 to /mnt/workspace/checkpoints in torch_dist format
+2026-02-05T17:13:37.825367000Z [2026-02-05 17:13:37.825367] successfully saved checkpoint from iteration     100 to /mnt/workspace/checkpoints

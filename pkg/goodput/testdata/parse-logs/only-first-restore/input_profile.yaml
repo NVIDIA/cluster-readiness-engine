@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: only-first-restore-test
+spec:
+  timestamp:
+    layout: "2006-01-02T15:04:05.999999999Z"
+  patterns:
+    checkpointRestore:
+      regex: 'Restoring from (?P<path>\S+) at step (?P<step>\d+)'
+      example: 'Restoring from /ckpt/step-100 at step 100'

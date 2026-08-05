@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+minGroupSize: 2
+round: 1
+failedGroups:
+  - name: bisect-0-full
+    nodes: [node-0, node-1, node-2, node-3, node-4, node-5, node-6]

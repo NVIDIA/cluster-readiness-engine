@@ -1,0 +1,88 @@
+{
+  "Job/test-hw-failed-job": {
+    "kind": "Job",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-hw-failed-job",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/finalizer"
+      ]
+    },
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "test-runtime",
+            "apiGroup": "trainer.kubeflow.org",
+            "kind": "TrainingRuntime"
+          },
+          "trainer": {
+            "image": "test-image:latest",
+            "command": [
+              "python",
+              "train.py"
+            ],
+            "numNodes": 1
+          },
+          "suspend": false,
+          "managedBy": "trainer.kubeflow.org/trainjob-controller"
+        }
+      },
+      "nodeHealthMonitor": {
+        "cel": {
+          "expression": "node.metadata.labels[\"nvidia.com/gpu.unhealthy\"] == \"true\""
+        }
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkloadRunning",
+          "message": "Workload TrainJob/test-hw-failed-job-workload is running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "HardwareFailed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "HardwareFailureDetected",
+          "message": "Hardware failure detected on node(s): [test-hw-node]"
+        }
+      ],
+      "failedNodes": [
+        {
+          "name": "test-hw-node",
+          "reason": "HardwareFailureDetected",
+          "message": "Hardware failure detected by node health check"
+        }
+      ],
+      "workloadRef": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainJob",
+        "name": "test-hw-failed-job-workload",
+        "namespace": "default"
+      }
+    }
+  }
+}

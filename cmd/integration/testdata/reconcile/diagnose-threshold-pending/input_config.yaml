@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Both screening jobs succeeded but screen-1's BandwidthMeasurement has no
+# results yet (log parsing hasn't finished). The workflow should requeue
+# without advancing the diagnose stage.
+waitFor:
+  kind: Workflow
+  name: test-diag-threshold
+  namespace: default
+  condition: InProgress
+collect:
+  - kind: Workflow
+    name: test-diag-threshold
+    namespace: default

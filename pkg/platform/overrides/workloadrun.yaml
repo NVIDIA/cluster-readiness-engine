@@ -1,0 +1,242 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Platform/GPU overrides for WorkloadRun.
+# Uses the same _lib/ fragments as catalog entries.
+# Template variables: .EntryName, .NodesPerJob, .GpusPerNode, .EnableMNNVL, .FrameworkType
+
+# --- GB200/GB300 (ComputeDomain + DRA) ---
+- when:
+    gpuArchitecture:
+      in: [gb200, gb300]
+  dependencies:
+{{ lib "deps/gb200-compute-domain-and-dra-torch.yaml" . | indent 2 }}
+
+# --- Topology key per platform (physical rack / T1 leaf switch) ---
+# Sets the node label used for intra-rack partitioning and for the
+# rack identifier exposed in WorkloadRun status / report.nodeResults[].
+# Scoped to GB200/GB300 to match the prior override scope. On these
+# architectures the physical rack resolves to the same group as
+# nvidia.com/gpu.clique (1 NVL72 per network domain) but uses the
+# universally-meaningful platform label so external orchestrators
+# can correlate report results back to the rack they targeted.
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      in: [gb200, gb300]
+  orchestration:
+    topology:
+      topologyKey: topology.k8s.aws/network-node-layer-1
+
+- when:
+    platform:
+      equals: gcp
+    gpuArchitecture:
+      in: [gb200, gb300]
+  orchestration:
+    topology:
+      topologyKey: cloud.google.com/gce-topology-block
+
+- when:
+    platform:
+      equals: azure
+    gpuArchitecture:
+      in: [gb200, gb300]
+  orchestration:
+    topology:
+      topologyKey: kubernetes.azure.com/ppg
+
+# --- AWS (NCCL plugin cleanup) ---
+# The pytorch NGC image ships NCCL_NET_PLUGIN=ofi and /opt/amazon/aws-ofi-nccl
+# for EFA clusters. On RoCE clusters (GB300) there are no EFA providers and the
+# plugin crashes. On EFA clusters (GB200/H100) the built-in IB/RDMA transport
+# works correctly without the plugin. Mirrors the catalog's nemotron training
+# override which applies the same cleanup for all AWS architectures.
+- when:
+    platform:
+      equals: aws
+  preCommand:
+    - "rm -rf /opt/amazon"
+    - "unset NCCL_NET_PLUGIN"
+    - "unset NCCL_TUNER_PLUGIN"
+    - "unset AWS_OFI_NCCL_VERSION"
+
+# --- AWS + MPI (NCCL plugin via mpirun -x) ---
+# For MPI workloads, preCommand unset on the launcher is not forwarded to
+# workers by OpenMPI. Use mpirun -x to explicitly set NCCL_NET_PLUGIN=none
+# on each worker process, overriding the pytorch image default of "ofi".
+{{- if eq .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: aws
+  mpiArgs:
+    - "-x"
+    - "NCCL_NET_PLUGIN=none"
+{{- end }}
+
+# --- AWS + GB200 (EFA) ---
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: gb200
+  dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: {{ .EntryName }}-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+          - name: node
+            template:
+              spec:
+                template:
+                  spec:
+                    containers:
+                    - name: node
+                      resources:
+                        limits:
+                          vpc.amazonaws.com/efa: 4
+                        requests:
+                          vpc.amazonaws.com/efa: 4
+
+# --- AWS + GB300 (RoCE) ---
+# Always use the torch variant (claim name "compute-domain") to match
+# the generic gb200/gb300 override above. The comm variant would
+# create a conflicting "compute-domain-channel" claim alongside the
+# generic "compute-domain" claim, causing the DRA driver to fail to
+# allocate. The catalog comm entries use a different override stack
+# that doesn't include the generic torch ComputeDomain.
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: gb300
+  dependencies:
+{{ lib "deps/gb300-roce-torch.yaml" . | indent 2 }}
+
+# --- AWS + H100 (EFA 32 devices) ---
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: h100
+  dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: {{ .EntryName }}-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+          - name: node
+            template:
+              spec:
+                template:
+                  spec:
+                    containers:
+                    - name: node
+                      resources:
+                        limits:
+                          vpc.amazonaws.com/efa: 32
+                        requests:
+                          vpc.amazonaws.com/efa: 32
+
+# --- GCP + H100 (FastRak NCCL env vars) ---
+- when:
+    platform:
+      equals: gcp
+    gpuArchitecture:
+      equals: h100
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/gcp-h100-fastrak-env.yaml" . | indent 12 }}
+
+# --- GCP + GB200/GB300 (RoCE RDMA networking) ---
+- when:
+    platform:
+      equals: gcp
+    gpuArchitecture:
+      in: [gb200, gb300]
+  dependencies:
+{{ lib "deps/gcp-gb200-roce-runtime-patch-training.yaml" . | indent 2 }}
+
+# --- Azure (InfiniBand) ---
+- when:
+    platform:
+      equals: azure
+  dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: {{ .EntryName }}-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+          - name: node
+            template:
+              spec:
+                template:
+                  spec:
+                    containers:
+                    - name: node
+                      resources:
+                        limits:
+                          nvidia.com/mlnxnics: {{ .MlnxPerNode }}
+                        requests:
+                          nvidia.com/mlnxnics: {{ .MlnxPerNode }}
+
+# --- TogetherAI (InfiniBand runtime patch) ---
+- when:
+    platform:
+      equals: togetherai
+  dependencies:
+{{ lib "deps/togetherai-ib-runtime-patch.yaml" . | indent 2 }}
+
+# --- TogetherAI (training IB env vars, non-MPI only) ---
+{{- if ne .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: togetherai
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/togetherai-ib-env.yaml" . | indent 12 }}
+{{- end }}
+
+# --- Mistral + GB300 (InfiniBand runtime patch) ---
+- when:
+    platform:
+      equals: mistral
+    gpuArchitecture:
+      equals: gb300
+  dependencies:
+{{ lib "deps/mistral-gb300-ib-runtime-patch-training.yaml" . | indent 2 }}
+
+# --- Mistral + GB300 (training IB env vars, non-MPI only) ---
+{{- if ne .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: mistral
+    gpuArchitecture:
+      equals: gb300
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/mistral-ib-env.yaml" . | indent 12 }}
+{{- end }}

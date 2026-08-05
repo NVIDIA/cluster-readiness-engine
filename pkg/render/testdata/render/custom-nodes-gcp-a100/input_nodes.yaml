@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- metadata:
+    name: gcp-node-0
+    labels:
+      nvidia.com/gpu.present: "true"
+      nvidia.com/gpu.product: "NVIDIA-A100-SXM4-40GB"
+  spec:
+    providerID: "gce://my-project/us-central1-a/instance-0"
+- metadata:
+    name: gcp-node-1
+    labels:
+      nvidia.com/gpu.present: "true"
+      nvidia.com/gpu.product: "NVIDIA-A100-SXM4-40GB"
+  spec:
+    providerID: "gce://my-project/us-central1-a/instance-1"

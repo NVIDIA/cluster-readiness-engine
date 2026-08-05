@@ -1,0 +1,67 @@
+{
+  "Job/test-hw-nomatch-job": {
+    "kind": "Job",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-hw-nomatch-job",
+      "namespace": "default"
+    },
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "test-runtime",
+            "apiGroup": "trainer.kubeflow.org",
+            "kind": "TrainingRuntime"
+          },
+          "trainer": {
+            "image": "test-image:latest",
+            "command": [
+              "python",
+              "train.py"
+            ],
+            "numNodes": 1
+          },
+          "suspend": false,
+          "managedBy": "trainer.kubeflow.org/trainjob-controller"
+        }
+      },
+      "nodeHealthMonitor": {
+        "cel": {
+          "expression": "node.metadata.labels[\"nvidia.com/gpu.unhealthy\"] == \"true\""
+        }
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "lastTransitionTime": null,
+          "reason": "WorkloadRunning",
+          "message": "Workload is running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "workloadRef": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainJob",
+        "name": "test-hw-nomatch-job-workload",
+        "namespace": "default"
+      }
+    }
+  }
+}

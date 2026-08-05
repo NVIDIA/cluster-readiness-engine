@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Node
+metadata:
+  name: oci-h100-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: oci-h100-node-01
+spec:
+  providerID: "ocid1.instance.oc1.iad.anuwcljt00000000000000000000000000000000000000000000000001"
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-dcgm
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  categories:
+    - domain: diagnostics
+      variant: dcgm-level4

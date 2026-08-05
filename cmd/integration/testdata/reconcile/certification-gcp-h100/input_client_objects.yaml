@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: gcp-h1
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 2
+  categories:
+    - domain: training
+      variant: nemotron5-8b

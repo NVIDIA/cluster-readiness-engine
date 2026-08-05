@@ -1,0 +1,31 @@
+[
+  {
+    "name": "screen-0",
+    "nodes": [
+      "node-1",
+      "node-2",
+      "node-3"
+    ],
+    "domains": [
+      "r1"
+    ]
+  },
+  {
+    "name": "screen-1",
+    "nodes": [
+      "node-4"
+    ],
+    "domains": [
+      "r2"
+    ]
+  },
+  {
+    "name": "screen-2",
+    "nodes": [
+      "node-5"
+    ],
+    "domains": [
+      "unknown"
+    ]
+  }
+]

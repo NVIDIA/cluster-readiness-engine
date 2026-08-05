@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# LogProfile for NCCL bandwidth tests (all_reduce, all_gather, alltoall, etc.).
+#
+# Parses the tabular output from nccl-tests perf binaries:
+#   size  count  type  redop  root  time  algbw  busbw  #wrong  time  algbw  busbw  #wrong
+#
+# Captures out-of-place algBW and busBW per message size.
+# All NCCL collective tests produce the same output format.
+apiVersion: cre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  labels:
+    {{- include "cre.labels" . | nindent 4 }}
+  name: nccl-bandwidth
+spec:
+  timestamp:
+    layout: "2006-01-02T15:04:05.999999999Z"
+  workerStrategy:
+    type: Single
+    replicatedJobName: launcher
+  patterns:
+    bandwidthResult:
+      regex: '^\s*(?P<size>\d+)\s+\d+\s+\w+\s+\w+\s+-?\d+\s+[\d.]+\s+(?P<algBW>[\d.]+)\s+(?P<busBW>[\d.]+)'
+      example: '           8             2     float     sum      -1    58.31    0.00    0.00       0    58.40    0.00    0.00       0'

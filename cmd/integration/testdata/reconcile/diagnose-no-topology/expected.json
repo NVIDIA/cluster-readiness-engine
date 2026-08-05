@@ -1,0 +1,137 @@
+{
+  "Workflow/test-diagnose-no-topo": {
+    "kind": "Workflow",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-diagnose-no-topo",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 3
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "diagnose": {
+          "minGroupSize": 2
+        },
+        "execution": {},
+        "iterations": 1
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Iteration 1/1: 3 groups running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 9,
+        "nodesPerJob": 3,
+        "totalGroups": 3,
+        "currentIteration": 1,
+        "detectedPlatform": "onprem",
+        "detectedGPUArchitecture": "unknown",
+        "diagnose": {
+          "stage": "intra-screening",
+          "round": 0
+        },
+        "groups": [
+          {
+            "name": "screen-0",
+            "nodes": [
+              "node-01",
+              "node-02",
+              "node-03"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "test-diagnose-no-topo-screen-8ee4a",
+              "namespace": "default"
+            }
+          },
+          {
+            "name": "screen-1",
+            "nodes": [
+              "node-04",
+              "node-05",
+              "node-06"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "test-diagnose-no-topo-screen-38d76",
+              "namespace": "default"
+            }
+          },
+          {
+            "name": "screen-2",
+            "nodes": [
+              "node-07",
+              "node-08",
+              "node-09"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "test-diagnose-no-topo-screen-1c92a",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,51 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/*
+/manager
+/ncrectl
+Dockerfile.cross
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Go workspace file
+go.work
+
+# Kubernetes Generated files - skip generated files, except for vendored files
+!vendor/**/zz_generated.*
+
+# editor and IDE paraphernalia
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Kubeconfig might contain secrets
+*.kubeconfig
+
+# OSX
+.DS_Store
+
+examples/
+
+# Hugo site build artifacts
+site/public/
+site/bin/
+site/static/css/syntax.css
+site/resources/
+site/.hugo_build.lock
+
+# Helm package artifacts
+cluster-readiness-engine-*.tgz
+helm/cluster-readiness-engine/charts/*.tgz
+
+# Build artifacts
+dist/

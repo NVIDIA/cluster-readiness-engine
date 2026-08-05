@@ -1,0 +1,38 @@
+{
+  "jobTemplate": {
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "test-runtime"
+          },
+          "trainer": {
+            "image": "test-image:latest",
+            "numNodes": 1
+          }
+        }
+      }
+    }
+  },
+  "orchestration": {
+    "topology": {
+      "topologyKey": "nvidia.com/gpu.clique"
+    },
+    "execution": {},
+    "iterations": 1
+  },
+  "overrides": [
+    {
+      "when": {
+        "gpuArchitecture": {
+          "equals": "gb200"
+        }
+      },
+      "orchestration": {
+        "topology": {
+          "topologyKey": "nvidia.com/gpu.clique"
+        }
+      }
+    }
+  ]
+}

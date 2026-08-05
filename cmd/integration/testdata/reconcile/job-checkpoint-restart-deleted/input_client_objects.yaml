@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: test-ckpt-restart-deleted-logprofile
+spec:
+  timestamp:
+    layout: "2006-01-02T15:04:05.999999999Z"
+  patterns:
+    trainingStep:
+      regex: 'step (?P<globalStep>\d+)'
+      example: "step 100"
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-checkpoint-restart-deleted
+  namespace: default
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+  checkpoint:
+    pvcName: test-ckpt-pvc
+    maxRestarts: 3
+status:
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-checkpoint-restart-deleted-workload
+    namespace: default
+---
+# NOTE: No TrainJob object — simulates external deletion of the workload.
+# The Job controller should detect the missing workload and restart from checkpoint.
+apiVersion: cre.nvidia.com/v1alpha1
+kind: GoodputMeasurement
+metadata:
+  name: test-checkpoint-restart-deleted-gm
+  namespace: default
+spec:
+  jobRef:
+    apiGroup: cre.nvidia.com
+    kind: Job
+    name: test-checkpoint-restart-deleted
+  logProfileRef: test-ckpt-restart-deleted-logprofile
+  sampleInterval: 1s
+status:
+  lastCheckpointStep: 100

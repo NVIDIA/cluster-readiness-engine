@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+platform: "aws"
+gpuArchitecture: "h100"
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    execution:
+      maxConcurrent: 2
+  overrides:
+    - when:
+        gpuArchitecture:
+          equals: "h100"
+      orchestration:
+        iterations: 5

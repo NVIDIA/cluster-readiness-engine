@@ -1,0 +1,67 @@
+{
+  "Certification/test-cert-fail": {
+    "kind": "Certification",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-cert-fail",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.present": "true",
+          "nvidia.com/gpu.product": "NVIDIA-GB200-NVL72"
+        }
+      },
+      "categories": [
+        {
+          "domain": "communication",
+          "variant": "nccl-all-reduce"
+        }
+      ],
+      "nodesPerJob": 2
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkflowFailed",
+          "message": "One or more certification categories failed"
+        }
+      ],
+      "categoryStatuses": [
+        {
+          "domain": "communication",
+          "variant": "nccl-all-reduce",
+          "workflowRef": {
+            "name": "test-cert-fail-allreduce-wf",
+            "namespace": "default"
+          },
+          "status": "Failed"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "firstStep": {
+    "elapsedTime": 132.56310000000002,
+    "epoch": 0,
+    "globalStep": 1,
+    "iteration": 1,
+    "loss": 12.18472,
+    "stepTiming": 132.56310000000002,
+    "tflops": 138.5,
+    "timestamp": "2026-02-05T16:03:52.889599Z"
+  },
+  "lastLogTimestamp": "2026-02-05T16:03:52.889599Z",
+  "lastStep": {
+    "elapsedTime": 132.56310000000002,
+    "epoch": 0,
+    "globalStep": 1,
+    "iteration": 1,
+    "loss": 12.18472,
+    "stepTiming": 132.56310000000002,
+    "tflops": 138.5,
+    "timestamp": "2026-02-05T16:03:52.889599Z"
+  },
+  "steps": [
+    {
+      "elapsedTime": 132.56310000000002,
+      "epoch": 0,
+      "globalStep": 1,
+      "iteration": 1,
+      "loss": 12.18472,
+      "stepTiming": 132.56310000000002,
+      "tflops": 138.5,
+      "timestamp": "2026-02-05T16:03:52.889599Z"
+    }
+  ]
+}

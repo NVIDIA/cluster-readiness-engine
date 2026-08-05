@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+groups:
+  - name: group-0
+    nodes: ["node-0"]
+    phase: Pending
+  - name: group-1
+    nodes: ["node-1"]
+    phase: Pending

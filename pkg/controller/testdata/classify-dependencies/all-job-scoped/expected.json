@@ -1,0 +1,7 @@
+{
+  "workflowScoped": [],
+  "jobScoped": [
+    "my-pvc",
+    "my-runtime"
+  ]
+}

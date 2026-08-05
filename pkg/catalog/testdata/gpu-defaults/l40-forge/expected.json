@@ -1,0 +1,4 @@
+{
+  "gpusPerNode": 8,
+  "mlnxPerNode": 4
+}

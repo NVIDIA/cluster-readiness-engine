@@ -1,0 +1,16 @@
+{
+  "checkpoints": [
+    {
+      "path": "/mnt/workspace/checkpoints",
+      "saveDuration": 52.134661,
+      "step": 100,
+      "timestamp": "2026-02-16T02:06:10.900064Z"
+    }
+  ],
+  "lastCheckpoint": {
+    "path": "/mnt/workspace/checkpoints",
+    "saveDuration": 52.134661,
+    "step": 100,
+    "timestamp": "2026-02-16T02:06:10.900064Z"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "apiVersion": "resource.nvidia.com/v1beta1",
+  "kind": "ComputeDomain",
+  "metadata": {
+    "name": "my-cd-group-0-iter-1"
+  },
+  "spec": {
+    "channel": {
+      "resourceClaimTemplate": {
+        "name": "my-cd-claim-group-0-iter-1"
+      }
+    }
+  }
+}

@@ -1,0 +1,123 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: test-restart-missed-logprofile
+spec:
+  timestamp:
+    layout: "2006-01-02T15:04:05.999999999Z"
+  patterns:
+    trainingStep:
+      regex: 'step (?P<globalStep>\d+).*step_timing:\s*(?P<stepTiming>[\d.]+)'
+      example: "step 100 step_timing: 6.0"
+      units:
+        stepTiming: s
+    applicationStart:
+      regex: 'Application initialized'
+      example: 'Application initialized'
+    checkpointSave:
+      regex: 'Checkpoint saved at step (?P<step>\d+) duration (?P<saveDuration>[\d.]+)s'
+      example: 'Checkpoint saved at step 150 duration 10.0s'
+      units:
+        saveDuration: s
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-restart-missed-job
+  namespace: default
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "True"
+      reason: WorkloadRunning
+      message: "Workload is running"
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Failed
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-restart-missed-job-workload
+    namespace: default
+  restartCount: 1
+---
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-restart-missed-job-workload
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: cluster-readiness-engine
+    cre.nvidia.com/job: test-restart-missed-job
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - python
+      - train.py
+    numNodes: 1
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-restart-missed-job-workload-worker-0
+  namespace: default
+  labels:
+    jobset.sigs.k8s.io/jobset-name: test-restart-missed-job-workload
+    batch.kubernetes.io/job-completion-index: "0"
+    cre.nvidia.com/job: test-restart-missed-job
+spec:
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Running
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: GoodputMeasurement
+metadata:
+  name: test-restart-missed-gm
+  namespace: default
+spec:
+  jobRef:
+    apiGroup: cre.nvidia.com
+    kind: Job
+    name: test-restart-missed-job
+  logProfileRef: test-restart-missed-logprofile
+  sampleInterval: 1s
+status:
+  currentStep: 200
+  highestStep: 200
+  lastCheckpointStep: 150
+  lastCheckpointTime: "2026-01-22T09:55:00Z"
+  interruptionCount: 0
+  lostWorkTimeSec: "0.000000"
+  rescheduleTimeSec: "0.000000"
+  resumeTimeSec: "0.000000"
+  checkpointSaveTimeSec: "0.000000"
+  startTime: "2026-01-22T09:00:00Z"
+  applicationStopTime: "2026-01-22T10:00:00Z"

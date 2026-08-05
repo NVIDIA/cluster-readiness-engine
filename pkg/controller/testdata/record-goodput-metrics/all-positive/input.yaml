@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+goodputRatio: 0.85
+avgTFLOPS: 500.5
+avgStepTime: 1.25
+rescheduleTime: 10.0
+resumeTime: 5.0
+checkpointSaveTime: 3.0
+lostWorkTime: 7.5
+trainingTime: 120.0
+warmupTime: 8.0
+nonWarmupTime: 112.0

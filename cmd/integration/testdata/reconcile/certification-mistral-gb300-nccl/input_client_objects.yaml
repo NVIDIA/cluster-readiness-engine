@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Node
+metadata:
+  name: mistral-gb300-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB300
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: mistral-gb300-node-01
+    kubernetes.io/arch: arm64
+spec:
+  providerID: "metal3://00000000-0000-0000-0000-000000000001"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: mistral-gb300-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB300
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: mistral-gb300-node-02
+    kubernetes.io/arch: arm64
+spec:
+  providerID: "metal3://00000000-0000-0000-0000-000000000002"
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: mistral-nc-g3
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300
+  categories:
+    - domain: communication
+      variant: nccl-all-gather

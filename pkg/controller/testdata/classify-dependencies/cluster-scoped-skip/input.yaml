@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+jobSpec: '{"workload":{"trainJob":{"runtimeRef":{"name":"my-cluster-runtime"}}}}'
+deps:
+- raw: '{"apiVersion":"trainer.kubeflow.org/v1alpha1","kind":"ClusterTrainingRuntime","metadata":{"name":"my-cluster-runtime"}}'

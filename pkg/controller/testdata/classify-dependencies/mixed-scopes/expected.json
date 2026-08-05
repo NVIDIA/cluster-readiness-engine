@@ -1,0 +1,8 @@
+{
+  "workflowScoped": [
+    "my-config"
+  ],
+  "jobScoped": [
+    "my-runtime"
+  ]
+}

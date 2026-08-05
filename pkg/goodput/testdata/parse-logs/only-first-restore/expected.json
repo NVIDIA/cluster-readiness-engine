@@ -1,0 +1,8 @@
+{
+  "checkpointRestore": {
+    "path": "/ckpt/step-100",
+    "step": 100,
+    "timestamp": "2026-01-22T10:00:00Z"
+  },
+  "lastLogTimestamp": "2026-01-22T10:00:01Z"
+}

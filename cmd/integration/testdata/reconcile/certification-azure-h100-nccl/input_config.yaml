@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Certification
+  name: az-h100-nc
+  namespace: default
+  condition: InProgress
+collect:
+  - kind: Certification
+    name: az-h100-nc
+    namespace: default
+  - kind: Workflow
+    name: az-h100-nc-communication-bb340
+    namespace: default

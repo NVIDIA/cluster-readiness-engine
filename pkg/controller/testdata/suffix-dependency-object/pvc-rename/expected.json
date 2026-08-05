@@ -1,0 +1,8 @@
+{
+  "apiVersion": "v1",
+  "kind": "PersistentVolumeClaim",
+  "metadata": {
+    "name": "my-pvc-group-0-iter-1",
+    "namespace": "default"
+  }
+}

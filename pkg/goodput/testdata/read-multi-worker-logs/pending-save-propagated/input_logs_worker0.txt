@@ -1,0 +1,3 @@
+[2026-02-05 11:26:59.000000] saving checkpoint at iteration     250 to /checkpoints in torch_dist format
+Storing distributed optimizer sharded state of type dp_reshardable
+worker-0:101:1481 [1] NCCL INFO Channel 00/1 : 1[1] -> 0[0] via P2P/MNNVL

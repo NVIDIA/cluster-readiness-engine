@@ -1,0 +1,276 @@
+{
+  "Certification/aws-a100-dcgm": {
+    "kind": "Certification",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "aws-a100-dcgm",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.product": "NVIDIA-A100-SXM4-40GB"
+        }
+      },
+      "categories": [
+        {
+          "domain": "diagnostics",
+          "variant": "dcgm-level4"
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkflowRunning",
+          "message": "Certification in progress"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "categoryStatuses": [
+        {
+          "domain": "diagnostics",
+          "variant": "dcgm-level4",
+          "workflowRef": {
+            "name": "aws-a100-dcgm-diagnostics-f73af",
+            "namespace": "default"
+          },
+          "status": "InProgress"
+        }
+      ]
+    }
+  },
+  "Workflow/aws-a100-dcgm-diagnostics-f73af": {
+    "kind": "Workflow",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "aws-a100-dcgm-diagnostics-f73af",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "cre.nvidia.com/category-domain": "diagnostics",
+        "cre.nvidia.com/category-variant": "dcgm-level4",
+        "cre.nvidia.com/certification": "aws-a100-dcgm"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "kind": "Certification",
+          "name": "aws-a100-dcgm",
+          "uid": "",
+          "controller": true,
+          "blockOwnerDeletion": true
+        }
+      ],
+      "finalizers": [
+        "cre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "dcgm-level4-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "nvcr.io/nvidia/cloud-native/dcgm:4.5.2-1-ubuntu22.04",
+                "command": [
+                  "dcgmi"
+                ],
+                "args": [
+                  "diag",
+                  "--host",
+                  "nvidia-dcgm.gpu-operator.svc:5555",
+                  "--run",
+                  "4",
+                  "--json",
+                  "--verbose",
+                  "-p",
+                  "targeted_power.test_duration=1200s",
+                  "-p",
+                  "targeted_stress.test_duration=1200s",
+                  "-p",
+                  "nvbandwidth.is_allowed=true"
+                ],
+                "numNodes": 1,
+                "numProcPerNode": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          },
+          "nodeHealthMonitor": {
+            "cel": {
+              "expression": "node.spec.unschedulable == true"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.product": "NVIDIA-A100-SXM4-40GB"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      },
+      "dependencies": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "metadata": {
+            "labels": {
+              "app": "dcgm-level4"
+            },
+            "name": "dcgm-level4-runtime"
+          },
+          "spec": {
+            "mlPolicy": {
+              "numNodes": 1,
+              "torch": {
+                "numProcPerNode": 1
+              }
+            },
+            "template": {
+              "spec": {
+                "replicatedJobs": [
+                  {
+                    "name": "node",
+                    "template": {
+                      "metadata": {
+                        "labels": {
+                          "trainer.kubeflow.org/trainjob-ancestor-step": "trainer"
+                        }
+                      },
+                      "spec": {
+                        "backoffLimit": 0,
+                        "template": {
+                          "spec": {
+                            "containers": [
+                              {
+                                "image": "nvcr.io/nvidia/cloud-native/dcgm:4.5.2-1-ubuntu22.04",
+                                "name": "node",
+                                "resources": {
+                                  "limits": {
+                                    "nvidia.com/gpu": "8"
+                                  },
+                                  "requests": {
+                                    "nvidia.com/gpu": "8"
+                                  }
+                                },
+                                "securityContext": {
+                                  "privileged": true
+                                }
+                              }
+                            ],
+                            "dnsPolicy": "ClusterFirstWithHostNet",
+                            "hostNetwork": true,
+                            "restartPolicy": "Never",
+                            "tolerations": [
+                              {
+                                "operator": "Exists"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Iteration 1/1: 1 groups running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "dependencyRefs": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "name": "dcgm-level4-runtime-f73af-job",
+          "namespace": "default",
+          "scope": "job",
+          "groupName": "group-0",
+          "iteration": 1
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 1,
+        "nodesPerJob": 1,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "detectedPlatform": "aws",
+        "detectedGPUArchitecture": "a100",
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "aws-a100-node-01"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "aws-a100-dcgm-diagnostics-f73af-job",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+[
+  {
+    "domain": "rack-1",
+    "nodes": [
+      "node-1",
+      "node-2",
+      "node-3",
+      "node-4"
+    ]
+  }
+]

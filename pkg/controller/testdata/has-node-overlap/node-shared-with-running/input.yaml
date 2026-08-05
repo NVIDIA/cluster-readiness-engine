@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Candidate pair (A,C) shares node-A with running pair (A,B).
+candidate:
+  name: pair-ac
+  nodes: ["node-A", "node-C"]
+  phase: Pending
+allGroups:
+  - name: pair-ab
+    nodes: ["node-A", "node-B"]
+    phase: Running
+  - name: pair-ac
+    nodes: ["node-A", "node-C"]
+    phase: Pending

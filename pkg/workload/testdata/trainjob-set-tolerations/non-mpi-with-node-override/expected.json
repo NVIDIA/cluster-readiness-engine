@@ -1,0 +1,12 @@
+[
+  {
+    "targetJobs": [
+      "node"
+    ],
+    "tolerations": [
+      {
+        "operator": "Exists"
+      }
+    ]
+  }
+]

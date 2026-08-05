@@ -1,0 +1,14 @@
+[
+  {
+    "name": "rack-a",
+    "total": 3,
+    "validated": 3,
+    "passed": true
+  },
+  {
+    "name": "rack-b",
+    "total": 1,
+    "validated": 1,
+    "passed": true
+  }
+]

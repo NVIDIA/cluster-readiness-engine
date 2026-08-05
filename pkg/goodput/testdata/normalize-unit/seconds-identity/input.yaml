@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+field: saveDuration
+value: 5.0
+units:
+  elapsedTime: ms
+  stepTiming: us
+  saveDuration: s

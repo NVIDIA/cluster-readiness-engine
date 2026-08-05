@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Candidate itself is Running — should not overlap with itself.
+candidate:
+  name: pair-ab
+  nodes: ["node-A", "node-B"]
+  phase: Running
+allGroups:
+  - name: pair-ab
+    nodes: ["node-A", "node-B"]
+    phase: Running
+  - name: pair-cd
+    nodes: ["node-C", "node-D"]
+    phase: Pending

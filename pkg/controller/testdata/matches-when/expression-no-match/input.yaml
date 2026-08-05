@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+when:
+  expression: "gpuArchitecture == 'gb200' || domainCount > 10"
+platform: "aws"
+gpuArchitecture: "h100"
+topologyMode: "simple"
+domainCount: 2

@@ -1,0 +1,55 @@
+{
+  "firstStep": {
+    "elapsedTime": 5.7622,
+    "epoch": 0,
+    "globalStep": 10,
+    "iteration": 10,
+    "loss": 9.751967,
+    "stepTiming": 5.7622,
+    "tflops": 129.5,
+    "timestamp": "2026-03-25T07:30:05Z"
+  },
+  "lastLogTimestamp": "2026-03-25T07:30:30Z",
+  "lastStep": {
+    "elapsedTime": 1.2523,
+    "epoch": 0,
+    "globalStep": 30,
+    "iteration": 30,
+    "loss": 8.199461,
+    "stepTiming": 1.2523,
+    "tflops": 595.8,
+    "timestamp": "2026-03-25T07:30:30Z"
+  },
+  "steps": [
+    {
+      "elapsedTime": 5.7622,
+      "epoch": 0,
+      "globalStep": 10,
+      "iteration": 10,
+      "loss": 9.751967,
+      "stepTiming": 5.7622,
+      "tflops": 129.5,
+      "timestamp": "2026-03-25T07:30:05Z"
+    },
+    {
+      "elapsedTime": 1.2382,
+      "epoch": 0,
+      "globalStep": 20,
+      "iteration": 20,
+      "loss": 8.356363,
+      "stepTiming": 1.2382,
+      "tflops": 602.6,
+      "timestamp": "2026-03-25T07:30:17Z"
+    },
+    {
+      "elapsedTime": 1.2523,
+      "epoch": 0,
+      "globalStep": 30,
+      "iteration": 30,
+      "loss": 8.199461,
+      "stepTiming": 1.2523,
+      "tflops": 595.8,
+      "timestamp": "2026-03-25T07:30:30Z"
+    }
+  ]
+}

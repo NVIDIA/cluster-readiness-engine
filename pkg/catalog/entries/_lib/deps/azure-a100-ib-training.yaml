@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    securityContext:
+                      capabilities:
+                        add:
+                        - IPC_LOCK
+                    resources:
+                      limits:
+                        nvidia.com/mlnxnics: "{{ .MlnxPerNode }}"
+                      requests:
+                        nvidia.com/mlnxnics: "{{ .MlnxPerNode }}"
+                    volumeMounts:
+                    - mountPath: /etc/nccl
+                      name: nccl-topo
+                  volumes:
+                  - configMap:
+                      name: {{ .EntryName }}-azure-a100-topo
+                    name: nccl-topo
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: {{ .EntryName }}-azure-a100-topo
+  data:
+    topo.xml: |
+{{ lib "topo/azure-a100-sxm4.xml" . | indent 6 }}

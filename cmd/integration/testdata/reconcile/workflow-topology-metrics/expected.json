@@ -1,0 +1,132 @@
+{
+  "Workflow/test-topo-metrics": {
+    "kind": "Workflow",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-topo-metrics",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 2
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "topology": {
+          "topologyKey": "topology.kubernetes.io/zone"
+        },
+        "execution": {},
+        "iterations": 1
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "IterationsFailed",
+          "message": "1 groups failed across 1 iterations"
+        }
+      ],
+      "succeededNodesRef": {
+        "apiGroup": null,
+        "kind": "ConfigMap",
+        "name": "succeeded-nodes"
+      },
+      "orchestration": {
+        "totalNodes": 4,
+        "nodesPerJob": 2,
+        "totalGroups": 2,
+        "currentIteration": 1,
+        "completedIterations": 1,
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "topo-node-01",
+              "topo-node-02"
+            ],
+            "domains": [
+              "zone-a"
+            ],
+            "phase": "Succeeded",
+            "jobRef": {
+              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "test-topo-metrics-job-0",
+              "namespace": "default"
+            }
+          },
+          {
+            "name": "group-1",
+            "nodes": [
+              "topo-node-03",
+              "topo-node-04"
+            ],
+            "domains": [
+              "zone-b"
+            ],
+            "phase": "Failed",
+            "jobRef": {
+              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "test-topo-metrics-job-1",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "topologyMetrics": {
+    "burnin_topology_failed_nodes{domain=zone-b,node=topo-node-03}": 1,
+    "burnin_topology_failed_nodes{domain=zone-b,node=topo-node-04}": 1,
+    "burnin_topology_validated_nodes{domain=zone-a,node=topo-node-01}": 1,
+    "burnin_topology_validated_nodes{domain=zone-a,node=topo-node-02}": 1
+  }
+}

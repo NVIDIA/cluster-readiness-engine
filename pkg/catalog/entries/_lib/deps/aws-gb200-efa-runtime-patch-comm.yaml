@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    mlPolicy:
+      mpi:
+        numProcPerNode: {{ .GpusPerNode }}
+    template:
+      spec:
+        replicatedJobs:
+        - name: launcher
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    image: public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9
+                    env:
+                    - name: LD_LIBRARY_PATH
+                      value: "/opt/amazon/openmpi/lib:/opt/nccl/build/lib:/opt/amazon/efa/lib:/opt/aws-ofi-nccl/install/lib:/usr/local/nvidia/lib:/opt/amazon/ofi-nccl/lib/aarch64-linux-gnu"
+                    - name: PATH
+                      value: "$PATH:/opt/amazon/efa/bin:/usr/bin"
+                  initContainers:
+                  - name: fix-ssh-permissions
+                    image: public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    image: public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9
+                    resources:
+                      limits:
+                        memory: 800Gi
+                        hugepages-2Mi: 10256Mi
+                        vpc.amazonaws.com/efa: "4"
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                      requests:
+                        memory: 800Gi
+                        hugepages-2Mi: 10256Mi
+                        vpc.amazonaws.com/efa: "4"
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"

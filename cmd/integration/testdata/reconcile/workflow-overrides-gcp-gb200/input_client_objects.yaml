@@ -1,0 +1,106 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Node
+metadata:
+  name: gcp-gb200-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-GB200-NVL72"
+    kubernetes.io/hostname: gcp-gb200-node-01
+spec:
+  providerID: "gce://my-project/us-central1-a/gcp-gb200-node-01"
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-gcp-gb200-overrides
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: base-image:latest
+            command:
+              - python
+              - train.py
+            args:
+              - "--nproc-per-node=4"
+            env:
+              - name: NCCL_DEBUG
+                value: "INFO"
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+  overrides:
+    # GB200/GB300 architecture override — matches GB200
+    - when:
+        gpuArchitecture:
+          in: ["gb200", "gb300"]
+      jobTemplate:
+        spec:
+          workload:
+            trainJob:
+              trainer:
+                env:
+                  - name: NCCL_NVLS_ENABLE
+                    value: "0"
+                  - name: NCCL_P2P_NET_CHUNKSIZE
+                    value: "2097152"
+    # GCP + GB200/GB300 combined override — matches both
+    - when:
+        platform:
+          equals: "gcp"
+        gpuArchitecture:
+          in: ["gb200", "gb300"]
+      dependencies:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: gcp-gb200-roce-config
+            namespace: default
+          data:
+            NCCL_NET_GDR_LEVEL: "5"
+      jobTemplate:
+        spec:
+          workload:
+            trainJob:
+              trainer:
+                env:
+                  - name: NCCL_NVLS_ENABLE
+                    value: "1"
+    # GCP + H100 override — should NOT match (wrong GPU)
+    - when:
+        platform:
+          equals: "gcp"
+        gpuArchitecture:
+          equals: "h100"
+      dependencies:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: gcp-h100-fastrak-config
+            namespace: default
+          data:
+            NCCL_NET_GDR_LEVEL: "PIX"
+    # AWS override — should NOT match (wrong platform)
+    - when:
+        platform:
+          equals: "aws"
+      dependencies:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: aws-efa-config
+            namespace: default
+          data:
+            FI_EFA_USE_DEVICE_RDMA: "1"

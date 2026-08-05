@@ -1,0 +1,706 @@
+metadata:
+  annotations:
+    batch.kubernetes.io/job-completion-index: "0"
+    jobset.sigs.k8s.io/global-replicas: "2"
+    jobset.sigs.k8s.io/group-name: default
+    jobset.sigs.k8s.io/group-replicas: "2"
+    jobset.sigs.k8s.io/job-global-index: "1"
+    jobset.sigs.k8s.io/job-group-index: "1"
+    jobset.sigs.k8s.io/job-index: "0"
+    jobset.sigs.k8s.io/jobset-name: gcp-h100-nccl-communicati-76790-job-workload
+    jobset.sigs.k8s.io/replicatedjob-name: launcher
+    jobset.sigs.k8s.io/replicatedjob-replicas: "1"
+    jobset.sigs.k8s.io/restart-attempt: "0"
+  finalizers:
+  - batch.kubernetes.io/job-tracking
+  generateName: gcp-h100-nccl-communicati-76790-job-workload-launcher-0-0-
+  labels:
+    batch.kubernetes.io/job-completion-index: "0"
+    batch.kubernetes.io/job-name: gcp-h100-nccl-communicati-76790-job-workload-launcher-0
+    job-name: gcp-h100-nccl-communicati-76790-job-workload-launcher-0
+    jobset.sigs.k8s.io/global-replicas: "2"
+    jobset.sigs.k8s.io/group-name: default
+    jobset.sigs.k8s.io/group-replicas: "2"
+    jobset.sigs.k8s.io/job-global-index: "1"
+    jobset.sigs.k8s.io/job-group-index: "1"
+    jobset.sigs.k8s.io/job-index: "0"
+    jobset.sigs.k8s.io/jobset-name: gcp-h100-nccl-communicati-76790-job-workload
+    jobset.sigs.k8s.io/priority: "0"
+    jobset.sigs.k8s.io/replicatedjob-name: launcher
+    jobset.sigs.k8s.io/replicatedjob-replicas: "1"
+    jobset.sigs.k8s.io/restart-attempt: "0"
+  ownerReferences:
+  - apiVersion: batch/v1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Job
+    name: gcp-h100-nccl-communicati-76790-job-workload-launcher-0
+    uid: ""
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.io/hostname
+            operator: In
+            values:
+            - gcp-h100-node-01
+            - gcp-h100-node-02
+  containers:
+  - args:
+    - -N
+    - "8"
+    - --allow-run-as-root
+    - --mca
+    - plm_rsh_args
+    - -o StrictHostKeyChecking=no
+    - -x
+    - CUDA_DEVICE_MAX_CONNECTIONS=1
+    - -x
+    - NCCL_DEBUG=INFO
+    - -x
+    - LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/nvidia/lib64
+    - -x
+    - NCCL_FASTRAK_IFNAME=eth1,eth2,eth3,eth4,eth5,eth6,eth7,eth8
+    - -x
+    - NCCL_FASTRAK_CTRL_DEV=eth0
+    - -x
+    - NCCL_SOCKET_IFNAME=eth0
+    - -x
+    - NCCL_CROSS_NIC=0
+    - -x
+    - NCCL_ALGO=Ring,Tree
+    - -x
+    - NCCL_PROTO=Simple
+    - -x
+    - NCCL_MIN_NCHANNELS=4
+    - -x
+    - NCCL_P2P_NET_CHUNKSIZE=524288
+    - -x
+    - NCCL_P2P_PCI_CHUNKSIZE=524288
+    - -x
+    - NCCL_P2P_NVL_CHUNKSIZE=1048576
+    - -x
+    - NCCL_FASTRAK_NUM_FLOWS=2
+    - -x
+    - NCCL_FASTRAK_ENABLE_CONTROL_CHANNEL=0
+    - -x
+    - NCCL_BUFFSIZE=8388608
+    - -x
+    - NCCL_FASTRAK_USE_SNAP=1
+    - -x
+    - NCCL_FASTRAK_USE_LLCM=1
+    - -x
+    - NCCL_NET_GDR_LEVEL=PIX
+    - -x
+    - NCCL_FASTRAK_ENABLE_HOTPATH_LOGGING=0
+    - -x
+    - NCCL_TUNER_PLUGIN=libnccl-tuner.so
+    - -x
+    - NCCL_TUNER_CONFIG_PATH=/usr/local/nvidia/lib64/a3plus_tuner_config.textproto
+    - -x
+    - NCCL_SHIMNET_GUEST_CONFIG_CHECKER_CONFIG_FILE=/usr/local/nvidia/lib64/a3plus_guest_config.textproto
+    - -x
+    - NCCL_FASTRAK_PLUGIN_ACCEPT_TIMEOUT_MS=600000
+    - -x
+    - NCCL_DYNAMIC_CHUNK_SIZE=524288
+    - -x
+    - NCCL_FASTRAK_LLCM_DEVICE_DIRECTORY=/dev/aperture_devices
+    - -x
+    - NCCL_NVLS_ENABLE=0
+    - -x
+    - NCCL_CUMEM_ENABLE=1
+    - -x
+    - NCCL_NET_GDR_C2C=1
+    - /usr/local/bin/all_reduce_perf_mpi
+    - -b
+    - "8"
+    - -e
+    - 16G
+    - -f
+    - "2"
+    - -n
+    - "100"
+    - -N
+    - "10"
+    command:
+    - timeout
+    - "3600"
+    - /usr/local/mpi/bin/mpirun
+    env:
+    - name: OMPI_MCA_orte_default_hostfile
+      value: /etc/mpi/hostfile
+    - name: OMPI_MCA_orte_keep_fqdn_hostnames
+      value: "true"
+    - name: OMPI_MCA_orte_set_default_slots
+      value: "8"
+    - name: OMPI_MCA_plm_rsh_args
+      value: -o ConnectionAttempts=10
+    - name: JOB_COMPLETION_INDEX
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: metadata.labels['batch.kubernetes.io/job-completion-index']
+    image: nvcr.io/nvidia/pytorch:26.01-py3
+    imagePullPolicy: IfNotPresent
+    name: node
+    resources:
+      limits:
+        cpu: "2"
+        memory: 1Gi
+      requests:
+        cpu: "2"
+        memory: 1Gi
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /tmp/mpi-ssh-raw
+      name: mpi-ssh-auth
+    - mountPath: /root/.ssh
+      name: ssh-keys
+    - mountPath: /etc/mpi
+      name: mpi-hostfile
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access
+      readOnly: true
+  dnsPolicy: ClusterFirst
+  enableServiceLinks: true
+  hostname: gcp-h100-nccl-communicati-76790-job-workload-launcher-0-0
+  initContainers:
+  - args:
+    - |-
+      set -x &&
+      cp /tmp/mpi-ssh-raw/* /root/.ssh/ &&
+      chmod 600 /root/.ssh/id_rsa &&
+      chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys
+    command:
+    - sh
+    - -c
+    env:
+    - name: JOB_COMPLETION_INDEX
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: metadata.labels['batch.kubernetes.io/job-completion-index']
+    image: nvcr.io/nvidia/pytorch:26.01-py3
+    imagePullPolicy: IfNotPresent
+    name: fix-ssh-permissions
+    resources: {}
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /tmp/mpi-ssh-raw
+      name: mpi-ssh-auth
+      readOnly: true
+    - mountPath: /root/.ssh
+      name: ssh-keys
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access
+      readOnly: true
+  preemptionPolicy: PreemptLowerPriority
+  priority: 0
+  restartPolicy: OnFailure
+  schedulerName: default-scheduler
+  securityContext: {}
+  serviceAccount: default
+  serviceAccountName: default
+  subdomain: gcp-h100-nccl-communicati-76790-job-workload
+  terminationGracePeriodSeconds: 30
+  tolerations:
+  - operator: Exists
+  volumes:
+  - emptyDir: {}
+    name: ssh-keys
+  - name: mpi-ssh-auth
+    secret:
+      defaultMode: 420
+      items:
+      - key: ssh-privatekey
+        path: id_rsa
+      - key: ssh-publickey
+        path: id_rsa.pub
+      - key: ssh-publickey
+        path: authorized_keys
+      secretName: gcp-h100-nccl-communicati-76790-job-workload-mpi-ssh-auth
+  - configMap:
+      defaultMode: 420
+      items:
+      - key: hostfile
+        mode: 292
+        path: hostfile
+      name: gcp-h100-nccl-communicati-76790-job-workload-mpi-hostfile
+    name: mpi-hostfile
+  - name: kube-api-access
+    projected:
+      defaultMode: 420
+      sources:
+      - serviceAccountToken:
+          expirationSeconds: 3607
+          path: token
+      - configMap:
+          items:
+          - key: ca.crt
+            path: ca.crt
+          name: kube-root-ca.crt
+      - downwardAPI:
+          items:
+          - fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+            path: namespace
+status: {}
+---
+metadata:
+  annotations:
+    batch.kubernetes.io/job-completion-index: "0"
+    devices.gke.io/container.tcpxo-daemon: |
+      - path: /dev/nvidia0
+      - path: /dev/nvidia1
+      - path: /dev/nvidia2
+      - path: /dev/nvidia3
+      - path: /dev/nvidia4
+      - path: /dev/nvidia5
+      - path: /dev/nvidia6
+      - path: /dev/nvidia7
+      - path: /dev/nvidiactl
+      - path: /dev/nvidia-uvm
+      - path: /dev/dmabuf_import_helper
+    jobset.sigs.k8s.io/global-replicas: "2"
+    jobset.sigs.k8s.io/group-name: default
+    jobset.sigs.k8s.io/group-replicas: "2"
+    jobset.sigs.k8s.io/job-global-index: "0"
+    jobset.sigs.k8s.io/job-group-index: "0"
+    jobset.sigs.k8s.io/job-index: "0"
+    jobset.sigs.k8s.io/jobset-name: gcp-h100-nccl-communicati-76790-job-workload
+    jobset.sigs.k8s.io/replicatedjob-name: node
+    jobset.sigs.k8s.io/replicatedjob-replicas: "1"
+    jobset.sigs.k8s.io/restart-attempt: "0"
+    networking.gke.io/default-interface: eth0
+    networking.gke.io/interfaces: '[{"interfaceName":"eth0","network":"default"},{"interfaceName":"eth1","network":"gpu-nic0"},{"interfaceName":"eth2","network":"gpu-nic1"},{"interfaceName":"eth3","network":"gpu-nic2"},{"interfaceName":"eth4","network":"gpu-nic3"},{"interfaceName":"eth5","network":"gpu-nic4"},{"interfaceName":"eth6","network":"gpu-nic5"},{"interfaceName":"eth7","network":"gpu-nic6"},{"interfaceName":"eth8","network":"gpu-nic7"}]'
+  finalizers:
+  - batch.kubernetes.io/job-tracking
+  generateName: gcp-h100-nccl-communicati-76790-job-workload-node-0-0-
+  labels:
+    batch.kubernetes.io/job-completion-index: "0"
+    batch.kubernetes.io/job-name: gcp-h100-nccl-communicati-76790-job-workload-node-0
+    cre.nvidia.com/job: gcp-h100-nccl-communicati-76790-job
+    job-name: gcp-h100-nccl-communicati-76790-job-workload-node-0
+    jobset.sigs.k8s.io/global-replicas: "2"
+    jobset.sigs.k8s.io/group-name: default
+    jobset.sigs.k8s.io/group-replicas: "2"
+    jobset.sigs.k8s.io/job-global-index: "0"
+    jobset.sigs.k8s.io/job-group-index: "0"
+    jobset.sigs.k8s.io/job-index: "0"
+    jobset.sigs.k8s.io/jobset-name: gcp-h100-nccl-communicati-76790-job-workload
+    jobset.sigs.k8s.io/priority: "0"
+    jobset.sigs.k8s.io/replicatedjob-name: node
+    jobset.sigs.k8s.io/replicatedjob-replicas: "1"
+    jobset.sigs.k8s.io/restart-attempt: "0"
+  ownerReferences:
+  - apiVersion: batch/v1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Job
+    name: gcp-h100-nccl-communicati-76790-job-workload-node-0
+    uid: ""
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.io/hostname
+            operator: In
+            values:
+            - gcp-h100-node-01
+            - gcp-h100-node-02
+  containers:
+  - args:
+    - |-
+      set -x &&
+      apt-get update &&
+      apt-get install -y --no-install-recommends openssh-server  &&
+      mkdir -p /var/run/sshd  &&
+      chmod 0755 /var/run/sshd  &&
+      mkdir -p /root/.ssh &&
+      chmod 700 /root/.ssh &&
+      cp /tmp/mpi-ssh-raw/* /root/.ssh/ &&
+      chmod 600 /root/.ssh/id_rsa &&
+      chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys &&
+      /usr/sbin/sshd -De
+    command:
+    - sh
+    - -c
+    env:
+    - name: JOB_COMPLETION_INDEX
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: metadata.labels['batch.kubernetes.io/job-completion-index']
+    image: nvcr.io/nvidia/pytorch:26.01-py3
+    imagePullPolicy: IfNotPresent
+    name: node
+    readinessProbe:
+      failureThreshold: 3
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      successThreshold: 1
+      tcpSocket:
+        port: 22
+      timeoutSeconds: 1
+    resources:
+      limits:
+        nvidia.com/gpu: "8"
+      requests:
+        nvidia.com/gpu: "8"
+    securityContext:
+      capabilities:
+        add:
+        - IPC_LOCK
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /dev/shm
+      name: dshm
+    - mountPath: /tmp/mpi-ssh-raw
+      name: mpi-ssh-auth
+    - mountPath: /usr/local/nvidia
+      name: nvtcpxo-libraries
+      readOnly: true
+    - mountPath: /dev/aperture_devices
+      name: nvtcpxo-aperture-devices
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access
+      readOnly: true
+  dnsPolicy: ClusterFirst
+  enableServiceLinks: true
+  hostname: gcp-h100-nccl-communicati-76790-job-workload-node-0-0
+  initContainers:
+  - args:
+    - |
+      set -ex
+      chmod 755 /fts/entrypoint_rxdm_container.sh
+      /fts/entrypoint_rxdm_container.sh --num_hops=2 --num_nics=8 --uid= --alsologtostderr --enforce_kernel_ipv6_support=false
+    command:
+    - /bin/sh
+    - -c
+    env:
+    - name: LD_LIBRARY_PATH
+      value: /usr/local/nvidia/lib64
+    - name: JOB_COMPLETION_INDEX
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: metadata.labels['batch.kubernetes.io/job-completion-index']
+    image: us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.8
+    imagePullPolicy: Always
+    name: tcpxo-daemon
+    resources: {}
+    restartPolicy: Always
+    securityContext:
+      capabilities:
+        add:
+        - CAP_NET_ADMIN
+        - CAP_NET_BIND_SERVICE
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /usr/local/nvidia
+      name: nvtcpxo-libraries
+      readOnly: true
+    - mountPath: /hostsysfs
+      name: nvtcpxo-sys
+    - mountPath: /hostprocsysfs
+      name: nvtcpxo-proc-sys
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access
+      readOnly: true
+  preemptionPolicy: PreemptLowerPriority
+  priority: 0
+  restartPolicy: OnFailure
+  schedulerName: default-scheduler
+  securityContext: {}
+  serviceAccount: default
+  serviceAccountName: default
+  subdomain: gcp-h100-nccl-communicati-76790-job-workload
+  terminationGracePeriodSeconds: 30
+  tolerations:
+  - operator: Exists
+  volumes:
+  - emptyDir:
+      medium: Memory
+    name: dshm
+  - hostPath:
+      path: /home/kubernetes/bin/nvidia
+      type: ""
+    name: nvtcpxo-libraries
+  - hostPath:
+      path: /sys
+      type: ""
+    name: nvtcpxo-sys
+  - hostPath:
+      path: /proc/sys
+      type: ""
+    name: nvtcpxo-proc-sys
+  - hostPath:
+      path: /dev/aperture_devices
+      type: ""
+    name: nvtcpxo-aperture-devices
+  - name: mpi-ssh-auth
+    secret:
+      defaultMode: 420
+      items:
+      - key: ssh-privatekey
+        path: id_rsa
+      - key: ssh-publickey
+        path: id_rsa.pub
+      - key: ssh-publickey
+        path: authorized_keys
+      secretName: gcp-h100-nccl-communicati-76790-job-workload-mpi-ssh-auth
+  - name: kube-api-access
+    projected:
+      defaultMode: 420
+      sources:
+      - serviceAccountToken:
+          expirationSeconds: 3607
+          path: token
+      - configMap:
+          items:
+          - key: ca.crt
+            path: ca.crt
+          name: kube-root-ca.crt
+      - downwardAPI:
+          items:
+          - fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+            path: namespace
+status: {}
+---
+metadata:
+  annotations:
+    batch.kubernetes.io/job-completion-index: "1"
+    devices.gke.io/container.tcpxo-daemon: |
+      - path: /dev/nvidia0
+      - path: /dev/nvidia1
+      - path: /dev/nvidia2
+      - path: /dev/nvidia3
+      - path: /dev/nvidia4
+      - path: /dev/nvidia5
+      - path: /dev/nvidia6
+      - path: /dev/nvidia7
+      - path: /dev/nvidiactl
+      - path: /dev/nvidia-uvm
+      - path: /dev/dmabuf_import_helper
+    jobset.sigs.k8s.io/global-replicas: "2"
+    jobset.sigs.k8s.io/group-name: default
+    jobset.sigs.k8s.io/group-replicas: "2"
+    jobset.sigs.k8s.io/job-global-index: "0"
+    jobset.sigs.k8s.io/job-group-index: "0"
+    jobset.sigs.k8s.io/job-index: "0"
+    jobset.sigs.k8s.io/jobset-name: gcp-h100-nccl-communicati-76790-job-workload
+    jobset.sigs.k8s.io/replicatedjob-name: node
+    jobset.sigs.k8s.io/replicatedjob-replicas: "1"
+    jobset.sigs.k8s.io/restart-attempt: "0"
+    networking.gke.io/default-interface: eth0
+    networking.gke.io/interfaces: '[{"interfaceName":"eth0","network":"default"},{"interfaceName":"eth1","network":"gpu-nic0"},{"interfaceName":"eth2","network":"gpu-nic1"},{"interfaceName":"eth3","network":"gpu-nic2"},{"interfaceName":"eth4","network":"gpu-nic3"},{"interfaceName":"eth5","network":"gpu-nic4"},{"interfaceName":"eth6","network":"gpu-nic5"},{"interfaceName":"eth7","network":"gpu-nic6"},{"interfaceName":"eth8","network":"gpu-nic7"}]'
+  finalizers:
+  - batch.kubernetes.io/job-tracking
+  generateName: gcp-h100-nccl-communicati-76790-job-workload-node-0-1-
+  labels:
+    batch.kubernetes.io/job-completion-index: "1"
+    batch.kubernetes.io/job-name: gcp-h100-nccl-communicati-76790-job-workload-node-0
+    cre.nvidia.com/job: gcp-h100-nccl-communicati-76790-job
+    job-name: gcp-h100-nccl-communicati-76790-job-workload-node-0
+    jobset.sigs.k8s.io/global-replicas: "2"
+    jobset.sigs.k8s.io/group-name: default
+    jobset.sigs.k8s.io/group-replicas: "2"
+    jobset.sigs.k8s.io/job-global-index: "0"
+    jobset.sigs.k8s.io/job-group-index: "0"
+    jobset.sigs.k8s.io/job-index: "0"
+    jobset.sigs.k8s.io/jobset-name: gcp-h100-nccl-communicati-76790-job-workload
+    jobset.sigs.k8s.io/priority: "0"
+    jobset.sigs.k8s.io/replicatedjob-name: node
+    jobset.sigs.k8s.io/replicatedjob-replicas: "1"
+    jobset.sigs.k8s.io/restart-attempt: "0"
+  ownerReferences:
+  - apiVersion: batch/v1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Job
+    name: gcp-h100-nccl-communicati-76790-job-workload-node-0
+    uid: ""
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.io/hostname
+            operator: In
+            values:
+            - gcp-h100-node-01
+            - gcp-h100-node-02
+  containers:
+  - args:
+    - |-
+      set -x &&
+      apt-get update &&
+      apt-get install -y --no-install-recommends openssh-server  &&
+      mkdir -p /var/run/sshd  &&
+      chmod 0755 /var/run/sshd  &&
+      mkdir -p /root/.ssh &&
+      chmod 700 /root/.ssh &&
+      cp /tmp/mpi-ssh-raw/* /root/.ssh/ &&
+      chmod 600 /root/.ssh/id_rsa &&
+      chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys &&
+      /usr/sbin/sshd -De
+    command:
+    - sh
+    - -c
+    env:
+    - name: JOB_COMPLETION_INDEX
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: metadata.labels['batch.kubernetes.io/job-completion-index']
+    image: nvcr.io/nvidia/pytorch:26.01-py3
+    imagePullPolicy: IfNotPresent
+    name: node
+    readinessProbe:
+      failureThreshold: 3
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      successThreshold: 1
+      tcpSocket:
+        port: 22
+      timeoutSeconds: 1
+    resources:
+      limits:
+        nvidia.com/gpu: "8"
+      requests:
+        nvidia.com/gpu: "8"
+    securityContext:
+      capabilities:
+        add:
+        - IPC_LOCK
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /dev/shm
+      name: dshm
+    - mountPath: /tmp/mpi-ssh-raw
+      name: mpi-ssh-auth
+    - mountPath: /usr/local/nvidia
+      name: nvtcpxo-libraries
+      readOnly: true
+    - mountPath: /dev/aperture_devices
+      name: nvtcpxo-aperture-devices
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access
+      readOnly: true
+  dnsPolicy: ClusterFirst
+  enableServiceLinks: true
+  hostname: gcp-h100-nccl-communicati-76790-job-workload-node-0-1
+  initContainers:
+  - args:
+    - |
+      set -ex
+      chmod 755 /fts/entrypoint_rxdm_container.sh
+      /fts/entrypoint_rxdm_container.sh --num_hops=2 --num_nics=8 --uid= --alsologtostderr --enforce_kernel_ipv6_support=false
+    command:
+    - /bin/sh
+    - -c
+    env:
+    - name: LD_LIBRARY_PATH
+      value: /usr/local/nvidia/lib64
+    - name: JOB_COMPLETION_INDEX
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: metadata.labels['batch.kubernetes.io/job-completion-index']
+    image: us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.8
+    imagePullPolicy: Always
+    name: tcpxo-daemon
+    resources: {}
+    restartPolicy: Always
+    securityContext:
+      capabilities:
+        add:
+        - CAP_NET_ADMIN
+        - CAP_NET_BIND_SERVICE
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /usr/local/nvidia
+      name: nvtcpxo-libraries
+      readOnly: true
+    - mountPath: /hostsysfs
+      name: nvtcpxo-sys
+    - mountPath: /hostprocsysfs
+      name: nvtcpxo-proc-sys
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access
+      readOnly: true
+  preemptionPolicy: PreemptLowerPriority
+  priority: 0
+  restartPolicy: OnFailure
+  schedulerName: default-scheduler
+  securityContext: {}
+  serviceAccount: default
+  serviceAccountName: default
+  subdomain: gcp-h100-nccl-communicati-76790-job-workload
+  terminationGracePeriodSeconds: 30
+  tolerations:
+  - operator: Exists
+  volumes:
+  - emptyDir:
+      medium: Memory
+    name: dshm
+  - hostPath:
+      path: /home/kubernetes/bin/nvidia
+      type: ""
+    name: nvtcpxo-libraries
+  - hostPath:
+      path: /sys
+      type: ""
+    name: nvtcpxo-sys
+  - hostPath:
+      path: /proc/sys
+      type: ""
+    name: nvtcpxo-proc-sys
+  - hostPath:
+      path: /dev/aperture_devices
+      type: ""
+    name: nvtcpxo-aperture-devices
+  - name: mpi-ssh-auth
+    secret:
+      defaultMode: 420
+      items:
+      - key: ssh-privatekey
+        path: id_rsa
+      - key: ssh-publickey
+        path: id_rsa.pub
+      - key: ssh-publickey
+        path: authorized_keys
+      secretName: gcp-h100-nccl-communicati-76790-job-workload-mpi-ssh-auth
+  - name: kube-api-access
+    projected:
+      defaultMode: 420
+      sources:
+      - serviceAccountToken:
+          expirationSeconds: 3607
+          path: token
+      - configMap:
+          items:
+          - key: ca.crt
+            path: ca.crt
+          name: kube-root-ca.crt
+      - downwardAPI:
+          items:
+          - fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+            path: namespace
+status: {}

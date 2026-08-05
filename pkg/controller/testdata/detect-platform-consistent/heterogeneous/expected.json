@@ -1,0 +1,4 @@
+{
+  "platform": "",
+  "error": "heterogeneous platforms detected: map[aws:1 gcp:1]"
+}

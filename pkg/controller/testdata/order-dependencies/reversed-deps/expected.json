@@ -1,0 +1,7 @@
+{
+  "order": [
+    "my-cd",
+    "my-pvc",
+    "my-runtime"
+  ]
+}

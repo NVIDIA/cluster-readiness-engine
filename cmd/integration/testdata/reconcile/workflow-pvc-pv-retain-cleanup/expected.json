@@ -1,0 +1,156 @@
+{
+  "PersistentVolume/checkpoint-pv": {
+    "kind": "PersistentVolume",
+    "apiVersion": "v1",
+    "metadata": {
+      "name": "checkpoint-pv",
+      "finalizers": [
+        "kubernetes.io/pv-protection"
+      ]
+    },
+    "spec": {
+      "capacity": {
+        "storage": "100Gi"
+      },
+      "hostPath": {
+        "path": "/tmp/checkpoint",
+        "type": ""
+      },
+      "accessModes": [
+        "ReadWriteOnce"
+      ],
+      "persistentVolumeReclaimPolicy": "Retain",
+      "volumeMode": "Filesystem"
+    },
+    "status": {
+      "phase": "Pending"
+    }
+  },
+  "Workflow/pvc-retain-workflow": {
+    "kind": "Workflow",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "pvc-retain-workflow",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 2
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      },
+      "dependencies": [
+        {
+          "apiVersion": "v1",
+          "kind": "PersistentVolumeClaim",
+          "metadata": {
+            "name": "checkpoint-pvc",
+            "namespace": "default"
+          },
+          "spec": {
+            "accessModes": [
+              "ReadWriteOnce"
+            ],
+            "resources": {
+              "requests": {
+                "storage": "100Gi"
+              }
+            },
+            "volumeName": "checkpoint-pv"
+          }
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Iteration 1/1: 1 groups running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "dependencyRefs": [
+        {
+          "apiVersion": "v1",
+          "kind": "PersistentVolumeClaim",
+          "name": "checkpoint-pvc",
+          "namespace": "default",
+          "scope": "workflow"
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 2,
+        "nodesPerJob": 2,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "detectedPlatform": "onprem",
+        "detectedGPUArchitecture": "unknown",
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "gpu-node-01",
+              "gpu-node-02"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "pvc-retain-workflow-job",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

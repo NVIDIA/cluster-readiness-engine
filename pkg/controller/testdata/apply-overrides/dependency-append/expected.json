@@ -1,0 +1,62 @@
+{
+  "jobTemplate": {
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "test-runtime"
+          },
+          "trainer": {
+            "image": "test-image:latest",
+            "command": [
+              "python",
+              "train.py"
+            ],
+            "numNodes": 1
+          }
+        }
+      }
+    }
+  },
+  "orchestration": {
+    "execution": {},
+    "iterations": 1
+  },
+  "dependencies": [
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "base-config",
+        "namespace": "default"
+      }
+    },
+    {
+      "apiVersion": "v1",
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "aws-config",
+        "namespace": "default"
+      }
+    }
+  ],
+  "overrides": [
+    {
+      "when": {
+        "platform": {
+          "equals": "aws"
+        }
+      },
+      "dependencies": [
+        {
+          "apiVersion": "v1",
+          "kind": "ConfigMap",
+          "metadata": {
+            "name": "aws-config",
+            "namespace": "default"
+          }
+        }
+      ]
+    }
+  ]
+}

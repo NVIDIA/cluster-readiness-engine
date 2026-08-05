@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Both screening jobs succeeded and both measure above the bandwidth threshold
+# (500 and 480 vs 400 minimum). The diagnose controller should record both
+# cliques as passed=true and advance to inter-screening (testing the
+# inter-domain fabric using one healthy representative per clique).
+waitFor:
+  kind: Workflow
+  name: test-diag-threshold
+  namespace: default
+  condition: InProgress
+collect:
+  - kind: Workflow
+    name: test-diag-threshold
+    namespace: default

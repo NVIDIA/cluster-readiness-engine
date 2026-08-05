@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: nemotron-6-nccl-noise
+spec:
+  timestamp:
+    layout: "2006-01-02 15:04:05.999999"
+  patterns:
+    checkpointSave:
+      regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\]\s+saving checkpoint at iteration\s+(?P<step>\d+)\s+to\s+(?P<path>\S+)'
+      example: '[2026-02-05 17:07:36.379347] saving checkpoint at iteration     100 to /mnt/workspace/checkpoints in torch_dist format'
+    checkpointDone:
+      regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\]\s+scheduled an async checkpoint save at iteration\s+(?P<step>\d+)\s+to\s+(?P<path>\S+)'
+      example: '[2026-02-05 17:08:12.482363] scheduled an async checkpoint save at iteration     100 to /mnt/workspace/checkpoints'

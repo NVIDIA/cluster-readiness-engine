@@ -1,0 +1,494 @@
+{
+  "Certification/az-a100-at": {
+    "kind": "Certification",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "az-a100-at",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.product": "NVIDIA-A100-SXM4-40GB"
+        }
+      },
+      "categories": [
+        {
+          "domain": "communication",
+          "variant": "nccl-alltoall"
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkflowRunning",
+          "message": "Certification in progress"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "categoryStatuses": [
+        {
+          "domain": "communication",
+          "variant": "nccl-alltoall",
+          "workflowRef": {
+            "name": "az-a100-at-communication-120f1",
+            "namespace": "default"
+          },
+          "status": "InProgress"
+        }
+      ]
+    }
+  },
+  "Workflow/az-a100-at-communication-120f1": {
+    "kind": "Workflow",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "az-a100-at-communication-120f1",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "cre.nvidia.com/category-domain": "communication",
+        "cre.nvidia.com/category-variant": "nccl-alltoall",
+        "cre.nvidia.com/certification": "az-a100-at"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "kind": "Certification",
+          "name": "az-a100-at",
+          "uid": "",
+          "controller": true,
+          "blockOwnerDeletion": true
+        }
+      ],
+      "finalizers": [
+        "cre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "nccl-alltoall-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                "command": [
+                  "timeout",
+                  "3600",
+                  "/usr/local/mpi/bin/mpirun"
+                ],
+                "args": [
+                  "-N",
+                  "8",
+                  "--allow-run-as-root",
+                  "--mca",
+                  "plm_rsh_args",
+                  "-o StrictHostKeyChecking=no",
+                  "-x",
+                  "NCCL_DEBUG=INFO",
+                  "-x",
+                  "NCCL_COLLNET_ENABLE=1",
+                  "-x",
+                  "NCCL_IB_PCI_RELAXED_ORDERING=1",
+                  "-x",
+                  "NCCL_IB_QPS_PER_CONNECTION=4",
+                  "-x",
+                  "NCCL_SOCKET_IFNAME=eth0",
+                  "-x",
+                  "NCCL_TOPO_FILE=/etc/nccl/topo.xml",
+                  "-x",
+                  "NCCL_IB_HCA=mlx5",
+                  "-x",
+                  "NCCL_IGNORE_CPU_AFFINITY=1",
+                  "-x",
+                  "NCCL_IB_SPLIT_DATA_ON_QPS=0",
+                  "-x",
+                  "NCCL_IB_AR_THRESHOLD=0",
+                  "-x",
+                  "UCX_TLS=rc,cuda_copy,cuda_ipc",
+                  "-x",
+                  "UCX_NET_DEVICES=all",
+                  "/usr/local/bin/alltoall_perf_mpi",
+                  "-d",
+                  "uint8",
+                  "-b",
+                  "8",
+                  "-e",
+                  "16G",
+                  "-f",
+                  "2",
+                  "-n",
+                  "100",
+                  "-N",
+                  "10"
+                ],
+                "numNodes": 2,
+                "numProcPerNode": 8
+              },
+              "runtimePatches": [
+                {
+                  "manager": "cre.nvidia.com/catalog",
+                  "trainingRuntimeSpec": {
+                    "template": {
+                      "spec": {
+                        "replicatedJobs": [
+                          {
+                            "name": "node",
+                            "template": {
+                              "spec": {
+                                "template": {
+                                  "spec": {
+                                    "volumes": [
+                                      {
+                                        "name": "dshm",
+                                        "emptyDir": {
+                                          "medium": "Memory"
+                                        }
+                                      }
+                                    ],
+                                    "containers": [
+                                      {
+                                        "name": "node",
+                                        "volumeMounts": [
+                                          {
+                                            "name": "dshm",
+                                            "mountPath": "/dev/shm"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "name": "launcher"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ],
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          },
+          "nodeHealthMonitor": {
+            "cel": {
+              "expression": "node.spec.unschedulable == true"
+            }
+          },
+          "bandwidthMeasurement": {
+            "logProfileRef": "nccl-bandwidth",
+            "sampleInterval": "30s",
+            "testType": "alltoall"
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.product": "NVIDIA-A100-SXM4-40GB"
+          }
+        },
+        "execution": {
+          "timeoutPerJob": "1h0m0s"
+        },
+        "iterations": 1
+      },
+      "dependencies": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "metadata": {
+            "labels": {
+              "app": "nccl-alltoall",
+              "trainer.kubeflow.org/framework": "mpi"
+            },
+            "name": "nccl-alltoall-runtime"
+          },
+          "spec": {
+            "mlPolicy": {
+              "mpi": {
+                "mpiImplementation": "OpenMPI",
+                "numProcPerNode": 8,
+                "sshAuthMountPath": "/tmp/mpi-ssh-raw"
+              },
+              "numNodes": 1
+            },
+            "template": {
+              "spec": {
+                "network": {
+                  "publishNotReadyAddresses": true
+                },
+                "replicatedJobs": [
+                  {
+                    "name": "node",
+                    "template": {
+                      "spec": {
+                        "template": {
+                          "spec": {
+                            "containers": [
+                              {
+                                "args": [
+                                  "set -x \u0026\u0026\napt-get update \u0026\u0026\napt-get install -y --no-install-recommends openssh-server  \u0026\u0026\nmkdir -p /var/run/sshd  \u0026\u0026\nchmod 0755 /var/run/sshd  \u0026\u0026\nmkdir -p /root/.ssh \u0026\u0026\nchmod 700 /root/.ssh \u0026\u0026\ncp /tmp/mpi-ssh-raw/* /root/.ssh/ \u0026\u0026\nchmod 600 /root/.ssh/id_rsa \u0026\u0026\nchmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys \u0026\u0026\n/usr/sbin/sshd -De"
+                                ],
+                                "command": [
+                                  "sh",
+                                  "-c"
+                                ],
+                                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                                "name": "node",
+                                "readinessProbe": {
+                                  "initialDelaySeconds": 5,
+                                  "tcpSocket": {
+                                    "port": 22
+                                  }
+                                },
+                                "resources": {
+                                  "limits": {
+                                    "nvidia.com/gpu": "8",
+                                    "nvidia.com/mlnxnics": "8"
+                                  },
+                                  "requests": {
+                                    "nvidia.com/gpu": "8",
+                                    "nvidia.com/mlnxnics": "8"
+                                  }
+                                },
+                                "securityContext": {
+                                  "capabilities": {
+                                    "add": [
+                                      "IPC_LOCK"
+                                    ]
+                                  }
+                                },
+                                "volumeMounts": [
+                                  {
+                                    "mountPath": "/tmp/mpi-ssh-raw",
+                                    "name": "mpi-ssh-auth",
+                                    "readOnly": true
+                                  },
+                                  {
+                                    "mountPath": "/etc/nccl",
+                                    "name": "nccl-topo"
+                                  }
+                                ]
+                              }
+                            ],
+                            "restartPolicy": "OnFailure",
+                            "volumes": [
+                              {
+                                "configMap": {
+                                  "name": "nccl-alltoall-azure-topo"
+                                },
+                                "name": "nccl-topo"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "dependsOn": [
+                      {
+                        "name": "node",
+                        "status": "Ready"
+                      }
+                    ],
+                    "name": "launcher",
+                    "template": {
+                      "metadata": {
+                        "labels": {
+                          "trainer.kubeflow.org/trainjob-ancestor-step": "trainer"
+                        }
+                      },
+                      "spec": {
+                        "template": {
+                          "spec": {
+                            "containers": [
+                              {
+                                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                                "name": "node",
+                                "resources": {
+                                  "limits": {
+                                    "cpu": "2",
+                                    "memory": "1Gi"
+                                  }
+                                },
+                                "volumeMounts": [
+                                  {
+                                    "mountPath": "/tmp/mpi-ssh-raw",
+                                    "name": "mpi-ssh-auth",
+                                    "readOnly": true
+                                  },
+                                  {
+                                    "mountPath": "/root/.ssh",
+                                    "name": "ssh-keys"
+                                  }
+                                ]
+                              }
+                            ],
+                            "initContainers": [
+                              {
+                                "args": [
+                                  "set -x \u0026\u0026\ncp /tmp/mpi-ssh-raw/* /root/.ssh/ \u0026\u0026\nchmod 600 /root/.ssh/id_rsa \u0026\u0026\nchmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys"
+                                ],
+                                "command": [
+                                  "sh",
+                                  "-c"
+                                ],
+                                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                                "name": "fix-ssh-permissions",
+                                "volumeMounts": [
+                                  {
+                                    "mountPath": "/tmp/mpi-ssh-raw",
+                                    "name": "mpi-ssh-auth",
+                                    "readOnly": true
+                                  },
+                                  {
+                                    "mountPath": "/root/.ssh",
+                                    "name": "ssh-keys"
+                                  }
+                                ]
+                              }
+                            ],
+                            "restartPolicy": "OnFailure",
+                            "volumes": [
+                              {
+                                "emptyDir": {},
+                                "name": "ssh-keys"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ],
+                "successPolicy": {
+                  "operator": "All",
+                  "targetReplicatedJobs": [
+                    "launcher"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "apiVersion": "v1",
+          "data": {
+            "topo.xml": "\u003c!--\n SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION \u0026 AFFILIATES. All rights reserved.\n SPDX-License-Identifier: Apache-2.0\n--\u003e\n\n\u003csystem version=\"1\"\u003e\n  \u003ccpu numaid=\"0\" affinity=\"ffffffff,ffff0000,00000000\" arch=\"x86_64\" vendor=\"GenuineIntel\" familyid=\"6\" modelid=\"106\"\u003e\n    \u003cpci busid=\"ffff:ff:01.0\" class=\"0x060400\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"\u003e\n      \u003cpci busid=\"0001:00:00.0\" class=\"0x030200\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"/\u003e\n      \u003cpci busid=\"0101:00:00.0\" class=\"0x020700\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"/\u003e\n    \u003c/pci\u003e\n    \u003cpci busid=\"ffff:ff:02.0\" class=\"0x060400\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"\u003e\n      \u003cpci busid=\"0002:00:00.0\" class=\"0x030200\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"/\u003e\n      \u003cpci busid=\"0102:00:00.0\" class=\"0x020700\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"/\u003e\n    \u003c/pci\u003e\n    \u003cpci busid=\"ffff:ff:03.0\" class=\"0x060400\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"\u003e\n      \u003cpci busid=\"0003:00:00.0\" class=\"0x030200\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"/\u003e\n      \u003cpci busid=\"0103:00:00.0\" class=\"0x020700\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"/\u003e\n    \u003c/pci\u003e\n    \u003cpci busid=\"ffff:ff:04.0\" class=\"0x060400\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"\u003e\n      \u003cpci busid=\"0004:00:00.0\" class=\"0x030200\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"/\u003e\n      \u003cpci busid=\"0104:00:00.0\" class=\"0x020700\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"/\u003e\n    \u003c/pci\u003e\n  \u003c/cpu\u003e\n  \u003ccpu numaid=\"1\" affinity=\"00000000,0000ffff,ffffffff\" arch=\"x86_64\" vendor=\"GenuineIntel\" familyid=\"6\" modelid=\"106\"\u003e\n    \u003cpci busid=\"ffff:ff:05.0\" class=\"0x060400\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"\u003e\n      \u003cpci busid=\"000b:00:00.0\" class=\"0x030200\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"/\u003e\n      \u003cpci busid=\"0105:00:00.0\" class=\"0x020700\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"/\u003e\n    \u003c/pci\u003e\n    \u003cpci busid=\"ffff:ff:06.0\" class=\"0x060400\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"\u003e\n      \u003cpci busid=\"000c:00:00.0\" class=\"0x030200\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"/\u003e\n      \u003cpci busid=\"0106:00:00.0\" class=\"0x020700\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"/\u003e\n    \u003c/pci\u003e\n    \u003cpci busid=\"ffff:ff:07.0\" class=\"0x060400\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"\u003e\n      \u003cpci busid=\"000d:00:00.0\" class=\"0x030200\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"/\u003e\n      \u003cpci busid=\"0107:00:00.0\" class=\"0x020700\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"/\u003e\n    \u003c/pci\u003e\n    \u003cpci busid=\"ffff:ff:08.0\" class=\"0x060400\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"\u003e\n      \u003cpci busid=\"000e:00:00.0\" class=\"0x030200\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"/\u003e\n      \u003cpci busid=\"0108:00:00.0\" class=\"0x020700\" link_speed=\"16.0 GT/s PCIe\" link_width=\"16\"/\u003e\n    \u003c/pci\u003e\n  \u003c/cpu\u003e\n\u003c/system\u003e\n"
+          },
+          "kind": "ConfigMap",
+          "metadata": {
+            "name": "nccl-alltoall-azure-topo"
+          }
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Iteration 1/1: 1 groups running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "dependencyRefs": [
+        {
+          "apiVersion": "v1",
+          "kind": "ConfigMap",
+          "name": "nccl-alltoall-azure-topo-120f1-job",
+          "namespace": "default",
+          "scope": "job",
+          "groupName": "group-0",
+          "iteration": 1
+        },
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "name": "nccl-alltoall-runtime-120f1-job",
+          "namespace": "default",
+          "scope": "job",
+          "groupName": "group-0",
+          "iteration": 1
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 2,
+        "nodesPerJob": 2,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "detectedPlatform": "azure",
+        "detectedGPUArchitecture": "a100",
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "azure-a100-node-01",
+              "azure-a100-node-02"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "az-a100-at-communication-120f1-job",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

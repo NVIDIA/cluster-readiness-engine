@@ -1,0 +1,923 @@
+{
+  "firstStep": {
+    "epoch": 0,
+    "globalStep": 0,
+    "iteration": 0,
+    "loss": 2,
+    "stepTiming": 1,
+    "tflops": 36.27,
+    "timestamp": "2026-01-22T18:00:05Z"
+  },
+  "lastLogTimestamp": "2026-01-22T18:00:05Z",
+  "lastStep": {
+    "epoch": 0,
+    "globalStep": 149,
+    "iteration": 149,
+    "loss": 2,
+    "stepTiming": 1,
+    "tflops": 36.27,
+    "timestamp": "2026-01-22T18:00:05Z"
+  },
+  "steps": [
+    {
+      "epoch": 0,
+      "globalStep": 50,
+      "iteration": 50,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 51,
+      "iteration": 51,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 52,
+      "iteration": 52,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 53,
+      "iteration": 53,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 54,
+      "iteration": 54,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 55,
+      "iteration": 55,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 56,
+      "iteration": 56,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 57,
+      "iteration": 57,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 58,
+      "iteration": 58,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 59,
+      "iteration": 59,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 60,
+      "iteration": 60,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 61,
+      "iteration": 61,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 62,
+      "iteration": 62,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 63,
+      "iteration": 63,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 64,
+      "iteration": 64,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 65,
+      "iteration": 65,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 66,
+      "iteration": 66,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 67,
+      "iteration": 67,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 68,
+      "iteration": 68,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 69,
+      "iteration": 69,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 70,
+      "iteration": 70,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 71,
+      "iteration": 71,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 72,
+      "iteration": 72,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 73,
+      "iteration": 73,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 74,
+      "iteration": 74,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 75,
+      "iteration": 75,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 76,
+      "iteration": 76,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 77,
+      "iteration": 77,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 78,
+      "iteration": 78,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 79,
+      "iteration": 79,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 80,
+      "iteration": 80,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 81,
+      "iteration": 81,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 82,
+      "iteration": 82,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 83,
+      "iteration": 83,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 84,
+      "iteration": 84,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 85,
+      "iteration": 85,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 86,
+      "iteration": 86,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 87,
+      "iteration": 87,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 88,
+      "iteration": 88,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 89,
+      "iteration": 89,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 90,
+      "iteration": 90,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 91,
+      "iteration": 91,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 92,
+      "iteration": 92,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 93,
+      "iteration": 93,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 94,
+      "iteration": 94,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 95,
+      "iteration": 95,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 96,
+      "iteration": 96,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 97,
+      "iteration": 97,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 98,
+      "iteration": 98,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 99,
+      "iteration": 99,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 100,
+      "iteration": 100,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 101,
+      "iteration": 101,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 102,
+      "iteration": 102,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 103,
+      "iteration": 103,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 104,
+      "iteration": 104,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 105,
+      "iteration": 105,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 106,
+      "iteration": 106,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 107,
+      "iteration": 107,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 108,
+      "iteration": 108,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 109,
+      "iteration": 109,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 110,
+      "iteration": 110,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 111,
+      "iteration": 111,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 112,
+      "iteration": 112,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 113,
+      "iteration": 113,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 114,
+      "iteration": 114,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 115,
+      "iteration": 115,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 116,
+      "iteration": 116,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 117,
+      "iteration": 117,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 118,
+      "iteration": 118,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 119,
+      "iteration": 119,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 120,
+      "iteration": 120,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 121,
+      "iteration": 121,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 122,
+      "iteration": 122,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 123,
+      "iteration": 123,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 124,
+      "iteration": 124,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 125,
+      "iteration": 125,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 126,
+      "iteration": 126,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 127,
+      "iteration": 127,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 128,
+      "iteration": 128,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 129,
+      "iteration": 129,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 130,
+      "iteration": 130,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 131,
+      "iteration": 131,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 132,
+      "iteration": 132,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 133,
+      "iteration": 133,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 134,
+      "iteration": 134,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 135,
+      "iteration": 135,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 136,
+      "iteration": 136,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 137,
+      "iteration": 137,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 138,
+      "iteration": 138,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 139,
+      "iteration": 139,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 140,
+      "iteration": 140,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 141,
+      "iteration": 141,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 142,
+      "iteration": 142,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 143,
+      "iteration": 143,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 144,
+      "iteration": 144,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 145,
+      "iteration": 145,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 146,
+      "iteration": 146,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 147,
+      "iteration": 147,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 148,
+      "iteration": 148,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    },
+    {
+      "epoch": 0,
+      "globalStep": 149,
+      "iteration": 149,
+      "loss": 2,
+      "stepTiming": 1,
+      "tflops": 36.27,
+      "timestamp": "2026-01-22T18:00:05Z"
+    }
+  ]
+}

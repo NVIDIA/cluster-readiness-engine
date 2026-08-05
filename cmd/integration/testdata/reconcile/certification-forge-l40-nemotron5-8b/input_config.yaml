@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: forge-l40-nemo5-training-da917
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: forge-l40-nemo5
+    namespace: default
+  - kind: Workflow
+    name: forge-l40-nemo5-training-da917
+    namespace: default

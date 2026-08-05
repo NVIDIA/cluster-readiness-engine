@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+platform: "onprem"
+gpuArchitecture: "gb200"
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            numNodes: 1
+  orchestration:
+    iterations: 1
+  overrides:
+    - when:
+        gpuArchitecture:
+          equals: "gb200"
+      orchestration:
+        topology:
+          topologyKey: nvidia.com/gpu.clique

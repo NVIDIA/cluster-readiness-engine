@@ -1,0 +1,87 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# KWOK-simulated TogetherAI H100 GPU nodes.
+#
+# Key labels for CRE detection:
+#   nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3  -> GPU arch "h100" (workflow_detect.go)
+#   nvidia.com/gpu.present: "true"                  -> ncrectl GPU discovery
+#   node-role.together.ai/worker: "true"            -> TogetherAI platform detection
+#   spec.providerID: "kubevirt://..."               -> combined with label for "togetherai"
+#
+# Modeled after real TogetherAI KubeVirt GPU worker nodes.
+# KWOK annotation kwok.x-k8s.io/node: fake marks these as KWOK-managed.
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: togetherai-h100-node-01
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: togetherai-h100-node-01
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    nvidia.com/gpu.count: "8"
+    nvidia.com/gpu.family: hopper
+    node-role.together.ai/worker: "true"
+    feature.node.kubernetes.io/rdma.available: "true"
+    feature.node.kubernetes.io/rdma.capable: "true"
+    network.nvidia.com/operator.mofed.wait: "false"
+spec:
+  providerID: "kubevirt://togetherai-h100-node-01"
+status:
+  capacity:
+    cpu: "208"
+    memory: 1900Gi
+    nvidia.com/gpu: "8"
+    nvidia.com/mlnxnics: "8"
+    pods: "250"
+  allocatable:
+    cpu: "208"
+    memory: 1900Gi
+    nvidia.com/gpu: "8"
+    nvidia.com/mlnxnics: "8"
+    pods: "250"
+  conditions:
+  - type: Ready
+    status: "True"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: togetherai-h100-node-02
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: togetherai-h100-node-02
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    nvidia.com/gpu.count: "8"
+    nvidia.com/gpu.family: hopper
+    node-role.together.ai/worker: "true"
+    feature.node.kubernetes.io/rdma.available: "true"
+    feature.node.kubernetes.io/rdma.capable: "true"
+    network.nvidia.com/operator.mofed.wait: "false"
+spec:
+  providerID: "kubevirt://togetherai-h100-node-02"
+status:
+  capacity:
+    cpu: "208"
+    memory: 1900Gi
+    nvidia.com/gpu: "8"
+    nvidia.com/mlnxnics: "8"
+    pods: "250"
+  allocatable:
+    cpu: "208"
+    memory: 1900Gi
+    nvidia.com/gpu: "8"
+    nvidia.com/mlnxnics: "8"
+    pods: "250"
+  conditions:
+  - type: Ready
+    status: "True"

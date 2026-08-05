@@ -1,0 +1,14 @@
+[
+  {
+    "targetJobs": [
+      "node"
+    ],
+    "tolerations": [
+      {
+        "key": "nvidia.com/gpu-unhealthy",
+        "operator": "Exists",
+        "effect": "NoSchedule"
+      }
+    ]
+  }
+]

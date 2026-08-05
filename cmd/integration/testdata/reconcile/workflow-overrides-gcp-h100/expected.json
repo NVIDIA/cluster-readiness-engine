@@ -1,0 +1,362 @@
+{
+  "Job/test-gcp-h100-overrides-job": {
+    "kind": "Job",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-gcp-h100-overrides-job",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "cre.nvidia.com/group": "group-0",
+        "cre.nvidia.com/workflow": "test-gcp-h100-overrides"
+      },
+      "annotations": {
+        "cre.nvidia.com/group-nodes": "gcp-h100-node-01"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "kind": "Workflow",
+          "name": "test-gcp-h100-overrides",
+          "uid": "",
+          "controller": true,
+          "blockOwnerDeletion": true
+        }
+      ],
+      "finalizers": [
+        "cre.nvidia.com/finalizer"
+      ]
+    },
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "test-runtime",
+            "apiGroup": "trainer.kubeflow.org",
+            "kind": "TrainingRuntime"
+          },
+          "trainer": {
+            "image": "h100-image:latest",
+            "command": [
+              "python",
+              "train.py"
+            ],
+            "args": [
+              "--nproc-per-node=8"
+            ],
+            "env": [
+              {
+                "name": "NCCL_DEBUG",
+                "value": "INFO"
+              },
+              {
+                "name": "LD_LIBRARY_PATH",
+                "value": "/usr/lib/x86_64-linux-gnu:/usr/local/nvidia/lib64"
+              }
+            ],
+            "numNodes": 1
+          },
+          "runtimePatches": [
+            {
+              "manager": "cre.nvidia.com/controller",
+              "trainingRuntimeSpec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "affinity": {
+                                  "nodeAffinity": {
+                                    "requiredDuringSchedulingIgnoredDuringExecution": {
+                                      "nodeSelectorTerms": [
+                                        {
+                                          "matchExpressions": [
+                                            {
+                                              "key": "kubernetes.io/hostname",
+                                              "operator": "In",
+                                              "values": [
+                                                "gcp-h100-node-01"
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "suspend": false,
+          "managedBy": "trainer.kubeflow.org/trainjob-controller"
+        }
+      },
+      "nodeHealthMonitor": {
+        "cel": {
+          "expression": "node.spec.unschedulable == true"
+        }
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkloadRunning",
+          "message": "Workload TrainJob/test-gcp-h100-overrides-job-workload is running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "workloadRef": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainJob",
+        "name": "test-gcp-h100-overrides-job-workload",
+        "namespace": "default"
+      }
+    }
+  },
+  "Workflow/test-gcp-h100-overrides": {
+    "kind": "Workflow",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-gcp-h100-overrides",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "base-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "args": [
+                  "--nproc-per-node=4"
+                ],
+                "env": [
+                  {
+                    "name": "NCCL_DEBUG",
+                    "value": "INFO"
+                  }
+                ],
+                "numNodes": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      },
+      "overrides": [
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "h100"
+            }
+          },
+          "jobTemplate": {
+            "spec": {
+              "workload": {
+                "trainJob": {
+                  "trainer": {
+                    "args": [
+                      "--nproc-per-node=8"
+                    ],
+                    "image": "h100-image:latest"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "when": {
+            "platform": {
+              "equals": "gcp"
+            }
+          },
+          "jobTemplatePatch": [
+            {
+              "op": "add",
+              "path": "/spec/workload/trainJob/trainer/env/-",
+              "value": {
+                "name": "LD_LIBRARY_PATH",
+                "value": "/usr/lib/x86_64-linux-gnu:/usr/local/nvidia/lib64"
+              }
+            }
+          ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "h100"
+            },
+            "platform": {
+              "equals": "gcp"
+            }
+          },
+          "dependencies": [
+            {
+              "apiVersion": "v1",
+              "data": {
+                "NCCL_FASTRAK_IFNAME": "eth1,eth2,eth3,eth4,eth5,eth6,eth7,eth8",
+                "NCCL_NET_GDR_LEVEL": "PIX"
+              },
+              "kind": "ConfigMap",
+              "metadata": {
+                "name": "gcp-h100-fastrak-config",
+                "namespace": "default"
+              }
+            }
+          ]
+        },
+        {
+          "when": {
+            "platform": {
+              "equals": "aws"
+            }
+          },
+          "dependencies": [
+            {
+              "apiVersion": "v1",
+              "data": {
+                "FI_EFA_USE_DEVICE_RDMA": "1"
+              },
+              "kind": "ConfigMap",
+              "metadata": {
+                "name": "aws-efa-config",
+                "namespace": "default"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Iteration 1/1: 1 groups running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "dependencyRefs": [
+        {
+          "apiVersion": "v1",
+          "kind": "ConfigMap",
+          "name": "gcp-h100-fastrak-config",
+          "namespace": "default",
+          "scope": "workflow"
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 1,
+        "nodesPerJob": 1,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "detectedPlatform": "gcp",
+        "detectedGPUArchitecture": "h100",
+        "appliedOverrides": [
+          {
+            "index": 0,
+            "when": "gpuArchitecture=h100",
+            "patches": "jobTemplate"
+          },
+          {
+            "index": 1,
+            "when": "platform=gcp",
+            "patches": "jobTemplatePatch"
+          },
+          {
+            "index": 2,
+            "when": "gpuArchitecture=h100, platform=gcp",
+            "patches": "1 dependencies"
+          }
+        ],
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "gcp-h100-node-01"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "test-gcp-h100-overrides-job",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-taint
+spec:
+  taints:
+    - key: nvidia.com/gpu-unhealthy
+      effect: NoSchedule

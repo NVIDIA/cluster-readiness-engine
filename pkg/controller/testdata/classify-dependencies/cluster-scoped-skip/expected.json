@@ -1,0 +1,6 @@
+{
+  "workflowScoped": [
+    "my-cluster-runtime"
+  ],
+  "jobScoped": []
+}

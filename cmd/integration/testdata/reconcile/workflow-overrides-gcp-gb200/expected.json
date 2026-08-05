@@ -1,0 +1,386 @@
+{
+  "Job/test-gcp-gb200-overrides-job": {
+    "kind": "Job",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-gcp-gb200-overrides-job",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "cre.nvidia.com/group": "group-0",
+        "cre.nvidia.com/workflow": "test-gcp-gb200-overrides"
+      },
+      "annotations": {
+        "cre.nvidia.com/group-nodes": "gcp-gb200-node-01"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "kind": "Workflow",
+          "name": "test-gcp-gb200-overrides",
+          "uid": "",
+          "controller": true,
+          "blockOwnerDeletion": true
+        }
+      ],
+      "finalizers": [
+        "cre.nvidia.com/finalizer"
+      ]
+    },
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "test-runtime",
+            "apiGroup": "trainer.kubeflow.org",
+            "kind": "TrainingRuntime"
+          },
+          "trainer": {
+            "image": "base-image:latest",
+            "command": [
+              "python",
+              "train.py"
+            ],
+            "args": [
+              "--nproc-per-node=4"
+            ],
+            "env": [
+              {
+                "name": "NCCL_NVLS_ENABLE",
+                "value": "1"
+              }
+            ],
+            "numNodes": 1
+          },
+          "runtimePatches": [
+            {
+              "manager": "cre.nvidia.com/controller",
+              "trainingRuntimeSpec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "affinity": {
+                                  "nodeAffinity": {
+                                    "requiredDuringSchedulingIgnoredDuringExecution": {
+                                      "nodeSelectorTerms": [
+                                        {
+                                          "matchExpressions": [
+                                            {
+                                              "key": "kubernetes.io/hostname",
+                                              "operator": "In",
+                                              "values": [
+                                                "gcp-gb200-node-01"
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "suspend": false,
+          "managedBy": "trainer.kubeflow.org/trainjob-controller"
+        }
+      },
+      "nodeHealthMonitor": {
+        "cel": {
+          "expression": "node.spec.unschedulable == true"
+        }
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkloadRunning",
+          "message": "Workload TrainJob/test-gcp-gb200-overrides-job-workload is running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "workloadRef": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainJob",
+        "name": "test-gcp-gb200-overrides-job-workload",
+        "namespace": "default"
+      }
+    }
+  },
+  "Workflow/test-gcp-gb200-overrides": {
+    "kind": "Workflow",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-gcp-gb200-overrides",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "base-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "args": [
+                  "--nproc-per-node=4"
+                ],
+                "env": [
+                  {
+                    "name": "NCCL_DEBUG",
+                    "value": "INFO"
+                  }
+                ],
+                "numNodes": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      },
+      "overrides": [
+        {
+          "when": {
+            "gpuArchitecture": {
+              "in": [
+                "gb200",
+                "gb300"
+              ]
+            }
+          },
+          "jobTemplate": {
+            "spec": {
+              "workload": {
+                "trainJob": {
+                  "trainer": {
+                    "env": [
+                      {
+                        "name": "NCCL_NVLS_ENABLE",
+                        "value": "0"
+                      },
+                      {
+                        "name": "NCCL_P2P_NET_CHUNKSIZE",
+                        "value": "2097152"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "in": [
+                "gb200",
+                "gb300"
+              ]
+            },
+            "platform": {
+              "equals": "gcp"
+            }
+          },
+          "jobTemplate": {
+            "spec": {
+              "workload": {
+                "trainJob": {
+                  "trainer": {
+                    "env": [
+                      {
+                        "name": "NCCL_NVLS_ENABLE",
+                        "value": "1"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "dependencies": [
+            {
+              "apiVersion": "v1",
+              "data": {
+                "NCCL_NET_GDR_LEVEL": "5"
+              },
+              "kind": "ConfigMap",
+              "metadata": {
+                "name": "gcp-gb200-roce-config",
+                "namespace": "default"
+              }
+            }
+          ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "h100"
+            },
+            "platform": {
+              "equals": "gcp"
+            }
+          },
+          "dependencies": [
+            {
+              "apiVersion": "v1",
+              "data": {
+                "NCCL_NET_GDR_LEVEL": "PIX"
+              },
+              "kind": "ConfigMap",
+              "metadata": {
+                "name": "gcp-h100-fastrak-config",
+                "namespace": "default"
+              }
+            }
+          ]
+        },
+        {
+          "when": {
+            "platform": {
+              "equals": "aws"
+            }
+          },
+          "dependencies": [
+            {
+              "apiVersion": "v1",
+              "data": {
+                "FI_EFA_USE_DEVICE_RDMA": "1"
+              },
+              "kind": "ConfigMap",
+              "metadata": {
+                "name": "aws-efa-config",
+                "namespace": "default"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Iteration 1/1: 1 groups running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "dependencyRefs": [
+        {
+          "apiVersion": "v1",
+          "kind": "ConfigMap",
+          "name": "gcp-gb200-roce-config",
+          "namespace": "default",
+          "scope": "workflow"
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 1,
+        "nodesPerJob": 1,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "detectedPlatform": "gcp",
+        "detectedGPUArchitecture": "gb200",
+        "appliedOverrides": [
+          {
+            "index": 0,
+            "when": "gpuArchitecture=in [gb200,gb300]",
+            "patches": "jobTemplate"
+          },
+          {
+            "index": 1,
+            "when": "gpuArchitecture=in [gb200,gb300], platform=gcp",
+            "patches": "jobTemplate, 1 dependencies"
+          }
+        ],
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "gcp-gb200-node-01"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "test-gcp-gb200-overrides-job",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

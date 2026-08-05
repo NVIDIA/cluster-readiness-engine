@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+metadata:
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+spec:
+  providerID: "aws://us-east-1a/i-template"

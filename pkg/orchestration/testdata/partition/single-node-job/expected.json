@@ -1,0 +1,20 @@
+[
+  {
+    "name": "group-0",
+    "nodes": [
+      "node-a"
+    ]
+  },
+  {
+    "name": "group-1",
+    "nodes": [
+      "node-b"
+    ]
+  },
+  {
+    "name": "group-2",
+    "nodes": [
+      "node-c"
+    ]
+  }
+]

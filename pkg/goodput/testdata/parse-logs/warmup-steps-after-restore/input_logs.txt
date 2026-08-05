@@ -1,0 +1,5 @@
+2026-01-22T18:00:00.000000000Z [NeMo I 2026-01-22T18:00:00.000000000Z] Application initialized
+2026-01-22T18:00:01.000000000Z [NeMo I ...] Restoring model weights from /checkpoints/step_100/model_weights
+2026-01-22T18:00:10.000000000Z Training epoch 0, iteration 100/9999 | lr: 5.000e-06 | global_batch_size: 32 | global_step: 100 | reduced_train_loss: 8.50 | train_step_timing in s: 38.50 | TFLOPS_per_GPU: 40.2
+2026-01-22T18:00:15.000000000Z Training epoch 0, iteration 101/9999 | lr: 5.100e-06 | global_batch_size: 32 | global_step: 101 | reduced_train_loss: 8.40 | train_step_timing in s: 4.25 | TFLOPS_per_GPU: 501.3
+2026-01-22T18:00:20.000000000Z Training epoch 0, iteration 102/9999 | lr: 5.200e-06 | global_batch_size: 32 | global_step: 102 | reduced_train_loss: 8.30 | train_step_timing in s: 4.22 | TFLOPS_per_GPU: 503.8

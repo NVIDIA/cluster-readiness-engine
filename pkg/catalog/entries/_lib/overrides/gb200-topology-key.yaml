@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- when:
+    gpuArchitecture:
+      in: [gb200, gb300]
+  orchestration:
+    topology:
+      topologyKey: nvidia.com/gpu.clique

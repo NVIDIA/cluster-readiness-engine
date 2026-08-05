@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: GoodputMeasurement
+  name: test-restart-missed-gm
+  namespace: default
+  condition: Measuring
+collect:
+  - kind: GoodputMeasurement
+    name: test-restart-missed-gm
+    namespace: default

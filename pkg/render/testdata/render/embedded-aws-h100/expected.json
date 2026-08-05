@@ -1,0 +1,49 @@
+{
+  "kind": "Workflow",
+  "apiVersion": "cre.nvidia.com/v1alpha1",
+  "metadata": {
+    "name": "test-workflow",
+    "annotations": {
+      "ncrectl.nvidia.com/applied-overrides": "[{\"index\":0,\"when\":\"gpuArchitecture=h100\",\"patches\":\"jobTemplate\"},{\"index\":1,\"when\":\"platform=aws\",\"patches\":\"1 dependencies\"}]",
+      "ncrectl.nvidia.com/detected-gpu-architecture": "h100",
+      "ncrectl.nvidia.com/detected-platform": "aws"
+    }
+  },
+  "spec": {
+    "jobTemplate": {
+      "spec": {
+        "workload": {
+          "trainJob": {
+            "trainer": {
+              "image": "nvcr.io/nvidia/pytorch:24.12-py3",
+              "command": [
+                "/bin/bash",
+                "-c"
+              ],
+              "args": [
+                "torchrun --nnodes 4"
+              ],
+              "numNodes": 8,
+              "numProcPerNode": 4
+            }
+          }
+        }
+      }
+    },
+    "orchestration": {
+      "execution": {}
+    },
+    "dependencies": [
+      {
+        "apiVersion": "v1",
+        "data": {
+          "region": "us-east-1"
+        },
+        "kind": "ConfigMap",
+        "metadata": {
+          "name": "aws-config"
+        }
+      }
+    ]
+  }
+}

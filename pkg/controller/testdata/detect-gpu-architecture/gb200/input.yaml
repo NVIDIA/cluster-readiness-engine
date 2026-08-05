@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+nodes:
+  - metadata:
+      name: node-1
+      labels:
+        nvidia.com/gpu.product: "NVIDIA-GB200"

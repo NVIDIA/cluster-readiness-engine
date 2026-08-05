@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: nemotron-6-megatron
+spec:
+  timestamp:
+    layout: "2006-01-02 15:04:05.999999"
+  patterns:
+    trainingStep:
+      regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\]\s+iteration\s+(?P<iteration>\d+)/\s*\d+\s*\|.*elapsed time per iteration \(ms\):\s*(?P<elapsedTime>[\d.]+)\s*\|.*throughput per GPU \(TFLOP/s/GPU\):\s*(?P<tflops>[\d.]+)\s*\|.*lm loss:\s*(?P<loss>[\d.eE+\-]+)'
+      example: '[2026-02-05 16:03:52.889599] iteration        1/  158945 | consumed samples: 768 | elapsed time per iteration (ms): 132563.1 | throughput per GPU (TFLOP/s/GPU): 138.5 | lm loss: 1.218472E+01'
+      units:
+        elapsedTime: ms
+    checkpointSave:
+      regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\]\s+saving checkpoint at iteration\s+(?P<step>\d+)\s+to\s+(?P<path>\S+)'
+      example: '[2026-02-05 17:07:36.379347] saving checkpoint at iteration     100 to /mnt/workspace/checkpoints in torch_dist format'
+    checkpointDone:
+      regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\]\s+successfully saved checkpoint from iteration\s+(?P<step>\d+)\s+to\s+(?P<path>\S+)'
+      example: '[2026-02-05 17:13:37.825367] successfully saved checkpoint from iteration     100 to /mnt/workspace/checkpoints'
+    applicationStart:
+      regex: '\[before the start of training step\]\s+datetime:\s+(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)'
+      example: '[before the start of training step] datetime: 2026-02-05 16:01:40.326255'

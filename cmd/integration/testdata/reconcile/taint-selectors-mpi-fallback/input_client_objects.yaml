@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: gpu-node-01
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-taint-mpi-fallback
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - mpirun
+            numNodes: 1
+          runtimePatches:
+            - manager: cre.nvidia.com/catalog
+              trainingRuntimeSpec:
+                template:
+                  spec:
+                    replicatedJobs:
+                      - name: launcher
+                      - name: node
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"

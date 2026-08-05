@@ -1,0 +1,182 @@
+{
+  "jobTemplate": {
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "test-runtime"
+          },
+          "trainer": {
+            "image": "base-image:latest",
+            "numNodes": 8
+          }
+        }
+      }
+    }
+  },
+  "orchestration": {
+    "execution": {},
+    "iterations": 1
+  },
+  "dependencies": [
+    {
+      "apiVersion": "trainer.kubeflow.org/v1alpha1",
+      "kind": "TrainingRuntime",
+      "metadata": {
+        "name": "test-runtime"
+      },
+      "spec": {
+        "mlPolicy": {
+          "numNodes": 8,
+          "torch": {
+            "numProcPerNode": 4
+          }
+        },
+        "template": {
+          "spec": {
+            "replicatedJobs": [
+              {
+                "name": "node",
+                "replicas": 1,
+                "template": {
+                  "spec": {
+                    "template": {
+                      "spec": {
+                        "containers": [
+                          {
+                            "env": [
+                              {
+                                "name": "NCCL_DEBUG",
+                                "value": "INFO"
+                              },
+                              {
+                                "name": "EXIT_DURATION_MINS",
+                                "value": "2880"
+                              }
+                            ],
+                            "image": "override-image:gb300",
+                            "name": "node",
+                            "resourceClaims": [
+                              {
+                                "name": "compute-domain"
+                              },
+                              {
+                                "name": "roce-channel"
+                              }
+                            ],
+                            "resources": {
+                              "limits": {
+                                "nvidia.com/gpu": 4
+                              }
+                            },
+                            "volumeMounts": [
+                              {
+                                "mountPath": "/mnt/workspace",
+                                "name": "workspace"
+                              }
+                            ]
+                          }
+                        ],
+                        "imagePullSecrets": [
+                          {
+                            "name": "my-secret"
+                          }
+                        ],
+                        "tolerations": [
+                          {
+                            "key": "dedicated",
+                            "operator": "Equal",
+                            "value": "gpu"
+                          }
+                        ],
+                        "volumes": [
+                          {
+                            "name": "workspace",
+                            "persistentVolumeClaim": {
+                              "claimName": "workspace-pvc"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "overrides": [
+    {
+      "when": {
+        "gpuArchitecture": {
+          "equals": "gb300"
+        }
+      },
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "trainer": {
+                "numNodes": 8
+              }
+            }
+          }
+        }
+      },
+      "dependencies": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "metadata": {
+            "name": "test-runtime"
+          },
+          "spec": {
+            "mlPolicy": {
+              "numNodes": 8
+            },
+            "template": {
+              "spec": {
+                "replicatedJobs": [
+                  {
+                    "name": "node",
+                    "template": {
+                      "spec": {
+                        "template": {
+                          "spec": {
+                            "containers": [
+                              {
+                                "env": [
+                                  {
+                                    "name": "EXIT_DURATION_MINS",
+                                    "value": "2880"
+                                  }
+                                ],
+                                "image": "override-image:gb300",
+                                "name": "node",
+                                "resourceClaims": [
+                                  {
+                                    "name": "compute-domain"
+                                  },
+                                  {
+                                    "name": "roce-channel"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

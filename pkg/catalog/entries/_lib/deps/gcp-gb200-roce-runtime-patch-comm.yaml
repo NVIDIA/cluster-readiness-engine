@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    mlPolicy:
+      mpi:
+        numProcPerNode: {{ .GpusPerNode }}
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            metadata:
+              annotations:
+                networking.gke.io/default-interface: "eth0"
+                networking.gke.io/interfaces: |
+                  [
+                    {"interfaceName":"eth0","network":"default"},
+                    {"interfaceName":"rdma0","network":"rdma-0"},
+                    {"interfaceName":"rdma1","network":"rdma-1"},
+                    {"interfaceName":"rdma2","network":"rdma-2"},
+                    {"interfaceName":"rdma3","network":"rdma-3"}
+                  ]
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    resources:
+                      limits:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        networking.gke.io.networks/rdma-0: "1"
+                        networking.gke.io.networks/rdma-1: "1"
+                        networking.gke.io.networks/rdma-2: "1"
+                        networking.gke.io.networks/rdma-3: "1"
+                      requests:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        networking.gke.io.networks/rdma-0: "1"
+                        networking.gke.io.networks/rdma-1: "1"
+                        networking.gke.io.networks/rdma-2: "1"
+                        networking.gke.io.networks/rdma-3: "1"
+                  tolerations:
+                  - key: kubernetes.io/arch
+                    operator: Equal
+                    value: arm64
+                    effect: NoSchedule
+                  - key: nvidia.com/gpu
+                    operator: Equal
+                    value: present
+                    effect: NoSchedule

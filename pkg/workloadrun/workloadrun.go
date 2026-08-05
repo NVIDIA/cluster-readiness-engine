@@ -1,0 +1,1144 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+package workloadrun
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
+	"github.com/spf13/cobra"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/yaml"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	sigyaml "sigs.k8s.io/yaml"
+
+	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
+
+	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/cluster"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/gpu"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/render"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/report"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/setup"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
+)
+
+const (
+	outputJSON   = "json"
+	defaultNS    = "default"
+	statusFailed = "Failed"
+)
+
+// NewCommand returns the "workloadrun" cobra command.
+func NewCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "workloadrun",
+		Short: "WorkloadRun management commands",
+	}
+	cmd.AddCommand(newWorkloadRunRenderCommand())
+	cmd.AddCommand(newWorkloadRunRunCommand())
+	cmd.AddCommand(newWorkloadRunReportCommand())
+	cmd.AddCommand(newWorkloadRunStatusCommand())
+	cmd.AddCommand(newWorkloadRunCancelCommand())
+	return cmd
+}
+
+// --- render ---
+
+func newWorkloadRunRenderCommand() *cobra.Command {
+	var outputFormat string
+	var platformFlag string
+	var dryRun bool
+
+	configFlags := kubeconfig.NewConfigFlags(true)
+	configFlags.Namespace = nil
+
+	cmd := &cobra.Command{
+		Use:   "render [flags] <workloadrun.yaml>",
+		Short: "Render the Workflow that would be created from a WorkloadRun",
+		Long: `Reads a WorkloadRun YAML and renders the Workflow that the controller would create,
+including auto-generated TrainingRuntime, ConfigMap, platform overrides, and NCCL env vars.
+
+Use --platform to simulate platform-specific overrides offline.
+Use --dry-run to discover real nodes from the cluster and apply overrides based on actual platform and GPU.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if dryRun {
+				return runWorkloadRunRenderDryRun(args[0], outputFormat, configFlags)
+			}
+			return runWorkloadRunRender(args[0], outputFormat, platformFlag)
+		},
+	}
+
+	cmd.Flags().StringVar(&outputFormat, "output", "yaml", "Output format: yaml or json")
+	cmd.Flags().StringVar(&platformFlag, "platform", "",
+		"Simulate platform for override matching (aws, gcp, azure, oci, onprem, togetherai, mistral, forge)")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false,
+		"Connect to cluster, discover real nodes, and render with actual platform/GPU detection")
+	configFlags.AddFlags(cmd.Flags())
+
+	return cmd
+}
+
+func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
+	if platformFlag != "" {
+		valid := map[string]bool{
+			"aws": true, "gcp": true, "azure": true, "oci": true,
+			"onprem": true, "togetherai": true, "mistral": true,
+			"forge": true,
+		}
+		if !valid[platformFlag] {
+			return fmt.Errorf(
+				"invalid --platform %q: must be one of aws, gcp, azure, oci, onprem, togetherai, mistral, forge",
+				platformFlag)
+		}
+	}
+
+	run, err := readWorkloadRun(file)
+	if err != nil {
+		return err
+	}
+
+	// Extract GPU architecture from nodeSelector.
+	var gpuProduct string
+	if run.Spec.Target != nil {
+		gpuProduct = run.Spec.Target.NodeSelector["nvidia.com/gpu.product"]
+	}
+	gpuArch := gpu.ParseProduct(gpuProduct)
+	if gpuArch == "" {
+		return fmt.Errorf("cannot determine GPU architecture: nvidia.com/gpu.product label required in target.nodeSelector")
+	}
+
+	// Resolve hardware defaults from the catalog. Platform comes from --platform
+	// (used later for override matching); when absent, only architecture defaults
+	// apply at template-render time.
+	nd := catalog.GPUDefaults(gpuArch, platformFlag)
+	gpusPerNode := nd.GpusPerNode
+	mlnxPerNode := nd.MlnxPerNode
+	if run.Spec.GpusPerNode != nil {
+		gpusPerNode = *run.Spec.GpusPerNode
+	}
+	if run.Spec.MlnxPerNode != nil {
+		mlnxPerNode = *run.Spec.MlnxPerNode
+	}
+
+	enableMNNVL := controller.DefaultEnableMNNVL(gpuArch)
+	if run.Spec.EnableMNNVL != nil {
+		enableMNNVL = *run.Spec.EnableMNNVL
+	}
+
+	// Determine framework type.
+	frameworkType := controller.FrameworkExec
+	if run.Spec.Framework.Torch != nil {
+		frameworkType = controller.FrameworkTorch
+	} else if run.Spec.Framework.MPI != nil {
+		frameworkType = controller.FrameworkMPI
+	}
+
+	// Build WorkflowSpec.
+	workflowSpec := BuildWorkflowSpec(run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
+
+	// If platform specified, apply overrides using synthetic nodes.
+	if platformFlag != "" {
+		nodes := loadSyntheticNodes(platformFlag, gpuArch)
+		orch := &burninv1alpha1.OrchestrationStatus{
+			DetectedPlatform:        platformFlag,
+			DetectedGPUArchitecture: gpuArch,
+		}
+		octx := controller.BuildOverrideContext(workflowSpec, orch, nodes)
+		if _, overrideErr := controller.ApplyOverridesWithTracking(workflowSpec, octx); overrideErr != nil {
+			return fmt.Errorf("applying overrides: %w", overrideErr)
+		}
+		workflowSpec.Overrides = nil
+	}
+
+	// Build output Workflow.
+	workflow := &burninv1alpha1.Workflow{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cre.nvidia.com/v1alpha1",
+			Kind:       "Workflow",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      run.Name,
+			Namespace: run.Namespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by": "cluster-readiness-engine",
+				"cre.nvidia.com/workload-run":  run.Name,
+			},
+			Annotations: map[string]string{
+				"ncrectl.nvidia.com/detected-gpu-architecture": gpuArch,
+			},
+		},
+		Spec: *workflowSpec,
+	}
+
+	if platformFlag != "" {
+		workflow.Annotations["ncrectl.nvidia.com/detected-platform"] = platformFlag
+	}
+
+	switch outputFormat {
+	case outputJSON:
+		data, _ := json.MarshalIndent(workflow, "", "  ")
+		fmt.Println(string(data))
+	default:
+		data, _ := sigyaml.Marshal(workflow)
+		fmt.Print(string(data))
+	}
+	return nil
+}
+
+// BuildWorkflowSpec constructs a WorkflowSpec from a WorkloadRun
+// (shared logic between controller and CLI).
+func BuildWorkflowSpec(
+	run *burninv1alpha1.WorkloadRun,
+	gpusPerNode, mlnxPerNode int32, enableMNNVL bool, frameworkType string,
+) *burninv1alpha1.WorkflowSpec {
+	spec := &run.Spec
+
+	// Build merged env vars.
+	baseEnv := platform.BaseNCCLEnvVars(enableMNNVL)
+	mergedEnv := platform.MergeEnvVars(baseEnv, spec.Env)
+
+	// Collect volumes and mounts, injecting config volume if needed.
+	volumes := append([]corev1.Volume{}, spec.Volumes...)
+	volumeMounts := append([]corev1.VolumeMount{}, spec.VolumeMounts...)
+	if spec.Config != nil {
+		configMapName := fmt.Sprintf("%s-config", run.Name)
+		if spec.Config.ConfigMapRef != nil {
+			configMapName = spec.Config.ConfigMapRef.Name
+		}
+		defaultMode := int32(0755)
+		volumes = append(volumes, corev1.Volume{
+			Name: "config-volume",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{Name: configMapName},
+					DefaultMode:          &defaultMode,
+				},
+			},
+		})
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "config-volume",
+			MountPath: "/config",
+		})
+	}
+
+	// Build runtime dependency.
+	rtCfg := platform.RuntimeConfig{
+		EntryName:        run.Name,
+		Image:            spec.Image,
+		NodesPerJob:      spec.NumNodes,
+		GpusPerNode:      gpusPerNode,
+		Env:              mergedEnv,
+		Volumes:          volumes,
+		VolumeMounts:     volumeMounts,
+		InitContainers:   spec.InitContainers,
+		Resources:        spec.Resources,
+		ImagePullSecrets: spec.ImagePullSecrets,
+	}
+
+	var runtimeDep burninv1alpha1.DependencySpec
+	switch frameworkType {
+	case controller.FrameworkTorch:
+		runtimeDep = platform.BuildTorchRuntime(rtCfg)
+	case controller.FrameworkMPI:
+		runtimeDep = platform.BuildMPIRuntime(rtCfg)
+	default:
+		runtimeDep = platform.BuildExecRuntime(rtCfg)
+	}
+
+	deps := []burninv1alpha1.DependencySpec{runtimeDep}
+
+	if spec.Config != nil && len(spec.Config.Inline) > 0 {
+		deps = append(deps, buildWRCLIConfigMapDep(run.Name, spec.Config.Inline))
+	}
+
+	// Build JobTemplate.
+	jobTemplate := buildCLIJobTemplate(run, frameworkType, gpusPerNode)
+
+	// Build OrchestrationSpec.
+	orch := &burninv1alpha1.OrchestrationSpec{
+		Target:     spec.Target,
+		Iterations: 1,
+	}
+	if spec.Orchestration != nil {
+		if spec.Orchestration.RepeatCount != nil {
+			orch.Iterations = int(*spec.Orchestration.RepeatCount)
+		}
+		switch spec.Orchestration.TestScale {
+		case "intra-rack":
+			// TopologyKey is set by platform override (workloadrun.yaml)
+			// to the platform's physical rack label.
+			orch.Topology = &burninv1alpha1.TopologySpec{
+				StrictDomain: true,
+			}
+		}
+		exec := burninv1alpha1.ExecutionSpec{}
+		if spec.Orchestration.MaxConcurrent != nil {
+			exec.MaxConcurrent = int(*spec.Orchestration.MaxConcurrent)
+		}
+		if spec.Orchestration.TimeoutPerJob != "" {
+			d, parseErr := time.ParseDuration(spec.Orchestration.TimeoutPerJob)
+			if parseErr == nil {
+				exec.TimeoutPerJob = &metav1.Duration{Duration: d}
+			}
+		}
+		orch.Execution = exec
+	}
+
+	// Build platform overrides.
+	overrideCfg := platform.OverrideConfig{
+		EntryName:     run.Name,
+		NodesPerJob:   spec.NumNodes,
+		GpusPerNode:   gpusPerNode,
+		MlnxPerNode:   mlnxPerNode,
+		EnableMNNVL:   enableMNNVL,
+		FrameworkType: frameworkType,
+	}
+	wrOverrides := platform.BuildOverrides(overrideCfg)
+	overrides := make([]burninv1alpha1.OverrideSpec, 0, len(wrOverrides)+len(spec.Overrides))
+	for _, o := range wrOverrides {
+		overrides = append(overrides, o.OverrideSpec)
+	}
+	overrides = append(overrides, spec.Overrides...)
+
+	workflowSpec := &burninv1alpha1.WorkflowSpec{
+		JobTemplate:   *jobTemplate,
+		Orchestration: *orch,
+		Dependencies:  deps,
+		Overrides:     overrides,
+	}
+
+	if len(spec.Thresholds) > 0 {
+		workflowSpec.Validation = &burninv1alpha1.ValidationSpec{
+			Performance: &burninv1alpha1.PerformanceValidationSpec{
+				Enabled: true,
+				Thresholds: &burninv1alpha1.ThresholdSpec{
+					Thresholds: spec.Thresholds,
+				},
+			},
+		}
+	}
+
+	return workflowSpec
+}
+
+func buildCLIJobTemplate(
+	run *burninv1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32,
+) *burninv1alpha1.JobTemplateSpec {
+	spec := &run.Spec
+
+	var command []string
+	var args []string
+
+	switch frameworkType {
+	case controller.FrameworkTorch:
+		torch := spec.Framework.Torch
+		command = []string{"torchrun"}
+		if torch.Module != "" {
+			args = append([]string{"-m", torch.Module}, torch.Args...)
+		} else {
+			args = append([]string{torch.Script}, torch.Args...)
+		}
+	case controller.FrameworkMPI:
+		mpi := spec.Framework.MPI
+		command = []string{"timeout", "3600", mpi.MpirunPath}
+		baseCount := 8 // fixed args below
+		mpiArgs := make([]string, 0, baseCount+len(mpi.MpiArgs)+1+len(mpi.Args))
+		mpiArgs = append(mpiArgs,
+			"-N", fmt.Sprintf("%d", gpusPerNode),
+			"--allow-run-as-root",
+			"--mca", "plm_rsh_args",
+			"-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
+			"-x", "NCCL_DEBUG=INFO",
+		)
+		mpiArgs = append(mpiArgs, mpi.MpiArgs...)
+		mpiArgs = append(mpiArgs, mpi.Binary)
+		mpiArgs = append(mpiArgs, mpi.Args...)
+		args = mpiArgs
+	default:
+		exec := spec.Framework.Exec
+		command = exec.Command
+		args = exec.Args
+	}
+
+	trainJobSpec := &trainerv1alpha1.TrainJobSpec{
+		RuntimeRef: trainerv1alpha1.RuntimeRef{
+			Name: fmt.Sprintf("%s-runtime", run.Name),
+			Kind: func() *string { s := "TrainingRuntime"; return &s }(),
+		},
+		Trainer: &trainerv1alpha1.Trainer{
+			Image:          &spec.Image,
+			Command:        command,
+			Args:           args,
+			NumNodes:       &spec.NumNodes,
+			NumProcPerNode: &gpusPerNode,
+		},
+	}
+
+	workload.SetImagePullSecrets(trainJobSpec, spec.ImagePullSecrets)
+
+	jobSpec := burninv1alpha1.JobSpec{
+		Workload: burninv1alpha1.WorkloadSpec{
+			TrainJob: trainJobSpec,
+		},
+		NodeHealthMonitor: &burninv1alpha1.NodeHealthMonitor{
+			CEL: &burninv1alpha1.CELNodeHealthCheck{
+				Expression: "node.spec.unschedulable == true",
+			},
+		},
+	}
+
+	if spec.GoodputMeasurement != nil {
+		jobSpec.GoodputMeasurement = spec.GoodputMeasurement
+	}
+	if spec.BandwidthMeasurement != nil {
+		jobSpec.BandwidthMeasurement = spec.BandwidthMeasurement
+	}
+
+	return &burninv1alpha1.JobTemplateSpec{Spec: jobSpec}
+}
+
+func buildWRCLIConfigMapDep(name string, data map[string]string) burninv1alpha1.DependencySpec {
+	cm := map[string]any{
+		"apiVersion": "v1",
+		"kind":       "ConfigMap",
+		"metadata": map[string]any{
+			"name":   fmt.Sprintf("%s-config", name),
+			"labels": map[string]any{"app": name},
+		},
+		"data": data,
+	}
+	raw, _ := json.Marshal(cm)
+	return burninv1alpha1.DependencySpec{
+		RawExtension: kruntime.RawExtension{Raw: raw},
+	}
+}
+
+// runWorkloadRunRenderDryRun connects to a live cluster to discover
+// real nodes, detect platform/GPU, and render with actual overrides.
+func runWorkloadRunRenderDryRun(
+	file, outputFormat string, configFlags *kubeconfig.ConfigFlags,
+) error {
+	run, err := readWorkloadRun(file)
+	if err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+	c, err := render.NewK8sClient(configFlags)
+	if err != nil {
+		return fmt.Errorf("build client: %w", err)
+	}
+
+	nodes, gpuProduct, nodeErr := cluster.DiscoverGPUNodes(ctx, c, run.Spec.Target)
+	if nodeErr != nil {
+		return nodeErr
+	}
+
+	detectedPlatform := controller.DetectPlatform(nodes)
+	gpuArch := controller.DetectGPUArchitecture(nodes)
+	nd := catalog.GPUDefaults(gpuArch, detectedPlatform)
+	gpusPerNode := nd.GpusPerNode
+	mlnxPerNode := nd.MlnxPerNode
+	if run.Spec.GpusPerNode != nil {
+		gpusPerNode = *run.Spec.GpusPerNode
+	}
+	if run.Spec.MlnxPerNode != nil {
+		mlnxPerNode = *run.Spec.MlnxPerNode
+	}
+	enableMNNVL := controller.DefaultEnableMNNVL(gpuArch)
+	if run.Spec.EnableMNNVL != nil {
+		enableMNNVL = *run.Spec.EnableMNNVL
+	}
+
+	_, _ = fmt.Fprintf(os.Stderr,
+		"Discovered %d nodes: %s (%s on %s)\n",
+		len(nodes), gpuProduct, gpuArch, detectedPlatform)
+
+	frameworkType := controller.FrameworkExec
+	if run.Spec.Framework.Torch != nil {
+		frameworkType = controller.FrameworkTorch
+	} else if run.Spec.Framework.MPI != nil {
+		frameworkType = controller.FrameworkMPI
+	}
+
+	workflowSpec := BuildWorkflowSpec(
+		run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
+
+	orch := &burninv1alpha1.OrchestrationStatus{
+		DetectedPlatform:        detectedPlatform,
+		DetectedGPUArchitecture: gpuArch,
+	}
+	octx := controller.BuildOverrideContext(workflowSpec, orch, nodes)
+	if _, overrideErr := controller.ApplyOverridesWithTracking(
+		workflowSpec, octx); overrideErr != nil {
+		return fmt.Errorf("applying overrides: %w", overrideErr)
+	}
+	workflowSpec.Overrides = nil
+
+	workflow := &burninv1alpha1.Workflow{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "cre.nvidia.com/v1alpha1",
+			Kind:       "Workflow",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      run.Name,
+			Namespace: run.Namespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by": "cluster-readiness-engine",
+				"cre.nvidia.com/workload-run":  run.Name,
+			},
+			Annotations: map[string]string{
+				"ncrectl.nvidia.com/detected-gpu-architecture": gpuArch,
+				"ncrectl.nvidia.com/detected-platform":         detectedPlatform,
+			},
+		},
+		Spec: *workflowSpec,
+	}
+
+	switch outputFormat {
+	case outputJSON:
+		data, _ := json.MarshalIndent(workflow, "", "  ")
+		fmt.Println(string(data))
+	default:
+		data, _ := sigyaml.Marshal(workflow)
+		fmt.Print(string(data))
+	}
+	return nil
+}
+
+// --- run ---
+
+func newWorkloadRunRunCommand() *cobra.Command {
+	var doWait, doSetup, doCleanup bool
+	var imagePullSecret string
+	var controllerImage string
+	var resultsFile string
+	var timeout time.Duration
+	var nameOverride, nodeList, topologyDomain, topologyKey, testScale string
+
+	configFlags := kubeconfig.NewConfigFlags(true)
+
+	cmd := &cobra.Command{
+		Use:   "run [flags] <workloadrun.yaml>",
+		Short: "Create a WorkloadRun on the target cluster",
+		Long: `Creates a WorkloadRun resource in the cluster from a YAML file.
+
+Use --setup to install CRDs, controller, and LogProfiles before creating.
+Use --wait to watch for completion and print a report.
+Use --cleanup to teardown after completion.
+
+Override flags (--name, --node-list, --topology-domain, --test-scale) modify
+the WorkloadRun spec before submission. When --node-list is used and the
+number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runWorkloadRunExecute(args[0], *configFlags.Namespace, imagePullSecret,
+				controllerImage, doWait, doSetup, doCleanup, timeout,
+				resultsFile, configFlags,
+				nameOverride, nodeList, topologyDomain, topologyKey, testScale)
+		},
+	}
+
+	cmd.Flags().BoolVar(&doWait, "wait", false, "Watch for completion")
+	cmd.Flags().BoolVar(&doSetup, "setup", false, "Install CRDs, controller, LogProfiles before creating")
+	cmd.Flags().BoolVar(&doCleanup, "cleanup", false, "Delete WorkloadRun and installed components after completion")
+	cmd.Flags().StringVar(&imagePullSecret, "image-pull-secret", "", "GitHub token for ghcr.io image pull")
+	cmd.Flags().StringVar(&controllerImage, "image", "", "Override controller image")
+	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Minute, "Wait timeout")
+	cmd.Flags().StringVar(&resultsFile, "results-file", "",
+		"Write report as JSON to this file path (requires --wait)")
+	cmd.Flags().StringVar(&nameOverride, "name", "",
+		"Override metadata.name")
+	cmd.Flags().StringVar(&nodeList, "node-list", "",
+		"Comma-separated node names (sets target.nodeNames)")
+	cmd.Flags().StringVar(&topologyDomain, "topology-domain", "",
+		"Topology domain name (sets target.matchExpressions)")
+	cmd.Flags().StringVar(&topologyKey, "topology-key", "",
+		"Override topology label key for --topology-domain")
+	cmd.Flags().StringVar(&testScale, "test-scale", "",
+		"Override testScale (intra-node, intra-rack, full-scale)")
+	configFlags.AddFlags(cmd.Flags())
+
+	return cmd
+}
+
+func runWorkloadRunExecute(
+	file, namespace, imagePullSecret, controllerImage string,
+	doWait, doSetup, _ bool, timeout time.Duration,
+	resultsFile string, configFlags *kubeconfig.ConfigFlags,
+	nameOverride, nodeList, topologyDomain,
+	topologyKey, testScale string,
+) error {
+
+	run, err := readWorkloadRun(file)
+	if err != nil {
+		return err
+	}
+
+	// Apply CLI overrides to the WorkloadRun spec.
+	applyRunOverrides(run, nameOverride, nodeList,
+		topologyDomain, topologyKey, testScale)
+
+	if namespace != "" {
+		run.Namespace = namespace
+	}
+	if run.Namespace == "" {
+		run.Namespace = defaultNS
+	}
+
+	out := os.Stderr
+
+	// Build client.
+	wc, err := render.NewK8sWatchClient(configFlags)
+	if err != nil {
+		return fmt.Errorf("build client: %w", err)
+	}
+
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	// Setup phase.
+	if doSetup {
+		_, _ = fmt.Fprintln(out, "Installing CRE components...")
+		if initErr := setup.RunInit("", controllerImage, imagePullSecret, "",
+			true, configFlags, "", os.Stdin, out); initErr != nil {
+			return fmt.Errorf("setup: %w", initErr)
+		}
+		_, _ = fmt.Fprintln(out, "Setup complete.")
+	}
+
+	// Create namespace if needed.
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: run.Namespace}}
+	if err := wc.Create(ctx, ns); err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("create namespace %s: %w", run.Namespace, err)
+	}
+
+	// Create image pull secret if provided.
+	if imagePullSecret != "" {
+		secretName, secretErr := setup.CreateImagePullSecret(ctx, wc, run.Namespace, imagePullSecret)
+		if secretErr != nil {
+			return secretErr
+		}
+		run.Spec.ImagePullSecrets = append(run.Spec.ImagePullSecrets,
+			corev1.LocalObjectReference{Name: secretName})
+		_, _ = fmt.Fprintf(out, "Created image pull secret %q in namespace %s.\n", secretName, run.Namespace)
+	}
+
+	// Resolve auto topology key before discovery. The __auto__ placeholder
+	// can't be used for node filtering, so we do a preliminary discovery
+	// without matchExpressions to detect the platform first.
+	if topologyDomain != "" && topologyKey == "" {
+		prelimNodes, _, _ := cluster.DiscoverGPUNodes(ctx, wc, nil)
+		if len(prelimNodes) > 0 {
+			detectedPlatform := controller.DetectPlatform(prelimNodes)
+			resolved := cluster.DefaultTopologyKey(detectedPlatform)
+			if resolved == "" {
+				return fmt.Errorf(
+					"--topology-domain requires --topology-key on platform %q",
+					detectedPlatform)
+			}
+			for i := range run.Spec.Target.MatchExpressions {
+				if run.Spec.Target.MatchExpressions[i].Key == "__auto__" {
+					run.Spec.Target.MatchExpressions[i].Key = resolved
+				}
+			}
+		}
+	}
+
+	// Discover and validate target nodes before submitting.
+	nodes, gpuProduct, nodeErr := cluster.DiscoverGPUNodes(ctx, wc, run.Spec.Target)
+	if nodeErr != nil {
+		return nodeErr
+	}
+	_, _ = fmt.Fprintf(out, "Discovered %d GPU nodes with product: %s\n",
+		len(nodes), gpuProduct)
+
+	// Auto-infer numNodes from target node count.
+	// --node-list: clamp down if fewer nodes than spec.
+	// --topology-domain: set to discovered count (all nodes in the domain).
+	if nodeList != "" && run.Spec.NumNodes > int32(len(nodes)) {
+		run.Spec.NumNodes = int32(len(nodes))
+	}
+	if topologyDomain != "" {
+		run.Spec.NumNodes = int32(len(nodes))
+	}
+
+	// Create WorkloadRun.
+	if err := wc.Create(ctx, run); err != nil {
+		return fmt.Errorf("create WorkloadRun: %w", err)
+	}
+	_, _ = fmt.Fprintf(out, "WorkloadRun %s created in namespace %s.\n",
+		run.Name, run.Namespace)
+
+	if !doWait {
+		_, _ = fmt.Fprintf(out, "\nTo check status:\n")
+		_, _ = fmt.Fprintf(out, "  kubectl get workloadrun %s -n %s\n", run.Name, run.Namespace)
+		return nil
+	}
+
+	// Wait for completion.
+	_, _ = fmt.Fprintf(out, "\nWaiting for completion (timeout: %s)...\n", timeout)
+	finalRun, waitErr := watchWorkloadRun(ctx, wc, run.Name, run.Namespace, timeout, out)
+
+	// Print report if we have a terminal WorkloadRun.
+	if finalRun != nil {
+		r := buildWorkloadRunReport(ctx, wc, finalRun)
+		report.Print(out, r)
+		if resultsFile != "" {
+			if err := report.WriteJSON(resultsFile, []*report.CertReport{r}); err != nil {
+				_, _ = fmt.Fprintf(out, "Warning: failed to write results: %v\n", err)
+			} else {
+				_, _ = fmt.Fprintf(out, "Results written to %s\n", resultsFile)
+			}
+		}
+	}
+
+	return waitErr
+}
+
+// watchWorkloadRun polls until the WorkloadRun reaches a terminal state.
+func watchWorkloadRun(
+	ctx context.Context, c client.WithWatch,
+	name, namespace string, timeout time.Duration, _ io.Writer,
+) (*burninv1alpha1.WorkloadRun, error) {
+	deadline := time.After(timeout)
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("interrupted")
+		case <-deadline:
+			return nil, fmt.Errorf("timeout waiting for WorkloadRun %s", name)
+		case <-ticker.C:
+			var current burninv1alpha1.WorkloadRun
+			key := client.ObjectKey{Name: name, Namespace: namespace}
+			if err := c.Get(ctx, key, &current); err != nil {
+				continue
+			}
+			if controller.CondIsTrue(current.Status.Conditions, burninv1alpha1.WorkloadRunSucceeded) {
+				return &current, nil
+			}
+			if controller.CondIsTrue(current.Status.Conditions, burninv1alpha1.WorkloadRunFailed) {
+				msg := controller.CondMessage(current.Status.Conditions, burninv1alpha1.WorkloadRunFailed)
+				return &current, fmt.Errorf("WorkloadRun failed: %s", msg)
+			}
+		}
+	}
+}
+
+// --- helpers ---
+
+func readWorkloadRun(file string) (*burninv1alpha1.WorkloadRun, error) {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", file, err)
+	}
+
+	var run burninv1alpha1.WorkloadRun
+	if err := yaml.NewYAMLOrJSONDecoder(
+		bytes.NewReader(data), 4096).Decode(&run); err != nil {
+		return nil, fmt.Errorf("parsing WorkloadRun: %w", err)
+	}
+
+	if run.Kind != "" && run.Kind != "WorkloadRun" {
+		return nil, fmt.Errorf("expected kind WorkloadRun, got %q", run.Kind)
+	}
+
+	return &run, nil
+}
+
+// loadSyntheticNodes creates synthetic nodes for offline override matching.
+// It tries the embedded templates first (via render.LoadEmbeddedNodes); if no
+// template exists for the given platform+arch it falls back to a minimal
+// synthetic node.
+func loadSyntheticNodes(platformName, gpuArch string) []corev1.Node {
+	if nodes, err := render.LoadEmbeddedNodes(platformName, gpuArch); err == nil {
+		return nodes
+	}
+	// Fallback: create a minimal synthetic node.
+	labels := map[string]string{
+		"nvidia.com/gpu.present": "true",
+		"nvidia.com/gpu.product": fmt.Sprintf("NVIDIA-%s", gpuArch),
+	}
+	if platformName == "forge" {
+		labels["kubernetes.io/hostname"] = "synthetic-forge-node"
+	}
+	return []corev1.Node{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   "synthetic-node-0",
+				Labels: labels,
+			},
+			Spec: corev1.NodeSpec{
+				ProviderID: render.SyntheticProviderID(platformName),
+			},
+		},
+	}
+}
+
+// syntheticProviderID is in run_common.go.
+
+// --- report ---
+
+func newWorkloadRunReportCommand() *cobra.Command {
+	var resultsFile, output string
+
+	configFlags := kubeconfig.NewConfigFlags(true)
+	*configFlags.Namespace = defaultNS
+
+	cmd := &cobra.Command{
+		Use:   "report <workloadrun-name>",
+		Short: "Generate a report for a WorkloadRun",
+		Long: `Connects to the cluster, fetches the named WorkloadRun and its Workflow,
+and generates the same report that 'ncrectl workloadrun run --wait' prints.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runWorkloadRunReport(args[0], configFlags, resultsFile, output)
+		},
+	}
+
+	cmd.Flags().StringVar(&resultsFile, "results-file", "",
+		"Write report as JSON to this file path")
+	cmd.Flags().StringVarP(&output, "output", "o", "text",
+		"Output format: text, json")
+	configFlags.AddFlags(cmd.Flags())
+
+	return cmd
+}
+
+func runWorkloadRunReport(
+	name string, configFlags *kubeconfig.ConfigFlags,
+	resultsFile, output string,
+) error {
+	ctx := context.Background()
+	namespace := *configFlags.Namespace
+
+	c, err := render.NewK8sClient(configFlags)
+	if err != nil {
+		return fmt.Errorf("build kubernetes client: %w", err)
+	}
+
+	var run burninv1alpha1.WorkloadRun
+	if err := c.Get(ctx, client.ObjectKey{
+		Name: name, Namespace: namespace,
+	}, &run); err != nil {
+		if apierrors.IsNotFound(err) {
+			return fmt.Errorf(
+				"workloadrun %q not found in namespace %q", name, namespace)
+		}
+		return fmt.Errorf("get workloadrun %q: %w", name, err)
+	}
+
+	r := buildWorkloadRunReport(ctx, c, &run)
+
+	if output == outputJSON {
+		data, err := json.MarshalIndent(r, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshal report: %w", err)
+		}
+		fmt.Println(string(data))
+	} else {
+		report.Print(os.Stdout, r)
+	}
+
+	if resultsFile != "" {
+		if err := report.WriteJSON(resultsFile, []*report.CertReport{r}); err != nil {
+			return fmt.Errorf("write results file: %w", err)
+		}
+		_, _ = fmt.Fprintf(os.Stderr, "Results written to %s\n", resultsFile)
+	}
+
+	succeeded := controller.CondIsTrue(
+		run.Status.Conditions, burninv1alpha1.WorkloadRunSucceeded)
+	failed := controller.CondIsTrue(
+		run.Status.Conditions, burninv1alpha1.WorkloadRunFailed)
+	if !succeeded && !failed {
+		return fmt.Errorf("workloadrun %q is still running", name)
+	}
+	if failed {
+		return fmt.Errorf("workloadrun %q failed", name)
+	}
+	return nil
+}
+
+// buildWorkloadRunReport creates a CertReport from a WorkloadRun by fetching
+// its child Workflow. Reuses the same report model and PopulateCategoryFromWorkflow
+// function as certification reports.
+func buildWorkloadRunReport(
+	ctx context.Context, c client.Client, run *burninv1alpha1.WorkloadRun,
+) *report.CertReport {
+	result := "RUNNING"
+	if controller.CondIsTrue(
+		run.Status.Conditions, burninv1alpha1.WorkloadRunFailed) {
+		result = "FAILED"
+	} else if controller.CondIsTrue(
+		run.Status.Conditions, burninv1alpha1.WorkloadRunSucceeded) {
+		result = "PASSED"
+	}
+
+	r := &report.CertReport{
+		Title:       "WorkloadRun Report",
+		Name:        run.Name,
+		Platform:    run.Status.DetectedPlatform,
+		GPU:         run.Status.DetectedGPUArchitecture,
+		FailedNodes: noderesults.FailedNodeNames(report.FailedNodesFromRef(ctx, c, run.Namespace, run.Status.FailedNodesRef)),
+		Result:      result,
+	}
+
+	// Build a single category from the WorkloadRun's Workflow.
+	cat := report.CategoryReport{
+		Domain:  "workloadrun",
+		Variant: run.Name,
+	}
+
+	if run.Status.WorkflowRef != nil {
+		wf := &burninv1alpha1.Workflow{}
+		ns := run.Status.WorkflowRef.Namespace
+		if ns == "" {
+			ns = run.Namespace
+		}
+		key := client.ObjectKey{
+			Name: run.Status.WorkflowRef.Name, Namespace: ns,
+		}
+		if err := c.Get(ctx, key, wf); err == nil {
+			report.PopulateCategoryFromWorkflow(ctx, c, &cat, wf)
+			r.TotalNodes = wf.Status.Orchestration.TotalNodes
+
+			// Set category status from Workflow conditions.
+			switch {
+			case controller.CondIsTrue(wf.Status.Conditions, burninv1alpha1.WorkflowSucceeded):
+				cat.Status = "Succeeded"
+			case controller.CondIsTrue(wf.Status.Conditions, burninv1alpha1.WorkflowFailed):
+				cat.Status = statusFailed
+			case controller.CondIsTrue(wf.Status.Conditions, burninv1alpha1.WorkflowInProgress):
+				cat.Status = "Running"
+			}
+
+			// Build per-node results from orchestration groups. Failed nodes are
+			// resolved from the Workflow's failed-nodes ConfigMap.
+			r.NodeResults = buildNodeResults(wf, report.FailedNodesFromRef(ctx, c, wf.Namespace, wf.Status.FailedNodesRef))
+		}
+	}
+
+	r.Categories = []report.CategoryReport{cat}
+	return r
+}
+
+// applyRunOverrides modifies a WorkloadRun based on CLI override flags.
+func applyRunOverrides(
+	run *burninv1alpha1.WorkloadRun,
+	nameOverride, nodeList, topologyDomain, topologyKey, testScale string,
+) {
+	if nameOverride != "" {
+		run.Name = nameOverride
+	}
+	if nodeList != "" {
+		names := strings.Split(nodeList, ",")
+		if run.Spec.Target == nil {
+			run.Spec.Target = &burninv1alpha1.TargetSpec{}
+		}
+		run.Spec.Target.NodeNames = names
+		if int32(len(names)) < run.Spec.NumNodes {
+			run.Spec.NumNodes = int32(len(names))
+		}
+	}
+	if topologyDomain != "" {
+		if run.Spec.Target == nil {
+			run.Spec.Target = &burninv1alpha1.TargetSpec{}
+		}
+		key := topologyKey
+		if key == "" {
+			key = "__auto__"
+		}
+		run.Spec.Target.MatchExpressions = append(
+			run.Spec.Target.MatchExpressions,
+			corev1.NodeSelectorRequirement{
+				Key:      key,
+				Operator: corev1.NodeSelectorOpIn,
+				Values:   []string{topologyDomain},
+			})
+	}
+	if testScale != "" {
+		if run.Spec.Orchestration == nil {
+			run.Spec.Orchestration = &burninv1alpha1.WorkloadOrchestration{}
+		}
+		run.Spec.Orchestration.TestScale = testScale
+	}
+}
+
+// buildNodeResults flattens orchestration groups into per-node pass/fail results.
+func buildNodeResults(wf *burninv1alpha1.Workflow, failedNodes []burninv1alpha1.FailedNode) []report.NodeResultReport {
+	orch := wf.Status.Orchestration
+	if orch == nil {
+		return nil
+	}
+	failedSet := make(map[string]bool)
+	for _, n := range failedNodes {
+		failedSet[n.Name] = true
+	}
+
+	var results []report.NodeResultReport
+	for _, g := range orch.Groups {
+		groupStatus := "Passed"
+		if g.Phase == burninv1alpha1.GroupFailed {
+			groupStatus = statusFailed
+		}
+		rack := ""
+		if len(g.Domains) > 0 {
+			rack = g.Domains[0]
+		}
+		for _, node := range g.Nodes {
+			nodeStatus := groupStatus
+			if failedSet[node] {
+				nodeStatus = "Failed"
+			}
+			results = append(results, report.NodeResultReport{
+				Name:   node,
+				Group:  g.Name,
+				Rack:   rack,
+				Status: nodeStatus,
+			})
+		}
+	}
+	return results
+}
+
+// --- status ---
+
+// WorkloadRunStatusOutput is the JSON output for ncrectl workloadrun status.
+type WorkloadRunStatusOutput struct {
+	Name        string   `json:"name"`
+	Namespace   string   `json:"namespace"`
+	Status      string   `json:"status"`
+	FailedNodes []string `json:"failedNodes,omitempty"`
+}
+
+func newWorkloadRunStatusCommand() *cobra.Command {
+	var output string
+
+	configFlags := kubeconfig.NewConfigFlags(true)
+	*configFlags.Namespace = defaultNS
+
+	cmd := &cobra.Command{
+		Use:   "status <workloadrun-name>",
+		Short: "Check the status of a WorkloadRun",
+		Long:  `Lightweight status check for polling. Returns the current phase without a full report.`,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			namespace := *configFlags.Namespace
+			c, err := render.NewK8sClient(configFlags)
+			if err != nil {
+				return err
+			}
+
+			var run burninv1alpha1.WorkloadRun
+			if err := c.Get(ctx, client.ObjectKey{
+				Name: args[0], Namespace: namespace,
+			}, &run); err != nil {
+				if apierrors.IsNotFound(err) {
+					return fmt.Errorf("workloadrun %q not found in namespace %q", args[0], namespace)
+				}
+				return fmt.Errorf("get workloadrun: %w", err)
+			}
+
+			status := "Pending"
+			switch {
+			case controller.CondIsTrue(run.Status.Conditions, burninv1alpha1.WorkloadRunSucceeded):
+				status = "Succeeded"
+			case controller.CondIsTrue(run.Status.Conditions, burninv1alpha1.WorkloadRunFailed):
+				status = "Failed"
+			case controller.CondIsTrue(run.Status.Conditions, burninv1alpha1.WorkloadRunInProgress):
+				status = "InProgress"
+			}
+
+			if output == outputJSON {
+				out := WorkloadRunStatusOutput{
+					Name:        run.Name,
+					Namespace:   run.Namespace,
+					Status:      status,
+					FailedNodes: noderesults.FailedNodeNames(report.FailedNodesFromRef(ctx, c, run.Namespace, run.Status.FailedNodesRef)),
+				}
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(out)
+			}
+
+			fmt.Println(status)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&output, "output", "o", "text", "Output format: text, json")
+	configFlags.AddFlags(cmd.Flags())
+
+	return cmd
+}
+
+// --- cancel ---
+
+func newWorkloadRunCancelCommand() *cobra.Command {
+	configFlags := kubeconfig.NewConfigFlags(true)
+	*configFlags.Namespace = defaultNS // Gap 1 (ADR-067): preserve today's default
+
+	cmd := &cobra.Command{
+		Use:   "cancel <name> [name...]",
+		Short: "Cancel one or more running WorkloadRuns",
+		Long:  `Deletes WorkloadRun resources, which cascades to their Workflows, Jobs, and workloads.`,
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			namespace := *configFlags.Namespace
+			c, err := render.NewK8sClient(configFlags)
+			if err != nil {
+				return err
+			}
+
+			var lastErr error
+			for _, name := range args {
+				run := &burninv1alpha1.WorkloadRun{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      name,
+						Namespace: namespace,
+					},
+				}
+				if err := c.Delete(ctx, run); err != nil {
+					if apierrors.IsNotFound(err) {
+						fmt.Fprintf(os.Stderr, "WorkloadRun %q not found in namespace %q\n", name, namespace)
+					} else {
+						fmt.Fprintf(os.Stderr, "Failed to cancel %q: %v\n", name, err)
+						lastErr = err
+					}
+					continue
+				}
+				fmt.Printf("Cancelled %s\n", name)
+			}
+			return lastErr
+		},
+	}
+
+	configFlags.AddFlags(cmd.Flags())
+
+	return cmd
+}

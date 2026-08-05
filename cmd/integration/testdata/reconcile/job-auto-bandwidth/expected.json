@@ -1,0 +1,107 @@
+{
+  "BandwidthMeasurement/test-auto-bandwidth-bandwidth": {
+    "kind": "BandwidthMeasurement",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-auto-bandwidth-bandwidth",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "cre.nvidia.com/job": "test-auto-bandwidth"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "kind": "Job",
+          "name": "test-auto-bandwidth",
+          "uid": "",
+          "controller": true,
+          "blockOwnerDeletion": true
+        }
+      ],
+      "finalizers": [
+        "cre.nvidia.com/bandwidthmeasurement-finalizer"
+      ]
+    },
+    "spec": {
+      "jobRef": {
+        "apiGroup": "cre.nvidia.com",
+        "kind": "Job",
+        "name": "test-auto-bandwidth"
+      },
+      "logProfileRef": "test-auto-bw-logprofile",
+      "sampleInterval": "30s",
+      "testType": "all_reduce"
+    }
+  },
+  "Job/test-auto-bandwidth": {
+    "kind": "Job",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-auto-bandwidth",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/finalizer"
+      ]
+    },
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "test-runtime",
+            "apiGroup": "trainer.kubeflow.org",
+            "kind": "TrainingRuntime"
+          },
+          "trainer": {
+            "image": "test-image:latest",
+            "command": [
+              "mpirun"
+            ],
+            "numNodes": 2
+          },
+          "suspend": false,
+          "managedBy": "trainer.kubeflow.org/trainjob-controller"
+        }
+      },
+      "bandwidthMeasurement": {
+        "logProfileRef": "test-auto-bw-logprofile",
+        "sampleInterval": "30s",
+        "testType": "all_reduce"
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkloadRunning",
+          "message": "Workload TrainJob/test-auto-bandwidth-workload is running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "workloadRef": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainJob",
+        "name": "test-auto-bandwidth-workload",
+        "namespace": "default"
+      }
+    }
+  }
+}

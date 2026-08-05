@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: test-auto-goodput-logprofile
+spec:
+  timestamp:
+    layout: "2006-01-02T15:04:05.999999999Z"
+  patterns:
+    trainingStep:
+      regex: 'step (?P<globalStep>\d+)'
+      example: "step 100"
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-auto-goodput
+  namespace: default
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+  goodputMeasurement:
+    logProfileRef: test-auto-goodput-logprofile
+    sampleInterval: 30s
+status:
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-auto-goodput-workload
+    namespace: default
+---
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-auto-goodput-workload
+  namespace: default
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - python
+      - train.py
+    numNodes: 1

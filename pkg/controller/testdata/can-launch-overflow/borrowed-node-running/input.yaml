@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+overflow:
+  name: group-2-overflow
+  nodes: ["node-3", "node-4"]
+  overflow: true
+  phase: Pending
+allGroups:
+  - name: group-0
+    nodes: ["node-0", "node-1"]
+    phase: Succeeded
+  - name: group-1
+    nodes: ["node-2", "node-3"]
+    phase: Running
+  - name: group-2-overflow
+    nodes: ["node-3", "node-4"]
+    overflow: true
+    phase: Pending

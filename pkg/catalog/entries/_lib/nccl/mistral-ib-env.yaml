@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- name: NCCL_DEBUG
+  value: INFO
+- name: NCCL_MNNVL_ENABLE
+  value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"
+- name: NCCL_IB_HCA
+  value: "mlx5_0:1,mlx5_1:1,mlx5_2:1,mlx5_3:1"
+- name: NCCL_IB_PCI_RELAXED_ORDERING
+  value: "1"
+- name: UCX_NET_DEVICES
+  value: "mlx5_0:1,mlx5_1:1,mlx5_2:1,mlx5_3:1"
+- name: SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING
+  value: "1"
+- name: OMPI_MCA_btl_openib_warn_default_gid_prefix
+  value: "0"
+- name: PMIX_MCA_gds
+  value: "^ds12"
+- name: CUDA_CACHE_DISABLE
+  value: "1"
+- name: NCCL_DMABUF_ENABLE
+  value: "0"

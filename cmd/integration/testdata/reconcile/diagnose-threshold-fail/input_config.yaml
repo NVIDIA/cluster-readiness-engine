@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Both screening jobs succeeded but screen-1 has bandwidth below threshold (24 < 400).
+# The diagnose controller should treat screen-1 as failed and advance to
+# inter-screening, creating a new group from healthy representatives.
+waitFor:
+  kind: Workflow
+  name: test-diag-threshold
+  namespace: default
+  condition: InProgress
+collect:
+  - kind: Workflow
+    name: test-diag-threshold
+    namespace: default

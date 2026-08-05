@@ -1,0 +1,50 @@
+{
+  "applicationStartTime": "2026-02-05T16:01:40.326255Z",
+  "checkpoints": [
+    {
+      "path": "/mnt/workspace/checkpoints",
+      "saveDuration": 36.103016,
+      "step": 100,
+      "timestamp": "2026-02-05T17:08:12.482363Z"
+    }
+  ],
+  "firstStep": {
+    "elapsedTime": 132.56310000000002,
+    "epoch": 0,
+    "globalStep": 1,
+    "iteration": 1,
+    "loss": 12.18472,
+    "stepTiming": 132.56310000000002,
+    "tflops": 138.5,
+    "timestamp": "2026-02-05T16:03:52.889599Z"
+  },
+  "lastCheckpoint": {
+    "path": "/mnt/workspace/checkpoints",
+    "saveDuration": 36.103016,
+    "step": 100,
+    "timestamp": "2026-02-05T17:08:12.482363Z"
+  },
+  "lastLogTimestamp": "2026-02-05T17:13:37.825367Z",
+  "lastStep": {
+    "elapsedTime": 132.56310000000002,
+    "epoch": 0,
+    "globalStep": 1,
+    "iteration": 1,
+    "loss": 12.18472,
+    "stepTiming": 132.56310000000002,
+    "tflops": 138.5,
+    "timestamp": "2026-02-05T16:03:52.889599Z"
+  },
+  "steps": [
+    {
+      "elapsedTime": 132.56310000000002,
+      "epoch": 0,
+      "globalStep": 1,
+      "iteration": 1,
+      "loss": 12.18472,
+      "stepTiming": 132.56310000000002,
+      "tflops": 138.5,
+      "timestamp": "2026-02-05T16:03:52.889599Z"
+    }
+  ]
+}

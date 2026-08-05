@@ -1,0 +1,9 @@
+{
+  "applied": [
+    {
+      "index": 0,
+      "when": "gpuArchitecture=h100",
+      "patches": "jobTemplate"
+    }
+  ]
+}

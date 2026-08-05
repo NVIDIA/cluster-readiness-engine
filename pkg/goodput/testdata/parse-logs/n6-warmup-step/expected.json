@@ -1,0 +1,57 @@
+{
+  "firstStep": {
+    "elapsedTime": 166.077,
+    "epoch": 0,
+    "globalStep": 1,
+    "isWarmup": true,
+    "iteration": 1,
+    "loss": 12.18544,
+    "stepTiming": 166.077,
+    "tflops": 55.3,
+    "timestamp": "2026-02-09T18:51:17.645139Z"
+  },
+  "lastLogTimestamp": "2026-02-09T19:01:00Z",
+  "lastStep": {
+    "elapsedTime": 0.5302,
+    "epoch": 0,
+    "globalStep": 3,
+    "iteration": 3,
+    "loss": 11.9,
+    "stepTiming": 0.5302,
+    "tflops": 137.1,
+    "timestamp": "2026-02-09T19:01:00Z"
+  },
+  "steps": [
+    {
+      "elapsedTime": 166.077,
+      "epoch": 0,
+      "globalStep": 1,
+      "isWarmup": true,
+      "iteration": 1,
+      "loss": 12.18544,
+      "stepTiming": 166.077,
+      "tflops": 55.3,
+      "timestamp": "2026-02-09T18:51:17.645139Z"
+    },
+    {
+      "elapsedTime": 0.5254,
+      "epoch": 0,
+      "globalStep": 2,
+      "iteration": 2,
+      "loss": 12,
+      "stepTiming": 0.5254,
+      "tflops": 138.5,
+      "timestamp": "2026-02-09T19:00:00Z"
+    },
+    {
+      "elapsedTime": 0.5302,
+      "epoch": 0,
+      "globalStep": 3,
+      "iteration": 3,
+      "loss": 11.9,
+      "stepTiming": 0.5302,
+      "tflops": 137.1,
+      "timestamp": "2026-02-09T19:01:00Z"
+    }
+  ]
+}

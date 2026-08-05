@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+nodes:
+  - metadata:
+      name: jcox-dev2-w-5244
+      labels:
+        kubernetes.io/hostname: jcox-dev2-w-5244
+        nke.nvidia.com/site-name: az24
+    spec:
+      providerID: ""

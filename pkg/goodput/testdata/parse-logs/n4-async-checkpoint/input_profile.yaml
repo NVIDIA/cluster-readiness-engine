@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: nemotron-4-nemo-async
+spec:
+  timestamp:
+    layout: "2006-01-02T15:04:05.999999999Z"
+  patterns:
+    trainingStep:
+      regex: 'Training epoch (?P<epoch>\d+), iteration\s+(?P<iteration>\d+)/\d+.*global_step:\s*(?P<globalStep>\d+).*reduced_train_loss:\s*(?P<loss>[\d.]+)\s*\|\s*train_step_timing in s:\s*(?P<stepTiming>[\d.]+)(?:.*TFLOPS_per_GPU:\s*(?P<tflops>[\d.eE+\-]+))?'
+      example: 'Training epoch 0, iteration 0/49 | lr: 8.982e-08 | global_batch_size: 64 | global_step: 0 | max_memory_reserved: 121987137536 | max_memory_allocated: 120549646336 | reduced_train_loss: 13.01 | train_step_timing in s: 42.45 | TFLOPS_per_GPU: 36.27'
+      units:
+        stepTiming: s
+    checkpointSave:
+      regex: 'Global Checkpoint Save\s*:\s*Rank:\s*\d+\s*:\s*Iteration:\s*(?P<step>\d+)\s*:.*Save duration:\s*(?P<saveDuration>[\d.]+)s'
+      example: '[NeMo I ...] Global Checkpoint Save : Rank: 0 : Iteration: 199 : Start time: 1771022134.925s : Save duration: 0.309s'
+      units:
+        saveDuration: s
+    checkpointDone:
+      regex: 'Successfully saved checkpoint from iteration\s+(?P<step>\d+)\s+to\s+(?P<path>\S+)'
+      example: '[NeMo I ...] Successfully saved checkpoint from iteration 149 to /path/to/checkpoint'
+    applicationStart:
+      regex: 'Application initialized'
+      example: '[NeMo I 2026-01-22 10:20:00] Application initialized'

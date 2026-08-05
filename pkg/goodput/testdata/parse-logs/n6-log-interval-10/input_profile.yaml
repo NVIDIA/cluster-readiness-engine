@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: nemotron-6-megatron
+spec:
+  logInterval: 10
+  timestamp:
+    layout: "2006-01-02 15:04:05.999999"
+  patterns:
+    trainingStep:
+      regex: '\[(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+)\]\s+iteration\s+(?P<iteration>\d+)/\s*\d+\s*\|.*elapsed time per iteration \(ms\):\s*(?P<elapsedTime>[\d.]+)\s*\|.*throughput per GPU \(TFLOP/s/GPU\):\s*(?P<tflops>[\d.]+)\s*\|.*lm loss:\s*(?P<loss>[\d.eE+\-]+)'
+      example: '[2026-02-05 16:03:52.889599] iteration        1/  158945 | consumed samples: 768 | elapsed time per iteration (ms): 132563.1 | throughput per GPU (TFLOP/s/GPU): 138.5 | lm loss: 1.218472E+01'
+      units:
+        elapsedTime: ms

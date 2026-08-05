@@ -1,0 +1,1 @@
+pattern trainingStep: invalid regex: error parsing regexp: invalid named capture: `(?P<bad[regex`

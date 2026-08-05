@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- apiVersion: resource.k8s.io/v1
+  kind: ResourceClaimTemplate
+  metadata:
+    name: {{ .EntryName }}-roce
+    labels:
+      app: {{ .EntryName }}
+  spec:
+    spec:
+      devices:
+        requests:
+        - name: roce
+          exactly:
+            deviceClassName: roce.networking.k8s.aws
+            count: 8
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  resourceClaims:
+                  - name: compute-domain
+                    resourceClaimTemplateName: {{ .EntryName }}-channel
+                  - name: roce-channel
+                    resourceClaimTemplateName: {{ .EntryName }}-roce
+                  containers:
+                  - name: node
+                    resources:
+                      claims:
+                      - name: compute-domain
+                      - name: roce-channel

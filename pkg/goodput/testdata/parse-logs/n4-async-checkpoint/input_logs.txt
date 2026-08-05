@@ -1,0 +1,9 @@
+2026-02-13T22:35:35.000000000Z [NeMo I 2026-02-13 22:35:35 nemo_logging:393] Global Checkpoint Save : Rank: 0 : Iteration: 199 : Start time: 1771022134.925s : Save duration: 0.309s
+2026-02-13T22:35:35.100000000Z [NeMo I 2026-02-13 22:35:35 nemo_logging:393] Scheduled async checkpoint save for /nemo_run/nemo_experiments/default/checkpoints/default--val_loss=0.0000-epoch=3-consumed_samples=6400.0-last.ckpt
+2026-02-13T22:35:35.200000000Z [NeMo I 2026-02-13 22:35:35 nemo_logging:393] Async finalization time took 0.004 s
+2026-02-13T22:35:35.300000000Z [NeMo I 2026-02-13 22:35:35 nemo_logging:393] Async finalization time took 0.001 s
+2026-02-13T22:35:36.000000000Z Training epoch 4, iteration 0/999 | lr: 1.805e-05 | global_batch_size: 32 | global_step: 200 | max_memory_reserved: 144550395904 | max_memory_allocated: 120549646336 | reduced_train_loss: 11.81 | train_step_timing in s: 1.365 | TFLOPS_per_GPU: 1.128e+03 | consumed_samples: 6432
+2026-02-13T22:35:37.000000000Z [NeMo I 2026-02-13 22:35:37 nemo_logging:393] Async finalization time took 0.001 s
+2026-02-13T22:35:50.000000000Z [NeMo I 2026-02-13 22:35:50 nemo_logging:393] Successfully saved checkpoint from iteration     199 to /nemo_run/nemo_experiments/default/checkpoints/default--val_loss=0.0000-epoch=3-consumed_samples=6400.0-last.ckpt
+2026-02-13T22:35:50.100000000Z [NeMo I 2026-02-13 22:35:50 nemo_logging:393] Async checkpoint save for step 200 (/nemo_run/nemo_experiments/default/checkpoints/default--val_loss=0.0000-epoch=3-consumed_samples=6400.0-last.ckpt) finalized successfully.
+2026-02-13T22:35:50.200000000Z [NeMo I 2026-02-13 22:35:50 nemo_logging:393] Async finalization time took 0.343 s

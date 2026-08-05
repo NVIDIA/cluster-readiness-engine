@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Azure ND H100 v5 (InfiniBand) training NCCL/UCX env.
+# Distinct from the comm benchmark profile (azure-h100-ib-env.yaml): training
+# drives collectives through NCCL over IB and uses UCX RDMA transports, so it
+# keeps NCCL_IB_HCA/COLLNET/AR tuning and UCX_TLS=rc (not the comm TCP path).
+- name: NCCL_IB_PCI_RELAXED_ORDERING
+  value: "1"
+- name: NCCL_IGNORE_CPU_AFFINITY
+  value: "1"
+- name: NCCL_SOCKET_IFNAME
+  value: eth0
+- name: NCCL_TOPO_FILE
+  value: /etc/nccl/topo.xml
+- name: NCCL_COLLNET_ENABLE
+  value: "1"
+- name: NCCL_IB_QPS_PER_CONNECTION
+  value: "4"
+- name: NCCL_IB_SPLIT_DATA_ON_QPS
+  value: "0"
+- name: NCCL_IB_AR_THRESHOLD
+  value: "0"
+- name: NCCL_IB_HCA
+  value: mlx5
+- name: UCX_TLS
+  value: rc,cuda_copy,cuda_ipc
+- name: UCX_NET_DEVICES
+  value: all

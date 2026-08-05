@@ -1,0 +1,50 @@
+[
+  {
+    "name": "group-0",
+    "nodes": [
+      "node-r1-0",
+      "node-r1-1",
+      "node-r1-2",
+      "node-r1-3"
+    ],
+    "domains": [
+      "rack-1"
+    ]
+  },
+  {
+    "name": "group-1",
+    "nodes": [
+      "node-r2-0",
+      "node-r2-1",
+      "node-r2-2",
+      "node-r2-3"
+    ],
+    "domains": [
+      "rack-2"
+    ]
+  },
+  {
+    "name": "group-2",
+    "nodes": [
+      "node-r3-0",
+      "node-r3-1",
+      "node-r3-2",
+      "node-r3-3"
+    ],
+    "domains": [
+      "rack-3"
+    ]
+  },
+  {
+    "name": "group-3",
+    "nodes": [
+      "node-r4-0",
+      "node-r4-1",
+      "node-r4-2",
+      "node-r4-3"
+    ],
+    "domains": [
+      "rack-4"
+    ]
+  }
+]

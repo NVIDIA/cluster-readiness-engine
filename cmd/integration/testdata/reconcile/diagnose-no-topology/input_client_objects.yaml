@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: node-01
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: node-02
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-03
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: node-03
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-04
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: node-04
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-05
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: node-05
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-06
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: node-06
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-07
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: node-07
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-08
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: node-08
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-09
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: node-09
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-diagnose-no-topo
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 3
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+    diagnose:
+      minGroupSize: 2

@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-wf-no-pvc
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+      checkpoint:
+        pvcName: test-ckpt-pvc
+        maxRestarts: 3
+  orchestration:
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+    iterations: 1

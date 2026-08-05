@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+raw: '{"apiVersion":"resource.nvidia.com/v1beta1","kind":"ComputeDomain","metadata":{"name":"my-cd"},"spec":{"channel":{"resourceClaimTemplate":{"name":"my-cd-claim"}}}}'
+replacements:
+  my-cd: my-cd-group-0-iter-1
+  my-cd-claim: my-cd-claim-group-0-iter-1

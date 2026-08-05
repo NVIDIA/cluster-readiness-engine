@@ -1,0 +1,305 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: goodputmeasurements.cre.nvidia.com
+spec:
+  group: cre.nvidia.com
+  names:
+    kind: GoodputMeasurement
+    listKind: GoodputMeasurementList
+    plural: goodputmeasurements
+    singular: goodputmeasurement
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: GoodputMeasurement is the Schema for the goodputmeasurements
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of GoodputMeasurement
+            properties:
+              jobRef:
+                description: jobRef is the reference to the burnin Job for which goodput
+                  should be calculated.
+                properties:
+                  apiGroup:
+                    description: |-
+                      APIGroup is the group for the resource being referenced.
+                      If APIGroup is not specified, the specified Kind must be in the core API group.
+                      For any other third-party types, APIGroup is required.
+                    type: string
+                  kind:
+                    description: Kind is the type of resource being referenced
+                    type: string
+                  name:
+                    description: Name is the name of resource being referenced
+                    type: string
+                required:
+                - kind
+                - name
+                type: object
+                x-kubernetes-map-type: atomic
+              logProfileRef:
+                description: |-
+                  logProfileRef is the name of the cluster-scoped LogProfile to use for log parsing.
+                  The LogProfile defines regex patterns for extracting training metrics from pod logs.
+                minLength: 1
+                type: string
+              sampleInterval:
+                description: |-
+                  sampleInterval is how often to sample pod logs while the Job is running.
+                  Default: 60s.
+                type: string
+            required:
+            - logProfileRef
+            type: object
+          status:
+            description: status defines the observed state of GoodputMeasurement
+            properties:
+              applicationStartTime:
+                description: |-
+                  applicationStartTime is the timestamp of the first application framework log marker.
+                  Persisted so startup resume time can be computed even if the log line scrolls out of the tail window.
+                format: date-time
+                type: string
+              applicationStopTime:
+                description: |-
+                  applicationStopTime is the timestamp of the last application log line observed.
+                  Used as the interruption time for goodput calculations — more accurate than
+                  container termination time or wall clock for stalls and crashes.
+                format: date-time
+                type: string
+              avgStepTimeSec:
+                description: |-
+                  avgStepTimeSec is the average time per training step in seconds (excluding warmup).
+                  Computed from observed step timings or consecutive step timestamps.
+                type: string
+              avgTFLOPSPerGPU:
+                description: avgTFLOPSPerGPU is the average TFLOPS per GPU observed
+                  from training step logs (including warmup).
+                type: string
+              checkpointSaveTimeSec:
+                description: checkpointSaveTimeSec is cumulative checkpoint save overhead
+                  in seconds (sum of t_save).
+                type: string
+              completionTime:
+                description: completionTime is the time when the measurement completed
+                  (when the referenced Job reached a terminal state).
+                format: date-time
+                type: string
+              conditions:
+                description: |-
+                  conditions represent the current state of the GoodputMeasurement resource.
+
+                  Condition types:
+                  - "Measuring": the measurement is in progress (referenced Job is running)
+                  - "Complete": the measurement has finished (referenced Job succeeded or failed)
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              currentStep:
+                description: currentStep is the latest training step observed from
+                  logs.
+                type: integer
+              highestStep:
+                description: highestStep is the highest training step ever reached
+                  (may be > currentStep after restart).
+                type: integer
+              interruptionCount:
+                description: interruptionCount is the number of interruptions detected.
+                type: integer
+              lastCheckpointStep:
+                description: lastCheckpointStep is the step number of the last saved
+                  checkpoint.
+                type: integer
+              lastCheckpointTime:
+                description: |-
+                  lastCheckpointTime is the timestamp of the last saved checkpoint.
+                  Persisted so lost work time (t_ch) can be computed after controller restarts.
+                format: date-time
+                type: string
+              lastNonWarmupStep:
+                description: |-
+                  lastNonWarmupStep is the highest step whose timing has been accumulated into nonWarmupTimeSec.
+                  Used as a watermark to avoid double-counting steps across reconcile cycles.
+                type: integer
+              lastStepTimestamp:
+                description: |-
+                  lastStepTimestamp is the timestamp of the most recently observed training step.
+                  Used by the Job controller for stall detection.
+                format: date-time
+                type: string
+              logInterval:
+                description: |-
+                  logInterval is the training framework's log interval from the LogProfile.
+                  Persisted so the Job controller can scale the stall detection threshold
+                  by the number of iterations between consecutive logged steps.
+                type: integer
+              lostWorkTimeSec:
+                description: lostWorkTimeSec is cumulative lost work in seconds (sum
+                  of t_ch across all interruptions).
+                type: string
+              nonWarmupTimeSec:
+                description: nonWarmupTimeSec is the cumulative time spent on non-warmup
+                  steps in seconds (across all runs).
+                type: string
+              pendingInterruption:
+                description: |-
+                  pendingInterruption stores an in-progress interruption event that hasn't been
+                  completed by a job restart yet. Persisted so state survives controller restarts.
+                properties:
+                  checkpointStep:
+                    description: checkpointStep is the step number of the last saved
+                      checkpoint before interruption.
+                    type: integer
+                  lastStep:
+                    description: lastStep is the last training step observed before
+                      interruption.
+                    type: integer
+                  reason:
+                    description: reason is the reason for the interruption.
+                    type: string
+                  tCh:
+                    description: tCh is the lost work time in seconds (time between
+                      last checkpoint and interruption).
+                    type: string
+                  tCheckpoint:
+                    description: tCheckpoint is the time of the last checkpoint before
+                      the interruption.
+                    format: date-time
+                    type: string
+                  tInterrupt:
+                    description: tInterrupt is the time the job was interrupted (workload
+                      failure time).
+                    format: date-time
+                    type: string
+                type: object
+              priorNonWarmupTimeSec:
+                description: priorNonWarmupTimeSec is the accumulated non-warmup time
+                  from completed runs (before the current run).
+                type: string
+              priorWarmupTimeSec:
+                description: priorWarmupTimeSec is the accumulated warmup time from
+                  completed runs (before the current run).
+                type: string
+              rescheduleTimeSec:
+                description: rescheduleTimeSec is cumulative scheduling delay in seconds
+                  (sum of t_re).
+                type: string
+              result:
+                description: |-
+                  result is the current runtime goodput ratio (0.0 to 1.0) as a string.
+                  Formula: (t_w - t_ch - t_rm - t_re - t_save) / (t_w - t_re)
+                  where t_w=trainingTime, t_ch=lostWorkTime, t_rm=resumeTime, t_re=rescheduleTime, t_save=checkpointSaveTime
+                type: string
+              resumeTimeSec:
+                description: 'resumeTimeSec is cumulative resume time in seconds (sum
+                  of t_rm: checkpoint load + resume).'
+                type: string
+              startTime:
+                description: startTime is the time when the measurement started (when
+                  the referenced Job began running).
+                format: date-time
+                type: string
+              trainingTimeSec:
+                description: trainingTimeSec is the total training wall-clock time
+                  in seconds (t_w).
+                type: string
+              warmupBaseStep:
+                description: |-
+                  warmupBaseStep is the GlobalStep of the first training step after the most recent
+                  run boundary (applicationStart or checkpointRestore). Steps within warmupSteps of
+                  this base are warmup. Persisted so warmup detection survives across SinceTime-based
+                  incremental log reads where applicationStart is no longer in the read window.
+                type: integer
+              warmupTimeSec:
+                description: warmupTimeSec is the cumulative time spent on warmup
+                  steps in seconds (across all runs).
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

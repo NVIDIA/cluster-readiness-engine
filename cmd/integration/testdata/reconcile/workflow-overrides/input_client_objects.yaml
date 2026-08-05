@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100"
+    kubernetes.io/hostname: gpu-node-01
+spec:
+  providerID: "aws://us-east-1a/i-1234567890abcdef0"
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-overrides
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            args:
+              - "--nproc-per-node=4"
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+  overrides:
+    - when:
+        gpuArchitecture:
+          equals: "h100"
+      jobTemplate:
+        spec:
+          workload:
+            trainJob:
+              trainer:
+                args:
+                  - "--nproc-per-node=8"
+    - when:
+        platform:
+          equals: "aws"
+      dependencies:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: aws-networking-config
+            namespace: default
+          data:
+            NCCL_SOCKET_IFNAME: "eth0"

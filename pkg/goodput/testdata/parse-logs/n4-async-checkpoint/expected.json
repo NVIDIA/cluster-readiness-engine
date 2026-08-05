@@ -1,0 +1,46 @@
+{
+  "checkpoints": [
+    {
+      "path": "/nemo_run/nemo_experiments/default/checkpoints/default--val_loss=0.0000-epoch=3-consumed_samples=6400.0-last.ckpt",
+      "saveDuration": 0.309,
+      "step": 199,
+      "timestamp": "2026-02-13T22:35:35Z"
+    }
+  ],
+  "firstStep": {
+    "epoch": 4,
+    "globalStep": 200,
+    "iteration": 0,
+    "loss": 11.81,
+    "stepTiming": 1.365,
+    "tflops": 1128,
+    "timestamp": "2026-02-13T22:35:36Z"
+  },
+  "lastCheckpoint": {
+    "path": "/nemo_run/nemo_experiments/default/checkpoints/default--val_loss=0.0000-epoch=3-consumed_samples=6400.0-last.ckpt",
+    "saveDuration": 0.309,
+    "step": 199,
+    "timestamp": "2026-02-13T22:35:35Z"
+  },
+  "lastLogTimestamp": "2026-02-13T22:35:50.2Z",
+  "lastStep": {
+    "epoch": 4,
+    "globalStep": 200,
+    "iteration": 0,
+    "loss": 11.81,
+    "stepTiming": 1.365,
+    "tflops": 1128,
+    "timestamp": "2026-02-13T22:35:36Z"
+  },
+  "steps": [
+    {
+      "epoch": 4,
+      "globalStep": 200,
+      "iteration": 0,
+      "loss": 11.81,
+      "stepTiming": 1.365,
+      "tflops": 1128,
+      "timestamp": "2026-02-13T22:35:36Z"
+    }
+  ]
+}

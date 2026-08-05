@@ -1,0 +1,152 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# KWOK-simulated GCP H100 GPU nodes (a3-highgpu-8g).
+#
+# Key labels for CRE detection:
+#   nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3  -> GPU arch "h100"
+#   nvidia.com/gpu.present: "true"                  -> ncrectl GPU discovery
+#   spec.providerID: "gce://..."                    -> platform "gcp" (workflow_detect.go)
+#
+# Modeled after real GKE a3-highgpu-8g nodes from nodes.yaml.
+# Includes networking.gke.io multi-NIC resources required by TCPXO/FastRak overrides.
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: gcp-h100-node-01
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: gcp-h100-node-01
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    nvidia.com/gpu.count: "8"
+    nvidia.com/gpu.family: hopper
+    nvidia.com/gpu.machine: Google-Compute-Engine
+    node.kubernetes.io/instance-type: a3-highgpu-8g
+spec:
+  providerID: "gce://nv-dgxck8s-test/us-east5-a/gcp-h100-node-01"
+status:
+  capacity:
+    cpu: "208"
+    ephemeral-storage: 6238618200Ki
+    memory: 1932087948Ki
+    networking.gke.io.networks/gpu-nic0: "1"
+    networking.gke.io.networks/gpu-nic0.IP: "1"
+    networking.gke.io.networks/gpu-nic1: "1"
+    networking.gke.io.networks/gpu-nic1.IP: "1"
+    networking.gke.io.networks/gpu-nic2: "1"
+    networking.gke.io.networks/gpu-nic2.IP: "1"
+    networking.gke.io.networks/gpu-nic3: "1"
+    networking.gke.io.networks/gpu-nic3.IP: "1"
+    networking.gke.io.networks/gpu-nic4: "1"
+    networking.gke.io.networks/gpu-nic4.IP: "1"
+    networking.gke.io.networks/gpu-nic5: "1"
+    networking.gke.io.networks/gpu-nic5.IP: "1"
+    networking.gke.io.networks/gpu-nic6: "1"
+    networking.gke.io.networks/gpu-nic6.IP: "1"
+    networking.gke.io.networks/gpu-nic7: "1"
+    networking.gke.io.networks/gpu-nic7.IP: "1"
+    nvidia.com/gpu: "8"
+    pods: "110"
+  allocatable:
+    cpu: 207410m
+    ephemeral-storage: "5642136341201"
+    memory: 1885805196Ki
+    networking.gke.io.networks/gpu-nic0: "1"
+    networking.gke.io.networks/gpu-nic0.IP: "1"
+    networking.gke.io.networks/gpu-nic1: "1"
+    networking.gke.io.networks/gpu-nic1.IP: "1"
+    networking.gke.io.networks/gpu-nic2: "1"
+    networking.gke.io.networks/gpu-nic2.IP: "1"
+    networking.gke.io.networks/gpu-nic3: "1"
+    networking.gke.io.networks/gpu-nic3.IP: "1"
+    networking.gke.io.networks/gpu-nic4: "1"
+    networking.gke.io.networks/gpu-nic4.IP: "1"
+    networking.gke.io.networks/gpu-nic5: "1"
+    networking.gke.io.networks/gpu-nic5.IP: "1"
+    networking.gke.io.networks/gpu-nic6: "1"
+    networking.gke.io.networks/gpu-nic6.IP: "1"
+    networking.gke.io.networks/gpu-nic7: "1"
+    networking.gke.io.networks/gpu-nic7.IP: "1"
+    nvidia.com/gpu: "8"
+    pods: "110"
+  conditions:
+  - type: Ready
+    status: "True"
+    reason: KubeletReady
+    message: kubelet is posting ready status
+  phase: Running
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: gcp-h100-node-02
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: gcp-h100-node-02
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    nvidia.com/gpu.count: "8"
+    nvidia.com/gpu.family: hopper
+    nvidia.com/gpu.machine: Google-Compute-Engine
+    node.kubernetes.io/instance-type: a3-highgpu-8g
+spec:
+  providerID: "gce://nv-dgxck8s-test/us-east5-a/gcp-h100-node-02"
+status:
+  capacity:
+    cpu: "208"
+    ephemeral-storage: 6238618200Ki
+    memory: 1932087948Ki
+    networking.gke.io.networks/gpu-nic0: "1"
+    networking.gke.io.networks/gpu-nic0.IP: "1"
+    networking.gke.io.networks/gpu-nic1: "1"
+    networking.gke.io.networks/gpu-nic1.IP: "1"
+    networking.gke.io.networks/gpu-nic2: "1"
+    networking.gke.io.networks/gpu-nic2.IP: "1"
+    networking.gke.io.networks/gpu-nic3: "1"
+    networking.gke.io.networks/gpu-nic3.IP: "1"
+    networking.gke.io.networks/gpu-nic4: "1"
+    networking.gke.io.networks/gpu-nic4.IP: "1"
+    networking.gke.io.networks/gpu-nic5: "1"
+    networking.gke.io.networks/gpu-nic5.IP: "1"
+    networking.gke.io.networks/gpu-nic6: "1"
+    networking.gke.io.networks/gpu-nic6.IP: "1"
+    networking.gke.io.networks/gpu-nic7: "1"
+    networking.gke.io.networks/gpu-nic7.IP: "1"
+    nvidia.com/gpu: "8"
+    pods: "110"
+  allocatable:
+    cpu: 207410m
+    ephemeral-storage: "5642136341201"
+    memory: 1885805180Ki
+    networking.gke.io.networks/gpu-nic0: "1"
+    networking.gke.io.networks/gpu-nic0.IP: "1"
+    networking.gke.io.networks/gpu-nic1: "1"
+    networking.gke.io.networks/gpu-nic1.IP: "1"
+    networking.gke.io.networks/gpu-nic2: "1"
+    networking.gke.io.networks/gpu-nic2.IP: "1"
+    networking.gke.io.networks/gpu-nic3: "1"
+    networking.gke.io.networks/gpu-nic3.IP: "1"
+    networking.gke.io.networks/gpu-nic4: "1"
+    networking.gke.io.networks/gpu-nic4.IP: "1"
+    networking.gke.io.networks/gpu-nic5: "1"
+    networking.gke.io.networks/gpu-nic5.IP: "1"
+    networking.gke.io.networks/gpu-nic6: "1"
+    networking.gke.io.networks/gpu-nic6.IP: "1"
+    networking.gke.io.networks/gpu-nic7: "1"
+    networking.gke.io.networks/gpu-nic7.IP: "1"
+    nvidia.com/gpu: "8"
+    pods: "110"
+  conditions:
+  - type: Ready
+    status: "True"
+    reason: KubeletReady
+    message: kubelet is posting ready status
+  phase: Running

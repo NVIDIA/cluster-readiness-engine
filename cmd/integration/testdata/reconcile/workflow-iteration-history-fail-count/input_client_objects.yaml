@@ -1,0 +1,125 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Workflow at iteration 2 (final) with pre-populated iterationHistory
+# showing a failure in iteration 1. The iteration-2 Job's workload has
+# Failed, so the Job controller marks the Job Failed, and the Workflow
+# controller reaches terminal with countFailedGroups = 2
+# (1 from history + 1 from current).
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-wf-hist-count
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 2
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 1
+    nodesPerJob: 1
+    totalGroups: 1
+    currentIteration: 2
+    completedIterations: 1
+    iterationHistory:
+      - iteration: 1
+        groups:
+          - name: group-0
+            phase: Failed
+    groups:
+      - name: group-0
+        nodes:
+          - gpu-node-01
+        phase: Running
+        jobRef:
+          apiVersion: cre.nvidia.com/v1alpha1
+          kind: Job
+          name: test-wf-hist-count-group-0-iter-2
+          namespace: default
+---
+# Iteration-2 Job with workloadRef — not yet terminal.
+# The Job controller will detect the workload failure and set Failed.
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-wf-hist-count-group-0-iter-2
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: cluster-readiness-engine
+    cre.nvidia.com/workflow: test-wf-hist-count
+    cre.nvidia.com/group: group-0
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "True"
+      reason: WorkloadRunning
+      message: "Workload is running"
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+    - type: Succeeded
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+    - type: Failed
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-wf-hist-count-group-0-iter-2-workload
+    namespace: default
+---
+# Failed TrainJob workload for iteration-2.
+# The Job controller detects this failure and transitions the Job to Failed.
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-wf-hist-count-group-0-iter-2-workload
+  namespace: default
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - python
+      - train.py
+    numNodes: 1
+  suspend: false
+  managedBy: trainer.kubeflow.org/trainjob-controller
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: TrainJobFailed
+      message: "Training job failed"
+      lastTransitionTime: "2026-01-01T00:00:00Z"

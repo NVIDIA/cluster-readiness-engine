@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+topologyKey: rack
+nodes:
+  - name: node-1
+    labels:
+      rack: r1
+  - name: node-2
+    labels:
+      rack: r1
+  - name: node-3
+    labels:
+      rack: r1
+  - name: node-4
+    labels:
+      rack: r2
+  - name: node-5

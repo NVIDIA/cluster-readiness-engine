@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-a1
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.clique: clique-a
+    kubernetes.io/hostname: node-a1
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-a2
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.clique: clique-a
+    kubernetes.io/hostname: node-a2
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-b1
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.clique: clique-b
+    kubernetes.io/hostname: node-b1
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-b2
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.clique: clique-b
+    kubernetes.io/hostname: node-b2
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-c1
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.clique: clique-c
+    kubernetes.io/hostname: node-c1
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: node-c2
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.clique: clique-c
+    kubernetes.io/hostname: node-c2
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-diagnose
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+    diagnose:
+      minGroupSize: 2
+      topologyKey: nvidia.com/gpu.clique

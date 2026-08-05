@@ -1,0 +1,7 @@
+{
+  "workflowScoped": [],
+  "jobScoped": [
+    "my-compute-domain",
+    "my-runtime"
+  ]
+}

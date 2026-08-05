@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# With an invalid CEL expression, isBelowBandwidthThreshold returns an error
+# and the group is treated as failed. With the sole group failing intra-screening,
+# the workflow advances to the confirmation stage.
+waitFor:
+  kind: Workflow
+  name: test-bw-invalid-expr
+  namespace: default
+  condition: Failed
+  reason: IterationsFailed
+collect:
+  - kind: Workflow
+    name: test-bw-invalid-expr
+    namespace: default

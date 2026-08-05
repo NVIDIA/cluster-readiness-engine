@@ -1,0 +1,22 @@
+[
+  {
+    "targetJobs": [
+      "node"
+    ],
+    "tolerations": [
+      {
+        "operator": "Exists"
+      }
+    ]
+  },
+  {
+    "targetJobs": [
+      "launcher"
+    ],
+    "tolerations": [
+      {
+        "operator": "Exists"
+      }
+    ]
+  }
+]

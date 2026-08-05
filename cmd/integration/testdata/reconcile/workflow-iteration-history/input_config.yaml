@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Job
+  name: test-wf-history-group-0-iter-2
+  namespace: default
+  condition: InProgress
+waitForDeletion:
+  - kind: Job
+    name: test-wf-history-group-0-iter-1
+    namespace: default
+  - kind: TrainJob
+    name: test-wf-history-group-0-iter-1-workload
+    namespace: default
+collect:
+  - kind: Workflow
+    name: test-wf-history
+    namespace: default
+  - kind: Job
+    name: test-wf-history-group-0-iter-2
+    namespace: default
+  - kind: TrainJob
+    name: test-wf-history-group-0-iter-2-workload
+    namespace: default

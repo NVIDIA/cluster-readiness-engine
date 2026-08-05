@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+spec:
+  trainJob:
+    runtimeRef:
+      name: my-runtime
+    trainer:
+      image: nemo:latest
+      command: ["torchrun"]
+      numNodes: 4
+      numProcPerNode: 4

@@ -1,0 +1,1 @@
+node.status.conditions.exists(c, c.type == 'Ready' && c.status == 'False')

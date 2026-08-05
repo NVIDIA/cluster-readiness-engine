@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+platform: "aws"
+gpuArchitecture: "h100"
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+  dependencies:
+    - apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: base-config
+        namespace: default
+  overrides:
+    - when:
+        platform:
+          equals: "aws"
+      dependencies:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: aws-config
+            namespace: default

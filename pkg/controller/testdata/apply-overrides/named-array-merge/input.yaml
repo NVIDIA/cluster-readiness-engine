@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+platform: "aws"
+gpuArchitecture: "gb300"
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            name: test-runtime
+          trainer:
+            image: base-image:latest
+            numNodes: 4
+  orchestration:
+    iterations: 1
+  dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: test-runtime
+      spec:
+        mlPolicy:
+          numNodes: 4
+          torch:
+            numProcPerNode: 4
+        template:
+          spec:
+            replicatedJobs:
+              - name: node
+                replicas: 1
+                template:
+                  spec:
+                    template:
+                      spec:
+                        imagePullSecrets:
+                          - name: my-secret
+                        containers:
+                          - name: node
+                            image: base-image:latest
+                            env:
+                              - name: NCCL_DEBUG
+                                value: INFO
+                              - name: EXIT_DURATION_MINS
+                                value: "480"
+                            resources:
+                              limits:
+                                nvidia.com/gpu: 4
+                            volumeMounts:
+                              - name: workspace
+                                mountPath: /mnt/workspace
+                            resourceClaims:
+                              - name: compute-domain
+                        volumes:
+                          - name: workspace
+                            persistentVolumeClaim:
+                              claimName: workspace-pvc
+                        tolerations:
+                          - key: dedicated
+                            operator: Equal
+                            value: gpu
+  overrides:
+    - when:
+        gpuArchitecture:
+          equals: "gb300"
+      jobTemplate:
+        spec:
+          workload:
+            trainJob:
+              trainer:
+                numNodes: 8
+      dependencies:
+        - apiVersion: trainer.kubeflow.org/v1alpha1
+          kind: TrainingRuntime
+          metadata:
+            name: test-runtime
+          spec:
+            mlPolicy:
+              numNodes: 8
+            template:
+              spec:
+                replicatedJobs:
+                  - name: node
+                    template:
+                      spec:
+                        template:
+                          spec:
+                            containers:
+                              - name: node
+                                image: override-image:gb300
+                                env:
+                                  - name: EXIT_DURATION_MINS
+                                    value: "2880"
+                                resourceClaims:
+                                  - name: compute-domain
+                                  - name: roce-channel

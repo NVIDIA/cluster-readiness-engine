@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+when:
+  workloadKind: "TrainJob"
+platform: "aws"
+gpuArchitecture: "h100"
+workloadKind: "Job"

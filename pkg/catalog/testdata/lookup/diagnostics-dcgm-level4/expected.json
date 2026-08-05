@@ -1,0 +1,24 @@
+{
+  "dependencies": [
+    {
+      "kind": "TrainingRuntime",
+      "name": "dcgm-level4-runtime"
+    }
+  ],
+  "found": true,
+  "jobTemplate": {
+    "nodeHealthMonitorCEL": {
+      "expression": "node.spec.unschedulable == true"
+    },
+    "trainJob": {
+      "runtimeRef": "dcgm-level4-runtime",
+      "trainerImage": "nvcr.io/nvidia/cloud-native/dcgm:4.5.2-1-ubuntu22.04"
+    }
+  },
+  "orchestration": {
+    "iterations": 1,
+    "targetNodeSelector": {
+      "nvidia.com/gpu.product": "NVIDIA-GB200-NVL72"
+    }
+  }
+}

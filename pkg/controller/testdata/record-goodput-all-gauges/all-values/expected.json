@@ -1,0 +1,54 @@
+{
+  "gauges": [
+    {
+      "name": "avgStepTime",
+      "value": 0.5,
+      "isSet": true
+    },
+    {
+      "name": "avgTFLOPS",
+      "value": 100,
+      "isSet": true
+    },
+    {
+      "name": "checkpointSaveTime",
+      "value": 3,
+      "isSet": true
+    },
+    {
+      "name": "goodputRatio",
+      "value": 0.88,
+      "isSet": true
+    },
+    {
+      "name": "lostWorkTime",
+      "value": 5,
+      "isSet": true
+    },
+    {
+      "name": "nonWarmupTime",
+      "value": 46,
+      "isSet": true
+    },
+    {
+      "name": "rescheduleTime",
+      "value": 1,
+      "isSet": true
+    },
+    {
+      "name": "resumeTime",
+      "value": 2,
+      "isSet": true
+    },
+    {
+      "name": "trainingTime",
+      "value": 50,
+      "isSet": true
+    },
+    {
+      "name": "warmupTime",
+      "value": 4,
+      "isSet": true
+    }
+  ]
+}

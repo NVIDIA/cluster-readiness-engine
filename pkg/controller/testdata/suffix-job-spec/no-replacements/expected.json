@@ -1,0 +1,10 @@
+{
+  "workload": {
+    "trainJob": {
+      "trainer": {
+        "image": "test",
+        "numNodes": 1
+      }
+    }
+  }
+}

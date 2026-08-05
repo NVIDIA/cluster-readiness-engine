@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+suffix: "-job"
+jobSpec: '{"workload":{"volumes":[{"persistentVolumeClaim":{"claimName":"my-pvc"}}]}}'
+deps:
+  - raw: |
+      {"apiVersion":"v1","kind":"PersistentVolumeClaim","metadata":{"name":"my-pvc","namespace":"test-ns"},"spec":{"storageClassName":"gp3-csi"}}

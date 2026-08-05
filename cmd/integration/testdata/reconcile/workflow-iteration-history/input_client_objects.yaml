@@ -1,0 +1,113 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Workflow with iterations=2 whose iteration-1 Job has Succeeded.
+# The controller should detect success, mark group Succeeded, complete
+# iteration 1, snapshot the history (with jobName), and advance to
+# iteration 2 — creating a new Job and workload.
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-wf-history
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 2
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 1
+    nodesPerJob: 1
+    totalGroups: 1
+    currentIteration: 1
+    groups:
+      - name: group-0
+        nodes:
+          - gpu-node-01
+        phase: Running
+        jobRef:
+          apiVersion: cre.nvidia.com/v1alpha1
+          kind: Job
+          name: test-wf-history-group-0-iter-1
+          namespace: default
+---
+# Succeeded Job from iteration 1.
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-wf-history-group-0-iter-1
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: cluster-readiness-engine
+    cre.nvidia.com/workflow: test-wf-history
+    cre.nvidia.com/group: group-0
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: WorkloadCompleted
+      message: "Workload has completed"
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+    - type: Succeeded
+      status: "True"
+      reason: WorkloadSucceeded
+      message: "Workload succeeded"
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+    - type: Failed
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-wf-history-group-0-iter-1-workload
+    namespace: default
+---
+# Succeeded TrainJob from iteration 1 (deleted during iteration transition).
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-wf-history-group-0-iter-1-workload
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: cluster-readiness-engine
+    cre.nvidia.com/job: test-wf-history-group-0-iter-1
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - python
+      - train.py
+    numNodes: 1
+  suspend: false
+  managedBy: trainer.kubeflow.org/trainjob-controller

@@ -1,0 +1,42 @@
+{
+  "jobTemplate": {
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "test-runtime"
+          },
+          "trainer": {
+            "image": "test-image:latest",
+            "numNodes": 16
+          }
+        }
+      }
+    }
+  },
+  "orchestration": {
+    "execution": {},
+    "iterations": 1
+  },
+  "overrides": [
+    {
+      "when": {
+        "gpuArchitecture": {
+          "equals": "h100"
+        }
+      },
+      "jobTemplatePatch": [
+        {
+          "op": "test",
+          "path": "/spec/workload/trainJob/trainer/numNodes",
+          "value": 8
+        },
+        {
+          "op": "replace",
+          "path": "/spec/workload/trainJob/trainer/numNodes",
+          "value": 16
+        }
+      ]
+    }
+  ]
+}

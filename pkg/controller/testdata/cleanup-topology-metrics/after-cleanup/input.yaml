@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+topologyKey: topology.kubernetes.io/rack
+domainNodes:
+  rack-1:
+    - node-1
+    - node-2
+    - node-3
+    - node-4

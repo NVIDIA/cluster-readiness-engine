@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+platform: "aws"
+gpuArchitecture: "h100"
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            args:
+              - "--nproc-per-node=4"
+              - "--batch-size=32"
+            numNodes: 8
+  orchestration:
+    iterations: 1
+  overrides:
+    - when:
+        gpuArchitecture:
+          equals: "h100"
+      jobTemplatePatch:
+        - op: replace
+          path: /spec/workload/trainJob/trainer/numNodes
+          value: 16
+        - op: replace
+          path: /spec/workload/trainJob/trainer/args/1
+          value: "--batch-size=64"

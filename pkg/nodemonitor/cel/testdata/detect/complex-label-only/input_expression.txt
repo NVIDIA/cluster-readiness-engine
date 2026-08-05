@@ -1,0 +1,3 @@
+node.spec.taints.exists(t, t.key == 'nvidia.com/gpu-unhealthy') ||
+'gpud.nvidia.com/unhealthy' in node.metadata.labels ||
+node.spec.unschedulable == true

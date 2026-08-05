@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: oci-l40s-communication-nc-aad69
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: oci-l40s
+    namespace: default
+  - kind: Workflow
+    name: oci-l40s-communication-nc-aad69
+    namespace: default

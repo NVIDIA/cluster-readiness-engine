@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- --allow-run-as-root
+- -bind-to
+- none
+- --mca
+- pml
+- ^cm,ucx
+- --mca
+- btl
+- tcp,self
+- --mca
+- btl_tcp_if_exclude
+- lo,docker0,veth_def_agent
+- --mca
+- plm_rsh_agent
+- ssh

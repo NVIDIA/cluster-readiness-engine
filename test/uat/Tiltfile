@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Tiltfile for CRE UAT tests.
+#
+# Orchestrates: image build, ncrectl build, KWOK deployment, Helm installs.
+#
+# Usage:
+#   make tilt-uat        # Interactive dev mode (hot reload)
+#   make tilt-uat-ci     # CI mode (headless, exits after deploy)
+
+KWOK_VERSION = os.getenv('KWOK_VERSION', 'v0.7.0')
+IMG = os.getenv('IMG', 'ghcr.io/nvidia/cluster-readiness-engine/manager:uat-test')
+NCRECTL = os.getenv('NCRECTL', '../../bin/ncrectl')
+KIND_CLUSTER = os.getenv('KIND_CLUSTER_UAT', 'cre-test-uat')
+
+# Split IMG into repository and tag for helm --set flags.
+img_parts = IMG.rsplit(':', 1)
+IMG_REPO = img_parts[0]
+IMG_TAG = img_parts[1] if len(img_parts) > 1 else 'latest'
+
+# ─── 1. Build CRE controller image and load into Kind ───
+local_resource('build-image',
+    cmd='cd ../.. && make docker-build IMG=%s && kind load docker-image %s --name %s' % (IMG, IMG, KIND_CLUSTER),
+    deps=['../../cmd/main.go', '../../Dockerfile'],
+    labels=['build'])
+
+# ─── 2. Build ncrectl binary (used by UAT tests) ───
+local_resource('build-ncrectl',
+    cmd='cd ../.. && make build-ncrectl',
+    deps=['../../tools/ncrectl/main.go'],
+    labels=['build'])
+
+# ─── 3. Deploy KWOK controller + default stages ───
+KWOK_BASE = 'https://github.com/kubernetes-sigs/kwok/releases/download/%s' % KWOK_VERSION
+local_resource('kwok-install',
+    cmd='kubectl apply -f %s/kwok.yaml && kubectl apply -f %s/stage-fast.yaml' % (KWOK_BASE, KWOK_BASE),
+    labels=['infra'])
+# Override pod-complete with 30s delay for natural workload lifecycle
+local_resource('kwok-stage-override',
+    cmd='kubectl apply -f tilt/kwok-stage-pod-complete.yaml',
+    resource_deps=['kwok-install'],
+    labels=['infra'])
+
+# ─── 4. Install Prometheus Operator CRDs ───
+# The Helm chart includes a ServiceMonitor (monitoring.coreos.com/v1).
+# Kind doesn't have the Prometheus Operator, so install just the CRDs.
+PROM_VERSION = 'v0.82.2'
+local_resource('prometheus-crds',
+    cmd='kubectl apply --server-side -f https://github.com/prometheus-operator/prometheus-operator/releases/download/%s/stripped-down-crds.yaml' % PROM_VERSION,
+    labels=['infra'])
+
+# ─── 5. Install Kubeflow Trainer via Helm ───
+local_resource('install-trainer',
+    cmd='helm upgrade --install kubeflow-trainer oci://ghcr.io/kubeflow/charts/kubeflow-trainer --namespace kubeflow-system --create-namespace --version 2.2.0 --set manager.tolerations[0].operator=Exists --set jobset.controller.tolerations[0].operator=Exists --wait --timeout 5m',
+    resource_deps=['kwok-stage-override'],
+    labels=['infra'])
+
+# ─── 6. Install CRE via Helm (local chart, test image pre-loaded into Kind) ───
+local_resource('install-cluster-readiness-engine',
+    cmd='helm upgrade --install cluster-readiness-engine ../../helm/cluster-readiness-engine --namespace cluster-readiness-engine --create-namespace --set manager.image.repository=%s --set manager.image.tag=%s --set manager.imagePullSecrets=null --wait --timeout 5m' % (IMG_REPO, IMG_TAG),
+    resource_deps=['build-image', 'install-trainer', 'kwok-stage-override', 'prometheus-crds'],
+    labels=['cluster-readiness-engine'])
+
+# ─── 7. Install external CRDs not included in the Helm chart ───
+# ComputeDomain CRD is needed by GB200/GB300 catalog entries (DRA networking).
+local_resource('external-crds',
+    cmd='kubectl apply -f ../../hack/crds/resource.nvidia.com_computedomains.yaml',
+    resource_deps=['install-cluster-readiness-engine'],
+    labels=['cluster-readiness-engine'])
+
+# ─── 8. Deploy DRA stub controller ───
+# Simulates GPU operator DRA driver for GB200/GB300: creates ResourceClaimTemplates
+# from ComputeDomains and marks ResourceClaims as allocated so pods can schedule.
+local_resource('dra-stub',
+    cmd='bash tilt/dra-stub/deploy.sh',
+    resource_deps=['external-crds'],
+    labels=['infra'])

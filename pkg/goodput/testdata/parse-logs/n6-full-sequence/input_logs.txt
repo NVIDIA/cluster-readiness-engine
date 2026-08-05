@@ -1,0 +1,6 @@
+2026-02-05T16:01:40.326255000Z [before the start of training step] datetime: 2026-02-05 16:01:40.326255
+2026-02-05T16:03:52.889599000Z [2026-02-05 16:03:52.889599] iteration        1/  158945 | consumed samples: 768 | elapsed time per iteration (ms): 132563.1 | throughput per GPU (TFLOP/s/GPU): 138.5 | lm loss: 1.218472E+01
+2026-02-05T16:05:00.000000000Z [2026-02-05 16:05:00.000000] iteration        2/  158945 | consumed samples: 1536 | elapsed time per iteration (ms): 5000.0 | throughput per GPU (TFLOP/s/GPU): 140.0 | lm loss: 1.100000E+01
+2026-02-05T17:07:36.379347000Z [2026-02-05 17:07:36.379347] saving checkpoint at iteration     100 to /mnt/workspace/checkpoints in torch_dist format
+2026-02-05T17:13:37.825367000Z [2026-02-05 17:13:37.825367] successfully saved checkpoint from iteration     100 to /mnt/workspace/checkpoints
+2026-02-05T17:14:00.000000000Z some unrelated log line

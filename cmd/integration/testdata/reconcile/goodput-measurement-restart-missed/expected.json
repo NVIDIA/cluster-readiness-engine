@@ -1,0 +1,48 @@
+{
+  "GoodputMeasurement/test-restart-missed-gm": {
+    "kind": "GoodputMeasurement",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-restart-missed-gm",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/goodputmeasurement-finalizer"
+      ]
+    },
+    "spec": {
+      "jobRef": {
+        "apiGroup": "cre.nvidia.com",
+        "kind": "Job",
+        "name": "test-restart-missed-job"
+      },
+      "logProfileRef": "test-restart-missed-logprofile",
+      "sampleInterval": "1s"
+    },
+    "status": {
+      "currentStep": 180,
+      "highestStep": 200,
+      "lostWorkTimeSec": "300.000000",
+      "rescheduleTimeSec": "300.000000",
+      "resumeTimeSec": "60.000000",
+      "checkpointSaveTimeSec": "0.000000",
+      "interruptionCount": 1,
+      "lastCheckpointStep": 150,
+      "lastCheckpointTime": "2026-01-22T09:55:00Z",
+      "avgStepTimeSec": "6.000000",
+      "warmupBaseStep": 150,
+      "nonWarmupTimeSec": "186.000000",
+      "lastNonWarmupStep": 180,
+      "applicationStartTime": "2026-01-22T10:05:00Z",
+      "conditions": [
+        {
+          "type": "Measuring",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Referenced Job is running, measurement in progress"
+        }
+      ]
+    }
+  }
+}

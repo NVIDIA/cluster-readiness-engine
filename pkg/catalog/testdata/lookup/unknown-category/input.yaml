@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+category: nonexistent
+subcategory: unknown
+target: {}
+nodesPerJob: 1
+gpusPerNode: 4

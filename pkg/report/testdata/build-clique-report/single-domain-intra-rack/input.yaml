@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+groups:
+  - name: clique-a
+    nodes: ["node-1", "node-2", "node-3"]
+    domains: ["clique-a"]
+  - name: clique-b
+    nodes: ["node-4", "node-5"]
+    domains: ["clique-b"]
+failedNodes: ["node-5"]

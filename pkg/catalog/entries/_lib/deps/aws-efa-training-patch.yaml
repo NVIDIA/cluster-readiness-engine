@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- op: add
+  path: /spec/workload/trainJob/trainer/env/-
+  value:
+    name: FI_EFA_USE_DEVICE_RDMA
+    value: "1"
+- op: add
+  path: /spec/workload/trainJob/trainer/env/-
+  value:
+    name: LD_LIBRARY_PATH
+    value: /opt/amazon-efa-ofi/ofi/lib:/opt/amazon-efa-ofi/efa/lib:/opt/amazon-efa-ofi/openmpi/lib:/usr/local/nvidia/lib64:/usr/lib:/usr/lib64:/usr/lib/aarch64-linux-gnu:/usr/lib/x86_64-linux-gnu:/usr/local/cuda/lib64:/usr/local/tensorrt/lib
+- op: add
+  path: /spec/workload/trainJob/trainer/env/-
+  value:
+    name: PATH
+    value: /opt/amazon/efa/bin:/opt/shared/aws-ofi-nccl/bin:/host/usr/sbin:/host/usr/bin:/host/usr/local/bin:/usr/sbin:/usr/bin:/usr/local/bin
+- op: add
+  path: /spec/workload/trainJob/trainer/env/-
+  value:
+    name: OPAL_PREFIX
+    value: /opt/amazon-efa-ofi/openmpi

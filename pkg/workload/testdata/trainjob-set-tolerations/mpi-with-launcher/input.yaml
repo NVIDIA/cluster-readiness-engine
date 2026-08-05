@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+tolerations:
+  - operator: "Exists"
+spec:
+  trainJob:
+    runtimeRef:
+      name: nccl-all-reduce-runtime
+      kind: TrainingRuntime
+    trainer:
+      image: nvcr.io/nvidia/pytorch:26.01-py3
+      command: ["mpirun"]
+      numNodes: 2
+      numProcPerNode: 8
+    runtimePatches:
+    - manager: cre.nvidia.com/catalog
+      trainingRuntimeSpec:
+        template:
+          spec:
+            replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                      - name: node
+                        volumeMounts:
+                        - name: dshm
+                          mountPath: /dev/shm
+                      volumes:
+                      - name: dshm
+                        emptyDir:
+                          medium: Memory
+            - name: launcher

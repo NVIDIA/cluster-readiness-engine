@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    mlPolicy:
+      numNodes: {{ .NodesPerJob }}
+      torch:
+        numProcPerNode: {{ .GpusPerNode }}
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    resources:
+                      limits:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        vpc.amazonaws.com/efa: 32
+                        memory: 1800Gi
+                        cpu: "192"
+                      requests:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        vpc.amazonaws.com/efa: 32
+                        memory: 1200Gi
+                        cpu: "128"

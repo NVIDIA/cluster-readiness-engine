@@ -1,0 +1,34 @@
+[
+  {
+    "domain": "communication",
+    "variant": "nccl-all-gather"
+  },
+  {
+    "domain": "communication",
+    "variant": "nccl-all-reduce"
+  },
+  {
+    "domain": "communication",
+    "variant": "nccl-alltoall"
+  },
+  {
+    "domain": "communication",
+    "variant": "nccl-loopback"
+  },
+  {
+    "domain": "communication",
+    "variant": "nccl-loopback-nvswitch"
+  },
+  {
+    "domain": "diagnostics",
+    "variant": "dcgm-level4"
+  },
+  {
+    "domain": "training",
+    "variant": "nemotron5-56b"
+  },
+  {
+    "domain": "training",
+    "variant": "nemotron5-8b"
+  }
+]

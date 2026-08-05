@@ -1,0 +1,50 @@
+{
+  "jobTemplate": {
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "test-runtime"
+          },
+          "trainer": {
+            "image": "test-image:latest",
+            "command": [
+              "python",
+              "train.py"
+            ],
+            "args": [
+              "--nproc-per-node=8"
+            ],
+            "numNodes": 1
+          }
+        }
+      }
+    }
+  },
+  "orchestration": {
+    "execution": {},
+    "iterations": 1
+  },
+  "overrides": [
+    {
+      "when": {
+        "gpuArchitecture": {
+          "equals": "h100"
+        }
+      },
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "trainer": {
+                "args": [
+                  "--nproc-per-node=8"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
