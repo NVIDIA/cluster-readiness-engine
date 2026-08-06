@@ -59,7 +59,7 @@ type BuildConfig struct {
 	MaxSteps int32
 
 	// ExitDurationMins is the training duration in minutes for NeMo 6 workloads.
-	// 0 means use template default (7).
+	// 0 means use template default (30).
 	ExitDurationMins int32
 
 	// GPUArchitecture is the GPU architecture string (e.g., "h100", "gb200").
