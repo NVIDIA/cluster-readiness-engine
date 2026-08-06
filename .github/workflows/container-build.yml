@@ -35,6 +35,6 @@ jobs:
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Build container image (no push)
-        run: make docker-build-cross
+        run: make docker-buildx
         env:
           IMG: ghcr.io/nvidia/cluster-readiness-engine/manager:${{ github.ref_name }}-${{ github.sha }}
