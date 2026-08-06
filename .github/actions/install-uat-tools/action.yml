@@ -21,6 +21,20 @@ runs:
         fi
         kind version
 
+    - name: Install kubectl
+      shell: bash
+      run: |
+        if command -v kubectl &>/dev/null; then
+          echo "kubectl already installed: $(kubectl version --client --short 2>/dev/null || kubectl version --client)"
+        else
+          ARCH=$(case $(uname -m) in x86_64) echo amd64;; aarch64|arm64) echo arm64;; esac)
+          KUBECTL_VERSION=$(curl -fsSL https://dl.k8s.io/release/stable.txt)
+          curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl"
+          chmod +x /tmp/kubectl
+          sudo mv /tmp/kubectl /usr/local/bin/kubectl
+          kubectl version --client
+        fi
+
     - name: Install Tilt
       shell: bash
       run: |
