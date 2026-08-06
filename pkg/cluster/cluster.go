@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"text/tabwriter"
@@ -23,6 +24,9 @@ import (
 
 const outputJSON = "json"
 
+// resourceNvidiaGPU is the extended resource the device plugin advertises.
+const resourceNvidiaGPU corev1.ResourceName = "nvidia.com/gpu"
+
 // Network topology label keys per cloud platform.
 const (
 	topologyKeyAWS   = "topology.k8s.aws/network-node-layer-1"
@@ -36,19 +40,28 @@ const (
 
 // ClusterInfo is the JSON/YAML output structure for ncrectl cluster info.
 type ClusterInfo struct {
-	Platform        string        `json:"platform"`
-	GPUArchitecture string        `json:"gpuArchitecture"`
-	GPUProduct      string        `json:"gpuProduct"`
-	GpusPerNode     int32         `json:"gpusPerNode"`
-	TotalNodes      int           `json:"totalNodes"`
-	TotalGPUs       int           `json:"totalGPUs"`
-	Nodes           []NodeInfo    `json:"nodes"`
-	Topology        *TopologyInfo `json:"topology,omitempty"`
+	Platform        string `json:"platform"`
+	GPUArchitecture string `json:"gpuArchitecture"`
+	GPUProduct      string `json:"gpuProduct"`
+	// GpusPerNode is the smallest GPU count any discovered node reports. A job
+	// asks for the same count on every node, so the smallest node sets what
+	// the cluster can run.
+	GpusPerNode int32 `json:"gpusPerNode"`
+	// CatalogGpusPerNode is what the catalog assumes for this architecture. It
+	// can differ from GpusPerNode, for example on a workstation or a partly
+	// drained node, and then a certification must set gpusPerNode itself.
+	CatalogGpusPerNode int32         `json:"catalogGpusPerNode"`
+	TotalNodes         int           `json:"totalNodes"`
+	TotalGPUs          int           `json:"totalGPUs"`
+	Nodes              []NodeInfo    `json:"nodes"`
+	Topology           *TopologyInfo `json:"topology,omitempty"`
 }
 
 // NodeInfo describes a single GPU node.
 type NodeInfo struct {
-	Name  string `json:"name"`
+	Name string `json:"name"`
+	// GPUs is the node's allocatable nvidia.com/gpu count. It is 0 when the
+	// device plugin has not advertised the resource yet.
 	GPUs  int32  `json:"gpus"`
 	Ready bool   `json:"ready"`
 	Rack  string `json:"rack,omitempty"`
@@ -162,21 +175,28 @@ func buildClusterInfo(
 	gpusPerNode int32, topologyKey string,
 ) ClusterInfo {
 	info := ClusterInfo{
-		Platform:        platform,
-		GPUArchitecture: gpuArch,
-		GPUProduct:      gpuProduct,
-		GpusPerNode:     gpusPerNode,
-		TotalNodes:      len(nodes),
-		TotalGPUs:       len(nodes) * int(gpusPerNode),
+		Platform:           platform,
+		GPUArchitecture:    gpuArch,
+		GPUProduct:         gpuProduct,
+		CatalogGpusPerNode: gpusPerNode,
+		TotalNodes:         len(nodes),
 	}
 
 	// Build per-node info and collect topology domains.
 	rackNodes := map[string][]string{}
-	for _, n := range nodes {
+	for i, n := range nodes {
+		count := nodeGPUCount(n)
 		ni := NodeInfo{
 			Name:  n.Name,
-			GPUs:  gpusPerNode,
+			GPUs:  count,
 			Ready: isNodeReady(n),
+		}
+		info.TotalGPUs += int(count)
+		// A job asks for the same count on every node, so the smallest node
+		// sets what the cluster can run. Track the first node separately,
+		// because 0 is a real count, not an unset marker.
+		if i == 0 || count < info.GpusPerNode {
+			info.GpusPerNode = count
 		}
 		if topologyKey != "" {
 			ni.Rack = n.Labels[topologyKey]
@@ -211,6 +231,23 @@ func buildClusterInfo(
 	return info
 }
 
+// nodeGPUCount returns the node's allocatable nvidia.com/gpu count. It returns
+// 0 when the resource is absent, which is what the scheduler sees: a node
+// labelled gpu.present=true still runs nothing until the device plugin
+// advertises the resource. It also returns 0 for a count it cannot represent,
+// so a value the API server accepted never wraps to a negative one.
+func nodeGPUCount(n corev1.Node) int32 {
+	q, ok := n.Status.Allocatable[resourceNvidiaGPU]
+	if !ok {
+		return 0
+	}
+	count, ok := q.AsInt64()
+	if !ok || count < 0 || count > math.MaxInt32 {
+		return 0
+	}
+	return int32(count)
+}
+
 // isNodeReady returns true if the node has a Ready condition with status True.
 func isNodeReady(n corev1.Node) bool {
 	for _, c := range n.Status.Conditions {
@@ -241,12 +278,42 @@ func printClusterTable(info ClusterInfo) error {
 	fmt.Printf("GPU:          %s (%s, %d GPUs/node)\n", info.GPUProduct, info.GPUArchitecture, info.GpusPerNode)
 
 	readyCount := 0
+	mixed := false
 	for _, n := range info.Nodes {
 		if n.Ready {
 			readyCount++
 		}
+		if n.GPUs != info.GpusPerNode {
+			mixed = true
+		}
 	}
 	fmt.Printf("Nodes:        %d ready\n", readyCount)
+	fmt.Printf("Total GPUs:   %d\n", info.TotalGPUs)
+
+	if mixed {
+		fmt.Println("\nNodes do not all have the same GPU count. The value above is the")
+		fmt.Println("smallest, because a job asks for the same count on every node.")
+		w := tabwriter.NewWriter(os.Stdout, 2, 0, 4, ' ', 0)
+		_, _ = fmt.Fprintln(w, "  NODE\tGPUS\tREADY")
+		for _, n := range info.Nodes {
+			_, _ = fmt.Fprintf(w, "  %s\t%d\t%t\n", n.Name, n.GPUs, n.Ready)
+		}
+		_ = w.Flush()
+	}
+
+	if info.GpusPerNode != info.CatalogGpusPerNode {
+		fmt.Printf("\nThe catalog assumes %d GPUs per node for %s. Set gpusPerNode in the\n",
+			info.CatalogGpusPerNode, info.GPUArchitecture)
+		if info.CatalogGpusPerNode > info.GpusPerNode {
+			fmt.Println("certification, or the pods ask for more GPUs than a node has.")
+		} else {
+			fmt.Println("certification, or the pods leave GPUs on each node unused.")
+		}
+	}
+	if info.GpusPerNode == 0 {
+		fmt.Println("\nAt least one selected node reports 0 allocatable nvidia.com/gpu, so")
+		fmt.Println("nothing schedules on it. If you expect GPUs there, check the GPU Operator.")
+	}
 
 	if info.Topology != nil && len(info.Topology.Racks) > 0 {
 		fmt.Printf("\nTOPOLOGY (%s):\n", info.Topology.Key)
