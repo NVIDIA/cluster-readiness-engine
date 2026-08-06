@@ -60,7 +60,7 @@ type WorkflowReconciler struct {
 // +kubebuilder:rbac:groups=cre.nvidia.com,resources=jobs/status,verbs=get
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get
-// +kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;patch
+// +kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;patch;watch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 //
 // Event emission. controller-runtime's recorder writes through both the legacy
