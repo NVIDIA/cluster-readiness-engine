@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -23,22 +24,34 @@ const (
 	trainerNamespace    = "kubeflow-system"
 )
 
-// isReleaseBuild returns true if version is a clean semver release tag
-// (e.g. "1.2.3" or "v1.2.3") with no pre-release or dirty suffix.
+// gitDescribeSuffix matches the suffix git describe adds to an untagged
+// commit, for example the "4-gabc1234" in "1.2.3-4-gabc1234".
+var gitDescribeSuffix = regexp.MustCompile(`^[0-9]+-g[0-9a-f]{7,}$`)
+
+// isReleaseBuild returns true if version is a published release tag. This
+// covers plain tags like "1.2.3" and pre-release tags like "v1.2.3-rc.7",
+// because the release workflow publishes a chart for both. Git describe
+// output from an untagged commit has no chart, so it returns false.
 func isReleaseBuild(v string) bool {
 	s := strings.TrimPrefix(strings.TrimSpace(v), "v")
-	parts := strings.SplitN(s, ".", 3)
+	if strings.HasSuffix(s, "-dirty") || strings.Contains(s, "+") {
+		return false
+	}
+
+	core, pre, _ := strings.Cut(s, "-")
+	parts := strings.SplitN(core, ".", 3)
 	if len(parts) != 3 {
 		return false
 	}
 	for _, p := range parts {
-		if p == "" || strings.ContainsAny(p, "-+") || strings.IndexFunc(p, func(r rune) bool {
+		if p == "" || strings.IndexFunc(p, func(r rune) bool {
 			return r < '0' || r > '9'
 		}) >= 0 {
 			return false
 		}
 	}
-	return true
+
+	return !gitDescribeSuffix.MatchString(pre)
 }
 
 // helmChartVersion normalises a version string for use as a Helm chart version.

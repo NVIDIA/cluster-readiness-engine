@@ -33,4 +33,19 @@ func TestResolveHelmChartVersion(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "--version")
 	})
+
+	t.Run("pre-release tag needs no override", func(t *testing.T) {
+		for _, v := range []string{"v0.1.0-rc.7", "0.1.0-rc.7", "v1.2.3-beta.1"} {
+			ver, err := resolveHelmChartVersion(v, "")
+			require.NoError(t, err, v)
+			assert.Equal(t, v, ver)
+		}
+	})
+
+	t.Run("git describe output requires override", func(t *testing.T) {
+		for _, v := range []string{"1.20.0-4-gabcdef1", "v1.20.0-12-g0123456-dirty", "dev", ""} {
+			_, err := resolveHelmChartVersion(v, "")
+			require.Error(t, err, v)
+		}
+	})
 }
