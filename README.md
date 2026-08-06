@@ -37,72 +37,87 @@ flowchart LR
 
 A Certification creates one Workflow per catalog category. Each Workflow creates a Job from its template. The Job creates the workload through an adapter, for example a Kubeflow Trainer TrainJob. Measurement resources parse pod logs with LogProfile regex patterns and compute goodput and bandwidth. When a node fails, a Remediation taints and cordons it. When you delete the Remediation, CRE removes the taint and the cordon.
 
-## Install
+## Quickstart
+
+**1. Install the CLI**
 
 ```bash
-# Install the CLI
-curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
-# Include pre-release versions:
 curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash -s -- -p
-
-# Set up the cluster (installs Kubeflow Trainer, CRDs, controller, and LogProfiles)
-ncrectl setup init
 ```
 
-CI pushes the controller image to `ghcr.io/nvidia/cluster-readiness-engine/manager`. Tagged releases will carry the `ncrectl` binaries and the Helm chart.
+The installer places `ncrectl` on your `$PATH` and creates a `kubectl-ncre` symlink so the CLI is also available as `kubectl ncre`.
 
-## Certify a GPU cluster
-
-```yaml
-apiVersion: cre.nvidia.com/v1alpha1
-kind: Certification
-metadata:
-  name: gpu-cluster-cert
-spec:
-  target:
-    nodeSelector:
-      nvidia.com/gpu.present: "true"
-  categories:
-    - domain: communication
-      variant: nccl-all-reduce
-    - domain: training
-      variant: nemotron5-8b
-```
+**2. Set up the cluster**
 
 ```bash
-kubectl apply -f certification.yaml
-kubectl get certifications.cre.nvidia.com -w
+kubectl ncre setup init --image-pull-secret "$(gh auth token)"
 ```
 
-Or run the full lifecycle with ncrectl (setup, run, report, cleanup):
+This installs Kubeflow Trainer, the CRE CRDs, the controller, and the built-in LogProfiles.
+
+**3. Certify**
 
 ```bash
-ncrectl certification run --cert-file certification.yaml --image-pull-secret $NGC_API_KEY --wait
+kubectl ncre certification run \
+  --image-pull-secret "$(gh auth token)" \
+  --category communication/nccl-all-reduce \
+  --wait
+```
+
+**4. Report**
+
+```bash
+kubectl ncre certification report
+```
+
+```
+╔════════════════════════════════════════════════════════════════╗
+║                      Certification Report                      ║
+╚════════════════════════════════════════════════════════════════╝
+
+  Name:      ncrectl-20260806-162730
+  Platform:  aws
+  GPU:       gb300
+  Nodes:     16
+
+┌────────────────────────────────────────────────────────────────┐
+│  communication/nccl-all-reduce                                 │
+├────────────────────────────────────────────────────────────────┤
+│  Status:    Succeeded                                          │
+│  Runtime:   3m 56s                                             │
+│  Scale:     full-scale                                         │
+│  Nodes/Job: 16                                                 │
+│  Jobs:      1                                                  │
+│  MNNVL:     Enabled                                            │
+│                                                                │
+│  Bandwidth:                                                    │
+│    Size       AlgBW        BusBW        Samples                │
+│    16 GB      473.44 GB/s  932.09 GB/s  9                      │
+└────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────┐
+│  Summary                                                       │
+├────────────────────────────────────────────────────────────────┤
+│  Categories:   1/1 passed                                      │
+│  Failed Nodes: none                                            │
+│  Result:       PASSED                                          │
+└────────────────────────────────────────────────────────────────┘
 ```
 
 ## Run a training workload
 
 WorkloadRun is a simplified API for running training, NCCL, or custom workloads. Provide an image, framework, and node count. CRE detects the platform and GPU architecture.
 
-```yaml
-apiVersion: cre.nvidia.com/v1alpha1
-kind: WorkloadRun
-metadata:
-  name: nccl-all-reduce
-spec:
-  image: nvcr.io/nvidia/pytorch:26.01-py3
-  framework:
-    mpi:
-      binary: /usr/local/bin/all_reduce_perf_mpi
-      args: ["-b", "8", "-e", "32G", "-f", "2", "-n", "100"]
-  numNodes: 4
-  bandwidthMeasurement:
-    logProfileRef: nccl-bandwidth
-    testType: all_reduce
-```
-
 ```bash
-ncrectl workloadrun run --image-pull-secret $NGC_API_KEY --wait my-workload.yaml
+kubectl ncre workloadrun run \
+  --image-pull-secret "$(gh auth token)" \
+  --image ghcr.io/nvidia/pytorch:26.01-py3 \
+  --framework mpi \
+  --mpi-binary /usr/local/bin/all_reduce_perf_mpi \
+  --mpi-args "-b 8 -e 32G -f 2 -n 100" \
+  --num-nodes 4 \
+  --bandwidth-measurement \
+  --wait
 ```
 
 ## Scope and non-goals

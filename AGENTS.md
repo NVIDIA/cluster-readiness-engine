@@ -204,7 +204,7 @@ spec:
   nodesPerJob: 8
   enableMNNVL: true   # true for GB200/GB300 (multi-node NVLink), false for H100 and others
   imagePullSecrets:
-    - name: ngc-secret
+    - name: ncrectl-pull-secret
   categories:
     - domain: training
       variant: nemotron5-8b

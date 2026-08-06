@@ -48,7 +48,7 @@
       topologyKey: kubernetes.azure.com/ppg
 
 # --- AWS (NCCL plugin cleanup) ---
-# The pytorch NGC image ships NCCL_NET_PLUGIN=ofi and /opt/amazon/aws-ofi-nccl
+# The pytorch image ships NCCL_NET_PLUGIN=ofi and /opt/amazon/aws-ofi-nccl
 # for EFA clusters. On RoCE clusters (GB300) there are no EFA providers and the
 # plugin crashes. On EFA clusters (GB200/H100) the built-in IB/RDMA transport
 # works correctly without the plugin. Mirrors the catalog's nemotron training
