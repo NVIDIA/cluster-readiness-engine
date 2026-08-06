@@ -34,7 +34,13 @@ jobs:
 
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
+      # A branch name such as "pull-request/26" holds a slash, which a docker
+      # tag cannot. Replace each slash with a dash.
+      - name: Compute image tag
+        id: tag
+        run: echo "value=$(echo '${{ github.ref_name }}' | tr '/' '-')-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
       - name: Build container image (no push)
         run: make docker-buildx BUILDX_PUSH=
         env:
-          IMG: ghcr.io/nvidia/cluster-readiness-engine/manager:${{ github.ref_name }}-${{ github.sha }}
+          IMG: ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}
