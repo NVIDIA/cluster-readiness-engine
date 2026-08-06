@@ -296,7 +296,7 @@ docker-buildx: #check-clean-version ## Build and push docker image for the manag
 ##@ Helm
 
 HELM ?= helm
-HELM_PACKAGE_VERSION ?= $(shell echo "$(VERSION)" | sed 's/^v//')
+HELM_PACKAGE_VERSION ?= $(VERSION)
 # OCI registry base for Helm chart publishing.
 # helm push pushes to $(HELM_OCI_REGISTRY)/<chart-name>:<version>.
 HELM_OCI_REGISTRY ?= oci://ghcr.io/nvidia
