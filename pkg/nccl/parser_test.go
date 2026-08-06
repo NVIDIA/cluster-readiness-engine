@@ -175,6 +175,54 @@ func TestParseRealA100LoopbackLog(t *testing.T) {
 	}
 }
 
+// TestParseRealA100AllReduce2NodeLog parses the captured launcher output of an
+// nccl-all-reduce run across two A100 nodes whose clocks are set to PDT. Two
+// ranks give a bus bandwidth above zero, which the single rank loopback
+// fixture cannot show.
+func TestParseRealA100AllReduce2NodeLog(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "real_a100_allreduce_2node_pdt.log"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	profile := &v1alpha1.LogProfile{
+		ObjectMeta: metav1.ObjectMeta{Name: "nccl-bandwidth"},
+		Spec: v1alpha1.LogProfileSpec{
+			Timestamp: v1alpha1.TimestampSpec{Layout: "2006-01-02T15:04:05.999999999Z"},
+			Patterns: v1alpha1.LogPatternSet{
+				BandwidthResult: &v1alpha1.EventPattern{
+					Regex: `^\s*(?P<size>\d+)\s+\d+\s+\w+\s+\w+\s+-?\d+\s+[\d.]+\s+(?P<algBW>[\d.]+)\s+(?P<busBW>[\d.]+)`,
+				},
+			},
+		},
+	}
+
+	parser, err := NewParser(profile)
+	if err != nil {
+		t.Fatalf("NewParser: %v", err)
+	}
+
+	results := parser.ParseBandwidthLogs(strings.Split(string(raw), "\n"))
+
+	// The run measured 24 message sizes, from 8 bytes to 64 MiB.
+	if len(results) != 24 {
+		t.Fatalf("expected 24 results, got %d", len(results))
+	}
+
+	last := results[len(results)-1]
+	if last.SizeBytes != 67108864 {
+		t.Errorf("last size = %d, want 67108864", last.SizeBytes)
+	}
+	// Two ranks give a bus bandwidth above zero. The old parser recorded
+	// nothing at all, so this row proves the offset timestamp is handled.
+	if last.BusBW <= 0 {
+		t.Errorf("last busBW = %f, want a value above 0", last.BusBW)
+	}
+	if last.AlgBW <= 0 {
+		t.Errorf("last algBW = %f, want a value above 0", last.AlgBW)
+	}
+}
+
 func TestNewParserMissingPattern(t *testing.T) {
 	profile := &v1alpha1.LogProfile{
 		ObjectMeta: metav1.ObjectMeta{Name: "empty"},
