@@ -33,12 +33,12 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
           cache: true
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         with:
           version: v3.19.2
 
@@ -58,7 +58,7 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
           cache: true
@@ -67,7 +67,7 @@ jobs:
         run: make build-ncrectl-cross
 
       - name: Upload CLI binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ncrectl-binaries
           path: bin/ncrectl-*
@@ -89,7 +89,7 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
       - name: Download CLI binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ncrectl-binaries
           path: dist/
@@ -103,17 +103,40 @@ jobs:
             echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Generate checksums
+        run: |
+          cp installer dist/
+          cd dist
+          sha256sum installer ncrectl-* > checksums.txt
+          cat checksums.txt
+
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ steps.tag.outputs.value }}
           name: Release ${{ steps.tag.outputs.value }}
           body: |
+            CRE ${{ steps.tag.outputs.value }}
+
+            The Cluster Readiness Engine (CRE) is a Kubernetes controller that
+            certifies GPU clusters before production use. It runs real training
+            and communication workloads across topology-aware node groups,
+            measures goodput and bandwidth, detects hardware failures, and
+            quarantines bad nodes. See the
+            [README](https://github.com/NVIDIA/cluster-readiness-engine/blob/${{ steps.tag.outputs.value }}/README.md)
+            for the full feature list.
+
             ## Install ncrectl
 
             ```bash
             # Requires gh CLI authenticated, or GITHUB_TOKEN set
             curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
+            ```
+
+            To install this exact version instead of the latest stable release:
+
+            ```bash
+            curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${{ steps.tag.outputs.value }}/installer | bash
             ```
 
             ## Helm Chart
@@ -123,6 +146,9 @@ jobs:
               oci://ghcr.io/nvidia/cluster-readiness-engine \
               --version ${{ steps.tag.outputs.value }}
             ```
+
+            The controller image for this release is
+            `ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}`.
 
             ## ncrectl CLI
 
@@ -134,9 +160,25 @@ jobs:
             | Linux arm64 | `ncrectl-linux-arm64` |
             | macOS amd64 | `ncrectl-darwin-amd64` |
             | macOS arm64 (Apple Silicon) | `ncrectl-darwin-arm64` |
+
+            ## Verify your download
+
+            Every asset is listed in `checksums.txt` with its SHA-256 digest.
+            After you download an asset, verify it:
+
+            ```bash
+            sha256sum --check --ignore-missing checksums.txt
+            ```
+
+            ## Support
+
+            - Ask questions in [GitHub Discussions](https://github.com/NVIDIA/cluster-readiness-engine/discussions).
+            - Report bugs with the [issue templates](https://github.com/NVIDIA/cluster-readiness-engine/issues/new/choose).
+            - Report security issues per [SECURITY.md](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/SECURITY.md), never through GitHub issues.
           files: |
             dist/ncrectl-*
-            installer
+            dist/installer
+            dist/checksums.txt
           draft: false
           prerelease: ${{ contains(steps.tag.outputs.value, '-') }}
           generate_release_notes: true
