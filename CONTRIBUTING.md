@@ -100,10 +100,11 @@ Allowed types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`, `ci`,
    make manifests generate
    ```
 
-3. Run tests (downloads envtest binaries on first run):
+3. Run the tests:
    ```bash
    make test
    ```
+   You do not need a Kubernetes cluster. The `make test` target installs envtest, which has a lightweight etcd and kube-apiserver for the integration tests.
 
 4. Run linting:
    ```bash
