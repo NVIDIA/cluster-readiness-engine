@@ -38,6 +38,21 @@ A Certification creates one Workflow per catalog category. Each Workflow creates
 
 ## Quickstart
 
+**0. Check the cluster**
+
+CRE needs the NVIDIA GPU Operator. The `diagnostics/dcgm-level4` category also
+needs the standalone DCGM service, which the GPU Operator creates only when
+`spec.dcgm.enabled` is true. That setting is off by default when the operator
+runs its own embedded DCGM for metrics. Your cluster administrator can turn it
+on:
+
+```bash
+kubectl patch clusterpolicy cluster-policy --type=merge \
+  -p '{"spec":{"dcgm":{"enabled":true}}}'
+```
+
+Run `kubectl ncre setup status` at any time to see what is present.
+
 **1. Install the CLI**
 
 ```bash
