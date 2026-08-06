@@ -40,20 +40,22 @@ ncrectl --version
 kubectl ncre --version
 ```
 
-`ncrectl` uses your current kubeconfig context. Pass `--kubeconfig` or `--context` on any command to point somewhere else.
+This guide uses the `kubectl ncre` form, to match the README. Every command also works as `ncrectl <command>`.
+
+The CLI uses your current kubeconfig context. Pass `--kubeconfig` or `--context` on any command to point somewhere else.
 
 ## Step 2: check your cluster
 
 Run the preflight commands before you install anything:
 
 ```bash
-ncrectl cluster info
+kubectl ncre cluster info
 ```
 
 The output shows the detected platform (for example `aws`, `gcp`, `azure`, `onprem`), the GPU product with the architecture and GPU count per node, the number of ready nodes, and the network topology if your nodes carry topology labels. Confirm the platform and GPU architecture look right. CRE tunes each workload per platform and per GPU architecture from this detection.
 
 ```bash
-ncrectl setup status
+kubectl ncre setup status
 ```
 
 Before installation, the expected output is `Status: not ready — run 'ncrectl setup init' to install missing components`. The status also tells you if the GPU Operator is missing. Install the GPU Operator first if it is; CRE cannot do that for you.
@@ -63,7 +65,7 @@ If `cluster info` reports `no nodes have nvidia.com/gpu.product label`, the GPU 
 ## Step 3: install CRE
 
 ```bash
-ncrectl setup init --image-pull-secret "$(gh auth token)"
+kubectl ncre setup init --image-pull-secret "$(gh auth token)"
 ```
 
 The command shows the target cluster and asks for confirmation. Type exactly `yes`. In scripts, pass `--auto-approve`.
@@ -76,7 +78,7 @@ Two phases run:
 The GitHub token creates a ghcr.io pull secret for the controller image and authenticates the chart pull. Verify the result:
 
 ```bash
-ncrectl setup status
+kubectl ncre setup status
 ```
 
 All components show ready. If the install hangs and then fails after five minutes, see the troubleshooting table below. The most common cause is a cluster with only GPU nodes, because the controller needs a node without GPUs.
@@ -86,7 +88,7 @@ All components show ready. If the install hangs and then fails after five minute
 List what the catalog offers:
 
 ```bash
-ncrectl certification list-categories
+kubectl ncre certification list-categories
 ```
 
 The catalog has eight categories today. `communication/nccl-all-reduce`, `nccl-all-gather`, and `nccl-alltoall` run NCCL performance tests across all target nodes at once. `nccl-loopback` and `nccl-loopback-nvswitch` run one single-node Job per node and isolate per-node problems. `diagnostics/dcgm-level4` runs the deep DCGM diagnostic on each node. `training/nemotron5-8b` and `nemotron5-56b` run real Megatron-LM pretraining and measure goodput; the 56B model needs at least 32 GPUs.
@@ -94,7 +96,7 @@ The catalog has eight categories today. `communication/nccl-all-reduce`, `nccl-a
 Start with `nccl-all-reduce`. It works on any node count and finishes in minutes on a healthy cluster:
 
 ```bash
-ncrectl certification run \
+kubectl ncre certification run \
   --category communication/nccl-all-reduce \
   --wait \
   --timeout 60m \
@@ -114,7 +116,15 @@ The default `--timeout` is 30 minutes. The command above raises it to 60. Traini
 
 ## Step 5: read the report
 
-The report prints when the run completes, and `--results-file` writes the same data as JSON. The report shows the platform and GPU header, one card per category, and a summary. In a category card:
+`--wait` prints the report when the run completes. The `report` command prints the same table on demand, so use it any time after the run:
+
+```bash
+kubectl ncre certification report <name> -n <namespace>
+```
+
+Pass the certification name and the namespace from the run output. The `report` command defaults to the `default` namespace, and the run created its own, so leaving out `-n` finds nothing. This is the most common first-day mistake.
+
+`--results-file` writes the same data as JSON. The report shows the platform and GPU header, one card per category, and a summary. In a category card:
 
 - **Status** and **Runtime** are the outcome and duration.
 - **Scale** is the test scale (`full-scale` by default).
@@ -127,13 +137,6 @@ Pass and fail are informational unless you set thresholds. No thresholds ship by
 
 CRE reports failed nodes. It does not modify them. Quarantining a bad node (cordon, taint, drain) is your platform's job. Because CRE skips cordoned nodes, `kubectl uncordon <node>` is what makes a repaired node eligible for the next run.
 
-To print the report again later, pass the certification name **and its namespace**:
-
-```bash
-ncrectl certification report <name> -n <namespace>
-```
-
-The `report` command defaults to the `default` namespace, and the run created its own. This is the most common first-day mistake.
 
 ## Step 6: clean up
 
@@ -146,7 +149,7 @@ kubectl delete namespace <namespace>
 To remove CRE itself:
 
 ```bash
-ncrectl setup reset
+kubectl ncre setup reset
 ```
 
 `reset` also removes Kubeflow Trainer. Add `--skip-phases=deps` to keep it.
@@ -168,7 +171,7 @@ ncrectl setup reset
 
 ## Next steps
 
-- Run a single custom workload with the simplified WorkloadRun API: [ADR-059](../designs/059-workloadrun-simplified-api.md) describes it. Write a `WorkloadRun` YAML and run it with `ncrectl workloadrun run <file> --wait`.
+- Run a single custom workload with the simplified WorkloadRun API: [ADR-059](../designs/059-workloadrun-simplified-api.md) describes it. Write a `WorkloadRun` YAML and run it with `kubectl ncre workloadrun run <file> --wait`.
 - Understand the architecture: [ADR-001](../designs/001-adr-abridged.md) is the readable overview, and [ADR-002](../designs/002-layered-crd-hierarchy.md) explains the Certification, Workflow, and Job composition this guide walked through.
 - Understand why `certification run` does apply, wait, report, and cleanup in one command: [ADR-050](../designs/050-xcalctl-unified-run-pipeline.md).
 - Write a full Certification YAML with several categories, thresholds, and checkpointing, and run it with `--cert-file`.
