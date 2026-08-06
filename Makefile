@@ -173,8 +173,12 @@ test-uat-run: ## Run UAT tests against existing Tilt-managed cluster (dev iterat
 cleanup-test-uat: ## Delete Kind cluster for UAT tests.
 	@$(KIND) delete cluster --name $(KIND_CLUSTER_UAT)
 
+.PHONY: check-agents-sync
+check-agents-sync: ## Verify AGENTS.md is an exact copy of CLAUDE.md.
+	@cmp -s CLAUDE.md AGENTS.md || { echo "AGENTS.md is out of sync with CLAUDE.md. Run: cp CLAUDE.md AGENTS.md"; exit 1; }
+
 .PHONY: lint
-lint: golangci-lint ## Run golangci-lint linter
+lint: golangci-lint check-agents-sync ## Run golangci-lint linter
 	"$(GOLANGCI_LINT)" run
 
 .PHONY: lint-fix
