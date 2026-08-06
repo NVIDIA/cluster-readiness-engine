@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI coding agents (Claude Code and others) when working with code in this repository. `AGENTS.md` is an exact copy of this file; `make check-agents-sync` keeps the two in sync.
 
 ## Build & Test Commands
 
@@ -248,6 +248,52 @@ spec:
 - **`jobTemplate`** in an override uses strategic merge patch. **Arrays (like `env`) are REPLACED entirely**, not merged by name. If an override sets `jobTemplate.spec.workload.trainJob.trainer.env`, it wipes out the base env and replaces with only the listed vars.
 - **`jobTemplatePatch`** uses RFC 6902 JSON Patch. Use `op: add` with `path: /spec/workload/trainJob/trainer/env/-` to **append** env vars without replacing the existing list. The `-` means "end of array".
 - Overrides are applied **in order** as listed in the YAML. A `jobTemplatePatch` must come after any `jobTemplate` override that sets the env array, otherwise the appended vars get wiped.
+
+## Agent Permissions
+
+**Always allowed** (no confirmation needed):
+- Read any file in the repository.
+- Edit code under `pkg/`, `cmd/`, `api/`, `test/`, and docs under `docs/`.
+- Run `make lint`, `make test`, `make build`, and `make manifests generate`.
+
+**Ask the user first**:
+- Regenerate integration golden files (`TESTUTIL_UPDATE_EXPECTED=true`).
+- Add or upgrade dependencies in `go.mod`.
+- Change CRD schemas (`api/v1alpha1/*_types.go`).
+- Create an ADR in `docs/designs/`.
+- Push branches or open pull requests.
+
+**Never do**:
+- Never commit credentials, secrets, API keys, or tokens. Do not write them to code, tests, logs, or documentation. Use environment variables and Kubernetes Secrets instead.
+- Never edit auto-generated files: `helm/cluster-readiness-engine/crds/*.yaml`, the generated `role*.yaml` and `service_account.yaml` templates, `**/zz_generated.*.go`, and `PROJECT`.
+- Never remove `// +kubebuilder:scaffold:*` markers.
+- Never create git tags. The user creates tags.
+- Never push to `main`.
+
+## Good and Bad Examples
+
+```go
+// Good: Trainer.NumProcPerNode is *intstr.IntOrString.
+trainer.NumProcPerNode = ptr.To(intstr.FromInt32(8))
+
+// Bad: does not compile. The field is not *int32.
+trainer.NumProcPerNode = ptr.To(int32(8))
+```
+
+```go
+// Good: use setExclusiveCondition so InProgress, Succeeded, and
+// Failed stay mutually exclusive on every tier.
+setExclusiveCondition(&job.Status.Conditions, condition)
+
+// Bad: appending conditions directly leaves two phases true at once.
+job.Status.Conditions = append(job.Status.Conditions, condition)
+```
+
+## See Also
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — contribution workflow, commit format, and DCO sign-off
+- [GOVERNANCE.md](GOVERNANCE.md) — decision process and maintainer roles
+- [docs/designs/000-adr.md](docs/designs/000-adr.md) — the architecture ADR for the CRD hierarchy
 
 ## Design Decisions
 
