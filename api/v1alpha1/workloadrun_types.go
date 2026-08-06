@@ -293,7 +293,12 @@ type GangSchedulerSpec struct {
 
 	// queue is the scheduler queue to submit the workload to.
 	// Defaults to "default-queue" if not specified.
+	// When non-empty, must be a valid Kubernetes label value: at most 63 characters,
+	// beginning and ending with an alphanumeric character, and containing only
+	// alphanumerics, hyphens, underscores, or dots.
 	// +optional
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^$|^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`
 	Queue string `json:"queue,omitempty"`
 }
 
