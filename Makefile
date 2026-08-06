@@ -302,7 +302,7 @@ HELM_PACKAGE_VERSION ?= $(VERSION)
 HELM_OCI_REGISTRY ?= oci://ghcr.io/nvidia
 
 .PHONY: helm-lint
-helm-lint: install-helm ## Lint the cluster-readiness-engine Helm chart.
+helm-lint: ## Lint the cluster-readiness-engine Helm chart.
 	"$(HELM)" dependency build $(HELM_CHART_DIR) --skip-refresh
 	"$(HELM)" lint $(HELM_CHART_DIR)
 
@@ -407,12 +407,8 @@ HELM_RELEASE ?= cluster-readiness-engine
 ## Additional arguments to pass to helm commands
 HELM_EXTRA_ARGS ?=
 
-.PHONY: install-helm
-install-helm: ## Install Helm when it is not already on PATH.
-	@command -v $(HELM) >/dev/null 2>&1 || bash hack/install-helm.sh
-
 .PHONY: helm-deploy
-helm-deploy: install-helm ## Deploy cluster-readiness-engine Helm chart to the cluster. Specify an image with IMG.
+helm-deploy: ## Deploy cluster-readiness-engine Helm chart to the cluster. Specify an image with IMG.
 	$(HELM) upgrade --install $(HELM_RELEASE) $(HELM_CHART_DIR) \
 		--namespace $(HELM_NAMESPACE) \
 		--create-namespace \
@@ -436,7 +432,7 @@ uninstall: ## Remove CRDs from the cluster.
 	kubectl delete --ignore-not-found -f $(HELM_CHART_DIR)/crds/
 
 .PHONY: deploy
-deploy: install-helm ## Deploy controller via Helm (set IMG=<image>).
+deploy: ## Deploy controller via Helm (set IMG=<image>).
 	$(MAKE) helm-deploy HELM_EXTRA_ARGS="$(HELM_EXTRA_ARGS)"
 
 .PHONY: undeploy

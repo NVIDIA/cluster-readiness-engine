@@ -38,8 +38,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Install Helm
-        run: make install-helm
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.2
 
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
