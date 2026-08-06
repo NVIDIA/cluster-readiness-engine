@@ -1,0 +1,177 @@
+2026-08-06T09:30:28.572913519-07:00 # nccl-tests version 2.17.8 nccl-headers=22902 nccl-library=22902
+2026-08-06T09:30:28.572944498-07:00 # Collective test starting: all_reduce_perf_mpi
+2026-08-06T09:30:28.572947349-07:00 # nThread 1 nGpus 1 minBytes 8 maxBytes 1073741824 step: 2(factor) warmup iters: 1 iters: 10 agg iters: 1 validation: 1 graph: 0
+2026-08-06T09:30:28.572950098-07:00 #
+2026-08-06T09:30:28.572952058-07:00 # Using devices
+2026-08-06T09:30:28.742204394-07:00 #  Rank  0 Group  0 Pid      1 on krusty-loopback-communica-636-89cf2-workload-node-0-0 device  0 [0000:00:06] NVIDIA A100-PCIE-40GB
+2026-08-06T09:30:28.751426740-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO ENV/Plugin: Could not find: libnccl-env.so
+2026-08-06T09:30:28.751575797-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Bootstrap: Using eth0:172.29.112.154<0>
+2026-08-06T09:30:28.918180629-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO cudaDriverVersion 13000
+2026-08-06T09:30:28.918438975-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO NCCL version 2.29.2+cuda13.1
+2026-08-06T09:30:28.918442025-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO NCCL git version stable 07fa371c7
+2026-08-06T09:30:28.920340080-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Comm config nvlinkCentricSched set to 1
+2026-08-06T09:30:29.089186350-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO NET/Plugin: Loaded net plugin NCCL RDMA Plugin v11 (v11)
+2026-08-06T09:30:29.089208661-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO NET/Plugin: Loaded collnet plugin SHARP (v11)
+2026-08-06T09:30:29.089212370-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Successfully loaded external network plugin /opt/hpcx/nccl_rdma_sharp_plugin/lib/libnccl-net.so
+2026-08-06T09:30:29.089214870-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Plugin Path : /opt/hpcx/nccl_rdma_sharp_plugin/lib/libnccl-net.so
+2026-08-06T09:30:29.089217270-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO P2P plugin v11 IBext_v11
+2026-08-06T09:30:29.089431567-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO NET/IB : No device found.
+2026-08-06T09:30:29.089438018-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO NET/IB : Using [RO]; OOB eth0:172.29.112.154<0>
+2026-08-06T09:30:29.089440518-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Failed to initialize NET plugin IBext_v11
+2026-08-06T09:30:29.090955117-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO NET/IB : No device found.
+2026-08-06T09:30:29.090965106-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO NET/IB : Using [RO]; OOB eth0:172.29.112.154<0>
+2026-08-06T09:30:29.090967797-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Failed to initialize NET plugin IB
+2026-08-06T09:30:29.091796215-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO NET/Socket : Using [0]eth0:172.29.112.154<0>
+2026-08-06T09:30:29.091801205-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Initialized NET plugin Socket
+2026-08-06T09:30:29.091806455-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Assigned NET plugin Socket to comm
+2026-08-06T09:30:29.091808655-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Using network Socket
+2026-08-06T09:30:29.092021312-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO [Rank 0] ncclCommInitRankConfig comm 0x5555568328f0 rank 0 nranks 1 cudaDev 0 nvmlDev 0 busId 60 commId 0x1fdae63149ce685d - Init START
+2026-08-06T09:30:29.093498472-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO RAS client listening socket at ::1<28028>
+2026-08-06T09:30:29.093566691-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Bootstrap timings total 0.001544 (create 0.000035, send 0.000137, recv 0.000192, ring 0.000001, delay 0.000000)
+2026-08-06T09:30:29.093621840-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO NCCL_P2P_DISABLE set by environment to 1
+2026-08-06T09:30:29.093627330-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO NCCL_MNNVL_ENABLE set by environment to 0.
+2026-08-06T09:30:29.102306792-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO ncclTopoGetCpuAffinity: Affinity for GPU 0 is empty, ignoring. (GPU affinity =  ; CPU affinity = 0-3).
+2026-08-06T09:30:29.102628218-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO comm 0x5555568328f0 rank 0 nRanks 1 nNodes 1 localRanks 1 localRank 0 MNNVL 0
+2026-08-06T09:30:29.102631788-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 00/64 : 0
+2026-08-06T09:30:29.102633918-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 01/64 : 0
+2026-08-06T09:30:29.102636068-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 02/64 : 0
+2026-08-06T09:30:29.102638258-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 03/64 : 0
+2026-08-06T09:30:29.102640258-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 04/64 : 0
+2026-08-06T09:30:29.102642148-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 05/64 : 0
+2026-08-06T09:30:29.102644238-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 06/64 : 0
+2026-08-06T09:30:29.102646448-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 07/64 : 0
+2026-08-06T09:30:29.102648437-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 08/64 : 0
+2026-08-06T09:30:29.102650337-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 09/64 : 0
+2026-08-06T09:30:29.102652337-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 10/64 : 0
+2026-08-06T09:30:29.102654307-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 11/64 : 0
+2026-08-06T09:30:29.102656297-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 12/64 : 0
+2026-08-06T09:30:29.102658317-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 13/64 : 0
+2026-08-06T09:30:29.102666497-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 14/64 : 0
+2026-08-06T09:30:29.102668757-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 15/64 : 0
+2026-08-06T09:30:29.102670767-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 16/64 : 0
+2026-08-06T09:30:29.102672697-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 17/64 : 0
+2026-08-06T09:30:29.102674587-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 18/64 : 0
+2026-08-06T09:30:29.102676507-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 19/64 : 0
+2026-08-06T09:30:29.102678477-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 20/64 : 0
+2026-08-06T09:30:29.102680397-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 21/64 : 0
+2026-08-06T09:30:29.102688887-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 22/64 : 0
+2026-08-06T09:30:29.102691007-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 23/64 : 0
+2026-08-06T09:30:29.102692937-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 24/64 : 0
+2026-08-06T09:30:29.102694887-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 25/64 : 0
+2026-08-06T09:30:29.102701887-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 26/64 : 0
+2026-08-06T09:30:29.102712627-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 27/64 : 0
+2026-08-06T09:30:29.102714647-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 28/64 : 0
+2026-08-06T09:30:29.102716557-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 29/64 : 0
+2026-08-06T09:30:29.102718426-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 30/64 : 0
+2026-08-06T09:30:29.102720376-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 31/64 : 0
+2026-08-06T09:30:29.102722336-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 32/64 : 0
+2026-08-06T09:30:29.102724276-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 33/64 : 0
+2026-08-06T09:30:29.102726176-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 34/64 : 0
+2026-08-06T09:30:29.102728066-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 35/64 : 0
+2026-08-06T09:30:29.102739816-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 36/64 : 0
+2026-08-06T09:30:29.102741886-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 37/64 : 0
+2026-08-06T09:30:29.102743806-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 38/64 : 0
+2026-08-06T09:30:29.102746186-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 39/64 : 0
+2026-08-06T09:30:29.102748236-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 40/64 : 0
+2026-08-06T09:30:29.102750146-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 41/64 : 0
+2026-08-06T09:30:29.102752036-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 42/64 : 0
+2026-08-06T09:30:29.102753906-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 43/64 : 0
+2026-08-06T09:30:29.102755876-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 44/64 : 0
+2026-08-06T09:30:29.102757766-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 45/64 : 0
+2026-08-06T09:30:29.102759716-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 46/64 : 0
+2026-08-06T09:30:29.102766486-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 47/64 : 0
+2026-08-06T09:30:29.102768606-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 48/64 : 0
+2026-08-06T09:30:29.102770606-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 49/64 : 0
+2026-08-06T09:30:29.102772566-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 50/64 : 0
+2026-08-06T09:30:29.102774476-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 51/64 : 0
+2026-08-06T09:30:29.102779286-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 52/64 : 0
+2026-08-06T09:30:29.102781326-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 53/64 : 0
+2026-08-06T09:30:29.102783256-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 54/64 : 0
+2026-08-06T09:30:29.102785216-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 55/64 : 0
+2026-08-06T09:30:29.102787155-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 56/64 : 0
+2026-08-06T09:30:29.102789055-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 57/64 : 0
+2026-08-06T09:30:29.102791005-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 58/64 : 0
+2026-08-06T09:30:29.102792925-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 59/64 : 0
+2026-08-06T09:30:29.102795065-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 60/64 : 0
+2026-08-06T09:30:29.102801045-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 61/64 : 0
+2026-08-06T09:30:29.102803265-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 62/64 : 0
+2026-08-06T09:30:29.102805295-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Channel 63/64 : 0
+2026-08-06T09:30:29.104101988-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Trees [0] -1/-1/-1->0->-1 [1] -1/-1/-1->0->-1 [2] -1/-1/-1->0->-1 [3] -1/-1/-1->0->-1 [4] -1/-1/-1->0->-1 [5] -1/-1/-1->0->-1 [6] -1/-1/-1->0->-1 [7] -1/-1/-1->0->-1 [8] -1/-1/-1->0->-1 [9] -1/-1/-1->0->-1 [10] -1/-1/-1->0->-1 [11] -1/-1/-1->0->-1 [12] -1/-1/-1->0->-1 [13] -1/-1/-1->0->-1 [14] -1/-1/-1->0->-1 [15] -1/-1/-1->0->-1 [16] -1/-1/-1->0->-1 [17] -1/-1/-1->0->-1 [18] -1/-1/-1->0->-1 [19] -1/-1/-1->0->-1 [20] -1/-1/-1->0->-1 [21] -1/-1/-1->0->-1 [22] -1/-1/-1->0->-1 [23] -1/-1/-1->0->-1 [24] -1/-1/-1->0->-1 [25] -1/-1/-1->0->-1 [26] -1/-1/-1->0->-1 [27] -1/-1/-1->0->-1 [28] -1/-1/-1->0->-1 [29] -1/-1/-1->0->-1 [30] -1/-1/-1->0->-1 [31] -1/-1/-1->0->-1 [32] -1/-1/-1->0->-1 [33] -1/-1/-1->0->-1 [34] -1/-1/-1->0->-1 [35] -1/-1/-1->0->-1 [36] -1/-1/-1->0->-1 [37] -1/-1/-1->0->-1 [38] -1/-1/-1->0->-1 [39] -1/-1/-1->0->-1 [40] -1/-1/-1->0->-1 [41] -1/-1/-1->0->-1 [42] -1/-1/-1->0->-1 [43] -1/-1/-1->0->-1 [44] -1/-1/-1->0->-1 [45] -1/-1/-1->0->-1 [46] -1/-1/-1->0->-1 [47] -1/-1/-1->0->-1 [48] -1/-1/-1->0->-1 [4
+2026-08-06T09:30:29.104112088-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO P2P Chunksize set to 524288
+2026-08-06T09:30:29.104114768-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO PROFILER/Plugin: Could not find: libnccl-profiler.so
+2026-08-06T09:30:29.104117197-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Check P2P Type isAllDirectP2p 1 directMode 0 isAllCudaP2p 1
+2026-08-06T09:30:29.104119217-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:69 [0] NCCL INFO [Proxy Service] Device 0 CPU core 2
+2026-08-06T09:30:29.104121137-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:70 [0] NCCL INFO [Proxy Service UDS] Device 0 CPU core 3
+2026-08-06T09:30:29.118724799-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO TUNER/Plugin: Could not find: libnccl-tuner.so
+2026-08-06T09:30:29.118749048-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO 64 coll channels, 64 collnet channels, 0 nvls channels, 64 p2p channels, 64 p2p channels per peer
+2026-08-06T09:30:29.118988755-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO CC Off, workFifoBytes 1048576
+2026-08-06T09:30:29.119225942-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO ncclCommInitRankConfig comm 0x5555568328f0 rank 0 nranks 1 cudaDev 0 nvmlDev 0 busId 60 commId 0x1fdae63149ce685d - Init COMPLETE
+2026-08-06T09:30:29.119231012-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO Init timings - ncclCommInitRankConfig: rank 0 nranks 1 total 0.20 (kernels 0.17, alloc 0.01, bootstrap 0.00, allgathers 0.00, topo 0.01, graphs 0.00, connections 0.02, rest 0.00)
+2026-08-06T09:30:29.123065759-07:00 #
+2026-08-06T09:30:29.123074149-07:00 #                                                              out-of-place                       in-place          
+2026-08-06T09:30:29.123076439-07:00 #       size         count      type   redop    root     time   algbw   busbw  #wrong     time   algbw   busbw  #wrong 
+2026-08-06T09:30:29.123078389-07:00 #        (B)    (elements)                               (us)  (GB/s)  (GB/s)             (us)  (GB/s)  (GB/s)         
+2026-08-06T09:30:29.167268308-07:00            8             2     float     sum      -1     4.96    0.00    0.00       0     0.44    0.02    0.00       0
+2026-08-06T09:30:29.168470591-07:00           16             4     float     sum      -1     4.88    0.00    0.00       0     0.23    0.07    0.00       0
+2026-08-06T09:30:29.169683155-07:00           32             8     float     sum      -1     4.87    0.01    0.00       0     0.13    0.24    0.00       0
+2026-08-06T09:30:29.170883238-07:00           64            16     float     sum      -1     4.91    0.01    0.00       0     0.51    0.12    0.00       0
+2026-08-06T09:30:29.172097982-07:00          128            32     float     sum      -1     4.87    0.03    0.00       0     0.50    0.26    0.00       0
+2026-08-06T09:30:29.173285876-07:00          256            64     float     sum      -1     4.87    0.05    0.00       0     0.44    0.58    0.00       0
+2026-08-06T09:30:29.174535059-07:00          512           128     float     sum      -1     5.03    0.10    0.00       0     0.52    0.99    0.00       0
+2026-08-06T09:30:29.175755402-07:00         1024           256     float     sum      -1     4.88    0.21    0.00       0     0.59    1.72    0.00       0
+2026-08-06T09:30:29.176981895-07:00         2048           512     float     sum      -1     5.46    0.38    0.00       0     0.73    2.79    0.00       0
+2026-08-06T09:30:29.178199139-07:00         4096          1024     float     sum      -1     5.52    0.74    0.00       0     0.13   32.00    0.00       0
+2026-08-06T09:30:29.179430842-07:00         8192          2048     float     sum      -1     5.58    1.47    0.00       0     0.12   67.70    0.00       0
+2026-08-06T09:30:29.181657292-07:00        16384          4096     float     sum      -1     5.65    2.90    0.00       0     0.14  114.57    0.00       0
+2026-08-06T09:30:29.185896604-07:00        32768          8192     float     sum      -1     5.73    5.71    0.00       0     0.14  226.14    0.00       0
+2026-08-06T09:30:29.194235850-07:00        65536         16384     float     sum      -1     5.96   11.00    0.00       0     0.26  247.40    0.00       0
+2026-08-06T09:30:29.210531559-07:00       131072         32768     float     sum      -1     6.25   20.99    0.00       0     0.16  809.09    0.00       0
+2026-08-06T09:30:29.242635992-07:00       262144         65536     float     sum      -1     6.31   41.54    0.00       0     0.14  1846.1    0.00       0
+2026-08-06T09:30:29.271597447-07:00       524288        131072     float     sum      -1     6.56   79.90    0.00       0     0.15  3566.6    0.00       0
+2026-08-06T09:30:29.297297128-07:00      1048576        262144     float     sum      -1     5.54  189.14    0.00       0     0.18  5991.9    0.00       0
+2026-08-06T09:30:29.323108716-07:00      2097152        524288     float     sum      -1     6.58  318.48    0.00       0     0.15   13888    0.00       0
+2026-08-06T09:30:29.348878805-07:00      4194304       1048576     float     sum      -1     9.83  426.73    0.00       0     0.24   17772    0.00       0
+2026-08-06T09:30:29.374849882-07:00      8388608       2097152     float     sum      -1    15.61  537.26    0.00       0     0.17   49666    0.00       0
+2026-08-06T09:30:29.401264102-07:00     16777216       4194304     float     sum      -1    28.59  586.87    0.00       0     1.20   13935    0.00       0
+2026-08-06T09:30:29.428542830-07:00     33554432       8388608     float     sum      -1    54.96  610.48    0.00       0     1.08   31011    0.00       0
+2026-08-06T09:30:29.457374708-07:00     67108864      16777216     float     sum      -1   104.37  642.99    0.00       0     1.37   49092    0.00       0
+2026-08-06T09:30:29.486913746-07:00    134217728      33554432     float     sum      -1   205.27  653.86    0.00       0     3.28   40883    0.00       0
+2026-08-06T09:30:29.522337494-07:00    268435456      67108864     float     sum      -1   407.31  659.05    0.00       0     1.24  217005    0.00       0
+2026-08-06T09:30:29.569516911-07:00    536870912     134217728     float     sum      -1   814.58  659.07    0.00       0     1.52  352278    0.00       0
+2026-08-06T09:30:29.639384820-07:00   1073741824     268435456     float     sum      -1  1558.97  688.75    0.00       0     0.19   6e+06    0.00       0
+2026-08-06T09:30:29.640261468-07:00            8             2     float     sum      -1     3.26    0.00    0.00       0     0.12    0.06    0.00       0
+2026-08-06T09:30:29.641120616-07:00           16             4     float     sum      -1     3.13    0.01    0.00       0     0.13    0.12    0.00       0
+2026-08-06T09:30:29.641988835-07:00           32             8     float     sum      -1     3.09    0.01    0.00       0     0.13    0.26    0.00       0
+2026-08-06T09:30:29.642844064-07:00           64            16     float     sum      -1     3.57    0.02    0.00       0     0.13    0.50    0.00       0
+2026-08-06T09:30:29.643716611-07:00          128            32     float     sum      -1     3.52    0.04    0.00       0     0.12    1.04    0.00       0
+2026-08-06T09:30:29.644604769-07:00          256            64     float     sum      -1     3.38    0.08    0.00       0     0.19    1.35    0.00       0
+2026-08-06T09:30:29.645534926-07:00          512           128     float     sum      -1     5.01    0.10    0.00       0     0.13    3.88    0.00       0
+2026-08-06T09:30:29.646386475-07:00         1024           256     float     sum      -1     3.37    0.30    0.00       0     0.13    7.93    0.00       0
+2026-08-06T09:30:29.647250413-07:00         2048           512     float     sum      -1     3.41    0.60    0.00       0     0.12   16.52    0.00       0
+2026-08-06T09:30:29.648121091-07:00         4096          1024     float     sum      -1     3.32    1.23    0.00       0     0.13   32.74    0.00       0
+2026-08-06T09:30:29.649019860-07:00         8192          2048     float     sum      -1     4.94    1.66    0.00       0     0.12   66.60    0.00       0
+2026-08-06T09:30:29.650680826-07:00        16384          4096     float     sum      -1     3.32    4.93    0.00       0     0.90   18.29    0.00       0
+2026-08-06T09:30:29.653800483-07:00        32768          8192     float     sum      -1     3.39    9.66    0.00       0     0.71   46.41    0.00       0
+2026-08-06T09:30:29.659814482-07:00        65536         16384     float     sum      -1     3.92   16.73    0.00       0     0.73   89.53    0.00       0
+2026-08-06T09:30:29.671641641-07:00       131072         32768     float     sum      -1     3.54   36.98    0.00       0     0.77  170.44    0.00       0
+2026-08-06T09:30:29.695069882-07:00       262144         65536     float     sum      -1     3.68   71.31    0.00       0     1.05  249.45    0.00       0
+2026-08-06T09:30:29.718518882-07:00       524288        131072     float     sum      -1     6.97   75.19    0.00       0     1.04  503.16    0.00       0
+2026-08-06T09:30:29.741973223-07:00      1048576        262144     float     sum      -1     4.14  253.46    0.00       0     0.17  6355.0    0.00       0
+2026-08-06T09:30:29.765436514-07:00      2097152        524288     float     sum      -1     5.32  394.42    0.00       0     0.17   12264    0.00       0
+2026-08-06T09:30:29.789006223-07:00      4194304       1048576     float     sum      -1     8.92  470.12    0.00       0     0.17   25267    0.00       0
+2026-08-06T09:30:29.812657691-07:00      8388608       2097152     float     sum      -1    14.27  587.78    0.00       0     0.15   55188    0.00       0
+2026-08-06T09:30:29.836821093-07:00     16777216       4194304     float     sum      -1    27.00  621.27    0.00       0     0.16  104858    0.00       0
+2026-08-06T09:30:29.861664524-07:00     33554432       8388608     float     sum      -1    52.85  634.86    0.00       0     0.16  205855    0.00       0
+2026-08-06T09:30:29.887938867-07:00     67108864      16777216     float     sum      -1   101.45  661.48    0.00       0     0.16  419430    0.00       0
+2026-08-06T09:30:29.917154358-07:00    134217728      33554432     float     sum      -1   197.70  678.88    0.00       0     0.16  844137    0.00       0
+2026-08-06T09:30:29.952203221-07:00    268435456      67108864     float     sum      -1   391.45  685.74    0.00       0     0.23   1e+06    0.00       0
+2026-08-06T09:30:29.998907385-07:00    536870912     134217728     float     sum      -1   782.56  686.04    0.00       0     0.18   3e+06    0.00       0
+2026-08-06T09:30:30.068817693-07:00   1073741824     268435456     float     sum      -1  1558.51  688.95    0.00       0     0.18   6e+06    0.00       0
+2026-08-06T09:30:30.117277924-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO comm 0x5555568328f0 rank 0 nranks 1 cudaDev 0 busId 60 - Destroy COMPLETE
+2026-08-06T09:30:30.119086859-07:00 # Out of bounds values : 0 OK
+2026-08-06T09:30:30.119096249-07:00 # Avg bus bandwidth    : 0 
+2026-08-06T09:30:30.119099199-07:00 #
+2026-08-06T09:30:30.119102569-07:00 # Collective test concluded: all_reduce_perf_mpi
+2026-08-06T09:30:30.119105189-07:00 #
+2026-08-06T09:30:30.166672052-07:00 
+2026-08-06T09:30:30.249374126-07:00 krusty-loopback-communica-636-89cf2-workload-node-0-0:1:1 [0] NCCL INFO ENV/Plugin: Closing env plugin ncclEnvDefault

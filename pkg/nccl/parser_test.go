@@ -4,6 +4,9 @@
 package nccl
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -117,6 +120,58 @@ func TestParseBandwidthLogsNonUTCNode(t *testing.T) {
 	}
 	if results[2].BusBW != 2.18 {
 		t.Errorf("BusBW = %f, want 2.18", results[2].BusBW)
+	}
+}
+
+// TestParseRealA100LoopbackLog parses the captured output of an
+// nccl-loopback run on an A100 node whose clock is set to PDT. The file is
+// the pod log exactly as kubectl returns it, including the NCCL banner, the
+// table header, and the footer.
+func TestParseRealA100LoopbackLog(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("testdata", "real_a100_loopback_pdt.log"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	profile := &v1alpha1.LogProfile{
+		ObjectMeta: metav1.ObjectMeta{Name: "nccl-loopback"},
+		Spec: v1alpha1.LogProfileSpec{
+			Timestamp: v1alpha1.TimestampSpec{Layout: "2006-01-02T15:04:05.999999999Z"},
+			Patterns: v1alpha1.LogPatternSet{
+				BandwidthResult: &v1alpha1.EventPattern{
+					Regex: `^\s*(?P<size>\d+)\s+\d+\s+\w+\s+\w+\s+-?\d+\s+[\d.]+\s+(?P<algBW>[\d.]+)\s+(?P<busBW>[\d.]+)`,
+				},
+			},
+		},
+	}
+
+	parser, err := NewParser(profile)
+	if err != nil {
+		t.Fatalf("NewParser: %v", err)
+	}
+
+	results := parser.ParseBandwidthLogs(strings.Split(string(raw), "\n"))
+
+	// The run measured 28 message sizes, from 8 bytes to 1 GB, over two
+	// cycles, so the table holds 56 rows.
+	if len(results) != 56 {
+		t.Fatalf("expected 56 results, got %d", len(results))
+	}
+
+	first, last := results[0], results[len(results)-1]
+	if first.SizeBytes != 8 {
+		t.Errorf("first size = %d, want 8", first.SizeBytes)
+	}
+	if last.SizeBytes != 1073741824 {
+		t.Errorf("last size = %d, want 1073741824", last.SizeBytes)
+	}
+	if last.AlgBW != 688.95 {
+		t.Errorf("last algBW = %f, want 688.95", last.AlgBW)
+	}
+	// A single rank gives a bus bandwidth of 0, because the formula scales by
+	// 2*(n-1)/n. The parser must still record the row.
+	if last.BusBW != 0 {
+		t.Errorf("last busBW = %f, want 0", last.BusBW)
 	}
 }
 
