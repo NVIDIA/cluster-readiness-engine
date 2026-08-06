@@ -1,0 +1,114 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: UAT
+
+on:
+  push:
+    branches:
+      - main
+      - "pull-request/[0-9]+"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  uat:
+    name: UAT (Kind + KWOK + Tilt)
+    runs-on: linux-amd64-cpu32
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          docker system prune -f
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.2
+
+      - name: Install UAT tools
+        uses: ./.github/actions/install-uat-tools
+
+      - name: Prep system for Kind
+        run: |
+          sudo systemctl stop apparmor || true
+          sudo systemctl disable apparmor || true
+          sudo modprobe br_netfilter || true
+          sudo sysctl -w net.ipv6.conf.all.forwarding=1
+          sudo sysctl -w net.ipv4.ip_forward=1
+          sudo sysctl -w net.bridge.bridge-nf-call-ip6tables=1
+          sudo sysctl -w net.bridge.bridge-nf-call-iptables=1
+          sudo sysctl -w fs.inotify.max_user_watches=524288
+          sudo sysctl -w fs.inotify.max_user_instances=1024
+          sudo iptables -F && sudo iptables -X \
+            && sudo iptables -t nat -F && sudo iptables -t nat -X \
+            && sudo iptables -t mangle -F && sudo iptables -t mangle -X \
+            && sudo iptables -P INPUT ACCEPT \
+            && sudo iptables -P FORWARD ACCEPT -w 5 \
+            && sudo iptables -P OUTPUT ACCEPT -w 5
+          sudo systemctl restart docker
+
+      - name: Create Kind cluster
+        run: make setup-test-uat
+
+      - name: Deploy with Tilt (CI mode)
+        run: make tilt-uat-ci
+
+      - name: Run UAT tests
+        run: make test-uat-run
+
+      - name: Export Kind logs
+        if: always()
+        run: |
+          mkdir -p /tmp/kind-logs
+          kind export logs /tmp/kind-logs --name cre-test-uat || true
+
+      - name: Collect debug artifacts
+        if: failure()
+        run: |
+          mkdir -p /tmp/debug-artifacts
+          kubectl get all --all-namespaces > /tmp/debug-artifacts/all-resources.yaml || true
+          kubectl get events --all-namespaces --sort-by='.lastTimestamp' > /tmp/debug-artifacts/events.yaml || true
+          kubectl describe nodes > /tmp/debug-artifacts/nodes.txt || true
+          kubectl logs -n cluster-readiness-engine --all-containers=true --tail=500 > /tmp/debug-artifacts/cre-logs.txt || true
+          df -h > /tmp/debug-artifacts/disk-usage.txt || true
+
+      - name: Upload Kind logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uat-kind-logs-${{ github.run_id }}
+          path: /tmp/kind-logs/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload debug artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uat-debug-artifacts-${{ github.run_id }}
+          path: /tmp/debug-artifacts/
+          retention-days: 7
+
+      - name: Cleanup Kind cluster
+        if: always()
+        run: make cleanup-test-uat
