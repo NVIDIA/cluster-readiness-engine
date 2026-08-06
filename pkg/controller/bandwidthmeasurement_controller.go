@@ -39,6 +39,12 @@ const (
 // BandwidthMeasurementReconciler reconciles a BandwidthMeasurement object.
 type BandwidthMeasurementReconciler struct {
 	client.Client
+	// APIReader is an uncached client used for pod discovery. Pod watch events
+	// from the informer cache can lag behind the API server by several seconds,
+	// causing the "pod not found" requeue loop to spin longer than necessary.
+	// A direct API read guarantees the freshest view at the cost of one extra
+	// API server call per reconcile cycle while waiting for pods.
+	APIReader  client.Reader
 	Scheme     *runtime.Scheme
 	Clientset  *kubernetes.Clientset
 	LogFetcher podlogs.PodLogFetcher // if nil, defaults to Clientset-backed fetcher
@@ -60,6 +66,16 @@ type BandwidthMeasurementReconciler struct {
 type cachedNCCLParser struct {
 	resourceVersion string
 	parser          *nccl.Parser
+}
+
+// podReader returns the APIReader when available, falling back to the cached
+// client. The APIReader bypasses the informer cache so pod lookups reflect the
+// current API server state rather than a potentially-stale watch snapshot.
+func (r *BandwidthMeasurementReconciler) podReader() client.Reader {
+	if r.APIReader != nil {
+		return r.APIReader
+	}
+	return r.Client
 }
 
 func (r *BandwidthMeasurementReconciler) getLogFetcher() podlogs.PodLogFetcher {
@@ -196,7 +212,7 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 		return ctrl.Result{RequeueAfter: r.RequeueInterval}, nil
 	}
 
-	discoverer := podutil.NewWorkerDiscoverer(r.Client)
+	discoverer := podutil.NewWorkerDiscoverer(r.podReader())
 	pod, err := discoverer.GetReplicatedJobPod(ctx, measurement.Namespace, workloadName, replicatedJobName)
 	if err != nil {
 		log.Info("Pod not found yet, requeueing", "replicatedJob", replicatedJobName, "error", err)

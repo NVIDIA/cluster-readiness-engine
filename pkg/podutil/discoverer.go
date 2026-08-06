@@ -17,11 +17,11 @@ import (
 
 // WorkerDiscoverer finds worker pods for training workloads.
 type WorkerDiscoverer struct {
-	client client.Client
+	client client.Reader
 }
 
 // NewWorkerDiscoverer creates a new WorkerDiscoverer.
-func NewWorkerDiscoverer(c client.Client) *WorkerDiscoverer {
+func NewWorkerDiscoverer(c client.Reader) *WorkerDiscoverer {
 	return &WorkerDiscoverer{client: c}
 }
 
