@@ -43,7 +43,21 @@ func TestResolveHelmChartVersion(t *testing.T) {
 	})
 
 	t.Run("git describe output requires override", func(t *testing.T) {
-		for _, v := range []string{"1.20.0-4-gabcdef1", "v1.20.0-12-g0123456-dirty", "dev", ""} {
+		for _, v := range []string{
+			"1.20.0-4-gabcdef1",
+			"v1.20.0-12-g0123456-dirty",
+			// git describe on a commit after a pre-release tag. This repo
+			// produces this shape today, because every tag is a pre-release.
+			"v0.1.0-rc.7-15-g1c5151c",
+			"0.1.0-rc.7-1-gabcdef",
+			"dev",
+			"",
+			// Malformed versions have no chart either.
+			"1.2.3-",
+			"1.2-rc.1",
+			"1.2.3.4",
+			"x.y.z",
+		} {
 			_, err := resolveHelmChartVersion(v, "")
 			require.Error(t, err, v)
 		}
