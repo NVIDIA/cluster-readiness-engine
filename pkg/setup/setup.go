@@ -18,7 +18,6 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -352,15 +351,6 @@ func RunReset(
 	// uninstall` leaves the CRE CRDs behind. Delete them explicitly to
 	// leave the cluster clean and let a subsequent init start fresh.
 	if err := deleteCRDsByGroup(ctx, c, creAPIGroup, "[helm]", "CRE", out); err != nil {
-		return fmt.Errorf("[helm] %w", err)
-	}
-
-	// Cluster-scoped RBAC resources (ClusterRole, ClusterRoleBinding) are
-	// not subject to Helm's CRD-preservation rule, but a partially failed
-	// `helm upgrade --install` may have applied them before rolling back,
-	// leaving no completed release for `helm uninstall` to track. Delete
-	// them explicitly so a subsequent init can start from a clean state.
-	if err := deleteClusterScopedRBAC(ctx, c, "[helm]", out); err != nil {
 		return fmt.Errorf("[helm] %w", err)
 	}
 
@@ -709,41 +699,6 @@ func discoverCREResources(ctx context.Context, c client.Client) ([]creResource, 
 		return resources[i].resource < resources[j].resource
 	})
 	return resources, nil
-}
-
-// deleteClusterScopedRBAC deletes all ClusterRoles and ClusterRoleBindings
-// that carry the CRE app label. A partially-failed `helm upgrade --install`
-// can apply cluster-scoped RBAC before rolling back, leaving no completed
-// release for `helm uninstall` to track. Explicit deletion lets a subsequent
-// init succeed without a "already exists" conflict.
-func deleteClusterScopedRBAC(ctx context.Context, c client.Client, phaseTag string, out io.Writer) error {
-	selector := client.MatchingLabels{"app.kubernetes.io/name": "cluster-readiness-engine"}
-
-	crList := &rbacv1.ClusterRoleList{}
-	if err := c.List(ctx, crList, selector); err != nil {
-		return fmt.Errorf("list ClusterRoles: %w", err)
-	}
-	crbList := &rbacv1.ClusterRoleBindingList{}
-	if err := c.List(ctx, crbList, selector); err != nil {
-		return fmt.Errorf("list ClusterRoleBindings: %w", err)
-	}
-
-	if len(crList.Items)+len(crbList.Items) == 0 {
-		return nil
-	}
-
-	_, _ = fmt.Fprintf(out, "%s Removing cluster-scoped RBAC resources...\n", phaseTag)
-	for i := range crbList.Items {
-		if err := c.Delete(ctx, &crbList.Items[i]); client.IgnoreNotFound(err) != nil {
-			return fmt.Errorf("delete ClusterRoleBinding %s: %w", crbList.Items[i].Name, err)
-		}
-	}
-	for i := range crList.Items {
-		if err := c.Delete(ctx, &crList.Items[i]); client.IgnoreNotFound(err) != nil {
-			return fmt.Errorf("delete ClusterRole %s: %w", crList.Items[i].Name, err)
-		}
-	}
-	return nil
 }
 
 // deleteCRDsByGroup deletes all CustomResourceDefinitions belonging to the
