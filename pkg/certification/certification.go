@@ -402,7 +402,8 @@ func derefInt32Ptr(p *int32) int32 {
 
 // readCertification parses a Certification YAML file from disk.
 func readCertification(path string) (*burninv1alpha1.Certification, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is a user-provided CLI argument
+
 	if err != nil {
 		return nil, fmt.Errorf("read certification: %w", err)
 	}

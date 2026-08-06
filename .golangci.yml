@@ -13,6 +13,7 @@ linters:
     - ginkgolinter
     - goconst
     - gocyclo
+    - gosec
     - govet
     - ineffassign
     - lll
@@ -26,6 +27,13 @@ linters:
     - unparam
     - unused
   settings:
+    gosec:
+      excludes:
+        # G104 duplicates errcheck, which is already enabled.
+        - G104
+        # G115 flags int -> int32 conversions. Node, step, and
+        # interruption counts are bounded by cluster size and fit in int32.
+        - G115
     revive:
       rules:
         - name: comment-spacings
@@ -43,6 +51,14 @@ linters:
           - dupl
           - lll
         path: pkg/*
+      # Tests and the golden-file helper read and write fixtures with
+      # relaxed permissions. That is intended.
+      - linters:
+          - gosec
+        path: _test\.go$
+      - linters:
+          - gosec
+        path: pkg/testutil/
     paths:
       - third_party$
       - builtin$

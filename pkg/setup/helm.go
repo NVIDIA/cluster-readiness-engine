@@ -197,7 +197,7 @@ func uninstallTrainerHelmRelease(kubeconfig, kubeContext string, out io.Writer) 
 // runHelm executes a helm subcommand, printing output only on failure.
 func runHelm(helmPath string, args []string, out io.Writer) error {
 	var buf bytes.Buffer
-	cmd := exec.Command(helmPath, args...)
+	cmd := exec.Command(helmPath, args...) // #nosec G204 -- helmPath and args come from this CLI, not from untrusted input
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
 	if err := cmd.Run(); err != nil {

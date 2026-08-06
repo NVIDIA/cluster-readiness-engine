@@ -750,7 +750,8 @@ func watchWorkloadRun(
 // --- helpers ---
 
 func readWorkloadRun(file string) (*burninv1alpha1.WorkloadRun, error) {
-	data, err := os.ReadFile(file)
+	data, err := os.ReadFile(file) // #nosec G304 -- file is a user-provided CLI argument
+
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", file, err)
 	}

@@ -118,7 +118,8 @@ type renderMetadata struct {
 
 // readWorkflow parses a Workflow YAML file from disk.
 func readWorkflow(path string) (*burninv1alpha1.Workflow, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is a user-provided CLI argument
+
 	if err != nil {
 		return nil, fmt.Errorf("read workflow: %w", err)
 	}
@@ -509,7 +510,8 @@ func resolveNodes(platform, gpuArch, nodesFile string) ([]corev1.Node, error) {
 }
 
 func loadNodesFromFile(path string) ([]corev1.Node, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is a user-provided CLI argument
+
 	if err != nil {
 		return nil, fmt.Errorf("read nodes file: %w", err)
 	}

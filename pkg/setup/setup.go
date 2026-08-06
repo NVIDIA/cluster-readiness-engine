@@ -863,7 +863,7 @@ func defaultImage(version string) string {
 // Image pull secret helpers
 // ---------------------------------------------------------------------------
 
-const pullSecretName = "ncrectl-pull-secret"
+const pullSecretName = "ncrectl-pull-secret" // #nosec G101 -- Kubernetes Secret name, not a credential
 
 // CreateImagePullSecret creates a dockerconfigjson Secret for ghcr.io.
 // token is a GitHub Personal Access Token with read:packages scope.
