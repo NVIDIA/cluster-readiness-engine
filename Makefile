@@ -271,16 +271,6 @@ PLATFORMS ?= linux/arm64,linux/amd64
 # Platforms for ncrectl CLI cross-compilation (includes macOS and Windows for end-user workstations).
 NCRECTL_PLATFORMS ?= linux/amd64,linux/arm64,darwin/amd64,darwin/arm64
 
-
-.PHONY: docker-build-cross
-docker-build-cross: ## Build multi-arch docker image without pushing (validates the build).
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
-	- $(CONTAINER_TOOL) buildx create --name cre-builder
-	$(CONTAINER_TOOL) buildx use cre-builder
-	- $(CONTAINER_TOOL) buildx build --build-arg VERSION=$(VERSION) --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
-	- $(CONTAINER_TOOL) buildx rm cre-builder
-	rm Dockerfile.cross
-
 .PHONY: docker-buildx
 docker-buildx: #check-clean-version ## Build and push docker image for the manager for cross-platform support
 	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
@@ -397,56 +387,3 @@ endef
 define gomodver
 $(shell go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' $(1) 2>/dev/null)
 endef
-
-##@ Helm Deployment
-
-## Namespace to deploy the Helm release
-HELM_NAMESPACE ?= cluster-readiness-engine
-## Name of the Helm release
-HELM_RELEASE ?= cluster-readiness-engine
-## Additional arguments to pass to helm commands
-HELM_EXTRA_ARGS ?=
-
-.PHONY: helm-deploy
-helm-deploy: ## Deploy cluster-readiness-engine Helm chart to the cluster. Specify an image with IMG.
-	$(HELM) upgrade --install $(HELM_RELEASE) $(HELM_CHART_DIR) \
-		--namespace $(HELM_NAMESPACE) \
-		--create-namespace \
-		--set manager.image.repository=$${IMG%:*} \
-		--set manager.image.tag=$${IMG##*:} \
-		--wait \
-		--timeout 5m \
-		$(HELM_EXTRA_ARGS)
-
-.PHONY: helm-uninstall
-helm-uninstall: ## Uninstall the Helm release from the K8s cluster.
-	$(HELM) uninstall $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
-
-# Aliases used by the e2e test suite (kubebuilder convention → Helm-native equivalents).
-.PHONY: install
-install: ## Apply CRDs to the cluster.
-	kubectl apply -f $(HELM_CHART_DIR)/crds/
-
-.PHONY: uninstall
-uninstall: ## Remove CRDs from the cluster.
-	kubectl delete --ignore-not-found -f $(HELM_CHART_DIR)/crds/
-
-.PHONY: deploy
-deploy: ## Deploy controller via Helm (set IMG=<image>).
-	$(MAKE) helm-deploy HELM_EXTRA_ARGS="$(HELM_EXTRA_ARGS)"
-
-.PHONY: undeploy
-undeploy: ## Undeploy controller via Helm.
-	$(MAKE) helm-uninstall
-
-.PHONY: helm-status
-helm-status: ## Show Helm release status.
-	$(HELM) status $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
-
-.PHONY: helm-history
-helm-history: ## Show Helm release history.
-	$(HELM) history $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
-
-.PHONY: helm-rollback
-helm-rollback: ## Rollback to previous Helm release.
-	$(HELM) rollback $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
