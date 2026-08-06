@@ -126,7 +126,7 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 	if err := r.Get(ctx, jobKey, job); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("Referenced Job not found, requeueing", "job", jobKey)
-			return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
+			return ctrl.Result{RequeueAfter: r.RequeueInterval}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get referenced Job: %w", err)
 	}
@@ -155,7 +155,7 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 	}
 
 	// Job hasn't started yet.
-	return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
+	return ctrl.Result{RequeueAfter: r.RequeueInterval}, nil
 }
 
 func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, measurement *burninv1alpha1.BandwidthMeasurement, job *burninv1alpha1.Job) (ctrl.Result, error) {
@@ -193,19 +193,19 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 	}
 	if workloadName == "" {
 		log.Info("Job has no workloadRef yet, requeueing")
-		return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
+		return ctrl.Result{RequeueAfter: r.RequeueInterval}, nil
 	}
 
 	discoverer := podutil.NewWorkerDiscoverer(r.Client)
 	pod, err := discoverer.GetReplicatedJobPod(ctx, measurement.Namespace, workloadName, replicatedJobName)
 	if err != nil {
 		log.Info("Pod not found yet, requeueing", "replicatedJob", replicatedJobName, "error", err)
-		return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
+		return ctrl.Result{RequeueAfter: r.RequeueInterval}, nil
 	}
 
 	if !podutil.IsPodRunning(pod) && pod.Status.Phase != corev1.PodSucceeded {
 		log.Info("Pod not running yet, requeueing", "pod", pod.Name, "phase", pod.Status.Phase)
-		return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
+		return ctrl.Result{RequeueAfter: r.RequeueInterval}, nil
 	}
 
 	// Skip reading logs if the container is currently in a waiting state

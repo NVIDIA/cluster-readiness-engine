@@ -81,10 +81,10 @@ type WorkflowReconciler struct {
 // creation fails with a Forbidden error surfaced on the Workflow's
 // DependencyCreationError condition.
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;create;delete
-// +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainingruntimes,verbs=get;list;create;delete
+// +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainingruntimes,verbs=get;list;create;update;patch;delete
 // +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainjobs,verbs=get;list;delete
-// +kubebuilder:rbac:groups=resource.k8s.io,resources=resourceclaimtemplates,verbs=get;list;create;delete
-// +kubebuilder:rbac:groups=resource.nvidia.com,resources=computedomains,verbs=get;list;create;delete
+// +kubebuilder:rbac:groups=resource.k8s.io,resources=resourceclaimtemplates,verbs=get;list;create;update;patch;delete
+// +kubebuilder:rbac:groups=resource.nvidia.com,resources=computedomains,verbs=get;list;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

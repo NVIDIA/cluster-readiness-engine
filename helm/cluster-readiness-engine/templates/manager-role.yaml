@@ -120,6 +120,8 @@ rules:
   - delete
   - get
   - list
+  - patch
+  - update
 - apiGroups:
   - resource.nvidia.com
   resources:
@@ -129,6 +131,8 @@ rules:
   - delete
   - get
   - list
+  - patch
+  - update
 - apiGroups:
   - trainer.kubeflow.org
   resources:
@@ -138,6 +142,8 @@ rules:
   - delete
   - get
   - list
+  - patch
+  - update
 - apiGroups:
   - trainer.kubeflow.org
   resources:
