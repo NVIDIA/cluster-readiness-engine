@@ -1709,7 +1709,7 @@ func WriteJSON(path string, reports []*CertReport) error {
 	if err != nil {
 		return fmt.Errorf("marshal report: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0644); err != nil { // #nosec G306 -- reports are output files meant to be readable
 		return fmt.Errorf("write report file: %w", err)
 	}
 	return nil
