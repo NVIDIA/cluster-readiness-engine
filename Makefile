@@ -235,7 +235,7 @@ build-ncrectl: $(LOCALBIN) ## Build ncrectl CLI tool.
 	ln -sf ncrectl bin/kubectl-ncrectl
 
 .PHONY: build-ncrectl-cross
-build-ncrectl-cross: $(LOCALBIN) ## Cross-compile ncrectl for all NCRECTL_PLATFORMS (linux, macOS, Windows).
+build-ncrectl-cross: $(LOCALBIN) ## Cross-compile ncrectl for all NCRECTL_PLATFORMS (linux, macOS).
 	@for platform in $(subst $(comma), ,$(NCRECTL_PLATFORMS)); do \
 		os=$${platform%/*}; \
 		arch=$${platform#*/}; \
@@ -269,7 +269,7 @@ docker-push: check-clean-version ## Push docker image with the manager.
 PLATFORMS ?= linux/arm64,linux/amd64
 
 # Platforms for ncrectl CLI cross-compilation (includes macOS and Windows for end-user workstations).
-NCRECTL_PLATFORMS ?= linux/amd64,linux/arm64,darwin/amd64,darwin/arm64,windows/amd64,windows/arm64
+NCRECTL_PLATFORMS ?= linux/amd64,linux/arm64,darwin/amd64,darwin/arm64
 
 
 .PHONY: docker-build-cross

@@ -1,0 +1,132 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to create release from (e.g., v1.2.3)'
+        required: true
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  helm-publish:
+    name: Publish Helm Chart
+    runs-on: linux-amd64-cpu16
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Helm
+        run: make install-helm
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Package and push Helm chart
+        run: make helm-push
+
+  build-cli:
+    name: Build CLI Binaries
+    runs-on: linux-amd64-cpu16
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Cross-compile ncrectl
+        run: make build-ncrectl-cross
+
+      - name: Upload CLI binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: ncrectl-binaries
+          path: bin/ncrectl-*
+          retention-days: 7
+
+  create-github-release:
+    name: Create GitHub Release
+    runs-on: linux-amd64-cpu16
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    timeout-minutes: 10
+    needs:
+      - helm-publish
+      - build-cli
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - name: Download CLI binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: ncrectl-binaries
+          path: dist/
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "value=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.value }}
+          name: Release ${{ steps.tag.outputs.value }}
+          body: |
+            ## Helm Chart
+
+            ```bash
+            helm install cluster-readiness-engine \
+              oci://ghcr.io/nvidia/cluster-readiness-engine \
+              --version ${{ steps.tag.outputs.value }}
+            ```
+
+            ## ncrectl CLI
+
+            Download the binary for your platform from the assets below and place it on your `$PATH`.
+
+            | Platform | Binary |
+            |---|---|
+            | Linux amd64 | `ncrectl-linux-amd64` |
+            | Linux arm64 | `ncrectl-linux-arm64` |
+            | macOS amd64 | `ncrectl-darwin-amd64` |
+            | macOS arm64 (Apple Silicon) | `ncrectl-darwin-arm64` |
+          files: dist/ncrectl-*
+          draft: false
+          prerelease: ${{ contains(steps.tag.outputs.value, '-') }}
+          generate_release_notes: true
