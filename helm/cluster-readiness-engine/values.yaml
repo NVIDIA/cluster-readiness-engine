@@ -28,6 +28,11 @@ manager:
                 operator: DoesNotExist
   tolerations:
     - operator: Exists
+  terminationGracePeriodSeconds: 10
 
 metrics:
   port: 8443
+  serviceMonitor:
+    # The ServiceMonitor needs the Prometheus Operator CRDs
+    # (monitoring.coreos.com/v1). Set to false on clusters without them.
+    enabled: true
