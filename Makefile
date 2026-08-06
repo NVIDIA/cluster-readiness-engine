@@ -189,6 +189,30 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
 	"$(GOLANGCI_LINT)" config verify
 
+.PHONY: verify-codegen
+verify-codegen: manifests generate ## Verify generated CRDs, RBAC, and DeepCopy code are committed.
+	@git diff --exit-code -- api helm || { \
+	  echo "ERROR: generated files are stale. Run 'make manifests generate' and commit the result."; \
+	  exit 1; \
+	}
+
+.PHONY: verify-mod
+verify-mod: ## Verify go.mod and go.sum are tidy.
+	go mod tidy
+	@git diff --exit-code -- go.mod go.sum || { \
+	  echo "ERROR: go.mod or go.sum is not tidy. Run 'go mod tidy' and commit the result."; \
+	  exit 1; \
+	}
+
+.PHONY: verify-license-headers
+verify-license-headers: addlicense ## Verify Go sources carry the SPDX license header.
+	"$(ADDLICENSE)" -check -ignore '**/testdata/**' -ignore 'bin/**' \
+	  -ignore '**/*.yaml' -ignore '**/*.yml' -ignore '**/*.json' \
+	  api pkg cmd test hack
+
+.PHONY: verify
+verify: verify-codegen verify-mod verify-license-headers ## Run all verification checks.
+
 ##@ Build
 
 .PHONY: check-clean-version
@@ -307,9 +331,11 @@ KIND ?= kind
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
+ADDLICENSE ?= $(LOCALBIN)/addlicense
 
 ## Tool Versions
 CONTROLLER_TOOLS_VERSION ?= v0.20.0
+ADDLICENSE_VERSION ?= v1.2.0
 
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
@@ -340,6 +366,11 @@ setup-envtest: envtest ## Download the binaries required for ENVTEST in the loca
 envtest: $(ENVTEST) ## Download setup-envtest locally if necessary.
 $(ENVTEST): $(LOCALBIN)
 	$(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(ENVTEST_VERSION))
+
+.PHONY: addlicense
+addlicense: $(ADDLICENSE) ## Download addlicense locally if necessary.
+$(ADDLICENSE): $(LOCALBIN)
+	$(call go-install-tool,$(ADDLICENSE),github.com/google/addlicense,$(ADDLICENSE_VERSION))
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
