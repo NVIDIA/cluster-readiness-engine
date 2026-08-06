@@ -11,18 +11,18 @@ import (
 )
 
 func TestHelmChartVersion(t *testing.T) {
-	assert.Equal(t, "1.20.0", helmChartVersion("v1.20.0"))
+	assert.Equal(t, "v1.20.0", helmChartVersion("v1.20.0"))
 	assert.Equal(t, "1.20.0", helmChartVersion("1.20.0"))
 }
 
 func TestResolveHelmChartVersion(t *testing.T) {
-	t.Run("override", func(t *testing.T) {
+	t.Run("override preserves v prefix", func(t *testing.T) {
 		ver, err := resolveHelmChartVersion("dev", "v1.19.0")
 		require.NoError(t, err)
-		assert.Equal(t, "1.19.0", ver)
+		assert.Equal(t, "v1.19.0", ver)
 	})
 
-	t.Run("release build", func(t *testing.T) {
+	t.Run("release build preserves version as-is", func(t *testing.T) {
 		ver, err := resolveHelmChartVersion("1.20.0", "")
 		require.NoError(t, err)
 		assert.Equal(t, "1.20.0", ver)

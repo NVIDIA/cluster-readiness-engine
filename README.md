@@ -7,6 +7,8 @@ A Kubernetes controller for GPU cluster certification, orchestrated benchmarking
 ```bash
 # Install the CLI
 curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
+# Include pre-release versions:
+curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash -s -- -p
 
 # Set up the cluster (installs Kubeflow Trainer, CRDs, controller, and LogProfiles)
 ncrectl setup init

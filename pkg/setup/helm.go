@@ -41,9 +41,9 @@ func isReleaseBuild(v string) bool {
 	return true
 }
 
-// helmChartVersion converts a git tag or CLI version to a Helm chart version.
+// helmChartVersion normalises a version string for use as a Helm chart version.
 func helmChartVersion(ver string) string {
-	return strings.TrimPrefix(strings.TrimSpace(ver), "v")
+	return strings.TrimSpace(ver)
 }
 
 // resolveHelmChartVersion returns the chart version to pull. Release builds

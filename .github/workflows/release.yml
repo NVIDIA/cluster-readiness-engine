@@ -109,6 +109,13 @@ jobs:
           tag_name: ${{ steps.tag.outputs.value }}
           name: Release ${{ steps.tag.outputs.value }}
           body: |
+            ## Install ncrectl
+
+            ```bash
+            # Requires gh CLI authenticated, or GITHUB_TOKEN set
+            curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
+            ```
+
             ## Helm Chart
 
             ```bash
@@ -127,7 +134,9 @@ jobs:
             | Linux arm64 | `ncrectl-linux-arm64` |
             | macOS amd64 | `ncrectl-darwin-amd64` |
             | macOS arm64 (Apple Silicon) | `ncrectl-darwin-arm64` |
-          files: dist/ncrectl-*
+          files: |
+            dist/ncrectl-*
+            installer
           draft: false
           prerelease: ${{ contains(steps.tag.outputs.value, '-') }}
           generate_release_notes: true

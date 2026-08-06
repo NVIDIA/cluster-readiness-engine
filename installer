@@ -35,10 +35,11 @@ usage() {
   cat <<EOF
 Install / upgrade ${BIN_NAME}
 
-Usage: $0 [-d install_dir]
+Usage: $0 [-d install_dir] [-p]
 
 Options:
   -d DIR    Installation directory (default: /usr/local/bin)
+  -p        Include pre-release versions
 EOF
   exit 1
 }
@@ -79,9 +80,12 @@ getArch() {
 # Parse arguments
 # ---------------------------------------------------------------------------
 
-while getopts "d:" opt; do
+PRERELEASE=false
+
+while getopts "d:p" opt; do
   case ${opt} in
     d) INSTALL_DIR="${OPTARG}" ;;
+    p) PRERELEASE=true ;;
     *) usage ;;
   esac
 done
@@ -105,6 +109,25 @@ if ! command -v curl &>/dev/null; then
 fi
 
 # ---------------------------------------------------------------------------
+# Resolve GitHub auth token
+#
+# Priority: $GITHUB_TOKEN env var → gh CLI → unauthenticated (public only)
+# ---------------------------------------------------------------------------
+
+GH_TOKEN="${GITHUB_TOKEN:-}"
+if [[ -z "${GH_TOKEN}" ]] && command -v gh &>/dev/null; then
+  GH_TOKEN=$(gh auth token 2>/dev/null || true)
+fi
+
+if [[ -n "${GH_TOKEN}" ]]; then
+  AUTH_HEADERS=(-H "Authorization: token ${GH_TOKEN}")
+else
+  AUTH_HEADERS=()
+  msg "Warning: no GitHub token found. This will fail for private repositories."
+  msg "         Set GITHUB_TOKEN or run 'gh auth login'."
+fi
+
+# ---------------------------------------------------------------------------
 # Detect existing install
 # ---------------------------------------------------------------------------
 
@@ -119,8 +142,31 @@ fi
 
 msg "Fetching latest version..."
 
-VERSION=$(curl -sSf "${GH_API_URL}/releases/latest" | \
-  grep -o '"tag_name":"[^"]*"' | head -1 | cut -d'"' -f4)
+# gh CLI path — handles auth and prerelease transparently
+GH_AVAILABLE=false
+if command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
+  GH_AVAILABLE=true
+fi
+
+if [[ "${GH_AVAILABLE}" == "true" ]]; then
+  if [[ "${PRERELEASE}" == "true" ]]; then
+    VERSION=$(gh release list --repo "${GH_REPO}" --limit 1 --json tagName -q '.[0].tagName')
+  else
+    VERSION=$(gh release view --repo "${GH_REPO}" --json tagName -q '.tagName')
+  fi
+else
+  # curl + token fallback
+  if [[ "${PRERELEASE}" == "true" ]]; then
+    ENDPOINT="${GH_API_URL}/releases?per_page=1"
+    RELEASE_JSON=$(curl -sSf "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
+      -H "Accept: application/vnd.github.v3+json" "${ENDPOINT}")
+    VERSION=$(echo "${RELEASE_JSON}" | grep -o '"tag_name" *: *"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+  else
+    RELEASE_JSON=$(curl -sSf "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
+      -H "Accept: application/vnd.github.v3+json" "${GH_API_URL}/releases/latest")
+    VERSION=$(echo "${RELEASE_JSON}" | grep -o '"tag_name" *: *"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+  fi
+fi
 
 if [[ -z "${VERSION}" ]]; then
   err "Failed to determine latest version from GitHub releases"
@@ -142,15 +188,47 @@ fi
 # ---------------------------------------------------------------------------
 
 BINARY_NAME="${BIN_NAME}-${OS}-${ARCH}"
-DOWNLOAD_URL="${GH_RELEASE_URL}/${VERSION}/${BINARY_NAME}"
 
 msg "Downloading ${BINARY_NAME}..."
 
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "${TEMP_DIR}"' EXIT
 
-if ! curl -fsSL -o "${TEMP_DIR}/${BINARY_NAME}" "${DOWNLOAD_URL}"; then
-  err "Failed to download ${BINARY_NAME} from ${DOWNLOAD_URL}"
+if [[ "${GH_AVAILABLE}" == "true" ]]; then
+  # gh handles auth and redirects correctly for private repos
+  gh release download "${VERSION}" \
+    --repo "${GH_REPO}" \
+    --pattern "${BINARY_NAME}" \
+    --output "${TEMP_DIR}/${BINARY_NAME}" \
+    --clobber
+elif [[ -n "${GH_TOKEN}" ]]; then
+  # Use the GitHub API asset endpoint with Accept: application/octet-stream.
+  # GitHub redirects to a pre-signed S3 URL; the auth header is not forwarded.
+  ASSET_URL=$(echo "${RELEASE_JSON}" \
+    | grep -o '"url" *: *"https://api\.github\.com[^"]*releases/assets/[^"]*"' \
+    | grep -v "upload_url" | head -1 \
+    | sed 's/.*"\(https[^"]*\)".*/\1/')
+
+  # Fall back: find by scanning asset objects for our binary name
+  if [[ -z "${ASSET_URL}" ]]; then
+    ASSET_URL=$(echo "${RELEASE_JSON}" \
+      | grep -B5 "\"name\" *: *\"${BINARY_NAME}\"" \
+      | grep -o '"url" *: *"https://api\.github\.com[^"]*"' | tail -1 \
+      | sed 's/.*"\(https[^"]*\)".*/\1/')
+  fi
+
+  if [[ -z "${ASSET_URL}" ]]; then
+    err "Binary ${BINARY_NAME} not found in release ${VERSION}"
+  fi
+
+  curl -fsSL \
+    -H "Authorization: token ${GH_TOKEN}" \
+    -H "Accept: application/octet-stream" \
+    -o "${TEMP_DIR}/${BINARY_NAME}" \
+    "${ASSET_URL}"
+else
+  DOWNLOAD_URL="${GH_RELEASE_URL}/${VERSION}/${BINARY_NAME}"
+  curl -fsSL -o "${TEMP_DIR}/${BINARY_NAME}" "${DOWNLOAD_URL}"
 fi
 
 chmod +x "${TEMP_DIR}/${BINARY_NAME}"
