@@ -261,6 +261,10 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *burn
 		Resources:        spec.Resources,
 		ImagePullSecrets: spec.ImagePullSecrets,
 	}
+	if spec.GangScheduler != nil {
+		rtCfg.GangSchedulerName = spec.GangScheduler.SchedulerName
+		rtCfg.GangSchedulerQueue = spec.GangScheduler.Queue
+	}
 
 	var runtimeDep burninv1alpha1.DependencySpec
 	switch frameworkType {

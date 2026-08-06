@@ -57,6 +57,32 @@ type RuntimeConfig struct {
 	Resources *corev1.ResourceRequirements
 	// ImagePullSecrets for container pull.
 	ImagePullSecrets []corev1.LocalObjectReference
+	// GangSchedulerName is the scheduler name to inject into pod specs (e.g. "kai-scheduler").
+	// Empty means no gang scheduler is configured.
+	GangSchedulerName string
+	// GangSchedulerQueue is the queue label value for the gang scheduler.
+	// Defaults to "default-queue" when GangSchedulerName is set and Queue is empty.
+	GangSchedulerQueue string
+}
+
+// gangSchedulerQueue returns the effective queue name, defaulting to "default-queue".
+func gangSchedulerQueue(cfg RuntimeConfig) string {
+	if cfg.GangSchedulerQueue != "" {
+		return cfg.GangSchedulerQueue
+	}
+	return "default-queue"
+}
+
+// applyGangScheduler injects schedulerName into the pod spec and the queue label
+// into the pod template metadata labels when a gang scheduler is configured.
+// podSpec is the pod spec map (sets schedulerName).
+// podLabels is the pod template metadata labels map (sets kai.scheduler/queue).
+func applyGangScheduler(cfg RuntimeConfig, podSpec, podLabels map[string]any) {
+	if cfg.GangSchedulerName == "" {
+		return
+	}
+	podSpec["schedulerName"] = cfg.GangSchedulerName
+	podLabels["kai.scheduler/queue"] = gangSchedulerQueue(cfg)
 }
 
 // BuildTorchRuntime creates a TrainingRuntime dependency for PyTorch distributed
@@ -108,6 +134,12 @@ func BuildTorchRuntime(cfg RuntimeConfig) burninv1alpha1.DependencySpec {
 		podSpec["initContainers"] = cfg.InitContainers
 	}
 
+	podLabels := map[string]any{
+		"trainer.kubeflow.org/trainjob-ancestor-step": "trainer",
+		"app": cfg.EntryName,
+	}
+	applyGangScheduler(cfg, podSpec, podLabels)
+
 	rt := map[string]any{
 		"apiVersion": "trainer.kubeflow.org/v1alpha1",
 		"kind":       "TrainingRuntime",
@@ -132,10 +164,7 @@ func BuildTorchRuntime(cfg RuntimeConfig) burninv1alpha1.DependencySpec {
 							"name": "node",
 							"template": map[string]any{
 								"metadata": map[string]any{
-									"labels": map[string]any{
-										"trainer.kubeflow.org/trainjob-ancestor-step": "trainer",
-										"app": cfg.EntryName,
-									},
+									"labels": podLabels,
 								},
 								"spec": map[string]any{
 									"template": map[string]any{
@@ -236,6 +265,50 @@ func BuildMPIRuntime(cfg RuntimeConfig) burninv1alpha1.DependencySpec {
 		},
 	}
 
+	workerPodSpec := map[string]any{
+		"containers":    []any{workerContainer},
+		"restartPolicy": "OnFailure",
+		"volumes": []any{
+			map[string]any{
+				"name": "dshm",
+				"emptyDir": map[string]any{
+					"medium": "Memory",
+				},
+			},
+		},
+	}
+	workerPodLabels := map[string]any{}
+	applyGangScheduler(cfg, workerPodSpec, workerPodLabels)
+
+	workerReplicatedJob := map[string]any{
+		"name": "node",
+		"template": map[string]any{
+			"spec": map[string]any{
+				"template": map[string]any{
+					"spec": workerPodSpec,
+				},
+			},
+		},
+	}
+	if len(workerPodLabels) > 0 {
+		workerReplicatedJob["template"].(map[string]any)["metadata"] = map[string]any{
+			"labels": workerPodLabels,
+		}
+	}
+
+	launcherPodSpec := map[string]any{
+		"initContainers": []any{launcherInitContainer},
+		"containers":     []any{launcherContainer},
+		"restartPolicy":  "OnFailure",
+		"volumes": []any{
+			map[string]any{"name": "ssh-keys", "emptyDir": map[string]any{}},
+		},
+	}
+	launcherPodLabels := map[string]any{
+		"trainer.kubeflow.org/trainjob-ancestor-step": "trainer",
+	}
+	applyGangScheduler(cfg, launcherPodSpec, launcherPodLabels)
+
 	rt := map[string]any{
 		"apiVersion": "trainer.kubeflow.org/v1alpha1",
 		"kind":       "TrainingRuntime",
@@ -261,28 +334,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) burninv1alpha1.DependencySpec {
 						"publishNotReadyAddresses": true,
 					},
 					"replicatedJobs": []any{
-						// Worker (node) replicatedJob
-						map[string]any{
-							"name": "node",
-							"template": map[string]any{
-								"spec": map[string]any{
-									"template": map[string]any{
-										"spec": map[string]any{
-											"containers":    []any{workerContainer},
-											"restartPolicy": "OnFailure",
-											"volumes": []any{
-												map[string]any{
-													"name": "dshm",
-													"emptyDir": map[string]any{
-														"medium": "Memory",
-													},
-												},
-											},
-										},
-									},
-								},
-							},
-						},
+						workerReplicatedJob,
 						// Launcher replicatedJob
 						map[string]any{
 							"name": "launcher",
@@ -294,20 +346,11 @@ func BuildMPIRuntime(cfg RuntimeConfig) burninv1alpha1.DependencySpec {
 							},
 							"template": map[string]any{
 								"metadata": map[string]any{
-									"labels": map[string]any{
-										"trainer.kubeflow.org/trainjob-ancestor-step": "trainer",
-									},
+									"labels": launcherPodLabels,
 								},
 								"spec": map[string]any{
 									"template": map[string]any{
-										"spec": map[string]any{
-											"initContainers": []any{launcherInitContainer},
-											"containers":     []any{launcherContainer},
-											"restartPolicy":  "OnFailure",
-											"volumes": []any{
-												map[string]any{"name": "ssh-keys", "emptyDir": map[string]any{}},
-											},
-										},
+										"spec": launcherPodSpec,
 									},
 								},
 							},

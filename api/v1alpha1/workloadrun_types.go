@@ -276,6 +276,25 @@ type WorkloadRunSpec struct {
 	// These are appended to the auto-generated platform overrides on the Workflow.
 	// +optional
 	Overrides []OverrideSpec `json:"overrides,omitempty"`
+
+	// gangScheduler opts workload pods into a gang-aware scheduler such as KAI Scheduler.
+	// When set, schedulerName is injected into every pod template and the queue label
+	// is applied so the scheduler holds all pods until the full gang can be placed.
+	// +optional
+	GangScheduler *GangSchedulerSpec `json:"gangScheduler,omitempty"`
+}
+
+// GangSchedulerSpec configures gang scheduling for WorkloadRun pods.
+type GangSchedulerSpec struct {
+	// schedulerName is the name of the gang-aware scheduler to use (e.g. "kai-scheduler").
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	SchedulerName string `json:"schedulerName"`
+
+	// queue is the scheduler queue to submit the workload to.
+	// Defaults to "default-queue" if not specified.
+	// +optional
+	Queue string `json:"queue,omitempty"`
 }
 
 // WorkloadRunStatus defines the observed state of WorkloadRun.

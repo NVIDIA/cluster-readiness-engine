@@ -382,6 +382,25 @@ spec:
                     - message: either script or module must be set
                       rule: has(self.script) || has(self.module)
                 type: object
+              gangScheduler:
+                description: |-
+                  gangScheduler opts workload pods into a gang-aware scheduler such as KAI Scheduler.
+                  When set, schedulerName is injected into every pod template and the queue label
+                  is applied so the scheduler holds all pods until the full gang can be placed.
+                properties:
+                  queue:
+                    description: |-
+                      queue is the scheduler queue to submit the workload to.
+                      Defaults to "default-queue" if not specified.
+                    type: string
+                  schedulerName:
+                    description: schedulerName is the name of the gang-aware scheduler
+                      to use (e.g. "kai-scheduler").
+                    minLength: 1
+                    type: string
+                required:
+                - schedulerName
+                type: object
               goodputMeasurement:
                 description: |-
                   goodputMeasurement enables training goodput tracking.
