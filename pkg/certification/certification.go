@@ -430,7 +430,6 @@ type certRunConfig struct {
 	version         string // CLI version, passed to setup.RunInit
 	cert            *burninv1alpha1.Certification
 	namespace       string
-	imagePullSecret string // raw GitHub token
 	controllerImage string // --image: controller image for --setup
 	doWait          bool   // --wait: watch + report
 	doSetup         bool   // --setup: runInit before create
@@ -450,7 +449,6 @@ type categoryRunOpts struct {
 	gpusPerNode      int32
 	enableMNNVL      *bool
 	storageClass     string
-	imagePullSecret  string
 	repeatCount      int32
 	maxRestarts      int32
 }
@@ -463,7 +461,6 @@ func newRunCommand(version string) *cobra.Command {
 	var storageClass string
 	var doWait, doSetup, doCleanup bool
 	var certFile string
-	var imagePullSecret string
 	var controllerImage string
 	var resultsFile string
 	var timeout time.Duration
@@ -496,7 +493,7 @@ Use --cleanup to teardown installed components after completion.`,
 			var cfg *certRunConfig
 			var err error
 			if certFile != "" {
-				cfg, err = buildConfigFromFile(certFile, *configFlags.Namespace, imagePullSecret, controllerImage,
+				cfg, err = buildConfigFromFile(certFile, *configFlags.Namespace, controllerImage,
 					doWait, doSetup, doCleanup, timeout, configFlags, os.Stderr)
 			} else {
 				opts := categoryRunOpts{
@@ -504,7 +501,6 @@ Use --cleanup to teardown installed components after completion.`,
 					exitDurationMins: exitDurationMins,
 					gpusPerNode:      gpusPerNode,
 					storageClass:     storageClass,
-					imagePullSecret:  imagePullSecret,
 					repeatCount:      repeatCount,
 					maxRestarts:      maxRestarts,
 				}
@@ -530,8 +526,6 @@ Use --cleanup to teardown installed components after completion.`,
 		"Category to run in domain/variant format (repeatable)")
 	cmd.Flags().StringVar(&certFile, "cert-file", "",
 		"Certification YAML file (mutually exclusive with --category)")
-	cmd.Flags().StringVar(&imagePullSecret, "image-pull-secret", "",
-		"GitHub token — creates a ghcr.io pull secret in the target namespace")
 	cmd.Flags().BoolVar(&doSetup, "setup", false,
 		"Install CRDs, controller, and LogProfiles before creating the certification")
 	cmd.Flags().BoolVar(&doWait, "wait", false,
@@ -662,7 +656,6 @@ func buildConfigFromFlags(
 	return &certRunConfig{
 		cert:            cert,
 		namespace:       namespace,
-		imagePullSecret: opts.imagePullSecret,
 		controllerImage: controllerImage,
 		doWait:          doWait,
 		doSetup:         doSetup,
@@ -675,7 +668,7 @@ func buildConfigFromFlags(
 
 // buildConfigFromFile builds a certRunConfig from a --cert-file YAML.
 func buildConfigFromFile(
-	certFile, namespace, imagePullSecret, controllerImage string,
+	certFile, namespace, controllerImage string,
 	doWait, doSetup, doCleanup bool, timeout time.Duration,
 	configFlags *kubeconfig.ConfigFlags, out io.Writer,
 ) (*certRunConfig, error) {
@@ -695,7 +688,6 @@ func buildConfigFromFile(
 	return &certRunConfig{
 		cert:            cert,
 		namespace:       cert.Namespace,
-		imagePullSecret: imagePullSecret,
 		controllerImage: controllerImage,
 		doWait:          doWait,
 		doSetup:         doSetup,
@@ -789,7 +781,7 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 	// --- Setup phase: install via runInit (SSA is idempotent) ---
 	if cfg.doSetup {
 		_, _ = fmt.Fprintln(out, "[setup] Installing dependencies...")
-		initErr := setup.RunInit(cfg.version, cfg.controllerImage, cfg.imagePullSecret, "", true,
+		initErr := setup.RunInit(cfg.version, cfg.controllerImage, "", "", true,
 			cfg.configFlags, "", nil, out)
 		if initErr != nil {
 			return fmt.Errorf("[setup] %w", initErr)
@@ -803,18 +795,6 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 	}
 	if wasCreated {
 		createdNamespace = cfg.namespace
-	}
-
-	// --- Create image pull secret ---
-	if cfg.imagePullSecret != "" {
-		secretName, secretErr := setup.CreateImagePullSecret(ctx, wc, cfg.namespace, cfg.imagePullSecret)
-		if secretErr != nil {
-			return secretErr
-		}
-		cfg.cert.Spec.ImagePullSecrets = append(cfg.cert.Spec.ImagePullSecrets,
-			corev1.LocalObjectReference{Name: secretName})
-		_, _ = fmt.Fprintf(out, "Created image pull secret %q in namespace %s.\n",
-			secretName, cfg.namespace)
 	}
 
 	// --- Create Certification ---

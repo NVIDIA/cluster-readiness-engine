@@ -59,7 +59,6 @@ This installs Kubeflow Trainer, the CRE CRDs, the controller, and the built-in L
 
 ```bash
 kubectl ncre certification run \
-  --image-pull-secret "$(gh auth token)" \
   --category communication/nccl-all-reduce \
   --wait
 ```
