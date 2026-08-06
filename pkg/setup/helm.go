@@ -201,7 +201,12 @@ func runHelm(helmPath string, args []string, out io.Writer) error {
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
 	if err := cmd.Run(); err != nil {
+		output := buf.String()
 		_, _ = io.Copy(out, &buf)
+		if strings.Contains(output, "403") {
+			_, _ = fmt.Fprintln(out, "\nHint: GHCR returned 403. Your token may be missing the read:packages scope.")
+			_, _ = fmt.Fprintln(out, "      Run: gh auth refresh -s read:packages")
+		}
 		return fmt.Errorf("helm %s: %w", args[0], err)
 	}
 	return nil

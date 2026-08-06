@@ -15,6 +15,7 @@ rules:
   - configmaps
   verbs:
   - create
+  - delete
   - get
   - list
   - patch
@@ -33,9 +34,11 @@ rules:
   - ""
   resources:
   - persistentvolumeclaims
-  - pods/log
   verbs:
+  - create
+  - delete
   - get
+  - list
 - apiGroups:
   - ""
   resources:
@@ -45,17 +48,19 @@ rules:
   - list
   - patch
 - apiGroups:
-  - '*'
+  - ""
   resources:
-  - '*'
+  - pods/log
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  - events.k8s.io
+  resources:
+  - events
   verbs:
   - create
-  - delete
-  - get
-  - list
   - patch
-  - update
-  - watch
 - apiGroups:
   - cre.nvidia.com
   resources:
@@ -105,3 +110,48 @@ rules:
   - get
   - list
   - watch
+- apiGroups:
+  - resource.k8s.io
+  resources:
+  - resourceclaimtemplates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+- apiGroups:
+  - resource.nvidia.com
+  resources:
+  - computedomains
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+- apiGroups:
+  - trainer.kubeflow.org
+  resources:
+  - trainingruntimes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+- apiGroups:
+  - trainer.kubeflow.org
+  resources:
+  - trainjobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - trainer.kubeflow.org
+  resources:
+  - trainjobs/status
+  verbs:
+  - get

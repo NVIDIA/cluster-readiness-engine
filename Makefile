@@ -61,11 +61,11 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: manifests
-manifests: controller-gen ## Generate CRDs and RBAC directly into the Helm chart.
+manifests: controller-gen ## Generate CRDs directly into the Helm chart (RBAC is maintained manually in templates/manager-role.yaml).
 	mkdir -p "$(HELM_CHART_DIR)/crds" "$(HELM_CHART_DIR)/templates"
 	"$(CONTROLLER_GEN)" rbac:roleName=cre-manager-role crd webhook paths="./..." \
 		output:crd:artifacts:config="$(HELM_CHART_DIR)/crds" \
-		output:rbac:artifacts:config="$(HELM_CHART_DIR)/templates"
+		output:rbac:none
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
