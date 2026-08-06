@@ -202,7 +202,7 @@ spec:
     nodeSelector:
       nvidia.com/gpu.product: NVIDIA-GB300  # NVIDIA-GB200, NVIDIA-GB300, or NVIDIA-H100-80GB-HBM3
   nodesPerJob: 8
-  enableMNNVL: false  # GB200: true (MNNVL); GB300: true for intra-rack (MNNVL), false for inter-rack (RoCE); H100: false
+  enableMNNVL: true   # true for GB200/GB300 (multi-node NVLink), false for H100 and others
   imagePullSecrets:
     - name: ngc-secret
   categories:
