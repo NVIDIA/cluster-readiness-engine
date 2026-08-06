@@ -213,6 +213,9 @@ verify-license-headers: addlicense ## Verify Go sources carry the SPDX license h
 .PHONY: verify
 verify: verify-codegen verify-mod verify-license-headers ## Run all verification checks.
 
+.PHONY: ci
+ci: verify lint build test ## Run the full CI gate locally: verify, lint, build, and test.
+
 ##@ Build
 
 .PHONY: check-clean-version
