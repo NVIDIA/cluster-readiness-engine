@@ -15,7 +15,7 @@ curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/dow
 ncrectl version
 ```
 
-The installer also creates a `kubectl-ncrectl` symlink so the CLI is available as a kubectl plugin (`kubectl ncrectl ...`).
+The installer also creates a `kubectl-ncre` symlink so the CLI is available as a kubectl plugin (`kubectl ncre ...`).
 
 <Warning>
 Release builds enforce a version check on every invocation. If a newer version exists, the command exits with code 1 and prints an upgrade prompt. Use `ncrectl upgrade` to update. CI pipelines should pin to a specific version to avoid unexpected failures.
