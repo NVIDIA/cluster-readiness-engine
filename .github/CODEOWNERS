@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Code owners are requested for review automatically on every pull request.
+# Later entries win over earlier ones. Refine per-path ownership as the
+# maintainer group grows (see MAINTAINERS.md).
+
+* @endipagbor @lalitadithya
