@@ -35,10 +35,17 @@ jobs:
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       # A branch name such as "pull-request/26" holds a slash, which a docker
-      # tag cannot. Replace each slash with a dash.
+      # tag cannot. Replace every character a tag does not allow, then cut the
+      # result so the tag stays under the 128 character limit. The branch name
+      # goes through the environment, so it cannot run as shell code.
       - name: Compute image tag
         id: tag
-        run: echo "value=$(echo '${{ github.ref_name }}' | tr '/' '-')-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          ref=$(printf '%s' "$REF_NAME" | tr -c 'A-Za-z0-9_.-' '-' | cut -c1-80)
+          echo "value=${ref}-${SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Build container image (no push)
         run: make docker-buildx BUILDX_PUSH=
