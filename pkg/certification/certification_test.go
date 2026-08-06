@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/yaml"
 
 	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -398,7 +397,6 @@ func TestNewRunCommandFlagDefaults(t *testing.T) {
 	}{
 		{"category", "[]"},
 		{"cert-file", ""},
-		{"image-pull-secret", ""},
 		{"setup", "false"},
 		{"wait", "false"},
 		{"cleanup", "false"},
@@ -471,7 +469,6 @@ func TestNewRunCommandCategoryRunOptsWiring(t *testing.T) {
 				exitDurationMins: 0,
 				gpusPerNode:      0,
 				storageClass:     "",
-				imagePullSecret:  "",
 			}
 			if cmd.Flags().Changed("enable-checkpoint") {
 				v, _ := cmd.Flags().GetBool("enable-checkpoint")
@@ -550,7 +547,6 @@ func TestCategoryRunOptsWiringIntoCert(t *testing.T) {
 			gpusPerNode:      8,
 			enableMNNVL:      &enableMNNVL,
 			storageClass:     "gp3",
-			imagePullSecret:  "my-key",
 		}
 
 		cert := &burninv1alpha1.Certification{}
@@ -639,11 +635,4 @@ func TestCategoryRunOptsWiringIntoCert(t *testing.T) {
 		assert.Nil(t, cert.Spec.NodesPerJob)
 	})
 
-	t.Run("imagePullSecrets wiring", func(t *testing.T) {
-		cert := &burninv1alpha1.Certification{}
-		cert.Spec.ImagePullSecrets = append(cert.Spec.ImagePullSecrets,
-			corev1.LocalObjectReference{Name: "ncrectl-pull-secret"})
-		require.Len(t, cert.Spec.ImagePullSecrets, 1)
-		assert.Equal(t, "ncrectl-pull-secret", cert.Spec.ImagePullSecrets[0].Name)
-	})
 }
