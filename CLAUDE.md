@@ -201,7 +201,8 @@ spec:
   target:
     nodeSelector:
       nvidia.com/gpu.product: NVIDIA-GB300  # NVIDIA-GB200, NVIDIA-GB300, or NVIDIA-H100-80GB-HBM3
-  enableMNNVL: true   # true for GB200/GB300, false for H100
+  nodesPerJob: 8
+  enableMNNVL: true   # true for GB200/GB300 (multi-node NVLink), false for H100 and others
   imagePullSecrets:
     - name: ngc-secret
   categories:
@@ -209,7 +210,6 @@ spec:
       variant: nemotron5-8b
       options:
         maxSteps: 50
-        nodesPerJob: 8
 ```
 
 ### Render and Verify
@@ -251,4 +251,4 @@ spec:
 
 ## Design Decisions
 
-Architecture decision records are in `docs/designs/` (ADR-000 through ADR-053). Read these before making significant changes to understand why things are the way they are.
+Architecture decision records are in `docs/designs/` (ADR-000 through ADR-069). Read these before making significant changes to understand why things are the way they are.
