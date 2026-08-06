@@ -1,0 +1,13 @@
+cluster-readiness-engine
+Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+This product includes software developed at NVIDIA CORPORATION
+(https://www.nvidia.com/).
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Third-party dependency attributions are listed in THIRD_PARTY_NOTICES.md.

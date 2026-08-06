@@ -21,6 +21,52 @@ To report a potential security vulnerability in any NVIDIA product:
 
 NVIDIA offers acknowledgement for externally reported security issues under our coordinated vulnerability disclosure policy. Visit [PSIRT Policies](https://www.nvidia.com/en-us/security/psirt-policies/) for details.
 
+## Response Expectations
+
+- Reports submitted through the channels above are **acknowledged within 5 business days**.
+- NVIDIA PSIRT coordinates triage, remediation, and disclosure with the reporter under the [coordinated vulnerability disclosure policy](https://www.nvidia.com/en-us/security/psirt-policies/).
+
+## Supported Versions
+
+Security fixes land on `main` and are released in the latest minor release line.
+
+| Version | Supported |
+| --- | --- |
+| Latest `v0.x` minor release | ✅ |
+| Older releases | ❌ — upgrade to the latest release |
+
+While CRE is pre-1.0, we do not backport fixes to older minor versions.
+
+## Vulnerability Fix Timelines
+
+Once a vulnerability in CRE is confirmed:
+
+- **Critical / High severity**: a fix or a documented mitigation ships within **30 days** of confirmation.
+- **Medium / Low severity**: a fix ships in the next scheduled release.
+
+CVEs affecting CRE are published through the NVIDIA PSIRT process (NVIDIA is a CVE Numbering Authority).
+
+## Scope
+
+In scope: vulnerabilities in CRE itself — the controller, the `ncrectl` CLI, the Helm chart, and the container images this repository publishes.
+
+Out of scope:
+
+- Vulnerabilities requiring physical access to cluster nodes
+- Social engineering of maintainers or users
+- Denial of service that requires cluster-admin or the ability to schedule arbitrary workloads
+- Theoretical issues without a proof of concept or demonstrated impact
+- Vulnerabilities in third-party dependencies without a demonstrated impact on CRE (report those upstream; we still welcome a heads-up)
+
+## Reporter Credit
+
+We credit reporters of confirmed vulnerabilities in the release notes of the fixed version and in the NVIDIA security bulletin, unless the reporter asks not to be named.
+
+## Supply Chain
+
+- CRE is licensed under Apache-2.0. Dependencies are reviewed for license compatibility with Apache-2.0; attributions are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- Release artifacts (container images, `ncrectl` binaries, Helm chart) will be signed with Sigstore cosign and ship with SBOMs and build provenance as part of the CI release pipeline. Verification commands will be documented here when the first signed release is published.
+
 ## Product Security Resources
 
 For all security-related concerns: https://www.nvidia.com/en-us/security
