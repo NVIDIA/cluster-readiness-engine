@@ -131,7 +131,7 @@ jobs:
             ```bash
             # Requires gh CLI authenticated, or GITHUB_TOKEN set.
             # -p includes pre-releases. Every release is a pre-release
-            # until v1.0.0, so keep -p until then.
+            # until v0.1.0, so keep -p until then.
             curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash -s -- -p
             ```
 
