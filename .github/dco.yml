@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Configuration for the DCO check (https://github.com/probot/dco).
+# External contributors must sign off their commits (git commit -s).
+# Members of the NVIDIA organization are exempt.
+
+require:
+  members: false
