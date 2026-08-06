@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 
 	v1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
@@ -102,13 +103,12 @@ func namedGroupIndex(re *regexp.Regexp, name string) int {
 // Kubernetes log lines are prefixed with "2006-01-02T15:04:05.999999999Z " when
 // Timestamps: true is set in the PodLogOptions.
 func stripK8sTimestamp(line string) string {
-	// K8s timestamp prefix is at least 20 chars ("2006-01-02T15:04:05Z ") and up to 31
-	// ("2006-01-02T15:04:05.999999999Z "). Find the first space after position 19.
+	// The prefix is RFC3339Nano. It ends in "Z" on a node set to UTC and in an
+	// offset such as "-07:00" on any other node, so its length varies. Cut at
+	// the first space instead of assuming a maximum length.
 	if len(line) > 20 && line[4] == '-' && line[10] == 'T' {
-		for i := 20; i < len(line) && i < 32; i++ {
-			if line[i] == ' ' {
-				return line[i+1:]
-			}
+		if _, rest, found := strings.Cut(line, " "); found {
+			return rest
 		}
 	}
 	return line

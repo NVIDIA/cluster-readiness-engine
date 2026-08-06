@@ -78,6 +78,48 @@ func TestParseBandwidthLogs(t *testing.T) {
 	}
 }
 
+// TestParseBandwidthLogsNonUTCNode covers log lines from a node that is not
+// set to UTC. Kubelet then writes an offset such as "-07:00" instead of "Z",
+// which makes the timestamp prefix longer. These lines come from a real
+// A100 run on a node in PDT.
+func TestParseBandwidthLogsNonUTCNode(t *testing.T) {
+	profile := &v1alpha1.LogProfile{
+		ObjectMeta: metav1.ObjectMeta{Name: "nccl-loopback"},
+		Spec: v1alpha1.LogProfileSpec{
+			Timestamp: v1alpha1.TimestampSpec{Layout: "2006-01-02T15:04:05.999999999Z"},
+			Patterns: v1alpha1.LogPatternSet{
+				BandwidthResult: &v1alpha1.EventPattern{
+					Regex: `^\s*(?P<size>\d+)\s+\d+\s+\w+\s+\w+\s+-?\d+\s+[\d.]+\s+(?P<algBW>[\d.]+)\s+(?P<busBW>[\d.]+)`,
+				},
+			},
+		},
+	}
+
+	parser, err := NewParser(profile)
+	if err != nil {
+		t.Fatalf("NewParser: %v", err)
+	}
+
+	lines := []string{
+		"2026-08-06T09:30:29.569516911-07:00    536870912     134217728     float     sum      -1   814.58  659.07    0.00       0     1.52  352278    0.00       0",
+		"2026-08-06T09:30:31.128034512-07:00   1073741824     268435456     float     sum      -1  1558.51  688.95    0.00       0     0.18   6e+06    0.00       0",
+		// A positive offset must work too.
+		"2026-08-06T16:30:31.128034512+05:30       65536         16384     float     sum      -1    58.16    1.13    2.18       0    58.12    1.13    2.18       0",
+	}
+
+	results := parser.ParseBandwidthLogs(lines)
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(results))
+	}
+	if results[1].SizeBytes != 1073741824 || results[1].AlgBW != 688.95 {
+		t.Errorf("got size %d algBW %f, want 1073741824 and 688.95",
+			results[1].SizeBytes, results[1].AlgBW)
+	}
+	if results[2].BusBW != 2.18 {
+		t.Errorf("BusBW = %f, want 2.18", results[2].BusBW)
+	}
+}
+
 func TestNewParserMissingPattern(t *testing.T) {
 	profile := &v1alpha1.LogProfile{
 		ObjectMeta: metav1.ObjectMeta{Name: "empty"},
