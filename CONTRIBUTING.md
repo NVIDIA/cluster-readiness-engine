@@ -128,6 +128,23 @@ KUBEBUILDER_ASSETS="$(bin/setup-envtest use -p path)" \
   go test ./cmd/integration/ -v -timeout 300s -count=1 -run TestReconcile/job-checkpoint-restart
 ```
 
+## Replicate CI Locally
+
+CI runs four required checks on every pull request: Lint, Build, Test, and Verify. One command runs the same gate locally:
+
+```bash
+make ci
+```
+
+The target chains `make verify` (generated files, `go.mod` tidiness, license headers), `make lint`, `make build`, and `make test`.
+
+Notes:
+
+- Run it on a committed tree. `make verify` regenerates code and fails when the result differs from what is committed.
+- The first run downloads the pinned tools into `bin/` (controller-gen, golangci-lint, addlicense, setup-envtest) and the envtest Kubernetes binaries. Later runs reuse them.
+- Tool versions are pinned in the Makefile. The Go version and the envtest Kubernetes version derive from `go.mod`. Local runs and CI resolve the same versions.
+- CI's Test job runs `make test-ci`, which is the same test suite with JUnit and coverage output for the CI artifacts.
+
 ## AI-Assisted Contributions
 
 You may use AI tools (Claude, Copilot, and similar) to help write contributions, under these rules:
