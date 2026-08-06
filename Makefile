@@ -281,13 +281,14 @@ BUILDX_PUSH ?= --push
 
 .PHONY: docker-buildx
 docker-buildx: #check-clean-version ## Build and push docker image for the manager for cross-platform support
-	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
-	- $(CONTAINER_TOOL) buildx create --name cre-builder
-	$(CONTAINER_TOOL) buildx use cre-builder
+	# Run as one shell, so the trap removes the builder and the temporary
+	# Dockerfile even when the build fails.
+	trap '$(CONTAINER_TOOL) buildx rm cre-builder >/dev/null 2>&1 || true; rm -f Dockerfile.cross' EXIT; \
+	set -e; \
+	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross; \
+	$(CONTAINER_TOOL) buildx create --name cre-builder >/dev/null 2>&1 || true; \
+	$(CONTAINER_TOOL) buildx use cre-builder; \
 	$(CONTAINER_TOOL) buildx build --build-arg VERSION=$(VERSION) $(BUILDX_PUSH) --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
-	- $(CONTAINER_TOOL) buildx rm cre-builder
-	rm Dockerfile.cross
 
 ##@ Deployment
 
