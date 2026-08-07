@@ -4,7 +4,7 @@ Maintainers are responsible for reviewing and merging changes, triaging issues, 
 
 | Name | GitHub | Areas |
 |---|---|---|
-| Ebot Ndip-Agbor | [@endipagbor](https://github.com/endipagbor) | Project-wide: controllers (`pkg/controller/`), catalog (`pkg/catalog/`), workload adapters (`pkg/workload/`), CLI (`cmd/ncrectl/`), Helm chart (`helm/`), CI |
+| Ebot Ndip-Agbor | [@ndipebot](https://github.com/ndipebot) | Project-wide: controllers (`pkg/controller/`), catalog (`pkg/catalog/`), workload adapters (`pkg/workload/`), CLI (`cmd/ncrectl/`), Helm chart (`helm/`), CI |
 | Lalit Adithya | [@lalitadithya](https://github.com/lalitadithya) | Project-wide: controllers (`pkg/controller/`), catalog (`pkg/catalog/`), workload adapters (`pkg/workload/`), CLI (`cmd/ncrectl/`), Helm chart (`helm/`), CI |
 
 While the maintainer group is small, both maintainers share ownership of all areas. Per-area ownership splits as the group grows.
