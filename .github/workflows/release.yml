@@ -129,14 +129,16 @@ jobs:
             ## Install ncrectl
 
             ```bash
-            # Requires gh CLI authenticated, or GITHUB_TOKEN set
-            curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
+            # Requires gh CLI authenticated, or GITHUB_TOKEN set.
+            # -p includes pre-releases. Every release is a pre-release
+            # until v0.1.0, so keep -p until then.
+            curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash -s -- -p
             ```
 
-            To install this exact version instead of the latest stable release:
+            To install this exact version instead of the newest one:
 
             ```bash
-            curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${{ steps.tag.outputs.value }}/installer | bash
+            curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${{ steps.tag.outputs.value }}/installer | bash -s -- -v ${{ steps.tag.outputs.value }}
             ```
 
             ## Helm Chart

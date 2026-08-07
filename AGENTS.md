@@ -72,13 +72,14 @@ Kubebuilder-based Kubernetes controller for GPU cluster burn-in certification. S
 
 Follows the Deployment → ReplicaSet → Pod composition pattern:
 
-- **Certification** creates one Workflow per category from the catalog. Auto-creates Remediation on failure. Workflow named `<certName>-<domain>-<variant>`.
+- **Certification** creates one Workflow per category from the catalog. Records failed nodes per category with a reason. Workflow named `<certName>-<domain>-<variant>`.
 - **Workflow** creates a single Job from `spec.jobTemplate`. Applies orchestration target, manages iterations, creates dependency resources. Job named `<workflowName>-job`.
 - **Job** creates a workload (TrainJob) via the adapter pattern. Manages health monitoring, goodput measurement, checkpoint restart.
 - **GoodputMeasurement** watches a Job, parses pod logs via LogProfile regex patterns, computes goodput ratio.
 - **BandwidthMeasurement** watches a Job, parses NCCL log output, and computes per-bus bandwidth metrics.
-- **Remediation** taints (`cre.nvidia.com/preflight-failed:NoExecute`), cordons, and sets conditions on failed nodes. Reverses on deletion.
 - **LogProfile** (cluster-scoped) defines regex patterns with named capture groups for parsing training framework logs.
+
+There is no Remediation controller. ADR-061 removed it. CRE does not taint, cordon, or patch nodes; it records failed nodes with a reason (`HardwareFailureDetected`, `ThresholdViolation`, or `WorkloadFailed`) in the Certification status.
 
 ### Key Packages
 
@@ -100,7 +101,7 @@ Follows the Deployment → ReplicaSet → Pod composition pattern:
 - Each tier uses `Owns()` for event-driven reconciliation; polling as safety net
 - Configurable requeue intervals: tests use 1s, production uses 15s
 - Child resource creation: deep-copy spec → set labels → `SetControllerReference()` → Create()
-- Reason constants use tier-specific prefixes: `reasonWorkload*` (Job), `reasonJob*` (Workflow), `reasonWorkflow*` (Certification), `reasonRemediation*` (Remediation)
+- Reason constants use tier-specific prefixes: `reasonWorkload*` (Job), `reasonJob*` (Workflow), `reasonWorkflow*` (Certification)
 
 ### Testing
 

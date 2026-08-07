@@ -35,11 +35,12 @@ usage() {
   cat <<EOF
 Install / upgrade ${BIN_NAME}
 
-Usage: $0 [-d install_dir] [-p]
+Usage: $0 [-d install_dir] [-p] [-v version]
 
 Options:
   -d DIR    Installation directory (default: /usr/local/bin)
   -p        Include pre-release versions
+  -v TAG    Install this exact release tag (e.g. v0.1.0-rc.7)
 EOF
   exit 1
 }
@@ -81,11 +82,13 @@ getArch() {
 # ---------------------------------------------------------------------------
 
 PRERELEASE=false
+VERSION=""
 
-while getopts "d:p" opt; do
+while getopts "d:pv:" opt; do
   case ${opt} in
     d) INSTALL_DIR="${OPTARG}" ;;
     p) PRERELEASE=true ;;
+    v) VERSION="${OPTARG}" ;;
     *) usage ;;
   esac
 done
@@ -140,21 +143,23 @@ fi
 # Fetch latest version
 # ---------------------------------------------------------------------------
 
-msg "Fetching latest version..."
-
 # gh CLI path — handles auth and prerelease transparently
 GH_AVAILABLE=false
 if command -v gh &>/dev/null && gh auth status &>/dev/null 2>&1; then
   GH_AVAILABLE=true
 fi
 
-if [[ "${GH_AVAILABLE}" == "true" ]]; then
+if [[ -n "${VERSION}" ]]; then
+  msg "Using requested version ${VERSION}"
+elif [[ "${GH_AVAILABLE}" == "true" ]]; then
+  msg "Fetching latest version..."
   if [[ "${PRERELEASE}" == "true" ]]; then
     VERSION=$(gh release list --repo "${GH_REPO}" --limit 1 --json tagName -q '.[0].tagName')
   else
     VERSION=$(gh release view --repo "${GH_REPO}" --json tagName -q '.tagName')
   fi
 else
+  msg "Fetching latest version..."
   # curl + token fallback
   if [[ "${PRERELEASE}" == "true" ]]; then
     ENDPOINT="${GH_API_URL}/releases?per_page=1"
@@ -204,18 +209,15 @@ if [[ "${GH_AVAILABLE}" == "true" ]]; then
 elif [[ -n "${GH_TOKEN}" ]]; then
   # Use the GitHub API asset endpoint with Accept: application/octet-stream.
   # GitHub redirects to a pre-signed S3 URL; the auth header is not forwarded.
-  ASSET_URL=$(echo "${RELEASE_JSON}" \
-    | grep -o '"url" *: *"https://api\.github\.com[^"]*releases/assets/[^"]*"' \
-    | grep -v "upload_url" | head -1 \
+  # Put each asset object on its own line, then pick the line whose name
+  # matches this platform's binary and read the url from that same line.
+  # Do not take the first asset url in the release: the assets are sorted by
+  # name, so that installs the wrong file.
+  ASSET_URL=$(echo "${RELEASE_JSON}" | tr -d '\n' | tr '{' '\n' \
+    | grep "\"name\" *: *\"${BINARY_NAME}\"" \
+    | grep -o '"url" *: *"https://api\.github\.com[^"]*releases/assets/[0-9]*"' \
+    | head -1 \
     | sed 's/.*"\(https[^"]*\)".*/\1/')
-
-  # Fall back: find by scanning asset objects for our binary name
-  if [[ -z "${ASSET_URL}" ]]; then
-    ASSET_URL=$(echo "${RELEASE_JSON}" \
-      | grep -B5 "\"name\" *: *\"${BINARY_NAME}\"" \
-      | grep -o '"url" *: *"https://api\.github\.com[^"]*"' | tail -1 \
-      | sed 's/.*"\(https[^"]*\)".*/\1/')
-  fi
 
   if [[ -z "${ASSET_URL}" ]]; then
     err "Binary ${BINARY_NAME} not found in release ${VERSION}"
