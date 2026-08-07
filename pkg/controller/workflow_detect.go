@@ -9,6 +9,7 @@ import (
 	"maps"
 	"reflect"
 	"slices"
+	"sort"
 	"strings"
 
 	jsonpatch "github.com/evanphx/json-patch/v5"
@@ -112,6 +113,23 @@ func detectGPUArchitecture(nodes []corev1.Node) string {
 		return gpuArchUnknown
 	}
 	return nodeGPUArchitecture(nodes[0])
+}
+
+// excludedNodeNames returns the names in all that are absent from kept, in the
+// order they appear in all.
+func excludedNodeNames(all, kept []corev1.Node) []string {
+	keptNames := make(map[string]bool, len(kept))
+	for i := range kept {
+		keptNames[kept[i].Name] = true
+	}
+	var out []string
+	for i := range all {
+		if !keptNames[all[i].Name] {
+			out = append(out, all[i].Name)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // detectGPUArchConsistent detects the GPU architecture and filters out nodes

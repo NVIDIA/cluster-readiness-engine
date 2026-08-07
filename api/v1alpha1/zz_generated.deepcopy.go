@@ -1594,6 +1594,11 @@ func (in *OrchestrationStatus) DeepCopyInto(out *OrchestrationStatus) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.ExcludedNodes != nil {
+		in, out := &in.ExcludedNodes, &out.ExcludedNodes
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.AppliedOverrides != nil {
 		in, out := &in.AppliedOverrides, &out.AppliedOverrides
 		*out = make([]AppliedOverride, len(*in))

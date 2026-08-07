@@ -225,11 +225,20 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 
 	gpuArch, filteredNodes := detectGPUArchConsistent(nodes)
 	if len(filteredNodes) < len(nodes) {
+		// Record the dropped nodes on the status, not just in an event. A run
+		// that excludes nodes still reports Succeeded, so without this the
+		// report says PASSED and never mentions what went untested.
+		excluded := excludedNodeNames(nodes, filteredNodes)
+		orch.ExcludedNodes = excluded
+		orch.ExclusionReason = fmt.Sprintf(
+			"target set has more than one GPU architecture; certified %s only",
+			gpuArch)
 		log.Info("Heterogeneous GPU architectures detected, filtering to primary",
-			"primary", gpuArch, "total", len(nodes), "filtered", len(filteredNodes))
+			"primary", gpuArch, "total", len(nodes), "filtered", len(filteredNodes),
+			"excluded", excluded)
 		r.eventf(workflow, corev1.EventTypeWarning, "HeterogeneousGPU",
-			"Filtered %d/%d nodes to primary GPU architecture %s",
-			len(filteredNodes), len(nodes), gpuArch)
+			"Filtered %d/%d nodes to primary GPU architecture %s; excluded: %s",
+			len(filteredNodes), len(nodes), gpuArch, strings.Join(excluded, ", "))
 		nodes = filteredNodes
 	}
 	orch.DetectedGPUArchitecture = gpuArch

@@ -40,15 +40,20 @@ const (
 
 // CertReport holds all data needed to render the certification report.
 type CertReport struct {
-	Title       string             `json:"title,omitempty"` // defaults to "Certification Report"
-	Name        string             `json:"name"`
-	Platform    string             `json:"platform"`
-	GPU         string             `json:"gpu"`
-	TotalNodes  int                `json:"totalNodes"`
-	Categories  []CategoryReport   `json:"categories"`
-	FailedNodes []string           `json:"failedNodes"`
-	Result      string             `json:"result"` // "PASSED", "FAILED", or "RUNNING"
-	NodeResults []NodeResultReport `json:"nodeResults,omitempty"`
+	Title      string `json:"title,omitempty"` // defaults to "Certification Report"
+	Name       string `json:"name"`
+	Platform   string `json:"platform"`
+	GPU        string `json:"gpu"`
+	TotalNodes int    `json:"totalNodes"`
+	// ExcludedNodes lists nodes that matched the target but were left
+	// untested, with ExclusionReason saying why. A run reports PASSED even
+	// when it excludes nodes, so these keep that from being invisible.
+	ExcludedNodes   []string           `json:"excludedNodes,omitempty"`
+	ExclusionReason string             `json:"exclusionReason,omitempty"`
+	Categories      []CategoryReport   `json:"categories"`
+	FailedNodes     []string           `json:"failedNodes"`
+	Result          string             `json:"result"` // "PASSED", "FAILED", or "RUNNING"
+	NodeResults     []NodeResultReport `json:"nodeResults,omitempty"`
 }
 
 // NodeResultReport holds per-node pass/fail status for programmatic consumers.
@@ -284,6 +289,8 @@ func Build(ctx context.Context, c client.Client, cert *burninv1alpha1.Certificat
 			report.Platform = wf.Status.Orchestration.DetectedPlatform
 			report.GPU = wf.Status.Orchestration.DetectedGPUArchitecture
 			report.TotalNodes = wf.Status.Orchestration.TotalNodes
+			report.ExcludedNodes = wf.Status.Orchestration.ExcludedNodes
+			report.ExclusionReason = wf.Status.Orchestration.ExclusionReason
 			break
 		}
 	}
@@ -927,6 +934,15 @@ func PrintMulti(w io.Writer, reports []*CertReport) {
 		}
 		if r.TotalNodes > 0 {
 			_, _ = fmt.Fprintf(w, "  Nodes:     %d\n", r.TotalNodes)
+		}
+		// A run can pass while leaving nodes untested. Say so next to the
+		// node count rather than only in an event on the Workflow.
+		if len(r.ExcludedNodes) > 0 {
+			_, _ = fmt.Fprintf(w, "  Excluded:  %d (%s)\n",
+				len(r.ExcludedNodes), strings.Join(r.ExcludedNodes, ", "))
+			if r.ExclusionReason != "" {
+				_, _ = fmt.Fprintf(w, "             %s\n", r.ExclusionReason)
+			}
 		}
 		_, _ = fmt.Fprintln(w)
 

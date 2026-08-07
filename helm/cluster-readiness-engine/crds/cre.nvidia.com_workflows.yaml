@@ -7832,6 +7832,19 @@ spec:
                     - round
                     - stage
                     type: object
+                  excludedNodes:
+                    description: |-
+                      excludedNodes lists nodes that matched the target but were dropped before
+                      scheduling, and exclusionReason says why. A Workflow can succeed while
+                      excluding nodes, so these record what was left untested. Today the only
+                      cause is a target set with more than one GPU architecture, where the run
+                      continues on the primary architecture alone.
+                    items:
+                      type: string
+                    type: array
+                  exclusionReason:
+                    description: exclusionReason explains why excludedNodes were dropped.
+                    type: string
                   groups:
                     description: Group phases are reset to Pending at the start of
                       each new iteration.
