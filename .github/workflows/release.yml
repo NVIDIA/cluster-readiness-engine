@@ -110,6 +110,29 @@ jobs:
           sha256sum installer ncrectl-* > checksums.txt
           cat checksums.txt
 
+      # Gate. This runs after the artifacts exist and before the release is
+      # created, so a finding fails the job and no release is ever published.
+      # Keep it above the Create GitHub Release step; moving it below would
+      # turn the gate into an alert about something already public.
+      - name: Scan release binaries for malware
+        env:
+          CLAMAV_IMAGE: clamav/clamav:stable@sha256:d06c1d6a451d616e1dd79b42f44c8c8c291bba9cf4e75ebc4d0e43c1c6dd87bb
+        run: |
+          set -euo pipefail
+          # --entrypoint is required. The image's default entrypoint is /init,
+          # a supervisor that starts freshclam and clamd; without the override
+          # the arguments below reach that supervisor rather than clamscan.
+          # The stable tag ships a virus database, so no freshclam run is needed.
+          # clamscan exits 1 when it finds something and 2 on error, so set -e
+          # fails the step either way.
+          docker run --rm \
+            -v "${PWD}/dist:/scan:ro" \
+            --entrypoint clamscan \
+            "${CLAMAV_IMAGE}" \
+            --recursive --infected --suppress-ok-results \
+            --max-filesize=512M --max-scansize=2048M \
+            /scan
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
