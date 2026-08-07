@@ -228,21 +228,38 @@ spec:
 
 1. **Override tracking** — Check `ncrectl.nvidia.com/applied-overrides` annotation to confirm the right overrides matched, and `detected-gpu-architecture`/`detected-platform` are correct.
 
-2. **Architecture-specific env vars** — EFA vars (`FI_EFA_USE_DEVICE_RDMA`, `LD_LIBRARY_PATH`, `PATH`, `OPAL_PREFIX`) should ONLY appear for GB200 and H100 on AWS (EFA interconnect), NOT for GB300 (RoCE).
+2. **Architecture-specific env vars** — `FI_EFA_USE_DEVICE_RDMA` should ONLY appear for GB200 and H100 on AWS (EFA interconnect), NOT for GB300 (RoCE).
+
+   `LD_LIBRARY_PATH` and `PATH` are **not** EFA markers. GB300 on AWS sets them on purpose (`pkg/catalog/entries/_lib/nccl/aws-gb300-roce-env.yaml`), pointing at `/opt/amazon/openmpi/lib`, which is correct on an AWS instance whatever the interconnect. Do not treat them as leakage.
 
 3. **Resources by architecture**:
    - GB200: `hugepages-2Mi: 10256Mi`, `vpc.amazonaws.com/efa: 4`, `amazon-efa` hostPath volume
    - GB300: `roce-channel` resource claim with `roce.networking.k8s.aws`, NO hugepages, NO EFA
    - H100: `vpc.amazonaws.com/efa: 32`, NO hugepages, NO ComputeDomain
 
-4. **Spot-check with grep**:
-   ```bash
-   # Should return NOTHING for GB300
-   ./bin/ncrectl certification render --platform aws /tmp/cert-gb300.yaml 2>&1 | grep -E "FI_EFA|LD_LIBRARY|OPAL_PREFIX|hugepages"
+4. **Spot-check with grep**. Use only markers that really are EFA specific:
 
-   # Should show EFA vars and hugepages for GB200
-   ./bin/ncrectl certification render --platform aws /tmp/cert-gb200.yaml 2>&1 | grep -E "FI_EFA|LD_LIBRARY|OPAL_PREFIX|hugepages"
+   ```bash
+   # Should return NOTHING for GB300 (RoCE)
+   ./bin/ncrectl certification render --platform aws /tmp/cert-gb300.yaml 2>&1 \
+     | grep -E "FI_EFA|hugepages|vpc.amazonaws.com/efa"
+
+   # Should show all three for GB200 (EFA)
+   ./bin/ncrectl certification render --platform aws /tmp/cert-gb200.yaml 2>&1 \
+     | grep -E "FI_EFA|hugepages|vpc.amazonaws.com/efa"
+
+   # And GB300 should show RoCE instead
+   ./bin/ncrectl certification render --platform aws /tmp/cert-gb300.yaml 2>&1 | grep -c roce
    ```
+
+   Rendered counts for `communication/nccl-all-reduce` on AWS, for reference:
+
+   | Pattern | gb200 | gb300 |
+   |---|---|---|
+   | `FI_EFA` | 2 | 0 |
+   | `hugepages` | 2 | 0 |
+   | `vpc.amazonaws.com/efa` | 2 | 0 |
+   | `roce` | 0 | 6 |
 
 ### Override Semantics (Critical)
 
