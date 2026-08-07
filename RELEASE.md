@@ -1,0 +1,122 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
+# Release Process
+
+How a release of the Cluster Readiness Engine is cut, what it publishes, and how to
+check that you received what we published.
+
+## Versioning
+
+CRE follows [Semantic Versioning](https://semver.org/). Tags are `vMAJOR.MINOR.PATCH`,
+optionally with a pre-release suffix, for example `v0.1.0` or `v0.1.0-rc.7`.
+
+The project is at `v0.x`. Under SemVer that means the public surface can still change in
+a minor release. Treat CRD schemas, the `ncrectl` command line, and Helm values as
+unstable until `v1.0.0`. Breaking changes are called out in the release notes.
+
+## Cadence
+
+There is no fixed schedule. CRE releases when there is something worth releasing.
+
+Do not wait for a date to ship a fix, and do not cut a release to meet one.
+
+## Who can cut a release
+
+The maintainers listed in [MAINTAINERS.md](MAINTAINERS.md). Pushing a tag is what starts
+a release, so anyone with write access to the repository can technically start one; by
+convention it is a maintainer who does.
+
+Announce your intent on the pull request or issue that motivates the release, so two
+people do not tag at the same time.
+
+## Cutting a release
+
+1. Make sure `main` is green. Every required check must pass: Lint, Build, Test, Verify,
+   and UAT.
+2. Decide the version. See Versioning above.
+3. Tag the commit on `main` and push the tag.
+
+   ```bash
+   git checkout main && git pull --ff-only
+   git tag -s v0.1.0 -m "v0.1.0"
+   git push origin v0.1.0
+   ```
+
+   If you work from a fork, push the tag to the remote that points at
+   `NVIDIA/cluster-readiness-engine`, which is usually `upstream`.
+
+   Sign the tag (`-s`). Pushing the tag is the release trigger; there is no button to
+   press afterwards.
+4. Watch the `Release` workflow. If it fails, the release is incomplete — see
+   Troubleshooting.
+5. Check the published release, then announce it.
+
+Tags must be clean. `make check-clean-version` refuses to publish a Helm chart when the
+version contains `-dirty`, a `-N-gSHA` suffix, or is `dev`, which is what you get from
+tagging a working tree that is not committed.
+
+### Release candidates
+
+Cut `-rc.N` tags to validate a release before it becomes stable. They publish through the
+same pipeline and are marked as pre-releases on GitHub, so they do not become the
+`latest` release.
+
+When an RC is good, tag the **same commit** with the stable version. Do not rebuild or
+re-merge between the RC and the stable tag; that would ship something nobody validated.
+
+Note that `curl .../releases/latest/download/installer`, the install command in the
+README, resolves to the newest **stable** release. While only pre-releases exist, that URL
+returns 404.
+
+## What a release publishes
+
+Pushing a `v*` tag runs three jobs in `.github/workflows/release.yml`:
+
+| Job | Publishes |
+|---|---|
+| Publish Helm Chart | `oci://ghcr.io/nvidia/cluster-readiness-engine` |
+| Build CLI Binaries | cross-compiled `ncrectl` for linux and macOS, amd64 and arm64 |
+| Create GitHub Release | the GitHub Release, its notes, and the assets below |
+
+The container image is published separately by `.github/workflows/publish.yml` as
+`ghcr.io/nvidia/cluster-readiness-engine/manager:<tag>`.
+
+Release assets:
+
+- `installer` — the install script the README points at
+- `ncrectl-linux-amd64`, `ncrectl-linux-arm64`
+- `ncrectl-darwin-amd64`, `ncrectl-darwin-arm64`
+- `checksums.txt` — SHA-256 of every asset above
+
+## Verifying a release
+
+```bash
+VERSION=v0.1.0
+BASE=https://github.com/NVIDIA/cluster-readiness-engine/releases/download/$VERSION
+curl -sSLO "$BASE/checksums.txt"
+curl -sSLO "$BASE/ncrectl-linux-amd64"
+sha256sum --check --ignore-missing checksums.txt
+```
+
+Releases up to and including `v0.1.0-rc.7` predate the checksum step and carry no
+`checksums.txt`.
+
+## Troubleshooting
+
+**The workflow failed partway.** Jobs publish independently, so a release can be
+half-published: the chart pushed but no GitHub Release, or the reverse. Read the run,
+fix the cause, and re-run the failed jobs from the Actions tab. Do not delete and re-push
+a tag that has already published artifacts — consumers may have it. Cut the next patch
+version instead.
+
+**The Helm push failed on `check-clean-version`.** The tag was not clean. Delete the tag
+if nothing published, commit your work, and tag again.
+
+**`releases/latest` returns 404.** No stable release exists yet. Use an explicit version
+in the download URL.
+
+## See also
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — how to get a change into `main` before it ships
+- [MAINTAINERS.md](MAINTAINERS.md) — who the maintainers are
