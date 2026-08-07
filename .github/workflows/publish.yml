@@ -36,7 +36,18 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Pull docker.io images through Google's public mirror. The build pulls
+      # golang from Docker Hub, which rate-limits anonymous pulls per source
+      # IP; the shared runner egress hits that ceiling when several builds run
+      # at once, failing with 429 Too Many Requests. The mirror is a
+      # pull-through cache, so it serves the identical digests the Dockerfile
+      # pins and needs no credentials. Builds fall back to docker.io if the
+      # mirror does not have a layer.
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+        with:
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
 
       - name: Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
