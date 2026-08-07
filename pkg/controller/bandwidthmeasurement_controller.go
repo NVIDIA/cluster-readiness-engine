@@ -34,6 +34,13 @@ const (
 	reasonBandwidthJobRunning   = "JobRunning"
 	reasonBandwidthJobSucceeded = "JobSucceeded"
 	reasonBandwidthJobFailed    = "JobFailed"
+
+	// reasonBandwidthLogProfileMissing marks a spec.logProfileRef that does not
+	// resolve. The measurement keeps retrying, so this is not terminal.
+	reasonBandwidthLogProfileMissing = "LogProfileNotFound"
+	// reasonBandwidthNoData marks a measurement that ended without parsing
+	// anything, so its result is absent rather than zero.
+	reasonBandwidthNoData = "NoDataCollected"
 )
 
 // BandwidthMeasurementReconciler reconciles a BandwidthMeasurement object.
@@ -193,6 +200,7 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 	parser, profile, err := r.getOrCreateParser(ctx, measurement.Spec.LogProfileRef)
 	if err != nil {
 		log.Error(err, "Failed to get parser for LogProfile", "logProfile", measurement.Spec.LogProfileRef)
+		r.noteLogProfileUnresolved(ctx, measurement, err)
 		return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
 	}
 
@@ -337,9 +345,36 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 	return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
 }
 
+// noteLogProfileUnresolved records an unresolved spec.logProfileRef on the
+// measurement, so the cause is visible in status and not only in the controller
+// log. This is deliberately not terminal: a cluster-scoped LogProfile can be
+// created after the run starts, and the next sample picks it up.
+func (r *BandwidthMeasurementReconciler) noteLogProfileUnresolved(ctx context.Context, measurement *burninv1alpha1.BandwidthMeasurement, cause error) {
+	message := fmt.Sprintf("LogProfile %q could not be resolved: %v", measurement.Spec.LogProfileRef, cause)
+	err := updateStatusWithRetry(ctx, r.Client, measurement, func(m *burninv1alpha1.BandwidthMeasurement) bool {
+		return meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
+			Type:               burninv1alpha1.BandwidthMeasurementMeasuring,
+			Status:             metav1.ConditionFalse,
+			ObservedGeneration: m.Generation,
+			Reason:             reasonBandwidthLogProfileMissing,
+			Message:            message,
+		})
+	})
+	if err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to record unresolved LogProfile on status")
+	}
+}
+
 func (r *BandwidthMeasurementReconciler) handleTerminal(ctx context.Context, measurement *burninv1alpha1.BandwidthMeasurement, reason, message string) (ctrl.Result, error) {
 	now := metav1.Now()
 	measurement.Status.CompletionTime = &now
+
+	// A measurement that parsed nothing did not measure anything, whatever the
+	// Job did. Reporting JobSucceeded here reads as a successful measurement.
+	if reason == reasonBandwidthJobSucceeded && len(measurement.Status.Results) == 0 {
+		reason = reasonBandwidthNoData
+		message = "Job succeeded but no bandwidth data was parsed; check spec.logProfileRef"
+	}
 
 	meta.SetStatusCondition(&measurement.Status.Conditions, metav1.Condition{
 		Type:               burninv1alpha1.BandwidthMeasurementMeasuring,
