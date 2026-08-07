@@ -119,6 +119,33 @@ kubectl ncre certification report <name> -n <namespace>
 └────────────────────────────────────────────────────────────────┘
 ```
 
+### Install from the registry instead
+
+`setup init` above is the quickest path. If you would rather manage CRE with
+Helm, or need to pin the controller image in your own manifests, both are
+published to the GitHub Container Registry on every release.
+
+```bash
+CRE_VERSION=v0.1.0-rc.7
+
+# Inspect the chart before installing it
+helm show chart oci://ghcr.io/nvidia/cluster-readiness-engine --version "$CRE_VERSION"
+
+helm install cluster-readiness-engine \
+  oci://ghcr.io/nvidia/cluster-readiness-engine \
+  --version "$CRE_VERSION" \
+  --namespace cluster-readiness-engine \
+  --create-namespace
+```
+
+The controller image is `ghcr.io/nvidia/cluster-readiness-engine/manager`, tagged
+with the same release version. Builds from `main` are also published, tagged
+`main-<commit-sha>`; use a release tag rather than one of those.
+
+Pin an explicit version rather than installing whatever is newest. Chart and
+image versions move together, so the two commands above and your own manifests
+should all name the same tag.
+
 ## Run a training workload
 
 WorkloadRun is a simplified API for running training, NCCL, or custom workloads. Write a YAML file with an image, a framework, and a node count. CRE detects the platform and GPU architecture.
