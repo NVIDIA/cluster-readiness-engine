@@ -8,6 +8,17 @@ on:
     branches:
       - main
       - "pull-request/[0-9]+"
+  # Nightly run against main. UAT compares rendered catalog output against
+  # golden files, so it can drift without any pull request touching this
+  # repository: an upstream image moves, or a catalog default changes shape.
+  # The push trigger cannot catch that. A schedule can, and finds it the next
+  # morning rather than when someone opens an unrelated pull request.
+  #
+  # workflow_dispatch above also keeps this alive. GitHub disables scheduled
+  # workflows after 60 days of repository inactivity, and a manual run re-arms
+  # the schedule.
+  schedule:
+    - cron: '0 7 * * *' # 07:00 UTC daily; runs on the default branch only
   workflow_dispatch:
 
 concurrency:
