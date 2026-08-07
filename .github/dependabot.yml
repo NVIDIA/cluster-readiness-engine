@@ -13,6 +13,7 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    rebase-strategy: rebase
     # Wait before adopting a new version. The common supply-chain attack is a
     # malicious release of a real package that bots pull within hours; a delay
     # gives the ecosystem time to spot and yank it. Patches wait the shortest
@@ -42,6 +43,7 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    rebase-strategy: rebase
     groups:
       actions:
         patterns:
@@ -56,6 +58,7 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    rebase-strategy: rebase
     # Docker supports default-days only; the semver bump keys are gomod-only.
     cooldown:
       default-days: 7
