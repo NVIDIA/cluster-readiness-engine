@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Two H100 nodes and one A100, declared with the odd node in the middle so the
+# case does not depend on declaration order. Discovery sorts by name, so the
+# run always certifies the two H100 nodes and always excludes the A100.
+# Before discovery was sorted this case was genuinely flaky: identical input
+# certified h100 with 2 nodes on one run and a100 with 1 node on the next.
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100"
+    kubernetes.io/hostname: gpu-node-01
+spec:
+  providerID: "aws://us-east-1a/i-aaaa"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-03-odd
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-A100-PCIE-40GB"
+    kubernetes.io/hostname: gpu-node-03-odd
+spec:
+  providerID: "aws://us-east-1a/i-cccc"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100"
+    kubernetes.io/hostname: gpu-node-02
+spec:
+  providerID: "aws://us-east-1a/i-bbbb"
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-heterogeneous
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
