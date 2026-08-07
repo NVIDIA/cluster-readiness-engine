@@ -12,17 +12,30 @@ import (
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
 	"github.com/spf13/cobra"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const outputJSON = "json"
 
+// The diagnostics/dcgm-level4 category runs dcgmi against this service. The
+// GPU Operator creates it only when spec.dcgm.enabled is true.
+const (
+	dcgmServiceName      = "nvidia-dcgm"
+	dcgmServiceNamespace = "gpu-operator"
+)
+
 // SetupStatus is the JSON output structure for ncrectl setup status.
 type SetupStatus struct {
 	// Installed is true when all required components are present and ready.
 	Installed  bool                  `json:"installed"`
 	Components SetupStatusComponents `json:"components"`
+
+	// dcgmAbsent is true only when the API server answered that the service
+	// does not exist. A denied or failed lookup leaves it false, so the
+	// command does not tell the user to enable a service that may be there.
+	dcgmAbsent bool
 }
 
 // SetupStatusComponents reports the status of each individual component.
@@ -32,6 +45,9 @@ type SetupStatusComponents struct {
 	KubeflowTrainer bool `json:"kubeflowTrainer"`
 	LogProfiles     bool `json:"logProfiles"`
 	GPUOperator     bool `json:"gpuOperator"`
+	// DCGM is optional. Only the diagnostics/dcgm-level4 category needs it,
+	// so it does not count toward Installed.
+	DCGM bool `json:"dcgm"`
 }
 
 func newSetupStatusCommand() *cobra.Command {
@@ -51,8 +67,10 @@ Components checked:
   kubeflowTrainer      Kubeflow Trainer TrainJob CRD (kubeflow.org)
   logProfiles          CRE LogProfile resources
   gpuOperator          NVIDIA GPU Operator (nodes with nvidia.com/gpu.present=true)
+  dcgm                 NVIDIA DCGM service (optional; diagnostics/dcgm-level4 only)
 
-'installed' is true only when all components are present.`,
+'installed' is true only when all required components are present. DCGM is
+optional, so it does not affect 'installed'.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
 			c, err := newSetupClient(configFlags)
@@ -90,6 +108,9 @@ func collectSetupStatus(ctx context.Context, c client.Client) *SetupStatus {
 	comp.LogProfiles = checkLogProfiles(ctx, c)
 	comp.GPUOperator = checkGPUOperator(ctx, c)
 
+	dcgmErr := checkDCGM(ctx, c)
+	comp.DCGM = dcgmErr == nil
+
 	return &SetupStatus{
 		Installed: comp.CRECRDs &&
 			comp.CREController &&
@@ -97,6 +118,7 @@ func collectSetupStatus(ctx context.Context, c client.Client) *SetupStatus {
 			comp.LogProfiles &&
 			comp.GPUOperator,
 		Components: comp,
+		dcgmAbsent: apierrors.IsNotFound(dcgmErr),
 	}
 }
 
@@ -178,6 +200,18 @@ func checkGPUOperator(ctx context.Context, c client.Client) bool {
 	return len(nodeList.Items) > 0
 }
 
+// checkDCGM returns nil if the GPU Operator created the standalone DCGM
+// service. The operator omits it when spec.dcgm.enabled is false, which is the
+// default when dcgmExporter runs its own embedded DCGM. The caller reads the
+// error to tell a missing service apart from a lookup it could not complete.
+func checkDCGM(ctx context.Context, c client.Client) error {
+	svc := &unstructured.Unstructured{}
+	svc.SetAPIVersion("v1")
+	svc.SetKind("Service")
+	key := client.ObjectKey{Name: dcgmServiceName, Namespace: dcgmServiceNamespace}
+	return c.Get(ctx, key, svc)
+}
+
 // printSetupStatus renders a human-readable table.
 func printSetupStatus(s *SetupStatus) {
 	check := func(ok bool) string {
@@ -203,6 +237,7 @@ func printSetupStatus(s *SetupStatus) {
 		check(s.Components.KubeflowTrainer), status(s.Components.KubeflowTrainer))
 	_, _ = fmt.Fprintf(w, "Log Profiles\t%s %s\n", check(s.Components.LogProfiles), status(s.Components.LogProfiles))
 	_, _ = fmt.Fprintf(w, "GPU Operator\t%s %s\n", check(s.Components.GPUOperator), status(s.Components.GPUOperator))
+	_, _ = fmt.Fprintf(w, "DCGM (optional)\t%s %s\n", check(s.Components.DCGM), status(s.Components.DCGM))
 	_ = w.Flush()
 
 	fmt.Println()
@@ -213,5 +248,14 @@ func printSetupStatus(s *SetupStatus) {
 		if !s.Components.GPUOperator {
 			fmt.Println("  GPU Operator must be installed by your cluster administrator")
 		}
+	}
+
+	if s.dcgmAbsent {
+		fmt.Println()
+		fmt.Printf("Note: service %s/%s is missing. Only the diagnostics/dcgm-level4\n",
+			dcgmServiceNamespace, dcgmServiceName)
+		fmt.Println("      category needs it. Your cluster administrator can add it with:")
+		fmt.Println(`      kubectl patch clusterpolicy cluster-policy --type=merge \`)
+		fmt.Println(`        -p '{"spec":{"dcgm":{"enabled":true}}}'`)
 	}
 }
