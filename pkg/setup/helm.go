@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -23,22 +24,43 @@ const (
 	trainerNamespace    = "kubeflow-system"
 )
 
-// isReleaseBuild returns true if version is a clean semver release tag
-// (e.g. "1.2.3" or "v1.2.3") with no pre-release or dirty suffix.
+// gitDescribeSuffix matches the trailing commit count and hash that git
+// describe adds to an untagged commit. It anchors at the end, because the
+// suffix follows any pre-release part: "1.2.3-4-gabc1234" and also
+// "0.1.0-rc.7-15-g1c5151c".
+var gitDescribeSuffix = regexp.MustCompile(`-[0-9]+-g[0-9a-f]{4,}$`)
+
+// semverPrerelease matches the pre-release part of a semver tag: dot
+// separated identifiers of letters, digits, and hyphens, as in "rc.7".
+var semverPrerelease = regexp.MustCompile(`^[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*$`)
+
+// isReleaseBuild returns true if version is a published release tag. This
+// covers plain tags like "1.2.3" and pre-release tags like "v1.2.3-rc.7",
+// because the release workflow publishes a chart for both. Git describe
+// output from an untagged commit has no chart, so it returns false.
 func isReleaseBuild(v string) bool {
 	s := strings.TrimPrefix(strings.TrimSpace(v), "v")
-	parts := strings.SplitN(s, ".", 3)
+	if s == "" || strings.HasSuffix(s, "-dirty") || strings.Contains(s, "+") {
+		return false
+	}
+	if gitDescribeSuffix.MatchString(s) {
+		return false
+	}
+
+	core, pre, hasPre := strings.Cut(s, "-")
+	parts := strings.SplitN(core, ".", 3)
 	if len(parts) != 3 {
 		return false
 	}
 	for _, p := range parts {
-		if p == "" || strings.ContainsAny(p, "-+") || strings.IndexFunc(p, func(r rune) bool {
+		if p == "" || strings.IndexFunc(p, func(r rune) bool {
 			return r < '0' || r > '9'
 		}) >= 0 {
 			return false
 		}
 	}
-	return true
+
+	return !hasPre || semverPrerelease.MatchString(pre)
 }
 
 // helmChartVersion normalises a version string for use as a Helm chart version.
