@@ -130,17 +130,36 @@ KUBEBUILDER_ASSETS="$(bin/setup-envtest use -p path)" \
 
 ## Replicate CI Locally
 
-CI runs four required checks on every pull request: Lint, Build, Test, and Verify. One command runs the same gate locally:
+Five checks are required before a pull request can merge: Lint, Build, Test, Verify, and UAT.
+
+One command runs the first four:
 
 ```bash
 make ci
 ```
 
-The target chains `make verify` (generated files, `go.mod` tidiness, license headers), `make lint`, `make build`, and `make test`.
+The target chains `make verify` (generated files, `go.mod` tidiness, license headers), `make lint`, `make build`, and `make test`. Run it before every push. It needs no cluster and no container runtime.
+
+UAT is the fifth check and `make ci` does not run it:
+
+```bash
+make test-uat
+```
+
+UAT renders the catalog against a Kind cluster with KWOK-simulated GPU nodes and compares the result to golden files. It needs Docker, Kind and Tilt, and it takes several minutes, so it is not part of `make ci`. Run it when you change anything under `pkg/catalog/`.
+
+`make test-uat` creates the cluster, deploys, tests, and tears down each time. When you are iterating, keep the cluster and re-run only the tests:
+
+```bash
+make setup-test-uat   # once
+make tilt-uat         # leave running in another terminal; hot-reloads
+make test-uat-run     # re-run as needed
+make cleanup-test-uat # when finished
+```
 
 Notes:
 
-- Run it on a committed tree. `make verify` regenerates code and fails when the result differs from what is committed.
+- Run `make ci` on a committed tree. `make verify` regenerates code and fails when the result differs from what is committed.
 - The first run downloads the pinned tools into `bin/` (controller-gen, golangci-lint, addlicense, setup-envtest) and the envtest Kubernetes binaries. Later runs reuse them.
 - Tool versions are pinned in the Makefile. The Go version and the envtest Kubernetes version derive from `go.mod`. Local runs and CI resolve the same versions.
 - CI's Test job runs `make test-ci`, which is the same test suite with JUnit and coverage output for the CI artifacts.
