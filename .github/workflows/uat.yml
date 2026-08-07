@@ -47,12 +47,12 @@ jobs:
           sudo docker image prune --all --force
           docker system prune -f
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
 
-      - uses: azure/setup-helm@v5
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
         with:
           version: v3.19.2
 
@@ -105,7 +105,7 @@ jobs:
 
       - name: Upload Kind logs
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: uat-kind-logs-${{ github.run_id }}
           path: /tmp/kind-logs/
@@ -114,7 +114,7 @@ jobs:
 
       - name: Upload debug artifacts
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: uat-debug-artifacts-${{ github.run_id }}
           path: /tmp/debug-artifacts/
