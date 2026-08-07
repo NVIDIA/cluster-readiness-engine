@@ -1,4 +1,4 @@
-# ADR-027: Platform-Aware NCCL Communication Benchmark Configuration
+# ADR-031: Platform-Aware NCCL Communication Benchmark Configuration
 
 ## Context
 
@@ -6,7 +6,7 @@ NCCL communication benchmarks (all-reduce, all-gather, alltoall) require platfor
 
 The current NCCL catalog entries (`communication/nccl-all-reduce`, `communication/nccl-all-gather`, `communication/nccl-alltoall`) hard-code on-premises NVLink-local defaults (`NCCL_IB_DISABLE=1`, `NCCL_NET_PLUGIN=none`), which disable all fabric communication. These entries work for single-node NVLink validation but cannot exercise the inter-node network fabric that distributed training depends on.
 
-The override mechanism (ADR-012, ADR-026) already supports conditional patching via `when.platform` with auto-detection from node `providerID`, but no NCCL catalog entry uses it. The training catalog entries demonstrate the override pattern with `when.gpuArchitecture`.
+The override mechanism (ADR-012, ADR-027) already supports conditional patching via `when.platform` with auto-detection from node `providerID`, but no NCCL catalog entry uses it. The training catalog entries demonstrate the override pattern with `when.gpuArchitecture`.
 
 ## Decision
 
@@ -167,6 +167,6 @@ overrides:
 ## References
 
 - ADR-012: Platform/GPU Architecture Overrides
-- ADR-026: Kustomize-like Override UX
+- ADR-027: Kustomize-like Override UX
 - ADR-016: NCCL All-Reduce Catalog Entry
 - ADR-018: NCCL Test Suite Catalog

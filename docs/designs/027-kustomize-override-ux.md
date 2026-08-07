@@ -1,4 +1,4 @@
-# ADR-026: Kustomize-like Override UX
+# ADR-027: Kustomize-like Override UX
 
 ## Context
 
