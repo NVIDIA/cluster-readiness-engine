@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Groups the release notes that `generate_release_notes: true` produces in
+# .github/workflows/release.yml. Without this file every merged pull request
+# lands in one flat list, so a dependency bump reads the same as a fix.
+#
+# Categories match on pull request LABELS, not on the commit or title prefix.
+# A pull request with no label falls through to Other Changes, so an unlabelled
+# release is no worse off than it is today. Labelling one improves it.
+
+changelog:
+  categories:
+    # Order matters: the first matching category wins, and "*" only catches
+    # what nothing above claimed.
+    - title: New Features
+      labels:
+        - enhancement
+
+    - title: Bug Fixes
+      labels:
+        - bug
+
+    - title: Documentation
+      labels:
+        - documentation
+
+    # Grouped rather than excluded. Dependency bumps are worth publishing —
+    # a consumer deciding whether to upgrade wants to see them — but they are
+    # noise interleaved with the human changes, and they already carry this
+    # label from Dependabot, so this section works with no extra effort.
+    - title: Dependency Updates
+      labels:
+        - dependencies
+
+    - title: Other Changes
+      labels:
+        - "*"
