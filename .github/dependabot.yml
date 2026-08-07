@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Dependabot keeps Go modules and pinned GitHub Actions current.
+# Dependabot keeps Go modules, pinned GitHub Actions, and the digest-pinned
+# container base images current.
 # Updates are grouped to keep the pull request count low.
 
 version: 2
@@ -32,5 +33,19 @@ updates:
     open-pull-requests-limit: 5
     groups:
       actions:
+        patterns:
+          - "*"
+
+  # Raises the base-image digests in Dockerfile. Without this, pinning by
+  # digest would hold the images at these bits and security fixes published
+  # under the same tag would never arrive.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      docker-images:
         patterns:
           - "*"
