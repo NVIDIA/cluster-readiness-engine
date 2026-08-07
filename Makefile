@@ -257,11 +257,11 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build --build-arg VERSION=$(VERSION) -t ${IMG} .
+	$(CONTAINER_TOOL) build --build-arg VERSION=$(VERSION) -t "${IMG}" .
 
 .PHONY: docker-push
 docker-push: check-clean-version ## Push docker image with the manager.
-	$(CONTAINER_TOOL) push ${IMG}
+	$(CONTAINER_TOOL) push "${IMG}"
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
@@ -274,15 +274,20 @@ PLATFORMS ?= linux/arm64,linux/amd64
 # Platforms for ncrectl CLI cross-compilation (includes macOS and Windows for end-user workstations).
 NCRECTL_PLATFORMS ?= linux/amd64,linux/arm64,darwin/amd64,darwin/arm64
 
+# BUILDX_PUSH controls whether docker-buildx pushes the image.
+# Default pushes. Set BUILDX_PUSH= (empty) to build without pushing,
+# which validates both platforms and discards the result.
+BUILDX_PUSH ?= --push
+
 .PHONY: docker-buildx
 docker-buildx: #check-clean-version ## Build and push docker image for the manager for cross-platform support
-	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
-	- $(CONTAINER_TOOL) buildx create --name cre-builder
-	$(CONTAINER_TOOL) buildx use cre-builder
-	- $(CONTAINER_TOOL) buildx build --build-arg VERSION=$(VERSION) --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
-	- $(CONTAINER_TOOL) buildx rm cre-builder
-	rm Dockerfile.cross
+	# Run as one shell, so the trap removes the builder and the temporary
+	# Dockerfile even when the build fails.
+	trap '$(CONTAINER_TOOL) buildx rm cre-builder >/dev/null 2>&1 || true; rm -f Dockerfile.cross' EXIT; \
+	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross; \
+	$(CONTAINER_TOOL) buildx create --name cre-builder >/dev/null 2>&1 || true; \
+	$(CONTAINER_TOOL) buildx use cre-builder; \
+	$(CONTAINER_TOOL) buildx build --build-arg VERSION=$(VERSION) $(BUILDX_PUSH) --platform=$(PLATFORMS) --tag "${IMG}" -f Dockerfile.cross .
 
 ##@ Deployment
 
