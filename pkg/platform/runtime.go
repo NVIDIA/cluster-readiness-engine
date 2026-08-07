@@ -10,8 +10,14 @@ import (
 
 	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 )
+
+// gpuResourceName is the extended resource a container must request to be given
+// a GPU. A container that does not name it is scheduled without one, however
+// many GPUs the node has.
+const gpuResourceName = corev1.ResourceName("nvidia.com/gpu")
 
 // defaultWorkerMemory is the memory request/limit applied when a WorkloadRun
 // does not specify spec.resources. Matches values used by training catalog
@@ -24,14 +30,49 @@ func defaultWorkerResources(gpusPerNode int32) map[string]any {
 	gpuStr := strconv.Itoa(int(gpusPerNode))
 	return map[string]any{
 		"limits": map[string]any{
-			"nvidia.com/gpu": gpuStr,
-			"memory":         defaultWorkerMemory,
+			gpuResourceName.String(): gpuStr,
+			"memory":                 defaultWorkerMemory,
 		},
 		"requests": map[string]any{
-			"nvidia.com/gpu": gpuStr,
-			"memory":         defaultWorkerMemory,
+			gpuResourceName.String(): gpuStr,
+			"memory":                 defaultWorkerMemory,
 		},
 	}
+}
+
+// withGPURequest returns res with nvidia.com/gpu filled in from gpusPerNode.
+//
+// The user's block used to be taken exactly as written, so a WorkloadRun that
+// set spec.resources to avoid the memory default also lost its GPU request.
+// The pod then scheduled onto a node it could not use, while numProcPerNode was
+// still set from gpusPerNode, and the run died inside CUDA reporting a driver
+// problem rather than a missing GPU.
+//
+// An explicit value is never overwritten, including an explicit zero, so
+// asking for no GPU stays possible. If the user named the resource in either
+// limits or requests, the block is left entirely alone.
+func withGPURequest(res *corev1.ResourceRequirements, gpusPerNode int32) *corev1.ResourceRequirements {
+	if res == nil || gpusPerNode <= 0 {
+		return res
+	}
+	if _, ok := res.Limits[gpuResourceName]; ok {
+		return res
+	}
+	if _, ok := res.Requests[gpuResourceName]; ok {
+		return res
+	}
+
+	out := res.DeepCopy()
+	qty := *resource.NewQuantity(int64(gpusPerNode), resource.DecimalSI)
+	if out.Limits == nil {
+		out.Limits = corev1.ResourceList{}
+	}
+	if out.Requests == nil {
+		out.Requests = corev1.ResourceList{}
+	}
+	out.Limits[gpuResourceName] = qty
+	out.Requests[gpuResourceName] = qty
+	return out
 }
 
 // RuntimeConfig holds all parameters needed to build a TrainingRuntime dependency.
@@ -96,7 +137,7 @@ func BuildTorchRuntime(cfg RuntimeConfig) burninv1alpha1.DependencySpec {
 	}
 
 	if cfg.Resources != nil {
-		container["resources"] = cfg.Resources
+		container["resources"] = withGPURequest(cfg.Resources, cfg.GpusPerNode)
 	} else {
 		container["resources"] = defaultWorkerResources(cfg.GpusPerNode)
 	}
@@ -227,7 +268,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) burninv1alpha1.DependencySpec {
 	}
 
 	if cfg.Resources != nil {
-		workerContainer["resources"] = cfg.Resources
+		workerContainer["resources"] = withGPURequest(cfg.Resources, cfg.GpusPerNode)
 	} else {
 		workerContainer["resources"] = defaultWorkerResources(cfg.GpusPerNode)
 	}
