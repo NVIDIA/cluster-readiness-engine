@@ -1,7 +1,36 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+# Keep review comments rare and high value. Style, naming, and wording are
+# handled by golangci-lint and by human review.
+tone_instructions: >-
+  Report only defects that change behavior: bugs, data loss, race conditions,
+  security problems, broken error handling, and breaking API or CRD changes.
+  Report a test only when the test itself is wrong. Do not comment on style,
+  naming, formatting, comment wording, documentation phrasing, or missing
+  test coverage. Say nothing when you find no defect.
+
 reviews:
   profile: chill
+  request_changes_workflow: false
+
+  # Drop the report sections that repeat what the diff already shows.
+  high_level_summary: false
+  changed_files_summary: false
+  sequence_diagrams: false
+  poem: false
+  review_status: false
+  collapse_walkthrough: true
+
+  # Generated files and fixtures. Nobody edits these by hand.
+  path_filters:
+    - "!**/zz_generated.*.go"
+    - "!helm/cluster-readiness-engine/crds/**"
+    - "!helm/cluster-readiness-engine/templates/*role*.yaml"
+    - "!helm/cluster-readiness-engine/templates/service_account.yaml"
+    - "!**/testdata/**"
+    - "!THIRD_PARTY_NOTICES.md"
+    - "!PROJECT"
+
   auto_review:
     enabled: true

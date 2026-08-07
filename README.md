@@ -15,7 +15,7 @@ CRE is for platform and infrastructure teams that bring up, validate, or resell 
 - Goodput measurement parsed from training logs with configurable LogProfile patterns
 - Per-bus bandwidth measurement parsed from NCCL logs
 - Node health monitoring with CEL expressions while workloads run
-- Automatic remediation of failed nodes (taint and cordon, reversed on deletion)
+- Per-node failure reporting with a reason for every failed node
 - Topology-aware node grouping and adaptive fault isolation
 - Checkpoint restart for training jobs
 - WorkloadRun, a single resource to run a training, NCCL, or custom workload
@@ -32,10 +32,9 @@ flowchart LR
     J -->|adapter| T[TrainJob and other workloads]
     J -.-> G[GoodputMeasurement]
     J -.-> B[BandwidthMeasurement]
-    C -->|on failure| R[Remediation]
 ```
 
-A Certification creates one Workflow per catalog category. Each Workflow creates a Job from its template. The Job creates the workload through an adapter, for example a Kubeflow Trainer TrainJob. Measurement resources parse pod logs with LogProfile regex patterns and compute goodput and bandwidth. When a node fails, a Remediation taints and cordons it. When you delete the Remediation, CRE removes the taint and the cordon.
+A Certification creates one Workflow per catalog category. Each Workflow creates a Job from its template. The Job creates the workload through an adapter, for example a Kubeflow Trainer TrainJob. Measurement resources parse pod logs with LogProfile regex patterns and compute goodput and bandwidth. When a node fails, CRE records it in the certification result with a reason. CRE does not modify nodes; quarantine is left to your platform.
 
 ## Quickstart
 
@@ -65,8 +64,10 @@ kubectl ncre certification run \
 
 **4. Report**
 
+The report prints when the run completes. To print it again later, pass the name and the namespace from the run output:
+
 ```bash
-kubectl ncre certification report
+kubectl ncre certification report <name> -n <namespace>
 ```
 
 ```
@@ -105,23 +106,34 @@ kubectl ncre certification report
 
 ## Run a training workload
 
-WorkloadRun is a simplified API for running training, NCCL, or custom workloads. Provide an image, framework, and node count. CRE detects the platform and GPU architecture.
+WorkloadRun is a simplified API for running training, NCCL, or custom workloads. Write a YAML file with an image, a framework, and a node count. CRE detects the platform and GPU architecture.
+
+```yaml
+# nccl-all-reduce.yaml
+apiVersion: cre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: nccl-all-reduce
+spec:
+  image: nvcr.io/nvidia/pytorch:26.01-py3
+  numNodes: 4
+  framework:
+    mpi:
+      binary: /usr/local/bin/all_reduce_perf_mpi
+      mpirunPath: /usr/local/bin/mpirun
+      args: ["-b", "8", "-e", "32G", "-f", "2", "-n", "100"]
+  bandwidthMeasurement:
+    logProfileRef: nccl-bandwidth
+    testType: all_reduce
+```
 
 ```bash
-kubectl ncre workloadrun run \
-  --image-pull-secret "$(gh auth token)" \
-  --image ghcr.io/nvidia/pytorch:26.01-py3 \
-  --framework mpi \
-  --mpi-binary /usr/local/bin/all_reduce_perf_mpi \
-  --mpi-args "-b 8 -e 32G -f 2 -n 100" \
-  --num-nodes 4 \
-  --bandwidth-measurement \
-  --wait
+kubectl ncre workloadrun run nccl-all-reduce.yaml --wait
 ```
 
 ## Scope and non-goals
 
-CRE certifies clusters with burn-in workloads and quarantines the nodes that fail. CRE is not:
+CRE certifies clusters with burn-in workloads and reports the nodes that fail. CRE is not:
 
 - A continuous monitoring system. CRE watches nodes only while its workloads run.
 - A general workload scheduler or a training platform for production pipelines.
