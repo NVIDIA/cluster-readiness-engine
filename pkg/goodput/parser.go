@@ -15,9 +15,11 @@ import (
 )
 
 // k8sTimestampRe matches the RFC3339Nano prefix that kubelet injects when
-// Timestamps: true is set on the pod log request.
-// Example: "2026-02-05T16:03:52.889599000Z "
-var k8sTimestampRe = regexp.MustCompile(`^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s`)
+// Timestamps: true is set on the pod log request. The zone is "Z" on a node
+// set to UTC and an offset such as "-07:00" on any other node.
+// Example: "2026-02-05T16:03:52.889599000Z " or "2026-02-05T09:03:52.889599000-07:00 "
+var k8sTimestampRe = regexp.MustCompile(
+	`^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))\s`)
 
 // maxStepsInMemory is the maximum number of training steps kept in the result.
 const maxStepsInMemory = 100

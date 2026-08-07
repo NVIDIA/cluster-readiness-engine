@@ -1,0 +1,141 @@
+Defaulted container "node" out of: node, fix-ssh-permissions (init)
+2026-08-06T14:10:20.194667376-07:00 Warning: Permanently added 'r2-allreduce-communicatio-3af21-job-workload-node-0-1.r2-allreduce-communicatio-3af21-job-workload' (ED25519) to the list of known hosts.
+2026-08-06T14:10:20.200461508-07:00 Warning: Permanently added 'r2-allreduce-communicatio-3af21-job-workload-node-0-0.r2-allreduce-communicatio-3af21-job-workload' (ED25519) to the list of known hosts.
+2026-08-06T14:10:20.811144667-07:00 # nccl-tests version 2.17.8 nccl-headers=22902 nccl-library=22902
+2026-08-06T14:10:20.811194466-07:00 # Collective test starting: all_reduce_perf_mpi
+2026-08-06T14:10:20.811197106-07:00 # nThread 1 nGpus 1 minBytes 8 maxBytes 67108864 step: 2(factor) warmup iters: 1 iters: 5 agg iters: 1 validation: 1 graph: 0
+2026-08-06T14:10:20.811200697-07:00 #
+2026-08-06T14:10:20.811203097-07:00 # Using devices
+2026-08-06T14:10:20.811206277-07:00 #  Rank  0 Group  0 Pid    530 on r2-allreduce-communicatio-3af21-job-workload-node-0-0 device  0 [0000:00:06] NVIDIA A100-PCIE-40GB
+2026-08-06T14:10:20.811208177-07:00 #  Rank  1 Group  0 Pid    530 on r2-allreduce-communicatio-3af21-job-workload-node-0-1 device  0 [0000:00:06] NVIDIA A100-PCIE-40GB
+2026-08-06T14:10:20.811210117-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO ENV/Plugin: Could not find: libnccl-env.so
+2026-08-06T14:10:20.811282036-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Bootstrap: Using eth0:172.29.112.173<0>
+2026-08-06T14:10:20.970575049-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO cudaDriverVersion 13010
+2026-08-06T14:10:20.970605608-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO NCCL version 2.29.2+cuda13.1
+2026-08-06T14:10:20.970608099-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO NCCL git version stable 07fa371c7
+2026-08-06T14:10:20.971029623-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO ENV/Plugin: Could not find: libnccl-env.so
+2026-08-06T14:10:20.971036363-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO cudaDriverVersion 13010
+2026-08-06T14:10:20.971414978-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Bootstrap: Using eth0:172.29.67.249<0>
+2026-08-06T14:10:20.971418318-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO NCCL version 2.29.2+cuda13.1
+2026-08-06T14:10:20.971420378-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO NCCL git version stable 07fa371c7
+2026-08-06T14:10:20.972498584-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Comm config nvlinkCentricSched set to 1
+2026-08-06T14:10:20.973268773-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Comm config nvlinkCentricSched set to 1
+2026-08-06T14:10:21.109697443-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO NET/Plugin: Loaded net plugin NCCL RDMA Plugin v11 (v11)
+2026-08-06T14:10:21.109724713-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO NET/Plugin: Loaded collnet plugin SHARP (v11)
+2026-08-06T14:10:21.109727932-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Successfully loaded external network plugin /opt/hpcx/nccl_rdma_sharp_plugin/lib/libnccl-net.so
+2026-08-06T14:10:21.109730092-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Plugin Path : /opt/hpcx/nccl_rdma_sharp_plugin/lib/libnccl-net.so
+2026-08-06T14:10:21.109732262-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO P2P plugin v11 IBext_v11
+2026-08-06T14:10:21.109810341-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO NET/IB : No device found.
+2026-08-06T14:10:21.109827531-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO NET/IB : Using [RO]; OOB eth0:172.29.67.249<0>
+2026-08-06T14:10:21.109830081-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Failed to initialize NET plugin IBext_v11
+2026-08-06T14:10:21.110119668-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO NET/IB : No device found.
+2026-08-06T14:10:21.110129997-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO NET/IB : Using [RO]; OOB eth0:172.29.67.249<0>
+2026-08-06T14:10:21.110132748-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Failed to initialize NET plugin IB
+2026-08-06T14:10:21.110321025-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO NET/Socket : Using [0]eth0:172.29.67.249<0>
+2026-08-06T14:10:21.110324745-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Initialized NET plugin Socket
+2026-08-06T14:10:21.110326865-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Assigned NET plugin Socket to comm
+2026-08-06T14:10:21.110329274-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Using network Socket
+2026-08-06T14:10:21.110484653-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO [Rank 1] ncclCommInitRankConfig comm 0x5555569a9370 rank 1 nranks 2 cudaDev 0 nvmlDev 0 busId 60 commId 0xc8257663bf9d1790 - Init START
+2026-08-06T14:10:21.111698407-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO NET/Plugin: Loaded net plugin NCCL RDMA Plugin v11 (v11)
+2026-08-06T14:10:21.111911124-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO NET/Plugin: Loaded collnet plugin SHARP (v11)
+2026-08-06T14:10:21.111914853-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Successfully loaded external network plugin /opt/hpcx/nccl_rdma_sharp_plugin/lib/libnccl-net.so
+2026-08-06T14:10:21.111917113-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Plugin Path : /opt/hpcx/nccl_rdma_sharp_plugin/lib/libnccl-net.so
+2026-08-06T14:10:21.111983912-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO P2P plugin v11 IBext_v11
+2026-08-06T14:10:21.111986443-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO NET/IB : No device found.
+2026-08-06T14:10:21.111988463-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO NET/IB : Using [RO]; OOB eth0:172.29.112.173<0>
+2026-08-06T14:10:21.111990443-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Failed to initialize NET plugin IBext_v11
+2026-08-06T14:10:21.112343418-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO NET/IB : No device found.
+2026-08-06T14:10:21.112991549-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO NET/IB : Using [RO]; OOB eth0:172.29.112.173<0>
+2026-08-06T14:10:21.112995299-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Failed to initialize NET plugin IB
+2026-08-06T14:10:21.112997518-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO NET/Socket : Using [0]eth0:172.29.112.173<0>
+2026-08-06T14:10:21.112999398-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Initialized NET plugin Socket
+2026-08-06T14:10:21.113010928-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Assigned NET plugin Socket to comm
+2026-08-06T14:10:21.113013428-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Using network Socket
+2026-08-06T14:10:21.113036889-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO [Rank 0] ncclCommInitRankConfig comm 0x5555569a6b70 rank 0 nranks 2 cudaDev 0 nvmlDev 0 busId 60 commId 0xc8257663bf9d1790 - Init START
+2026-08-06T14:10:21.115406377-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO RAS client listening socket at ::1<28028>
+2026-08-06T14:10:21.115545395-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO RAS client listening socket at ::1<28028>
+2026-08-06T14:10:21.116075137-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Bootstrap timings total 0.005388 (create 0.000034, send 0.002769, recv 0.001135, ring 0.000376, delay 0.000000)
+2026-08-06T14:10:21.116083017-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Bootstrap timings total 0.003384 (create 0.000029, send 0.000094, recv 0.001617, ring 0.000385, delay 0.000000)
+2026-08-06T14:10:21.116449203-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO NCCL_MNNVL_ENABLE set by environment to 0.
+2026-08-06T14:10:21.116496271-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO NCCL_MNNVL_ENABLE set by environment to 0.
+2026-08-06T14:10:21.123506138-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO ncclTopoGetCpuAffinity: Affinity for GPU 0 is empty, ignoring. (GPU affinity =  ; CPU affinity = 0-3).
+2026-08-06T14:10:21.123523488-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO ncclTopoGetCpuAffinity: Affinity for GPU 0 is empty, ignoring. (GPU affinity =  ; CPU affinity = 0-3).
+2026-08-06T14:10:21.124013851-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO comm 0x5555569a9370 rank 1 nRanks 2 nNodes 2 localRanks 1 localRank 0 MNNVL 0
+2026-08-06T14:10:21.124040830-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Trees [0] -1/-1/-1->1->0 [1] 0/-1/-1->1->-1
+2026-08-06T14:10:21.124044141-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO P2P Chunksize set to 131072
+2026-08-06T14:10:21.124141909-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO comm 0x5555569a6b70 rank 0 nRanks 2 nNodes 2 localRanks 1 localRank 0 MNNVL 0
+2026-08-06T14:10:21.124145460-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Channel 00/02 : 0 1
+2026-08-06T14:10:21.124148060-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Channel 01/02 : 0 1
+2026-08-06T14:10:21.124150960-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Trees [0] 1/-1/-1->0->-1 [1] -1/-1/-1->0->1
+2026-08-06T14:10:21.124154140-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO P2P Chunksize set to 131072
+2026-08-06T14:10:21.124201508-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO PROFILER/Plugin: Could not find: libnccl-profiler.so
+2026-08-06T14:10:21.124204348-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Check P2P Type isAllDirectP2p 1 directMode 0 isAllCudaP2p 1
+2026-08-06T14:10:21.124245858-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO PROFILER/Plugin: Could not find: libnccl-profiler.so
+2026-08-06T14:10:21.124423416-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Check P2P Type isAllDirectP2p 1 directMode 0 isAllCudaP2p 1
+2026-08-06T14:10:21.124520725-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:540 [0] NCCL INFO [Proxy Service] Device 0 CPU core 0
+2026-08-06T14:10:21.124532344-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:539 [0] NCCL INFO [Proxy Service] Device 0 CPU core 3
+2026-08-06T14:10:21.124534804-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:540 [0] NCCL INFO [Proxy Service UDS] Device 0 CPU core 0
+2026-08-06T14:10:21.124587014-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:541 [0] NCCL INFO [Proxy Service UDS] Device 0 CPU core 2
+2026-08-06T14:10:21.125150206-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO TUNER/Plugin: Could not find: libnccl-tuner.so
+2026-08-06T14:10:21.125157856-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO threadThresholds 8/8/64 | 16/8/64 | 512 | 512
+2026-08-06T14:10:21.125293834-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO 2 coll channels, 2 collnet channels, 0 nvls channels, 2 p2p channels, 1 p2p channels per peer
+2026-08-06T14:10:21.125297044-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Symmetric memory is not supported. cuMemEnable 1, ginSupport 0, globalNicFused 0
+2026-08-06T14:10:21.125298924-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO TUNER/Plugin: Could not find: libnccl-tuner.so
+2026-08-06T14:10:21.125300854-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO threadThresholds 8/8/64 | 16/8/64 | 512 | 512
+2026-08-06T14:10:21.125302814-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO 2 coll channels, 2 collnet channels, 0 nvls channels, 2 p2p channels, 1 p2p channels per peer
+2026-08-06T14:10:21.125304943-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Symmetric memory is not supported. cuMemEnable 1, ginSupport 0, globalNicFused 0
+2026-08-06T14:10:21.125545970-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO CC Off, workFifoBytes 1048576
+2026-08-06T14:10:21.125548890-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO ncclCommInitRankConfig comm 0x5555569a9370 rank 1 nranks 2 cudaDev 0 nvmlDev 0 busId 60 commId 0xc8257663bf9d1790 - Init COMPLETE
+2026-08-06T14:10:21.125551070-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Init timings - ncclCommInitRankConfig: rank 1 nranks 2 total 0.15 (kernels 0.14, alloc 0.00, bootstrap 0.01, allgathers 0.00, topo 0.01, graphs 0.00, connections 0.00, rest 0.00)
+2026-08-06T14:10:21.125655840-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO ncclCommInitRankConfig comm 0x5555569a6b70 rank 0 nranks 2 cudaDev 0 nvmlDev 0 busId 60 commId 0xc8257663bf9d1790 - Init COMPLETE
+2026-08-06T14:10:21.125661279-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Init timings - ncclCommInitRankConfig: rank 0 nranks 2 total 0.15 (kernels 0.14, alloc 0.00, bootstrap 0.00, allgathers 0.00, topo 0.01, graphs 0.00, connections 0.00, rest 0.00)
+2026-08-06T14:10:21.129130573-07:00 #
+2026-08-06T14:10:21.129140413-07:00 #                                                              out-of-place                       in-place          
+2026-08-06T14:10:21.129143142-07:00 #       size         count      type   redop    root     time   algbw   busbw  #wrong     time   algbw   busbw  #wrong 
+2026-08-06T14:10:21.129145102-07:00 #        (B)    (elements)                               (us)  (GB/s)  (GB/s)             (us)  (GB/s)  (GB/s)         
+2026-08-06T14:10:21.155938993-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:542 [0] NCCL INFO [Proxy Progress] Device 0 CPU core 2
+2026-08-06T14:10:21.155965882-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Channel 00/0 : 1[0] -> 0[0] [receive] via NET/Socket/0
+2026-08-06T14:10:21.155977642-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Channel 01/0 : 1[0] -> 0[0] [receive] via NET/Socket/0
+2026-08-06T14:10:21.155980362-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Channel 00/0 : 0[0] -> 1[0] [send] via NET/Socket/0
+2026-08-06T14:10:21.155989852-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:541 [0] NCCL INFO [Proxy Progress] Device 0 CPU core 3
+2026-08-06T14:10:21.155992362-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Channel 01/0 : 0[0] -> 1[0] [send] via NET/Socket/0
+2026-08-06T14:10:21.156271618-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Channel 00/0 : 0[0] -> 1[0] [receive] via NET/Socket/0
+2026-08-06T14:10:21.156560874-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Channel 01/0 : 0[0] -> 1[0] [receive] via NET/Socket/0
+2026-08-06T14:10:21.156565174-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Channel 00/0 : 1[0] -> 0[0] [send] via NET/Socket/0
+2026-08-06T14:10:21.157290445-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Channel 01/0 : 1[0] -> 0[0] [send] via NET/Socket/0
+2026-08-06T14:10:21.183949527-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO Connected all rings, use ring PXN 0 GDR 0
+2026-08-06T14:10:21.183976137-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO Connected all rings, use ring PXN 0 GDR 0
+2026-08-06T14:10:27.142404042-07:00            8             2     float     sum      -1   387.62    0.00    0.00       0   382.48    0.00    0.00       0
+2026-08-06T14:10:27.149789263-07:00           16             4     float     sum      -1   415.70    0.00    0.00       0   393.08    0.00    0.00       0
+2026-08-06T14:10:27.156628691-07:00           32             8     float     sum      -1   336.43    0.00    0.00       0   338.56    0.00    0.00       0
+2026-08-06T14:10:27.163314241-07:00           64            16     float     sum      -1   361.06    0.00    0.00       0   331.14    0.00    0.00       0
+2026-08-06T14:10:27.170076880-07:00          128            32     float     sum      -1   334.23    0.00    0.00       0   338.93    0.00    0.00       0
+2026-08-06T14:10:27.180224784-07:00          256            64     float     sum      -1   583.79    0.00    0.00       0   573.13    0.00    0.00       0
+2026-08-06T14:10:27.190639375-07:00          512           128     float     sum      -1   598.46    0.00    0.00       0   562.94    0.00    0.00       0
+2026-08-06T14:10:27.201331681-07:00         1024           256     float     sum      -1   587.32    0.00    0.00       0   631.55    0.00    0.00       0
+2026-08-06T14:10:27.214223458-07:00         2048           512     float     sum      -1   780.95    0.00    0.00       0   699.51    0.00    0.00       0
+2026-08-06T14:10:27.228312499-07:00         4096          1024     float     sum      -1   778.50    0.01    0.01       0   889.90    0.00    0.00       0
+2026-08-06T14:10:27.247655179-07:00         8192          2048     float     sum      -1  1203.10    0.01    0.01       0  1192.37    0.01    0.01       0
+2026-08-06T14:10:27.282533402-07:00        16384          4096     float     sum      -1  2235.23    0.01    0.01       0  2222.93    0.01    0.01       0
+2026-08-06T14:10:27.337070350-07:00        32768          8192     float     sum      -1  3571.76    0.01    0.01       0  3558.86    0.01    0.01       0
+2026-08-06T14:10:27.404702364-07:00        65536         16384     float     sum      -1  3835.91    0.02    0.02       0  4057.07    0.02    0.02       0
+2026-08-06T14:10:27.506756165-07:00       131072         32768     float     sum      -1  6419.73    0.02    0.02       0  6461.83    0.02    0.02       0
+2026-08-06T14:10:27.699480270-07:00       262144         65536     float     sum      -1  11832.4    0.02    0.02       0  12226.1    0.02    0.02       0
+2026-08-06T14:10:28.041256315-07:00       524288        131072     float     sum      -1  22476.1    0.02    0.02       0  22219.6    0.02    0.02       0
+2026-08-06T14:10:28.684558798-07:00      1048576        262144     float     sum      -1  44857.0    0.02    0.02       0  44012.0    0.02    0.02       0
+2026-08-06T14:10:29.976191495-07:00      2097152        524288     float     sum      -1  90554.0    0.02    0.02       0  92329.2    0.02    0.02       0
+2026-08-06T14:10:32.439042763-07:00      4194304       1048576     float     sum      -1   175014    0.02    0.02       0   171490    0.02    0.02       0
+2026-08-06T14:10:37.339487997-07:00      8388608       2097152     float     sum      -1   347898    0.02    0.02       0   346539    0.02    0.02       0
+2026-08-06T14:10:46.850776510-07:00     16777216       4194304     float     sum      -1   678928    0.02    0.02       0   672252    0.02    0.02       0
+2026-08-06T14:11:05.536557775-07:00     33554432       8388608     float     sum      -1  1332532    0.03    0.03       0  1329294    0.03    0.03       0
+2026-08-06T14:11:42.931043300-07:00     67108864      16777216     float     sum      -1  2649049    0.03    0.03       0  2684242    0.03    0.03       0
+2026-08-06T14:11:43.202488449-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO comm 0x5555569a9370 rank 1 nranks 2 cudaDev 0 busId 60 - Destroy COMPLETE
+2026-08-06T14:11:43.218372766-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO comm 0x5555569a6b70 rank 0 nranks 2 cudaDev 0 busId 60 - Destroy COMPLETE
+2026-08-06T14:11:43.218547324-07:00 # Out of bounds values : 0 OK
+2026-08-06T14:11:43.218556124-07:00 # Avg bus bandwidth    : 0.0119653 
+2026-08-06T14:11:43.218558954-07:00 #
+2026-08-06T14:11:43.218561534-07:00 # Collective test concluded: all_reduce_perf_mpi
+2026-08-06T14:11:43.218563814-07:00 #
+2026-08-06T14:11:43.277195058-07:00 
+2026-08-06T14:11:43.360654258-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-0:530:530 [0] NCCL INFO ENV/Plugin: Closing env plugin ncclEnvDefault
+2026-08-06T14:11:43.361371708-07:00 r2-allreduce-communicatio-3af21-job-workload-node-0-1:530:530 [0] NCCL INFO ENV/Plugin: Closing env plugin ncclEnvDefault
