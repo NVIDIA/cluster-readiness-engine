@@ -172,6 +172,12 @@ jobs:
             sha256sum --check --ignore-missing checksums.txt
             ```
 
+            ## Third-Party Notices
+
+            Third-party Go module licenses are listed in
+            [`THIRD_PARTY_NOTICES.md`](https://github.com/NVIDIA/cluster-readiness-engine/blob/${{ steps.tag.outputs.value }}/THIRD_PARTY_NOTICES.md)
+            and attached as a release asset.
+
             ## Support
 
             - Ask questions in [GitHub Discussions](https://github.com/NVIDIA/cluster-readiness-engine/discussions).
@@ -181,6 +187,7 @@ jobs:
             dist/ncrectl-*
             dist/installer
             dist/checksums.txt
+            THIRD_PARTY_NOTICES.md
           draft: false
           prerelease: ${{ contains(steps.tag.outputs.value, '-') }}
           generate_release_notes: true
