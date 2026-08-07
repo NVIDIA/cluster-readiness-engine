@@ -159,6 +159,7 @@ CRE certifies clusters with burn-in workloads and reports the nodes that fail. C
 - [Architecture Decision Records](docs/designs/) explain the design (ADR-000 to ADR-069).
 - [CONTRIBUTING.md](CONTRIBUTING.md) describes the contribution workflow.
 - [GOVERNANCE.md](GOVERNANCE.md) and [MAINTAINERS.md](MAINTAINERS.md) describe who decides what.
+- [RELEASE.md](RELEASE.md) describes how a release is cut and how to verify one.
 - [SECURITY.md](SECURITY.md) describes how to report a vulnerability.
 
 A hosted documentation site is in progress.
