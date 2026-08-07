@@ -10,7 +10,6 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 ## Conventions
 
 - The file name carries the number, and each record's heading matches it.
-- The numbers are not contiguous. Twelve are unused: 006, 011, 020, 022, 026, 028, 029, 030, 033, 036, 037, 040. No record ever held them.
 - ADR-000 is the full architecture record. ADR-001 is an abridged version of the same
   decision, kept for readers who want the short form.
 - New records follow the structure in `CLAUDE.md`: Context, Decision, Implementation,
