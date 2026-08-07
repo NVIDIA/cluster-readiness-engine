@@ -346,6 +346,7 @@ func StripPodVolatile(pod *corev1.Pod) {
 	// Strip random UIDs from annotations and labels.
 	stripAnnotation(pod, "jobset.sigs.k8s.io/jobset-uid")
 	stripAnnotation(pod, "jobset.sigs.k8s.io/job-key")
+	stripCNIAnnotations(pod)
 	stripLabel(pod, "jobset.sigs.k8s.io/jobset-uid")
 	stripLabel(pod, "jobset.sigs.k8s.io/job-key")
 	stripLabel(pod, "batch.kubernetes.io/controller-uid")
@@ -384,6 +385,31 @@ func StripPodVolatile(pod *corev1.Pod) {
 func stripAnnotation(pod *corev1.Pod, key string) {
 	if pod.Annotations != nil {
 		delete(pod.Annotations, key)
+	}
+}
+
+// cniAnnotationPrefixes are annotation keys a CNI plugin writes onto a pod
+// after the pod is created. The values hold a container ID and the assigned
+// pod IP, so they differ on every run. Whether they are present at all also
+// varies, because the test may read the pod before the plugin annotates it.
+//
+// KWOK runs no real CNI, so these never appear in the simulated tests. They do
+// appear on any real cluster, and they make a golden file unusable.
+var cniAnnotationPrefixes = []string{
+	"cni.projectcalico.org/", // Calico
+	"k8s.v1.cni.cncf.io/",    // Multus network-status
+	"io.cilium/",             // Cilium
+}
+
+// stripCNIAnnotations removes every annotation written by a CNI plugin.
+func stripCNIAnnotations(pod *corev1.Pod) {
+	for key := range pod.Annotations {
+		for _, prefix := range cniAnnotationPrefixes {
+			if strings.HasPrefix(key, prefix) {
+				delete(pod.Annotations, key)
+				break
+			}
+		}
 	}
 }
 
