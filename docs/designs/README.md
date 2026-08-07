@@ -9,39 +9,18 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 
 ## Conventions
 
-- The number below is the one the record gives itself in its own heading.
-- The rows are in file-name order, which is the order the directory lists them in.
+- The file name carries the number, and each record's heading matches it.
+- The numbers are not contiguous. Twelve are unused: 006, 011, 020, 022, 026, 028, 029, 030, 033, 036, 037, 040. No record ever held them.
+- ADR-000 is the full architecture record. ADR-001 is an abridged version of the same
+  decision, kept for readers who want the short form.
 - New records follow the structure in `CLAUDE.md`: Context, Decision, Implementation,
   Rationale, Consequences, Alternatives Considered, Notes, References.
-
-### Numbers that differ from the file name
-
-Three records give themselves a number that their file name does not match. Search by
-either and use this table to find the other.
-
-| Record calls itself | File |
-|---|---|
-| ADR-0022 | [`000-adr.md`](000-adr.md) |
-| ADR-026 | [`027-kustomize-override-ux.md`](027-kustomize-override-ux.md) |
-| ADR-027 | [`031-platform-aware-nccl-config.md`](031-platform-aware-nccl-config.md) |
-
-`031-platform-aware-nccl-config.md` calls itself ADR-027, and `027-kustomize-override-ux.md`
-calls itself ADR-026, so the name ADR-027 reaches a different record depending on whether
-you follow the heading or the file name. `032-orchestration-overrides.md` cites the override
-record as ADR-027, meaning the file name; `031-platform-aware-nccl-config.md` cites it as
-ADR-026, meaning the heading. Both point at `027-kustomize-override-ux.md`.
-
-### Unused numbers
-
-No record claims 000, 006, 011, 020, 028, 029, 030, 031, 033, 036, 037 or 040. Note that
-`README.md` and `AGENTS.md` describe the set as "ADR-000 to ADR-069" and name
-`000-adr.md` as the architecture record, which reads by file name rather than by heading.
 
 ## Index
 
 | ADR | Title |
 |---|---|
-| 0022 ⁽ᵈ⁾ | [CRE Architecture for GPU Cluster Certification](000-adr.md) |
+| 000 | [CRE Architecture for GPU Cluster Certification](000-adr.md) |
 | 001 | [Architecture — CRE for GPU Cluster Certification](001-adr-abridged.md) |
 | 002 | [Architecture — Layered CRD Hierarchy](002-layered-crd-hierarchy.md) |
 | 003 | [Architecture — Strongly-Typed Workload Adapter Pattern](003-workload-adapter-pattern.md) |
@@ -63,8 +42,8 @@ No record claims 000, 006, 011, 020, 028, 029, 030, 031, 033, 036, 037 or 040. N
 | 023 | [Catalog Configurability — Remove Hardcoded Values, Add Certification-Level Config](023-catalog-configurability.md) |
 | 024 | [YAML-Embedded Catalog — Replace Go Struct Literals with Embedded YAML Files](024-yaml-embedded-catalog.md) |
 | 025 | [YAML Template Catalog — Replace Post-Parse Injection with Go Templates + Sprig](025-yaml-template-catalog.md) |
-| 026 ⁽ᵈ⁾ | [Kustomize-like Override UX](027-kustomize-override-ux.md) |
-| 027 ⁽ᵈ⁾ | [Platform-Aware NCCL Communication Benchmark Configuration](031-platform-aware-nccl-config.md) |
+| 027 | [Kustomize-like Override UX](027-kustomize-override-ux.md) |
+| 031 | [Platform-Aware NCCL Communication Benchmark Configuration](031-platform-aware-nccl-config.md) |
 | 032 | [Orchestration Overrides](032-orchestration-overrides.md) |
 | 034 | [Eliminate LifecycleSpec — Infer Dependency Scope and Ordering from References](034-inferred-dependency-lifecycle.md) |
 | 035 | [Optional Legacy Kubeflow Training Operator Support](035-optional-legacy-kubeflow.md) |
@@ -99,5 +78,3 @@ No record claims 000, 006, 011, 020, 028, 029, 030, 031, 033, 036, 037 or 040. N
 | 067 | [`kubectl ncrectl` Plugin Support and Full kubectl Flag Parity](067-kubectl-plugin-support.md) |
 | 068 | [Offloading Inline Node Lists from the Workflow CR via Compressed ConfigMaps](068-group-nodes-compressed-configmap.md) |
 | 069 | [cmd/ layout — kubernetes/kubernetes convention](069-cmd-layout.md) |
-
-⁽ᵈ⁾ the file name carries a different number; see above.
