@@ -13,6 +13,15 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    # Wait before adopting a new version. The common supply-chain attack is a
+    # malicious release of a real package that bots pull within hours; a delay
+    # gives the ecosystem time to spot and yank it. Patches wait the shortest
+    # time because they carry most of the security fixes.
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
     groups:
       kubernetes:
         patterns:
@@ -25,6 +34,8 @@ updates:
           - "k8s.io/*"
           - "sigs.k8s.io/*"
 
+  # No cooldown here: GitHub Actions is not one of the ecosystems that supports
+  # it. Actions are pinned to commit SHAs, which Dependabot raises.
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -45,6 +56,9 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    # Docker supports default-days only; the semver bump keys are gomod-only.
+    cooldown:
+      default-days: 7
     groups:
       docker-images:
         patterns:
