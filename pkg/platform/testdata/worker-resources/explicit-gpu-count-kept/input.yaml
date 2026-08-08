@@ -1,0 +1,5 @@
+# An explicit count is never overwritten, even when it differs from gpusPerNode.
+gpusPerNode: 8
+resources:
+  limits:
+    nvidia.com/gpu: "2"

@@ -1,0 +1,4 @@
+gpusPerNode: 0
+resources:
+  limits:
+    memory: 8Gi

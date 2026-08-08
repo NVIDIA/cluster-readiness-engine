@@ -1,0 +1,4 @@
+# spec.resources unset. The default asks for GPUs and nothing else; it used to
+# add memory: 800Gi, which only a DGX-sized node can satisfy.
+gpusPerNode: 8
+omitResources: true

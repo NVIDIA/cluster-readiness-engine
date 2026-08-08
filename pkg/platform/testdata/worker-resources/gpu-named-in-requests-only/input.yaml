@@ -1,0 +1,5 @@
+# Named in either limits or requests means the block is left entirely alone.
+gpusPerNode: 8
+resources:
+  requests:
+    nvidia.com/gpu: "3"
