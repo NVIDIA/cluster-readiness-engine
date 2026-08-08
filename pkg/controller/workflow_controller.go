@@ -993,7 +993,22 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		runningCount := countRunningGroups(orch)
 		msg := fmt.Sprintf("Iteration %d/%d: %d groups running",
 			orch.CurrentIteration, effectiveIterations(workflow.Spec.Orchestration), runningCount)
-		if err := r.setWorkflowInProgress(ctx, workflow, ReasonJobRunning, msg); err != nil {
+		// The loop above mutated orch.Groups on workflow.Status directly. Hand
+		// those phases to the condition write so they land in the same update:
+		// updateStatusWithRetry skips the write when its mutate reports no change,
+		// and refetches on conflict, so status mutated outside the callback is
+		// dropped on both paths. That left a completed group stuck Running and the
+		// Workflow never finished — a passing run reported as a timeout.
+		want := make([]burninv1alpha1.GroupStatus, len(orch.Groups))
+		copy(want, orch.Groups)
+		applyGroups := func(w *burninv1alpha1.Workflow) bool {
+			if w.Status.Orchestration == nil || !statusChanged {
+				return false
+			}
+			w.Status.Orchestration.Groups = want
+			return true
+		}
+		if err := r.setWorkflowInProgress(ctx, workflow, ReasonJobRunning, msg, applyGroups); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -1846,8 +1861,8 @@ func collectAllDomainNodes(groups []burninv1alpha1.GroupStatus) map[string][]str
 }
 
 // setWorkflowInProgress sets the Workflow to InProgress state.
-func (r *WorkflowReconciler) setWorkflowInProgress(ctx context.Context, workflow *burninv1alpha1.Workflow, reason, message string) error {
-	return r.setExclusiveCondition(ctx, workflow, burninv1alpha1.WorkflowInProgress, reason, message)
+func (r *WorkflowReconciler) setWorkflowInProgress(ctx context.Context, workflow *burninv1alpha1.Workflow, reason, message string, extra ...func(*burninv1alpha1.Workflow) bool) error {
+	return r.setExclusiveCondition(ctx, workflow, burninv1alpha1.WorkflowInProgress, reason, message, extra...)
 }
 
 // setWorkflowSucceeded sets the Workflow to Succeeded state.
@@ -1861,7 +1876,7 @@ func (r *WorkflowReconciler) setWorkflowFailed(ctx context.Context, workflow *bu
 }
 
 // setExclusiveCondition sets one condition True and all others False (mutually exclusive).
-func (r *WorkflowReconciler) setExclusiveCondition(ctx context.Context, workflow *burninv1alpha1.Workflow, conditionType, reason, message string) error {
+func (r *WorkflowReconciler) setExclusiveCondition(ctx context.Context, workflow *burninv1alpha1.Workflow, conditionType, reason, message string, extra ...func(*burninv1alpha1.Workflow) bool) error {
 	changed, err := setExclusiveStatusCondition(ctx, r.Client, workflow,
 		func(w *burninv1alpha1.Workflow) *[]metav1.Condition { return &w.Status.Conditions },
 		[]string{
@@ -1869,7 +1884,7 @@ func (r *WorkflowReconciler) setExclusiveCondition(ctx context.Context, workflow
 			burninv1alpha1.WorkflowSucceeded,
 			burninv1alpha1.WorkflowFailed,
 		},
-		conditionType, reason, message,
+		conditionType, reason, message, extra...,
 	)
 	if err != nil {
 		return err
