@@ -1,0 +1,4 @@
+# The parse error used to be discarded, leaving the Job unbounded in silence.
+orchestration:
+  testScale: full-scale
+  timeoutPerJob: not-a-duration

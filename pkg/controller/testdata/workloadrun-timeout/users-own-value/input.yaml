@@ -1,0 +1,2 @@
+orchestration:
+  timeoutPerJob: 45m
