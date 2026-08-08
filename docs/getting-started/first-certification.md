@@ -91,7 +91,7 @@ List what the catalog offers:
 kubectl ncre certification list-categories
 ```
 
-The catalog has eight categories today. `communication/nccl-all-reduce`, `nccl-all-gather`, and `nccl-alltoall` run NCCL performance tests across all target nodes at once. `nccl-loopback` and `nccl-loopback-nvswitch` run one single-node Job per node and isolate per-node problems. `diagnostics/dcgm-level4` runs the deep DCGM diagnostic on each node. `training/nemotron5-8b` and `nemotron5-56b` run real Megatron-LM pretraining and measure goodput; the 56B model needs at least 32 GPUs.
+The catalog has eight categories today. `communication/nccl-all-reduce`, `nccl-all-gather`, and `nccl-alltoall` run NCCL performance tests across all target nodes at once. `nccl-loopback` and `nccl-loopback-nvswitch` run one single-node Job per node and isolate per-node problems. `diagnostics/dcgm-level4` runs the deep DCGM diagnostic on each node. `training/nemotron5-8b` and `nemotron5-56b` run real Megatron-LM pretraining and measure goodput. Both have a minimum GPU count: 4 for the 8B model, 32 for the 56B. The total must also divide evenly by the tensor-parallel width, which varies by architecture — it is 8 on A100, so the 8B model needs 8 GPUs there rather than 4.
 
 Start with `nccl-all-reduce`. It works on any node count and finishes in minutes on a healthy cluster:
 
