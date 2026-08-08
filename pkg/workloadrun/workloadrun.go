@@ -58,6 +58,22 @@ func nodesPerJobForScale(orch *burninv1alpha1.WorkloadOrchestration, numNodes in
 }
 
 // NewCommand returns the "workloadrun" cobra command.
+// resolveWRTimeout turns a user-supplied timeoutPerJob into a duration, falling
+// back to the WorkloadRun default. An unparseable value falls back too rather
+// than leaving the Job unbounded, which is what used to happen silently.
+func resolveWRTimeout(v string) *metav1.Duration {
+	if v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return &metav1.Duration{Duration: d}
+		}
+	}
+	d, err := time.ParseDuration(catalog.DefaultWorkloadRunTimeoutPerJob)
+	if err != nil {
+		return nil
+	}
+	return &metav1.Duration{Duration: d}
+}
+
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "workloadrun",
@@ -305,13 +321,12 @@ func BuildWorkflowSpec(
 		if spec.Orchestration.MaxConcurrent != nil {
 			exec.MaxConcurrent = int(*spec.Orchestration.MaxConcurrent)
 		}
-		if spec.Orchestration.TimeoutPerJob != "" {
-			d, parseErr := time.ParseDuration(spec.Orchestration.TimeoutPerJob)
-			if parseErr == nil {
-				exec.TimeoutPerJob = &metav1.Duration{Duration: d}
-			}
-		}
+		exec.TimeoutPerJob = resolveWRTimeout(spec.Orchestration.TimeoutPerJob)
 		orch.Execution = exec
+	}
+	// A WorkloadRun with no orchestration block still needs a bound.
+	if orch.Execution.TimeoutPerJob == nil {
+		orch.Execution.TimeoutPerJob = resolveWRTimeout("")
 	}
 
 	// Build platform overrides.
