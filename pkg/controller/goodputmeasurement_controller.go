@@ -139,9 +139,11 @@ func (r *GoodputMeasurementReconciler) reconcileMeasurement(ctx context.Context,
 
 	// Determine Job phase from conditions.
 	if cond := meta.FindStatusCondition(job.Status.Conditions, burninv1alpha1.JobSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
+		r.finalSample(ctx, measurement, job)
 		return r.handleSucceeded(ctx, measurement, job)
 	}
 	if cond := meta.FindStatusCondition(job.Status.Conditions, burninv1alpha1.JobFailed); cond != nil && cond.Status == metav1.ConditionTrue {
+		r.finalSample(ctx, measurement, job)
 		return r.handleFailed(ctx, measurement, job)
 	}
 	if cond := meta.FindStatusCondition(job.Status.Conditions, burninv1alpha1.JobInProgress); cond != nil && cond.Status == metav1.ConditionTrue {
@@ -151,6 +153,31 @@ func (r *GoodputMeasurementReconciler) reconcileMeasurement(ctx context.Context,
 	// Job exists but has no conditions yet — requeue.
 	log.Info("Referenced Job has no conditions yet, requeueing", "job", jobKey)
 	return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
+}
+
+// finalSample reads the logs one last time before a measurement goes terminal.
+//
+// handleSucceeded and handleFailed both build from the stored status and never
+// read logs again, so everything written in the last sampling window was lost —
+// up to sampleInterval, 60s by default. That matters most on failure, where the
+// last lines before a crash are the interesting ones. Observed on hardware: a
+// script that logged to iteration 100 was recorded as reaching step 90.
+//
+// The throttle in handleRunning exists to stop status updates re-triggering a
+// read, and would usually skip this one, so the sample time is cleared first.
+// Best effort: a failure here leaves the previous status in place, which is
+// what would have happened anyway.
+func (r *GoodputMeasurementReconciler) finalSample(ctx context.Context, measurement *burninv1alpha1.GoodputMeasurement, job *burninv1alpha1.Job) {
+	key := fmt.Sprintf("%s/%s", measurement.Namespace, measurement.Name)
+
+	r.mu.Lock()
+	delete(r.lastSample, key)
+	r.mu.Unlock()
+
+	if _, err := r.handleRunning(ctx, measurement, job); err != nil {
+		logf.FromContext(ctx).Error(err, "Final log read before completion failed",
+			"measurement", key)
+	}
 }
 
 // handleRunning processes a running job: reads logs, parses them, computes goodput.
