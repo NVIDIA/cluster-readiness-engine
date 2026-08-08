@@ -439,6 +439,32 @@ overrides:
 {{ lib "nccl/aws-gb300-roce-env.yaml" . | toMpiArgs | indent 12 }}
             - /opt/nccl-tests/build/all_gather_perf
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- OCI + GB300 (RoCE) ---
+# Must come AFTER the GB200/GB300 base block and AWS+GB300 so this override's
+# trainer.args (atomic replacement) wins. Adds SR-IOV NIC resources via
+# oci-mlnxnics-comm.yaml and sets OCI-specific GID index + MNNVL env vars.
+# trainer.env carries UCX_IB_GID_INDEX for the MPI launcher (rank 0), which
+# initializes UCX from its container env, not from mpirun -x args.
+- when:
+    platform:
+      equals: oci
+    gpuArchitecture:
+      equals: gb300
+  dependencies:
+{{ lib "deps/oci-mlnxnics-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/oci-gb300-roce-env.yaml" . | indent 12 }}
+            args:
+{{ lib "nccl/oci-roce-mpirun-args.yaml" . | indent 12 }}
+{{ lib "nccl/oci-roce-env.yaml" . | toMpiArgs | indent 12 }}
+{{ lib "nccl/oci-gb300-roce-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_gather_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
 # --- Mistral + GB300 (InfiniBand) ---
 - when:
     platform:
