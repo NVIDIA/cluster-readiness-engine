@@ -116,11 +116,9 @@
                                 },
                                 "resources": {
                                   "limits": {
-                                    "memory": "800Gi",
                                     "nvidia.com/gpu": "4"
                                   },
                                   "requests": {
-                                    "memory": "800Gi",
                                     "nvidia.com/gpu": "4"
                                   }
                                 },

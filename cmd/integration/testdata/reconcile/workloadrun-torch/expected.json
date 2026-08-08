@@ -150,11 +150,9 @@
                                 "name": "node",
                                 "resources": {
                                   "limits": {
-                                    "memory": "800Gi",
                                     "nvidia.com/gpu": "8"
                                   },
                                   "requests": {
-                                    "memory": "800Gi",
                                     "nvidia.com/gpu": "8"
                                   }
                                 },

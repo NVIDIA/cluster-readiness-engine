@@ -19,24 +19,19 @@ import (
 // many GPUs the node has.
 const gpuResourceName = corev1.ResourceName("nvidia.com/gpu")
 
-// defaultWorkerMemory is the memory request/limit applied when a WorkloadRun
-// does not specify spec.resources. Matches values used by training catalog
-// entries (e.g. nemotron5-8b, nemotron5-56b).
-const defaultWorkerMemory = "800Gi"
-
-// defaultWorkerResources returns the standard worker resources block when the
-// user did not provide spec.resources: GPU count plus a memory default.
+// defaultWorkerResources returns the worker resources block when the user did
+// not provide spec.resources.
+//
+// This used to add memory: 800Gi as well, copied from the training catalog
+// entries, which set their own. CRE cannot know what an arbitrary WorkloadRun
+// needs, and 800Gi is satisfiable only on a DGX-sized node, so omitting
+// spec.resources left the pod Pending forever anywhere else. The GPU count is
+// the part CRE does know, so it is the only part it fills in.
 func defaultWorkerResources(gpusPerNode int32) map[string]any {
 	gpuStr := strconv.Itoa(int(gpusPerNode))
 	return map[string]any{
-		"limits": map[string]any{
-			gpuResourceName.String(): gpuStr,
-			"memory":                 defaultWorkerMemory,
-		},
-		"requests": map[string]any{
-			gpuResourceName.String(): gpuStr,
-			"memory":                 defaultWorkerMemory,
-		},
+		"limits":   map[string]any{gpuResourceName.String(): gpuStr},
+		"requests": map[string]any{gpuResourceName.String(): gpuStr},
 	}
 }
 

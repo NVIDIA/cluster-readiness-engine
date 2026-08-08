@@ -4,6 +4,7 @@
 package platform
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -93,5 +94,37 @@ func TestWithGPURequest(t *testing.T) {
 		_ = withGPURequest(in, 2)
 		_, ok := in.Limits[gpuResourceName]
 		require.False(t, ok, "withGPURequest must copy, not edit in place")
+	})
+}
+
+// Omitting spec.resources used to add memory: 800Gi, which only a DGX-sized
+// node can satisfy, so the pod stayed Pending everywhere else.
+func TestDefaultWorkerResourcesAsksOnlyForGPUs(t *testing.T) {
+	got := defaultWorkerResources(8)
+
+	b, err := json.Marshal(got)
+	require.NoError(t, err)
+	require.NotContains(t, string(b), "memory",
+		"CRE cannot know an arbitrary workload's memory needs, so it must not guess")
+	require.Contains(t, string(b), `"nvidia.com/gpu":"8"`)
+
+	limits, ok := got["limits"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "8", limits["nvidia.com/gpu"])
+	require.Len(t, limits, 1, "GPUs are the only thing CRE knows to ask for")
+}
+
+// The two halves together: whichever branch a user takes, the pod ends up
+// asking for a GPU.
+func TestBothBranchesRequestAGPU(t *testing.T) {
+	t.Run("resources omitted", func(t *testing.T) {
+		b, _ := json.Marshal(defaultWorkerResources(1))
+		require.Contains(t, string(b), "nvidia.com/gpu")
+	})
+	t.Run("resources set without a GPU", func(t *testing.T) {
+		res := withGPURequest(
+			&corev1.ResourceRequirements{Limits: rl(map[string]string{"memory": "64Gi"})}, 1)
+		_, ok := res.Limits[gpuResourceName]
+		require.True(t, ok)
 	})
 }
