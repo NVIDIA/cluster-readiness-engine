@@ -1,0 +1,7 @@
+# Both were silently replaced by catalog defaults: 45m previewed as 1h,
+# repeatCount 2 previewed as iterations 1.
+nodesPerJob: 4
+testScale: intra-rack
+maxConcurrent: 3
+timeoutPerJob: 45m
+repeatCount: 2

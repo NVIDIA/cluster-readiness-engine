@@ -1,0 +1,18 @@
+{
+  "orchestration": {
+    "target": {
+      "nodeSelector": {
+        "nvidia.com/gpu.product": "NVIDIA-H100-80GB-HBM3"
+      }
+    },
+    "diagnose": {
+      "minGroupSize": 3,
+      "topologyKey": "nvidia.com/gpu.clique"
+    },
+    "execution": {
+      "timeoutPerJob": "15m0s"
+    },
+    "iterations": 1
+  },
+  "numNodes": 4
+}

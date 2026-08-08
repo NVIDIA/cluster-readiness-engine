@@ -298,6 +298,8 @@ type JobStatus struct {
 	// failureLog captures the tail of pod logs from the most recent workload failure.
 	// Populated when the Job transitions to Failed. Only the pod that caused the
 	// failure (earliest non-zero exit code) is captured. Overwritten on each retry.
+	// Always set on failure: when no pod was available to read, reason and tail
+	// record why rather than leaving the field unset.
 	// +optional
 	FailureLog *FailureLog `json:"failureLog,omitempty"`
 }
@@ -313,7 +315,8 @@ type FailureLog struct {
 	// reason is the termination reason (e.g., "OOMKilled", "Error").
 	// +optional
 	Reason string `json:"reason,omitempty"`
-	// tail is the last ~30 lines of the failed container's logs.
+	// tail is the end of the failed container's logs, up to 32 KB.
+	// When no pod was available to read, this explains why instead.
 	// +optional
 	Tail string `json:"tail,omitempty"`
 }

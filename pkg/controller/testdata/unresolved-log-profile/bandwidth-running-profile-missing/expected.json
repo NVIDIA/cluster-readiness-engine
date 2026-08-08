@@ -1,0 +1,11 @@
+{
+  "conditions": [
+    {
+      "type": "Measuring",
+      "status": "False",
+      "reason": "LogProfileNotFound",
+      "message": "LogProfile \"typo-does-not-exist\" could not be resolved: getting LogProfile typo-does-not-exist: logprofiles.cre.nvidia.com \"typo-does-not-exist\" not found"
+    }
+  ],
+  "resultCount": 0
+}

@@ -1,0 +1,10 @@
+# Why 30 lines was wrong. dcgmi diag --json ends in closing braces, so a small
+# tail keeps the structure and loses the failing test.
+maxBytes: 60
+text: |
+  {
+  	"Diagnostic" : {
+  		"tests" : [ { "name" : "diagnostic", "status" : "Fail" } ]
+  	},
+  	"metadata" : { "version" : "4.5.2" }
+  }
