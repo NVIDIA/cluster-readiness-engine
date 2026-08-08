@@ -57,7 +57,6 @@ func nodesPerJobForScale(orch *burninv1alpha1.WorkloadOrchestration, numNodes in
 	return numNodes
 }
 
-// NewCommand returns the "workloadrun" cobra command.
 // resolveWRTimeout turns a user-supplied timeoutPerJob into a duration, falling
 // back to the WorkloadRun default. An unparseable value falls back too rather
 // than leaving the Job unbounded, which is what used to happen silently.
@@ -74,6 +73,7 @@ func resolveWRTimeout(v string) *metav1.Duration {
 	return &metav1.Duration{Duration: d}
 }
 
+// NewCommand returns the "workloadrun" cobra command.
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "workloadrun",
