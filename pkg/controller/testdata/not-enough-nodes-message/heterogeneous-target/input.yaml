@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The real B23 case: two nodes matched, one was dropped for a different GPU
+# architecture, and the remaining one no longer satisfies nodesPerJob.
+needed: 2
+found: 1
+gpuArch: a100
+archExcluded:
+  - node003

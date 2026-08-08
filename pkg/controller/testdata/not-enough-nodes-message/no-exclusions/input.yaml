@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Nothing was filtered. The shortfall is a genuine schedulability problem, so
+# the message stays as it was.
+needed: 4
+found: 2
+gpuArch: h100
+archExcluded: []

@@ -1,0 +1,3 @@
+{
+  "message": "Not enough schedulable nodes: need 8, found 2. 3 node(s) matched the target but were excluded for not being GPU architecture gb200: node-h100-a, node-h100-b, node-l40-c. Set nodesPerJob to 2, or narrow the target to one architecture"
+}
