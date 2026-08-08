@@ -1,0 +1,7 @@
+{
+  "podName": "",
+  "nodeName": "",
+  "exitCode": 0,
+  "reason": "PodNotFound",
+  "tail": "no pods for this Job were found when the failure was recorded; the pod was most likely deleted before its logs could be read"
+}

@@ -1,0 +1,7 @@
+# maxRestarts only applies to a training entry with checkpointing.
+category:
+  domain: training
+  variant: nemotron5-8b
+nodesPerJob: 4
+enableCheckpoint: true
+maxRestarts: 7
