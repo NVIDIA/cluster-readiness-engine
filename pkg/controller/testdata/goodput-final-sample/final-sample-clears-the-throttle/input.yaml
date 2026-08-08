@@ -1,0 +1,4 @@
+# The final read lands moments after the previous sample, so without clearing
+# the sample time it would be skipped and the last window of output lost.
+call: finalSample
+sampledSecondsAgo: 1
