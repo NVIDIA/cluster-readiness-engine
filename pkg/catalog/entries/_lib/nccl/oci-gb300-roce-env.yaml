@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# OCI GB300 RoCE environment variables.
+# Applied to both comm entries (via | toMpiArgs) and training entries (via trainer.env).
+#
+# GID index 3: OCI uses RoCEv2 which requires GID index 3. Without this, UCX
+# defaults to GID index 0 (link-local/IB mode) causing IBV_WC_REM_ACCESS_ERR
+# (vendor err 129 on mlx5_x). Both UCX_IB_GID_INDEX and NCCL_IB_GID_INDEX are
+# required — the MPI launcher runs rank 0 and initializes UCX from its container
+# env (not from mpirun -x args), so the container env must also carry the GID index.
+#
+# NCCL_MNNVL_ENABLE: the OCI+GB300 override replaces the full mpirun args from
+# the GB200/GB300 base override, which would otherwise drop this var and let NCCL
+# default to enabled on GB300 hardware. Explicitly setting it ensures MNNVL-on
+# and MNNVL-off runs are correctly differentiated.
+#
+# NCCL_DMABUF_ENABLE=0 when MNNVL disabled: OCI GB300 nodes return error 524
+# (Unknown error) from mlx5dv_reg_dmabuf_mr. NCCL falls back to DMA-BUF for
+# GPU Direct RDMA by default, which fails on this cluster. Only needed when MNNVL
+# is off; with MNNVL enabled this code path is not taken.
+- name: UCX_IB_GID_INDEX
+  value: "3"
+- name: NCCL_IB_GID_INDEX
+  value: "3"
+- name: NCCL_MNNVL_ENABLE
+  value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"
+{{- if not .EnableMNNVL }}
+- name: NCCL_DMABUF_ENABLE
+  value: "0"
+{{- end }}

@@ -25,16 +25,16 @@
           "status": "False",
           "observedGeneration": 1,
           "lastTransitionTime": null,
-          "reason": "JobSucceeded",
-          "message": "Job succeeded"
+          "reason": "NoDataCollected",
+          "message": "Job succeeded but no bandwidth data was parsed; check spec.logProfileRef"
         },
         {
           "type": "Complete",
           "status": "True",
           "observedGeneration": 1,
           "lastTransitionTime": null,
-          "reason": "JobSucceeded",
-          "message": "Job succeeded"
+          "reason": "NoDataCollected",
+          "message": "Job succeeded but no bandwidth data was parsed; check spec.logProfileRef"
         }
       ]
     }

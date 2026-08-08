@@ -1,0 +1,4 @@
+# The throttle exists so a status update does not re-trigger a read. This is
+# the behaviour finalSample has to work around.
+call: handleRunning
+sampledSecondsAgo: 1

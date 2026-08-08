@@ -782,8 +782,44 @@ func (r *JobReconciler) setJobFailed(ctx context.Context, job *burninv1alpha1.Jo
 	return r.setExclusiveCondition(ctx, job, burninv1alpha1.JobFailed, reason, message)
 }
 
-// failureLogTailLines is the number of log lines to capture from a failed pod.
-const failureLogTailLines = 30
+// failureLogTailLines is the number of log lines requested from a failed pod.
+//
+// This was 30, which is right for a workload whose last line is the error, and
+// wrong for one that prints a structured document. dcgmi diag --json ends with
+// closing braces and a metadata block, so 30 lines of a failed run stored 392
+// bytes ending in "status" : "Pass" and named no failing test. Measured against
+// dcgm 4.5.2 on an A100.
+const failureLogTailLines = 800
+
+// failureLogMaxBytes caps what is stored in Job.status.failureLog.tail. The
+// requested lines are usually well inside this; the cap only guards a workload
+// that prints very long lines.
+const failureLogMaxBytes = 32 * 1024
+
+// readLogTail returns the last max bytes of r.
+//
+// The byte cap has to trim from the front, keeping the end of the stream.
+// Reading the first max bytes instead would drop the most recent output, which
+// is the part a failure record needs.
+func readLogTail(r io.Reader, max int) (string, error) {
+	buf := make([]byte, 0, max)
+	chunk := make([]byte, 32*1024)
+	for {
+		n, readErr := r.Read(chunk)
+		if n > 0 {
+			buf = append(buf, chunk[:n]...)
+			if len(buf) > max {
+				buf = append(buf[:0], buf[len(buf)-max:]...)
+			}
+		}
+		if readErr == io.EOF {
+			return string(buf), nil
+		}
+		if readErr != nil {
+			return string(buf), readErr
+		}
+	}
+}
 
 // captureFailureLog finds the pod that caused the failure and stores its last
 // N log lines in job.Status.FailureLog. Best-effort: errors are logged, not returned.
@@ -820,7 +856,19 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *burninv1alph
 			}
 		}
 	}
+	// Record why there is no log rather than leaving the field unset. A Job whose
+	// pod was reaped before the failure was recorded (backoff limit exceeded, for
+	// example) would otherwise carry no diagnostics at all, and the operator would
+	// see a failed Job with nothing to read.
 	if failedPod == nil {
+		reason := "NoTerminatedContainer"
+		tail := "pods for this Job were found, but none had a container terminated with a non-zero exit code"
+		if len(podList.Items) == 0 {
+			reason = "PodNotFound"
+			tail = "no pods for this Job were found when the failure was recorded; the pod was most likely deleted before its logs could be read"
+		}
+		job.Status.FailureLog = &burninv1alpha1.FailureLog{Reason: reason, Tail: tail}
+		log.Info("No failed pod available for failure log capture", "reason", reason)
 		return
 	}
 
@@ -845,14 +893,14 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *burninv1alph
 	}
 	defer stream.Close() //nolint:errcheck
 
-	data, err := io.ReadAll(io.LimitReader(stream, 8*1024)) // cap at 8 KB
+	tail, err := readLogTail(stream, failureLogMaxBytes)
 	if err != nil {
 		log.V(1).Info("Failed to read pod logs", "pod", failedPod.Name, "error", err)
 	}
-	fl.Tail = string(data)
+	fl.Tail = tail
 	job.Status.FailureLog = fl
 	log.Info("Captured failure log", "pod", failedPod.Name, "node", failedPod.Spec.NodeName,
-		"exitCode", fl.ExitCode, "lines", len(fl.Tail))
+		"exitCode", fl.ExitCode, "bytes", len(fl.Tail))
 }
 
 // setJobHardwareFailed sets the HardwareFailed condition and records the failed nodes.
