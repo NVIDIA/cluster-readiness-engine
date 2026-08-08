@@ -169,7 +169,9 @@ jobs:
             ```bash
             helm install cluster-readiness-engine \
               oci://ghcr.io/nvidia/cluster-readiness-engine \
-              --version ${{ steps.tag.outputs.value }}
+              --version ${{ steps.tag.outputs.value }} \
+              --namespace cluster-readiness-engine \
+              --create-namespace
             ```
 
             The controller image for this release is
