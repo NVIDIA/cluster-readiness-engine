@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -24,6 +25,27 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
 )
+
+// waitingForNodesMessage explains a wait that is otherwise invisible: which
+// selector matched nothing, and how much of the discovery window is left. Note
+// that discoverTargetNodes filters unschedulable nodes before counting, so this
+// covers a cordoned fleet as well as a selector that matches nothing at all.
+func waitingForNodesMessage(cert *burninv1alpha1.Certification) string {
+	remaining := max((nodeDiscoveryTimeout - time.Since(cert.CreationTimestamp.Time)).Round(time.Second), 0)
+	sel := "any node"
+	if len(cert.Spec.Target.NodeSelector) > 0 {
+		parts := make([]string, 0, len(cert.Spec.Target.NodeSelector))
+		for k, v := range cert.Spec.Target.NodeSelector {
+			parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+		}
+		sort.Strings(parts)
+		sel = strings.Join(parts, ",")
+	}
+	return fmt.Sprintf(
+		"No schedulable nodes match %s; retrying for up to %s more."+
+			" Nodes that are cordoned or unschedulable do not count.",
+		sel, remaining)
+}
 
 // errNoNodesMatch is returned when discoverTargetNodes finds zero nodes matching
 // the certification's target nodeSelector. This is retryable because the
@@ -144,6 +166,10 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 	if err != nil {
 		if errors.Is(err, errNoNodesMatch) && time.Since(certification.CreationTimestamp.Time) < nodeDiscoveryTimeout {
 			log.Info("No nodes match target yet, will retry", "domain", firstCategory.Domain, "variant", firstCategory.Variant)
+			if statusErr := r.setCertificationInProgress(ctx, certification, ReasonWaitingForNodes,
+				waitingForNodesMessage(certification)); statusErr != nil {
+				log.Error(statusErr, "Failed to record waiting-for-nodes status")
+			}
 			return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 		}
 		log.Error(err, "Failed to build Workflow for category", "domain", firstCategory.Domain, "variant", firstCategory.Variant)
@@ -201,6 +227,10 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 	if err != nil {
 		if errors.Is(err, errNoNodesMatch) && time.Since(certification.CreationTimestamp.Time) < nodeDiscoveryTimeout {
 			log.Info("No nodes match target yet, will retry", "domain", category.Domain, "variant", category.Variant)
+			if statusErr := r.setCertificationInProgress(ctx, certification, ReasonWaitingForNodes,
+				waitingForNodesMessage(certification)); statusErr != nil {
+				log.Error(statusErr, "Failed to record waiting-for-nodes status")
+			}
 			return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 		}
 		log.Error(err, "Failed to build Workflow for category", "domain", category.Domain, "variant", category.Variant)

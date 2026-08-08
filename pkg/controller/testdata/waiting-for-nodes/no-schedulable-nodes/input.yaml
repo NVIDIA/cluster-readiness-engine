@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No node matches the selector, so discovery returns zero and the reconcile
+# retries for up to nodeDiscoveryTimeout. The retry used to log only, leaving the
+# Certification with no conditions at all — verified on hardware: seven samples
+# over 4m27s all showed conds=<none>, and the operator had nothing to explain the
+# wait until the CLI gave up.
+nodeSelector:
+  nvidia.com/gpu.present: "true"
+nodes: []

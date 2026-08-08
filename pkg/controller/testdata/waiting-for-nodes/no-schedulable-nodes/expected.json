@@ -1,0 +1,22 @@
+{
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "True",
+      "reason": "WaitingForNodes",
+      "messageNamesSelector": true
+    },
+    {
+      "type": "Succeeded",
+      "status": "False",
+      "reason": "NotApplicable",
+      "messageNamesSelector": false
+    },
+    {
+      "type": "Failed",
+      "status": "False",
+      "reason": "NotApplicable",
+      "messageNamesSelector": false
+    }
+  ]
+}
