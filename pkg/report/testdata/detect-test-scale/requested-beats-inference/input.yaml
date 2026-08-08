@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The operator asked for intra-rack. The entry's template ignores testScale, so
+# it still partitioned one node per group — and inferring from nodesPerJob == 1
+# reported "intra-node", contradicting the cert file. Seen on hardware with
+# communication/nccl-loopback, which hardcodes numNodes: 1.
+requestedTestScale: intra-rack
+nodesPerJob: 1
