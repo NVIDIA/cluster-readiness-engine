@@ -1,0 +1,10 @@
+# The Job succeeded and the measurement did sample, but nothing matched the
+# trainingStep pattern, so every metric came out zero. writeStatusFromCumulative
+# stores the ratio through formatFloat, and formatFloat(0) is "0.000000", so the
+# result is present and zero rather than absent. Guarding on the empty string
+# alone misses this and reports Complete=True/JobSucceeded on a measurement that
+# measured nothing. Seen on hardware, 2026-08-08.
+measurement: goodput
+jobCondition: Succeeded
+logProfileRef: megatron-training
+existingResult: "0.000000"

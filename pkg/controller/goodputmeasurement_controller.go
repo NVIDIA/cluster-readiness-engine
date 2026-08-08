@@ -615,7 +615,12 @@ func (r *GoodputMeasurementReconciler) handleSucceeded(ctx context.Context, meas
 
 	// A measurement that computed no goodput did not measure anything, whatever
 	// the Job did. Reporting JobSucceeded here reads as a successful measurement.
-	if measurement.Status.Result == "" {
+	// The ratio has to be checked as well as the empty string. writeStatusFromCumulative
+	// stores it through formatFloat, and formatFloat(0) is "0.000000", so a measurement
+	// that sampled but parsed nothing ends up with a result that is present and zero,
+	// never absent. Observed on hardware: a run whose logs missed the trainingStep
+	// pattern reported Complete/JobSucceeded with result 0.000000 and no steps.
+	if measurement.Status.Result == "" || parseFloat(measurement.Status.Result) == 0 {
 		return ctrl.Result{}, r.setComplete(ctx, measurement, reasonGoodputNoData,
 			"Job succeeded but no goodput was computed; check spec.logProfileRef")
 	}
