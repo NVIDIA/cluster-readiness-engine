@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"sort"
 	"strings"
@@ -1967,7 +1966,7 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *burninv
 	}
 	defer stream.Close() //nolint:errcheck
 
-	data, err := io.ReadAll(io.LimitReader(stream, 8*1024))
+	tail, err := readLogTail(stream, failureLogMaxBytes)
 	if err != nil {
 		log.V(1).Info("Failed to read pod logs", "pod", targetPod.Name, "error", err)
 	}
@@ -1976,9 +1975,9 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *burninv
 		PodName:  targetPod.Name,
 		NodeName: targetPod.Spec.NodeName,
 		Reason:   "Timeout",
-		Tail:     string(data),
+		Tail:     tail,
 	}
-	log.Info("Captured timeout log", "pod", targetPod.Name, "node", targetPod.Spec.NodeName, "bytes", len(data))
+	log.Info("Captured timeout log", "pod", targetPod.Name, "node", targetPod.Spec.NodeName, "bytes", len(tail))
 }
 
 // handleDeletion handles the cleanup when a Workflow is being deleted.

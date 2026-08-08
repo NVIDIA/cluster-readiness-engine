@@ -1,0 +1,6 @@
+# While the Job runs, an unresolved logProfileRef must show on the status.
+# It used to be logged and nothing else, so the measurement carried no
+# conditions at all.
+measurement: bandwidth
+jobCondition: InProgress
+logProfileRef: typo-does-not-exist

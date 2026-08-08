@@ -1,0 +1,4 @@
+# The byte cap has to trim from the front. io.LimitReader kept the first bytes
+# and dropped the newest output, which is the part a failure record needs.
+maxBytes: 20
+text: "START-DROP-THISxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxEND-KEEP-THIS"

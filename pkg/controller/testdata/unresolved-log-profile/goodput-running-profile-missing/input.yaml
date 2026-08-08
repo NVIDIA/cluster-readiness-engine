@@ -1,0 +1,4 @@
+# The goodput controller had the same shape.
+measurement: goodput
+jobCondition: InProgress
+logProfileRef: typo-does-not-exist
