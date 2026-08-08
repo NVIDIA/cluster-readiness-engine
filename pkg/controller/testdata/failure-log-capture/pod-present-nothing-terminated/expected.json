@@ -1,0 +1,7 @@
+{
+  "podName": "",
+  "nodeName": "",
+  "exitCode": 0,
+  "reason": "NoTerminatedContainer",
+  "tail": "pods for this Job were found, but none had a container terminated with a non-zero exit code"
+}
