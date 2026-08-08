@@ -16,10 +16,11 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
-// A run that excluded nodes still reports PASSED, so the exclusion has to reach
-// the operator. This drives the whole path: real OrchestrationStatus on a
-// Workflow, through Build, to the rendered report. The golden is the rendered
-// text, because that is what an operator actually sees.
+// A run that excluded nodes reports INCOMPLETE, not PASSED: it did not certify
+// what was asked, but the skipped nodes were never tested, so FAILED would
+// assert a fault nobody observed. This drives the whole path: real
+// OrchestrationStatus on a Workflow, through Build, to the rendered report. The
+// golden is the rendered text, because that is what an operator actually sees.
 func TestBuildExcludedReport(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "build-excluded-report",
