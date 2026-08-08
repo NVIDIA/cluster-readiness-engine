@@ -73,10 +73,20 @@ func setExclusiveStatusCondition[T client.Object](
 	conditions func(T) *[]metav1.Condition,
 	allTypes []string,
 	conditionType, reason, message string,
+	extra ...func(T) bool,
 ) (bool, error) {
 	wrote := false
 	err := updateStatusWithRetry(ctx, c, obj, func(o T) bool {
 		changed := false
+		// Apply any caller-supplied status mutation inside this same callback, so
+		// it is re-applied after the refetch on conflict and so it keeps the write
+		// from being skipped as a no-op. Status mutated outside the callback is
+		// silently lost on both paths.
+		for _, f := range extra {
+			if f != nil && f(o) {
+				changed = true
+			}
+		}
 		for _, ct := range allTypes {
 			status := metav1.ConditionFalse
 			condReason := ReasonNotApplicable

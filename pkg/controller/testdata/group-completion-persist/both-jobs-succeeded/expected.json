@@ -1,0 +1,14 @@
+{
+  "groups": [
+    {
+      "name": "g0",
+      "phase": "Succeeded",
+      "hasCompletionTime": true
+    },
+    {
+      "name": "g1",
+      "phase": "Succeeded",
+      "hasCompletionTime": true
+    }
+  ]
+}

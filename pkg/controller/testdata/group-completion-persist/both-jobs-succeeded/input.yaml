@@ -1,0 +1,8 @@
+# Two groups whose Jobs have both Succeeded, and a Workflow whose conditions are
+# already InProgress/JobRunning with the message the reconcile will compute again.
+# The conditions therefore do not change, so the old code skipped Status().Update
+# and never wrote the group phases. Seen on hardware: the run passed and was
+# reported as a 15 minute timeout.
+groups: 2
+jobCondition: Succeeded
+preexistingConditionMessage: "Iteration 1/1: 0 groups running"
