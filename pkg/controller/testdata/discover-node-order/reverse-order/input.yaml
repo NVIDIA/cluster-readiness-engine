@@ -1,0 +1,2 @@
+# client.List promises no ordering, so discovery has to impose one.
+nodes: [node-c, node-b, node-a]

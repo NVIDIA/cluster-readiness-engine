@@ -9,7 +9,6 @@ import (
 	"maps"
 	"reflect"
 	"slices"
-	"sort"
 	"strings"
 
 	jsonpatch "github.com/evanphx/json-patch/v5"
@@ -116,7 +115,8 @@ func detectGPUArchitecture(nodes []corev1.Node) string {
 }
 
 // excludedNodeNames returns the names in all that are absent from kept, in the
-// order they appear in all.
+// order they appear in all. discoverTargetNodes sorts by name, so that order is
+// already name order and no further sort is needed here.
 func excludedNodeNames(all, kept []corev1.Node) []string {
 	keptNames := make(map[string]bool, len(kept))
 	for i := range kept {
@@ -128,7 +128,6 @@ func excludedNodeNames(all, kept []corev1.Node) []string {
 			out = append(out, all[i].Name)
 		}
 	}
-	sort.Strings(out)
 	return out
 }
 
