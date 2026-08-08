@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Nothing is filtered, so this is the behaviour that existed before: all nodes.
+nodes:
+  - {name: node002, product: NVIDIA-A100-PCIE-40GB}
+  - {name: node003, product: NVIDIA-A100-PCIE-40GB}
+constraint: none

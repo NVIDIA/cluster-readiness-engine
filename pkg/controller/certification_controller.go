@@ -367,10 +367,16 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 
 	// Best-effort platform + GPU detection for overlay context.
 	platform := DetectPlatform(nodes)
-	gpuArch := DetectGPUArchitecture(nodes)
-	if gpuArch == "" || gpuArch == "unknown" {
+	// Size the job against the nodes that will actually run it. The Workflow
+	// filters a heterogeneous target down to one GPU architecture before it
+	// partitions, so a nodesPerJob derived from the whole target can ask for more
+	// nodes than survive that filter, and partitioning then fails with a shortfall
+	// the operator did not cause. Apply the same filter here so the two agree.
+	gpuArch, archNodes := detectGPUArchConsistent(nodes)
+	if gpuArch == "" || gpuArch == gpuArchUnknown {
 		// Fall back to nodeSelector-based detection
 		gpuArch = catalog.GPUArchFromNodeSelector(certification.Spec.Target.NodeSelector)
+		archNodes = nodes
 	}
 	if gpuArch == "" {
 		return "", fmt.Errorf(
@@ -392,7 +398,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		mlnxPerNode = *opts.MlnxPerNode
 	}
 
-	nodesPerJob, err := resolveNodesPerJob(nodes, category, opts, entry, gpusPerNode, gpuArch)
+	nodesPerJob, err := resolveNodesPerJob(archNodes, category, opts, entry, gpusPerNode, gpuArch)
 	if err != nil {
 		return "", err
 	}

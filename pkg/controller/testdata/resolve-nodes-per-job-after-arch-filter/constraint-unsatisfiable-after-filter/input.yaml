@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Filtering can leave too few nodes for the entry to run at all. That must still
+# be a clear error, not a silent downgrade to a smaller job.
+nodes:
+  - {name: n1, product: NVIDIA-H100-80GB-HBM3}
+  - {name: n2, product: NVIDIA-A100-PCIE-40GB}
+  - {name: n3, product: NVIDIA-A100-PCIE-40GB}
+  - {name: n4, product: NVIDIA-A100-PCIE-40GB}
+constraint: min4
