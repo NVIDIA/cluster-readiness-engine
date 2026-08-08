@@ -1,0 +1,5 @@
+# The Job succeeded but nothing was ever parsed. This used to report
+# Complete=True/JobSucceeded, which reads as a successful measurement.
+measurement: bandwidth
+jobCondition: Succeeded
+logProfileRef: typo-does-not-exist
