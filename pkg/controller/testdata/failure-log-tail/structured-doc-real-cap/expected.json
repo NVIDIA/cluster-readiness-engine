@@ -1,0 +1,4 @@
+{
+  "kept": "{\n\t\"Diagnostic\" : {\n\t\t\"tests\" : [ { \"name\" : \"diagnostic\", \"status\" : \"Fail\" } ]\n\t},\n\t\"metadata\" : { \"version\" : \"4.5.2\" }\n}\n",
+  "keptBytes": 125
+}

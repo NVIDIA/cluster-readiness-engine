@@ -1,0 +1,5 @@
+# Control: a measurement that has results is unaffected.
+measurement: bandwidth
+jobCondition: Succeeded
+logProfileRef: nccl
+existingResults: 1

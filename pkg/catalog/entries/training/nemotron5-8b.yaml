@@ -340,6 +340,26 @@ overrides:
       equals: gb300
   dependencies:
 {{ lib "deps/gb300-roce-torch.yaml" . | indent 2 }}
+# --- OCI + GB300 (RoCE) ---
+# Adds SR-IOV NIC resources (oci-mlnxnics-comm.yaml) and OCI GB300-specific
+# env vars. Uses trainer.env (not toMpiArgs) because torchrun inherits the
+# container env directly — no MPI SSH launch involved.
+# NCCL_MNNVL_ENABLE and NCCL_DMABUF_ENABLE are conditioned on EnableMNNVL
+# via the template; see oci-gb300-roce-env.yaml for the reasoning.
+- when:
+    platform:
+      equals: oci
+    gpuArchitecture:
+      equals: gb300
+  dependencies:
+{{ lib "deps/oci-mlnxnics-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/oci-gb300-roce-env.yaml" . | indent 12 }}
 # --- GCP + GB200/GB300 (RoCE) ---
 - when:
     platform:

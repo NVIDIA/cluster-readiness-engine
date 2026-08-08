@@ -1,0 +1,5 @@
+# measurementTimeout only reaches the output when thresholds are set.
+nodesPerJob: 4
+measurementTimeout: 9m
+thresholds:
+  busBandwidthGBps: "value >= 1"
