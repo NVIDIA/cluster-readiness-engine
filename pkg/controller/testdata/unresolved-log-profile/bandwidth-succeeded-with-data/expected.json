@@ -1,0 +1,17 @@
+{
+  "conditions": [
+    {
+      "type": "Measuring",
+      "status": "False",
+      "reason": "JobSucceeded",
+      "message": "Job succeeded"
+    },
+    {
+      "type": "Complete",
+      "status": "True",
+      "reason": "JobSucceeded",
+      "message": "Job succeeded"
+    }
+  ],
+  "resultCount": 1
+}
