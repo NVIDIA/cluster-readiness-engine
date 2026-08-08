@@ -29,15 +29,15 @@
           "status": "True",
           "observedGeneration": 1,
           "lastTransitionTime": null,
-          "reason": "JobSucceeded",
-          "message": "Referenced Job completed successfully"
+          "reason": "NoDataCollected",
+          "message": "Job succeeded but no goodput was computed; check spec.logProfileRef"
         },
         {
           "type": "Measuring",
           "status": "False",
           "observedGeneration": 1,
           "lastTransitionTime": null,
-          "reason": "JobSucceeded",
+          "reason": "NoDataCollected",
           "message": "Measurement completed"
         }
       ]

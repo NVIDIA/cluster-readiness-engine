@@ -1,0 +1,17 @@
+{
+  "conditions": [
+    {
+      "type": "Complete",
+      "status": "True",
+      "reason": "NoDataCollected",
+      "message": "Job succeeded but no goodput was computed; check spec.logProfileRef"
+    },
+    {
+      "type": "Measuring",
+      "status": "False",
+      "reason": "NoDataCollected",
+      "message": "Measurement completed"
+    }
+  ],
+  "resultCount": 0
+}

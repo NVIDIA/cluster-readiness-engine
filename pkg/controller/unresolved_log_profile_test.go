@@ -43,6 +43,7 @@ func TestUnresolvedLogProfile(t *testing.T) {
 			JobCondition    string `yaml:"jobCondition"`
 			LogProfileRef   string `yaml:"logProfileRef"`
 			ExistingResults int    `yaml:"existingResults"`
+			ExistingResult  string `yaml:"existingResult"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
 			return err
@@ -51,6 +52,22 @@ func TestUnresolvedLogProfile(t *testing.T) {
 		scheme := runtime.NewScheme()
 		if err := burninv1alpha1.AddToScheme(scheme); err != nil {
 			return err
+		}
+
+		// A LogProfile that resolves. The zero-result case needs the profile to be
+		// found and simply parse nothing, which is different from the profile being
+		// missing, and reaches a different branch now that the final sample runs
+		// before the terminal handling.
+		profile := &burninv1alpha1.LogProfile{
+			ObjectMeta: metav1.ObjectMeta{Name: "megatron-training"},
+			Spec: burninv1alpha1.LogProfileSpec{
+				Timestamp: burninv1alpha1.TimestampSpec{Layout: "2006-01-02 15:04:05.999999"},
+				Patterns: burninv1alpha1.LogPatternSet{
+					TrainingStep: &burninv1alpha1.EventPattern{
+						Regex: `iteration\s+(?P<iteration>\d+)`,
+					},
+				},
+			},
 		}
 
 		job := &burninv1alpha1.Job{
@@ -104,8 +121,12 @@ func TestUnresolvedLogProfile(t *testing.T) {
 					LogProfileRef: in.LogProfileRef,
 				},
 			}
+			// A measurement that sampled but parsed nothing already carries a
+			// formatted zero, never an empty string. Seed it so the terminal
+			// path sees what it sees in production.
+			m.Status.Result = in.ExistingResult
 			c := fake.NewClientBuilder().WithScheme(scheme).
-				WithObjects(job, m).WithStatusSubresource(job, m).Build()
+				WithObjects(job, m, profile).WithStatusSubresource(job, m).Build()
 			r := &GoodputMeasurementReconciler{Client: c, Scheme: scheme}
 			if _, err := r.Reconcile(context.Background(), req); err != nil {
 				return err
