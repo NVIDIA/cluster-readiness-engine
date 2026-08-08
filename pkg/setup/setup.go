@@ -27,7 +27,10 @@ import (
 )
 
 const (
-	kubeflowTrainerVersion = "v2.2.0"
+	// Keep this in step with github.com/kubeflow/trainer/v2 in go.mod. The
+	// controller compiles against those API types, so installing an older
+	// chart means the CRDs it creates can lag the types CRE writes.
+	kubeflowTrainerVersion = "v2.2.1"
 
 	defaultImageRegistry   = "ghcr.io"
 	defaultImageRepository = "nvidia/cluster-readiness-engine/manager"

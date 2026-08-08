@@ -72,7 +72,7 @@ The command shows the target cluster and asks for confirmation. Type exactly `ye
 
 Two phases run:
 
-1. `deps` installs Kubeflow Trainer 2.2.0 into the `kubeflow-system` namespace. CRE runs every workload through a Trainer `TrainJob`.
+1. `deps` installs Kubeflow Trainer 2.2.1 into the `kubeflow-system` namespace. CRE runs every workload through a Trainer `TrainJob`.
 2. `helm` installs the CRE chart into the `cluster-readiness-engine` namespace: the controller, seven CRDs, and five `LogProfile` resources that parse workload logs.
 
 The GitHub token creates a ghcr.io pull secret for the controller image and authenticates the chart pull. Verify the result:

@@ -52,7 +52,7 @@ local_resource('prometheus-crds',
 
 # ─── 5. Install Kubeflow Trainer via Helm ───
 local_resource('install-trainer',
-    cmd='helm upgrade --install kubeflow-trainer oci://ghcr.io/kubeflow/charts/kubeflow-trainer --namespace kubeflow-system --create-namespace --version 2.2.0 --set manager.tolerations[0].operator=Exists --set jobset.controller.tolerations[0].operator=Exists --wait --timeout 5m',
+    cmd='helm upgrade --install kubeflow-trainer oci://ghcr.io/kubeflow/charts/kubeflow-trainer --namespace kubeflow-system --create-namespace --version 2.2.1 --set manager.tolerations[0].operator=Exists --set jobset.controller.tolerations[0].operator=Exists --wait --timeout 5m',
     resource_deps=['kwok-stage-override'],
     labels=['infra'])
 
