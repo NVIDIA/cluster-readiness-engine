@@ -46,7 +46,6 @@ const (
 	statusFailed = "Failed"
 )
 
-// NewCommand returns the "workloadrun" cobra command.
 // nodesPerJobForScale returns how many nodes a single Job should span.
 // intra-node means each node is tested on its own, so one node per Job however
 // many the run targets; the Workflow then makes one group per node. Anything
@@ -58,6 +57,7 @@ func nodesPerJobForScale(orch *burninv1alpha1.WorkloadOrchestration, numNodes in
 	return numNodes
 }
 
+// NewCommand returns the "workloadrun" cobra command.
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "workloadrun",
