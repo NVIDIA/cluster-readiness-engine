@@ -493,6 +493,10 @@ func buildWROrchestration(spec *burninv1alpha1.WorkloadRunSpec) *burninv1alpha1.
 			orch.Iterations = int(*spec.Orchestration.RepeatCount)
 		}
 		switch spec.Orchestration.TestScale {
+		case burninv1alpha1.TestScaleIntraNode:
+			// Handled by nodesPerJobForScale when the workload is built:
+			// one node per Job, so the Workflow makes one group per node.
+			// Nothing to set on the orchestration itself.
 		case "intra-rack":
 			// TopologyKey is set by platform override (workloadrun.yaml)
 			// to the platform's physical rack label.

@@ -430,6 +430,13 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 	if td.TestScale == "" {
 		td.TestScale = DefaultTestScale
 	}
+	// intra-node means each node is tested on its own, which is one node per
+	// Job. Partitioning reads the workload's numNodes, so this is the knob that
+	// makes the setting do anything; without it the template rendered the full
+	// node count and the scale was a no-op.
+	if td.TestScale == burninv1alpha1.TestScaleIntraNode {
+		td.NodesPerJob = 1
+	}
 	if td.MaxBytes == "" {
 		td.MaxBytes = DefaultMaxBytes
 	}

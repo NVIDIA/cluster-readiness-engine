@@ -165,9 +165,7 @@ jobTemplate:
           numNodes: {{ .NodesPerJob }}
           numProcPerNode: {{ .GpusPerNode }}
 orchestration:
-{{- if eq .TestScale "intra-node" }}
-  execution: {}
-{{- else if eq .TestScale "intra-rack" }}
+{{- if eq .TestScale "intra-rack" }}
   topology:
     topologyKey: nvidia.com/gpu.clique
     strictDomain: true

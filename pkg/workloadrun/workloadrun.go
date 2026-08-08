@@ -47,6 +47,17 @@ const (
 )
 
 // NewCommand returns the "workloadrun" cobra command.
+// nodesPerJobForScale returns how many nodes a single Job should span.
+// intra-node means each node is tested on its own, so one node per Job however
+// many the run targets; the Workflow then makes one group per node. Anything
+// else keeps the requested count.
+func nodesPerJobForScale(orch *burninv1alpha1.WorkloadOrchestration, numNodes int32) int32 {
+	if orch != nil && orch.TestScale == burninv1alpha1.TestScaleIntraNode {
+		return 1
+	}
+	return numNodes
+}
+
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "workloadrun",
@@ -244,7 +255,7 @@ func BuildWorkflowSpec(
 	rtCfg := platform.RuntimeConfig{
 		EntryName:        run.Name,
 		Image:            spec.Image,
-		NodesPerJob:      spec.NumNodes,
+		NodesPerJob:      nodesPerJobForScale(spec.Orchestration, spec.NumNodes),
 		GpusPerNode:      gpusPerNode,
 		Env:              mergedEnv,
 		Volumes:          volumes,
@@ -306,7 +317,7 @@ func BuildWorkflowSpec(
 	// Build platform overrides.
 	overrideCfg := platform.OverrideConfig{
 		EntryName:     run.Name,
-		NodesPerJob:   spec.NumNodes,
+		NodesPerJob:   nodesPerJobForScale(spec.Orchestration, spec.NumNodes),
 		GpusPerNode:   gpusPerNode,
 		MlnxPerNode:   mlnxPerNode,
 		EnableMNNVL:   enableMNNVL,
@@ -388,7 +399,7 @@ func buildCLIJobTemplate(
 			Image:          &spec.Image,
 			Command:        command,
 			Args:           args,
-			NumNodes:       &spec.NumNodes,
+			NumNodes:       new(nodesPerJobForScale(spec.Orchestration, spec.NumNodes)),
 			NumProcPerNode: &gpusPerNode,
 		},
 	}
