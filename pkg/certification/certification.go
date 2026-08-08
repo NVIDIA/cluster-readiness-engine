@@ -351,6 +351,15 @@ func renderCertification(cert *burninv1alpha1.Certification, platform string) ([
 			NumCycles:          derefInt32Ptr(opts.NumCycles),
 			Thresholds:         opts.Thresholds,
 			MaxConcurrent:      derefInt32Ptr(opts.MaxConcurrent),
+			// These five were missing, so render previewed catalog defaults
+			// rather than the user's settings. certification_controller.go
+			// passes all of them, which is why an applied run was correct while
+			// the preview was not.
+			MinGroupSize:       derefInt32Ptr(opts.MinGroupSize),
+			RepeatCount:        derefInt32Ptr(opts.RepeatCount),
+			MaxRestarts:        derefInt32Ptr(opts.MaxRestarts),
+			TimeoutPerJob:      opts.TimeoutPerJob,
+			MeasurementTimeout: opts.MeasurementTimeout,
 		})
 		if buildErr != nil {
 			return nil, fmt.Errorf("building workflow for %s/%s: %w", cat.Domain, cat.Variant, buildErr)

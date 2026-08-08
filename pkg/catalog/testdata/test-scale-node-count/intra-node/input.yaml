@@ -1,0 +1,2 @@
+nodesPerJob: 8
+testScale: intra-node

@@ -1,0 +1,13 @@
+{
+  "orchestration": {
+    "target": {
+      "nodeSelector": {
+        "nvidia.com/gpu.product": "NVIDIA-H100-80GB-HBM3"
+      }
+    },
+    "execution": {},
+    "iterations": 1
+  },
+  "numNodes": 4,
+  "maxRestarts": 7
+}

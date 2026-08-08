@@ -30,6 +30,13 @@ import (
 const (
 	goodputMeasurementFinalizer = "cre.nvidia.com/goodputmeasurement-finalizer"
 	defaultSampleInterval       = 60 * time.Second
+
+	// reasonGoodputLogProfileMissing marks a spec.logProfileRef that does not
+	// resolve. The measurement keeps retrying, so this is not terminal.
+	reasonGoodputLogProfileMissing = "LogProfileNotFound"
+	// reasonGoodputNoData marks a measurement that ended without computing a
+	// goodput ratio, so its result is absent rather than zero.
+	reasonGoodputNoData = "NoDataCollected"
 )
 
 // cachedProfileParser pairs a compiled parser with the resourceVersion of the
@@ -194,6 +201,7 @@ func (r *GoodputMeasurementReconciler) handleRunning(ctx context.Context, measur
 	profile, err := r.getLogProfile(ctx, measurement.Spec.LogProfileRef)
 	if err != nil {
 		log.Error(err, "Failed to fetch LogProfile", "logProfile", measurement.Spec.LogProfileRef)
+		r.noteLogProfileUnresolved(ctx, measurement, err)
 		return ctrl.Result{RequeueAfter: interval}, nil
 	}
 
@@ -201,6 +209,7 @@ func (r *GoodputMeasurementReconciler) handleRunning(ctx context.Context, measur
 	parser, err := r.getOrCreateParser(profile)
 	if err != nil {
 		log.Error(err, "Failed to compile LogProfile patterns", "logProfile", profile.Name)
+		r.noteLogProfileUnresolved(ctx, measurement, err)
 		return ctrl.Result{RequeueAfter: interval}, nil
 	}
 
@@ -604,6 +613,13 @@ func (r *GoodputMeasurementReconciler) handleSucceeded(ctx context.Context, meas
 	)
 	cleanupOperationalGoodputMetrics(measurement.Namespace, measurement.Name, measurement.Spec.JobRef.Name, workflow)
 
+	// A measurement that computed no goodput did not measure anything, whatever
+	// the Job did. Reporting JobSucceeded here reads as a successful measurement.
+	if measurement.Status.Result == "" {
+		return ctrl.Result{}, r.setComplete(ctx, measurement, reasonGoodputNoData,
+			"Job succeeded but no goodput was computed; check spec.logProfileRef")
+	}
+
 	return ctrl.Result{}, r.setComplete(ctx, measurement, "JobSucceeded", "Referenced Job completed successfully")
 }
 
@@ -994,6 +1010,26 @@ func (r *GoodputMeasurementReconciler) writeStatusFromCumulative(measurement *bu
 		measurement.Status.PendingInterruption = pending
 	} else {
 		measurement.Status.PendingInterruption = nil
+	}
+}
+
+// noteLogProfileUnresolved records an unresolved spec.logProfileRef on the
+// measurement, so the cause is visible in status and not only in the controller
+// log. This is deliberately not terminal: a cluster-scoped LogProfile can be
+// created after the run starts, and the next sample picks it up.
+func (r *GoodputMeasurementReconciler) noteLogProfileUnresolved(ctx context.Context, measurement *burninv1alpha1.GoodputMeasurement, cause error) {
+	message := fmt.Sprintf("LogProfile %q could not be resolved: %v", measurement.Spec.LogProfileRef, cause)
+	err := updateStatusWithRetry(ctx, r.Client, measurement, func(m *burninv1alpha1.GoodputMeasurement) bool {
+		return meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
+			Type:               burninv1alpha1.GoodputMeasurementMeasuring,
+			Status:             metav1.ConditionFalse,
+			ObservedGeneration: m.Generation,
+			Reason:             reasonGoodputLogProfileMissing,
+			Message:            message,
+		})
+	})
+	if err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to record unresolved LogProfile on status")
 	}
 }
 

@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# OCI GB300 RoCE mpirun args. Mirrors aws-gb300-roce-mpirun-args.yaml with
+# OCI-specific MCA flags. Forces MPI to use TCP for point-to-point transport
+# (NCCL handles RDMA directly on OCI GB300; MPI only needs TCP for coordination).
+# UCC/HCollective disabled: without these flags, UCC calls mca_coll_ucc_comm_query
+# during MPI_Init, which crashes (SIGSEGV) because UCX tries to use mlx5 devices
+# with incorrect GID settings before NCCL_IB_GID_INDEX takes effect.
+- -N
+- "{{ .GpusPerNode }}"
+- --allow-run-as-root
+- --mca
+- plm_rsh_args
+- -o StrictHostKeyChecking=no
+- --mca
+- pml
+- ob1
+- --mca
+- btl
+- tcp,self
+- --mca
+- btl_tcp_if_include
+- eth0
+- --mca
+- oob
+- tcp
+- --mca
+- oob_tcp_if_include
+- eth0
+- --mca
+- coll_ucc_enable
+- "0"
+- --mca
+- coll_hcoll_enable
+- "0"

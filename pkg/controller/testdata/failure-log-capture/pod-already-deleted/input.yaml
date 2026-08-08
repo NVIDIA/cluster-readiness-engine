@@ -1,0 +1,2 @@
+# A Job that fails after its pod is reaped used to carry no record at all.
+pods: []

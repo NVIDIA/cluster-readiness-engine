@@ -1,0 +1,5 @@
+# The removed template branch emitted a bare `execution: {}` here, which could
+# collide with the maxConcurrent block and give two execution keys.
+nodesPerJob: 8
+testScale: intra-node
+maxConcurrent: 2

@@ -23,7 +23,7 @@ go test ./pkg/workload/ -run TestAdapterForSpec -v
 Run a single integration test case:
 ```bash
 KUBEBUILDER_ASSETS="$(bin/setup-envtest use -p path)" \
-  go test ./cmd/integration/ -v -timeout 300s -count=1 -run TestReconcile/job-checkpoint-restart
+  go test ./cmd/integration/ -v -timeout 300s -count=1 -run TestIntegration/reconcile/job-checkpoint-restart
 ```
 
 Update golden files after intentional changes:
@@ -106,6 +106,8 @@ There is no Remediation controller. ADR-061 removed it. CRE does not taint, cord
 ### Testing
 
 Integration tests use envtest with golden file comparison in `cmd/integration/testdata/reconcile/`. Each test case is a directory with `input_client_objects.yaml`, `input_config.yaml`, and `expected.json`. `PodLogFetcher` interface enables deterministic goodput tests via `input_logs_*.txt` files.
+
+Unit tests in most packages use `testutil.TestCaseParser` (in `pkg/testutil/`) with testdata directories and golden files — the same pattern as integration tests but at the package level. See `/cre-test` skill for the full testing guide including which packages use which pattern, golden file rules, and the integration test input format.
 
 ## Critical Pitfalls
 
