@@ -52,7 +52,7 @@ type CertReport struct {
 	ExclusionReason string             `json:"exclusionReason,omitempty"`
 	Categories      []CategoryReport   `json:"categories"`
 	FailedNodes     []string           `json:"failedNodes"`
-	Result          string             `json:"result"` // "PASSED", "FAILED", or "RUNNING"
+	Result          string             `json:"result"` // "PASSED", "INCOMPLETE", "FAILED", or "RUNNING"
 	NodeResults     []NodeResultReport `json:"nodeResults,omitempty"`
 }
 
@@ -293,6 +293,16 @@ func Build(ctx context.Context, c client.Client, cert *burninv1alpha1.Certificat
 			report.ExclusionReason = wf.Status.Orchestration.ExclusionReason
 			break
 		}
+	}
+
+	// A run that certified fewer nodes than it targeted did not do what was
+	// asked. It is not a failure either: the skipped nodes were never tested, so
+	// nothing is known about them, and calling that FAILED would assert a fault
+	// nobody observed. The usual causes are a mixed fleet or a leftover cordon,
+	// both configuration rather than hardware. So it warns — and keeps exit 0,
+	// because a warning that fails the build is not a warning.
+	if report.Result == "PASSED" && len(report.ExcludedNodes) > 0 {
+		report.Result = "INCOMPLETE"
 	}
 
 	return report
