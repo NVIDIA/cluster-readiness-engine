@@ -37,6 +37,11 @@ const maxLogLookback = 30 * time.Minute
 
 // Certification tier reasons (Certification → Workflow).
 const (
+	// ReasonWaitingForNodes marks a Certification that found no schedulable nodes
+	// and is retrying. Without it the wait is invisible: the retry only logged, so
+	// the CR carried no conditions at all for up to nodeDiscoveryTimeout and an
+	// operator had nothing to explain why nothing was happening.
+	ReasonWaitingForNodes          = "WaitingForNodes"
 	ReasonWorkflowCreated          = "WorkflowCreated"
 	ReasonWorkflowRunning          = "WorkflowRunning"
 	ReasonAllWorkflowsSucceeded    = "AllWorkflowsSucceeded"
