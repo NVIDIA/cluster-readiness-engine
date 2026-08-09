@@ -18,7 +18,7 @@ You need:
 - At least one node without GPUs. The CRE controller schedules only on nodes that do not have the `nvidia.com/gpu.present` label.
 - `kubectl` access with permission to create CRDs, cluster roles, and namespaces. The setup step needs this. Later certification runs need less.
 - `helm` on your PATH. The setup step calls it.
-- The Prometheus Operator CRDs (`monitoring.coreos.com/v1`). The CRE chart always creates a `ServiceMonitor`, and the install fails without them. The [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) chart provides them.
+- The Prometheus Operator CRDs (`monitoring.coreos.com/v1`), **or** the ServiceMonitor turned off. The chart creates a `ServiceMonitor` by default, so the install fails without those CRDs. Either install them — the [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) chart provides them — or set `metrics.serviceMonitor.enabled=false` and skip them. Turning it off only disables the Prometheus scrape config; the controller still serves metrics.
 - A GitHub token with the `read:packages` scope. The controller image and the Helm chart live on ghcr.io. Run `gh auth login` once, or set `GITHUB_TOKEN`.
 - For GB200 and GB300 clusters only: the NVIDIA DRA driver, because those catalog entries create `ComputeDomain` resources. GB300 RoCE entries also need a Kubernetes version that serves `resource.k8s.io/v1`.
 - For training categories only: egress to `github.com` from worker nodes. The training pods clone Megatron-LM at start.
@@ -27,11 +27,19 @@ Cordoned nodes are skipped. If a node is cordoned, CRE does not select it, and i
 
 ## Step 1: install the CLI
 
+Every release so far is a pre-release, and `releases/latest` resolves only to the newest **stable** release, so that URL cannot be fetched yet. Name the version explicitly instead:
+
 ```bash
-curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash -s -- -p
+CRE_VERSION=v0.1.0-rc.7
+curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${CRE_VERSION}/installer \
+  | bash -s -- -v "${CRE_VERSION}"
 ```
 
-The `-p` flag accepts pre-releases. All releases are pre-releases today, so keep it until the first stable release exists.
+Once `v0.1.0` is tagged, the shorter `releases/latest/download/installer` form works and installs the newest stable release.
+
+The installer takes `-p` to accept pre-releases when it resolves a version itself. That flag is an argument to the script, so it cannot help you download the script — which is why the version is named in the URL above.
+
+While this repository is internal, downloading a release asset needs a GitHub token. Authenticate with `gh auth login`, or set `GITHUB_TOKEN`, before running the command.
 
 The installer detects your OS and architecture, downloads the matching `ncrectl` binary, installs it to `/usr/local/bin` (with sudo if needed), and adds a `kubectl-ncre` symlink. After it finishes, both forms work and are the same binary:
 
@@ -161,7 +169,7 @@ kubectl ncre setup reset
 | `setup init` hangs, then fails after 5 minutes in the helm phase | The controller cannot schedule. It requires a node without the `nvidia.com/gpu.present` label. | Add a CPU-only node or node pool. |
 | `GHCR returned 403` | The token lacks the `read:packages` scope. | `gh auth refresh -s read:packages` |
 | `helm not found in PATH` | Setup shells out to helm. | Install helm 3. |
-| `no matches for kind "ServiceMonitor"` in the helm phase | The Prometheus Operator CRDs are not installed. The chart requires them. | Install the Prometheus Operator (or at least its CRDs) first. |
+| `no matches for kind "ServiceMonitor"` in the helm phase | The Prometheus Operator CRDs are not installed, and the chart creates a `ServiceMonitor` by default. | Install the Prometheus Operator (or at least its CRDs), or skip the ServiceMonitor with `metrics.serviceMonitor.enabled=false`. |
 | `no nodes have nvidia.com/gpu.product label` | GPU Operator (feature discovery) is not running. | Install or fix the GPU Operator. |
 | `heterogeneous GPUs: ...` | Target nodes mix GPU products. | Certify one product at a time with a narrower `spec.target.nodeSelector` in a `--cert-file` YAML. |
 | `no GPU nodes match target` | All candidate nodes are cordoned or lack `nvidia.com/gpu.present=true`. | `kubectl uncordon` the nodes you want tested. |

@@ -1,0 +1,65 @@
+# The whole point of the fix: a run that excluded a node still reports PASSED,
+# so the exclusion has to travel from the Workflow status into the report.
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: cert-plain
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+status:
+  conditions:
+    - type: Succeeded
+      status: "True"
+      reason: AllWorkflowsSucceeded
+      message: All certification categories completed successfully
+      lastTransitionTime: "2026-08-07T00:00:00Z"
+  categoryStatuses:
+    - domain: communication
+      variant: nccl-all-reduce
+      status: Succeeded
+      workflowRef:
+        name: cert-plain-communication-nccl-all-reduce
+        namespace: default
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: cert-plain-communication-nccl-all-reduce
+  namespace: default
+  labels:
+    cre.nvidia.com/certification: cert-plain
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: rt
+          trainer:
+            image: img:latest
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 2
+    nodesPerJob: 1
+    totalGroups: 1
+    detectedPlatform: onprem
+    detectedGPUArchitecture: h100
+  conditions:
+    - type: Succeeded
+      status: "True"
+      reason: AllGroupsSucceeded
+      message: done
+      lastTransitionTime: "2026-08-07T00:00:00Z"

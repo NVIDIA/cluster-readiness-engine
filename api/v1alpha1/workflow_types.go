@@ -456,6 +456,18 @@ type OrchestrationStatus struct {
 	// +optional
 	DetectedGPUArchitecture string `json:"detectedGPUArchitecture,omitempty"`
 
+	// excludedNodes lists nodes that matched the target but were dropped before
+	// scheduling, and exclusionReason says why. A Workflow can succeed while
+	// excluding nodes, so these record what was left untested. Today the only
+	// cause is a target set with more than one GPU architecture, where the run
+	// continues on the primary architecture alone.
+	// +optional
+	ExcludedNodes []string `json:"excludedNodes,omitempty"`
+
+	// exclusionReason explains why excludedNodes were dropped.
+	// +optional
+	ExclusionReason string `json:"exclusionReason,omitempty"`
+
 	// appliedOverrides records which overrides from spec.overrides[] were applied
 	// after platform and GPU architecture detection completed.
 	// +optional

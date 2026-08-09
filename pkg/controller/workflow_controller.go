@@ -225,11 +225,20 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 
 	gpuArch, filteredNodes := detectGPUArchConsistent(nodes)
 	if len(filteredNodes) < len(nodes) {
+		// Record the dropped nodes on the status, not just in an event. A run
+		// that excludes nodes still reports Succeeded, so without this the
+		// report says PASSED and never mentions what went untested.
+		excluded := excludedNodeNames(nodes, filteredNodes)
+		orch.ExcludedNodes = excluded
+		orch.ExclusionReason = fmt.Sprintf(
+			"target set has more than one GPU architecture; certified %s only",
+			gpuArch)
 		log.Info("Heterogeneous GPU architectures detected, filtering to primary",
-			"primary", gpuArch, "total", len(nodes), "filtered", len(filteredNodes))
+			"primary", gpuArch, "total", len(nodes), "filtered", len(filteredNodes),
+			"excluded", excluded)
 		r.eventf(workflow, corev1.EventTypeWarning, "HeterogeneousGPU",
-			"Filtered %d/%d nodes to primary GPU architecture %s",
-			len(filteredNodes), len(nodes), gpuArch)
+			"Filtered %d/%d nodes to primary GPU architecture %s; excluded: %s",
+			len(filteredNodes), len(nodes), gpuArch, strings.Join(excluded, ", "))
 		nodes = filteredNodes
 	}
 	orch.DetectedGPUArchitecture = gpuArch
@@ -448,6 +457,14 @@ func discoverTargetNodes(ctx context.Context, reader client.Reader, target *burn
 		}
 	}
 	nodes = gpuFiltered
+
+	// Sort by name so discovery is reproducible. client.List gives no ordering
+	// guarantee, and callers pick nodes[0] to decide the platform and the GPU
+	// architecture for the whole run. Unsorted, the same cluster could certify a
+	// different subset on each reconcile: over two H100 nodes and one A100, two
+	// runs certified h100 with 2 nodes and a100 with 1 node. Name order also
+	// matches how pkg/orchestration already chunks nodes into groups.
+	sort.Slice(nodes, func(i, j int) bool { return nodes[i].Name < nodes[j].Name })
 
 	return nodes, nil
 }
