@@ -114,6 +114,23 @@ func detectGPUArchitecture(nodes []corev1.Node) string {
 	return nodeGPUArchitecture(nodes[0])
 }
 
+// excludedNodeNames returns the names in all that are absent from kept, in the
+// order they appear in all. discoverTargetNodes sorts by name, so that order is
+// already name order and no further sort is needed here.
+func excludedNodeNames(all, kept []corev1.Node) []string {
+	keptNames := make(map[string]bool, len(kept))
+	for i := range kept {
+		keptNames[kept[i].Name] = true
+	}
+	var out []string
+	for i := range all {
+		if !keptNames[all[i].Name] {
+			out = append(out, all[i].Name)
+		}
+	}
+	return out
+}
+
 // detectGPUArchConsistent detects the GPU architecture and filters out nodes
 // with a different architecture if the target set is heterogeneous.
 // Returns the primary architecture and the (potentially filtered) node list.

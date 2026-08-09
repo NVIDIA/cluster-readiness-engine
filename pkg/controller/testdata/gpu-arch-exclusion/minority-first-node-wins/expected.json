@@ -1,0 +1,10 @@
+{
+  "architecture": "a100",
+  "certified": [
+    "node-a"
+  ],
+  "excluded": [
+    "node-b",
+    "node-c"
+  ]
+}
