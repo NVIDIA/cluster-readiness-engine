@@ -4,14 +4,14 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](go.mod)
 
-New GPU clusters often contain faulty nodes, and those faults surface only under real distributed load. CRE is a Kubernetes controller that certifies GPU clusters before production workloads run on them. It runs real training and communication workloads across topology-aware node groups, measures performance, detects hardware failures, and quarantines bad nodes.
+New GPU clusters often contain faulty nodes, and those faults surface only under real distributed load. CRE is a Kubernetes controller that certifies GPU clusters before production workloads run on them. It runs real training and communication workloads across topology-aware node groups, measures performance, detects hardware failures, and reports every bad node with a reason. Quarantine is left to your platform: CRE never cordons, taints, or otherwise modifies a node.
 
 CRE is for platform and infrastructure teams that bring up, validate, or resell GPU clusters.
 
 ## Features
 
 - A certification catalog with NCCL communication tests and multi-node training workloads
-- Platform detection (AWS, GCP, Azure, TogetherAI) and GPU architecture detection (GB200, GB300, H100)
+- Platform detection (AWS, GCP, Azure, OCI, nscale, TogetherAI, Mistral, Forge, on-prem) and GPU architecture detection (GB200, GB300, H100, A100, L40S, L40)
 - Goodput measurement parsed from training logs with configurable LogProfile patterns
 - Per-bus bandwidth measurement parsed from NCCL logs
 - Node health monitoring with CEL expressions while workloads run
@@ -55,11 +55,24 @@ Run `kubectl ncre setup status` at any time to see what is present.
 
 **1. Install the CLI**
 
+Every release so far is a pre-release, and `releases/latest` resolves only to the
+newest **stable** release. Until `v0.1.0` is tagged, name the version explicitly:
+
 ```bash
-curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash -s -- -p
+CRE_VERSION=v0.1.0-rc.7
+curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${CRE_VERSION}/installer \
+  | bash -s -- -v "${CRE_VERSION}"
+```
+
+Once a stable release exists, this shorter form works and picks up the newest one:
+
+```bash
+curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
 ```
 
 The installer places `ncrectl` on your `$PATH` and creates a `kubectl-ncre` symlink so the CLI is also available as `kubectl ncre`.
+
+The installer needs a GitHub token while this repository is internal: authenticate with `gh auth login`, or set `GITHUB_TOKEN`.
 
 **2. Set up the cluster**
 
