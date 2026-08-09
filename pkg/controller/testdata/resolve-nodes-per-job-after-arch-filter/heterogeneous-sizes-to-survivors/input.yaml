@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The B23 case. node003 has a different architecture, so the Workflow will drop
+# it. Sizing against all 2 nodes produced "Not enough schedulable nodes: need 2,
+# found 1". Sized against the 1 surviving node, the run proceeds.
+nodes:
+  - {name: node002, product: NVIDIA-A100-PCIE-40GB}
+  - {name: node003, product: NVIDIA-FAKE-40GB}
+constraint: none

@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The case a naive clamp breaks. Three nodes survive the filter, but the entry
+# only accepts even counts (TP x PP divisibility), so the answer is 2, not 3.
+nodes:
+  - {name: n1, product: NVIDIA-H100-80GB-HBM3}
+  - {name: n2, product: NVIDIA-H100-80GB-HBM3}
+  - {name: n3, product: NVIDIA-H100-80GB-HBM3}
+  - {name: n4, product: NVIDIA-A100-PCIE-40GB}
+constraint: even
