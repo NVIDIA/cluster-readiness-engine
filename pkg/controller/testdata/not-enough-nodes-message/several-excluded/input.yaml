@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# More than one node dropped. All are named, in target order.
+needed: 8
+found: 2
+gpuArch: gb200
+archExcluded:
+  - node-h100-a
+  - node-h100-b
+  - node-l40-c

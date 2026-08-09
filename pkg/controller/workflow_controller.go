@@ -186,6 +186,22 @@ func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *burninv
 	return r.launchPendingGroups(ctx, workflow, orch)
 }
 
+// notEnoughNodesMessage explains a node shortfall. "Schedulable" is Kubernetes
+// vocabulary for cordons, taints and capacity, so the bare form sends an operator
+// looking at the wrong thing when the real cause is that a heterogeneous target
+// was filtered to one GPU architecture. When that is what happened, say so and
+// name the nodes that were dropped.
+func notEnoughNodesMessage(needed, found int, gpuArch string, archExcluded []string) string {
+	base := fmt.Sprintf("Not enough schedulable nodes: need %d, found %d", needed, found)
+	if len(archExcluded) == 0 {
+		return base
+	}
+	return fmt.Sprintf(
+		"%s. %d node(s) matched the target but were excluded for not being GPU architecture %s: %s. "+
+			"Set nodesPerJob to %d, or narrow the target to one architecture",
+		base, len(archExcluded), gpuArch, strings.Join(archExcluded, ", "), found)
+}
+
 // discoverAndPartition discovers target nodes, auto-detects nodesPerJob, and partitions nodes into groups.
 func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow *burninv1alpha1.Workflow, orch *burninv1alpha1.OrchestrationStatus) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -223,6 +239,9 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	}
 	orch.DetectedPlatform = platform
 
+	// archExcluded records nodes dropped for having a different GPU architecture,
+	// so a later shortfall can say that is why rather than blaming schedulability.
+	var archExcluded []string
 	gpuArch, filteredNodes := detectGPUArchConsistent(nodes)
 	if len(filteredNodes) < len(nodes) {
 		// Record the dropped nodes on the status, not just in an event. A run
@@ -233,6 +252,8 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 		orch.ExclusionReason = fmt.Sprintf(
 			"target set has more than one GPU architecture; certified %s only",
 			gpuArch)
+		// The shortfall message below needs the same list.
+		archExcluded = excluded
 		log.Info("Heterogeneous GPU architectures detected, filtering to primary",
 			"primary", gpuArch, "total", len(nodes), "filtered", len(filteredNodes),
 			"excluded", excluded)
@@ -295,7 +316,7 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 		nodesPerJob = len(nodes)
 	}
 	if nodesPerJob > len(nodes) {
-		msg := fmt.Sprintf("Not enough schedulable nodes: need %d, found %d", nodesPerJob, len(nodes))
+		msg := notEnoughNodesMessage(nodesPerJob, len(nodes), gpuArch, archExcluded)
 		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, msg); statusErr != nil {
 			log.Error(statusErr, "Failed to update status")
 		}
