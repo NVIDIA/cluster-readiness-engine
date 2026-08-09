@@ -1,0 +1,142 @@
+2026-08-08T10:58:55.853208687-07:00 + cp /tmp/mpi-ssh-raw/authorized_keys /tmp/mpi-ssh-raw/id_rsa /tmp/mpi-ssh-raw/id_rsa.pub /root/.ssh/
+2026-08-08T10:58:55.854880335-07:00 + chmod 600 /root/.ssh/id_rsa
+2026-08-08T10:58:55.855974671-07:00 + chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys
+2026-08-08T10:58:56.676665767-07:00 Warning: Permanently added 'p35ar-communication-nccl-b0e22-job-workload-node-0-0.p35ar-communication-nccl-b0e22-job-workload' (ED25519) to the list of known hosts.
+2026-08-08T10:58:56.681005310-07:00 Warning: Permanently added 'p35ar-communication-nccl-b0e22-job-workload-node-0-1.p35ar-communication-nccl-b0e22-job-workload' (ED25519) to the list of known hosts.
+2026-08-08T10:58:57.197471959-07:00 # nccl-tests version 2.17.8 nccl-headers=22902 nccl-library=22902
+2026-08-08T10:58:57.197498219-07:00 # Collective test starting: all_reduce_perf_mpi
+2026-08-08T10:58:57.197500779-07:00 # nThread 1 nGpus 1 minBytes 8 maxBytes 33554432 step: 2(factor) warmup iters: 1 iters: 2 agg iters: 1 validation: 1 graph: 0
+2026-08-08T10:58:57.197503529-07:00 #
+2026-08-08T10:58:57.197505719-07:00 # Using devices
+2026-08-08T10:58:57.197513029-07:00 #  Rank  0 Group  0 Pid    530 on p35ar-communication-nccl-b0e22-job-workload-node-0-0 device  0 [0000:00:06] NVIDIA A100-PCIE-40GB
+2026-08-08T10:58:57.197517589-07:00 #  Rank  1 Group  0 Pid    529 on p35ar-communication-nccl-b0e22-job-workload-node-0-1 device  0 [0000:00:06] NVIDIA A100-PCIE-40GB
+2026-08-08T10:58:57.198057472-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO ENV/Plugin: Could not find: libnccl-env.so
+2026-08-08T10:58:57.198198759-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Bootstrap: Using eth0:172.29.112.162<0>
+2026-08-08T10:58:57.358729351-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO cudaDriverVersion 13010
+2026-08-08T10:58:57.359002077-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO NCCL version 2.29.2+cuda13.1
+2026-08-08T10:58:57.359006567-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO NCCL git version stable 07fa371c7
+2026-08-08T10:58:57.359209674-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO ENV/Plugin: Could not find: libnccl-env.so
+2026-08-08T10:58:57.359279133-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO cudaDriverVersion 13010
+2026-08-08T10:58:57.359583100-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Bootstrap: Using eth0:172.29.67.246<0>
+2026-08-08T10:58:57.359587060-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO NCCL version 2.29.2+cuda13.1
+2026-08-08T10:58:57.359589440-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO NCCL git version stable 07fa371c7
+2026-08-08T10:58:57.360789533-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Comm config nvlinkCentricSched set to 1
+2026-08-08T10:58:57.361519074-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Comm config nvlinkCentricSched set to 1
+2026-08-08T10:58:57.499996429-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO NET/Plugin: Loaded net plugin NCCL RDMA Plugin v11 (v11)
+2026-08-08T10:58:57.500021079-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO NET/Plugin: Loaded collnet plugin SHARP (v11)
+2026-08-08T10:58:57.500024169-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Successfully loaded external network plugin /opt/hpcx/nccl_rdma_sharp_plugin/lib/libnccl-net.so
+2026-08-08T10:58:57.500026139-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Plugin Path : /opt/hpcx/nccl_rdma_sharp_plugin/lib/libnccl-net.so
+2026-08-08T10:58:57.500028779-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO P2P plugin v11 IBext_v11
+2026-08-08T10:58:57.500110547-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO NET/IB : No device found.
+2026-08-08T10:58:57.500132477-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO NET/IB : Using [RO]; OOB eth0:172.29.112.162<0>
+2026-08-08T10:58:57.500135027-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Failed to initialize NET plugin IBext_v11
+2026-08-08T10:58:57.500445144-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO NET/IB : No device found.
+2026-08-08T10:58:57.500448593-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO NET/IB : Using [RO]; OOB eth0:172.29.112.162<0>
+2026-08-08T10:58:57.500450593-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Failed to initialize NET plugin IB
+2026-08-08T10:58:57.500648490-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO NET/Socket : Using [0]eth0:172.29.112.162<0>
+2026-08-08T10:58:57.500652890-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Initialized NET plugin Socket
+2026-08-08T10:58:57.500655010-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Assigned NET plugin Socket to comm
+2026-08-08T10:58:57.500657290-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Using network Socket
+2026-08-08T10:58:57.500800739-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO [Rank 0] ncclCommInitRankConfig comm 0x5555569a6e80 rank 0 nranks 2 cudaDev 0 nvmlDev 0 busId 60 commId 0x349ac388cf539125 - Init START
+2026-08-08T10:58:57.502633104-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO NET/Plugin: Loaded net plugin NCCL RDMA Plugin v11 (v11)
+2026-08-08T10:58:57.502644094-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO NET/Plugin: Loaded collnet plugin SHARP (v11)
+2026-08-08T10:58:57.502646894-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Successfully loaded external network plugin /opt/hpcx/nccl_rdma_sharp_plugin/lib/libnccl-net.so
+2026-08-08T10:58:57.502648924-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Plugin Path : /opt/hpcx/nccl_rdma_sharp_plugin/lib/libnccl-net.so
+2026-08-08T10:58:57.502650774-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO P2P plugin v11 IBext_v11
+2026-08-08T10:58:57.502733373-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO NET/IB : No device found.
+2026-08-08T10:58:57.502736563-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO NET/IB : Using [RO]; OOB eth0:172.29.67.246<0>
+2026-08-08T10:58:57.502738543-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Failed to initialize NET plugin IBext_v11
+2026-08-08T10:58:57.503013799-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO NET/IB : No device found.
+2026-08-08T10:58:57.503016849-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO NET/IB : Using [RO]; OOB eth0:172.29.67.246<0>
+2026-08-08T10:58:57.503018839-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Failed to initialize NET plugin IB
+2026-08-08T10:58:57.503175357-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO NET/Socket : Using [0]eth0:172.29.67.246<0>
+2026-08-08T10:58:57.503180296-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Initialized NET plugin Socket
+2026-08-08T10:58:57.503284285-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Assigned NET plugin Socket to comm
+2026-08-08T10:58:57.503287875-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Using network Socket
+2026-08-08T10:58:57.503457184-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO [Rank 1] ncclCommInitRankConfig comm 0x5555569a97c0 rank 1 nranks 2 cudaDev 0 nvmlDev 0 busId 60 commId 0x349ac388cf539125 - Init START
+2026-08-08T10:58:57.505717923-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO RAS client listening socket at ::1<28028>
+2026-08-08T10:58:57.505765842-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO RAS client listening socket at ::1<28028>
+2026-08-08T10:58:57.506156187-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Bootstrap timings total 0.005324 (create 0.000031, send 0.000089, recv 0.003225, ring 0.000299, delay 0.000000)
+2026-08-08T10:58:57.506263535-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Bootstrap timings total 0.002814 (create 0.000042, send 0.000406, recv 0.001079, ring 0.000395, delay 0.000000)
+2026-08-08T10:58:57.506759569-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO NCCL_MNNVL_ENABLE set by environment to 0.
+2026-08-08T10:58:57.506764819-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO NCCL_MNNVL_ENABLE set by environment to 0.
+2026-08-08T10:58:57.514086311-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO ncclTopoGetCpuAffinity: Affinity for GPU 0 is empty, ignoring. (GPU affinity =  ; CPU affinity = 0-3).
+2026-08-08T10:58:57.514096361-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO ncclTopoGetCpuAffinity: Affinity for GPU 0 is empty, ignoring. (GPU affinity =  ; CPU affinity = 0-3).
+2026-08-08T10:58:57.514593984-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO comm 0x5555569a6e80 rank 0 nRanks 2 nNodes 2 localRanks 1 localRank 0 MNNVL 0
+2026-08-08T10:58:57.514600515-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Channel 00/02 : 0 1
+2026-08-08T10:58:57.514602864-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Channel 01/02 : 0 1
+2026-08-08T10:58:57.514605084-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Trees [0] 1/-1/-1->0->-1 [1] -1/-1/-1->0->1
+2026-08-08T10:58:57.514607255-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO P2P Chunksize set to 131072
+2026-08-08T10:58:57.514720962-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO PROFILER/Plugin: Could not find: libnccl-profiler.so
+2026-08-08T10:58:57.514770973-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Check P2P Type isAllDirectP2p 1 directMode 0 isAllCudaP2p 1
+2026-08-08T10:58:57.514776963-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO comm 0x5555569a97c0 rank 1 nRanks 2 nNodes 2 localRanks 1 localRank 0 MNNVL 0
+2026-08-08T10:58:57.514779323-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Trees [0] -1/-1/-1->1->0 [1] 0/-1/-1->1->-1
+2026-08-08T10:58:57.514781502-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO P2P Chunksize set to 131072
+2026-08-08T10:58:57.514943960-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO PROFILER/Plugin: Could not find: libnccl-profiler.so
+2026-08-08T10:58:57.514948270-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:540 [0] NCCL INFO [Proxy Service] Device 0 CPU core 1
+2026-08-08T10:58:57.514950460-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:541 [0] NCCL INFO [Proxy Service UDS] Device 0 CPU core 2
+2026-08-08T10:58:57.514952770-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Check P2P Type isAllDirectP2p 1 directMode 0 isAllCudaP2p 1
+2026-08-08T10:58:57.515086988-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:538 [0] NCCL INFO [Proxy Service] Device 0 CPU core 3
+2026-08-08T10:58:57.515093098-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:539 [0] NCCL INFO [Proxy Service UDS] Device 0 CPU core 2
+2026-08-08T10:58:57.515633791-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO TUNER/Plugin: Could not find: libnccl-tuner.so
+2026-08-08T10:58:57.515639560-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO threadThresholds 8/8/64 | 16/8/64 | 512 | 512
+2026-08-08T10:58:57.515642540-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO 2 coll channels, 2 collnet channels, 0 nvls channels, 2 p2p channels, 1 p2p channels per peer
+2026-08-08T10:58:57.515644760-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Symmetric memory is not supported. cuMemEnable 1, ginSupport 0, globalNicFused 0
+2026-08-08T10:58:57.515790068-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO TUNER/Plugin: Could not find: libnccl-tuner.so
+2026-08-08T10:58:57.515795188-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO threadThresholds 8/8/64 | 16/8/64 | 512 | 512
+2026-08-08T10:58:57.515797568-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO 2 coll channels, 2 collnet channels, 0 nvls channels, 2 p2p channels, 1 p2p channels per peer
+2026-08-08T10:58:57.515799698-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Symmetric memory is not supported. cuMemEnable 1, ginSupport 0, globalNicFused 0
+2026-08-08T10:58:57.515921307-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO CC Off, workFifoBytes 1048576
+2026-08-08T10:58:57.515969257-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO ncclCommInitRankConfig comm 0x5555569a6e80 rank 0 nranks 2 cudaDev 0 nvmlDev 0 busId 60 commId 0x349ac388cf539125 - Init COMPLETE
+2026-08-08T10:58:57.515972597-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Init timings - ncclCommInitRankConfig: rank 0 nranks 2 total 0.16 (kernels 0.14, alloc 0.00, bootstrap 0.01, allgathers 0.00, topo 0.01, graphs 0.00, connections 0.00, rest 0.00)
+2026-08-08T10:58:57.516194434-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO ncclCommInitRankConfig comm 0x5555569a97c0 rank 1 nranks 2 cudaDev 0 nvmlDev 0 busId 60 commId 0x349ac388cf539125 - Init COMPLETE
+2026-08-08T10:58:57.516200914-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Init timings - ncclCommInitRankConfig: rank 1 nranks 2 total 0.15 (kernels 0.14, alloc 0.00, bootstrap 0.00, allgathers 0.00, topo 0.01, graphs 0.00, connections 0.00, rest 0.00)
+2026-08-08T10:58:57.519328821-07:00 #
+2026-08-08T10:58:57.519339581-07:00 #                                                              out-of-place                       in-place          
+2026-08-08T10:58:57.519342312-07:00 #       size         count      type   redop    root     time   algbw   busbw  #wrong     time   algbw   busbw  #wrong 
+2026-08-08T10:58:57.519344372-07:00 #        (B)    (elements)                               (us)  (GB/s)  (GB/s)             (us)  (GB/s)  (GB/s)         
+2026-08-08T10:58:57.545289046-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:542 [0] NCCL INFO [Proxy Progress] Device 0 CPU core 3
+2026-08-08T10:58:57.545305346-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Channel 00/0 : 1[0] -> 0[0] [receive] via NET/Socket/0
+2026-08-08T10:58:57.545434084-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Channel 01/0 : 1[0] -> 0[0] [receive] via NET/Socket/0
+2026-08-08T10:58:57.545598422-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Channel 00/0 : 0[0] -> 1[0] [send] via NET/Socket/0
+2026-08-08T10:58:57.545639801-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:540 [0] NCCL INFO [Proxy Progress] Device 0 CPU core 1
+2026-08-08T10:58:57.545721769-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Channel 01/0 : 0[0] -> 1[0] [send] via NET/Socket/0
+2026-08-08T10:58:57.545748869-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Channel 00/0 : 0[0] -> 1[0] [receive] via NET/Socket/0
+2026-08-08T10:58:57.545751429-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Channel 01/0 : 0[0] -> 1[0] [receive] via NET/Socket/0
+2026-08-08T10:58:57.545950797-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Channel 00/0 : 1[0] -> 0[0] [send] via NET/Socket/0
+2026-08-08T10:58:57.545953157-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Channel 01/0 : 1[0] -> 0[0] [send] via NET/Socket/0
+2026-08-08T10:58:57.573070075-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO Connected all rings, use ring PXN 0 GDR 0
+2026-08-08T10:58:57.573094975-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO Connected all rings, use ring PXN 0 GDR 0
+2026-08-08T10:59:00.611280551-07:00            8             2     float     sum      -1   334.18    0.00    0.00       0   359.72    0.00    0.00       0
+2026-08-08T10:59:00.616068107-07:00           16             4     float     sum      -1   364.40    0.00    0.00       0   348.71    0.00    0.00       0
+2026-08-08T10:59:00.620846103-07:00           32             8     float     sum      -1   322.61    0.00    0.00       0   318.14    0.00    0.00       0
+2026-08-08T10:59:00.625376793-07:00           64            16     float     sum      -1   315.18    0.00    0.00       0   311.43    0.00    0.00       0
+2026-08-08T10:59:00.629922023-07:00          128            32     float     sum      -1   334.69    0.00    0.00       0   318.60    0.00    0.00       0
+2026-08-08T10:59:00.636238738-07:00          256            64     float     sum      -1   533.37    0.00    0.00       0   524.74    0.00    0.00       0
+2026-08-08T10:59:00.642531175-07:00          512           128     float     sum      -1   530.75    0.00    0.00       0   537.06    0.00    0.00       0
+2026-08-08T10:59:00.648874721-07:00         1024           256     float     sum      -1   543.53    0.00    0.00       0   543.44    0.00    0.00       0
+2026-08-08T10:59:00.656760085-07:00         2048           512     float     sum      -1   646.83    0.00    0.00       0   902.77    0.00    0.00       0
+2026-08-08T10:59:00.665132474-07:00         4096          1024     float     sum      -1   778.75    0.01    0.01       0   764.45    0.01    0.01       0
+2026-08-08T10:59:00.676127707-07:00         8192          2048     float     sum      -1  1104.47    0.01    0.01       0  1087.82    0.01    0.01       0
+2026-08-08T10:59:00.695719337-07:00        16384          4096     float     sum      -1  2104.87    0.01    0.01       0  2003.81    0.01    0.01       0
+2026-08-08T10:59:00.727665930-07:00        32768          8192     float     sum      -1  3518.32    0.01    0.01       0  3332.37    0.01    0.01       0
+2026-08-08T10:59:00.764029516-07:00        65536         16384     float     sum      -1  3601.43    0.02    0.02       0  3629.68    0.02    0.02       0
+2026-08-08T10:59:00.826001210-07:00       131072         32768     float     sum      -1  6014.62    0.02    0.02       0  6237.16    0.02    0.02       0
+2026-08-08T10:59:00.940313627-07:00       262144         65536     float     sum      -1  11242.0    0.02    0.02       0  11099.6    0.02    0.02       0
+2026-08-08T10:59:01.134368593-07:00       524288        131072     float     sum      -1  20833.2    0.03    0.03       0  20757.7    0.03    0.03       0
+2026-08-08T10:59:01.487798585-07:00      1048576        262144     float     sum      -1  41236.2    0.03    0.03       0  40123.6    0.03    0.03       0
+2026-08-08T10:59:02.230294653-07:00      2097152        524288     float     sum      -1  89560.0    0.02    0.02       0  87881.1    0.02    0.02       0
+2026-08-08T10:59:03.691118442-07:00      4194304       1048576     float     sum      -1   176387    0.02    0.02       0   176318    0.02    0.02       0
+2026-08-08T10:59:06.560549406-07:00      8388608       2097152     float     sum      -1   344728    0.02    0.02       0   356202    0.02    0.02       0
+2026-08-08T10:59:11.998921707-07:00     16777216       4194304     float     sum      -1   664679    0.03    0.03       0   661199    0.03    0.03       0
+2026-08-08T10:59:22.558969017-07:00     33554432       8388608     float     sum      -1  1313274    0.03    0.03       0  1302542    0.03    0.03       0
+2026-08-08T10:59:23.038573718-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO comm 0x5555569a97c0 rank 1 nranks 2 cudaDev 0 busId 60 - Destroy COMPLETE
+2026-08-08T10:59:23.051591015-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO comm 0x5555569a6e80 rank 0 nranks 2 cudaDev 0 busId 60 - Destroy COMPLETE
+2026-08-08T10:59:23.051619355-07:00 # Out of bounds values : 0 OK
+2026-08-08T10:59:23.051622134-07:00 # Avg bus bandwidth    : 0.0118897 
+2026-08-08T10:59:23.051624103-07:00 #
+2026-08-08T10:59:23.051626014-07:00 # Collective test concluded: all_reduce_perf_mpi
+2026-08-08T10:59:23.051627903-07:00 #
+2026-08-08T10:59:23.108708774-07:00 
+2026-08-08T10:59:23.188110416-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-1:529:529 [0] NCCL INFO ENV/Plugin: Closing env plugin ncclEnvDefault
+2026-08-08T10:59:23.189370560-07:00 p35ar-communication-nccl-b0e22-job-workload-node-0-0:530:530 [0] NCCL INFO ENV/Plugin: Closing env plugin ncclEnvDefault
