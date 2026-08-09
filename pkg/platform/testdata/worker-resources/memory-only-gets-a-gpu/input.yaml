@@ -1,0 +1,6 @@
+# The case the bug was reported for: a user sets resources to avoid the memory
+# default and loses the GPU request, because the block used to be taken as-is.
+gpusPerNode: 1
+resources:
+  limits:
+    memory: 64Gi

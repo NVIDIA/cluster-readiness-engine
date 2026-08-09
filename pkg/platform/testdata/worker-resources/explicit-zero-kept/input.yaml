@@ -1,0 +1,5 @@
+# Asking for no GPU stays possible.
+gpusPerNode: 8
+resources:
+  limits:
+    nvidia.com/gpu: "0"

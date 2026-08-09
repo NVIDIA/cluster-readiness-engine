@@ -1,0 +1,8 @@
+{
+  "limits": {
+    "nvidia.com/gpu": "8"
+  },
+  "requests": {
+    "nvidia.com/gpu": "8"
+  }
+}
