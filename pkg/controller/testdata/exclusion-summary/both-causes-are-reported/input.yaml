@@ -1,0 +1,9 @@
+# Both causes at once, which is the case that forced a merge rather than an
+# assignment. Recording each cause as it is found let the architecture filter
+# overwrite the cordon, so an operator saw one reason and chased one remedy
+# while the other node stayed silently untested.
+cordoned:
+  - node003
+archExcluded:
+  - node007
+gpuArch: h100

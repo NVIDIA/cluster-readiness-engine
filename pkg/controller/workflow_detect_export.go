@@ -33,6 +33,12 @@ func ApplyOverridesWithTracking(spec *burninv1alpha1.WorkflowSpec, octx Override
 }
 
 // DiscoverTargetNodes is the exported version of discoverTargetNodes for use by CLI tools.
+//
+// It drops the cordoned-node list that discoverTargetNodes also returns. Only
+// the Workflow reconciler records coverage on status; CLI callers want the
+// nodes a run would actually use. Widen this if a CLI ever needs to report what
+// was skipped.
 func DiscoverTargetNodes(ctx context.Context, reader client.Reader, target *burninv1alpha1.TargetSpec) ([]corev1.Node, error) {
-	return discoverTargetNodes(ctx, reader, target)
+	nodes, _, err := discoverTargetNodes(ctx, reader, target)
+	return nodes, err
 }

@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A uniform H100 fleet with one node cordoned. Discovery drops the cordoned
+# node, the run certifies the other two and succeeds — and before this change
+# nothing recorded that cordon-node-02 was targeted and never tested, so the
+# report said PASSED over a fleet it had only partly certified.
+#
+# The cordoned node is declared in the middle and out of name order so the case
+# does not depend on declaration order: the names are sorted before they reach
+# status.
+#
+# The names are deliberately not the usual gpu-node-NN. Nodes are cluster-scoped
+# and six other cases use those names, so a cordoned gpu-node-02 outliving its
+# case — cleanup is best-effort, and the manager cache lags deletion — would
+# silently change how those cases group their nodes.
+apiVersion: v1
+kind: Node
+metadata:
+  name: cordon-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100"
+    kubernetes.io/hostname: cordon-node-01
+spec:
+  providerID: "aws://us-east-1a/i-aaaa"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: cordon-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100"
+    kubernetes.io/hostname: cordon-node-02
+spec:
+  providerID: "aws://us-east-1a/i-bbbb"
+  # The whole point of the case. kubectl cordon sets exactly this.
+  unschedulable: true
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: cordon-node-03
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100"
+    kubernetes.io/hostname: cordon-node-03
+spec:
+  providerID: "aws://us-east-1a/i-cccc"
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-cordoned
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"

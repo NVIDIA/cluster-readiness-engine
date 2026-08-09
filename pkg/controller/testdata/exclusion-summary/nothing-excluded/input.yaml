@@ -1,0 +1,6 @@
+# A run that certified everything it targeted. The list must stay empty:
+# pkg/report promotes PASSED to INCOMPLETE on any non-empty list, so an
+# accidental empty-but-present slice would downgrade every clean run.
+cordoned: []
+archExcluded: []
+gpuArch: h100

@@ -186,6 +186,39 @@ func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *burninv
 	return r.launchPendingGroups(ctx, workflow, orch)
 }
 
+// exclusionSummary lists every node that was targeted but left uncertified, and
+// says why. The report turns a non-empty list into an INCOMPLETE verdict, so
+// this is what stops a partly-certified fleet reporting a clean PASSED.
+//
+// Both causes can apply to one run, which is why they are merged rather than
+// assigned in turn: on a fleet that is part cordoned and part mixed-architecture,
+// writing each cause as it is found lets the second silently drop the first.
+func exclusionSummary(cordoned, archExcluded []string, gpuArch string) ([]string, string) {
+	var nodes, reasons []string
+
+	if len(cordoned) > 0 {
+		nodes = append(nodes, cordoned...)
+		reasons = append(reasons, fmt.Sprintf(
+			"%d node(s) matched the target but were unschedulable (cordoned): %s",
+			len(cordoned), strings.Join(cordoned, ", ")))
+	}
+
+	if len(archExcluded) > 0 {
+		nodes = append(nodes, archExcluded...)
+		reasons = append(reasons, fmt.Sprintf(
+			"target set has more than one GPU architecture; certified %s only",
+			gpuArch))
+	}
+
+	if len(nodes) == 0 {
+		return nil, ""
+	}
+	// ". " rather than "; ", because the architecture reason already contains a
+	// semicolon and joining on one leaves a reader unable to tell the separator
+	// from the punctuation. notEnoughNodesMessage chains its clauses the same way.
+	return nodes, strings.Join(reasons, ". ")
+}
+
 // notEnoughNodesMessage explains a node shortfall. "Schedulable" is Kubernetes
 // vocabulary for cordons, taints and capacity, so the bare form sends an operator
 // looking at the wrong thing when the real cause is that a heterogeneous target
@@ -207,7 +240,7 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	log := logf.FromContext(ctx)
 	target := workflow.Spec.Orchestration.Target
 
-	nodes, err := discoverTargetNodes(ctx, r.Client, target)
+	nodes, cordoned, err := discoverTargetNodes(ctx, r.Client, target)
 	if err != nil {
 		log.Error(err, "Failed to discover target nodes")
 		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonNodeDiscoveryError,
@@ -239,30 +272,36 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	}
 	orch.DetectedPlatform = platform
 
+	// A cordoned node matched the target and was never tested. discoverTargetNodes
+	// dropped it before anything here saw it, which is why the run is otherwise
+	// unaware of it.
+	if len(cordoned) > 0 {
+		log.Info("Cordoned nodes excluded from certification", "cordoned", cordoned)
+		r.eventf(workflow, corev1.EventTypeWarning, "CordonedNodesExcluded",
+			"Excluded %d cordoned node(s) from certification: %s",
+			len(cordoned), strings.Join(cordoned, ", "))
+	}
+
 	// archExcluded records nodes dropped for having a different GPU architecture,
 	// so a later shortfall can say that is why rather than blaming schedulability.
 	var archExcluded []string
 	gpuArch, filteredNodes := detectGPUArchConsistent(nodes)
 	if len(filteredNodes) < len(nodes) {
-		// Record the dropped nodes on the status, not just in an event. A run
-		// that excludes nodes still reports Succeeded, so without this the
-		// report says PASSED and never mentions what went untested.
-		excluded := excludedNodeNames(nodes, filteredNodes)
-		orch.ExcludedNodes = excluded
-		orch.ExclusionReason = fmt.Sprintf(
-			"target set has more than one GPU architecture; certified %s only",
-			gpuArch)
-		// The shortfall message below needs the same list.
-		archExcluded = excluded
+		archExcluded = excludedNodeNames(nodes, filteredNodes)
 		log.Info("Heterogeneous GPU architectures detected, filtering to primary",
 			"primary", gpuArch, "total", len(nodes), "filtered", len(filteredNodes),
-			"excluded", excluded)
+			"excluded", archExcluded)
 		r.eventf(workflow, corev1.EventTypeWarning, "HeterogeneousGPU",
 			"Filtered %d/%d nodes to primary GPU architecture %s; excluded: %s",
-			len(filteredNodes), len(nodes), gpuArch, strings.Join(excluded, ", "))
+			len(filteredNodes), len(nodes), gpuArch, strings.Join(archExcluded, ", "))
 		nodes = filteredNodes
 	}
 	orch.DetectedGPUArchitecture = gpuArch
+
+	// Record the dropped nodes on the status, not just in an event. A run that
+	// excludes nodes still reports Succeeded, so without this the report says
+	// PASSED and never mentions what went untested.
+	orch.ExcludedNodes, orch.ExclusionReason = exclusionSummary(cordoned, archExcluded, gpuArch)
 
 	// Apply overrides now that platform/gpuArch are known, before computing nodesPerJob.
 	// This is the authoritative call — emit events, log details, and populate status.
@@ -409,7 +448,12 @@ func (r *WorkflowReconciler) logOverrideResults(ctx context.Context, workflow *b
 
 // discoverTargetNodes lists and filters nodes based on the target spec.
 // Accepts a client.Reader so it can be called from both the reconciler and CLI tools.
-func discoverTargetNodes(ctx context.Context, reader client.Reader, target *burninv1alpha1.TargetSpec) ([]corev1.Node, error) {
+//
+// The second return value names the nodes that matched the target but were
+// dropped for being cordoned. Callers that record coverage need it: a cordoned
+// node was targeted and never tested, and without the names the run reports a
+// clean PASSED over a fleet it only partly certified.
+func discoverTargetNodes(ctx context.Context, reader client.Reader, target *burninv1alpha1.TargetSpec) ([]corev1.Node, []string, error) {
 	nodeList := &corev1.NodeList{}
 	var opts []client.ListOption
 
@@ -418,7 +462,7 @@ func discoverTargetNodes(ctx context.Context, reader client.Reader, target *burn
 	}
 
 	if err := reader.List(ctx, nodeList, opts...); err != nil {
-		return nil, fmt.Errorf("failed to list nodes: %w", err)
+		return nil, nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
 
 	nodes := nodeList.Items
@@ -462,11 +506,23 @@ func discoverTargetNodes(ctx context.Context, reader client.Reader, target *burn
 
 	// Filter out unschedulable (cordoned) nodes — they can't run workload pods
 	// and would cause immediate JobHardwareFailed from the node health monitor.
+	// Their names go back to the caller so the run can report what it skipped.
+	//
+	// Only GPU nodes count as skipped. A cordoned node without a GPU was never a
+	// certification candidate, so losing it costs no coverage, and reporting it
+	// would turn a fully certified fleet into INCOMPLETE over a node that could
+	// never have been tested. That is reachable whenever the target is not the
+	// usual gpu.present selector — a nodeNames list can pull in CPU nodes.
 	var schedulable []corev1.Node
+	var cordoned []string
 	for _, n := range nodes {
-		if !n.Spec.Unschedulable {
-			schedulable = append(schedulable, n)
+		if n.Spec.Unschedulable {
+			if n.Labels["nvidia.com/gpu.present"] == "true" {
+				cordoned = append(cordoned, n.Name)
+			}
+			continue
 		}
+		schedulable = append(schedulable, n)
 	}
 	nodes = schedulable
 
@@ -487,7 +543,12 @@ func discoverTargetNodes(ctx context.Context, reader client.Reader, target *burn
 	// matches how pkg/orchestration already chunks nodes into groups.
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].Name < nodes[j].Name })
 
-	return nodes, nil
+	// Sort the cordoned names for the same reason: they are written to status and
+	// printed in the report, so an unsorted list would make the same cluster
+	// produce a different report on each reconcile.
+	sort.Strings(cordoned)
+
+	return nodes, cordoned, nil
 }
 
 // nodeMatchesTaints returns true if the node has ALL of the specified taints.

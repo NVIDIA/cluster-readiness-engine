@@ -61,7 +61,7 @@ func TestDiscoverNodeOrder(t *testing.T) {
 			}})
 		}
 
-		nodes, err := discoverTargetNodes(context.Background(),
+		nodes, _, err := discoverTargetNodes(context.Background(),
 			unorderedReader{nodes: given},
 			&burninv1alpha1.TargetSpec{
 				NodeSelector: map[string]string{"nvidia.com/gpu.present": "true"},

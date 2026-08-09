@@ -1,0 +1,8 @@
+{
+  "excludedNodes": [
+    "node003",
+    "node007"
+  ],
+  "exclusionReason": "1 node(s) matched the target but were unschedulable (cordoned): node003. target set has more than one GPU architecture; certified h100 only",
+  "verdictAfterPassingRun": "INCOMPLETE"
+}

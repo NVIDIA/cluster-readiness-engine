@@ -1,0 +1,8 @@
+# The ordinary case: an operator cordons a node for maintenance and forgets.
+# The run certifies node002 and node004, and node003 has to come back named
+# rather than vanish.
+nodes:
+  - name: node002
+  - name: node003
+    cordoned: true
+  - name: node004

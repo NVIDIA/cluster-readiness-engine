@@ -1,0 +1,8 @@
+{
+  "excludedNodes": [
+    "node002",
+    "node004"
+  ],
+  "exclusionReason": "target set has more than one GPU architecture; certified h100 only",
+  "verdictAfterPassingRun": "INCOMPLETE"
+}

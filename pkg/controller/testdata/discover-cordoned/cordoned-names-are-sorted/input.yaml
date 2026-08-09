@@ -1,0 +1,12 @@
+# client.List gives no ordering guarantee, and these names are written to
+# status and printed in the report. Fed in reverse, they must still come back
+# sorted — the same non-determinism #57 fixed for the node list itself, which
+# there made two identical runs certify different subsets.
+nodes:
+  - name: node009
+    cordoned: true
+  - name: node002
+    cordoned: true
+  - name: node005
+  - name: node001
+    cordoned: true

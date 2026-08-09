@@ -357,7 +357,10 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	}
 
 	// --- 1. Discover nodes (shared context for nodesPerJob + overlays) ---
-	nodes, err := discoverTargetNodes(ctx, r.Client, &certification.Spec.Target)
+	// Cordoned nodes are discarded here. The Workflow runs the same discovery and
+	// records them on its own status, which is where the report reads coverage
+	// from, so recording them twice would only risk the two disagreeing.
+	nodes, _, err := discoverTargetNodes(ctx, r.Client, &certification.Spec.Target)
 	if err != nil {
 		return "", fmt.Errorf("discovering target nodes: %w", err)
 	}

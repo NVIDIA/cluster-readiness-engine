@@ -1,0 +1,10 @@
+{
+  "certified": [
+    "node005"
+  ],
+  "cordoned": [
+    "node001",
+    "node002",
+    "node009"
+  ]
+}
