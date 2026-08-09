@@ -153,15 +153,15 @@ jobs:
 
             ```bash
             # Requires gh CLI authenticated, or GITHUB_TOKEN set.
-            # -p includes pre-releases. Every release is a pre-release
-            # until v0.1.0, so keep -p until then.
-            curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash -s -- -p
+            curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${{ steps.tag.outputs.value }}/installer | bash -s -- -v ${{ steps.tag.outputs.value }}
             ```
 
-            To install this exact version instead of the newest one:
+            The version is named explicitly because `releases/latest` resolves only to
+            the newest **stable** release, and every release so far is a pre-release.
+            Once `v0.1.0` is tagged, this shorter form installs the newest stable one:
 
             ```bash
-            curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${{ steps.tag.outputs.value }}/installer | bash -s -- -v ${{ steps.tag.outputs.value }}
+            curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
             ```
 
             ## Helm Chart

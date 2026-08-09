@@ -1,0 +1,223 @@
+{
+  "BandwidthMeasurement/test-bw-real": {
+    "kind": "BandwidthMeasurement",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-bw-real",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/bandwidthmeasurement-finalizer"
+      ]
+    },
+    "spec": {
+      "jobRef": {
+        "apiGroup": "cre.nvidia.com",
+        "kind": "Job",
+        "name": "test-bw-real-job"
+      },
+      "logProfileRef": "nccl-bandwidth-shipped",
+      "sampleInterval": "1s",
+      "testType": "all_reduce"
+    },
+    "status": {
+      "results": [
+        {
+          "sizeBytes": 8,
+          "algBW": "0.00",
+          "busBW": "0.00",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 16,
+          "algBW": "0.00",
+          "busBW": "0.00",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 32,
+          "algBW": "0.00",
+          "busBW": "0.00",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 64,
+          "algBW": "0.00",
+          "busBW": "0.00",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 128,
+          "algBW": "0.00",
+          "busBW": "0.00",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 256,
+          "algBW": "0.00",
+          "busBW": "0.00",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 512,
+          "algBW": "0.00",
+          "busBW": "0.00",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 1024,
+          "algBW": "0.00",
+          "busBW": "0.00",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 2048,
+          "algBW": "0.00",
+          "busBW": "0.00",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 4096,
+          "algBW": "0.01",
+          "busBW": "0.01",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 8192,
+          "algBW": "0.01",
+          "busBW": "0.01",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 16384,
+          "algBW": "0.01",
+          "busBW": "0.01",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 32768,
+          "algBW": "0.01",
+          "busBW": "0.01",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 65536,
+          "algBW": "0.02",
+          "busBW": "0.02",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 131072,
+          "algBW": "0.02",
+          "busBW": "0.02",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 262144,
+          "algBW": "0.02",
+          "busBW": "0.02",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 524288,
+          "algBW": "0.03",
+          "busBW": "0.03",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 1048576,
+          "algBW": "0.03",
+          "busBW": "0.03",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 2097152,
+          "algBW": "0.02",
+          "busBW": "0.02",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 4194304,
+          "algBW": "0.02",
+          "busBW": "0.02",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 8388608,
+          "algBW": "0.02",
+          "busBW": "0.02",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 16777216,
+          "algBW": "0.03",
+          "busBW": "0.03",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 33554432,
+          "algBW": "0.03",
+          "busBW": "0.03",
+          "samples": 1
+        }
+      ],
+      "conditions": [
+        {
+          "type": "Measuring",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Referenced Job is running, measurement in progress"
+        }
+      ]
+    }
+  },
+  "bandwidthMetrics": {
+    "burnin_nccl_algbw_gbps:1024": 0,
+    "burnin_nccl_algbw_gbps:1048576": 0.03,
+    "burnin_nccl_algbw_gbps:128": 0,
+    "burnin_nccl_algbw_gbps:131072": 0.02,
+    "burnin_nccl_algbw_gbps:16": 0,
+    "burnin_nccl_algbw_gbps:16384": 0.01,
+    "burnin_nccl_algbw_gbps:16777216": 0.03,
+    "burnin_nccl_algbw_gbps:2048": 0,
+    "burnin_nccl_algbw_gbps:2097152": 0.02,
+    "burnin_nccl_algbw_gbps:256": 0,
+    "burnin_nccl_algbw_gbps:262144": 0.02,
+    "burnin_nccl_algbw_gbps:32": 0,
+    "burnin_nccl_algbw_gbps:32768": 0.01,
+    "burnin_nccl_algbw_gbps:33554432": 0.03,
+    "burnin_nccl_algbw_gbps:4096": 0.01,
+    "burnin_nccl_algbw_gbps:4194304": 0.02,
+    "burnin_nccl_algbw_gbps:512": 0,
+    "burnin_nccl_algbw_gbps:524288": 0.03,
+    "burnin_nccl_algbw_gbps:64": 0,
+    "burnin_nccl_algbw_gbps:65536": 0.02,
+    "burnin_nccl_algbw_gbps:8": 0,
+    "burnin_nccl_algbw_gbps:8192": 0.01,
+    "burnin_nccl_algbw_gbps:8388608": 0.02,
+    "burnin_nccl_busbw_gbps:1024": 0,
+    "burnin_nccl_busbw_gbps:1048576": 0.03,
+    "burnin_nccl_busbw_gbps:128": 0,
+    "burnin_nccl_busbw_gbps:131072": 0.02,
+    "burnin_nccl_busbw_gbps:16": 0,
+    "burnin_nccl_busbw_gbps:16384": 0.01,
+    "burnin_nccl_busbw_gbps:16777216": 0.03,
+    "burnin_nccl_busbw_gbps:2048": 0,
+    "burnin_nccl_busbw_gbps:2097152": 0.02,
+    "burnin_nccl_busbw_gbps:256": 0,
+    "burnin_nccl_busbw_gbps:262144": 0.02,
+    "burnin_nccl_busbw_gbps:32": 0,
+    "burnin_nccl_busbw_gbps:32768": 0.01,
+    "burnin_nccl_busbw_gbps:33554432": 0.03,
+    "burnin_nccl_busbw_gbps:4096": 0.01,
+    "burnin_nccl_busbw_gbps:4194304": 0.02,
+    "burnin_nccl_busbw_gbps:512": 0,
+    "burnin_nccl_busbw_gbps:524288": 0.03,
+    "burnin_nccl_busbw_gbps:64": 0,
+    "burnin_nccl_busbw_gbps:65536": 0.02,
+    "burnin_nccl_busbw_gbps:8": 0,
+    "burnin_nccl_busbw_gbps:8192": 0.01,
+    "burnin_nccl_busbw_gbps:8388608": 0.02
+  }
+}

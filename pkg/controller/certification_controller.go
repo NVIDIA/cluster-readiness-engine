@@ -43,7 +43,11 @@ const (
 	labelCertification   = "cre.nvidia.com/certification"
 	labelCategoryDomain  = "cre.nvidia.com/category-domain"
 	labelCategoryVariant = "cre.nvidia.com/category-variant"
-	labelManagedBy       = "app.kubernetes.io/managed-by"
+	// annotationRequestedTestScale carries the testScale the operator asked for
+	// through to the report, which otherwise infers it from what was applied.
+	annotationRequestedTestScale = "cre.nvidia.com/requested-test-scale"
+
+	labelManagedBy = "app.kubernetes.io/managed-by"
 )
 
 // CertificationReconciler reconciles a Certification object
@@ -432,6 +436,15 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 			},
 		},
 		Spec: workflowSpec,
+	}
+	// Record what the operator asked for. The report otherwise infers the scale
+	// from what was applied, and those differ: an entry whose template ignores
+	// testScale still partitions one node per group, so an intra-rack request came
+	// out as "intra-node" in the report.
+	if opts.TestScale != "" {
+		workflow.Annotations = map[string]string{
+			annotationRequestedTestScale: opts.TestScale,
+		}
 	}
 
 	if err := controllerutil.SetControllerReference(certification, workflow, r.Scheme); err != nil {
