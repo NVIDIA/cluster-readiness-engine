@@ -841,13 +841,19 @@ func TestDetectTestScale(t *testing.T) {
 				TopologyKey  string `yaml:"topologyKey"`
 				StrictDomain bool   `yaml:"strictDomain"`
 			} `yaml:"topology"`
-			NodesPerJob int `yaml:"nodesPerJob"`
+			NodesPerJob        int    `yaml:"nodesPerJob"`
+			RequestedTestScale string `yaml:"requestedTestScale"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
 		}
 
 		wf := &burninv1alpha1.Workflow{}
+		if input.RequestedTestScale != "" {
+			wf.Annotations = map[string]string{
+				annotationRequestedTestScale: input.RequestedTestScale,
+			}
+		}
 		if input.Topology != nil {
 			wf.Spec.Orchestration.Topology = &burninv1alpha1.TopologySpec{
 				TopologyKey:  input.Topology.TopologyKey,

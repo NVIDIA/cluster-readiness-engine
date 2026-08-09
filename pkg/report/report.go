@@ -865,7 +865,20 @@ func buildCliqueReport(wf *burninv1alpha1.Workflow, failedNodes []burninv1alpha1
 
 // detectTestScale infers the testScale from the workflow orchestration spec.
 // Returns "" when no explicit test scale was set (e.g., training workloads).
+// annotationRequestedTestScale carries the testScale the operator asked for, set
+// by the Certification controller when it creates the Workflow.
+const annotationRequestedTestScale = "cre.nvidia.com/requested-test-scale"
+
 func detectTestScale(wf *burninv1alpha1.Workflow) string {
+	// What the operator asked for, when the Certification recorded it. The
+	// fallback below infers the scale from what was applied, which is not the
+	// same thing: an entry whose template ignores testScale still partitions one
+	// node per group, so a run that asked for intra-rack was reported as
+	// intra-node. Prefer the request; infer only for Workflows created before
+	// this annotation existed, or created directly rather than by a Certification.
+	if req := wf.GetAnnotations()[annotationRequestedTestScale]; req != "" {
+		return req
+	}
 	o := wf.Spec.Orchestration
 	if o.Topology != nil && o.Topology.StrictDomain {
 		return burninv1alpha1.TestScaleIntraRack
