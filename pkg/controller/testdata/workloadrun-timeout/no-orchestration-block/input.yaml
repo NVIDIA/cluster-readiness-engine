@@ -1,0 +1,2 @@
+# The common case for a small WorkloadRun, and the one the original note
+# missed: the whole block is absent, so the timeout was never set.

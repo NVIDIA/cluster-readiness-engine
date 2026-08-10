@@ -38,6 +38,19 @@ const (
 	DiagnoseNumCycles     = 1
 	DiagnoseTimeoutPerJob = "15m"
 
+	// DefaultWorkloadRunTimeoutPerJob bounds a WorkloadRun Job when the user
+	// sets no timeoutPerJob. Without it Execution.TimeoutPerJob stays nil,
+	// isJobTimedOut always returns false, and a Job whose pods can never
+	// schedule runs until someone notices: one such run sat InProgress for
+	// 4h10m against a node with no allocatable GPUs.
+	//
+	// This is a backstop against never finishing, not a performance bound. It
+	// is deliberately far longer than the catalog's 1h, because a WorkloadRun
+	// is arbitrary user work and cutting a legitimate long training run short
+	// would be worse than the hang. Set spec.orchestration.timeoutPerJob for
+	// anything tighter.
+	DefaultWorkloadRunTimeoutPerJob = "24h"
+
 	// DefaultTimeoutPerJob is the default timeout for communication jobs.
 	// Prevents pods from running indefinitely on launcher restarts.
 	DefaultTimeoutPerJob = "1h"

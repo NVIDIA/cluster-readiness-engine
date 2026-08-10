@@ -484,6 +484,22 @@ func buildWRPVCDep(name string, checkpoint *burninv1alpha1.WorkloadRunCheckpoint
 	return burninv1alpha1.DependencySpec{RawExtension: kruntime.RawExtension{Raw: raw}}
 }
 
+// resolveWRTimeout turns a user-supplied timeoutPerJob into a duration, falling
+// back to the WorkloadRun default. An unparseable value falls back too rather
+// than leaving the Job unbounded, which is what used to happen silently.
+func resolveWRTimeout(v string) *metav1.Duration {
+	if v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return &metav1.Duration{Duration: d}
+		}
+	}
+	d, err := time.ParseDuration(catalog.DefaultWorkloadRunTimeoutPerJob)
+	if err != nil {
+		return nil
+	}
+	return &metav1.Duration{Duration: d}
+}
+
 // buildWROrchestration constructs the OrchestrationSpec from WorkloadRunSpec.
 func buildWROrchestration(spec *burninv1alpha1.WorkloadRunSpec) *burninv1alpha1.OrchestrationSpec {
 	orch := &burninv1alpha1.OrchestrationSpec{
@@ -510,13 +526,14 @@ func buildWROrchestration(spec *burninv1alpha1.WorkloadRunSpec) *burninv1alpha1.
 		if spec.Orchestration.MaxConcurrent != nil {
 			exec.MaxConcurrent = int(*spec.Orchestration.MaxConcurrent)
 		}
-		if spec.Orchestration.TimeoutPerJob != "" {
-			d, parseErr := time.ParseDuration(spec.Orchestration.TimeoutPerJob)
-			if parseErr == nil {
-				exec.TimeoutPerJob = &metav1.Duration{Duration: d}
-			}
-		}
+		exec.TimeoutPerJob = resolveWRTimeout(spec.Orchestration.TimeoutPerJob)
 		orch.Execution = exec
+	}
+	// A WorkloadRun with no orchestration block at all still needs a bound;
+	// otherwise isJobTimedOut can never fire and the Job runs until someone
+	// notices.
+	if orch.Execution.TimeoutPerJob == nil {
+		orch.Execution.TimeoutPerJob = resolveWRTimeout("")
 	}
 	return orch
 }
