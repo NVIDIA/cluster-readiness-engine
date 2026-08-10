@@ -21,18 +21,14 @@ spec:
     nodeSelector:
       nvidia.com/gpu.present: "true"
   enableMNNVL: false
-  imagePullSecrets:
-    - name: ngc-secret
   categories:
     - domain: communication
       variant: nccl-all-reduce
     - domain: training
-      variant: nemotron4-15b
+      variant: nemotron5-8b
       options:
         maxSteps: 50
         nodesPerJob: 8
-  options:
-    adaptiveFaultIsolation: true
 ```
 
 ## Spec fields

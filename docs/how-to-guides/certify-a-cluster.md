@@ -10,7 +10,6 @@ description: Platform-specific guides for running a full cluster certification o
 
 - [Install ncrectl and set up the controller](../getting-started/install.md)
 - Confirm your kubeconfig points at the target cluster
-- Have an NGC API key available for image pulls
 
 ## AWS
 
@@ -26,13 +25,11 @@ spec:
     nodeSelector:
       nvidia.com/gpu.product: NVIDIA-GB200
   enableMNNVL: true
-  imagePullSecrets:
-    - name: ngc-secret
   categories:
     - domain: communication
       variant: nccl-all-reduce
     - domain: training
-      variant: nemotron4-15b
+      variant: nemotron5-8b
 ```
 
 ```bash
@@ -85,4 +82,4 @@ ncrectl certification report <name>
 ```
 
 - **Passed** — all categories met their thresholds. Cluster is ready.
-- **Failed** — one or more categories failed. Affected nodes are tainted and cordoned automatically. See [Interpret Results](./interpret-results.md).
+- **Failed** — one or more categories failed. See [Interpret Results](./interpret-results.md) for how to read the failed node list and act on it.

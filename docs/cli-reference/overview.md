@@ -11,7 +11,8 @@ description: The ncrectl CLI manages the full lifecycle of cluster certification
 ## Install
 
 ```bash
-curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/install.sh | bash
+export NCRECTL_VERSION=v0.1.0-rc.8
+curl -sSL "https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${NCRECTL_VERSION}/installer" | bash
 ncrectl version
 ```
 

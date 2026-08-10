@@ -44,9 +44,13 @@ Each failed node entry carries a `reason`:
 
 | Reason | Meaning |
 |--------|---------|
-| `HardwareFailureDetected` | CEL health check detected an unhealthy or cordoned node during the run |
+| `HardwareFailureDetected` | CEL health check detected an unhealthy node **mid-run** |
 | `ThresholdViolation` | A performance threshold (bandwidth, goodput, step time) was missed |
 | `WorkloadFailed` | The workload exited non-zero or stalled |
+
+<Note>
+Cordoned nodes are filtered **before** a Job runs, not attributed as `HardwareFailureDetected`. They appear in `status.orchestration.excludedNodes` and cause the run to be marked `INCOMPLETE` rather than `Failed`.
+</Note>
 
 Different nodes in the same category can fail with different reasons. A node that fails in multiple categories appears in each category's `failedNodes` list, potentially with a different reason each time.
 

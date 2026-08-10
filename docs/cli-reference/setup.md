@@ -20,7 +20,7 @@ Runs two phases in order:
 
 | Phase | What |
 |-------|------|
-| `deps` | Kubeflow Trainer v2.2.0 |
+| `deps` | Kubeflow Trainer v2.2.1 |
 | `helm` | CRE Helm chart (CRDs, controller, built-in LogProfiles) pulled from GHCR |
 
 Use `--skip-phases=deps` to skip Kubeflow Trainer if it is already installed.

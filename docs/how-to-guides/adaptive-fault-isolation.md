@@ -19,13 +19,18 @@ For an N-node pool this requires at most logâ‚‚(N) additional runs instead of Nâ
 
 ## Enable
 
+Set `testScale: diagnose` on the category you want to run in diagnose mode:
+
 ```yaml
 spec:
-  options:
-    adaptiveFaultIsolation: true
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        testScale: diagnose
 ```
 
-When enabled, a failed `Certification` automatically triggers bisection on the affected node group.
+The diagnose algorithm runs in four stages: intra-domain screening, inter-domain screening, bisection of failing groups, and confirmation of isolated suspects.
 
 ## Cross-boundary probing
 

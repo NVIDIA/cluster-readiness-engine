@@ -15,8 +15,11 @@ description: Install the ncrectl CLI and set up the Cluster Readiness Engine con
 
 ## Install the CLI
 
+Set the version you want to install, then run the installer:
+
 ```bash
-curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/install.sh | bash
+export NCRECTL_VERSION=v0.1.0-rc.8
+curl -sSL "https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${NCRECTL_VERSION}/installer" | bash
 ```
 
 Verify the installation:
