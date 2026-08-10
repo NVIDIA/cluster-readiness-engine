@@ -1,0 +1,39 @@
+{
+  "trainer": {
+    "image": "nvcr.io/nvidia/pytorch:24.01-py3",
+    "command": [
+      "torchrun"
+    ],
+    "args": [
+      "/workspace/train.py"
+    ],
+    "numNodes": 2,
+    "numProcPerNode": 8
+  },
+  "timeoutPerJob": "24h0m0s",
+  "iterations": 1,
+  "dependencyKinds": [
+    "TrainingRuntime"
+  ],
+  "validation": null,
+  "workerEnv": [
+    "NCCL_DEBUG=INFO",
+    "NCCL_DEBUG_SUBSYS=NET,INIT",
+    "NCCL_NVLS_ENABLE=1",
+    "NCCL_CUMEM_ENABLE=1",
+    "NCCL_NET_GDR_C2C=1",
+    "NCCL_NET_GDR_LEVEL=PHB",
+    "NCCL_P2P_NET_CHUNKSIZE=2097152",
+    "NCCL_SHM_DISABLE=1",
+    "NCCL_MNNVL_ENABLE=0",
+    "NCCL_SOCKET_IFNAME=eth0",
+    "CRE_TEST_MARKER=present"
+  ],
+  "workerVolumeMounts": [
+    "dshm at /dev/shm"
+  ],
+  "runtimeVolumes": [
+    "dshm"
+  ],
+  "overrideCount": 15
+}

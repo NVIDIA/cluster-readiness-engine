@@ -1,0 +1,26 @@
+# The other half of issue #68, and the case that makes mpi-ignores-spec-env
+# mean something. A torch run passes spec.env to the worker container.
+#
+# The variable is named CRE_TEST_MARKER because no default sets that name, so
+# workerEnv in the expected file shows the user's variable next to the 10
+# defaults from BaseNCCLEnvVars.
+#
+# Without this case, a change that dropped spec.env for torch as well as MPI
+# would fail nothing, because no other case sets spec.env on a torch run.
+run:
+  metadata:
+    name: wr-torch-env
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    env:
+      - name: CRE_TEST_MARKER
+        value: present
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch

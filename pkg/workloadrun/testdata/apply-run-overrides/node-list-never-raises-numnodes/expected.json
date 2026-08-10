@@ -1,0 +1,14 @@
+{
+  "name": "wr",
+  "numNodes": 2,
+  "target": {
+    "nodeNames": [
+      "node001",
+      "node002",
+      "node003",
+      "node004",
+      "node005"
+    ]
+  },
+  "orchestration": null
+}

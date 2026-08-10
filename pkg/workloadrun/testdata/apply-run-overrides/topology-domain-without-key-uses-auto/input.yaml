@@ -1,0 +1,21 @@
+# When a user passes --topology-domain and no --topology-key, the code inserts
+# the placeholder "__auto__" as the key.
+#
+# runWorkloadRunExecute replaces the placeholder later, using
+# cluster.DefaultTopologyKey. No platform override replaces it, because platform
+# overrides set orchestration.topology.topologyKey, which is a different field
+# from target.matchExpressions[].key.
+#
+# The replacement is skipped when node discovery returns no nodes, and the
+# placeholder then reaches the cluster as written, where it matches nothing. No
+# case covers that path yet.
+run:
+  metadata:
+    name: wr
+  spec:
+    image: img:latest
+    numNodes: 2
+    framework:
+      torch:
+        script: /t.py
+topologyDomain: rack-7
