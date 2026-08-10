@@ -307,14 +307,20 @@ overrides:
         trainJob:
           trainer:
             command:
-            - sh
-            - -c
+            - /usr/local/bin/all_reduce_perf_mpi
             args:
-            - |
-              rm -rf /opt/amazon
-              unset NCCL_NET_PLUGIN
-              unset NCCL_TUNER_PLUGIN
-              /usr/local/bin/all_reduce_perf_mpi -b 8 -e {{ .MaxBytes }} -f 2 -g {{ .GpusPerNode }} -n 10 -N 2
+            - -b
+            - "8"
+            - -e
+            - {{ .MaxBytes }}
+            - -f
+            - "2"
+            - -g
+            - "{{ .GpusPerNode }}"
+            - -n
+            - "10"
+            - -N
+            - "2"
             env:
             - name: NCCL_DEBUG
               value: INFO
@@ -324,6 +330,10 @@ overrides:
               value: "1"
             - name: NCCL_MNNVL_ENABLE
               value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"
+            - name: NCCL_NET_PLUGIN
+              value: ""
+            - name: NCCL_TUNER_PLUGIN
+              value: ""
 # --- Mistral + GB300 (InfiniBand) ---
 - when:
     platform:
