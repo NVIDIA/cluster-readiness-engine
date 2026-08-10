@@ -272,6 +272,8 @@ type CertificationSpec struct {
 
 	// Categories are the list of certificate categories required for the Target
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="categories is immutable after creation"
 	Categories []CertificateCategory `json:"categories,omitempty"`
 
 	// Global defaults for all categories. Per-category options override these.
