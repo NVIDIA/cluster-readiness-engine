@@ -1,0 +1,5 @@
+# A healthy fleet must report no cordons at all, not an empty-but-present list.
+# Anything non-empty here would turn every clean run into INCOMPLETE.
+nodes:
+  - name: node002
+  - name: node003

@@ -1,0 +1,14 @@
+# A cordoned node with no GPU was never a certification candidate, so losing it
+# costs no coverage and must not be reported. Counting it would turn a fully
+# certified fleet into INCOMPLETE over a node that could never have been tested.
+#
+# This is reachable whenever the target is not the usual
+# `nvidia.com/gpu.present: "true"` selector — a nodeNames list or a custom label
+# can pull in CPU nodes, and the cordon filter runs before the GPU filter.
+nodes:
+  - name: node001
+    cordoned: true
+    noGPU: true
+  - name: node002
+  - name: node003
+    cordoned: true

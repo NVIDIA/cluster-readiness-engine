@@ -193,7 +193,9 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *burn
 	enableMNNVL := false
 	detectedPlatform := ""
 	gpuArch := ""
-	nodes, _ := discoverTargetNodes(ctx, r.Client, spec.Target)
+	// Cordoned nodes are discarded here: this call only detects GPU and platform
+	// defaults, and a WorkloadRun has no coverage verdict to qualify.
+	nodes, _, _ := discoverTargetNodes(ctx, r.Client, spec.Target)
 	if len(nodes) > 0 {
 		gpuArch = DetectGPUArchitecture(nodes)
 		detectedPlatform = DetectPlatform(nodes)
