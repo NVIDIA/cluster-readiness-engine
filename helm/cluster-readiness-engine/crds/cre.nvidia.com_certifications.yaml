@@ -270,7 +270,11 @@ spec:
                   - domain
                   - variant
                   type: object
+                minItems: 1
                 type: array
+                x-kubernetes-validations:
+                - message: categories is immutable after creation
+                  rule: self == oldSelf
               enableCheckpoint:
                 description: |-
                   enableCheckpoint enables checkpointing for training workloads.
