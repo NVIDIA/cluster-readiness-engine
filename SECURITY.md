@@ -65,7 +65,7 @@ We credit reporters of confirmed vulnerabilities in the release notes of the fix
 ## Supply Chain
 
 - CRE is licensed under Apache-2.0. Dependencies are reviewed for license compatibility with Apache-2.0; attributions are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-- Release artifacts (container images, `ncrectl` binaries, Helm chart) will be signed with Sigstore cosign and ship with SBOMs and build provenance as part of the CI release pipeline. Verification commands will be documented here when the first signed release is published.
+- Container images are signed with Sigstore cosign (keyless OIDC) and ship with CycloneDX SBOMs attested via `cosign attest`. To verify: `cosign verify ghcr.io/nvidia/cluster-readiness-engine/manager:<tag> --certificate-identity-regexp='https://github.com/NVIDIA/cluster-readiness-engine' --certificate-oidc-issuer='https://token.actions.githubusercontent.com'`. CLI binaries include SHA256 checksums in each release.
 
 ## Product Security Resources
 
