@@ -86,6 +86,11 @@ type JobReconciler struct {
 	// MeasurementTimeout is how long after the Job succeeds to wait for measurement
 	// data before failing threshold validation. If zero, defaults to defaultMeasurementTimeout (5m).
 	MeasurementTimeout time.Duration
+
+	// detectorCache caches compiled CEL detectors by expression string to avoid
+	// recompiling on every reconcile. Protected by detectorCacheMu.
+	detectorCache   map[string]*cel.Detector
+	detectorCacheMu sync.Mutex
 }
 
 // getWorkloadRequeueInterval returns the effective requeue interval for workload status polling.
@@ -975,11 +980,24 @@ func (r *JobReconciler) checkNodeHealth(ctx context.Context, job *burninv1alpha1
 		return ctrl.Result{}, nil
 	}
 
-	// Create the CEL detector from the expression
-	detector, err := cel.NewDetector(job.Spec.NodeHealthMonitor.CEL.Expression)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to create CEL detector: %w", err)
+	// Get or compile the CEL detector — cache by expression string to avoid
+	// recompiling on every reconcile (cel.NewEnv + compile + link is expensive).
+	expr := job.Spec.NodeHealthMonitor.CEL.Expression
+	r.detectorCacheMu.Lock()
+	if r.detectorCache == nil {
+		r.detectorCache = make(map[string]*cel.Detector)
 	}
+	detector, ok := r.detectorCache[expr]
+	if !ok {
+		var err error
+		detector, err = cel.NewDetector(expr)
+		if err != nil {
+			r.detectorCacheMu.Unlock()
+			return ctrl.Result{}, fmt.Errorf("failed to create CEL detector: %w", err)
+		}
+		r.detectorCache[expr] = detector
+	}
+	r.detectorCacheMu.Unlock()
 
 	// Discover nodes running the job's workload via cre.nvidia.com/job label
 	nodeNames, err := r.NodeDiscoverer.DiscoverNodesForJob(ctx, job.Namespace, job.Name)

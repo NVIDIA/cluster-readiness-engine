@@ -236,6 +236,59 @@ fi
 chmod +x "${TEMP_DIR}/${BINARY_NAME}"
 
 # ---------------------------------------------------------------------------
+# Verify checksum
+# ---------------------------------------------------------------------------
+
+msg "Verifying checksum..."
+
+CHECKSUMS_FILE="${TEMP_DIR}/checksums.txt"
+
+# Download checksums.txt from the same release, mirroring the binary download path.
+if [[ "${GH_AVAILABLE}" == "true" ]]; then
+  gh release download "${VERSION}" \
+    --repo "${GH_REPO}" \
+    --pattern "checksums.txt" \
+    --output "${CHECKSUMS_FILE}" \
+    --clobber 2>/dev/null || true
+elif [[ -n "${GH_TOKEN}" ]]; then
+  CHECKSUM_ASSET_URL=$(echo "${RELEASE_JSON}" | tr -d '\n' | tr '{' '\n' \
+    | grep '"name" *: *"checksums\.txt"' \
+    | grep -o '"url" *: *"https://api\.github\.com[^"]*releases/assets/[0-9]*"' \
+    | head -1 \
+    | sed 's/.*"\(https[^"]*\)".*/\1/')
+  if [[ -n "${CHECKSUM_ASSET_URL}" ]]; then
+    curl -fsSL \
+      -H "Authorization: token ${GH_TOKEN}" \
+      -H "Accept: application/octet-stream" \
+      -o "${CHECKSUMS_FILE}" \
+      "${CHECKSUM_ASSET_URL}" 2>/dev/null || true
+  fi
+else
+  CHECKSUM_URL="${GH_RELEASE_URL}/${VERSION}/checksums.txt"
+  curl -fsSL -o "${CHECKSUMS_FILE}" "${CHECKSUM_URL}" 2>/dev/null || true
+fi
+
+if [[ ! -f "${CHECKSUMS_FILE}" ]] || [[ ! -s "${CHECKSUMS_FILE}" ]]; then
+  err "checksums.txt not found for release ${VERSION} — cannot verify download"
+fi
+
+# Select SHA-256 tool: sha256sum (Linux/GNU) or shasum -a 256 (macOS/Darwin).
+if command -v sha256sum &>/dev/null; then
+  SHA256_CHECK=(sha256sum --check --ignore-missing)
+elif command -v shasum &>/dev/null; then
+  SHA256_CHECK=(shasum -a 256 --check --ignore-missing)
+else
+  err "No SHA-256 tool found (sha256sum or shasum) — cannot verify checksum"
+fi
+
+# Run from TEMP_DIR so the relative filenames in checksums.txt resolve correctly.
+if ! (cd "${TEMP_DIR}" && "${SHA256_CHECK[@]}" checksums.txt); then
+  err "SHA-256 checksum verification failed for ${BINARY_NAME} — aborting install"
+fi
+
+ok "Checksum verified."
+
+# ---------------------------------------------------------------------------
 # Install / upgrade binary + kubectl plugin symlink
 #
 # kubectl discovers plugins by looking for executables named "kubectl-<name>"
