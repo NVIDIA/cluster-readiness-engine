@@ -1,0 +1,7 @@
+# The case this change exists for. One cordoned node in an otherwise uniform
+# fleet: discovery drops it, the run certifies the rest and succeeds, and before
+# this the report said PASSED without ever naming node003.
+cordoned:
+  - node003
+archExcluded: []
+gpuArch: h100

@@ -1,0 +1,7 @@
+{
+  "excludedNodes": [
+    "node003"
+  ],
+  "exclusionReason": "1 node(s) matched the target but were unschedulable (cordoned): node003",
+  "verdictAfterPassingRun": "INCOMPLETE"
+}

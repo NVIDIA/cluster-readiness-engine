@@ -1,0 +1,8 @@
+# The behaviour #73 shipped, pinned so this change does not alter it. With no
+# cordons the output must be byte-identical to what the architecture filter
+# produced on its own — same list, same wording, no leading separator.
+cordoned: []
+archExcluded:
+  - node002
+  - node004
+gpuArch: h100
