@@ -1,6 +1,6 @@
 ---
-title: Health Monitoring & Remediation
-description: How the Cluster Readiness Engine detects node failures and quarantines bad nodes.
+title: Health Monitoring & Failed Node Attribution
+description: How the Cluster Readiness Engine detects node failures and records which nodes failed and why.
 ---
 {/* SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}
 {/* SPDX-License-Identifier: Apache-2.0 */}
@@ -22,21 +22,56 @@ node.metadata.labels["nvidia.com/gpu.ecc.error.count"] > "0"
 
 Custom detectors can be registered by implementing the `NodeFailureDetector` interface.
 
-## Remediation
+## Failed node attribution
 
-When a `Certification` fails, the controller auto-creates a `Remediation` resource targeting the affected nodes. The `Remediation` controller:
+CRE does not taint, cordon, or patch nodes. Its job is to identify which nodes failed which tests and why. That signal is recorded on the Certification CR and is available for external systems (node lifecycle operators, alerting pipelines) to act on.
 
-1. **Taints** the nodes with `cre.nvidia.com/preflight-failed:NoExecute` — evicts existing workloads and prevents new scheduling
-2. **Cordons** the nodes — marks them unschedulable
-3. **Sets conditions** on the node objects documenting the failure reason
+### How failures propagate
 
-### Reversal
+Failed nodes bubble up through the three-tier hierarchy:
 
-Deleting the `Remediation` resource reverses all of the above: taints and cordons are removed, and nodes return to schedulable state.
+```
+Job            status.failedNodes              ← set when the Job fails, one entry per node with a reason
+      ↑ copied to
+Workflow       status.failedNodes              ← union across all failed Jobs for this category
+      ↑ copied to
+Certification  status.categoryStatuses[].failedNodes  ← per-category list of failed nodes
+```
 
-### Manual remediation
+### Failure reasons
 
-You can also create a `Remediation` resource manually to quarantine nodes outside of a certification run.
+Each failed node entry carries a `reason`:
+
+| Reason | Meaning |
+|--------|---------|
+| `HardwareFailureDetected` | CEL health check detected an unhealthy or cordoned node during the run |
+| `ThresholdViolation` | A performance threshold (bandwidth, goodput, step time) was missed |
+| `WorkloadFailed` | The workload exited non-zero or stalled |
+
+Different nodes in the same category can fail with different reasons. A node that fails in multiple categories appears in each category's `failedNodes` list, potentially with a different reason each time.
+
+### Reading failed nodes
+
+```bash
+kubectl get certification <name> -o jsonpath='{.status.categoryStatuses}' | jq .
+```
+
+Or via the CLI:
+
+```bash
+ncrectl certification report <name>
+```
+
+The report lists failed nodes per category with their reason.
+
+### Acting on failed nodes
+
+CRE reports failures — quarantine is your platform's responsibility. Common patterns:
+
+- Cordon the node (`kubectl cordon <node>`) to prevent new workloads from scheduling
+- Drain it (`kubectl drain <node>`) to evict existing workloads
+- Trigger a node lifecycle operator or repair pipeline using the `failedNodes` data as input
+- After repair, uncordon the node and re-run the relevant category to confirm it passes
 
 ## Adaptive fault isolation
 

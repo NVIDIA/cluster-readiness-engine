@@ -70,7 +70,7 @@ Runs three phases in order:
 
 | Phase | What |
 |-------|------|
-| `cr` | All CRE custom resource instances (Certifications, Workflows, Jobs, Remediations) |
+| `cr` | All CRE custom resource instances (Certifications, Workflows, Jobs) |
 | `helm` | CRE Helm release (CRDs, controller, LogProfiles) |
 | `deps` | Kubeflow Trainer |
 
@@ -94,5 +94,5 @@ ncrectl setup reset --skip-phases=deps
 ```
 
 <Warning>
-`reset` deletes all Certification, Workflow, Job, and Remediation resources. This is irreversible.
+`reset` deletes all Certification, Workflow, and Job resources. This is irreversible.
 </Warning>

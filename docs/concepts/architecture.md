@@ -19,7 +19,7 @@ Certification
 
 ### Certification
 
-The top-level resource. It references a set of `categories` (domain + variant pairs) from the catalog. The controller creates one `Workflow` per category and tracks overall pass/fail status. On failure it auto-creates a `Remediation` resource for the affected nodes.
+The top-level resource. It references a set of `categories` (domain + variant pairs) from the catalog. The controller creates one `Workflow` per category and tracks overall pass/fail status. Failed nodes are recorded per category at `status.categoryStatuses[].failedNodes`.
 
 ### Workflow
 
@@ -35,7 +35,6 @@ Creates the actual workload (a `TrainJob`) via the adapter pattern. Manages heal
 |----------|---------|
 | `GoodputMeasurement` | Watches a Job's pod logs via a LogProfile, computes the goodput ratio |
 | `BandwidthMeasurement` | Parses NCCL log output, computes per-bus bandwidth metrics |
-| `Remediation` | Taints, cordons, and sets conditions on failed nodes; reverses on deletion |
 | `LogProfile` | Cluster-scoped; defines regex patterns with named capture groups for log parsing |
 
 ## Controller patterns

@@ -24,7 +24,7 @@ navigation:
         path: concepts/catalog.md
       - page: Workload Types
         path: concepts/workload-types.md
-      - page: Health Monitoring & Remediation
+      - page: Health Monitoring & Failed Node Attribution
         path: concepts/health-monitoring-remediation.md
       - page: Goodput & Bandwidth Measurement
         path: concepts/goodput-bandwidth.md

@@ -43,15 +43,14 @@ _Generated from CRD schema — coming soon._
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `phase` | string | `InProgress`, `Passed`, or `Failed` |
 | `conditions` | []Condition | InProgress, Succeeded, Failed (mutually exclusive) |
-| `categoryResults` | []CategoryResult | Per-category pass/fail with measured values |
-| `nodeResults` | []NodeResult | Per-node pass/fail |
-| `remediationRef` | ObjectRef | Reference to the auto-created Remediation (if any) |
+| `categoryStatuses` | []CertificationCategoryStatus | Per-category status including `domain`, `variant`, `status`, and `failedNodes` |
+
+Each `categoryStatuses` entry includes a `failedNodes` list. Each entry in that list has a `name` (node name) and a `reason` (`HardwareFailureDetected`, `ThresholdViolation`, or `WorkloadFailed`).
 
 ## Lifecycle
 
 1. Controller creates one `Workflow` per entry in `spec.categories`.
 2. Workflows run sequentially or in parallel depending on orchestration config.
-3. When all Workflows complete, Certification is marked `Passed` or `Failed`.
-4. On failure, a `Remediation` is auto-created for affected nodes.
+3. When all Workflows complete, Certification is marked `Succeeded` or `Failed`.
+4. Failed nodes are recorded at `status.categoryStatuses[].failedNodes`. CRE does not taint or cordon nodes.

@@ -19,14 +19,14 @@ ncrectl workloadrun report <name>
 |---------|---------|
 | Summary | Overall pass/fail, node count, run duration |
 | Category results | Per-domain/variant measured vs. expected values with pass/fail |
-| Node results | Per-node breakdown — which passed, which failed, which were remediated |
+| Node results | Per-node breakdown — which passed, which failed, and the failure reason |
 
 ## Status values
 
 | Status | Meaning |
 |--------|---------|
 | `Passed` | All categories met thresholds on all node groups |
-| `Failed` | One or more categories failed; affected nodes tainted and cordoned |
+| `Failed` | One or more categories failed; affected nodes listed in `status.categoryStatuses[].failedNodes` |
 | `InProgress` | Still running |
 
 ## Bandwidth results
@@ -43,15 +43,19 @@ Below-threshold results indicate a network issue — degraded link, misconfigure
 - **Expected minimum** from the catalog entry
 - A ratio below ~0.95 suggests stalls, slow nodes, or framework overhead
 
-## Remediated nodes
+## Failed nodes
+
+Failed nodes are listed per category in `status.categoryStatuses[].failedNodes`, each with a `name` and `reason`:
 
 ```bash
-kubectl get remediations.cre.nvidia.com
-kubectl describe remediation <name>
+kubectl get certification <name> -o jsonpath='{.status.categoryStatuses}' | jq .
 ```
 
-To release nodes after fixing the underlying issue:
+CRE records which nodes failed and why — it does not taint or cordon them. To quarantine a failed node:
 
 ```bash
-kubectl delete remediation <name>
+kubectl cordon <node>    # prevent new workloads
+kubectl drain <node>     # evict existing workloads
 ```
+
+After repair, uncordon the node and re-run the relevant category to confirm it passes.

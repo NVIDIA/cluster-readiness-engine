@@ -35,4 +35,4 @@ _Configuration reference coming soon._
 
 ## Reading the result
 
-After isolation the `Certification` status names the isolated node(s). Those nodes are passed to `Remediation` for quarantine — see [Health Monitoring & Remediation](../concepts/health-monitoring-remediation.md).
+After isolation the `Certification` status names the isolated node(s) in `status.categoryStatuses[].failedNodes`. See [Health Monitoring & Failed Node Attribution](../concepts/health-monitoring-remediation.md) for how to act on that data.
