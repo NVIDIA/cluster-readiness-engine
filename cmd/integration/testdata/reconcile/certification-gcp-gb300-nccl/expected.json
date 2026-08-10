@@ -269,9 +269,6 @@
                                   "claims": [
                                     {
                                       "name": "compute-domain-channel"
-                                    },
-                                    {
-                                      "name": "roce-channel"
                                     }
                                   ],
                                   "limits": {
@@ -309,10 +306,6 @@
                               {
                                 "name": "compute-domain-channel",
                                 "resourceClaimTemplateName": "nccl-all-reduce-channel"
-                              },
-                              {
-                                "name": "roce-channel",
-                                "resourceClaimTemplateName": "nccl-all-reduce-roce"
                               }
                             ],
                             "restartPolicy": "OnFailure",
@@ -440,31 +433,6 @@
             },
             "numNodes": 2
           }
-        },
-        {
-          "apiVersion": "resource.k8s.io/v1",
-          "kind": "ResourceClaimTemplate",
-          "metadata": {
-            "labels": {
-              "app": "nccl-all-reduce"
-            },
-            "name": "nccl-all-reduce-roce"
-          },
-          "spec": {
-            "spec": {
-              "devices": {
-                "requests": [
-                  {
-                    "exactly": {
-                      "count": 8,
-                      "deviceClassName": "roce.networking.k8s.aws"
-                    },
-                    "name": "roce"
-                  }
-                ]
-              }
-            }
-          }
         }
       ]
     },
@@ -497,27 +465,18 @@
       ],
       "dependencyRefs": [
         {
-          "apiVersion": "resource.nvidia.com/v1beta1",
-          "kind": "ComputeDomain",
-          "name": "nccl-all-reduce-compute-domain-a7a4f-job",
-          "namespace": "default",
-          "scope": "job",
-          "groupName": "group-0",
-          "iteration": 1
-        },
-        {
-          "apiVersion": "resource.k8s.io/v1",
-          "kind": "ResourceClaimTemplate",
-          "name": "nccl-all-reduce-roce-a7a4f-job",
-          "namespace": "default",
-          "scope": "job",
-          "groupName": "group-0",
-          "iteration": 1
-        },
-        {
           "apiVersion": "trainer.kubeflow.org/v1alpha1",
           "kind": "TrainingRuntime",
           "name": "nccl-all-reduce-runtime-a7a4f-job",
+          "namespace": "default",
+          "scope": "job",
+          "groupName": "group-0",
+          "iteration": 1
+        },
+        {
+          "apiVersion": "resource.nvidia.com/v1beta1",
+          "kind": "ComputeDomain",
+          "name": "nccl-all-reduce-compute-domain-a7a4f-job",
           "namespace": "default",
           "scope": "job",
           "groupName": "group-0",
