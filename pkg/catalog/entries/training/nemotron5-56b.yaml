@@ -344,8 +344,6 @@ overrides:
       equals: gcp
     gpuArchitecture:
       equals: gb300
-  dependencies:
-{{ lib "deps/gb300-roce-torch.yaml" . | indent 2 }}
 # --- TogetherAI (InfiniBand) ---
 - when:
     platform:

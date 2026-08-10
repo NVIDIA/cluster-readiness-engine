@@ -438,8 +438,6 @@ overrides:
       equals: gcp
     gpuArchitecture:
       equals: gb300
-  dependencies:
-{{ lib "deps/gb300-roce-comm.yaml" . | indent 2 }}
 # --- AWS + GB300 (RoCE) ---
 # Uses nccl-tests image (sshd pre-installed) with OpenMPI at /opt/amazon/openmpi.
 # Removes EFA/OFI plugins that segfault on RoCE, keeps OpenMPI for orted.

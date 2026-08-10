@@ -255,8 +255,6 @@ overrides:
       equals: gcp
     gpuArchitecture:
       equals: gb300
-  dependencies:
-{{ lib "deps/gb300-roce-comm.yaml" . | indent 2 }}
 # --- AWS + GB300 (RoCE) ---
 - when:
     platform:
