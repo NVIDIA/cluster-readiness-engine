@@ -165,6 +165,9 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 	}
 
 	// Create Workflow for the first category
+	if len(certification.Spec.Categories) == 0 {
+		return ctrl.Result{}, fmt.Errorf("certification has no categories")
+	}
 	firstCategory := certification.Spec.Categories[0]
 	workflowName, err := r.createWorkflowForCategory(ctx, certification, firstCategory)
 	if err != nil {
@@ -226,6 +229,9 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 	}
 
 	// Category is Pending — create its Workflow
+	if activeIdx >= len(certification.Spec.Categories) {
+		return ctrl.Result{}, fmt.Errorf("category index %d out of range (spec has %d categories)", activeIdx, len(certification.Spec.Categories))
+	}
 	category := certification.Spec.Categories[activeIdx]
 	workflowName, err := r.createWorkflowForCategory(ctx, certification, category)
 	if err != nil {
