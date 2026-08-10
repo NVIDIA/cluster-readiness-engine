@@ -286,11 +286,6 @@ overrides:
             - name: NCCL_MNNVL_ENABLE
               value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"
 # --- GB300 (RoCE) ---
-- when:
-    platform:
-      equals: gcp
-    gpuArchitecture:
-      equals: gb300
 # --- AWS + GB300 (RoCE) ---
 - when:
     platform:

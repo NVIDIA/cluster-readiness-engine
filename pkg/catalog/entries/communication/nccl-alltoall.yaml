@@ -433,11 +433,6 @@ overrides:
             - uint8
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
 # --- GB300 (RoCE) ---
-- when:
-    platform:
-      equals: gcp
-    gpuArchitecture:
-      equals: gb300
 # --- AWS + GB300 (RoCE) ---
 # Uses nccl-tests image (sshd pre-installed) with OpenMPI at /opt/amazon/openmpi.
 # Removes EFA/OFI plugins that segfault on RoCE, keeps OpenMPI for orted.

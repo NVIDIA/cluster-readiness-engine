@@ -369,11 +369,6 @@ overrides:
   dependencies:
 {{ lib "deps/gcp-gb200-roce-runtime-patch-training.yaml" . | indent 2 }}
 # --- GB300 (RoCE) ---
-- when:
-    platform:
-      equals: gcp
-    gpuArchitecture:
-      equals: gb300
 # --- TogetherAI (InfiniBand) ---
 - when:
     platform:
