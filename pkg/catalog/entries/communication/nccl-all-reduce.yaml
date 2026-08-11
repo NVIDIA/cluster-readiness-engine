@@ -505,3 +505,26 @@ overrides:
 {{ lib "nccl/forge-ib-env.yaml" . | toMpiArgs | indent 12 }}
             - /usr/local/bin/all_reduce_perf_mpi
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- Forge + GB200/GB300 (MNNVL over NVLink; MPI bootstrap must not use IB) ---
+# Must come AFTER the GB200/GB300 ComputeDomain block so these args win, and after
+# Forge + L40 so the L40 IB baseline is not applied to Blackwell.
+# Forge exposes IB HCAs to pods that never requested an RDMA resource; UCC/UCX then
+# bind one and abort in MPI_Init. Pin the MPI bootstrap to TCP. The ComputeDomain
+# dependency from the GB200/GB300 block still applies, so NCCL keeps MNNVL.
+- when:
+    platform:
+      equals: forge
+    gpuArchitecture:
+      in: [gb200, gb300]
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/forge-mpi-tcp-args.yaml" . | indent 12 }}
+{{ lib "nccl/gb200-env.yaml" . | toMpiArgs | indent 12 }}
+{{ lib "nccl/forge-mpi-tcp-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_reduce_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
