@@ -7,7 +7,7 @@
 # from NeMo framework logs (Nemotron 4 format).
 #
 # Deploy:
-#   kubectl apply -f burnin_v1alpha1_logprofile_nemo4.yaml
+#   kubectl apply -f cre_v1alpha1_logprofile_nemo4.yaml
 #
 # Usage:
 #   Reference as logProfileRef: "nemo-4-training" in a Job or GoodputMeasurement.

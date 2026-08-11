@@ -14,5 +14,5 @@ collectMetrics:
   namespace: default
   measurement: test-goodput
   sanitizeFields:
-    - burnin_goodput_training_time_seconds
-    - burnin_goodput_ratio
+    - cre_goodput_training_time_seconds
+    - cre_goodput_ratio

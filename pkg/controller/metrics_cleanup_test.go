@@ -33,15 +33,15 @@ func TestCleanupJobMetricsRemovesEveryJobScopedSeries(t *testing.T) {
 		collect prometheus.Collector
 		record  func()
 	}{
-		{"burnin_job_status", jobStatusGauge, func() { recordJobStatus(ns, job, wf, "in_progress") }},
-		{"burnin_job_failed_nodes", failedNodesGauge, func() { recordHardwareFailure(ns, job, wf, []string{"node-a"}) }},
-		{"burnin_hardware_failures_detected_total", hardwareFailuresDetectedTotal, func() { recordHardwareFailure(ns, job, wf, []string{"node-a"}) }},
-		{"burnin_hardware_failed_jobs_total", hardwareFailedJobsTotal, func() { recordFirstHardwareFailure(ns, job, wf) }},
-		{"burnin_nodes_evaluated_total", nodesEvaluatedTotal, func() { recordNodesEvaluated(ns, job, wf, 8) }},
-		{"burnin_workload_created_total", workloadCreatedTotal, func() { recordWorkloadCreated(ns, job, wf) }},
-		{"burnin_reconcile_total", reconcileTotal, func() { recordReconcile(ns, job, wf, "success") }},
-		{"burnin_reconcile_duration_seconds", reconcileDuration, func() { observeReconcileDuration(ns, job, wf, 0.25) }},
-		{"burnin_node_health_check_duration_seconds", nodeHealthCheckDuration, func() { observeNodeHealthCheckDuration(ns, job, wf, 0.1) }},
+		{"cre_job_status", jobStatusGauge, func() { recordJobStatus(ns, job, wf, "in_progress") }},
+		{"cre_job_failed_nodes", failedNodesGauge, func() { recordHardwareFailure(ns, job, wf, []string{"node-a"}) }},
+		{"cre_hardware_failures_detected_total", hardwareFailuresDetectedTotal, func() { recordHardwareFailure(ns, job, wf, []string{"node-a"}) }},
+		{"cre_hardware_failed_jobs_total", hardwareFailedJobsTotal, func() { recordFirstHardwareFailure(ns, job, wf) }},
+		{"cre_nodes_evaluated_total", nodesEvaluatedTotal, func() { recordNodesEvaluated(ns, job, wf, 8) }},
+		{"cre_workload_created_total", workloadCreatedTotal, func() { recordWorkloadCreated(ns, job, wf) }},
+		{"cre_reconcile_total", reconcileTotal, func() { recordReconcile(ns, job, wf, "success") }},
+		{"cre_reconcile_duration_seconds", reconcileDuration, func() { observeReconcileDuration(ns, job, wf, 0.25) }},
+		{"cre_node_health_check_duration_seconds", nodeHealthCheckDuration, func() { observeNodeHealthCheckDuration(ns, job, wf, 0.1) }},
 	}
 
 	baseline := make(map[string]int, len(jobScoped))

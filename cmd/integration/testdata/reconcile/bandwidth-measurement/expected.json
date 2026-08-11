@@ -65,15 +65,15 @@
     }
   },
   "bandwidthMetrics": {
-    "burnin_nccl_algbw_gbps:1048576": 15.41,
-    "burnin_nccl_algbw_gbps:1073741824": 397.14,
-    "burnin_nccl_algbw_gbps:17179869184": 476.36,
-    "burnin_nccl_algbw_gbps:65536": 1.13,
-    "burnin_nccl_algbw_gbps:8": 0,
-    "burnin_nccl_busbw_gbps:1048576": 29.87,
-    "burnin_nccl_busbw_gbps:1073741824": 769.45,
-    "burnin_nccl_busbw_gbps:17179869184": 922.94,
-    "burnin_nccl_busbw_gbps:65536": 2.18,
-    "burnin_nccl_busbw_gbps:8": 0
+    "cre_nccl_algbw_gbps:1048576": 15.41,
+    "cre_nccl_algbw_gbps:1073741824": 397.14,
+    "cre_nccl_algbw_gbps:17179869184": 476.36,
+    "cre_nccl_algbw_gbps:65536": 1.13,
+    "cre_nccl_algbw_gbps:8": 0,
+    "cre_nccl_busbw_gbps:1048576": 29.87,
+    "cre_nccl_busbw_gbps:1073741824": 769.45,
+    "cre_nccl_busbw_gbps:17179869184": 922.94,
+    "cre_nccl_busbw_gbps:65536": 2.18,
+    "cre_nccl_busbw_gbps:8": 0
   }
 }
