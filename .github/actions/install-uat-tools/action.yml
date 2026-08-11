@@ -16,6 +16,8 @@ runs:
         else
           ARCH=$(case $(uname -m) in x86_64) echo amd64;; aarch64|arm64) echo arm64;; esac)
           curl -fsSL -o /tmp/kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-${ARCH}"
+          EXPECTED_SHA=$(curl -fsSL "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-${ARCH}.sha256sum")
+          printf '%s  /tmp/kind\n' "${EXPECTED_SHA}" | sha256sum --check
           chmod +x /tmp/kind
           sudo mv /tmp/kind /usr/local/bin/kind
         fi
@@ -28,8 +30,10 @@ runs:
           echo "kubectl already installed: $(kubectl version --client --short 2>/dev/null || kubectl version --client)"
         else
           ARCH=$(case $(uname -m) in x86_64) echo amd64;; aarch64|arm64) echo arm64;; esac)
-          KUBECTL_VERSION=$(curl -fsSL https://dl.k8s.io/release/stable.txt)
+          KUBECTL_VERSION='v1.33.0'
           curl -fsSL -o /tmp/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl"
+          EXPECTED_SHA=$(curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl.sha256")
+          printf '%s  /tmp/kubectl\n' "${EXPECTED_SHA}" | sha256sum --check
           chmod +x /tmp/kubectl
           sudo mv /tmp/kubectl /usr/local/bin/kubectl
           kubectl version --client
@@ -44,9 +48,20 @@ runs:
         else
           ARCH=$(case $(uname -m) in x86_64) echo x86_64;; aarch64|arm64) echo arm64;; esac)
           TMPDIR=$(mktemp -d)
-          curl -fsSL "https://github.com/tilt-dev/tilt/releases/download/v${TILT_VERSION}/tilt.${TILT_VERSION}.linux.${ARCH}.tar.gz" \
-            | tar -xzv -C "$TMPDIR" tilt
-          sudo mv "$TMPDIR/tilt" /usr/local/bin/tilt
-          rm -rf "$TMPDIR"
+          TARBALL="tilt.${TILT_VERSION}.linux.${ARCH}.tar.gz"
+          curl -fsSL -o "${TMPDIR}/${TARBALL}" \
+            "https://github.com/tilt-dev/tilt/releases/download/v${TILT_VERSION}/${TARBALL}"
+          EXPECTED_SHA=$(curl -fsSL \
+            "https://github.com/tilt-dev/tilt/releases/download/v${TILT_VERSION}/checksums.txt" \
+            | grep "${TARBALL}" | awk '{print $1}')
+          ACTUAL_SHA=$(sha256sum "${TMPDIR}/${TARBALL}" | awk '{print $1}')
+          if [[ "${EXPECTED_SHA}" != "${ACTUAL_SHA}" ]]; then
+            echo "SHA-256 mismatch for ${TARBALL}" >&2
+            rm -rf "${TMPDIR}"
+            exit 1
+          fi
+          tar -xzf "${TMPDIR}/${TARBALL}" -C "${TMPDIR}" tilt
+          sudo mv "${TMPDIR}/tilt" /usr/local/bin/tilt
+          rm -rf "${TMPDIR}"
         fi
         tilt version
