@@ -74,6 +74,3 @@ orchestration:
   iterations: 1
 overrides:
 {{ lib "overrides/gb200-topology-key.yaml" . }}
-- when:
-    gpuArchitecture:
-      in: [a100]
