@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# MPI bootstrap MCA flags for Forge GB200/GB300 (RoCE / MNNVL, no InfiniBand).
+#
+# Forge exposes IB HCAs to pods that never requested an RDMA resource. Without
+# these flags Open MPI's UCC collective component binds an IB device and aborts
+# in MPI_Init (ucc_core_addr_exchange → UD endpoint timeout). Disabling UCC
+# alone is insufficient: the UCX PML then binds IB and aborts in the first
+# MPI_Allgather. Both collective and point-to-point / out-of-band transports
+# must be pinned to TCP. This affects only MPI bootstrap — NCCL carries
+# collectives over NVLink/MNNVL via the ComputeDomain dependency as usual.
+- --mca
+- coll_ucc_enable
+- "0"
+- --mca
+- coll_hcoll_enable
+- "0"
+- --mca
+- pml
+- ob1
+- --mca
+- btl
+- tcp,self
+- --mca
+- btl_tcp_if_include
+- eth0
+- --mca
+- oob
+- tcp
+- --mca
+- oob_tcp_if_include
+- eth0

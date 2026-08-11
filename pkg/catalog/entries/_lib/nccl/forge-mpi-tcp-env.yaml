@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Belt-and-braces UCX env vars passed via mpirun -x for Forge GB200/GB300.
+# Prevents UCX from selecting an IB device even when pml=ob1 is set, ensuring
+# MPI out-of-band and point-to-point communication stays on TCP/eth0.
+- name: UCX_TLS
+  value: tcp
+- name: UCX_NET_DEVICES
+  value: eth0
