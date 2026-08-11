@@ -450,7 +450,7 @@ overrides:
       workload:
         trainJob:
           trainer:
-            image: public.ecr.aws/hpc-cloud/nccl-tests:latest
+            image: public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9
             command:
 {{ lib "nccl/aws-gb300-roce-command.yaml" . | indent 12 }}
             args:
