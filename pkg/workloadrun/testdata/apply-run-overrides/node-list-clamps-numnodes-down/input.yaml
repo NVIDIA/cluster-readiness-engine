@@ -1,0 +1,13 @@
+# --nodes names fewer nodes than the file asks for. numNodes is clamped down to
+# match, because asking for 4 nodes while naming 2 can never be satisfied and
+# the run would wait rather than fail.
+run:
+  metadata:
+    name: wr
+  spec:
+    image: img:latest
+    numNodes: 4
+    framework:
+      torch:
+        script: /t.py
+nodeList: node001,node002

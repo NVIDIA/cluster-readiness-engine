@@ -1,0 +1,16 @@
+# The ordinary case, and the one to read the others against. A torch run over 2
+# nodes with nothing unusual set.
+run:
+  metadata:
+    name: wr-torch
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch

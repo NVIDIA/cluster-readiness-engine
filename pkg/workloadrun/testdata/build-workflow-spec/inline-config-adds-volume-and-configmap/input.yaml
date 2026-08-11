@@ -1,0 +1,27 @@
+# An inline config has two effects that someone can change one at a time. It
+# adds a volume and a mount at /config, and it adds a second dependency that
+# carries the ConfigMap. If either half goes missing, the run either mounts
+# nothing or mounts a ConfigMap that was never created, and both failures happen
+# when the pod starts rather than when the spec is rendered.
+#
+# Three fields in the expected file cover the two halves. runtimeVolumes holds
+# the config volume, workerVolumeMounts holds the mount at /config, and
+# dependencyKinds holds the ConfigMap.
+run:
+  metadata:
+    name: wr-config
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 1
+    framework:
+      exec:
+        command: ["/bin/bash", "/config/run.sh"]
+    config:
+      inline:
+        run.sh: |
+          echo hello
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: exec

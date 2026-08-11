@@ -1,0 +1,25 @@
+# Thresholds are the only thing that turns on the Validation block, and T1
+# showed why the block is needed. When no thresholds are set,
+# checkPerformanceThresholds returns early, so nothing checks that any data was
+# collected. The presence of the block decides whether a run is measured or only
+# watched.
+#
+# Note the spelling of the key. Issue #52 is open because one unknown threshold
+# key turns off all threshold checks without saying so, which makes the exact
+# string here important.
+run:
+  metadata:
+    name: wr-thresholds
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    thresholds:
+      busBandwidthGBps: "value >= 100"
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch

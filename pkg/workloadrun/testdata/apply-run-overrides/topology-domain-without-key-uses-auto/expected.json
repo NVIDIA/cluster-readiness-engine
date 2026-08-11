@@ -1,0 +1,16 @@
+{
+  "name": "wr",
+  "numNodes": 2,
+  "target": {
+    "matchExpressions": [
+      {
+        "key": "__auto__",
+        "operator": "In",
+        "values": [
+          "rack-7"
+        ]
+      }
+    ]
+  },
+  "orchestration": null
+}

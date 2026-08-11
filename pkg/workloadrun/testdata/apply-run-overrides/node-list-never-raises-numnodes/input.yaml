@@ -1,0 +1,18 @@
+# The clamp works in one direction only, and this case records that.
+#
+# Naming more nodes than numNodes does not raise numNodes. A run of 2 nodes with
+# five names still runs on 2 nodes, chosen from those five.
+#
+# Someone who reads the clamp as a mistake could change it into a plain
+# assignment. Raising numNodes would run the workload on more nodes than the
+# file asked for.
+run:
+  metadata:
+    name: wr
+  spec:
+    image: img:latest
+    numNodes: 2
+    framework:
+      torch:
+        script: /t.py
+nodeList: node001,node002,node003,node004,node005

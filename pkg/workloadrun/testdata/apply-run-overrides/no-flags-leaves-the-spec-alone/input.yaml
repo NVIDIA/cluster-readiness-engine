@@ -1,0 +1,18 @@
+# Every flag is empty, so the four recorded fields must come back unchanged. No
+# empty Target is created, and no empty Orchestration block is created.
+#
+# A helper that allocates an empty block on the way through is how a later nil
+# check starts taking the wrong branch.
+#
+# The case checks the four fields that the flags can change. It does not check
+# image, framework, env, volumes, resources or thresholds, so it would not
+# notice a helper that overwrote one of those.
+run:
+  metadata:
+    name: wr-untouched
+  spec:
+    image: img:latest
+    numNodes: 3
+    framework:
+      torch:
+        script: /t.py

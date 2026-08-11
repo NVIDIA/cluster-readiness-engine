@@ -1,0 +1,35 @@
+# B6, fixed by PR #61 on this path only.
+#
+# A testScale of intra-node means that each node is tested on its own.
+# Partitioning reads the numNodes of the workload rather than any orchestration
+# field, so the setting did nothing, and a run over 4 nodes stayed one job of 4
+# nodes. PR #61 added nodesPerJobForScale to the command line render path, and
+# this case records the result. The trainer asks for 1 node even though the run
+# asks for 4.
+#
+# The controller does not do the same thing. It sets NodesPerJob to
+# spec.NumNodes at line 257 and line 300 of
+# pkg/controller/workloadrun_controller.go. Its only mention of
+# nodesPerJobForScale is a comment at line 515 that says the case is "Handled by
+# nodesPerJobForScale when the workload is built", and the controller never
+# calls that function. A WorkloadRun that runs on a real cluster therefore still
+# gets one job of 4 nodes.
+#
+# So this case covers the preview and not the behaviour that B6 was about. Do
+# not read a passing run here as proof that B6 is fixed.
+run:
+  metadata:
+    name: wr-intra-node
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 4
+    framework:
+      torch:
+        script: /workspace/train.py
+    orchestration:
+      testScale: intra-node
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch
