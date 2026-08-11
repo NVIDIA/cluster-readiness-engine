@@ -297,7 +297,7 @@ ok "Checksum verified."
 # "ncrectl ..." with no separate binary to maintain or upgrade.
 # ---------------------------------------------------------------------------
 
-PLUGIN_NAME="kubectl-ncrectl"
+PLUGIN_NAME="kubectl-ncre"
 STATUS=0
 
 if [[ -w "${INSTALL_DIR}" ]]; then
