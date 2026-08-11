@@ -328,7 +328,7 @@ if command -v "${BIN_NAME}" &>/dev/null; then
   ok "${BIN_NAME} ${VERSION} installed successfully to ${INSTALL_DIR}/${BIN_NAME}"
   "${BIN_NAME}" --version
   if [[ -e "${INSTALL_DIR}/${PLUGIN_NAME}" ]]; then
-    msg "Also available as a kubectl plugin: kubectl ncrectl ..."
+    msg "Also available as a kubectl plugin: kubectl ncre ..."
   fi
 else
   msg "${BIN_NAME} installed to ${INSTALL_DIR}/${BIN_NAME}"
