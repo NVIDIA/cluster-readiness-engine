@@ -111,6 +111,7 @@ spec:
                           description: |-
                             maxBytes sets the maximum message size for NCCL tests (e.g., "16G", "32G").
                             Maps to the NCCL perf test `-e` flag. Default: "16G" (GB200/GB300 override: "32G").
+                          pattern: '''^[0-9]+(K|M|G|T)?$'''
                           type: string
                         maxConcurrent:
                           description: |-
@@ -269,7 +270,11 @@ spec:
                   - domain
                   - variant
                   type: object
+                minItems: 1
                 type: array
+                x-kubernetes-validations:
+                - message: categories is immutable after creation
+                  rule: self == oldSelf
               enableCheckpoint:
                 description: |-
                   enableCheckpoint enables checkpointing for training workloads.
@@ -328,6 +333,7 @@ spec:
                 description: |-
                   maxBytes sets the maximum message size for NCCL tests (e.g., "16G", "32G").
                   Maps to the NCCL perf test `-e` flag. Default: "16G" (GB200/GB300 override: "32G").
+                pattern: '''^[0-9]+(K|M|G|T)?$'''
                 type: string
               maxConcurrent:
                 description: |-

@@ -200,6 +200,7 @@ type CategoryOptions struct {
 	// maxBytes sets the maximum message size for NCCL tests (e.g., "16G", "32G").
 	// Maps to the NCCL perf test `-e` flag. Default: "16G" (GB200/GB300 override: "32G").
 	// +optional
+	// +kubebuilder:validation:Pattern='^[0-9]+(K|M|G|T)?$'
 	MaxBytes string `json:"maxBytes,omitempty"`
 
 	// numIterations sets the number of timed iterations per message size for NCCL tests.
@@ -272,6 +273,8 @@ type CertificationSpec struct {
 
 	// Categories are the list of certificate categories required for the Target
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="categories is immutable after creation"
 	Categories []CertificateCategory `json:"categories,omitempty"`
 
 	// Global defaults for all categories. Per-category options override these.
