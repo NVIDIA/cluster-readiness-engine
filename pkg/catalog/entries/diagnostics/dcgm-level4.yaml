@@ -34,9 +34,8 @@ dependencies:
                       requests:
                         nvidia.com/gpu: "{{ .GpusPerNode }}"
                     securityContext:
-                      privileged: true
-                  dnsPolicy: ClusterFirstWithHostNet
-                  hostNetwork: true
+                      capabilities:
+                        add: [SYS_ADMIN]
                   restartPolicy: Never
                   tolerations:
                   - operator: Exists
@@ -78,27 +77,3 @@ overrides:
 - when:
     gpuArchitecture:
       in: [a100]
-# --- OCI (DGXC / CRI-O) ---
-# CRI-O rejects privileged containers with device plugin GPU injection
-# (device paths already exist on host). Replace privileged with SYS_ADMIN.
-- when:
-    platform:
-      equals: oci
-  dependencies:
-  - apiVersion: trainer.kubeflow.org/v1alpha1
-    kind: TrainingRuntime
-    metadata:
-      name: dcgm-level4-runtime
-    spec:
-      template:
-        spec:
-          replicatedJobs:
-          - name: node
-            template:
-              spec:
-                template:
-                  spec:
-                    containers:
-                    - name: node
-                      securityContext:
-                        privileged: false
