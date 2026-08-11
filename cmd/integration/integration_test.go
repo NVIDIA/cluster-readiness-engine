@@ -851,16 +851,16 @@ func collectGoodputMetrics(t *testing.T, namespace, measurementName string) map[
 	}
 
 	names := []string{
-		"burnin_goodput_avg_step_time_seconds",
-		"burnin_goodput_avg_tflops_per_gpu",
-		"burnin_goodput_checkpoint_save_time_seconds",
-		"burnin_goodput_lost_work_time_seconds",
-		"burnin_goodput_non_warmup_time_seconds",
-		"burnin_goodput_ratio",
-		"burnin_goodput_reschedule_time_seconds",
-		"burnin_goodput_resume_time_seconds",
-		"burnin_goodput_training_time_seconds",
-		"burnin_goodput_warmup_time_seconds",
+		"cre_goodput_avg_step_time_seconds",
+		"cre_goodput_avg_tflops_per_gpu",
+		"cre_goodput_checkpoint_save_time_seconds",
+		"cre_goodput_lost_work_time_seconds",
+		"cre_goodput_non_warmup_time_seconds",
+		"cre_goodput_ratio",
+		"cre_goodput_reschedule_time_seconds",
+		"cre_goodput_resume_time_seconds",
+		"cre_goodput_training_time_seconds",
+		"cre_goodput_warmup_time_seconds",
 	}
 
 	result := make(map[string]float64, len(names))
@@ -904,8 +904,8 @@ func collectBandwidthMetrics(t *testing.T, namespace, measurementName string) ma
 	}
 
 	names := []string{
-		"burnin_nccl_algbw_gbps",
-		"burnin_nccl_busbw_gbps",
+		"cre_nccl_algbw_gbps",
+		"cre_nccl_busbw_gbps",
 	}
 
 	result := make(map[string]float64)
@@ -954,8 +954,8 @@ func collectJobMetrics(t *testing.T, namespace, jobName, workflow string) map[st
 
 	// Only collect gauge metrics (not counters or histograms) for stable golden output.
 	names := []string{
-		"burnin_job_status",
-		"burnin_job_failed_nodes",
+		"cre_job_status",
+		"cre_job_failed_nodes",
 	}
 
 	result := make(map[string]float64, len(names))
@@ -1008,8 +1008,8 @@ func collectTopologyMetrics(t *testing.T, namespace, workflow, topologyKey strin
 	}
 
 	names := []string{
-		"burnin_topology_validated_nodes",
-		"burnin_topology_failed_nodes",
+		"cre_topology_validated_nodes",
+		"cre_topology_failed_nodes",
 	}
 
 	result := make(map[string]float64)
