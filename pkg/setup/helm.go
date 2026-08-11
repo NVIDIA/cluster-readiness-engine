@@ -218,10 +218,17 @@ func uninstallTrainerHelmRelease(kubeconfig, kubeContext string, out io.Writer) 
 
 // runHelm executes a helm subcommand, printing output only on failure.
 func runHelm(helmPath string, args []string, out io.Writer) error {
+	return runHelmWithStdin(helmPath, args, nil, out)
+}
+
+// runHelmWithStdin executes a helm subcommand with an optional stdin reader,
+// printing output only on failure.
+func runHelmWithStdin(helmPath string, args []string, stdin io.Reader, out io.Writer) error {
 	var buf bytes.Buffer
 	cmd := exec.Command(helmPath, args...) // #nosec G204 -- helmPath and args come from this CLI, not from untrusted input
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
+	cmd.Stdin = stdin
 	if err := cmd.Run(); err != nil {
 		output := buf.String()
 		_, _ = io.Copy(out, &buf)
@@ -234,13 +241,15 @@ func runHelm(helmPath string, args []string, out io.Writer) error {
 	return nil
 }
 
-// helmRegistryLogin logs in to an OCI registry.
+// helmRegistryLogin logs in to an OCI registry. The password is supplied via
+// stdin (--password-stdin) to avoid exposing the token in the process argument
+// list visible in /proc.
 func helmRegistryLogin(helmPath, registry, password string, out io.Writer) error {
-	return runHelm(helmPath, []string{
+	return runHelmWithStdin(helmPath, []string{
 		"registry", "login", registry,
 		"--username", ghcrRegistryUser,
-		"--password", password,
-	}, out)
+		"--password-stdin",
+	}, strings.NewReader(password+"\n"), out)
 }
 
 func helmRegistryLogout(helmPath, registry string, out io.Writer) {
