@@ -779,12 +779,42 @@ func (r *JobReconciler) setJobSucceeded(ctx context.Context, job *burninv1alpha1
 }
 
 // setJobFailed sets the Job status to Failed and captures failure logs.
+//
+// Both captureFailureLog and FailedNodes are set inside the updateStatusWithRetry
+// closure (via the extra function passed to setExclusiveStatusCondition) so that
+// on a 409 conflict the retry re-applies them to the freshly-fetched object.
+// Setting them on the stale object before the closure would cause them to be
+// silently discarded whenever the API server returns a conflict.
 func (r *JobReconciler) setJobFailed(ctx context.Context, job *burninv1alpha1.Job, reason, message string) error {
-	r.captureFailureLog(ctx, job)
-	if len(job.Status.FailedNodes) == 0 {
-		job.Status.FailedNodes = noderesults.NodesWithFailureDetails(groupNodeNames(job), ReasonWorkloadFailed, message)
+	changed, err := setExclusiveStatusCondition(ctx, r.Client, job,
+		func(j *burninv1alpha1.Job) *[]metav1.Condition { return &j.Status.Conditions },
+		[]string{
+			burninv1alpha1.JobInProgress,
+			burninv1alpha1.JobSucceeded,
+			burninv1alpha1.JobFailed,
+		},
+		burninv1alpha1.JobFailed, reason, message,
+		func(j *burninv1alpha1.Job) bool {
+			c := false
+			if j.Status.FailureLog == nil {
+				r.captureFailureLog(ctx, j)
+				c = true
+			}
+			if len(j.Status.FailedNodes) == 0 {
+				j.Status.FailedNodes = noderesults.NodesWithFailureDetails(groupNodeNames(j), ReasonWorkloadFailed, message)
+				c = true
+			}
+			return c
+		},
+	)
+	if err != nil {
+		return err
 	}
-	return r.setExclusiveCondition(ctx, job, burninv1alpha1.JobFailed, reason, message)
+	if changed {
+		recordJobStatus(job.Namespace, job.Name, job.Labels["cre.nvidia.com/workflow"], "failed")
+		logf.FromContext(ctx).Info("Job status updated", "status", burninv1alpha1.JobFailed, "reason", reason)
+	}
+	return nil
 }
 
 // failureLogTailLines is the number of log lines requested from a failed pod.
