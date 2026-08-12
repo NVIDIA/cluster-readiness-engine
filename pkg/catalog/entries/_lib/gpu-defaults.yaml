@@ -32,6 +32,9 @@ defaults:
   b200:
     gpusPerNode: 8
     mlnxPerNode: 8
+  h200:
+    gpusPerNode: 8
+    mlnxPerNode: 8
   gb200:
     gpusPerNode: 4
     mlnxPerNode: 8
