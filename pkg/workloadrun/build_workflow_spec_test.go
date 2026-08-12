@@ -5,10 +5,11 @@ package workloadrun
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
+	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
 	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -84,10 +85,6 @@ type projection struct {
 	// is enough to catch an override that goes missing, and it does not change
 	// when someone edits an override body.
 	OverrideCount int `json:"overrideCount"`
-	// WorkerSchedulerName and WorkerQueueLabel are omitted when empty so that
-	// existing expected files do not need to be updated for the gang-scheduler fix.
-	WorkerSchedulerName string `json:"workerSchedulerName,omitempty"`
-	WorkerQueueLabel    string `json:"workerQueueLabel,omitempty"`
 }
 
 func project(s *burninv1alpha1.WorkflowSpec) projection {
@@ -106,7 +103,6 @@ func project(s *burninv1alpha1.WorkflowSpec) projection {
 		out.DependencyKinds = append(out.DependencyKinds, dependencyKind(&s.Dependencies[i]))
 	}
 	out.WorkerEnv, out.WorkerVolumeMounts, out.RuntimeVolumes = runtimeWorker(s)
-	out.WorkerSchedulerName, out.WorkerQueueLabel = runtimeScheduler(s)
 	return out
 }
 
@@ -134,7 +130,39 @@ func runtimeWorker(s *burninv1alpha1.WorkflowSpec) (env, mounts, volumes []strin
 	}
 
 	// The path below is the TrainingRuntime shape that pkg/platform builds.
-	var dep runtimeDep
+	var dep struct {
+		Spec struct {
+			Template struct {
+				Spec struct {
+					ReplicatedJobs []struct {
+						Name     string `json:"name"`
+						Template struct {
+							Spec struct {
+								Template struct {
+									Spec struct {
+										Containers []struct {
+											Name string `json:"name"`
+											Env  []struct {
+												Name  string `json:"name"`
+												Value string `json:"value"`
+											} `json:"env"`
+											VolumeMounts []struct {
+												Name      string `json:"name"`
+												MountPath string `json:"mountPath"`
+											} `json:"volumeMounts"`
+										} `json:"containers"`
+										Volumes []struct {
+											Name string `json:"name"`
+										} `json:"volumes"`
+									} `json:"spec"`
+								} `json:"template"`
+							} `json:"spec"`
+						} `json:"template"`
+					} `json:"replicatedJobs"`
+				} `json:"spec"`
+			} `json:"template"`
+		} `json:"spec"`
+	}
 	if err := json.Unmarshal(s.Dependencies[0].Raw, &dep); err != nil {
 		return nil, nil, nil
 	}
@@ -171,94 +199,96 @@ func runtimeWorker(s *burninv1alpha1.WorkflowSpec) (env, mounts, volumes []strin
 	return env, mounts, volumes
 }
 
-// runtimeScheduler extracts the schedulerName and kai.scheduler/queue label
-// from the "node" replicatedJob in the first runtime dependency.
-func runtimeScheduler(s *burninv1alpha1.WorkflowSpec) (schedulerName, queueLabel string) {
-	if len(s.Dependencies) == 0 || len(s.Dependencies[0].Raw) == 0 {
-		return "", ""
+// TestBuildWorkflowSpecGangSchedulerPropagates verifies FIX A (WR-002-gang):
+// GangScheduler.SchedulerName and GangScheduler.Queue must reach the
+// RuntimeConfig so pkg/platform injects schedulerName into pod specs and the
+// kai.scheduler/queue label into pod template metadata.
+func TestBuildWorkflowSpecGangSchedulerPropagates(t *testing.T) {
+	run := &burninv1alpha1.WorkloadRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "wr-gang", Namespace: "default"},
+		Spec: burninv1alpha1.WorkloadRunSpec{
+			Image:    "nvcr.io/nvidia/pytorch:24.01-py3",
+			NumNodes: 2,
+			Framework: burninv1alpha1.FrameworkSpec{
+				Exec: &burninv1alpha1.ExecFramework{
+					Command: []string{"/usr/bin/mytest"},
+				},
+			},
+			GangScheduler: &burninv1alpha1.GangSchedulerSpec{
+				SchedulerName: "kai-scheduler",
+				Queue:         "high-priority",
+			},
+		},
 	}
-	var dep runtimeDep
-	if err := json.Unmarshal(s.Dependencies[0].Raw, &dep); err != nil {
-		return "", ""
+
+	spec := BuildWorkflowSpec(run, 8, 0, false, "exec")
+	require.NotEmpty(t, spec.Dependencies, "expected at least one dependency")
+
+	// The first dependency is the TrainingRuntime. Unmarshal its raw JSON.
+	// BuildTorchRuntime (which BuildExecRuntime delegates to) sets:
+	//   - schedulerName at replicatedJob.template.spec.template.spec.schedulerName
+	//   - kai.scheduler/queue at replicatedJob.template.metadata.labels
+	var rt struct {
+		Spec struct {
+			Template struct {
+				Spec struct {
+					ReplicatedJobs []struct {
+						Name     string `json:"name"`
+						Template struct {
+							Metadata struct {
+								Labels map[string]string `json:"labels"`
+							} `json:"metadata"`
+							Spec struct {
+								Template struct {
+									Spec struct {
+										SchedulerName string `json:"schedulerName"`
+									} `json:"spec"`
+								} `json:"template"`
+							} `json:"spec"`
+						} `json:"template"`
+					} `json:"replicatedJobs"`
+				} `json:"spec"`
+			} `json:"template"`
+		} `json:"spec"`
 	}
-	for _, j := range dep.Spec.Template.Spec.ReplicatedJobs {
-		if j.Name != "node" {
+	require.NoError(t, json.Unmarshal(spec.Dependencies[0].Raw, &rt))
+
+	// Find the "node" replicatedJob (exec runtime also uses "node").
+	found := false
+	for _, rj := range rt.Spec.Template.Spec.ReplicatedJobs {
+		if rj.Name != "node" {
 			continue
 		}
-		schedulerName = j.Template.Spec.Template.Spec.SchedulerName
-		queueLabel = j.Template.Metadata.Labels["kai.scheduler/queue"]
-		return schedulerName, queueLabel
+		found = true
+		got := rj.Template.Spec.Template.Spec.SchedulerName
+		require.Equal(t, "kai-scheduler", got,
+			"schedulerName must be injected into the pod spec")
+		gotQueue := rj.Template.Metadata.Labels["kai.scheduler/queue"]
+		require.Equal(t, "high-priority", gotQueue,
+			"queue label must be injected into the pod template metadata")
 	}
-	return "", ""
+	require.True(t, found, "expected a 'node' replicatedJob in the TrainingRuntime")
 }
 
-// runtimeDep is the decoded shape of a TrainingRuntime dependency produced by
-// pkg/platform. Both runtimeWorker and runtimeScheduler share this struct so
-// the Unmarshal path is written once.
-type runtimeDep struct {
-	Spec struct {
-		Template struct {
-			Spec struct {
-				ReplicatedJobs []struct {
-					Name     string `json:"name"`
-					Template struct {
-						Metadata struct {
-							Labels map[string]string `json:"labels"`
-						} `json:"metadata"`
-						Spec struct {
-							Template struct {
-								Spec struct {
-									SchedulerName string `json:"schedulerName"`
-									Containers    []struct {
-										Name string `json:"name"`
-										Env  []struct {
-											Name  string `json:"name"`
-											Value string `json:"value"`
-										} `json:"env"`
-										VolumeMounts []struct {
-											Name      string `json:"name"`
-											MountPath string `json:"mountPath"`
-										} `json:"volumeMounts"`
-									} `json:"containers"`
-									Volumes []struct {
-										Name string `json:"name"`
-									} `json:"volumes"`
-								} `json:"spec"`
-							} `json:"template"`
-						} `json:"spec"`
-					} `json:"template"`
-				} `json:"replicatedJobs"`
-			} `json:"spec"`
-		} `json:"template"`
-	} `json:"spec"`
+// TestValidateExecFrameworkRejectsNilExec verifies FIX B (WR-003-nil):
+// validateExecFramework must return an error (not panic) when neither Torch,
+// MPI, nor Exec is set, because the exec default case in buildCLIJobTemplate
+// would otherwise nil-dereference spec.Framework.Exec.
+func TestValidateExecFrameworkRejectsNilExec(t *testing.T) {
+	// No framework fields set — the exec default would be triggered but Exec is nil.
+	spec := &burninv1alpha1.WorkloadRunSpec{}
+	err := validateExecFramework(spec, "wr-no-framework")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "spec.framework.exec is nil")
 }
 
-// TestBuildCLIJobTemplate_NilExecPanics verifies that buildCLIJobTemplate
-// panics with a clear message when the exec framework is selected but
-// spec.framework.exec is nil (a programming error: the caller set neither
-// Torch nor MPI but left Exec nil).
-func TestBuildCLIJobTemplate_NilExecPanics(t *testing.T) {
-	run := &burninv1alpha1.WorkloadRun{}
-	run.Name = "wr-nil-exec"
-	run.Spec.Image = "nvcr.io/test:latest"
-	run.Spec.NumNodes = 1
-	// Framework.Exec is deliberately left nil; Torch and MPI are also nil,
-	// so frameworkType falls through to the exec default.
-
-	defer func() {
-		r := recover()
-		if r == nil {
-			t.Fatal("expected panic but got none")
-		}
-		msg, ok := r.(string)
-		if !ok {
-			t.Fatalf("panic value is not a string: %v", r)
-		}
-		want := "spec.framework.exec is nil"
-		if !strings.Contains(msg, want) {
-			t.Fatalf("panic message %q does not contain %q", msg, want)
-		}
-	}()
-
-	buildCLIJobTemplate(run, "exec", 8)
+// TestValidateExecFrameworkAllowsExplicitExec verifies that the guard passes
+// when spec.Framework.Exec is set.
+func TestValidateExecFrameworkAllowsExplicitExec(t *testing.T) {
+	spec := &burninv1alpha1.WorkloadRunSpec{
+		Framework: burninv1alpha1.FrameworkSpec{
+			Exec: &burninv1alpha1.ExecFramework{Command: []string{"/bin/test"}},
+		},
+	}
+	require.NoError(t, validateExecFramework(spec, "wr-exec"))
 }

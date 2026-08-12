@@ -67,6 +67,14 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Build and create Workflow.
 	log.Info("Building Workflow for WorkloadRun")
 
+	// Guard: exec is the default framework; spec.framework.exec must be non-nil when
+	// no other framework is configured, or buildJobTemplate will nil-dereference.
+	if run.Spec.Framework.Torch == nil && run.Spec.Framework.MPI == nil && run.Spec.Framework.Exec == nil {
+		r.setWorkloadRunCondition(&run, burninv1alpha1.WorkloadRunFailed, ReasonBuildFailed,
+			fmt.Sprintf("workloadrun %s: exec framework selected but spec.framework.exec is nil", run.Name))
+		return ctrl.Result{}, r.Status().Update(ctx, &run)
+	}
+
 	workflowSpec := r.buildWorkflowSpec(ctx, &run)
 
 	workflow := &burninv1alpha1.Workflow{
@@ -391,9 +399,6 @@ func (r *WorkloadRunReconciler) buildJobTemplate(run *burninv1alpha1.WorkloadRun
 		mpiArgs = append(mpiArgs, mpi.Args...)
 		args = mpiArgs
 	default: // exec
-		if spec.Framework.Exec == nil {
-			panic("workloadrun: exec framework selected but spec.framework.exec is nil")
-		}
 		exec := spec.Framework.Exec
 		command = exec.Command
 		args = exec.Args
