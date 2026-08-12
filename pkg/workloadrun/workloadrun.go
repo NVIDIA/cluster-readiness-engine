@@ -280,6 +280,10 @@ func BuildWorkflowSpec(
 		Resources:        spec.Resources,
 		ImagePullSecrets: spec.ImagePullSecrets,
 	}
+	if spec.GangScheduler != nil {
+		rtCfg.GangSchedulerName = spec.GangScheduler.SchedulerName
+		rtCfg.GangSchedulerQueue = spec.GangScheduler.Queue
+	}
 
 	var runtimeDep burninv1alpha1.DependencySpec
 	switch frameworkType {
@@ -400,6 +404,9 @@ func buildCLIJobTemplate(
 		mpiArgs = append(mpiArgs, mpi.Args...)
 		args = mpiArgs
 	default:
+		if spec.Framework.Exec == nil {
+			panic("workloadrun: exec framework selected but spec.framework.exec is nil")
+		}
 		exec := spec.Framework.Exec
 		command = exec.Command
 		args = exec.Args

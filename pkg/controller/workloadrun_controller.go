@@ -391,6 +391,9 @@ func (r *WorkloadRunReconciler) buildJobTemplate(run *burninv1alpha1.WorkloadRun
 		mpiArgs = append(mpiArgs, mpi.Args...)
 		args = mpiArgs
 	default: // exec
+		if spec.Framework.Exec == nil {
+			panic("workloadrun: exec framework selected but spec.framework.exec is nil")
+		}
 		exec := spec.Framework.Exec
 		command = exec.Command
 		args = exec.Args

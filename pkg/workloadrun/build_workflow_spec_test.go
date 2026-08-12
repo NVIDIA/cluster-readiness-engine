@@ -5,6 +5,7 @@ package workloadrun
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
@@ -83,6 +84,10 @@ type projection struct {
 	// is enough to catch an override that goes missing, and it does not change
 	// when someone edits an override body.
 	OverrideCount int `json:"overrideCount"`
+	// WorkerSchedulerName and WorkerQueueLabel are omitted when empty so that
+	// existing expected files do not need to be updated for the gang-scheduler fix.
+	WorkerSchedulerName string `json:"workerSchedulerName,omitempty"`
+	WorkerQueueLabel    string `json:"workerQueueLabel,omitempty"`
 }
 
 func project(s *burninv1alpha1.WorkflowSpec) projection {
@@ -101,6 +106,7 @@ func project(s *burninv1alpha1.WorkflowSpec) projection {
 		out.DependencyKinds = append(out.DependencyKinds, dependencyKind(&s.Dependencies[i]))
 	}
 	out.WorkerEnv, out.WorkerVolumeMounts, out.RuntimeVolumes = runtimeWorker(s)
+	out.WorkerSchedulerName, out.WorkerQueueLabel = runtimeScheduler(s)
 	return out
 }
 
@@ -128,39 +134,7 @@ func runtimeWorker(s *burninv1alpha1.WorkflowSpec) (env, mounts, volumes []strin
 	}
 
 	// The path below is the TrainingRuntime shape that pkg/platform builds.
-	var dep struct {
-		Spec struct {
-			Template struct {
-				Spec struct {
-					ReplicatedJobs []struct {
-						Name     string `json:"name"`
-						Template struct {
-							Spec struct {
-								Template struct {
-									Spec struct {
-										Containers []struct {
-											Name string `json:"name"`
-											Env  []struct {
-												Name  string `json:"name"`
-												Value string `json:"value"`
-											} `json:"env"`
-											VolumeMounts []struct {
-												Name      string `json:"name"`
-												MountPath string `json:"mountPath"`
-											} `json:"volumeMounts"`
-										} `json:"containers"`
-										Volumes []struct {
-											Name string `json:"name"`
-										} `json:"volumes"`
-									} `json:"spec"`
-								} `json:"template"`
-							} `json:"spec"`
-						} `json:"template"`
-					} `json:"replicatedJobs"`
-				} `json:"spec"`
-			} `json:"template"`
-		} `json:"spec"`
-	}
+	var dep runtimeDep
 	if err := json.Unmarshal(s.Dependencies[0].Raw, &dep); err != nil {
 		return nil, nil, nil
 	}
@@ -195,4 +169,96 @@ func runtimeWorker(s *burninv1alpha1.WorkflowSpec) (env, mounts, volumes []strin
 		}
 	}
 	return env, mounts, volumes
+}
+
+// runtimeScheduler extracts the schedulerName and kai.scheduler/queue label
+// from the "node" replicatedJob in the first runtime dependency.
+func runtimeScheduler(s *burninv1alpha1.WorkflowSpec) (schedulerName, queueLabel string) {
+	if len(s.Dependencies) == 0 || len(s.Dependencies[0].Raw) == 0 {
+		return "", ""
+	}
+	var dep runtimeDep
+	if err := json.Unmarshal(s.Dependencies[0].Raw, &dep); err != nil {
+		return "", ""
+	}
+	for _, j := range dep.Spec.Template.Spec.ReplicatedJobs {
+		if j.Name != "node" {
+			continue
+		}
+		schedulerName = j.Template.Spec.Template.Spec.SchedulerName
+		queueLabel = j.Template.Metadata.Labels["kai.scheduler/queue"]
+		return schedulerName, queueLabel
+	}
+	return "", ""
+}
+
+// runtimeDep is the decoded shape of a TrainingRuntime dependency produced by
+// pkg/platform. Both runtimeWorker and runtimeScheduler share this struct so
+// the Unmarshal path is written once.
+type runtimeDep struct {
+	Spec struct {
+		Template struct {
+			Spec struct {
+				ReplicatedJobs []struct {
+					Name     string `json:"name"`
+					Template struct {
+						Metadata struct {
+							Labels map[string]string `json:"labels"`
+						} `json:"metadata"`
+						Spec struct {
+							Template struct {
+								Spec struct {
+									SchedulerName string `json:"schedulerName"`
+									Containers    []struct {
+										Name string `json:"name"`
+										Env  []struct {
+											Name  string `json:"name"`
+											Value string `json:"value"`
+										} `json:"env"`
+										VolumeMounts []struct {
+											Name      string `json:"name"`
+											MountPath string `json:"mountPath"`
+										} `json:"volumeMounts"`
+									} `json:"containers"`
+									Volumes []struct {
+										Name string `json:"name"`
+									} `json:"volumes"`
+								} `json:"spec"`
+							} `json:"template"`
+						} `json:"spec"`
+					} `json:"template"`
+				} `json:"replicatedJobs"`
+			} `json:"spec"`
+		} `json:"template"`
+	} `json:"spec"`
+}
+
+// TestBuildCLIJobTemplate_NilExecPanics verifies that buildCLIJobTemplate
+// panics with a clear message when the exec framework is selected but
+// spec.framework.exec is nil (a programming error: the caller set neither
+// Torch nor MPI but left Exec nil).
+func TestBuildCLIJobTemplate_NilExecPanics(t *testing.T) {
+	run := &burninv1alpha1.WorkloadRun{}
+	run.Name = "wr-nil-exec"
+	run.Spec.Image = "nvcr.io/test:latest"
+	run.Spec.NumNodes = 1
+	// Framework.Exec is deliberately left nil; Torch and MPI are also nil,
+	// so frameworkType falls through to the exec default.
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic but got none")
+		}
+		msg, ok := r.(string)
+		if !ok {
+			t.Fatalf("panic value is not a string: %v", r)
+		}
+		want := "spec.framework.exec is nil"
+		if !strings.Contains(msg, want) {
+			t.Fatalf("panic message %q does not contain %q", msg, want)
+		}
+	}()
+
+	buildCLIJobTemplate(run, "exec", 8)
 }
