@@ -1438,11 +1438,6 @@ func (r *JobReconciler) nodeHealthChangePredicate() predicate.Predicate {
 				return true
 			}
 
-			// Trigger on annotation changes
-			if !mapsEqual(oldNode.Annotations, newNode.Annotations) {
-				return true
-			}
-
 			// Trigger on cordon/uncordon
 			if oldNode.Spec.Unschedulable != newNode.Spec.Unschedulable {
 				return true
