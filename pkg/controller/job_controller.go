@@ -864,11 +864,11 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *burninv1alph
 		return
 	}
 
-	// List pods for this Job.
+	// List pods for this Job using the field index for O(1) lookup.
 	podList := &corev1.PodList{}
 	if err := r.List(ctx, podList,
 		client.InNamespace(job.Namespace),
-		client.MatchingLabels{"cre.nvidia.com/job": job.Name},
+		client.MatchingFields{nodemonitor.PodCREJobIndexField: job.Name},
 	); err != nil {
 		log.V(1).Info("Failed to list pods for failure log capture", "error", err)
 		return
@@ -1465,11 +1465,6 @@ func (r *JobReconciler) nodeHealthChangePredicate() predicate.Predicate {
 
 			// Trigger on label changes (for GPUd-style health labels)
 			if !mapsEqual(oldNode.Labels, newNode.Labels) {
-				return true
-			}
-
-			// Trigger on annotation changes
-			if !mapsEqual(oldNode.Annotations, newNode.Annotations) {
 				return true
 			}
 
