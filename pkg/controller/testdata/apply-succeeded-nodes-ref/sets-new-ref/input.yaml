@@ -1,0 +1,8 @@
+ref:
+  kind: ConfigMap
+  name: nodes-abc123
+workflow:
+  metadata:
+    name: w
+  spec:
+    categories: []
