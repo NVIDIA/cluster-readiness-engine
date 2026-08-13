@@ -1,0 +1,4 @@
+# All framework fields are nil: Torch, MPI, and Exec are all unset.
+# validateExecFramework must return an error, because the exec default case in
+# buildCLIJobTemplate would nil-dereference spec.Framework.Exec (WR-003-nil).
+{}

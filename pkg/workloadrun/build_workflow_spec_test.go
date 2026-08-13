@@ -8,8 +8,6 @@ import (
 	"testing"
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
-	"github.com/stretchr/testify/require"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
 	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -85,6 +83,13 @@ type projection struct {
 	// is enough to catch an override that goes missing, and it does not change
 	// when someone edits an override body.
 	OverrideCount int `json:"overrideCount"`
+	// GangSchedulerName is the schedulerName injected into pod specs by
+	// pkg/platform when GangScheduler is set. Omitted when empty so that cases
+	// without gang scheduling do not need to carry a blank field.
+	GangSchedulerName string `json:"gangSchedulerName,omitempty"`
+	// GangSchedulerQueue is the kai.scheduler/queue label injected into pod
+	// template metadata by pkg/platform. Omitted when empty.
+	GangSchedulerQueue string `json:"gangSchedulerQueue,omitempty"`
 }
 
 func project(s *burninv1alpha1.WorkflowSpec) projection {
@@ -103,6 +108,7 @@ func project(s *burninv1alpha1.WorkflowSpec) projection {
 		out.DependencyKinds = append(out.DependencyKinds, dependencyKind(&s.Dependencies[i]))
 	}
 	out.WorkerEnv, out.WorkerVolumeMounts, out.RuntimeVolumes = runtimeWorker(s)
+	out.GangSchedulerName, out.GangSchedulerQueue = runtimeGangScheduler(s)
 	return out
 }
 
@@ -199,36 +205,16 @@ func runtimeWorker(s *burninv1alpha1.WorkflowSpec) (env, mounts, volumes []strin
 	return env, mounts, volumes
 }
 
-// TestBuildWorkflowSpecGangSchedulerPropagates verifies FIX A (WR-002-gang):
-// GangScheduler.SchedulerName and GangScheduler.Queue must reach the
-// RuntimeConfig so pkg/platform injects schedulerName into pod specs and the
-// kai.scheduler/queue label into pod template metadata.
-func TestBuildWorkflowSpecGangSchedulerPropagates(t *testing.T) {
-	run := &burninv1alpha1.WorkloadRun{
-		ObjectMeta: metav1.ObjectMeta{Name: "wr-gang", Namespace: "default"},
-		Spec: burninv1alpha1.WorkloadRunSpec{
-			Image:    "nvcr.io/nvidia/pytorch:24.01-py3",
-			NumNodes: 2,
-			Framework: burninv1alpha1.FrameworkSpec{
-				Exec: &burninv1alpha1.ExecFramework{
-					Command: []string{"/usr/bin/mytest"},
-				},
-			},
-			GangScheduler: &burninv1alpha1.GangSchedulerSpec{
-				SchedulerName: "kai-scheduler",
-				Queue:         "high-priority",
-			},
-		},
+// runtimeGangScheduler reads the "node" replicatedJob out of the runtime
+// dependency and returns the schedulerName from the pod spec and the
+// kai.scheduler/queue label from the pod template metadata. Both are empty
+// strings when gang scheduling is not configured.
+func runtimeGangScheduler(s *burninv1alpha1.WorkflowSpec) (schedulerName, queueLabel string) {
+	if len(s.Dependencies) == 0 || len(s.Dependencies[0].Raw) == 0 {
+		return "", ""
 	}
 
-	spec := BuildWorkflowSpec(run, 8, 0, false, "exec")
-	require.NotEmpty(t, spec.Dependencies, "expected at least one dependency")
-
-	// The first dependency is the TrainingRuntime. Unmarshal its raw JSON.
-	// BuildTorchRuntime (which BuildExecRuntime delegates to) sets:
-	//   - schedulerName at replicatedJob.template.spec.template.spec.schedulerName
-	//   - kai.scheduler/queue at replicatedJob.template.metadata.labels
-	var rt struct {
+	var dep struct {
 		Spec struct {
 			Template struct {
 				Spec struct {
@@ -251,44 +237,48 @@ func TestBuildWorkflowSpecGangSchedulerPropagates(t *testing.T) {
 			} `json:"template"`
 		} `json:"spec"`
 	}
-	require.NoError(t, json.Unmarshal(spec.Dependencies[0].Raw, &rt))
-
-	// Find the "node" replicatedJob (exec runtime also uses "node").
-	found := false
-	for _, rj := range rt.Spec.Template.Spec.ReplicatedJobs {
+	if err := json.Unmarshal(s.Dependencies[0].Raw, &dep); err != nil {
+		return "", ""
+	}
+	for _, rj := range dep.Spec.Template.Spec.ReplicatedJobs {
 		if rj.Name != "node" {
 			continue
 		}
-		found = true
-		got := rj.Template.Spec.Template.Spec.SchedulerName
-		require.Equal(t, "kai-scheduler", got,
-			"schedulerName must be injected into the pod spec")
-		gotQueue := rj.Template.Metadata.Labels["kai.scheduler/queue"]
-		require.Equal(t, "high-priority", gotQueue,
-			"queue label must be injected into the pod template metadata")
+		name := rj.Template.Spec.Template.Spec.SchedulerName
+		queue := rj.Template.Metadata.Labels["kai.scheduler/queue"]
+		return name, queue
 	}
-	require.True(t, found, "expected a 'node' replicatedJob in the TrainingRuntime")
+	return "", ""
 }
 
-// TestValidateExecFrameworkRejectsNilExec verifies FIX B (WR-003-nil):
-// validateExecFramework must return an error (not panic) when neither Torch,
-// MPI, nor Exec is set, because the exec default case in buildCLIJobTemplate
-// would otherwise nil-dereference spec.Framework.Exec.
-func TestValidateExecFrameworkRejectsNilExec(t *testing.T) {
-	// No framework fields set — the exec default would be triggered but Exec is nil.
-	spec := &burninv1alpha1.WorkloadRunSpec{}
-	err := validateExecFramework(spec, "wr-no-framework")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "spec.framework.exec is nil")
-}
-
-// TestValidateExecFrameworkAllowsExplicitExec verifies that the guard passes
-// when spec.Framework.Exec is set.
-func TestValidateExecFrameworkAllowsExplicitExec(t *testing.T) {
-	spec := &burninv1alpha1.WorkloadRunSpec{
-		Framework: burninv1alpha1.FrameworkSpec{
-			Exec: &burninv1alpha1.ExecFramework{Command: []string{"/bin/test"}},
-		},
+// TestValidateExecFramework drives golden-file cases for validateExecFramework.
+// Each case provides a WorkloadRunSpec in input.yaml and expects a JSON object
+// with a single "error" key — null on success or the error message on failure.
+func TestValidateExecFramework(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "validate-exec-framework",
+		ExpectedSuffix: ".json",
 	}
-	require.NoError(t, validateExecFramework(spec, "wr-exec"))
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var spec burninv1alpha1.WorkloadRunSpec
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &spec); err != nil {
+			return err
+		}
+
+		err := validateExecFramework(&spec, "test-wr")
+
+		var result struct {
+			Error interface{} `json:"error"`
+		}
+		if err != nil {
+			result.Error = err.Error()
+		}
+
+		b, marshalErr := json.MarshalIndent(result, "", "  ")
+		if marshalErr != nil {
+			return marshalErr
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
 }
