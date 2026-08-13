@@ -141,6 +141,7 @@ spec:
                             measurement data (bandwidth, goodput, etc.) before failing threshold validation.
                             Accepts Go duration strings (e.g., "5m", "10m", "30m").
                             When not set, defaults to "5m".
+                          pattern: ^([0-9]+(h|m|s|ms))+$
                           type: string
                         minGroupSize:
                           description: |-
@@ -260,6 +261,7 @@ spec:
                             timeoutPerJob is the maximum time to wait for each job to complete.
                             Accepts Go duration strings (e.g., "1h", "30m", "2h30m").
                             When not set, defaults to "1h" (or "15m" for diagnose test scale).
+                          pattern: ^([0-9]+(h|m|s|ms))+$
                           type: string
                       type: object
                     variant:
@@ -363,6 +365,7 @@ spec:
                   measurement data (bandwidth, goodput, etc.) before failing threshold validation.
                   Accepts Go duration strings (e.g., "5m", "10m", "30m").
                   When not set, defaults to "5m".
+                pattern: ^([0-9]+(h|m|s|ms))+$
                 type: string
               minGroupSize:
                 description: |-
@@ -563,6 +566,7 @@ spec:
                   timeoutPerJob is the maximum time to wait for each job to complete.
                   Accepts Go duration strings (e.g., "1h", "30m", "2h30m").
                   When not set, defaults to "1h" (or "15m" for diagnose test scale).
+                pattern: ^([0-9]+(h|m|s|ms))+$
                 type: string
             required:
             - categories
