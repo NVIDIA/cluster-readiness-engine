@@ -107,8 +107,7 @@ func project(s *burninv1alpha1.WorkflowSpec) projection {
 	for i := range s.Dependencies {
 		out.DependencyKinds = append(out.DependencyKinds, dependencyKind(&s.Dependencies[i]))
 	}
-	out.WorkerEnv, out.WorkerVolumeMounts, out.RuntimeVolumes = runtimeWorker(s)
-	out.GangSchedulerName, out.GangSchedulerQueue = runtimeGangScheduler(s)
+	out.WorkerEnv, out.WorkerVolumeMounts, out.RuntimeVolumes, out.GangSchedulerName, out.GangSchedulerQueue = runtimeWorker(s)
 	return out
 }
 
@@ -123,16 +122,14 @@ func dependencyKind(d *burninv1alpha1.DependencySpec) string {
 	return obj.Kind
 }
 
-// runtimeWorker reads the worker container out of the runtime dependency and
-// returns its environment variables, its volume mounts, and the pod volumes.
-//
-// It follows one named path rather than searching the document, because a
-// search would also find containers that the workload does not run in, such as
-// an init container or an MPI launcher. A variable on one of those does not
-// reach the worker processes, and a search would report it as though it did.
-func runtimeWorker(s *burninv1alpha1.WorkflowSpec) (env, mounts, volumes []string) {
+// runtimeWorker reads the "node" replicatedJob out of the runtime dependency
+// and returns its env vars, volume mounts, pod volumes, schedulerName, and
+// gang-scheduler queue label. It follows one named path rather than searching
+// the document, because a search would also find containers the workload does
+// not run in (e.g. an MPI launcher).
+func runtimeWorker(s *burninv1alpha1.WorkflowSpec) (env, mounts, volumes []string, schedulerName, queueLabel string) {
 	if len(s.Dependencies) == 0 || len(s.Dependencies[0].Raw) == 0 {
-		return nil, nil, nil
+		return nil, nil, nil, "", ""
 	}
 
 	// The path below is the TrainingRuntime shape that pkg/platform builds.
@@ -143,10 +140,14 @@ func runtimeWorker(s *burninv1alpha1.WorkflowSpec) (env, mounts, volumes []strin
 					ReplicatedJobs []struct {
 						Name     string `json:"name"`
 						Template struct {
+							Metadata struct {
+								Labels map[string]string `json:"labels"`
+							} `json:"metadata"`
 							Spec struct {
 								Template struct {
 									Spec struct {
-										Containers []struct {
+										SchedulerName string `json:"schedulerName"`
+										Containers    []struct {
 											Name string `json:"name"`
 											Env  []struct {
 												Name  string `json:"name"`
@@ -170,85 +171,34 @@ func runtimeWorker(s *burninv1alpha1.WorkflowSpec) (env, mounts, volumes []strin
 		} `json:"spec"`
 	}
 	if err := json.Unmarshal(s.Dependencies[0].Raw, &dep); err != nil {
-		return nil, nil, nil
+		return nil, nil, nil, "", ""
 	}
 	// Pick the job by name. An MPI runtime holds two jobs, "node" and
-	// "launcher", and only "node" runs the worker processes. Taking the first
-	// job would read whichever one pkg/platform happens to write first.
-	idx := -1
-	for i, j := range dep.Spec.Template.Spec.ReplicatedJobs {
-		if j.Name == "node" {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
-		return nil, nil, nil
-	}
-
-	pod := dep.Spec.Template.Spec.ReplicatedJobs[idx].Template.Spec.Template.Spec
-	for _, v := range pod.Volumes {
-		volumes = append(volumes, v.Name)
-	}
-	for _, c := range pod.Containers {
-		// "node" is the name pkg/platform gives the worker container.
-		if c.Name != "node" {
-			continue
-		}
-		for _, e := range c.Env {
-			env = append(env, e.Name+"="+e.Value)
-		}
-		for _, m := range c.VolumeMounts {
-			mounts = append(mounts, m.Name+" at "+m.MountPath)
-		}
-	}
-	return env, mounts, volumes
-}
-
-// runtimeGangScheduler reads the "node" replicatedJob out of the runtime
-// dependency and returns the schedulerName from the pod spec and the
-// kai.scheduler/queue label from the pod template metadata. Both are empty
-// strings when gang scheduling is not configured.
-func runtimeGangScheduler(s *burninv1alpha1.WorkflowSpec) (schedulerName, queueLabel string) {
-	if len(s.Dependencies) == 0 || len(s.Dependencies[0].Raw) == 0 {
-		return "", ""
-	}
-
-	var dep struct {
-		Spec struct {
-			Template struct {
-				Spec struct {
-					ReplicatedJobs []struct {
-						Name     string `json:"name"`
-						Template struct {
-							Metadata struct {
-								Labels map[string]string `json:"labels"`
-							} `json:"metadata"`
-							Spec struct {
-								Template struct {
-									Spec struct {
-										SchedulerName string `json:"schedulerName"`
-									} `json:"spec"`
-								} `json:"template"`
-							} `json:"spec"`
-						} `json:"template"`
-					} `json:"replicatedJobs"`
-				} `json:"spec"`
-			} `json:"template"`
-		} `json:"spec"`
-	}
-	if err := json.Unmarshal(s.Dependencies[0].Raw, &dep); err != nil {
-		return "", ""
-	}
+	// "launcher", and only "node" runs the worker processes.
 	for _, rj := range dep.Spec.Template.Spec.ReplicatedJobs {
 		if rj.Name != "node" {
 			continue
 		}
-		name := rj.Template.Spec.Template.Spec.SchedulerName
-		queue := rj.Template.Metadata.Labels["kai.scheduler/queue"]
-		return name, queue
+		schedulerName = rj.Template.Spec.Template.Spec.SchedulerName
+		queueLabel = rj.Template.Metadata.Labels["kai.scheduler/queue"]
+		pod := rj.Template.Spec.Template.Spec
+		for _, v := range pod.Volumes {
+			volumes = append(volumes, v.Name)
+		}
+		for _, c := range pod.Containers {
+			if c.Name != "node" {
+				continue
+			}
+			for _, e := range c.Env {
+				env = append(env, e.Name+"="+e.Value)
+			}
+			for _, m := range c.VolumeMounts {
+				mounts = append(mounts, m.Name+" at "+m.MountPath)
+			}
+		}
+		return env, mounts, volumes, schedulerName, queueLabel
 	}
-	return "", ""
+	return nil, nil, nil, "", ""
 }
 
 // TestValidateExecFramework drives golden-file cases for validateExecFramework.
