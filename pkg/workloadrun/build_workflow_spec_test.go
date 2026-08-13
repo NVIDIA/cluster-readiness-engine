@@ -131,56 +131,18 @@ func runtimeWorker(s *burninv1alpha1.WorkflowSpec) (env, mounts, volumes []strin
 	if len(s.Dependencies) == 0 || len(s.Dependencies[0].Raw) == 0 {
 		return nil, nil, nil, "", ""
 	}
-
-	// The path below is the TrainingRuntime shape that pkg/platform builds.
-	var dep struct {
-		Spec struct {
-			Template struct {
-				Spec struct {
-					ReplicatedJobs []struct {
-						Name     string `json:"name"`
-						Template struct {
-							Metadata struct {
-								Labels map[string]string `json:"labels"`
-							} `json:"metadata"`
-							Spec struct {
-								Template struct {
-									Spec struct {
-										SchedulerName string `json:"schedulerName"`
-										Containers    []struct {
-											Name string `json:"name"`
-											Env  []struct {
-												Name  string `json:"name"`
-												Value string `json:"value"`
-											} `json:"env"`
-											VolumeMounts []struct {
-												Name      string `json:"name"`
-												MountPath string `json:"mountPath"`
-											} `json:"volumeMounts"`
-										} `json:"containers"`
-										Volumes []struct {
-											Name string `json:"name"`
-										} `json:"volumes"`
-									} `json:"spec"`
-								} `json:"template"`
-							} `json:"spec"`
-						} `json:"template"`
-					} `json:"replicatedJobs"`
-				} `json:"spec"`
-			} `json:"template"`
-		} `json:"spec"`
-	}
-	if err := json.Unmarshal(s.Dependencies[0].Raw, &dep); err != nil {
+	var rt trainerv1alpha1.TrainingRuntime
+	if err := json.Unmarshal(s.Dependencies[0].Raw, &rt); err != nil {
 		return nil, nil, nil, "", ""
 	}
 	// Pick the job by name. An MPI runtime holds two jobs, "node" and
 	// "launcher", and only "node" runs the worker processes.
-	for _, rj := range dep.Spec.Template.Spec.ReplicatedJobs {
+	for _, rj := range rt.Spec.Template.Spec.ReplicatedJobs {
 		if rj.Name != "node" {
 			continue
 		}
 		schedulerName = rj.Template.Spec.Template.Spec.SchedulerName
-		queueLabel = rj.Template.Metadata.Labels["kai.scheduler/queue"]
+		queueLabel = rj.Template.Labels["kai.scheduler/queue"]
 		pod := rj.Template.Spec.Template.Spec
 		for _, v := range pod.Volumes {
 			volumes = append(volumes, v.Name)
