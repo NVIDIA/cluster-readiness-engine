@@ -180,7 +180,7 @@ func TestValidateExecFramework(t *testing.T) {
 		err := validateExecFramework(&spec, "test-wr")
 
 		var result struct {
-			Error interface{} `json:"error"`
+			Error any `json:"error"`
 		}
 		if err != nil {
 			result.Error = err.Error()
