@@ -71,7 +71,14 @@ jobTemplate:
           numNodes: 1
           numProcPerNode: 1
 orchestration:
-  execution: {}
+{{- if gt .MaxConcurrent 0 }}
+  execution:
+    maxConcurrent: {{ .MaxConcurrent }}
+    timeoutPerJob: {{ .TimeoutPerJob }}
+{{- else }}
+  execution:
+    timeoutPerJob: {{ .TimeoutPerJob }}
+{{- end }}
   iterations: 1
 overrides:
 {{ lib "overrides/gb200-topology-key.yaml" . }}
