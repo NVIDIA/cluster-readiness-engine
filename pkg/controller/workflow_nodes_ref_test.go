@@ -45,7 +45,7 @@ func TestApplyFailedNodesRef(t *testing.T) {
 func runApplyNodesRefCase(tc *testutil.TestCase, apply func(*corev1.TypedLocalObjectReference, *burninv1alpha1.Workflow) (bool, *corev1.TypedLocalObjectReference)) error {
 	var input struct {
 		Ref      *corev1.TypedLocalObjectReference `json:"ref"`
-		Workflow burninv1alpha1.Workflow            `json:"workflow"`
+		Workflow burninv1alpha1.Workflow           `json:"workflow"`
 	}
 	if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 		return err
