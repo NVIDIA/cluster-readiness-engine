@@ -29,6 +29,8 @@ import (
 )
 
 const (
+	defaultBandwidthMeasurementRequeueInterval = 15 * time.Second
+
 	bandwidthMeasurementFinalizer = "cre.nvidia.com/bandwidthmeasurement-finalizer"
 
 	reasonBandwidthJobRunning   = "JobRunning"
@@ -99,6 +101,14 @@ func (r *BandwidthMeasurementReconciler) getSampleInterval(m *burninv1alpha1.Ban
 	return defaultSampleInterval
 }
 
+// getRequeueInterval returns the configured requeue interval or the default.
+func (r *BandwidthMeasurementReconciler) getRequeueInterval() time.Duration {
+	if r.RequeueInterval > 0 {
+		return r.RequeueInterval
+	}
+	return defaultBandwidthMeasurementRequeueInterval
+}
+
 // +kubebuilder:rbac:groups=cre.nvidia.com,resources=bandwidthmeasurements,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cre.nvidia.com,resources=bandwidthmeasurements/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cre.nvidia.com,resources=bandwidthmeasurements/finalizers,verbs=update
@@ -149,7 +159,7 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 	if err := r.Get(ctx, jobKey, job); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("Referenced Job not found, requeueing", "job", jobKey)
-			return ctrl.Result{RequeueAfter: r.RequeueInterval}, nil
+			return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get referenced Job: %w", err)
 	}
@@ -178,7 +188,7 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 	}
 
 	// Job hasn't started yet.
-	return ctrl.Result{RequeueAfter: r.RequeueInterval}, nil
+	return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 }
 
 func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, measurement *burninv1alpha1.BandwidthMeasurement, job *burninv1alpha1.Job) (ctrl.Result, error) {
@@ -217,19 +227,19 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 	}
 	if workloadName == "" {
 		log.Info("Job has no workloadRef yet, requeueing")
-		return ctrl.Result{RequeueAfter: r.RequeueInterval}, nil
+		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 	}
 
 	discoverer := podutil.NewWorkerDiscoverer(r.podReader())
 	pod, err := discoverer.GetReplicatedJobPod(ctx, measurement.Namespace, workloadName, replicatedJobName)
 	if err != nil {
 		log.Info("Pod not found yet, requeueing", "replicatedJob", replicatedJobName, "error", err)
-		return ctrl.Result{RequeueAfter: r.RequeueInterval}, nil
+		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 	}
 
 	if !podutil.IsPodRunning(pod) && pod.Status.Phase != corev1.PodSucceeded {
 		log.Info("Pod not running yet, requeueing", "pod", pod.Name, "phase", pod.Status.Phase)
-		return ctrl.Result{RequeueAfter: r.RequeueInterval}, nil
+		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 	}
 
 	// Skip reading logs if the container is currently in a waiting state

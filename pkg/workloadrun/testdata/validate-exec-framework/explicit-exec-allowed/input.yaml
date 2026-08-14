@@ -1,0 +1,4 @@
+# spec.Framework.Exec is set explicitly: the guard must pass without error.
+framework:
+  exec:
+    command: ["echo", "hi"]

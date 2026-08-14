@@ -20,6 +20,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -102,7 +103,18 @@ func TestFailureLogCapture(t *testing.T) {
 		}
 
 		job := &burninv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"}}
-		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).Build()
+		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).
+			WithIndex(&corev1.Pod{}, nodemonitor.PodCREJobIndexField, func(obj client.Object) []string {
+				pod, ok := obj.(*corev1.Pod)
+				if !ok {
+					return nil
+				}
+				if jn, found := pod.Labels[nodemonitor.CREJobLabel]; found {
+					return []string{jn}
+				}
+				return nil
+			}).
+			Build()
 		// Clientset is only dereferenced once a failed pod is found, which is
 		// the path these cases do not take.
 		r := &JobReconciler{Client: c, Scheme: scheme, Clientset: &kubernetes.Clientset{}}
