@@ -240,6 +240,7 @@ type CategoryOptions struct {
 	// Accepts Go duration strings (e.g., "1h", "30m", "2h30m").
 	// When not set, defaults to "1h" (or "15m" for diagnose test scale).
 	// +optional
+	// +kubebuilder:validation:Pattern=`^([0-9]+(h|m|s|ms))+$`
 	TimeoutPerJob string `json:"timeoutPerJob,omitempty"`
 
 	// measurementTimeout is the maximum time to wait after a Job succeeds for
@@ -247,6 +248,7 @@ type CategoryOptions struct {
 	// Accepts Go duration strings (e.g., "5m", "10m", "30m").
 	// When not set, defaults to "5m".
 	// +optional
+	// +kubebuilder:validation:Pattern=`^([0-9]+(h|m|s|ms))+$`
 	MeasurementTimeout string `json:"measurementTimeout,omitempty"`
 }
 

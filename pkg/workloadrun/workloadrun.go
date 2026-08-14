@@ -178,6 +178,9 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 	} else if run.Spec.Framework.MPI != nil {
 		frameworkType = controller.FrameworkMPI
 	}
+	if err := validateExecFramework(&run.Spec, run.Name); err != nil {
+		return err
+	}
 
 	// Build WorkflowSpec.
 	workflowSpec := BuildWorkflowSpec(run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
@@ -280,6 +283,10 @@ func BuildWorkflowSpec(
 		Resources:        spec.Resources,
 		ImagePullSecrets: spec.ImagePullSecrets,
 	}
+	if spec.GangScheduler != nil {
+		rtCfg.GangSchedulerName = spec.GangScheduler.SchedulerName
+		rtCfg.GangSchedulerQueue = spec.GangScheduler.Queue
+	}
 
 	var runtimeDep burninv1alpha1.DependencySpec
 	switch frameworkType {
@@ -364,6 +371,16 @@ func BuildWorkflowSpec(
 	}
 
 	return workflowSpec
+}
+
+// validateExecFramework returns an error when the exec framework is implied
+// (neither Torch nor MPI is set) but spec.Framework.Exec is nil, which would
+// cause a nil-pointer dereference inside buildCLIJobTemplate.
+func validateExecFramework(spec *burninv1alpha1.WorkloadRunSpec, name string) error {
+	if spec.Framework.Torch == nil && spec.Framework.MPI == nil && spec.Framework.Exec == nil {
+		return fmt.Errorf("workloadrun %s: exec framework selected but spec.framework.exec is nil", name)
+	}
+	return nil
 }
 
 func buildCLIJobTemplate(
@@ -509,6 +526,9 @@ func runWorkloadRunRenderDryRun(
 		frameworkType = controller.FrameworkTorch
 	} else if run.Spec.Framework.MPI != nil {
 		frameworkType = controller.FrameworkMPI
+	}
+	if err := validateExecFramework(&run.Spec, run.Name); err != nil {
+		return err
 	}
 
 	workflowSpec := BuildWorkflowSpec(

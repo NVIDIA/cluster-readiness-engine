@@ -166,6 +166,54 @@
         ],
         "numNodes": 1
       },
+      "runtimePatches": [
+        {
+          "manager": "cre.nvidia.com/controller",
+          "trainingRuntimeSpec": {
+            "template": {
+              "spec": {
+                "replicatedJobs": [
+                  {
+                    "name": "node",
+                    "template": {
+                      "spec": {
+                        "template": {
+                          "metadata": {
+                            "labels": {
+                              "cre.nvidia.com/job": "test-wf-history-group-0-iter-2"
+                            }
+                          },
+                          "spec": {
+                            "affinity": {
+                              "nodeAffinity": {
+                                "requiredDuringSchedulingIgnoredDuringExecution": {
+                                  "nodeSelectorTerms": [
+                                    {
+                                      "matchExpressions": [
+                                        {
+                                          "key": "kubernetes.io/hostname",
+                                          "operator": "In",
+                                          "values": [
+                                            "gpu-node-01"
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
       "suspend": false,
       "managedBy": "trainer.kubeflow.org/trainjob-controller"
     }

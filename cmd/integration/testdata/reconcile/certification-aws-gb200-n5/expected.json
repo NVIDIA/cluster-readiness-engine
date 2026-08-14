@@ -391,6 +391,10 @@
                                     "value": "1"
                                   },
                                   {
+                                    "name": "PYTORCH_CUDA_ALLOC_CONF",
+                                    "value": "expandable_segments:True"
+                                  },
+                                  {
                                     "name": "UCX_MEM_MMAP_HOOK_MODE",
                                     "value": "none"
                                   },

@@ -127,6 +127,8 @@ dependencies:
                       value: "1"
                     - name: TORCH_NCCL_HIGH_PRIORITY
                       value: "1"
+                    - name: PYTORCH_CUDA_ALLOC_CONF
+                      value: "expandable_segments:True"
 {{ lib "nccl/gb200-training-ucx-env.yaml" . | indent 20 }}
                     - name: EXIT_DURATION_MINS
                       value: "{{ .ExitDurationMins }}"

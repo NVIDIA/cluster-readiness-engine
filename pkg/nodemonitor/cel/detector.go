@@ -24,11 +24,20 @@ const (
 	reasonCELMatch = "CELExpressionMatched"
 )
 
+// nodeCacheEntry holds a previously converted node map keyed by resource version.
+type nodeCacheEntry struct {
+	resourceVersion string
+	nodeMap         map[string]any
+}
+
 // Detector evaluates CEL expressions against Kubernetes Node objects.
 type Detector struct {
 	expression string
 	program    cel.Program
 	mu         sync.RWMutex
+
+	nodeMapMu    sync.RWMutex
+	nodeMapCache map[string]nodeCacheEntry
 }
 
 // Detector is the reference implementation of NodeFailureDetector. The Job
@@ -137,15 +146,34 @@ func (d *Detector) createCELEnvironment() (*cel.Env, error) {
 // This provides access to the full Node object in CEL expressions.
 // It ensures commonly accessed fields always exist with default values to prevent
 // "no such key" errors in CEL expressions.
+//
+// Results are cached by node UID and resource version so that repeated calls
+// for the same (unchanged) node skip the expensive ToUnstructured conversion.
 func (d *Detector) nodeToMap(node *corev1.Node) (map[string]any, error) {
-	// Use the Kubernetes unstructured converter to get the full object
+	uid := string(node.UID)
+	rv := node.ResourceVersion
+
+	// Fast path: return cached map if the resource version matches.
+	d.nodeMapMu.RLock()
+	entry, ok := d.nodeMapCache[uid]
+	d.nodeMapMu.RUnlock()
+	if ok && entry.resourceVersion == rv {
+		return entry.nodeMap, nil
+	}
+
+	// Slow path: convert and cache.
 	unstructured, err := runtime.DefaultUnstructuredConverter.ToUnstructured(node)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert node to unstructured: %w", err)
 	}
-
-	// Ensure commonly accessed nested structures exist with defaults
 	d.ensureDefaults(unstructured)
+
+	d.nodeMapMu.Lock()
+	if d.nodeMapCache == nil {
+		d.nodeMapCache = make(map[string]nodeCacheEntry)
+	}
+	d.nodeMapCache[uid] = nodeCacheEntry{resourceVersion: rv, nodeMap: unstructured}
+	d.nodeMapMu.Unlock()
 
 	return unstructured, nil
 }
