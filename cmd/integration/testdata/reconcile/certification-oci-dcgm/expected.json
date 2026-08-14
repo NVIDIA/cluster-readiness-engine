@@ -138,7 +138,9 @@
             "nvidia.com/gpu.product": "NVIDIA-H100-80GB-HBM3"
           }
         },
-        "execution": {},
+        "execution": {
+          "timeoutPerJob": "1h0m0s"
+        },
         "iterations": 1
       },
       "dependencies": [

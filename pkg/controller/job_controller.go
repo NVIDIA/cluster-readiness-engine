@@ -779,12 +779,42 @@ func (r *JobReconciler) setJobSucceeded(ctx context.Context, job *burninv1alpha1
 }
 
 // setJobFailed sets the Job status to Failed and captures failure logs.
+//
+// Both captureFailureLog and FailedNodes are set inside the updateStatusWithRetry
+// closure (via the extra function passed to setExclusiveStatusCondition) so that
+// on a 409 conflict the retry re-applies them to the freshly-fetched object.
+// Setting them on the stale object before the closure would cause them to be
+// silently discarded whenever the API server returns a conflict.
 func (r *JobReconciler) setJobFailed(ctx context.Context, job *burninv1alpha1.Job, reason, message string) error {
-	r.captureFailureLog(ctx, job)
-	if len(job.Status.FailedNodes) == 0 {
-		job.Status.FailedNodes = noderesults.NodesWithFailureDetails(groupNodeNames(job), ReasonWorkloadFailed, message)
+	changed, err := setExclusiveStatusCondition(ctx, r.Client, job,
+		func(j *burninv1alpha1.Job) *[]metav1.Condition { return &j.Status.Conditions },
+		[]string{
+			burninv1alpha1.JobInProgress,
+			burninv1alpha1.JobSucceeded,
+			burninv1alpha1.JobFailed,
+		},
+		burninv1alpha1.JobFailed, reason, message,
+		func(j *burninv1alpha1.Job) bool {
+			c := false
+			if j.Status.FailureLog == nil {
+				r.captureFailureLog(ctx, j)
+				c = true
+			}
+			if len(j.Status.FailedNodes) == 0 {
+				j.Status.FailedNodes = noderesults.NodesWithFailureDetails(groupNodeNames(j), ReasonWorkloadFailed, message)
+				c = true
+			}
+			return c
+		},
+	)
+	if err != nil {
+		return err
 	}
-	return r.setExclusiveCondition(ctx, job, burninv1alpha1.JobFailed, reason, message)
+	if changed {
+		recordJobStatus(job.Namespace, job.Name, job.Labels["cre.nvidia.com/workflow"], "failed")
+		logf.FromContext(ctx).Info("Job status updated", "status", burninv1alpha1.JobFailed, "reason", reason)
+	}
+	return nil
 }
 
 // failureLogTailLines is the number of log lines requested from a failed pod.
@@ -834,11 +864,11 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *burninv1alph
 		return
 	}
 
-	// List pods for this Job.
+	// List pods for this Job using the field index for O(1) lookup.
 	podList := &corev1.PodList{}
 	if err := r.List(ctx, podList,
 		client.InNamespace(job.Namespace),
-		client.MatchingLabels{"cre.nvidia.com/job": job.Name},
+		client.MatchingFields{nodemonitor.PodCREJobIndexField: job.Name},
 	); err != nil {
 		log.V(1).Info("Failed to list pods for failure log capture", "error", err)
 		return
@@ -1435,11 +1465,6 @@ func (r *JobReconciler) nodeHealthChangePredicate() predicate.Predicate {
 
 			// Trigger on label changes (for GPUd-style health labels)
 			if !mapsEqual(oldNode.Labels, newNode.Labels) {
-				return true
-			}
-
-			// Trigger on annotation changes
-			if !mapsEqual(oldNode.Annotations, newNode.Annotations) {
 				return true
 			}
 
