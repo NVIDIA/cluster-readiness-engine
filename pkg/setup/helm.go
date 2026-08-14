@@ -235,12 +235,23 @@ func runHelm(helmPath string, args []string, out io.Writer) error {
 }
 
 // helmRegistryLogin logs in to an OCI registry.
+// The password is supplied via stdin (--password-stdin) rather than as a CLI
+// argument so it does not appear in the process list.
 func helmRegistryLogin(helmPath, registry, password string, out io.Writer) error {
-	return runHelm(helmPath, []string{
+	var buf bytes.Buffer
+	cmd := exec.Command(helmPath, // #nosec G204 -- helmPath comes from this CLI, not from untrusted input
 		"registry", "login", registry,
 		"--username", ghcrRegistryUser,
-		"--password", password,
-	}, out)
+		"--password-stdin",
+	)
+	cmd.Stdin = strings.NewReader(password + "\n")
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Run(); err != nil {
+		_, _ = io.Copy(out, &buf)
+		return fmt.Errorf("helm registry login: %w", err)
+	}
+	return nil
 }
 
 func helmRegistryLogout(helmPath, registry string, out io.Writer) {
