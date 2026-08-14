@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -207,12 +206,11 @@ func newRootCommand() *cobra.Command {
 				return fmt.Errorf("unable to create controller GoodputMeasurement: %w", err)
 			}
 			if err := (&controller.BandwidthMeasurementReconciler{
-				Client:          mgr.GetClient(),
-				APIReader:       mgr.GetAPIReader(),
-				Scheme:          mgr.GetScheme(),
-				Clientset:       clientset,
-				LogFetcher:      podlogs.NewKubernetesLogFetcher(clientset),
-				RequeueInterval: time.Second,
+				Client:     mgr.GetClient(),
+				APIReader:  mgr.GetAPIReader(),
+				Scheme:     mgr.GetScheme(),
+				Clientset:  clientset,
+				LogFetcher: podlogs.NewKubernetesLogFetcher(clientset),
 			}).SetupWithManager(mgr); err != nil {
 				return fmt.Errorf("unable to create controller BandwidthMeasurement: %w", err)
 			}
