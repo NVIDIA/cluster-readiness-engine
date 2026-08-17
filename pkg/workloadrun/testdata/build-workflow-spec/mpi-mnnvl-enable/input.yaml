@@ -1,0 +1,21 @@
+# Regression test for issue #126 (WR-004).
+#
+# When enableMNNVL is true, the CLI MPI mpirun args must include
+# -x NCCL_MNNVL_ENABLE=1 after -x NCCL_DEBUG=INFO, matching the controller
+# behaviour in pkg/controller/workloadrun_controller.go.
+run:
+  metadata:
+    name: wr-mpi-mnnvl
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    enableMNNVL: true
+    framework:
+      mpi:
+        binary: /workspace/all_reduce_perf
+        mpirunPath: /usr/local/mpi/bin/mpirun
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: true
+frameworkType: mpi

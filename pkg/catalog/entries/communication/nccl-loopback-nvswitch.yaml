@@ -237,6 +237,10 @@ overrides:
             env:
 {{ lib "nccl/aws-gb200-efa-env.yaml" . | indent 12 }}
 # --- GCP + GB200/GB300 (RoCE) ---
+# jobTemplatePatch appends the GCP-specific GDR-level tuning to the env array
+# set by the GB200/GB300 base override, preserving NCCL_NVLS_ENABLE and
+# NCCL_CUMEM_ENABLE. NCCL_DEBUG and NCCL_MNNVL_ENABLE are already present
+# in the base env (gb200-env.yaml) and need not be repeated.
 - when:
     platform:
       equals: gcp
@@ -244,20 +248,18 @@ overrides:
       in: [gb200, gb300]
   dependencies:
 {{ lib "deps/gcp-gb200-roce-runtime-patch-comm.yaml" . | indent 2 }}
-  jobTemplate:
-    spec:
-      workload:
-        trainJob:
-          trainer:
-            env:
-            - name: NCCL_DEBUG
-              value: INFO
-            - name: NCCL_NET_GDR_LEVEL
-              value: "5"
-            - name: NCCL_MNNVL_ENABLE
-              value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"
+  jobTemplatePatch:
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: NCCL_NET_GDR_LEVEL
+      value: "5"
 # --- GB300 (RoCE) ---
 # --- AWS + GB300 (RoCE) ---
+# jobTemplate sets command/args only (atomic array replacement is fine for these).
+# jobTemplatePatch appends NCCL_MAX_BYTES to the env array established by the
+# GB200/GB300 base override so that NCCL_NVLS_ENABLE and NCCL_CUMEM_ENABLE
+# set by that override are preserved.
 - when:
     platform:
       equals: aws
@@ -279,13 +281,12 @@ overrides:
               unset NCCL_NET_PLUGIN
               unset NCCL_TUNER_PLUGIN
               /usr/local/bin/all_reduce_perf_mpi -b 8 -e "$NCCL_MAX_BYTES" -f 2 -g {{ .GpusPerNode }} -n {{ .NumIterations }} -N {{ .NumCycles }}
-            env:
-            - name: NCCL_MAX_BYTES
-              value: {{ .MaxBytes }}
-            - name: NCCL_DEBUG
-              value: INFO
-            - name: NCCL_MNNVL_ENABLE
-              value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"
+  jobTemplatePatch:
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: NCCL_MAX_BYTES
+      value: {{ .MaxBytes }}
 # --- Mistral + GB300 (InfiniBand) ---
 - when:
     platform:
