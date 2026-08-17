@@ -75,7 +75,7 @@ jobs:
           IMG: ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign container image
         run: |
@@ -83,7 +83,7 @@ jobs:
             ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}@${{ steps.push.outputs.digest }}
 
       - name: Generate SBOM
-        uses: anchore/sbom-action@v0.17.9
+        uses: anchore/sbom-action@v0.24.0
         with:
           image: ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}@${{ steps.push.outputs.digest }}
           format: cyclonedx-json
