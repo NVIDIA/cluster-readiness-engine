@@ -1,0 +1,8 @@
+{
+  "changed": false,
+  "ref": {
+    "apiGroup": null,
+    "kind": "ConfigMap",
+    "name": "nodes-abc123"
+  }
+}

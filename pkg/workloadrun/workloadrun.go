@@ -178,6 +178,9 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 	} else if run.Spec.Framework.MPI != nil {
 		frameworkType = controller.FrameworkMPI
 	}
+	if err := validateExecFramework(&run.Spec, run.Name); err != nil {
+		return err
+	}
 
 	// Build WorkflowSpec.
 	workflowSpec := BuildWorkflowSpec(run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
@@ -280,6 +283,10 @@ func BuildWorkflowSpec(
 		Resources:        spec.Resources,
 		ImagePullSecrets: spec.ImagePullSecrets,
 	}
+	if spec.GangScheduler != nil {
+		rtCfg.GangSchedulerName = spec.GangScheduler.SchedulerName
+		rtCfg.GangSchedulerQueue = spec.GangScheduler.Queue
+	}
 
 	var runtimeDep burninv1alpha1.DependencySpec
 	switch frameworkType {
@@ -298,7 +305,7 @@ func BuildWorkflowSpec(
 	}
 
 	// Build JobTemplate.
-	jobTemplate := buildCLIJobTemplate(run, frameworkType, gpusPerNode)
+	jobTemplate := buildCLIJobTemplate(run, frameworkType, gpusPerNode, enableMNNVL)
 
 	// Build OrchestrationSpec.
 	orch := &burninv1alpha1.OrchestrationSpec{
@@ -366,8 +373,18 @@ func BuildWorkflowSpec(
 	return workflowSpec
 }
 
+// validateExecFramework returns an error when the exec framework is implied
+// (neither Torch nor MPI is set) but spec.Framework.Exec is nil, which would
+// cause a nil-pointer dereference inside buildCLIJobTemplate.
+func validateExecFramework(spec *burninv1alpha1.WorkloadRunSpec, name string) error {
+	if spec.Framework.Torch == nil && spec.Framework.MPI == nil && spec.Framework.Exec == nil {
+		return fmt.Errorf("workloadrun %s: exec framework selected but spec.framework.exec is nil", name)
+	}
+	return nil
+}
+
 func buildCLIJobTemplate(
-	run *burninv1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32,
+	run *burninv1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32, enableMNNVL bool,
 ) *burninv1alpha1.JobTemplateSpec {
 	spec := &run.Spec
 
@@ -386,7 +403,7 @@ func buildCLIJobTemplate(
 	case controller.FrameworkMPI:
 		mpi := spec.Framework.MPI
 		command = []string{"timeout", "3600", mpi.MpirunPath}
-		baseCount := 8 // fixed args below
+		baseCount := 10 // fixed args below
 		mpiArgs := make([]string, 0, baseCount+len(mpi.MpiArgs)+1+len(mpi.Args))
 		mpiArgs = append(mpiArgs,
 			"-N", fmt.Sprintf("%d", gpusPerNode),
@@ -395,6 +412,11 @@ func buildCLIJobTemplate(
 			"-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
 			"-x", "NCCL_DEBUG=INFO",
 		)
+		enableStr := "0"
+		if enableMNNVL {
+			enableStr = "1"
+		}
+		mpiArgs = append(mpiArgs, "-x", fmt.Sprintf("NCCL_MNNVL_ENABLE=%s", enableStr))
 		mpiArgs = append(mpiArgs, mpi.MpiArgs...)
 		mpiArgs = append(mpiArgs, mpi.Binary)
 		mpiArgs = append(mpiArgs, mpi.Args...)
@@ -504,6 +526,9 @@ func runWorkloadRunRenderDryRun(
 		frameworkType = controller.FrameworkTorch
 	} else if run.Spec.Framework.MPI != nil {
 		frameworkType = controller.FrameworkMPI
+	}
+	if err := validateExecFramework(&run.Spec, run.Name); err != nil {
+		return err
 	}
 
 	workflowSpec := BuildWorkflowSpec(

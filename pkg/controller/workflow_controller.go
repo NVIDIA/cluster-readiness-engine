@@ -1350,7 +1350,9 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 		}
 		diag.Stage = burninv1alpha1.DiagnoseStageComplete
 
-		return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, ReasonIterationsFailed, msg)
+		return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, ReasonIterationsFailed, msg,
+			applySucceededNodesRef(workflow.Status.SucceededNodesRef),
+			applyFailedNodesRef(workflow.Status.FailedNodesRef))
 
 	default:
 		return ctrl.Result{}, fmt.Errorf("unknown diagnose stage: %s", diag.Stage)
@@ -1534,7 +1536,9 @@ func (r *WorkflowReconciler) handleDiagnoseCrossBoundary(
 		diag.Stage = burninv1alpha1.DiagnoseStageComplete
 		msg := fmt.Sprintf("Diagnosis complete: %d infrastructure faults detected", len(diag.InfrastructureFaults))
 		log.Info(msg)
-		return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, ReasonIterationsFailed, msg)
+		return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, ReasonIterationsFailed, msg,
+			applySucceededNodesRef(workflow.Status.SucceededNodesRef),
+			applyFailedNodesRef(workflow.Status.FailedNodesRef))
 	}
 
 	return r.diagnoseDone(ctx, workflow, diag, "Cross-boundary probing complete: no faults confirmed")
@@ -1595,7 +1599,9 @@ func (r *WorkflowReconciler) diagnoseNextGroups(
 				logf.FromContext(ctx).Error(err, "Failed to record succeeded nodes to ConfigMap")
 			}
 			diag.Stage = burninv1alpha1.DiagnoseStageComplete
-			return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, ReasonIterationsFailed, msg)
+			return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, ReasonIterationsFailed, msg,
+				applySucceededNodesRef(workflow.Status.SucceededNodesRef),
+				applyFailedNodesRef(workflow.Status.FailedNodesRef))
 		}
 		diag.Stage = burninv1alpha1.DiagnoseStageConfirmation
 		return r.diagnoseSetGroups(ctx, workflow, orch, diag, groups,
@@ -1643,7 +1649,7 @@ func (r *WorkflowReconciler) diagnoseDone(
 	if err := r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)); err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to record succeeded nodes to ConfigMap")
 	}
-	return ctrl.Result{}, r.setWorkflowSucceeded(ctx, workflow, ReasonJobCompleted, msg)
+	return ctrl.Result{}, r.setWorkflowSucceeded(ctx, workflow, ReasonJobCompleted, msg, applySucceededNodesRef(workflow.Status.SucceededNodesRef))
 }
 
 // buildInterDomainGroup selects one healthy representative per screening group.
@@ -1729,7 +1735,9 @@ func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *burni
 			logf.FromContext(ctx).Error(err, "Failed to record succeeded nodes to ConfigMap")
 		}
 
-		return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, reason, msg)
+		return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, reason, msg,
+			applySucceededNodesRef(workflow.Status.SucceededNodesRef),
+			applyFailedNodesRef(workflow.Status.FailedNodesRef))
 	}
 
 	msg := fmt.Sprintf("All %d iterations completed successfully", totalIter)
@@ -1737,7 +1745,7 @@ func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *burni
 	if err := r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)); err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to record succeeded nodes to ConfigMap")
 	}
-	return ctrl.Result{}, r.setWorkflowSucceeded(ctx, workflow, ReasonJobCompleted, msg)
+	return ctrl.Result{}, r.setWorkflowSucceeded(ctx, workflow, ReasonJobCompleted, msg, applySucceededNodesRef(workflow.Status.SucceededNodesRef))
 }
 
 // countFailedGroups counts groups with Failed phase across all iterations.
@@ -1965,13 +1973,55 @@ func (r *WorkflowReconciler) setWorkflowInProgress(ctx context.Context, workflow
 }
 
 // setWorkflowSucceeded sets the Workflow to Succeeded state.
-func (r *WorkflowReconciler) setWorkflowSucceeded(ctx context.Context, workflow *burninv1alpha1.Workflow, reason, message string) error {
-	return r.setExclusiveCondition(ctx, workflow, burninv1alpha1.WorkflowSucceeded, reason, message)
+// extra funcs are applied inside the updateStatusWithRetry closure so their
+// status mutations survive 409 conflict re-fetches.
+func (r *WorkflowReconciler) setWorkflowSucceeded(ctx context.Context, workflow *burninv1alpha1.Workflow, reason, message string, extra ...func(*burninv1alpha1.Workflow) bool) error {
+	return r.setExclusiveCondition(ctx, workflow, burninv1alpha1.WorkflowSucceeded, reason, message, extra...)
 }
 
 // setWorkflowFailed sets the Workflow to Failed state.
-func (r *WorkflowReconciler) setWorkflowFailed(ctx context.Context, workflow *burninv1alpha1.Workflow, reason, message string) error {
-	return r.setExclusiveCondition(ctx, workflow, burninv1alpha1.WorkflowFailed, reason, message)
+// extra funcs are applied inside the updateStatusWithRetry closure so their
+// status mutations survive 409 conflict re-fetches.
+func (r *WorkflowReconciler) setWorkflowFailed(ctx context.Context, workflow *burninv1alpha1.Workflow, reason, message string, extra ...func(*burninv1alpha1.Workflow) bool) error {
+	return r.setExclusiveCondition(ctx, workflow, burninv1alpha1.WorkflowFailed, reason, message, extra...)
+}
+
+// applySucceededNodesRef returns an extra func suitable for setWorkflowSucceeded
+// and setWorkflowFailed that re-applies ref inside the updateStatusWithRetry
+// closure. Without this, SucceededNodesRef set on the stale object before the
+// call is silently discarded when the API server returns a 409 conflict and the
+// object is re-fetched.
+func applySucceededNodesRef(ref *corev1.TypedLocalObjectReference) func(*burninv1alpha1.Workflow) bool {
+	if ref == nil {
+		return nil
+	}
+	return func(w *burninv1alpha1.Workflow) bool {
+		cur := w.Status.SucceededNodesRef
+		if cur != nil && cur.Name == ref.Name && cur.Kind == ref.Kind {
+			return false
+		}
+		w.Status.SucceededNodesRef = ref
+		return true
+	}
+}
+
+// applyFailedNodesRef returns an extra func suitable for setWorkflowFailed that
+// re-applies ref inside the updateStatusWithRetry closure. Without this,
+// FailedNodesRef set on the stale object before the call (e.g. by
+// recordFailedNodes) is silently discarded when the API server returns a 409
+// conflict and the object is re-fetched.
+func applyFailedNodesRef(ref *corev1.TypedLocalObjectReference) func(*burninv1alpha1.Workflow) bool {
+	if ref == nil {
+		return nil
+	}
+	return func(w *burninv1alpha1.Workflow) bool {
+		cur := w.Status.FailedNodesRef
+		if cur != nil && cur.Name == ref.Name && cur.Kind == ref.Kind {
+			return false
+		}
+		w.Status.FailedNodesRef = ref
+		return true
+	}
 }
 
 // setExclusiveCondition sets one condition True and all others False (mutually exclusive).
@@ -2143,6 +2193,7 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *burni
 	// Phase 2: Delete all dependency resources in reverse topological order.
 	// Since DependencyRefs are stored in creation (topological) order,
 	// reversing ensures dependents are deleted before their dependencies.
+	var depErrs []error
 	for _, ref := range reverseDependencyRefs(workflow.Status.DependencyRefs) {
 		obj := &unstructured.Unstructured{}
 		obj.SetAPIVersion(ref.APIVersion)
@@ -2152,7 +2203,11 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *burni
 		log.Info("Deleting dependency resource", "scope", ref.Scope, "kind", ref.Kind, "name", ref.Name)
 		if err := r.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
 			log.Error(err, "Failed to delete dependency resource", "name", ref.Name)
+			depErrs = append(depErrs, err)
 		}
+	}
+	if err := errors.Join(depErrs...); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	// Phase 3: Patch PVs for deleted PVCs. The PV must be Released (not Bound)
