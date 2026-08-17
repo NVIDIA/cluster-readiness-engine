@@ -319,6 +319,38 @@ overrides:
               value: "1"
             - name: NCCL_MNNVL_ENABLE
               value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"
+# --- OCI + GB300 (RoCE) ---
+# Must come AFTER the GB200/GB300 ComputeDomain block (which sets the base env
+# via jobTemplate) so that jobTemplatePatch appends to that env array rather
+# than operating on an empty one.
+# Appends OCI GID index vars needed for RoCEv2 connectivity.
+# NCCL_NVLS_ENABLE, NCCL_CUMEM_ENABLE, NCCL_SHM_DISABLE, NCCL_P2P_DISABLE,
+# and NCCL_MNNVL_ENABLE are already set by the GB200/GB300 base override.
+- when:
+    platform:
+      equals: oci
+    gpuArchitecture:
+      equals: gb300
+  dependencies:
+{{ lib "deps/oci-mlnxnics-comm.yaml" . | indent 2 }}
+  jobTemplatePatch:
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: UCX_IB_GID_INDEX
+      value: "3"
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: NCCL_IB_GID_INDEX
+      value: "3"
+{{- if not .EnableMNNVL }}
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: NCCL_DMABUF_ENABLE
+      value: "0"
+{{- end }}
 # --- Mistral + GB300 (InfiniBand) ---
 - when:
     platform:
