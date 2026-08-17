@@ -332,6 +332,41 @@ overrides:
           trainer:
             env:
 {{ lib "nccl/azure-h100-ib-training-env.yaml" . | indent 12 }}
+# --- Azure + GB200 (InfiniBand) ---
+# Uses the same IB infrastructure as H100 on Azure: mlnxnics resources plus
+# the H100 topo configmap (no separate GB200 topology file exists for Azure).
+# NCCL tuning from azure-h100-ib-training-env.yaml is appropriate for
+# InfiniBand-connected GB200 systems.
+- when:
+    platform:
+      equals: azure
+    gpuArchitecture:
+      equals: gb200
+  dependencies:
+{{ lib "deps/azure-h100-ib-training.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/azure-h100-ib-training-env.yaml" . | indent 12 }}
+# --- Azure + GB300 (InfiniBand) ---
+# Same InfiniBand infrastructure as GB200 on Azure.
+- when:
+    platform:
+      equals: azure
+    gpuArchitecture:
+      equals: gb300
+  dependencies:
+{{ lib "deps/azure-h100-ib-training.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/azure-h100-ib-training-env.yaml" . | indent 12 }}
 # --- AWS + GB300 (RoCE) ---
 - when:
     platform:

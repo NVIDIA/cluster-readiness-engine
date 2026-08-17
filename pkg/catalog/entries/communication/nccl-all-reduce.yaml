@@ -242,12 +242,15 @@ overrides:
 {{ lib "nccl/gcp-h100-fastrak-env.yaml" . | toMpiArgs | indent 12 }}
             - /usr/local/bin/all_reduce_perf_mpi
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
-# --- Azure (InfiniBand); excludes A100 (see Azure + A100 override below) ---
+# --- Azure (InfiniBand); excludes A100, GB200, GB300 ---
+# GB200/GB300 are excluded because they require RoCE deps, not IB. A100 has its
+# own override below. notIn keeps this block forward-compatible with future Azure
+# IB architectures.
 - when:
     platform:
       equals: azure
     gpuArchitecture:
-      notIn: [a100]
+      notIn: [a100, gb200, gb300]
   dependencies:
 {{ lib "deps/azure-ib-with-topo-comm.yaml" . | indent 2 }}
   jobTemplate:
