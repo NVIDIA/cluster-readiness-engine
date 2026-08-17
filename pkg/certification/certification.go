@@ -440,6 +440,7 @@ type certRunConfig struct {
 	cert            *burninv1alpha1.Certification
 	namespace       string
 	controllerImage string // --image: controller image for --setup
+	imagePullSecret string // --image-pull-secret: token for ghcr.io pull auth
 	doWait          bool   // --wait: watch + report
 	doSetup         bool   // --setup: runInit before create
 	doCleanup       bool   // --cleanup: runReset + delete cert/ns after
@@ -471,6 +472,7 @@ func newRunCommand(version string) *cobra.Command {
 	var doWait, doSetup, doCleanup bool
 	var certFile string
 	var controllerImage string
+	var imagePullSecret string
 	var resultsFile string
 	var timeout time.Duration
 
@@ -503,7 +505,7 @@ Use --cleanup to teardown installed components after completion.`,
 			var err error
 			if certFile != "" {
 				cfg, err = buildConfigFromFile(certFile, *configFlags.Namespace, controllerImage,
-					doWait, doSetup, doCleanup, timeout, configFlags, os.Stderr)
+					imagePullSecret, doWait, doSetup, doCleanup, timeout, configFlags, os.Stderr)
 			} else {
 				opts := categoryRunOpts{
 					maxSteps:         maxSteps,
@@ -520,7 +522,7 @@ Use --cleanup to teardown installed components after completion.`,
 					opts.enableMNNVL = &enableMNNVL
 				}
 				cfg, err = buildConfigFromFlags(categories, name, *configFlags.Namespace, nodesPerJob,
-					opts, controllerImage, doWait, doSetup, doCleanup, timeout, configFlags, os.Stderr)
+					opts, controllerImage, imagePullSecret, doWait, doSetup, doCleanup, timeout, configFlags, os.Stderr)
 			}
 			if err != nil {
 				return err
@@ -541,6 +543,8 @@ Use --cleanup to teardown installed components after completion.`,
 		"Watch for completion and print a report")
 	cmd.Flags().BoolVar(&doCleanup, "cleanup", false,
 		"Delete certification, namespace, and installed components after completion")
+	cmd.Flags().StringVar(&imagePullSecret, "image-pull-secret", "",
+		"GitHub token for ghcr.io image pull — creates a pull secret in the certification namespace")
 	cmd.Flags().StringVar(&controllerImage, "image", "",
 		"Controller image for --setup (default: ghcr.io/nvidia/cluster-readiness-engine/manager:<version>)")
 	cmd.Flags().StringVar(&name, "name", "",
@@ -580,7 +584,7 @@ Use --cleanup to teardown installed components after completion.`,
 // Connects to the cluster to discover GPU product.
 func buildConfigFromFlags(
 	categoryStrs []string, name, namespace string, nodesPerJob int32,
-	opts categoryRunOpts, controllerImage string,
+	opts categoryRunOpts, controllerImage, imagePullSecret string,
 	doWait, doSetup, doCleanup bool, timeout time.Duration,
 	configFlags *kubeconfig.ConfigFlags, out io.Writer,
 ) (*certRunConfig, error) {
@@ -666,6 +670,7 @@ func buildConfigFromFlags(
 		cert:            cert,
 		namespace:       namespace,
 		controllerImage: controllerImage,
+		imagePullSecret: imagePullSecret,
 		doWait:          doWait,
 		doSetup:         doSetup,
 		doCleanup:       doCleanup,
@@ -677,7 +682,7 @@ func buildConfigFromFlags(
 
 // buildConfigFromFile builds a certRunConfig from a --cert-file YAML.
 func buildConfigFromFile(
-	certFile, namespace, controllerImage string,
+	certFile, namespace, controllerImage, imagePullSecret string,
 	doWait, doSetup, doCleanup bool, timeout time.Duration,
 	configFlags *kubeconfig.ConfigFlags, out io.Writer,
 ) (*certRunConfig, error) {
@@ -698,6 +703,7 @@ func buildConfigFromFile(
 		cert:            cert,
 		namespace:       cert.Namespace,
 		controllerImage: controllerImage,
+		imagePullSecret: imagePullSecret,
 		doWait:          doWait,
 		doSetup:         doSetup,
 		doCleanup:       doCleanup,
@@ -790,7 +796,7 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 	// --- Setup phase: install via runInit (SSA is idempotent) ---
 	if cfg.doSetup {
 		_, _ = fmt.Fprintln(out, "[setup] Installing dependencies...")
-		initErr := setup.RunInit(cfg.version, cfg.controllerImage, "", "", true,
+		initErr := setup.RunInit(cfg.version, cfg.controllerImage, cfg.imagePullSecret, "", true,
 			cfg.configFlags, "", nil, out)
 		if initErr != nil {
 			return fmt.Errorf("[setup] %w", initErr)
@@ -804,6 +810,16 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 	}
 	if wasCreated {
 		createdNamespace = cfg.namespace
+	}
+
+	// --- Create image pull secret if token provided ---
+	if cfg.imagePullSecret != "" {
+		secretName, secretErr := setup.CreateImagePullSecret(ctx, wc, cfg.namespace, cfg.imagePullSecret)
+		if secretErr != nil {
+			return fmt.Errorf("create image pull secret: %w", secretErr)
+		}
+		cfg.cert.Spec.ImagePullSecrets = append(cfg.cert.Spec.ImagePullSecrets,
+			corev1.LocalObjectReference{Name: secretName})
 	}
 
 	// --- Create Certification ---
