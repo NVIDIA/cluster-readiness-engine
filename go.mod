@@ -4,7 +4,7 @@ go 1.26.6
 
 require (
 	github.com/evanphx/json-patch/v5 v5.9.11
-	github.com/google/cel-go v0.30.0
+	github.com/google/cel-go v0.31.0
 	github.com/kubeflow/trainer/v2 v2.2.1
 	github.com/prometheus/client_golang v1.24.1
 	github.com/spf13/cobra v1.10.2
