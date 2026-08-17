@@ -305,7 +305,7 @@ func BuildWorkflowSpec(
 	}
 
 	// Build JobTemplate.
-	jobTemplate := buildCLIJobTemplate(run, frameworkType, gpusPerNode)
+	jobTemplate := buildCLIJobTemplate(run, frameworkType, gpusPerNode, enableMNNVL)
 
 	// Build OrchestrationSpec.
 	orch := &burninv1alpha1.OrchestrationSpec{
@@ -384,7 +384,7 @@ func validateExecFramework(spec *burninv1alpha1.WorkloadRunSpec, name string) er
 }
 
 func buildCLIJobTemplate(
-	run *burninv1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32,
+	run *burninv1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32, enableMNNVL bool,
 ) *burninv1alpha1.JobTemplateSpec {
 	spec := &run.Spec
 
@@ -403,7 +403,7 @@ func buildCLIJobTemplate(
 	case controller.FrameworkMPI:
 		mpi := spec.Framework.MPI
 		command = []string{"timeout", "3600", mpi.MpirunPath}
-		baseCount := 8 // fixed args below
+		baseCount := 10 // fixed args below
 		mpiArgs := make([]string, 0, baseCount+len(mpi.MpiArgs)+1+len(mpi.Args))
 		mpiArgs = append(mpiArgs,
 			"-N", fmt.Sprintf("%d", gpusPerNode),
@@ -412,6 +412,11 @@ func buildCLIJobTemplate(
 			"-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
 			"-x", "NCCL_DEBUG=INFO",
 		)
+		enableStr := "0"
+		if enableMNNVL {
+			enableStr = "1"
+		}
+		mpiArgs = append(mpiArgs, "-x", fmt.Sprintf("NCCL_MNNVL_ENABLE=%s", enableStr))
 		mpiArgs = append(mpiArgs, mpi.MpiArgs...)
 		mpiArgs = append(mpiArgs, mpi.Binary)
 		mpiArgs = append(mpiArgs, mpi.Args...)

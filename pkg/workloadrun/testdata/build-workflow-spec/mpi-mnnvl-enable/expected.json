@@ -16,7 +16,7 @@
       "-x",
       "NCCL_DEBUG=INFO",
       "-x",
-      "NCCL_MNNVL_ENABLE=0",
+      "NCCL_MNNVL_ENABLE=1",
       "/workspace/all_reduce_perf"
     ],
     "numNodes": 2,
