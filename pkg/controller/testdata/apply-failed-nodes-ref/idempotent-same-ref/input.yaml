@@ -1,0 +1,15 @@
+ref:
+  kind: ConfigMap
+  name: nodes-abc123
+workflow:
+  metadata:
+    name: w
+  spec:
+    categories: []
+  status:
+    succeededNodesRef:
+      kind: ConfigMap
+      name: nodes-abc123
+    failedNodesRef:
+      kind: ConfigMap
+      name: nodes-abc123

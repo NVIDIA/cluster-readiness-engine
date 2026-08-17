@@ -1,0 +1,6 @@
+ref: null
+workflow:
+  metadata:
+    name: w
+  spec:
+    categories: []

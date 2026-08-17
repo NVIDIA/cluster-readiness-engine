@@ -1,0 +1,8 @@
+{
+  "changed": true,
+  "ref": {
+    "apiGroup": null,
+    "kind": "ConfigMap",
+    "name": "nodes-new-xyz"
+  }
+}
