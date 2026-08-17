@@ -54,6 +54,18 @@ spec:
 
 H100 on AWS uses `vpc.amazonaws.com/efa: 32`. No hugepages or ComputeDomain.
 
+### H200
+
+```yaml
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H200
+  enableMNNVL: false
+```
+
+H200 uses the same EFA configuration as H100 (8 GPUs per node, 8 MLNX per node).
+
 ## GCP
 
 _Content coming soon._

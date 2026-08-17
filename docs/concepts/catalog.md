@@ -44,9 +44,27 @@ To see all available categories from the CLI:
 ncrectl certification list-categories
 ```
 
+## Per-node category options
+
+`nccl-loopback`, `nccl-loopback-nvswitch`, and `dcgm-level4` run one Job per node. They support two additional options:
+
+| Option | Description |
+|--------|-------------|
+| `maxConcurrent` | Maximum number of per-node Jobs to run simultaneously (default: unbounded) |
+| `timeoutPerJob` | Timeout for each individual per-node Job |
+
+```yaml
+categories:
+  - domain: diagnostics
+    variant: dcgm-level4
+    options:
+      maxConcurrent: 4
+      timeoutPerJob: 30m
+```
+
 ## Overrides
 
-Catalog entries define a base workload spec. Platform-specific and GPU-specific overrides within the same YAML are applied at render time based on the detected environment. See [Platform Detection & Overrides](./platform-detection.md) for override semantics.
+Catalog entries define a base workload spec. Platform-specific and GPU-specific overrides within the same YAML are applied at render time based on the detected environment. Supported GPU architectures include GB200, GB300, H100, H200, and B200. See [Platform Detection & Overrides](./platform-detection.md) for override semantics.
 
 ## Adding a custom entry
 

@@ -35,6 +35,10 @@ spec:
 
 _Generated from CRD schema — coming soon._
 
+<Warning>
+`spec.categories` is **immutable** after the Certification is created (`self == oldSelf` validation). To change the category list, delete the Certification and recreate it. The minimum is 1 category.
+</Warning>
+
 ## Status fields
 
 | Field | Type | Description |
@@ -46,7 +50,7 @@ Each `categoryStatuses` entry includes a `failedNodes` list. Each entry in that 
 
 ## Lifecycle
 
-1. Controller creates one `Workflow` per entry in `spec.categories`.
+1. Controller creates one `Workflow` per entry in `spec.categories`. The category list cannot be changed after creation — delete and recreate to modify it.
 2. Workflows run sequentially or in parallel depending on orchestration config.
 3. When all Workflows complete, Certification is marked `Succeeded` or `Failed`.
 4. Failed nodes are recorded at `status.categoryStatuses[].failedNodes`. CRE does not taint or cordon nodes.
