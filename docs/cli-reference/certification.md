@@ -22,7 +22,6 @@ ncrectl certification run --category communication/nccl-all-reduce [flags]
 | `--cert-file` | — | Path to a Certification YAML (mutually exclusive with `--category`) |
 | `--category` | — | Category in `domain/variant` format; repeatable (mutually exclusive with `--cert-file`) |
 | `--name` | auto | Certification name (default: `ncrectl-<timestamp>`) |
-| `--image-pull-secret` | — | GitHub token — creates a `ghcr.io` pull secret in the target namespace |
 | `--setup` | `false` | Install CRDs, controller, and LogProfiles before creating the certification |
 | `--image` | — | Controller image for `--setup` (default: `ghcr.io/nvidia/cluster-readiness-engine/manager:<version>`) |
 | `--wait` | `false` | Block until the certification completes and print a report |

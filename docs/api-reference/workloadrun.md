@@ -21,6 +21,7 @@ spec:
     mpi:
       binary: /usr/local/bin/all_reduce_perf_mpi
       args: ["-b", "8", "-e", "32G", "-f", "2", "-n", "100"]
+      mpirunPath: /usr/local/bin/mpirun
   numNodes: 4
   target:
     nodeSelector:
@@ -40,9 +41,12 @@ _Generated from CRD schema — coming soon._
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `phase` | string | `InProgress`, `Passed`, or `Failed` |
-| `conditions` | []Condition | InProgress, Succeeded, Failed (mutually exclusive) |
-| `bandwidthResult` | BandwidthResult | Measured bandwidth results (if configured) |
-| `goodputResult` | GoodputResult | Measured goodput ratio (if configured) |
-| `detectedGPUArchitecture` | string | Detected GPU architecture |
-| `detectedPlatform` | string | Detected cloud platform |
+| `conditions` | []Condition | Mutually exclusive state: `InProgress`, `Succeeded`, `Failed`, `ValidationFailed` |
+| `workflowRef` | WorkflowReference | Reference to the underlying `Workflow` resource |
+| `detectedGPUArchitecture` | string | Auto-detected GPU type (e.g., `h100`, `gb200`) |
+| `detectedPlatform` | string | Auto-detected CSP platform (e.g., `aws`, `gcp`, `azure`) |
+| `resolvedGpusPerNode` | int32 | Final GPU count per node used for the workload |
+| `succeededNodesRef` | TypedLocalObjectReference | ConfigMap reference for the succeeded-nodes list |
+| `failedNodesRef` | TypedLocalObjectReference | ConfigMap reference for the failed-nodes list |
+
+Bandwidth and goodput measurement results are on the `BandwidthMeasurement` and `GoodputMeasurement` child resources, which reference this WorkloadRun's underlying Job via `spec.jobRef`.

@@ -14,40 +14,73 @@ description: CRD reference for the LogProfile resource.
 apiVersion: cre.nvidia.com/v1alpha1
 kind: LogProfile
 metadata:
-  name: nemo-training
+  name: my-framework
 spec:
+  timestamp:
+    layout: "2006-01-02T15:04:05.999999999Z"
   patterns:
-    - name: step_time
-      regex: 'reduced_train_loss=(?P<loss>[0-9.]+).*step_time=(?P<step_time>[0-9.]+)'
-      fields:
-        - name: loss
-          type: float
-        - name: step_time
-          type: float
-          unit: seconds
+    trainingStep:
+      regex: 'reduced_train_loss=(?P<loss>[0-9.]+).*step_time=(?P<stepTiming>[0-9.]+)'
+      example: 'reduced_train_loss=0.1234 step_time=2.5'
+      units:
+        stepTiming: s
+    applicationStart:
+      regex: 'Training started'
 ```
 
 ## Spec fields
 
-_Generated from CRD schema — coming soon._
+### `spec.timestamp` (required)
 
-## Key spec fields (summary)
+Configures how to parse `(?P<timestamp>...)` named captures from log lines.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `patterns` | []Pattern | List of named regex patterns with capture groups |
-| `patterns[].name` | string | Unique name for this pattern |
-| `patterns[].regex` | string | Go-syntax regex with named capture groups |
-| `patterns[].fields` | []Field | Capture group names, types, and units |
+| `layout` | string (required) | Go time layout string for parsing captured timestamps. Example: `"2006-01-02T15:04:05.999999999Z"` |
+
+### `spec.patterns`
+
+A `LogPatternSet` — a named struct (not a list) with 8 optional fields, each an `EventPattern`. Each pattern uses Go named capture groups `(?P<name>...)`.
+
+| Field | Captures | Description |
+|-------|----------|-------------|
+| `trainingStep` | `timestamp`, `globalStep`, `iteration`, `epoch`, `stepTiming`, `loss`, `tflops`, `elapsedTime` | Training iteration log lines |
+| `checkpointSave` | `timestamp`, `step`, `path`, `saveDuration` | Checkpoint save start |
+| `checkpointDone` | `timestamp`, `step`, `path` | Checkpoint save completion |
+| `checkpointRestore` | `timestamp`, `path`, `step` | Checkpoint load start |
+| `checkpointLoaded` | `timestamp`, `path`, `step` | Checkpoint load completed |
+| `applicationStart` | `timestamp` | Application framework start marker |
+| `warmupStep` | — | Warmup/startup iteration marker (presence of match is sufficient) |
+| `bandwidthResult` | `size`, `algBW`, `busBW` | NCCL bandwidth test result lines (used by `BandwidthMeasurement`) |
+
+Each `EventPattern` has:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `regex` | string (required) | Go regex with named capture groups |
+| `example` | string | Sample log line the regex should match (documentation + validation) |
+| `units` | map[string]string | Units for duration captures: `"s"`, `"ms"`, `"us"`. Only needed for `stepTiming`, `elapsedTime`, `saveDuration`. Defaults to `"s"`. |
+
+### Additional spec fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `workerStrategy` | WorkerStrategySpec | How to read logs from multi-worker jobs (`Single` or `Multi`). Default: Single (worker-0 only). |
+| `containerName` | string | Container to read logs from. Auto-detected if empty. |
+| `warmupSteps` | int | Number of initial steps per run to flag as warmup and exclude from goodput calculations. |
+| `logInterval` | int | Training log interval (e.g., `--log-interval 10`). Filters intermediate steps. |
 
 ## Built-in profiles
 
-The following LogProfiles are installed by `ncrectl setup init`:
+The following LogProfiles are installed by the Helm chart:
 
 | Name | Framework |
 |------|-----------|
-| `nccl-bandwidth` | NCCL test output (all collectives) |
-| `nemo-training` | NeMo framework training logs |
+| `nemo-4-training` | NeMo 4 framework training logs |
+| `megatron-training` | Megatron-LM training logs |
+| `megatron-bridge` | Megatron bridge logs |
+| `nccl-bandwidth` | NCCL test output (bandwidth results) |
+| `nccl-loopback` | NCCL loopback test output |
 
 ## Scope
 

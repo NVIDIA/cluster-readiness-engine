@@ -8,6 +8,8 @@ description: Run a distributed training or NCCL workload without writing a full 
 
 `WorkloadRun` is a simplified API for running a single workload against a set of nodes. It is useful for one-off benchmarks, smoke tests, and validating specific node groups without running the full certification suite.
 
+**When to use WorkloadRun vs Certification:** Use `WorkloadRun` when you want to run a single workload — for example, a quick NCCL bandwidth check or a training smoke test — against a specific set of nodes. Use `Certification` when you need a full burn-in suite across all categories and node groups, with per-node pass/fail results and a structured report.
+
 ## Before you begin
 
 [Install ncrectl and set up the cluster](./install.md) before continuing.
@@ -25,6 +27,7 @@ spec:
     mpi:
       binary: /usr/local/bin/all_reduce_perf_mpi
       args: ["-b", "8", "-e", "32G", "-f", "2", "-n", "100"]
+      mpirunPath: /usr/local/bin/mpirun
   numNodes: 4
   bandwidthMeasurement:
     logProfileRef: nccl-bandwidth

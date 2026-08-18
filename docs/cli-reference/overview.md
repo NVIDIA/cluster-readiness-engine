@@ -19,7 +19,7 @@ ncrectl version
 The installer also creates a `kubectl-ncre` symlink so the CLI is available as a kubectl plugin (`kubectl ncre ...`).
 
 <Warning>
-Release builds enforce a version check on every invocation. If a newer version exists, the command exits with code 1 and prints an upgrade prompt. Use `ncrectl upgrade` to update. CI pipelines should pin to a specific version to avoid unexpected failures.
+Release builds enforce a version check on every invocation. If a newer version exists, the command exits with code 1 and prints an upgrade prompt. Re-run the installer to update to a new version. CI pipelines should pin to a specific version to avoid unexpected failures.
 </Warning>
 
 ## Command groups
@@ -30,8 +30,6 @@ Release builds enforce a version check on every invocation. If a newer version e
 | `ncrectl certification` | Run, render, report, and list-categories for Certification resources |
 | `ncrectl workloadrun` | Run, render, report, status, and cancel WorkloadRun resources |
 | `ncrectl cluster` | Inspect GPU nodes, platform, and network topology |
-| `ncrectl workflow` | Render Workflow manifests offline |
-| `ncrectl upgrade` | Upgrade ncrectl to the latest release |
 
 ## Global flags
 

@@ -8,6 +8,8 @@ description: Certify a GPU cluster end-to-end in minutes.
 
 This guide walks through a full cluster certification: install ncrectl, run the certification suite, and review the results.
 
+**Certification vs WorkloadRun:** Use `ncrectl certification run` to run a full burn-in suite — it tests multiple categories (NCCL benchmarks, training workloads) against all node groups and records pass/fail results per node. Use `ncrectl workloadrun run` when you want to run a single workload ad hoc, such as a quick bandwidth check or a one-off training smoke test, without setting up a full certification. See [WorkloadRun Quick Start](./workloadrun-quick-start.md).
+
 ## Before you begin
 
 [Install ncrectl and set up the cluster](./install.md) before continuing.
@@ -33,7 +35,7 @@ spec:
     - domain: communication
       variant: nccl-all-reduce
     - domain: training
-      variant: nemotron4-15b
+      variant: nemotron5-8b
 ```
 
 ## Run the certification
@@ -43,7 +45,6 @@ Use `ncrectl certification run` to handle the full lifecycle — apply the manif
 ```bash
 ncrectl certification run \
   --cert-file certification.yaml \
-  --image-pull-secret ngc-secret \
   --wait
 ```
 
@@ -55,7 +56,7 @@ When the certification completes, ncrectl prints a pass/fail summary per node gr
 ncrectl certification report gpu-cluster-cert
 ```
 
-Failed categories indicate nodes that did not meet performance thresholds. The controller automatically taints and cordons those nodes so production workloads avoid them.
+Failed categories indicate nodes that did not meet performance thresholds. CRE records which nodes failed and why — it does not taint or cordon them. Use `kubectl cordon <node>` to quarantine nodes as needed.
 
 ## Next steps
 

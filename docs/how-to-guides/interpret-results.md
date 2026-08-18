@@ -26,7 +26,7 @@ ncrectl workloadrun report <name>
 | Status | Meaning |
 |--------|---------|
 | `Passed` | All categories met thresholds on all node groups |
-| `Failed` | One or more categories failed; affected nodes listed in `status.categoryStatuses[].failedNodes` |
+| `Failed` | One or more categories failed; affected nodes listed in ConfigMaps referenced by `status.categoryStatuses[].failedNodesRef` |
 | `InProgress` | Still running |
 
 ## Bandwidth results
@@ -45,10 +45,19 @@ Below-threshold results indicate a network issue — degraded link, misconfigure
 
 ## Failed nodes
 
-Failed nodes are listed per category in `status.categoryStatuses[].failedNodes`, each with a `name` and `reason`:
+Failed nodes are stored in a ConfigMap referenced by `status.categoryStatuses[].failedNodesRef` for each category. The Job tier records them inline on `status.failedNodes`; the Workflow and Certification tiers persist them to ConfigMaps.
 
 ```bash
-kubectl get certification <name> -o jsonpath='{.status.categoryStatuses}' | jq .
+# Get the ConfigMap name for the first category
+kubectl get certification <name> -o jsonpath='{.status.categoryStatuses[0].failedNodesRef.name}'
+# Read the ConfigMap contents
+kubectl get configmap <ref-name> -o yaml
+```
+
+Or use the CLI for a formatted report:
+
+```bash
+ncrectl certification report <name>
 ```
 
 CRE records which nodes failed and why — it does not taint or cordon them. To quarantine a failed node:

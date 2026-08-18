@@ -16,12 +16,21 @@ _Generated from CRD schema — coming soon._
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `phase` | string | `InProgress`, `Passed`, or `Failed` |
-| `conditions` | []Condition | InProgress, Succeeded, Failed (mutually exclusive) |
-| `workloadRef` | ObjectRef | Reference to the created workload (TrainJob, etc.) |
-| `goodputMeasurementRef` | ObjectRef | Reference to the GoodputMeasurement (if configured) |
-| `bandwidthMeasurementRef` | ObjectRef | Reference to the BandwidthMeasurement (if configured) |
-| `failedNodes` | []string | Nodes identified as failed by health monitors |
+| `conditions` | []Condition | Mutually exclusive state: `InProgress`, `Succeeded`, `Failed`, `HardwareFailed`, `ValidationFailed` |
+| `workloadRef` | ObjectRef | Reference to the created workload (`TrainJob`) |
+| `failedNodes` | []FailedNode | Nodes identified as failed; each entry has `name`, `reason`, and optional `message` |
+| `restartCount` | int32 | Number of checkpoint-based restarts |
+| `failureLog` | FailureLog | Tail of pod logs from the most recent failure (pod name, node, exit code, log tail) |
+
+Each `FailedNode` entry has:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Kubernetes node name |
+| `reason` | string | `HardwareFailureDetected`, `ThresholdViolation`, or `WorkloadFailed` |
+| `message` | string | Detailed failure message |
+
+`GoodputMeasurement` and `BandwidthMeasurement` resources reference the Job via their own `spec.jobRef` — the Job does not hold references to them.
 
 ## Naming
 

@@ -16,12 +16,18 @@ _Generated from CRD schema — coming soon._
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `phase` | string | `InProgress`, `Passed`, or `Failed` |
-| `conditions` | []Condition | InProgress, Succeeded, Failed (mutually exclusive) |
-| `iterationsCompleted` | int | Number of completed iterations |
-| `appliedOverrides` | string | Annotation listing which platform/GPU overrides matched |
-| `detectedGPUArchitecture` | string | Detected GPU architecture (e.g. `GB200`) |
-| `detectedPlatform` | string | Detected cloud platform (e.g. `aws`) |
+| `conditions` | []Condition | Mutually exclusive state: `InProgress`, `Succeeded`, `Failed`, `ValidationFailed` |
+| `namespace` | string | Resolved namespace where Jobs and dependencies are created |
+| `succeededNodesRef` | TypedLocalObjectReference | ConfigMap reference for the succeeded-nodes list |
+| `failedNodesRef` | TypedLocalObjectReference | ConfigMap reference for the failed-nodes list |
+| `orchestration.completedIterations` | int | Number of fully completed iterations |
+| `orchestration.currentIteration` | int | The iteration currently in progress (1-based) |
+| `orchestration.totalNodes` | int | Total nodes discovered from the target |
+| `orchestration.nodesPerJob` | int | Nodes per job (auto-detected from workload template) |
+| `orchestration.detectedGPUArchitecture` | string | Detected GPU architecture (e.g. `gb200`) |
+| `orchestration.detectedPlatform` | string | Detected cloud platform (e.g. `aws`) |
+| `orchestration.appliedOverrides` | []AppliedOverride | Which spec overrides matched and were applied |
+| `orchestration.groups` | []GroupStatus | Per-group job status for the current iteration |
 
 ## Naming
 

@@ -20,10 +20,4 @@ The Cluster Readiness Engine defines the following custom resources under the `c
 
 ## Field reference
 
-The per-resource pages below are generated from the CRD OpenAPI schemas using [`crd-ref-docs`](https://github.com/elastic/crd-ref-docs). To regenerate locally:
-
-```bash
-make api-docs
-```
-
-_Generated field reference coming soon — CRD schemas are defined in `api/v1alpha1/`._
+The per-resource pages document spec and status fields derived from the CRD schemas in `api/v1alpha1/`. Detailed field-level documentation is on each resource page.

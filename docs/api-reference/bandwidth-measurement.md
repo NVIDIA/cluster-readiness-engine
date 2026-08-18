@@ -6,31 +6,38 @@ description: CRD reference for the BandwidthMeasurement resource.
 {/* SPDX-License-Identifier: Apache-2.0 */}
 
 
-`BandwidthMeasurement` watches a `Job`'s NCCL log output and computes per-bus bandwidth metrics for collective operations.
+`BandwidthMeasurement` watches a `Job`'s NCCL log output and computes per-message-size bus bandwidth metrics for collective operations. It is automatically created by the `Job` controller when `spec.bandwidthMeasurement` is configured, or can be created manually.
 
 ## Spec fields
 
-_Generated from CRD schema — coming soon._
-
-## Key spec fields (summary)
-
 | Field | Type | Description |
 |-------|------|-------------|
-| `jobRef` | ObjectRef | The Job to watch |
-| `logProfileRef` | string | Name of the LogProfile for NCCL output parsing |
-| `testType` | string | Collective type: `all_reduce`, `all_gather`, `alltoall` |
-| `minBusBandwidthGBps` | float | Minimum acceptable bus bandwidth in GB/s |
+| `jobRef` | TypedLocalObjectReference | The Job whose pod logs to watch |
+| `logProfileRef` | string (required) | Name of the cluster-scoped `LogProfile` that defines the `bandwidthResult` regex pattern |
+| `sampleInterval` | Duration | How often to sample pod logs while the Job is running. Default: 60s |
+| `testType` | string | NCCL collective operation identifier (e.g., `all_reduce`, `alltoall`). Used as the `nccl_test` Prometheus label |
 
 ## Status fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `measuredBusBandwidthGBps` | float | Measured bus bandwidth |
-| `phase` | string | `InProgress`, `Passed`, or `Failed` |
+| `results` | []BandwidthResult | Per-message-size average bandwidth measurements |
+| `startTime` | Time | When measurement started (when the referenced Job began running) |
+| `completionTime` | Time | When measurement completed (when the referenced Job reached a terminal state) |
+| `conditions` | []Condition | Current state: `Measuring` (in progress) or `Complete` (finished) |
+
+Each `BandwidthResult` entry contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `sizeBytes` | int64 | Message size in bytes |
+| `algBW` | string | Average algorithmic bandwidth in GB/s |
+| `busBW` | string | Average bus bandwidth in GB/s |
+| `samples` | int | Number of measurements averaged for this size |
 
 ## How it works
 
-1. Parses NCCL test output from pod logs.
-2. Extracts bus bandwidth from the results table for the configured `testType`.
-3. Compares against `minBusBandwidthGBps` (set by catalog entry or user override).
-4. Marks `Passed` or `Failed` accordingly.
+1. Watches the pod logs of the referenced Job at `sampleInterval`.
+2. Applies the `bandwidthResult` regex pattern from the referenced `LogProfile` to extract `size`, `algBW`, and `busBW` capture groups.
+3. Computes a running average per message size across all observed measurements.
+4. Sets `Complete` when the Job reaches a terminal state.

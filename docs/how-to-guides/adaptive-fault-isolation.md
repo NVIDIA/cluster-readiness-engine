@@ -40,4 +40,4 @@ _Configuration reference coming soon._
 
 ## Reading the result
 
-After isolation the `Certification` status names the isolated node(s) in `status.categoryStatuses[].failedNodes`. See [Health Monitoring & Failed Node Attribution](../concepts/health-monitoring-remediation.md) for how to act on that data.
+After isolation the `Certification` status records the isolated node(s) in the ConfigMap referenced by `status.categoryStatuses[].failedNodesRef`. See [Health Monitoring & Failed Node Attribution](../concepts/health-monitoring-remediation.md) for how to read and act on that data.

@@ -19,7 +19,7 @@ Certification
 
 ### Certification
 
-The top-level resource. It references a set of `categories` (domain + variant pairs) from the catalog. The controller creates one `Workflow` per category and tracks overall pass/fail status. Failed nodes are recorded per category at `status.categoryStatuses[].failedNodes`.
+The top-level resource. It references a set of `categories` (domain + variant pairs) from the catalog. The controller creates one `Workflow` per category and tracks overall pass/fail status. Failed nodes are recorded per category in ConfigMaps referenced by `status.categoryStatuses[].failedNodesRef`.
 
 ### Workflow
 
@@ -41,11 +41,11 @@ Creates the actual workload (a `TrainJob`) via the adapter pattern. Manages heal
 
 - **`setExclusiveCondition()`** — enforces mutually exclusive InProgress / Succeeded / Failed conditions at every tier
 - **`Owns()` watches** — each tier watches its children for event-driven reconciliation; polling (15s in production, 1s in tests) is a safety net
-- **Adapter pattern** — the `Job` controller normalizes five training frameworks (TrainJob, MPI, PyTorch, etc.) to a `WorkloadPhase` via a `WorkloadAdapter` interface
+- **Adapter pattern** — the `Job` controller normalizes `TrainJob` (Kubeflow Trainer v2) to a `WorkloadPhase` via a `WorkloadAdapter` interface (`pkg/workload/ForSpec()`). MPI and PyTorch are framework types at the `WorkloadRun` CLI layer — they generate a `TrainJob` under the hood, not a separate CRD field.
 
 ## Catalog
 
-The catalog maps `{domain, variant}` pairs to `WorkflowSpec` builders. Each entry is a Go file in `internal/catalog/entries/` that registers itself via `init()`. See [Concepts: Catalog](./catalog.md).
+The catalog maps `{domain, variant}` pairs to `WorkflowSpec` builders. Each entry is a YAML file under `pkg/catalog/entries/<domain>/<variant>/` that registers itself at startup. See [Concepts: Catalog](./catalog.md).
 
 ## Platform and GPU detection
 

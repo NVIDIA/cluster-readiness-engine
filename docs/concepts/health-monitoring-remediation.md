@@ -31,11 +31,23 @@ CRE does not taint, cordon, or patch nodes. Its job is to identify which nodes f
 Failed nodes bubble up through the three-tier hierarchy:
 
 ```
-Job            status.failedNodes              ← set when the Job fails, one entry per node with a reason
+Job            status.failedNodes[]            ← inline list; set when the Job fails, one entry per node with a reason
+      ↑ persisted to
+Workflow       status.failedNodesRef           ← ConfigMap reference; union across all failed Jobs for this category
       ↑ copied to
-Workflow       status.failedNodes              ← union across all failed Jobs for this category
-      ↑ copied to
-Certification  status.categoryStatuses[].failedNodes  ← per-category list of failed nodes
+Certification  status.categoryStatuses[].failedNodesRef  ← per-category ConfigMap reference
+```
+
+Failed nodes are stored in ConfigMaps (not inline on the status) at the Workflow and Certification tiers. To read them:
+
+```bash
+# Certification tier
+kubectl get certification <name> -o jsonpath='{.status.categoryStatuses[0].failedNodesRef.name}'
+kubectl get configmap <ref-name> -o yaml
+
+# Workflow tier
+kubectl get workflow <name> -o jsonpath='{.status.failedNodesRef.name}'
+kubectl get configmap <ref-name> -o yaml
 ```
 
 ### Failure reasons
@@ -52,21 +64,22 @@ Each failed node entry carries a `reason`:
 Cordoned nodes are filtered **before** a Job runs, not attributed as `HardwareFailureDetected`. They appear in `status.orchestration.excludedNodes` and cause the run to be marked `INCOMPLETE` rather than `Failed`.
 </Note>
 
-Different nodes in the same category can fail with different reasons. A node that fails in multiple categories appears in each category's `failedNodes` list, potentially with a different reason each time.
+Different nodes in the same category can fail with different reasons. A node that fails in multiple categories appears in each category's failed-nodes ConfigMap, potentially with a different reason each time.
 
 ### Reading failed nodes
 
-```bash
-kubectl get certification <name> -o jsonpath='{.status.categoryStatuses}' | jq .
-```
-
-Or via the CLI:
+Use the CLI for a structured report:
 
 ```bash
 ncrectl certification report <name>
 ```
 
-The report lists failed nodes per category with their reason.
+Or read the raw ConfigMap directly:
+
+```bash
+kubectl get certification <name> -o jsonpath='{.status.categoryStatuses[0].failedNodesRef.name}'
+kubectl get configmap <ref-name> -o yaml
+```
 
 ### Acting on failed nodes
 
@@ -74,7 +87,7 @@ CRE reports failures — quarantine is your platform's responsibility. Common pa
 
 - Cordon the node (`kubectl cordon <node>`) to prevent new workloads from scheduling
 - Drain it (`kubectl drain <node>`) to evict existing workloads
-- Trigger a node lifecycle operator or repair pipeline using the `failedNodes` data as input
+- Trigger a node lifecycle operator or repair pipeline using the `failedNodesRef` ConfigMap data as input
 - After repair, uncordon the node and re-run the relevant category to confirm it passes
 
 ## Adaptive fault isolation

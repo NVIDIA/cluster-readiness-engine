@@ -6,24 +6,29 @@ description: The training frameworks and workload adapters supported by the Clus
 {/* SPDX-License-Identifier: Apache-2.0 */}
 
 
-The `Job` controller launches workloads via an adapter pattern that normalizes multiple training frameworks to a common `WorkloadPhase` (Running / Succeeded / Failed). The adapter is selected based on which field is set in the `WorkloadSpec`.
+The `Job` controller launches workloads via an adapter pattern that normalizes workloads to a common `WorkloadPhase` (Running / Succeeded / Failed).
 
-## Supported frameworks
+## Job API: TrainJob only
 
-| Framework | Spec field | Notes |
-|-----------|-----------|-------|
-| Kubeflow TrainJob | `trainJob` | Default for most catalog entries; requires Kubeflow Trainer |
-| MPI | `mpi` | Used for NCCL benchmark workloads via `mpirun` |
-| PyTorch | `pytorch` | Directly launches `torchrun` |
-| Custom | `custom` | Arbitrary pod template; user-supplied entrypoint |
+`Job.spec.workload` is a discriminated union with exactly **one** field:
 
-## TrainJob (default)
+| Field | Type | Notes |
+|-------|------|-------|
+| `trainJob` | TrainJobSpec | Kubeflow Trainer v2 TrainJob; requires Kubeflow Trainer installed |
 
-Most catalog entries use `TrainJob` — the Kubeflow Trainer v2 API. The controller creates a `TrainJob` resource and waits for it to reach a terminal phase. Health monitoring and goodput measurement run concurrently.
+All catalog entries produce a `TrainJob` as the underlying workload. The `Job` controller creates the `TrainJob` resource and normalizes its status to `WorkloadPhase` via `pkg/workload/ForSpec()`.
 
-## WorkloadRun
+## WorkloadRun: CLI-layer framework types
 
-`WorkloadRun` is a higher-level, user-facing resource for ad-hoc workloads. It wraps a `WorkloadSpec` in a simplified API — you supply an image, framework config, and node count, and the controller handles platform detection, overrides, and cleanup. See [WorkloadRun Quick Start](../getting-started/workloadrun-quick-start.md).
+`WorkloadRun` is a user-facing simplified API that accepts higher-level framework types (`torch`, `mpi`, `exec`) and translates them into a `TrainJob` spec automatically. These framework types live in the `WorkloadRun` API — they are **not** fields in the `Job.spec.workload` discriminated union.
+
+| `WorkloadRun` framework | What it generates |
+|------------------------|-------------------|
+| `torch` | TrainJob with PyTorch `mlPolicy`, `torchrun` |
+| `mpi` | TrainJob with MPI `TrainingRuntime`, launcher+worker pattern |
+| `exec` | TrainJob with a single replicatedJob, arbitrary command |
+
+See [WorkloadRun Quick Start](../getting-started/workloadrun-quick-start.md) and the [WorkloadRun API reference](../api-reference/workloadrun.md).
 
 ## Phase mapping
 
