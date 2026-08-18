@@ -2,8 +2,8 @@
 title: Certify a Cluster
 description: Platform-specific guides for running a full cluster certification on AWS, GCP, and Azure.
 ---
-{/* SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}
-{/* SPDX-License-Identifier: Apache-2.0 */}
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 ## Before you begin

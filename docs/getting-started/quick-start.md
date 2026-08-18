@@ -2,8 +2,8 @@
 title: Quick Start
 description: Certify a GPU cluster end-to-end in minutes.
 ---
-{/* SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}
-{/* SPDX-License-Identifier: Apache-2.0 */}
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 This guide walks through a full cluster certification: install ncrectl, run the certification suite, and review the results.

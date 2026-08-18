@@ -2,8 +2,8 @@
 title: GoodputMeasurement
 description: CRD reference for the GoodputMeasurement resource.
 ---
-{/* SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}
-{/* SPDX-License-Identifier: Apache-2.0 */}
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 `GoodputMeasurement` watches a `Job`'s pod logs in real time, applies regex patterns from a `LogProfile`, and computes a goodput ratio — the fraction of elapsed training time the job was making useful forward progress. It is automatically created by the `Job` controller when `spec.goodputMeasurement` is configured, or can be created manually.

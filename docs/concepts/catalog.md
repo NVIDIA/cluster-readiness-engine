@@ -2,8 +2,8 @@
 title: Catalog
 description: How the certification catalog maps domain/variant pairs to workload specs.
 ---
-{/* SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}
-{/* SPDX-License-Identifier: Apache-2.0 */}
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 The catalog is the registry of all supported certification categories. It maps `{domain, variant}` pairs to workload definitions — the concrete specs that run during certification.

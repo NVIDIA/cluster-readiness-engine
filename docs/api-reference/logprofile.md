@@ -2,8 +2,8 @@
 title: LogProfile
 description: CRD reference for the LogProfile resource.
 ---
-{/* SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}
-{/* SPDX-License-Identifier: Apache-2.0 */}
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 `LogProfile` is a cluster-scoped resource that defines regex patterns with named capture groups for parsing training framework log output. It is referenced by `GoodputMeasurement` and `BandwidthMeasurement` resources.

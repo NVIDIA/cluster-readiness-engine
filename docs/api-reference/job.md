@@ -2,8 +2,8 @@
 title: Job
 description: CRD reference for the Job resource.
 ---
-{/* SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}
-{/* SPDX-License-Identifier: Apache-2.0 */}
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 `Job` creates and monitors the actual workload (a `TrainJob` or other adapter-supported resource). It is created by the `Workflow` controller and is not typically created directly by users.

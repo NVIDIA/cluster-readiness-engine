@@ -2,8 +2,8 @@
 title: Adaptive Fault Isolation
 description: Narrow down a failing node using bisection without re-running the full suite.
 ---
-{/* SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}
-{/* SPDX-License-Identifier: Apache-2.0 */}
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 When a certification run fails and multiple nodes are suspect, adaptive fault isolation bisects the node pool to identify the specific faulty node(s) with the minimum number of additional runs.

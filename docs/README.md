@@ -2,8 +2,8 @@
 title: Introduction
 description: NVIDIA Cluster Readiness Engine — GPU cluster certification, benchmarking, and hardware failure detection for Kubernetes.
 ---
-{/* SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}
-{/* SPDX-License-Identifier: Apache-2.0 */}
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 The Cluster Readiness Engine is a Kubernetes controller for GPU cluster burn-in certification, orchestrated benchmarking, and hardware failure detection. Run real distributed workloads across topology-aware node groups, measure training throughput and interconnect bandwidth, detect hardware failures, and record which nodes failed and why — before production workloads touch the cluster.

@@ -2,8 +2,8 @@
 title: Workflow
 description: CRD reference for the Workflow resource.
 ---
-{/* SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}
-{/* SPDX-License-Identifier: Apache-2.0 */}
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 `Workflow` manages a single certification category run. It is created by the `Certification` controller — one per category — and is not typically created directly by users.
