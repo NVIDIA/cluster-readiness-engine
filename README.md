@@ -38,13 +38,18 @@ A Certification creates one Workflow per catalog category. Each Workflow creates
 
 ## Quickstart
 
+For complete prerequisites, installation, a first run, and cleanup, see
+[Your first certification](docs/getting-started/first-certification.md).
+
 **0. Check the cluster**
 
-CRE needs the NVIDIA GPU Operator. The `diagnostics/dcgm-level4` category also
-needs the standalone DCGM service, which the GPU Operator creates only when
-`spec.dcgm.enabled` is true. That setting is off by default when the operator
-runs its own embedded DCGM for metrics. Your cluster administrator can turn it
-on:
+CRE requires the NVIDIA GPU Operator and, with the default metrics settings,
+the Prometheus Operator CRDs that serve `monitoring.coreos.com/v1`; GB200 and
+GB300 catalog entries also require the NVIDIA DRA driver for `ComputeDomain`
+resources. The `diagnostics/dcgm-level4` category additionally requires the
+standalone DCGM service, which the GPU Operator creates only when
+`spec.dcgm.enabled` is true. Because the operator normally uses embedded DCGM
+for metrics, standalone DCGM is off by default; enable it with:
 
 ```bash
 kubectl patch clusterpolicy cluster-policy --type=merge \
@@ -59,7 +64,7 @@ Every release so far is a pre-release, and `releases/latest` resolves only to th
 newest **stable** release. Until `v0.1.0` is tagged, name the version explicitly:
 
 ```bash
-CRE_VERSION=v0.1.0-rc.7
+CRE_VERSION=v0.1.0-rc.8
 curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${CRE_VERSION}/installer \
   | bash -s -- -v "${CRE_VERSION}"
 ```
@@ -139,7 +144,7 @@ Helm, or need to pin the controller image in your own manifests, both are
 published to the GitHub Container Registry on every release.
 
 ```bash
-CRE_VERSION=v0.1.0-rc.7
+CRE_VERSION=v0.1.0-rc.8
 
 # Inspect the chart before installing it
 helm show chart oci://ghcr.io/nvidia/cluster-readiness-engine --version "$CRE_VERSION"
