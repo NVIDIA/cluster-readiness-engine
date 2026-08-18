@@ -784,17 +784,9 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 				}
 			}
 
-			// Delete workload pull secret if we created one and the namespace
-			// will not be deleted (namespace deletion garbage-collects secrets).
-			if cfg.imagePullSecret != "" && createdNamespace == "" {
-				pullSec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
-					Name: setup.WorkloadPullSecretName, Namespace: cfg.namespace,
-				}}
-				if err := wc.Delete(cleanupCtx, pullSec); err != nil && !apierrors.IsNotFound(err) {
-					_, _ = fmt.Fprintf(out, "[cleanup] Warning: failed to delete pull secret: %v\n", err)
-					warnings = true
-				}
-			}
+			// Note: the workload pull secret is owned by the Certification and
+			// will be garbage-collected automatically when the Certification is
+			// deleted above. No explicit deletion needed.
 
 			// Delete namespace if we created it, and wait for it to fully
 			// terminate so the next run doesn't fail with "namespace is being
@@ -846,13 +838,19 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 		createdNamespace = cfg.namespace
 	}
 
-	// --- Create image pull secret if credentials provided ---
+	// --- Create image pull secret before the Certification so pods can pull
+	// immediately. The secret is created without an owner first; after the
+	// Certification is created we set an OwnerReference so Kubernetes GC deletes
+	// it automatically whenever the Certification is deleted by any means.
+	pullSecretCreated := false
 	if cfg.imagePullSecret != "" {
 		secretName, secretErr := setup.CreateImagePullSecret(ctx, wc,
-			cfg.namespace, setup.WorkloadPullSecretName, cfg.imagePullServer, cfg.imagePullUsername, cfg.imagePullSecret)
+			cfg.namespace, setup.WorkloadPullSecretName,
+			cfg.imagePullServer, cfg.imagePullUsername, cfg.imagePullSecret)
 		if secretErr != nil {
 			return fmt.Errorf("create image pull secret: %w", secretErr)
 		}
+		pullSecretCreated = true
 		cfg.cert.Spec.ImagePullSecrets = append(cfg.cert.Spec.ImagePullSecrets,
 			corev1.LocalObjectReference{Name: secretName})
 		_, _ = fmt.Fprintf(out, "Created image pull secret %q in namespace %s.\n", secretName, cfg.namespace)
@@ -860,9 +858,38 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 
 	// --- Create Certification ---
 	if err := wc.Create(ctx, cfg.cert); err != nil {
+		// Clean up the pull secret if cert creation fails and the namespace
+		// won't be deleted (namespace deletion would cascade to the secret).
+		if pullSecretCreated && createdNamespace == "" {
+			pullSec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
+				Name: setup.WorkloadPullSecretName, Namespace: cfg.namespace,
+			}}
+			_ = wc.Delete(ctx, pullSec)
+		}
 		return fmt.Errorf("create certification: %w", err)
 	}
 	certCreated = true
+
+	// --- Set OwnerReference on pull secret now that we have the Certification UID ---
+	// Uses Update (with the resourceVersion from Get) for optimistic concurrency,
+	// avoiding the JSON Merge Patch array-replacement issue. Best-effort: if this
+	// fails the secret will not be GC'd automatically, but it will still be cleaned
+	// up when the namespace is deleted or when --cleanup runs.
+	if pullSecretCreated {
+		sec := &corev1.Secret{}
+		if getErr := wc.Get(ctx, client.ObjectKey{Name: setup.WorkloadPullSecretName, Namespace: cfg.namespace}, sec); getErr == nil {
+			sec.OwnerReferences = append(sec.OwnerReferences, metav1.OwnerReference{
+				APIVersion: "cre.nvidia.com/v1alpha1",
+				Kind:       "Certification",
+				Name:       cfg.cert.Name,
+				UID:        cfg.cert.UID,
+			})
+			if updateErr := wc.Update(ctx, sec); updateErr != nil {
+				_, _ = fmt.Fprintf(out, "Warning: could not set OwnerReference on pull secret %q — it will not be GC'd automatically: %v\n",
+					setup.WorkloadPullSecretName, updateErr)
+			}
+		}
+	}
 
 	_, _ = fmt.Fprintf(out, "Certification %s created in namespace %s.\n",
 		cfg.cert.Name, cfg.namespace)

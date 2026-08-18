@@ -698,13 +698,16 @@ func runWorkloadRunExecute(
 		return fmt.Errorf("create namespace %s: %w", run.Namespace, err)
 	}
 
-	// Create image pull secret if credentials provided.
+	// Create pull secret before the WorkloadRun so pods can pull immediately.
+	// OwnerReference is set after creation to enable automatic GC.
+	pullSecretCreated := false
 	if imagePullSecret != "" {
 		secretName, secretErr := setup.CreateImagePullSecret(ctx, wc,
 			run.Namespace, setup.WorkloadPullSecretName, imagePullServer, imagePullUsername, imagePullSecret)
 		if secretErr != nil {
 			return fmt.Errorf("create image pull secret: %w", secretErr)
 		}
+		pullSecretCreated = true
 		run.Spec.ImagePullSecrets = append(run.Spec.ImagePullSecrets,
 			corev1.LocalObjectReference{Name: secretName})
 		_, _ = fmt.Fprintf(out, "Created image pull secret %q in namespace %s.\n", secretName, run.Namespace)
@@ -751,10 +754,38 @@ func runWorkloadRunExecute(
 
 	// Create WorkloadRun.
 	if err := wc.Create(ctx, run); err != nil {
+		// Clean up the pull secret if workloadrun creation fails and the
+		// namespace was pre-existing (namespace deletion would cascade the secret).
+		if pullSecretCreated {
+			pullSec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
+				Name: setup.WorkloadPullSecretName, Namespace: run.Namespace,
+			}}
+			_ = wc.Delete(ctx, pullSec)
+		}
 		return fmt.Errorf("create WorkloadRun: %w", err)
 	}
 	_, _ = fmt.Fprintf(out, "WorkloadRun %s created in namespace %s.\n",
 		run.Name, run.Namespace)
+
+	// Set OwnerReference on the pull secret now that we have the WorkloadRun UID.
+	// Uses Update (optimistic concurrency via resourceVersion) rather than Merge
+	// Patch to avoid replacing the OwnerReferences array. Best-effort: if this
+	// fails the secret will not be GC'd automatically but is otherwise harmless.
+	if pullSecretCreated {
+		sec := &corev1.Secret{}
+		if getErr := wc.Get(ctx, client.ObjectKey{Name: setup.WorkloadPullSecretName, Namespace: run.Namespace}, sec); getErr == nil {
+			sec.OwnerReferences = append(sec.OwnerReferences, metav1.OwnerReference{
+				APIVersion: "cre.nvidia.com/v1alpha1",
+				Kind:       "WorkloadRun",
+				Name:       run.Name,
+				UID:        run.UID,
+			})
+			if updateErr := wc.Update(ctx, sec); updateErr != nil {
+				_, _ = fmt.Fprintf(out, "Warning: could not set OwnerReference on pull secret %q — it will not be GC'd automatically: %v\n",
+					setup.WorkloadPullSecretName, updateErr)
+			}
+		}
+	}
 
 	if !doWait {
 		_, _ = fmt.Fprintf(out, "\nTo check status:\n")

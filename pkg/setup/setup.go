@@ -837,7 +837,9 @@ const (
 // username is the registry username (e.g. "$oauthtoken" for NGC, "token" for GHCR).
 // password is the registry password or API key.
 // secretName is the name to give the created Secret.
-func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, secretName, server, username, password string) (string, error) {
+// owner, if non-nil, is set as an OwnerReference so Kubernetes GC deletes the
+// secret automatically when the owner resource is deleted.
+func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, secretName, server, username, password string, owner ...metav1.OwnerReference) (string, error) {
 	if server == "" || username == "" || password == "" {
 		return "", fmt.Errorf("image-pull-server, image-pull-username, and image-pull-secret must all be non-empty")
 	}
@@ -862,8 +864,9 @@ func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, secr
 
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: namespace,
+			Name:            secretName,
+			Namespace:       namespace,
+			OwnerReferences: owner,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by": "ncrectl",
 			},
