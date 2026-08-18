@@ -10,11 +10,22 @@ The Cluster Readiness Engine is a Kubebuilder-based Kubernetes controller. A sin
 
 ## Resource hierarchy
 
-```
-Certification
-  └── Workflow (one per category)
-        └── Job
-              └── TrainJob (or other workload)
+```mermaid
+graph TD
+WR[WorkloadRun] -->|creates| W0[Workflow]
+C[Certification] -->|creates| W1[Workflow: training-nemotron5-8b]
+C -->|creates| W2[Workflow: communication-nccl]
+W0 -->|creates| J0[Job]
+W1 -->|creates| J1[Job]
+W2 -->|creates| J2[Job]
+J0 -->|creates| T0[TrainJob]
+J1 -->|creates| T1[TrainJob]
+J2 -->|creates| T2[TrainJob]
+J0 -.->|monitors| N[Node Health]
+J1 -.->|monitors| N
+J2 -.->|monitors| N
+GM[GoodputMeasurement] -.->|watches| J0
+BM[BandwidthMeasurement] -.->|watches| J2
 ```
 
 ### Certification
@@ -42,6 +53,19 @@ Creates the actual workload (a `TrainJob`) via the adapter pattern. Manages heal
 - **`setExclusiveCondition()`** — enforces mutually exclusive InProgress / Succeeded / Failed conditions at every tier
 - **`Owns()` watches** — each tier watches its children for event-driven reconciliation; polling (15s in production, 1s in tests) is a safety net
 - **Adapter pattern** — the `Job` controller normalizes `TrainJob` (Kubeflow Trainer v2) to a `WorkloadPhase` via a `WorkloadAdapter` interface (`pkg/workload/ForSpec()`). MPI and PyTorch are framework types at the `WorkloadRun` CLI layer — they generate a `TrainJob` under the hood, not a separate CRD field.
+
+### Condition lifecycle
+
+Each resource tier uses three mutually exclusive conditions:
+
+```mermaid
+stateDiagram-v2
+[*] --> InProgress: Resource created
+InProgress --> Succeeded: Workload completed
+InProgress --> Failed: Workload failed
+Succeeded --> [*]
+Failed --> [*]
+```
 
 ## Catalog
 
