@@ -436,18 +436,20 @@ func platformToProviderID(platform string) string {
 // Built from either CLI flags (--category) or a YAML file (--cert-file),
 // then consumed by the single executeCertificationRun pipeline.
 type certRunConfig struct {
-	version         string // CLI version, passed to setup.RunInit
-	cert            *burninv1alpha1.Certification
-	namespace       string
-	controllerImage string // --image: controller image for --setup
-	imagePullSecret string // --image-pull-secret: token for ghcr.io pull auth
-	doWait          bool   // --wait: watch + report
-	doSetup         bool   // --setup: runInit before create
-	doCleanup       bool   // --cleanup: runReset + delete cert/ns after
-	resultsFile     string // --results-file: path to write JSON report
-	timeout         time.Duration
-	configFlags     *kubeconfig.ConfigFlags
-	out             io.Writer
+	version           string // CLI version, passed to setup.RunInit
+	cert              *burninv1alpha1.Certification
+	namespace         string
+	controllerImage   string // --image: controller image for --setup
+	imagePullServer   string // --image-pull-server: registry hostname
+	imagePullUsername string // --image-pull-username: registry username
+	imagePullSecret   string // --image-pull-secret: registry password/token
+	doWait            bool   // --wait: watch + report
+	doSetup           bool   // --setup: runInit before create
+	doCleanup         bool   // --cleanup: runReset + delete cert/ns after
+	resultsFile       string // --results-file: path to write JSON report
+	timeout           time.Duration
+	configFlags       *kubeconfig.ConfigFlags
+	out               io.Writer
 }
 
 // categoryRunOpts holds the optional CategoryOptions flags for the --category path.
@@ -472,7 +474,7 @@ func newRunCommand(version string) *cobra.Command {
 	var doWait, doSetup, doCleanup bool
 	var certFile string
 	var controllerImage string
-	var imagePullSecret string
+	var imagePullServer, imagePullUsername, imagePullSecret string
 	var resultsFile string
 	var timeout time.Duration
 
@@ -496,6 +498,16 @@ Use --cleanup to teardown installed components after completion.`,
 			if certFile != "" && len(categories) > 0 {
 				return fmt.Errorf("--cert-file and --category are mutually exclusive")
 			}
+			// All three image-pull flags must be set together.
+			pullSet := 0
+			for _, name := range []string{"image-pull-server", "image-pull-username", "image-pull-secret"} {
+				if cmd.Flags().Changed(name) {
+					pullSet++
+				}
+			}
+			if pullSet > 0 && pullSet < 3 {
+				return fmt.Errorf("--image-pull-server, --image-pull-username, and --image-pull-secret must all be set together")
+			}
 			if certFile == "" && len(categories) == 0 {
 				return fmt.Errorf("either --cert-file or at least one --category is required\n\n" +
 					"Use 'ncrectl certification list-categories' to see available categories")
@@ -505,7 +517,8 @@ Use --cleanup to teardown installed components after completion.`,
 			var err error
 			if certFile != "" {
 				cfg, err = buildConfigFromFile(certFile, *configFlags.Namespace, controllerImage,
-					imagePullSecret, doWait, doSetup, doCleanup, timeout, configFlags, os.Stderr)
+					imagePullServer, imagePullUsername, imagePullSecret,
+					doWait, doSetup, doCleanup, timeout, configFlags, os.Stderr)
 			} else {
 				opts := categoryRunOpts{
 					maxSteps:         maxSteps,
@@ -522,7 +535,8 @@ Use --cleanup to teardown installed components after completion.`,
 					opts.enableMNNVL = &enableMNNVL
 				}
 				cfg, err = buildConfigFromFlags(categories, name, *configFlags.Namespace, nodesPerJob,
-					opts, controllerImage, imagePullSecret, doWait, doSetup, doCleanup, timeout, configFlags, os.Stderr)
+					opts, controllerImage, imagePullServer, imagePullUsername, imagePullSecret,
+					doWait, doSetup, doCleanup, timeout, configFlags, os.Stderr)
 			}
 			if err != nil {
 				return err
@@ -543,8 +557,12 @@ Use --cleanup to teardown installed components after completion.`,
 		"Watch for completion and print a report")
 	cmd.Flags().BoolVar(&doCleanup, "cleanup", false,
 		"Delete certification, namespace, and installed components after completion")
+	cmd.Flags().StringVar(&imagePullServer, "image-pull-server", "",
+		"Registry server for workload image pull (e.g. nvcr.io, ghcr.io) — required when --image-pull-secret is set")
+	cmd.Flags().StringVar(&imagePullUsername, "image-pull-username", "",
+		"Registry username for workload image pull (e.g. \\$oauthtoken for NGC) — required when --image-pull-secret is set")
 	cmd.Flags().StringVar(&imagePullSecret, "image-pull-secret", "",
-		"GitHub token for ghcr.io image pull — creates a pull secret in the certification namespace")
+		"Registry password or API key for workload image pull — creates an imagePullSecret in the certification namespace")
 	cmd.Flags().StringVar(&controllerImage, "image", "",
 		"Controller image for --setup (default: ghcr.io/nvidia/cluster-readiness-engine/manager:<version>)")
 	cmd.Flags().StringVar(&name, "name", "",
@@ -584,7 +602,7 @@ Use --cleanup to teardown installed components after completion.`,
 // Connects to the cluster to discover GPU product.
 func buildConfigFromFlags(
 	categoryStrs []string, name, namespace string, nodesPerJob int32,
-	opts categoryRunOpts, controllerImage, imagePullSecret string,
+	opts categoryRunOpts, controllerImage, imagePullServer, imagePullUsername, imagePullSecret string,
 	doWait, doSetup, doCleanup bool, timeout time.Duration,
 	configFlags *kubeconfig.ConfigFlags, out io.Writer,
 ) (*certRunConfig, error) {
@@ -667,22 +685,24 @@ func buildConfigFromFlags(
 	}
 
 	return &certRunConfig{
-		cert:            cert,
-		namespace:       namespace,
-		controllerImage: controllerImage,
-		imagePullSecret: imagePullSecret,
-		doWait:          doWait,
-		doSetup:         doSetup,
-		doCleanup:       doCleanup,
-		timeout:         timeout,
-		configFlags:     configFlags,
-		out:             out,
+		cert:              cert,
+		namespace:         namespace,
+		controllerImage:   controllerImage,
+		imagePullServer:   imagePullServer,
+		imagePullUsername: imagePullUsername,
+		imagePullSecret:   imagePullSecret,
+		doWait:            doWait,
+		doSetup:           doSetup,
+		doCleanup:         doCleanup,
+		timeout:           timeout,
+		configFlags:       configFlags,
+		out:               out,
 	}, nil
 }
 
 // buildConfigFromFile builds a certRunConfig from a --cert-file YAML.
 func buildConfigFromFile(
-	certFile, namespace, controllerImage, imagePullSecret string,
+	certFile, namespace, controllerImage, imagePullServer, imagePullUsername, imagePullSecret string,
 	doWait, doSetup, doCleanup bool, timeout time.Duration,
 	configFlags *kubeconfig.ConfigFlags, out io.Writer,
 ) (*certRunConfig, error) {
@@ -700,16 +720,18 @@ func buildConfigFromFile(
 	}
 
 	return &certRunConfig{
-		cert:            cert,
-		namespace:       cert.Namespace,
-		controllerImage: controllerImage,
-		imagePullSecret: imagePullSecret,
-		doWait:          doWait,
-		doSetup:         doSetup,
-		doCleanup:       doCleanup,
-		timeout:         timeout,
-		configFlags:     configFlags,
-		out:             out,
+		cert:              cert,
+		namespace:         cert.Namespace,
+		controllerImage:   controllerImage,
+		imagePullServer:   imagePullServer,
+		imagePullUsername: imagePullUsername,
+		imagePullSecret:   imagePullSecret,
+		doWait:            doWait,
+		doSetup:           doSetup,
+		doCleanup:         doCleanup,
+		timeout:           timeout,
+		configFlags:       configFlags,
+		out:               out,
 	}, nil
 }
 
@@ -762,6 +784,18 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 				}
 			}
 
+			// Delete workload pull secret if we created one and the namespace
+			// will not be deleted (namespace deletion garbage-collects secrets).
+			if cfg.imagePullSecret != "" && createdNamespace == "" {
+				pullSec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
+					Name: setup.WorkloadPullSecretName, Namespace: cfg.namespace,
+				}}
+				if err := wc.Delete(cleanupCtx, pullSec); err != nil && !apierrors.IsNotFound(err) {
+					_, _ = fmt.Fprintf(out, "[cleanup] Warning: failed to delete pull secret: %v\n", err)
+					warnings = true
+				}
+			}
+
 			// Delete namespace if we created it, and wait for it to fully
 			// terminate so the next run doesn't fail with "namespace is being
 			// terminated".
@@ -796,7 +830,7 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 	// --- Setup phase: install via runInit (SSA is idempotent) ---
 	if cfg.doSetup {
 		_, _ = fmt.Fprintln(out, "[setup] Installing dependencies...")
-		initErr := setup.RunInit(cfg.version, cfg.controllerImage, cfg.imagePullSecret, "", true,
+		initErr := setup.RunInit(cfg.version, cfg.controllerImage, "", "", true,
 			cfg.configFlags, "", nil, out)
 		if initErr != nil {
 			return fmt.Errorf("[setup] %w", initErr)
@@ -812,14 +846,16 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 		createdNamespace = cfg.namespace
 	}
 
-	// --- Create image pull secret if token provided ---
+	// --- Create image pull secret if credentials provided ---
 	if cfg.imagePullSecret != "" {
-		secretName, secretErr := setup.CreateImagePullSecret(ctx, wc, cfg.namespace, cfg.imagePullSecret)
+		secretName, secretErr := setup.CreateImagePullSecret(ctx, wc,
+			cfg.namespace, setup.WorkloadPullSecretName, cfg.imagePullServer, cfg.imagePullUsername, cfg.imagePullSecret)
 		if secretErr != nil {
 			return fmt.Errorf("create image pull secret: %w", secretErr)
 		}
 		cfg.cert.Spec.ImagePullSecrets = append(cfg.cert.Spec.ImagePullSecrets,
 			corev1.LocalObjectReference{Name: secretName})
+		_, _ = fmt.Fprintf(out, "Created image pull secret %q in namespace %s.\n", secretName, cfg.namespace)
 	}
 
 	// --- Create Certification ---

@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -239,7 +240,7 @@ func setupControllerSecret(
 		return "", fmt.Errorf("[helm] %w", err)
 	}
 	name, err := CreateImagePullSecret(sp.ctx, sp.c,
-		creNamespace, imagePullSecret)
+		creNamespace, pullSecretName, defaultImageRegistry, "token", imagePullSecret)
 	if err != nil {
 		return "", fmt.Errorf("[helm] create pull secret: %w", err)
 	}
@@ -821,18 +822,47 @@ func defaultImage(version string) string {
 // Image pull secret helpers
 // ---------------------------------------------------------------------------
 
-const pullSecretName = "ncrectl-pull-secret" // #nosec G101 -- Kubernetes Secret name, not a credential
+const (
+	// pullSecretName is the controller image pull secret created by setup init.
+	pullSecretName = "ncrectl-pull-secret" // #nosec G101 -- Kubernetes Secret name, not a credential
 
-// CreateImagePullSecret creates a dockerconfigjson Secret for ghcr.io.
-// token is a GitHub Personal Access Token with read:packages scope.
-func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, token string) (string, error) {
-	authStr := base64.StdEncoding.EncodeToString([]byte("token:" + token))
-	dockerConfig := fmt.Sprintf(`{"auths":{"ghcr.io":{"username":"token","password":"%s","auth":"%s"}}}`,
-		token, authStr)
+	// WorkloadPullSecretName is the workload image pull secret created by
+	// certification run and workloadrun run. A distinct name prevents these
+	// commands from overwriting the controller pull secret in the same namespace.
+	WorkloadPullSecretName = "ncrectl-workload-pull-secret" // #nosec G101 -- Kubernetes Secret name, not a credential
+)
+
+// CreateImagePullSecret creates a dockerconfigjson Secret for the given registry.
+// server is the registry hostname (e.g. "nvcr.io", "ghcr.io").
+// username is the registry username (e.g. "$oauthtoken" for NGC, "token" for GHCR).
+// password is the registry password or API key.
+// secretName is the name to give the created Secret.
+func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, secretName, server, username, password string) (string, error) {
+	if server == "" || username == "" || password == "" {
+		return "", fmt.Errorf("image-pull-server, image-pull-username, and image-pull-secret must all be non-empty")
+	}
+	authStr := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+	type authEntry struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		Auth     string `json:"auth"`
+	}
+	dockerCfg := struct {
+		Auths map[string]authEntry `json:"auths"`
+	}{
+		Auths: map[string]authEntry{
+			server: {Username: username, Password: password, Auth: authStr},
+		},
+	}
+	dockerConfigBytes, err := json.Marshal(dockerCfg)
+	if err != nil {
+		return "", fmt.Errorf("marshal dockerconfigjson: %w", err)
+	}
+	dockerConfig := string(dockerConfigBytes)
 
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      pullSecretName,
+			Name:      secretName,
 			Namespace: namespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by": "ncrectl",
@@ -848,19 +878,19 @@ func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, toke
 		if apierrors.IsAlreadyExists(err) {
 			// Update existing secret.
 			existing := &corev1.Secret{}
-			if getErr := c.Get(ctx, client.ObjectKey{Name: pullSecretName, Namespace: namespace}, existing); getErr != nil {
+			if getErr := c.Get(ctx, client.ObjectKey{Name: secretName, Namespace: namespace}, existing); getErr != nil {
 				return "", fmt.Errorf("get existing secret: %w", getErr)
 			}
 			existing.Data = secret.Data
 			if updateErr := c.Update(ctx, existing); updateErr != nil {
 				return "", fmt.Errorf("update secret: %w", updateErr)
 			}
-			return pullSecretName, nil
+			return secretName, nil
 		}
 		return "", fmt.Errorf("create image pull secret: %w", err)
 	}
 
-	return pullSecretName, nil
+	return secretName, nil
 }
 
 // parseImage splits a container image reference into name and tag components.

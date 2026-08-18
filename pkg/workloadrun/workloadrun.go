@@ -580,7 +580,7 @@ func runWorkloadRunRenderDryRun(
 
 func newWorkloadRunRunCommand() *cobra.Command {
 	var doWait, doSetup, doCleanup bool
-	var imagePullSecret string
+	var imagePullServer, imagePullUsername, imagePullSecret string
 	var controllerImage string
 	var resultsFile string
 	var timeout time.Duration
@@ -602,7 +602,17 @@ the WorkloadRun spec before submission. When --node-list is used and the
 number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runWorkloadRunExecute(args[0], *configFlags.Namespace, imagePullSecret,
+			pullSet := 0
+			for _, name := range []string{"image-pull-server", "image-pull-username", "image-pull-secret"} {
+				if cmd.Flags().Changed(name) {
+					pullSet++
+				}
+			}
+			if pullSet > 0 && pullSet < 3 {
+				return fmt.Errorf("--image-pull-server, --image-pull-username, and --image-pull-secret must all be set together")
+			}
+			return runWorkloadRunExecute(args[0], *configFlags.Namespace,
+				imagePullServer, imagePullUsername, imagePullSecret,
 				controllerImage, doWait, doSetup, doCleanup, timeout,
 				resultsFile, configFlags,
 				nameOverride, nodeList, topologyDomain, topologyKey, testScale)
@@ -612,7 +622,12 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 	cmd.Flags().BoolVar(&doWait, "wait", false, "Watch for completion")
 	cmd.Flags().BoolVar(&doSetup, "setup", false, "Install CRDs, controller, LogProfiles before creating")
 	cmd.Flags().BoolVar(&doCleanup, "cleanup", false, "Delete WorkloadRun and installed components after completion")
-	cmd.Flags().StringVar(&imagePullSecret, "image-pull-secret", "", "GitHub token for ghcr.io image pull")
+	cmd.Flags().StringVar(&imagePullServer, "image-pull-server", "",
+		"Registry server for workload image pull (e.g. nvcr.io, ghcr.io) — required when --image-pull-secret is set")
+	cmd.Flags().StringVar(&imagePullUsername, "image-pull-username", "",
+		"Registry username for workload image pull (e.g. \\$oauthtoken for NGC) — required when --image-pull-secret is set")
+	cmd.Flags().StringVar(&imagePullSecret, "image-pull-secret", "",
+		"Registry password or API key for workload image pull — creates an imagePullSecret in the WorkloadRun namespace")
 	cmd.Flags().StringVar(&controllerImage, "image", "", "Override controller image")
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Minute, "Wait timeout")
 	cmd.Flags().StringVar(&resultsFile, "results-file", "",
@@ -633,7 +648,7 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 }
 
 func runWorkloadRunExecute(
-	file, namespace, imagePullSecret, controllerImage string,
+	file, namespace, imagePullServer, imagePullUsername, imagePullSecret, controllerImage string,
 	doWait, doSetup, _ bool, timeout time.Duration,
 	resultsFile string, configFlags *kubeconfig.ConfigFlags,
 	nameOverride, nodeList, topologyDomain,
@@ -670,7 +685,7 @@ func runWorkloadRunExecute(
 	// Setup phase.
 	if doSetup {
 		_, _ = fmt.Fprintln(out, "Installing CRE components...")
-		if initErr := setup.RunInit("", controllerImage, imagePullSecret, "",
+		if initErr := setup.RunInit("", controllerImage, "", "",
 			true, configFlags, "", os.Stdin, out); initErr != nil {
 			return fmt.Errorf("setup: %w", initErr)
 		}
@@ -683,11 +698,12 @@ func runWorkloadRunExecute(
 		return fmt.Errorf("create namespace %s: %w", run.Namespace, err)
 	}
 
-	// Create image pull secret if provided.
+	// Create image pull secret if credentials provided.
 	if imagePullSecret != "" {
-		secretName, secretErr := setup.CreateImagePullSecret(ctx, wc, run.Namespace, imagePullSecret)
+		secretName, secretErr := setup.CreateImagePullSecret(ctx, wc,
+			run.Namespace, setup.WorkloadPullSecretName, imagePullServer, imagePullUsername, imagePullSecret)
 		if secretErr != nil {
-			return secretErr
+			return fmt.Errorf("create image pull secret: %w", secretErr)
 		}
 		run.Spec.ImagePullSecrets = append(run.Spec.ImagePullSecrets,
 			corev1.LocalObjectReference{Name: secretName})
