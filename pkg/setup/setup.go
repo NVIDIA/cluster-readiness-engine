@@ -239,7 +239,7 @@ func setupControllerSecret(
 	if _, err := EnsureNamespace(sp.ctx, sp.c, creNamespace, sp.out); err != nil {
 		return "", fmt.Errorf("[helm] %w", err)
 	}
-	name, err := CreateImagePullSecret(sp.ctx, sp.c,
+	name, _, err := CreateImagePullSecret(sp.ctx, sp.c,
 		creNamespace, pullSecretName, defaultImageRegistry, "token", imagePullSecret)
 	if err != nil {
 		return "", fmt.Errorf("[helm] create pull secret: %w", err)
@@ -837,11 +837,12 @@ const (
 // username is the registry username (e.g. "$oauthtoken" for NGC, "token" for GHCR).
 // password is the registry password or API key.
 // secretName is the name to give the created Secret.
-// owner, if non-nil, is set as an OwnerReference so Kubernetes GC deletes the
-// secret automatically when the owner resource is deleted.
-func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, secretName, server, username, password string, owner ...metav1.OwnerReference) (string, error) {
+// Returns (secretName, wasCreated, error) where wasCreated is true only when a
+// new Secret was created — false means an existing Secret was updated. Callers
+// must only delete the secret on rollback when wasCreated is true.
+func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, secretName, server, username, password string) (string, bool, error) {
 	if server == "" || username == "" || password == "" {
-		return "", fmt.Errorf("image-pull-server, image-pull-username, and image-pull-secret must all be non-empty")
+		return "", false, fmt.Errorf("workload-registry, workload-registry-username, and workload-registry-password must all be non-empty")
 	}
 	authStr := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
 	type authEntry struct {
@@ -858,15 +859,14 @@ func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, secr
 	}
 	dockerConfigBytes, err := json.Marshal(dockerCfg)
 	if err != nil {
-		return "", fmt.Errorf("marshal dockerconfigjson: %w", err)
+		return "", false, fmt.Errorf("marshal dockerconfigjson: %w", err)
 	}
 	dockerConfig := string(dockerConfigBytes)
 
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:            secretName,
-			Namespace:       namespace,
-			OwnerReferences: owner,
+			Name:      secretName,
+			Namespace: namespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by": "ncrectl",
 			},
@@ -879,21 +879,30 @@ func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, secr
 
 	if err := c.Create(ctx, secret); err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			// Update existing secret.
 			existing := &corev1.Secret{}
 			if getErr := c.Get(ctx, client.ObjectKey{Name: secretName, Namespace: namespace}, existing); getErr != nil {
-				return "", fmt.Errorf("get existing secret: %w", getErr)
+				return "", false, fmt.Errorf("get existing secret: %w", getErr)
+			}
+			// Secret.type is immutable: if the existing type is wrong, delete and recreate.
+			if existing.Type != corev1.SecretTypeDockerConfigJson {
+				if delErr := c.Delete(ctx, existing); delErr != nil {
+					return "", false, fmt.Errorf("delete wrong-typed pull secret %q (type %s): %w", secretName, existing.Type, delErr)
+				}
+				if createErr := c.Create(ctx, secret); createErr != nil {
+					return "", false, fmt.Errorf("recreate pull secret after type mismatch: %w", createErr)
+				}
+				return secretName, true, nil
 			}
 			existing.Data = secret.Data
 			if updateErr := c.Update(ctx, existing); updateErr != nil {
-				return "", fmt.Errorf("update secret: %w", updateErr)
+				return "", false, fmt.Errorf("update secret: %w", updateErr)
 			}
-			return secretName, nil
+			return secretName, false, nil // updated existing, caller does not own it
 		}
-		return "", fmt.Errorf("create image pull secret: %w", err)
+		return "", false, fmt.Errorf("create image pull secret: %w", err)
 	}
 
-	return secretName, nil
+	return secretName, true, nil
 }
 
 // parseImage splits a container image reference into name and tag components.

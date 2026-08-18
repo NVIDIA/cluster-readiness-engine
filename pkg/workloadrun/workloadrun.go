@@ -580,7 +580,8 @@ func runWorkloadRunRenderDryRun(
 
 func newWorkloadRunRunCommand() *cobra.Command {
 	var doWait, doSetup, doCleanup bool
-	var imagePullServer, imagePullUsername, imagePullSecret string
+	var controllerPullSecret string
+	var workloadRegistry, workloadRegistryUsername, workloadRegistryPassword string
 	var controllerImage string
 	var resultsFile string
 	var timeout time.Duration
@@ -603,17 +604,17 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			pullSet := 0
-			for _, name := range []string{"image-pull-server", "image-pull-username", "image-pull-secret"} {
-				if cmd.Flags().Changed(name) {
+			for _, v := range []string{workloadRegistry, workloadRegistryUsername, workloadRegistryPassword} {
+				if v != "" {
 					pullSet++
 				}
 			}
 			if pullSet > 0 && pullSet < 3 {
-				return fmt.Errorf("--image-pull-server, --image-pull-username, and --image-pull-secret must all be set together")
+				return fmt.Errorf("--workload-registry, --workload-registry-username, and --workload-registry-password must all be set together and non-empty")
 			}
 			return runWorkloadRunExecute(args[0], *configFlags.Namespace,
-				imagePullServer, imagePullUsername, imagePullSecret,
-				controllerImage, doWait, doSetup, doCleanup, timeout,
+				workloadRegistry, workloadRegistryUsername, workloadRegistryPassword,
+				controllerImage, controllerPullSecret, doWait, doSetup, doCleanup, timeout,
 				resultsFile, configFlags,
 				nameOverride, nodeList, topologyDomain, topologyKey, testScale)
 		},
@@ -622,11 +623,13 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 	cmd.Flags().BoolVar(&doWait, "wait", false, "Watch for completion")
 	cmd.Flags().BoolVar(&doSetup, "setup", false, "Install CRDs, controller, LogProfiles before creating")
 	cmd.Flags().BoolVar(&doCleanup, "cleanup", false, "Delete WorkloadRun and installed components after completion")
-	cmd.Flags().StringVar(&imagePullServer, "image-pull-server", "",
-		"Registry server for workload image pull (e.g. nvcr.io, ghcr.io) — required when --image-pull-secret is set")
-	cmd.Flags().StringVar(&imagePullUsername, "image-pull-username", "",
-		"Registry username for workload image pull (e.g. \\$oauthtoken for NGC) — required when --image-pull-secret is set")
-	cmd.Flags().StringVar(&imagePullSecret, "image-pull-secret", "",
+	cmd.Flags().StringVar(&controllerPullSecret, "controller-pull-secret", "",
+		"Token for controller registry authentication during --setup (e.g. GitHub PAT for ghcr.io) — separate from workload image credentials")
+	cmd.Flags().StringVar(&workloadRegistry, "workload-registry", "",
+		"Registry server for workload image pull (e.g. nvcr.io, ghcr.io) — required when --workload-registry-password is set")
+	cmd.Flags().StringVar(&workloadRegistryUsername, "workload-registry-username", "",
+		"Registry username for workload image pull (e.g. \\$oauthtoken for NGC) — required when --workload-registry-password is set")
+	cmd.Flags().StringVar(&workloadRegistryPassword, "workload-registry-password", "",
 		"Registry password or API key for workload image pull — creates an imagePullSecret in the WorkloadRun namespace")
 	cmd.Flags().StringVar(&controllerImage, "image", "", "Override controller image")
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Minute, "Wait timeout")
@@ -648,7 +651,7 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 }
 
 func runWorkloadRunExecute(
-	file, namespace, imagePullServer, imagePullUsername, imagePullSecret, controllerImage string,
+	file, namespace, workloadRegistry, workloadRegistryUsername, workloadRegistryPassword, controllerImage, controllerPullSecret string,
 	doWait, doSetup, _ bool, timeout time.Duration,
 	resultsFile string, configFlags *kubeconfig.ConfigFlags,
 	nameOverride, nodeList, topologyDomain,
@@ -685,7 +688,7 @@ func runWorkloadRunExecute(
 	// Setup phase.
 	if doSetup {
 		_, _ = fmt.Fprintln(out, "Installing CRE components...")
-		if initErr := setup.RunInit("", controllerImage, "", "",
+		if initErr := setup.RunInit("", controllerImage, controllerPullSecret, "",
 			true, configFlags, "", os.Stdin, out); initErr != nil {
 			return fmt.Errorf("setup: %w", initErr)
 		}
@@ -700,14 +703,16 @@ func runWorkloadRunExecute(
 
 	// Create pull secret before the WorkloadRun so pods can pull immediately.
 	// OwnerReference is set after creation to enable automatic GC.
-	pullSecretCreated := false
-	if imagePullSecret != "" {
-		secretName, secretErr := setup.CreateImagePullSecret(ctx, wc,
-			run.Namespace, setup.WorkloadPullSecretName, imagePullServer, imagePullUsername, imagePullSecret)
+	// wasCreatedByUs is false when an existing secret was only updated (concurrent
+	// run) — do not delete on rollback in that case.
+	wasCreatedByUs := false
+	if workloadRegistryPassword != "" {
+		secretName, created, secretErr := setup.CreateImagePullSecret(ctx, wc,
+			run.Namespace, setup.WorkloadPullSecretName, workloadRegistry, workloadRegistryUsername, workloadRegistryPassword)
 		if secretErr != nil {
 			return fmt.Errorf("create image pull secret: %w", secretErr)
 		}
-		pullSecretCreated = true
+		wasCreatedByUs = created
 		run.Spec.ImagePullSecrets = append(run.Spec.ImagePullSecrets,
 			corev1.LocalObjectReference{Name: secretName})
 		_, _ = fmt.Fprintf(out, "Created image pull secret %q in namespace %s.\n", secretName, run.Namespace)
@@ -754,9 +759,9 @@ func runWorkloadRunExecute(
 
 	// Create WorkloadRun.
 	if err := wc.Create(ctx, run); err != nil {
-		// Clean up the pull secret if workloadrun creation fails and the
-		// namespace was pre-existing (namespace deletion would cascade the secret).
-		if pullSecretCreated {
+		// Only delete the secret on rollback if we actually created it —
+		// if we updated a pre-existing secret, deleting it would break a concurrent run.
+		if wasCreatedByUs {
 			pullSec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
 				Name: setup.WorkloadPullSecretName, Namespace: run.Namespace,
 			}}
@@ -768,12 +773,14 @@ func runWorkloadRunExecute(
 		run.Name, run.Namespace)
 
 	// Set OwnerReference on the pull secret now that we have the WorkloadRun UID.
-	// Uses Update (optimistic concurrency via resourceVersion) rather than Merge
-	// Patch to avoid replacing the OwnerReferences array. Best-effort: if this
-	// fails the secret will not be GC'd automatically but is otherwise harmless.
-	if pullSecretCreated {
+	// Only when wasCreatedByUs: if we only updated an existing secret we don't own
+	// it and must not manage its lifecycle.
+	if wasCreatedByUs {
 		sec := &corev1.Secret{}
-		if getErr := wc.Get(ctx, client.ObjectKey{Name: setup.WorkloadPullSecretName, Namespace: run.Namespace}, sec); getErr == nil {
+		if getErr := wc.Get(ctx, client.ObjectKey{Name: setup.WorkloadPullSecretName, Namespace: run.Namespace}, sec); getErr != nil {
+			_, _ = fmt.Fprintf(out, "Warning: could not retrieve pull secret %q to set OwnerReference: %v\n",
+				setup.WorkloadPullSecretName, getErr)
+		} else {
 			sec.OwnerReferences = append(sec.OwnerReferences, metav1.OwnerReference{
 				APIVersion: "cre.nvidia.com/v1alpha1",
 				Kind:       "WorkloadRun",
