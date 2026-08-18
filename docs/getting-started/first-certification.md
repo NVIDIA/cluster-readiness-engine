@@ -30,7 +30,7 @@ Cordoned nodes are skipped. If a node is cordoned, CRE does not select it, and i
 Every release so far is a pre-release, and `releases/latest` resolves only to the newest **stable** release, so that URL cannot be fetched yet. Name the version explicitly instead:
 
 ```bash
-CRE_VERSION=v0.1.0-rc.7
+CRE_VERSION=v0.1.0-rc.8
 curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${CRE_VERSION}/installer \
   | bash -s -- -v "${CRE_VERSION}"
 ```

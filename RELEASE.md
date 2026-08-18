@@ -9,7 +9,7 @@ check that you received what we published.
 ## Versioning
 
 CRE follows [Semantic Versioning](https://semver.org/). Tags are `vMAJOR.MINOR.PATCH`,
-optionally with a pre-release suffix, for example `v0.1.0` or `v0.1.0-rc.7`.
+optionally with a pre-release suffix, for example `v0.1.0` or `v0.1.0-rc.8`.
 
 The project is at `v0.x`. Under SemVer that means the public surface can still change in
 a minor release. Treat CRD schemas, the `ncrectl` command line, and Helm values as
