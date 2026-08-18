@@ -40,7 +40,7 @@ Usage: $0 [-d install_dir] [-p] [-v version]
 Options:
   -d DIR    Installation directory (default: /usr/local/bin)
   -p        Include pre-release versions
-  -v TAG    Install this exact release tag (e.g. v0.1.0-rc.7)
+  -v TAG    Install this exact release tag (e.g. v0.1.0-rc.8)
 EOF
   exit 1
 }
