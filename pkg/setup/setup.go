@@ -825,12 +825,14 @@ func defaultImage(version string) string {
 const (
 	// pullSecretName is the controller image pull secret created by setup init.
 	pullSecretName = "ncrectl-pull-secret" // #nosec G101 -- Kubernetes Secret name, not a credential
-
-	// WorkloadPullSecretName is the workload image pull secret created by
-	// certification run and workloadrun run. A distinct name prevents these
-	// commands from overwriting the controller pull secret in the same namespace.
-	WorkloadPullSecretName = "ncrectl-workload-pull-secret" // #nosec G101 -- Kubernetes Secret name, not a credential
 )
+
+// WorkloadPullSecretName returns the name of the workload image pull secret for
+// a given Certification or WorkloadRun. Deriving from the resource name prevents
+// concurrent runs in the same namespace from fighting over a single fixed name.
+func WorkloadPullSecretName(resourceName string) string {
+	return "ncrectl-pull-" + resourceName // #nosec G101 -- Kubernetes Secret name, not a credential
+}
 
 // CreateImagePullSecret creates a dockerconfigjson Secret for the given registry.
 // server is the registry hostname (e.g. "nvcr.io", "ghcr.io").
@@ -883,15 +885,12 @@ func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, secr
 			if getErr := c.Get(ctx, client.ObjectKey{Name: secretName, Namespace: namespace}, existing); getErr != nil {
 				return "", false, fmt.Errorf("get existing secret: %w", getErr)
 			}
-			// Secret.type is immutable: if the existing type is wrong, delete and recreate.
+			// Secret.type is immutable and we must not delete a secret we may not own.
+			// Return an actionable error so the user can resolve it explicitly.
 			if existing.Type != corev1.SecretTypeDockerConfigJson {
-				if delErr := c.Delete(ctx, existing); delErr != nil {
-					return "", false, fmt.Errorf("delete wrong-typed pull secret %q (type %s): %w", secretName, existing.Type, delErr)
-				}
-				if createErr := c.Create(ctx, secret); createErr != nil {
-					return "", false, fmt.Errorf("recreate pull secret after type mismatch: %w", createErr)
-				}
-				return secretName, true, nil
+				return "", false, fmt.Errorf(
+					"secret %q already exists with type %q (want %q): delete it manually and retry",
+					secretName, existing.Type, corev1.SecretTypeDockerConfigJson)
 			}
 			existing.Data = secret.Data
 			if updateErr := c.Update(ctx, existing); updateErr != nil {

@@ -855,7 +855,7 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 	wasCreatedByUs := false
 	if cfg.workloadRegistryPassword != "" {
 		secretName, created, secretErr := setup.CreateImagePullSecret(ctx, wc,
-			cfg.namespace, setup.WorkloadPullSecretName,
+			cfg.namespace, setup.WorkloadPullSecretName(cfg.cert.Name),
 			cfg.workloadRegistry, cfg.workloadRegistryUsername, cfg.workloadRegistryPassword)
 		if secretErr != nil {
 			return fmt.Errorf("create image pull secret: %w", secretErr)
@@ -873,7 +873,7 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 		// namespace deletion will cascade later, the delete will be a no-op NotFound.
 		if wasCreatedByUs {
 			pullSec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
-				Name: setup.WorkloadPullSecretName, Namespace: cfg.namespace,
+				Name: setup.WorkloadPullSecretName(cfg.cert.Name), Namespace: cfg.namespace,
 			}}
 			_ = wc.Delete(ctx, pullSec)
 		}
@@ -887,9 +887,9 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 	// avoid JSON Merge Patch replacing the OwnerReferences array.
 	if wasCreatedByUs {
 		sec := &corev1.Secret{}
-		if getErr := wc.Get(ctx, client.ObjectKey{Name: setup.WorkloadPullSecretName, Namespace: cfg.namespace}, sec); getErr != nil {
+		if getErr := wc.Get(ctx, client.ObjectKey{Name: setup.WorkloadPullSecretName(cfg.cert.Name), Namespace: cfg.namespace}, sec); getErr != nil {
 			_, _ = fmt.Fprintf(out, "Warning: could not retrieve pull secret %q to set OwnerReference: %v\n",
-				setup.WorkloadPullSecretName, getErr)
+				setup.WorkloadPullSecretName(cfg.cert.Name), getErr)
 		} else {
 			sec.OwnerReferences = append(sec.OwnerReferences, metav1.OwnerReference{
 				APIVersion: "cre.nvidia.com/v1alpha1",
@@ -899,7 +899,7 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 			})
 			if updateErr := wc.Update(ctx, sec); updateErr != nil {
 				_, _ = fmt.Fprintf(out, "Warning: could not set OwnerReference on pull secret %q — it will not be GC'd automatically: %v\n",
-					setup.WorkloadPullSecretName, updateErr)
+					setup.WorkloadPullSecretName(cfg.cert.Name), updateErr)
 			}
 		}
 	}

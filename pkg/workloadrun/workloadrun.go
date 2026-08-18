@@ -708,7 +708,7 @@ func runWorkloadRunExecute(
 	wasCreatedByUs := false
 	if workloadRegistryPassword != "" {
 		secretName, created, secretErr := setup.CreateImagePullSecret(ctx, wc,
-			run.Namespace, setup.WorkloadPullSecretName, workloadRegistry, workloadRegistryUsername, workloadRegistryPassword)
+			run.Namespace, setup.WorkloadPullSecretName(run.Name), workloadRegistry, workloadRegistryUsername, workloadRegistryPassword)
 		if secretErr != nil {
 			return fmt.Errorf("create image pull secret: %w", secretErr)
 		}
@@ -763,7 +763,7 @@ func runWorkloadRunExecute(
 		// if we updated a pre-existing secret, deleting it would break a concurrent run.
 		if wasCreatedByUs {
 			pullSec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
-				Name: setup.WorkloadPullSecretName, Namespace: run.Namespace,
+				Name: setup.WorkloadPullSecretName(run.Name), Namespace: run.Namespace,
 			}}
 			_ = wc.Delete(ctx, pullSec)
 		}
@@ -777,9 +777,9 @@ func runWorkloadRunExecute(
 	// it and must not manage its lifecycle.
 	if wasCreatedByUs {
 		sec := &corev1.Secret{}
-		if getErr := wc.Get(ctx, client.ObjectKey{Name: setup.WorkloadPullSecretName, Namespace: run.Namespace}, sec); getErr != nil {
+		if getErr := wc.Get(ctx, client.ObjectKey{Name: setup.WorkloadPullSecretName(run.Name), Namespace: run.Namespace}, sec); getErr != nil {
 			_, _ = fmt.Fprintf(out, "Warning: could not retrieve pull secret %q to set OwnerReference: %v\n",
-				setup.WorkloadPullSecretName, getErr)
+				setup.WorkloadPullSecretName(run.Name), getErr)
 		} else {
 			sec.OwnerReferences = append(sec.OwnerReferences, metav1.OwnerReference{
 				APIVersion: "cre.nvidia.com/v1alpha1",
@@ -789,7 +789,7 @@ func runWorkloadRunExecute(
 			})
 			if updateErr := wc.Update(ctx, sec); updateErr != nil {
 				_, _ = fmt.Fprintf(out, "Warning: could not set OwnerReference on pull secret %q — it will not be GC'd automatically: %v\n",
-					setup.WorkloadPullSecretName, updateErr)
+					setup.WorkloadPullSecretName(run.Name), updateErr)
 			}
 		}
 	}
