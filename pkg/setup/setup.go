@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -238,8 +239,8 @@ func setupControllerSecret(
 	if _, err := EnsureNamespace(sp.ctx, sp.c, creNamespace, sp.out); err != nil {
 		return "", fmt.Errorf("[helm] %w", err)
 	}
-	name, err := CreateImagePullSecret(sp.ctx, sp.c,
-		creNamespace, imagePullSecret)
+	name, _, err := CreateImagePullSecret(sp.ctx, sp.c,
+		creNamespace, pullSecretName, defaultImageRegistry, "token", imagePullSecret)
 	if err != nil {
 		return "", fmt.Errorf("[helm] create pull secret: %w", err)
 	}
@@ -821,18 +822,52 @@ func defaultImage(version string) string {
 // Image pull secret helpers
 // ---------------------------------------------------------------------------
 
-const pullSecretName = "ncrectl-pull-secret" // #nosec G101 -- Kubernetes Secret name, not a credential
+const (
+	// pullSecretName is the controller image pull secret created by setup init.
+	pullSecretName = "ncrectl-pull-secret" // #nosec G101 -- Kubernetes Secret name, not a credential
+)
 
-// CreateImagePullSecret creates a dockerconfigjson Secret for ghcr.io.
-// token is a GitHub Personal Access Token with read:packages scope.
-func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, token string) (string, error) {
-	authStr := base64.StdEncoding.EncodeToString([]byte("token:" + token))
-	dockerConfig := fmt.Sprintf(`{"auths":{"ghcr.io":{"username":"token","password":"%s","auth":"%s"}}}`,
-		token, authStr)
+// WorkloadPullSecretName returns the name of the workload image pull secret for
+// a given Certification or WorkloadRun. Deriving from the resource name prevents
+// concurrent runs in the same namespace from fighting over a single fixed name.
+func WorkloadPullSecretName(resourceName string) string {
+	return "ncrectl-pull-" + resourceName // #nosec G101 -- Kubernetes Secret name, not a credential
+}
+
+// CreateImagePullSecret creates a dockerconfigjson Secret for the given registry.
+// server is the registry hostname (e.g. "nvcr.io", "ghcr.io").
+// username is the registry username (e.g. "$oauthtoken" for NGC, "token" for GHCR).
+// password is the registry password or API key.
+// secretName is the name to give the created Secret.
+// Returns (secretName, wasCreated, error) where wasCreated is true only when a
+// new Secret was created — false means an existing Secret was updated. Callers
+// must only delete the secret on rollback when wasCreated is true.
+func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, secretName, server, username, password string) (string, bool, error) {
+	if server == "" || username == "" || password == "" {
+		return "", false, fmt.Errorf("workload-registry, workload-registry-username, and workload-registry-password must all be non-empty")
+	}
+	authStr := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+	type authEntry struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		Auth     string `json:"auth"`
+	}
+	dockerCfg := struct {
+		Auths map[string]authEntry `json:"auths"`
+	}{
+		Auths: map[string]authEntry{
+			server: {Username: username, Password: password, Auth: authStr},
+		},
+	}
+	dockerConfigBytes, err := json.Marshal(dockerCfg)
+	if err != nil {
+		return "", false, fmt.Errorf("marshal dockerconfigjson: %w", err)
+	}
+	dockerConfig := string(dockerConfigBytes)
 
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      pullSecretName,
+			Name:      secretName,
 			Namespace: namespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by": "ncrectl",
@@ -846,21 +881,27 @@ func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, toke
 
 	if err := c.Create(ctx, secret); err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			// Update existing secret.
 			existing := &corev1.Secret{}
-			if getErr := c.Get(ctx, client.ObjectKey{Name: pullSecretName, Namespace: namespace}, existing); getErr != nil {
-				return "", fmt.Errorf("get existing secret: %w", getErr)
+			if getErr := c.Get(ctx, client.ObjectKey{Name: secretName, Namespace: namespace}, existing); getErr != nil {
+				return "", false, fmt.Errorf("get existing secret: %w", getErr)
+			}
+			// Secret.type is immutable and we must not delete a secret we may not own.
+			// Return an actionable error so the user can resolve it explicitly.
+			if existing.Type != corev1.SecretTypeDockerConfigJson {
+				return "", false, fmt.Errorf(
+					"secret %q already exists with type %q (want %q): delete it manually and retry",
+					secretName, existing.Type, corev1.SecretTypeDockerConfigJson)
 			}
 			existing.Data = secret.Data
 			if updateErr := c.Update(ctx, existing); updateErr != nil {
-				return "", fmt.Errorf("update secret: %w", updateErr)
+				return "", false, fmt.Errorf("update secret: %w", updateErr)
 			}
-			return pullSecretName, nil
+			return secretName, false, nil // updated existing, caller does not own it
 		}
-		return "", fmt.Errorf("create image pull secret: %w", err)
+		return "", false, fmt.Errorf("create image pull secret: %w", err)
 	}
 
-	return pullSecretName, nil
+	return secretName, true, nil
 }
 
 // parseImage splits a container image reference into name and tag components.
