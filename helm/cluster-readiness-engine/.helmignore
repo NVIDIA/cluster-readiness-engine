@@ -7,3 +7,5 @@
 .hg/
 .hgignore
 .svn/
+# Go chart render tests are not chart content.
+tests/

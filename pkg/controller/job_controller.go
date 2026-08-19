@@ -22,6 +22,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	controlleropts "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -79,6 +80,8 @@ type JobReconciler struct {
 	Clientset      *kubernetes.Clientset
 	NodeDiscoverer *nodemonitor.NodeDiscoverer
 	Recorder       events.EventRecorder
+	// MaxConcurrentReconciles bounds the number of Job objects reconciled concurrently.
+	MaxConcurrentReconciles int
 
 	// WorkloadRequeueInterval is how often to poll workload status when job is in progress.
 	// If zero, defaults to workloadRequeueInterval (15s).
@@ -1393,6 +1396,7 @@ func (r *JobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			builder.WithPredicates(r.nodeHealthChangePredicate()),
 		).
 		Named("job").
+		WithOptions(controlleropts.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Complete(r)
 }
 

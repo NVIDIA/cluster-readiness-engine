@@ -140,6 +140,7 @@ func reconcileResourceClaims(ctx context.Context, client dynamic.Interface) {
 		patch := map[string]any{
 			"status": map[string]any{
 				"allocation": map[string]any{
+					"allocationTimestamp": metav1.Now().Format(time.RFC3339Nano),
 					"devices": map[string]any{
 						"results": []any{},
 					},

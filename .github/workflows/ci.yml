@@ -90,6 +90,10 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.19.2
+
       - name: Install test tools
         run: |
           go install gotest.tools/gotestsum@latest

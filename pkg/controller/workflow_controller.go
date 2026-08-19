@@ -25,6 +25,7 @@ import (
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	controlleropts "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -51,6 +52,8 @@ type WorkflowReconciler struct {
 	Clientset          *kubernetes.Clientset
 	Recorder           events.EventRecorder
 	JobRequeueInterval time.Duration
+	// MaxConcurrentReconciles bounds the number of Workflow objects reconciled concurrently.
+	MaxConcurrentReconciles int
 }
 
 // +kubebuilder:rbac:groups=cre.nvidia.com,resources=workflows,verbs=get;list;watch;create;update;patch;delete
@@ -2708,5 +2711,6 @@ func (r *WorkflowReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&burninv1alpha1.Workflow{}).
 		Owns(&burninv1alpha1.Job{}).
 		Named("workflow").
+		WithOptions(controlleropts.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Complete(r)
 }
