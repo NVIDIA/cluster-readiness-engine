@@ -69,9 +69,10 @@ func (f *kubernetesLogFetcher) FetchLogs(ctx context.Context, namespace, podName
 	return ScanLines(io.LimitReader(stream, limit))
 }
 
-// OpenStream opens a pod log request with DefaultStreamTimeout. The returned
-// stream keeps the timeout active until it is closed, so stalled response-body
-// reads are bounded as well as the initial request.
+// OpenStream opens a pod log request bounded by DefaultStreamTimeout or the
+// parent context's deadline, whichever is earlier. The returned stream keeps
+// that deadline active until it is closed, so stalled response-body reads are
+// bounded as well as the initial request.
 func OpenStream(ctx context.Context, req *rest.Request) (io.ReadCloser, error) {
 	return openStreamWithTimeout(ctx, req, DefaultStreamTimeout)
 }

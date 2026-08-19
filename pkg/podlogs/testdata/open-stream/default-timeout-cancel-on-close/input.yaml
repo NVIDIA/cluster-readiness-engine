@@ -1,0 +1,4 @@
+# Successful empty body. Pins DefaultStreamTimeout on the request context and
+# that Close cancels it.
+stall: none
+streamTimeout: default
