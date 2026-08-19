@@ -38,7 +38,9 @@ spec:
 
 ```bash
 ncrectl workloadrun run \
-  --image-pull-secret ngc-secret \
+  --workload-registry nvcr.io \
+  --workload-registry-username '$oauthtoken' \
+  --workload-registry-password "$NGC_API_KEY" \
   --wait \
   nccl-all-reduce.yaml
 ```

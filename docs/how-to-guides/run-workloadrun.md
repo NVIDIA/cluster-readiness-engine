@@ -25,7 +25,11 @@ spec:
 ```
 
 ```bash
-ncrectl workloadrun run --image-pull-secret ngc-secret --wait my-workload.yaml
+ncrectl workloadrun run \
+  --workload-registry nvcr.io \
+  --workload-registry-username '$oauthtoken' \
+  --workload-registry-password "$NGC_API_KEY" \
+  --wait my-workload.yaml
 ```
 
 ## Targeting specific nodes
