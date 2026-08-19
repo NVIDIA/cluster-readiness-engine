@@ -73,7 +73,7 @@ ncrectl certification render [flags] <cert-file>
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--platform` | auto | Override platform detection (`aws`, `gcp`, `azure`, `oci`, `mistral`, `forge`) |
+| `--platform` | auto | Override platform detection (`aws`, `gcp`, `azure`, `oci`, `onprem`, `togetherai`, `mistral`, `forge`) |
 | `--dry-run` | `false` | Validate against the live API server without creating resources |
 | `--output` | `yaml` | Output format: `yaml` or `json` |
 

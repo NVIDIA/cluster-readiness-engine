@@ -31,7 +31,7 @@ ncrectl workloadrun run [flags] <file>
 | `--node-list` | — | Comma-separated list of nodes to target |
 | `--topology-domain` | — | Topology domain to target |
 | `--topology-key` | — | Node label key for topology grouping |
-| `--test-scale` | — | Test scale override (`intra-node`, `intra-rack`) |
+| `--test-scale` | — | Override testScale (`intra-node`, `intra-rack`, `full-scale`) |
 | `--results-file` | — | Write results as JSON to this file path |
 
 ### Examples
@@ -62,8 +62,8 @@ ncrectl workloadrun render [flags] <workloadrun.yaml>
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--platform` | auto | Override platform detection (`aws`, `gcp`, `azure`, `oci`, `mistral`, `forge`) |
-| `--dry-run` | `false` | Validate against the live API server without creating resources |
+| `--platform` | auto | Override platform detection (`aws`, `gcp`, `azure`, `oci`, `onprem`, `togetherai`, `mistral`, `forge`) |
+| `--dry-run` | `false` | Connect to cluster, discover real nodes, and render with actual platform/GPU detection |
 | `--output` | `yaml` | Output format: `yaml` or `json` |
 
 ## ncrectl workloadrun report

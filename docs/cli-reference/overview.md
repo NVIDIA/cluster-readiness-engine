@@ -30,19 +30,17 @@ Release builds enforce a version check on every invocation. If a newer version e
 | `ncrectl certification` | Run, render, report, and list-categories for Certification resources |
 | `ncrectl workloadrun` | Run, render, report, status, and cancel WorkloadRun resources |
 | `ncrectl cluster` | Inspect GPU nodes, platform, and network topology |
+| `ncrectl workflow` | Render Workflow manifests offline with overrides applied |
 
 ## Global flags
 
-These flags are available on all subcommands that connect to a cluster (provided by `k8s.io/cli-runtime`):
+These flags are available on subcommands that connect to a cluster:
 
 | Flag | Description |
 |------|-------------|
 | `--kubeconfig` | Path to kubeconfig (defaults to `~/.kube/config`) |
 | `--context` | Kubernetes context to use |
-| `--cluster` | Kubernetes cluster to use |
 | `--namespace` / `-n` | Namespace override (not available on all subcommands) |
-| `--as` | Username to impersonate |
-| `--token` | Bearer token for authentication |
 
 ## Shell completion
 

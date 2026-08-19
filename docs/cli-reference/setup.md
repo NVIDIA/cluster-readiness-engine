@@ -50,10 +50,25 @@ ncrectl setup init --skip-phases=deps
 
 ## ncrectl setup status
 
-Shows the current installation status of each component.
+Reports the installation status of CRE and its dependencies by querying the cluster.
+
+```bash
+ncrectl setup status [flags]
+```
+
+Components checked: `creCRDs`, `creController`, `kubeflowTrainer`, `logProfiles`, `gpuOperator`, `dcgm` (optional).
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--output` / `-o` | `table` | Output format: `table`, `json` |
+
+### Example
 
 ```bash
 ncrectl setup status
+ncrectl setup status -o json
 ```
 
 ## ncrectl setup reset
