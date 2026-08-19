@@ -1,9 +1,9 @@
 ---
 title: Custom Catalog Entries
 description: Add a new domain/variant pair to the certification catalog.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 ---
-<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 The catalog is extensible — add a YAML file to `pkg/catalog/entries/` to register a custom certification category.

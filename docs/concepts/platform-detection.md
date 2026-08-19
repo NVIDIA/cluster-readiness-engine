@@ -1,9 +1,9 @@
 ---
 title: Platform Detection & Overrides
 description: How the controller auto-detects cloud platform and GPU architecture, and how overrides are applied.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 ---
-<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 ## Auto-detection

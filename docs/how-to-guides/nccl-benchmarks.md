@@ -1,9 +1,9 @@
 ---
 title: Run NCCL Benchmarks
 description: Measure collective operation bandwidth across your GPU cluster's interconnect fabric.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 ---
-<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 ## Via Certification (recommended)

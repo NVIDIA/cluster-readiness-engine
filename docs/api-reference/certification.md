@@ -1,9 +1,9 @@
 ---
 title: Certification
 description: CRD reference for the Certification resource.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 ---
-<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 `Certification` is the top-level resource that defines a suite of certification categories to run against a GPU node pool.

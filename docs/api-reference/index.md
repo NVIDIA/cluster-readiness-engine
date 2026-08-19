@@ -1,9 +1,9 @@
 ---
 title: API Reference Overview
 description: Kubernetes CRD reference for the Cluster Readiness Engine.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 ---
-<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 The Cluster Readiness Engine defines the following custom resources under the `cre.nvidia.com/v1alpha1` API group.

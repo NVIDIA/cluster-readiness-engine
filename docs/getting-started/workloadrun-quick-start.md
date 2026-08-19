@@ -1,9 +1,9 @@
 ---
 title: WorkloadRun Quick Start
 description: Run a distributed training or NCCL workload without writing a full Certification spec.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 ---
-<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 `WorkloadRun` is a simplified API for running a single workload against a set of nodes. It is useful for one-off benchmarks, smoke tests, and validating specific node groups without running the full certification suite.

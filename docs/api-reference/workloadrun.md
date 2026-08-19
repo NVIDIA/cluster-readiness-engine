@@ -1,9 +1,9 @@
 ---
 title: WorkloadRun
 description: CRD reference for the WorkloadRun resource.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 ---
-<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 `WorkloadRun` is a user-facing simplified API for running ad-hoc distributed workloads without going through the full Certification pipeline.

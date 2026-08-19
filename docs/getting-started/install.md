@@ -1,9 +1,9 @@
 ---
 title: Install
 description: Install the ncrectl CLI and set up the Cluster Readiness Engine controller on your Kubernetes cluster.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 ---
-<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 ## Prerequisites

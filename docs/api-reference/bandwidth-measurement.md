@@ -1,9 +1,9 @@
 ---
 title: BandwidthMeasurement
 description: CRD reference for the BandwidthMeasurement resource.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 ---
-<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 `BandwidthMeasurement` watches a `Job`'s NCCL log output and computes per-message-size bus bandwidth metrics for collective operations. It is automatically created by the `Job` controller when `spec.bandwidthMeasurement` is configured, or can be created manually.

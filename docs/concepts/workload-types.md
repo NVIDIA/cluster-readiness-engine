@@ -1,9 +1,9 @@
 ---
 title: Workload Types
 description: The training frameworks and workload adapters supported by the Cluster Readiness Engine.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 ---
-<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 The `Job` controller launches workloads via an adapter pattern that normalizes workloads to a common `WorkloadPhase` (Running / Succeeded / Failed).

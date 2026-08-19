@@ -1,9 +1,9 @@
 ---
 title: Run a WorkloadRun
 description: Run an ad-hoc distributed workload against a specific set of nodes.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 ---
-<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 `WorkloadRun` lets you run any distributed workload — training, NCCL benchmark, or custom script — without the full certification pipeline.

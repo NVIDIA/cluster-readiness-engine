@@ -1,9 +1,9 @@
 ---
 title: Architecture
 description: How the Cluster Readiness Engine controller is structured and how its resources compose.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 ---
-<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 
 The Cluster Readiness Engine is a Kubebuilder-based Kubernetes controller. A single binary runs six reconcilers that compose in a three-tier hierarchy modeled after Kubernetes' own Deployment → ReplicaSet → Pod pattern.
