@@ -22,8 +22,11 @@ ncrectl workloadrun run [flags] <file>
 | `--timeout` | `30m` | Timeout for `--wait` |
 | `--setup` | `false` | Install CRDs, controller, and LogProfiles before creating the WorkloadRun |
 | `--cleanup` | `false` | Delete the WorkloadRun and installed components after completion |
-| `--image-pull-secret` | — | GitHub token for `ghcr.io` image pull |
 | `--image` | — | Override controller image |
+| `--controller-pull-secret` | — | Token for controller registry auth during `--setup` (e.g. GitHub PAT for `ghcr.io`) — separate from workload image credentials |
+| `--workload-registry` | — | Registry server for workload image pull (e.g. `nvcr.io`, `ghcr.io`) — required when `--workload-registry-password` is set |
+| `--workload-registry-username` | — | Registry username for workload image pull (e.g. `$oauthtoken` for NGC) — required when `--workload-registry-password` is set |
+| `--workload-registry-password` | — | Registry password or API key — creates an `ncrectl-pull-<name>` imagePullSecret in the namespace, deleted automatically when the WorkloadRun is deleted |
 | `--name` | — | Override the WorkloadRun name |
 | `--node-list` | — | Comma-separated list of nodes to target |
 | `--topology-domain` | — | Topology domain to target |
@@ -31,10 +34,20 @@ ncrectl workloadrun run [flags] <file>
 | `--test-scale` | — | Test scale override (`intra-node`, `intra-rack`) |
 | `--results-file` | — | Write results as JSON to this file path |
 
-### Example
+### Examples
 
 ```bash
 ncrectl workloadrun run --wait my-workload.yaml
+```
+
+Pull workload images from NGC:
+
+```bash
+ncrectl workloadrun run \
+  --workload-registry nvcr.io \
+  --workload-registry-username '$oauthtoken' \
+  --workload-registry-password "$NGC_API_KEY" \
+  --wait my-workload.yaml
 ```
 
 ## ncrectl workloadrun render
