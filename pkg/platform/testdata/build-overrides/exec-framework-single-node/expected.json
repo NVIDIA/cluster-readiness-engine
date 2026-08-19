@@ -1,0 +1,11 @@
+{
+  "config": {
+    "EntryName": "test",
+    "NodesPerJob": 1,
+    "GpusPerNode": 1,
+    "MlnxPerNode": 0,
+    "EnableMNNVL": false,
+    "FrameworkType": "exec"
+  },
+  "atLeastOneOverride": true
+}

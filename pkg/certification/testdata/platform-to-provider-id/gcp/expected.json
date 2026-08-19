@@ -1,0 +1,5 @@
+{
+  "platform": "gcp",
+  "result": "gce://synthetic/render",
+  "empty": false
+}

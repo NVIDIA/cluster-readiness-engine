@@ -1,0 +1,7 @@
+refs:
+  - name: compute-domain
+    kind: ComputeDomain
+  - name: training-runtime
+    kind: TrainingRuntime
+  - name: config-map
+    kind: ConfigMap

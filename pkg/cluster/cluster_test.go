@@ -4,6 +4,7 @@
 package cluster
 
 import (
+	"encoding/json"
 	"math"
 	"testing"
 
@@ -11,6 +12,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/yaml"
+
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
 // gpuNode builds a ready node. A negative count leaves nvidia.com/gpu unset,
@@ -43,74 +47,56 @@ func TestNodeGPUCount(t *testing.T) {
 }
 
 func TestBuildClusterInfoCountsRealGPUs(t *testing.T) {
-	// The catalog default for a100 is 8. These nodes have 1 each.
-	const catalogDefault = int32(8)
-
-	tests := []struct {
-		name            string
-		nodes           []corev1.Node
-		wantGpusPerNode int32
-		wantTotal       int
-		wantPerNode     []int32
-	}{
-		{
-			name:            "one GPU per node does not report the catalog default",
-			nodes:           []corev1.Node{gpuNode("node002", 1), gpuNode("node003", 1)},
-			wantGpusPerNode: 1,
-			wantTotal:       2,
-			wantPerNode:     []int32{1, 1},
-		},
-		{
-			name:            "eight GPUs per node matches the catalog default",
-			nodes:           []corev1.Node{gpuNode("n0", 8), gpuNode("n1", 8)},
-			wantGpusPerNode: 8,
-			wantTotal:       16,
-			wantPerNode:     []int32{8, 8},
-		},
-		{
-			name:            "mixed counts report the smallest",
-			nodes:           []corev1.Node{gpuNode("n0", 8), gpuNode("n1", 2)},
-			wantGpusPerNode: 2,
-			wantTotal:       10,
-			wantPerNode:     []int32{8, 2},
-		},
-		{
-			// A broken device plugin leaves a node at 0. The smallest must
-			// stay 0 even when it comes first, so 0 is not mistaken for
-			// "not seen yet".
-			name:            "a zero node first keeps the smallest at zero",
-			nodes:           []corev1.Node{gpuNode("n0", 0), gpuNode("n1", 5)},
-			wantGpusPerNode: 0,
-			wantTotal:       5,
-			wantPerNode:     []int32{0, 5},
-		},
-		{
-			name:            "a zero node last keeps the smallest at zero",
-			nodes:           []corev1.Node{gpuNode("n0", 5), gpuNode("n1", 0)},
-			wantGpusPerNode: 0,
-			wantTotal:       5,
-			wantPerNode:     []int32{5, 0},
-		},
+	p := testutil.TestCaseParser{
+		Subdir:         "build-cluster-info-counts-real-gpus",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			Nodes []struct {
+				Name  string `yaml:"name"`
+				Count int64  `yaml:"count"`
+			} `yaml:"nodes"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			info := buildClusterInfo(tt.nodes, "onprem", "a100", "NVIDIA-A100-PCIE-40GB",
-				catalogDefault, "")
+		nodes := make([]corev1.Node, 0, len(in.Nodes))
+		for _, n := range in.Nodes {
+			nodes = append(nodes, gpuNode(n.Name, n.Count))
+		}
 
-			assert.Equal(t, tt.wantGpusPerNode, info.GpusPerNode)
-			assert.Equal(t, tt.wantTotal, info.TotalGPUs)
-			assert.Equal(t, catalogDefault, info.CatalogGpusPerNode,
-				"the catalog default must still be reported")
-			assert.Equal(t, len(tt.nodes), info.TotalNodes)
+		// The catalog default for a100 is 8. These nodes have 1 each.
+		const catalogDefault = int32(8)
 
-			got := make([]int32, 0, len(info.Nodes))
-			for _, n := range info.Nodes {
-				got = append(got, n.GPUs)
-			}
-			assert.Equal(t, tt.wantPerNode, got)
-		})
-	}
+		info := buildClusterInfo(nodes, "onprem", "a100", "NVIDIA-A100-PCIE-40GB",
+			catalogDefault, "")
+
+		gotPerNode := make([]int32, 0, len(info.Nodes))
+		for _, n := range info.Nodes {
+			gotPerNode = append(gotPerNode, n.GPUs)
+		}
+
+		b, err := json.MarshalIndent(struct {
+			GpusPerNode        int32   `json:"gpusPerNode"`
+			TotalGPUs          int     `json:"totalGPUs"`
+			CatalogGpusPerNode int32   `json:"catalogGpusPerNode"`
+			TotalNodes         int     `json:"totalNodes"`
+			PerNode            []int32 `json:"perNode"`
+		}{
+			GpusPerNode:        info.GpusPerNode,
+			TotalGPUs:          info.TotalGPUs,
+			CatalogGpusPerNode: info.CatalogGpusPerNode,
+			TotalNodes:         info.TotalNodes,
+			PerNode:            gotPerNode,
+		}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
 }
 
 // No nodes must not panic or report a stale count.

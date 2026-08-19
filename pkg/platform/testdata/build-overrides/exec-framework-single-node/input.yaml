@@ -1,0 +1,4 @@
+entryName: test
+nodesPerJob: 1
+gpusPerNode: 1
+frameworkType: exec

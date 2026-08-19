@@ -1,0 +1,10 @@
+{
+  "workflowName": "nccl-all-reduce-certifica-98b3c",
+  "workflowLen": 31,
+  "jobName": "nccl-all-reduce-certifica-98b3c-job",
+  "jobLen": 35,
+  "workloadName": "nccl-all-reduce-certifica-98b3c-job-workload",
+  "workloadLen": 44,
+  "podName": "nccl-all-reduce-certifica-98b3c-job-workload-launcher-0-abcde",
+  "podLen": 61
+}

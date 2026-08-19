@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The full set of job-scoped metric names cleanupJobMetrics must clear. This
+# list is checked against the hardcoded jobScoped table in the test body, so
+# a metric added to one but not the other fails loudly instead of silently
+# under-testing.
+metricNames:
+  - cre_job_status
+  - cre_job_failed_nodes
+  - cre_hardware_failures_detected_total
+  - cre_hardware_failed_jobs_total
+  - cre_nodes_evaluated_total
+  - cre_workload_created_total
+  - cre_reconcile_total
+  - cre_reconcile_duration_seconds
+  - cre_node_health_check_duration_seconds

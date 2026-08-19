@@ -1,0 +1,17 @@
+[
+  {
+    "apiVersion": "",
+    "kind": "ConfigMap",
+    "name": "config-map"
+  },
+  {
+    "apiVersion": "",
+    "kind": "TrainingRuntime",
+    "name": "training-runtime"
+  },
+  {
+    "apiVersion": "",
+    "kind": "ComputeDomain",
+    "name": "compute-domain"
+  }
+]

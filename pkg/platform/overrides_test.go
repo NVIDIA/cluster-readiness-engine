@@ -4,6 +4,8 @@
 package platform
 
 import (
+	"encoding/json"
+	"fmt"
 	"io/fs"
 	"path/filepath"
 	"strings"
@@ -11,8 +13,10 @@ import (
 	"text/template"
 
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
 // TestEveryLibFragmentParsesThroughPlatform is the regression test for a
@@ -62,39 +66,46 @@ func TestEveryLibFragmentParsesThroughPlatform(t *testing.T) {
 // regression here takes down the controller at startup; this keeps that
 // failure in CI instead.
 func TestBuildOverridesRendersForEveryPlatform(t *testing.T) {
-	tests := []struct {
-		name string
-		cfg  OverrideConfig
-	}{
-		{
-			name: "mpi with MNNVL",
-			cfg: OverrideConfig{
-				EntryName: "test", NodesPerJob: 2, GpusPerNode: 4,
-				MlnxPerNode: 2, EnableMNNVL: true, FrameworkType: "mpi",
-			},
-		},
-		{
-			name: "torch without MNNVL",
-			cfg: OverrideConfig{
-				EntryName: "test", NodesPerJob: 8, GpusPerNode: 8,
-				MlnxPerNode: 8, EnableMNNVL: false, FrameworkType: "torch",
-			},
-		},
-		{
-			name: "exec framework, single node",
-			cfg: OverrideConfig{
-				EntryName: "test", NodesPerJob: 1, GpusPerNode: 1,
-				FrameworkType: "exec",
-			},
-		},
+	p := &testutil.TestCaseParser{
+		Subdir:         "build-overrides",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var cfg OverrideConfig
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &cfg); err != nil {
+			return err
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.NotPanics(t, func() {
-				require.NotEmpty(t, BuildOverrides(tt.cfg),
-					"expected at least one platform override")
-			})
-		})
-	}
+		overrides, err := buildOverridesRecovered(cfg)
+		if err != nil {
+			return err
+		}
+		if len(overrides) == 0 {
+			return fmt.Errorf("expected at least one platform override")
+		}
+
+		b, err := json.MarshalIndent(struct {
+			Config             OverrideConfig `json:"config"`
+			AtLeastOneOverride bool           `json:"atLeastOneOverride"`
+		}{cfg, len(overrides) > 0}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
+}
+
+// buildOverridesRecovered wraps BuildOverrides, converting its panic-on-error
+// behaviour into a returned error so a template regression fails the
+// offending test case cleanly instead of crashing the whole test binary —
+// the same effect require.NotPanics had in the table-driven version.
+func buildOverridesRecovered(cfg OverrideConfig) (overrides []WorkloadRunOverride, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("BuildOverrides panicked: %v", r)
+		}
+	}()
+	overrides = BuildOverrides(cfg)
+	return overrides, nil
 }

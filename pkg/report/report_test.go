@@ -25,66 +25,84 @@ import (
 const testAPIGroup = "cre.nvidia.com"
 
 func TestHumanSize(t *testing.T) {
-	tests := []struct {
-		name     string
-		bytes    int64
-		expected string
-	}{
-		{"zero bytes", 0, "0 B"},
-		{"small bytes", 512, "512 B"},
-		{"exactly 1 KB", 1024, "1 KB"},
-		{"kilobytes", 4096, "4 KB"},
-		{"exactly 1 MB", 1024 * 1024, "1 MB"},
-		{"megabytes", 8 * 1024 * 1024, "8 MB"},
-		{"exactly 1 GB", 1024 * 1024 * 1024, "1 GB"},
-		{"gigabytes", 2 * 1024 * 1024 * 1024, "2 GB"},
+	p := testutil.TestCaseParser{
+		Subdir:         "human-size",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			Bytes int64 `yaml:"bytes"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, humanSize(tt.bytes))
-		})
-	}
+		got := humanSize(in.Bytes)
+
+		b, err := json.MarshalIndent(struct {
+			Bytes     int64  `json:"bytes"`
+			HumanSize string `json:"humanSize"`
+		}{in.Bytes, got}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
 }
 
 func TestParseFloat(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected float64
-	}{
-		{"valid float", "3.14", 3.14},
-		{"integer", "42", 42.0},
-		{"empty string", "", 0},
-		{"whitespace", "  1.5  ", 1.5},
-		{"invalid string", "abc", 0},
-		{"zero", "0", 0},
+	p := testutil.TestCaseParser{
+		Subdir:         "parse-float",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			Input string `yaml:"input"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.InDelta(t, tt.expected, parseFloat(tt.input), 0.001)
-		})
-	}
+		got := parseFloat(in.Input)
+
+		b, err := json.MarshalIndent(struct {
+			Input  string  `json:"input"`
+			Parsed float64 `json:"parsed"`
+		}{in.Input, got}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
 }
 
 func TestAvg(t *testing.T) {
-	tests := []struct {
-		name     string
-		vals     []float64
-		expected float64
-	}{
-		{"normal", []float64{1.0, 2.0, 3.0}, 2.0},
-		{"single", []float64{5.0}, 5.0},
-		{"empty", nil, 0},
-		{"two values", []float64{10.0, 20.0}, 15.0},
+	p := testutil.TestCaseParser{
+		Subdir:         "avg",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			Vals []float64 `yaml:"vals"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.InDelta(t, tt.expected, avg(tt.vals), 0.001)
-		})
-	}
+		got := avg(in.Vals)
+
+		b, err := json.MarshalIndent(struct {
+			Vals []float64 `json:"vals"`
+			Avg  float64   `json:"avg"`
+		}{in.Vals, got}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
 }
 
 func TestFmtPercent(t *testing.T) {
@@ -94,22 +112,30 @@ func TestFmtPercent(t *testing.T) {
 }
 
 func TestFmtDuration(t *testing.T) {
-	tests := []struct {
-		name     string
-		secs     float64
-		expected string
-	}{
-		{"seconds only", 45.0, "45s"},
-		{"minutes and seconds", 125.0, "2m 5s"},
-		{"exact minute", 60.0, "1m 0s"},
-		{"zero", 0, "0s"},
+	p := testutil.TestCaseParser{
+		Subdir:         "fmt-duration",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			Secs float64 `yaml:"secs"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, fmtDuration(tt.secs))
-		})
-	}
+		got := fmtDuration(in.Secs)
+
+		b, err := json.MarshalIndent(struct {
+			Secs      float64 `json:"secs"`
+			Formatted string  `json:"formatted"`
+		}{in.Secs, got}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
 }
 
 func TestFmtAvg(t *testing.T) {
@@ -462,22 +488,30 @@ func TestFmtFloat2(t *testing.T) {
 }
 
 func TestCountDigits(t *testing.T) {
-	tests := []struct {
-		n        int
-		expected int
-	}{
-		{0, 1},
-		{1, 1},
-		{9, 1},
-		{10, 2},
-		{99, 2},
-		{100, 3},
-		{1000, 4},
+	p := testutil.TestCaseParser{
+		Subdir:         "count-digits",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			N int `yaml:"n"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
 
-	for _, tt := range tests {
-		assert.Equal(t, tt.expected, countDigits(tt.n), "countDigits(%d)", tt.n)
-	}
+		got := countDigits(in.N)
+
+		b, err := json.MarshalIndent(struct {
+			N      int `json:"n"`
+			Digits int `json:"digits"`
+		}{in.N, got}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
 }
 
 func TestPad(t *testing.T) {

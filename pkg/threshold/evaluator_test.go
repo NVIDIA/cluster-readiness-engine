@@ -4,63 +4,52 @@
 package threshold
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
+
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
+// Covers the >=, >, <=, < operators, ranges, ratio-typed thresholds, and the
+// three ways an expression can fail (undeclared variable, non-bool result,
+// syntax error).
 func TestEvaluate(t *testing.T) {
-	tests := []struct {
-		name       string
-		measured   float64
-		expression string
-		want       bool
-		wantErr    bool
-	}{
-		// >= operator
-		{"gte pass", 900.0, "value >= 900", true, false},
-		{"gte exact", 900.0, "value >= 900.0", true, false},
-		{"gte fail", 899.9, "value >= 900", false, false},
-
-		// > operator
-		{"gt pass", 900.1, "value > 900", true, false},
-		{"gt exact fail", 900.0, "value > 900", false, false},
-
-		// <= operator
-		{"lte pass", 3.0, "value <= 3.0", true, false},
-		{"lte fail", 3.1, "value <= 3.0", false, false},
-
-		// < operator
-		{"lt pass", 2.9, "value < 3.0", true, false},
-		{"lt exact fail", 3.0, "value < 3.0", false, false},
-
-		// Range
-		{"range pass", 950.0, "value >= 900 && value <= 1200", true, false},
-		{"range fail low", 800.0, "value >= 900 && value <= 1200", false, false},
-		{"range fail high", 1300.0, "value >= 900 && value <= 1200", false, false},
-
-		// Ratio
-		{"ratio pass", 0.92, "value >= 0.85", true, false},
-		{"ratio fail", 0.80, "value >= 0.85", false, false},
-
-		// Errors
-		{"invalid expr", 0, "not_a_variable >= 1", false, true},
-		{"non-bool return", 0, "value + 1.0", false, true},
-		{"syntax error", 0, "value >=", false, true},
+	p := testutil.TestCaseParser{
+		Subdir:         "evaluate",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			Measured   float64 `yaml:"measured"`
+			Expression string  `yaml:"expression"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := Evaluate(tt.measured, tt.expression)
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			assert.Equal(t, tt.want, got)
-		})
-	}
+		got, err := Evaluate(in.Measured, in.Expression)
+		if err != nil {
+			return err
+		}
+
+		var buf bytes.Buffer
+		enc := json.NewEncoder(&buf)
+		enc.SetEscapeHTML(false)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(struct {
+			Measured   float64 `json:"measured"`
+			Expression string  `json:"expression"`
+			Pass       bool    `json:"pass"`
+		}{in.Measured, in.Expression, got}); err != nil {
+			return err
+		}
+		tc.Actual = buf.String()
+		return nil
+	})
 }
 
 func TestValidateKeys(t *testing.T) {

@@ -1,0 +1,10 @@
+{
+  "gpusPerNode": 1,
+  "totalGPUs": 2,
+  "catalogGpusPerNode": 8,
+  "totalNodes": 2,
+  "perNode": [
+    1,
+    1
+  ]
+}
