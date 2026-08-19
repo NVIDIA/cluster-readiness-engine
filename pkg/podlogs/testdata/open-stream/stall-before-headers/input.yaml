@@ -1,0 +1,5 @@
+# Stall before the response headers arrive. The stream timeout is the deadline
+# that fires.
+stall: headers
+parentTimeout: 0
+streamTimeout: 50ms

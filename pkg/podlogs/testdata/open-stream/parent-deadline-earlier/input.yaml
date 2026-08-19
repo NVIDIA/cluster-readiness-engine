@@ -1,0 +1,5 @@
+# Parent context expires first. elapsedUnder asserts the 50ms parent deadline
+# fired rather than the 1m stream timeout — both errors are DeadlineExceeded.
+stall: headers
+parentTimeout: 50ms
+streamTimeout: 1m

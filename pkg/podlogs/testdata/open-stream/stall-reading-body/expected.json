@@ -1,0 +1,7 @@
+{
+  "lines": [
+    "complete line"
+  ],
+  "errorKind": "DeadlineExceeded",
+  "streamOpened": true
+}

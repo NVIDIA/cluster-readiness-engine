@@ -1,0 +1,7 @@
+# Headers succeed; the body then blocks until the stream timeout fires.
+# ScanLines keeps the line that arrived before the stall.
+stall: body
+parentTimeout: 0
+streamTimeout: 50ms
+body: |
+  complete line

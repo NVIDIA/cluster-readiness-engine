@@ -36,6 +36,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor/cel"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/threshold"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
@@ -920,7 +921,8 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *burninv1alph
 		Container: failedContainer.Name,
 		TailLines: &tailLines,
 	}
-	stream, err := r.Clientset.CoreV1().Pods(failedPod.Namespace).GetLogs(failedPod.Name, logOpts).Stream(ctx)
+	req := r.Clientset.CoreV1().Pods(failedPod.Namespace).GetLogs(failedPod.Name, logOpts)
+	stream, err := podlogs.OpenStream(ctx, req)
 	if err != nil {
 		log.V(1).Info("Failed to stream pod logs for failure capture", "pod", failedPod.Name, "error", err)
 		job.Status.FailureLog = fl
