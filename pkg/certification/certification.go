@@ -436,17 +436,21 @@ func platformToProviderID(platform string) string {
 // Built from either CLI flags (--category) or a YAML file (--cert-file),
 // then consumed by the single executeCertificationRun pipeline.
 type certRunConfig struct {
-	version         string // CLI version, passed to setup.RunInit
-	cert            *burninv1alpha1.Certification
-	namespace       string
-	controllerImage string // --image: controller image for --setup
-	doWait          bool   // --wait: watch + report
-	doSetup         bool   // --setup: runInit before create
-	doCleanup       bool   // --cleanup: runReset + delete cert/ns after
-	resultsFile     string // --results-file: path to write JSON report
-	timeout         time.Duration
-	configFlags     *kubeconfig.ConfigFlags
-	out             io.Writer
+	version                  string // CLI version, passed to setup.RunInit
+	cert                     *burninv1alpha1.Certification
+	namespace                string
+	controllerImage          string // --image: controller image for --setup
+	controllerPullSecret     string // --controller-pull-secret: controller registry token forwarded to setup init
+	workloadRegistry         string // --workload-registry: workload registry hostname
+	workloadRegistryUsername string // --workload-registry-username: workload registry username
+	workloadRegistryPassword string // --workload-registry-password: workload registry password/token
+	doWait                   bool   // --wait: watch + report
+	doSetup                  bool   // --setup: runInit before create
+	doCleanup                bool   // --cleanup: runReset + delete cert/ns after
+	resultsFile              string // --results-file: path to write JSON report
+	timeout                  time.Duration
+	configFlags              *kubeconfig.ConfigFlags
+	out                      io.Writer
 }
 
 // categoryRunOpts holds the optional CategoryOptions flags for the --category path.
@@ -471,6 +475,8 @@ func newRunCommand(version string) *cobra.Command {
 	var doWait, doSetup, doCleanup bool
 	var certFile string
 	var controllerImage string
+	var controllerPullSecret string
+	var workloadRegistry, workloadRegistryUsername, workloadRegistryPassword string
 	var resultsFile string
 	var timeout time.Duration
 
@@ -494,6 +500,18 @@ Use --cleanup to teardown installed components after completion.`,
 			if certFile != "" && len(categories) > 0 {
 				return fmt.Errorf("--cert-file and --category are mutually exclusive")
 			}
+			// All three workload-registry flags must be set together and non-empty.
+			// Check values directly (not just Changed) so --workload-registry-password ""
+			// with NGC_KEY unset is caught here rather than silently producing ImagePullBackOff.
+			pullSet := 0
+			for _, v := range []string{workloadRegistry, workloadRegistryUsername, workloadRegistryPassword} {
+				if v != "" {
+					pullSet++
+				}
+			}
+			if pullSet > 0 && pullSet < 3 {
+				return fmt.Errorf("--workload-registry, --workload-registry-username, and --workload-registry-password must all be set together and non-empty")
+			}
 			if certFile == "" && len(categories) == 0 {
 				return fmt.Errorf("either --cert-file or at least one --category is required\n\n" +
 					"Use 'ncrectl certification list-categories' to see available categories")
@@ -503,6 +521,7 @@ Use --cleanup to teardown installed components after completion.`,
 			var err error
 			if certFile != "" {
 				cfg, err = buildConfigFromFile(certFile, *configFlags.Namespace, controllerImage,
+					controllerPullSecret, workloadRegistry, workloadRegistryUsername, workloadRegistryPassword,
 					doWait, doSetup, doCleanup, timeout, configFlags, os.Stderr)
 			} else {
 				opts := categoryRunOpts{
@@ -520,7 +539,8 @@ Use --cleanup to teardown installed components after completion.`,
 					opts.enableMNNVL = &enableMNNVL
 				}
 				cfg, err = buildConfigFromFlags(categories, name, *configFlags.Namespace, nodesPerJob,
-					opts, controllerImage, doWait, doSetup, doCleanup, timeout, configFlags, os.Stderr)
+					opts, controllerImage, controllerPullSecret, workloadRegistry, workloadRegistryUsername, workloadRegistryPassword,
+					doWait, doSetup, doCleanup, timeout, configFlags, os.Stderr)
 			}
 			if err != nil {
 				return err
@@ -541,6 +561,14 @@ Use --cleanup to teardown installed components after completion.`,
 		"Watch for completion and print a report")
 	cmd.Flags().BoolVar(&doCleanup, "cleanup", false,
 		"Delete certification, namespace, and installed components after completion")
+	cmd.Flags().StringVar(&controllerPullSecret, "controller-pull-secret", "",
+		"Token for controller registry authentication during --setup (e.g. GitHub PAT for ghcr.io) — separate from workload image credentials")
+	cmd.Flags().StringVar(&workloadRegistry, "workload-registry", "",
+		"Registry server for workload image pull (e.g. nvcr.io, ghcr.io) — required when --workload-registry-password is set")
+	cmd.Flags().StringVar(&workloadRegistryUsername, "workload-registry-username", "",
+		"Registry username for workload image pull (e.g. \\$oauthtoken for NGC) — required when --workload-registry-password is set")
+	cmd.Flags().StringVar(&workloadRegistryPassword, "workload-registry-password", "",
+		"Registry password or API key for workload image pull — creates an workloadRegistryPassword in the certification namespace")
 	cmd.Flags().StringVar(&controllerImage, "image", "",
 		"Controller image for --setup (default: ghcr.io/nvidia/cluster-readiness-engine/manager:<version>)")
 	cmd.Flags().StringVar(&name, "name", "",
@@ -580,7 +608,7 @@ Use --cleanup to teardown installed components after completion.`,
 // Connects to the cluster to discover GPU product.
 func buildConfigFromFlags(
 	categoryStrs []string, name, namespace string, nodesPerJob int32,
-	opts categoryRunOpts, controllerImage string,
+	opts categoryRunOpts, controllerImage, controllerPullSecret, workloadRegistry, workloadRegistryUsername, workloadRegistryPassword string,
 	doWait, doSetup, doCleanup bool, timeout time.Duration,
 	configFlags *kubeconfig.ConfigFlags, out io.Writer,
 ) (*certRunConfig, error) {
@@ -663,21 +691,25 @@ func buildConfigFromFlags(
 	}
 
 	return &certRunConfig{
-		cert:            cert,
-		namespace:       namespace,
-		controllerImage: controllerImage,
-		doWait:          doWait,
-		doSetup:         doSetup,
-		doCleanup:       doCleanup,
-		timeout:         timeout,
-		configFlags:     configFlags,
-		out:             out,
+		cert:                     cert,
+		namespace:                namespace,
+		controllerImage:          controllerImage,
+		controllerPullSecret:     controllerPullSecret,
+		workloadRegistry:         workloadRegistry,
+		workloadRegistryUsername: workloadRegistryUsername,
+		workloadRegistryPassword: workloadRegistryPassword,
+		doWait:                   doWait,
+		doSetup:                  doSetup,
+		doCleanup:                doCleanup,
+		timeout:                  timeout,
+		configFlags:              configFlags,
+		out:                      out,
 	}, nil
 }
 
 // buildConfigFromFile builds a certRunConfig from a --cert-file YAML.
 func buildConfigFromFile(
-	certFile, namespace, controllerImage string,
+	certFile, namespace, controllerImage, controllerPullSecret, workloadRegistry, workloadRegistryUsername, workloadRegistryPassword string,
 	doWait, doSetup, doCleanup bool, timeout time.Duration,
 	configFlags *kubeconfig.ConfigFlags, out io.Writer,
 ) (*certRunConfig, error) {
@@ -695,15 +727,19 @@ func buildConfigFromFile(
 	}
 
 	return &certRunConfig{
-		cert:            cert,
-		namespace:       cert.Namespace,
-		controllerImage: controllerImage,
-		doWait:          doWait,
-		doSetup:         doSetup,
-		doCleanup:       doCleanup,
-		timeout:         timeout,
-		configFlags:     configFlags,
-		out:             out,
+		cert:                     cert,
+		namespace:                cert.Namespace,
+		controllerImage:          controllerImage,
+		controllerPullSecret:     controllerPullSecret,
+		workloadRegistry:         workloadRegistry,
+		workloadRegistryUsername: workloadRegistryUsername,
+		workloadRegistryPassword: workloadRegistryPassword,
+		doWait:                   doWait,
+		doSetup:                  doSetup,
+		doCleanup:                doCleanup,
+		timeout:                  timeout,
+		configFlags:              configFlags,
+		out:                      out,
 	}, nil
 }
 
@@ -756,6 +792,10 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 				}
 			}
 
+			// Note: the workload pull secret is owned by the Certification and
+			// will be garbage-collected automatically when the Certification is
+			// deleted above. No explicit deletion needed.
+
 			// Delete namespace if we created it, and wait for it to fully
 			// terminate so the next run doesn't fail with "namespace is being
 			// terminated".
@@ -790,7 +830,7 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 	// --- Setup phase: install via runInit (SSA is idempotent) ---
 	if cfg.doSetup {
 		_, _ = fmt.Fprintln(out, "[setup] Installing dependencies...")
-		initErr := setup.RunInit(cfg.version, cfg.controllerImage, "", "", true,
+		initErr := setup.RunInit(cfg.version, cfg.controllerImage, cfg.controllerPullSecret, "", true,
 			cfg.configFlags, "", nil, out)
 		if initErr != nil {
 			return fmt.Errorf("[setup] %w", initErr)
@@ -806,11 +846,63 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 		createdNamespace = cfg.namespace
 	}
 
+	// --- Create image pull secret before the Certification so pods can pull
+	// immediately. The secret is created without an owner first; after the
+	// Certification is created we set an OwnerReference so Kubernetes GC deletes
+	// it automatically whenever the Certification is deleted by any means.
+	// wasCreated is true only when a new secret was made (false = pre-existing
+	// secret was updated). Only delete on rollback when wasCreated is true.
+	wasCreatedByUs := false
+	if cfg.workloadRegistryPassword != "" {
+		secretName, created, secretErr := setup.CreateImagePullSecret(ctx, wc,
+			cfg.namespace, setup.WorkloadPullSecretName(cfg.cert.Name),
+			cfg.workloadRegistry, cfg.workloadRegistryUsername, cfg.workloadRegistryPassword)
+		if secretErr != nil {
+			return fmt.Errorf("create image pull secret: %w", secretErr)
+		}
+		wasCreatedByUs = created
+		cfg.cert.Spec.ImagePullSecrets = append(cfg.cert.Spec.ImagePullSecrets,
+			corev1.LocalObjectReference{Name: secretName})
+		_, _ = fmt.Fprintf(out, "Created image pull secret %q in namespace %s.\n", secretName, cfg.namespace)
+	}
+
 	// --- Create Certification ---
 	if err := wc.Create(ctx, cfg.cert); err != nil {
+		// Clean up only if we actually created the secret (not if we updated one
+		// belonging to a concurrent run). Attempt delete unconditionally — if
+		// namespace deletion will cascade later, the delete will be a no-op NotFound.
+		if wasCreatedByUs {
+			pullSec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
+				Name: setup.WorkloadPullSecretName(cfg.cert.Name), Namespace: cfg.namespace,
+			}}
+			_ = wc.Delete(ctx, pullSec)
+		}
 		return fmt.Errorf("create certification: %w", err)
 	}
 	certCreated = true
+
+	// --- Set OwnerReference on pull secret now that we have the Certification UID ---
+	// Only when wasCreatedByUs: if we only updated an existing secret we don't own
+	// it and must not manage its lifecycle. Uses Update (optimistic concurrency) to
+	// avoid JSON Merge Patch replacing the OwnerReferences array.
+	if wasCreatedByUs {
+		sec := &corev1.Secret{}
+		if getErr := wc.Get(ctx, client.ObjectKey{Name: setup.WorkloadPullSecretName(cfg.cert.Name), Namespace: cfg.namespace}, sec); getErr != nil {
+			_, _ = fmt.Fprintf(out, "Warning: could not retrieve pull secret %q to set OwnerReference: %v\n",
+				setup.WorkloadPullSecretName(cfg.cert.Name), getErr)
+		} else {
+			sec.OwnerReferences = append(sec.OwnerReferences, metav1.OwnerReference{
+				APIVersion: "cre.nvidia.com/v1alpha1",
+				Kind:       "Certification",
+				Name:       cfg.cert.Name,
+				UID:        cfg.cert.UID,
+			})
+			if updateErr := wc.Update(ctx, sec); updateErr != nil {
+				_, _ = fmt.Fprintf(out, "Warning: could not set OwnerReference on pull secret %q — it will not be GC'd automatically: %v\n",
+					setup.WorkloadPullSecretName(cfg.cert.Name), updateErr)
+			}
+		}
+	}
 
 	_, _ = fmt.Fprintf(out, "Certification %s created in namespace %s.\n",
 		cfg.cert.Name, cfg.namespace)
