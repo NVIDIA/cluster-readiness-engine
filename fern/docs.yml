@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=https://schema.buildwithfern.dev/docs-yml.json
+
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+instances:
+  - url: cluster-readiness-engine.docs.buildwithfern.com/cluster-readiness-engine
+    custom-domain: docs.nvidia.com/cluster-readiness-engine
+    multi-source: true
+
+title: NVIDIA Cluster Readiness Engine
+
+global-theme: nvidia
+
+navbar-links:
+  - type: github
+    value: https://github.com/NVIDIA/cluster-readiness-engine
+
+products:
+  - display-name: Cluster Readiness Engine
+    slug: /
+    path: ../docs/index.yml

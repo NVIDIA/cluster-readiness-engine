@@ -1,10 +1,10 @@
 ---
 title: Your first certification
 description: Install CRE on a GPU cluster, run one certification category, read the report, and clean up.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 ---
 
-{/* SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}
-{/* SPDX-License-Identifier: Apache-2.0 */}
 
 # Your first certification
 
@@ -15,7 +15,6 @@ This guide takes you from an empty GPU cluster to a completed certification repo
 You need:
 
 - A Kubernetes cluster with NVIDIA GPU nodes. Every target GPU node must carry the same `nvidia.com/gpu.product` label value. The [NVIDIA GPU Operator](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/) provides these labels. CRE does not install the GPU Operator.
-- At least one node without GPUs. The CRE controller schedules only on nodes that do not have the `nvidia.com/gpu.present` label.
 - `kubectl` access with permission to create CRDs, cluster roles, and namespaces. The setup step needs this. Later certification runs need less.
 - `helm` on your PATH. The setup step calls it.
 - The Prometheus Operator CRDs (`monitoring.coreos.com/v1`), **or** the ServiceMonitor turned off. The chart creates a `ServiceMonitor` by default, so the install fails without those CRDs. Either install them — the [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) chart provides them — or set `metrics.serviceMonitor.enabled=false` and skip them. Turning it off only disables the Prometheus scrape config; the controller still serves metrics.
@@ -166,13 +165,13 @@ kubectl ncre setup reset
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `setup init` hangs, then fails after 5 minutes in the helm phase | The controller cannot schedule. It requires a node without the `nvidia.com/gpu.present` label. | Add a CPU-only node or node pool. |
+| `setup init` hangs, then fails after 5 minutes in the helm phase | The controller pod is pending — check `kubectl get pod -n <namespace>` and `kubectl describe pod <controller-pod>` for the cause (resource limits, image pull failure, taint mismatch). | Address the scheduling issue shown in the pod events. |
 | `GHCR returned 403` | The token lacks the `read:packages` scope. | `gh auth refresh -s read:packages` |
 | `helm not found in PATH` | Setup shells out to helm. | Install helm 3. |
 | `no matches for kind "ServiceMonitor"` in the helm phase | The Prometheus Operator CRDs are not installed, and the chart creates a `ServiceMonitor` by default. | Install the Prometheus Operator (or at least its CRDs), or skip the ServiceMonitor with `metrics.serviceMonitor.enabled=false`. |
 | `no nodes have nvidia.com/gpu.product label` | GPU Operator (feature discovery) is not running. | Install or fix the GPU Operator. |
 | `heterogeneous GPUs: ...` | Target nodes mix GPU products. | Certify one product at a time with a narrower `spec.target.nodeSelector` in a `--cert-file` YAML. |
-| `no GPU nodes match target` | All candidate nodes are cordoned or lack `nvidia.com/gpu.present=true`. | `kubectl uncordon` the nodes you want tested. |
+| `no GPU nodes match target` | All candidate nodes are cordoned, or the `nvidia.com/gpu.product` label is missing (GPU Operator not running). | `kubectl uncordon` the nodes you want tested, or install the GPU Operator. |
 | The watch stops at the timeout | The default `--timeout` is 30 minutes. | Raise `--timeout`. Training runs need hours. The Certification keeps running in the cluster; re-attach with `kubectl get certification <name> -n <namespace> -w`. |
 | `dev build "..." has no published chart` | You built `ncrectl` from source. Setup needs a released version to resolve the chart. | Use the installer binary, or pass `--version <chart-version>` to `setup init`. |
 | `certification report` finds nothing | The report command defaults to the `default` namespace. | Pass `-n <namespace>` from the run output. |
