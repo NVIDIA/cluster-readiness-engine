@@ -11,7 +11,7 @@ The Cluster Readiness Engine is a Kubernetes controller for GPU cluster burn-in 
 ## What it does
 
 - **Certifies GPU clusters** by running domain-specific workloads (NCCL benchmarks, distributed training) against all node groups and validating results against per-architecture thresholds
-- **Detects hardware failures** via pluggable node health monitors (CEL expressions, DCGM, custom detectors) running concurrently with workloads
+- **Detects hardware failures** via CEL-based node health monitors that evaluate expressions against Node objects (e.g. checking for unhealthy GPU taints or conditions), running concurrently with workloads
 - **Isolates faulty nodes** automatically using bisection-based adaptive fault isolation
 - **Identifies failed nodes** per category with a machine-readable reason (`HardwareFailureDetected`, `ThresholdViolation`, `WorkloadFailed`) for external remediation pipelines to act on
 - **Measures goodput and bandwidth** by parsing pod logs in real time against LogProfile patterns

@@ -19,6 +19,7 @@ spec:
   image: nvcr.io/nvidia/pytorch:26.01-py3
   framework:
     mpi:
+      mpirunPath: /usr/local/mpi/bin/mpirun
       binary: /usr/local/bin/all_reduce_perf_mpi
       args: ["-b", "8", "-e", "32G", "-f", "2", "-n", "100"]
   numNodes: 4
@@ -55,7 +56,7 @@ spec:
 ```yaml
 spec:
   goodputMeasurement:
-    logProfileRef: nemo-training
+    logProfileRef: nemo-4-training
 ```
 
 ## View results

@@ -32,7 +32,7 @@ ncrectl workloadrun run [flags] <file>
 | `--topology-domain` | — | Topology domain to target |
 | `--topology-key` | — | Node label key for topology grouping |
 | `--test-scale` | — | Override testScale (`intra-node`, `intra-rack`, `full-scale`) |
-| `--results-file` | — | Write results as JSON to this file path |
+| `--results-file` | — | Write results as JSON to this file path (requires `--wait`) |
 
 ### Examples
 

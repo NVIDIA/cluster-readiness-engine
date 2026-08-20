@@ -45,8 +45,8 @@ jobTemplate:
           image: nvcr.io/nvidia/pytorch:26.01-py3
           args:
             - my-benchmark-command
-          numNodes: "{{ .NodesPerJob }}"
-          numProcPerNode: "{{ .GpusPerNode }}"
+          numNodes: {{ .NodesPerJob }}
+          numProcPerNode: {{ .GpusPerNode }}
 
 # Orchestration: controls how jobs are grouped and scheduled
 orchestration:

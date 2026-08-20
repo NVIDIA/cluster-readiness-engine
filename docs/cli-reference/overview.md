@@ -13,14 +13,10 @@ description: The ncrectl CLI manages the full lifecycle of cluster certification
 ```bash
 export NCRECTL_VERSION=v0.1.0-rc.8
 curl -sSL "https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${NCRECTL_VERSION}/installer" | bash
-ncrectl version
+ncrectl --version
 ```
 
 The installer also creates a `kubectl-ncre` symlink so the CLI is available as a kubectl plugin (`kubectl ncre ...`).
-
-<Warning>
-Release builds enforce a version check on every invocation. If a newer version exists, the command exits with code 1 and prints an upgrade prompt. Re-run the installer to update to a new version. CI pipelines should pin to a specific version to avoid unexpected failures.
-</Warning>
 
 ## Command groups
 

@@ -16,8 +16,8 @@ _Generated from CRD schema — coming soon._
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `conditions` | []Condition | Mutually exclusive state: `InProgress`, `Succeeded`, `Failed`, `HardwareFailed`, `ValidationFailed` |
-| `workloadRef` | ObjectRef | Reference to the created workload (`TrainJob`) |
+| `conditions` | []Condition | Exclusive set: `InProgress`, `Succeeded`, `Failed`. Independent (additive): `HardwareFailed` (can be True alongside execution state), `ValidationFailed` (can be True alongside `Succeeded`) |
+| `workloadRef` | WorkloadReference | Reference to the created workload (`TrainJob`) |
 | `failedNodes` | []FailedNode | Nodes identified as failed; each entry has `name`, `reason`, and optional `message` |
 | `restartCount` | int32 | Number of checkpoint-based restarts |
 | `failureLog` | FailureLog | Tail of pod logs from the most recent failure (pod name, node, exit code, log tail) |

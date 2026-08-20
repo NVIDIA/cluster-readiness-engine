@@ -30,7 +30,7 @@ spec:
         testScale: diagnose
 ```
 
-The diagnose algorithm runs in four stages: intra-domain screening, inter-domain screening, bisection of failing groups, and confirmation of isolated suspects.
+The diagnose algorithm runs in seven stages: `intra-screening`, `intra-screening-no-nvl`, `inter-screening`, `bisection`, `confirmation`, `cross-boundary`, and `complete`.
 
 ## Cross-boundary probing
 

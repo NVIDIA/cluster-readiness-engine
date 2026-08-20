@@ -69,7 +69,7 @@ Failed --> [*]
 
 ## Catalog
 
-The catalog maps `{domain, variant}` pairs to `WorkflowSpec` builders. Each entry is a YAML file under `pkg/catalog/entries/<domain>/<variant>/` that registers itself at startup. See [Concepts: Catalog](./catalog.md).
+The catalog maps `{domain, variant}` pairs to `WorkflowSpec` builders. Each entry is a flat YAML file at `pkg/catalog/entries/<domain>/<variant>.yaml`. Registration is centralized — `loader.go` walks the embedded FS and calls `Register()` for each entry file at startup. See [Concepts: Catalog](./catalog.md).
 
 ## Platform and GPU detection
 

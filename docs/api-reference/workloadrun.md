@@ -30,7 +30,7 @@ spec:
     logProfileRef: nccl-bandwidth
     testType: all_reduce
   goodputMeasurement:
-    logProfileRef: nemo-training
+    logProfileRef: nemo-4-training
 ```
 
 ## Spec fields
@@ -41,7 +41,7 @@ _Generated from CRD schema — coming soon._
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `conditions` | []Condition | Mutually exclusive state: `InProgress`, `Succeeded`, `Failed`, `ValidationFailed` |
+| `conditions` | []Condition | Exclusive set: `InProgress`, `Succeeded`, `Failed`. Independent (additive): `ValidationFailed` (can be True alongside `Succeeded` — workload finished but violated a threshold) |
 | `workflowRef` | WorkflowReference | Reference to the underlying `Workflow` resource |
 | `detectedGPUArchitecture` | string | Auto-detected GPU type (e.g., `h100`, `gb200`) |
 | `detectedPlatform` | string | Auto-detected CSP platform (e.g., `aws`, `gcp`, `azure`) |

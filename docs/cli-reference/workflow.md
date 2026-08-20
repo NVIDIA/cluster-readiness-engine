@@ -20,7 +20,7 @@ ncrectl workflow render [flags] <workflow.yaml>
 |------|---------|-------------|
 | `--platform` | auto | Target platform (`aws`, `gcp`, `azure`, `oci`, `mistral`, `forge`) |
 | `--gpu-arch` | auto | Target GPU architecture (`h100`, `gb200`, `gb300`) |
-| `--nodes-file` | — | Path to a file listing node names (one per line) for topology-aware rendering |
+| `--nodes-file` | — | Path to a YAML file of `corev1.Node` objects for offline rendering (mutually exclusive with `--platform`/`--gpu-arch`) |
 | `--output` | `yaml` | Output format: `yaml` or `json` |
 | `--dry-run` | `false` | Validate against the live API server without creating resources |
 

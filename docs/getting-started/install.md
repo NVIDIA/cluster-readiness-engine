@@ -27,7 +27,7 @@ The installer automatically downloads and verifies a SHA-256 checksum before ins
 Verify the installation:
 
 ```bash
-ncrectl version
+ncrectl --version
 ```
 
 ## Set up the cluster

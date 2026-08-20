@@ -16,7 +16,7 @@ _Generated from CRD schema — coming soon._
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `conditions` | []Condition | Mutually exclusive state: `InProgress`, `Succeeded`, `Failed`, `ValidationFailed` |
+| `conditions` | []Condition | Exclusive set: `InProgress`, `Succeeded`, `Failed`. Independent (additive): `ValidationFailed` (aggregates Job validation failures; can be True alongside other states) |
 | `namespace` | string | Resolved namespace where Jobs and dependencies are created |
 | `succeededNodesRef` | TypedLocalObjectReference | ConfigMap reference for the succeeded-nodes list |
 | `failedNodesRef` | TypedLocalObjectReference | ConfigMap reference for the failed-nodes list |

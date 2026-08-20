@@ -58,6 +58,6 @@ kubectl get configmap <ref-name> -o yaml
 ## Lifecycle
 
 1. Controller creates one `Workflow` per entry in `spec.categories`. The category list cannot be changed after creation — delete and recreate to modify it.
-2. Workflows run sequentially or in parallel depending on orchestration config.
+2. Workflows run **sequentially** — the controller processes one category at a time. `maxConcurrent` controls job/group parallelism *within* a single Workflow (how many node groups run at once), not across categories.
 3. When all Workflows complete, Certification is marked `Succeeded` or `Failed`.
 4. Failed nodes are recorded in ConfigMaps referenced by `status.categoryStatuses[].failedNodesRef`. CRE does not taint or cordon nodes.
