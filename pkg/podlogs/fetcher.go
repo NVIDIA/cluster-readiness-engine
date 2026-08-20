@@ -9,11 +9,17 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
+
+// DefaultStreamTimeout bounds the complete lifecycle of a pod log request,
+// including opening the stream and consuming its response body.
+const DefaultStreamTimeout = 2 * time.Minute
 
 // PodLogFetcher abstracts fetching raw log lines from a pod.
 type PodLogFetcher interface {
@@ -52,7 +58,7 @@ func (f *kubernetesLogFetcher) FetchLogs(ctx context.Context, namespace, podName
 	podLogOpts.LimitBytes = &limit
 
 	req := f.clientset.CoreV1().Pods(namespace).GetLogs(podName, podLogOpts)
-	stream, err := req.Stream(ctx)
+	stream, err := OpenStream(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("opening log stream: %w", err)
 	}
@@ -61,6 +67,38 @@ func (f *kubernetesLogFetcher) FetchLogs(ctx context.Context, namespace, podName
 	// LimitBytes is enforced by the API server, but a misbehaving or proxied
 	// endpoint could ignore it — bound the client side too.
 	return ScanLines(io.LimitReader(stream, limit))
+}
+
+// OpenStream opens a pod log request bounded by DefaultStreamTimeout or the
+// parent context's deadline, whichever is earlier. The returned stream keeps
+// that deadline active until it is closed, so stalled response-body reads are
+// bounded as well as the initial request.
+func OpenStream(ctx context.Context, req *rest.Request) (io.ReadCloser, error) {
+	return openStreamWithTimeout(ctx, req, DefaultStreamTimeout)
+}
+
+func openStreamWithTimeout(ctx context.Context, req *rest.Request, timeout time.Duration) (io.ReadCloser, error) {
+	streamCtx, cancel := context.WithTimeout(ctx, timeout)
+	stream, err := req.Stream(streamCtx)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+
+	return &cancelReadCloser{
+		ReadCloser: stream,
+		cancel:     cancel,
+	}, nil
+}
+
+type cancelReadCloser struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (r *cancelReadCloser) Close() error {
+	r.cancel()
+	return r.ReadCloser.Close()
 }
 
 // DefaultMaxLogBytes caps a single log fetch at 8 MB. Sized well above a normal

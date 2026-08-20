@@ -32,6 +32,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/orchestration"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/threshold"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
@@ -2118,7 +2119,8 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *burninv
 		Container: containerName,
 		TailLines: &tailLines,
 	}
-	stream, err := r.Clientset.CoreV1().Pods(targetPod.Namespace).GetLogs(targetPod.Name, logOpts).Stream(ctx)
+	req := r.Clientset.CoreV1().Pods(targetPod.Namespace).GetLogs(targetPod.Name, logOpts)
+	stream, err := podlogs.OpenStream(ctx, req)
 	if err != nil {
 		log.V(1).Info("Failed to stream pod logs for timeout capture", "pod", targetPod.Name, "error", err)
 		job.Status.FailureLog = &burninv1alpha1.FailureLog{
