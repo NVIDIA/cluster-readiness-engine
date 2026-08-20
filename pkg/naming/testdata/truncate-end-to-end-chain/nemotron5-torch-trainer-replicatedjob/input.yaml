@@ -1,0 +1,4 @@
+cert: nemotron5-certification
+domain: training
+variant: nemotron5-8b
+replicatedJob: trainer

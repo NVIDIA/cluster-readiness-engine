@@ -5,6 +5,7 @@ package setup
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	sigsyaml "sigs.k8s.io/yaml"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,30 +31,29 @@ func newTestConfigFlags(kubeconfigPath, kubeContext string) *kubeconfig.ConfigFl
 }
 
 func TestPromptForConfirmation(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected bool
-	}{
-		{name: "yes", input: "yes\n", expected: true},
-		{name: "yes with spaces", input: "  yes  \n", expected: true},
-		{name: "no", input: "no\n", expected: false},
-		{name: "empty", input: "\n", expected: false},
-		{name: "y only", input: "y\n", expected: false},
-		{name: "YES uppercase", input: "YES\n", expected: false},
-		{name: "Yes mixed case", input: "Yes\n", expected: false},
-		{name: "eof no input", input: "", expected: false},
-		{name: "random text", input: "approve\n", expected: false},
+	p := testutil.TestCaseParser{
+		Subdir:         "prompt-for-confirmation",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		input := tc.Inputs["input.txt"]
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var out bytes.Buffer
-			result := promptForConfirmation(strings.NewReader(tt.input), &out)
-			assert.Equal(t, tt.expected, result)
-			assert.Contains(t, out.String(), "Enter a value:")
-		})
-	}
+		var out bytes.Buffer
+		result := promptForConfirmation(strings.NewReader(input), &out)
+		if !strings.Contains(out.String(), "Enter a value:") {
+			return fmt.Errorf("prompt output missing %q: got %q", "Enter a value:", out.String())
+		}
+
+		b, err := json.MarshalIndent(struct {
+			Input     string `json:"input"`
+			Confirmed bool   `json:"confirmed"`
+		}{input, result}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
 }
 
 func TestGetClusterInfo(t *testing.T) {
@@ -117,26 +118,27 @@ users:
 // ---------------------------------------------------------------------------
 
 func TestParseSkipPhases(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected map[string]bool
-	}{
-		{name: "empty", input: "", expected: map[string]bool{}},
-		{name: "single", input: "deps", expected: map[string]bool{"deps": true}},
-		{name: "multiple", input: "deps,crds", expected: map[string]bool{"deps": true, "crds": true}},
-		{name: "with spaces", input: " deps , crds ", expected: map[string]bool{"deps": true, "crds": true}},
-		{name: "all four", input: "deps,crds,controller,logprofiles",
-			expected: map[string]bool{"deps": true, "crds": true, "controller": true, "logprofiles": true}},
-		{name: "trailing comma", input: "deps,", expected: map[string]bool{"deps": true}},
+	p := testutil.TestCaseParser{
+		Subdir:         "parse-skip-phases",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			Input string `yaml:"input"`
+		}
+		if err := sigsyaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := parseSkipPhases(tt.input)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
+		result := parseSkipPhases(in.Input)
+
+		b, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -144,50 +146,30 @@ func TestParseSkipPhases(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestParseImage(t *testing.T) {
-	tests := []struct {
-		input    string
-		wantName string
-		wantTag  string
-	}{
-		{
-			input:    "ghcr.io/nvidia/cluster-readiness-engine/manager:v1.0.0",
-			wantName: "ghcr.io/nvidia/cluster-readiness-engine/manager",
-			wantTag:  "v1.0.0",
-		},
-		{
-			input:    "myregistry.io/cluster-readiness-engine:latest",
-			wantName: "myregistry.io/cluster-readiness-engine",
-			wantTag:  "latest",
-		},
-		{
-			input:    "localhost:5000/cluster-readiness-engine:dev",
-			wantName: "localhost:5000/cluster-readiness-engine",
-			wantTag:  "dev",
-		},
-		{
-			input:    "ghcr.io/nvidia/repo@sha256:abc123def456",
-			wantName: "ghcr.io/nvidia/repo",
-			wantTag:  "sha256:abc123def456",
-		},
-		{
-			input:    "ghcr.io/nvidia/cluster-readiness-engine/manager",
-			wantName: "ghcr.io/nvidia/cluster-readiness-engine/manager",
-			wantTag:  "latest",
-		},
-		{
-			input:    "cluster-readiness-engine:v2",
-			wantName: "cluster-readiness-engine",
-			wantTag:  "v2",
-		},
+	p := testutil.TestCaseParser{
+		Subdir:         "parse-image",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			Input string `yaml:"input"`
+		}
+		if err := sigsyaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			name, tag := parseImage(tt.input)
-			assert.Equal(t, tt.wantName, name)
-			assert.Equal(t, tt.wantTag, tag)
-		})
-	}
+		name, tag := parseImage(in.Input)
+
+		b, err := json.MarshalIndent(struct {
+			Name string `json:"name"`
+			Tag  string `json:"tag"`
+		}{name, tag}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
 }
 
 func TestDefaultImage(t *testing.T) {
@@ -201,49 +183,22 @@ func TestDefaultImage(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestSplitYAMLDocuments(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		wantLen  int
-		wantKind string // kind of first doc, if any
-	}{
-		{
-			name:    "empty",
-			input:   "",
-			wantLen: 0,
-		},
-		{
-			name:    "single doc",
-			input:   "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: test",
-			wantLen: 1,
-		},
-		{
-			name: "two docs",
-			input: "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: one\n" +
-				"---\n" +
-				"apiVersion: v1\nkind: Namespace\nmetadata:\n  name: two",
-			wantLen: 2,
-		},
-		{
-			name: "empty docs between separators",
-			input: "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: one\n" +
-				"---\n\n---\n" +
-				"apiVersion: v1\nkind: Namespace\nmetadata:\n  name: two",
-			wantLen: 2,
-		},
-		{
-			name:    "trailing separator",
-			input:   "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: one\n---\n",
-			wantLen: 1,
-		},
+	p := testutil.TestCaseParser{
+		Subdir:         "split-yaml-documents",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		docs := splitYAMLDocuments([]byte(tc.Inputs["input.yaml"]))
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			docs := splitYAMLDocuments([]byte(tt.input))
-			assert.Len(t, docs, tt.wantLen)
-		})
-	}
+		b, err := json.MarshalIndent(struct {
+			Count int `json:"count"`
+		}{len(docs)}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
 }
 
 func TestDecodeUnstructured(t *testing.T) {

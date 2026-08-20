@@ -1,0 +1,2 @@
+measured: 800.0
+expression: "value >= 900 && value <= 1200"

@@ -4,70 +4,41 @@
 package naming
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+
+	"sigs.k8s.io/yaml"
+
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
 func TestTruncate(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		maxLen   int
-		wantLen  int // -1 means same as input length
-		wantSame bool
-	}{
-		{
-			name:     "short name passes through",
-			input:    "my-workflow",
-			maxLen:   35,
-			wantSame: true,
-		},
-		{
-			name:     "exact length passes through",
-			input:    strings.Repeat("a", 35),
-			maxLen:   35,
-			wantSame: true,
-		},
-		{
-			name:    "one over triggers truncation",
-			input:   strings.Repeat("a", 36),
-			maxLen:  35,
-			wantLen: 35,
-		},
-		{
-			name:    "nemotron5 workflow name",
-			input:   "nemotron5-certification-training-nemotron5",
-			maxLen:  MaxWorkflowNameLen,
-			wantLen: MaxWorkflowNameLen,
-		},
-		{
-			name:    "very small maxLen",
-			input:   "very-long-name-that-exceeds",
-			maxLen:  7,
-			wantLen: 7,
-		},
+	p := testutil.TestCaseParser{
+		Subdir:         "truncate",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			Input  string `yaml:"input"`
+			MaxLen int    `yaml:"maxLen"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := Truncate(tt.input, tt.maxLen)
+		got := Truncate(in.Input, in.MaxLen)
 
-			if tt.wantSame {
-				if got != tt.input {
-					t.Errorf("expected passthrough, got %q", got)
-				}
-				return
-			}
-
-			if len(got) != tt.wantLen {
-				t.Errorf("len = %d, want %d (got %q)", len(got), tt.wantLen, got)
-			}
-
-			if got == tt.input {
-				t.Errorf("expected truncation but got original")
-			}
-		})
-	}
+		b, err := json.MarshalIndent(struct {
+			Truncated string `json:"truncated"`
+			Length    int    `json:"length"`
+		}{got, len(got)}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
 }
 
 func TestTruncateDeterminism(t *testing.T) {
@@ -113,58 +84,65 @@ func TestTruncateTrailingHyphen(t *testing.T) {
 }
 
 func TestTruncateEndToEndChain(t *testing.T) {
-	tests := []struct {
-		name    string
-		cert    string
-		domain  string
-		variant string
-		// longest replicatedJob name that will be appended by the Trainer
-		replicatedJob string
-	}{
-		{
-			name:          "nemotron5 (torch, trainer replicatedJob)",
-			cert:          "nemotron5-certification",
-			domain:        "training",
-			variant:       "nemotron5-8b",
-			replicatedJob: "trainer",
-		},
-		{
-			name:          "nccl-all-reduce (MPI, launcher replicatedJob)",
-			cert:          "nccl-all-reduce-certification",
-			domain:        "communication",
-			variant:       "nccl-all-reduce",
-			replicatedJob: "launcher",
-		},
+	p := testutil.TestCaseParser{
+		Subdir:         "truncate-end-to-end-chain",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			Cert    string `yaml:"cert"`
+			Domain  string `yaml:"domain"`
+			Variant string `yaml:"variant"`
+			// longest replicatedJob name that will be appended by the Trainer
+			ReplicatedJob string `yaml:"replicatedJob"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			workflowName := Truncate(tt.cert+"-"+tt.domain+"-"+tt.variant, MaxWorkflowNameLen)
-			if len(workflowName) > MaxWorkflowNameLen {
-				t.Errorf("workflow name %q (%d chars) exceeds max %d", workflowName, len(workflowName), MaxWorkflowNameLen)
-			}
+		workflowName := Truncate(in.Cert+"-"+in.Domain+"-"+in.Variant, MaxWorkflowNameLen)
+		if len(workflowName) > MaxWorkflowNameLen {
+			tc.T.Errorf("workflow name %q (%d chars) exceeds max %d", workflowName, len(workflowName), MaxWorkflowNameLen)
+		}
 
-			jobName := Truncate(workflowName+"-job", MaxJobNameLen)
-			if len(jobName) > MaxJobNameLen {
-				t.Errorf("job name %q (%d chars) exceeds max %d", jobName, len(jobName), MaxJobNameLen)
-			}
+		jobName := Truncate(workflowName+"-job", MaxJobNameLen)
+		if len(jobName) > MaxJobNameLen {
+			tc.T.Errorf("job name %q (%d chars) exceeds max %d", jobName, len(jobName), MaxJobNameLen)
+		}
 
-			workloadName := Truncate(jobName+"-workload", MaxWorkloadNameLen)
-			if len(workloadName) > MaxWorkloadNameLen {
-				t.Errorf("workload name %q (%d chars) exceeds max %d", workloadName, len(workloadName), MaxWorkloadNameLen)
-			}
+		workloadName := Truncate(jobName+"-workload", MaxWorkloadNameLen)
+		if len(workloadName) > MaxWorkloadNameLen {
+			tc.T.Errorf("workload name %q (%d chars) exceeds max %d", workloadName, len(workloadName), MaxWorkloadNameLen)
+		}
 
-			// Verify the full pod name stays within DNS-1123 label limit.
-			// JobSet pod names: {workload}-{replicatedJob}-{replicaIdx}-{hash}
-			podName := workloadName + "-" + tt.replicatedJob + "-0-abcde"
-			if len(podName) > MaxK8sNameLen {
-				t.Errorf("pod name %q (%d chars) exceeds DNS-1123 limit %d", podName, len(podName), MaxK8sNameLen)
-			}
+		// Verify the full pod name stays within DNS-1123 label limit.
+		// JobSet pod names: {workload}-{replicatedJob}-{replicaIdx}-{hash}
+		podName := workloadName + "-" + in.ReplicatedJob + "-0-abcde"
+		if len(podName) > MaxK8sNameLen {
+			tc.T.Errorf("pod name %q (%d chars) exceeds DNS-1123 limit %d", podName, len(podName), MaxK8sNameLen)
+		}
 
-			t.Logf("Chain: %q → %q → %q → pod %q (%d chars)",
-				workflowName, jobName, workloadName, podName, len(podName))
-		})
-	}
+		b, err := json.MarshalIndent(struct {
+			WorkflowName string `json:"workflowName"`
+			WorkflowLen  int    `json:"workflowLen"`
+			JobName      string `json:"jobName"`
+			JobLen       int    `json:"jobLen"`
+			WorkloadName string `json:"workloadName"`
+			WorkloadLen  int    `json:"workloadLen"`
+			PodName      string `json:"podName"`
+			PodLen       int    `json:"podLen"`
+		}{
+			workflowName, len(workflowName),
+			jobName, len(jobName),
+			workloadName, len(workloadName),
+			podName, len(podName),
+		}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
 }
 
 func TestTruncateDifferentInputsDifferentHashes(t *testing.T) {

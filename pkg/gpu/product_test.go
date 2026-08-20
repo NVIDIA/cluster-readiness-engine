@@ -3,28 +3,38 @@
 
 package gpu
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+
+	"sigs.k8s.io/yaml"
+
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+)
 
 func TestParseProduct(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"NVIDIA-H100-80GB-HBM3", "h100"},
-		{"NVIDIA-H100-NVL", "h100"},
-		{"NVIDIA-GB200-NVL72", "gb200"},
-		{"NVIDIA-GB200", "gb200"},
-		{"NVIDIA-GB300-NVL72", "gb300"},
-		{"NVIDIA-A100-SXM4-40GB", "a100"},
-		{"NVIDIA-L40S", "l40s"},
-		{"NVIDIA-L40", "l40"},
-		{"", ""},
+	p := testutil.TestCaseParser{
+		Subdir:         "parse-product",
+		ExpectedSuffix: ".json",
 	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			if got := ParseProduct(tt.input); got != tt.want {
-				t.Errorf("ParseProduct(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			Input string `yaml:"input"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
+
+		got := ParseProduct(in.Input)
+
+		b, err := json.MarshalIndent(struct {
+			Input string `json:"input"`
+			Want  string `json:"want"`
+		}{in.Input, got}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
 }

@@ -249,77 +249,27 @@ func TestTrainJobSetTolerations(t *testing.T) {
 }
 
 func TestHasLauncherTarget(t *testing.T) {
-	tests := []struct {
-		name string
-		spec burninv1alpha1.WorkloadSpec
-		want bool
-	}{
-		{
-			name: "non-MPI TrainJob (nemotron) has no launcher",
-			spec: burninv1alpha1.WorkloadSpec{
-				TrainJob: &trainerv1alpha1.TrainJobSpec{
-					RuntimePatches: []trainerv1alpha1.RuntimePatch{
-						{
-							Manager: RuntimePatchManager,
-							TrainingRuntimeSpec: &trainerv1alpha1.TrainingRuntimeSpecPatch{
-								Template: &trainerv1alpha1.JobSetTemplatePatch{
-									Spec: &trainerv1alpha1.JobSetSpecPatch{
-										ReplicatedJobs: []trainerv1alpha1.ReplicatedJobPatch{
-											{Name: "node"},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			want: false,
-		},
-		{
-			name: "MPI TrainJob has launcher",
-			spec: burninv1alpha1.WorkloadSpec{
-				TrainJob: &trainerv1alpha1.TrainJobSpec{
-					RuntimePatches: []trainerv1alpha1.RuntimePatch{
-						{
-							Manager: RuntimePatchManager,
-							TrainingRuntimeSpec: &trainerv1alpha1.TrainingRuntimeSpecPatch{
-								Template: &trainerv1alpha1.JobSetTemplatePatch{
-									Spec: &trainerv1alpha1.JobSetSpecPatch{
-										ReplicatedJobs: []trainerv1alpha1.ReplicatedJobPatch{
-											{Name: "node"},
-											{Name: "launcher"},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			want: true,
-		},
-		{
-			name: "nil TrainJob",
-			spec: burninv1alpha1.WorkloadSpec{},
-			want: false,
-		},
-		{
-			name: "empty overrides",
-			spec: burninv1alpha1.WorkloadSpec{
-				TrainJob: &trainerv1alpha1.TrainJobSpec{},
-			},
-			want: false,
-		},
+	p := &testutil.TestCaseParser{
+		Subdir:         "has-launcher-target",
+		ExpectedSuffix: ".json",
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := HasLauncherTarget(&tt.spec)
-			if got != tt.want {
-				t.Errorf("HasLauncherTarget() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			Spec burninv1alpha1.WorkloadSpec `yaml:"spec"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+		got := HasLauncherTarget(&input.Spec)
+		b, err := json.MarshalIndent(map[string]any{
+			"hasLauncherTarget": got,
+		}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b)
+		return nil
+	})
 }
 
 // --- Test helpers ---

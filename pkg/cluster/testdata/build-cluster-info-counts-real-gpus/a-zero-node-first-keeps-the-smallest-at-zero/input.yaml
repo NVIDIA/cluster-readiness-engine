@@ -1,0 +1,7 @@
+# A broken device plugin leaves a node at 0. The smallest must stay 0 even
+# when it comes first, so 0 is not mistaken for "not seen yet".
+nodes:
+  - name: n0
+    count: 0
+  - name: n1
+    count: 5

@@ -1,0 +1,5 @@
+nodes:
+  - name: node002
+    count: 1
+  - name: node003
+    count: 1

@@ -1,0 +1,4 @@
+# The previous fmt.Sscanf implementation returned 1.5 here. Nothing in the
+# codebase produces such a value — every writer goes through Format or
+# strconv.FormatFloat — so accepting it could only mask corruption.
+in: "1.5abc"

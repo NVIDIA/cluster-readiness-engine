@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
@@ -259,30 +261,38 @@ func TestGenerateCertNameAndNamespaceAreIndependent(t *testing.T) {
 }
 
 func TestPlatformToProviderID(t *testing.T) {
-	tests := []struct {
-		platform string
-		prefix   string
-	}{
-		{"aws", "aws://"},
-		{"gcp", "gce://"},
-		{"azure", "azure://"},
-		{"oci", "ocid1."},
-		{"onprem", ""},
-		{"", ""},
-		{"unknown", ""},
+	p := testutil.TestCaseParser{
+		Subdir:         "platform-to-provider-id",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var cfg struct {
+			Platform string `yaml:"platform"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &cfg); err != nil {
+			return err
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.platform, func(t *testing.T) {
-			result := platformToProviderID(tt.platform)
-			if tt.prefix == "" {
-				assert.Empty(t, result)
-			} else {
-				assert.True(t, strings.HasPrefix(result, tt.prefix),
-					"expected prefix %q, got %q", tt.prefix, result)
-			}
-		})
-	}
+		result := platformToProviderID(cfg.Platform)
+
+		type resultJSON struct {
+			Platform string `json:"platform"`
+			Result   string `json:"result"`
+			Empty    bool   `json:"empty"`
+		}
+		r := resultJSON{
+			Platform: cfg.Platform,
+			Result:   result,
+			Empty:    result == "",
+		}
+
+		data, err := json.MarshalIndent(r, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
 }
 
 func TestDerefBoolPtr(t *testing.T) {
@@ -388,41 +398,42 @@ func TestParseCategoriesEdgeCases(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestNewRunCommandFlagDefaults(t *testing.T) {
-	cmd := newRunCommand("dev")
-
-	// Verify all flags exist with expected defaults.
-	flags := []struct {
-		name         string
-		defaultValue string
-	}{
-		{"category", "[]"},
-		{"cert-file", ""},
-		{"setup", "false"},
-		{"wait", "false"},
-		{"cleanup", "false"},
-		{"image", ""},
-		{"name", ""},
-		{"namespace", ""},
-		{"nodes-per-job", "0"},
-		{"enable-checkpoint", "false"},
-		{"max-steps", "0"},
-		{"exit-duration-mins", "0"},
-		{"gpus-per-node", "0"},
-		{"enable-mnnvl", "false"},
-		{"storage-class", ""},
-		{"timeout", "30m0s"},
-		{"kubeconfig", ""},
-		{"context", ""},
+	p := testutil.TestCaseParser{
+		Subdir:         "new-run-command-flag-defaults",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		cmd := newRunCommand("dev")
 
-	for _, f := range flags {
-		t.Run(f.name, func(t *testing.T) {
-			flag := cmd.Flags().Lookup(f.name)
-			require.NotNil(t, flag, "flag --%s should exist", f.name)
-			assert.Equal(t, f.defaultValue, flag.DefValue,
-				"flag --%s default", f.name)
+		// Serialize the FULL flag set (name -> default, sorted by name) so a
+		// newly added flag shows up as a golden-file diff.
+		defaults := map[string]string{}
+		cmd.Flags().VisitAll(func(f *pflag.Flag) {
+			defaults[f.Name] = f.DefValue
 		})
-	}
+
+		names := make([]string, 0, len(defaults))
+		for name := range defaults {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+
+		type flagDefault struct {
+			Name    string `json:"name"`
+			Default string `json:"default"`
+		}
+		result := make([]flagDefault, 0, len(names))
+		for _, name := range names {
+			result = append(result, flagDefault{Name: name, Default: defaults[name]})
+		}
+
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
 }
 
 func TestNewRunCommandValidation(t *testing.T) {

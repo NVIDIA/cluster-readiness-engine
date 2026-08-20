@@ -1,0 +1,4 @@
+{
+  "name": "ghcr.io/nvidia/cluster-readiness-engine/manager",
+  "tag": "latest"
+}

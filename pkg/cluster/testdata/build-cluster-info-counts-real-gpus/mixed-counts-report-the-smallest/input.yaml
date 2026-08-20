@@ -1,0 +1,5 @@
+nodes:
+  - name: n0
+    count: 8
+  - name: n1
+    count: 2

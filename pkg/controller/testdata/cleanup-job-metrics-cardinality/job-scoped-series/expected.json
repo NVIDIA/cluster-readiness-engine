@@ -1,0 +1,47 @@
+[
+  {
+    "name": "cre_job_status",
+    "grewAfterRecording": true,
+    "restoredToBaselineOnCleanup": true
+  },
+  {
+    "name": "cre_job_failed_nodes",
+    "grewAfterRecording": true,
+    "restoredToBaselineOnCleanup": true
+  },
+  {
+    "name": "cre_hardware_failures_detected_total",
+    "grewAfterRecording": true,
+    "restoredToBaselineOnCleanup": true
+  },
+  {
+    "name": "cre_hardware_failed_jobs_total",
+    "grewAfterRecording": true,
+    "restoredToBaselineOnCleanup": true
+  },
+  {
+    "name": "cre_nodes_evaluated_total",
+    "grewAfterRecording": true,
+    "restoredToBaselineOnCleanup": true
+  },
+  {
+    "name": "cre_workload_created_total",
+    "grewAfterRecording": true,
+    "restoredToBaselineOnCleanup": true
+  },
+  {
+    "name": "cre_reconcile_total",
+    "grewAfterRecording": true,
+    "restoredToBaselineOnCleanup": true
+  },
+  {
+    "name": "cre_reconcile_duration_seconds",
+    "grewAfterRecording": true,
+    "restoredToBaselineOnCleanup": true
+  },
+  {
+    "name": "cre_node_health_check_duration_seconds",
+    "grewAfterRecording": true,
+    "restoredToBaselineOnCleanup": true
+  }
+]
