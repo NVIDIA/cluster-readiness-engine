@@ -76,7 +76,6 @@ The following LogProfiles are installed by the Helm chart:
 
 | Name | Framework |
 |------|-----------|
-| `nemo-4-training` | NeMo 4 framework training logs |
 | `megatron-training` | Megatron-LM training logs |
 | `megatron-bridge` | Megatron bridge logs |
 | `nccl-bandwidth` | NCCL test output (bandwidth results) |

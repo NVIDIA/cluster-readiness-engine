@@ -30,7 +30,7 @@ spec:
     logProfileRef: nccl-bandwidth
     testType: all_reduce
   goodputMeasurement:
-    logProfileRef: nemo-4-training
+    logProfileRef: megatron-training
 ```
 
 ## Spec fields

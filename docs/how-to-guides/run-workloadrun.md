@@ -56,7 +56,7 @@ spec:
 ```yaml
 spec:
   goodputMeasurement:
-    logProfileRef: nemo-4-training
+    logProfileRef: megatron-training
 ```
 
 ## View results

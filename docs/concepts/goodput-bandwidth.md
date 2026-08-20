@@ -14,7 +14,7 @@ Goodput is the fraction of elapsed time during which a training job is making us
 
 A `LogProfile` (cluster-scoped) defines named regex capture groups that match log lines from a training framework. The goodput calculator uses the captured timestamps and step counts to determine when the job was making progress.
 
-Built-in LogProfiles installed by `ncrectl setup init`: `nemo-4-training`, `megatron-training`, `megatron-bridge`, `nccl-bandwidth`, `nccl-loopback`.
+Built-in LogProfiles installed by `ncrectl setup init`: `megatron-training`, `megatron-bridge`, `nccl-bandwidth`, `nccl-loopback`.
 
 ### Interpreting goodput
 
