@@ -349,68 +349,33 @@ func TestExtractMetadataName(t *testing.T) {
 }
 
 func TestReverseDependencyRefs(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    []burninv1alpha1.DependencyResourceRef
-		expected []string // expected names in order
-	}{
-		{
-			name:     "empty",
-			input:    nil,
-			expected: nil,
-		},
-		{
-			name: "single",
-			input: []burninv1alpha1.DependencyResourceRef{
-				{Name: "a"},
-			},
-			expected: []string{"a"},
-		},
-		{
-			name: "multiple reversed",
-			input: []burninv1alpha1.DependencyResourceRef{
-				{Name: "compute-domain", Kind: "ComputeDomain"},
-				{Name: "training-runtime", Kind: "TrainingRuntime"},
-				{Name: "config-map", Kind: "ConfigMap"},
-			},
-			expected: []string{"config-map", "training-runtime", "compute-domain"},
-		},
-		{
-			name: "preserves all fields",
-			input: []burninv1alpha1.DependencyResourceRef{
-				{APIVersion: "v1", Kind: "ConfigMap", Name: "cm-a", Namespace: "ns", Scope: "workflow"},
-				{APIVersion: "v1", Kind: "ConfigMap", Name: "cm-b", Namespace: "ns", Scope: "job", GroupName: "g0", Iteration: 1},
-			},
-			expected: []string{"cm-b", "cm-a"},
-		},
+	p := testutil.TestCaseParser{
+		Subdir:         "reverse-dependency-refs",
+		ExpectedSuffix: ".json",
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := reverseDependencyRefs(tt.input)
-			var names []string
-			for _, ref := range got {
-				names = append(names, ref.Name)
-			}
-			if len(tt.expected) == 0 && len(names) == 0 {
-				return
-			}
-			if len(names) != len(tt.expected) {
-				t.Fatalf("got %v, want %v", names, tt.expected)
-			}
-			for i, name := range names {
-				if name != tt.expected[i] {
-					t.Errorf("index %d: got %q, want %q", i, name, tt.expected[i])
-				}
-			}
-			// Verify fields are preserved (not just names)
-			if len(tt.input) > 1 {
-				reversed := reverseDependencyRefs(tt.input)
-				if reversed[0].Kind != tt.input[len(tt.input)-1].Kind {
-					t.Errorf("field preservation: got Kind %q, want %q", reversed[0].Kind, tt.input[len(tt.input)-1].Kind)
-				}
-			}
-		})
-	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			Refs []burninv1alpha1.DependencyResourceRef `yaml:"refs"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		// reverseDependencyRefs is asserted against the fully-marshaled
+		// slice (not just names) so that field preservation across the
+		// reversal is verified too, not just ordering.
+		got := reverseDependencyRefs(input.Refs)
+		if got == nil {
+			got = []burninv1alpha1.DependencyResourceRef{}
+		}
+
+		data, err := json.MarshalIndent(got, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
 }
 
 func TestCollectAllStrings(t *testing.T) {

@@ -1,0 +1,6 @@
+{
+  "controller": true,
+  "crds": true,
+  "deps": true,
+  "logprofiles": true
+}

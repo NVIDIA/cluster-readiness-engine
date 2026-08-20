@@ -1,0 +1,2 @@
+input: very-long-name-that-exceeds
+maxLen: 7

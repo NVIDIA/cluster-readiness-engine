@@ -1,0 +1,5 @@
+{
+  "measured": 950,
+  "expression": "value >= 900 && value <= 1200",
+  "pass": true
+}

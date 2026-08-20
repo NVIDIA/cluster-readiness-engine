@@ -1,0 +1,5 @@
+{
+  "platform": "azure",
+  "result": "azure://synthetic/render",
+  "empty": false
+}

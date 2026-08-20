@@ -1,0 +1,4 @@
+cert: nccl-all-reduce-certification
+domain: communication
+variant: nccl-all-reduce
+replicatedJob: launcher
