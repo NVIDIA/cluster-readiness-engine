@@ -1,0 +1,25 @@
+{
+  "count": 4,
+  "results": [
+    {
+      "sizeBytes": 8,
+      "algBW": 0,
+      "busBW": 0
+    },
+    {
+      "sizeBytes": 65536,
+      "algBW": 1.13,
+      "busBW": 2.18
+    },
+    {
+      "sizeBytes": 8589934592,
+      "algBW": 463.04,
+      "busBW": 897.15
+    },
+    {
+      "sizeBytes": 17179869184,
+      "algBW": 476.36,
+      "busBW": 922.94
+    }
+  ]
+}

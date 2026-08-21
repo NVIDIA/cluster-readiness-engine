@@ -4,59 +4,74 @@
 package numstr
 
 import (
+	"encoding/json"
+	"fmt"
 	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
+
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
+// Each case parses tc.Inputs["input.yaml"]'s "in" string and formats the
+// result to 9 decimal places, matching the precision of the require.InDelta
+// this test used before conversion (1e-9).
 func TestParse(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want float64
-	}{
-		{name: "plain decimal", in: "0.85", want: 0.85},
-		{name: "integer", in: "42", want: 42},
-		{name: "negative", in: "-1.5", want: -1.5},
-		{name: "surrounding whitespace is tolerated", in: "  2.5  ", want: 2.5},
-		{name: "scientific notation", in: "1e3", want: 1000},
-		{name: "storage precision round trip", in: "922.940000", want: 922.94},
-		{name: "empty is zero", in: "", want: 0},
-		{name: "non-numeric is zero", in: "abc", want: 0},
-
-		// The previous fmt.Sscanf implementation returned 1.5 here. Nothing in
-		// the codebase produces such a value — every writer goes through Format
-		// or strconv.FormatFloat — so accepting it could only mask corruption.
-		{name: "trailing garbage is rejected, not truncated", in: "1.5abc", want: 0},
-		{name: "units are rejected", in: "922.94 GB/s", want: 0},
+	p := testutil.TestCaseParser{
+		Subdir:         "parse",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			In string `yaml:"in"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.InDelta(t, tt.want, Parse(tt.in), 1e-9)
-		})
-	}
+		got := Parse(in.In)
+
+		b, err := json.MarshalIndent(struct {
+			Got string `json:"got"`
+		}{fmt.Sprintf("%.9f", got)}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
 }
 
+// Each case round trips tc.Inputs["input.yaml"]'s "in" float through Format
+// then Parse, and formats the result to 9 decimal places — finer than the
+// require.InDelta precision (1e-6) this test used before conversion, so the
+// golden still pins the value to at least that tolerance.
 func TestFormatParseRoundTrip(t *testing.T) {
-	tests := []struct {
-		name string
-		in   float64
-	}{
-		{name: "goodput ratio", in: 0.857142},
-		{name: "zero", in: 0},
-		{name: "bandwidth", in: 922.94},
-		{name: "negative", in: -3.5},
-		{name: "sub-millisecond step time", in: 0.000125},
+	p := testutil.TestCaseParser{
+		Subdir:         "format-parse-round-trip",
+		ExpectedSuffix: ".json",
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			In float64 `yaml:"in"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.InDelta(t, tt.in, Parse(Format(tt.in)), 1e-6,
-				"Format must round trip through Parse within storage precision")
-		})
-	}
+		got := Parse(Format(in.In))
+
+		b, err := json.MarshalIndent(struct {
+			RoundTripped string `json:"roundTripped"`
+		}{fmt.Sprintf("%.9f", got)}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
 }
 
 // Non-finite values round trip intact: strconv.ParseFloat accepts "NaN" and

@@ -1,0 +1,4 @@
+{
+  "input": "NVIDIA-H100-80GB-HBM3",
+  "want": "h100"
+}

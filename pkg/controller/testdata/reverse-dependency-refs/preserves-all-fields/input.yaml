@@ -1,0 +1,13 @@
+refs:
+  - apiVersion: v1
+    kind: ConfigMap
+    name: cm-a
+    namespace: ns
+    scope: workflow
+  - apiVersion: v1
+    kind: ConfigMap
+    name: cm-b
+    namespace: ns
+    scope: job
+    groupName: g0
+    iteration: 1

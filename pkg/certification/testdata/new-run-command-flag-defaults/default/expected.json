@@ -1,0 +1,102 @@
+[
+  {
+    "name": "category",
+    "default": "[]"
+  },
+  {
+    "name": "cert-file",
+    "default": ""
+  },
+  {
+    "name": "cleanup",
+    "default": "false"
+  },
+  {
+    "name": "context",
+    "default": ""
+  },
+  {
+    "name": "controller-pull-secret",
+    "default": ""
+  },
+  {
+    "name": "enable-checkpoint",
+    "default": "false"
+  },
+  {
+    "name": "enable-mnnvl",
+    "default": "false"
+  },
+  {
+    "name": "exit-duration-mins",
+    "default": "0"
+  },
+  {
+    "name": "gpus-per-node",
+    "default": "0"
+  },
+  {
+    "name": "image",
+    "default": ""
+  },
+  {
+    "name": "kubeconfig",
+    "default": ""
+  },
+  {
+    "name": "max-restarts",
+    "default": "0"
+  },
+  {
+    "name": "max-steps",
+    "default": "0"
+  },
+  {
+    "name": "name",
+    "default": ""
+  },
+  {
+    "name": "namespace",
+    "default": ""
+  },
+  {
+    "name": "nodes-per-job",
+    "default": "0"
+  },
+  {
+    "name": "repeat-count",
+    "default": "0"
+  },
+  {
+    "name": "results-file",
+    "default": ""
+  },
+  {
+    "name": "setup",
+    "default": "false"
+  },
+  {
+    "name": "storage-class",
+    "default": ""
+  },
+  {
+    "name": "timeout",
+    "default": "30m0s"
+  },
+  {
+    "name": "wait",
+    "default": "false"
+  },
+  {
+    "name": "workload-registry",
+    "default": ""
+  },
+  {
+    "name": "workload-registry-password",
+    "default": ""
+  },
+  {
+    "name": "workload-registry-username",
+    "default": ""
+  }
+]

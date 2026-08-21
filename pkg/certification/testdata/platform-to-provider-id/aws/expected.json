@@ -1,0 +1,5 @@
+{
+  "platform": "aws",
+  "result": "aws://synthetic/render",
+  "empty": false
+}
