@@ -143,6 +143,14 @@ kubectl ncre certification report <name> -n <namespace>
 Helm, or need to pin the controller image in your own manifests, both are
 published to the GitHub Container Registry on every release.
 
+While this repository is internal, Helm needs to authenticate to the registry
+before it can pull the chart:
+
+```bash
+gh auth token | helm registry login ghcr.io \
+  --username "$(gh api user --jq .login)" --password-stdin
+```
+
 ```bash
 CRE_VERSION=v0.1.0-rc.8
 
@@ -180,12 +188,16 @@ spec:
   framework:
     mpi:
       binary: /usr/local/bin/all_reduce_perf_mpi
-      mpirunPath: /usr/local/bin/mpirun
+      mpirunPath: /usr/local/mpi/bin/mpirun
       args: ["-b", "8", "-e", "32G", "-f", "2", "-n", "100"]
   bandwidthMeasurement:
     logProfileRef: nccl-bandwidth
     testType: all_reduce
 ```
+
+`numNodes` is the node count **per job group**, not the total: CRE partitions all
+eligible nodes into groups of this size and runs one job per group, so
+`numNodes: 4` on a 16-node cluster produces four 4-node jobs.
 
 ```bash
 kubectl ncre workloadrun run nccl-all-reduce.yaml --wait

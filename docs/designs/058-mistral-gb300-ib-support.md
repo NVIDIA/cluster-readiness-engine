@@ -59,7 +59,7 @@ No existing platform override targets Mistral, and no catalog path emits `rdma/i
 
 ## Notes
 
-- Per-pod `rdma/ib` count, Nemotron6 dep parity with [`gb300-roce-nemo6.yaml`](../../pkg/catalog/entries/_lib/deps/gb300-roce-nemo6.yaml), and whether the `dcgm-level4` diagnostics entry needs a mistral-specific override are finalized during implementation; the plan enumerates them as open sub-questions.
+- Per-pod `rdma/ib` count, Nemotron6 dep parity with [`gb300-roce-torch.yaml`](../../pkg/catalog/entries/_lib/deps/gb300-roce-torch.yaml), and whether the `dcgm-level4` diagnostics entry needs a mistral-specific override are finalized during implementation; the plan enumerates them as open sub-questions.
 - `GpusPerNode` default for GB300 is handled by [`pkg/gpu/`](../../pkg/gpu/) defaults. The example node reports `nvidia.com/gpu.count: 4`; we confirm this matches the catalog default before committing.
 
 ## References
