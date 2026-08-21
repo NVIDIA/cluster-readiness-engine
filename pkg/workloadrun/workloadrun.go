@@ -174,6 +174,13 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 		return err
 	}
 
+	// Bake platform mpirun args into the spec before the job template is
+	// built, exactly as the controller does at reconcile time.
+	if platformFlag != "" {
+		applyPlatformMPIArgs(run, platformFlag, gpuArch,
+			gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
+	}
+
 	// Build WorkflowSpec.
 	workflowSpec := BuildWorkflowSpec(run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
 
@@ -365,6 +372,33 @@ func BuildWorkflowSpec(
 	return workflowSpec
 }
 
+// applyPlatformMPIArgs bakes platform-override mpirun args into the run spec
+// before the job template is built, mirroring applyWRPreTemplateOverrides in
+// the controller reconcile path. Without this the render preview would omit
+// the platform transport pins (e.g. the AWS GB300 RoCE --mca args) that the
+// controller prepends on a live cluster. No-op for non-MPI frameworks.
+func applyPlatformMPIArgs(
+	run *crev1alpha1.WorkloadRun, platformName, gpuArch string,
+	gpusPerNode, mlnxPerNode int32, enableMNNVL bool, frameworkType string,
+) {
+	if run.Spec.Framework.MPI == nil {
+		return
+	}
+	wrOverrides := platform.BuildOverrides(platform.OverrideConfig{
+		EntryName:     run.Name,
+		NodesPerJob:   nodesPerJobForScale(run.Spec.Orchestration, run.Spec.NumNodes),
+		GpusPerNode:   gpusPerNode,
+		MlnxPerNode:   mlnxPerNode,
+		EnableMNNVL:   enableMNNVL,
+		FrameworkType: frameworkType,
+	})
+	octx := controller.OverrideContext{
+		Platform:        platformName,
+		GPUArchitecture: gpuArch,
+	}
+	controller.ApplyWRPreTemplateOverrides(&run.Spec, wrOverrides, octx)
+}
+
 // validateExecFramework returns an error when the exec framework is implied
 // (neither Torch nor MPI is set) but spec.Framework.Exec is nil, which would
 // cause a nil-pointer dereference inside buildCLIJobTemplate.
@@ -522,6 +556,11 @@ func runWorkloadRunRenderDryRun(
 	if err := validateExecFramework(&run.Spec, run.Name); err != nil {
 		return err
 	}
+
+	// Bake platform mpirun args into the spec before the job template is
+	// built, exactly as the controller does at reconcile time.
+	applyPlatformMPIArgs(run, detectedPlatform, gpuArch,
+		gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
 
 	workflowSpec := BuildWorkflowSpec(
 		run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)

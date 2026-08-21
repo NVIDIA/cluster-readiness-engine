@@ -92,6 +92,26 @@ When `gangScheduler` is set, CRE modifies every pod template generated for the w
 
 See [API Reference: WorkloadRun](../api-reference/workloadrun.md) for validation details.
 
+## Platform overrides
+
+The controller detects the platform (from `spec.providerID`) and GPU
+architecture (from the `nvidia.com/gpu.product` node label) and applies
+platform-specific overrides automatically — the same `_lib/` fragments the
+certification catalog uses. For MPI workloads, override `mpiArgs` are
+prepended to the launcher command ahead of your own
+`spec.framework.mpi.mpiArgs`, so your values still win under OpenMPI's
+duplicate-parameter handling.
+
+| Platform | GPU | Framework | Effect |
+|----------|-----|-----------|--------|
+| AWS | all | all | Removes the EFA OFI NCCL plugin (`rm -rf /opt/amazon`, `unset NCCL_NET_PLUGIN`) |
+| AWS | all | MPI | Forwards `-x NCCL_NET_PLUGIN=none` to workers via mpirun |
+| AWS | GB300 | MPI | Pins OpenMPI transport to TCP on `eth0` (`--mca pml ob1`, `--mca btl tcp,self`, …), disables UCC/HCOLL (SIGSEGV in `MPI_Init` on RoCE otherwise), and forwards the RoCE NCCL env (`NCCL_SOCKET_IFNAME=eth0`, `NCCL_IB_GID_INDEX=3`, …) via `mpirun -x` |
+| AWS | GB200/GB300 | all | ComputeDomain + DRA resource claims; GB300 adds the RoCE `ResourceClaimTemplate` |
+
+Use `ncrectl workloadrun render --platform aws my-workload.yaml` to preview
+the exact rendered Workflow, including the platform-applied mpirun args.
+
 ## View results
 
 ```bash
