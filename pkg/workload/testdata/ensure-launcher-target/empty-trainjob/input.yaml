@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An MPI WorkloadRun TrainJob starts with no runtimePatches. EnsureLauncherTarget
+# must register bare node and launcher entries so the Workflow controller's
+# affinity/toleration setters target the launcher too (issue #175 UAT).
+spec:
+  trainJob: {}

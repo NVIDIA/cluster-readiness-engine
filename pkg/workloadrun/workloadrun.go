@@ -469,6 +469,13 @@ func buildCLIJobTemplate(
 
 	workload.SetImagePullSecrets(trainJobSpec, spec.ImagePullSecrets)
 
+	// MPI runs have a launcher replicated job that must be pinned and
+	// tolerated like the workers — mirrors buildJobTemplate in the
+	// controller reconcile path (issue #175 UAT).
+	if frameworkType == controller.FrameworkMPI {
+		workload.EnsureLauncherTarget(trainJobSpec)
+	}
+
 	jobSpec := crev1alpha1.JobSpec{
 		Workload: crev1alpha1.WorkloadSpec{
 			TrainJob: trainJobSpec,

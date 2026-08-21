@@ -45,6 +45,25 @@
                 "numNodes": 2,
                 "numProcPerNode": 4
               },
+              "runtimePatches": [
+                {
+                  "manager": "cre.nvidia.com/controller",
+                  "trainingRuntimeSpec": {
+                    "template": {
+                      "spec": {
+                        "replicatedJobs": [
+                          {
+                            "name": "node"
+                          },
+                          {
+                            "name": "launcher"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ],
               "suspend": false,
               "managedBy": "trainer.kubeflow.org/trainjob-controller"
             }

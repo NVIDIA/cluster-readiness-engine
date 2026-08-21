@@ -40,11 +40,30 @@
                   "-c"
                 ],
                 "args": [
-                  "rm -rf /opt/amazon\nunset NCCL_NET_PLUGIN\nunset NCCL_TUNER_PLUGIN\nunset AWS_OFI_NCCL_VERSION\nexec \"timeout\" \"3600\" \"/usr/local/mpi/bin/mpirun\" \"-N\" \"4\" \"--allow-run-as-root\" \"--mca\" \"plm_rsh_args\" \"-o StrictHostKeyChecking=no -o ConnectionAttempts=10\" \"-x\" \"NCCL_DEBUG=INFO\" \"-x\" \"NCCL_MNNVL_ENABLE=0\" \"--mca\" \"orte_keep_fqdn_hostnames\" \"true\" \"--mca\" \"pml\" \"ob1\" \"--mca\" \"btl\" \"tcp,self\" \"--mca\" \"btl_tcp_if_include\" \"eth0\" \"--mca\" \"oob\" \"tcp\" \"--mca\" \"oob_tcp_if_include\" \"eth0\" \"--mca\" \"coll_ucc_enable\" \"0\" \"--mca\" \"coll_hcoll_enable\" \"0\" \"-x\" \"NCCL_DEBUG_SUBSYS=NET,INIT\" \"-x\" \"NCCL_SOCKET_IFNAME=eth0\" \"-x\" \"NCCL_IB_GID_INDEX=3\" \"-x\" \"NCCL_NVLS_ENABLE=1\" \"-x\" \"NCCL_CUMEM_ENABLE=1\" \"-x\" \"NCCL_NET_GDR_C2C=1\" \"-x\" \"NCCL_NET_PLUGIN=none\" \"--tag-output\" \"/usr/local/bin/all_reduce_perf_mpi\" \"-b\" \"8\" \"-e\" \"32G\" \"-f\" \"2\""
+                  "rm -rf /opt/amazon\nunset NCCL_NET_PLUGIN\nunset NCCL_TUNER_PLUGIN\nunset AWS_OFI_NCCL_VERSION\nexec \"timeout\" \"3600\" \"/usr/local/mpi/bin/mpirun\" \"-N\" \"4\" \"--allow-run-as-root\" \"--mca\" \"plm_rsh_args\" \"-o StrictHostKeyChecking=no -o ConnectionAttempts=10\" \"-x\" \"NCCL_DEBUG=INFO\" \"-x\" \"NCCL_MNNVL_ENABLE=1\" \"--mca\" \"orte_keep_fqdn_hostnames\" \"true\" \"--mca\" \"pml\" \"ob1\" \"--mca\" \"btl\" \"tcp,self\" \"--mca\" \"btl_tcp_if_include\" \"eth0\" \"--mca\" \"oob\" \"tcp\" \"--mca\" \"oob_tcp_if_include\" \"eth0\" \"--mca\" \"coll_ucc_enable\" \"0\" \"--mca\" \"coll_hcoll_enable\" \"0\" \"-x\" \"NCCL_DEBUG_SUBSYS=NET,INIT\" \"-x\" \"NCCL_SOCKET_IFNAME=eth0\" \"-x\" \"NCCL_IB_GID_INDEX=3\" \"-x\" \"NCCL_NVLS_ENABLE=1\" \"-x\" \"NCCL_CUMEM_ENABLE=1\" \"-x\" \"NCCL_NET_GDR_C2C=1\" \"-x\" \"NCCL_NET_PLUGIN=none\" \"--tag-output\" \"/usr/local/bin/all_reduce_perf_mpi\" \"-b\" \"8\" \"-e\" \"32G\" \"-f\" \"2\""
                 ],
                 "numNodes": 2,
                 "numProcPerNode": 4
               },
+              "runtimePatches": [
+                {
+                  "manager": "cre.nvidia.com/controller",
+                  "trainingRuntimeSpec": {
+                    "template": {
+                      "spec": {
+                        "replicatedJobs": [
+                          {
+                            "name": "node"
+                          },
+                          {
+                            "name": "launcher"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ],
               "suspend": false,
               "managedBy": "trainer.kubeflow.org/trainjob-controller"
             }
