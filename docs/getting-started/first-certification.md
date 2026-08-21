@@ -119,7 +119,7 @@ What happens:
 3. The controller creates one Workflow for the category, the Workflow creates a Job, and the Job runs the NCCL test through Kubeflow Trainer across all target nodes.
 4. With `--wait`, the CLI prints a status line on every change and a heartbeat every 15 seconds, then prints the report.
 
-The default `--timeout` is 30 minutes. The command above raises it to 60. Training categories need more; give them hours, not minutes.
+The default `--timeout` is 30 minutes. The command above raises it to 60. Training categories need more; give them hours, not minutes. If the timeout expires, the CLI prints and optionally writes a partial `RUNNING` report, then exits with an error. The Certification continues in the cluster unless you passed `--cleanup`.
 
 ## Step 5: read the report
 
@@ -172,7 +172,7 @@ kubectl ncre setup reset
 | `no nodes have nvidia.com/gpu.product label` | GPU Operator (feature discovery) is not running. | Install or fix the GPU Operator. |
 | `heterogeneous GPUs: ...` | Target nodes mix GPU products. | Certify one product at a time with a narrower `spec.target.nodeSelector` in a `--cert-file` YAML. |
 | `no GPU nodes match target` | All candidate nodes are cordoned, or the `nvidia.com/gpu.product` label is missing (GPU Operator not running). | `kubectl uncordon` the nodes you want tested, or install the GPU Operator. |
-| The watch stops at the timeout | The default `--timeout` is 30 minutes. | Raise `--timeout`. Training runs need hours. The Certification keeps running in the cluster; re-attach with `kubectl get certification <name> -n <namespace> -w`. |
+| The watch stops at the timeout | The default `--timeout` is 30 minutes. | Read the partial report, then raise `--timeout` if needed. Without `--cleanup`, the Certification keeps running; monitor it with `kubectl get certification <name> -n <namespace> --watch`, print a new snapshot with `ncrectl certification report <name> -n <namespace>` (which exits nonzero while the run is active), or stop it with `kubectl delete certification <name> -n <namespace>`. |
 | `dev build "..." has no published chart` | You built `ncrectl` from source. Setup needs a released version to resolve the chart. | Use the installer binary, or pass `--version <chart-version>` to `setup init`. |
 | `certification report` finds nothing | The report command defaults to the `default` namespace. | Pass `-n <namespace>` from the run output. |
 

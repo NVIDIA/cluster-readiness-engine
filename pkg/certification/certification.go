@@ -6,6 +6,7 @@ package certification
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -451,6 +452,7 @@ type certRunConfig struct {
 	timeout                  time.Duration
 	configFlags              *kubeconfig.ConfigFlags
 	out                      io.Writer
+	watchClient              client.WithWatch // optional test client; production builds one from configFlags
 }
 
 // categoryRunOpts holds the optional CategoryOptions flags for the --category path.
@@ -592,7 +594,7 @@ Use --cleanup to teardown installed components after completion.`,
 	cmd.Flags().StringVar(&storageClass, "storage-class", "",
 		"StorageClass for PVC dependencies created by catalog entries")
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Minute,
-		"Timeout for --wait")
+		"Maximum time to wait; on timeout, print a partial report and leave the certification running unless --cleanup is set")
 	cmd.Flags().StringVar(&resultsFile, "results-file", "",
 		"Write certification report as JSON to this file path (requires --wait)")
 	configFlags.AddFlags(cmd.Flags())
@@ -761,9 +763,13 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 	}
 
 	// --- Create client early so cleanup defer can use it ---
-	wc, err := render.NewK8sWatchClient(cfg.configFlags)
-	if err != nil {
-		return fmt.Errorf("build kubernetes client: %w", err)
+	wc := cfg.watchClient
+	if wc == nil {
+		var err error
+		wc, err = render.NewK8sWatchClient(cfg.configFlags)
+		if err != nil {
+			return fmt.Errorf("build kubernetes client: %w", err)
+		}
 	}
 
 	// --- Cleanup defer (registered BEFORE setup so it runs on setup failures) ---
@@ -921,14 +927,91 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 
 	_, _ = fmt.Fprintln(out)
 	finalCert, waitErr := watchCertification(ctx, wc, cfg.cert.Name, cfg.namespace, cfg.timeout, out)
+	pipelineErr = finishCertificationWait(ctx, wc, cfg, finalCert, waitErr)
+	return pipelineErr
+}
 
-	// --- Report phase (only when we have a cert; nil on timeout or watch failure) ---
-	if finalCert != nil {
-		handleReport(ctx, wc, finalCert, cfg.resultsFile, waitErr, out)
+// finishCertificationWait reports the best available state after the watch
+// finishes. A timeout ends only the CLI watch, so retrieve the still-live
+// Certification and emit a partial report before any deferred cleanup runs.
+func finishCertificationWait(
+	ctx context.Context, wc client.WithWatch, cfg *certRunConfig,
+	finalCert *burninv1alpha1.Certification, waitErr error,
+) error {
+	timedOut := isCertificationWaitTimeout(waitErr)
+	reportCtx := ctx
+	if timedOut {
+		var cancel context.CancelFunc
+		reportCtx, cancel = context.WithTimeout(ctx, postTimeoutReportTimeout)
+		defer cancel()
 	}
 
-	pipelineErr = waitErr
-	return pipelineErr
+	var retrievalErr error
+	if finalCert == nil && timedOut {
+		current := &burninv1alpha1.Certification{}
+		key := client.ObjectKey{Name: cfg.cert.Name, Namespace: cfg.namespace}
+		if err := wc.Get(reportCtx, key, current); err != nil {
+			retrievalErr = err
+			if apierrors.IsNotFound(err) {
+				_, _ = fmt.Fprintf(cfg.out,
+					"Certification %q no longer exists after timeout; partial report unavailable.\n",
+					cfg.cert.Name)
+			} else {
+				_, _ = fmt.Fprintf(cfg.out,
+					"Warning: could not retrieve certification %q after timeout; partial report unavailable: %v\n",
+					cfg.cert.Name, err)
+			}
+		} else {
+			finalCert = current
+		}
+	}
+
+	if finalCert != nil {
+		handleReport(reportCtx, wc, finalCert, cfg.resultsFile, waitErr, cfg.out)
+		if timedOut && errors.Is(reportCtx.Err(), context.DeadlineExceeded) {
+			_, _ = fmt.Fprintln(cfg.out,
+				"Warning: timed out fetching all data for the partial report; some details may be missing.")
+		}
+	}
+
+	if timedOut && !cfg.doCleanup {
+		switch {
+		case finalCert != nil && certificationIsTerminal(finalCert):
+			_, _ = fmt.Fprintln(cfg.out,
+				"The certification completed while the timeout was being handled.")
+
+		case finalCert != nil:
+			_, _ = fmt.Fprintf(cfg.out, `
+The certification is still running in namespace %s.
+Monitor its progress:
+  kubectl get certification %s -n %s --watch
+Print an updated report (exits nonzero while still running):
+  ncrectl certification report %s -n %s
+Stop it:
+  kubectl delete certification %s -n %s
+`, cfg.namespace,
+				cfg.cert.Name, cfg.namespace,
+				cfg.cert.Name, cfg.namespace,
+				cfg.cert.Name, cfg.namespace)
+
+		case retrievalErr != nil && !apierrors.IsNotFound(retrievalErr):
+			_, _ = fmt.Fprintf(cfg.out, `
+Unable to determine whether the certification is still running in namespace %s.
+Check its status:
+  kubectl get certification %s -n %s
+`, cfg.namespace, cfg.cert.Name, cfg.namespace)
+		}
+	}
+
+	return waitErr
+}
+
+func certificationIsTerminal(cert *burninv1alpha1.Certification) bool {
+	return apimeta.IsStatusConditionTrue(
+		cert.Status.Conditions, burninv1alpha1.CertificationSucceeded,
+	) || apimeta.IsStatusConditionTrue(
+		cert.Status.Conditions, burninv1alpha1.CertificationFailed,
+	)
 }
 
 // handleReport builds and prints the certification report, optionally writing
@@ -939,9 +1022,9 @@ func handleReport(
 	waitErr error, out io.Writer,
 ) {
 	r := report.Build(ctx, wc, cert)
-	dest := os.Stdout
+	var dest io.Writer = os.Stdout
 	if waitErr != nil {
-		dest = os.Stderr
+		dest = out
 	}
 	report.Print(dest, r)
 
@@ -998,6 +1081,34 @@ func generateCertNamespace() string {
 // Lifecycle helpers
 // ---------------------------------------------------------------------------
 
+const postTimeoutReportTimeout = 30 * time.Second
+
+// certificationWaitTimeoutError identifies the CLI watch deadline without
+// changing the existing user-facing error text.
+type certificationWaitTimeoutError struct {
+	timeout time.Duration
+	elapsed time.Duration
+}
+
+func (e *certificationWaitTimeoutError) Error() string {
+	return fmt.Sprintf("certification did not complete within %s (ran for %s)", e.timeout, e.elapsed)
+}
+
+func isCertificationWaitTimeout(err error) bool {
+	var timeoutErr *certificationWaitTimeoutError
+	return errors.As(err, &timeoutErr)
+}
+
+func certificationWaitContextError(ctx context.Context, timeout time.Duration, start time.Time) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return &certificationWaitTimeoutError{
+			timeout: timeout,
+			elapsed: time.Since(start).Truncate(time.Second),
+		}
+	}
+	return ctx.Err()
+}
+
 // watchCertification watches the Certification via K8s watch mechanism
 // and returns the final Certification object on terminal condition.
 // The watch is automatically reconnected when the API server closes it
@@ -1025,8 +1136,7 @@ func watchCertification(
 			client.MatchingFields{"metadata.name": name})
 		if err != nil {
 			if ctx.Err() != nil {
-				elapsed := time.Since(start).Truncate(time.Second)
-				return nil, fmt.Errorf("certification did not complete within %s (ran for %s)", timeout, elapsed)
+				return nil, certificationWaitContextError(ctx, timeout, start)
 			}
 			return nil, fmt.Errorf("start watch: %w", err)
 		}
@@ -1034,12 +1144,14 @@ func watchCertification(
 		cert, done, watchErr := processWatchEvents(ctx, wc, watcher, start, lastStatuses, heartbeat, out)
 		watcher.Stop()
 		if done {
+			if cert == nil && ctx.Err() != nil {
+				return nil, certificationWaitContextError(ctx, timeout, start)
+			}
 			return cert, watchErr
 		}
 		// Watch channel closed by API server — reconnect unless timed out.
 		if ctx.Err() != nil {
-			elapsed := time.Since(start).Truncate(time.Second)
-			return nil, fmt.Errorf("certification did not complete within %s (ran for %s)", timeout, elapsed)
+			return nil, certificationWaitContextError(ctx, timeout, start)
 		}
 	}
 }
@@ -1096,6 +1208,9 @@ func processWatchEvents(
 				}
 				return cert, true, fmt.Errorf("certification failed")
 			}
+
+		case <-ctx.Done():
+			return nil, true, ctx.Err()
 
 		case <-heartbeat.C:
 			elapsed := time.Since(start).Truncate(time.Second)

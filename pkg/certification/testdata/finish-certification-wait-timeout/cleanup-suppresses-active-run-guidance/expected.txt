@@ -1,0 +1,13 @@
+Certification Report
+
+Name:      timeout-cert
+
+communication/nccl-all-reduce
+Status:    Running
+
+Summary
+Categories:   0/1 passed
+Failed Nodes: none
+Result:       RUNNING
+
+Results written to <results-file>

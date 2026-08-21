@@ -1,0 +1,10 @@
+Certification Report
+
+Name:      timeout-cert
+
+Summary
+Categories:   0/0 passed
+Failed Nodes: none
+Result:       PASSED
+
+The certification completed while the timeout was being handled.

@@ -25,7 +25,7 @@ ncrectl certification run --category communication/nccl-all-reduce [flags]
 | `--setup` | `false` | Install CRDs, controller, and LogProfiles before creating the certification |
 | `--image` | — | Controller image for `--setup` (default: `ghcr.io/nvidia/cluster-readiness-engine/manager:<version>`) |
 | `--wait` | `false` | Block until the certification completes and print a report |
-| `--timeout` | `30m` | Timeout for `--wait` |
+| `--timeout` | `30m` | Maximum time to wait; on timeout, print a partial report and leave the Certification running unless `--cleanup` is set |
 | `--cleanup` | `false` | Delete the certification, namespace, and installed components after completion |
 | `--nodes-per-job` | `0` | Nodes per job (0 = auto-select) |
 | `--gpus-per-node` | `0` | GPUs per node (0 = auto-detect from GPU architecture) |
@@ -41,6 +41,8 @@ ncrectl certification run --category communication/nccl-all-reduce [flags]
 | `--workload-registry` | — | Registry server for workload image pull (e.g. `nvcr.io`, `ghcr.io`) — required when `--workload-registry-password` is set |
 | `--workload-registry-username` | — | Registry username for workload image pull (e.g. `$oauthtoken` for NGC) — required when `--workload-registry-password` is set |
 | `--workload-registry-password` | — | Registry password or API key — creates an `ncrectl-pull-<name>` imagePullSecret in the namespace, deleted automatically when the Certification is deleted |
+
+When `--wait` reaches its timeout, the command prints the Certification's current report, writes it to `--results-file` when requested, and exits with a timeout error. Without `--cleanup`, the Certification continues running in the cluster; the timeout stops only the CLI watch. The timeout output includes commands to watch its progress, print an updated report, or stop it. `ncrectl certification report` exits nonzero while the Certification is still running. With `--cleanup`, the partial report is produced before the Certification and its child resources are deleted.
 
 ### Examples
 
