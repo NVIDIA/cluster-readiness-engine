@@ -15,8 +15,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	sigsyaml "sigs.k8s.io/yaml"
 
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/kubeconfig"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -175,7 +175,7 @@ func TestParseImage(t *testing.T) {
 func TestDefaultImage(t *testing.T) {
 	img := defaultImage("dev")
 	assert.Equal(t, defaultImageRegistry+"/"+defaultImageRepository+":"+"dev", img)
-	assert.Contains(t, img, "ghcr.io/nvidia/cluster-readiness-engine/manager:")
+	assert.Contains(t, img, "ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager:")
 }
 
 // ---------------------------------------------------------------------------

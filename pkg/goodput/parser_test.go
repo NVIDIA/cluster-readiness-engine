@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 	"sigs.k8s.io/yaml"
 
-	"github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
 )
 
 // ──────────────────────────────────────────────────────────────────────────────

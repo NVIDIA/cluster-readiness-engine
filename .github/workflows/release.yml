@@ -26,7 +26,7 @@ jobs:
   helm-publish:
     name: Publish Helm Chart
     runs-on: linux-amd64-cpu16
-    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    if: github.repository == 'dsx-ai-factory/cluster-readiness-engine'
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,11 +47,15 @@ jobs:
 
       - name: Package and push Helm chart
         run: make helm-push
+        env:
+          # Derive the OCI registry from the repository so a future org
+          # transfer cannot leave this workflow pushing to a stale path.
+          HELM_OCI_REGISTRY: oci://ghcr.io/${{ github.repository_owner }}
 
   build-cli:
     name: Build CLI Binaries
     runs-on: linux-amd64-cpu16
-    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    if: github.repository == 'dsx-ai-factory/cluster-readiness-engine'
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -76,7 +80,7 @@ jobs:
   create-github-release:
     name: Create GitHub Release
     runs-on: linux-amd64-cpu16
-    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    if: github.repository == 'dsx-ai-factory/cluster-readiness-engine'
     timeout-minutes: 10
     needs:
       - helm-publish
@@ -146,14 +150,14 @@ jobs:
             and communication workloads across topology-aware node groups,
             measures goodput and bandwidth, detects hardware failures, and
             quarantines bad nodes. See the
-            [README](https://github.com/NVIDIA/cluster-readiness-engine/blob/${{ steps.tag.outputs.value }}/README.md)
+            [README](https://github.com/${{ github.repository }}/blob/${{ steps.tag.outputs.value }}/README.md)
             for the full feature list.
 
             ## Install ncrectl
 
             ```bash
             # Requires gh CLI authenticated, or GITHUB_TOKEN set.
-            curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${{ steps.tag.outputs.value }}/installer | bash -s -- -v ${{ steps.tag.outputs.value }}
+            curl -sSL https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.value }}/installer | bash -s -- -v ${{ steps.tag.outputs.value }}
             ```
 
             The version is named explicitly because `releases/latest` resolves only to
@@ -161,21 +165,21 @@ jobs:
             Once `v0.1.0` is tagged, this shorter form installs the newest stable one:
 
             ```bash
-            curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
+            curl -sSL https://github.com/${{ github.repository }}/releases/latest/download/installer | bash
             ```
 
             ## Helm Chart
 
             ```bash
             helm install cluster-readiness-engine \
-              oci://ghcr.io/nvidia/cluster-readiness-engine \
+              oci://ghcr.io/${{ github.repository }} \
               --version ${{ steps.tag.outputs.value }} \
               --namespace cluster-readiness-engine \
               --create-namespace
             ```
 
             The controller image for this release is
-            `ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}`.
+            `ghcr.io/${{ github.repository }}/manager:${{ steps.tag.outputs.value }}`.
 
             ## ncrectl CLI
 
@@ -200,14 +204,14 @@ jobs:
             ## Third-Party Notices
 
             Third-party Go module licenses are listed in
-            [`THIRD_PARTY_NOTICES.md`](https://github.com/NVIDIA/cluster-readiness-engine/blob/${{ steps.tag.outputs.value }}/THIRD_PARTY_NOTICES.md)
+            [`THIRD_PARTY_NOTICES.md`](https://github.com/${{ github.repository }}/blob/${{ steps.tag.outputs.value }}/THIRD_PARTY_NOTICES.md)
             and attached as a release asset.
 
             ## Support
 
-            - Ask questions in [GitHub Discussions](https://github.com/NVIDIA/cluster-readiness-engine/discussions).
-            - Report bugs with the [issue templates](https://github.com/NVIDIA/cluster-readiness-engine/issues/new/choose).
-            - Report security issues per [SECURITY.md](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/SECURITY.md), never through GitHub issues.
+            - Ask questions in [GitHub Discussions](https://github.com/${{ github.repository }}/discussions).
+            - Report bugs with the [issue templates](https://github.com/${{ github.repository }}/issues/new/choose).
+            - Report security issues per [SECURITY.md](https://github.com/${{ github.repository }}/blob/main/SECURITY.md), never through GitHub issues.
           files: |
             dist/ncrectl-*
             dist/installer

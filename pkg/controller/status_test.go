@@ -19,13 +19,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
 )
 
 func newWorkflowScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 	s := runtime.NewScheme()
-	require.NoError(t, burninv1alpha1.AddToScheme(s))
+	require.NoError(t, crev1alpha1.AddToScheme(s))
 	return s
 }
 
@@ -48,7 +48,7 @@ func TestUpdateStatusWithRetryRecoversFromConflict(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 
-			wf := &burninv1alpha1.Workflow{
+			wf := &crev1alpha1.Workflow{
 				ObjectMeta: metav1.ObjectMeta{Name: "wf", Namespace: "default"},
 			}
 
@@ -58,7 +58,7 @@ func TestUpdateStatusWithRetryRecoversFromConflict(t *testing.T) {
 			c := fake.NewClientBuilder().
 				WithScheme(newWorkflowScheme(t)).
 				WithObjects(wf).
-				WithStatusSubresource(&burninv1alpha1.Workflow{}).
+				WithStatusSubresource(&crev1alpha1.Workflow{}).
 				WithInterceptorFuncs(interceptor.Funcs{
 					SubResourceUpdate: func(
 						ctx context.Context, cl client.Client, subResourceName string,
@@ -68,7 +68,7 @@ func TestUpdateStatusWithRetryRecoversFromConflict(t *testing.T) {
 						if remaining > 0 {
 							remaining--
 							return apierrors.NewConflict(
-								schema.GroupResource{Group: burninv1alpha1.GroupVersion.Group, Resource: "workflows"},
+								schema.GroupResource{Group: crev1alpha1.GroupVersion.Group, Resource: "workflows"},
 								obj.GetName(), errors.New("simulated stale write"))
 						}
 						return cl.Status().Update(ctx, obj, opts...)
@@ -76,14 +76,14 @@ func TestUpdateStatusWithRetryRecoversFromConflict(t *testing.T) {
 				}).
 				Build()
 
-			obj := &burninv1alpha1.Workflow{}
+			obj := &crev1alpha1.Workflow{}
 			require.NoError(t, c.Get(ctx, types.NamespacedName{Name: "wf", Namespace: "default"}, obj))
 
 			mutations := 0
-			err := updateStatusWithRetry(ctx, c, obj, func(w *burninv1alpha1.Workflow) bool {
+			err := updateStatusWithRetry(ctx, c, obj, func(w *crev1alpha1.Workflow) bool {
 				mutations++
 				return meta.SetStatusCondition(&w.Status.Conditions, metav1.Condition{
-					Type:    burninv1alpha1.WorkflowInProgress,
+					Type:    crev1alpha1.WorkflowInProgress,
 					Status:  metav1.ConditionTrue,
 					Reason:  ReasonJobRunning,
 					Message: "running",
@@ -100,9 +100,9 @@ func TestUpdateStatusWithRetryRecoversFromConflict(t *testing.T) {
 			require.GreaterOrEqual(t, writes, tt.wantMinWrites)
 
 			// The condition must actually be persisted, not merely applied in memory.
-			stored := &burninv1alpha1.Workflow{}
+			stored := &crev1alpha1.Workflow{}
 			require.NoError(t, c.Get(ctx, types.NamespacedName{Name: "wf", Namespace: "default"}, stored))
-			require.True(t, CondIsTrue(stored.Status.Conditions, burninv1alpha1.WorkflowInProgress))
+			require.True(t, CondIsTrue(stored.Status.Conditions, crev1alpha1.WorkflowInProgress))
 		})
 	}
 }
@@ -113,7 +113,7 @@ func TestUpdateStatusWithRetryRecoversFromConflict(t *testing.T) {
 func TestUpdateStatusWithRetrySkipsWriteWhenUnchanged(t *testing.T) {
 	ctx := context.Background()
 
-	wf := &burninv1alpha1.Workflow{
+	wf := &crev1alpha1.Workflow{
 		ObjectMeta: metav1.ObjectMeta{Name: "wf", Namespace: "default"},
 	}
 
@@ -121,7 +121,7 @@ func TestUpdateStatusWithRetrySkipsWriteWhenUnchanged(t *testing.T) {
 	c := fake.NewClientBuilder().
 		WithScheme(newWorkflowScheme(t)).
 		WithObjects(wf).
-		WithStatusSubresource(&burninv1alpha1.Workflow{}).
+		WithStatusSubresource(&crev1alpha1.Workflow{}).
 		WithInterceptorFuncs(interceptor.Funcs{
 			SubResourceUpdate: func(
 				ctx context.Context, cl client.Client, subResourceName string,
@@ -133,10 +133,10 @@ func TestUpdateStatusWithRetrySkipsWriteWhenUnchanged(t *testing.T) {
 		}).
 		Build()
 
-	obj := &burninv1alpha1.Workflow{}
+	obj := &crev1alpha1.Workflow{}
 	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: "wf", Namespace: "default"}, obj))
 
-	require.NoError(t, updateStatusWithRetry(ctx, c, obj, func(*burninv1alpha1.Workflow) bool {
+	require.NoError(t, updateStatusWithRetry(ctx, c, obj, func(*crev1alpha1.Workflow) bool {
 		return false
 	}))
 	require.Zero(t, writes, "a no-op mutation must not issue a status write")

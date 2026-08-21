@@ -10,8 +10,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/nodemonitor"
 )
 
 // Field index names. Reads that filter on these fields must use
@@ -75,9 +75,9 @@ func RegisterFieldIndexes(ctx context.Context, indexer client.FieldIndexer) erro
 		return fmt.Errorf("registering PersistentVolume claimRef index: %w", err)
 	}
 
-	if err := indexer.IndexField(ctx, &burninv1alpha1.GoodputMeasurement{}, measurementJobRefIndexField,
+	if err := indexer.IndexField(ctx, &crev1alpha1.GoodputMeasurement{}, measurementJobRefIndexField,
 		func(obj client.Object) []string {
-			m, ok := obj.(*burninv1alpha1.GoodputMeasurement)
+			m, ok := obj.(*crev1alpha1.GoodputMeasurement)
 			if !ok || m.Spec.JobRef.Name == "" {
 				return nil
 			}
@@ -86,9 +86,9 @@ func RegisterFieldIndexes(ctx context.Context, indexer client.FieldIndexer) erro
 		return fmt.Errorf("registering GoodputMeasurement jobRef index: %w", err)
 	}
 
-	if err := indexer.IndexField(ctx, &burninv1alpha1.BandwidthMeasurement{}, measurementJobRefIndexField,
+	if err := indexer.IndexField(ctx, &crev1alpha1.BandwidthMeasurement{}, measurementJobRefIndexField,
 		func(obj client.Object) []string {
-			m, ok := obj.(*burninv1alpha1.BandwidthMeasurement)
+			m, ok := obj.(*crev1alpha1.BandwidthMeasurement)
 			if !ok || m.Spec.JobRef.Name == "" {
 				return nil
 			}

@@ -11,12 +11,12 @@ set -euo pipefail
 # Installs ncrectl if it is not present; upgrades it if it already is.
 #
 # Usage:
-#   curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
+#   curl -sSL https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/latest/download/installer | bash
 #   curl -sSL <url> | bash -s -- -d /custom/path
 # ---------------------------------------------------------------------------
 
 # Configuration
-GH_REPO="NVIDIA/cluster-readiness-engine"
+GH_REPO="dsx-ai-factory/cluster-readiness-engine"
 GH_API_URL="https://api.github.com/repos/${GH_REPO}"
 GH_RELEASE_URL="https://github.com/${GH_REPO}/releases/download"
 BIN_NAME="ncrectl"

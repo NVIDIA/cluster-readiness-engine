@@ -1,4 +1,4 @@
-module github.com/NVIDIA/cluster-readiness-engine
+module github.com/dsx-ai-factory/cluster-readiness-engine
 
 go 1.26.6
 

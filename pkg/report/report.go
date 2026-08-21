@@ -21,10 +21,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/numstr"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/noderesults"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/numstr"
 )
 
 const (
@@ -100,20 +100,20 @@ type IterationReport struct {
 
 // DiagnoseReport holds results from the adaptive fault isolation algorithm.
 type DiagnoseReport struct {
-	Stage                string                                          `json:"stage"`
-	Rounds               int                                             `json:"rounds"`
-	HealthyCount         int                                             `json:"healthyCount"`
-	SuspectCount         int                                             `json:"suspectCount"`
-	ConfirmedFaulty      []string                                        `json:"confirmedFaulty,omitempty"`
-	InfrastructureFaults []burninv1alpha1.InfrastructureFault            `json:"infrastructureFaults,omitempty"`
-	ScreeningResults     map[string]burninv1alpha1.DomainScreeningResult `json:"-"` // not serialized, used for rendering
-	MaxBW                string                                          `json:"maxBW,omitempty"`
-	MaxBWDomain          string                                          `json:"maxBWDomain,omitempty"`
-	MaxBWNodeList        []string                                        `json:"maxBWNodes,omitempty"`
-	MinBW                string                                          `json:"minBW,omitempty"`
-	MinBWDomain          string                                          `json:"minBWDomain,omitempty"`
-	MinBWNodeList        []string                                        `json:"minBWNodes,omitempty"`
-	Tests                []DiagnoseTestRow                               `json:"tests,omitempty"`
+	Stage                string                                       `json:"stage"`
+	Rounds               int                                          `json:"rounds"`
+	HealthyCount         int                                          `json:"healthyCount"`
+	SuspectCount         int                                          `json:"suspectCount"`
+	ConfirmedFaulty      []string                                     `json:"confirmedFaulty,omitempty"`
+	InfrastructureFaults []crev1alpha1.InfrastructureFault            `json:"infrastructureFaults,omitempty"`
+	ScreeningResults     map[string]crev1alpha1.DomainScreeningResult `json:"-"` // not serialized, used for rendering
+	MaxBW                string                                       `json:"maxBW,omitempty"`
+	MaxBWDomain          string                                       `json:"maxBWDomain,omitempty"`
+	MaxBWNodeList        []string                                     `json:"maxBWNodes,omitempty"`
+	MinBW                string                                       `json:"minBW,omitempty"`
+	MinBWDomain          string                                       `json:"minBWDomain,omitempty"`
+	MinBWNodeList        []string                                     `json:"minBWNodes,omitempty"`
+	Tests                []DiagnoseTestRow                            `json:"tests,omitempty"`
 }
 
 // DiagnoseTestRow holds one test result from the diagnose algorithm.
@@ -176,7 +176,7 @@ type GroupBandwidthRow struct {
 // the referenced ConfigMap and decoding the failed-nodes entry.
 func FailedNodesFromRef(
 	ctx context.Context, c client.Client, namespace string, ref *corev1.TypedLocalObjectReference,
-) []burninv1alpha1.FailedNode {
+) []crev1alpha1.FailedNode {
 	if ref == nil || ref.Name == "" {
 		return nil
 	}
@@ -193,7 +193,7 @@ func FailedNodesFromRef(
 
 // CertFailedNodes returns the deduped union of failed node names across all
 // categories, resolved from each category's nodeResultsRef ConfigMap.
-func CertFailedNodes(ctx context.Context, c client.Client, cert *burninv1alpha1.Certification) []string {
+func CertFailedNodes(ctx context.Context, c client.Client, cert *crev1alpha1.Certification) []string {
 	seen := make(map[string]struct{})
 	var union []string
 	for _, cat := range cert.Status.CategoryStatuses {
@@ -213,11 +213,11 @@ func CertFailedNodes(ctx context.Context, c client.Client, cert *burninv1alpha1.
 }
 
 // Build fetches Workflow and measurement data for a Certification (completed or running).
-func Build(ctx context.Context, c client.Client, cert *burninv1alpha1.Certification) *CertReport {
+func Build(ctx context.Context, c client.Client, cert *crev1alpha1.Certification) *CertReport {
 	result := "RUNNING"
-	if controller.CondIsTrue(cert.Status.Conditions, burninv1alpha1.CertificationFailed) {
+	if controller.CondIsTrue(cert.Status.Conditions, crev1alpha1.CertificationFailed) {
 		result = "FAILED"
-	} else if controller.CondIsTrue(cert.Status.Conditions, burninv1alpha1.CertificationSucceeded) {
+	} else if controller.CondIsTrue(cert.Status.Conditions, crev1alpha1.CertificationSucceeded) {
 		result = "PASSED"
 	}
 	report := &CertReport{
@@ -256,7 +256,7 @@ func Build(ctx context.Context, c client.Client, cert *burninv1alpha1.Certificat
 		}
 
 		if cs.WorkflowRef != nil {
-			wf := &burninv1alpha1.Workflow{}
+			wf := &crev1alpha1.Workflow{}
 			ns := cs.WorkflowRef.Namespace
 			if ns == "" {
 				ns = cert.Namespace
@@ -277,7 +277,7 @@ func Build(ctx context.Context, c client.Client, cert *burninv1alpha1.Certificat
 		if cs.WorkflowRef == nil {
 			continue
 		}
-		wf := &burninv1alpha1.Workflow{}
+		wf := &crev1alpha1.Workflow{}
 		ns := cs.WorkflowRef.Namespace
 		if ns == "" {
 			ns = cert.Namespace
@@ -345,7 +345,7 @@ func batchJobFailureReason(ctx context.Context, c client.Client, excalMsg, names
 
 func failureReasonFromConditions(conditions []metav1.Condition) string {
 	for _, cond := range conditions {
-		if cond.Type == burninv1alpha1.WorkflowFailed && cond.Status == metav1.ConditionTrue {
+		if cond.Type == crev1alpha1.WorkflowFailed && cond.Status == metav1.ConditionTrue {
 			return cond.Message
 		}
 	}
@@ -355,7 +355,7 @@ func failureReasonFromConditions(conditions []metav1.Condition) string {
 // buildFailedGroups collects failed orchestration groups with their root cause.
 // buildIterationReports creates per-iteration timing from iteration history
 // and the current iteration. Returns reports and total runtime string.
-func buildIterationReports(orch *burninv1alpha1.OrchestrationStatus) ([]IterationReport, string) {
+func buildIterationReports(orch *crev1alpha1.OrchestrationStatus) ([]IterationReport, string) {
 	if orch == nil {
 		return nil, ""
 	}
@@ -394,11 +394,11 @@ func buildIterationReports(orch *burninv1alpha1.OrchestrationStatus) ([]Iteratio
 }
 
 // iterGroupDuration computes duration and status from completed iteration groups.
-func iterGroupDuration(groups []burninv1alpha1.GroupIterationResult, now int64) (string, int64) {
+func iterGroupDuration(groups []crev1alpha1.GroupIterationResult, now int64) (string, int64) {
 	status := statusSucceeded
 	var earliest, latest int64
 	for _, g := range groups {
-		if g.Phase == burninv1alpha1.GroupFailed {
+		if g.Phase == crev1alpha1.GroupFailed {
 			status = statusFailed
 		}
 		if g.StartTime != nil {
@@ -424,15 +424,15 @@ func iterGroupDuration(groups []burninv1alpha1.GroupIterationResult, now int64) 
 }
 
 // currentGroupDuration computes duration and status from the current iteration's groups.
-func currentGroupDuration(groups []burninv1alpha1.GroupStatus, now int64) (string, int64) {
+func currentGroupDuration(groups []crev1alpha1.GroupStatus, now int64) (string, int64) {
 	status := statusSucceeded
 	allTerminal := true
 	var earliest, latest int64
 	for _, g := range groups {
-		if g.Phase == burninv1alpha1.GroupFailed {
+		if g.Phase == crev1alpha1.GroupFailed {
 			status = statusFailed
 		}
-		if g.Phase != burninv1alpha1.GroupSucceeded && g.Phase != burninv1alpha1.GroupFailed {
+		if g.Phase != crev1alpha1.GroupSucceeded && g.Phase != crev1alpha1.GroupFailed {
 			allTerminal = false
 		}
 		if g.StartTime != nil {
@@ -474,14 +474,14 @@ func fmtSecs(secs int64) string {
 	return fmt.Sprintf("%dh %dm", secs/3600, (secs%3600)/60)
 }
 
-func buildFailedGroups(ctx context.Context, c client.Client, wf *burninv1alpha1.Workflow) []FailedGroupReport {
+func buildFailedGroups(ctx context.Context, c client.Client, wf *crev1alpha1.Workflow) []FailedGroupReport {
 	orch := wf.Status.Orchestration
 	if orch == nil || c == nil {
 		return nil
 	}
 	var result []FailedGroupReport
 	for _, g := range orch.Groups {
-		if g.Phase != burninv1alpha1.GroupFailed || g.JobRef == nil {
+		if g.Phase != crev1alpha1.GroupFailed || g.JobRef == nil {
 			continue
 		}
 		fg := FailedGroupReport{
@@ -489,10 +489,10 @@ func buildFailedGroups(ctx context.Context, c client.Client, wf *burninv1alpha1.
 			NodeCount: len(g.Nodes),
 			Nodes:     g.Nodes,
 		}
-		excalJob := &burninv1alpha1.Job{}
+		excalJob := &crev1alpha1.Job{}
 		if err := c.Get(ctx, client.ObjectKey{Name: g.JobRef.Name, Namespace: wf.Namespace}, excalJob); err == nil {
 			for _, cond := range excalJob.Status.Conditions {
-				if cond.Type == burninv1alpha1.JobFailed && cond.Status == metav1.ConditionTrue {
+				if cond.Type == crev1alpha1.JobFailed && cond.Status == metav1.ConditionTrue {
 					if reason := batchJobFailureReason(ctx, c, cond.Message, wf.Namespace); reason != "" {
 						fg.Reason = reason
 					} else {
@@ -509,7 +509,7 @@ func buildFailedGroups(ctx context.Context, c client.Client, wf *burninv1alpha1.
 
 // PopulateCategoryFromWorkflow fills in category metrics from a Workflow and its children.
 func PopulateCategoryFromWorkflow(
-	ctx context.Context, c client.Client, cat *CategoryReport, wf *burninv1alpha1.Workflow,
+	ctx context.Context, c client.Client, cat *CategoryReport, wf *crev1alpha1.Workflow,
 ) {
 	orch := wf.Status.Orchestration
 	if orch != nil {
@@ -529,9 +529,9 @@ func PopulateCategoryFromWorkflow(
 		stage := diag.Stage
 		// If the workflow is terminal, show "complete" regardless of the stored stage
 		// (older controller versions may not have set it on failure paths).
-		if controller.CondIsTrue(wf.Status.Conditions, burninv1alpha1.WorkflowSucceeded) ||
-			controller.CondIsTrue(wf.Status.Conditions, burninv1alpha1.WorkflowFailed) {
-			stage = burninv1alpha1.DiagnoseStageComplete
+		if controller.CondIsTrue(wf.Status.Conditions, crev1alpha1.WorkflowSucceeded) ||
+			controller.CondIsTrue(wf.Status.Conditions, crev1alpha1.WorkflowFailed) {
+			stage = crev1alpha1.DiagnoseStageComplete
 		}
 		cat.Diagnose = &DiagnoseReport{
 			Stage:        stage,
@@ -550,9 +550,9 @@ func PopulateCategoryFromWorkflow(
 	workflowJobs := collectWorkflowJobs(ctx, c, wf, orch)
 
 	// Find GoodputMeasurements owned by this Workflow's Jobs.
-	var goodputList burninv1alpha1.GoodputMeasurementList
+	var goodputList crev1alpha1.GoodputMeasurementList
 	if err := c.List(ctx, &goodputList, client.InNamespace(wf.Namespace)); err == nil {
-		var filtered []burninv1alpha1.GoodputMeasurement
+		var filtered []crev1alpha1.GoodputMeasurement
 		for _, gm := range goodputList.Items {
 			if workflowJobs[gm.Spec.JobRef.Name] {
 				filtered = append(filtered, gm)
@@ -564,10 +564,10 @@ func PopulateCategoryFromWorkflow(
 	}
 
 	// Find BandwidthMeasurements owned by this Workflow's Jobs.
-	var bwList burninv1alpha1.BandwidthMeasurementList
+	var bwList crev1alpha1.BandwidthMeasurementList
 	if err := c.List(ctx, &bwList, client.InNamespace(wf.Namespace)); err == nil {
 		// Collect filtered BandwidthMeasurements.
-		var filtered []burninv1alpha1.BandwidthMeasurement
+		var filtered []crev1alpha1.BandwidthMeasurement
 		for _, bm := range bwList.Items {
 			if workflowJobs[bm.Spec.JobRef.Name] {
 				filtered = append(filtered, bm)
@@ -591,7 +591,7 @@ func PopulateCategoryFromWorkflow(
 		// Show aggregate bandwidth for non-diagnose modes.
 		// Diagnose shows per-stage bandwidth in the diagnosis section.
 		if cat.Diagnose == nil {
-			var peak *burninv1alpha1.BandwidthResult
+			var peak *crev1alpha1.BandwidthResult
 			for i := range filtered {
 				r := peakBandwidthResult(filtered[i].Status.Results)
 				if r == nil {
@@ -616,8 +616,8 @@ func PopulateCategoryFromWorkflow(
 // buildGroupBandwidthRows maps BandwidthMeasurements to groups and returns
 // per-group peak bandwidth rows for multi-group Workflows.
 func buildGroupBandwidthRows(
-	orch *burninv1alpha1.OrchestrationStatus,
-	measurements []burninv1alpha1.BandwidthMeasurement,
+	orch *crev1alpha1.OrchestrationStatus,
+	measurements []crev1alpha1.BandwidthMeasurement,
 	minBusBandwidthGBps string,
 ) []GroupBandwidthRow {
 	// Map job name → group info.
@@ -636,7 +636,7 @@ func buildGroupBandwidthRows(
 				nodes:     g.Nodes,
 				domains:   g.Domains,
 				nodeCount: len(g.Nodes),
-				failed:    g.Phase == burninv1alpha1.GroupFailed,
+				failed:    g.Phase == crev1alpha1.GroupFailed,
 			}
 		}
 	}
@@ -689,7 +689,7 @@ func buildGroupBandwidthRows(
 		seen[r.GroupName] = true
 	}
 	for _, g := range orch.Groups {
-		if g.Phase != burninv1alpha1.GroupFailed {
+		if g.Phase != crev1alpha1.GroupFailed {
 			continue
 		}
 		var label string
@@ -714,7 +714,7 @@ func buildGroupBandwidthRows(
 // buildDomainReports groups GoodputMeasurements by topology domain.
 // If no domains exist, returns a single entry with averages across all measurements.
 func buildDomainReports(
-	orch *burninv1alpha1.OrchestrationStatus, measurements []burninv1alpha1.GoodputMeasurement,
+	orch *crev1alpha1.OrchestrationStatus, measurements []crev1alpha1.GoodputMeasurement,
 ) []DomainReport {
 	// Map job names to their group's domain info.
 	type groupInfo struct {
@@ -784,7 +784,7 @@ func buildDomainReports(
 // groups and failed nodes. For single-domain groups (intra-rack), node counts
 // are exact. For multi-domain groups, DomainNodeCounts provides per-domain
 // totals recorded at partition time.
-func buildCliqueReport(wf *burninv1alpha1.Workflow, failedNodes []burninv1alpha1.FailedNode) []CliqueReport {
+func buildCliqueReport(wf *crev1alpha1.Workflow, failedNodes []crev1alpha1.FailedNode) []CliqueReport {
 	orch := wf.Status.Orchestration
 	if orch == nil {
 		return nil
@@ -798,7 +798,7 @@ func buildCliqueReport(wf *burninv1alpha1.Workflow, failedNodes []burninv1alpha1
 	// Collect domains from groups with Failed phase.
 	failedDomains := make(map[string]bool)
 	for _, g := range orch.Groups {
-		if g.Phase == burninv1alpha1.GroupFailed {
+		if g.Phase == crev1alpha1.GroupFailed {
 			for _, d := range g.Domains {
 				failedDomains[d] = true
 			}
@@ -886,7 +886,7 @@ func buildCliqueReport(wf *burninv1alpha1.Workflow, failedNodes []burninv1alpha1
 // by the Certification controller when it creates the Workflow.
 const annotationRequestedTestScale = "cre.nvidia.com/requested-test-scale"
 
-func detectTestScale(wf *burninv1alpha1.Workflow) string {
+func detectTestScale(wf *crev1alpha1.Workflow) string {
 	// What the operator asked for, when the Certification recorded it. The
 	// fallback below infers the scale from what was applied, which is not the
 	// same thing: an entry whose template ignores testScale still partitions one
@@ -898,15 +898,15 @@ func detectTestScale(wf *burninv1alpha1.Workflow) string {
 	}
 	o := wf.Spec.Orchestration
 	if o.Topology != nil && o.Topology.StrictDomain {
-		return burninv1alpha1.TestScaleIntraRack
+		return crev1alpha1.TestScaleIntraRack
 	}
 	if o.Diagnose != nil {
-		return burninv1alpha1.TestScaleDiagnose
+		return crev1alpha1.TestScaleDiagnose
 	}
 	if wf.Status.Orchestration != nil && wf.Status.Orchestration.NodesPerJob == 1 {
-		return burninv1alpha1.TestScaleIntraNode
+		return crev1alpha1.TestScaleIntraNode
 	}
-	return burninv1alpha1.TestScaleFullScale
+	return crev1alpha1.TestScaleFullScale
 }
 
 // ---------------------------------------------------------------------------
@@ -1289,11 +1289,11 @@ func appendNodeLines(
 // For other modes, reads JobRefs from the current groups.
 func collectWorkflowJobs(
 	ctx context.Context, c client.Client,
-	wf *burninv1alpha1.Workflow, orch *burninv1alpha1.OrchestrationStatus,
+	wf *crev1alpha1.Workflow, orch *crev1alpha1.OrchestrationStatus,
 ) map[string]bool {
 	jobs := map[string]bool{}
 	if orch != nil && orch.Diagnose != nil {
-		var jobList burninv1alpha1.JobList
+		var jobList crev1alpha1.JobList
 		if err := c.List(ctx, &jobList, client.InNamespace(wf.Namespace),
 			client.MatchingLabels{"cre.nvidia.com/workflow": wf.Name}); err == nil {
 			for _, j := range jobList.Items {
@@ -1314,8 +1314,8 @@ func collectWorkflowJobs(
 // Workflow and correlating with BandwidthMeasurements.
 func buildDiagnoseTests(
 	ctx context.Context, c client.Client,
-	wf *burninv1alpha1.Workflow,
-	measurements []burninv1alpha1.BandwidthMeasurement,
+	wf *crev1alpha1.Workflow,
+	measurements []crev1alpha1.BandwidthMeasurement,
 ) []DiagnoseTestRow {
 	// Build bandwidth map: job name → peak BusBW (at the largest message size).
 	bwByJob := map[string]string{}
@@ -1326,7 +1326,7 @@ func buildDiagnoseTests(
 	}
 
 	// List all Jobs for this Workflow.
-	var jobList burninv1alpha1.JobList
+	var jobList crev1alpha1.JobList
 	if err := c.List(ctx, &jobList, client.InNamespace(wf.Namespace),
 		client.MatchingLabels{"cre.nvidia.com/workflow": wf.Name}); err != nil {
 		return nil
@@ -1336,7 +1336,7 @@ func buildDiagnoseTests(
 	for _, j := range jobList.Items {
 		groupName := j.GetLabels()["cre.nvidia.com/group"]
 		stage := inferDiagnoseStage(groupName)
-		passed := controller.CondIsTrue(j.Status.Conditions, burninv1alpha1.JobSucceeded)
+		passed := controller.CondIsTrue(j.Status.Conditions, crev1alpha1.JobSucceeded)
 		nodes := getJobNodes(&j)
 
 		// Only set domain for screening tests — other stages list individual nodes.
@@ -1381,7 +1381,7 @@ func inferDiagnoseStage(groupName string) string {
 }
 
 // lookupScreeningDomain finds the topology domain for a screening test's nodes.
-func lookupScreeningDomain(wf *burninv1alpha1.Workflow, nodes []string) string {
+func lookupScreeningDomain(wf *crev1alpha1.Workflow, nodes []string) string {
 	if len(nodes) == 0 || wf.Status.Orchestration == nil || wf.Status.Orchestration.Diagnose == nil {
 		return ""
 	}
@@ -1394,7 +1394,7 @@ func lookupScreeningDomain(wf *burninv1alpha1.Workflow, nodes []string) string {
 }
 
 // getJobNodes reads the group-nodes annotation set by the workflow controller.
-func getJobNodes(job *burninv1alpha1.Job) []string {
+func getJobNodes(job *crev1alpha1.Job) []string {
 	ann := job.GetAnnotations()["cre.nvidia.com/group-nodes"]
 	if ann == "" {
 		return nil
@@ -1404,7 +1404,7 @@ func getJobNodes(job *burninv1alpha1.Job) []string {
 
 // groupFaultyByDomain groups faulty nodes by their screening domain.
 // Returns sorted domain→nodes pairs. Nodes without a domain go under "unknown".
-func groupFaultyByDomain(faulty []string, screening map[string]burninv1alpha1.DomainScreeningResult) []struct {
+func groupFaultyByDomain(faulty []string, screening map[string]crev1alpha1.DomainScreeningResult) []struct {
 	domain string
 	nodes  []string
 } {
@@ -1707,8 +1707,8 @@ func fmtAvg(vals []float64, fn fmtFunc) string {
 // indexing the last entry: BandwidthMeasurement appends new sizes in the
 // order they are first observed in the data points, which is not guaranteed
 // to be ascending.
-func peakBandwidthResult(results []burninv1alpha1.BandwidthResult) *burninv1alpha1.BandwidthResult {
-	var peak *burninv1alpha1.BandwidthResult
+func peakBandwidthResult(results []crev1alpha1.BandwidthResult) *crev1alpha1.BandwidthResult {
+	var peak *crev1alpha1.BandwidthResult
 	for i := range results {
 		if peak == nil || results[i].SizeBytes > peak.SizeBytes {
 			peak = &results[i]

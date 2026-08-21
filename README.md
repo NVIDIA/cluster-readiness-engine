@@ -1,6 +1,6 @@
 # Cluster Readiness Engine (CRE)
 
-[![CI](https://github.com/NVIDIA/cluster-readiness-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/NVIDIA/cluster-readiness-engine/actions/workflows/ci.yml)
+[![CI](https://github.com/dsx-ai-factory/cluster-readiness-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/dsx-ai-factory/cluster-readiness-engine/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](go.mod)
 
@@ -65,14 +65,14 @@ newest **stable** release. Until `v0.1.0` is tagged, name the version explicitly
 
 ```bash
 CRE_VERSION=v0.1.0-rc.8
-curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${CRE_VERSION}/installer \
+curl -sSL https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/download/${CRE_VERSION}/installer \
   | bash -s -- -v "${CRE_VERSION}"
 ```
 
 Once a stable release exists, this shorter form works and picks up the newest one:
 
 ```bash
-curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
+curl -sSL https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/latest/download/installer | bash
 ```
 
 The installer places `ncrectl` on your `$PATH` and creates a `kubectl-ncre` symlink so the CLI is also available as `kubectl ncre`.
@@ -147,16 +147,16 @@ published to the GitHub Container Registry on every release.
 CRE_VERSION=v0.1.0-rc.8
 
 # Inspect the chart before installing it
-helm show chart oci://ghcr.io/nvidia/cluster-readiness-engine --version "$CRE_VERSION"
+helm show chart oci://ghcr.io/dsx-ai-factory/cluster-readiness-engine --version "$CRE_VERSION"
 
 helm install cluster-readiness-engine \
-  oci://ghcr.io/nvidia/cluster-readiness-engine \
+  oci://ghcr.io/dsx-ai-factory/cluster-readiness-engine \
   --version "$CRE_VERSION" \
   --namespace cluster-readiness-engine \
   --create-namespace
 ```
 
-The controller image is `ghcr.io/nvidia/cluster-readiness-engine/manager`, tagged
+The controller image is `ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager`, tagged
 with the same release version. Builds from `main` are also published, tagged
 `main-<commit-sha>`; use a release tag rather than one of those.
 
@@ -218,8 +218,8 @@ A hosted documentation site is in progress.
 
 ## Community
 
-- Ask questions in [GitHub Discussions](https://github.com/NVIDIA/cluster-readiness-engine/discussions).
-- Report bugs and request features with the [issue templates](https://github.com/NVIDIA/cluster-readiness-engine/issues/new/choose).
+- Ask questions in [GitHub Discussions](https://github.com/dsx-ai-factory/cluster-readiness-engine/discussions).
+- Report bugs and request features with the [issue templates](https://github.com/dsx-ai-factory/cluster-readiness-engine/issues/new/choose).
 - Report security issues per [SECURITY.md](SECURITY.md), never through GitHub issues.
 - We follow the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
 

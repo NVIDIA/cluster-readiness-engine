@@ -19,7 +19,7 @@ Set the version you want to install, then run the installer:
 
 ```bash
 export NCRECTL_VERSION=v0.1.0-rc.8
-curl -sSL "https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${NCRECTL_VERSION}/installer" | bash
+curl -sSL "https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/download/${NCRECTL_VERSION}/installer" | bash
 ```
 
 The installer automatically downloads and verifies a SHA-256 checksum before installing. On air-gapped systems, ensure `checksums.txt` from the same release is reachable alongside the binary.

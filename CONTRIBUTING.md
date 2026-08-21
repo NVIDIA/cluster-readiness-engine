@@ -91,7 +91,7 @@ Allowed types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`, `ci`,
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/NVIDIA/cluster-readiness-engine.git
+   git clone https://github.com/dsx-ai-factory/cluster-readiness-engine.git
    cd cluster-readiness-engine
    ```
 

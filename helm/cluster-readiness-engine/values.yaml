@@ -8,7 +8,7 @@ nameOverride: cluster-readiness-engine
 manager:
   replicas: 1
   image:
-    repository: ghcr.io/nvidia/cluster-readiness-engine/manager
+    repository: ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager
     tag: ""
     pullPolicy: IfNotPresent
   imagePullSecrets: []

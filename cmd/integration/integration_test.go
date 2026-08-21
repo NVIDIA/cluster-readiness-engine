@@ -35,18 +35,18 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	sigyaml "sigs.k8s.io/yaml"
 
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	_ "github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	_ "github.com/dsx-ai-factory/cluster-readiness-engine/pkg/catalog"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/podlogs"
 )
 
 const metricLabelNamespace = "namespace"
 
 func init() {
-	_ = burninv1alpha1.AddToScheme(scheme.Scheme)
+	_ = crev1alpha1.AddToScheme(scheme.Scheme)
 	_ = trainerv1alpha1.AddToScheme(scheme.Scheme)
 }
 
@@ -131,7 +131,7 @@ func installTestCRDs(t *testing.T, cfg *rest.Config, tc *testutil.TestCase) {
 	var crdFiles []string
 	for name, content := range tc.Inputs {
 		if strings.HasPrefix(name, "input_crd_") && strings.HasSuffix(name, ".yaml") {
-			tmpDir := filepath.Join(os.TempDir(), "burnin-integration-crds", tc.Name)
+			tmpDir := filepath.Join(os.TempDir(), "cre-integration-crds", tc.Name)
 			require.NoError(t, os.MkdirAll(tmpDir, 0o755))
 			path := filepath.Join(tmpDir, name)
 			require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
@@ -236,36 +236,36 @@ func createTestObjects(t *testing.T, c client.Client, tc *testutil.TestCase) []c
 // copyStatus copies status from src to dst. Returns true if status was non-empty.
 func copyStatus(dst, src client.Object) bool { //nolint:gocyclo
 	switch d := dst.(type) {
-	case *burninv1alpha1.Job:
-		s := src.(*burninv1alpha1.Job)
+	case *crev1alpha1.Job:
+		s := src.(*crev1alpha1.Job)
 		hasStatus := len(s.Status.Conditions) > 0 || s.Status.WorkloadRef != nil ||
 			len(s.Status.FailedNodes) > 0 || s.Status.RestartCount > 0
 		if hasStatus {
 			d.Status = s.Status
 			return true
 		}
-	case *burninv1alpha1.Workflow:
-		s := src.(*burninv1alpha1.Workflow)
+	case *crev1alpha1.Workflow:
+		s := src.(*crev1alpha1.Workflow)
 		if len(s.Status.Conditions) > 0 || s.Status.Orchestration != nil ||
 			s.Status.SucceededNodesRef != nil || s.Status.FailedNodesRef != nil ||
 			len(s.Status.DependencyRefs) > 0 {
 			d.Status = s.Status
 			return true
 		}
-	case *burninv1alpha1.Certification:
-		s := src.(*burninv1alpha1.Certification)
+	case *crev1alpha1.Certification:
+		s := src.(*crev1alpha1.Certification)
 		if len(s.Status.Conditions) > 0 || len(s.Status.CategoryStatuses) > 0 {
 			d.Status = s.Status
 			return true
 		}
-	case *burninv1alpha1.WorkloadRun:
-		s := src.(*burninv1alpha1.WorkloadRun)
+	case *crev1alpha1.WorkloadRun:
+		s := src.(*crev1alpha1.WorkloadRun)
 		if len(s.Status.Conditions) > 0 || s.Status.WorkflowRef != nil {
 			d.Status = s.Status
 			return true
 		}
-	case *burninv1alpha1.GoodputMeasurement:
-		s := src.(*burninv1alpha1.GoodputMeasurement)
+	case *crev1alpha1.GoodputMeasurement:
+		s := src.(*crev1alpha1.GoodputMeasurement)
 		if len(s.Status.Conditions) > 0 || s.Status.Result != "" ||
 			s.Status.CurrentStep > 0 || s.Status.PendingInterruption != nil ||
 			s.Status.StartTime != nil || s.Status.InterruptionCount > 0 ||
@@ -275,8 +275,8 @@ func copyStatus(dst, src client.Object) bool { //nolint:gocyclo
 			d.Status = s.Status
 			return true
 		}
-	case *burninv1alpha1.BandwidthMeasurement:
-		s := src.(*burninv1alpha1.BandwidthMeasurement)
+	case *crev1alpha1.BandwidthMeasurement:
+		s := src.(*crev1alpha1.BandwidthMeasurement)
 		if len(s.Status.Conditions) > 0 || len(s.Status.Results) > 0 ||
 			s.Status.StartTime != nil || s.Status.CompletionTime != nil {
 			d.Status = s.Status
@@ -533,17 +533,17 @@ func waitForCondition(t *testing.T, c client.Client, cfg waitConfig) {
 
 		reason := cfg.WaitFor.Reason
 		switch o := obj.(type) {
-		case *burninv1alpha1.Job:
+		case *crev1alpha1.Job:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
-		case *burninv1alpha1.Workflow:
+		case *crev1alpha1.Workflow:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
-		case *burninv1alpha1.Certification:
+		case *crev1alpha1.Certification:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
-		case *burninv1alpha1.WorkloadRun:
+		case *crev1alpha1.WorkloadRun:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
-		case *burninv1alpha1.GoodputMeasurement:
+		case *crev1alpha1.GoodputMeasurement:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
-		case *burninv1alpha1.BandwidthMeasurement:
+		case *crev1alpha1.BandwidthMeasurement:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
 		}
 		return false
@@ -596,37 +596,37 @@ func getObject(ctx context.Context, t *testing.T, c client.Client, spec collectS
 
 	switch spec.Kind {
 	case "Job":
-		obj := &burninv1alpha1.Job{}
+		obj := &crev1alpha1.Job{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
 		return obj
 	case "Workflow":
-		obj := &burninv1alpha1.Workflow{}
+		obj := &crev1alpha1.Workflow{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
 		return obj
 	case "Certification":
-		obj := &burninv1alpha1.Certification{}
+		obj := &crev1alpha1.Certification{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
 		return obj
 	case "WorkloadRun":
-		obj := &burninv1alpha1.WorkloadRun{}
+		obj := &crev1alpha1.WorkloadRun{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
 		return obj
 	case "GoodputMeasurement":
-		obj := &burninv1alpha1.GoodputMeasurement{}
+		obj := &crev1alpha1.GoodputMeasurement{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
 		return obj
 	case "BandwidthMeasurement":
-		obj := &burninv1alpha1.BandwidthMeasurement{}
+		obj := &crev1alpha1.BandwidthMeasurement{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
@@ -739,7 +739,7 @@ func sanitizeObject(obj client.Object) {
 
 	// Clear condition timestamps.
 	switch o := obj.(type) {
-	case *burninv1alpha1.Job:
+	case *crev1alpha1.Job:
 		clearConditionTimestamps(o.Status.Conditions)
 		// Sanitize stall detection messages (contain non-deterministic elapsed time).
 		for i := range o.Status.Conditions {
@@ -747,7 +747,7 @@ func sanitizeObject(obj client.Object) {
 				o.Status.Conditions[i].Message = "Workload stalled"
 			}
 		}
-	case *burninv1alpha1.Workflow:
+	case *crev1alpha1.Workflow:
 		clearConditionTimestamps(o.Status.Conditions)
 		// Node-result ConfigMaps use generateName, so their names are
 		// non-deterministic; normalize the refs to stable placeholders.
@@ -765,15 +765,15 @@ func sanitizeObject(obj client.Object) {
 				}
 			}
 		}
-	case *burninv1alpha1.Certification:
+	case *crev1alpha1.Certification:
 		clearConditionTimestamps(o.Status.Conditions)
 		for i := range o.Status.CategoryStatuses {
 			sanitizeNodeResultsRef(o.Status.CategoryStatuses[i].SucceededNodesRef, o.Status.CategoryStatuses[i].FailedNodesRef)
 		}
-	case *burninv1alpha1.WorkloadRun:
+	case *crev1alpha1.WorkloadRun:
 		clearConditionTimestamps(o.Status.Conditions)
 		sanitizeNodeResultsRef(o.Status.SucceededNodesRef, o.Status.FailedNodesRef)
-	case *burninv1alpha1.GoodputMeasurement:
+	case *crev1alpha1.GoodputMeasurement:
 		clearConditionTimestamps(o.Status.Conditions)
 		// Clear time-dependent fields.
 		o.Status.StartTime = nil
@@ -789,7 +789,7 @@ func sanitizeObject(obj client.Object) {
 			o.Status.PendingInterruption.TCheckpoint = nil
 			o.Status.PendingInterruption.TInterrupt = nil
 		}
-	case *burninv1alpha1.BandwidthMeasurement:
+	case *crev1alpha1.BandwidthMeasurement:
 		clearConditionTimestamps(o.Status.Conditions)
 		o.Status.StartTime = nil
 		o.Status.CompletionTime = nil

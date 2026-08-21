@@ -18,8 +18,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 )
 
 // A Certification that finds no schedulable nodes retries for up to
@@ -44,19 +44,19 @@ func TestWaitingForNodes(t *testing.T) {
 		if err := clientgoscheme.AddToScheme(scheme); err != nil {
 			return err
 		}
-		if err := burninv1alpha1.AddToScheme(scheme); err != nil {
+		if err := crev1alpha1.AddToScheme(scheme); err != nil {
 			return err
 		}
 
-		cert := &burninv1alpha1.Certification{
+		cert := &crev1alpha1.Certification{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "c", Namespace: "ns",
 				CreationTimestamp: metav1.Now(),
 				Finalizers:        []string{certificationFinalizer},
 			},
-			Spec: burninv1alpha1.CertificationSpec{
-				Target: burninv1alpha1.TargetSpec{NodeSelector: in.NodeSelector},
-				Categories: []burninv1alpha1.CertificateCategory{
+			Spec: crev1alpha1.CertificationSpec{
+				Target: crev1alpha1.TargetSpec{NodeSelector: in.NodeSelector},
+				Categories: []crev1alpha1.CertificateCategory{
 					{Domain: "communication", Variant: "nccl-all-reduce"},
 				},
 			},
@@ -72,7 +72,7 @@ func TestWaitingForNodes(t *testing.T) {
 		r := &CertificationReconciler{Client: c, Scheme: scheme}
 		_, _ = r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "c", Namespace: "ns"}})
 
-		got := &burninv1alpha1.Certification{}
+		got := &crev1alpha1.Certification{}
 		if err := c.Get(context.Background(), types.NamespacedName{Name: "c", Namespace: "ns"}, got); err != nil {
 			return err
 		}

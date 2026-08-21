@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/kubeconfig"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -27,17 +27,17 @@ import (
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/cluster"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/gpu"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/render"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/report"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/setup"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/catalog"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/cluster"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/gpu"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/noderesults"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/platform"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/render"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/report"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/setup"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/workload"
 )
 
 const (
@@ -50,8 +50,8 @@ const (
 // intra-node means each node is tested on its own, so one node per Job however
 // many the run targets; the Workflow then makes one group per node. Anything
 // else keeps the requested count.
-func nodesPerJobForScale(orch *burninv1alpha1.WorkloadOrchestration, numNodes int32) int32 {
-	if orch != nil && orch.TestScale == burninv1alpha1.TestScaleIntraNode {
+func nodesPerJobForScale(orch *crev1alpha1.WorkloadOrchestration, numNodes int32) int32 {
+	if orch != nil && orch.TestScale == crev1alpha1.TestScaleIntraNode {
 		return 1
 	}
 	return numNodes
@@ -188,7 +188,7 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 	// If platform specified, apply overrides using synthetic nodes.
 	if platformFlag != "" {
 		nodes := loadSyntheticNodes(platformFlag, gpuArch)
-		orch := &burninv1alpha1.OrchestrationStatus{
+		orch := &crev1alpha1.OrchestrationStatus{
 			DetectedPlatform:        platformFlag,
 			DetectedGPUArchitecture: gpuArch,
 		}
@@ -200,7 +200,7 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 	}
 
 	// Build output Workflow.
-	workflow := &burninv1alpha1.Workflow{
+	workflow := &crev1alpha1.Workflow{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "cre.nvidia.com/v1alpha1",
 			Kind:       "Workflow",
@@ -237,9 +237,9 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 // BuildWorkflowSpec constructs a WorkflowSpec from a WorkloadRun
 // (shared logic between controller and CLI).
 func BuildWorkflowSpec(
-	run *burninv1alpha1.WorkloadRun,
+	run *crev1alpha1.WorkloadRun,
 	gpusPerNode, mlnxPerNode int32, enableMNNVL bool, frameworkType string,
-) *burninv1alpha1.WorkflowSpec {
+) *crev1alpha1.WorkflowSpec {
 	spec := &run.Spec
 
 	// Build merged env vars.
@@ -288,7 +288,7 @@ func BuildWorkflowSpec(
 		rtCfg.GangSchedulerQueue = spec.GangScheduler.Queue
 	}
 
-	var runtimeDep burninv1alpha1.DependencySpec
+	var runtimeDep crev1alpha1.DependencySpec
 	switch frameworkType {
 	case controller.FrameworkTorch:
 		runtimeDep = platform.BuildTorchRuntime(rtCfg)
@@ -298,7 +298,7 @@ func BuildWorkflowSpec(
 		runtimeDep = platform.BuildExecRuntime(rtCfg)
 	}
 
-	deps := []burninv1alpha1.DependencySpec{runtimeDep}
+	deps := []crev1alpha1.DependencySpec{runtimeDep}
 
 	if spec.Config != nil && len(spec.Config.Inline) > 0 {
 		deps = append(deps, buildWRCLIConfigMapDep(run.Name, spec.Config.Inline))
@@ -308,7 +308,7 @@ func BuildWorkflowSpec(
 	jobTemplate := buildCLIJobTemplate(run, frameworkType, gpusPerNode, enableMNNVL)
 
 	// Build OrchestrationSpec.
-	orch := &burninv1alpha1.OrchestrationSpec{
+	orch := &crev1alpha1.OrchestrationSpec{
 		Target:     spec.Target,
 		Iterations: 1,
 	}
@@ -320,11 +320,11 @@ func BuildWorkflowSpec(
 		case "intra-rack":
 			// TopologyKey is set by platform override (workloadrun.yaml)
 			// to the platform's physical rack label.
-			orch.Topology = &burninv1alpha1.TopologySpec{
+			orch.Topology = &crev1alpha1.TopologySpec{
 				StrictDomain: true,
 			}
 		}
-		exec := burninv1alpha1.ExecutionSpec{}
+		exec := crev1alpha1.ExecutionSpec{}
 		if spec.Orchestration.MaxConcurrent != nil {
 			exec.MaxConcurrent = int(*spec.Orchestration.MaxConcurrent)
 		}
@@ -346,13 +346,13 @@ func BuildWorkflowSpec(
 		FrameworkType: frameworkType,
 	}
 	wrOverrides := platform.BuildOverrides(overrideCfg)
-	overrides := make([]burninv1alpha1.OverrideSpec, 0, len(wrOverrides)+len(spec.Overrides))
+	overrides := make([]crev1alpha1.OverrideSpec, 0, len(wrOverrides)+len(spec.Overrides))
 	for _, o := range wrOverrides {
 		overrides = append(overrides, o.OverrideSpec)
 	}
 	overrides = append(overrides, spec.Overrides...)
 
-	workflowSpec := &burninv1alpha1.WorkflowSpec{
+	workflowSpec := &crev1alpha1.WorkflowSpec{
 		JobTemplate:   *jobTemplate,
 		Orchestration: *orch,
 		Dependencies:  deps,
@@ -360,10 +360,10 @@ func BuildWorkflowSpec(
 	}
 
 	if len(spec.Thresholds) > 0 {
-		workflowSpec.Validation = &burninv1alpha1.ValidationSpec{
-			Performance: &burninv1alpha1.PerformanceValidationSpec{
+		workflowSpec.Validation = &crev1alpha1.ValidationSpec{
+			Performance: &crev1alpha1.PerformanceValidationSpec{
 				Enabled: true,
-				Thresholds: &burninv1alpha1.ThresholdSpec{
+				Thresholds: &crev1alpha1.ThresholdSpec{
 					Thresholds: spec.Thresholds,
 				},
 			},
@@ -376,7 +376,7 @@ func BuildWorkflowSpec(
 // validateExecFramework returns an error when the exec framework is implied
 // (neither Torch nor MPI is set) but spec.Framework.Exec is nil, which would
 // cause a nil-pointer dereference inside buildCLIJobTemplate.
-func validateExecFramework(spec *burninv1alpha1.WorkloadRunSpec, name string) error {
+func validateExecFramework(spec *crev1alpha1.WorkloadRunSpec, name string) error {
 	if spec.Framework.Torch == nil && spec.Framework.MPI == nil && spec.Framework.Exec == nil {
 		return fmt.Errorf("workloadrun %s: exec framework selected but spec.framework.exec is nil", name)
 	}
@@ -384,8 +384,8 @@ func validateExecFramework(spec *burninv1alpha1.WorkloadRunSpec, name string) er
 }
 
 func buildCLIJobTemplate(
-	run *burninv1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32, enableMNNVL bool,
-) *burninv1alpha1.JobTemplateSpec {
+	run *crev1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32, enableMNNVL bool,
+) *crev1alpha1.JobTemplateSpec {
 	spec := &run.Spec
 
 	var command []string
@@ -443,12 +443,12 @@ func buildCLIJobTemplate(
 
 	workload.SetImagePullSecrets(trainJobSpec, spec.ImagePullSecrets)
 
-	jobSpec := burninv1alpha1.JobSpec{
-		Workload: burninv1alpha1.WorkloadSpec{
+	jobSpec := crev1alpha1.JobSpec{
+		Workload: crev1alpha1.WorkloadSpec{
 			TrainJob: trainJobSpec,
 		},
-		NodeHealthMonitor: &burninv1alpha1.NodeHealthMonitor{
-			CEL: &burninv1alpha1.CELNodeHealthCheck{
+		NodeHealthMonitor: &crev1alpha1.NodeHealthMonitor{
+			CEL: &crev1alpha1.CELNodeHealthCheck{
 				Expression: "node.spec.unschedulable == true",
 			},
 		},
@@ -461,10 +461,10 @@ func buildCLIJobTemplate(
 		jobSpec.BandwidthMeasurement = spec.BandwidthMeasurement
 	}
 
-	return &burninv1alpha1.JobTemplateSpec{Spec: jobSpec}
+	return &crev1alpha1.JobTemplateSpec{Spec: jobSpec}
 }
 
-func buildWRCLIConfigMapDep(name string, data map[string]string) burninv1alpha1.DependencySpec {
+func buildWRCLIConfigMapDep(name string, data map[string]string) crev1alpha1.DependencySpec {
 	cm := map[string]any{
 		"apiVersion": "v1",
 		"kind":       "ConfigMap",
@@ -475,7 +475,7 @@ func buildWRCLIConfigMapDep(name string, data map[string]string) burninv1alpha1.
 		"data": data,
 	}
 	raw, _ := json.Marshal(cm)
-	return burninv1alpha1.DependencySpec{
+	return crev1alpha1.DependencySpec{
 		RawExtension: kruntime.RawExtension{Raw: raw},
 	}
 }
@@ -534,7 +534,7 @@ func runWorkloadRunRenderDryRun(
 	workflowSpec := BuildWorkflowSpec(
 		run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
 
-	orch := &burninv1alpha1.OrchestrationStatus{
+	orch := &crev1alpha1.OrchestrationStatus{
 		DetectedPlatform:        detectedPlatform,
 		DetectedGPUArchitecture: gpuArch,
 	}
@@ -545,7 +545,7 @@ func runWorkloadRunRenderDryRun(
 	}
 	workflowSpec.Overrides = nil
 
-	workflow := &burninv1alpha1.Workflow{
+	workflow := &crev1alpha1.Workflow{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "cre.nvidia.com/v1alpha1",
 			Kind:       "Workflow",
@@ -824,7 +824,7 @@ func runWorkloadRunExecute(
 func watchWorkloadRun(
 	ctx context.Context, c client.WithWatch,
 	name, namespace string, timeout time.Duration, _ io.Writer,
-) (*burninv1alpha1.WorkloadRun, error) {
+) (*crev1alpha1.WorkloadRun, error) {
 	deadline := time.After(timeout)
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -836,16 +836,16 @@ func watchWorkloadRun(
 		case <-deadline:
 			return nil, fmt.Errorf("timeout waiting for WorkloadRun %s", name)
 		case <-ticker.C:
-			var current burninv1alpha1.WorkloadRun
+			var current crev1alpha1.WorkloadRun
 			key := client.ObjectKey{Name: name, Namespace: namespace}
 			if err := c.Get(ctx, key, &current); err != nil {
 				continue
 			}
-			if controller.CondIsTrue(current.Status.Conditions, burninv1alpha1.WorkloadRunSucceeded) {
+			if controller.CondIsTrue(current.Status.Conditions, crev1alpha1.WorkloadRunSucceeded) {
 				return &current, nil
 			}
-			if controller.CondIsTrue(current.Status.Conditions, burninv1alpha1.WorkloadRunFailed) {
-				msg := controller.CondMessage(current.Status.Conditions, burninv1alpha1.WorkloadRunFailed)
+			if controller.CondIsTrue(current.Status.Conditions, crev1alpha1.WorkloadRunFailed) {
+				msg := controller.CondMessage(current.Status.Conditions, crev1alpha1.WorkloadRunFailed)
 				return &current, fmt.Errorf("WorkloadRun failed: %s", msg)
 			}
 		}
@@ -854,14 +854,14 @@ func watchWorkloadRun(
 
 // --- helpers ---
 
-func readWorkloadRun(file string) (*burninv1alpha1.WorkloadRun, error) {
+func readWorkloadRun(file string) (*crev1alpha1.WorkloadRun, error) {
 	data, err := os.ReadFile(file) // #nosec G304 -- file is a user-provided CLI argument
 
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", file, err)
 	}
 
-	var run burninv1alpha1.WorkloadRun
+	var run crev1alpha1.WorkloadRun
 	if err := yaml.NewYAMLOrJSONDecoder(
 		bytes.NewReader(data), 4096).Decode(&run); err != nil {
 		return nil, fmt.Errorf("parsing WorkloadRun: %w", err)
@@ -945,7 +945,7 @@ func runWorkloadRunReport(
 		return fmt.Errorf("build kubernetes client: %w", err)
 	}
 
-	var run burninv1alpha1.WorkloadRun
+	var run crev1alpha1.WorkloadRun
 	if err := c.Get(ctx, client.ObjectKey{
 		Name: name, Namespace: namespace,
 	}, &run); err != nil {
@@ -976,9 +976,9 @@ func runWorkloadRunReport(
 	}
 
 	succeeded := controller.CondIsTrue(
-		run.Status.Conditions, burninv1alpha1.WorkloadRunSucceeded)
+		run.Status.Conditions, crev1alpha1.WorkloadRunSucceeded)
 	failed := controller.CondIsTrue(
-		run.Status.Conditions, burninv1alpha1.WorkloadRunFailed)
+		run.Status.Conditions, crev1alpha1.WorkloadRunFailed)
 	if !succeeded && !failed {
 		return fmt.Errorf("workloadrun %q is still running", name)
 	}
@@ -992,14 +992,14 @@ func runWorkloadRunReport(
 // its child Workflow. Reuses the same report model and PopulateCategoryFromWorkflow
 // function as certification reports.
 func buildWorkloadRunReport(
-	ctx context.Context, c client.Client, run *burninv1alpha1.WorkloadRun,
+	ctx context.Context, c client.Client, run *crev1alpha1.WorkloadRun,
 ) *report.CertReport {
 	result := "RUNNING"
 	if controller.CondIsTrue(
-		run.Status.Conditions, burninv1alpha1.WorkloadRunFailed) {
+		run.Status.Conditions, crev1alpha1.WorkloadRunFailed) {
 		result = "FAILED"
 	} else if controller.CondIsTrue(
-		run.Status.Conditions, burninv1alpha1.WorkloadRunSucceeded) {
+		run.Status.Conditions, crev1alpha1.WorkloadRunSucceeded) {
 		result = "PASSED"
 	}
 
@@ -1019,7 +1019,7 @@ func buildWorkloadRunReport(
 	}
 
 	if run.Status.WorkflowRef != nil {
-		wf := &burninv1alpha1.Workflow{}
+		wf := &crev1alpha1.Workflow{}
 		ns := run.Status.WorkflowRef.Namespace
 		if ns == "" {
 			ns = run.Namespace
@@ -1033,11 +1033,11 @@ func buildWorkloadRunReport(
 
 			// Set category status from Workflow conditions.
 			switch {
-			case controller.CondIsTrue(wf.Status.Conditions, burninv1alpha1.WorkflowSucceeded):
+			case controller.CondIsTrue(wf.Status.Conditions, crev1alpha1.WorkflowSucceeded):
 				cat.Status = "Succeeded"
-			case controller.CondIsTrue(wf.Status.Conditions, burninv1alpha1.WorkflowFailed):
+			case controller.CondIsTrue(wf.Status.Conditions, crev1alpha1.WorkflowFailed):
 				cat.Status = statusFailed
-			case controller.CondIsTrue(wf.Status.Conditions, burninv1alpha1.WorkflowInProgress):
+			case controller.CondIsTrue(wf.Status.Conditions, crev1alpha1.WorkflowInProgress):
 				cat.Status = "Running"
 			}
 
@@ -1053,7 +1053,7 @@ func buildWorkloadRunReport(
 
 // applyRunOverrides modifies a WorkloadRun based on CLI override flags.
 func applyRunOverrides(
-	run *burninv1alpha1.WorkloadRun,
+	run *crev1alpha1.WorkloadRun,
 	nameOverride, nodeList, topologyDomain, topologyKey, testScale string,
 ) {
 	if nameOverride != "" {
@@ -1062,7 +1062,7 @@ func applyRunOverrides(
 	if nodeList != "" {
 		names := strings.Split(nodeList, ",")
 		if run.Spec.Target == nil {
-			run.Spec.Target = &burninv1alpha1.TargetSpec{}
+			run.Spec.Target = &crev1alpha1.TargetSpec{}
 		}
 		run.Spec.Target.NodeNames = names
 		if int32(len(names)) < run.Spec.NumNodes {
@@ -1071,7 +1071,7 @@ func applyRunOverrides(
 	}
 	if topologyDomain != "" {
 		if run.Spec.Target == nil {
-			run.Spec.Target = &burninv1alpha1.TargetSpec{}
+			run.Spec.Target = &crev1alpha1.TargetSpec{}
 		}
 		key := topologyKey
 		if key == "" {
@@ -1087,14 +1087,14 @@ func applyRunOverrides(
 	}
 	if testScale != "" {
 		if run.Spec.Orchestration == nil {
-			run.Spec.Orchestration = &burninv1alpha1.WorkloadOrchestration{}
+			run.Spec.Orchestration = &crev1alpha1.WorkloadOrchestration{}
 		}
 		run.Spec.Orchestration.TestScale = testScale
 	}
 }
 
 // buildNodeResults flattens orchestration groups into per-node pass/fail results.
-func buildNodeResults(wf *burninv1alpha1.Workflow, failedNodes []burninv1alpha1.FailedNode) []report.NodeResultReport {
+func buildNodeResults(wf *crev1alpha1.Workflow, failedNodes []crev1alpha1.FailedNode) []report.NodeResultReport {
 	orch := wf.Status.Orchestration
 	if orch == nil {
 		return nil
@@ -1107,7 +1107,7 @@ func buildNodeResults(wf *burninv1alpha1.Workflow, failedNodes []burninv1alpha1.
 	var results []report.NodeResultReport
 	for _, g := range orch.Groups {
 		groupStatus := "Passed"
-		if g.Phase == burninv1alpha1.GroupFailed {
+		if g.Phase == crev1alpha1.GroupFailed {
 			groupStatus = statusFailed
 		}
 		rack := ""
@@ -1159,7 +1159,7 @@ func newWorkloadRunStatusCommand() *cobra.Command {
 				return err
 			}
 
-			var run burninv1alpha1.WorkloadRun
+			var run crev1alpha1.WorkloadRun
 			if err := c.Get(ctx, client.ObjectKey{
 				Name: args[0], Namespace: namespace,
 			}, &run); err != nil {
@@ -1171,11 +1171,11 @@ func newWorkloadRunStatusCommand() *cobra.Command {
 
 			status := "Pending"
 			switch {
-			case controller.CondIsTrue(run.Status.Conditions, burninv1alpha1.WorkloadRunSucceeded):
+			case controller.CondIsTrue(run.Status.Conditions, crev1alpha1.WorkloadRunSucceeded):
 				status = "Succeeded"
-			case controller.CondIsTrue(run.Status.Conditions, burninv1alpha1.WorkloadRunFailed):
+			case controller.CondIsTrue(run.Status.Conditions, crev1alpha1.WorkloadRunFailed):
 				status = "Failed"
-			case controller.CondIsTrue(run.Status.Conditions, burninv1alpha1.WorkloadRunInProgress):
+			case controller.CondIsTrue(run.Status.Conditions, crev1alpha1.WorkloadRunInProgress):
 				status = "InProgress"
 			}
 
@@ -1223,7 +1223,7 @@ func newWorkloadRunCancelCommand() *cobra.Command {
 
 			var lastErr error
 			for _, name := range args {
-				run := &burninv1alpha1.WorkloadRun{
+				run := &crev1alpha1.WorkloadRun{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      name,
 						Namespace: namespace,
