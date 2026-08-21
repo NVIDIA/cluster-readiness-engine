@@ -181,8 +181,12 @@ verify-license-headers: addlicense ## Verify Go sources carry the SPDX license h
 	  -ignore '**/*.yaml' -ignore '**/*.yml' -ignore '**/*.json' \
 	  api pkg cmd test hack
 
+.PHONY: verify-doc-links
+verify-doc-links: ## Verify relative markdown links in README.md and docs/ resolve to files in the tree.
+	hack/verify-doc-links.sh
+
 .PHONY: verify
-verify: verify-codegen verify-mod verify-license-headers ## Run all verification checks.
+verify: verify-codegen verify-mod verify-license-headers verify-doc-links ## Run all verification checks.
 
 .PHONY: ci
 ci: verify lint build test ## Run the full CI gate locally: verify, lint, build, and test.
