@@ -30,7 +30,7 @@ func NewNodeDiscoverer(c client.Client) *NodeDiscoverer {
 	return &NodeDiscoverer{client: c}
 }
 
-// DiscoverNodesForJob finds all nodes running pods associated with a burnin Job.
+// DiscoverNodesForJob finds all nodes running pods associated with a CRE Job.
 // It uses a field index on the cre.nvidia.com/job label for efficient cache-based lookups.
 // Only returns nodes where pods are Running or Pending (i.e., scheduled).
 func (d *NodeDiscoverer) DiscoverNodesForJob(ctx context.Context, namespace, jobName string) ([]string, error) {

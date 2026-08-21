@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/podlogs"
 )
 
 // LogReader reads logs from Kubernetes pods and parses them using a ProfileParser.

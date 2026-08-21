@@ -14,7 +14,7 @@ import (
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
 )
 
 const (
@@ -42,7 +42,7 @@ func (a *TrainJobAdapter) NewObject() client.Object {
 	return &trainerv1alpha1.TrainJob{}
 }
 
-func (a *TrainJobAdapter) Build(name, namespace string, spec *burninv1alpha1.WorkloadSpec) (client.Object, error) {
+func (a *TrainJobAdapter) Build(name, namespace string, spec *crev1alpha1.WorkloadSpec) (client.Object, error) {
 	if spec.TrainJob == nil {
 		return nil, fmt.Errorf("WorkloadSpec.TrainJob is nil")
 	}
@@ -61,7 +61,7 @@ func (a *TrainJobAdapter) Build(name, namespace string, spec *burninv1alpha1.Wor
 	return trainJob, nil
 }
 
-func (a *TrainJobAdapter) InjectPodLabel(spec *burninv1alpha1.WorkloadSpec, key, value string) {
+func (a *TrainJobAdapter) InjectPodLabel(spec *crev1alpha1.WorkloadSpec, key, value string) {
 	if spec.TrainJob == nil {
 		return
 	}
@@ -80,7 +80,7 @@ func (a *TrainJobAdapter) InjectPodLabel(spec *burninv1alpha1.WorkloadSpec, key,
 	podTemplate.Metadata.Labels[key] = value
 }
 
-func (a *TrainJobAdapter) SetNodeSelector(spec *burninv1alpha1.WorkloadSpec, selector map[string]string) {
+func (a *TrainJobAdapter) SetNodeSelector(spec *crev1alpha1.WorkloadSpec, selector map[string]string) {
 	if spec.TrainJob == nil {
 		return
 	}
@@ -95,7 +95,7 @@ func (a *TrainJobAdapter) SetNodeSelector(spec *burninv1alpha1.WorkloadSpec, sel
 	maps.Copy(podSpec.NodeSelector, selector)
 }
 
-func (a *TrainJobAdapter) SetNodeAffinity(spec *burninv1alpha1.WorkloadSpec, affinity *corev1.NodeAffinity) {
+func (a *TrainJobAdapter) SetNodeAffinity(spec *crev1alpha1.WorkloadSpec, affinity *corev1.NodeAffinity) {
 	if spec.TrainJob == nil {
 		return
 	}
@@ -111,7 +111,7 @@ func (a *TrainJobAdapter) SetNodeAffinity(spec *burninv1alpha1.WorkloadSpec, aff
 	}
 }
 
-func (a *TrainJobAdapter) SetTolerations(spec *burninv1alpha1.WorkloadSpec, tolerations []corev1.Toleration) {
+func (a *TrainJobAdapter) SetTolerations(spec *crev1alpha1.WorkloadSpec, tolerations []corev1.Toleration) {
 	if spec.TrainJob == nil {
 		return
 	}
@@ -125,7 +125,7 @@ func (a *TrainJobAdapter) SetTolerations(spec *burninv1alpha1.WorkloadSpec, tole
 	}
 }
 
-func (a *TrainJobAdapter) NodesRequired(spec *burninv1alpha1.WorkloadSpec) (int, error) {
+func (a *TrainJobAdapter) NodesRequired(spec *crev1alpha1.WorkloadSpec) (int, error) {
 	if spec.TrainJob == nil {
 		return 0, fmt.Errorf("WorkloadSpec.TrainJob is nil")
 	}
@@ -135,7 +135,7 @@ func (a *TrainJobAdapter) NodesRequired(spec *burninv1alpha1.WorkloadSpec) (int,
 	return int(*spec.TrainJob.Trainer.NumNodes), nil
 }
 
-func (a *TrainJobAdapter) SetNumNodes(spec *burninv1alpha1.WorkloadSpec, numNodes int) {
+func (a *TrainJobAdapter) SetNumNodes(spec *crev1alpha1.WorkloadSpec, numNodes int) {
 	if spec.TrainJob == nil || spec.TrainJob.Trainer == nil {
 		return
 	}
@@ -194,7 +194,7 @@ func workerTargetJob(patches []trainerv1alpha1.RuntimePatch) string {
 // HasLauncherTarget reports whether the workload spec contains an MPI launcher
 // target in its runtimePatches. Used by the workflow controller to decide
 // whether to apply global tolerations (only MPI workloads need them).
-func HasLauncherTarget(spec *burninv1alpha1.WorkloadSpec) bool {
+func HasLauncherTarget(spec *crev1alpha1.WorkloadSpec) bool {
 	if spec.TrainJob == nil {
 		return false
 	}

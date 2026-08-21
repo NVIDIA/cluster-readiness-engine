@@ -12,8 +12,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/gpu"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/gpu"
 )
 
 // categoryKey uniquely identifies a certification category.
@@ -132,7 +132,7 @@ type Entry struct {
 	// and deployment-specific configuration. Returns an error if the
 	// configuration is invalid (e.g., nodesPerJob not a power of 2,
 	// or fewer GPUs than required).
-	Build func(target burninv1alpha1.TargetSpec, config BuildConfig) (burninv1alpha1.WorkflowSpec, error)
+	Build func(target crev1alpha1.TargetSpec, config BuildConfig) (crev1alpha1.WorkflowSpec, error)
 
 	// MinGPUs is the minimum number of GPUs (nodesPerJob × gpusPerNode)
 	// required by this entry. 0 means no minimum. Build returns an error

@@ -21,7 +21,7 @@ jobs:
   verify:
     name: Verify generated files, go.mod, and license headers
     runs-on: linux-amd64-cpu16
-    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    if: github.repository == 'dsx-ai-factory/cluster-readiness-engine'
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

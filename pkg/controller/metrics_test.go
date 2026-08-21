@@ -8,7 +8,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 	promtest "github.com/prometheus/client_golang/prometheus/testutil"
 	"sigs.k8s.io/yaml"
 )

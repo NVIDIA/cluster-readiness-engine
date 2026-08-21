@@ -29,10 +29,10 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/catalog"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/podlogs"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -47,7 +47,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(burninv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(crev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(trainerv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }

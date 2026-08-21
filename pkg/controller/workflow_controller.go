@@ -28,13 +28,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/orchestration"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/threshold"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/naming"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/noderesults"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/orchestration"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/podlogs"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/threshold"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/workload"
 )
 
 const (
@@ -91,7 +91,7 @@ type WorkflowReconciler struct {
 func (r *WorkflowReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	workflow := &burninv1alpha1.Workflow{}
+	workflow := &crev1alpha1.Workflow{}
 	if err := r.Get(ctx, req.NamespacedName, workflow); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("Workflow resource not found, likely deleted")
@@ -116,7 +116,7 @@ func (r *WorkflowReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 }
 
 // reconcileJob manages the multi-group iteration state machine.
-func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *burninv1alpha1.Workflow) (ctrl.Result, error) {
+func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *crev1alpha1.Workflow) (ctrl.Result, error) {
 	// Guard: if already terminal, do nothing
 	if r.isTerminal(workflow) {
 		return ctrl.Result{}, nil
@@ -237,7 +237,7 @@ func notEnoughNodesMessage(needed, found int, gpuArch string, archExcluded []str
 }
 
 // discoverAndPartition discovers target nodes, auto-detects nodesPerJob, and partitions nodes into groups.
-func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow *burninv1alpha1.Workflow, orch *burninv1alpha1.OrchestrationStatus) (ctrl.Result, error) {
+func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow *crev1alpha1.Workflow, orch *crev1alpha1.OrchestrationStatus) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	target := workflow.Spec.Orchestration.Target
 
@@ -425,7 +425,7 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	return ctrl.Result{RequeueAfter: requeueImmediate}, nil
 }
 
-func (r *WorkflowReconciler) logOverrideResults(ctx context.Context, workflow *burninv1alpha1.Workflow, applied []burninv1alpha1.AppliedOverride, octx OverrideContext) {
+func (r *WorkflowReconciler) logOverrideResults(ctx context.Context, workflow *crev1alpha1.Workflow, applied []crev1alpha1.AppliedOverride, octx OverrideContext) {
 	log := logf.FromContext(ctx)
 	for _, a := range applied {
 		if a.NoOp {
@@ -454,7 +454,7 @@ func (r *WorkflowReconciler) logOverrideResults(ctx context.Context, workflow *b
 // dropped for being cordoned. Callers that record coverage need it: a cordoned
 // node was targeted and never tested, and without the names the run reports a
 // clean PASSED over a fleet it only partly certified.
-func discoverTargetNodes(ctx context.Context, reader client.Reader, target *burninv1alpha1.TargetSpec) ([]corev1.Node, []string, error) {
+func discoverTargetNodes(ctx context.Context, reader client.Reader, target *crev1alpha1.TargetSpec) ([]corev1.Node, []string, error) {
 	nodeList := &corev1.NodeList{}
 	var opts []client.ListOption
 
@@ -553,7 +553,7 @@ func discoverTargetNodes(ctx context.Context, reader client.Reader, target *burn
 }
 
 // nodeMatchesTaints returns true if the node has ALL of the specified taints.
-func nodeMatchesTaints(node corev1.Node, selectors []burninv1alpha1.TaintSelector) bool {
+func nodeMatchesTaints(node corev1.Node, selectors []crev1alpha1.TaintSelector) bool {
 	for _, sel := range selectors {
 		if !nodeHasTaint(node, sel) {
 			return false
@@ -563,7 +563,7 @@ func nodeMatchesTaints(node corev1.Node, selectors []burninv1alpha1.TaintSelecto
 }
 
 // nodeHasTaint returns true if the node has a taint matching the selector.
-func nodeHasTaint(node corev1.Node, sel burninv1alpha1.TaintSelector) bool {
+func nodeHasTaint(node corev1.Node, sel crev1alpha1.TaintSelector) bool {
 	for _, taint := range node.Spec.Taints {
 		if taint.Key != sel.Key {
 			continue
@@ -613,7 +613,7 @@ func convertOperator(op corev1.NodeSelectorOperator) (selection.Operator, error)
 }
 
 // buildTolerations creates tolerations from taint selectors.
-func buildTolerations(selectors []burninv1alpha1.TaintSelector) []corev1.Toleration {
+func buildTolerations(selectors []crev1alpha1.TaintSelector) []corev1.Toleration {
 	tolerations := make([]corev1.Toleration, len(selectors))
 	for i, sel := range selectors {
 		t := corev1.Toleration{
@@ -639,7 +639,7 @@ func buildTolerations(selectors []burninv1alpha1.TaintSelector) []corev1.Tolerat
 //   - pending=true means to requeue and try again later (BM absent or has no results yet)
 //   - err!=nil means the gate could not be evaluated; the caller should fail closed
 func (r *WorkflowReconciler) isBelowBandwidthThreshold(ctx context.Context, jobName, namespace, expr string) (below bool, pending bool, err error) {
-	var bwList burninv1alpha1.BandwidthMeasurementList
+	var bwList crev1alpha1.BandwidthMeasurementList
 	if listErr := r.List(ctx, &bwList, matchingJobRef(namespace, jobName)...); listErr != nil {
 		return false, false, fmt.Errorf("list BandwidthMeasurements: %w", listErr)
 	}
@@ -664,7 +664,7 @@ func (r *WorkflowReconciler) isBelowBandwidthThreshold(ctx context.Context, jobN
 
 // deleteWorkloadForJob deletes the workload (e.g., TrainJob) referenced by a Job
 // to free GPU resources. The Job object itself is preserved.
-func (r *WorkflowReconciler) deleteWorkloadForJob(ctx context.Context, job *burninv1alpha1.Job) {
+func (r *WorkflowReconciler) deleteWorkloadForJob(ctx context.Context, job *crev1alpha1.Job) {
 	ref := job.Status.WorkloadRef
 	if ref == nil {
 		return
@@ -681,7 +681,7 @@ func (r *WorkflowReconciler) deleteWorkloadForJob(ctx context.Context, job *burn
 }
 
 // isJobTimedOut returns true if the group's job has exceeded timeoutPerJob.
-func (r *WorkflowReconciler) isJobTimedOut(workflow *burninv1alpha1.Workflow, g *burninv1alpha1.GroupStatus) bool {
+func (r *WorkflowReconciler) isJobTimedOut(workflow *crev1alpha1.Workflow, g *crev1alpha1.GroupStatus) bool {
 	timeout := workflow.Spec.Orchestration.Execution.TimeoutPerJob
 	if timeout == nil || g.StartTime == nil {
 		return false
@@ -689,9 +689,9 @@ func (r *WorkflowReconciler) isJobTimedOut(workflow *burninv1alpha1.Workflow, g 
 	return time.Since(g.StartTime.Time) > timeout.Duration
 }
 
-func (r *WorkflowReconciler) hasRunningGroups(orch *burninv1alpha1.OrchestrationStatus) bool {
+func (r *WorkflowReconciler) hasRunningGroups(orch *crev1alpha1.OrchestrationStatus) bool {
 	for _, g := range orch.Groups {
-		if g.Phase == burninv1alpha1.GroupRunning {
+		if g.Phase == crev1alpha1.GroupRunning {
 			return true
 		}
 	}
@@ -699,9 +699,9 @@ func (r *WorkflowReconciler) hasRunningGroups(orch *burninv1alpha1.Orchestration
 }
 
 // allGroupsTerminal returns true if all groups have reached Succeeded or Failed phase.
-func (r *WorkflowReconciler) allGroupsTerminal(orch *burninv1alpha1.OrchestrationStatus) bool {
+func (r *WorkflowReconciler) allGroupsTerminal(orch *crev1alpha1.OrchestrationStatus) bool {
 	for _, g := range orch.Groups {
-		if g.Phase != burninv1alpha1.GroupSucceeded && g.Phase != burninv1alpha1.GroupFailed {
+		if g.Phase != crev1alpha1.GroupSucceeded && g.Phase != crev1alpha1.GroupFailed {
 			return false
 		}
 	}
@@ -709,10 +709,10 @@ func (r *WorkflowReconciler) allGroupsTerminal(orch *burninv1alpha1.Orchestratio
 }
 
 // countRunningGroups returns the number of groups with Running phase.
-func countRunningGroups(orch *burninv1alpha1.OrchestrationStatus) int {
+func countRunningGroups(orch *crev1alpha1.OrchestrationStatus) int {
 	count := 0
 	for _, g := range orch.Groups {
-		if g.Phase == burninv1alpha1.GroupRunning {
+		if g.Phase == crev1alpha1.GroupRunning {
 			count++
 		}
 	}
@@ -722,10 +722,10 @@ func countRunningGroups(orch *burninv1alpha1.OrchestrationStatus) int {
 // hasNodeOverlap returns true if any node in the candidate group is
 // already used by a Running group. This prevents scheduling conflicts
 // where concurrent jobs compete for GPU resources on the same node.
-func hasNodeOverlap(candidate *burninv1alpha1.GroupStatus, allGroups []burninv1alpha1.GroupStatus) bool {
+func hasNodeOverlap(candidate *crev1alpha1.GroupStatus, allGroups []crev1alpha1.GroupStatus) bool {
 	runningNodes := make(map[string]bool)
 	for _, g := range allGroups {
-		if g.Phase == burninv1alpha1.GroupRunning && g.Name != candidate.Name {
+		if g.Phase == crev1alpha1.GroupRunning && g.Name != candidate.Name {
 			for _, node := range g.Nodes {
 				runningNodes[node] = true
 			}
@@ -740,14 +740,14 @@ func hasNodeOverlap(candidate *burninv1alpha1.GroupStatus, allGroups []burninv1a
 }
 
 // launchPendingGroups creates Jobs for pending groups, respecting maxConcurrent and overflow constraints.
-func (r *WorkflowReconciler) launchPendingGroups(ctx context.Context, workflow *burninv1alpha1.Workflow, orch *burninv1alpha1.OrchestrationStatus) (ctrl.Result, error) {
+func (r *WorkflowReconciler) launchPendingGroups(ctx context.Context, workflow *crev1alpha1.Workflow, orch *crev1alpha1.OrchestrationStatus) (ctrl.Result, error) {
 	maxConcurrent := workflow.Spec.Orchestration.Execution.MaxConcurrent
 	running := countRunningGroups(orch)
 
 	launched := false
 	for i := range orch.Groups {
 		g := &orch.Groups[i]
-		if g.Phase != burninv1alpha1.GroupPending {
+		if g.Phase != crev1alpha1.GroupPending {
 			continue
 		}
 
@@ -786,7 +786,7 @@ func (r *WorkflowReconciler) launchPendingGroups(ctx context.Context, workflow *
 }
 
 // createJobForGroup creates a Job for a specific group, pinned to that group's nodes.
-func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *burninv1alpha1.Workflow, group *burninv1alpha1.GroupStatus, orch *burninv1alpha1.OrchestrationStatus) error {
+func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *crev1alpha1.Workflow, group *crev1alpha1.GroupStatus, orch *crev1alpha1.OrchestrationStatus) error {
 	log := logf.FromContext(ctx)
 
 	jobName := r.getGroupJobName(workflow, group.Name, orch.CurrentIteration)
@@ -818,7 +818,7 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *bu
 		// handles AlreadyExists on re-create and re-adds the refs.
 	}
 
-	job := &burninv1alpha1.Job{
+	job := &crev1alpha1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      jobName,
 			Namespace: workflow.Namespace,
@@ -871,8 +871,8 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *bu
 
 	// Set default node health monitor if not already configured
 	if job.Spec.NodeHealthMonitor == nil {
-		job.Spec.NodeHealthMonitor = &burninv1alpha1.NodeHealthMonitor{
-			CEL: &burninv1alpha1.CELNodeHealthCheck{
+		job.Spec.NodeHealthMonitor = &crev1alpha1.NodeHealthMonitor{
+			CEL: &crev1alpha1.CELNodeHealthCheck{
 				Expression: `node.spec.unschedulable == true`,
 			},
 		}
@@ -941,8 +941,8 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *bu
 
 	// Update group status
 	now := metav1.Now()
-	group.Phase = burninv1alpha1.GroupRunning
-	group.JobRef = &burninv1alpha1.WorkloadReference{
+	group.Phase = crev1alpha1.GroupRunning
+	group.JobRef = &crev1alpha1.WorkloadReference{
 		APIVersion: "cre.nvidia.com/v1alpha1",
 		Kind:       "Job",
 		Name:       jobName,
@@ -954,7 +954,7 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *bu
 }
 
 // updateStatusFromJobs checks all running groups and updates their status from their Jobs.
-func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow *burninv1alpha1.Workflow) (ctrl.Result, error) {
+func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow *crev1alpha1.Workflow) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	orch := r.ensureOrchestrationStatus(workflow)
 	retryLimit := workflow.Spec.Orchestration.Execution.RetryFailedGroups
@@ -964,12 +964,12 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 
 	for i := range orch.Groups {
 		g := &orch.Groups[i]
-		if g.Phase != burninv1alpha1.GroupRunning || g.JobRef == nil {
+		if g.Phase != crev1alpha1.GroupRunning || g.JobRef == nil {
 			continue
 		}
 
 		ref := g.JobRef
-		job := &burninv1alpha1.Job{}
+		job := &crev1alpha1.Job{}
 		ns := ref.Namespace
 		if ns == "" {
 			ns = workflow.Namespace
@@ -980,7 +980,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 				log.Info("Job was deleted, marking group as failed", "group", g.Name, "job", ref.Name)
 				r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
 				now := metav1.Now()
-				g.Phase = burninv1alpha1.GroupFailed
+				g.Phase = crev1alpha1.GroupFailed
 				g.CompletionTime = &now
 				g.JobRef = nil
 				statusChanged = true
@@ -995,7 +995,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 			log.Info("Job is being deleted, marking group as failed", "group", g.Name, "job", ref.Name)
 			r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
 			now := metav1.Now()
-			g.Phase = burninv1alpha1.GroupFailed
+			g.Phase = crev1alpha1.GroupFailed
 			g.CompletionTime = &now
 			g.JobRef = nil
 			statusChanged = true
@@ -1014,7 +1014,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 				r.captureTimeoutLog(ctx, job)
 				// Mark Job as failed. The Job object stays for the report.
 				meta.SetStatusCondition(&job.Status.Conditions, metav1.Condition{
-					Type:    burninv1alpha1.JobFailed,
+					Type:    crev1alpha1.JobFailed,
 					Status:  metav1.ConditionTrue,
 					Reason:  "JobTimedOut",
 					Message: "Job exceeded timeoutPerJob",
@@ -1027,7 +1027,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 				r.deleteWorkloadForJob(ctx, job)
 				r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
 				now := metav1.Now()
-				g.Phase = burninv1alpha1.GroupFailed
+				g.Phase = crev1alpha1.GroupFailed
 				g.CompletionTime = &now
 				statusChanged = true
 				continue
@@ -1067,7 +1067,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 				// Clean up job-scoped deps after Job deletion
 				r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
 				g.Retries++
-				g.Phase = burninv1alpha1.GroupPending
+				g.Phase = crev1alpha1.GroupPending
 				g.JobRef = nil
 				g.StartTime = nil
 				g.CompletionTime = nil
@@ -1076,13 +1076,13 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 				r.deleteWorkloadForJob(ctx, job)
 				// Clean up job-scoped deps on terminal failure
 				r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
-				g.Phase = burninv1alpha1.GroupFailed
+				g.Phase = crev1alpha1.GroupFailed
 				r.updateTopologyMetric(ctx, workflow)
 			}
 		} else {
 			// Clean up job-scoped deps on success
 			r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
-			g.Phase = burninv1alpha1.GroupSucceeded
+			g.Phase = crev1alpha1.GroupSucceeded
 			r.updateTopologyMetric(ctx, workflow)
 		}
 
@@ -1099,9 +1099,9 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		// and refetches on conflict, so status mutated outside the callback is
 		// dropped on both paths. That left a completed group stuck Running and the
 		// Workflow never finished — a passing run reported as a timeout.
-		want := make([]burninv1alpha1.GroupStatus, len(orch.Groups))
+		want := make([]crev1alpha1.GroupStatus, len(orch.Groups))
 		copy(want, orch.Groups)
-		applyGroups := func(w *burninv1alpha1.Workflow) bool {
+		applyGroups := func(w *crev1alpha1.Workflow) bool {
 			if w.Status.Orchestration == nil || !statusChanged {
 				return false
 			}
@@ -1126,11 +1126,11 @@ type jobTerminalState struct {
 }
 
 // getJobTerminalState inspects Job conditions and returns a summary of its terminal state.
-func getJobTerminalState(job *burninv1alpha1.Job) jobTerminalState {
-	hwFailedCond := meta.FindStatusCondition(job.Status.Conditions, burninv1alpha1.JobHardwareFailed)
-	jobFailedCond := meta.FindStatusCondition(job.Status.Conditions, burninv1alpha1.JobFailed)
-	jobSucceededCond := meta.FindStatusCondition(job.Status.Conditions, burninv1alpha1.JobSucceeded)
-	validationFailedCond := meta.FindStatusCondition(job.Status.Conditions, burninv1alpha1.JobValidationFailed)
+func getJobTerminalState(job *crev1alpha1.Job) jobTerminalState {
+	hwFailedCond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobHardwareFailed)
+	jobFailedCond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobFailed)
+	jobSucceededCond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobSucceeded)
+	validationFailedCond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobValidationFailed)
 
 	s := jobTerminalState{
 		hwFailed:         hwFailedCond != nil && hwFailedCond.Status == metav1.ConditionTrue,
@@ -1143,7 +1143,7 @@ func getJobTerminalState(job *burninv1alpha1.Job) jobTerminalState {
 }
 
 // handleIterationComplete handles the transition when all groups in the current iteration are terminal.
-func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workflow *burninv1alpha1.Workflow, orch *burninv1alpha1.OrchestrationStatus) (ctrl.Result, error) {
+func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workflow *crev1alpha1.Workflow, orch *crev1alpha1.OrchestrationStatus) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	orch.CompletedIterations++
@@ -1166,7 +1166,7 @@ func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workfl
 			if g.JobRef == nil {
 				continue
 			}
-			job := &burninv1alpha1.Job{}
+			job := &crev1alpha1.Job{}
 			job.Name = g.JobRef.Name
 			job.Namespace = g.JobRef.Namespace
 			log.Info("Deleting completed iteration Job", "job", g.JobRef.Name, "iteration", orch.CompletedIterations)
@@ -1183,7 +1183,7 @@ func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workfl
 		// More iterations to go — reset all group phases to Pending
 		orch.CurrentIteration = orch.CompletedIterations + 1
 		for i := range orch.Groups {
-			orch.Groups[i].Phase = burninv1alpha1.GroupPending
+			orch.Groups[i].Phase = crev1alpha1.GroupPending
 			orch.Groups[i].JobRef = nil
 			orch.Groups[i].StartTime = nil
 			orch.Groups[i].CompletionTime = nil
@@ -1203,7 +1203,7 @@ func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workfl
 }
 
 // initDiagnose creates screening groups for adaptive fault isolation.
-func initDiagnose(nodeInfos []orchestration.NodeInfo, spec *burninv1alpha1.DiagnoseSpec, orch *burninv1alpha1.OrchestrationStatus) ([]orchestration.Group, int, error) {
+func initDiagnose(nodeInfos []orchestration.NodeInfo, spec *crev1alpha1.DiagnoseSpec, orch *crev1alpha1.OrchestrationStatus) ([]orchestration.Group, int, error) {
 	groups, err := orchestration.ScreenGroups(orchestration.DiagnoseScreenInput{
 		Nodes:       nodeInfos,
 		TopologyKey: spec.TopologyKey,
@@ -1215,15 +1215,15 @@ func initDiagnose(nodeInfos []orchestration.NodeInfo, spec *burninv1alpha1.Diagn
 	if len(groups) > 0 {
 		nodesPerJob = len(groups[0].Nodes)
 	}
-	orch.Diagnose = &burninv1alpha1.DiagnoseStatus{
-		Stage: burninv1alpha1.DiagnoseStageIntraScreening,
+	orch.Diagnose = &crev1alpha1.DiagnoseStatus{
+		Stage: crev1alpha1.DiagnoseStageIntraScreening,
 	}
 	return groups, nodesPerJob, nil
 }
 
 // handleDiagnoseRoundComplete advances the diagnose algorithm through its stages:
 // intra-screening → intra-screening-no-nvl → inter-screening → bisection → confirmation → done.
-func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, workflow *burninv1alpha1.Workflow, orch *burninv1alpha1.OrchestrationStatus) (ctrl.Result, error) {
+func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, workflow *crev1alpha1.Workflow, orch *crev1alpha1.OrchestrationStatus) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	diag := orch.Diagnose
 	spec := workflow.Spec.Orchestration.Diagnose
@@ -1241,14 +1241,14 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 	switch diag.Stage {
 
 	// --- Stage 1a complete: re-run intra-clique without NVLink ---
-	case burninv1alpha1.DiagnoseStageIntraScreening:
+	case crev1alpha1.DiagnoseStageIntraScreening:
 		recordScreeningResults(orch, diag, failedGroups)
 		// Skip the no-NVL stage if MNNVL is already disabled in the base job template —
 		// the intra-screening already ran without NVLink, so re-testing would be identical.
 		if isMNNVLEnabledInJobTemplate(&workflow.Spec.JobTemplate) {
 			noNVLGroups := buildNoNVLGroups(diag)
 			if len(noNVLGroups) > 0 {
-				diag.Stage = burninv1alpha1.DiagnoseStageIntraScreeningNoNVL
+				diag.Stage = crev1alpha1.DiagnoseStageIntraScreeningNoNVL
 				return r.diagnoseSetGroups(ctx, workflow, orch, diag, noNVLGroups,
 					fmt.Sprintf("Intra-screening with NVL done: %d healthy, %d suspect. Re-testing without NVL.",
 						len(diag.HealthyNodes), len(diag.SuspectNodes)))
@@ -1260,8 +1260,8 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 		fallthrough
 
 	// --- Stage 1b complete: build inter-domain test from healthy representatives ---
-	case burninv1alpha1.DiagnoseStageIntraScreeningNoNVL:
-		if diag.Stage == burninv1alpha1.DiagnoseStageIntraScreeningNoNVL {
+	case crev1alpha1.DiagnoseStageIntraScreeningNoNVL:
+		if diag.Stage == crev1alpha1.DiagnoseStageIntraScreeningNoNVL {
 			processNoNVLScreeningResults(orch, diag, failedGroups)
 		}
 
@@ -1283,14 +1283,14 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 			return r.diagnoseNextGroups(ctx, workflow, orch, diag, minGroupSize, perClique)
 		}
 
-		diag.Stage = burninv1alpha1.DiagnoseStageInterScreening
+		diag.Stage = crev1alpha1.DiagnoseStageInterScreening
 		return r.diagnoseSetGroups(ctx, workflow, orch, diag,
 			[]orchestration.Group{interGroup},
 			fmt.Sprintf("Screening done: %d healthy, %d suspect nodes. Testing inter-domain fabric.",
 				len(diag.HealthyNodes), len(diag.SuspectNodes)))
 
 	// --- Stage 1b complete: merge intra + inter failures, start bisection ---
-	case burninv1alpha1.DiagnoseStageInterScreening:
+	case crev1alpha1.DiagnoseStageInterScreening:
 		// Rebuild per-clique groups from stashed suspects (preserve clique boundaries).
 		var toSplit []orchestration.Group
 		if len(diag.SuspectNodes) > 0 {
@@ -1310,15 +1310,15 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 		return r.diagnoseNextGroups(ctx, workflow, orch, diag, minGroupSize, toSplit)
 
 	// --- Bisection round complete: continue splitting or move to confirmation ---
-	case burninv1alpha1.DiagnoseStageBisection:
+	case crev1alpha1.DiagnoseStageBisection:
 		return r.handleDiagnoseBisection(ctx, workflow, orch, diag, minGroupSize, failedGroups)
 
 	// --- Cross-boundary probing complete: record infrastructure faults ---
-	case burninv1alpha1.DiagnoseStageCrossBoundary:
+	case crev1alpha1.DiagnoseStageCrossBoundary:
 		return r.handleDiagnoseCrossBoundary(ctx, workflow, orch, diag, minGroupSize, failedGroups)
 
 	// --- Confirmation complete: report results ---
-	case burninv1alpha1.DiagnoseStageConfirmation:
+	case crev1alpha1.DiagnoseStageConfirmation:
 		var confirmedFaulty []string
 		var cleared []string
 		for _, g := range failedGroups {
@@ -1327,7 +1327,7 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 			}
 		}
 		for _, g := range orch.Groups {
-			if g.Phase == burninv1alpha1.GroupSucceeded && len(g.Nodes) > 0 {
+			if g.Phase == crev1alpha1.GroupSucceeded && len(g.Nodes) > 0 {
 				cleared = append(cleared, g.Nodes[0])
 			}
 		}
@@ -1349,7 +1349,7 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 		if err := r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)); err != nil {
 			log.Error(err, "Failed to record succeeded nodes to ConfigMap")
 		}
-		diag.Stage = burninv1alpha1.DiagnoseStageComplete
+		diag.Stage = crev1alpha1.DiagnoseStageComplete
 
 		return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, ReasonIterationsFailed, msg,
 			applySucceededNodesRef(workflow.Status.SucceededNodesRef),
@@ -1362,8 +1362,8 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 
 // handleDiagnoseBisection handles bisection round completion.
 func (r *WorkflowReconciler) handleDiagnoseBisection(
-	ctx context.Context, workflow *burninv1alpha1.Workflow,
-	orch *burninv1alpha1.OrchestrationStatus, diag *burninv1alpha1.DiagnoseStatus,
+	ctx context.Context, workflow *crev1alpha1.Workflow,
+	orch *crev1alpha1.OrchestrationStatus, diag *crev1alpha1.DiagnoseStatus,
 	minGroupSize int, failedGroups []orchestration.Group,
 ) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -1376,7 +1376,7 @@ func (r *WorkflowReconciler) handleDiagnoseBisection(
 			Name:    g.Name,
 			Nodes:   g.Nodes,
 			Domains: g.Domains,
-			Passed:  g.Phase == burninv1alpha1.GroupSucceeded,
+			Passed:  g.Phase == crev1alpha1.GroupSucceeded,
 		})
 	}
 	// Process failed groups first: move minGroupSize groups to suspects,
@@ -1395,11 +1395,11 @@ func (r *WorkflowReconciler) handleDiagnoseBisection(
 	// that both succeeded indicate an infrastructure fault at the boundary.
 	bhpResults := orchestration.DetectBothHalvesPass(groupResults)
 	if len(bhpResults) > 0 {
-		probes := make([]burninv1alpha1.CrossBoundaryProbe, 0, len(bhpResults))
+		probes := make([]crev1alpha1.CrossBoundaryProbe, 0, len(bhpResults))
 		for _, bhp := range bhpResults {
 			log.Info("Both-halves-pass detected — infrastructure fault candidate",
 				"domain", bhp.Domain, "halfA", len(bhp.HalfA), "halfB", len(bhp.HalfB))
-			probes = append(probes, burninv1alpha1.CrossBoundaryProbe{
+			probes = append(probes, crev1alpha1.CrossBoundaryProbe{
 				Domain: bhp.Domain, HalfA: bhp.HalfA, HalfB: bhp.HalfB, ProbeRound: 0,
 			})
 			// Remove BHP nodes from healthy (they were marked healthy by bisection pass)
@@ -1412,11 +1412,11 @@ func (r *WorkflowReconciler) handleDiagnoseBisection(
 		for i, p := range probes {
 			probeGroups = append(probeGroups, orchestration.BuildCrossBoundaryGroups(p.HalfA, p.HalfB, i)...)
 		}
-		diag.CrossBoundaryState = &burninv1alpha1.CrossBoundaryState{
+		diag.CrossBoundaryState = &crev1alpha1.CrossBoundaryState{
 			PendingProbes: probes,
-			OriginStage:   burninv1alpha1.DiagnoseStageBisection,
+			OriginStage:   crev1alpha1.DiagnoseStageBisection,
 		}
-		diag.Stage = burninv1alpha1.DiagnoseStageCrossBoundary
+		diag.Stage = crev1alpha1.DiagnoseStageCrossBoundary
 		return r.diagnoseSetGroups(ctx, workflow, orch, diag, probeGroups,
 			fmt.Sprintf("Both-halves-pass detected in %d groups. Probing cross-boundary infrastructure.",
 				len(bhpResults)))
@@ -1436,8 +1436,8 @@ func (r *WorkflowReconciler) handleDiagnoseBisection(
 // the boundary. When all probes resolve, results are stored as InfrastructureFaults
 // and the algorithm returns to bisection/confirmation for remaining work.
 func (r *WorkflowReconciler) handleDiagnoseCrossBoundary(
-	ctx context.Context, workflow *burninv1alpha1.Workflow,
-	orch *burninv1alpha1.OrchestrationStatus, diag *burninv1alpha1.DiagnoseStatus,
+	ctx context.Context, workflow *crev1alpha1.Workflow,
+	orch *crev1alpha1.OrchestrationStatus, diag *crev1alpha1.DiagnoseStatus,
 	minGroupSize int, failedGroups []orchestration.Group,
 ) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -1452,7 +1452,7 @@ func (r *WorkflowReconciler) handleDiagnoseCrossBoundary(
 	}
 
 	// Process each pending probe: check if its mixed groups passed or failed.
-	var nextProbes []burninv1alpha1.CrossBoundaryProbe
+	var nextProbes []crev1alpha1.CrossBoundaryProbe
 	for i, probe := range cbState.PendingProbes {
 		mix0 := fmt.Sprintf("cross-%d-mix0", i)
 		mix1 := fmt.Sprintf("cross-%d-mix1", i)
@@ -1470,7 +1470,7 @@ func (r *WorkflowReconciler) handleDiagnoseCrossBoundary(
 		if mix0Failed && mix1Failed {
 			// Both failed — full infrastructure fault across the boundary.
 			log.Info("Infrastructure fault confirmed (full boundary)", "domain", probe.Domain)
-			diag.InfrastructureFaults = append(diag.InfrastructureFaults, burninv1alpha1.InfrastructureFault{
+			diag.InfrastructureFaults = append(diag.InfrastructureFaults, crev1alpha1.InfrastructureFault{
 				Domain: probe.Domain,
 				GroupA: probe.HalfA,
 				GroupB: probe.HalfB,
@@ -1487,7 +1487,7 @@ func (r *WorkflowReconciler) handleDiagnoseCrossBoundary(
 			// Max rounds or min size — record as infrastructure fault.
 			log.Info("Infrastructure fault localized", "domain", probe.Domain,
 				"halfA", len(probe.HalfA), "halfB", len(probe.HalfB))
-			diag.InfrastructureFaults = append(diag.InfrastructureFaults, burninv1alpha1.InfrastructureFault{
+			diag.InfrastructureFaults = append(diag.InfrastructureFaults, crev1alpha1.InfrastructureFault{
 				Domain: probe.Domain,
 				GroupA: probe.HalfA,
 				GroupB: probe.HalfB,
@@ -1534,7 +1534,7 @@ func (r *WorkflowReconciler) handleDiagnoseCrossBoundary(
 
 	// Check if infrastructure faults were found.
 	if len(diag.InfrastructureFaults) > 0 {
-		diag.Stage = burninv1alpha1.DiagnoseStageComplete
+		diag.Stage = crev1alpha1.DiagnoseStageComplete
 		msg := fmt.Sprintf("Diagnosis complete: %d infrastructure faults detected", len(diag.InfrastructureFaults))
 		log.Info(msg)
 		return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, ReasonIterationsFailed, msg,
@@ -1546,7 +1546,7 @@ func (r *WorkflowReconciler) handleDiagnoseCrossBoundary(
 }
 
 // failedScreeningGroups rebuilds per-clique groups from screening results.
-func failedScreeningGroups(diag *burninv1alpha1.DiagnoseStatus) []orchestration.Group {
+func failedScreeningGroups(diag *crev1alpha1.DiagnoseStatus) []orchestration.Group {
 	var groups []orchestration.Group
 	for domain, sr := range diag.ScreeningResults {
 		if !sr.Passed {
@@ -1563,8 +1563,8 @@ func failedScreeningGroups(diag *burninv1alpha1.DiagnoseStatus) []orchestration.
 
 // diagnoseNextGroups bisects failed groups or transitions to confirmation if converged.
 func (r *WorkflowReconciler) diagnoseNextGroups(
-	ctx context.Context, workflow *burninv1alpha1.Workflow,
-	orch *burninv1alpha1.OrchestrationStatus, diag *burninv1alpha1.DiagnoseStatus,
+	ctx context.Context, workflow *crev1alpha1.Workflow,
+	orch *crev1alpha1.OrchestrationStatus, diag *crev1alpha1.DiagnoseStatus,
 	minGroupSize int, failedGroups []orchestration.Group,
 ) (ctrl.Result, error) {
 	result := orchestration.Bisect(orchestration.BisectInput{
@@ -1599,34 +1599,34 @@ func (r *WorkflowReconciler) diagnoseNextGroups(
 			if err := r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)); err != nil {
 				logf.FromContext(ctx).Error(err, "Failed to record succeeded nodes to ConfigMap")
 			}
-			diag.Stage = burninv1alpha1.DiagnoseStageComplete
+			diag.Stage = crev1alpha1.DiagnoseStageComplete
 			return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, ReasonIterationsFailed, msg,
 				applySucceededNodesRef(workflow.Status.SucceededNodesRef),
 				applyFailedNodesRef(workflow.Status.FailedNodesRef))
 		}
-		diag.Stage = burninv1alpha1.DiagnoseStageConfirmation
+		diag.Stage = crev1alpha1.DiagnoseStageConfirmation
 		return r.diagnoseSetGroups(ctx, workflow, orch, diag, groups,
 			fmt.Sprintf("Bisection converged: %d suspects, starting confirmation", len(diag.SuspectNodes)))
 	}
 
-	diag.Stage = burninv1alpha1.DiagnoseStageBisection
+	diag.Stage = crev1alpha1.DiagnoseStageBisection
 	return r.diagnoseSetGroups(ctx, workflow, orch, diag, result.Groups,
 		fmt.Sprintf("Bisection round %d: %d groups", diag.Round, len(result.Groups)))
 }
 
 // diagnoseSetGroups replaces the current groups and advances the iteration.
 func (r *WorkflowReconciler) diagnoseSetGroups(
-	ctx context.Context, workflow *burninv1alpha1.Workflow,
-	orch *burninv1alpha1.OrchestrationStatus, diag *burninv1alpha1.DiagnoseStatus,
+	ctx context.Context, workflow *crev1alpha1.Workflow,
+	orch *crev1alpha1.OrchestrationStatus, diag *crev1alpha1.DiagnoseStatus,
 	groups []orchestration.Group, msg string,
 ) (ctrl.Result, error) {
 	logf.FromContext(ctx).Info(msg, "stage", diag.Stage, "round", diag.Round)
 
-	orch.Groups = make([]burninv1alpha1.GroupStatus, len(groups))
+	orch.Groups = make([]crev1alpha1.GroupStatus, len(groups))
 	for i, g := range groups {
-		orch.Groups[i] = burninv1alpha1.GroupStatus{
+		orch.Groups[i] = crev1alpha1.GroupStatus{
 			Name: g.Name, Nodes: g.Nodes, Domains: g.Domains,
-			Phase: burninv1alpha1.GroupPending,
+			Phase: crev1alpha1.GroupPending,
 		}
 	}
 	orch.TotalGroups = len(groups)
@@ -1640,10 +1640,10 @@ func (r *WorkflowReconciler) diagnoseSetGroups(
 
 // diagnoseDone sets the workflow as succeeded with the given message.
 func (r *WorkflowReconciler) diagnoseDone(
-	ctx context.Context, workflow *burninv1alpha1.Workflow,
-	diag *burninv1alpha1.DiagnoseStatus, msg string,
+	ctx context.Context, workflow *crev1alpha1.Workflow,
+	diag *crev1alpha1.DiagnoseStatus, msg string,
 ) (ctrl.Result, error) {
-	diag.Stage = burninv1alpha1.DiagnoseStageComplete
+	diag.Stage = crev1alpha1.DiagnoseStageComplete
 	logf.FromContext(ctx).Info(msg, "round", diag.Round,
 		"healthy", len(diag.HealthyNodes), "suspects", len(diag.SuspectNodes))
 
@@ -1654,7 +1654,7 @@ func (r *WorkflowReconciler) diagnoseDone(
 }
 
 // buildInterDomainGroup selects one healthy representative per screening group.
-func buildInterDomainGroup(healthyNodes []string, groups []burninv1alpha1.GroupStatus) orchestration.Group {
+func buildInterDomainGroup(healthyNodes []string, groups []crev1alpha1.GroupStatus) orchestration.Group {
 	healthySet := make(map[string]bool, len(healthyNodes))
 	for _, n := range healthyNodes {
 		healthySet[n] = true
@@ -1677,17 +1677,17 @@ func buildInterDomainGroup(healthyNodes []string, groups []burninv1alpha1.GroupS
 }
 
 // snapshotIteration captures the current group outcomes as an IterationResult.
-func snapshotIteration(orch *burninv1alpha1.OrchestrationStatus) burninv1alpha1.IterationResult {
-	result := burninv1alpha1.IterationResult{
+func snapshotIteration(orch *crev1alpha1.OrchestrationStatus) crev1alpha1.IterationResult {
+	result := crev1alpha1.IterationResult{
 		Iteration: orch.CurrentIteration,
-		Groups:    make([]burninv1alpha1.GroupIterationResult, len(orch.Groups)),
+		Groups:    make([]crev1alpha1.GroupIterationResult, len(orch.Groups)),
 	}
 	for i, g := range orch.Groups {
 		var jobName string
 		if g.JobRef != nil {
 			jobName = g.JobRef.Name
 		}
-		result.Groups[i] = burninv1alpha1.GroupIterationResult{
+		result.Groups[i] = crev1alpha1.GroupIterationResult{
 			Name:           g.Name,
 			Phase:          g.Phase,
 			JobName:        jobName,
@@ -1699,9 +1699,9 @@ func snapshotIteration(orch *burninv1alpha1.OrchestrationStatus) burninv1alpha1.
 }
 
 // ensureOrchestrationStatus initializes the orchestration status if nil.
-func (r *WorkflowReconciler) ensureOrchestrationStatus(workflow *burninv1alpha1.Workflow) *burninv1alpha1.OrchestrationStatus {
+func (r *WorkflowReconciler) ensureOrchestrationStatus(workflow *crev1alpha1.Workflow) *crev1alpha1.OrchestrationStatus {
 	if workflow.Status.Orchestration == nil {
-		workflow.Status.Orchestration = &burninv1alpha1.OrchestrationStatus{}
+		workflow.Status.Orchestration = &crev1alpha1.OrchestrationStatus{}
 	}
 	return workflow.Status.Orchestration
 }
@@ -1711,7 +1711,7 @@ func (r *WorkflowReconciler) ensureOrchestrationStatus(workflow *burninv1alpha1.
 // when the Workflow is eventually deleted by the Certification controller. This preserves
 // GoodputMeasurement and BandwidthMeasurement resources (owned by Workflow via OwnerReference)
 // so the certification report can read metrics across all iterations before teardown.
-func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *burninv1alpha1.Workflow) (ctrl.Result, error) {
+func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *crev1alpha1.Workflow) (ctrl.Result, error) {
 	totalIter := effectiveIterations(workflow.Spec.Orchestration)
 
 	// Count failed groups across all iterations
@@ -1750,7 +1750,7 @@ func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *burni
 }
 
 // countFailedGroups counts groups with Failed phase across all iterations.
-func (r *WorkflowReconciler) countFailedGroups(workflow *burninv1alpha1.Workflow) int {
+func (r *WorkflowReconciler) countFailedGroups(workflow *crev1alpha1.Workflow) int {
 	if workflow.Status.Orchestration == nil {
 		return 0
 	}
@@ -1758,14 +1758,14 @@ func (r *WorkflowReconciler) countFailedGroups(workflow *burninv1alpha1.Workflow
 	// Count from iteration history (completed non-final iterations).
 	for _, iter := range workflow.Status.Orchestration.IterationHistory {
 		for _, g := range iter.Groups {
-			if g.Phase == burninv1alpha1.GroupFailed {
+			if g.Phase == crev1alpha1.GroupFailed {
 				count++
 			}
 		}
 	}
 	// Count from current (final) groups.
 	for _, g := range workflow.Status.Orchestration.Groups {
-		if g.Phase == burninv1alpha1.GroupFailed {
+		if g.Phase == crev1alpha1.GroupFailed {
 			count++
 		}
 	}
@@ -1774,13 +1774,13 @@ func (r *WorkflowReconciler) countFailedGroups(workflow *burninv1alpha1.Workflow
 
 // hasValidationFailures checks if any failed group's Job has the ValidationFailed condition.
 // Used by setFinalStatus to distinguish validation failures from other failure types.
-func (r *WorkflowReconciler) hasValidationFailures(ctx context.Context, workflow *burninv1alpha1.Workflow) bool {
-	return r.anyFailedGroupJobHasCondition(ctx, workflow, burninv1alpha1.JobValidationFailed)
+func (r *WorkflowReconciler) hasValidationFailures(ctx context.Context, workflow *crev1alpha1.Workflow) bool {
+	return r.anyFailedGroupJobHasCondition(ctx, workflow, crev1alpha1.JobValidationFailed)
 }
 
 // hasHardwareFailures checks if any failed group's Job has the HardwareFailed condition.
-func (r *WorkflowReconciler) hasHardwareFailures(ctx context.Context, workflow *burninv1alpha1.Workflow) bool {
-	return r.anyFailedGroupJobHasCondition(ctx, workflow, burninv1alpha1.JobHardwareFailed)
+func (r *WorkflowReconciler) hasHardwareFailures(ctx context.Context, workflow *crev1alpha1.Workflow) bool {
+	return r.anyFailedGroupJobHasCondition(ctx, workflow, crev1alpha1.JobHardwareFailed)
 }
 
 // anyFailedGroupJobHasCondition reports whether the Job behind any failed group
@@ -1791,20 +1791,20 @@ func (r *WorkflowReconciler) hasHardwareFailures(ctx context.Context, workflow *
 // transient read error should leave the generic reason in place rather than
 // assert a cause that was never observed.
 func (r *WorkflowReconciler) anyFailedGroupJobHasCondition(
-	ctx context.Context, workflow *burninv1alpha1.Workflow, conditionType string,
+	ctx context.Context, workflow *crev1alpha1.Workflow, conditionType string,
 ) bool {
 	if workflow.Status.Orchestration == nil {
 		return false
 	}
 	for _, g := range workflow.Status.Orchestration.Groups {
-		if g.Phase != burninv1alpha1.GroupFailed || g.JobRef == nil {
+		if g.Phase != crev1alpha1.GroupFailed || g.JobRef == nil {
 			continue
 		}
 		ns := g.JobRef.Namespace
 		if ns == "" {
 			ns = workflow.Namespace
 		}
-		job := &burninv1alpha1.Job{}
+		job := &crev1alpha1.Job{}
 		if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: g.JobRef.Name}, job); err != nil {
 			continue
 		}
@@ -1818,7 +1818,7 @@ func (r *WorkflowReconciler) anyFailedGroupJobHasCondition(
 // deleteTerminalJobs deletes all Jobs referenced by the current iteration's groups.
 // The Job controller's finalizer handles workload cleanup and metrics.
 // updateTopologyMetric recomputes the topology validated nodes gauge from all succeeded groups.
-func (r *WorkflowReconciler) updateTopologyMetric(ctx context.Context, workflow *burninv1alpha1.Workflow) {
+func (r *WorkflowReconciler) updateTopologyMetric(ctx context.Context, workflow *crev1alpha1.Workflow) {
 	log := logf.FromContext(ctx)
 	topologyKey := getTopologyKey(workflow)
 	if topologyKey == "" {
@@ -1835,7 +1835,7 @@ func (r *WorkflowReconciler) updateTopologyMetric(ctx context.Context, workflow 
 	failedNodes := make(map[string]bool)
 	failedDomainNodes := make(map[string]map[string]bool) // domain -> set of node names
 	for _, g := range orch.Groups {
-		if g.Phase == burninv1alpha1.GroupFailed {
+		if g.Phase == crev1alpha1.GroupFailed {
 			for _, nodeName := range g.Nodes {
 				failedNodes[nodeName] = true
 				domain := r.getNodeDomain(ctx, nodeName, topologyKey, g.Domains)
@@ -1853,7 +1853,7 @@ func (r *WorkflowReconciler) updateTopologyMetric(ctx context.Context, workflow 
 	// excluding any node that appears in a failed group.
 	domainNodes := make(map[string]map[string]bool) // domain -> set of node names
 	for _, g := range orch.Groups {
-		if g.Phase != burninv1alpha1.GroupSucceeded {
+		if g.Phase != crev1alpha1.GroupSucceeded {
 			continue
 		}
 		for _, nodeName := range g.Nodes {
@@ -1894,7 +1894,7 @@ func (r *WorkflowReconciler) updateTopologyMetric(ctx context.Context, workflow 
 }
 
 // getTopologyKey returns the topology key from the workflow spec, or "" if not set.
-func getTopologyKey(workflow *burninv1alpha1.Workflow) string {
+func getTopologyKey(workflow *crev1alpha1.Workflow) string {
 	if workflow.Spec.Orchestration.Topology != nil {
 		return workflow.Spec.Orchestration.Topology.TopologyKey
 	}
@@ -1918,7 +1918,7 @@ func (r *WorkflowReconciler) getNodeDomain(ctx context.Context, nodeName, topolo
 
 // buildGroupStatuses converts orchestration groups into GroupStatus objects,
 // populating DomainNodeCounts for multi-domain groups using node topology labels.
-func buildGroupStatuses(groups []orchestration.Group, nodeInfos []orchestration.NodeInfo, topo *burninv1alpha1.TopologySpec) []burninv1alpha1.GroupStatus {
+func buildGroupStatuses(groups []orchestration.Group, nodeInfos []orchestration.NodeInfo, topo *crev1alpha1.TopologySpec) []crev1alpha1.GroupStatus {
 	// Build node→domain lookup for DomainNodeCounts.
 	nodeDomainMap := make(map[string]string)
 	if topo != nil && topo.TopologyKey != "" {
@@ -1929,14 +1929,14 @@ func buildGroupStatuses(groups []orchestration.Group, nodeInfos []orchestration.
 		}
 	}
 
-	statuses := make([]burninv1alpha1.GroupStatus, len(groups))
+	statuses := make([]crev1alpha1.GroupStatus, len(groups))
 	for i, g := range groups {
-		statuses[i] = burninv1alpha1.GroupStatus{
+		statuses[i] = crev1alpha1.GroupStatus{
 			Name:     g.Name,
 			Nodes:    g.Nodes,
 			Domains:  g.Domains,
 			Overflow: g.Overflow,
-			Phase:    burninv1alpha1.GroupPending,
+			Phase:    crev1alpha1.GroupPending,
 		}
 		if len(g.Domains) > 1 && len(nodeDomainMap) > 0 {
 			counts := make(map[string]int)
@@ -1954,7 +1954,7 @@ func buildGroupStatuses(groups []orchestration.Group, nodeInfos []orchestration.
 // collectAllDomainNodes returns domain → node list for all groups.
 // Most groups span a single domain, so assigns all nodes to that domain.
 // Multi-domain groups assign each node to every domain (conservative for cleanup).
-func collectAllDomainNodes(groups []burninv1alpha1.GroupStatus) map[string][]string {
+func collectAllDomainNodes(groups []crev1alpha1.GroupStatus) map[string][]string {
 	result := make(map[string][]string)
 	for _, g := range groups {
 		if len(g.Domains) == 1 {
@@ -1969,22 +1969,22 @@ func collectAllDomainNodes(groups []burninv1alpha1.GroupStatus) map[string][]str
 }
 
 // setWorkflowInProgress sets the Workflow to InProgress state.
-func (r *WorkflowReconciler) setWorkflowInProgress(ctx context.Context, workflow *burninv1alpha1.Workflow, reason, message string, extra ...func(*burninv1alpha1.Workflow) bool) error {
-	return r.setExclusiveCondition(ctx, workflow, burninv1alpha1.WorkflowInProgress, reason, message, extra...)
+func (r *WorkflowReconciler) setWorkflowInProgress(ctx context.Context, workflow *crev1alpha1.Workflow, reason, message string, extra ...func(*crev1alpha1.Workflow) bool) error {
+	return r.setExclusiveCondition(ctx, workflow, crev1alpha1.WorkflowInProgress, reason, message, extra...)
 }
 
 // setWorkflowSucceeded sets the Workflow to Succeeded state.
 // extra funcs are applied inside the updateStatusWithRetry closure so their
 // status mutations survive 409 conflict re-fetches.
-func (r *WorkflowReconciler) setWorkflowSucceeded(ctx context.Context, workflow *burninv1alpha1.Workflow, reason, message string, extra ...func(*burninv1alpha1.Workflow) bool) error {
-	return r.setExclusiveCondition(ctx, workflow, burninv1alpha1.WorkflowSucceeded, reason, message, extra...)
+func (r *WorkflowReconciler) setWorkflowSucceeded(ctx context.Context, workflow *crev1alpha1.Workflow, reason, message string, extra ...func(*crev1alpha1.Workflow) bool) error {
+	return r.setExclusiveCondition(ctx, workflow, crev1alpha1.WorkflowSucceeded, reason, message, extra...)
 }
 
 // setWorkflowFailed sets the Workflow to Failed state.
 // extra funcs are applied inside the updateStatusWithRetry closure so their
 // status mutations survive 409 conflict re-fetches.
-func (r *WorkflowReconciler) setWorkflowFailed(ctx context.Context, workflow *burninv1alpha1.Workflow, reason, message string, extra ...func(*burninv1alpha1.Workflow) bool) error {
-	return r.setExclusiveCondition(ctx, workflow, burninv1alpha1.WorkflowFailed, reason, message, extra...)
+func (r *WorkflowReconciler) setWorkflowFailed(ctx context.Context, workflow *crev1alpha1.Workflow, reason, message string, extra ...func(*crev1alpha1.Workflow) bool) error {
+	return r.setExclusiveCondition(ctx, workflow, crev1alpha1.WorkflowFailed, reason, message, extra...)
 }
 
 // applySucceededNodesRef returns an extra func suitable for setWorkflowSucceeded
@@ -1992,11 +1992,11 @@ func (r *WorkflowReconciler) setWorkflowFailed(ctx context.Context, workflow *bu
 // closure. Without this, SucceededNodesRef set on the stale object before the
 // call is silently discarded when the API server returns a 409 conflict and the
 // object is re-fetched.
-func applySucceededNodesRef(ref *corev1.TypedLocalObjectReference) func(*burninv1alpha1.Workflow) bool {
+func applySucceededNodesRef(ref *corev1.TypedLocalObjectReference) func(*crev1alpha1.Workflow) bool {
 	if ref == nil {
 		return nil
 	}
-	return func(w *burninv1alpha1.Workflow) bool {
+	return func(w *crev1alpha1.Workflow) bool {
 		cur := w.Status.SucceededNodesRef
 		if cur != nil && cur.Name == ref.Name && cur.Kind == ref.Kind {
 			return false
@@ -2011,11 +2011,11 @@ func applySucceededNodesRef(ref *corev1.TypedLocalObjectReference) func(*burninv
 // FailedNodesRef set on the stale object before the call (e.g. by
 // recordFailedNodes) is silently discarded when the API server returns a 409
 // conflict and the object is re-fetched.
-func applyFailedNodesRef(ref *corev1.TypedLocalObjectReference) func(*burninv1alpha1.Workflow) bool {
+func applyFailedNodesRef(ref *corev1.TypedLocalObjectReference) func(*crev1alpha1.Workflow) bool {
 	if ref == nil {
 		return nil
 	}
-	return func(w *burninv1alpha1.Workflow) bool {
+	return func(w *crev1alpha1.Workflow) bool {
 		cur := w.Status.FailedNodesRef
 		if cur != nil && cur.Name == ref.Name && cur.Kind == ref.Kind {
 			return false
@@ -2026,13 +2026,13 @@ func applyFailedNodesRef(ref *corev1.TypedLocalObjectReference) func(*burninv1al
 }
 
 // setExclusiveCondition sets one condition True and all others False (mutually exclusive).
-func (r *WorkflowReconciler) setExclusiveCondition(ctx context.Context, workflow *burninv1alpha1.Workflow, conditionType, reason, message string, extra ...func(*burninv1alpha1.Workflow) bool) error {
+func (r *WorkflowReconciler) setExclusiveCondition(ctx context.Context, workflow *crev1alpha1.Workflow, conditionType, reason, message string, extra ...func(*crev1alpha1.Workflow) bool) error {
 	changed, err := setExclusiveStatusCondition(ctx, r.Client, workflow,
-		func(w *burninv1alpha1.Workflow) *[]metav1.Condition { return &w.Status.Conditions },
+		func(w *crev1alpha1.Workflow) *[]metav1.Condition { return &w.Status.Conditions },
 		[]string{
-			burninv1alpha1.WorkflowInProgress,
-			burninv1alpha1.WorkflowSucceeded,
-			burninv1alpha1.WorkflowFailed,
+			crev1alpha1.WorkflowInProgress,
+			crev1alpha1.WorkflowSucceeded,
+			crev1alpha1.WorkflowFailed,
 		},
 		conditionType, reason, message, extra...,
 	)
@@ -2046,7 +2046,7 @@ func (r *WorkflowReconciler) setExclusiveCondition(ctx context.Context, workflow
 }
 
 // getGroupJobName returns the name for a Job created for a specific group and iteration.
-func (r *WorkflowReconciler) getGroupJobName(workflow *burninv1alpha1.Workflow, groupName string, iteration int) string {
+func (r *WorkflowReconciler) getGroupJobName(workflow *crev1alpha1.Workflow, groupName string, iteration int) string {
 	var raw string
 	isDiagnose := workflow.Spec.Orchestration.Diagnose != nil
 	if !isDiagnose && !hasMultipleIterations(workflow.Spec.Orchestration) && workflow.Status.Orchestration != nil && workflow.Status.Orchestration.TotalGroups <= 1 {
@@ -2069,7 +2069,7 @@ func (r *WorkflowReconciler) getJobRequeueInterval() time.Duration {
 // is deleted. For MPI tests, targets the launcher pod (which has the actual NCCL
 // output). Falls back to the first running node pod for non-MPI workloads.
 // Best-effort: errors are logged, not returned.
-func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *burninv1alpha1.Job) {
+func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *crev1alpha1.Job) {
 	log := logf.FromContext(ctx)
 	if r.Clientset == nil {
 		return
@@ -2123,7 +2123,7 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *burninv
 	stream, err := podlogs.OpenStream(ctx, req)
 	if err != nil {
 		log.V(1).Info("Failed to stream pod logs for timeout capture", "pod", targetPod.Name, "error", err)
-		job.Status.FailureLog = &burninv1alpha1.FailureLog{
+		job.Status.FailureLog = &crev1alpha1.FailureLog{
 			PodName:  targetPod.Name,
 			NodeName: targetPod.Spec.NodeName,
 			Reason:   "Timeout",
@@ -2137,7 +2137,7 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *burninv
 		log.V(1).Info("Failed to read pod logs", "pod", targetPod.Name, "error", err)
 	}
 
-	job.Status.FailureLog = &burninv1alpha1.FailureLog{
+	job.Status.FailureLog = &crev1alpha1.FailureLog{
 		PodName:  targetPod.Name,
 		NodeName: targetPod.Spec.NodeName,
 		Reason:   "Timeout",
@@ -2155,7 +2155,7 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *burninv
 // Jobs must be deleted before dependencies because dependencies (ComputeDomain,
 // ResourceClaimTemplate) provide DRA allocations for GPU interconnects. Deleting
 // them while workload pods are still running causes CUDA failure 719.
-func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *burninv1alpha1.Workflow) (ctrl.Result, error) {
+func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *crev1alpha1.Workflow) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	if !controllerutil.ContainsFinalizer(workflow, workflowFinalizer) {
@@ -2168,7 +2168,7 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *burni
 	// This is necessary because envtest has no GC controller, and with multiple iterations
 	// there may be completed Jobs from previous iterations that are no longer referenced.
 	// The Job controller's finalizer handles workload (TrainJob) deletion and pod termination.
-	jobList := &burninv1alpha1.JobList{}
+	jobList := &crev1alpha1.JobList{}
 	if err := r.List(ctx, jobList,
 		client.InNamespace(workflow.Namespace),
 		client.MatchingLabels{"cre.nvidia.com/workflow": workflow.Name},
@@ -2247,7 +2247,7 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *burni
 }
 
 // effectiveIterations returns the number of normal iterations to run, ensuring at least 1.
-func effectiveIterations(orch burninv1alpha1.OrchestrationSpec) int {
+func effectiveIterations(orch crev1alpha1.OrchestrationSpec) int {
 	if orch.Iterations < 1 {
 		return 1
 	}
@@ -2255,7 +2255,7 @@ func effectiveIterations(orch burninv1alpha1.OrchestrationSpec) int {
 }
 
 // hasMultipleIterations returns true if the orchestration uses multiple iterations.
-func hasMultipleIterations(orch burninv1alpha1.OrchestrationSpec) bool {
+func hasMultipleIterations(orch crev1alpha1.OrchestrationSpec) bool {
 	return orch.Iterations > 1
 }
 
@@ -2276,17 +2276,17 @@ func appendUniqueNodes(existing []string, newNodes ...string) []string {
 
 // removeNodes removes specified nodes from a slice.
 // recordScreeningResults saves per-domain screening results and stashes failed nodes.
-func recordScreeningResults(orch *burninv1alpha1.OrchestrationStatus, diag *burninv1alpha1.DiagnoseStatus, failedGroups []orchestration.Group) {
+func recordScreeningResults(orch *crev1alpha1.OrchestrationStatus, diag *crev1alpha1.DiagnoseStatus, failedGroups []orchestration.Group) {
 	failedNames := failedGroupNameSet(failedGroups)
-	diag.ScreeningResults = make(map[string]burninv1alpha1.DomainScreeningResult)
+	diag.ScreeningResults = make(map[string]crev1alpha1.DomainScreeningResult)
 	for _, g := range orch.Groups {
 		domain := g.Name
 		if len(g.Domains) > 0 {
 			domain = g.Domains[0]
 		}
-		diag.ScreeningResults[domain] = burninv1alpha1.DomainScreeningResult{
+		diag.ScreeningResults[domain] = crev1alpha1.DomainScreeningResult{
 			Nodes:  g.Nodes,
-			Passed: g.Phase == burninv1alpha1.GroupSucceeded && !failedNames[g.Name],
+			Passed: g.Phase == crev1alpha1.GroupSucceeded && !failedNames[g.Name],
 		}
 	}
 	for _, g := range failedGroups {
@@ -2308,7 +2308,7 @@ func failedGroupNameSet(failedGroups []orchestration.Group) map[string]bool {
 }
 
 // buildNoNVLGroups rebuilds screening groups for the no-NVL stage.
-func buildNoNVLGroups(diag *burninv1alpha1.DiagnoseStatus) []orchestration.Group {
+func buildNoNVLGroups(diag *crev1alpha1.DiagnoseStatus) []orchestration.Group {
 	groups := make([]orchestration.Group, 0, len(diag.ScreeningResults))
 	for domain, result := range diag.ScreeningResults {
 		groups = append(groups, orchestration.Group{
@@ -2323,17 +2323,17 @@ func buildNoNVLGroups(diag *burninv1alpha1.DiagnoseStatus) []orchestration.Group
 // failedGroups carries the threshold-aware verdict from collectDiagnoseRoundResults
 // so groups that passed by phase but fell below the bandwidth threshold are still
 // recorded as not-passed and routed into the suspect set for follow-up.
-func processNoNVLScreeningResults(orch *burninv1alpha1.OrchestrationStatus, diag *burninv1alpha1.DiagnoseStatus, failedGroups []orchestration.Group) {
+func processNoNVLScreeningResults(orch *crev1alpha1.OrchestrationStatus, diag *crev1alpha1.DiagnoseStatus, failedGroups []orchestration.Group) {
 	failedNames := failedGroupNameSet(failedGroups)
-	diag.NoNVLScreeningResults = make(map[string]burninv1alpha1.DomainScreeningResult)
+	diag.NoNVLScreeningResults = make(map[string]crev1alpha1.DomainScreeningResult)
 	for _, g := range orch.Groups {
 		domain := g.Name
 		if len(g.Domains) > 0 {
 			domain = g.Domains[0]
 		}
-		result := burninv1alpha1.DomainScreeningResult{
+		result := crev1alpha1.DomainScreeningResult{
 			Nodes:  g.Nodes,
-			Passed: g.Phase == burninv1alpha1.GroupSucceeded && !failedNames[g.Name],
+			Passed: g.Phase == crev1alpha1.GroupSucceeded && !failedNames[g.Name],
 		}
 		diag.NoNVLScreeningResults[domain] = result
 		if !result.Passed {
@@ -2362,8 +2362,8 @@ func removeNodes(existing []string, toRemove []string) []string {
 // round, applying bandwidth threshold reclassification. Returns failed groups and
 // whether any bandwidth measurements are still pending (caller should requeue).
 func (r *WorkflowReconciler) collectDiagnoseRoundResults(
-	ctx context.Context, workflow *burninv1alpha1.Workflow,
-	orch *burninv1alpha1.OrchestrationStatus, diag *burninv1alpha1.DiagnoseStatus,
+	ctx context.Context, workflow *crev1alpha1.Workflow,
+	orch *crev1alpha1.OrchestrationStatus, diag *crev1alpha1.DiagnoseStatus,
 ) ([]orchestration.Group, bool) {
 	log := logf.FromContext(ctx)
 
@@ -2376,7 +2376,7 @@ func (r *WorkflowReconciler) collectDiagnoseRoundResults(
 	var failedGroups []orchestration.Group
 	for _, g := range orch.Groups {
 		switch g.Phase {
-		case burninv1alpha1.GroupSucceeded:
+		case crev1alpha1.GroupSucceeded:
 			if bwThresholdExpr != "" && g.JobRef != nil {
 				below, pending, bwErr := r.isBelowBandwidthThreshold(ctx, g.JobRef.Name, workflow.Namespace, bwThresholdExpr)
 				if bwErr != nil {
@@ -2400,7 +2400,7 @@ func (r *WorkflowReconciler) collectDiagnoseRoundResults(
 				}
 			}
 			diag.HealthyNodes = appendUniqueNodes(diag.HealthyNodes, g.Nodes...)
-		case burninv1alpha1.GroupFailed:
+		case crev1alpha1.GroupFailed:
 			failedGroups = append(failedGroups, orchestration.Group{
 				Name: g.Name, Nodes: g.Nodes, Domains: g.Domains,
 			})
@@ -2412,16 +2412,16 @@ func (r *WorkflowReconciler) collectDiagnoseRoundResults(
 // applyDiagnoseMNNVLOverride disables MNNVL for diagnose stages that require it:
 // no-NVL screening, cross-boundary probing (when origin stage ran without NVL),
 // and bisection/confirmation when the group contains no-NVL suspects.
-func applyDiagnoseMNNVLOverride(spec *burninv1alpha1.WorkloadSpec, diag *burninv1alpha1.DiagnoseStatus, nodes []string) {
+func applyDiagnoseMNNVLOverride(spec *crev1alpha1.WorkloadSpec, diag *crev1alpha1.DiagnoseStatus, nodes []string) {
 	switch diag.Stage {
-	case burninv1alpha1.DiagnoseStageIntraScreeningNoNVL:
+	case crev1alpha1.DiagnoseStageIntraScreeningNoNVL:
 		overrideMNNVL(spec, "0")
-	case burninv1alpha1.DiagnoseStageCrossBoundary:
+	case crev1alpha1.DiagnoseStageCrossBoundary:
 		if diag.CrossBoundaryState != nil &&
-			diag.CrossBoundaryState.OriginStage != burninv1alpha1.DiagnoseStageIntraScreening {
+			diag.CrossBoundaryState.OriginStage != crev1alpha1.DiagnoseStageIntraScreening {
 			overrideMNNVL(spec, "0")
 		}
-	case burninv1alpha1.DiagnoseStageBisection, burninv1alpha1.DiagnoseStageConfirmation:
+	case crev1alpha1.DiagnoseStageBisection, crev1alpha1.DiagnoseStageConfirmation:
 		if len(diag.NoNVLSuspectNodes) > 0 {
 			noNVLSet := make(map[string]bool, len(diag.NoNVLSuspectNodes))
 			for _, n := range diag.NoNVLSuspectNodes {
@@ -2439,7 +2439,7 @@ func applyDiagnoseMNNVLOverride(spec *burninv1alpha1.WorkloadSpec, diag *burninv
 
 // overrideMNNVL sets NCCL_MNNVL_ENABLE on the trainer. It checks Args first,
 // then Env, and appends as an env var if not found in either.
-func overrideMNNVL(spec *burninv1alpha1.WorkloadSpec, value string) {
+func overrideMNNVL(spec *crev1alpha1.WorkloadSpec, value string) {
 	if spec.TrainJob == nil || spec.TrainJob.Trainer == nil {
 		return
 	}
@@ -2470,7 +2470,7 @@ func overrideMNNVL(spec *burninv1alpha1.WorkloadSpec, value string) {
 // isMNNVLEnabledInJobTemplate checks whether the base job template has
 // NCCL_MNNVL_ENABLE set to a non-zero value in either Trainer.Args or Trainer.Env.
 // Returns false if the env var is absent or set to "0".
-func isMNNVLEnabledInJobTemplate(tmpl *burninv1alpha1.JobTemplateSpec) bool {
+func isMNNVLEnabledInJobTemplate(tmpl *crev1alpha1.JobTemplateSpec) bool {
 	if tmpl.Spec.Workload.TrainJob == nil || tmpl.Spec.Workload.TrainJob.Trainer == nil {
 		return false
 	}
@@ -2496,7 +2496,7 @@ func isMNNVLEnabledInJobTemplate(tmpl *burninv1alpha1.JobTemplateSpec) bool {
 // Dependency refs are accumulated in the workflow object in memory but NOT persisted.
 // The caller's subsequent Status().Update() (e.g. setWorkflowInProgress, job status
 // updates) writes the full status including any new dependency refs.
-func (r *WorkflowReconciler) ensureWorkflowDependencies(ctx context.Context, workflow *burninv1alpha1.Workflow) error {
+func (r *WorkflowReconciler) ensureWorkflowDependencies(ctx context.Context, workflow *crev1alpha1.Workflow) error {
 	// Classify deps by reachability from the job template
 	jobSpecJSON, err := json.Marshal(&workflow.Spec.JobTemplate.Spec)
 	if err != nil {
@@ -2538,7 +2538,7 @@ func (r *WorkflowReconciler) ensureWorkflowDependencies(ctx context.Context, wor
 }
 
 // hasPVCDependency checks if the Workflow has a PVC dependency with the given name.
-func (r *WorkflowReconciler) hasPVCDependency(workflow *burninv1alpha1.Workflow, pvcName string) bool {
+func (r *WorkflowReconciler) hasPVCDependency(workflow *crev1alpha1.Workflow, pvcName string) bool {
 	for _, dep := range workflow.Spec.Dependencies {
 		var obj unstructured.Unstructured
 		if err := json.Unmarshal(dep.Raw, &obj.Object); err != nil {
@@ -2556,7 +2556,7 @@ func (r *WorkflowReconciler) hasPVCDependency(workflow *burninv1alpha1.Workflow,
 // unmarshaling from dep.Raw (used for job-scoped deps with suffixed names).
 // The owner parameter sets an owner reference on the resource for GC cascading.
 // Pass nil to skip owner reference (e.g. for job-scoped deps that get the Job as owner later).
-func (r *WorkflowReconciler) createDependencyResource(ctx context.Context, owner client.Object, workflow *burninv1alpha1.Workflow, dep burninv1alpha1.DependencySpec, prebuilt ...*unstructured.Unstructured) (*burninv1alpha1.DependencyResourceRef, bool, error) {
+func (r *WorkflowReconciler) createDependencyResource(ctx context.Context, owner client.Object, workflow *crev1alpha1.Workflow, dep crev1alpha1.DependencySpec, prebuilt ...*unstructured.Unstructured) (*crev1alpha1.DependencyResourceRef, bool, error) {
 	log := logf.FromContext(ctx)
 
 	var obj *unstructured.Unstructured
@@ -2611,7 +2611,7 @@ func (r *WorkflowReconciler) createDependencyResource(ctx context.Context, owner
 		}
 	}
 
-	return &burninv1alpha1.DependencyResourceRef{
+	return &crev1alpha1.DependencyResourceRef{
 		APIVersion: obj.GetAPIVersion(),
 		Kind:       obj.GetKind(),
 		Name:       obj.GetName(),
@@ -2684,11 +2684,11 @@ func (r *WorkflowReconciler) findPVByClaimRef(ctx context.Context, pvcNamespace,
 }
 
 // isTerminal returns true if the Workflow has reached a terminal state (Succeeded or Failed).
-func (r *WorkflowReconciler) isTerminal(workflow *burninv1alpha1.Workflow) bool {
-	if cond := meta.FindStatusCondition(workflow.Status.Conditions, burninv1alpha1.WorkflowSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
+func (r *WorkflowReconciler) isTerminal(workflow *crev1alpha1.Workflow) bool {
+	if cond := meta.FindStatusCondition(workflow.Status.Conditions, crev1alpha1.WorkflowSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
 		return true
 	}
-	if cond := meta.FindStatusCondition(workflow.Status.Conditions, burninv1alpha1.WorkflowFailed); cond != nil && cond.Status == metav1.ConditionTrue {
+	if cond := meta.FindStatusCondition(workflow.Status.Conditions, crev1alpha1.WorkflowFailed); cond != nil && cond.Status == metav1.ConditionTrue {
 		return true
 	}
 	return false
@@ -2705,8 +2705,8 @@ func (r *WorkflowReconciler) eventf(obj runtime.Object, eventType, reason, messa
 // SetupWithManager sets up the controller with the Manager.
 func (r *WorkflowReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&burninv1alpha1.Workflow{}).
-		Owns(&burninv1alpha1.Job{}).
+		For(&crev1alpha1.Workflow{}).
+		Owns(&crev1alpha1.Job{}).
 		Named("workflow").
 		Complete(r)
 }

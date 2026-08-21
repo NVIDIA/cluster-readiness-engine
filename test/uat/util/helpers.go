@@ -34,7 +34,7 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/yaml"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
 )
 
 // Polling configuration.
@@ -47,7 +47,7 @@ var (
 func Scheme() *runtime.Scheme {
 	s := runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(s)
-	_ = burninv1alpha1.AddToScheme(s)
+	_ = crev1alpha1.AddToScheme(s)
 	_ = trainerv1alpha1.AddToScheme(s)
 	_ = batchv1.AddToScheme(s)
 	return s
@@ -140,9 +140,9 @@ func WaitForCertification(
 	key types.NamespacedName,
 	conditionType string,
 	timeout time.Duration,
-) *burninv1alpha1.Certification {
+) *crev1alpha1.Certification {
 	t.Helper()
-	cert := &burninv1alpha1.Certification{}
+	cert := &crev1alpha1.Certification{}
 	require.Eventually(t, func() bool {
 		if err := c.Get(ctx, key, cert); err != nil {
 			return false
@@ -280,7 +280,7 @@ func CompareCertification(
 ) {
 	t.Helper()
 
-	cert := &burninv1alpha1.Certification{}
+	cert := &crev1alpha1.Certification{}
 	require.NoError(t, c.Get(ctx, key, cert))
 	StripCertVolatile(cert)
 
@@ -420,7 +420,7 @@ func stripLabel(pod *corev1.Pod, key string) {
 }
 
 // StripCertVolatile removes timestamps and UIDs from a Certification.
-func StripCertVolatile(cert *burninv1alpha1.Certification) {
+func StripCertVolatile(cert *crev1alpha1.Certification) {
 	cert.ResourceVersion = ""
 	cert.UID = ""
 	cert.Generation = 0
@@ -449,7 +449,7 @@ func StripCertVolatile(cert *burninv1alpha1.Certification) {
 
 // DeleteCertification deletes a Certification and ignores not-found errors.
 func DeleteCertification(ctx context.Context, c client.Client, name, namespace string) {
-	cert := &burninv1alpha1.Certification{}
+	cert := &crev1alpha1.Certification{}
 	cert.Name = name
 	cert.Namespace = namespace
 	_ = client.IgnoreNotFound(c.Delete(ctx, cert))
@@ -542,9 +542,9 @@ func WaitForWorkloadRun(
 	key types.NamespacedName,
 	conditionType string,
 	timeout time.Duration,
-) *burninv1alpha1.WorkloadRun {
+) *crev1alpha1.WorkloadRun {
 	t.Helper()
-	run := &burninv1alpha1.WorkloadRun{}
+	run := &crev1alpha1.WorkloadRun{}
 	require.Eventually(t, func() bool {
 		if err := c.Get(ctx, key, run); err != nil {
 			return false
@@ -558,7 +558,7 @@ func WaitForWorkloadRun(
 
 // DeleteWorkloadRun deletes a WorkloadRun and ignores not-found errors.
 func DeleteWorkloadRun(ctx context.Context, c client.Client, name, namespace string) {
-	run := &burninv1alpha1.WorkloadRun{}
+	run := &crev1alpha1.WorkloadRun{}
 	run.Name = name
 	run.Namespace = namespace
 	_ = client.IgnoreNotFound(c.Delete(ctx, run))

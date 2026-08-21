@@ -17,8 +17,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 )
 
 type conditionOut struct {
@@ -50,7 +50,7 @@ func TestUnresolvedLogProfile(t *testing.T) {
 		}
 
 		scheme := runtime.NewScheme()
-		if err := burninv1alpha1.AddToScheme(scheme); err != nil {
+		if err := crev1alpha1.AddToScheme(scheme); err != nil {
 			return err
 		}
 
@@ -58,21 +58,21 @@ func TestUnresolvedLogProfile(t *testing.T) {
 		// found and simply parse nothing, which is different from the profile being
 		// missing, and reaches a different branch now that the final sample runs
 		// before the terminal handling.
-		profile := &burninv1alpha1.LogProfile{
+		profile := &crev1alpha1.LogProfile{
 			ObjectMeta: metav1.ObjectMeta{Name: "megatron-training"},
-			Spec: burninv1alpha1.LogProfileSpec{
-				Timestamp: burninv1alpha1.TimestampSpec{Layout: "2006-01-02 15:04:05.999999"},
-				Patterns: burninv1alpha1.LogPatternSet{
-					TrainingStep: &burninv1alpha1.EventPattern{
+			Spec: crev1alpha1.LogProfileSpec{
+				Timestamp: crev1alpha1.TimestampSpec{Layout: "2006-01-02 15:04:05.999999"},
+				Patterns: crev1alpha1.LogPatternSet{
+					TrainingStep: &crev1alpha1.EventPattern{
 						Regex: `iteration\s+(?P<iteration>\d+)`,
 					},
 				},
 			},
 		}
 
-		job := &burninv1alpha1.Job{
+		job := &crev1alpha1.Job{
 			ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"},
-			Status: burninv1alpha1.JobStatus{Conditions: []metav1.Condition{{
+			Status: crev1alpha1.JobStatus{Conditions: []metav1.Condition{{
 				Type: in.JobCondition, Status: metav1.ConditionTrue,
 				Reason: "Test", LastTransitionTime: metav1.Now(),
 			}}},
@@ -85,19 +85,19 @@ func TestUnresolvedLogProfile(t *testing.T) {
 
 		switch in.Measurement {
 		case "bandwidth":
-			m := &burninv1alpha1.BandwidthMeasurement{
+			m := &crev1alpha1.BandwidthMeasurement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "m", Namespace: "ns",
 					Finalizers: []string{bandwidthMeasurementFinalizer},
 				},
-				Spec: burninv1alpha1.BandwidthMeasurementSpec{
+				Spec: crev1alpha1.BandwidthMeasurementSpec{
 					JobRef:        corev1.TypedLocalObjectReference{Name: "j"},
 					LogProfileRef: in.LogProfileRef,
 				},
 			}
 			for i := 0; i < in.ExistingResults; i++ {
 				m.Status.Results = append(m.Status.Results,
-					burninv1alpha1.BandwidthResult{SizeBytes: 1024, AlgBW: "10", BusBW: "20"})
+					crev1alpha1.BandwidthResult{SizeBytes: 1024, AlgBW: "10", BusBW: "20"})
 			}
 			c := fake.NewClientBuilder().WithScheme(scheme).
 				WithObjects(job, m).WithStatusSubresource(job, m).Build()
@@ -105,18 +105,18 @@ func TestUnresolvedLogProfile(t *testing.T) {
 			if _, err := r.Reconcile(context.Background(), req); err != nil {
 				return err
 			}
-			got := &burninv1alpha1.BandwidthMeasurement{}
+			got := &crev1alpha1.BandwidthMeasurement{}
 			if err := c.Get(context.Background(), key, got); err != nil {
 				return err
 			}
 			conds, results = got.Status.Conditions, len(got.Status.Results)
 		default:
-			m := &burninv1alpha1.GoodputMeasurement{
+			m := &crev1alpha1.GoodputMeasurement{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "m", Namespace: "ns",
 					Finalizers: []string{goodputMeasurementFinalizer},
 				},
-				Spec: burninv1alpha1.GoodputMeasurementSpec{
+				Spec: crev1alpha1.GoodputMeasurementSpec{
 					JobRef:        corev1.TypedLocalObjectReference{Name: "j"},
 					LogProfileRef: in.LogProfileRef,
 				},
@@ -131,7 +131,7 @@ func TestUnresolvedLogProfile(t *testing.T) {
 			if _, err := r.Reconcile(context.Background(), req); err != nil {
 				return err
 			}
-			got := &burninv1alpha1.GoodputMeasurement{}
+			got := &crev1alpha1.GoodputMeasurement{}
 			if err := c.Get(context.Background(), key, got); err != nil {
 				return err
 			}

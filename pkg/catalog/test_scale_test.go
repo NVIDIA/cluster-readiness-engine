@@ -10,8 +10,8 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 )
 
 // testScale: intra-node used to do nothing. The template had a branch for it
@@ -37,7 +37,7 @@ func TestTestScaleNodeCount(t *testing.T) {
 		}
 
 		entry := Lookup("communication", "nccl-all-reduce")
-		spec, err := entry.Build(burninv1alpha1.TargetSpec{
+		spec, err := entry.Build(crev1alpha1.TargetSpec{
 			NodeSelector: map[string]string{
 				"nvidia.com/gpu.product": "NVIDIA-H100-80GB-HBM3",
 			},

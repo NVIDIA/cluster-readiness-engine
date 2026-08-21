@@ -41,7 +41,7 @@ spec:
             description: spec defines the desired state of BandwidthMeasurement
             properties:
               jobRef:
-                description: jobRef is the reference to the burnin Job for which bandwidth
+                description: jobRef is the reference to the CRE Job for which bandwidth
                   should be measured.
                 properties:
                   apiGroup:

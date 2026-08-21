@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	v1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	v1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
 )
 
 // Parser parses NCCL bandwidth test output using a compiled regex from a LogProfile.
