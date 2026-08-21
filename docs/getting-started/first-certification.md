@@ -26,19 +26,17 @@ Cordoned nodes are skipped. If a node is cordoned, CRE does not select it, and i
 
 ## Step 1: install the CLI
 
-Every release so far is a pre-release, and `releases/latest` resolves only to the newest **stable** release, so that URL cannot be fetched yet. Name the version explicitly instead:
+While this repository is internal, GitHub serves release assets only through authenticated API downloads — plain `curl` against `releases/download/...` returns a 404 "Not Found" page instead of the script, even with a token. Fetch the installer with the gh CLI (authenticate with `gh auth login` first) and name the version explicitly:
 
 ```bash
-CRE_VERSION=v0.1.0-rc.8
-curl -sSL https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/download/${CRE_VERSION}/installer \
-  | bash -s -- -v "${CRE_VERSION}"
+CRE_VERSION=v0.1.0-rc.9
+gh release download "${CRE_VERSION}" --repo dsx-ai-factory/cluster-readiness-engine \
+  --pattern installer --output - | bash -s -- -v "${CRE_VERSION}"
 ```
 
-Once `v0.1.0` is tagged, the shorter `releases/latest/download/installer` form works and installs the newest stable release.
+Once the repository is public and `v0.1.0` is tagged, the shorter `curl -sSL .../releases/latest/download/installer | bash` form works and installs the newest stable release. (`releases/latest` resolves only to the newest **stable** release, and every release so far is a pre-release.)
 
-The installer takes `-p` to accept pre-releases when it resolves a version itself. That flag is an argument to the script, so it cannot help you download the script — which is why the version is named in the URL above.
-
-While this repository is internal, downloading a release asset needs a GitHub token. Authenticate with `gh auth login`, or set `GITHUB_TOKEN`, before running the command.
+The installer takes `-p` to accept pre-releases when it resolves a version itself. That flag is an argument to the script, so it cannot help you download the script — which is why the version is named explicitly above.
 
 The installer detects your OS and architecture, downloads the matching `ncrectl` binary, installs it to `/usr/local/bin` (with sudo if needed), and adds a `kubectl-ncre` symlink. After it finishes, both forms work and are the same binary:
 

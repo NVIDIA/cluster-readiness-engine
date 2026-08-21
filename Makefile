@@ -190,11 +190,17 @@ ci: verify lint build test ## Run the full CI gate locally: verify, lint, build,
 ##@ Build
 
 .PHONY: check-clean-version
-check-clean-version: ## Verify VERSION is a clean release tag (no -dirty, -N-gXXX, or dev).
+check-clean-version: ## Verify VERSION is a clean release tag (vX.Y.Z with optional -prerelease; no -dirty, -N-gXXX, dev, or bare SHA).
 	@case "$(VERSION)" in \
 	  dev|*-dirty|*-*-g*) \
 	    echo "ERROR: VERSION=$(VERSION) is not a clean release tag."; \
 	    echo "Commit and tag your changes first (e.g., git tag v1.14.0)."; \
+	    exit 1 ;; \
+	  v[0-9]*.[0-9]*.[0-9]*) ;; \
+	  *) \
+	    echo "ERROR: VERSION=$(VERSION) does not look like a release tag (vX.Y.Z or vX.Y.Z-rc.N)."; \
+	    echo "git describe falls back to a bare commit SHA when no tag is reachable;"; \
+	    echo "fetch tags (git fetch --tags) or pass VERSION=<tag> explicitly."; \
 	    exit 1 ;; \
 	esac
 
