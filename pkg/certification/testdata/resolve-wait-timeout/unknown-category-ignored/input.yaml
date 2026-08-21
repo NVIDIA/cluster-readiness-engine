@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Unregistered categories contribute nothing to the derivation (they error
+# with a proper message later in the pipeline); the flag default stands.
+explicitTimeout: false
+flagTimeout: 30m
+certification:
+  apiVersion: cre.nvidia.com/v1alpha1
+  kind: Certification
+  metadata:
+    name: unknown
+  spec:
+    target:
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-GB200
+    categories:
+    - domain: nonexistent
+      variant: not-registered

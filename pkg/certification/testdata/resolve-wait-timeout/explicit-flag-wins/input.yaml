@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The user passed --timeout 45m explicitly; the dcgm-level4 budget (3h derived)
+# must NOT override it.
+explicitTimeout: true
+flagTimeout: 45m
+certification:
+  apiVersion: cre.nvidia.com/v1alpha1
+  kind: Certification
+  metadata:
+    name: explicit
+  spec:
+    target:
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-GB200
+    categories:
+    - domain: diagnostics
+      variant: dcgm-level4
