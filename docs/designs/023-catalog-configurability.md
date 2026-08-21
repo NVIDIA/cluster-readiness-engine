@@ -57,7 +57,7 @@ type BuildConfig struct {
 }
 
 type Entry struct {
-    Build func(target burninv1alpha1.TargetSpec, config BuildConfig) burninv1alpha1.WorkflowSpec
+    Build func(target crev1alpha1.TargetSpec, config BuildConfig) crev1alpha1.WorkflowSpec
 }
 ```
 

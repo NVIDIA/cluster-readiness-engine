@@ -9,14 +9,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
 )
 
 // --- ForSpec (all adapters) ---
@@ -27,7 +27,7 @@ func TestForSpec(t *testing.T) {
 		ExpectedSuffix: ".json",
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
-		var spec burninv1alpha1.WorkloadSpec
+		var spec crev1alpha1.WorkloadSpec
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &spec); err != nil {
 			return err
 		}
@@ -56,9 +56,9 @@ func TestTrainJobBuild(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Name      string                      `yaml:"name"`
-			Namespace string                      `yaml:"namespace"`
-			Spec      burninv1alpha1.WorkloadSpec `yaml:"spec"`
+			Name      string                   `yaml:"name"`
+			Namespace string                   `yaml:"namespace"`
+			Spec      crev1alpha1.WorkloadSpec `yaml:"spec"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -93,9 +93,9 @@ func TestTrainJobInjectPodLabel(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			LabelKey   string                      `yaml:"labelKey"`
-			LabelValue string                      `yaml:"labelValue"`
-			Spec       burninv1alpha1.WorkloadSpec `yaml:"spec"`
+			LabelKey   string                   `yaml:"labelKey"`
+			LabelValue string                   `yaml:"labelValue"`
+			Spec       crev1alpha1.WorkloadSpec `yaml:"spec"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -119,8 +119,8 @@ func TestTrainJobSetNodeSelector(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			NodeSelector map[string]string           `yaml:"nodeSelector"`
-			Spec         burninv1alpha1.WorkloadSpec `yaml:"spec"`
+			NodeSelector map[string]string        `yaml:"nodeSelector"`
+			Spec         crev1alpha1.WorkloadSpec `yaml:"spec"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -144,8 +144,8 @@ func TestTrainJobSetNodeAffinity(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Affinity *corev1.NodeAffinity        `yaml:"affinity"`
-			Spec     burninv1alpha1.WorkloadSpec `yaml:"spec"`
+			Affinity *corev1.NodeAffinity     `yaml:"affinity"`
+			Spec     crev1alpha1.WorkloadSpec `yaml:"spec"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -202,7 +202,7 @@ func TestTrainJobNodesRequired(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Spec burninv1alpha1.WorkloadSpec `yaml:"spec"`
+			Spec crev1alpha1.WorkloadSpec `yaml:"spec"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -230,8 +230,8 @@ func TestTrainJobSetTolerations(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Tolerations []corev1.Toleration         `yaml:"tolerations"`
-			Spec        burninv1alpha1.WorkloadSpec `yaml:"spec"`
+			Tolerations []corev1.Toleration      `yaml:"tolerations"`
+			Spec        crev1alpha1.WorkloadSpec `yaml:"spec"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -255,7 +255,7 @@ func TestHasLauncherTarget(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Spec burninv1alpha1.WorkloadSpec `yaml:"spec"`
+			Spec crev1alpha1.WorkloadSpec `yaml:"spec"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err

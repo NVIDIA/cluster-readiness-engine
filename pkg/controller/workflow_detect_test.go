@@ -7,12 +7,12 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"sigs.k8s.io/yaml"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
 )
 
 func TestDetectPlatform(t *testing.T) {
@@ -138,13 +138,13 @@ func TestMatchesWhen(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			When            burninv1alpha1.WhenSpec `yaml:"when"`
-			Platform        string                  `yaml:"platform"`
-			GPUArchitecture string                  `yaml:"gpuArchitecture"`
-			WorkloadKind    string                  `yaml:"workloadKind"`
-			TopologyMode    string                  `yaml:"topologyMode"`
-			DomainCount     int                     `yaml:"domainCount"`
-			Config          *apiextensionsv1.JSON   `yaml:"config"`
+			When            crev1alpha1.WhenSpec  `yaml:"when"`
+			Platform        string                `yaml:"platform"`
+			GPUArchitecture string                `yaml:"gpuArchitecture"`
+			WorkloadKind    string                `yaml:"workloadKind"`
+			TopologyMode    string                `yaml:"topologyMode"`
+			DomainCount     int                   `yaml:"domainCount"`
+			Config          *apiextensionsv1.JSON `yaml:"config"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -181,13 +181,13 @@ func TestApplyOverrides(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Spec            burninv1alpha1.WorkflowSpec `yaml:"spec"`
-			Platform        string                      `yaml:"platform"`
-			GPUArchitecture string                      `yaml:"gpuArchitecture"`
-			WorkloadKind    string                      `yaml:"workloadKind"`
-			TopologyMode    string                      `yaml:"topologyMode"`
-			DomainCount     int                         `yaml:"domainCount"`
-			Config          *apiextensionsv1.JSON       `yaml:"config"`
+			Spec            crev1alpha1.WorkflowSpec `yaml:"spec"`
+			Platform        string                   `yaml:"platform"`
+			GPUArchitecture string                   `yaml:"gpuArchitecture"`
+			WorkloadKind    string                   `yaml:"workloadKind"`
+			TopologyMode    string                   `yaml:"topologyMode"`
+			DomainCount     int                      `yaml:"domainCount"`
+			Config          *apiextensionsv1.JSON    `yaml:"config"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -221,7 +221,7 @@ func TestDetectWorkloadKind(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Workload burninv1alpha1.WorkloadSpec `yaml:"workload"`
+			Workload crev1alpha1.WorkloadSpec `yaml:"workload"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -247,8 +247,8 @@ func TestMatchesIntSpec(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Spec  burninv1alpha1.IntMatchSpec `yaml:"spec"`
-			Value int                         `yaml:"value"`
+			Spec  crev1alpha1.IntMatchSpec `yaml:"spec"`
+			Value int                      `yaml:"value"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -274,7 +274,7 @@ func TestSummarizeWhen(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			When burninv1alpha1.WhenSpec `yaml:"when"`
+			When crev1alpha1.WhenSpec `yaml:"when"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -300,9 +300,9 @@ func TestApplyOverridesWithTracking(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Spec            burninv1alpha1.WorkflowSpec `yaml:"spec"`
-			Platform        string                      `yaml:"platform"`
-			GPUArchitecture string                      `yaml:"gpuArchitecture"`
+			Spec            crev1alpha1.WorkflowSpec `yaml:"spec"`
+			Platform        string                   `yaml:"platform"`
+			GPUArchitecture string                   `yaml:"gpuArchitecture"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -318,7 +318,7 @@ func TestApplyOverridesWithTracking(t *testing.T) {
 		}
 
 		data, err := json.MarshalIndent(struct {
-			Applied []burninv1alpha1.AppliedOverride `json:"applied"`
+			Applied []crev1alpha1.AppliedOverride `json:"applied"`
 		}{Applied: applied}, "", "  ")
 		if err != nil {
 			return err

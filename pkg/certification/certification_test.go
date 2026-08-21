@@ -11,15 +11,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/catalog"
 )
 
 func TestCatalogListCategories(t *testing.T) {
@@ -560,7 +560,7 @@ func TestCategoryRunOptsWiringIntoCert(t *testing.T) {
 			storageClass:     "gp3",
 		}
 
-		cert := &burninv1alpha1.Certification{}
+		cert := &crev1alpha1.Certification{}
 
 		// Simulate the wiring logic from runCertificationRun.
 		if opts.enableCheckpoint != nil {
@@ -598,7 +598,7 @@ func TestCategoryRunOptsWiringIntoCert(t *testing.T) {
 
 	t.Run("zero opts leave fields nil", func(t *testing.T) {
 		opts := categoryRunOpts{}
-		cert := &burninv1alpha1.Certification{}
+		cert := &crev1alpha1.Certification{}
 
 		if opts.enableCheckpoint != nil {
 			cert.Spec.EnableCheckpoint = opts.enableCheckpoint
@@ -628,7 +628,7 @@ func TestCategoryRunOptsWiringIntoCert(t *testing.T) {
 	})
 
 	t.Run("nodesPerJob wiring", func(t *testing.T) {
-		cert := &burninv1alpha1.Certification{}
+		cert := &crev1alpha1.Certification{}
 		nodesPerJob := int32(4)
 		if nodesPerJob > 0 {
 			cert.Spec.NodesPerJob = &nodesPerJob
@@ -638,7 +638,7 @@ func TestCategoryRunOptsWiringIntoCert(t *testing.T) {
 	})
 
 	t.Run("nodesPerJob zero leaves nil", func(t *testing.T) {
-		cert := &burninv1alpha1.Certification{}
+		cert := &crev1alpha1.Certification{}
 		nodesPerJob := int32(0)
 		if nodesPerJob > 0 {
 			cert.Spec.NodesPerJob = &nodesPerJob

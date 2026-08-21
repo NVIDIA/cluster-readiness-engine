@@ -16,8 +16,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/naming"
 )
 
 const (
@@ -39,7 +39,7 @@ var resourceNameRegex = regexp.MustCompile(`^[a-z0-9][-a-z0-9.]*[a-z0-9]$`)
 // metadata.name appears (directly or transitively) as a string value reachable
 // from the job template. Cluster-scoped resources (kind starting with "Cluster")
 // are never job-scoped because per-job copies would collide globally.
-func classifyDependencies(deps []burninv1alpha1.DependencySpec, jobSpecJSON []byte) (workflowDeps, jobDeps []burninv1alpha1.DependencySpec) {
+func classifyDependencies(deps []crev1alpha1.DependencySpec, jobSpecJSON []byte) (workflowDeps, jobDeps []crev1alpha1.DependencySpec) {
 	if len(deps) == 0 {
 		return nil, nil
 	}
@@ -117,7 +117,7 @@ func classifyDependencies(deps []burninv1alpha1.DependencySpec, jobSpecJSON []by
 // detectCrossRefs finds resource-name-shaped strings that appear in 2+ job-scoped
 // deps but aren't any dep's metadata.name. These are internal names (e.g., a
 // ComputeDomain channel template name) that need per-job suffixing.
-func detectCrossRefs(jobDeps []burninv1alpha1.DependencySpec) map[string]bool {
+func detectCrossRefs(jobDeps []crev1alpha1.DependencySpec) map[string]bool {
 	// Collect all dep metadata.names
 	depNames := make(map[string]bool, len(jobDeps))
 	for _, dep := range jobDeps {
@@ -153,7 +153,7 @@ func detectCrossRefs(jobDeps []burninv1alpha1.DependencySpec) map[string]bool {
 // orderDependencies returns dependencies in topological creation order.
 // If dep A's JSON contains dep B's metadata.name, A depends on B (create B first).
 // Dependencies with no inter-references maintain their original order.
-func orderDependencies(deps []burninv1alpha1.DependencySpec) []burninv1alpha1.DependencySpec {
+func orderDependencies(deps []crev1alpha1.DependencySpec) []crev1alpha1.DependencySpec {
 	if len(deps) <= 1 {
 		return deps
 	}
@@ -206,7 +206,7 @@ func orderDependencies(deps []burninv1alpha1.DependencySpec) []burninv1alpha1.De
 	}
 	sort.Ints(queue)
 
-	result := make([]burninv1alpha1.DependencySpec, 0, len(deps))
+	result := make([]crev1alpha1.DependencySpec, 0, len(deps))
 	for len(queue) > 0 {
 		idx := queue[0]
 		queue = queue[1:]
@@ -249,11 +249,11 @@ func orderDependencies(deps []burninv1alpha1.DependencySpec) []burninv1alpha1.De
 // Since DependencyRefs are stored in creation (topological) order by
 // orderDependencies(), reversing gives a safe deletion order: resources
 // that depend on others are deleted first, followed by their dependencies.
-func reverseDependencyRefs(refs []burninv1alpha1.DependencyResourceRef) []burninv1alpha1.DependencyResourceRef {
+func reverseDependencyRefs(refs []crev1alpha1.DependencyResourceRef) []crev1alpha1.DependencyResourceRef {
 	if len(refs) <= 1 {
 		return refs
 	}
-	reversed := make([]burninv1alpha1.DependencyResourceRef, len(refs))
+	reversed := make([]crev1alpha1.DependencyResourceRef, len(refs))
 	for i, ref := range refs {
 		reversed[len(refs)-1-i] = ref
 	}
@@ -277,7 +277,7 @@ func depJobSuffix(totalGroups int, multipleIterations bool, groupName string, it
 // It always includes metadata.name, and also includes auto-detected cross-reference
 // names (shared strings across 2+ deps). Structural names internal to a resource
 // (e.g., replicatedJob names, container names) are NOT suffixed.
-func buildReplacementMap(deps []burninv1alpha1.DependencySpec, suffix string) map[string]string {
+func buildReplacementMap(deps []crev1alpha1.DependencySpec, suffix string) map[string]string {
 	replacements := make(map[string]string)
 
 	// Auto-detect cross-references
@@ -327,7 +327,7 @@ func suffixDependencyObject(raw []byte, replacements map[string]string) (*unstru
 }
 
 // suffixJobSpec applies name replacements to a job spec via JSON round-trip.
-func suffixJobSpec(spec *burninv1alpha1.JobSpec, replacements map[string]string) (*burninv1alpha1.JobSpec, error) {
+func suffixJobSpec(spec *crev1alpha1.JobSpec, replacements map[string]string) (*crev1alpha1.JobSpec, error) {
 	data, err := json.Marshal(spec)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal job spec: %w", err)
@@ -338,7 +338,7 @@ func suffixJobSpec(spec *burninv1alpha1.JobSpec, replacements map[string]string)
 		s = strings.ReplaceAll(s, `"`+old+`"`, `"`+newVal+`"`)
 	}
 
-	result := &burninv1alpha1.JobSpec{}
+	result := &crev1alpha1.JobSpec{}
 	if err := json.Unmarshal([]byte(s), result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal suffixed job spec: %w", err)
 	}
@@ -350,11 +350,11 @@ func suffixJobSpec(spec *burninv1alpha1.JobSpec, replacements map[string]string)
 // and only patches the job spec with the name replacements.
 func (r *WorkflowReconciler) ensureJobDependencies(
 	ctx context.Context,
-	workflow *burninv1alpha1.Workflow,
-	group *burninv1alpha1.GroupStatus,
-	orch *burninv1alpha1.OrchestrationStatus,
-	spec *burninv1alpha1.JobSpec,
-) (*burninv1alpha1.JobSpec, []burninv1alpha1.DependencyResourceRef, error) {
+	workflow *crev1alpha1.Workflow,
+	group *crev1alpha1.GroupStatus,
+	orch *crev1alpha1.OrchestrationStatus,
+	spec *crev1alpha1.JobSpec,
+) (*crev1alpha1.JobSpec, []crev1alpha1.DependencyResourceRef, error) {
 	// Marshal job spec for classification
 	jobSpecJSON, err := json.Marshal(spec)
 	if err != nil {
@@ -387,7 +387,7 @@ func (r *WorkflowReconciler) ensureJobDependencies(
 		}
 	}
 
-	var refs []burninv1alpha1.DependencyResourceRef
+	var refs []crev1alpha1.DependencyResourceRef
 	hasNewComputeDomain := false
 	if !alreadyCreated {
 		// Create suffixed dependency objects
@@ -432,12 +432,12 @@ func (r *WorkflowReconciler) ensureJobDependencies(
 // cleanupScopedDependencies deletes dependency resources matching the given scope, group, and iteration,
 // and removes them from the workflow status. Matching refs are deleted in reverse topological order
 // (reverse of creation order) so that resources depending on others are removed first.
-func (r *WorkflowReconciler) cleanupScopedDependencies(ctx context.Context, workflow *burninv1alpha1.Workflow, scope, groupName string, iteration int) {
+func (r *WorkflowReconciler) cleanupScopedDependencies(ctx context.Context, workflow *crev1alpha1.Workflow, scope, groupName string, iteration int) {
 	log := logf.FromContext(ctx)
 
 	// Partition refs into matching (to delete) and non-matching (to keep).
-	var toDelete []burninv1alpha1.DependencyResourceRef
-	var remaining []burninv1alpha1.DependencyResourceRef
+	var toDelete []crev1alpha1.DependencyResourceRef
+	var remaining []crev1alpha1.DependencyResourceRef
 	for _, ref := range workflow.Status.DependencyRefs {
 		if ref.Scope != scope || ref.GroupName != groupName || ref.Iteration != iteration {
 			remaining = append(remaining, ref)

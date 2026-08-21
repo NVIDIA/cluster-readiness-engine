@@ -12,8 +12,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 )
 
 // Discovery drops cordoned nodes because they cannot run workload pods. It used
@@ -61,7 +61,7 @@ func TestDiscoverCordonedNodes(t *testing.T) {
 
 		nodes, cordoned, err := discoverTargetNodes(context.Background(),
 			unorderedReader{nodes: given},
-			&burninv1alpha1.TargetSpec{})
+			&crev1alpha1.TargetSpec{})
 		if err != nil {
 			return err
 		}

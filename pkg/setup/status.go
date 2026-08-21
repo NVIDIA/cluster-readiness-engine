@@ -10,7 +10,7 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/kubeconfig"
 	"github.com/spf13/cobra"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"

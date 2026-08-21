@@ -14,7 +14,7 @@ global-theme: nvidia
 
 navbar-links:
   - type: github
-    value: https://github.com/NVIDIA/cluster-readiness-engine
+    value: https://github.com/dsx-ai-factory/cluster-readiness-engine
 
 products:
   - display-name: Cluster Readiness Engine

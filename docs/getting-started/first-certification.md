@@ -30,7 +30,7 @@ Every release so far is a pre-release, and `releases/latest` resolves only to th
 
 ```bash
 CRE_VERSION=v0.1.0-rc.8
-curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${CRE_VERSION}/installer \
+curl -sSL https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/download/${CRE_VERSION}/installer \
   | bash -s -- -v "${CRE_VERSION}"
 ```
 

@@ -41,7 +41,7 @@ spec:
             description: spec defines the desired state of GoodputMeasurement
             properties:
               jobRef:
-                description: jobRef is the reference to the burnin Job for which goodput
+                description: jobRef is the reference to the CRE Job for which goodput
                   should be calculated.
                 properties:
                   apiGroup:

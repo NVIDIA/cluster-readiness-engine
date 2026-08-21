@@ -17,8 +17,8 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/gpu"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/gpu"
 )
 
 const (
@@ -168,7 +168,7 @@ type OverrideContext struct {
 
 // buildOverrideContext creates an OverrideContext from available workflow data.
 // Pass nil for nodes when they haven't been discovered yet.
-func buildOverrideContext(spec *burninv1alpha1.WorkflowSpec, orch *burninv1alpha1.OrchestrationStatus, nodes []corev1.Node) OverrideContext {
+func buildOverrideContext(spec *crev1alpha1.WorkflowSpec, orch *crev1alpha1.OrchestrationStatus, nodes []corev1.Node) OverrideContext {
 	octx := OverrideContext{
 		Platform:        orch.DetectedPlatform,
 		GPUArchitecture: orch.DetectedGPUArchitecture,
@@ -183,7 +183,7 @@ func buildOverrideContext(spec *burninv1alpha1.WorkflowSpec, orch *burninv1alpha
 }
 
 // detectWorkloadKind returns the workload kind based on which field is set.
-func detectWorkloadKind(spec *burninv1alpha1.WorkloadSpec) string {
+func detectWorkloadKind(spec *crev1alpha1.WorkloadSpec) string {
 	switch {
 	case spec.TrainJob != nil:
 		return "TrainJob"
@@ -208,7 +208,7 @@ func countDomains(nodes []corev1.Node, topologyKey string) int {
 
 // matchesWhen evaluates a WhenSpec against the override context.
 // An empty WhenSpec always matches. Returns an error if CEL evaluation fails.
-func matchesWhen(when burninv1alpha1.WhenSpec, octx OverrideContext) (bool, error) {
+func matchesWhen(when crev1alpha1.WhenSpec, octx OverrideContext) (bool, error) {
 	if when.Platform != nil && !matchesStringSpec(*when.Platform, octx.Platform) {
 		return false, nil
 	}
@@ -242,7 +242,7 @@ func matchesWhen(when burninv1alpha1.WhenSpec, octx OverrideContext) (bool, erro
 }
 
 // matchesStringSpec evaluates a StringMatchSpec against a value.
-func matchesStringSpec(spec burninv1alpha1.StringMatchSpec, value string) bool {
+func matchesStringSpec(spec crev1alpha1.StringMatchSpec, value string) bool {
 	if spec.Equals != "" && spec.Equals != value {
 		return false
 	}
@@ -261,7 +261,7 @@ func matchesStringSpec(spec burninv1alpha1.StringMatchSpec, value string) bool {
 }
 
 // matchesIntSpec evaluates an IntMatchSpec against a value.
-func matchesIntSpec(spec burninv1alpha1.IntMatchSpec, value int) bool {
+func matchesIntSpec(spec crev1alpha1.IntMatchSpec, value int) bool {
 	if spec.Equals != nil && *spec.Equals != value {
 		return false
 	}
@@ -363,7 +363,7 @@ func evaluateExpression(expr string, octx OverrideContext) (bool, error) {
 // by apiVersion/kind/name are merged using recursive map merge with named array
 // merge (arrays of objects with a "name" field are matched and merged by name);
 // unmatched overrides are appended.
-func applyOverrides(spec *burninv1alpha1.WorkflowSpec, octx OverrideContext) error {
+func applyOverrides(spec *crev1alpha1.WorkflowSpec, octx OverrideContext) error {
 	for i, o := range spec.Overrides {
 		matches, err := matchesWhen(o.When, octx)
 		if err != nil {
@@ -417,7 +417,7 @@ func depKey(raw []byte) (string, string, string) {
 // mergeOrAppendDependency merges an override dependency into a matching base
 // dependency (by apiVersion/kind/name) using recursive map merge with named
 // array merge. If no match is found, the override is appended as a new dependency.
-func mergeOrAppendDependency(spec *burninv1alpha1.WorkflowSpec, override burninv1alpha1.DependencySpec) error {
+func mergeOrAppendDependency(spec *crev1alpha1.WorkflowSpec, override crev1alpha1.DependencySpec) error {
 	oAPI, oKind, oName := depKey(override.Raw)
 
 	for i, base := range spec.Dependencies {
@@ -452,7 +452,7 @@ func mergeOrAppendDependency(spec *burninv1alpha1.WorkflowSpec, override burninv
 // corev1.Container.Env is merged by name). Fields without tags (e.g.,
 // Kubeflow Trainer.Env) fall back to list replacement, matching ADR-012's
 // documented "lists replace" semantics.
-func mergeJobTemplate(base *burninv1alpha1.JobTemplateSpec, override *apiextensionsv1.JSON) error {
+func mergeJobTemplate(base *crev1alpha1.JobTemplateSpec, override *apiextensionsv1.JSON) error {
 	baseJSON, err := json.Marshal(base)
 	if err != nil {
 		return fmt.Errorf("marshal base: %w", err)
@@ -463,14 +463,14 @@ func mergeJobTemplate(base *burninv1alpha1.JobTemplateSpec, override *apiextensi
 	}
 	// Zero out base before unmarshaling so fields deleted by the patch
 	// (via null) don't retain their previous values.
-	*base = burninv1alpha1.JobTemplateSpec{}
+	*base = crev1alpha1.JobTemplateSpec{}
 	return json.Unmarshal(merged, base)
 }
 
 // patchJobTemplate applies an RFC 6902 JSON Patch to the base jobTemplate.
 // This enables precise operations like removing a specific env var by index,
 // testing a precondition before patching, or adding at a specific array position.
-func patchJobTemplate(base *burninv1alpha1.JobTemplateSpec, patch *apiextensionsv1.JSON) error {
+func patchJobTemplate(base *crev1alpha1.JobTemplateSpec, patch *apiextensionsv1.JSON) error {
 	decodedPatch, err := jsonpatch.DecodePatch(patch.Raw)
 	if err != nil {
 		return fmt.Errorf("invalid JSON Patch: %w", err)
@@ -483,7 +483,7 @@ func patchJobTemplate(base *burninv1alpha1.JobTemplateSpec, patch *apiextensions
 	if err != nil {
 		return fmt.Errorf("apply JSON Patch: %w", err)
 	}
-	*base = burninv1alpha1.JobTemplateSpec{}
+	*base = crev1alpha1.JobTemplateSpec{}
 	return json.Unmarshal(patched, base)
 }
 
@@ -578,7 +578,7 @@ func indexByName(items []any) ([]string, map[string]map[string]any) {
 
 // summarizeWhen produces a human-readable summary of a WhenSpec.
 // Example: "gpuArchitecture=h100, platform in [aws,gcp]"
-func summarizeWhen(when burninv1alpha1.WhenSpec) string {
+func summarizeWhen(when crev1alpha1.WhenSpec) string {
 	var parts []string
 	if when.GPUArchitecture != nil {
 		parts = append(parts, "gpuArchitecture="+summarizeStringSpec(*when.GPUArchitecture))
@@ -614,7 +614,7 @@ func summarizeWhen(when burninv1alpha1.WhenSpec) string {
 }
 
 // summarizeStringSpec returns a compact string representation of a StringMatchSpec.
-func summarizeStringSpec(spec burninv1alpha1.StringMatchSpec) string {
+func summarizeStringSpec(spec crev1alpha1.StringMatchSpec) string {
 	if spec.Equals != "" {
 		return spec.Equals
 	}
@@ -628,7 +628,7 @@ func summarizeStringSpec(spec burninv1alpha1.StringMatchSpec) string {
 }
 
 // summarizeIntSpec returns a compact string representation of an IntMatchSpec.
-func summarizeIntSpec(spec burninv1alpha1.IntMatchSpec) string {
+func summarizeIntSpec(spec crev1alpha1.IntMatchSpec) string {
 	var parts []string
 	if spec.Equals != nil {
 		parts = append(parts, fmt.Sprintf("=%d", *spec.Equals))
@@ -645,7 +645,7 @@ func summarizeIntSpec(spec burninv1alpha1.IntMatchSpec) string {
 // applyPreCommands wraps the trainer command in a /bin/bash -c script that
 // runs preCommands in order before exec-ing the original command. Applied after
 // all jobTemplate patches so it always wraps the final resolved command.
-func applyPreCommands(jt *burninv1alpha1.JobTemplateSpec, preCommands []string) {
+func applyPreCommands(jt *crev1alpha1.JobTemplateSpec, preCommands []string) {
 	if len(preCommands) == 0 {
 		return
 	}
@@ -668,7 +668,7 @@ func applyPreCommands(jt *burninv1alpha1.JobTemplateSpec, preCommands []string) 
 
 // summarizePatches returns a compact description of what an override modifies.
 // Example: "jobTemplate, 2 dependencies"
-func summarizePatches(o burninv1alpha1.OverrideSpec) string {
+func summarizePatches(o crev1alpha1.OverrideSpec) string {
 	var parts []string
 	if o.JobTemplate != nil {
 		parts = append(parts, "jobTemplate")
@@ -690,7 +690,7 @@ func summarizePatches(o burninv1alpha1.OverrideSpec) string {
 
 // mergeOrchestration applies non-nil override fields onto the base orchestration spec.
 // Nil fields in the override are skipped (base value preserved).
-func mergeOrchestration(base *burninv1alpha1.OrchestrationSpec, override *burninv1alpha1.OrchestrationOverrideSpec) {
+func mergeOrchestration(base *crev1alpha1.OrchestrationSpec, override *crev1alpha1.OrchestrationOverrideSpec) {
 	if override.Target != nil {
 		base.Target = override.Target
 	}
@@ -707,8 +707,8 @@ func mergeOrchestration(base *burninv1alpha1.OrchestrationSpec, override *burnin
 
 // applyOverridesWithTracking applies overrides and returns tracking info about which overrides matched.
 // This is used by the authoritative call site in discoverAndPartition to populate status and emit events.
-func applyOverridesWithTracking(spec *burninv1alpha1.WorkflowSpec, octx OverrideContext) ([]burninv1alpha1.AppliedOverride, error) {
-	var applied []burninv1alpha1.AppliedOverride
+func applyOverridesWithTracking(spec *crev1alpha1.WorkflowSpec, octx OverrideContext) ([]crev1alpha1.AppliedOverride, error) {
+	var applied []crev1alpha1.AppliedOverride
 	for i, o := range spec.Overrides {
 		matches, err := matchesWhen(o.When, octx)
 		if err != nil {
@@ -746,7 +746,7 @@ func applyOverridesWithTracking(spec *burninv1alpha1.WorkflowSpec, octx Override
 		afterJSON, _ := json.Marshal(spec)
 		noOp := string(beforeJSON) == string(afterJSON)
 
-		applied = append(applied, burninv1alpha1.AppliedOverride{
+		applied = append(applied, crev1alpha1.AppliedOverride{
 			Index:   i,
 			When:    summarizeWhen(o.When),
 			Patches: summarizePatches(o),

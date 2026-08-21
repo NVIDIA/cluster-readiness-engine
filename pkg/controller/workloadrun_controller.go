@@ -22,10 +22,10 @@ import (
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/catalog"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/platform"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/workload"
 )
 
 // WorkloadRunReconciler reconciles a WorkloadRun object.
@@ -48,7 +48,7 @@ const workloadRunRequeueInterval = 15 * time.Second
 func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	var run burninv1alpha1.WorkloadRun
+	var run crev1alpha1.WorkloadRun
 	if err := r.Get(ctx, req.NamespacedName, &run); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
@@ -57,8 +57,8 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// If terminal, nothing to do.
-	if condIsTrue(run.Status.Conditions, burninv1alpha1.WorkloadRunSucceeded) ||
-		condIsTrue(run.Status.Conditions, burninv1alpha1.WorkloadRunFailed) {
+	if condIsTrue(run.Status.Conditions, crev1alpha1.WorkloadRunSucceeded) ||
+		condIsTrue(run.Status.Conditions, crev1alpha1.WorkloadRunFailed) {
 		return ctrl.Result{}, nil
 	}
 
@@ -73,14 +73,14 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Guard: exec is the default framework; spec.framework.exec must be non-nil when
 	// no other framework is configured, or buildJobTemplate will nil-dereference.
 	if run.Spec.Framework.Torch == nil && run.Spec.Framework.MPI == nil && run.Spec.Framework.Exec == nil {
-		r.setWorkloadRunCondition(&run, burninv1alpha1.WorkloadRunFailed, ReasonBuildFailed,
+		r.setWorkloadRunCondition(&run, crev1alpha1.WorkloadRunFailed, ReasonBuildFailed,
 			fmt.Sprintf("workloadrun %s: exec framework selected but spec.framework.exec is nil", run.Name))
 		return ctrl.Result{}, r.Status().Update(ctx, &run)
 	}
 
 	workflowSpec := r.buildWorkflowSpec(ctx, &run)
 
-	workflow := &burninv1alpha1.Workflow{
+	workflow := &crev1alpha1.Workflow{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      run.Name,
 			Namespace: run.Namespace,
@@ -104,11 +104,11 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Update status with workflow ref.
-	run.Status.WorkflowRef = &burninv1alpha1.WorkflowReference{
+	run.Status.WorkflowRef = &crev1alpha1.WorkflowReference{
 		Name:      workflow.Name,
 		Namespace: workflow.Namespace,
 	}
-	r.setWorkloadRunCondition(&run, burninv1alpha1.WorkloadRunInProgress, ReasonWorkflowCreated,
+	r.setWorkloadRunCondition(&run, crev1alpha1.WorkloadRunInProgress, ReasonWorkflowCreated,
 		fmt.Sprintf("Workflow %s created", workflow.Name))
 	if err := r.Status().Update(ctx, &run); err != nil {
 		return ctrl.Result{}, err
@@ -119,12 +119,12 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 }
 
 // mirrorWorkflowStatus copies the Workflow's terminal conditions to the WorkloadRun.
-func (r *WorkloadRunReconciler) mirrorWorkflowStatus(ctx context.Context, run *burninv1alpha1.WorkloadRun) (ctrl.Result, error) {
-	var workflow burninv1alpha1.Workflow
+func (r *WorkloadRunReconciler) mirrorWorkflowStatus(ctx context.Context, run *crev1alpha1.WorkloadRun) (ctrl.Result, error) {
+	var workflow crev1alpha1.Workflow
 	key := client.ObjectKey{Name: run.Status.WorkflowRef.Name, Namespace: run.Namespace}
 	if err := r.Get(ctx, key, &workflow); err != nil {
 		if apierrors.IsNotFound(err) {
-			r.setWorkloadRunCondition(run, burninv1alpha1.WorkloadRunFailed, ReasonWorkflowDeleted, "Workflow was deleted")
+			r.setWorkloadRunCondition(run, crev1alpha1.WorkloadRunFailed, ReasonWorkflowDeleted, "Workflow was deleted")
 			return ctrl.Result{}, r.Status().Update(ctx, run)
 		}
 		return ctrl.Result{}, err
@@ -141,21 +141,21 @@ func (r *WorkloadRunReconciler) mirrorWorkflowStatus(ctx context.Context, run *b
 	run.Status.FailedNodesRef = workflow.Status.FailedNodesRef
 
 	// Mirror terminal conditions.
-	if condIsTrue(workflow.Status.Conditions, burninv1alpha1.WorkflowSucceeded) {
-		r.setWorkloadRunCondition(run, burninv1alpha1.WorkloadRunSucceeded, ReasonWorkflowSucceeded, "Workflow completed successfully")
+	if condIsTrue(workflow.Status.Conditions, crev1alpha1.WorkflowSucceeded) {
+		r.setWorkloadRunCondition(run, crev1alpha1.WorkloadRunSucceeded, ReasonWorkflowSucceeded, "Workflow completed successfully")
 		return ctrl.Result{}, r.Status().Update(ctx, run)
 	}
-	if condIsTrue(workflow.Status.Conditions, burninv1alpha1.WorkflowFailed) {
-		msg := condMsg(workflow.Status.Conditions, burninv1alpha1.WorkflowFailed)
-		r.setWorkloadRunCondition(run, burninv1alpha1.WorkloadRunFailed, ReasonWorkflowFailed, msg)
+	if condIsTrue(workflow.Status.Conditions, crev1alpha1.WorkflowFailed) {
+		msg := condMsg(workflow.Status.Conditions, crev1alpha1.WorkflowFailed)
+		r.setWorkloadRunCondition(run, crev1alpha1.WorkloadRunFailed, ReasonWorkflowFailed, msg)
 		return ctrl.Result{}, r.Status().Update(ctx, run)
 	}
 
 	// Mirror validation failed (independent condition).
-	if condIsTrue(workflow.Status.Conditions, burninv1alpha1.WorkflowValidationFailed) {
-		msg := condMsg(workflow.Status.Conditions, burninv1alpha1.WorkflowValidationFailed)
+	if condIsTrue(workflow.Status.Conditions, crev1alpha1.WorkflowValidationFailed) {
+		msg := condMsg(workflow.Status.Conditions, crev1alpha1.WorkflowValidationFailed)
 		meta.SetStatusCondition(&run.Status.Conditions, metav1.Condition{
-			Type:    burninv1alpha1.WorkloadRunValidationFailed,
+			Type:    crev1alpha1.WorkloadRunValidationFailed,
 			Status:  metav1.ConditionTrue,
 			Reason:  ReasonThresholdViolation,
 			Message: msg,
@@ -169,11 +169,11 @@ func (r *WorkloadRunReconciler) mirrorWorkflowStatus(ctx context.Context, run *b
 }
 
 // setWorkloadRunCondition sets a condition with mutual exclusivity for execution conditions.
-func (r *WorkloadRunReconciler) setWorkloadRunCondition(run *burninv1alpha1.WorkloadRun, condType, reason, message string) {
+func (r *WorkloadRunReconciler) setWorkloadRunCondition(run *crev1alpha1.WorkloadRun, condType, reason, message string) {
 	executionTypes := []string{
-		burninv1alpha1.WorkloadRunInProgress,
-		burninv1alpha1.WorkloadRunSucceeded,
-		burninv1alpha1.WorkloadRunFailed,
+		crev1alpha1.WorkloadRunInProgress,
+		crev1alpha1.WorkloadRunSucceeded,
+		crev1alpha1.WorkloadRunFailed,
 	}
 	for _, t := range executionTypes {
 		status := metav1.ConditionFalse
@@ -193,7 +193,7 @@ func (r *WorkloadRunReconciler) setWorkloadRunCondition(run *burninv1alpha1.Work
 }
 
 // buildWorkflowSpec translates a WorkloadRunSpec into a WorkflowSpec.
-func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *burninv1alpha1.WorkloadRun) *burninv1alpha1.WorkflowSpec {
+func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *crev1alpha1.WorkloadRun) *crev1alpha1.WorkflowSpec {
 	spec := &run.Spec
 
 	// Best-effort node discovery for GPU + platform defaults. The Workflow
@@ -279,7 +279,7 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *burn
 		rtCfg.GangSchedulerQueue = spec.GangScheduler.Queue
 	}
 
-	var runtimeDep burninv1alpha1.DependencySpec
+	var runtimeDep crev1alpha1.DependencySpec
 	switch frameworkType {
 	case FrameworkTorch:
 		runtimeDep = platform.BuildTorchRuntime(rtCfg)
@@ -290,7 +290,7 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *burn
 	}
 
 	// Build dependencies list.
-	deps := []burninv1alpha1.DependencySpec{runtimeDep}
+	deps := []crev1alpha1.DependencySpec{runtimeDep}
 
 	// ConfigMap dependency (if inline config provided).
 	if spec.Config != nil && len(spec.Config.Inline) > 0 {
@@ -334,13 +334,13 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *burn
 
 	// Extract the base OverrideSpec slice for the WorkflowSpec and append
 	// user's custom overrides.
-	overrides := make([]burninv1alpha1.OverrideSpec, 0, len(wrOverrides)+len(spec.Overrides))
+	overrides := make([]crev1alpha1.OverrideSpec, 0, len(wrOverrides)+len(spec.Overrides))
 	for _, o := range wrOverrides {
 		overrides = append(overrides, o.OverrideSpec)
 	}
 	overrides = append(overrides, spec.Overrides...)
 
-	workflowSpec := &burninv1alpha1.WorkflowSpec{
+	workflowSpec := &crev1alpha1.WorkflowSpec{
 		JobTemplate:   *jobTemplate,
 		Orchestration: *orch,
 		Dependencies:  deps,
@@ -349,10 +349,10 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *burn
 
 	// Build validation spec.
 	if len(spec.Thresholds) > 0 {
-		workflowSpec.Validation = &burninv1alpha1.ValidationSpec{
-			Performance: &burninv1alpha1.PerformanceValidationSpec{
+		workflowSpec.Validation = &crev1alpha1.ValidationSpec{
+			Performance: &crev1alpha1.PerformanceValidationSpec{
 				Enabled: true,
-				Thresholds: &burninv1alpha1.ThresholdSpec{
+				Thresholds: &crev1alpha1.ThresholdSpec{
 					Thresholds: spec.Thresholds,
 				},
 			},
@@ -363,7 +363,7 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *burn
 }
 
 // buildJobTemplate constructs the JobTemplateSpec for the workload.
-func (r *WorkloadRunReconciler) buildJobTemplate(run *burninv1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32) *burninv1alpha1.JobTemplateSpec {
+func (r *WorkloadRunReconciler) buildJobTemplate(run *crev1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32) *crev1alpha1.JobTemplateSpec {
 	spec := &run.Spec
 
 	// Build trainer spec based on framework.
@@ -424,12 +424,12 @@ func (r *WorkloadRunReconciler) buildJobTemplate(run *burninv1alpha1.WorkloadRun
 
 	workload.SetImagePullSecrets(trainJobSpec, spec.ImagePullSecrets)
 
-	jobSpec := burninv1alpha1.JobSpec{
-		Workload: burninv1alpha1.WorkloadSpec{
+	jobSpec := crev1alpha1.JobSpec{
+		Workload: crev1alpha1.WorkloadSpec{
 			TrainJob: trainJobSpec,
 		},
-		NodeHealthMonitor: &burninv1alpha1.NodeHealthMonitor{
-			CEL: &burninv1alpha1.CELNodeHealthCheck{
+		NodeHealthMonitor: &crev1alpha1.NodeHealthMonitor{
+			CEL: &crev1alpha1.CELNodeHealthCheck{
 				Expression: "node.spec.unschedulable == true",
 			},
 		},
@@ -448,19 +448,19 @@ func (r *WorkloadRunReconciler) buildJobTemplate(run *burninv1alpha1.WorkloadRun
 		if spec.Checkpoint.MaxRestarts != nil {
 			maxRestarts = *spec.Checkpoint.MaxRestarts
 		}
-		jobSpec.Checkpoint = &burninv1alpha1.CheckpointConfig{
+		jobSpec.Checkpoint = &crev1alpha1.CheckpointConfig{
 			PVCName:     pvcName,
 			MaxRestarts: &maxRestarts,
 		}
 	}
 
-	return &burninv1alpha1.JobTemplateSpec{
+	return &crev1alpha1.JobTemplateSpec{
 		Spec: jobSpec,
 	}
 }
 
 // buildWRConfigMapDep creates a ConfigMap dependency from inline config data.
-func buildWRConfigMapDep(name string, data map[string]string) burninv1alpha1.DependencySpec {
+func buildWRConfigMapDep(name string, data map[string]string) crev1alpha1.DependencySpec {
 	cm := map[string]any{
 		"apiVersion": "v1",
 		"kind":       "ConfigMap",
@@ -471,11 +471,11 @@ func buildWRConfigMapDep(name string, data map[string]string) burninv1alpha1.Dep
 		"data": data,
 	}
 	raw, _ := json.Marshal(cm)
-	return burninv1alpha1.DependencySpec{RawExtension: kruntime.RawExtension{Raw: raw}}
+	return crev1alpha1.DependencySpec{RawExtension: kruntime.RawExtension{Raw: raw}}
 }
 
 // buildWRPVCDep creates a PVC dependency for checkpoint storage.
-func buildWRPVCDep(name string, checkpoint *burninv1alpha1.WorkloadRunCheckpoint) burninv1alpha1.DependencySpec {
+func buildWRPVCDep(name string, checkpoint *crev1alpha1.WorkloadRunCheckpoint) crev1alpha1.DependencySpec {
 	pvc := map[string]any{
 		"apiVersion": "v1",
 		"kind":       "PersistentVolumeClaim",
@@ -492,7 +492,7 @@ func buildWRPVCDep(name string, checkpoint *burninv1alpha1.WorkloadRunCheckpoint
 		pvc["spec"].(map[string]any)["storageClassName"] = *checkpoint.StorageClassName
 	}
 	raw, _ := json.Marshal(pvc)
-	return burninv1alpha1.DependencySpec{RawExtension: kruntime.RawExtension{Raw: raw}}
+	return crev1alpha1.DependencySpec{RawExtension: kruntime.RawExtension{Raw: raw}}
 }
 
 // resolveWRTimeout turns a user-supplied timeoutPerJob into a duration, falling
@@ -512,8 +512,8 @@ func resolveWRTimeout(v string) *metav1.Duration {
 }
 
 // buildWROrchestration constructs the OrchestrationSpec from WorkloadRunSpec.
-func buildWROrchestration(spec *burninv1alpha1.WorkloadRunSpec) *burninv1alpha1.OrchestrationSpec {
-	orch := &burninv1alpha1.OrchestrationSpec{
+func buildWROrchestration(spec *crev1alpha1.WorkloadRunSpec) *crev1alpha1.OrchestrationSpec {
+	orch := &crev1alpha1.OrchestrationSpec{
 		Target:     spec.Target,
 		Iterations: 1,
 	}
@@ -522,18 +522,18 @@ func buildWROrchestration(spec *burninv1alpha1.WorkloadRunSpec) *burninv1alpha1.
 			orch.Iterations = int(*spec.Orchestration.RepeatCount)
 		}
 		switch spec.Orchestration.TestScale {
-		case burninv1alpha1.TestScaleIntraNode:
+		case crev1alpha1.TestScaleIntraNode:
 			// Handled by nodesPerJobForScale when the workload is built:
 			// one node per Job, so the Workflow makes one group per node.
 			// Nothing to set on the orchestration itself.
 		case "intra-rack":
 			// TopologyKey is set by platform override (workloadrun.yaml)
 			// to the platform's physical rack label.
-			orch.Topology = &burninv1alpha1.TopologySpec{
+			orch.Topology = &crev1alpha1.TopologySpec{
 				StrictDomain: true,
 			}
 		}
-		exec := burninv1alpha1.ExecutionSpec{}
+		exec := crev1alpha1.ExecutionSpec{}
 		if spec.Orchestration.MaxConcurrent != nil {
 			exec.MaxConcurrent = int(*spec.Orchestration.MaxConcurrent)
 		}
@@ -566,8 +566,8 @@ func condMsg(conditions []metav1.Condition, condType string) string {
 
 func (r *WorkloadRunReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&burninv1alpha1.WorkloadRun{}).
-		Owns(&burninv1alpha1.Workflow{}).
+		For(&crev1alpha1.WorkloadRun{}).
+		Owns(&crev1alpha1.Workflow{}).
 		WithOptions(controlleropts.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Complete(r)
 }
@@ -575,7 +575,7 @@ func (r *WorkloadRunReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // applyWRPreTemplateOverrides applies overrides that must modify the WorkloadRun
 // spec before buildJobTemplate is called. Results are baked into the spec fields
 // consumed by buildJobTemplate (e.g. MPI.MpiArgs).
-func applyWRPreTemplateOverrides(spec *burninv1alpha1.WorkloadRunSpec, overrides []platform.WorkloadRunOverride, octx OverrideContext) {
+func applyWRPreTemplateOverrides(spec *crev1alpha1.WorkloadRunSpec, overrides []platform.WorkloadRunOverride, octx OverrideContext) {
 	for _, o := range overrides {
 		matches, err := matchesWhen(o.When, octx)
 		if err != nil || !matches {
@@ -590,7 +590,7 @@ func applyWRPreTemplateOverrides(spec *burninv1alpha1.WorkloadRunSpec, overrides
 // applyWRPostTemplateOverrides applies overrides that modify the already-built
 // JobTemplate. Results are stored in well-known trainer fields so they are
 // preserved in the Workflow CR without requiring new CRD schema fields.
-func applyWRPostTemplateOverrides(jt *burninv1alpha1.JobTemplateSpec, overrides []platform.WorkloadRunOverride, octx OverrideContext) {
+func applyWRPostTemplateOverrides(jt *crev1alpha1.JobTemplateSpec, overrides []platform.WorkloadRunOverride, octx OverrideContext) {
 	var preCommands []string
 	for _, o := range overrides {
 		matches, err := matchesWhen(o.When, octx)

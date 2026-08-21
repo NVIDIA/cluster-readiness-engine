@@ -15,9 +15,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	gzip "github.com/NVIDIA/cluster-readiness-engine/pkg/controller/compress"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	gzip "github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller/compress"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/noderesults"
 )
 
 func decodeOrFail(t *testing.T, b []byte) []string {
@@ -35,8 +35,8 @@ func decodeOrFail(t *testing.T, b []byte) []string {
 func newNodeResultsScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 	s := runtime.NewScheme()
-	if err := burninv1alpha1.AddToScheme(s); err != nil {
-		t.Fatalf("add burnin scheme: %v", err)
+	if err := crev1alpha1.AddToScheme(s); err != nil {
+		t.Fatalf("add CRE scheme: %v", err)
 	}
 	if err := corev1.AddToScheme(s); err != nil {
 		t.Fatalf("add corev1 scheme: %v", err)
@@ -44,8 +44,8 @@ func newNodeResultsScheme(t *testing.T) *runtime.Scheme {
 	return s
 }
 
-func testWorkflow(name string) *burninv1alpha1.Workflow {
-	return &burninv1alpha1.Workflow{
+func testWorkflow(name string) *crev1alpha1.Workflow {
+	return &crev1alpha1.Workflow{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default", UID: types.UID(name + "-uid")},
 	}
 }
@@ -62,7 +62,7 @@ func getCMByRef(t *testing.T, c client.Client, ref *corev1.TypedLocalObjectRefer
 	return cm
 }
 
-func readSucceededNodes(t *testing.T, c client.Client, wf *burninv1alpha1.Workflow) []string {
+func readSucceededNodes(t *testing.T, c client.Client, wf *crev1alpha1.Workflow) []string {
 	t.Helper()
 	cm := getCMByRef(t, c, wf.Status.SucceededNodesRef)
 	decoded, err := gzip.GunzipString(cm.BinaryData[noderesults.SucceededNodesConfigMapKey])
@@ -75,7 +75,7 @@ func readSucceededNodes(t *testing.T, c client.Client, wf *burninv1alpha1.Workfl
 	return strings.Split(decoded, ",")
 }
 
-func readFailedNodes(t *testing.T, c client.Client, wf *burninv1alpha1.Workflow) []burninv1alpha1.FailedNode {
+func readFailedNodes(t *testing.T, c client.Client, wf *crev1alpha1.Workflow) []crev1alpha1.FailedNode {
 	t.Helper()
 	cm := getCMByRef(t, c, wf.Status.FailedNodesRef)
 	nodes, err := noderesults.DecodeFailedNodesFromConfigMap(cm)
@@ -132,7 +132,7 @@ func TestMergeSucceededNodesCSV(t *testing.T) {
 }
 
 func TestMergeFailedNodesJSON(t *testing.T) {
-	enc := func(nodes []burninv1alpha1.FailedNode) []byte {
+	enc := func(nodes []crev1alpha1.FailedNode) []byte {
 		jsonBytes, err := noderesults.FailedNodesToJSON(nodes)
 		if err != nil {
 			t.Fatalf("FailedNodesToJSON: %v", err)
@@ -145,41 +145,41 @@ func TestMergeFailedNodesJSON(t *testing.T) {
 	}
 
 	cases := map[string]struct {
-		existing []burninv1alpha1.FailedNode // nil => no existing entry
-		incoming []burninv1alpha1.FailedNode
-		want     []burninv1alpha1.FailedNode
+		existing []crev1alpha1.FailedNode // nil => no existing entry
+		incoming []crev1alpha1.FailedNode
+		want     []crev1alpha1.FailedNode
 	}{
 		"empty existing": {
-			incoming: []burninv1alpha1.FailedNode{{Name: "gpu-02", Reason: burninv1alpha1.NodeFailureWorkloadFailed, Message: "boom"}},
-			want:     []burninv1alpha1.FailedNode{{Name: "gpu-02", Reason: burninv1alpha1.NodeFailureWorkloadFailed, Message: "boom"}},
+			incoming: []crev1alpha1.FailedNode{{Name: "gpu-02", Reason: crev1alpha1.NodeFailureWorkloadFailed, Message: "boom"}},
+			want:     []crev1alpha1.FailedNode{{Name: "gpu-02", Reason: crev1alpha1.NodeFailureWorkloadFailed, Message: "boom"}},
 		},
 		"union sort and dedupe by name+reason": {
-			existing: []burninv1alpha1.FailedNode{{Name: "gpu-03", Reason: burninv1alpha1.NodeFailureWorkloadFailed}},
-			incoming: []burninv1alpha1.FailedNode{
-				{Name: "gpu-01", Reason: burninv1alpha1.NodeFailureHardwareDetected},
-				{Name: "gpu-03", Reason: burninv1alpha1.NodeFailureWorkloadFailed},
+			existing: []crev1alpha1.FailedNode{{Name: "gpu-03", Reason: crev1alpha1.NodeFailureWorkloadFailed}},
+			incoming: []crev1alpha1.FailedNode{
+				{Name: "gpu-01", Reason: crev1alpha1.NodeFailureHardwareDetected},
+				{Name: "gpu-03", Reason: crev1alpha1.NodeFailureWorkloadFailed},
 			},
-			want: []burninv1alpha1.FailedNode{
-				{Name: "gpu-01", Reason: burninv1alpha1.NodeFailureHardwareDetected},
-				{Name: "gpu-03", Reason: burninv1alpha1.NodeFailureWorkloadFailed},
+			want: []crev1alpha1.FailedNode{
+				{Name: "gpu-01", Reason: crev1alpha1.NodeFailureHardwareDetected},
+				{Name: "gpu-03", Reason: crev1alpha1.NodeFailureWorkloadFailed},
 			},
 		},
 		"same node two reasons kept": {
-			incoming: []burninv1alpha1.FailedNode{
-				{Name: "gpu-01", Reason: burninv1alpha1.NodeFailureThresholdViolation},
-				{Name: "gpu-01", Reason: burninv1alpha1.NodeFailureHardwareDetected},
+			incoming: []crev1alpha1.FailedNode{
+				{Name: "gpu-01", Reason: crev1alpha1.NodeFailureThresholdViolation},
+				{Name: "gpu-01", Reason: crev1alpha1.NodeFailureHardwareDetected},
 			},
-			want: []burninv1alpha1.FailedNode{
-				{Name: "gpu-01", Reason: burninv1alpha1.NodeFailureHardwareDetected},
-				{Name: "gpu-01", Reason: burninv1alpha1.NodeFailureThresholdViolation},
+			want: []crev1alpha1.FailedNode{
+				{Name: "gpu-01", Reason: crev1alpha1.NodeFailureHardwareDetected},
+				{Name: "gpu-01", Reason: crev1alpha1.NodeFailureThresholdViolation},
 			},
 		},
 		"message with comma and quote preserved": {
-			incoming: []burninv1alpha1.FailedNode{
-				{Name: "gpu-09", Reason: burninv1alpha1.NodeFailureWorkloadFailed, Message: `exited 1, signal "kill"`},
+			incoming: []crev1alpha1.FailedNode{
+				{Name: "gpu-09", Reason: crev1alpha1.NodeFailureWorkloadFailed, Message: `exited 1, signal "kill"`},
 			},
-			want: []burninv1alpha1.FailedNode{
-				{Name: "gpu-09", Reason: burninv1alpha1.NodeFailureWorkloadFailed, Message: `exited 1, signal "kill"`},
+			want: []crev1alpha1.FailedNode{
+				{Name: "gpu-09", Reason: crev1alpha1.NodeFailureWorkloadFailed, Message: `exited 1, signal "kill"`},
 			},
 		},
 	}
@@ -249,8 +249,8 @@ func TestRecordFailedNodes(t *testing.T) {
 	wf := testWorkflow("test-cert-training-hello")
 	ctx := context.Background()
 
-	if err := r.recordFailedNodes(ctx, wf, []burninv1alpha1.FailedNode{
-		{Name: "gpu-02", Reason: burninv1alpha1.NodeFailureWorkloadFailed, Message: "boom"},
+	if err := r.recordFailedNodes(ctx, wf, []crev1alpha1.FailedNode{
+		{Name: "gpu-02", Reason: crev1alpha1.NodeFailureWorkloadFailed, Message: "boom"},
 	}); err != nil {
 		t.Fatalf("recordFailedNodes (1): %v", err)
 	}
@@ -263,9 +263,9 @@ func TestRecordFailedNodes(t *testing.T) {
 		t.Fatalf("after first write got %+v", got)
 	}
 
-	if err := r.recordFailedNodes(ctx, wf, []burninv1alpha1.FailedNode{
-		{Name: "gpu-02", Reason: burninv1alpha1.NodeFailureWorkloadFailed, Message: "boom"},
-		{Name: "gpu-01", Reason: burninv1alpha1.NodeFailureHardwareDetected},
+	if err := r.recordFailedNodes(ctx, wf, []crev1alpha1.FailedNode{
+		{Name: "gpu-02", Reason: crev1alpha1.NodeFailureWorkloadFailed, Message: "boom"},
+		{Name: "gpu-01", Reason: crev1alpha1.NodeFailureHardwareDetected},
 	}); err != nil {
 		t.Fatalf("recordFailedNodes (2): %v", err)
 	}

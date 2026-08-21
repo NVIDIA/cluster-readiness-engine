@@ -754,7 +754,7 @@ type OverrideSpec struct {
 // WorkflowSpec defines the desired state of Workflow.
 type WorkflowSpec struct {
 	// namespace is the target namespace for Jobs and dependencies created by this Workflow.
-	// If not specified, the controller auto-generates one (e.g., "burnin-<workflow-name>").
+	// If not specified, the controller auto-generates one.
 	// The controller creates the namespace if it doesn't exist and sets an owner reference
 	// so it's cleaned up when the Workflow is deleted.
 	// +optional

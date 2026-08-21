@@ -15,7 +15,7 @@ import (
 
 const (
 	helmReleaseName    = "cluster-readiness-engine"
-	helmChartOCI       = "oci://ghcr.io/nvidia/cluster-readiness-engine"
+	helmChartOCI       = "oci://ghcr.io/dsx-ai-factory/cluster-readiness-engine"
 	ghcrRegistryUser   = "token"
 	helmInstallTimeout = 5 * time.Minute
 

@@ -15,8 +15,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 )
 
 // handleSucceeded and handleFailed build from the stored status and never read
@@ -42,18 +42,18 @@ func TestGoodputFinalSample(t *testing.T) {
 		}
 
 		scheme := runtime.NewScheme()
-		if err := burninv1alpha1.AddToScheme(scheme); err != nil {
+		if err := crev1alpha1.AddToScheme(scheme); err != nil {
 			return err
 		}
 
-		m := &burninv1alpha1.GoodputMeasurement{
+		m := &crev1alpha1.GoodputMeasurement{
 			ObjectMeta: metav1.ObjectMeta{Name: "m", Namespace: "ns"},
-			Spec: burninv1alpha1.GoodputMeasurementSpec{
+			Spec: crev1alpha1.GoodputMeasurementSpec{
 				JobRef:        corev1.TypedLocalObjectReference{Name: "j"},
 				LogProfileRef: "does-not-resolve",
 			},
 		}
-		job := &burninv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"}}
+		job := &crev1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"}}
 
 		c := fake.NewClientBuilder().WithScheme(scheme).
 			WithObjects(m, job).WithStatusSubresource(m, job).Build()
