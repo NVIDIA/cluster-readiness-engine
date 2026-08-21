@@ -19,6 +19,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -29,6 +30,7 @@ import (
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/cluster"
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller"
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/naming"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/platform"
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/render"
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/report"
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/setup"
@@ -94,21 +96,21 @@ func runListCategories(format string) error {
 func newCertificationRenderCommand() *cobra.Command {
 	var outputFormat string
 	var dryRun bool
-	var platform string
+	var platformFlag string
 
 	configFlags := kubeconfig.NewConfigFlags(true)
 	*configFlags.Namespace = defaultKubeNamespace
 	cmd := &cobra.Command{
 		Use:   "render [flags] <certification.yaml>",
 		Short: "Render all Workflows from a Certification",
-		Long: `Reads a Certification YAML, looks up each category in the catalog,
+		Long: fmt.Sprintf(`Reads a Certification YAML, looks up each category in the catalog,
 and renders the Workflows that the controller would create.
 
 With --dry-run, connects to a cluster, applies overrides per Workflow,
 and validates resolved resources via server-side dry-run.
 
 Use --platform to simulate platform-specific overrides (e.g., EFA volumes
-on AWS) without connecting to a cluster. Valid values: aws, gcp, azure, oci, onprem.`,
+on AWS) without connecting to a cluster. Valid values: %s.`, platform.NamesList()),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -117,40 +119,26 @@ on AWS) without connecting to a cluster. Valid values: aws, gcp, azure, oci, onp
 						"Usage: ncrectl certification render [flags] <certification.yaml>",
 				)
 			}
-			return runCertificationRender(args[0], outputFormat, dryRun, configFlags, platform)
+			return runCertificationRender(args[0], outputFormat, dryRun, configFlags, platformFlag)
 		},
 	}
 
 	cmd.Flags().StringVar(&outputFormat, "output", "yaml", "Output format: yaml or json")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false,
 		"Connect to cluster, discover real nodes, and validate via server-side dry-run")
-	cmd.Flags().StringVar(&platform, "platform", "",
-		"Simulate platform for override matching (aws, gcp, azure, oci, onprem, togetherai, mistral, forge)")
+	cmd.Flags().StringVar(&platformFlag, "platform", "",
+		"Simulate platform for override matching ("+platform.NamesList()+")")
 	configFlags.AddFlags(cmd.Flags())
 
 	return cmd
 }
 
 func runCertificationRender(certFile, outputFormat string, dryRun bool,
-	configFlags *kubeconfig.ConfigFlags, platform string) error {
+	configFlags *kubeconfig.ConfigFlags, platformFlag string) error {
 	namespace := *configFlags.Namespace
 
-	if platform != "" {
-		valid := map[string]bool{
-			"aws":        true,
-			"gcp":        true,
-			"azure":      true,
-			"oci":        true,
-			"onprem":     true,
-			"togetherai": true,
-			"mistral":    true,
-			"forge":      true,
-		}
-		if !valid[platform] {
-			return fmt.Errorf(
-				"invalid --platform %q: must be one of aws, gcp, azure, oci, onprem, togetherai, mistral, forge",
-				platform)
-		}
+	if err := platform.ValidateFlag(platformFlag); err != nil {
+		return err
 	}
 
 	cert, err := readCertification(certFile)
@@ -182,7 +170,7 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 		}
 	}
 
-	workflows, err := renderCertification(cert, platform)
+	workflows, err := renderCertification(cert, platformFlag)
 	if err != nil {
 		return err
 	}
@@ -225,25 +213,7 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 		// Apply overrides using a synthetic node derived from the Certification's
 		// nodeSelector. This enables GPU-architecture-specific overrides (images,
 		// env vars) to be applied even without connecting to a real cluster.
-		syntheticNode := corev1.Node{
-			ObjectMeta: metav1.ObjectMeta{Labels: cert.Spec.Target.NodeSelector},
-		}
-		if platform != "" {
-			syntheticNode.Spec.ProviderID = platformToProviderID(platform)
-			if platform == "togetherai" {
-				if syntheticNode.Labels == nil {
-					syntheticNode.Labels = map[string]string{}
-				}
-				syntheticNode.Labels["node-role.together.ai/worker"] = ""
-			}
-			if platform == "forge" {
-				if syntheticNode.Labels == nil {
-					syntheticNode.Labels = map[string]string{}
-				}
-				syntheticNode.Labels["kubernetes.io/hostname"] = "synthetic-forge-node"
-			}
-		}
-		syntheticNodes := []corev1.Node{syntheticNode}
+		syntheticNodes := []corev1.Node{syntheticRenderNode(platformFlag, cert.Spec.Target.NodeSelector)}
 		for i := range workflows {
 			if _, err := render.ResolveWorkflow(&workflows[i], syntheticNodes); err != nil {
 				return fmt.Errorf("resolve overrides for %s: %w", workflows[i].Name, err)
@@ -283,7 +253,7 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 // (from --platform or detected from cluster nodes) is used to resolve
 // platform-specific node defaults like OCI L40s {gpusPerNode: 4, mlnxPerNode: 2}
 // at template-render time. Pass "" to use architecture defaults only.
-func renderCertification(cert *crev1alpha1.Certification, platform string) ([]crev1alpha1.Workflow, error) {
+func renderCertification(cert *crev1alpha1.Certification, platformName string) ([]crev1alpha1.Workflow, error) {
 	if len(cert.Spec.Categories) == 0 {
 		return nil, fmt.Errorf("certification has no categories")
 	}
@@ -305,7 +275,7 @@ func renderCertification(cert *crev1alpha1.Certification, platform string) ([]cr
 
 		opts := controller.ResolveOptions(&cert.Spec.CategoryOptions, cat.Options)
 
-		nd := catalog.GPUDefaults(gpuArch, platform)
+		nd := catalog.GPUDefaults(gpuArch, platformName)
 		gpusPerNode := nd.GpusPerNode
 		mlnxPerNode := nd.MlnxPerNode
 		if opts.GpusPerNode != nil {
@@ -424,8 +394,41 @@ func readCertification(path string) (*crev1alpha1.Certification, error) {
 }
 
 // platformToProviderID is now syntheticProviderID in run_common.go.
-func platformToProviderID(platform string) string {
-	return render.SyntheticProviderID(platform)
+func platformToProviderID(platformName string) string {
+	return render.SyntheticProviderID(platformName)
+}
+
+// syntheticRenderNode builds the fake node used to resolve overrides when
+// rendering offline. The node carries the Certification's nodeSelector labels
+// plus whatever providerID, labels, and allocatable resources platform
+// detection needs to map the node back to the requested platform.
+func syntheticRenderNode(platformName string, nodeSelector map[string]string) corev1.Node {
+	node := corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Labels: nodeSelector},
+	}
+	if platformName == "" {
+		return node
+	}
+	node.Spec.ProviderID = platformToProviderID(platformName)
+	switch platformName {
+	case platform.TogetherAI:
+		if node.Labels == nil {
+			node.Labels = map[string]string{}
+		}
+		node.Labels["node-role.together.ai/worker"] = ""
+	case platform.Forge:
+		if node.Labels == nil {
+			node.Labels = map[string]string{}
+		}
+		node.Labels["kubernetes.io/hostname"] = "synthetic-forge-node"
+	case platform.NScale:
+		// Detection maps openstack:// to nscale only when the node also
+		// reports the nscale.com/rdmashare allocatable.
+		node.Status.Allocatable = corev1.ResourceList{
+			"nscale.com/rdmashare": resource.MustParse("8"),
+		}
+	}
+	return node
 }
 
 // ---------------------------------------------------------------------------

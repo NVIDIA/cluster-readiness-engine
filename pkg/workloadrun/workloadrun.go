@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -116,7 +117,7 @@ Use --dry-run to discover real nodes from the cluster and apply overrides based 
 
 	cmd.Flags().StringVar(&outputFormat, "output", "yaml", "Output format: yaml or json")
 	cmd.Flags().StringVar(&platformFlag, "platform", "",
-		"Simulate platform for override matching (aws, gcp, azure, oci, onprem, togetherai, mistral, forge)")
+		"Simulate platform for override matching ("+platform.NamesList()+")")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false,
 		"Connect to cluster, discover real nodes, and render with actual platform/GPU detection")
 	configFlags.AddFlags(cmd.Flags())
@@ -125,17 +126,8 @@ Use --dry-run to discover real nodes from the cluster and apply overrides based 
 }
 
 func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
-	if platformFlag != "" {
-		valid := map[string]bool{
-			"aws": true, "gcp": true, "azure": true, "oci": true,
-			"onprem": true, "togetherai": true, "mistral": true,
-			"forge": true,
-		}
-		if !valid[platformFlag] {
-			return fmt.Errorf(
-				"invalid --platform %q: must be one of aws, gcp, azure, oci, onprem, togetherai, mistral, forge",
-				platformFlag)
-		}
+	if err := platform.ValidateFlag(platformFlag); err != nil {
+		return err
 	}
 
 	run, err := readWorkloadRun(file)
@@ -890,17 +882,24 @@ func loadSyntheticNodes(platformName, gpuArch string) []corev1.Node {
 	if platformName == "forge" {
 		labels["kubernetes.io/hostname"] = "synthetic-forge-node"
 	}
-	return []corev1.Node{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   "synthetic-node-0",
-				Labels: labels,
-			},
-			Spec: corev1.NodeSpec{
-				ProviderID: render.SyntheticProviderID(platformName),
-			},
+	node := corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "synthetic-node-0",
+			Labels: labels,
+		},
+		Spec: corev1.NodeSpec{
+			ProviderID: render.SyntheticProviderID(platformName),
 		},
 	}
+	// nscale shares the openstack:// providerID prefix; detection disambiguates
+	// via the rdmashare allocatable (see pkg/render/nodes.go), so the synthetic
+	// node must carry it for node-based detection to resolve to nscale.
+	if platformName == "nscale" {
+		node.Status.Allocatable = corev1.ResourceList{
+			"nscale.com/rdmashare": resource.MustParse("8"),
+		}
+	}
+	return []corev1.Node{node}
 }
 
 // syntheticProviderID is in run_common.go.

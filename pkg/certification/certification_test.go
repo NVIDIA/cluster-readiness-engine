@@ -16,10 +16,13 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/yaml"
 
 	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/catalog"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/kubeconfig"
 )
 
 func TestCatalogListCategories(t *testing.T) {
@@ -284,6 +287,59 @@ func TestPlatformToProviderID(t *testing.T) {
 			Platform: cfg.Platform,
 			Result:   result,
 			Empty:    result == "",
+		}
+
+		data, err := json.MarshalIndent(r, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
+// runCertificationRender validates --platform before doing anything else, so
+// an invalid name must fail with the full list of valid names, and every name
+// platform detection can return must be accepted. For accepted platforms the
+// case also records what detection reports for the synthetic render node,
+// which is what override matching actually sees (nscale, for example, is only
+// detected when the node carries the nscale.com/rdmashare allocatable).
+func TestRenderPlatformFlag(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "render-platform-flag",
+		ExpectedSuffix: ".json",
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var cfg struct {
+			Platform string `yaml:"platform"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &cfg); err != nil {
+			return err
+		}
+
+		// Cases with a certification file exercise the full render path; cases
+		// without one must fail on flag validation before the file is read.
+		certPath := filepath.Join(t.TempDir(), "certification.yaml")
+		if certData, ok := tc.Inputs["input_certification.yaml"]; ok {
+			if err := os.WriteFile(certPath, []byte(certData), 0o644); err != nil {
+				return err
+			}
+		}
+
+		configFlags := kubeconfig.NewConfigFlags(true)
+		*configFlags.Namespace = defaultKubeNamespace
+		renderErr := runCertificationRender(certPath, "yaml", false, configFlags, cfg.Platform)
+
+		type result struct {
+			Error            string `json:"error"`
+			DetectedPlatform string `json:"detectedPlatform"`
+		}
+		var r result
+		if renderErr != nil {
+			r.Error = renderErr.Error()
+		} else if cfg.Platform != "" {
+			node := syntheticRenderNode(cfg.Platform, map[string]string{})
+			r.DetectedPlatform = controller.DetectPlatform([]corev1.Node{node})
 		}
 
 		data, err := json.MarshalIndent(r, "", "  ")
