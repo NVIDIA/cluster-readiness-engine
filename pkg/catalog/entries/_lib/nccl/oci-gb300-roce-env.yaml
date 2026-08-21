@@ -19,6 +19,15 @@
 # (Unknown error) from mlx5dv_reg_dmabuf_mr. NCCL falls back to DMA-BUF for
 # GPU Direct RDMA by default, which fails on this cluster. Only needed when MNNVL
 # is off; with MNNVL enabled this code path is not taken.
+#
+# NCCL_IB_ADAPTIVE_ROUTING / NCCL_IB_SPLIT_DATA_ON_QPS: RoCE path-spread tuning.
+# Each GB300 node has four 800 Gbps RoCE rails. Untuned, all-reduce plateaued at
+# roughly half the per-node fabric ceiling -- the signature of traffic concentrating
+# on a subset of ECMP paths instead of spreading across the rails. Enabling adaptive
+# routing and splitting data across QPs raised peak bus bandwidth by about 70% on a
+# multi-rack all-reduce, and neither regressed any configuration measured.
+# SPLIT_DATA_ON_QPS overrides the shared nccl/oci-roce-env.yaml default of "0";
+# this fragment is always included after that one, and mpirun -x takes the last value.
 - name: UCX_IB_GID_INDEX
   value: "3"
 - name: NCCL_IB_GID_INDEX
@@ -29,3 +38,7 @@
 - name: NCCL_DMABUF_ENABLE
   value: "0"
 {{- end }}
+- name: NCCL_IB_ADAPTIVE_ROUTING
+  value: "1"
+- name: NCCL_IB_SPLIT_DATA_ON_QPS
+  value: "1"
