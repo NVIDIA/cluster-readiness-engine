@@ -32,8 +32,8 @@ spec:
         - --metrics-bind-address=:{{ .Values.metrics.port }}
         - --leader-elect
         - --health-probe-bind-address=:8081
-        - --max-concurrent-reconciles={{ .Values.manager.maxConcurrentReconciles }}
-        - --measurement-max-concurrent-reconciles={{ .Values.manager.measurementMaxConcurrentReconciles }}
+        - --max-concurrent-reconciles={{ required "manager.maxConcurrentReconciles is required" .Values.manager.maxConcurrentReconciles }}
+        - --measurement-max-concurrent-reconciles={{ required "manager.measurementMaxConcurrentReconciles is required" .Values.manager.measurementMaxConcurrentReconciles }}
         command:
         - /manager
         image: {{ .Values.manager.image.repository }}:{{ .Values.manager.image.tag | default .Chart.AppVersion }}
