@@ -30,7 +30,7 @@ Use `--skip-phases=deps` to skip Kubeflow Trainer if it is already installed.
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--image-pull-secret` | — | GitHub token — the CLI creates a `ghcr.io` pull secret and uses it to authenticate the Helm chart pull |
-| `--image` | — | Override the controller image (default: `ghcr.io/nvidia/cluster-readiness-engine/manager:<version>`) |
+| `--image` | — | Override the controller image (default: `ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager:<version>`) |
 | `--skip-phases` | — | Comma-separated phases to skip (e.g., `deps`) |
 | `--version` | — | Helm chart version to install (required for dev builds) |
 | `--auto-approve` | `false` | Skip the interactive confirmation prompt (for CI/automation) |

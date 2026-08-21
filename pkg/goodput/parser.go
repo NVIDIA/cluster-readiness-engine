@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/numstr"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/numstr"
 )
 
 // k8sTimestampRe matches the RFC3339Nano prefix that kubelet injects when

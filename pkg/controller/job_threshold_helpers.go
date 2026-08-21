@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
 )
 
 // missingJobThresholdKeys returns threshold keys that have no corresponding measured value.
@@ -26,8 +26,8 @@ func missingJobThresholdKeys(thresholds map[string]string, measured map[string]f
 
 // findJobGoodputMeasurement returns the first GoodputMeasurement in the namespace
 // that references this Job, or nil if none exists.
-func findJobGoodputMeasurement(ctx context.Context, c client.Reader, job *burninv1alpha1.Job) *burninv1alpha1.GoodputMeasurement {
-	var measurements burninv1alpha1.GoodputMeasurementList
+func findJobGoodputMeasurement(ctx context.Context, c client.Reader, job *crev1alpha1.Job) *crev1alpha1.GoodputMeasurement {
+	var measurements crev1alpha1.GoodputMeasurementList
 	if err := c.List(ctx, &measurements, matchingJobRef(job.Namespace, job.Name)...); err != nil {
 		return nil
 	}
@@ -39,8 +39,8 @@ func findJobGoodputMeasurement(ctx context.Context, c client.Reader, job *burnin
 
 // findJobBandwidthMeasurement returns the first BandwidthMeasurement in the namespace
 // that references this Job, or nil if none exists.
-func findJobBandwidthMeasurement(ctx context.Context, c client.Reader, job *burninv1alpha1.Job) *burninv1alpha1.BandwidthMeasurement {
-	var measurements burninv1alpha1.BandwidthMeasurementList
+func findJobBandwidthMeasurement(ctx context.Context, c client.Reader, job *crev1alpha1.Job) *crev1alpha1.BandwidthMeasurement {
+	var measurements crev1alpha1.BandwidthMeasurementList
 	if err := c.List(ctx, &measurements, matchingJobRef(job.Namespace, job.Name)...); err != nil {
 		return nil
 	}
@@ -52,7 +52,7 @@ func findJobBandwidthMeasurement(ctx context.Context, c client.Reader, job *burn
 
 // collectJobMeasuredValues gathers metric values from BandwidthMeasurement and
 // GoodputMeasurement status fields. Keys match the threshold registry.
-func collectJobMeasuredValues(ctx context.Context, c client.Reader, job *burninv1alpha1.Job) map[string]float64 {
+func collectJobMeasuredValues(ctx context.Context, c client.Reader, job *crev1alpha1.Job) map[string]float64 {
 	values := make(map[string]float64)
 
 	if bm := findJobBandwidthMeasurement(ctx, c, job); bm != nil && len(bm.Status.Results) > 0 {
@@ -78,13 +78,13 @@ func collectJobMeasuredValues(ctx context.Context, c client.Reader, job *burninv
 // thresholds configured but the Job controller has not yet recorded the outcome.
 // The Job controller sets ValidationFailed=True on violation or ValidationFailed=False
 // when all thresholds pass. Workflow should keep groups running until one is set.
-func isJobAwaitingThresholdEvaluation(job *burninv1alpha1.Job) bool {
+func isJobAwaitingThresholdEvaluation(job *crev1alpha1.Job) bool {
 	if len(job.Spec.Thresholds) == 0 {
 		return false
 	}
-	succeededCond := meta.FindStatusCondition(job.Status.Conditions, burninv1alpha1.JobSucceeded)
+	succeededCond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobSucceeded)
 	if succeededCond == nil || succeededCond.Status != metav1.ConditionTrue {
 		return false
 	}
-	return meta.FindStatusCondition(job.Status.Conditions, burninv1alpha1.JobValidationFailed) == nil
+	return meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobValidationFailed) == nil
 }

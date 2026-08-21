@@ -14,7 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 )
 
 // gpuNode builds a ready node. A negative count leaves nvidia.com/gpu unset,

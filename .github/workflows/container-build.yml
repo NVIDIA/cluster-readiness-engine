@@ -27,7 +27,7 @@ jobs:
   docker-build:
     name: Docker Build
     runs-on: linux-amd64-cpu32
-    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    if: github.repository == 'dsx-ai-factory/cluster-readiness-engine'
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -55,4 +55,4 @@ jobs:
       - name: Build container image (no push)
         run: make docker-buildx BUILDX_PUSH=
         env:
-          IMG: ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}
+          IMG: ghcr.io/${{ github.repository }}/manager:${{ steps.tag.outputs.value }}

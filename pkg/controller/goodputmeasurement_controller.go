@@ -20,11 +20,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/goodput"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/numstr"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/podutil"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/goodput"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/numstr"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/podlogs"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/podutil"
 )
 
 const (
@@ -84,7 +84,7 @@ func (r *GoodputMeasurementReconciler) getLogFetcher() podlogs.PodLogFetcher {
 func (r *GoodputMeasurementReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	measurement := &burninv1alpha1.GoodputMeasurement{}
+	measurement := &crev1alpha1.GoodputMeasurement{}
 	if err := r.Get(ctx, req.NamespacedName, measurement); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("GoodputMeasurement resource not found, likely deleted")
@@ -109,7 +109,7 @@ func (r *GoodputMeasurementReconciler) Reconcile(ctx context.Context, req ctrl.R
 }
 
 // reconcileMeasurement watches the referenced Job and drives goodput computation.
-func (r *GoodputMeasurementReconciler) reconcileMeasurement(ctx context.Context, measurement *burninv1alpha1.GoodputMeasurement) (ctrl.Result, error) {
+func (r *GoodputMeasurementReconciler) reconcileMeasurement(ctx context.Context, measurement *crev1alpha1.GoodputMeasurement) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	// If no JobRef is set, nothing to measure.
@@ -119,12 +119,12 @@ func (r *GoodputMeasurementReconciler) reconcileMeasurement(ctx context.Context,
 	}
 
 	// If measurement is already complete, nothing to do.
-	if cond := meta.FindStatusCondition(measurement.Status.Conditions, burninv1alpha1.GoodputMeasurementComplete); cond != nil && cond.Status == metav1.ConditionTrue {
+	if cond := meta.FindStatusCondition(measurement.Status.Conditions, crev1alpha1.GoodputMeasurementComplete); cond != nil && cond.Status == metav1.ConditionTrue {
 		return ctrl.Result{}, nil
 	}
 
-	// Fetch the referenced burnin Job.
-	job := &burninv1alpha1.Job{}
+	// Fetch the referenced CRE Job.
+	job := &crev1alpha1.Job{}
 	jobKey := types.NamespacedName{
 		Name:      measurement.Spec.JobRef.Name,
 		Namespace: measurement.Namespace,
@@ -138,15 +138,15 @@ func (r *GoodputMeasurementReconciler) reconcileMeasurement(ctx context.Context,
 	}
 
 	// Determine Job phase from conditions.
-	if cond := meta.FindStatusCondition(job.Status.Conditions, burninv1alpha1.JobSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
+	if cond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
 		r.finalSample(ctx, measurement, job)
 		return r.handleSucceeded(ctx, measurement, job)
 	}
-	if cond := meta.FindStatusCondition(job.Status.Conditions, burninv1alpha1.JobFailed); cond != nil && cond.Status == metav1.ConditionTrue {
+	if cond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobFailed); cond != nil && cond.Status == metav1.ConditionTrue {
 		r.finalSample(ctx, measurement, job)
 		return r.handleFailed(ctx, measurement, job)
 	}
-	if cond := meta.FindStatusCondition(job.Status.Conditions, burninv1alpha1.JobInProgress); cond != nil && cond.Status == metav1.ConditionTrue {
+	if cond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobInProgress); cond != nil && cond.Status == metav1.ConditionTrue {
 		return r.handleRunning(ctx, measurement, job)
 	}
 
@@ -167,7 +167,7 @@ func (r *GoodputMeasurementReconciler) reconcileMeasurement(ctx context.Context,
 // read, and would usually skip this one, so the sample time is cleared first.
 // Best effort: a failure here leaves the previous status in place, which is
 // what would have happened anyway.
-func (r *GoodputMeasurementReconciler) finalSample(ctx context.Context, measurement *burninv1alpha1.GoodputMeasurement, job *burninv1alpha1.Job) {
+func (r *GoodputMeasurementReconciler) finalSample(ctx context.Context, measurement *crev1alpha1.GoodputMeasurement, job *crev1alpha1.Job) {
 	key := fmt.Sprintf("%s/%s", measurement.Namespace, measurement.Name)
 
 	r.mu.Lock()
@@ -181,7 +181,7 @@ func (r *GoodputMeasurementReconciler) finalSample(ctx context.Context, measurem
 }
 
 // handleRunning processes a running job: reads logs, parses them, computes goodput.
-func (r *GoodputMeasurementReconciler) handleRunning(ctx context.Context, measurement *burninv1alpha1.GoodputMeasurement, job *burninv1alpha1.Job) (ctrl.Result, error) { //nolint:gocyclo
+func (r *GoodputMeasurementReconciler) handleRunning(ctx context.Context, measurement *crev1alpha1.GoodputMeasurement, job *crev1alpha1.Job) (ctrl.Result, error) { //nolint:gocyclo
 	log := logf.FromContext(ctx)
 	key := fmt.Sprintf("%s/%s", measurement.Namespace, measurement.Name)
 	interval := r.getSampleInterval(measurement)
@@ -478,7 +478,7 @@ func (r *GoodputMeasurementReconciler) handleRunning(ctx context.Context, measur
 		measurement.Status.StartTime = &now
 	}
 	meta.SetStatusCondition(&measurement.Status.Conditions, metav1.Condition{
-		Type:               burninv1alpha1.GoodputMeasurementMeasuring,
+		Type:               crev1alpha1.GoodputMeasurementMeasuring,
 		Status:             metav1.ConditionTrue,
 		Reason:             "JobRunning",
 		Message:            "Referenced Job is running, measurement in progress",
@@ -576,7 +576,7 @@ func (r *GoodputMeasurementReconciler) handleRunning(ctx context.Context, measur
 }
 
 // handleSucceeded processes a succeeded job.
-func (r *GoodputMeasurementReconciler) handleSucceeded(ctx context.Context, measurement *burninv1alpha1.GoodputMeasurement, job *burninv1alpha1.Job) (ctrl.Result, error) {
+func (r *GoodputMeasurementReconciler) handleSucceeded(ctx context.Context, measurement *crev1alpha1.GoodputMeasurement, job *crev1alpha1.Job) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	key := fmt.Sprintf("%s/%s", measurement.Namespace, measurement.Name)
 
@@ -629,7 +629,7 @@ func (r *GoodputMeasurementReconciler) handleSucceeded(ctx context.Context, meas
 }
 
 // handleFailed processes a failed job by recording an interruption event.
-func (r *GoodputMeasurementReconciler) handleFailed(ctx context.Context, measurement *burninv1alpha1.GoodputMeasurement, job *burninv1alpha1.Job) (ctrl.Result, error) {
+func (r *GoodputMeasurementReconciler) handleFailed(ctx context.Context, measurement *crev1alpha1.GoodputMeasurement, job *crev1alpha1.Job) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	key := fmt.Sprintf("%s/%s", measurement.Namespace, measurement.Name)
 
@@ -772,7 +772,7 @@ func (r *GoodputMeasurementReconciler) completeInterruption(state *goodput.JobSt
 // interruption to Status so it survives controller restarts.
 //
 // The caller must hold state's lock.
-func (r *GoodputMeasurementReconciler) recordInterruptionFromRestart(ctx context.Context, state *goodput.JobState, measurement *burninv1alpha1.GoodputMeasurement, workflow string) {
+func (r *GoodputMeasurementReconciler) recordInterruptionFromRestart(ctx context.Context, state *goodput.JobState, measurement *crev1alpha1.GoodputMeasurement, workflow string) {
 	log := logf.FromContext(ctx)
 
 	interruptTime := state.ApplicationStopTime
@@ -817,8 +817,8 @@ func (r *GoodputMeasurementReconciler) recordInterruptionFromRestart(ctx context
 }
 
 // getLogProfile fetches a cluster-scoped LogProfile by name.
-func (r *GoodputMeasurementReconciler) getLogProfile(ctx context.Context, name string) (*burninv1alpha1.LogProfile, error) {
-	profile := &burninv1alpha1.LogProfile{}
+func (r *GoodputMeasurementReconciler) getLogProfile(ctx context.Context, name string) (*crev1alpha1.LogProfile, error) {
+	profile := &crev1alpha1.LogProfile{}
 	if err := r.Get(ctx, types.NamespacedName{Name: name}, profile); err != nil {
 		return nil, fmt.Errorf("failed to get LogProfile %s: %w", name, err)
 	}
@@ -830,7 +830,7 @@ func (r *GoodputMeasurementReconciler) getLogProfile(ctx context.Context, name s
 // The cache is keyed by LogProfile name but validated against its resourceVersion,
 // so editing a LogProfile's patterns takes effect on the next reconcile rather
 // than requiring a controller restart. Only one entry per profile is retained.
-func (r *GoodputMeasurementReconciler) getOrCreateParser(profile *burninv1alpha1.LogProfile) (*goodput.ProfileParser, error) {
+func (r *GoodputMeasurementReconciler) getOrCreateParser(profile *crev1alpha1.LogProfile) (*goodput.ProfileParser, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -856,7 +856,7 @@ func (r *GoodputMeasurementReconciler) getOrCreateParser(profile *burninv1alpha1
 // getOrCreateState returns the in-memory job state, creating it if needed.
 // When creating a new state, it recovers from the measurement's persisted Status
 // so that state survives controller restarts.
-func (r *GoodputMeasurementReconciler) getOrCreateState(key string, measurement *burninv1alpha1.GoodputMeasurement) *goodput.JobState {
+func (r *GoodputMeasurementReconciler) getOrCreateState(key string, measurement *crev1alpha1.GoodputMeasurement) *goodput.JobState {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -943,7 +943,7 @@ func (r *GoodputMeasurementReconciler) cleanupState(key string) {
 }
 
 // buildCumulativeFromStatus reconstructs CumulativeMetrics from the measurement status.
-func (r *GoodputMeasurementReconciler) buildCumulativeFromStatus(measurement *burninv1alpha1.GoodputMeasurement) *goodput.CumulativeMetrics {
+func (r *GoodputMeasurementReconciler) buildCumulativeFromStatus(measurement *crev1alpha1.GoodputMeasurement) *goodput.CumulativeMetrics {
 	cm := goodput.NewCumulativeMetrics()
 
 	cm.CurrentStep = measurement.Status.CurrentStep
@@ -983,7 +983,7 @@ func (r *GoodputMeasurementReconciler) buildCumulativeFromStatus(measurement *bu
 }
 
 // writeStatusFromCumulative writes CumulativeMetrics back to the measurement status.
-func (r *GoodputMeasurementReconciler) writeStatusFromCumulative(measurement *burninv1alpha1.GoodputMeasurement, cm *goodput.CumulativeMetrics) {
+func (r *GoodputMeasurementReconciler) writeStatusFromCumulative(measurement *crev1alpha1.GoodputMeasurement, cm *goodput.CumulativeMetrics) {
 	measurement.Status.Result = formatFloat(cm.Goodput)
 	measurement.Status.CurrentStep = cm.CurrentStep
 	measurement.Status.HighestStep = cm.HighestStep
@@ -998,7 +998,7 @@ func (r *GoodputMeasurementReconciler) writeStatusFromCumulative(measurement *bu
 	// Persist pending interruption so it survives controller restarts.
 	if cm.PendingInterruption != nil {
 		pi := cm.PendingInterruption
-		pending := &burninv1alpha1.PendingInterruptionStatus{
+		pending := &crev1alpha1.PendingInterruptionStatus{
 			CheckpointStep: pi.CheckpointStep,
 			LastStep:       pi.LastStep,
 			TCh:            formatFloat(pi.TCh),
@@ -1022,11 +1022,11 @@ func (r *GoodputMeasurementReconciler) writeStatusFromCumulative(measurement *bu
 // measurement, so the cause is visible in status and not only in the controller
 // log. This is deliberately not terminal: a cluster-scoped LogProfile can be
 // created after the run starts, and the next sample picks it up.
-func (r *GoodputMeasurementReconciler) noteLogProfileUnresolved(ctx context.Context, measurement *burninv1alpha1.GoodputMeasurement, cause error) {
+func (r *GoodputMeasurementReconciler) noteLogProfileUnresolved(ctx context.Context, measurement *crev1alpha1.GoodputMeasurement, cause error) {
 	message := fmt.Sprintf("LogProfile %q could not be resolved: %v", measurement.Spec.LogProfileRef, cause)
-	err := updateStatusWithRetry(ctx, r.Client, measurement, func(m *burninv1alpha1.GoodputMeasurement) bool {
+	err := updateStatusWithRetry(ctx, r.Client, measurement, func(m *crev1alpha1.GoodputMeasurement) bool {
 		return meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
-			Type:               burninv1alpha1.GoodputMeasurementMeasuring,
+			Type:               crev1alpha1.GoodputMeasurementMeasuring,
 			Status:             metav1.ConditionFalse,
 			ObservedGeneration: m.Generation,
 			Reason:             reasonGoodputLogProfileMissing,
@@ -1039,27 +1039,27 @@ func (r *GoodputMeasurementReconciler) noteLogProfileUnresolved(ctx context.Cont
 }
 
 // setComplete sets the Complete condition, records CompletionTime, and stores the result.
-func (r *GoodputMeasurementReconciler) setComplete(ctx context.Context, measurement *burninv1alpha1.GoodputMeasurement, reason, message string) error {
+func (r *GoodputMeasurementReconciler) setComplete(ctx context.Context, measurement *crev1alpha1.GoodputMeasurement, reason, message string) error {
 	// The computed status payload is carried over on retry: a conflicting write
 	// only means the object moved on, not that this measurement's result changed.
 	status := measurement.Status.DeepCopy()
 	now := metav1.Now()
 
-	err := updateStatusWithRetry(ctx, r.Client, measurement, func(m *burninv1alpha1.GoodputMeasurement) bool {
+	err := updateStatusWithRetry(ctx, r.Client, measurement, func(m *crev1alpha1.GoodputMeasurement) bool {
 		conditions := m.Status.Conditions
 		status.DeepCopyInto(&m.Status)
 		m.Status.Conditions = conditions
 		m.Status.CompletionTime = &now
 
 		meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
-			Type:               burninv1alpha1.GoodputMeasurementComplete,
+			Type:               crev1alpha1.GoodputMeasurementComplete,
 			Status:             metav1.ConditionTrue,
 			Reason:             reason,
 			Message:            message,
 			ObservedGeneration: m.Generation,
 		})
 		meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
-			Type:               burninv1alpha1.GoodputMeasurementMeasuring,
+			Type:               crev1alpha1.GoodputMeasurementMeasuring,
 			Status:             metav1.ConditionFalse,
 			Reason:             reason,
 			Message:            "Measurement completed",
@@ -1077,7 +1077,7 @@ func (r *GoodputMeasurementReconciler) setComplete(ctx context.Context, measurem
 }
 
 // handleDeletion handles the cleanup when a GoodputMeasurement is being deleted.
-func (r *GoodputMeasurementReconciler) handleDeletion(ctx context.Context, measurement *burninv1alpha1.GoodputMeasurement) (ctrl.Result, error) {
+func (r *GoodputMeasurementReconciler) handleDeletion(ctx context.Context, measurement *crev1alpha1.GoodputMeasurement) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	if !controllerutil.ContainsFinalizer(measurement, goodputMeasurementFinalizer) {
@@ -1090,7 +1090,7 @@ func (r *GoodputMeasurementReconciler) handleDeletion(ctx context.Context, measu
 	// Fetch the Job to read the workflow label for metric cleanup.
 	var workflow string
 	if measurement.Spec.JobRef.Name != "" {
-		job := &burninv1alpha1.Job{}
+		job := &crev1alpha1.Job{}
 		jobKey := types.NamespacedName{Name: measurement.Spec.JobRef.Name, Namespace: measurement.Namespace}
 		if err := r.Get(ctx, jobKey, job); err == nil {
 			workflow = job.Labels["cre.nvidia.com/workflow"]
@@ -1107,7 +1107,7 @@ func (r *GoodputMeasurementReconciler) handleDeletion(ctx context.Context, measu
 }
 
 // getSampleInterval returns the configured sample interval or the default.
-func (r *GoodputMeasurementReconciler) getSampleInterval(measurement *burninv1alpha1.GoodputMeasurement) time.Duration {
+func (r *GoodputMeasurementReconciler) getSampleInterval(measurement *crev1alpha1.GoodputMeasurement) time.Duration {
 	if measurement.Spec.SampleInterval != nil {
 		return measurement.Spec.SampleInterval.Duration
 	}
@@ -1115,7 +1115,7 @@ func (r *GoodputMeasurementReconciler) getSampleInterval(measurement *burninv1al
 }
 
 // getWorkerStrategy returns the worker strategy type from the profile.
-func getWorkerStrategy(profile *burninv1alpha1.LogProfile) string {
+func getWorkerStrategy(profile *crev1alpha1.LogProfile) string {
 	if profile.Spec.WorkerStrategy != nil {
 		return profile.Spec.WorkerStrategy.Type
 	}
@@ -1237,7 +1237,7 @@ func formatFloat(f float64) string {
 // SetupWithManager sets up the controller with the Manager.
 func (r *GoodputMeasurementReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&burninv1alpha1.GoodputMeasurement{}).
+		For(&crev1alpha1.GoodputMeasurement{}).
 		Named("goodputmeasurement").
 		Complete(r)
 }

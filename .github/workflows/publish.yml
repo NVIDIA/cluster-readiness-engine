@@ -27,7 +27,7 @@ jobs:
   publish:
     name: Build and Push Container
     runs-on: linux-amd64-cpu32
-    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    if: github.repository == 'dsx-ai-factory/cluster-readiness-engine'
     timeout-minutes: 40
     permissions:
       contents: read
@@ -68,11 +68,11 @@ jobs:
           make docker-buildx
           # Capture the image digest for signing
           DIGEST=$(docker buildx imagetools inspect \
-            ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }} \
+            ghcr.io/${{ github.repository }}/manager:${{ steps.tag.outputs.value }} \
             --format '{{.Manifest.Digest}}')
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
         env:
-          IMG: ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}
+          IMG: ghcr.io/${{ github.repository }}/manager:${{ steps.tag.outputs.value }}
 
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
@@ -80,12 +80,12 @@ jobs:
       - name: Sign container image
         run: |
           cosign sign --yes \
-            ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}@${{ steps.push.outputs.digest }}
+            ghcr.io/${{ github.repository }}/manager:${{ steps.tag.outputs.value }}@${{ steps.push.outputs.digest }}
 
       - name: Generate SBOM
         uses: anchore/sbom-action@v0.24.0
         with:
-          image: ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}@${{ steps.push.outputs.digest }}
+          image: ghcr.io/${{ github.repository }}/manager:${{ steps.tag.outputs.value }}@${{ steps.push.outputs.digest }}
           format: cyclonedx-json
           output-file: sbom.cyclonedx.json
 
@@ -94,4 +94,4 @@ jobs:
           cosign attest --yes \
             --predicate sbom.cyclonedx.json \
             --type cyclonedx \
-            ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}@${{ steps.push.outputs.digest }}
+            ghcr.io/${{ github.repository }}/manager:${{ steps.tag.outputs.value }}@${{ steps.push.outputs.digest }}

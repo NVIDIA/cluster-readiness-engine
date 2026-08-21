@@ -8,29 +8,29 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 	"sigs.k8s.io/yaml"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
 )
 
 type lookupInput struct {
-	Category           string                    `yaml:"category"`
-	Subcategory        string                    `yaml:"subcategory"`
-	Target             burninv1alpha1.TargetSpec `yaml:"target"`
-	NodesPerJob        int32                     `yaml:"nodesPerJob"`
-	GpusPerNode        int32                     `yaml:"gpusPerNode"`
-	EnableCheckpoint   bool                      `yaml:"enableCheckpoint"`
-	SaveInterval       int32                     `yaml:"saveInterval"`
-	SaveRetainInterval int32                     `yaml:"saveRetainInterval"`
-	SaveTopK           int32                     `yaml:"saveTopK"`
-	StorageSize        string                    `yaml:"storageSize"`
-	TestScale          string                    `yaml:"testScale"`
-	MaxBytes           string                    `yaml:"maxBytes"`
-	NumIterations      int32                     `yaml:"numIterations"`
-	NumCycles          int32                     `yaml:"numCycles"`
-	MaxConcurrent      int32                     `yaml:"maxConcurrent"`
-	Thresholds         map[string]string         `yaml:"thresholds"`
+	Category           string                 `yaml:"category"`
+	Subcategory        string                 `yaml:"subcategory"`
+	Target             crev1alpha1.TargetSpec `yaml:"target"`
+	NodesPerJob        int32                  `yaml:"nodesPerJob"`
+	GpusPerNode        int32                  `yaml:"gpusPerNode"`
+	EnableCheckpoint   bool                   `yaml:"enableCheckpoint"`
+	SaveInterval       int32                  `yaml:"saveInterval"`
+	SaveRetainInterval int32                  `yaml:"saveRetainInterval"`
+	SaveTopK           int32                  `yaml:"saveTopK"`
+	StorageSize        string                 `yaml:"storageSize"`
+	TestScale          string                 `yaml:"testScale"`
+	MaxBytes           string                 `yaml:"maxBytes"`
+	NumIterations      int32                  `yaml:"numIterations"`
+	NumCycles          int32                  `yaml:"numCycles"`
+	MaxConcurrent      int32                  `yaml:"maxConcurrent"`
+	Thresholds         map[string]string      `yaml:"thresholds"`
 }
 
 func TestLookup(t *testing.T) {
@@ -83,7 +83,7 @@ func TestLookupUnsupportedNodesPerJob(t *testing.T) {
 	if entry == nil {
 		t.Fatal("expected nemotron5-56b to be registered")
 	}
-	_, err := entry.Build(burninv1alpha1.TargetSpec{}, BuildConfig{
+	_, err := entry.Build(crev1alpha1.TargetSpec{}, BuildConfig{
 		NodesPerJob:     4,
 		GpusPerNode:     4,
 		GPUArchitecture: "gb200",
@@ -97,7 +97,7 @@ func TestLookupUnsupportedNodesPerJob(t *testing.T) {
 }
 
 // lookupOutput extracts key fields from a WorkflowSpec for golden file comparison.
-func lookupOutput(spec burninv1alpha1.WorkflowSpec) map[string]any {
+func lookupOutput(spec crev1alpha1.WorkflowSpec) map[string]any {
 	result := map[string]any{
 		"found": true,
 	}

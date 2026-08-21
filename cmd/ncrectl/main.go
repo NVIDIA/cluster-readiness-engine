@@ -8,12 +8,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	_ "github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/certification"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/cluster"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/render"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/setup"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/workloadrun"
+	_ "github.com/dsx-ai-factory/cluster-readiness-engine/pkg/catalog"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/certification"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/cluster"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/render"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/setup"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/workloadrun"
 )
 
 var version = "dev"

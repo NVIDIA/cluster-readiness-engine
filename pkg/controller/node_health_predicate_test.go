@@ -11,7 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/yaml"
 
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 )
 
 // TestNodeHealthChangePredicate verifies that nodeHealthChangePredicate triggers

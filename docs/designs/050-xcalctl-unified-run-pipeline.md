@@ -43,7 +43,7 @@ Both return a `certRunConfig` struct consumed by the single pipeline:
 
 ```go
 type certRunConfig struct {
-    cert            *burninv1alpha1.Certification
+    cert            *crev1alpha1.Certification
     namespace       string
     imagePullSecret string
     doWait          bool

@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/kubeconfig"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -24,14 +24,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/cluster"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/render"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/report"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/setup"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/catalog"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/cluster"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/naming"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/render"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/report"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/setup"
 )
 
 // NewCommand returns the "certification" cobra command.
@@ -283,7 +283,7 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 // (from --platform or detected from cluster nodes) is used to resolve
 // platform-specific node defaults like OCI L40s {gpusPerNode: 4, mlnxPerNode: 2}
 // at template-render time. Pass "" to use architecture defaults only.
-func renderCertification(cert *burninv1alpha1.Certification, platform string) ([]burninv1alpha1.Workflow, error) {
+func renderCertification(cert *crev1alpha1.Certification, platform string) ([]crev1alpha1.Workflow, error) {
 	if len(cert.Spec.Categories) == 0 {
 		return nil, fmt.Errorf("certification has no categories")
 	}
@@ -296,7 +296,7 @@ func renderCertification(cert *burninv1alpha1.Certification, platform string) ([
 		)
 	}
 
-	var workflows []burninv1alpha1.Workflow
+	var workflows []crev1alpha1.Workflow
 	for _, cat := range cert.Spec.Categories {
 		entry := catalog.Lookup(cat.Domain, cat.Variant)
 		if entry == nil {
@@ -370,7 +370,7 @@ func renderCertification(cert *burninv1alpha1.Certification, platform string) ([
 			naming.MaxWorkflowNameLen,
 		)
 
-		workflow := burninv1alpha1.Workflow{
+		workflow := crev1alpha1.Workflow{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: "cre.nvidia.com/v1alpha1",
 				Kind:       "Workflow",
@@ -410,13 +410,13 @@ func derefInt32Ptr(p *int32) int32 {
 }
 
 // readCertification parses a Certification YAML file from disk.
-func readCertification(path string) (*burninv1alpha1.Certification, error) {
+func readCertification(path string) (*crev1alpha1.Certification, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- path is a user-provided CLI argument
 
 	if err != nil {
 		return nil, fmt.Errorf("read certification: %w", err)
 	}
-	var cert burninv1alpha1.Certification
+	var cert crev1alpha1.Certification
 	if err := yaml.Unmarshal(data, &cert); err != nil {
 		return nil, fmt.Errorf("parse certification: %w", err)
 	}
@@ -437,7 +437,7 @@ func platformToProviderID(platform string) string {
 // then consumed by the single executeCertificationRun pipeline.
 type certRunConfig struct {
 	version                  string // CLI version, passed to setup.RunInit
-	cert                     *burninv1alpha1.Certification
+	cert                     *crev1alpha1.Certification
 	namespace                string
 	controllerImage          string // --image: controller image for --setup
 	controllerPullSecret     string // --controller-pull-secret: controller registry token forwarded to setup init
@@ -570,7 +570,7 @@ Use --cleanup to teardown installed components after completion.`,
 	cmd.Flags().StringVar(&workloadRegistryPassword, "workload-registry-password", "",
 		"Registry password or API key for workload image pull — creates an workloadRegistryPassword in the certification namespace")
 	cmd.Flags().StringVar(&controllerImage, "image", "",
-		"Controller image for --setup (default: ghcr.io/nvidia/cluster-readiness-engine/manager:<version>)")
+		"Controller image for --setup (default: ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager:<version>)")
 	cmd.Flags().StringVar(&name, "name", "",
 		"Certification name (default: ncrectl-<timestamp>)")
 	cmd.Flags().Int32Var(&nodesPerJob, "nodes-per-job", 0,
@@ -637,7 +637,7 @@ func buildConfigFromFlags(
 	}
 	_, _ = fmt.Fprintf(out, "Discovered GPU nodes with product: %s\n", gpuProduct)
 
-	cert := &burninv1alpha1.Certification{
+	cert := &crev1alpha1.Certification{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "cre.nvidia.com/v1alpha1",
 			Kind:       "Certification",
@@ -650,8 +650,8 @@ func buildConfigFromFlags(
 				"app.kubernetes.io/created-by": "ncrectl",
 			},
 		},
-		Spec: burninv1alpha1.CertificationSpec{
-			Target: burninv1alpha1.TargetSpec{
+		Spec: crev1alpha1.CertificationSpec{
+			Target: crev1alpha1.TargetSpec{
 				NodeSelector: map[string]string{
 					"nvidia.com/gpu.present": "true",
 					"nvidia.com/gpu.product": gpuProduct,
@@ -935,7 +935,7 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 // it to a JSON file. Caller must pass a non-nil cert.
 func handleReport(
 	ctx context.Context, wc client.WithWatch,
-	cert *burninv1alpha1.Certification, resultsFile string,
+	cert *crev1alpha1.Certification, resultsFile string,
 	waitErr error, out io.Writer,
 ) {
 	r := report.Build(ctx, wc, cert)
@@ -957,8 +957,8 @@ func handleReport(
 // discoverGPUProduct is replaced by discoverGPUNodes in run_common.go.
 
 // parseCategories splits "domain/variant" strings, validates each against the catalog.
-func parseCategories(strs []string) ([]burninv1alpha1.CertificateCategory, error) {
-	var cats []burninv1alpha1.CertificateCategory
+func parseCategories(strs []string) ([]crev1alpha1.CertificateCategory, error) {
+	var cats []crev1alpha1.CertificateCategory
 	for _, s := range strs {
 		parts := strings.SplitN(s, "/", 2)
 		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
@@ -976,7 +976,7 @@ func parseCategories(strs []string) ([]burninv1alpha1.CertificateCategory, error
 				"unknown category %q\n\nAvailable categories:\n  %s",
 				s, strings.Join(names, "\n  "))
 		}
-		cats = append(cats, burninv1alpha1.CertificateCategory{
+		cats = append(cats, crev1alpha1.CertificateCategory{
 			Domain:  domain,
 			Variant: variant,
 		})
@@ -1005,7 +1005,7 @@ func generateCertNamespace() string {
 func watchCertification(
 	ctx context.Context, wc client.WithWatch,
 	name, namespace string, timeout time.Duration, out io.Writer,
-) (*burninv1alpha1.Certification, error) {
+) (*crev1alpha1.Certification, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -1020,7 +1020,7 @@ func watchCertification(
 		// (Re)establish watch. The API server closes watches after a
 		// server-side timeout (5-10 min). We reconnect until the client
 		// timeout (--timeout) expires or a terminal condition is seen.
-		certList := &burninv1alpha1.CertificationList{}
+		certList := &crev1alpha1.CertificationList{}
 		watcher, err := wc.Watch(ctx, certList, client.InNamespace(namespace),
 			client.MatchingFields{"metadata.name": name})
 		if err != nil {
@@ -1050,7 +1050,7 @@ func watchCertification(
 func processWatchEvents(
 	ctx context.Context, c client.Client, watcher watch.Interface, start time.Time,
 	lastStatuses map[string]string, heartbeat *time.Ticker, out io.Writer,
-) (*burninv1alpha1.Certification, bool, error) {
+) (*crev1alpha1.Certification, bool, error) {
 	events := watcher.ResultChan()
 	for {
 		select {
@@ -1065,7 +1065,7 @@ func processWatchEvents(
 				return nil, false, nil // transient error, reconnect
 			}
 
-			cert, isCert := event.Object.(*burninv1alpha1.Certification)
+			cert, isCert := event.Object.(*crev1alpha1.Certification)
 			if !isCert {
 				continue
 			}
@@ -1083,12 +1083,12 @@ func processWatchEvents(
 
 			// Check terminal conditions.
 			if apimeta.IsStatusConditionTrue(
-				cert.Status.Conditions, burninv1alpha1.CertificationSucceeded) {
+				cert.Status.Conditions, crev1alpha1.CertificationSucceeded) {
 				_, _ = fmt.Fprintf(out, "[watch] Certification succeeded. (%s)\n", elapsed)
 				return cert, true, nil
 			}
 			if apimeta.IsStatusConditionTrue(
-				cert.Status.Conditions, burninv1alpha1.CertificationFailed) {
+				cert.Status.Conditions, crev1alpha1.CertificationFailed) {
 				_, _ = fmt.Fprintf(out, "[watch] Certification failed. (%s)\n", elapsed)
 				if nodes := certFailedNodes(ctx, c, cert); len(nodes) > 0 {
 					_, _ = fmt.Fprintf(out, "Failed nodes: %s\n",
@@ -1134,7 +1134,7 @@ func waitForDeletion(ctx context.Context, c client.Client, name, namespace strin
 			_, _ = fmt.Fprintln(out, "[cleanup] Timed out waiting for deletion.")
 			return
 		case <-ticker.C:
-			cert := &burninv1alpha1.Certification{}
+			cert := &crev1alpha1.Certification{}
 			if err := c.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, cert); err != nil {
 				if apierrors.IsNotFound(err) {
 					return // deleted
@@ -1187,7 +1187,7 @@ func runReport(names []string, configFlags *kubeconfig.ConfigFlags, resultsFile 
 	var reports []*report.CertReport
 	var errs []string
 	for _, name := range names {
-		cert := &burninv1alpha1.Certification{}
+		cert := &crev1alpha1.Certification{}
 		if err := c.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, cert); err != nil {
 			if apierrors.IsNotFound(err) {
 				return fmt.Errorf("certification %q not found in namespace %q", name, namespace)
@@ -1196,8 +1196,8 @@ func runReport(names []string, configFlags *kubeconfig.ConfigFlags, resultsFile 
 		}
 		reports = append(reports, report.Build(ctx, c, cert))
 
-		succeeded := apimeta.IsStatusConditionTrue(cert.Status.Conditions, burninv1alpha1.CertificationSucceeded)
-		failed := apimeta.IsStatusConditionTrue(cert.Status.Conditions, burninv1alpha1.CertificationFailed)
+		succeeded := apimeta.IsStatusConditionTrue(cert.Status.Conditions, crev1alpha1.CertificationSucceeded)
+		failed := apimeta.IsStatusConditionTrue(cert.Status.Conditions, crev1alpha1.CertificationFailed)
 		if !succeeded && !failed {
 			errs = append(errs, fmt.Sprintf("certification %q is still running", name))
 		} else if failed {

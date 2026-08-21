@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
 
-	"github.com/NVIDIA/cluster-readiness-engine/test/uat/util"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/test/uat/util"
 )
 
 // TestAWSGB200NCCL tests the full certification lifecycle for AWS GB200 NCCL all-reduce.

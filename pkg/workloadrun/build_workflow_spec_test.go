@@ -10,8 +10,8 @@ import (
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
 	"sigs.k8s.io/yaml"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 )
 
 // BuildWorkflowSpec renders the Workflow that "ncrectl workloadrun render" and
@@ -38,11 +38,11 @@ func TestBuildWorkflowSpec(t *testing.T) {
 		// error. With yaml tags, a typo in a key would go unnoticed and would
 		// write gpusPerNode: 0 into the expected file.
 		var input struct {
-			Run           burninv1alpha1.WorkloadRun `json:"run"`
-			GpusPerNode   int32                      `json:"gpusPerNode"`
-			MlnxPerNode   int32                      `json:"mlnxPerNode"`
-			EnableMNNVL   bool                       `json:"enableMNNVL"`
-			FrameworkType string                     `json:"frameworkType"`
+			Run           crev1alpha1.WorkloadRun `json:"run"`
+			GpusPerNode   int32                   `json:"gpusPerNode"`
+			MlnxPerNode   int32                   `json:"mlnxPerNode"`
+			EnableMNNVL   bool                    `json:"enableMNNVL"`
+			FrameworkType string                  `json:"frameworkType"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -69,7 +69,7 @@ type projection struct {
 	// Validation records the contents and not only whether the block is
 	// present. The exact threshold key is part of it, because issue #52 is open
 	// about one unknown key turning off every threshold check without saying so.
-	Validation *burninv1alpha1.ValidationSpec `json:"validation"`
+	Validation *crev1alpha1.ValidationSpec `json:"validation"`
 	// WorkerEnv holds "NAME=value" for the worker container of the runtime
 	// dependency, which is the container the workload runs in. It records values
 	// and not only names, so a case can tell a variable the user asked for apart
@@ -92,7 +92,7 @@ type projection struct {
 	GangSchedulerQueue string `json:"gangSchedulerQueue,omitempty"`
 }
 
-func project(s *burninv1alpha1.WorkflowSpec) projection {
+func project(s *crev1alpha1.WorkflowSpec) projection {
 	out := projection{
 		Iterations:    s.Orchestration.Iterations,
 		Validation:    s.Validation,
@@ -112,7 +112,7 @@ func project(s *burninv1alpha1.WorkflowSpec) projection {
 }
 
 // dependencyKind reads the Kind out of a dependency's embedded raw resource.
-func dependencyKind(d *burninv1alpha1.DependencySpec) string {
+func dependencyKind(d *crev1alpha1.DependencySpec) string {
 	var obj struct {
 		Kind string `json:"kind"`
 	}
@@ -127,7 +127,7 @@ func dependencyKind(d *burninv1alpha1.DependencySpec) string {
 // gang-scheduler queue label. It follows one named path rather than searching
 // the document, because a search would also find containers the workload does
 // not run in (e.g. an MPI launcher).
-func runtimeWorker(s *burninv1alpha1.WorkflowSpec) (env, mounts, volumes []string, schedulerName, queueLabel string) {
+func runtimeWorker(s *crev1alpha1.WorkflowSpec) (env, mounts, volumes []string, schedulerName, queueLabel string) {
 	if len(s.Dependencies) == 0 || len(s.Dependencies[0].Raw) == 0 {
 		return nil, nil, nil, "", ""
 	}
@@ -172,7 +172,7 @@ func TestValidateExecFramework(t *testing.T) {
 		ExpectedSuffix: ".json",
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
-		var spec burninv1alpha1.WorkloadRunSpec
+		var spec crev1alpha1.WorkloadRunSpec
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &spec); err != nil {
 			return err
 		}

@@ -44,7 +44,7 @@ people do not tag at the same time.
    ```
 
    If you work from a fork, push the tag to the remote that points at
-   `NVIDIA/cluster-readiness-engine`, which is usually `upstream`.
+   `dsx-ai-factory/cluster-readiness-engine`, which is usually `upstream`.
 
    Sign the tag (`-s`). Pushing the tag is the release trigger; there is no button to
    press afterwards.
@@ -75,12 +75,12 @@ Pushing a `v*` tag runs three jobs in `.github/workflows/release.yml`:
 
 | Job | Publishes |
 |---|---|
-| Publish Helm Chart | `oci://ghcr.io/nvidia/cluster-readiness-engine` |
+| Publish Helm Chart | `oci://ghcr.io/dsx-ai-factory/cluster-readiness-engine` |
 | Build CLI Binaries | cross-compiled `ncrectl` for linux and macOS, amd64 and arm64 |
 | Create GitHub Release | the GitHub Release, its notes, and the assets below |
 
 The container image is published separately by `.github/workflows/publish.yml` as
-`ghcr.io/nvidia/cluster-readiness-engine/manager:<tag>`.
+`ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager:<tag>`.
 
 Release assets:
 
@@ -93,7 +93,7 @@ Release assets:
 
 ```bash
 VERSION=v0.1.0
-BASE=https://github.com/NVIDIA/cluster-readiness-engine/releases/download/$VERSION
+BASE=https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/download/$VERSION
 curl -sSLO "$BASE/checksums.txt"
 curl -sSLO "$BASE/ncrectl-linux-amd64"
 sha256sum --check --ignore-missing checksums.txt

@@ -19,9 +19,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
-	burninv1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/nodemonitor"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 )
 
 // The stored tail was 30 lines, right for a workload whose last line is the
@@ -78,7 +78,7 @@ func TestFailureLogCapture(t *testing.T) {
 		}
 
 		scheme := runtime.NewScheme()
-		if err := burninv1alpha1.AddToScheme(scheme); err != nil {
+		if err := crev1alpha1.AddToScheme(scheme); err != nil {
 			return err
 		}
 		if err := corev1.AddToScheme(scheme); err != nil {
@@ -102,7 +102,7 @@ func TestFailureLogCapture(t *testing.T) {
 			objs = append(objs, pod)
 		}
 
-		job := &burninv1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"}}
+		job := &crev1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"}}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).
 			WithIndex(&corev1.Pod{}, nodemonitor.PodCREJobIndexField, func(obj client.Object) []string {
 				pod, ok := obj.(*corev1.Pod)
