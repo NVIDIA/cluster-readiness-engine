@@ -36,7 +36,7 @@ import (
 func newCertificationFakeClient(t testing.TB, objects ...client.Object) client.WithWatch {
 	t.Helper()
 	scheme := runtime.NewScheme()
-	require.NoError(t, burninv1alpha1.AddToScheme(scheme))
+	require.NoError(t, crev1alpha1.AddToScheme(scheme))
 	require.NoError(t, corev1.AddToScheme(scheme))
 	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 }
@@ -475,15 +475,15 @@ func TestFinishCertificationWaitTimeout(t *testing.T) {
 			return err
 		}
 
-		cert := &burninv1alpha1.Certification{
+		cert := &crev1alpha1.Certification{
 			ObjectMeta: metav1.ObjectMeta{Name: "timeout-cert", Namespace: "test-ns"},
-			Spec: burninv1alpha1.CertificationSpec{
-				Categories: []burninv1alpha1.CertificateCategory{{
+			Spec: crev1alpha1.CertificationSpec{
+				Categories: []crev1alpha1.CertificateCategory{{
 					Domain: "communication", Variant: "nccl-all-reduce",
 				}},
 			},
-			Status: burninv1alpha1.CertificationStatus{
-				CategoryStatuses: []burninv1alpha1.CertificationCategoryStatus{{
+			Status: crev1alpha1.CertificationStatus{
+				CategoryStatuses: []crev1alpha1.CertificationCategoryStatus{{
 					Domain: "communication", Variant: "nccl-all-reduce", Status: "InProgress",
 				}},
 			},
@@ -522,7 +522,7 @@ func TestFinishCertificationWaitTimeout(t *testing.T) {
 }
 
 func TestFinishCertificationWaitBoundsPostTimeoutReads(t *testing.T) {
-	cert := &burninv1alpha1.Certification{
+	cert := &crev1alpha1.Certification{
 		ObjectMeta: metav1.ObjectMeta{Name: "timeout-cert", Namespace: "test-ns"},
 	}
 	wc := &certificationDeadlineClient{WithWatch: newCertificationFakeClient(t, cert)}
@@ -539,10 +539,10 @@ func TestFinishCertificationWaitBoundsPostTimeoutReads(t *testing.T) {
 func TestExecuteCertificationRunReportsBeforeCleanup(t *testing.T) {
 	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test-ns"}}
 	wc := newCertificationFakeClient(t, namespace)
-	cert := &burninv1alpha1.Certification{
+	cert := &crev1alpha1.Certification{
 		ObjectMeta: metav1.ObjectMeta{Name: "timeout-cert", Namespace: namespace.Name},
-		Spec: burninv1alpha1.CertificationSpec{
-			Categories: []burninv1alpha1.CertificateCategory{{
+		Spec: crev1alpha1.CertificationSpec{
+			Categories: []crev1alpha1.CertificateCategory{{
 				Domain: "communication", Variant: "nccl-all-reduce",
 			}},
 		},
@@ -564,7 +564,7 @@ func TestExecuteCertificationRunReportsBeforeCleanup(t *testing.T) {
 	assert.GreaterOrEqual(t, reportIndex, 0)
 	assert.Greater(t, cleanupIndex, reportIndex)
 
-	gotCert := &burninv1alpha1.Certification{}
+	gotCert := &crev1alpha1.Certification{}
 	err = wc.Get(context.Background(), client.ObjectKeyFromObject(cert), gotCert)
 	assert.True(t, apierrors.IsNotFound(err))
 
@@ -585,9 +585,9 @@ func TestFinishCertificationWaitTerminalAtTimeout(t *testing.T) {
 			return err
 		}
 
-		cert := &burninv1alpha1.Certification{
+		cert := &crev1alpha1.Certification{
 			ObjectMeta: metav1.ObjectMeta{Name: "timeout-cert", Namespace: "test-ns"},
-			Status: burninv1alpha1.CertificationStatus{Conditions: []metav1.Condition{{
+			Status: crev1alpha1.CertificationStatus{Conditions: []metav1.Condition{{
 				Type: input.ConditionType, Status: metav1.ConditionTrue,
 			}}},
 		}
@@ -605,7 +605,7 @@ func TestFinishCertificationWaitTerminalAtTimeout(t *testing.T) {
 }
 
 func TestFinishCertificationWaitDoesNotMaskOtherWatchErrors(t *testing.T) {
-	cert := &burninv1alpha1.Certification{
+	cert := &crev1alpha1.Certification{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-cert", Namespace: "test-ns"},
 	}
 	wc := newCertificationFakeClient(t, cert)
@@ -629,7 +629,7 @@ func TestFinishCertificationWaitReportsRetrievalFailure(t *testing.T) {
 	resultsFile := filepath.Join(t.TempDir(), "results.json")
 	var out bytes.Buffer
 	cfg := &certRunConfig{
-		cert: &burninv1alpha1.Certification{ObjectMeta: metav1.ObjectMeta{
+		cert: &crev1alpha1.Certification{ObjectMeta: metav1.ObjectMeta{
 			Name: "missing-cert", Namespace: "test-ns",
 		}},
 		namespace: "test-ns", resultsFile: resultsFile, out: &out,
@@ -654,7 +654,7 @@ func TestFinishCertificationWaitReportsUnknownState(t *testing.T) {
 	}
 	var out bytes.Buffer
 	cfg := &certRunConfig{
-		cert: &burninv1alpha1.Certification{ObjectMeta: metav1.ObjectMeta{
+		cert: &crev1alpha1.Certification{ObjectMeta: metav1.ObjectMeta{
 			Name: "unknown-cert", Namespace: "test-ns",
 		}},
 		namespace: "test-ns", out: &out,

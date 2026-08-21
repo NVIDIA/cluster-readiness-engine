@@ -936,7 +936,7 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 // Certification and emit a partial report before any deferred cleanup runs.
 func finishCertificationWait(
 	ctx context.Context, wc client.WithWatch, cfg *certRunConfig,
-	finalCert *burninv1alpha1.Certification, waitErr error,
+	finalCert *crev1alpha1.Certification, waitErr error,
 ) error {
 	timedOut := isCertificationWaitTimeout(waitErr)
 	reportCtx := ctx
@@ -948,7 +948,7 @@ func finishCertificationWait(
 
 	var retrievalErr error
 	if finalCert == nil && timedOut {
-		current := &burninv1alpha1.Certification{}
+		current := &crev1alpha1.Certification{}
 		key := client.ObjectKey{Name: cfg.cert.Name, Namespace: cfg.namespace}
 		if err := wc.Get(reportCtx, key, current); err != nil {
 			retrievalErr = err
@@ -1006,11 +1006,11 @@ Check its status:
 	return waitErr
 }
 
-func certificationIsTerminal(cert *burninv1alpha1.Certification) bool {
+func certificationIsTerminal(cert *crev1alpha1.Certification) bool {
 	return apimeta.IsStatusConditionTrue(
-		cert.Status.Conditions, burninv1alpha1.CertificationSucceeded,
+		cert.Status.Conditions, crev1alpha1.CertificationSucceeded,
 	) || apimeta.IsStatusConditionTrue(
-		cert.Status.Conditions, burninv1alpha1.CertificationFailed,
+		cert.Status.Conditions, crev1alpha1.CertificationFailed,
 	)
 }
 
