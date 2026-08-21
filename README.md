@@ -172,9 +172,9 @@ Pin an explicit version rather than installing whatever is newest. Chart and
 image versions move together, so the two commands above and your own manifests
 should all name the same tag.
 
-## Run a training workload
+## Run a workload
 
-WorkloadRun is a simplified API for running training, NCCL, or custom workloads. Write a YAML file with an image, a framework, and a node count. CRE detects the platform and GPU architecture.
+WorkloadRun is a simplified API for running training, NCCL, or custom workloads. Write a YAML file with an image, a framework, and a node count. CRE detects the platform and GPU architecture. The quickest example is an NCCL bandwidth check:
 
 ```yaml
 # nccl-all-reduce.yaml
@@ -202,6 +202,10 @@ eligible nodes into groups of this size and runs one job per group, so
 ```bash
 kubectl ncre workloadrun run nccl-all-reduce.yaml --wait
 ```
+
+For the full NCCL benchmark suite, see [Run NCCL Benchmarks](docs/how-to-guides/nccl-benchmarks.md).
+For training workloads, see the [Nemotron 5](docs/how-to-guides/workloadrun-nemotron5.md) and
+[DeepSeek-V3](docs/how-to-guides/workloadrun-deepseek-v3.md) quickstarts.
 
 ## Scope and non-goals
 
