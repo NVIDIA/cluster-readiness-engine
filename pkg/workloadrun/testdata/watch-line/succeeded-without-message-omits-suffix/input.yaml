@@ -1,0 +1,9 @@
+# A condition with an empty message must not leave a dangling separator.
+name: wr-torch
+elapsed: 8m0s
+run:
+  status:
+    conditions:
+      - type: Succeeded
+        status: "True"
+        reason: WorkflowSucceeded

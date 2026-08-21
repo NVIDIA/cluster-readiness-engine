@@ -1,0 +1,6 @@
+# Before the controller has set any execution condition (or before the first
+# successful Get), the line reports that status is still pending. The run name
+# is deliberately absent from the output because nothing is known about it yet.
+name: wr-torch
+elapsed: 15s
+run: {}
