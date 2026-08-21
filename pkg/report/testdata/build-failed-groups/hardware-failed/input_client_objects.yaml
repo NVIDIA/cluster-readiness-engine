@@ -1,0 +1,110 @@
+# HardwareFailed sits between Failed and ValidationFailed in the priority
+# scan: with no Failed condition, the detector's message becomes the group
+# reason, and it wins over the sibling ValidationFailed condition.
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: cert-hw
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: WorkflowsFailed
+      message: 1 of 1 certification categories failed
+      lastTransitionTime: "2026-08-07T01:00:00Z"
+  categoryStatuses:
+    - domain: training
+      variant: nemotron5-8b
+      status: Failed
+      workflowRef:
+        name: cert-hw-training-nemotron5-8b
+        namespace: default
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: cert-hw-training-nemotron5-8b
+  namespace: default
+  labels:
+    cre.nvidia.com/certification: cert-hw
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: rt
+          trainer:
+            image: img:latest
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 2
+    nodesPerJob: 2
+    totalGroups: 1
+    currentIteration: 1
+    detectedPlatform: onprem
+    detectedGPUArchitecture: h100
+    groups:
+      - name: group-0
+        nodes:
+          - node001
+          - node002
+        phase: Failed
+        jobRef:
+          apiVersion: cre.nvidia.com/v1alpha1
+          kind: Job
+          name: cert-hw-training-nemotron5-8b-job-group-0
+          namespace: default
+        startTime: "2026-08-07T00:00:00Z"
+        completionTime: "2026-08-07T00:10:00Z"
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: GroupsFailed
+      message: 1 groups failed across 1 iterations
+      lastTransitionTime: "2026-08-07T00:10:00Z"
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: cert-hw-training-nemotron5-8b-job-group-0
+  namespace: default
+  labels:
+    cre.nvidia.com/workflow: cert-hw-training-nemotron5-8b
+    cre.nvidia.com/group: group-0
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: rt
+      trainer:
+        image: img:latest
+        numNodes: 2
+status:
+  conditions:
+    - type: HardwareFailed
+      status: "True"
+      reason: NodeHealthCheckFailed
+      message: "Hardware failure detected on nodes: node001"
+      lastTransitionTime: "2026-08-07T00:10:00Z"
+    - type: ValidationFailed
+      status: "True"
+      reason: ThresholdViolated
+      message: 'Threshold "goodputRatio" violated: measured 0.8800, expression: value >= 0.95'
+      lastTransitionTime: "2026-08-07T00:10:00Z"

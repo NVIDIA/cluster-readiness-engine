@@ -352,7 +352,6 @@ func failureReasonFromConditions(conditions []metav1.Condition) string {
 	return ""
 }
 
-// buildFailedGroups collects failed orchestration groups with their root cause.
 // buildIterationReports creates per-iteration timing from iteration history
 // and the current iteration. Returns reports and total runtime string.
 func buildIterationReports(orch *crev1alpha1.OrchestrationStatus) ([]IterationReport, string) {
@@ -474,7 +473,75 @@ func fmtSecs(secs int64) string {
 	return fmt.Sprintf("%dh %dm", secs/3600, (secs%3600)/60)
 }
 
-func buildFailedGroups(ctx context.Context, c client.Client, wf *crev1alpha1.Workflow) []FailedGroupReport {
+// jobFailureReason returns the failure cause recorded on a CRE Job's
+// conditions, scanned in priority order: Failed (execution failure, enriched
+// with the batch/v1 Job's reason when resolvable) → HardwareFailed →
+// ValidationFailed. A threshold violation leaves the Job with Succeeded=True
+// and ValidationFailed=True — no Failed condition — so scanning only Failed
+// would drop the threshold detail from the report (#176). The order also
+// protects existing output: an execution failure with a stale ValidationFailed
+// from a prior attempt still reports the execution cause.
+func jobFailureReason(ctx context.Context, c client.Client, job *crev1alpha1.Job, namespace string) string {
+	for _, condType := range []string{
+		crev1alpha1.JobFailed,
+		crev1alpha1.JobHardwareFailed,
+		crev1alpha1.JobValidationFailed,
+	} {
+		for _, cond := range job.Status.Conditions {
+			if cond.Type != condType || cond.Status != metav1.ConditionTrue {
+				continue
+			}
+			if condType == crev1alpha1.JobFailed {
+				if reason := batchJobFailureReason(ctx, c, cond.Message, namespace); reason != "" {
+					return reason
+				}
+			}
+			return cond.Message
+		}
+	}
+	return ""
+}
+
+// failedNodeReason resolves a failed group's cause from the failed-nodes
+// ConfigMap entries when the group's Job CR is unreachable (deleted by a
+// group retry, or the group lives only in iteration history). It returns the
+// message of the first entry whose name is in the group's node list,
+// preferring ThresholdViolation entries; the merged list is sorted by name
+// then reason, so selection is deterministic.
+func failedNodeReason(failedNodes []crev1alpha1.FailedNode, groupNodes []string) string {
+	if len(failedNodes) == 0 || len(groupNodes) == 0 {
+		return ""
+	}
+	inGroup := make(map[string]struct{}, len(groupNodes))
+	for _, n := range groupNodes {
+		inGroup[n] = struct{}{}
+	}
+	fallback := ""
+	for _, fn := range failedNodes {
+		if fn.Message == "" {
+			continue
+		}
+		if _, ok := inGroup[fn.Name]; !ok {
+			continue
+		}
+		if fn.Reason == crev1alpha1.NodeFailureThresholdViolation {
+			return fn.Message
+		}
+		if fallback == "" {
+			fallback = fn.Message
+		}
+	}
+	return fallback
+}
+
+// buildFailedGroups collects failed orchestration groups with their root
+// cause. The reason comes from the group's Job conditions when the Job still
+// exists (see jobFailureReason), falling back to the failed-nodes ConfigMap
+// entries (see failedNodeReason) when it does not.
+func buildFailedGroups(
+	ctx context.Context, c client.Client, wf *crev1alpha1.Workflow,
+	failedNodes []crev1alpha1.FailedNode,
+) []FailedGroupReport {
 	orch := wf.Status.Orchestration
 	if orch == nil || c == nil {
 		return nil
@@ -491,16 +558,10 @@ func buildFailedGroups(ctx context.Context, c client.Client, wf *crev1alpha1.Wor
 		}
 		excalJob := &crev1alpha1.Job{}
 		if err := c.Get(ctx, client.ObjectKey{Name: g.JobRef.Name, Namespace: wf.Namespace}, excalJob); err == nil {
-			for _, cond := range excalJob.Status.Conditions {
-				if cond.Type == crev1alpha1.JobFailed && cond.Status == metav1.ConditionTrue {
-					if reason := batchJobFailureReason(ctx, c, cond.Message, wf.Namespace); reason != "" {
-						fg.Reason = reason
-					} else {
-						fg.Reason = cond.Message
-					}
-					break
-				}
-			}
+			fg.Reason = jobFailureReason(ctx, c, excalJob, wf.Namespace)
+		}
+		if fg.Reason == "" {
+			fg.Reason = failedNodeReason(failedNodes, g.Nodes)
 		}
 		result = append(result, fg)
 	}
@@ -522,7 +583,7 @@ func PopulateCategoryFromWorkflow(
 	if wf.Spec.Orchestration.Topology != nil {
 		cat.Cliques = buildCliqueReport(wf, failedNodes)
 	}
-	cat.FailedGroups = buildFailedGroups(ctx, c, wf)
+	cat.FailedGroups = buildFailedGroups(ctx, c, wf, failedNodes)
 	cat.Iterations, cat.Runtime = buildIterationReports(orch)
 	if orch != nil && orch.Diagnose != nil {
 		diag := orch.Diagnose
