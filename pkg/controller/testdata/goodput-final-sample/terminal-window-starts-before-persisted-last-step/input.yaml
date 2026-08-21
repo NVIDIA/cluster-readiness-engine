@@ -1,0 +1,15 @@
+# ADR-072 / issue #177 review finding: the terminal read window must derive
+# from persisted status, not from pod start. The fetcher's LimitBytes keeps
+# the HEAD of the window, so a window opened at pod start on a heavy-log run
+# truncates away the newest lines. With status.lastStepTimestamp persisted at
+# 10:03:00 and the default 60s sample interval, the final read must open at
+# 10:02:00 — re-covering exactly the last sampling window.
+call: collectFinalSample
+sampledSecondsAgo: 1
+logProfileRef: lp
+status:
+  currentStep: 30
+  highestStep: 30
+  lastStepTimestamp: "2026-01-22T10:03:00Z"
+logs:
+  - "2026-01-22T10:03:00.000000000Z step 30"

@@ -79,4 +79,5 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 069 | [cmd/ layout — kubernetes/kubernetes convention](069-cmd-layout.md) |
 | 070 | [WorkloadRun MPI Transport-Layer Overrides for AWS GB300 (RoCE)](070-workloadrun-gb300-mpi-transport.md) |
 | 071 | [Threshold Violation Reason Propagation into Report Surfaces](071-threshold-reason-propagation.md) |
+| 072 | [Freeze GoodputMeasurement Status at Job Terminal State](072-goodput-terminal-freeze.md) |
 | 073 | [Convergent `setup init` Retry After a Partial Kubeflow Trainer Install](073-setup-retry-convergence.md) |

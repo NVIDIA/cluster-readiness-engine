@@ -1,0 +1,3 @@
+# A measurement that never sampled recovers a zero state: training not
+# started, all watermarks zero, and the warmup base sentinel -1 (unset).
+status: {}

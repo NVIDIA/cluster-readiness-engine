@@ -1,0 +1,17 @@
+# A final window whose last step does not advance past the persisted
+# lastStepTimestamp is a re-read of history the status already reflects:
+# window-derived fields (avgStepTimeSec) keep their persisted values instead
+# of being recomputed over the partial window, so a pre-Complete replay lands
+# on the same bytes as the pass whose window it re-reads. Recomputed over this
+# window alone the average would be 12s (120s gap / 10 steps).
+call: collectFinalSample
+sampledSecondsAgo: 1
+logProfileRef: lp
+status:
+  currentStep: 30
+  highestStep: 30
+  lastStepTimestamp: "2026-01-22T10:03:00Z"
+  avgStepTimeSec: "5.500000"
+logs:
+  - "2026-01-22T10:01:00.000000000Z step 20"
+  - "2026-01-22T10:03:00.000000000Z step 30"
