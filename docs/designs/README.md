@@ -78,3 +78,4 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 068 | [Offloading Inline Node Lists from the Workflow CR via Compressed ConfigMaps](068-group-nodes-compressed-configmap.md) |
 | 069 | [cmd/ layout — kubernetes/kubernetes convention](069-cmd-layout.md) |
 | 071 | [Threshold Violation Reason Propagation into Report Surfaces](071-threshold-reason-propagation.md) |
+| 073 | [Convergent `setup init` Retry After a Partial Kubeflow Trainer Install](073-setup-retry-convergence.md) |
