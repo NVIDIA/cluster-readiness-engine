@@ -1,0 +1,6 @@
+
+Retained resources (not removed by reset):
+  - Namespace cluster-readiness-engine
+      kubectl delete namespace cluster-readiness-engine
+  - Secret cluster-readiness-engine/ncrectl-pull-secret
+      kubectl delete secret ncrectl-pull-secret -n cluster-readiness-engine

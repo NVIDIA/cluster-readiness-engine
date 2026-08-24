@@ -1,0 +1,4 @@
+# Both managed releases healthy: status is ready.
+states:
+  cluster-readiness-engine: deployed
+  kubeflow-trainer: deployed

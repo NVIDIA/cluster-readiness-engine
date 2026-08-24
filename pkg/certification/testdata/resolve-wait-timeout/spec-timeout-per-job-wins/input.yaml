@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An explicit spec.timeoutPerJob beats the entry's meta.yaml default:
+# 4h x 1 x 1.5 = 6h for dcgm-level4 (meta default 2h is ignored).
+explicitTimeout: false
+flagTimeout: 30m
+certification:
+  apiVersion: cre.nvidia.com/v1alpha1
+  kind: Certification
+  metadata:
+    name: spec-timeout
+  spec:
+    target:
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-GB200
+    timeoutPerJob: 4h
+    categories:
+    - domain: diagnostics
+      variant: dcgm-level4
