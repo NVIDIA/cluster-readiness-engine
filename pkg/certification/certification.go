@@ -452,6 +452,7 @@ type certRunConfig struct {
 	doCleanup                bool   // --cleanup: runReset + delete cert/ns after
 	resultsFile              string // --results-file: path to write JSON report
 	timeout                  time.Duration
+	timeoutDerived           bool // timeout was derived from category timeouts, not passed via --timeout
 	configFlags              *kubeconfig.ConfigFlags
 	out                      io.Writer
 }
@@ -550,6 +551,8 @@ Use --cleanup to teardown installed components after completion.`,
 			}
 			cfg.version = version
 			cfg.resultsFile = resultsFile
+			cfg.timeout, cfg.timeoutDerived = resolveWaitTimeout(
+				cfg.cert, timeout, cmd.Flags().Changed("timeout"))
 			return executeCertificationRun(cfg)
 		},
 	}
@@ -595,12 +598,77 @@ Use --cleanup to teardown installed components after completion.`,
 	cmd.Flags().StringVar(&storageClass, "storage-class", "",
 		"StorageClass for PVC dependencies created by catalog entries")
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Minute,
-		"Timeout for --wait")
+		"Timeout for --wait (when not set, derived from the selected categories' timeoutPerJob budgets, floored at 30m)")
 	cmd.Flags().StringVar(&resultsFile, "results-file", "",
 		"Write certification report as JSON to this file path (requires --wait)")
 	configFlags.AddFlags(cmd.Flags())
 
 	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// --wait timeout derivation (issue #183)
+// ---------------------------------------------------------------------------
+
+// waitTimeoutMarginNum/Den scale a category's job budget (timeoutPerJob ×
+// iterations) by 1.5 to absorb time the per-job timeout does not cover: pod
+// scheduling, multi-GB image pulls, post-success measurement (default 5m),
+// controller requeue latency, and cleanup between iterations. The controller
+// fails a job shortly after timeoutPerJob expires, so 1.5× the budget is
+// enough for --wait to always outlive a legitimately slow job.
+const (
+	waitTimeoutMarginNum = 3
+	waitTimeoutMarginDen = 2
+)
+
+// resolveWaitTimeout returns the effective --wait timeout and whether it was
+// derived. An explicit --timeout always wins. Otherwise the timeout is derived
+// from the selected categories' catalog timeoutPerJob values — max across
+// categories of timeoutPerJob × iterations × margin — floored at the flag
+// default so short categories keep today's behavior.
+func resolveWaitTimeout(cert *crev1alpha1.Certification, flagValue time.Duration, explicit bool) (time.Duration, bool) {
+	if explicit || cert == nil {
+		return flagValue, false
+	}
+	derived := deriveWaitTimeout(cert)
+	if derived <= flagValue {
+		return flagValue, false
+	}
+	return derived, true
+}
+
+// deriveWaitTimeout computes the wait budget implied by the certification's
+// categories. Categories run as parallel Workflows, so the max (not the sum)
+// across categories bounds the wall time. Unknown categories and unparsable
+// durations contribute nothing — they fail with a proper error further down
+// the pipeline.
+func deriveWaitTimeout(cert *crev1alpha1.Certification) time.Duration {
+	var maxBudget time.Duration
+	for _, cat := range cert.Spec.Categories {
+		entry := catalog.Lookup(cat.Domain, cat.Variant)
+		if entry == nil {
+			continue
+		}
+		opts := controller.ResolveOptions(&cert.Spec.CategoryOptions, cat.Options)
+
+		perJob, err := time.ParseDuration(entry.EffectiveTimeoutPerJob(opts.TimeoutPerJob, opts.TestScale))
+		if err != nil {
+			continue
+		}
+
+		iterations := entry.Iterations
+		if opts.RepeatCount != nil && *opts.RepeatCount > 0 {
+			iterations = int(*opts.RepeatCount)
+		}
+		if iterations < 1 {
+			iterations = 1
+		}
+
+		if budget := perJob * time.Duration(iterations); budget > maxBudget {
+			maxBudget = budget
+		}
+	}
+	return maxBudget * waitTimeoutMarginNum / waitTimeoutMarginDen
 }
 
 // ---------------------------------------------------------------------------
@@ -923,6 +991,9 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 	}
 
 	_, _ = fmt.Fprintln(out)
+	if cfg.timeoutDerived {
+		_, _ = fmt.Fprintf(out, "Waiting up to %s (derived from category timeouts; pass --timeout to override).\n", cfg.timeout)
+	}
 	finalCert, waitErr := watchCertification(ctx, wc, cfg.cert.Name, cfg.namespace, cfg.timeout, out)
 
 	// --- Report phase (only when we have a cert; nil on timeout or watch failure) ---
