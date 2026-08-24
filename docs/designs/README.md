@@ -77,3 +77,4 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 067 | [`kubectl ncrectl` Plugin Support and Full kubectl Flag Parity](067-kubectl-plugin-support.md) |
 | 068 | [Offloading Inline Node Lists from the Workflow CR via Compressed ConfigMaps](068-group-nodes-compressed-configmap.md) |
 | 069 | [cmd/ layout — kubernetes/kubernetes convention](069-cmd-layout.md) |
+| 071 | [Threshold Violation Reason Propagation into Report Surfaces](071-threshold-reason-propagation.md) |
