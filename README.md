@@ -143,6 +143,14 @@ kubectl ncre certification report <name> -n <namespace>
 Helm, or need to pin the controller image in your own manifests, both are
 published to the GitHub Container Registry on every release.
 
+While this repository is internal, Helm needs to authenticate to the registry
+before it can pull the chart:
+
+```bash
+gh auth token | helm registry login ghcr.io \
+  --username "$(gh api user --jq .login)" --password-stdin
+```
+
 ```bash
 CRE_VERSION=v0.1.0-rc.8
 
@@ -164,9 +172,9 @@ Pin an explicit version rather than installing whatever is newest. Chart and
 image versions move together, so the two commands above and your own manifests
 should all name the same tag.
 
-## Run a training workload
+## Run a workload
 
-WorkloadRun is a simplified API for running training, NCCL, or custom workloads. Write a YAML file with an image, a framework, and a node count. CRE detects the platform and GPU architecture.
+WorkloadRun is a simplified API for running training, NCCL, or custom workloads. Write a YAML file with an image, a framework, and a node count. CRE detects the platform and GPU architecture. The quickest example is an NCCL bandwidth check:
 
 ```yaml
 # nccl-all-reduce.yaml
@@ -180,16 +188,24 @@ spec:
   framework:
     mpi:
       binary: /usr/local/bin/all_reduce_perf_mpi
-      mpirunPath: /usr/local/bin/mpirun
+      mpirunPath: /usr/local/mpi/bin/mpirun
       args: ["-b", "8", "-e", "32G", "-f", "2", "-n", "100"]
   bandwidthMeasurement:
     logProfileRef: nccl-bandwidth
     testType: all_reduce
 ```
 
+`numNodes` is the node count **per job group**, not the total: CRE partitions all
+eligible nodes into groups of this size and runs one job per group, so
+`numNodes: 4` on a 16-node cluster produces four 4-node jobs.
+
 ```bash
 kubectl ncre workloadrun run nccl-all-reduce.yaml --wait
 ```
+
+For the full NCCL benchmark suite, see [Run NCCL Benchmarks](docs/how-to-guides/nccl-benchmarks.md).
+For training workloads, see the [Nemotron 5](docs/how-to-guides/workloadrun-nemotron5.md) and
+[DeepSeek-V3](docs/how-to-guides/workloadrun-deepseek-v3.md) quickstarts.
 
 ## Scope and non-goals
 
