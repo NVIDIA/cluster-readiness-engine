@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cluster-readiness-engine
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubeflow-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ncrectl-pull-secret
+  namespace: cluster-readiness-engine
+type: kubernetes.io/dockerconfigjson

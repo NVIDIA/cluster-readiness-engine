@@ -271,6 +271,9 @@ Phases:
   [helm]  CRE Helm release (CRDs, controller, LogProfiles)
   [deps]  Kubeflow Trainer ` + kubeflowTrainerVersion + `
 
+Shared namespaces and the controller pull secret are intentionally retained;
+reset prints a "Retained resources" list with the cleanup command for each.
+
 Use --skip-phases=deps to keep Kubeflow Trainer.
 Use --auto-approve to skip the confirmation prompt (for CI/automation).`,
 		Args: cobra.NoArgs,
@@ -369,6 +372,7 @@ func RunReset(
 	if err := uninstallDepsPhase(sp); err != nil {
 		return err
 	}
+	printRetainedResources(ctx, c, skip, out)
 	_, _ = fmt.Fprintln(out, "\nCRE reset successfully.")
 	return nil
 }
@@ -393,6 +397,101 @@ func uninstallDepsPhase(sp setupPhaseParams) error {
 		return fmt.Errorf("[deps] %w", err)
 	}
 	return nil
+}
+
+// retainedResource is a resource reset intentionally leaves behind, paired
+// with the kubectl command that removes it.
+type retainedResource struct {
+	description string
+	cleanup     string
+	// unverified is true when the existence check failed (e.g. RBAC denied),
+	// so the resource is reported as "may remain" instead of being hidden.
+	unverified bool
+}
+
+// printRetainedResources reports what reset intentionally keeps — the shared
+// namespaces (`helm uninstall` never deletes the release namespace, and other
+// tenants may use it) and the controller pull secret created by setup init
+// outside the Helm release — together with the kubectl command to remove
+// each. Existence is checked with the client already in hand; resources
+// confirmed absent are omitted.
+func printRetainedResources(
+	ctx context.Context, c client.Client, skip map[string]bool, out io.Writer,
+) {
+	var retained []retainedResource
+	record := func(exists bool, err error, r retainedResource) {
+		if err != nil {
+			r.unverified = true
+			retained = append(retained, r)
+			return
+		}
+		if exists {
+			retained = append(retained, r)
+		}
+	}
+
+	exists, err := namespaceExists(ctx, c, creNamespace)
+	record(exists, err, retainedResource{
+		description: "Namespace " + creNamespace,
+		cleanup:     "kubectl delete namespace " + creNamespace,
+	})
+
+	exists, err = secretExists(ctx, c, creNamespace, pullSecretName)
+	record(exists, err, retainedResource{
+		description: fmt.Sprintf("Secret %s/%s", creNamespace, pullSecretName),
+		cleanup: fmt.Sprintf("kubectl delete secret %s -n %s",
+			pullSecretName, creNamespace),
+	})
+
+	// Only mention the Trainer namespace when the deps phase actually ran;
+	// with --skip-phases=deps the kubeflow-trainer release still lives there.
+	if !skip[phaseDeps] {
+		exists, err = namespaceExists(ctx, c, trainerNamespace)
+		record(exists, err, retainedResource{
+			description: "Namespace " + trainerNamespace,
+			cleanup:     "kubectl delete namespace " + trainerNamespace,
+		})
+	}
+
+	if len(retained) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintln(out, "\nRetained resources (not removed by reset):")
+	for _, r := range retained {
+		if r.unverified {
+			_, _ = fmt.Fprintf(out, "  - %s (may remain; existence check failed)\n", r.description)
+		} else {
+			_, _ = fmt.Fprintf(out, "  - %s\n", r.description)
+		}
+		_, _ = fmt.Fprintf(out, "      %s\n", r.cleanup)
+	}
+}
+
+// namespaceExists reports whether the named namespace exists. NotFound is not
+// an error; any other lookup failure is returned so the caller can report the
+// resource as unverified instead of silently dropping it.
+func namespaceExists(ctx context.Context, c client.Client, name string) (bool, error) {
+	ns := &corev1.Namespace{}
+	if err := c.Get(ctx, client.ObjectKey{Name: name}, ns); err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// secretExists reports whether the named Secret exists, with the same error
+// semantics as namespaceExists.
+func secretExists(ctx context.Context, c client.Client, namespace, name string) (bool, error) {
+	secret := &corev1.Secret{}
+	if err := c.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, secret); err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // ---------------------------------------------------------------------------
