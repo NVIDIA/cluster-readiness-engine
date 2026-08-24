@@ -19,11 +19,12 @@ import (
 
 	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/gpu"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/platform"
 )
 
 const (
-	platformOnPrem = "onprem"
-	platformForge  = "forge"
+	platformOnPrem = platform.OnPrem
+	platformForge  = platform.Forge
 	gpuArchUnknown = "unknown"
 )
 
@@ -48,25 +49,25 @@ func nodePlatform(n corev1.Node) string {
 	}
 	switch {
 	case strings.HasPrefix(providerID, "aws://"):
-		return "aws"
+		return platform.AWS
 	case strings.HasPrefix(providerID, "gce://"):
-		return "gcp"
+		return platform.GCP
 	case strings.HasPrefix(providerID, "azure://"):
-		return "azure"
+		return platform.Azure
 	case strings.HasPrefix(providerID, "ocid1."):
-		return "oci"
+		return platform.OCI
 	case strings.HasPrefix(providerID, "openstack://"):
 		if _, ok := n.Status.Allocatable[corev1.ResourceName("nscale.com/rdmashare")]; ok {
-			return "nscale"
+			return platform.NScale
 		}
 		return platformOnPrem
 	case strings.HasPrefix(providerID, "kubevirt://"):
 		if _, ok := n.Labels["node-role.together.ai/worker"]; ok {
-			return "togetherai"
+			return platform.TogetherAI
 		}
 		return platformOnPrem
 	case strings.HasPrefix(providerID, "metal3://"):
-		return "mistral"
+		return platform.Mistral
 	default:
 		return platformOnPrem
 	}

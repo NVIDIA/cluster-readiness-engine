@@ -62,7 +62,7 @@ ncrectl workloadrun render [flags] <workloadrun.yaml>
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--platform` | auto | Override platform detection (`aws`, `gcp`, `azure`, `oci`, `onprem`, `togetherai`, `mistral`, `forge`) |
+| `--platform` | auto | Override platform detection (`aws`, `gcp`, `azure`, `oci`, `onprem`, `togetherai`, `mistral`, `forge`, `nscale`) |
 | `--dry-run` | `false` | Connect to cluster, discover real nodes, and render with actual platform/GPU detection |
 | `--output` | `yaml` | Output format: `yaml` or `json` |
 
