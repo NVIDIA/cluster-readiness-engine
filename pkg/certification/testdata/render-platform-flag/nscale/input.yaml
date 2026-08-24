@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# nscale is detected by the controller (openstack:// providerID plus the
+# nscale.com/rdmashare allocatable) and referenced by catalog overrides, so
+# --platform nscale must be accepted and resolve to nscale for override
+# matching (issue #184).
+platform: nscale

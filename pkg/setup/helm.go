@@ -5,6 +5,7 @@ package setup
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os/exec"
@@ -214,6 +215,65 @@ func uninstallTrainerHelmRelease(kubeconfig, kubeContext string, out io.Writer) 
 		_, _ = fmt.Fprintf(out, "[deps] Warning: failed to uninstall %s: %v\n", trainerReleaseName, err)
 	}
 	return nil
+}
+
+// Helm release states as reported by `helm status`, plus two sentinel values
+// for states the helm CLI cannot report: a release helm has no record of, and
+// a query that could not be completed (helm missing from PATH, cluster
+// unreachable). Neither sentinel blocks readiness, because CRE may have been
+// installed without Helm and `setup status` must still work without the CLI.
+const (
+	helmStateDeployed     = "deployed"
+	helmStateUninstalled  = "uninstalled"
+	helmStateNotInstalled = "not installed"
+	helmStateUnknown      = "unknown"
+)
+
+// helmStateFunc returns the state of a Helm release in a namespace. Tests
+// substitute a stub; production code uses newHelmStateQuery.
+type helmStateFunc func(release, namespace string) string
+
+// newHelmStateQuery returns a helmStateFunc backed by the helm CLI. When helm
+// is not in PATH every release reads as unknown, so the status command keeps
+// working instead of failing outright.
+func newHelmStateQuery(kubeconfig, kubeContext string) helmStateFunc {
+	helmPath, err := ensureHelm()
+	if err != nil {
+		return func(string, string) string { return helmStateUnknown }
+	}
+	return func(release, namespace string) string {
+		return helmReleaseState(helmPath, release, namespace, kubeconfig, kubeContext)
+	}
+}
+
+// helmReleaseState runs `helm status <release> -o json` and returns the
+// release state (e.g. "deployed", "failed", "pending-upgrade"). A release
+// helm has no record of reads as not installed; any other failure reads as
+// unknown.
+func helmReleaseState(helmPath, release, namespace, kubeconfig, kubeContext string) string {
+	args := []string{"status", release, "--namespace", namespace, "-o", "json"}
+	args = appendKubeconfigArgs(args, kubeconfig, kubeContext)
+
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command(helmPath, args...) // #nosec G204 -- helmPath and args come from this CLI, not from untrusted input
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if strings.Contains(stderr.String(), "release: not found") {
+			return helmStateNotInstalled
+		}
+		return helmStateUnknown
+	}
+
+	var status struct {
+		Info struct {
+			Status string `json:"status"`
+		} `json:"info"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &status); err != nil || status.Info.Status == "" {
+		return helmStateUnknown
+	}
+	return status.Info.Status
 }
 
 // runHelm executes a helm subcommand, printing output only on failure.
