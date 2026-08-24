@@ -2,7 +2,7 @@
 
 ## Context
 
-CRE historically created a Remediation CR when a Certification failed, and a Remediation controller applied taints, cordons, and node conditions to failed nodes ([ADR-006](006-remediation-lifecycle.md)).
+CRE historically created a Remediation CR when a Certification failed, and a Remediation controller applied taints, cordons, and node conditions to failed nodes (ADR-006 (internal; predates the public repository)).
 
 This approach has several problems:
 
@@ -263,4 +263,4 @@ A terminal failed Certification (`conditions` has `type=Failed, status=True`) wi
 
 ## References
 
-- [ADR-006: Remediation Lifecycle](006-remediation-lifecycle.md) — original design (superseded by this ADR)
+- ADR-006: Remediation Lifecycle (internal; predates the public repository) — original design (superseded by this ADR)

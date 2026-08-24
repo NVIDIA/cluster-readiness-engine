@@ -21,8 +21,11 @@ spec:
     mpi:
       binary: /usr/local/bin/all_reduce_perf_mpi
       args: ["-b", "8", "-e", "32G", "-f", "2", "-n", "100"]
-      mpirunPath: /usr/local/bin/mpirun
-  numNodes: 4
+      mpirunPath: /usr/local/mpi/bin/mpirun
+  numNodes: 4   # nodes per job group; all eligible nodes are partitioned into 4-node jobs
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: high-priority
   target:
     nodeSelector:
       nvidia.com/gpu.present: "true"
@@ -35,7 +38,15 @@ spec:
 
 ## Spec fields
 
-_Generated from CRD schema — coming soon._
+_Generated from CRD schema — coming soon. Fields documented so far:_
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `gangScheduler` | GangSchedulerSpec | Optional. Opts workload pods into a gang-aware scheduler such as KAI Scheduler. When set, the scheduler name is injected as `schedulerName` into every workload pod template (for MPI, both launcher and worker pods) and the queue is applied as the `kai.scheduler/queue` label on the pod template metadata, so the scheduler holds all pods until the entire gang can be placed |
+| `gangScheduler.schedulerName` | string | Required; minimum length 1. Name of the gang-aware scheduler to use (e.g., `kai-scheduler`). Injected as `schedulerName` in each workload pod spec |
+| `gangScheduler.queue` | string | Optional. Scheduler queue to submit the workload to; defaults to `default-queue` when unset. When non-empty, must be a valid Kubernetes label value: at most 63 characters, beginning and ending with an alphanumeric character, and containing only alphanumerics, hyphens, underscores, or dots (pattern `^$\|^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`) |
+
+`numNodes` (shown in the example above) is the number of nodes **per job group**, not a total: the orchestrator partitions all eligible nodes into groups of that size.
 
 ## Status fields
 

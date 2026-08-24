@@ -43,7 +43,7 @@ The same gap exists across all three multi-node NCCL variants (`nccl-all-reduce`
 
 - **Override ordering becomes load-bearing for Azure H100.** A future edit that reorders the Azure (non-A100) block after the H100 block would zero out the H100 args (because the non-A100 block carries a shorter args list). Mitigation: integration golden file `certification-azure-h100-nccl/expected.json` will fail on regression.
 - **Other Azure non-A100, non-H100 GPUs (H200, B200) keep the four-var minimum.** Acceptable — adding tuning for those SKUs is a future ADR with its own field validation.
-- **Same args duplicated across the catalog files.** Could be hoisted into a shared `_lib/nccl/azure-h100-mpiargs.yaml` later (matches the [`nccl/togetherai-ib-mpiargs.yaml`](../../pkg/catalog/entries/_lib/nccl/togetherai-ib-mpiargs.yaml) precedent), but doing so now would entangle ADR-060 with the unrelated decision of when to extract a lib. Leave inline for now; promote to lib in a follow-up if another variant lands.
+- **Same args duplicated across the catalog files.** Could be hoisted into a shared `_lib/nccl/azure-h100-mpiargs.yaml` later (matches the [`nccl/togetherai-ib-env.yaml`](../../pkg/catalog/entries/_lib/nccl/togetherai-ib-env.yaml) precedent), but doing so now would entangle ADR-060 with the unrelated decision of when to extract a lib. Leave inline for now; promote to lib in a follow-up if another variant lands.
 
 ## Alternatives Considered
 
