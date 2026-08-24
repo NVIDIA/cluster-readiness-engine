@@ -94,6 +94,26 @@ func TestCertificationRender(t *testing.T) {
 	})
 }
 
+func TestCategoryWatchLabels(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "category-watch-labels",
+		ExpectedSuffix: ".json",
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var cert crev1alpha1.Certification
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input_certification.yaml"]), &cert); err != nil {
+			return err
+		}
+
+		data, err := json.MarshalIndent(categoryWatchLabels(&cert), "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
 func TestCertificationRenderErrors(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "certification-render-errors",

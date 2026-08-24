@@ -813,13 +813,22 @@ func runWorkloadRunExecute(
 }
 
 // watchWorkloadRun polls until the WorkloadRun reaches a terminal state.
+// It prints a "[watch]" line on every phase change and a periodic heartbeat
+// (same format and interval as the certification watch) so long runs show
+// progress instead of going silent until the terminal condition.
 func watchWorkloadRun(
 	ctx context.Context, c client.WithWatch,
-	name, namespace string, timeout time.Duration, _ io.Writer,
+	name, namespace string, timeout time.Duration, out io.Writer,
 ) (*crev1alpha1.WorkloadRun, error) {
 	deadline := time.After(timeout)
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
+
+	start := time.Now()
+	lastPhase := ""
+	var current crev1alpha1.WorkloadRun
 
 	for {
 		select {
@@ -827,21 +836,62 @@ func watchWorkloadRun(
 			return nil, fmt.Errorf("interrupted")
 		case <-deadline:
 			return nil, fmt.Errorf("timeout waiting for WorkloadRun %s", name)
+		case <-heartbeat.C:
+			elapsed := time.Since(start).Truncate(time.Second)
+			_, _ = fmt.Fprintln(out, workloadRunWatchLine(&current, name, elapsed))
 		case <-ticker.C:
-			var current crev1alpha1.WorkloadRun
 			key := client.ObjectKey{Name: name, Namespace: namespace}
 			if err := c.Get(ctx, key, &current); err != nil {
 				continue
 			}
+			elapsed := time.Since(start).Truncate(time.Second)
 			if controller.CondIsTrue(current.Status.Conditions, crev1alpha1.WorkloadRunSucceeded) {
+				_, _ = fmt.Fprintf(out, "[watch] WorkloadRun succeeded. (%s)\n", elapsed)
 				return &current, nil
 			}
 			if controller.CondIsTrue(current.Status.Conditions, crev1alpha1.WorkloadRunFailed) {
+				_, _ = fmt.Fprintf(out, "[watch] WorkloadRun failed. (%s)\n", elapsed)
 				msg := controller.CondMessage(current.Status.Conditions, crev1alpha1.WorkloadRunFailed)
 				return &current, fmt.Errorf("WorkloadRun failed: %s", msg)
 			}
+			if phase := workloadRunPhase(&current); phase != lastPhase {
+				_, _ = fmt.Fprintln(out, workloadRunWatchLine(&current, name, elapsed))
+				lastPhase = phase
+			}
 		}
 	}
+}
+
+// workloadRunPhase returns which execution condition (InProgress, Succeeded,
+// Failed) is currently true, or "" when the controller has not set one yet.
+func workloadRunPhase(run *crev1alpha1.WorkloadRun) string {
+	for _, t := range []string{
+		crev1alpha1.WorkloadRunInProgress,
+		crev1alpha1.WorkloadRunSucceeded,
+		crev1alpha1.WorkloadRunFailed,
+	} {
+		if controller.CondIsTrue(run.Status.Conditions, t) {
+			return t
+		}
+	}
+	return ""
+}
+
+// workloadRunWatchLine formats one "[watch]" progress line, matching the
+// certification watch format. It shows the current phase, its condition
+// message (which carries the underlying Workflow state, e.g. "Workflow
+// <name> created"), and elapsed time. Before the controller sets any
+// execution condition it reports that status is still pending.
+func workloadRunWatchLine(run *crev1alpha1.WorkloadRun, name string, elapsed time.Duration) string {
+	phase := workloadRunPhase(run)
+	if phase == "" {
+		return fmt.Sprintf("[watch] Waiting for status... (%s)", elapsed)
+	}
+	line := fmt.Sprintf("[watch] %s: %s (%s)", name, phase, elapsed)
+	if msg := controller.CondMessage(run.Status.Conditions, phase); msg != "" {
+		line += " — " + msg
+	}
+	return line
 }
 
 // --- helpers ---

@@ -1,0 +1,5 @@
+# The kubeflow-trainer release failed (e.g. a helm upgrade that timed out).
+# All components are present, but status must not report ready.
+states:
+  cluster-readiness-engine: deployed
+  kubeflow-trainer: failed

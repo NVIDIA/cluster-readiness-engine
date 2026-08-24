@@ -1,0 +1,19 @@
+# The controller mirrors the Workflow failure message onto the Failed
+# condition, so the watch line surfaces the underlying failure without any
+# extra status plumbing. InProgress is False (Superseded), so the phase scan
+# must skip it and pick Failed.
+name: wr-torch
+elapsed: 12m5s
+run:
+  status:
+    conditions:
+      - type: InProgress
+        status: "False"
+        reason: Superseded
+      - type: Failed
+        status: "True"
+        reason: WorkflowFailed
+        message: 'Job wr-torch-workflow-job failed: launcher pod exited with code 1'
+      - type: Succeeded
+        status: "False"
+        reason: Superseded

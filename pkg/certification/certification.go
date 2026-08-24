@@ -1047,6 +1047,29 @@ func watchCertification(
 	}
 }
 
+// categoryWatchLabels returns one display label per entry in
+// cert.Status.CategoryStatuses. Labels are "domain/variant"; when the
+// certification contains two or more categories with the same domain/variant,
+// an "(MNNVL Enabled)"/"(MNNVL Disabled)" suffix — matching the report's
+// MNNVL label — disambiguates the duplicates.
+func categoryWatchLabels(cert *crev1alpha1.Certification) []string {
+	counts := map[string]int{}
+	for _, cs := range cert.Status.CategoryStatuses {
+		counts[cs.Domain+"/"+cs.Variant]++
+	}
+	labels := make([]string, len(cert.Status.CategoryStatuses))
+	for i, cs := range cert.Status.CategoryStatuses {
+		key := cs.Domain + "/" + cs.Variant
+		if counts[key] > 1 {
+			if mnnvl := report.CategoryMNNVL(cert, i); mnnvl != "" {
+				key = fmt.Sprintf("%s (MNNVL %s)", key, mnnvl)
+			}
+		}
+		labels[i] = key
+	}
+	return labels
+}
+
 // processWatchEvents handles events from a single watch session.
 // Returns (cert, true, err) on terminal condition, or (nil, false, nil)
 // when the watch channel closes and should be reconnected.
@@ -1075,8 +1098,9 @@ func processWatchEvents(
 			elapsed := time.Since(start).Truncate(time.Second)
 
 			// Print category status changes.
-			for _, cs := range cert.Status.CategoryStatuses {
-				key := cs.Domain + "/" + cs.Variant
+			labels := categoryWatchLabels(cert)
+			for i, cs := range cert.Status.CategoryStatuses {
+				key := labels[i]
 				if cs.Status != lastStatuses[key] {
 					_, _ = fmt.Fprintf(out, "[watch] %s: %s (%s)\n",
 						key, cs.Status, elapsed)
