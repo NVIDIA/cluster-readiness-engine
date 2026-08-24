@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An unknown platform must be rejected before the certification file is read,
+# with an error that lists every valid platform name.
+platform: bogus

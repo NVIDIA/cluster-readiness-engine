@@ -1,0 +1,4 @@
+[
+  "communication/nccl-all-reduce",
+  "training/nemotron5-8b"
+]

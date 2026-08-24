@@ -212,6 +212,28 @@ func CertFailedNodes(ctx context.Context, c client.Client, cert *crev1alpha1.Cer
 	return union
 }
 
+// CategoryMNNVL returns the MNNVL label for the category at index i of the
+// Certification's status: "Enabled", "Disabled", or "" when unknown.
+// Per-category spec options take precedence over the global spec value.
+func CategoryMNNVL(cert *crev1alpha1.Certification, i int) string {
+	if i >= len(cert.Spec.Categories) {
+		return ""
+	}
+	var mnnvl *bool
+	if specOpts := cert.Spec.Categories[i].Options; specOpts != nil && specOpts.EnableMNNVL != nil {
+		mnnvl = specOpts.EnableMNNVL
+	} else if cert.Spec.EnableMNNVL != nil {
+		mnnvl = cert.Spec.EnableMNNVL
+	}
+	if mnnvl == nil {
+		return ""
+	}
+	if *mnnvl {
+		return "Enabled"
+	}
+	return "Disabled"
+}
+
 // Build fetches Workflow and measurement data for a Certification (completed or running).
 func Build(ctx context.Context, c client.Client, cert *crev1alpha1.Certification) *CertReport {
 	result := "RUNNING"
@@ -239,21 +261,7 @@ func Build(ctx context.Context, c client.Client, cert *crev1alpha1.Certification
 		}
 
 		// Populate MNNVL: check per-category options first, fall back to global.
-		if i < len(cert.Spec.Categories) {
-			var mnnvl *bool
-			if specOpts := cert.Spec.Categories[i].Options; specOpts != nil && specOpts.EnableMNNVL != nil {
-				mnnvl = specOpts.EnableMNNVL
-			} else if cert.Spec.EnableMNNVL != nil {
-				mnnvl = cert.Spec.EnableMNNVL
-			}
-			if mnnvl != nil {
-				if *mnnvl {
-					cat.MNNVL = "Enabled"
-				} else {
-					cat.MNNVL = "Disabled"
-				}
-			}
-		}
+		cat.MNNVL = CategoryMNNVL(cert, i)
 
 		if cs.WorkflowRef != nil {
 			wf := &crev1alpha1.Workflow{}
