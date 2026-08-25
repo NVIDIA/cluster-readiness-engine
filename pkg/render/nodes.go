@@ -19,6 +19,10 @@ func SyntheticProviderID(platform string) string {
 		return "kubevirt://synthetic/render"
 	case "mistral":
 		return "metal3://synthetic/render"
+	case "nscale":
+		// openstack:// alone maps to onprem; callers must also set the
+		// nscale.com/rdmashare allocatable on the synthetic node.
+		return "openstack://synthetic/render"
 	default:
 		return ""
 	}

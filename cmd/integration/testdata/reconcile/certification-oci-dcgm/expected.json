@@ -139,7 +139,7 @@
           }
         },
         "execution": {
-          "timeoutPerJob": "1h0m0s"
+          "timeoutPerJob": "2h0m0s"
         },
         "iterations": 1
       },
