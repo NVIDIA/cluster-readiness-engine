@@ -15,11 +15,16 @@ description: Install the ncrectl CLI and set up the Cluster Readiness Engine con
 
 ## Install the CLI
 
-Set the version you want to install, then run the installer:
+While this repository is internal, GitHub serves release assets only through
+authenticated API downloads — plain `curl` against `releases/download/...` returns a
+404 "Not Found" page instead of the script, even with a token. Fetch the installer
+with the gh CLI (authenticate with `gh auth login` first). Set the version you want
+to install, then run the installer:
 
 ```bash
-export NCRECTL_VERSION=v0.1.0-rc.8
-curl -sSL "https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/download/${NCRECTL_VERSION}/installer" | bash
+export NCRECTL_VERSION=v0.1.0-rc.9
+gh release download "${NCRECTL_VERSION}" --repo dsx-ai-factory/cluster-readiness-engine \
+  --pattern installer --output - | bash -s -- -v "${NCRECTL_VERSION}"
 ```
 
 The installer automatically downloads and verifies a SHA-256 checksum before installing. On air-gapped systems, ensure `checksums.txt` from the same release is reachable alongside the binary.

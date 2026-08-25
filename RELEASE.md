@@ -54,7 +54,9 @@ people do not tag at the same time.
 
 Tags must be clean. `make check-clean-version` refuses to publish a Helm chart when the
 version contains `-dirty`, a `-N-gSHA` suffix, or is `dev`, which is what you get from
-tagging a working tree that is not committed.
+tagging a working tree that is not committed. It also rejects anything that does not
+look like a `vX.Y.Z[-prerelease]` tag, such as the bare commit SHA that `git describe
+--tags --always` falls back to when no tag is reachable from the checkout.
 
 ### Release candidates
 
@@ -65,9 +67,12 @@ same pipeline and are marked as pre-releases on GitHub, so they do not become th
 When an RC is good, tag the **same commit** with the stable version. Do not rebuild or
 re-merge between the RC and the stable tag; that would ship something nobody validated.
 
-Note that `curl .../releases/latest/download/installer`, the install command in the
-README, resolves to the newest **stable** release. While only pre-releases exist, that URL
-returns 404.
+Note that `curl .../releases/latest/download/installer` resolves to the newest
+**stable** release. While only pre-releases exist, that URL returns 404. Additionally,
+while this repository is internal, GitHub serves release assets only through
+authenticated API downloads: plain `curl` against any `releases/download/...` URL
+returns a 404 "Not Found" page even with a token, which is why the README installs
+through `gh release download`.
 
 ## What a release publishes
 
@@ -91,11 +96,21 @@ Release assets:
 
 ## Verifying a release
 
+The release workflow verifies its own output: the Build CLI Binaries job stamps the
+binaries with the tag explicitly and fails if `ncrectl --version` does not report the
+tag exactly, and the Create GitHub Release job re-downloads the published `installer`,
+`checksums.txt`, and `ncrectl-linux-amd64` assets, checks the installer is a runnable
+shell script (not an error page), verifies checksums, and re-checks the binary's
+self-reported version.
+
+To verify manually (via gh while the repository is internal; once public, plain
+`curl -sSLO "https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/download/$VERSION/<asset>"`
+works too):
+
 ```bash
 VERSION=v0.1.0
-BASE=https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/download/$VERSION
-curl -sSLO "$BASE/checksums.txt"
-curl -sSLO "$BASE/ncrectl-linux-amd64"
+gh release download "$VERSION" --repo dsx-ai-factory/cluster-readiness-engine \
+  --pattern checksums.txt --pattern ncrectl-linux-amd64
 sha256sum --check --ignore-missing checksums.txt
 ```
 

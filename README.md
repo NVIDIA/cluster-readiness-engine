@@ -60,24 +60,25 @@ Run `kubectl ncre setup status` at any time to see what is present.
 
 **1. Install the CLI**
 
-Every release so far is a pre-release, and `releases/latest` resolves only to the
-newest **stable** release. Until `v0.1.0` is tagged, name the version explicitly:
+While this repository is internal, GitHub serves release assets only through
+authenticated API downloads — plain `curl` against `releases/download/...` returns a
+404 "Not Found" page instead of the script, even with a token. Fetch the installer
+with the gh CLI (authenticate with `gh auth login` first):
 
 ```bash
-CRE_VERSION=v0.1.0-rc.8
-curl -sSL https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/download/${CRE_VERSION}/installer \
-  | bash -s -- -v "${CRE_VERSION}"
+CRE_VERSION=v0.1.0-rc.9
+gh release download "${CRE_VERSION}" --repo dsx-ai-factory/cluster-readiness-engine \
+  --pattern installer --output - | bash -s -- -v "${CRE_VERSION}"
 ```
 
-Once a stable release exists, this shorter form works and picks up the newest one:
+Once the repository is public and a stable release exists, this shorter form works
+and picks up the newest stable release:
 
 ```bash
 curl -sSL https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/latest/download/installer | bash
 ```
 
 The installer places `ncrectl` on your `$PATH` and creates a `kubectl-ncre` symlink so the CLI is also available as `kubectl ncre`.
-
-The installer needs a GitHub token while this repository is internal: authenticate with `gh auth login`, or set `GITHUB_TOKEN`.
 
 **2. Set up the cluster**
 

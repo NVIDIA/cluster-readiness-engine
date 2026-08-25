@@ -11,8 +11,16 @@ set -euo pipefail
 # Installs ncrectl if it is not present; upgrades it if it already is.
 #
 # Usage:
-#   curl -sSL https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/latest/download/installer | bash
-#   curl -sSL <url> | bash -s -- -d /custom/path
+#   While the repository is internal, GitHub serves release assets only
+#   through authenticated API downloads — plain curl against
+#   releases/download/... returns a 404 page, even with a token. Fetch the
+#   script with the gh CLI (gh auth login first):
+#     gh release download <tag> --repo dsx-ai-factory/cluster-readiness-engine \
+#       --pattern installer --output - | bash -s -- -v <tag>
+#
+#   Once the repository is public:
+#     curl -sSL https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/latest/download/installer | bash
+#     curl -sSL <url> | bash -s -- -d /custom/path
 # ---------------------------------------------------------------------------
 
 # Configuration
