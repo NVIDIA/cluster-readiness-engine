@@ -4,10 +4,13 @@
 package setup
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -22,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+	sigsyaml "sigs.k8s.io/yaml"
 )
 
 func newSetupScheme(t *testing.T) *runtime.Scheme {
@@ -73,7 +77,7 @@ func TestCheckDCGM(t *testing.T) {
 	})
 
 	t.Run("a denied lookup is not reported as absent", func(t *testing.T) {
-		status := collectSetupStatus(context.Background(), forbiddenServiceClient(t))
+		status := collectSetupStatus(context.Background(), forbiddenServiceClient(t), allDeployedHelmQuery)
 		assert.False(t, status.Components.DCGM)
 		assert.False(t, status.dcgmAbsent, "a denied lookup must not print the patch command")
 	})
@@ -145,7 +149,7 @@ func TestCollectSetupStatusDCGMIsOptional(t *testing.T) {
 
 	t.Run("ready without dcgm", func(t *testing.T) {
 		c := fake.NewClientBuilder().WithScheme(newSetupScheme(t)).WithObjects(objs...).Build()
-		s := collectSetupStatus(context.Background(), c)
+		s := collectSetupStatus(context.Background(), c, allDeployedHelmQuery)
 		assert.True(t, s.Installed, "installed must not depend on DCGM")
 		assert.False(t, s.Components.DCGM)
 	})
@@ -155,8 +159,56 @@ func TestCollectSetupStatusDCGMIsOptional(t *testing.T) {
 			ObjectMeta: metav1.ObjectMeta{Name: dcgmServiceName, Namespace: dcgmServiceNamespace},
 		})
 		c := fake.NewClientBuilder().WithScheme(newSetupScheme(t)).WithObjects(withDCGM...).Build()
-		s := collectSetupStatus(context.Background(), c)
+		s := collectSetupStatus(context.Background(), c, allDeployedHelmQuery)
 		assert.True(t, s.Installed)
 		assert.True(t, s.Components.DCGM)
+	})
+}
+
+// allDeployedHelmQuery reports every managed Helm release as deployed.
+func allDeployedHelmQuery(string, string) string { return helmStateDeployed }
+
+// TestSetupStatusHelmReleases drives collectSetupStatus and printSetupStatus
+// against a ready cluster with the Helm release states given in input.yaml.
+// The golden file holds the JSON status followed by the rendered table, so a
+// failed release flipping 'installed' shows up in both output formats.
+func TestSetupStatusHelmReleases(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "setup-status-helm",
+		ExpectedSuffix: ".txt",
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			// States maps a managed release name to the state the helm stub
+			// reports. A missing key reads as a release helm has no record of.
+			States map[string]string `yaml:"states"`
+		}
+		if err := sigsyaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
+		query := func(release, _ string) string {
+			if state, ok := in.States[release]; ok {
+				return state
+			}
+			return helmStateNotInstalled
+		}
+
+		c := fake.NewClientBuilder().
+			WithScheme(newSetupScheme(t)).
+			WithObjects(readyClusterObjects()...).
+			Build()
+		s := collectSetupStatus(context.Background(), c, query)
+
+		var out bytes.Buffer
+		enc := json.NewEncoder(&out)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(s); err != nil {
+			return err
+		}
+		out.WriteString("\n")
+		printSetupStatus(&out, s)
+
+		tc.Actual = out.String()
+		return nil
 	})
 }

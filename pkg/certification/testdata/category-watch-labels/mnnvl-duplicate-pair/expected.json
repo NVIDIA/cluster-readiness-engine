@@ -1,0 +1,4 @@
+[
+  "communication/nccl-all-reduce (MNNVL Enabled)",
+  "communication/nccl-all-reduce (MNNVL Disabled)"
+]

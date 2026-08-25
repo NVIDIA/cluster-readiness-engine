@@ -1,0 +1,66 @@
+
+╔════════════════════════════════════════════════════════════════╗
+║                      Certification Report                      ║
+╚════════════════════════════════════════════════════════════════╝
+
+  Name:      cert-noreason
+  Platform:  onprem
+  GPU:       h100
+  Nodes:     2
+
+┌────────────────────────────────────────────────────────────────┐
+│  training/nemotron5-8b                                         │
+├────────────────────────────────────────────────────────────────┤
+│  Status:    Failed                                             │
+│  Reason:    1 groups failed across 1 iterations                │
+│  Runtime:   10m 0s                                             │
+│  Scale:     full-scale                                         │
+│  Nodes/Job: 2                                                  │
+│  Jobs:      1                                                  │
+│                                                                │
+│  Failed Groups:                                                │
+│      ✗  group-0 (2 nodes)                                      │
+│           - node001                                            │
+│           - node002                                            │
+└────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────┐
+│  Summary                                                       │
+├────────────────────────────────────────────────────────────────┤
+│  Categories:   0/1 passed                                      │
+│  Failed Nodes: none                                            │
+│  Result:       FAILED                                          │
+└────────────────────────────────────────────────────────────────┘
+
+--- results.json ---
+{
+  "name": "cert-noreason",
+  "platform": "onprem",
+  "gpu": "h100",
+  "totalNodes": 2,
+  "categories": [
+    {
+      "domain": "training",
+      "variant": "nemotron5-8b",
+      "status": "Failed",
+      "failureReason": "1 groups failed across 1 iterations",
+      "runtime": "10m 0s",
+      "testScale": "full-scale",
+      "nodesPerJob": 2,
+      "jobs": 1,
+      "failedGroups": [
+        {
+          "name": "group-0",
+          "nodeCount": 2,
+          "nodes": [
+            "node001",
+            "node002"
+          ],
+          "reason": ""
+        }
+      ]
+    }
+  ],
+  "failedNodes": null,
+  "result": "FAILED"
+}

@@ -1,0 +1,5 @@
+# The helm CLI is not in PATH, so every release state reads as unknown.
+# The unknown states are reported but do not block readiness.
+states:
+  cluster-readiness-engine: unknown
+  kubeflow-trainer: unknown

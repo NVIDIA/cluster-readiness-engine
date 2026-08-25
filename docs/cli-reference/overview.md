@@ -10,9 +10,13 @@ description: The ncrectl CLI manages the full lifecycle of cluster certification
 
 ## Install
 
+While this repository is internal, release assets require authenticated API
+downloads, so fetch the installer with the gh CLI (`gh auth login` first):
+
 ```bash
-export NCRECTL_VERSION=v0.1.0-rc.8
-curl -sSL "https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/download/${NCRECTL_VERSION}/installer" | bash
+export NCRECTL_VERSION=v0.1.0-rc.9
+gh release download "${NCRECTL_VERSION}" --repo dsx-ai-factory/cluster-readiness-engine \
+  --pattern installer --output - | bash -s -- -v "${NCRECTL_VERSION}"
 ncrectl --version
 ```
 
