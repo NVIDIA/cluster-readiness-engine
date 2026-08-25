@@ -1,0 +1,6 @@
+[deps] Kubeflow Trainer release "kubeflow-trainer" already deployed at chart version 2.2.1; skipping.
+
+--- result ---
+error: <nil>
+installCalls: 0
+uninstallCalls: 0

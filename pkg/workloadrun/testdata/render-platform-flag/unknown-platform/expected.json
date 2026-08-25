@@ -1,0 +1,3 @@
+{
+  "error": "invalid --platform \"bogus\": must be one of aws, gcp, azure, oci, onprem, togetherai, mistral, forge, nscale"
+}

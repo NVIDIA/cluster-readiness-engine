@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Non-MPI frameworks never launch through mpirun, so no override may carry
+# mpiArgs: the {{ if eq .FrameworkType "mpi" }} guards must exclude every
+# mpirun-args block from the rendered table.
+entryName: test
+nodesPerJob: 2
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch

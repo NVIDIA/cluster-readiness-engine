@@ -1,0 +1,13 @@
+# The issue #180 field failure: the release is failed and the retry hits the
+# webhook Secret field-ownership conflicts. No TrainJob/JobSet instances
+# exist and the only runtime CR is Helm-owned, so the safety gate passes and
+# the automatic recovery runs: uninstall, delete the four CRDs, delete the
+# namespace, reinstall (ADR-073 decision 3a).
+releaseState: failed
+chartVersion: ""
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: Unable to continue with update: could not update Secret "kubeflow-trainer-webhook-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "trainer-controller" using v1: .data.tls.crt, .data.tls.key
+      could not update Secret "jobset-webhook-server-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "jobset-controller" using v1: .data.tls.crt, .data.tls.key
+  - fail: false

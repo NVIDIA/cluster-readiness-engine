@@ -1,0 +1,9 @@
+# The final read must run even moments after a periodic sample (the throttle
+# does not apply to it), must fold the window into the in-memory status only
+# (setComplete performs the single terminal write, ADR-072), and must cap
+# ApplicationStopTime at the Job's terminal anchor instead of the wall clock.
+call: collectFinalSample
+sampledSecondsAgo: 1
+logProfileRef: lp
+logs:
+  - "2026-01-22T10:00:05.000000000Z step 30"

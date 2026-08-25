@@ -1,0 +1,8 @@
+# An unresolved LogProfile at terminal time is best-effort: the previously
+# persisted values stand. Unlike the running path, no LogProfileNotFound
+# condition is written — the final-sample path performs no API writes.
+call: collectFinalSample
+sampledSecondsAgo: 1
+logProfileRef: does-not-resolve
+logs:
+  - "2026-01-22T10:00:05.000000000Z step 30"

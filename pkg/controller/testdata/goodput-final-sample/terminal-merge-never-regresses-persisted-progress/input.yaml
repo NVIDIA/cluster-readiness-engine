@@ -1,0 +1,13 @@
+# Defense in depth for the LimitBytes head-cap: when the final window is
+# truncated and ends before the progress the status already holds (persisted
+# step 90, window ends at step 30), the terminal merge must not move
+# currentStep backward — the persisted value freezes.
+call: collectFinalSample
+sampledSecondsAgo: 1
+logProfileRef: lp
+status:
+  currentStep: 90
+  highestStep: 90
+  lastStepTimestamp: "2026-01-22T10:04:00Z"
+logs:
+  - "2026-01-22T10:00:05.000000000Z step 30"

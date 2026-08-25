@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# GB300 with spec.enableMNNVL=false: the explicit spec value wins over the
+# architecture default, in the launcher and the runtime env alike.
+gpuProduct: NVIDIA-GB300-NVL72
+enableMNNVL: false

@@ -40,11 +40,30 @@
                   "-c"
                 ],
                 "args": [
-                  "rm -rf /opt/amazon\nunset NCCL_NET_PLUGIN\nunset NCCL_TUNER_PLUGIN\nunset AWS_OFI_NCCL_VERSION\nexec \"timeout\" \"3600\" \"/usr/local/mpi/bin/mpirun\" \"-N\" \"4\" \"--allow-run-as-root\" \"--mca\" \"plm_rsh_args\" \"-o StrictHostKeyChecking=no -o ConnectionAttempts=10\" \"-x\" \"NCCL_DEBUG=INFO\" \"-x\" \"NCCL_MNNVL_ENABLE=0\" \"-x\" \"NCCL_NET_PLUGIN=none\" \"--allow-run-as-root\" \"/usr/local/bin/all_reduce_perf_mpi\" \"-b\" \"8\" \"-e\" \"32G\" \"-f\" \"2\""
+                  "rm -rf /opt/amazon\nunset NCCL_NET_PLUGIN\nunset NCCL_TUNER_PLUGIN\nunset AWS_OFI_NCCL_VERSION\nexec \"timeout\" \"3600\" \"/usr/local/mpi/bin/mpirun\" \"-N\" \"4\" \"--allow-run-as-root\" \"--mca\" \"plm_rsh_args\" \"-o StrictHostKeyChecking=no -o ConnectionAttempts=10\" \"-x\" \"NCCL_DEBUG=INFO\" \"-x\" \"NCCL_MNNVL_ENABLE=1\" \"-x\" \"NCCL_NET_PLUGIN=none\" \"--allow-run-as-root\" \"/usr/local/bin/all_reduce_perf_mpi\" \"-b\" \"8\" \"-e\" \"32G\" \"-f\" \"2\""
                 ],
                 "numNodes": 2,
                 "numProcPerNode": 4
               },
+              "runtimePatches": [
+                {
+                  "manager": "cre.nvidia.com/controller",
+                  "trainingRuntimeSpec": {
+                    "template": {
+                      "spec": {
+                        "replicatedJobs": [
+                          {
+                            "name": "node"
+                          },
+                          {
+                            "name": "launcher"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ],
               "suspend": false,
               "managedBy": "trainer.kubeflow.org/trainjob-controller"
             }
@@ -385,6 +404,16 @@
         },
         {
           "when": {
+            "platform": {
+              "equals": "aws"
+            }
+          }
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "gb300"
+            },
             "platform": {
               "equals": "aws"
             }
@@ -1070,7 +1099,7 @@
             "noOp": true
           },
           {
-            "index": 6,
+            "index": 7,
             "when": "gpuArchitecture=gb200, platform=aws",
             "patches": "1 dependencies"
           }

@@ -10,6 +10,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/platform"
 )
 
 // DetectPlatform is the exported version of detectPlatform for use by CLI tools.
@@ -30,6 +31,14 @@ func BuildOverrideContext(spec *crev1alpha1.WorkflowSpec, orch *crev1alpha1.Orch
 // ApplyOverridesWithTracking is the exported version of applyOverridesWithTracking for use by CLI tools.
 func ApplyOverridesWithTracking(spec *crev1alpha1.WorkflowSpec, octx OverrideContext) ([]crev1alpha1.AppliedOverride, error) {
 	return applyOverridesWithTracking(spec, octx)
+}
+
+// ApplyWRPreTemplateOverrides is the exported version of
+// applyWRPreTemplateOverrides for use by CLI tools, so the "workloadrun
+// render" preview bakes the same platform mpirun args into the spec that the
+// controller bakes at reconcile time.
+func ApplyWRPreTemplateOverrides(spec *crev1alpha1.WorkloadRunSpec, overrides []platform.WorkloadRunOverride, octx OverrideContext) {
+	applyWRPreTemplateOverrides(spec, overrides, octx)
 }
 
 // DiscoverTargetNodes is the exported version of discoverTargetNodes for use by CLI tools.

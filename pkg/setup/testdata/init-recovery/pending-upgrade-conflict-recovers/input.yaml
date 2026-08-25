@@ -1,0 +1,12 @@
+# An interrupted upgrade left the release pending-upgrade; the retry hits
+# the conflict signature. pending-* states arm the recovery the same way
+# failed does (ADR-073 decision 2). No kubeflow-system Namespace object
+# exists here, so the recovery reports it as already deleted.
+releaseState: pending-upgrade
+chartVersion: ""
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: Unable to continue with update: could not update Secret "kubeflow-trainer-webhook-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "trainer-controller" using v1: .data.tls.crt, .data.tls.key
+      could not update Secret "jobset-webhook-server-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "jobset-controller" using v1: .data.tls.crt, .data.tls.key
+  - fail: false

@@ -1,0 +1,61 @@
+[
+  {
+    "when": {
+      "platform": {
+        "equals": "aws"
+      }
+    },
+    "mpiArgs": [
+      "-x",
+      "NCCL_NET_PLUGIN=none"
+    ]
+  },
+  {
+    "when": {
+      "gpuArchitecture": {
+        "equals": "gb300"
+      },
+      "platform": {
+        "equals": "aws"
+      }
+    },
+    "mpiArgs": [
+      "--mca",
+      "orte_keep_fqdn_hostnames",
+      "true",
+      "--mca",
+      "pml",
+      "ob1",
+      "--mca",
+      "btl",
+      "tcp,self",
+      "--mca",
+      "btl_tcp_if_include",
+      "eth0",
+      "--mca",
+      "oob",
+      "tcp",
+      "--mca",
+      "oob_tcp_if_include",
+      "eth0",
+      "--mca",
+      "coll_ucc_enable",
+      "0",
+      "--mca",
+      "coll_hcoll_enable",
+      "0",
+      "-x",
+      "NCCL_DEBUG_SUBSYS=NET,INIT",
+      "-x",
+      "NCCL_SOCKET_IFNAME=eth0",
+      "-x",
+      "NCCL_IB_GID_INDEX=3",
+      "-x",
+      "NCCL_NVLS_ENABLE=1",
+      "-x",
+      "NCCL_CUMEM_ENABLE=1",
+      "-x",
+      "NCCL_NET_GDR_C2C=1"
+    ]
+  }
+]

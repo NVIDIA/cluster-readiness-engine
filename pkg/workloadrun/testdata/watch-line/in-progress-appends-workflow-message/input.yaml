@@ -1,0 +1,18 @@
+# The ordinary heartbeat while the run executes. The InProgress condition
+# message carries the underlying Workflow name, which is the only Workflow
+# state mirrored onto the WorkloadRun before a terminal condition.
+name: wr-torch
+elapsed: 1m30s
+run:
+  status:
+    conditions:
+      - type: InProgress
+        status: "True"
+        reason: WorkflowCreated
+        message: Workflow wr-torch-workflow created
+      - type: Succeeded
+        status: "False"
+        reason: Superseded
+      - type: Failed
+        status: "False"
+        reason: Superseded

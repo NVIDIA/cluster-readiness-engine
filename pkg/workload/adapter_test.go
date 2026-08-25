@@ -248,6 +248,46 @@ func TestTrainJobSetTolerations(t *testing.T) {
 	})
 }
 
+// TestEnsureLauncherTarget verifies that EnsureLauncherTarget registers both
+// the node and launcher replicated jobs in the controller-owned RuntimePatch,
+// so that SetNodeAffinity/SetTolerations (whose targets come from existing
+// patches) pin the MPI launcher alongside the workers, and HasLauncherTarget
+// turns on the blanket MPI toleration. It is called twice to prove idempotence.
+func TestEnsureLauncherTarget(t *testing.T) {
+	p := &testutil.TestCaseParser{
+		Subdir:         "ensure-launcher-target",
+		ExpectedSuffix: ".json",
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			Spec crev1alpha1.WorkloadSpec `yaml:"spec"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+		EnsureLauncherTarget(input.Spec.TrainJob)
+		EnsureLauncherTarget(input.Spec.TrainJob) // idempotent
+
+		patches, err := trainJobRuntimePatchesToJSON(input.Spec.TrainJob.RuntimePatches)
+		if err != nil {
+			return err
+		}
+		var patchList []map[string]any
+		if err := json.Unmarshal(patches, &patchList); err != nil {
+			return err
+		}
+		b, err := json.MarshalIndent(map[string]any{
+			"runtimePatches":    patchList,
+			"hasLauncherTarget": HasLauncherTarget(&input.Spec),
+		}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b)
+		return nil
+	})
+}
+
 func TestHasLauncherTarget(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "has-launcher-target",

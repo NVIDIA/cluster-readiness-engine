@@ -1,0 +1,83 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: trainjobs.trainer.kubeflow.org
+spec:
+  group: trainer.kubeflow.org
+  names:
+    kind: TrainJob
+    plural: trainjobs
+  versions:
+    - name: v1alpha1
+      served: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: trainingruntimes.trainer.kubeflow.org
+spec:
+  group: trainer.kubeflow.org
+  names:
+    kind: TrainingRuntime
+    plural: trainingruntimes
+  versions:
+    - name: v1alpha1
+      served: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: clustertrainingruntimes.trainer.kubeflow.org
+spec:
+  group: trainer.kubeflow.org
+  names:
+    kind: ClusterTrainingRuntime
+    plural: clustertrainingruntimes
+  versions:
+    - name: v1alpha1
+      served: true
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: jobsets.jobset.x-k8s.io
+spec:
+  group: jobset.x-k8s.io
+  names:
+    kind: JobSet
+    plural: jobsets
+  versions:
+    - name: v1alpha2
+      served: true
+---
+# The chart's own runtime is Helm-owned: it must not block recovery, because
+# the fresh chart install recreates it.
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: ClusterTrainingRuntime
+metadata:
+  name: torch-distributed
+  labels:
+    app.kubernetes.io/managed-by: Helm
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubeflow-system
+---
+# The webhook cert Secrets whose .data fields carry the conflict. The fake
+# client does not preserve supplied managedFields, so the diagnostics render
+# the no-managers fallback here; the real ownership listing is only
+# observable against a real apiserver.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kubeflow-trainer-webhook-cert
+  namespace: kubeflow-system
+type: Opaque
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jobset-webhook-server-cert
+  namespace: kubeflow-system
+type: Opaque
