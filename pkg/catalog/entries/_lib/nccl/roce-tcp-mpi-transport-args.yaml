@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Pins OpenMPI's own point-to-point and out-of-band traffic to TCP on eth0.
+# On RoCE clusters NCCL drives RDMA directly; MPI only needs TCP for
+# coordination, and letting OpenMPI select UCX/verbs over the mlx5 devices
+# breaks GID handling (see mpi-disable-ucc-hcoll-args.yaml).
+# Shared by aws-gb300-roce-mpirun-args.yaml, oci-roce-mpirun-args.yaml, and
+# the WorkloadRun platform overrides (pkg/platform/overrides/workloadrun.yaml).
+- --mca
+- pml
+- ob1
+- --mca
+- btl
+- tcp,self
+- --mca
+- btl_tcp_if_include
+- eth0
+- --mca
+- oob
+- tcp
+- --mca
+- oob_tcp_if_include
+- eth0

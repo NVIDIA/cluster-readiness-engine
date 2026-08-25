@@ -1,19 +1,19 @@
 {
-  "Workflow/test-mpi-run": {
+  "Workflow/test-mpi-gb300-run": {
     "kind": "Workflow",
     "apiVersion": "cre.nvidia.com/v1alpha1",
     "metadata": {
-      "name": "test-mpi-run",
+      "name": "test-mpi-gb300-run",
       "namespace": "default",
       "labels": {
         "app.kubernetes.io/managed-by": "cluster-readiness-engine",
-        "cre.nvidia.com/workload-run": "test-mpi-run"
+        "cre.nvidia.com/workload-run": "test-mpi-gb300-run"
       },
       "ownerReferences": [
         {
           "apiVersion": "cre.nvidia.com/v1alpha1",
           "kind": "WorkloadRun",
-          "name": "test-mpi-run",
+          "name": "test-mpi-gb300-run",
           "uid": "",
           "controller": true,
           "blockOwnerDeletion": true
@@ -29,7 +29,7 @@
           "workload": {
             "trainJob": {
               "runtimeRef": {
-                "name": "test-mpi-run-runtime",
+                "name": "test-mpi-gb300-run-runtime",
                 "apiGroup": "trainer.kubeflow.org",
                 "kind": "TrainingRuntime"
               },
@@ -40,7 +40,7 @@
                   "-c"
                 ],
                 "args": [
-                  "rm -rf /opt/amazon\nunset NCCL_NET_PLUGIN\nunset NCCL_TUNER_PLUGIN\nunset AWS_OFI_NCCL_VERSION\nexec \"timeout\" \"3600\" \"/usr/local/mpi/bin/mpirun\" \"-N\" \"4\" \"--allow-run-as-root\" \"--mca\" \"plm_rsh_args\" \"-o StrictHostKeyChecking=no -o ConnectionAttempts=10\" \"-x\" \"NCCL_DEBUG=INFO\" \"-x\" \"NCCL_MNNVL_ENABLE=1\" \"-x\" \"NCCL_NET_PLUGIN=none\" \"--allow-run-as-root\" \"/usr/local/bin/all_reduce_perf_mpi\" \"-b\" \"8\" \"-e\" \"32G\" \"-f\" \"2\""
+                  "rm -rf /opt/amazon\nunset NCCL_NET_PLUGIN\nunset NCCL_TUNER_PLUGIN\nunset AWS_OFI_NCCL_VERSION\nexec \"timeout\" \"3600\" \"/usr/local/mpi/bin/mpirun\" \"-N\" \"4\" \"--allow-run-as-root\" \"--mca\" \"plm_rsh_args\" \"-o StrictHostKeyChecking=no -o ConnectionAttempts=10\" \"-x\" \"NCCL_DEBUG=INFO\" \"-x\" \"NCCL_MNNVL_ENABLE=1\" \"--mca\" \"orte_keep_fqdn_hostnames\" \"true\" \"--mca\" \"pml\" \"ob1\" \"--mca\" \"btl\" \"tcp,self\" \"--mca\" \"btl_tcp_if_include\" \"eth0\" \"--mca\" \"oob\" \"tcp\" \"--mca\" \"oob_tcp_if_include\" \"eth0\" \"--mca\" \"coll_ucc_enable\" \"0\" \"--mca\" \"coll_hcoll_enable\" \"0\" \"-x\" \"NCCL_DEBUG_SUBSYS=NET,INIT\" \"-x\" \"NCCL_SOCKET_IFNAME=eth0\" \"-x\" \"NCCL_IB_GID_INDEX=3\" \"-x\" \"NCCL_NVLS_ENABLE=1\" \"-x\" \"NCCL_CUMEM_ENABLE=1\" \"-x\" \"NCCL_NET_GDR_C2C=1\" \"-x\" \"NCCL_NET_PLUGIN=none\" \"--tag-output\" \"/usr/local/bin/all_reduce_perf_mpi\" \"-b\" \"8\" \"-e\" \"32G\" \"-f\" \"2\""
                 ],
                 "numNodes": 2,
                 "numProcPerNode": 4
@@ -78,7 +78,7 @@
       "orchestration": {
         "target": {
           "nodeSelector": {
-            "nvidia.com/gpu.product": "NVIDIA-GB200-NVL72"
+            "nvidia.com/gpu.product": "NVIDIA-GB300"
           }
         },
         "execution": {
@@ -92,10 +92,10 @@
           "kind": "TrainingRuntime",
           "metadata": {
             "labels": {
-              "app": "test-mpi-run",
+              "app": "test-mpi-gb300-run",
               "trainer.kubeflow.org/framework": "mpi"
             },
-            "name": "test-mpi-run-runtime"
+            "name": "test-mpi-gb300-run-runtime"
           },
           "spec": {
             "mlPolicy": {
@@ -281,15 +281,15 @@
               "kind": "ComputeDomain",
               "metadata": {
                 "labels": {
-                  "app": "test-mpi-run"
+                  "app": "test-mpi-gb300-run"
                 },
-                "name": "test-mpi-run-compute-domain"
+                "name": "test-mpi-gb300-run-compute-domain"
               },
               "spec": {
                 "channel": {
                   "allocationMode": "Single",
                   "resourceClaimTemplate": {
-                    "name": "test-mpi-run-channel"
+                    "name": "test-mpi-gb300-run-channel"
                   }
                 },
                 "numNodes": 2
@@ -299,7 +299,7 @@
               "apiVersion": "trainer.kubeflow.org/v1alpha1",
               "kind": "TrainingRuntime",
               "metadata": {
-                "name": "test-mpi-run-runtime"
+                "name": "test-mpi-gb300-run-runtime"
               },
               "spec": {
                 "template": {
@@ -326,7 +326,7 @@
                                 "resourceClaims": [
                                   {
                                     "name": "compute-domain",
-                                    "resourceClaimTemplateName": "test-mpi-run-channel"
+                                    "resourceClaimTemplateName": "test-mpi-gb300-run-channel"
                                   }
                                 ]
                               }
@@ -433,7 +433,7 @@
               "apiVersion": "trainer.kubeflow.org/v1alpha1",
               "kind": "TrainingRuntime",
               "metadata": {
-                "name": "test-mpi-run-runtime"
+                "name": "test-mpi-gb300-run-runtime"
               },
               "spec": {
                 "template": {
@@ -485,9 +485,9 @@
               "kind": "ResourceClaimTemplate",
               "metadata": {
                 "labels": {
-                  "app": "test-mpi-run"
+                  "app": "test-mpi-gb300-run"
                 },
-                "name": "test-mpi-run-roce"
+                "name": "test-mpi-gb300-run-roce"
               },
               "spec": {
                 "spec": {
@@ -509,7 +509,7 @@
               "apiVersion": "trainer.kubeflow.org/v1alpha1",
               "kind": "TrainingRuntime",
               "metadata": {
-                "name": "test-mpi-run-runtime"
+                "name": "test-mpi-gb300-run-runtime"
               },
               "spec": {
                 "template": {
@@ -539,11 +539,11 @@
                                 "resourceClaims": [
                                   {
                                     "name": "compute-domain",
-                                    "resourceClaimTemplateName": "test-mpi-run-channel"
+                                    "resourceClaimTemplateName": "test-mpi-gb300-run-channel"
                                   },
                                   {
                                     "name": "roce-channel",
-                                    "resourceClaimTemplateName": "test-mpi-run-roce"
+                                    "resourceClaimTemplateName": "test-mpi-gb300-run-roce"
                                   }
                                 ]
                               }
@@ -572,7 +572,7 @@
               "apiVersion": "trainer.kubeflow.org/v1alpha1",
               "kind": "TrainingRuntime",
               "metadata": {
-                "name": "test-mpi-run-runtime"
+                "name": "test-mpi-gb300-run-runtime"
               },
               "spec": {
                 "template": {
@@ -764,7 +764,7 @@
               "apiVersion": "trainer.kubeflow.org/v1alpha1",
               "kind": "TrainingRuntime",
               "metadata": {
-                "name": "test-mpi-run-runtime"
+                "name": "test-mpi-gb300-run-runtime"
               },
               "spec": {
                 "template": {
@@ -848,7 +848,7 @@
               "apiVersion": "trainer.kubeflow.org/v1alpha1",
               "kind": "TrainingRuntime",
               "metadata": {
-                "name": "test-mpi-run-runtime"
+                "name": "test-mpi-gb300-run-runtime"
               },
               "spec": {
                 "template": {
@@ -896,7 +896,7 @@
               "apiVersion": "trainer.kubeflow.org/v1alpha1",
               "kind": "TrainingRuntime",
               "metadata": {
-                "name": "test-mpi-run-runtime"
+                "name": "test-mpi-gb300-run-runtime"
               },
               "spec": {
                 "template": {
@@ -947,7 +947,7 @@
               "apiVersion": "trainer.kubeflow.org/v1alpha1",
               "kind": "TrainingRuntime",
               "metadata": {
-                "name": "test-mpi-run-runtime"
+                "name": "test-mpi-gb300-run-runtime"
               },
               "spec": {
                 "template": {
@@ -1074,7 +1074,7 @@
         "nodesPerJob": 0,
         "totalGroups": 0,
         "detectedPlatform": "aws",
-        "detectedGPUArchitecture": "gb200",
+        "detectedGPUArchitecture": "gb300",
         "appliedOverrides": [
           {
             "index": 0,
@@ -1099,25 +1099,31 @@
             "noOp": true
           },
           {
-            "index": 7,
-            "when": "gpuArchitecture=gb200, platform=aws",
-            "patches": "1 dependencies"
+            "index": 6,
+            "when": "gpuArchitecture=gb300, platform=aws",
+            "patches": "none",
+            "noOp": true
+          },
+          {
+            "index": 8,
+            "when": "gpuArchitecture=gb300, platform=aws",
+            "patches": "2 dependencies"
           }
         ]
       }
     }
   },
-  "WorkloadRun/test-mpi-run": {
+  "WorkloadRun/test-mpi-gb300-run": {
     "kind": "WorkloadRun",
     "apiVersion": "cre.nvidia.com/v1alpha1",
     "metadata": {
-      "name": "test-mpi-run",
+      "name": "test-mpi-gb300-run",
       "namespace": "default"
     },
     "spec": {
       "target": {
         "nodeSelector": {
-          "nvidia.com/gpu.product": "NVIDIA-GB200-NVL72"
+          "nvidia.com/gpu.product": "NVIDIA-GB300"
         }
       },
       "image": "nvcr.io/nvidia/pytorch:26.01-py3",
@@ -1133,7 +1139,7 @@
             "2"
           ],
           "mpiArgs": [
-            "--allow-run-as-root"
+            "--tag-output"
           ],
           "mpiImplementation": "OpenMPI",
           "mpirunPath": "/usr/local/mpi/bin/mpirun"
@@ -1166,11 +1172,11 @@
         }
       ],
       "workflowRef": {
-        "name": "test-mpi-run",
+        "name": "test-mpi-gb300-run",
         "namespace": "default"
       },
       "detectedPlatform": "aws",
-      "detectedGPUArchitecture": "gb200"
+      "detectedGPUArchitecture": "gb300"
     }
   }
 }

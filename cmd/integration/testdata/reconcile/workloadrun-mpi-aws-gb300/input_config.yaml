@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: WorkloadRun
+  name: test-mpi-gb300-run
+  namespace: default
+  condition: Failed
+collect:
+  - kind: WorkloadRun
+    name: test-mpi-gb300-run
+    namespace: default
+  - kind: Workflow
+    name: test-mpi-gb300-run
+    namespace: default
