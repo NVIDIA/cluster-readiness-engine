@@ -25,12 +25,12 @@ The same gap exists across all three multi-node NCCL variants (`nccl-all-reduce`
   - `pkg/catalog/entries/communication/nccl-all-gather.yaml`
   - `pkg/catalog/entries/communication/nccl-alltoall.yaml`
 - **Args set carried verbatim from the validated `azure.yaml`** (in mpirun `-N N --allow-run-as-root --mca plm_rsh_args -o StrictHostKeyChecking=no -x …` form), then the per-variant `/usr/local/bin/<all_reduce|all_gather|alltoall>_perf_mpi` binary plus the same `-b 8 -e {{ .MaxBytes }} -f 2 -n {{ .NumIterations }} -N {{ .NumCycles }}` parameter block already used by the sibling overrides.
-- **No code changes** in `pkg/controller/`, `internal/`, or `pkg/gpu/`. `azure://` providerID detection ([`workflow_detect.go:46`](../../pkg/controller/workflow_detect.go#L46)) and `NVIDIA-H100-80GB-HBM3 → h100` parsing ([`gpu/product.go:25`](../../pkg/gpu/product.go#L25)) are already in place, as is `--platform azure` in ncrectl.
+- **No code changes** in `pkg/controller/`, `internal/`, or `pkg/gpu/`. `azure://` providerID detection ([`workflow_detect.go:46`](../../pkg/controller/workflow_detect.go#L46)) and `NVIDIA-H100-80GB-HBM3 → h100` parsing ([`gpu/product.go:25`](../../pkg/gpu/product.go#L25)) are already in place, as is `--platform azure` in nvcrectl.
 - **Sample**:
   - Restore `config/samples/cre_v1alpha1_certification_azure_a100_nccl.yaml` to its committed A100 form (it was edited locally to point at H100 during testing).
   - Add `config/samples/cre_v1alpha1_certification_azure_h100_nccl.yaml` covering the multi-node communication variants.
 - **Integration test**: `cmd/integration/testdata/reconcile/certification-azure-h100-nccl/` with `input_client_objects.yaml` (two `azure://` H100 nodes + Certification), `input_config.yaml` (wait `InProgress`, collect Certification + Workflow), and `expected.json` generated via `TESTUTIL_UPDATE_EXPECTED=true make test-integration` and reviewed by hand before commit.
-- **`make embed-ncrectl`** after catalog YAML changes to refresh `pkg/setup/embedded/` per CLAUDE.md.
+- **`make embed-nvcrectl`** after catalog YAML changes to refresh `pkg/setup/embedded/` per CLAUDE.md.
 
 ## Rationale
 
@@ -55,7 +55,7 @@ The same gap exists across all three multi-node NCCL variants (`nccl-all-reduce`
 
 ## Notes
 
-- The exact 17 `-x` vars and their order are taken verbatim from the field-validated `azure.yaml` to make `ncrectl certification render --platform azure` output diffable against it.
+- The exact 17 `-x` vars and their order are taken verbatim from the field-validated `azure.yaml` to make `nvcrectl certification render --platform azure` output diffable against it.
 - `mlnxnics: "8"` (from the existing dep) and `numProcPerNode: {{ .GpusPerNode }}` align with H100 SXM5 8-GPU baseboards; if a different Azure H100 SKU appears with a different fan-out, the catalog's `gpusPerNode` parameter handles it without override changes.
 
 ## References

@@ -212,14 +212,14 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 				"cre.nvidia.com/workload-run":  run.Name,
 			},
 			Annotations: map[string]string{
-				"ncrectl.nvidia.com/detected-gpu-architecture": gpuArch,
+				"nvcrectl.nvidia.com/detected-gpu-architecture": gpuArch,
 			},
 		},
 		Spec: *workflowSpec,
 	}
 
 	if platformFlag != "" {
-		workflow.Annotations["ncrectl.nvidia.com/detected-platform"] = platformFlag
+		workflow.Annotations["nvcrectl.nvidia.com/detected-platform"] = platformFlag
 	}
 
 	switch outputFormat {
@@ -596,8 +596,8 @@ func runWorkloadRunRenderDryRun(
 				"cre.nvidia.com/workload-run":  run.Name,
 			},
 			Annotations: map[string]string{
-				"ncrectl.nvidia.com/detected-gpu-architecture": gpuArch,
-				"ncrectl.nvidia.com/detected-platform":         detectedPlatform,
+				"nvcrectl.nvidia.com/detected-gpu-architecture": gpuArch,
+				"nvcrectl.nvidia.com/detected-platform":         detectedPlatform,
 			},
 		},
 		Spec: *workflowSpec,
@@ -1012,7 +1012,7 @@ func newWorkloadRunReportCommand() *cobra.Command {
 		Use:   "report <workloadrun-name>",
 		Short: "Generate a report for a WorkloadRun",
 		Long: `Connects to the cluster, fetches the named WorkloadRun and its Workflow,
-and generates the same report that 'ncrectl workloadrun run --wait' prints.`,
+and generates the same report that 'nvcrectl workloadrun run --wait' prints.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runWorkloadRunReport(args[0], configFlags, resultsFile, output)
@@ -1227,7 +1227,7 @@ func buildNodeResults(wf *crev1alpha1.Workflow, failedNodes []crev1alpha1.Failed
 
 // --- status ---
 
-// WorkloadRunStatusOutput is the JSON output for ncrectl workloadrun status.
+// WorkloadRunStatusOutput is the JSON output for nvcrectl workloadrun status.
 type WorkloadRunStatusOutput struct {
 	Name        string   `json:"name"`
 	Namespace   string   `json:"namespace"`

@@ -6,7 +6,7 @@ Two structural problems existed in the codebase:
 
 1. **`cmd/main.go`** (the controller manager) was a flat file directly in `cmd/`, not in its own subdirectory. The kubernetes/kubernetes convention places every binary entrypoint in its own directory (`cmd/<name>/main.go`) so that `go build ./cmd/<name>/` works consistently and the purpose of each binary is immediately visible.
 
-2. **`tools/ncrectl/`** placed the CLI outside `cmd/` and implemented everything in `package main`. A `package main` is a dead end — no other package can import its symbols. As a result, logic that naturally belongs in reusable internal packages (report building, cluster discovery, setup operations, self-upgrade) was inaccessible to tests via import and duplicated where needed (notably `buildWorkflowSpec` existed in both the CLI and the controller).
+2. **`tools/nvcrectl/`** placed the CLI outside `cmd/` and implemented everything in `package main`. A `package main` is a dead end — no other package can import its symbols. As a result, logic that naturally belongs in reusable internal packages (report building, cluster discovery, setup operations, self-upgrade) was inaccessible to tests via import and duplicated where needed (notably `buildWorkflowSpec` existed in both the CLI and the controller).
 
 ## Decision
 
@@ -21,7 +21,7 @@ Restructure the source tree to follow the kubernetes/kubernetes convention:
 ```
 cmd/
   manager/main.go     ← controller manager (was cmd/main.go)
-  ncrectl/main.go     ← thin entry point only (was tools/ncrectl/main.go + root.go)
+  nvcrectl/main.go     ← thin entry point only (was tools/nvcrectl/main.go + root.go)
 
 pkg/
   certification/      ← certification run/watch/report commands
@@ -53,7 +53,7 @@ pkg/
 
 ## Implementation
 
-See the git history for file-by-file changes. The cobra command tree in `cmd/ncrectl/main.go` is the single place where sub-commands are assembled.
+See the git history for file-by-file changes. The cobra command tree in `cmd/nvcrectl/main.go` is the single place where sub-commands are assembled.
 
 ## Rationale
 
@@ -64,13 +64,13 @@ See the git history for file-by-file changes. The cobra command tree in `cmd/ncr
 
 ## Consequences
 
-- Makefile and Dockerfile build paths change: `cmd/main.go` → `./cmd/manager/`, `./tools/ncrectl/` → `./cmd/ncrectl/`.
-- `CLAUDE.md` and ADR docs that reference `tools/ncrectl/` paths are updated to the new `internal/` paths.
+- Makefile and Dockerfile build paths change: `cmd/main.go` → `./cmd/manager/`, `./tools/nvcrectl/` → `./cmd/nvcrectl/`.
+- `CLAUDE.md` and ADR docs that reference `tools/nvcrectl/` paths are updated to the new `internal/` paths.
 - No behavior change to either binary.
 - No API, CRD, or Kubernetes resource changes.
 
 ## Alternatives Considered
 
-**Single `internal/ncrectl/` package** — simpler, but one flat package for all CLI logic is an afterthought rather than a design. The domain packages make each area independently navigable and testable.
+**Single `internal/nvcrectl/` package** — simpler, but one flat package for all CLI logic is an afterthought rather than a design. The domain packages make each area independently navigable and testable.
 
-**Keep `tools/ncrectl/` as-is** — avoids the refactor but leaves the dead-end `package main` problem and the duplicated `buildWorkflowSpec`.
+**Keep `tools/nvcrectl/` as-is** — avoids the refactor but leaves the dead-end `package main` problem and the duplicated `buildWorkflowSpec`.

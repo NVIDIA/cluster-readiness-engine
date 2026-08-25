@@ -8,7 +8,7 @@ could not update Secret "jobset-webhook-server-cert" in namespace "kubeflow-syst
   1. helm uninstall kubeflow-trainer --namespace kubeflow-system
   2. kubectl delete crd trainjobs.trainer.kubeflow.org trainingruntimes.trainer.kubeflow.org clustertrainingruntimes.trainer.kubeflow.org jobsets.jobset.x-k8s.io
   3. kubectl delete namespace kubeflow-system
-  4. Re-run 'ncrectl setup init' to reinstall Kubeflow Trainer v2.2.1
+  4. Re-run 'nvcrectl setup init' to reinstall Kubeflow Trainer v2.2.1
 
 --- result ---
 error: [deps] helm upgrade: exit status 1

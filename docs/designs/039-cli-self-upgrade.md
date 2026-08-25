@@ -2,9 +2,9 @@
 
 ## Context
 
-When a new version of ncrectl is released, operators must manually download and replace the binary. There is no built-in mechanism to check for updates or perform in-place upgrades. This leads to version drift across teams and missed improvements.
+When a new version of nvcrectl is released, operators must manually download and replace the binary. There is no built-in mechanism to check for updates or perform in-place upgrades. This leads to version drift across teams and missed improvements.
 
-the ncrectl installer solves this with a self-update mechanism that queries GitLab for newer releases and downloads them in-place. We adopt the same pattern for ncrectl, adapted to use the Package Registry (where ncrectl binaries are published) instead of GitLab Releases.
+the nvcrectl installer solves this with a self-update mechanism that queries GitLab for newer releases and downloads them in-place. We adopt the same pattern for nvcrectl, adapted to use the Package Registry (where nvcrectl binaries are published) instead of GitLab Releases.
 
 ### Requirements
 
@@ -17,7 +17,7 @@ the ncrectl installer solves this with a self-update mechanism that queries GitL
 
 ## Decision
 
-Add a top-level `ncrectl upgrade` command that:
+Add a top-level `nvcrectl upgrade` command that:
 
 1. Fetches the latest version tag from GitHub API.
 2. Compares against the running version using semantic versioning.
@@ -30,7 +30,7 @@ Add a top-level `ncrectl upgrade` command that:
 
 - **Latest tag**: `GET https://api.github.com/repos/NVIDIA/cluster-readiness-engine/releases/latest` (first entry)
 - **Release notes**: `GET https://api.github.com/repos/NVIDIA/cluster-readiness-engine/releases/tags/{tag}` (description field)
-- **Binary download**: `GET https://github.com/NVIDIA/cluster-readiness-engine/releases/download/{version}/ncrectl-{os}-{arch}`
+- **Binary download**: `GET https://github.com/NVIDIA/cluster-readiness-engine/releases/download/{version}/nvcrectl-{os}-{arch}`
 
 ### Version Comparison
 
@@ -49,14 +49,14 @@ Functions:
 - `installBinary()` — rename with sudo fallback
 - `parseSemanticVersion()` — parse version string
 - `isNewer()` — compare two versions
-- `generateBinaryName()` — `ncrectl-{runtime.GOOS}-{runtime.GOARCH}`
+- `generateBinaryName()` — `nvcrectl-{runtime.GOOS}-{runtime.GOARCH}`
 
 Registered as top-level command in `root.go` (not under `setup` — upgrades are a different concern from cluster setup).
 
 ## Rationale
 
-- **Top-level command**: `ncrectl upgrade` is more discoverable than `ncrectl setup upgrade`. Upgrading the CLI is not cluster setup.
-- **y/N prompt (not Terraform-style)**: Self-upgrade is lower risk than cluster changes. Simple y/N is sufficient, matching the ncrectl installer's pattern.
+- **Top-level command**: `nvcrectl upgrade` is more discoverable than `nvcrectl setup upgrade`. Upgrading the CLI is not cluster setup.
+- **y/N prompt (not Terraform-style)**: Self-upgrade is lower risk than cluster changes. Simple y/N is sufficient, matching the nvcrectl installer's pattern.
 - **No checksum**: Kept simple for initial implementation. The HTTPS transport provides integrity.
 - **Package Registry**: Matches the existing CI publishing pipeline. No changes to release process needed.
 

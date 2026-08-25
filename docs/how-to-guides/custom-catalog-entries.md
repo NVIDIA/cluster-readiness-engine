@@ -120,9 +120,9 @@ orchestration:
 After adding the file, verify it appears in the catalog and renders correctly:
 
 ```bash
-ncrectl certification list-categories
+nvcrectl certification list-categories
 
-ncrectl certification render \
+nvcrectl certification render \
   --platform aws \
   /tmp/my-cert.yaml
 ```

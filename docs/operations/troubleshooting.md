@@ -127,7 +127,7 @@ kubectl logs -n cluster-readiness-engine deploy/cluster-readiness-engine-manager
 
 **Solutions:**
 
-- A category is not registered in the catalog — the controller sets the Certification to `Failed` with reason `CategoryNotFound`. Verify your domain and variant values against `ncrectl certification list-categories`.
+- A category is not registered in the catalog — the controller sets the Certification to `Failed` with reason `CategoryNotFound`. Verify your domain and variant values against `nvcrectl certification list-categories`.
 - A child Workflow is still running — the Certification waits for all Workflows to complete before transitioning.
 
 ## Stall detection not triggering

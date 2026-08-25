@@ -1,14 +1,14 @@
-# ADR-044: Full Certification Lifecycle in ncrectl
+# ADR-044: Full Certification Lifecycle in nvcrectl
 
 ## Context
 
-ADR-042 introduced `ncrectl certification run` for creating Certifications from CLI flags with a `--wait` polling mode. Operators still need to orchestrate a multi-step workflow manually: install dependencies (`setup init`), create namespaces and secrets, apply a Certification YAML, monitor progress, inspect performance results, and tear down.
+ADR-042 introduced `nvcrectl certification run` for creating Certifications from CLI flags with a `--wait` polling mode. Operators still need to orchestrate a multi-step workflow manually: install dependencies (`setup init`), create namespaces and secrets, apply a Certification YAML, monitor progress, inspect performance results, and tear down.
 
 The desired UX is a single command that handles the entire lifecycle:
 
 ```
 export SECRET=<NGC_API_KEY>
-ncrectl certification run --cert-file cert.yaml --image-pull-secret $SECRET --watch
+nvcrectl certification run --cert-file cert.yaml --image-pull-secret $SECRET --watch
 ```
 
 This command should install infrastructure, run the certification, display real-time progress and a performance report, and restore the cluster to its original state.
@@ -24,7 +24,7 @@ This command should install infrastructure, run the certification, display real-
 
 ## Decision
 
-Enhance `ncrectl certification run` with three new flags (`--cert-file`, `--image-pull-secret`, `--watch`) that compose a six-phase lifecycle. The existing `--category` + `--wait` flow is preserved unchanged.
+Enhance `nvcrectl certification run` with three new flags (`--cert-file`, `--image-pull-secret`, `--watch`) that compose a six-phase lifecycle. The existing `--category` + `--wait` flow is preserved unchanged.
 
 ### New Flags
 
@@ -39,7 +39,7 @@ Enhance `ncrectl certification run` with three new flags (`--cert-file`, `--imag
 ### Lifecycle Phases (when `--watch` is used)
 
 1. **Setup**: Probe cluster for existing components. Run `setup init --auto-approve`. Record which phases were newly installed.
-2. **Namespace + Secret**: Create the target namespace (labeled `app.kubernetes.io/managed-by=ncrectl`). Create `dockerconfigjson` secret. Inject secret reference into `cert.Spec.ImagePullSecrets`.
+2. **Namespace + Secret**: Create the target namespace (labeled `app.kubernetes.io/managed-by=nvcrectl`). Create `dockerconfigjson` secret. Inject secret reference into `cert.Spec.ImagePullSecrets`.
 3. **Create**: Apply the Certification to the cluster.
 4. **Watch**: Monitor via K8s watch mechanism. Print category status changes in real time.
 5. **Report**: Fetch Workflow, GoodputMeasurement, and BandwidthMeasurement resources. Print structured report with box-drawing characters.
@@ -51,7 +51,7 @@ Use `client.NewWithWatch()` from controller-runtime to create a watch-capable cl
 
 ### Image Pull Secret
 
-The `--image-pull-secret` flag accepts an NGC API key. ncrectl creates a `kubernetes.io/dockerconfigjson` secret named `ncrectl-pull-secret` with:
+The `--image-pull-secret` flag accepts an NGC API key. nvcrectl creates a `kubernetes.io/dockerconfigjson` secret named `nvcrectl-pull-secret` with:
 - Server: `nvcr.io`
 - Username: `token`
 - Password: the provided API key
@@ -69,7 +69,7 @@ Report destination: stdout on success (exit 0), stderr on failure (exit 1).
 
 ### Cleanup Strategy
 
-Before setup, ncrectl probes for existing components (Kubeflow CRDs, CRE CRDs, controller Deployment, LogProfiles). On cleanup, `setup reset` is called with `--skip-phases` for any component that was already present, ensuring only newly-installed components are removed.
+Before setup, nvcrectl probes for existing components (Kubeflow CRDs, CRE CRDs, controller Deployment, LogProfiles). On cleanup, `setup reset` is called with `--skip-phases` for any component that was already present, ensuring only newly-installed components are removed.
 
 ## Rationale
 

@@ -4,8 +4,8 @@
   "metadata": {
     "name": "test-workflow",
     "annotations": {
-      "ncrectl.nvidia.com/detected-gpu-architecture": "a100",
-      "ncrectl.nvidia.com/detected-platform": "gcp"
+      "nvcrectl.nvidia.com/detected-gpu-architecture": "a100",
+      "nvcrectl.nvidia.com/detected-platform": "gcp"
     }
   },
   "spec": {

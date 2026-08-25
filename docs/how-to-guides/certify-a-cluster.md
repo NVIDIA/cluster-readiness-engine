@@ -8,7 +8,7 @@ description: Platform-specific guides for running a full cluster certification o
 
 ## Before you begin
 
-- [Install ncrectl and set up the controller](../getting-started/install.md)
+- [Install nvcrectl and set up the controller](../getting-started/install.md)
 - Confirm your kubeconfig points at the target cluster
 
 ## AWS
@@ -33,7 +33,7 @@ spec:
 ```
 
 ```bash
-ncrectl certification run --cert-file gb200-cert.yaml --wait
+nvcrectl certification run --cert-file gb200-cert.yaml --wait
 ```
 
 The controller auto-detects AWS + GB200 and applies EFA-specific resources (`hugepages-2Mi`, `vpc.amazonaws.com/efa: 4`, EFA hostPath volume) automatically.
@@ -78,7 +78,7 @@ kubectl logs -n cluster-readiness-engine deploy/cluster-readiness-engine-control
 ## Reviewing results
 
 ```bash
-ncrectl certification report <name>
+nvcrectl certification report <name>
 ```
 
 - **Passed** — all categories met their thresholds. Cluster is ready.

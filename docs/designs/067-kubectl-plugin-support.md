@@ -1,18 +1,18 @@
-# ADR-067: `kubectl ncrectl` Plugin Support and Full kubectl Flag Parity
+# ADR-067: `kubectl nvcrectl` Plugin Support and Full kubectl Flag Parity
 
 ## Context
 
-`ncrectl` is invoked directly today (`ncrectl certification run ...`). kubectl supports a plugin
+`nvcrectl` is invoked directly today (`nvcrectl certification run ...`). kubectl supports a plugin
 mechanism ([Extend kubectl with plugins](https://kubernetes.io/docs/tasks/extend-kubectl/kubectl-plugins/)):
 any executable named `kubectl-<name>` on `$PATH` becomes invokable as `kubectl <name> ...` —
 kubectl finds it by filename and execs it, forwarding the remaining arguments verbatim. There is
 no registry, manifest, or handshake involved.
 
-We want `kubectl ncrectl certification run ...` to work as an alternative to `ncrectl
-certification run ...`, with no changes to `ncrectl`'s own commands — same subcommands, same
+We want `kubectl nvcrectl certification run ...` to work as an alternative to `nvcrectl
+certification run ...`, with no changes to `nvcrectl`'s own commands — same subcommands, same
 output, in both invocation forms.
 
-Running as a genuine kubectl plugin surfaces a second, related gap: `ncrectl` only supports a
+Running as a genuine kubectl plugin surfaces a second, related gap: `nvcrectl` only supports a
 hand-rolled subset of kubectl's connection/auth flags (`--kubeconfig`, `--context`, and
 `--namespace`/`-n` on some commands), declared as ad-hoc local flag vars per command
 (`certification.go`, `workflow_render.go`, `workloadrun.go`, `setup.go`, `cluster.go`), each
@@ -20,17 +20,17 @@ feeding a hand-built `clientcmd.ConfigOverrides` in `newK8sClient`/`newK8sWatchC
 `newSetupClient`. Users reasonably expect a kubectl plugin to accept the same flags kubectl
 itself does (`--as`, `--token`, `--server`/`-s`, `--insecure-skip-tls-verify`, etc.).
 
-Both goals are delivered together in this ADR: making `ncrectl` discoverable as a kubectl
+Both goals are delivered together in this ADR: making `nvcrectl` discoverable as a kubectl
 plugin, and making its flag surface match kubectl's own.
 
 ## Decision
 
-**Part A — plugin discoverability.** Cobra (which `ncrectl` uses) parses `os.Args[1:]` and never
+**Part A — plugin discoverability.** Cobra (which `nvcrectl` uses) parses `os.Args[1:]` and never
 inspects `os.Args[0]`, so the exact same compiled binary already behaves identically regardless
 of what it is named or invoked as. We exploit this directly: install a relative symlink
-`kubectl-ncrectl -> ncrectl` next to the real binary, instead of publishing or maintaining a
+`kubectl-nvcrectl -> nvcrectl` next to the real binary, instead of publishing or maintaining a
 second compiled artifact. Because the symlink references the target by filename, not by inode,
-it keeps resolving correctly across future `ncrectl upgrade` runs (which replace the file at the
+it keeps resolving correctly across future `nvcrectl upgrade` runs (which replace the file at the
 same path via `os.Rename`), with no extra tracking logic.
 
 **Part B — kubectl-standard flags.** Adopt `k8s.io/cli-runtime/pkg/genericclioptions.ConfigFlags`
@@ -40,7 +40,7 @@ client-builder functions (`newK8sClient`, `newK8sWatchClient`, `newSetupClient`)
 is a new direct dependency (not currently in `go.mod`; only `k8s.io/klog/v2` is present today, as
 an indirect dependency).
 
-Together, `kubectl ncrectl ...` becomes not just name-compatible with `ncrectl ...`, but also
+Together, `kubectl nvcrectl ...` becomes not just name-compatible with `nvcrectl ...`, but also
 flag-compatible with `kubectl` itself — the same `--context`, `-n`, `--as`, `--token`, etc. work
 identically on every command that talks to a cluster.
 
@@ -52,7 +52,7 @@ After the existing `mv`/`sudo mv` step that places the binary at `${INSTALL_DIR}
 and before the "Verify" section, add a symlink step using the same permission-fallback pattern:
 
 ```bash
-PLUGIN_NAME="kubectl-ncrectl"
+PLUGIN_NAME="kubectl-nvcrectl"
 if [[ -w "${INSTALL_DIR}" ]]; then
   ln -sf "${BIN_NAME}" "${INSTALL_DIR}/${PLUGIN_NAME}"
 else
@@ -60,7 +60,7 @@ else
 fi
 ```
 
-The target is the relative name `ncrectl`, not an absolute path, so it resolves correctly
+The target is the relative name `nvcrectl`, not an absolute path, so it resolves correctly
 regardless of `INSTALL_DIR` (default `/usr/local/bin`, or overridden via `-d`).
 
 ### 2. Self-upgrade (`pkg/upgrade/upgrade.go`)
@@ -73,14 +73,14 @@ Failure handling mirrors `installBinary`'s existing sudo-fallback pattern (live
 `stdout`/`stderr` passthrough so a password prompt or error is visible), but — unlike the real
 binary swap, which must fail loudly since a failed upgrade is a real failure — never returns a
 hard error: the symlink is a convenience, not a requirement, so a failure only prints a warning
-and `ncrectl upgrade` still exits 0.
+and `nvcrectl upgrade` still exits 0.
 
 ```go
 func ensureKubectlPlugin(installDir string) {
 	if runtime.GOOS == "windows" {
 		return // symlinks need elevated privileges on Windows; out of scope
 	}
-	linkPath := filepath.Join(installDir, "kubectl-ncrectl")
+	linkPath := filepath.Join(installDir, "kubectl-nvcrectl")
 	_ = os.Remove(linkPath) // best-effort; clears any stale file/symlink
 	if err := os.Symlink(binaryName, linkPath); err == nil {
 		return
@@ -91,23 +91,23 @@ func ensureKubectlPlugin(installDir string) {
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr,
-			"Warning: could not set up 'kubectl ncrectl' plugin symlink: %v\n", err)
+			"Warning: could not set up 'kubectl nvcrectl' plugin symlink: %v\n", err)
 	}
 }
 ```
 
 ### 3. Local dev builds (`Makefile`)
 
-Extend `build-ncrectl` to also create the local symlink:
+Extend `build-nvcrectl` to also create the local symlink:
 
 ```makefile
-.PHONY: build-ncrectl
-build-ncrectl: $(LOCALBIN) ## Build ncrectl CLI tool.
-	go build -ldflags "$(LDFLAGS)" -o bin/ncrectl ./cmd/ncrectl/
-	ln -sf ncrectl bin/kubectl-ncrectl
+.PHONY: build-nvcrectl
+build-nvcrectl: $(LOCALBIN) ## Build nvcrectl CLI tool.
+	go build -ldflags "$(LDFLAGS)" -o bin/nvcrectl ./cmd/nvcrectl/
+	ln -sf nvcrectl bin/kubectl-nvcrectl
 ```
 
-No change to `build-ncrectl-cross` or `.github/workflows/release.yml` — cross-compiled release artifacts and the
+No change to `build-nvcrectl-cross` or `.github/workflows/release.yml` — cross-compiled release artifacts and the
 publish job are untouched. Only install-time symlinking changes; no new published artifacts.
 
 ### 4. Adopt `genericclioptions.ConfigFlags` across every command
@@ -164,7 +164,7 @@ configFlags.AddFlags(cmd.Flags())
 `--insecure-skip-tls-verify`, `--tls-server-name`, `--cache-dir`, `--disable-compression`,
 `--request-timeout` (`--username`/`--password` are a separate opt-in — see Gap 3).
 
-**Reverse check.** `ncrectl`'s only current cluster-connection flags are `--kubeconfig`,
+**Reverse check.** `nvcrectl`'s only current cluster-connection flags are `--kubeconfig`,
 `--context`, `--namespace` — a strict subset of `ConfigFlags`, so nothing needs to stay
 hand-written. One unrelated detail is unaffected: `appendKubeconfigArgs()` (`setup_helm.go`)
 translates `--context` into `--kube-context` when shelling out to the real `helm` CLI (its flag
@@ -197,7 +197,7 @@ change since `""` is already its native default.
 `cluster info` operates on cluster-scoped `Node` objects, and `setup init`/`reset` install into a
 hardcoded `cluster-readiness-engine` constant namespace — neither has a `--namespace` flag today, and
 `AddFlags()` would add one that looks functional but does nothing, which is worse than not having
-it. Concretely: `setup init`/`reset` already ignore `--namespace`, so an `ncrectl`-driven install
+it. Concretely: `setup init`/`reset` already ignore `--namespace`, so an `nvcrectl`-driven install
 can never land anywhere but the hardcoded namespace — but the raw Helm path documented in
 `installation.md` does let a user pick an arbitrary namespace. Someone who installed that way
 into `my-team-ns`, then ran `setup reset -n my-team-ns --auto-approve` expecting `-n` to target
@@ -214,7 +214,7 @@ configFlags.AddFlags(cmd.Flags())
 **Gap 3 — `--username`/`--password` are not included by default.** `NewConfigFlags` leaves them
 `nil`, and `AddFlags` skips nil fields, so they need the separate opt-in
 `WithDeprecatedPasswordFlag()` ("deprecated" in the library itself — HTTP basic auth to the API
-server is a legacy mode). Since `ncrectl` doesn't support basic auth today either, this is not a
+server is a legacy mode). Since `nvcrectl` doesn't support basic auth today either, this is not a
 regression: intentionally exclude them rather than opting in, documented as a deliberate
 omission. The opt-in call remains available later if full `kubectl options` parity is ever
 required.
@@ -223,14 +223,14 @@ required.
 
 kubectl currently documents 9 environment variables:
 
-| Variable | `ncrectl` support | Reason |
+| Variable | `nvcrectl` support | Reason |
 |---|---|---|
 | `KUBECONFIG` | Supported | Already reads it via `clientcmd.NewDefaultClientConfigLoadingRules()`, the same function `ConfigFlags` uses internally |
 | `KUBECACHEDIR` | Out of scope | Only read inside `ConfigFlags.ToDiscoveryClient()`/`.ToRESTMapper()`, which this ADR's client builders never call (only `.ToRESTConfig()`) — no current need for response/discovery caching |
-| `KUBECTL_EXTERNAL_DIFF` | Out of scope | Controls `kubectl diff`, a command `ncrectl` doesn't have |
-| `KUBECTL_EXPLAIN_OPENAPIV3` | Out of scope | Controls `kubectl explain`, a command `ncrectl` doesn't have |
-| `KUBECTL_PORT_FORWARD_WEBSOCKETS` | Out of scope | Controls `kubectl port-forward`, a command `ncrectl` doesn't have |
-| `KUBECTL_REMOTE_COMMAND_WEBSOCKETS` | Out of scope | Controls `kubectl exec`/`cp`/`attach`, commands `ncrectl` doesn't have |
+| `KUBECTL_EXTERNAL_DIFF` | Out of scope | Controls `kubectl diff`, a command `nvcrectl` doesn't have |
+| `KUBECTL_EXPLAIN_OPENAPIV3` | Out of scope | Controls `kubectl explain`, a command `nvcrectl` doesn't have |
+| `KUBECTL_PORT_FORWARD_WEBSOCKETS` | Out of scope | Controls `kubectl port-forward`, a command `nvcrectl` doesn't have |
+| `KUBECTL_REMOTE_COMMAND_WEBSOCKETS` | Out of scope | Controls `kubectl exec`/`cp`/`attach`, commands `nvcrectl` doesn't have |
 | `KUBECTL_KUBERC` | Out of scope | Controls kubectl's own preferences-file feature, matching `--kuberc` already excluded above |
 | `KUBECTL_KYAML` | Out of scope | Controls a kubectl-specific YAML print dialect; unrelated to connection/auth |
 | `KUBECTL_ENABLE_CMD_SHADOW` | Not applicable | Read by kubectl itself, before a plugin is ever invoked — not something a plugin process can act on |
@@ -240,9 +240,9 @@ the same phantom-flag problem as Gap 2, for env vars.
 
 ### 6. Docs (`site/content/docs/getting-started/installation.md`)
 
-Add a note after "Install ncrectl" documenting that both forms work interchangeably
-(`kubectl ncrectl setup init` / `ncrectl setup init`), the manual fallback
-(`ln -s ncrectl /usr/local/bin/kubectl-ncrectl`) for manual/air-gapped/Windows installs, and the
+Add a note after "Install nvcrectl" documenting that both forms work interchangeably
+(`kubectl nvcrectl setup init` / `nvcrectl setup init`), the manual fallback
+(`ln -s nvcrectl /usr/local/bin/kubectl-nvcrectl`) for manual/air-gapped/Windows installs, and the
 expanded flag surface (`--as`, `--token`, `-s`/`--server`, etc.) now available on every
 cluster-facing command.
 

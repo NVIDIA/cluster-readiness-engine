@@ -32,7 +32,7 @@ affinity:
 Three deployment manifests are updated:
 
 1. **`config/manager/manager.yaml`** — CRE controller (kustomize path)
-2. **`pkg/setup/embedded/controller.yaml`** — CRE controller (ncrectl embedded path)
+2. **`pkg/setup/embedded/controller.yaml`** — CRE controller (nvcrectl embedded path)
 3. **`pkg/setup/embedded/trainer.yaml`** — Kubeflow Trainer and JobSet controllers
 
 Changes per manifest:

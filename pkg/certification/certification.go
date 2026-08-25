@@ -116,7 +116,7 @@ on AWS) without connecting to a cluster. Valid values: %s.`, platform.NamesList(
 			if len(args) == 0 {
 				return fmt.Errorf(
 					"requires a certification YAML file as argument\n\n" +
-						"Usage: ncrectl certification render [flags] <certification.yaml>",
+						"Usage: nvcrectl certification render [flags] <certification.yaml>",
 				)
 			}
 			return runCertificationRender(args[0], outputFormat, dryRun, configFlags, platformFlag)
@@ -432,7 +432,7 @@ func syntheticRenderNode(platformName string, nodeSelector map[string]string) co
 }
 
 // ---------------------------------------------------------------------------
-// ncrectl certification run
+// nvcrectl certification run
 // ---------------------------------------------------------------------------
 
 // certRunConfig captures the fully-resolved intent for a certification run.
@@ -492,7 +492,7 @@ func newRunCommand(version string) *cobra.Command {
 		Long: `Creates a Certification resource in the cluster from the specified categories
 or from a Certification YAML file.
 
-Categories are selected from the catalog (see 'ncrectl certification list-categories').
+Categories are selected from the catalog (see 'nvcrectl certification list-categories').
 The default node selector targets all GPU nodes (nvidia.com/gpu.present=true).
 
 Use --cert-file to load a Certification from YAML (mutually exclusive with --category).
@@ -518,7 +518,7 @@ Use --cleanup to teardown installed components after completion.`,
 			}
 			if certFile == "" && len(categories) == 0 {
 				return fmt.Errorf("either --cert-file or at least one --category is required\n\n" +
-					"Use 'ncrectl certification list-categories' to see available categories")
+					"Use 'nvcrectl certification list-categories' to see available categories")
 			}
 
 			var cfg *certRunConfig
@@ -578,7 +578,7 @@ Use --cleanup to teardown installed components after completion.`,
 	cmd.Flags().StringVar(&controllerImage, "image", "",
 		"Controller image for --setup (default: ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager:<version>)")
 	cmd.Flags().StringVar(&name, "name", "",
-		"Certification name (default: ncrectl-<timestamp>)")
+		"Certification name (default: nvcrectl-<timestamp>)")
 	cmd.Flags().Int32Var(&nodesPerJob, "nodes-per-job", 0,
 		"Number of nodes per job (0 = auto-select: all nodes for non-training, largest config for training)")
 	cmd.Flags().BoolVar(&enableCheckpoint, "enable-checkpoint", false,
@@ -718,7 +718,7 @@ func buildConfigFromFlags(
 			Namespace: namespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by": "cluster-readiness-engine",
-				"app.kubernetes.io/created-by": "ncrectl",
+				"app.kubernetes.io/created-by": "nvcrectl",
 			},
 		},
 		Spec: crev1alpha1.CertificationSpec{
@@ -1060,12 +1060,12 @@ func parseCategories(strs []string) ([]crev1alpha1.CertificateCategory, error) {
 
 // generateCertName creates a unique certification name with a timestamp.
 func generateCertName() string {
-	return fmt.Sprintf("ncrectl-%s", time.Now().Format("20060102-150405"))
+	return fmt.Sprintf("nvcrectl-%s", time.Now().Format("20060102-150405"))
 }
 
 // generateCertNamespace creates a unique namespace for the certification run.
 func generateCertNamespace() string {
-	return fmt.Sprintf("ncrectl-%s", time.Now().Format("20060102-150405"))
+	return fmt.Sprintf("nvcrectl-%s", time.Now().Format("20060102-150405"))
 }
 
 // ---------------------------------------------------------------------------
@@ -1256,7 +1256,7 @@ func newReportCommand() *cobra.Command {
 		Use:   "report <certification-name> [<certification-name>...]",
 		Short: "Generate a report for one or more certifications",
 		Long: `Connects to the cluster, fetches the named Certification(s), and generates
-the same report that 'ncrectl certification run --wait' prints on completion.
+the same report that 'nvcrectl certification run --wait' prints on completion.
 
 Multiple certification names can be provided to combine them into a single report.
 Each certification is shown in its own section with categories and summary.`,

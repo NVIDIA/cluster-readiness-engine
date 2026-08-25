@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// workflow_render implements the "ncrectl workflow render" subcommand.
+// workflow_render implements the "nvcrectl workflow render" subcommand.
 package render
 
 import (
@@ -78,7 +78,7 @@ anything.`,
 			if len(args) == 0 {
 				return fmt.Errorf(
 					"requires a workflow YAML file as argument\n\n" +
-						"Usage: ncrectl workflow render [flags] <workflow.yaml>",
+						"Usage: nvcrectl workflow render [flags] <workflow.yaml>",
 				)
 			}
 			if err := validateFlags(dryRun, nodesFile, platform, gpuArch); err != nil {
@@ -241,11 +241,11 @@ func SetRenderAnnotations(workflow *crev1alpha1.Workflow, meta *renderMetadata) 
 	if workflow.Annotations == nil {
 		workflow.Annotations = map[string]string{}
 	}
-	workflow.Annotations["ncrectl.nvidia.com/detected-platform"] = meta.DetectedPlatform
-	workflow.Annotations["ncrectl.nvidia.com/detected-gpu-architecture"] = meta.DetectedGPUArchitecture
+	workflow.Annotations["nvcrectl.nvidia.com/detected-platform"] = meta.DetectedPlatform
+	workflow.Annotations["nvcrectl.nvidia.com/detected-gpu-architecture"] = meta.DetectedGPUArchitecture
 	if len(meta.AppliedOverrides) > 0 {
 		overridesJSON, _ := json.Marshal(meta.AppliedOverrides)
-		workflow.Annotations["ncrectl.nvidia.com/applied-overrides"] = string(overridesJSON)
+		workflow.Annotations["nvcrectl.nvidia.com/applied-overrides"] = string(overridesJSON)
 	}
 }
 

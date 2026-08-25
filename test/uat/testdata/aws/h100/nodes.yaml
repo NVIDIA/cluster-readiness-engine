@@ -5,7 +5,7 @@
 #
 # Key labels for CRE detection:
 #   nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3  -> GPU arch "h100" (workflow_detect.go)
-#   nvidia.com/gpu.present: "true"                  -> ncrectl GPU discovery
+#   nvidia.com/gpu.present: "true"                  -> nvcrectl GPU discovery
 #   spec.providerID: "aws:///..."                   -> platform "aws" (workflow_detect.go)
 #
 # Modeled after real AWS p5.48xlarge nodes from node.yaml.

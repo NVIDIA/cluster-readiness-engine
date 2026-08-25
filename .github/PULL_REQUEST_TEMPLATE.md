@@ -14,7 +14,7 @@
 - [ ] API / CRDs
 - [ ] Controller / Reconcilers
 - [ ] Catalog / Workloads
-- [ ] CLI (ncrectl)
+- [ ] CLI (nvcrectl)
 - [ ] Helm / Deployment
 - [ ] Documentation / CI
 - [ ] Other: ____________

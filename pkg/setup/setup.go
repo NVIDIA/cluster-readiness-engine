@@ -71,7 +71,7 @@ func NewCommand(version string) *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
-// ncrectl setup init
+// nvcrectl setup init
 // ---------------------------------------------------------------------------
 
 func newInitCommand(version string) *cobra.Command {
@@ -523,7 +523,7 @@ func printManualTrainerRecovery(out io.Writer) {
 	_, _ = fmt.Fprintf(out, "  1. helm uninstall %s --namespace %s\n", trainerReleaseName, trainerNamespace)
 	_, _ = fmt.Fprintf(out, "  2. kubectl delete crd %s\n", strings.Join(trainerRecoveryCRDs, " "))
 	_, _ = fmt.Fprintf(out, "  3. kubectl delete namespace %s\n", trainerNamespace)
-	_, _ = fmt.Fprintf(out, "  4. Re-run 'ncrectl setup init' to reinstall Kubeflow Trainer %s\n", kubeflowTrainerVersion)
+	_, _ = fmt.Fprintf(out, "  4. Re-run 'nvcrectl setup init' to reinstall Kubeflow Trainer %s\n", kubeflowTrainerVersion)
 }
 
 // printSecretOwnershipDiagnostics prints the field managers of every Secret
@@ -574,7 +574,7 @@ func setupControllerSecret(
 }
 
 // ---------------------------------------------------------------------------
-// ncrectl setup reset
+// nvcrectl setup reset
 // ---------------------------------------------------------------------------
 
 func newResetCommand() *cobra.Command {
@@ -1229,7 +1229,7 @@ func EnsureNamespace(ctx context.Context, c client.Client, name string, out io.W
 			ObjectMeta: metav1.ObjectMeta{
 				Name: name,
 				Labels: map[string]string{
-					"app.kubernetes.io/managed-by": "ncrectl",
+					"app.kubernetes.io/managed-by": "nvcrectl",
 				},
 			},
 		}
@@ -1260,14 +1260,14 @@ func defaultImage(version string) string {
 
 const (
 	// pullSecretName is the controller image pull secret created by setup init.
-	pullSecretName = "ncrectl-pull-secret" // #nosec G101 -- Kubernetes Secret name, not a credential
+	pullSecretName = "nvcrectl-pull-secret" // #nosec G101 -- Kubernetes Secret name, not a credential
 )
 
 // WorkloadPullSecretName returns the name of the workload image pull secret for
 // a given Certification or WorkloadRun. Deriving from the resource name prevents
 // concurrent runs in the same namespace from fighting over a single fixed name.
 func WorkloadPullSecretName(resourceName string) string {
-	return "ncrectl-pull-" + resourceName // #nosec G101 -- Kubernetes Secret name, not a credential
+	return "nvcrectl-pull-" + resourceName // #nosec G101 -- Kubernetes Secret name, not a credential
 }
 
 // CreateImagePullSecret creates a dockerconfigjson Secret for the given registry.
@@ -1306,7 +1306,7 @@ func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, secr
 			Name:      secretName,
 			Namespace: namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "ncrectl",
+				"app.kubernetes.io/managed-by": "nvcrectl",
 			},
 		},
 		Type: corev1.SecretTypeDockerConfigJson,
