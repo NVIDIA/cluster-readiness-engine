@@ -1,0 +1,100 @@
+# The group's Job CR is gone (deleted by a group retry), so the reason falls
+# back to the failed-nodes ConfigMap referenced by workflow.status.failedNodesRef.
+# The gzip payload holds two entries — node001 (WorkloadFailed, sorts first)
+# and node002 (ThresholdViolation) — and the fallback must prefer the
+# ThresholdViolation message even though the other entry sorts first:
+#   [{"name":"node001","reason":"WorkloadFailed","message":"workload exited non-zero"},
+#    {"name":"node002","reason":"ThresholdViolation","message":"Threshold \"goodputRatio\" violated: measured 0.8800, expression: value >= 0.95"}]
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: cert-fallback
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: WorkflowsFailed
+      message: 1 of 1 certification categories failed
+      lastTransitionTime: "2026-08-07T01:00:00Z"
+  categoryStatuses:
+    - domain: training
+      variant: nemotron5-8b
+      status: Failed
+      workflowRef:
+        name: cert-fallback-training-nemotron5-8b
+        namespace: default
+      failedNodesRef:
+        kind: ConfigMap
+        name: cert-fallback-training-nemotron5-8b-node-results
+---
+apiVersion: cre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: cert-fallback-training-nemotron5-8b
+  namespace: default
+  labels:
+    cre.nvidia.com/certification: cert-fallback
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: rt
+          trainer:
+            image: img:latest
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 2
+    nodesPerJob: 2
+    totalGroups: 1
+    currentIteration: 1
+    detectedPlatform: onprem
+    detectedGPUArchitecture: h100
+    groups:
+      - name: group-0
+        nodes:
+          - node001
+          - node002
+        phase: Failed
+        jobRef:
+          apiVersion: cre.nvidia.com/v1alpha1
+          kind: Job
+          name: cert-fallback-training-nemotron5-8b-job-group-0
+          namespace: default
+        startTime: "2026-08-07T00:00:00Z"
+        completionTime: "2026-08-07T00:10:00Z"
+  failedNodesRef:
+    kind: ConfigMap
+    name: cert-fallback-training-nemotron5-8b-node-results
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: GroupsFailed
+      message: 1 groups failed across 1 iterations
+      lastTransitionTime: "2026-08-07T00:10:00Z"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cert-fallback-training-nemotron5-8b-node-results
+  namespace: default
+  labels:
+    cre.nvidia.com/workflow: cert-fallback-training-nemotron5-8b
+binaryData:
+  failed-nodes.json.gz: H4sIAAAAAAAC/12OQQrCQAxFrxKyrjIKQi3o0gOI6MK6CEyog9NJmWmrKL27qYgUt//9/5LzCwPVjAUGsWzMAjOMTEmCRieJNy9kd+Q8WyU1p0TV2L5/EfDDtWwhSJg9OQoO2Z9xOTUerpHTVbw9OvHUOg2n1h+GEisR23TtfmyVCP1nwLaAWmVd1JtmnufGZPpCo7OksgJ68h3DdqNwvcLh8gbxFZA/4AAAAA==
