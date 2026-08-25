@@ -25,6 +25,28 @@ Runs two phases in order:
 
 Use `--skip-phases=deps` to skip Kubeflow Trainer if it is already installed.
 
+### Retry behavior and automatic recovery
+
+`setup init` converges from any partial state, so re-running it after a failure is always safe to try:
+
+- **Already deployed**: when the `kubeflow-trainer` release is `deployed` at the pinned chart version, the `deps` phase prints "already deployed" and skips the upgrade entirely. Not re-rendering the chart means not re-rolling its webhook certificates.
+- **Failed or pending release**: the install is attempted once. If it fails with the webhook Secret field-ownership conflict signature (`Apply failed with ... conflicts` on `.data` fields of Secrets in `kubeflow-system`) *and* the release state agrees (`failed` or `pending-*`), `setup init` performs an automatic recovery: uninstall the release, delete its four CRDs (`trainjobs`, `trainingruntimes`, `clustertrainingruntimes` in `trainer.kubeflow.org`; `jobsets` in `jobset.x-k8s.io`), delete the `kubeflow-system` namespace, and reinstall the pinned chart. Exactly one recovery attempt is made per run.
+- **Safety gate**: automatic recovery is refused when any `TrainJob` or `JobSet` instance exists, or when a `TrainingRuntime`/`ClusterTrainingRuntime` exists that is not Helm-owned (missing the `app.kubernetes.io/managed-by: Helm` label) — deleting the CRDs would destroy them. In that case, and for any ambiguous failure, `setup init` fails fast and prints the manual procedure:
+
+  ```bash
+  helm uninstall kubeflow-trainer --namespace kubeflow-system
+  kubectl delete crd trainjobs.trainer.kubeflow.org trainingruntimes.trainer.kubeflow.org \
+    clustertrainingruntimes.trainer.kubeflow.org jobsets.jobset.x-k8s.io
+  kubectl delete namespace kubeflow-system
+  ncrectl setup init   # reinstalls the pinned Kubeflow Trainer
+  ```
+
+- **Confirmation**: in interactive mode the recovery plan is printed and re-confirmed before anything is deleted; `--auto-approve` covers CI.
+
+<Warning>
+Automatic recovery deletes the `kubeflow-system` namespace, including anything you placed there manually. The namespace is created and managed by `setup init`.
+</Warning>
+
 ### Flags
 
 | Flag | Default | Description |

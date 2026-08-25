@@ -82,12 +82,14 @@ vet: ## Run go vet against code, including build-tagged test suites.
 
 .PHONY: test
 test: setup-envtest ## Run unit and integration tests.
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	go test -v $$(go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v /cmd/integration)
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	go test ./cmd/integration/ -v -timeout 300s -count=1
 
 .PHONY: test-ci
 test-ci:setup-envtest ## Run tests with JUnit XML and coverage reports for CI.
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	gotestsum --junitfile unit-report.xml -- \
 		-coverprofile=cover-unit.out -covermode=atomic \
 		$$(go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v /cmd/integration)

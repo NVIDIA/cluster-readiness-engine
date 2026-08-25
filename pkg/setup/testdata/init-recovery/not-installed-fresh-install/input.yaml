@@ -1,0 +1,6 @@
+# Helm has no record of the trainer release: a plain fresh install, exactly
+# as today (ADR-073 decision 4, row 1).
+releaseState: not installed
+chartVersion: ""
+installResults:
+  - fail: false
