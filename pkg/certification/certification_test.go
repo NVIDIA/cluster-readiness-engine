@@ -4,12 +4,16 @@
 package certification
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 	"github.com/spf13/cobra"
@@ -17,6 +21,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/watch"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
 	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
@@ -24,6 +34,60 @@ import (
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller"
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/kubeconfig"
 )
+
+func newCertificationFakeClient(t testing.TB, objects ...client.Object) client.WithWatch {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	require.NoError(t, crev1alpha1.AddToScheme(scheme))
+	require.NoError(t, corev1.AddToScheme(scheme))
+	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
+}
+
+type certificationGetErrorClient struct {
+	client.WithWatch
+	err error
+}
+
+func (c certificationGetErrorClient) Get(
+	context.Context, client.ObjectKey, client.Object, ...client.GetOption,
+) error {
+	return c.err
+}
+
+type certificationDeadlineClient struct {
+	client.WithWatch
+	sawDeadline     bool
+	sawLiveDeadline bool
+}
+
+func (c *certificationDeadlineClient) Get(
+	ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption,
+) error {
+	if deadline, ok := ctx.Deadline(); ok {
+		c.sawDeadline = true
+		c.sawLiveDeadline = ctx.Err() == nil && time.Now().Before(deadline)
+	}
+	return c.WithWatch.Get(ctx, key, obj, opts...)
+}
+
+func normalizeCertificationReportOutput(output string) string {
+	lines := make([]string, 0)
+	for line := range strings.SplitSeq(output, "\n") {
+		if strings.ContainsAny(line, "═─") {
+			continue
+		}
+		if strings.HasPrefix(line, "║") || strings.HasPrefix(line, "│") {
+			line = strings.TrimSpace(strings.Trim(line, "║│"))
+		} else {
+			line = strings.TrimRight(line, " \t")
+		}
+		if line == "" && (len(lines) == 0 || lines[len(lines)-1] == "") {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n")) + "\n"
+}
 
 func TestCatalogListCategories(t *testing.T) {
 	p := testutil.TestCaseParser{
@@ -445,6 +509,229 @@ spec:
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "parse certification")
 	})
+}
+
+func TestWatchCertificationImmediateTimeout(t *testing.T) {
+	wc := newCertificationFakeClient(t)
+	var out bytes.Buffer
+
+	cert, err := watchCertification(context.Background(), wc, "timeout-cert", "test-ns", 0, &out)
+
+	assert.Nil(t, cert)
+	require.Error(t, err)
+	assert.True(t, isCertificationWaitTimeout(err))
+	assert.Equal(t, "certification did not complete within 0s (ran for 0s)", err.Error())
+}
+
+func TestCertificationWaitContextErrorCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := certificationWaitContextError(ctx, time.Minute, time.Now())
+
+	assert.EqualError(t, err, "interrupted")
+}
+
+func TestProcessWatchEventsContextDoneDuringActiveWatch(t *testing.T) {
+	watcher := watch.NewRaceFreeFake()
+	defer watcher.Stop()
+	heartbeat := time.NewTicker(time.Hour)
+	defer heartbeat.Stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	var out bytes.Buffer
+
+	cert, done, err := processWatchEvents(
+		ctx, newCertificationFakeClient(t), watcher, time.Now(),
+		map[string]string{}, heartbeat, &out,
+	)
+
+	assert.Nil(t, cert)
+	assert.True(t, done)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestFinishCertificationWaitTimeout(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "finish-certification-wait-timeout",
+		ExpectedSuffix: ".txt",
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			Name       string `json:"name"`
+			DoCleanup  bool   `json:"doCleanup"`
+			CertExists *bool  `json:"certExists"`
+			GetError   string `json:"getError"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+		if input.Name == "" {
+			input.Name = "timeout-cert"
+		}
+
+		cert := &crev1alpha1.Certification{
+			ObjectMeta: metav1.ObjectMeta{Name: input.Name, Namespace: "test-ns"},
+			Spec: crev1alpha1.CertificationSpec{
+				Categories: []crev1alpha1.CertificateCategory{{
+					Domain: "communication", Variant: "nccl-all-reduce",
+				}},
+			},
+			Status: crev1alpha1.CertificationStatus{
+				CategoryStatuses: []crev1alpha1.CertificationCategoryStatus{{
+					Domain: "communication", Variant: "nccl-all-reduce", Status: "InProgress",
+				}},
+			},
+		}
+		certExists := input.CertExists == nil || *input.CertExists
+		var wc client.WithWatch
+		if certExists {
+			wc = newCertificationFakeClient(tc.T, cert)
+		} else {
+			wc = newCertificationFakeClient(tc.T)
+		}
+		if input.GetError != "" {
+			wc = certificationGetErrorClient{WithWatch: wc, err: errors.New(input.GetError)}
+		}
+		resultsFile := filepath.Join(tc.T.TempDir(), "results.json")
+		var out bytes.Buffer
+		cfg := &certRunConfig{
+			cert: cert.DeepCopy(), namespace: cert.Namespace, doCleanup: input.DoCleanup,
+			resultsFile: resultsFile, out: &out,
+		}
+		waitErr := &certificationWaitTimeoutError{timeout: 15 * time.Minute, elapsed: 15 * time.Minute}
+
+		gotErr := finishCertificationWait(context.Background(), wc, cfg, nil, waitErr)
+
+		assert.Same(tc.T, waitErr, gotErr)
+		if certExists && input.GetError == "" {
+			data, err := os.ReadFile(resultsFile)
+			if err != nil {
+				return err
+			}
+			var result struct {
+				Name   string `json:"name"`
+				Result string `json:"result"`
+			}
+			if err := json.Unmarshal(data, &result); err != nil {
+				return err
+			}
+			assert.Equal(tc.T, input.Name, result.Name)
+			assert.Equal(tc.T, "RUNNING", result.Result)
+		} else {
+			_, err := os.Stat(resultsFile)
+			assert.True(tc.T, os.IsNotExist(err))
+		}
+
+		tc.Actual = normalizeCertificationReportOutput(
+			strings.ReplaceAll(out.String(), resultsFile, "<results-file>"),
+		)
+		return nil
+	})
+}
+
+func TestFinishCertificationWaitBoundsPostTimeoutReads(t *testing.T) {
+	cert := &crev1alpha1.Certification{
+		ObjectMeta: metav1.ObjectMeta{Name: "timeout-cert", Namespace: "test-ns"},
+	}
+	wc := &certificationDeadlineClient{WithWatch: newCertificationFakeClient(t, cert)}
+	var out bytes.Buffer
+	cfg := &certRunConfig{cert: cert.DeepCopy(), namespace: cert.Namespace, out: &out}
+	waitErr := &certificationWaitTimeoutError{timeout: time.Minute, elapsed: time.Minute}
+
+	gotErr := finishCertificationWait(context.Background(), wc, cfg, nil, waitErr)
+
+	assert.Same(t, waitErr, gotErr)
+	assert.True(t, wc.sawDeadline)
+	assert.True(t, wc.sawLiveDeadline)
+}
+
+func TestExecuteCertificationRunReportsBeforeCleanup(t *testing.T) {
+	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test-ns"}}
+	wc := newCertificationFakeClient(t, namespace)
+	cert := &crev1alpha1.Certification{
+		ObjectMeta: metav1.ObjectMeta{Name: "timeout-cert", Namespace: namespace.Name},
+		Spec: crev1alpha1.CertificationSpec{
+			Categories: []crev1alpha1.CertificateCategory{{
+				Domain: "communication", Variant: "nccl-all-reduce",
+			}},
+		},
+	}
+	var out bytes.Buffer
+	cfg := &certRunConfig{
+		cert: cert, namespace: namespace.Name,
+		doWait: true, doCleanup: true, timeout: 0,
+		out: &out, watchClient: wc,
+	}
+
+	err := executeCertificationRun(cfg)
+
+	require.Error(t, err)
+	assert.True(t, isCertificationWaitTimeout(err))
+	output := out.String()
+	reportIndex := strings.Index(output, "Certification Report")
+	cleanupIndex := strings.Index(output, "[cleanup] Deleting certification...")
+	assert.GreaterOrEqual(t, reportIndex, 0)
+	assert.Greater(t, cleanupIndex, reportIndex)
+
+	gotCert := &crev1alpha1.Certification{}
+	err = wc.Get(context.Background(), client.ObjectKeyFromObject(cert), gotCert)
+	assert.True(t, apierrors.IsNotFound(err))
+
+	gotNamespace := &corev1.Namespace{}
+	require.NoError(t, wc.Get(context.Background(), client.ObjectKeyFromObject(namespace), gotNamespace))
+}
+
+func TestFinishCertificationWaitTerminalAtTimeout(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "finish-certification-wait-terminal-at-timeout",
+		ExpectedSuffix: ".txt",
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			ConditionType string `json:"conditionType"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		cert := &crev1alpha1.Certification{
+			ObjectMeta: metav1.ObjectMeta{Name: "timeout-cert", Namespace: "test-ns"},
+			Status: crev1alpha1.CertificationStatus{Conditions: []metav1.Condition{{
+				Type: input.ConditionType, Status: metav1.ConditionTrue,
+			}}},
+		}
+		wc := newCertificationFakeClient(tc.T, cert)
+		var out bytes.Buffer
+		cfg := &certRunConfig{cert: cert.DeepCopy(), namespace: cert.Namespace, out: &out}
+		waitErr := &certificationWaitTimeoutError{timeout: time.Minute, elapsed: time.Minute}
+
+		gotErr := finishCertificationWait(context.Background(), wc, cfg, nil, waitErr)
+
+		assert.Same(tc.T, waitErr, gotErr)
+		tc.Actual = normalizeCertificationReportOutput(out.String())
+		return nil
+	})
+}
+
+func TestFinishCertificationWaitDoesNotMaskOtherWatchErrors(t *testing.T) {
+	cert := &crev1alpha1.Certification{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-cert", Namespace: "test-ns"},
+	}
+	wc := newCertificationFakeClient(t, cert)
+	resultsFile := filepath.Join(t.TempDir(), "results.json")
+	var out bytes.Buffer
+	cfg := &certRunConfig{
+		cert: cert.DeepCopy(), namespace: cert.Namespace, resultsFile: resultsFile, out: &out,
+	}
+	waitErr := errors.New("watch disconnected")
+
+	gotErr := finishCertificationWait(context.Background(), wc, cfg, nil, waitErr)
+
+	assert.Same(t, waitErr, gotErr)
+	assert.Empty(t, out.String())
+	_, err := os.Stat(resultsFile)
+	assert.True(t, os.IsNotExist(err))
 }
 
 func TestParseCategoriesEdgeCases(t *testing.T) {

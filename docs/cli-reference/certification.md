@@ -25,7 +25,7 @@ nvcrectl certification run --category communication/nccl-all-reduce [flags]
 | `--setup` | `false` | Install CRDs, controller, and LogProfiles before creating the certification |
 | `--image` | — | Controller image for `--setup` (default: `ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager:<version>`) |
 | `--wait` | `false` | Block until the certification completes and print a report |
-| `--timeout` | derived | Timeout for `--wait`. When not set, derived from the selected categories' `timeoutPerJob` budgets (max across categories × iterations × 1.5), floored at `30m`; the CLI prints the derived value when the watch starts. An explicit value always wins. |
+| `--timeout` | derived | Timeout for `--wait`. When not set, derived from the selected categories' `timeoutPerJob` budgets (max across categories × iterations × 1.5), floored at `30m`; the CLI prints the derived value when the watch starts. An explicit value always wins. On timeout, the CLI prints a partial report and leaves the Certification running unless `--cleanup` is set. |
 | `--cleanup` | `false` | Delete the certification, namespace, and installed components after completion |
 | `--nodes-per-job` | `0` | Nodes per job (0 = auto-select) |
 | `--gpus-per-node` | `0` | GPUs per node (0 = auto-detect from GPU architecture) |
@@ -41,6 +41,8 @@ nvcrectl certification run --category communication/nccl-all-reduce [flags]
 | `--workload-registry` | — | Registry server for workload image pull (e.g. `nvcr.io`, `ghcr.io`) — required when `--workload-registry-password` is set |
 | `--workload-registry-username` | — | Registry username for workload image pull (e.g. `$oauthtoken` for NGC) — required when `--workload-registry-password` is set |
 | `--workload-registry-password` | — | Registry password or API key — creates an `nvcrectl-pull-<name>` imagePullSecret in the namespace, deleted automatically when the Certification is deleted |
+
+When `--wait` reaches its timeout, the command prints the Certification's current report, writes it to `--results-file` when requested, and exits with a timeout error. Without `--cleanup`, the Certification continues running in the cluster; the timeout stops only the CLI watch. The timeout output includes commands to watch its progress, print an updated report, or stop it. `nvcrectl certification report` exits nonzero while the Certification is still running. With `--cleanup`, the partial report is produced before the Certification and its child resources are deleted.
 
 ### Examples
 
