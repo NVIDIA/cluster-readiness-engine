@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# SetImagePullSecrets may already have created a node entry in the
+# controller-owned patch. EnsureLauncherTarget must keep that entry (with its
+# content) and add only the missing launcher entry, without duplicates.
+spec:
+  trainJob:
+    runtimePatches:
+      - manager: cre.nvidia.com/controller
+        trainingRuntimeSpec:
+          template:
+            spec:
+              replicatedJobs:
+                - name: node
+                  template:
+                    spec:
+                      template:
+                        spec:
+                          nodeSelector:
+                            existing: selector

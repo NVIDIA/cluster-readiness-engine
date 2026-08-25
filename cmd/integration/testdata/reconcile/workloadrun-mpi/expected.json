@@ -45,6 +45,25 @@
                 "numNodes": 2,
                 "numProcPerNode": 4
               },
+              "runtimePatches": [
+                {
+                  "manager": "cre.nvidia.com/controller",
+                  "trainingRuntimeSpec": {
+                    "template": {
+                      "spec": {
+                        "replicatedJobs": [
+                          {
+                            "name": "node"
+                          },
+                          {
+                            "name": "launcher"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ],
               "suspend": false,
               "managedBy": "trainer.kubeflow.org/trainjob-controller"
             }
@@ -385,6 +404,16 @@
         },
         {
           "when": {
+            "platform": {
+              "equals": "aws"
+            }
+          }
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "gb300"
+            },
             "platform": {
               "equals": "aws"
             }
@@ -1070,7 +1099,7 @@
             "noOp": true
           },
           {
-            "index": 6,
+            "index": 7,
             "when": "gpuArchitecture=gb200, platform=aws",
             "patches": "1 dependencies"
           }

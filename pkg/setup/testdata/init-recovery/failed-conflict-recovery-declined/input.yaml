@@ -1,0 +1,12 @@
+# Interactive mode: the recovery plan is printed and re-confirmed before
+# anything is deleted (ADR-073 decision 5). The user declines, so nothing is
+# uninstalled and the manual procedure is printed instead.
+releaseState: failed
+chartVersion: ""
+autoApprove: false
+confirmInput: "no"
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: Unable to continue with update: could not update Secret "kubeflow-trainer-webhook-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "trainer-controller" using v1: .data.tls.crt, .data.tls.key
+      could not update Secret "jobset-webhook-server-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "jobset-controller" using v1: .data.tls.crt, .data.tls.key

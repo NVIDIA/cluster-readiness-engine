@@ -1,0 +1,10 @@
+# Conflict-classified failure, but a TrainJob instance exists: the safety
+# gate refuses, and setup init fails fast with the manual procedure printed
+# (ADR-073 decisions 3c and 5).
+releaseState: failed
+chartVersion: ""
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: Unable to continue with update: could not update Secret "kubeflow-trainer-webhook-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "trainer-controller" using v1: .data.tls.crt, .data.tls.key
+      could not update Secret "jobset-webhook-server-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "jobset-controller" using v1: .data.tls.crt, .data.tls.key
