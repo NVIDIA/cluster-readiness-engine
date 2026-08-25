@@ -140,6 +140,10 @@ func reconcileResourceClaims(ctx context.Context, client dynamic.Interface) {
 		patch := map[string]any{
 			"status": map[string]any{
 				"allocation": map[string]any{
+					// Kubernetes 1.36 fills a missing timestamp during PreBind. The
+					// stub must set it with the initial allocation because that field
+					// is immutable by the time the scheduler reserves the claim.
+					"allocationTimestamp": metav1.Now().Format(time.RFC3339Nano),
 					"devices": map[string]any{
 						"results": []any{},
 					},

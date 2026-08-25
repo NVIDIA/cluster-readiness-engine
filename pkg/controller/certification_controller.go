@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	controlleropts "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -77,6 +78,8 @@ type CertificationReconciler struct {
 	client.Client
 	Scheme                  *runtime.Scheme
 	WorkflowRequeueInterval time.Duration
+	// MaxConcurrentReconciles bounds the number of Certification objects reconciled concurrently.
+	MaxConcurrentReconciles int
 }
 
 // +kubebuilder:rbac:groups=cre.nvidia.com,resources=certifications,verbs=get;list;watch;create;update;patch;delete
@@ -865,5 +868,6 @@ func (r *CertificationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&crev1alpha1.Certification{}).
 		Owns(&crev1alpha1.Workflow{}).
 		Named("certification").
+		WithOptions(controlleropts.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Complete(r)
 }

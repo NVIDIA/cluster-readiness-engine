@@ -17,6 +17,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	controlleropts "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -52,6 +53,8 @@ type GoodputMeasurementReconciler struct {
 	Scheme     *runtime.Scheme
 	Clientset  *kubernetes.Clientset
 	LogFetcher podlogs.PodLogFetcher // if nil, defaults to Clientset-backed fetcher
+	// MaxConcurrentReconciles bounds the number of GoodputMeasurement objects reconciled concurrently.
+	MaxConcurrentReconciles int
 
 	mu        sync.Mutex
 	jobStates map[string]*goodput.JobState // key: namespace/name of GoodputMeasurement
@@ -1506,5 +1509,6 @@ func (r *GoodputMeasurementReconciler) SetupWithManager(mgr ctrl.Manager) error 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&crev1alpha1.GoodputMeasurement{}).
 		Named("goodputmeasurement").
+		WithOptions(controlleropts.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Complete(r)
 }

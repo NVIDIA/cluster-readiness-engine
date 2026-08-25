@@ -1,0 +1,7 @@
+[
+  "--metrics-bind-address=:8443",
+  "--leader-elect",
+  "--health-probe-bind-address=:8081",
+  "--max-concurrent-reconciles=10",
+  "--measurement-max-concurrent-reconciles=5"
+]

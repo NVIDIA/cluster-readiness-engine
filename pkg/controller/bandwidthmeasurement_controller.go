@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	controlleropts "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -57,6 +58,8 @@ type BandwidthMeasurementReconciler struct {
 	Scheme     *runtime.Scheme
 	Clientset  *kubernetes.Clientset
 	LogFetcher podlogs.PodLogFetcher // if nil, defaults to Clientset-backed fetcher
+	// MaxConcurrentReconciles bounds the number of BandwidthMeasurement objects reconciled concurrently.
+	MaxConcurrentReconciles int
 
 	// RequeueInterval is the interval between reconcile cycles when polling.
 	// Tests set this to 1s; production uses 15s.
@@ -550,5 +553,6 @@ func (r *BandwidthMeasurementReconciler) SetupWithManager(mgr ctrl.Manager) erro
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&crev1alpha1.BandwidthMeasurement{}).
 		Named("bandwidthmeasurement").
+		WithOptions(controlleropts.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Complete(r)
 }

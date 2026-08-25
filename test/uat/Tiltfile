@@ -22,7 +22,7 @@ IMG_TAG = img_parts[1] if len(img_parts) > 1 else 'latest'
 # ─── 1. Build CRE controller image and load into Kind ───
 local_resource('build-image',
     cmd='cd ../.. && make docker-build IMG=%s && kind load docker-image %s --name %s' % (IMG, IMG, KIND_CLUSTER),
-    deps=['../../cmd/main.go', '../../Dockerfile'],
+    deps=['../../cmd/manager/main.go', '../../Dockerfile'],
     labels=['build'])
 
 # ─── 2. Build nvcrectl binary (used by UAT tests) ───
@@ -58,7 +58,8 @@ local_resource('install-trainer',
 
 # ─── 6. Install CRE via Helm (local chart, test image pre-loaded into Kind) ───
 local_resource('install-cluster-readiness-engine',
-    cmd='helm upgrade --install cluster-readiness-engine ../../helm/cluster-readiness-engine --namespace cluster-readiness-engine --create-namespace --set manager.image.repository=%s --set manager.image.tag=%s --set manager.imagePullSecrets=null --wait --timeout 5m' % (IMG_REPO, IMG_TAG),
+    cmd='helm upgrade --install cluster-readiness-engine ../../helm/cluster-readiness-engine --namespace cluster-readiness-engine --create-namespace --values tilt/cre-values.yaml --set manager.image.repository=%s --set manager.image.tag=%s --set manager.imagePullSecrets=null --wait --timeout 5m' % (IMG_REPO, IMG_TAG),
+    deps=['tilt/cre-values.yaml'],
     resource_deps=['build-image', 'install-trainer', 'kwok-stage-override', 'prometheus-crds'],
     labels=['cluster-readiness-engine'])
 
