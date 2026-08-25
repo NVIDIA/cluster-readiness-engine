@@ -425,6 +425,14 @@ func (r *WorkloadRunReconciler) buildJobTemplate(run *crev1alpha1.WorkloadRun, f
 
 	workload.SetImagePullSecrets(trainJobSpec, spec.ImagePullSecrets)
 
+	// MPI runs have a launcher replicated job that must be pinned and
+	// tolerated like the workers (issue #175 UAT: an unregistered launcher
+	// gets no node affinity from the Workflow controller and schedules on
+	// arbitrary nodes).
+	if frameworkType == FrameworkMPI {
+		workload.EnsureLauncherTarget(trainJobSpec)
+	}
+
 	jobSpec := crev1alpha1.JobSpec{
 		Workload: crev1alpha1.WorkloadSpec{
 			TrainJob: trainJobSpec,

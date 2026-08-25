@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# UCC/HCollective disabled: without these flags, UCC calls mca_coll_ucc_comm_query
+# during MPI_Init, which crashes (SIGSEGV) because UCX tries to use mlx5 devices
+# with incorrect GID settings before NCCL_IB_GID_INDEX takes effect.
+# Disabling a component the image lacks is a no-op, so this is safe on OpenMPI
+# builds without UCC/HCOLL compiled in.
+# Shared by oci-roce-mpirun-args.yaml and the WorkloadRun platform overrides
+# (pkg/platform/overrides/workloadrun.yaml).
+- --mca
+- coll_ucc_enable
+- "0"
+- --mca
+- coll_hcoll_enable
+- "0"
