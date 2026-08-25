@@ -323,7 +323,9 @@ func loadAndRegisterEntries() error {
 		meta := discoverEntryMeta(dir, variant)
 
 		Register(domain, variant, Entry{
-			MinGPUs: meta.MinGPUs,
+			MinGPUs:       meta.MinGPUs,
+			TimeoutPerJob: meta.TimeoutPerJob,
+			Iterations:    defaultIterations(buf.Bytes()),
 			MaxValidNodes: func(availableNodes, gpusPerNode int32, gpuArch string) int32 {
 				for n := availableNodes; n >= 1; n-- {
 					totalGPUs := n * gpusPerNode
@@ -470,13 +472,7 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 	if td.MinGroupSize == 0 {
 		td.MinGroupSize = DefaultMinGroupSize
 	}
-	if td.TimeoutPerJob == "" {
-		if td.TestScale == crev1alpha1.TestScaleDiagnose {
-			td.TimeoutPerJob = DiagnoseTimeoutPerJob
-		} else {
-			td.TimeoutPerJob = DefaultTimeoutPerJob
-		}
-	}
+	td.TimeoutPerJob = resolveTimeoutPerJob(td.TimeoutPerJob, meta.TimeoutPerJob, td.TestScale)
 	tp, pp, ep := meta.getParallel(configArch)
 	if tp > 0 {
 		td.TP = tp
@@ -488,6 +484,38 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 		td.EP = ep
 	}
 	return td
+}
+
+// defaultIterations extracts orchestration.iterations from an entry template
+// rendered with empty data. The iteration count is a static literal in every
+// entry (no template variables), so the empty render carries it faithfully.
+// Best effort: any parse failure falls back to 1, the catalog-wide value.
+func defaultIterations(emptyRender []byte) int {
+	var spec crev1alpha1.WorkflowSpec
+	if err := yaml.Unmarshal(emptyRender, &spec); err != nil {
+		return 1
+	}
+	if spec.Orchestration.Iterations < 1 {
+		return 1
+	}
+	return spec.Orchestration.Iterations
+}
+
+// resolveTimeoutPerJob resolves the effective timeoutPerJob for an entry.
+// Precedence: explicit user value > entry meta.yaml default > test-scale
+// global default. Used by buildTemplateData at render time and by
+// Entry.EffectiveTimeoutPerJob for offline derivation (nvcrectl --wait).
+func resolveTimeoutPerJob(userTimeout, entryDefault, testScale string) string {
+	if userTimeout != "" {
+		return userTimeout
+	}
+	if entryDefault != "" {
+		return entryDefault
+	}
+	if testScale == crev1alpha1.TestScaleDiagnose {
+		return DiagnoseTimeoutPerJob
+	}
+	return DefaultTimeoutPerJob
 }
 
 // makeIncludeFile returns a template function that reads files relative to the
@@ -568,6 +596,12 @@ func makeLibTemplate(funcs template.FuncMap) func(string, any) (string, error) {
 type entryMeta struct {
 	MinGPUs     int32                   `yaml:"minGPUs"`
 	Parallelism map[string]archParallel `yaml:"parallelism"`
+
+	// TimeoutPerJob is the entry's default job timeout (e.g., "2h"). It wins
+	// over the global defaults (DefaultTimeoutPerJob / DiagnoseTimeoutPerJob)
+	// in every test scale — an entry that declares its runtime knows it better
+	// than the scale heuristic — but an explicit user timeoutPerJob still wins.
+	TimeoutPerJob string `yaml:"timeoutPerJob"`
 }
 
 // archParallel defines the parallelism config for a GPU architecture.

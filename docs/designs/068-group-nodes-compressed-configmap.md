@@ -206,7 +206,7 @@ of terminal-success recording.
 
 
 
-### ncrectl (`pkg/report/report.go`)
+### nvcrectl (`pkg/report/report.go`)
 
 - Load and decode the `group-nodes-<uid8>` ConfigMap and populate group nodes/counts before rendering,
 so reports do not show empty node lists.
@@ -375,7 +375,7 @@ hydrates all diagnose lists; writes touch only the changed keys.
 - **Positive:** the Workflow CR no longer grows with node count, so large runs no longer risk wedging on an
 over-limit status write. Reuses the ADR-062 gzip/ConfigMap infrastructure and RBAC.
 - **Negative:** node membership is no longer visible via `kubectl get workflow -o yaml`; use the ConfigMap
-or `ncrectl report` (which reads the ConfigMap with the user's kubeconfig, so users need `get configmaps`
+or `nvcrectl report` (which reads the ConfigMap with the user's kubeconfig, so users need `get configmaps`
 in the run namespace). Correctness now depends on hydrate-before-read and overwrite-on-change discipline,
 mitigated by the single hydration choke point, the single assign-and-save helper, and the fail-closed
 guard. Test churn is significant: many fixtures and golden files reference the inline node lists.

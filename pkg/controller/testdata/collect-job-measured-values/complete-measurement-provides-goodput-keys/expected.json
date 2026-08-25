@@ -1,0 +1,7 @@
+{
+  "algBandwidthGBps": 450.2,
+  "avgStepTimeSec": 1.25,
+  "avgTFLOPsPerGPU": 512.5,
+  "busBandwidthGBps": 980.1,
+  "goodputRatio": 0.88
+}

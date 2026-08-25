@@ -203,7 +203,7 @@ Categories execute sequentially (Certification controller processes one Workflow
 
 ### Per-Group Bandwidth Reporting
 
-For multi-group Workflows (pairwise, combinatorial, intra-rack), the `ncrectl` certification report shows per-group bandwidth results instead of a single aggregate:
+For multi-group Workflows (pairwise, combinatorial, intra-rack), the `nvcrectl` certification report shows per-group bandwidth results instead of a single aggregate:
 
 ```
 │  Bandwidth by group:                                           │

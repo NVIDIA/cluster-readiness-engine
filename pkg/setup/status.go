@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"text/tabwriter"
 
@@ -26,16 +27,29 @@ const (
 	dcgmServiceNamespace = "gpu-operator"
 )
 
-// SetupStatus is the JSON output structure for ncrectl setup status.
+// SetupStatus is the JSON output structure for nvcrectl setup status.
 type SetupStatus struct {
-	// Installed is true when all required components are present and ready.
+	// Installed is true when all required components are present and ready
+	// and no managed Helm release is in a failed or pending state.
 	Installed  bool                  `json:"installed"`
 	Components SetupStatusComponents `json:"components"`
+	// HelmReleases reports the state of the Helm releases setup init manages.
+	HelmReleases []HelmReleaseStatus `json:"helmReleases"`
 
 	// dcgmAbsent is true only when the API server answered that the service
 	// does not exist. A denied or failed lookup leaves it false, so the
 	// command does not tell the user to enable a service that may be there.
 	dcgmAbsent bool
+}
+
+// HelmReleaseStatus reports the Helm state of one managed release.
+type HelmReleaseStatus struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	// State is the release state helm reports ("deployed", "failed",
+	// "pending-upgrade", ...), "not installed" when helm has no record of
+	// the release, or "unknown" when the query could not be completed.
+	State string `json:"state"`
 }
 
 // SetupStatusComponents reports the status of each individual component.
@@ -48,6 +62,16 @@ type SetupStatusComponents struct {
 	// DCGM is optional. Only the diagnostics/dcgm-level4 category needs it,
 	// so it does not count toward Installed.
 	DCGM bool `json:"dcgm"`
+}
+
+// allRequired reports whether every required component is present, ignoring
+// Helm release health. DCGM is optional and does not count.
+func (c SetupStatusComponents) allRequired() bool {
+	return c.CRECRDs &&
+		c.CREController &&
+		c.KubeflowTrainer &&
+		c.LogProfiles &&
+		c.GPUOperator
 }
 
 func newSetupStatusCommand() *cobra.Command {
@@ -69,8 +93,13 @@ Components checked:
   gpuOperator          NVIDIA GPU Operator (nodes with nvidia.com/gpu.present=true)
   dcgm                 NVIDIA DCGM service (optional; diagnostics/dcgm-level4 only)
 
-'installed' is true only when all required components are present. DCGM is
-optional, so it does not affect 'installed'.`,
+The Helm releases managed by 'setup init' (cluster-readiness-engine and
+kubeflow-trainer) are also checked via the helm CLI.
+
+'installed' is true only when all required components are present and no
+managed Helm release is in a failed or pending state. DCGM is optional, so it
+does not affect 'installed'. A release helm has no record of, or that cannot
+be queried (helm not in PATH), does not affect 'installed' either.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
 			c, err := newSetupClient(configFlags)
@@ -78,7 +107,8 @@ optional, so it does not affect 'installed'.`,
 				return fmt.Errorf("connect to cluster: %w", err)
 			}
 
-			status := collectSetupStatus(ctx, c)
+			query := newHelmStateQuery(*configFlags.KubeConfig, *configFlags.Context)
+			status := collectSetupStatus(ctx, c, query)
 
 			switch output {
 			case outputJSON:
@@ -86,7 +116,7 @@ optional, so it does not affect 'installed'.`,
 				enc.SetIndent("", "  ")
 				return enc.Encode(status)
 			default:
-				printSetupStatus(status)
+				printSetupStatus(os.Stdout, status)
 				return nil
 			}
 		},
@@ -98,8 +128,9 @@ optional, so it does not affect 'installed'.`,
 	return cmd
 }
 
-// collectSetupStatus queries the cluster and returns the current component status.
-func collectSetupStatus(ctx context.Context, c client.Client) *SetupStatus {
+// collectSetupStatus queries the cluster and the helm CLI and returns the
+// current component and release status.
+func collectSetupStatus(ctx context.Context, c client.Client, query helmStateFunc) *SetupStatus {
 	comp := SetupStatusComponents{}
 
 	comp.CRECRDs = checkCRECRDs(ctx, c)
@@ -111,15 +142,54 @@ func collectSetupStatus(ctx context.Context, c client.Client) *SetupStatus {
 	dcgmErr := checkDCGM(ctx, c)
 	comp.DCGM = dcgmErr == nil
 
+	releases := checkHelmReleases(query)
+
 	return &SetupStatus{
-		Installed: comp.CRECRDs &&
-			comp.CREController &&
-			comp.KubeflowTrainer &&
-			comp.LogProfiles &&
-			comp.GPUOperator,
-		Components: comp,
-		dcgmAbsent: apierrors.IsNotFound(dcgmErr),
+		Installed:    comp.allRequired() && len(unhealthyHelmReleases(releases)) == 0,
+		Components:   comp,
+		HelmReleases: releases,
+		dcgmAbsent:   apierrors.IsNotFound(dcgmErr),
 	}
+}
+
+// checkHelmReleases queries the state of every Helm release setup init manages.
+func checkHelmReleases(query helmStateFunc) []HelmReleaseStatus {
+	managed := []struct{ name, namespace string }{
+		{helmReleaseName, creNamespace},
+		{trainerReleaseName, trainerNamespace},
+	}
+	releases := make([]HelmReleaseStatus, 0, len(managed))
+	for _, rel := range managed {
+		releases = append(releases, HelmReleaseStatus{
+			Name:      rel.name,
+			Namespace: rel.namespace,
+			State:     query(rel.name, rel.namespace),
+		})
+	}
+	return releases
+}
+
+// helmStateBlocksReady reports whether a release state must block readiness.
+// Failed and pending states block. Deployed does not. Absent and unknown
+// states do not block either: CRE may have been installed without Helm, and
+// a missing helm binary must not fail the status command.
+func helmStateBlocksReady(state string) bool {
+	switch state {
+	case helmStateDeployed, helmStateUninstalled, helmStateNotInstalled, helmStateUnknown:
+		return false
+	}
+	return true
+}
+
+// unhealthyHelmReleases returns the releases whose state blocks readiness.
+func unhealthyHelmReleases(releases []HelmReleaseStatus) []HelmReleaseStatus {
+	var unhealthy []HelmReleaseStatus
+	for _, rel := range releases {
+		if helmStateBlocksReady(rel.State) {
+			unhealthy = append(unhealthy, rel)
+		}
+	}
+	return unhealthy
 }
 
 // checkCRECRDs returns true if CRE CRDs are installed.
@@ -213,7 +283,7 @@ func checkDCGM(ctx context.Context, c client.Client) error {
 }
 
 // printSetupStatus renders a human-readable table.
-func printSetupStatus(s *SetupStatus) {
+func printSetupStatus(out io.Writer, s *SetupStatus) {
 	check := func(ok bool) string {
 		if ok {
 			return "✓"
@@ -227,7 +297,7 @@ func printSetupStatus(s *SetupStatus) {
 		return "not found"
 	}
 
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+	w := tabwriter.NewWriter(out, 0, 0, 3, ' ', 0)
 	_, _ = fmt.Fprintln(w, "Component\tStatus")
 	_, _ = fmt.Fprintln(w, "─────────────────────────\t──────────")
 	_, _ = fmt.Fprintf(w, "CRE CRDs\t%s %s\n", check(s.Components.CRECRDs), status(s.Components.CRECRDs))
@@ -238,24 +308,37 @@ func printSetupStatus(s *SetupStatus) {
 	_, _ = fmt.Fprintf(w, "Log Profiles\t%s %s\n", check(s.Components.LogProfiles), status(s.Components.LogProfiles))
 	_, _ = fmt.Fprintf(w, "GPU Operator\t%s %s\n", check(s.Components.GPUOperator), status(s.Components.GPUOperator))
 	_, _ = fmt.Fprintf(w, "DCGM (optional)\t%s %s\n", check(s.Components.DCGM), status(s.Components.DCGM))
+	for _, rel := range s.HelmReleases {
+		_, _ = fmt.Fprintf(w, "Helm release %s\t%s %s\n",
+			rel.Name, check(!helmStateBlocksReady(rel.State)), rel.State)
+	}
 	_ = w.Flush()
 
-	fmt.Println()
-	if s.Installed {
-		fmt.Println("Status: ready")
-	} else {
-		fmt.Println("Status: not ready — run 'ncrectl setup init' to install missing components")
+	_, _ = fmt.Fprintln(out)
+	unhealthy := unhealthyHelmReleases(s.HelmReleases)
+	switch {
+	case s.Installed:
+		_, _ = fmt.Fprintln(out, "Status: ready")
+	case !s.Components.allRequired():
+		_, _ = fmt.Fprintln(out, "Status: not ready — run 'nvcrectl setup init' to install missing components")
 		if !s.Components.GPUOperator {
-			fmt.Println("  GPU Operator must be installed by your cluster administrator")
+			_, _ = fmt.Fprintln(out, "  GPU Operator must be installed by your cluster administrator")
 		}
+	default:
+		_, _ = fmt.Fprintln(out, "Status: not ready — a managed Helm release is unhealthy")
+	}
+	for _, rel := range unhealthy {
+		_, _ = fmt.Fprintf(out,
+			"  Helm release %s (namespace: %s) is %s — run 'nvcrectl setup init' to repair it\n",
+			rel.Name, rel.Namespace, rel.State)
 	}
 
 	if s.dcgmAbsent {
-		fmt.Println()
-		fmt.Printf("Note: service %s/%s is missing. Only the diagnostics/dcgm-level4\n",
+		_, _ = fmt.Fprintln(out)
+		_, _ = fmt.Fprintf(out, "Note: service %s/%s is missing. Only the diagnostics/dcgm-level4\n",
 			dcgmServiceNamespace, dcgmServiceName)
-		fmt.Println("      category needs it. Your cluster administrator can add it with:")
-		fmt.Println(`      kubectl patch clusterpolicy cluster-policy --type=merge \`)
-		fmt.Println(`        -p '{"spec":{"dcgm":{"enabled":true}}}'`)
+		_, _ = fmt.Fprintln(out, "      category needs it. Your cluster administrator can add it with:")
+		_, _ = fmt.Fprintln(out, `      kubectl patch clusterpolicy cluster-policy --type=merge \`)
+		_, _ = fmt.Fprintln(out, `        -p '{"spec":{"dcgm":{"enabled":true}}}'`)
 	}
 }

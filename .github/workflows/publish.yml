@@ -35,12 +35,18 @@ jobs:
       id-token: write  # Required for keyless cosign signing via OIDC
 
     steps:
+      # Check out the requested tag on workflow_dispatch. Without the ref,
+      # a dispatched run builds whatever branch the workflow ran from (main)
+      # while tagging the image with the input tag — publishing an image
+      # whose contents and stamped version do not match its tag.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
       # Use the pre-populated buildkitd config on NVIDIA GHA runners, which
       # routes image pulls through a per-environment Docker mirror cache.
       # See https://docs.gha-runners.nvidia.com/platform/best-practices/#use-docker-cache-for-buildkit
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
         with:
           buildkitd-config: /etc/buildkit/buildkitd.toml
 

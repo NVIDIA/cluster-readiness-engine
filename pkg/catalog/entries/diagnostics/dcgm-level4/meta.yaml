@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Level-4 DCGM diagnostics run the full hardware suite (targeted power and
+# targeted stress at 1200s each, memory bandwidth, NVBandwidth). A field run
+# on GB200 completed PASS at 1h31m05s wall time (issue #183), so the
+# catalog-wide 1h default timeoutPerJob would kill a healthy run. 2h covers
+# the measured runtime with headroom for scheduling and image pull.
+# An explicit spec.timeoutPerJob still overrides this value.
+timeoutPerJob: "2h"

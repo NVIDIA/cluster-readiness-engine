@@ -1,0 +1,62 @@
+{
+  "GoodputMeasurement/test-frozen-gm": {
+    "kind": "GoodputMeasurement",
+    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-frozen-gm",
+      "namespace": "default",
+      "finalizers": [
+        "cre.nvidia.com/goodputmeasurement-finalizer"
+      ]
+    },
+    "spec": {
+      "jobRef": {
+        "apiGroup": "cre.nvidia.com",
+        "kind": "Job",
+        "name": "test-frozen-job"
+      },
+      "logProfileRef": "test-frozen-logprofile",
+      "sampleInterval": "1s"
+    },
+    "status": {
+      "currentStep": 30,
+      "highestStep": 30,
+      "lostWorkTimeSec": "0.000000",
+      "rescheduleTimeSec": "0.000000",
+      "resumeTimeSec": "5.000000",
+      "checkpointSaveTimeSec": "12.000000",
+      "lastCheckpointStep": 20,
+      "lastCheckpointTime": "2026-01-22T10:02:00Z",
+      "avgStepTimeSec": "5.500000",
+      "warmupBaseStep": 10,
+      "nonWarmupTimeSec": "120.000000",
+      "lastNonWarmupStep": 30,
+      "applicationStartTime": "2026-01-22T10:00:00Z",
+      "conditions": [
+        {
+          "type": "Measuring",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobSucceeded",
+          "message": "Measurement completed"
+        },
+        {
+          "type": "Complete",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobSucceeded",
+          "message": "Referenced Job completed successfully"
+        }
+      ]
+    }
+  },
+  "frozenGoodput": {
+    "byteIdenticalAfterReentry": true,
+    "completionTime": "2026-01-22T10:05:00Z",
+    "result": "0.942373",
+    "startTime": "2026-01-22T10:00:05Z",
+    "trainingTimeSec": "295.000000"
+  }
+}

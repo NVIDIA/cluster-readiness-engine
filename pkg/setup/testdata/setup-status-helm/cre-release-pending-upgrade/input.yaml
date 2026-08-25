@@ -1,0 +1,5 @@
+# The CRE release is stuck in pending-upgrade (e.g. an interrupted helm
+# upgrade). Pending states block readiness the same way failed does.
+states:
+  cluster-readiness-engine: pending-upgrade
+  kubeflow-trainer: deployed

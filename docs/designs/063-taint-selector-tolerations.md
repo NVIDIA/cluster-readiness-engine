@@ -99,7 +99,7 @@ receiving the blanket toleration and get only the tolerations matching the decla
   - `taint-selectors-mpi-fallback/` — Workflow with no `taintSelectors` and an MPI workload; expect
     the blanket `Operator: Exists` toleration (regression guard).
 - `api/v1alpha1/workflow_types.go` — update the doc comment on `TaintSelectors` to describe the
-  precedence rule. Re-run `make manifests generate` and `make embed-ncrectl` to refresh CRDs and the
+  precedence rule. Re-run `make manifests generate` and `make embed-nvcrectl` to refresh CRDs and the
   embedded copy in `pkg/setup/embedded/`.
 - `site/content/docs/` — short note on scheduling training onto tainted nodes via
   `target.taintSelectors`, if a relevant page exists.

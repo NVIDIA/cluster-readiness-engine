@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
@@ -116,7 +117,7 @@ Use --dry-run to discover real nodes from the cluster and apply overrides based 
 
 	cmd.Flags().StringVar(&outputFormat, "output", "yaml", "Output format: yaml or json")
 	cmd.Flags().StringVar(&platformFlag, "platform", "",
-		"Simulate platform for override matching (aws, gcp, azure, oci, onprem, togetherai, mistral, forge)")
+		"Simulate platform for override matching ("+platform.NamesList()+")")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false,
 		"Connect to cluster, discover real nodes, and render with actual platform/GPU detection")
 	configFlags.AddFlags(cmd.Flags())
@@ -125,17 +126,8 @@ Use --dry-run to discover real nodes from the cluster and apply overrides based 
 }
 
 func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
-	if platformFlag != "" {
-		valid := map[string]bool{
-			"aws": true, "gcp": true, "azure": true, "oci": true,
-			"onprem": true, "togetherai": true, "mistral": true,
-			"forge": true,
-		}
-		if !valid[platformFlag] {
-			return fmt.Errorf(
-				"invalid --platform %q: must be one of aws, gcp, azure, oci, onprem, togetherai, mistral, forge",
-				platformFlag)
-		}
+	if err := platform.ValidateFlag(platformFlag); err != nil {
+		return err
 	}
 
 	run, err := readWorkloadRun(file)
@@ -182,6 +174,13 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 		return err
 	}
 
+	// Bake platform mpirun args into the spec before the job template is
+	// built, exactly as the controller does at reconcile time.
+	if platformFlag != "" {
+		applyPlatformMPIArgs(run, platformFlag, gpuArch,
+			gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
+	}
+
 	// Build WorkflowSpec.
 	workflowSpec := BuildWorkflowSpec(run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
 
@@ -213,14 +212,14 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 				"cre.nvidia.com/workload-run":  run.Name,
 			},
 			Annotations: map[string]string{
-				"ncrectl.nvidia.com/detected-gpu-architecture": gpuArch,
+				"nvcrectl.nvidia.com/detected-gpu-architecture": gpuArch,
 			},
 		},
 		Spec: *workflowSpec,
 	}
 
 	if platformFlag != "" {
-		workflow.Annotations["ncrectl.nvidia.com/detected-platform"] = platformFlag
+		workflow.Annotations["nvcrectl.nvidia.com/detected-platform"] = platformFlag
 	}
 
 	switch outputFormat {
@@ -373,6 +372,33 @@ func BuildWorkflowSpec(
 	return workflowSpec
 }
 
+// applyPlatformMPIArgs bakes platform-override mpirun args into the run spec
+// before the job template is built, mirroring applyWRPreTemplateOverrides in
+// the controller reconcile path. Without this the render preview would omit
+// the platform transport pins (e.g. the AWS GB300 RoCE --mca args) that the
+// controller prepends on a live cluster. No-op for non-MPI frameworks.
+func applyPlatformMPIArgs(
+	run *crev1alpha1.WorkloadRun, platformName, gpuArch string,
+	gpusPerNode, mlnxPerNode int32, enableMNNVL bool, frameworkType string,
+) {
+	if run.Spec.Framework.MPI == nil {
+		return
+	}
+	wrOverrides := platform.BuildOverrides(platform.OverrideConfig{
+		EntryName:     run.Name,
+		NodesPerJob:   nodesPerJobForScale(run.Spec.Orchestration, run.Spec.NumNodes),
+		GpusPerNode:   gpusPerNode,
+		MlnxPerNode:   mlnxPerNode,
+		EnableMNNVL:   enableMNNVL,
+		FrameworkType: frameworkType,
+	})
+	octx := controller.OverrideContext{
+		Platform:        platformName,
+		GPUArchitecture: gpuArch,
+	}
+	controller.ApplyWRPreTemplateOverrides(&run.Spec, wrOverrides, octx)
+}
+
 // validateExecFramework returns an error when the exec framework is implied
 // (neither Torch nor MPI is set) but spec.Framework.Exec is nil, which would
 // cause a nil-pointer dereference inside buildCLIJobTemplate.
@@ -442,6 +468,13 @@ func buildCLIJobTemplate(
 	}
 
 	workload.SetImagePullSecrets(trainJobSpec, spec.ImagePullSecrets)
+
+	// MPI runs have a launcher replicated job that must be pinned and
+	// tolerated like the workers — mirrors buildJobTemplate in the
+	// controller reconcile path (issue #175 UAT).
+	if frameworkType == controller.FrameworkMPI {
+		workload.EnsureLauncherTarget(trainJobSpec)
+	}
 
 	jobSpec := crev1alpha1.JobSpec{
 		Workload: crev1alpha1.WorkloadSpec{
@@ -531,6 +564,11 @@ func runWorkloadRunRenderDryRun(
 		return err
 	}
 
+	// Bake platform mpirun args into the spec before the job template is
+	// built, exactly as the controller does at reconcile time.
+	applyPlatformMPIArgs(run, detectedPlatform, gpuArch,
+		gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
+
 	workflowSpec := BuildWorkflowSpec(
 		run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
 
@@ -558,8 +596,8 @@ func runWorkloadRunRenderDryRun(
 				"cre.nvidia.com/workload-run":  run.Name,
 			},
 			Annotations: map[string]string{
-				"ncrectl.nvidia.com/detected-gpu-architecture": gpuArch,
-				"ncrectl.nvidia.com/detected-platform":         detectedPlatform,
+				"nvcrectl.nvidia.com/detected-gpu-architecture": gpuArch,
+				"nvcrectl.nvidia.com/detected-platform":         detectedPlatform,
 			},
 		},
 		Spec: *workflowSpec,
@@ -821,13 +859,22 @@ func runWorkloadRunExecute(
 }
 
 // watchWorkloadRun polls until the WorkloadRun reaches a terminal state.
+// It prints a "[watch]" line on every phase change and a periodic heartbeat
+// (same format and interval as the certification watch) so long runs show
+// progress instead of going silent until the terminal condition.
 func watchWorkloadRun(
 	ctx context.Context, c client.WithWatch,
-	name, namespace string, timeout time.Duration, _ io.Writer,
+	name, namespace string, timeout time.Duration, out io.Writer,
 ) (*crev1alpha1.WorkloadRun, error) {
 	deadline := time.After(timeout)
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
+
+	start := time.Now()
+	lastPhase := ""
+	var current crev1alpha1.WorkloadRun
 
 	for {
 		select {
@@ -835,21 +882,62 @@ func watchWorkloadRun(
 			return nil, fmt.Errorf("interrupted")
 		case <-deadline:
 			return nil, fmt.Errorf("timeout waiting for WorkloadRun %s", name)
+		case <-heartbeat.C:
+			elapsed := time.Since(start).Truncate(time.Second)
+			_, _ = fmt.Fprintln(out, workloadRunWatchLine(&current, name, elapsed))
 		case <-ticker.C:
-			var current crev1alpha1.WorkloadRun
 			key := client.ObjectKey{Name: name, Namespace: namespace}
 			if err := c.Get(ctx, key, &current); err != nil {
 				continue
 			}
+			elapsed := time.Since(start).Truncate(time.Second)
 			if controller.CondIsTrue(current.Status.Conditions, crev1alpha1.WorkloadRunSucceeded) {
+				_, _ = fmt.Fprintf(out, "[watch] WorkloadRun succeeded. (%s)\n", elapsed)
 				return &current, nil
 			}
 			if controller.CondIsTrue(current.Status.Conditions, crev1alpha1.WorkloadRunFailed) {
+				_, _ = fmt.Fprintf(out, "[watch] WorkloadRun failed. (%s)\n", elapsed)
 				msg := controller.CondMessage(current.Status.Conditions, crev1alpha1.WorkloadRunFailed)
 				return &current, fmt.Errorf("WorkloadRun failed: %s", msg)
 			}
+			if phase := workloadRunPhase(&current); phase != lastPhase {
+				_, _ = fmt.Fprintln(out, workloadRunWatchLine(&current, name, elapsed))
+				lastPhase = phase
+			}
 		}
 	}
+}
+
+// workloadRunPhase returns which execution condition (InProgress, Succeeded,
+// Failed) is currently true, or "" when the controller has not set one yet.
+func workloadRunPhase(run *crev1alpha1.WorkloadRun) string {
+	for _, t := range []string{
+		crev1alpha1.WorkloadRunInProgress,
+		crev1alpha1.WorkloadRunSucceeded,
+		crev1alpha1.WorkloadRunFailed,
+	} {
+		if controller.CondIsTrue(run.Status.Conditions, t) {
+			return t
+		}
+	}
+	return ""
+}
+
+// workloadRunWatchLine formats one "[watch]" progress line, matching the
+// certification watch format. It shows the current phase, its condition
+// message (which carries the underlying Workflow state, e.g. "Workflow
+// <name> created"), and elapsed time. Before the controller sets any
+// execution condition it reports that status is still pending.
+func workloadRunWatchLine(run *crev1alpha1.WorkloadRun, name string, elapsed time.Duration) string {
+	phase := workloadRunPhase(run)
+	if phase == "" {
+		return fmt.Sprintf("[watch] Waiting for status... (%s)", elapsed)
+	}
+	line := fmt.Sprintf("[watch] %s: %s (%s)", name, phase, elapsed)
+	if msg := controller.CondMessage(run.Status.Conditions, phase); msg != "" {
+		line += " — " + msg
+	}
+	return line
 }
 
 // --- helpers ---
@@ -890,17 +978,24 @@ func loadSyntheticNodes(platformName, gpuArch string) []corev1.Node {
 	if platformName == "forge" {
 		labels["kubernetes.io/hostname"] = "synthetic-forge-node"
 	}
-	return []corev1.Node{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   "synthetic-node-0",
-				Labels: labels,
-			},
-			Spec: corev1.NodeSpec{
-				ProviderID: render.SyntheticProviderID(platformName),
-			},
+	node := corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "synthetic-node-0",
+			Labels: labels,
+		},
+		Spec: corev1.NodeSpec{
+			ProviderID: render.SyntheticProviderID(platformName),
 		},
 	}
+	// nscale shares the openstack:// providerID prefix; detection disambiguates
+	// via the rdmashare allocatable (see pkg/render/nodes.go), so the synthetic
+	// node must carry it for node-based detection to resolve to nscale.
+	if platformName == "nscale" {
+		node.Status.Allocatable = corev1.ResourceList{
+			"nscale.com/rdmashare": resource.MustParse("8"),
+		}
+	}
+	return []corev1.Node{node}
 }
 
 // syntheticProviderID is in run_common.go.
@@ -917,7 +1012,7 @@ func newWorkloadRunReportCommand() *cobra.Command {
 		Use:   "report <workloadrun-name>",
 		Short: "Generate a report for a WorkloadRun",
 		Long: `Connects to the cluster, fetches the named WorkloadRun and its Workflow,
-and generates the same report that 'ncrectl workloadrun run --wait' prints.`,
+and generates the same report that 'nvcrectl workloadrun run --wait' prints.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runWorkloadRunReport(args[0], configFlags, resultsFile, output)
@@ -1132,7 +1227,7 @@ func buildNodeResults(wf *crev1alpha1.Workflow, failedNodes []crev1alpha1.Failed
 
 // --- status ---
 
-// WorkloadRunStatusOutput is the JSON output for ncrectl workloadrun status.
+// WorkloadRunStatusOutput is the JSON output for nvcrectl workloadrun status.
 type WorkloadRunStatusOutput struct {
 	Name        string   `json:"name"`
 	Namespace   string   `json:"namespace"`

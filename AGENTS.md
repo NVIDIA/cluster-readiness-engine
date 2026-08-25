@@ -56,7 +56,7 @@ make test-uat-run                # Run as needed
 Run a single UAT test:
 ```bash
 kind get kubeconfig --name cre-test-uat > /tmp/kind-uat.kubeconfig
-KUBECONFIG=/tmp/kind-uat.kubeconfig NCRECTL=bin/ncrectl \
+KUBECONFIG=/tmp/kind-uat.kubeconfig NVCRECTL=bin/nvcrectl \
   go test -tags=uat ./test/uat/ -v -timeout 900s -count=1 -run TestAWSGB200NCCL
 ```
 
@@ -112,7 +112,7 @@ Unit tests in most packages use `testutil.TestCaseParser` (in `pkg/testutil/`) w
 ## Critical Pitfalls
 
 - **After modifying `*_types.go`**: Must run `make manifests generate` before anything else compiles (stale deepcopy). `make manifests` writes CRDs directly to `helm/cluster-readiness-engine/crds/` and RBAC to `helm/cluster-readiness-engine/templates/`.
-- **Blank imports required**: `pkg/catalog` must be blank-imported in `cmd/ncrectl/main.go` and test suites to trigger `init()` registration.
+- **Blank imports required**: `pkg/catalog` must be blank-imported in `cmd/nvcrectl/main.go` and test suites to trigger `init()` registration.
 - **envtest has no GC controller**: Cascade deletion via OwnerReference won't work in tests. Controllers must explicitly delete child resources in `handleDeletion()`.
 - **`runtime.RawExtension` with `json:",inline"`**: Loses sibling fields during marshal/unmarshal. Requires custom `MarshalJSON`/`UnmarshalJSON` on the parent struct (see `api/v1alpha1/dependency_json.go`).
 - **Test timeout is 10s**: If requeue interval > 10s, status update tests will time out.
@@ -180,14 +180,14 @@ If you are uncertain about:
 
 Never assume. A question costs seconds; a wrong implementation costs a rewrite.
 
-## Testing Catalog Config Changes with ncrectl
+## Testing Catalog Config Changes with nvcrectl
 
-When modifying catalog entries (`pkg/catalog/entries/`), use `ncrectl certification render` to verify the rendered Workflow manifests are correct before committing.
+When modifying catalog entries (`pkg/catalog/entries/`), use `nvcrectl certification render` to verify the rendered Workflow manifests are correct before committing.
 
-### Build ncrectl
+### Build nvcrectl
 
 ```bash
-go build -ldflags "-s -w" -o bin/ncrectl ./cmd/ncrectl/
+go build -ldflags "-s -w" -o bin/nvcrectl ./cmd/nvcrectl/
 ```
 
 ### Create Test Certification YAMLs
@@ -207,7 +207,7 @@ spec:
   nodesPerJob: 8
   enableMNNVL: true   # true for GB200/GB300 (multi-node NVLink), false for H100 and others
   imagePullSecrets:
-    - name: ncrectl-pull-secret
+    - name: nvcrectl-pull-secret
   categories:
     - domain: training
       variant: nemotron5-8b
@@ -219,16 +219,16 @@ spec:
 
 ```bash
 # Render only (works without a cluster, or when cluster arch doesn't match the cert)
-./bin/ncrectl certification render --platform aws /tmp/cert-gb300.yaml
+./bin/nvcrectl certification render --platform aws /tmp/cert-gb300.yaml
 
 # Render + dry-run (validates resources against the live cluster API server;
 # kubeconfig context MUST point to a cluster matching the cert's target architecture)
-./bin/ncrectl certification render --platform aws /tmp/cert-gb300.yaml --dry-run
+./bin/nvcrectl certification render --platform aws /tmp/cert-gb300.yaml --dry-run
 ```
 
 ### What to Verify in Output
 
-1. **Override tracking** — Check `ncrectl.nvidia.com/applied-overrides` annotation to confirm the right overrides matched, and `detected-gpu-architecture`/`detected-platform` are correct.
+1. **Override tracking** — Check `nvcrectl.nvidia.com/applied-overrides` annotation to confirm the right overrides matched, and `detected-gpu-architecture`/`detected-platform` are correct.
 
 2. **Architecture-specific env vars** — `FI_EFA_USE_DEVICE_RDMA` should ONLY appear for GB200 and H100 on AWS (EFA interconnect), NOT for GB300 (RoCE).
 
@@ -243,15 +243,15 @@ spec:
 
    ```bash
    # Should return NOTHING for GB300 (RoCE)
-   ./bin/ncrectl certification render --platform aws /tmp/cert-gb300.yaml 2>&1 \
+   ./bin/nvcrectl certification render --platform aws /tmp/cert-gb300.yaml 2>&1 \
      | grep -E "FI_EFA|hugepages|vpc.amazonaws.com/efa"
 
    # Should show all three for GB200 (EFA)
-   ./bin/ncrectl certification render --platform aws /tmp/cert-gb200.yaml 2>&1 \
+   ./bin/nvcrectl certification render --platform aws /tmp/cert-gb200.yaml 2>&1 \
      | grep -E "FI_EFA|hugepages|vpc.amazonaws.com/efa"
 
    # And GB300 should show RoCE instead
-   ./bin/ncrectl certification render --platform aws /tmp/cert-gb300.yaml 2>&1 | grep -c roce
+   ./bin/nvcrectl certification render --platform aws /tmp/cert-gb300.yaml 2>&1 | grep -c roce
    ```
 
    Rendered counts for `communication/nccl-all-reduce` on AWS, for reference:

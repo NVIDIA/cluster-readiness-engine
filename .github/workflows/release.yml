@@ -45,8 +45,23 @@ jobs:
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
 
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "value=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # VERSION is passed explicitly instead of trusting `git describe` on
+      # the runner's checkout: a shallow or tag-less checkout makes
+      # `git describe --tags --always` fall back to a bare commit SHA or a
+      # `-N-gSHA` suffix, which would become the chart version (issue #195).
+      # helm-push depends on check-clean-version, which rejects anything
+      # that is not a clean vX.Y.Z[-prerelease] tag.
       - name: Package and push Helm chart
-        run: make helm-push
+        run: make helm-push VERSION="${{ steps.tag.outputs.value }}"
         env:
           # Derive the OCI registry from the repository so a future org
           # transfer cannot leave this workflow pushing to a stale path.
@@ -67,14 +82,46 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Cross-compile ncrectl
-        run: make build-ncrectl-cross
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "value=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Stamp the binaries with the tag explicitly instead of trusting
+      # `git describe` on the runner's checkout: a shallow or tag-less
+      # checkout makes `git describe --tags --always` fall back to a bare
+      # commit SHA or a `-N-gSHA` suffix, and that string would ship inside
+      # the released binary (issue #195). check-clean-version rejects
+      # anything that is not a clean vX.Y.Z[-prerelease] tag, so a malformed
+      # workflow_dispatch input fails here instead of mislabeling binaries.
+      - name: Cross-compile nvcrectl
+        run: |
+          make check-clean-version VERSION="${{ steps.tag.outputs.value }}"
+          make build-nvcrectl-cross VERSION="${{ steps.tag.outputs.value }}"
+
+      # The runner is linux/amd64, so that binary runs natively. Require the
+      # self-reported version to equal the tag exactly — a `-N-gSHA`/`-dirty`
+      # suffix or a broken ldflags -> main.version plumbing fails the release
+      # here, before any artifact is published (issue #195).
+      - name: Verify stamped version matches the tag
+        run: |
+          tag="${{ steps.tag.outputs.value }}"
+          got="$(./bin/nvcrectl-linux-amd64 --version | awk '{print $NF}')"
+          echo "tag=${tag} binary-reported=${got}"
+          if [[ "${got}" != "${tag}" ]]; then
+            echo "ERROR: binary reports version ${got}, expected ${tag}" >&2
+            exit 1
+          fi
 
       - name: Upload CLI binaries
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ncrectl-binaries
-          path: bin/ncrectl-*
+          name: nvcrectl-binaries
+          path: bin/nvcrectl-*
           retention-days: 7
 
   create-github-release:
@@ -95,7 +142,7 @@ jobs:
       - name: Download CLI binaries
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ncrectl-binaries
+          name: nvcrectl-binaries
           path: dist/
 
       - name: Resolve tag
@@ -111,7 +158,7 @@ jobs:
         run: |
           cp installer dist/
           cd dist
-          sha256sum installer ncrectl-* > checksums.txt
+          sha256sum installer nvcrectl-* > checksums.txt
           cat checksums.txt
 
       # Gate. This runs after the artifacts exist and before the release is
@@ -153,18 +200,26 @@ jobs:
             [README](https://github.com/${{ github.repository }}/blob/${{ steps.tag.outputs.value }}/README.md)
             for the full feature list.
 
-            ## Install ncrectl
+            ## Install nvcrectl
+
+            While this repository is internal, GitHub serves release assets only through
+            authenticated API downloads — plain `curl` against `releases/download/...`
+            returns a 404 "Not Found" page instead of the script, even with a token.
+            Fetch the installer with the gh CLI (authenticate with `gh auth login`):
 
             ```bash
-            # Requires gh CLI authenticated, or GITHUB_TOKEN set.
-            curl -sSL https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.value }}/installer | bash -s -- -v ${{ steps.tag.outputs.value }}
+            gh release download ${{ steps.tag.outputs.value }} \
+              --repo ${{ github.repository }} \
+              --pattern installer --output - | bash -s -- -v ${{ steps.tag.outputs.value }}
             ```
 
-            The version is named explicitly because `releases/latest` resolves only to
-            the newest **stable** release, and every release so far is a pre-release.
-            Once `v0.1.0` is tagged, this shorter form installs the newest stable one:
+            Once the repository is public, the plain curl form works. The version is
+            named explicitly because `releases/latest` resolves only to the newest
+            **stable** release, and every release so far is a pre-release. Once `v0.1.0`
+            is tagged, the shorter form installs the newest stable one:
 
             ```bash
+            curl -sSL https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.value }}/installer | bash -s -- -v ${{ steps.tag.outputs.value }}
             curl -sSL https://github.com/${{ github.repository }}/releases/latest/download/installer | bash
             ```
 
@@ -181,16 +236,16 @@ jobs:
             The controller image for this release is
             `ghcr.io/${{ github.repository }}/manager:${{ steps.tag.outputs.value }}`.
 
-            ## ncrectl CLI
+            ## nvcrectl CLI
 
             Download the binary for your platform from the assets below and place it on your `$PATH`.
 
             | Platform | Binary |
             |---|---|
-            | Linux amd64 | `ncrectl-linux-amd64` |
-            | Linux arm64 | `ncrectl-linux-arm64` |
-            | macOS amd64 | `ncrectl-darwin-amd64` |
-            | macOS arm64 (Apple Silicon) | `ncrectl-darwin-arm64` |
+            | Linux amd64 | `nvcrectl-linux-amd64` |
+            | Linux arm64 | `nvcrectl-linux-arm64` |
+            | macOS amd64 | `nvcrectl-darwin-amd64` |
+            | macOS arm64 (Apple Silicon) | `nvcrectl-darwin-arm64` |
 
             ## Verify your download
 
@@ -213,10 +268,38 @@ jobs:
             - Report bugs with the [issue templates](https://github.com/${{ github.repository }}/issues/new/choose).
             - Report security issues per [SECURITY.md](https://github.com/${{ github.repository }}/blob/main/SECURITY.md), never through GitHub issues.
           files: |
-            dist/ncrectl-*
+            dist/nvcrectl-*
             dist/installer
             dist/checksums.txt
             THIRD_PARTY_NOTICES.md
           draft: false
           prerelease: ${{ contains(steps.tag.outputs.value, '-') }}
           generate_release_notes: true
+
+      # Post-publish gate (issues #194, #195): download the just-published
+      # assets over the same authenticated channel the release notes tell
+      # users to use, and verify them. While the repository is internal, the
+      # unauthenticated browser URL (releases/download/<tag>/installer)
+      # serves a 404 "Not Found" page instead of the script — that page is
+      # what v0.1.0-rc.7 users piped into bash (issue #194) — so this check
+      # asserts the published asset really is a runnable shell script and the
+      # published binary really reports the released tag.
+      - name: Verify published release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.tag.outputs.value }}"
+          rm -rf verify-release && mkdir verify-release
+          gh release download "${tag}" --repo "${GITHUB_REPOSITORY}" \
+            --pattern installer --pattern checksums.txt --pattern nvcrectl-linux-amd64 \
+            --dir verify-release
+          # The installer must be a shell script, not an HTML/text error page.
+          [[ "$(head -c 2 verify-release/installer)" == '#!' ]]
+          bash -n verify-release/installer
+          # Every downloaded asset must match its published checksum.
+          (cd verify-release && sha256sum --check --ignore-missing checksums.txt)
+          # The published binary must self-report exactly the released tag.
+          chmod +x verify-release/nvcrectl-linux-amd64
+          got="$(./verify-release/nvcrectl-linux-amd64 --version | awk '{print $NF}')"
+          echo "tag=${tag} binary-reported=${got}"
+          [[ "${got}" == "${tag}" ]]

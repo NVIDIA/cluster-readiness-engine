@@ -71,7 +71,7 @@ func NewCommand(version string) *cobra.Command {
 }
 
 // ---------------------------------------------------------------------------
-// ncrectl setup init
+// nvcrectl setup init
 // ---------------------------------------------------------------------------
 
 func newInitCommand(version string) *cobra.Command {
@@ -95,7 +95,12 @@ The Helm chart is pulled from GHCR at the CLI version. Dev builds require --vers
 Pass --image-pull-secret to authenticate against a private GHCR registry.
 
 Use --skip-phases=deps to skip Kubeflow Trainer installation.
-Use --auto-approve to skip the confirmation prompt (for CI/automation).`,
+Use --auto-approve to skip the confirmation prompt (for CI/automation).
+
+Re-running init is safe: a Kubeflow Trainer release already deployed at the
+pinned version is skipped, and a release wedged by webhook Secret
+field-ownership conflicts (issue #180) is recovered automatically when no
+Trainer workloads exist, or the manual procedure is printed.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return RunInit(version, image, imagePullSecret, skipPhases, autoApprove,
@@ -177,6 +182,9 @@ func RunInit(
 		kubeconfig:  kubeconfigPath,
 		kubeContext: kubeContext,
 		skip:        skip,
+		in:          in,
+		autoApprove: autoApprove,
+		trainer:     newTrainerHelm(kubeconfigPath, kubeContext),
 		out:         out,
 	}
 
@@ -187,7 +195,7 @@ func RunInit(
 	if err != nil {
 		return fmt.Errorf("[helm] %w", err)
 	}
-	if err := installHelmRelease(helmInstallParams{
+	if creOutput, err := installHelmRelease(helmInstallParams{
 		version:         version,
 		kubeconfig:      kubeconfigPath,
 		kubeContext:     kubeContext,
@@ -197,6 +205,17 @@ func RunInit(
 		pullSecretName:  pullSecret,
 		out:             out,
 	}); err != nil {
+		// Same attempt-then-classify wrapper as the [deps] phase for
+		// symmetric error reporting, but the CRE chart renders no
+		// per-render certificate material, so there is no recovery arm
+		// (ADR-073 decision 4).
+		if classifyHelmInstallFailure(creOutput, creNamespace) == failureClassSSAConflict {
+			_, _ = fmt.Fprintf(out,
+				"[helm] The failure matches the Secret field-ownership conflict signature. "+
+					"Automatic recovery covers only the %s release; inspect the %s release with "+
+					"'helm status %s --namespace %s' and resolve the conflict manually.\n",
+				trainerReleaseName, helmReleaseName, helmReleaseName, creNamespace)
+		}
 		return fmt.Errorf("[helm] %w", err)
 	}
 
@@ -215,19 +234,323 @@ type setupPhaseParams struct {
 	kubeconfig  string
 	kubeContext string
 	skip        map[string]bool
-	out         io.Writer
+	// in is the confirmation input stream; the [deps] recovery prompt reads
+	// from it when autoApprove is false.
+	in          io.Reader
+	autoApprove bool
+	// trainer bundles the Helm subprocess operations the [deps] phase needs.
+	trainer trainerHelm
+	out     io.Writer
 }
 
+// trainerHelm bundles the Helm subprocess operations the [deps] phase uses,
+// so tests can substitute stubs — the same substitution shape status_test.go
+// uses for helmStateFunc. Production code uses newTrainerHelm.
+type trainerHelm struct {
+	// state returns the trainer release state and installed chart version.
+	state trainerStateFunc
+	// install runs helm upgrade --install and returns the captured transcript.
+	install func(out io.Writer) (string, error)
+	// uninstall removes the trainer release.
+	uninstall func(out io.Writer) error
+}
+
+// newTrainerHelm returns the CLI-backed trainerHelm implementation.
+func newTrainerHelm(kubeconfigPath, kubeContext string) trainerHelm {
+	return trainerHelm{
+		state: newTrainerStateQuery(kubeconfigPath, kubeContext),
+		install: func(out io.Writer) (string, error) {
+			return installTrainerHelmRelease(kubeconfigPath, kubeContext, out)
+		},
+		uninstall: func(out io.Writer) error {
+			return uninstallTrainerHelmRelease(kubeconfigPath, kubeContext, out)
+		},
+	}
+}
+
+// trainerAction is the [deps] phase action planTrainerPhase selects.
+type trainerAction int
+
+const (
+	// trainerActionInstall runs helm upgrade --install as today; a failure
+	// is reported raw with no recovery arm (fresh installs, unknown state).
+	trainerActionInstall trainerAction = iota
+	// trainerActionSkip prints "already deployed" and does nothing: the
+	// release is deployed at the pinned chart version, and never
+	// re-rendering the chart means never re-rolling the webhook certs.
+	trainerActionSkip
+	// trainerActionAttemptRecover runs the install once and classifies a
+	// failure per ADR-073 decision 2; the conflict class arms the gated
+	// automatic recovery.
+	trainerActionAttemptRecover
+)
+
+// planTrainerPhase maps the observed trainer release state to a [deps]
+// action (ADR-073 decision 4). chartVersion is compared without the leading
+// "v", the way Helm stores chart versions.
+func planTrainerPhase(state, chartVersion string) trainerAction {
+	switch state {
+	case helmStateDeployed:
+		if chartVersion == strings.TrimPrefix(kubeflowTrainerVersion, "v") {
+			return trainerActionSkip
+		}
+		return trainerActionAttemptRecover
+	case helmStateNotInstalled, helmStateUninstalled, helmStateUnknown:
+		return trainerActionInstall
+	default: // failed, pending-install, pending-upgrade, pending-rollback, ...
+		return trainerActionAttemptRecover
+	}
+}
+
+// helmStateFailedOrPending reports whether a release state is failed or any
+// pending-* state — the release-state half of the two-signal conflict
+// classification (ADR-073 decision 2).
+func helmStateFailedOrPending(state string) bool {
+	return state == "failed" || strings.HasPrefix(state, "pending-")
+}
+
+// installDepsPhase installs Kubeflow Trainer, converging from any partial
+// state (ADR-073): skip when already deployed at the pinned version,
+// otherwise attempt the install once and classify any failure. A failure
+// carrying the issue #180 field-ownership conflict signature arms the gated
+// automatic recovery; anything else fails with the raw helm output.
 func installDepsPhase(sp setupPhaseParams) error {
 	if sp.skip[phaseDeps] {
 		_, _ = fmt.Fprintln(sp.out, "[deps] Skipped.")
 		return nil
 	}
-	_, _ = fmt.Fprintf(sp.out, "[deps] Installing Kubeflow Trainer %s...\n", kubeflowTrainerVersion)
-	if err := installTrainerHelmRelease(sp.kubeconfig, sp.kubeContext, sp.out); err != nil {
-		return fmt.Errorf("[deps] %w", err)
+
+	state, chartVersion := sp.trainer.state()
+	switch planTrainerPhase(state, chartVersion) {
+	case trainerActionSkip:
+		_, _ = fmt.Fprintf(sp.out,
+			"[deps] Kubeflow Trainer release %q already deployed at chart version %s; skipping.\n",
+			trainerReleaseName, chartVersion)
+		return nil
+
+	case trainerActionInstall:
+		_, _ = fmt.Fprintf(sp.out, "[deps] Installing Kubeflow Trainer %s...\n", kubeflowTrainerVersion)
+		if _, err := sp.trainer.install(sp.out); err != nil {
+			return fmt.Errorf("[deps] %w", err)
+		}
+		return nil
+	}
+
+	// trainerActionAttemptRecover: the release exists but is not cleanly
+	// deployed at the pinned version. Attempt once, then classify.
+	_, _ = fmt.Fprintf(sp.out,
+		"[deps] Kubeflow Trainer release is in state %q; attempting install of %s...\n",
+		state, kubeflowTrainerVersion)
+	output, err := sp.trainer.install(sp.out)
+	if err == nil {
+		return nil
+	}
+	return handleTrainerInstallFailure(sp, output, err)
+}
+
+// handleTrainerInstallFailure classifies a failed trainer install attempt
+// and either performs the gated automatic recovery or fails fast with the
+// manual procedure (ADR-073 decisions 2, 3, and 5).
+func handleTrainerInstallFailure(sp setupPhaseParams, output string, installErr error) error {
+	installErr = fmt.Errorf("[deps] %w", installErr)
+
+	if classifyTrainerInstallFailure(output) != failureClassSSAConflict {
+		// Not this failure class (e.g. a registry timeout): fail with the
+		// raw helm output, which the install attempt already printed.
+		return installErr
+	}
+
+	// Second signal: the release state must agree before anything
+	// destructive happens. A stray "conflict" substring in an unrelated
+	// error must not trigger recovery.
+	postState, _ := sp.trainer.state()
+	if !helmStateFailedOrPending(postState) {
+		_, _ = fmt.Fprintf(sp.out,
+			"[deps] The install output matches the webhook Secret field-ownership conflict signature, "+
+				"but the release state is %q — not recovering automatically.\n", postState)
+		printManualTrainerRecovery(sp.out)
+		return installErr
+	}
+
+	_, _ = fmt.Fprintf(sp.out,
+		"[deps] Install failed with webhook Secret field-ownership conflicts and the release is %s (issue #180).\n",
+		postState)
+	printSecretOwnershipDiagnostics(sp.ctx, sp.c, sp.out)
+
+	safe, blockers := trainerRecoveryGate(sp.ctx, sp.c)
+	if !safe {
+		_, _ = fmt.Fprintln(sp.out, "[deps] Automatic recovery refused:")
+		for _, b := range blockers {
+			_, _ = fmt.Fprintf(sp.out, "  - %s\n", b)
+		}
+		printManualTrainerRecovery(sp.out)
+		return installErr
+	}
+
+	if !sp.autoApprove {
+		printTrainerRecoveryPlan(sp.out)
+		_, _ = fmt.Fprintf(sp.out,
+			"\nDo you want to proceed with automatic recovery? Only 'yes' will be accepted to confirm.\n")
+		if !promptForConfirmation(sp.in, sp.out) {
+			_, _ = fmt.Fprintln(sp.out, "\n[deps] Recovery declined.")
+			printManualTrainerRecovery(sp.out)
+			return installErr
+		}
+		_, _ = fmt.Fprintln(sp.out)
+	}
+
+	// Exactly one recovery attempt per run; a second failure falls through
+	// to the manual procedure instead of looping (ADR-073 decision 5).
+	if err := recoverTrainerRelease(sp); err != nil {
+		printManualTrainerRecovery(sp.out)
+		return fmt.Errorf("[deps] automatic recovery failed: %w", err)
 	}
 	return nil
+}
+
+// trainerRecoveryCRDs are the four CRDs the recovery deletes — the same set
+// setup reset removes via deleteCRDsByGroup.
+var trainerRecoveryCRDs = []string{
+	"trainjobs." + trainerAPIGroup,
+	"trainingruntimes." + trainerAPIGroup,
+	"clustertrainingruntimes." + trainerAPIGroup,
+	"jobsets." + jobsetAPIGroup,
+}
+
+// trainerRecoveryGate decides whether the automatic recovery is provably
+// safe (ADR-073 decision 5). It refuses when any TrainJob or JobSet instance
+// exists, or when a TrainingRuntime/ClusterTrainingRuntime exists that is
+// not Helm-owned, because deleting the CRDs would destroy them. Any listing
+// failure blocks recovery too: safety must be proven, not assumed.
+func trainerRecoveryGate(ctx context.Context, c client.Client) (bool, []string) {
+	var blockers []string
+	for _, group := range []string{trainerAPIGroup, jobsetAPIGroup} {
+		resources, err := discoverResourcesByGroup(ctx, c, group)
+		if err != nil {
+			blockers = append(blockers, fmt.Sprintf("cannot list CRDs in group %s: %v", group, err))
+			continue
+		}
+		for _, res := range resources {
+			items, err := listCRECRs(ctx, c, res)
+			if err != nil {
+				blockers = append(blockers, fmt.Sprintf("cannot list %s instances: %v", res.kind, err))
+				continue
+			}
+			for _, item := range items {
+				name := item.GetName()
+				if ns := item.GetNamespace(); ns != "" {
+					name = ns + "/" + name
+				}
+				switch res.kind {
+				case "TrainingRuntime", "ClusterTrainingRuntime":
+					// The chart's own runtimes are Helm-owned and are
+					// reinstalled with the fresh chart install.
+					if item.GetLabels()["app.kubernetes.io/managed-by"] == "Helm" {
+						continue
+					}
+					blockers = append(blockers, fmt.Sprintf(
+						"%s %s is not Helm-owned (missing app.kubernetes.io/managed-by: Helm); deleting the CRDs would destroy it",
+						res.kind, name))
+				default:
+					blockers = append(blockers, fmt.Sprintf(
+						"%s %s exists; recovery deletes its CRD", res.kind, name))
+				}
+			}
+		}
+	}
+	sort.Strings(blockers)
+	return len(blockers) == 0, blockers
+}
+
+// recoverTrainerRelease performs the field-validated recovery from issue
+// #180 exactly once: uninstall the trainer release, delete its four CRDs,
+// delete the kubeflow-system namespace, and reinstall the pinned chart. The
+// caller has already passed the safety gate and confirmed the plan.
+func recoverTrainerRelease(sp setupPhaseParams) error {
+	out := sp.out
+	_, _ = fmt.Fprintf(out, "[deps][recover] Uninstalling Helm release %q from namespace %s...\n",
+		trainerReleaseName, trainerNamespace)
+	if err := sp.trainer.uninstall(out); err != nil {
+		return fmt.Errorf("uninstall %s: %w", trainerReleaseName, err)
+	}
+
+	if err := deleteCRDsByGroup(sp.ctx, sp.c, trainerAPIGroup, "[deps][recover]", "Kubeflow Trainer", out); err != nil {
+		return err
+	}
+	if err := deleteCRDsByGroup(sp.ctx, sp.c, jobsetAPIGroup, "[deps][recover]", "JobSet", out); err != nil {
+		return err
+	}
+
+	_, _ = fmt.Fprintf(out, "[deps][recover] Deleting namespace %s...\n", trainerNamespace)
+	ns := &unstructured.Unstructured{}
+	ns.SetAPIVersion("v1")
+	ns.SetKind("Namespace")
+	ns.SetName(trainerNamespace)
+	switch err := sp.c.Delete(sp.ctx, ns); {
+	case apierrors.IsNotFound(err):
+		_, _ = fmt.Fprintf(out, "  Namespace %s already deleted.\n", trainerNamespace)
+	case err != nil:
+		return fmt.Errorf("delete namespace %s: %w", trainerNamespace, err)
+	default:
+		WaitForNamespaceDeletion(sp.ctx, sp.c, trainerNamespace, out)
+	}
+
+	_, _ = fmt.Fprintf(out, "[deps][recover] Reinstalling Kubeflow Trainer %s...\n", kubeflowTrainerVersion)
+	if _, err := sp.trainer.install(out); err != nil {
+		return fmt.Errorf("reinstall: %w", err)
+	}
+
+	_, _ = fmt.Fprintf(out,
+		"[deps][recover] Recovery complete: uninstalled release %q, deleted CRDs (%s), deleted namespace %s, reinstalled Kubeflow Trainer %s.\n",
+		trainerReleaseName, strings.Join(trainerRecoveryCRDs, ", "), trainerNamespace, kubeflowTrainerVersion)
+	return nil
+}
+
+// printTrainerRecoveryPlan prints the recovery plan for interactive
+// re-confirmation before anything is deleted (ADR-073 decision 5).
+func printTrainerRecoveryPlan(out io.Writer) {
+	_, _ = fmt.Fprintln(out, "\n  Recovery plan (issue #180):")
+	_, _ = fmt.Fprintf(out, "    1. Uninstall Helm release %q (namespace: %s)\n", trainerReleaseName, trainerNamespace)
+	_, _ = fmt.Fprintf(out, "    2. Delete CRDs: %s\n", strings.Join(trainerRecoveryCRDs, ", "))
+	_, _ = fmt.Fprintf(out, "    3. Delete namespace %s and wait for termination\n", trainerNamespace)
+	_, _ = fmt.Fprintf(out, "    4. Reinstall Kubeflow Trainer %s\n", kubeflowTrainerVersion)
+}
+
+// printManualTrainerRecovery prints the field-validated manual recovery
+// procedure from issue #180. It is printed on every fail-fast path.
+func printManualTrainerRecovery(out io.Writer) {
+	_, _ = fmt.Fprintln(out, "\n[deps] Manual recovery procedure (issue #180):")
+	_, _ = fmt.Fprintf(out, "  1. helm uninstall %s --namespace %s\n", trainerReleaseName, trainerNamespace)
+	_, _ = fmt.Fprintf(out, "  2. kubectl delete crd %s\n", strings.Join(trainerRecoveryCRDs, " "))
+	_, _ = fmt.Fprintf(out, "  3. kubectl delete namespace %s\n", trainerNamespace)
+	_, _ = fmt.Fprintf(out, "  4. Re-run 'nvcrectl setup init' to reinstall Kubeflow Trainer %s\n", kubeflowTrainerVersion)
+}
+
+// printSecretOwnershipDiagnostics prints the field managers of every Secret
+// in the trainer namespace. The managedFields probe is diagnostic output
+// only; it is never used as the detector (ADR-073 decision 2).
+func printSecretOwnershipDiagnostics(ctx context.Context, c client.Client, out io.Writer) {
+	list := &unstructured.UnstructuredList{}
+	list.SetAPIVersion("v1")
+	list.SetKind("SecretList")
+	if err := c.List(ctx, list, client.InNamespace(trainerNamespace)); err != nil {
+		_, _ = fmt.Fprintf(out, "[deps] (diagnostics unavailable: list Secrets in %s: %v)\n",
+			trainerNamespace, err)
+		return
+	}
+	_, _ = fmt.Fprintf(out, "[deps] Secret field ownership in namespace %s:\n", trainerNamespace)
+	for _, item := range list.Items {
+		managers := make([]string, 0, len(item.GetManagedFields()))
+		for _, mf := range item.GetManagedFields() {
+			managers = append(managers, mf.Manager)
+		}
+		sort.Strings(managers)
+		ownership := "(no field managers recorded)"
+		if len(managers) > 0 {
+			ownership = "managed by [" + strings.Join(managers, ", ") + "]"
+		}
+		_, _ = fmt.Fprintf(out, "  %s: %s\n", item.GetName(), ownership)
+	}
 }
 
 func setupControllerSecret(
@@ -251,7 +574,7 @@ func setupControllerSecret(
 }
 
 // ---------------------------------------------------------------------------
-// ncrectl setup reset
+// nvcrectl setup reset
 // ---------------------------------------------------------------------------
 
 func newResetCommand() *cobra.Command {
@@ -270,6 +593,9 @@ Phases:
   [cr]    CRE custom resource instances (Certifications, Workflows, etc.)
   [helm]  CRE Helm release (CRDs, controller, LogProfiles)
   [deps]  Kubeflow Trainer ` + kubeflowTrainerVersion + `
+
+Shared namespaces and the controller pull secret are intentionally retained;
+reset prints a "Retained resources" list with the cleanup command for each.
 
 Use --skip-phases=deps to keep Kubeflow Trainer.
 Use --auto-approve to skip the confirmation prompt (for CI/automation).`,
@@ -369,6 +695,7 @@ func RunReset(
 	if err := uninstallDepsPhase(sp); err != nil {
 		return err
 	}
+	printRetainedResources(ctx, c, skip, out)
 	_, _ = fmt.Fprintln(out, "\nCRE reset successfully.")
 	return nil
 }
@@ -393,6 +720,101 @@ func uninstallDepsPhase(sp setupPhaseParams) error {
 		return fmt.Errorf("[deps] %w", err)
 	}
 	return nil
+}
+
+// retainedResource is a resource reset intentionally leaves behind, paired
+// with the kubectl command that removes it.
+type retainedResource struct {
+	description string
+	cleanup     string
+	// unverified is true when the existence check failed (e.g. RBAC denied),
+	// so the resource is reported as "may remain" instead of being hidden.
+	unverified bool
+}
+
+// printRetainedResources reports what reset intentionally keeps — the shared
+// namespaces (`helm uninstall` never deletes the release namespace, and other
+// tenants may use it) and the controller pull secret created by setup init
+// outside the Helm release — together with the kubectl command to remove
+// each. Existence is checked with the client already in hand; resources
+// confirmed absent are omitted.
+func printRetainedResources(
+	ctx context.Context, c client.Client, skip map[string]bool, out io.Writer,
+) {
+	var retained []retainedResource
+	record := func(exists bool, err error, r retainedResource) {
+		if err != nil {
+			r.unverified = true
+			retained = append(retained, r)
+			return
+		}
+		if exists {
+			retained = append(retained, r)
+		}
+	}
+
+	exists, err := namespaceExists(ctx, c, creNamespace)
+	record(exists, err, retainedResource{
+		description: "Namespace " + creNamespace,
+		cleanup:     "kubectl delete namespace " + creNamespace,
+	})
+
+	exists, err = secretExists(ctx, c, creNamespace, pullSecretName)
+	record(exists, err, retainedResource{
+		description: fmt.Sprintf("Secret %s/%s", creNamespace, pullSecretName),
+		cleanup: fmt.Sprintf("kubectl delete secret %s -n %s",
+			pullSecretName, creNamespace),
+	})
+
+	// Only mention the Trainer namespace when the deps phase actually ran;
+	// with --skip-phases=deps the kubeflow-trainer release still lives there.
+	if !skip[phaseDeps] {
+		exists, err = namespaceExists(ctx, c, trainerNamespace)
+		record(exists, err, retainedResource{
+			description: "Namespace " + trainerNamespace,
+			cleanup:     "kubectl delete namespace " + trainerNamespace,
+		})
+	}
+
+	if len(retained) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintln(out, "\nRetained resources (not removed by reset):")
+	for _, r := range retained {
+		if r.unverified {
+			_, _ = fmt.Fprintf(out, "  - %s (may remain; existence check failed)\n", r.description)
+		} else {
+			_, _ = fmt.Fprintf(out, "  - %s\n", r.description)
+		}
+		_, _ = fmt.Fprintf(out, "      %s\n", r.cleanup)
+	}
+}
+
+// namespaceExists reports whether the named namespace exists. NotFound is not
+// an error; any other lookup failure is returned so the caller can report the
+// resource as unverified instead of silently dropping it.
+func namespaceExists(ctx context.Context, c client.Client, name string) (bool, error) {
+	ns := &corev1.Namespace{}
+	if err := c.Get(ctx, client.ObjectKey{Name: name}, ns); err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// secretExists reports whether the named Secret exists, with the same error
+// semantics as namespaceExists.
+func secretExists(ctx context.Context, c client.Client, namespace, name string) (bool, error) {
+	secret := &corev1.Secret{}
+	if err := c.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, secret); err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -647,6 +1069,23 @@ func anyCRECRsExist(
 // discoverCREResources returns all CRD-backed CRE resources for the
 // configured API group, including their served apiVersion and Kind metadata.
 func discoverCREResources(ctx context.Context, c client.Client) ([]creResource, error) {
+	resources, err := discoverResourcesByGroup(ctx, c, creAPIGroup)
+	if err != nil {
+		return nil, err
+	}
+	filtered := resources[:0]
+	for _, res := range resources {
+		if res.kind == "LogProfile" {
+			continue // LogProfiles are handled by the [logprofiles] phase, not [cr]
+		}
+		filtered = append(filtered, res)
+	}
+	return filtered, nil
+}
+
+// discoverResourcesByGroup returns all CRD-backed resources for an API
+// group, including their served apiVersion and Kind metadata.
+func discoverResourcesByGroup(ctx context.Context, c client.Client, apiGroup string) ([]creResource, error) {
 	list := &unstructured.UnstructuredList{}
 	list.SetAPIVersion("apiextensions.k8s.io/v1")
 	list.SetKind("CustomResourceDefinitionList")
@@ -657,15 +1096,12 @@ func discoverCREResources(ctx context.Context, c client.Client) ([]creResource, 
 	resources := make([]creResource, 0, len(list.Items))
 	for _, item := range list.Items {
 		group, found, err := unstructured.NestedString(item.Object, "spec", "group")
-		if err != nil || !found || group != creAPIGroup {
+		if err != nil || !found || group != apiGroup {
 			continue
 		}
 		kind, found, err := unstructured.NestedString(item.Object, "spec", "names", "kind")
 		if err != nil || !found || kind == "" {
 			continue
-		}
-		if kind == "LogProfile" {
-			continue // LogProfiles are handled by the [logprofiles] phase, not [cr]
 		}
 		resource, found, err := unstructured.NestedString(item.Object, "spec", "names", "plural")
 		if err != nil || !found || resource == "" {
@@ -793,7 +1229,7 @@ func EnsureNamespace(ctx context.Context, c client.Client, name string, out io.W
 			ObjectMeta: metav1.ObjectMeta{
 				Name: name,
 				Labels: map[string]string{
-					"app.kubernetes.io/managed-by": "ncrectl",
+					"app.kubernetes.io/managed-by": "nvcrectl",
 				},
 			},
 		}
@@ -824,14 +1260,14 @@ func defaultImage(version string) string {
 
 const (
 	// pullSecretName is the controller image pull secret created by setup init.
-	pullSecretName = "ncrectl-pull-secret" // #nosec G101 -- Kubernetes Secret name, not a credential
+	pullSecretName = "nvcrectl-pull-secret" // #nosec G101 -- Kubernetes Secret name, not a credential
 )
 
 // WorkloadPullSecretName returns the name of the workload image pull secret for
 // a given Certification or WorkloadRun. Deriving from the resource name prevents
 // concurrent runs in the same namespace from fighting over a single fixed name.
 func WorkloadPullSecretName(resourceName string) string {
-	return "ncrectl-pull-" + resourceName // #nosec G101 -- Kubernetes Secret name, not a credential
+	return "nvcrectl-pull-" + resourceName // #nosec G101 -- Kubernetes Secret name, not a credential
 }
 
 // CreateImagePullSecret creates a dockerconfigjson Secret for the given registry.
@@ -870,7 +1306,7 @@ func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, secr
 			Name:      secretName,
 			Namespace: namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "ncrectl",
+				"app.kubernetes.io/managed-by": "nvcrectl",
 			},
 		},
 		Type: corev1.SecretTypeDockerConfigJson,

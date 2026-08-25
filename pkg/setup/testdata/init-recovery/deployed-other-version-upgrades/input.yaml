@@ -1,0 +1,6 @@
+# The release is deployed but at an older chart version than the pinned one:
+# upgrade --install runs and succeeds (ADR-073 decision 4, row 3).
+releaseState: deployed
+chartVersion: "2.1.0"
+installResults:
+  - fail: false

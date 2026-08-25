@@ -1,0 +1,11 @@
+# The state query could not complete (helm missing, cluster unreachable):
+# upgrade --install runs as today, and a failure — even one that looks like
+# a conflict — fails with the raw helm output, because the release-state
+# signal can never agree (ADR-073 decision 4, row 5).
+releaseState: unknown
+chartVersion: ""
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: Unable to continue with update: could not update Secret "kubeflow-trainer-webhook-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "trainer-controller" using v1: .data.tls.crt, .data.tls.key
+      could not update Secret "jobset-webhook-server-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "jobset-controller" using v1: .data.tls.crt, .data.tls.key

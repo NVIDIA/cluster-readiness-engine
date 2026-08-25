@@ -82,12 +82,14 @@ vet: ## Run go vet against code, including build-tagged test suites.
 
 .PHONY: test
 test: setup-envtest ## Run unit and integration tests.
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	go test -v $$(go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v /cmd/integration)
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	go test ./cmd/integration/ -v -timeout 300s -count=1
 
 .PHONY: test-ci
 test-ci:setup-envtest ## Run tests with JUnit XML and coverage reports for CI.
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	gotestsum --junitfile unit-report.xml -- \
 		-coverprofile=cover-unit.out -covermode=atomic \
 		$$(go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v /cmd/integration)
@@ -132,13 +134,13 @@ tilt-uat-ci: setup-test-uat ## Start Tilt for UAT in CI mode (headless, exits af
 
 .PHONY: test-uat
 test-uat: tilt-uat-ci ## Run UAT tests (Tilt deploys everything, then run tests).
-	KIND_CLUSTER=$(KIND_CLUSTER_UAT) NCRECTL=$(LOCALBIN)/ncrectl \
+	KIND_CLUSTER=$(KIND_CLUSTER_UAT) NVCRECTL=$(LOCALBIN)/nvcrectl \
 		go test -tags=uat ./test/uat/ -v -timeout 1800s -count=1
 	$(MAKE) cleanup-test-uat
 
 .PHONY: test-uat-run
 test-uat-run: ## Run UAT tests against existing Tilt-managed cluster (dev iteration).
-	NCRECTL=$(LOCALBIN)/ncrectl go test -tags=uat ./test/uat/ -v -timeout 1800s -count=1
+	NVCRECTL=$(LOCALBIN)/nvcrectl go test -tags=uat ./test/uat/ -v -timeout 1800s -count=1
 
 .PHONY: cleanup-test-uat
 cleanup-test-uat: ## Delete Kind cluster for UAT tests.
@@ -181,8 +183,12 @@ verify-license-headers: addlicense ## Verify Go sources carry the SPDX license h
 	  -ignore '**/*.yaml' -ignore '**/*.yml' -ignore '**/*.json' \
 	  api pkg cmd test hack
 
+.PHONY: verify-doc-links
+verify-doc-links: ## Verify relative markdown links in README.md and docs/ resolve to files in the tree.
+	hack/verify-doc-links.sh
+
 .PHONY: verify
-verify: verify-codegen verify-mod verify-license-headers ## Run all verification checks.
+verify: verify-codegen verify-mod verify-license-headers verify-doc-links ## Run all verification checks.
 
 .PHONY: ci
 ci: verify lint build test ## Run the full CI gate locally: verify, lint, build, and test.
@@ -190,11 +196,17 @@ ci: verify lint build test ## Run the full CI gate locally: verify, lint, build,
 ##@ Build
 
 .PHONY: check-clean-version
-check-clean-version: ## Verify VERSION is a clean release tag (no -dirty, -N-gXXX, or dev).
+check-clean-version: ## Verify VERSION is a clean release tag (vX.Y.Z with optional -prerelease; no -dirty, -N-gXXX, dev, or bare SHA).
 	@case "$(VERSION)" in \
 	  dev|*-dirty|*-*-g*) \
 	    echo "ERROR: VERSION=$(VERSION) is not a clean release tag."; \
 	    echo "Commit and tag your changes first (e.g., git tag v1.14.0)."; \
+	    exit 1 ;; \
+	  v[0-9]*.[0-9]*.[0-9]*) ;; \
+	  *) \
+	    echo "ERROR: VERSION=$(VERSION) does not look like a release tag (vX.Y.Z or vX.Y.Z-rc.N)."; \
+	    echo "git describe falls back to a bare commit SHA when no tag is reachable;"; \
+	    echo "fetch tags (git fetch --tags) or pass VERSION=<tag> explicitly."; \
 	    exit 1 ;; \
 	esac
 
@@ -203,20 +215,20 @@ check-clean-version: ## Verify VERSION is a clean release tag (no -dirty, -N-gXX
 build: manifests generate fmt vet ## Build manager binary.
 	go build -ldflags "$(LDFLAGS)" -o bin/manager ./cmd/manager/
 
-.PHONY: build-ncrectl
-build-ncrectl: $(LOCALBIN) ## Build ncrectl CLI tool.
-	go build -ldflags "$(LDFLAGS)" -o bin/ncrectl ./cmd/ncrectl/
-	ln -sf ncrectl bin/kubectl-ncrectl
+.PHONY: build-nvcrectl
+build-nvcrectl: $(LOCALBIN) ## Build nvcrectl CLI tool.
+	go build -ldflags "$(LDFLAGS)" -o bin/nvcrectl ./cmd/nvcrectl/
+	ln -sf nvcrectl bin/kubectl-nvcrectl
 
-.PHONY: build-ncrectl-cross
-build-ncrectl-cross: $(LOCALBIN) ## Cross-compile ncrectl for all NCRECTL_PLATFORMS (linux, macOS).
-	@for platform in $(subst $(comma), ,$(NCRECTL_PLATFORMS)); do \
+.PHONY: build-nvcrectl-cross
+build-nvcrectl-cross: $(LOCALBIN) ## Cross-compile nvcrectl for all NVCRECTL_PLATFORMS (linux, macOS).
+	@for platform in $(subst $(comma), ,$(NVCRECTL_PLATFORMS)); do \
 		os=$${platform%/*}; \
 		arch=$${platform#*/}; \
 		ext=""; if [ "$${os}" = "windows" ]; then ext=".exe"; fi; \
-		echo "Building ncrectl for $${os}/$${arch}..."; \
+		echo "Building nvcrectl for $${os}/$${arch}..."; \
 		CGO_ENABLED=0 GOOS=$${os} GOARCH=$${arch} \
-			go build -ldflags "$(LDFLAGS)" -o bin/ncrectl-$${os}-$${arch}$${ext} ./cmd/ncrectl/ || exit 1; \
+			go build -ldflags "$(LDFLAGS)" -o bin/nvcrectl-$${os}-$${arch}$${ext} ./cmd/nvcrectl/ || exit 1; \
 	done
 
 .PHONY: run
@@ -242,8 +254,8 @@ docker-push: check-clean-version ## Push docker image with the manager.
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
 PLATFORMS ?= linux/arm64,linux/amd64
 
-# Platforms for ncrectl CLI cross-compilation (includes macOS and Windows for end-user workstations).
-NCRECTL_PLATFORMS ?= linux/amd64,linux/arm64,darwin/amd64,darwin/arm64
+# Platforms for nvcrectl CLI cross-compilation (includes macOS and Windows for end-user workstations).
+NVCRECTL_PLATFORMS ?= linux/amd64,linux/arm64,darwin/amd64,darwin/arm64
 
 # BUILDX_PUSH controls whether docker-buildx pushes the image.
 # Default pushes. Set BUILDX_PUSH= (empty) to build without pushing,

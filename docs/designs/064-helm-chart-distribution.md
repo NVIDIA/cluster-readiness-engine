@@ -2,7 +2,7 @@
 
 ## Context
 
-CRE is installed today via `ncrectl setup init`, which applies four phases in order: Kubeflow Trainer v2.1.0, CRE CRDs, the controller stack (`config/default`), and LogProfiles (`config/logprofiles`). Platform and GitOps teams need a versioned Helm install path with the same components bundled in one release artifact, published alongside the controller image on NGC.
+CRE is installed today via `nvcrectl setup init`, which applies four phases in order: Kubeflow Trainer v2.1.0, CRE CRDs, the controller stack (`config/default`), and LogProfiles (`config/logprofiles`). Platform and GitOps teams need a versioned Helm install path with the same components bundled in one release artifact, published alongside the controller image on NGC.
 
 Kubeflow Trainer publishes an official Helm chart at `oci://ghcr.io/kubeflow/charts` (chart name `kubeflow-trainer`, v2.1.0). Internal reference implementation: [NVSentinel](https://github.com/NVIDIA/NVSentinel) — Helm-native chart under `distros/kubernetes/nvsentinel/`, `controller-gen` emits CRDs into chart `crds/`, templates authored for Helm (not converted from kustomize).
 
@@ -13,11 +13,11 @@ Kubeflow Trainer publishes an official Helm chart at `oci://ghcr.io/kubeflow/cha
    - **CRDs** in `helm/cluster-readiness-engine/crds/` — synced from `make manifests` (`controller-gen` → `config/crd/bases` → copy to chart).
    - **Manager ClusterRole** in `helm/cluster-readiness-engine/templates/manager-role.yaml` — copied from `config/rbac/role.yaml` in `make manifests` (same loop as static RBAC).
    - **Static RBAC** — one file per manifest in `helm/cluster-readiness-engine/templates/`, copied from `config/rbac/` via `cp` + `sed` in `make manifests` (kustomize parity: `cre-` name prefix, Helm namespace labels).
-   - **Namespace** — no `templates/namespace.yaml`; use `helm --create-namespace`, ArgoCD `CreateNamespace`, or ncrectl `CreateNamespace=true`.
+   - **Namespace** — no `templates/namespace.yaml`; use `helm --create-namespace`, ArgoCD `CreateNamespace`, or nvcrectl `CreateNamespace=true`.
    - **Controller Deployment, metrics Service, ServiceMonitor** — flat Helm templates (`deployment.yaml`, `metrics-service.yaml`, `metrics-monitor.yaml`).
    - **LogProfiles** — one file per CR in `helm/cluster-readiness-engine/templates/`, copied from `config/logprofiles/` (always installed; not optional).
-2. **Dual emit from generators** — `make manifests` updates `config/` and syncs into `helm/cluster-readiness-engine/` (CRDs, RBAC, LogProfiles). Kustomize remains for `make deploy` and `ncrectl` until Helm is default; then deprecate.
-3. **`ncrectl` Helm path** pulls the chart from NGC OCI at install time (see ADR-065). Legacy YAML manifests remain embedded for the default `--skip-phases` YAML path.
+2. **Dual emit from generators** — `make manifests` updates `config/` and syncs into `helm/cluster-readiness-engine/` (CRDs, RBAC, LogProfiles). Kustomize remains for `make deploy` and `nvcrectl` until Helm is default; then deprecate.
+3. **`nvcrectl` Helm path** pulls the chart from NGC OCI at install time (see ADR-065). Legacy YAML manifests remain embedded for the default `--skip-phases` YAML path.
 4. **Publish** to `oci://ghcr.io/nvidia/cluster-readiness-engine` on release tags.
 
 ## Implementation
@@ -42,8 +42,8 @@ helm/cluster-readiness-engine/
 | Target | Action |
 |--------|--------|
 | `manifests` | `controller-gen` → `config/crd/bases` + `config/rbac/role.yaml`; copies CRDs, RBAC, LogProfiles into chart (`cp` + `sed` in Makefile) |
-| `embed-trainer` | `helm template` official Kubeflow chart → `ncrectl` embed |
-| `build-installer` | `kustomize build config/default` → `ncrectl` embed (legacy) |
+| `embed-trainer` | `helm template` official Kubeflow chart → `nvcrectl` embed |
+| `build-installer` | `kustomize build config/default` → `nvcrectl` embed (legacy) |
 | `render-helm` | alias for `manifests` (regenerates all synced chart artifacts) |
 | `helm-lint` / `helm-package` | Standard Helm workflow |
 
@@ -87,7 +87,7 @@ metrics:
 
 1. **kustomize→Helm conversion** (kubebuilder `helm/v2-alpha`, patch scripts) — rejected after team review; fragile and not NVSentinel-aligned.
 2. **Flattened vendored Trainer YAML** — rejected; use OCI dependency.
-3. **Helm-only, drop kustomize immediately** — deferred; dual path until `ncrectl` Helm install is validated behind a feature flag.
+3. **Helm-only, drop kustomize immediately** — deferred; dual path until `nvcrectl` Helm install is validated behind a feature flag.
 
 ## References
 

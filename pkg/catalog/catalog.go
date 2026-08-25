@@ -139,6 +139,17 @@ type Entry struct {
 	// if the requested GPU count is below this threshold.
 	MinGPUs int32
 
+	// TimeoutPerJob is the entry's default job timeout from its meta.yaml
+	// (e.g., "2h" for dcgm-level4). Empty means the global default applies
+	// (DefaultTimeoutPerJob, or DiagnoseTimeoutPerJob for diagnose scale).
+	// Exposed so callers (e.g., the nvcrectl --wait timeout derivation) can
+	// compute a category's job budget without a full Build.
+	TimeoutPerJob string
+
+	// Iterations is the entry's default orchestration iteration count,
+	// parsed from the entry template. Always >= 1.
+	Iterations int
+
 	// MaxValidNodes returns the largest node count <= availableNodes that
 	// satisfies the entry's constraints (minGPUs, TP×PP divisibility).
 	// Returns 0 if no valid count exists. When nil, any node count is valid.
@@ -189,6 +200,14 @@ func Lookup(domain, variant string) *Entry {
 		return nil
 	}
 	return &entry
+}
+
+// EffectiveTimeoutPerJob returns the timeoutPerJob string that Build would
+// render for this entry: an explicit user override wins, then the entry's
+// meta.yaml default, then the test-scale-dependent global default. Shares
+// resolveTimeoutPerJob with buildTemplateData so the two cannot diverge.
+func (e *Entry) EffectiveTimeoutPerJob(userTimeout, testScale string) string {
+	return resolveTimeoutPerJob(userTimeout, e.TimeoutPerJob, testScale)
 }
 
 // ConfigArch returns the GPU architecture used for config file lookups.

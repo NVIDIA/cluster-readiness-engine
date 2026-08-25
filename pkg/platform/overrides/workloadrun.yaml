@@ -75,6 +75,33 @@
     - "NCCL_NET_PLUGIN=none"
 {{- end }}
 
+# --- AWS + GB300 + MPI (RoCE transport pins) ---
+# Pins OpenMPI's own transport to TCP on eth0 and disables UCC/HCOLL,
+# mirroring the catalog's AWS GB300 communication override. Without the pins,
+# UCC-enabled OpenMPI builds (e.g. NGC PyTorch's HPC-X) open the mlx5 devices
+# during MPI_Init with incorrect GID settings and SIGSEGV before the workload
+# runs a single step. NCCL only needs TCP from MPI; it drives RDMA directly
+# through the RoCE resource claims added by the AWS + GB300 dependency
+# override below. The transport NCCL env rides mpirun -x so it reaches worker
+# processes (launcher preCommand does not propagate). Unlike the catalog's
+# block, no --prefix, no -x PATH/LD_LIBRARY_PATH, and no env -u launcher
+# wrapper: those are specific to the catalog's nccl-tests image, and
+# command-line --mca values already outrank image-baked OMPI_MCA_* env vars.
+{{- if eq .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: gb300
+  mpiArgs:
+    - --mca
+    - orte_keep_fqdn_hostnames
+    - "true"
+{{ lib "nccl/roce-tcp-mpi-transport-args.yaml" . | indent 4 }}
+{{ lib "nccl/mpi-disable-ucc-hcoll-args.yaml" . | indent 4 }}
+{{ lib "nccl/aws-gb300-roce-transport-env.yaml" . | toMpiArgs | indent 4 }}
+{{- end }}
+
 # --- AWS + GB200 (EFA) ---
 - when:
     platform:

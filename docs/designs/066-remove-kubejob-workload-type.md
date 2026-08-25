@@ -30,7 +30,7 @@ Remove `kubeJob` from `WorkloadSpec`, delete `KubeJobAdapter`, and drop the
 - **Controller**: Remove the `case spec.KubeJob != nil` arm of `detectWorkloadKind()` and drop
   `Owns(&batchv1.Job{})` (plus the `batchv1` import) from `job_controller.go`.
 - **Regenerate**: deepcopy (`make generate`), CRDs + Helm sync (`make manifests`), and the
-  ncrectl-embedded CRDs (`make embed-ncrectl`).
+  nvcrectl-embedded CRDs (`make embed-nvcrectl`).
 - **Tests/docs**: delete all `TestKubeJob*` cases and their testdata, the `job-kubejob`
   integration case, and remove KubeJob references from documentation.
 
@@ -38,7 +38,7 @@ Remove `kubeJob` from `WorkloadSpec`, delete `KubeJobAdapter`, and drop the
 
 Not all `batch/v1` handling belonged to KubeJob. JobSet — which backs Kubeflow TrainJob —
 creates real `batch/v1` Jobs and, on failure, emits a condition message of the form
-`"... (first failed job: <name>)"`. `ncrectl`'s `batchJobFailureReason`
+`"... (first failed job: <name>)"`. `nvcrectl`'s `batchJobFailureReason`
 (`pkg/report/report.go`) parses that message and reads the JobSet-created `batch/v1` Job to
 surface the root-cause failure reason in reports. This serves TrainJob, not KubeJob, and is
 retained, along with the `batchv1` scheme registration in the UAT test helpers.

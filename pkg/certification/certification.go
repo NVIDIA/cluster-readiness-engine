@@ -20,6 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -30,6 +31,7 @@ import (
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/cluster"
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller"
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/naming"
+	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/platform"
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/render"
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/report"
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/setup"
@@ -95,63 +97,49 @@ func runListCategories(format string) error {
 func newCertificationRenderCommand() *cobra.Command {
 	var outputFormat string
 	var dryRun bool
-	var platform string
+	var platformFlag string
 
 	configFlags := kubeconfig.NewConfigFlags(true)
 	*configFlags.Namespace = defaultKubeNamespace
 	cmd := &cobra.Command{
 		Use:   "render [flags] <certification.yaml>",
 		Short: "Render all Workflows from a Certification",
-		Long: `Reads a Certification YAML, looks up each category in the catalog,
+		Long: fmt.Sprintf(`Reads a Certification YAML, looks up each category in the catalog,
 and renders the Workflows that the controller would create.
 
 With --dry-run, connects to a cluster, applies overrides per Workflow,
 and validates resolved resources via server-side dry-run.
 
 Use --platform to simulate platform-specific overrides (e.g., EFA volumes
-on AWS) without connecting to a cluster. Valid values: aws, gcp, azure, oci, onprem.`,
+on AWS) without connecting to a cluster. Valid values: %s.`, platform.NamesList()),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return fmt.Errorf(
 					"requires a certification YAML file as argument\n\n" +
-						"Usage: ncrectl certification render [flags] <certification.yaml>",
+						"Usage: nvcrectl certification render [flags] <certification.yaml>",
 				)
 			}
-			return runCertificationRender(args[0], outputFormat, dryRun, configFlags, platform)
+			return runCertificationRender(args[0], outputFormat, dryRun, configFlags, platformFlag)
 		},
 	}
 
 	cmd.Flags().StringVar(&outputFormat, "output", "yaml", "Output format: yaml or json")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false,
 		"Connect to cluster, discover real nodes, and validate via server-side dry-run")
-	cmd.Flags().StringVar(&platform, "platform", "",
-		"Simulate platform for override matching (aws, gcp, azure, oci, onprem, togetherai, mistral, forge)")
+	cmd.Flags().StringVar(&platformFlag, "platform", "",
+		"Simulate platform for override matching ("+platform.NamesList()+")")
 	configFlags.AddFlags(cmd.Flags())
 
 	return cmd
 }
 
 func runCertificationRender(certFile, outputFormat string, dryRun bool,
-	configFlags *kubeconfig.ConfigFlags, platform string) error {
+	configFlags *kubeconfig.ConfigFlags, platformFlag string) error {
 	namespace := *configFlags.Namespace
 
-	if platform != "" {
-		valid := map[string]bool{
-			"aws":        true,
-			"gcp":        true,
-			"azure":      true,
-			"oci":        true,
-			"onprem":     true,
-			"togetherai": true,
-			"mistral":    true,
-			"forge":      true,
-		}
-		if !valid[platform] {
-			return fmt.Errorf(
-				"invalid --platform %q: must be one of aws, gcp, azure, oci, onprem, togetherai, mistral, forge",
-				platform)
-		}
+	if err := platform.ValidateFlag(platformFlag); err != nil {
+		return err
 	}
 
 	cert, err := readCertification(certFile)
@@ -183,7 +171,7 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 		}
 	}
 
-	workflows, err := renderCertification(cert, platform)
+	workflows, err := renderCertification(cert, platformFlag)
 	if err != nil {
 		return err
 	}
@@ -226,25 +214,7 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 		// Apply overrides using a synthetic node derived from the Certification's
 		// nodeSelector. This enables GPU-architecture-specific overrides (images,
 		// env vars) to be applied even without connecting to a real cluster.
-		syntheticNode := corev1.Node{
-			ObjectMeta: metav1.ObjectMeta{Labels: cert.Spec.Target.NodeSelector},
-		}
-		if platform != "" {
-			syntheticNode.Spec.ProviderID = platformToProviderID(platform)
-			if platform == "togetherai" {
-				if syntheticNode.Labels == nil {
-					syntheticNode.Labels = map[string]string{}
-				}
-				syntheticNode.Labels["node-role.together.ai/worker"] = ""
-			}
-			if platform == "forge" {
-				if syntheticNode.Labels == nil {
-					syntheticNode.Labels = map[string]string{}
-				}
-				syntheticNode.Labels["kubernetes.io/hostname"] = "synthetic-forge-node"
-			}
-		}
-		syntheticNodes := []corev1.Node{syntheticNode}
+		syntheticNodes := []corev1.Node{syntheticRenderNode(platformFlag, cert.Spec.Target.NodeSelector)}
 		for i := range workflows {
 			if _, err := render.ResolveWorkflow(&workflows[i], syntheticNodes); err != nil {
 				return fmt.Errorf("resolve overrides for %s: %w", workflows[i].Name, err)
@@ -284,7 +254,7 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 // (from --platform or detected from cluster nodes) is used to resolve
 // platform-specific node defaults like OCI L40s {gpusPerNode: 4, mlnxPerNode: 2}
 // at template-render time. Pass "" to use architecture defaults only.
-func renderCertification(cert *crev1alpha1.Certification, platform string) ([]crev1alpha1.Workflow, error) {
+func renderCertification(cert *crev1alpha1.Certification, platformName string) ([]crev1alpha1.Workflow, error) {
 	if len(cert.Spec.Categories) == 0 {
 		return nil, fmt.Errorf("certification has no categories")
 	}
@@ -306,7 +276,7 @@ func renderCertification(cert *crev1alpha1.Certification, platform string) ([]cr
 
 		opts := controller.ResolveOptions(&cert.Spec.CategoryOptions, cat.Options)
 
-		nd := catalog.GPUDefaults(gpuArch, platform)
+		nd := catalog.GPUDefaults(gpuArch, platformName)
 		gpusPerNode := nd.GpusPerNode
 		mlnxPerNode := nd.MlnxPerNode
 		if opts.GpusPerNode != nil {
@@ -425,12 +395,45 @@ func readCertification(path string) (*crev1alpha1.Certification, error) {
 }
 
 // platformToProviderID is now syntheticProviderID in run_common.go.
-func platformToProviderID(platform string) string {
-	return render.SyntheticProviderID(platform)
+func platformToProviderID(platformName string) string {
+	return render.SyntheticProviderID(platformName)
+}
+
+// syntheticRenderNode builds the fake node used to resolve overrides when
+// rendering offline. The node carries the Certification's nodeSelector labels
+// plus whatever providerID, labels, and allocatable resources platform
+// detection needs to map the node back to the requested platform.
+func syntheticRenderNode(platformName string, nodeSelector map[string]string) corev1.Node {
+	node := corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Labels: nodeSelector},
+	}
+	if platformName == "" {
+		return node
+	}
+	node.Spec.ProviderID = platformToProviderID(platformName)
+	switch platformName {
+	case platform.TogetherAI:
+		if node.Labels == nil {
+			node.Labels = map[string]string{}
+		}
+		node.Labels["node-role.together.ai/worker"] = ""
+	case platform.Forge:
+		if node.Labels == nil {
+			node.Labels = map[string]string{}
+		}
+		node.Labels["kubernetes.io/hostname"] = "synthetic-forge-node"
+	case platform.NScale:
+		// Detection maps openstack:// to nscale only when the node also
+		// reports the nscale.com/rdmashare allocatable.
+		node.Status.Allocatable = corev1.ResourceList{
+			"nscale.com/rdmashare": resource.MustParse("8"),
+		}
+	}
+	return node
 }
 
 // ---------------------------------------------------------------------------
-// ncrectl certification run
+// nvcrectl certification run
 // ---------------------------------------------------------------------------
 
 // certRunConfig captures the fully-resolved intent for a certification run.
@@ -450,6 +453,7 @@ type certRunConfig struct {
 	doCleanup                bool   // --cleanup: runReset + delete cert/ns after
 	resultsFile              string // --results-file: path to write JSON report
 	timeout                  time.Duration
+	timeoutDerived           bool // timeout was derived from category timeouts, not passed via --timeout
 	configFlags              *kubeconfig.ConfigFlags
 	out                      io.Writer
 	watchClient              client.WithWatch // optional test client; production builds one from configFlags
@@ -490,7 +494,7 @@ func newRunCommand(version string) *cobra.Command {
 		Long: `Creates a Certification resource in the cluster from the specified categories
 or from a Certification YAML file.
 
-Categories are selected from the catalog (see 'ncrectl certification list-categories').
+Categories are selected from the catalog (see 'nvcrectl certification list-categories').
 The default node selector targets all GPU nodes (nvidia.com/gpu.present=true).
 
 Use --cert-file to load a Certification from YAML (mutually exclusive with --category).
@@ -516,7 +520,7 @@ Use --cleanup to teardown installed components after completion.`,
 			}
 			if certFile == "" && len(categories) == 0 {
 				return fmt.Errorf("either --cert-file or at least one --category is required\n\n" +
-					"Use 'ncrectl certification list-categories' to see available categories")
+					"Use 'nvcrectl certification list-categories' to see available categories")
 			}
 
 			var cfg *certRunConfig
@@ -549,6 +553,8 @@ Use --cleanup to teardown installed components after completion.`,
 			}
 			cfg.version = version
 			cfg.resultsFile = resultsFile
+			cfg.timeout, cfg.timeoutDerived = resolveWaitTimeout(
+				cfg.cert, timeout, cmd.Flags().Changed("timeout"))
 			return executeCertificationRun(cfg)
 		},
 	}
@@ -574,7 +580,7 @@ Use --cleanup to teardown installed components after completion.`,
 	cmd.Flags().StringVar(&controllerImage, "image", "",
 		"Controller image for --setup (default: ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager:<version>)")
 	cmd.Flags().StringVar(&name, "name", "",
-		"Certification name (default: ncrectl-<timestamp>)")
+		"Certification name (default: nvcrectl-<timestamp>)")
 	cmd.Flags().Int32Var(&nodesPerJob, "nodes-per-job", 0,
 		"Number of nodes per job (0 = auto-select: all nodes for non-training, largest config for training)")
 	cmd.Flags().BoolVar(&enableCheckpoint, "enable-checkpoint", false,
@@ -594,12 +600,77 @@ Use --cleanup to teardown installed components after completion.`,
 	cmd.Flags().StringVar(&storageClass, "storage-class", "",
 		"StorageClass for PVC dependencies created by catalog entries")
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Minute,
-		"Maximum time to wait; on timeout, print a partial report and leave the certification running unless --cleanup is set")
+		"Timeout for --wait (when not set, derived from the selected categories' timeoutPerJob budgets, floored at 30m; on timeout, print a partial report and leave the certification running unless --cleanup is set)")
 	cmd.Flags().StringVar(&resultsFile, "results-file", "",
 		"Write certification report as JSON to this file path (requires --wait)")
 	configFlags.AddFlags(cmd.Flags())
 
 	return cmd
+}
+
+// ---------------------------------------------------------------------------
+// --wait timeout derivation (issue #183)
+// ---------------------------------------------------------------------------
+
+// waitTimeoutMarginNum/Den scale a category's job budget (timeoutPerJob ×
+// iterations) by 1.5 to absorb time the per-job timeout does not cover: pod
+// scheduling, multi-GB image pulls, post-success measurement (default 5m),
+// controller requeue latency, and cleanup between iterations. The controller
+// fails a job shortly after timeoutPerJob expires, so 1.5× the budget is
+// enough for --wait to always outlive a legitimately slow job.
+const (
+	waitTimeoutMarginNum = 3
+	waitTimeoutMarginDen = 2
+)
+
+// resolveWaitTimeout returns the effective --wait timeout and whether it was
+// derived. An explicit --timeout always wins. Otherwise the timeout is derived
+// from the selected categories' catalog timeoutPerJob values — max across
+// categories of timeoutPerJob × iterations × margin — floored at the flag
+// default so short categories keep today's behavior.
+func resolveWaitTimeout(cert *crev1alpha1.Certification, flagValue time.Duration, explicit bool) (time.Duration, bool) {
+	if explicit || cert == nil {
+		return flagValue, false
+	}
+	derived := deriveWaitTimeout(cert)
+	if derived <= flagValue {
+		return flagValue, false
+	}
+	return derived, true
+}
+
+// deriveWaitTimeout computes the wait budget implied by the certification's
+// categories. Categories run as parallel Workflows, so the max (not the sum)
+// across categories bounds the wall time. Unknown categories and unparsable
+// durations contribute nothing — they fail with a proper error further down
+// the pipeline.
+func deriveWaitTimeout(cert *crev1alpha1.Certification) time.Duration {
+	var maxBudget time.Duration
+	for _, cat := range cert.Spec.Categories {
+		entry := catalog.Lookup(cat.Domain, cat.Variant)
+		if entry == nil {
+			continue
+		}
+		opts := controller.ResolveOptions(&cert.Spec.CategoryOptions, cat.Options)
+
+		perJob, err := time.ParseDuration(entry.EffectiveTimeoutPerJob(opts.TimeoutPerJob, opts.TestScale))
+		if err != nil {
+			continue
+		}
+
+		iterations := entry.Iterations
+		if opts.RepeatCount != nil && *opts.RepeatCount > 0 {
+			iterations = int(*opts.RepeatCount)
+		}
+		if iterations < 1 {
+			iterations = 1
+		}
+
+		if budget := perJob * time.Duration(iterations); budget > maxBudget {
+			maxBudget = budget
+		}
+	}
+	return maxBudget * waitTimeoutMarginNum / waitTimeoutMarginDen
 }
 
 // ---------------------------------------------------------------------------
@@ -649,7 +720,7 @@ func buildConfigFromFlags(
 			Namespace: namespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by": "cluster-readiness-engine",
-				"app.kubernetes.io/created-by": "ncrectl",
+				"app.kubernetes.io/created-by": "nvcrectl",
 			},
 		},
 		Spec: crev1alpha1.CertificationSpec{
@@ -926,6 +997,9 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 	}
 
 	_, _ = fmt.Fprintln(out)
+	if cfg.timeoutDerived {
+		_, _ = fmt.Fprintf(out, "Waiting up to %s (derived from category timeouts; pass --timeout to override).\n", cfg.timeout)
+	}
 	finalCert, waitErr := watchCertification(ctx, wc, cfg.cert.Name, cfg.namespace, cfg.timeout, out)
 	pipelineErr = finishCertificationWait(ctx, wc, cfg, finalCert, waitErr)
 	return pipelineErr
@@ -986,7 +1060,7 @@ The certification is still running in namespace %s.
 Monitor its progress:
   kubectl get certification %s -n %s --watch
 Print an updated report (exits nonzero while still running):
-  ncrectl certification report %s -n %s
+  nvcrectl certification report %s -n %s
 Stop it:
   kubectl delete certification %s -n %s
 `, cfg.namespace,
@@ -1069,12 +1143,12 @@ func parseCategories(strs []string) ([]crev1alpha1.CertificateCategory, error) {
 
 // generateCertName creates a unique certification name with a timestamp.
 func generateCertName() string {
-	return fmt.Sprintf("ncrectl-%s", time.Now().Format("20060102-150405"))
+	return fmt.Sprintf("nvcrectl-%s", time.Now().Format("20060102-150405"))
 }
 
 // generateCertNamespace creates a unique namespace for the certification run.
 func generateCertNamespace() string {
-	return fmt.Sprintf("ncrectl-%s", time.Now().Format("20060102-150405"))
+	return fmt.Sprintf("nvcrectl-%s", time.Now().Format("20060102-150405"))
 }
 
 // ---------------------------------------------------------------------------
@@ -1156,6 +1230,29 @@ func watchCertification(
 	}
 }
 
+// categoryWatchLabels returns one display label per entry in
+// cert.Status.CategoryStatuses. Labels are "domain/variant"; when the
+// certification contains two or more categories with the same domain/variant,
+// an "(MNNVL Enabled)"/"(MNNVL Disabled)" suffix — matching the report's
+// MNNVL label — disambiguates the duplicates.
+func categoryWatchLabels(cert *crev1alpha1.Certification) []string {
+	counts := map[string]int{}
+	for _, cs := range cert.Status.CategoryStatuses {
+		counts[cs.Domain+"/"+cs.Variant]++
+	}
+	labels := make([]string, len(cert.Status.CategoryStatuses))
+	for i, cs := range cert.Status.CategoryStatuses {
+		key := cs.Domain + "/" + cs.Variant
+		if counts[key] > 1 {
+			if mnnvl := report.CategoryMNNVL(cert, i); mnnvl != "" {
+				key = fmt.Sprintf("%s (MNNVL %s)", key, mnnvl)
+			}
+		}
+		labels[i] = key
+	}
+	return labels
+}
+
 // processWatchEvents handles events from a single watch session.
 // Returns (cert, true, err) on terminal condition, or (nil, false, nil)
 // when the watch channel closes and should be reconnected.
@@ -1184,8 +1281,9 @@ func processWatchEvents(
 			elapsed := time.Since(start).Truncate(time.Second)
 
 			// Print category status changes.
-			for _, cs := range cert.Status.CategoryStatuses {
-				key := cs.Domain + "/" + cs.Variant
+			labels := categoryWatchLabels(cert)
+			for i, cs := range cert.Status.CategoryStatuses {
+				key := labels[i]
 				if cs.Status != lastStatuses[key] {
 					_, _ = fmt.Fprintf(out, "[watch] %s: %s (%s)\n",
 						key, cs.Status, elapsed)
@@ -1273,7 +1371,7 @@ func newReportCommand() *cobra.Command {
 		Use:   "report <certification-name> [<certification-name>...]",
 		Short: "Generate a report for one or more certifications",
 		Long: `Connects to the cluster, fetches the named Certification(s), and generates
-the same report that 'ncrectl certification run --wait' prints on completion.
+the same report that 'nvcrectl certification run --wait' prints on completion.
 
 Multiple certification names can be provided to combine them into a single report.
 Each certification is shown in its own section with categories and summary.`,

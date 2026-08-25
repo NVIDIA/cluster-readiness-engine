@@ -1,0 +1,6 @@
+# The trainer release is already deployed at the pinned chart version. The
+# [deps] phase must skip the upgrade entirely: never re-rendering the chart
+# means never re-rolling the webhook certs (ADR-073 decision 1).
+releaseState: deployed
+chartVersion: "2.2.1"
+installResults: []

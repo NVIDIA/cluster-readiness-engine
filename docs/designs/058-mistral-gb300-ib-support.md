@@ -15,7 +15,7 @@ No existing platform override targets Mistral, and no catalog path emits `rdma/i
 
 ## Decision
 
-1. **Register `mistral` as a platform** by mapping the `metal3://` providerID prefix to `mistral` in [`workflow_detect.go`](../../pkg/controller/workflow_detect.go) and whitelisting it in `ncrectl`'s valid-platform map.
+1. **Register `mistral` as a platform** by mapping the `metal3://` providerID prefix to `mistral` in [`workflow_detect.go`](../../pkg/controller/workflow_detect.go) and whitelisting it in `nvcrectl`'s valid-platform map.
 2. **Introduce `rdma/ib` as a third RDMA resource axis** (alongside EFA and `mlnxnics`) via new shared dep libraries `mistral-gb300-ib-runtime-patch-{comm,training}.yaml`. Per-pod count: `rdma/ib: "8"` by default; reviewable in the dep file.
 3. **Add `mistral + gb300` override blocks** to every catalog entry that has platform-specific behavior today: 5 communication NCCL variants (`nccl-all-reduce`, `nccl-all-gather`, `nccl-alltoall`, `nccl-loopback`, `nccl-loopback-nvswitch`), 5 nemotron training variants, plus the diagnostics entry (`dcgm-level4`) where it requires a mistral-specific resource or env change.
 4. **Reuse the existing `[gb200, gb300]` ComputeDomain override** rather than emitting it again — the shared override fires first in list order and contributes the `ComputeDomain` / DRA channel deps; the `mistral + gb300` override that follows only needs to layer the IB runtime patch, mpirun args, and ARM64 toleration.
@@ -34,7 +34,7 @@ No existing platform override targets Mistral, and no catalog path emits `rdma/i
 - `pkg/render/nodes/mistral-gb300.yaml` — mock node fixture mirroring [`pkg/render/nodes/aws-gb300.yaml`](../../pkg/render/nodes/aws-gb300.yaml) shape.
 - Integration case `mistral-gb300-nccl-all-gather` under [`cmd/integration/testdata/reconcile/`](../../cmd/integration/testdata/reconcile/).
 - UAT fixtures under `test/uat/testdata/mistral/gb300/nccl/` plus new `TestMistralGB300NCCL` test function.
-- `make embed-ncrectl` to refresh `pkg/setup/embedded/` after catalog YAML changes (per [CLAUDE.md](../../CLAUDE.md)'s "Critical Pitfalls").
+- `make embed-nvcrectl` to refresh `pkg/setup/embedded/` after catalog YAML changes (per [CLAUDE.md](../../CLAUDE.md)'s "Critical Pitfalls").
 
 ## Rationale
 
@@ -59,7 +59,7 @@ No existing platform override targets Mistral, and no catalog path emits `rdma/i
 
 ## Notes
 
-- Per-pod `rdma/ib` count, Nemotron6 dep parity with [`gb300-roce-nemo6.yaml`](../../pkg/catalog/entries/_lib/deps/gb300-roce-nemo6.yaml), and whether the `dcgm-level4` diagnostics entry needs a mistral-specific override are finalized during implementation; the plan enumerates them as open sub-questions.
+- Per-pod `rdma/ib` count, Nemotron6 dep parity with [`gb300-roce-torch.yaml`](../../pkg/catalog/entries/_lib/deps/gb300-roce-torch.yaml), and whether the `dcgm-level4` diagnostics entry needs a mistral-specific override are finalized during implementation; the plan enumerates them as open sub-questions.
 - `GpusPerNode` default for GB300 is handled by [`pkg/gpu/`](../../pkg/gpu/) defaults. The example node reports `nvidia.com/gpu.count: 4`; we confirm this matches the catalog default before committing.
 
 ## References

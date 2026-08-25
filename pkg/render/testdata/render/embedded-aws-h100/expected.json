@@ -4,9 +4,9 @@
   "metadata": {
     "name": "test-workflow",
     "annotations": {
-      "ncrectl.nvidia.com/applied-overrides": "[{\"index\":0,\"when\":\"gpuArchitecture=h100\",\"patches\":\"jobTemplate\"},{\"index\":1,\"when\":\"platform=aws\",\"patches\":\"1 dependencies\"}]",
-      "ncrectl.nvidia.com/detected-gpu-architecture": "h100",
-      "ncrectl.nvidia.com/detected-platform": "aws"
+      "nvcrectl.nvidia.com/applied-overrides": "[{\"index\":0,\"when\":\"gpuArchitecture=h100\",\"patches\":\"jobTemplate\"},{\"index\":1,\"when\":\"platform=aws\",\"patches\":\"1 dependencies\"}]",
+      "nvcrectl.nvidia.com/detected-gpu-architecture": "h100",
+      "nvcrectl.nvidia.com/detected-platform": "aws"
     }
   },
   "spec": {
