@@ -322,7 +322,7 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *crev
 	applyWRPreTemplateOverrides(spec, wrOverrides, octx)
 
 	// Build JobTemplate.
-	jobTemplate := r.buildJobTemplate(run, frameworkType, gpusPerNode)
+	jobTemplate := r.buildJobTemplate(run, frameworkType, gpusPerNode, enableMNNVL)
 
 	// Post-template overrides: modify the built job template before the
 	// Workflow CR is created so changes are stored in well-known fields
@@ -360,7 +360,11 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *crev
 }
 
 // buildJobTemplate constructs the JobTemplateSpec for the workload.
-func (r *WorkloadRunReconciler) buildJobTemplate(run *crev1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32) *crev1alpha1.JobTemplateSpec {
+// enableMNNVL is the resolved MNNVL setting (architecture default overridden
+// by spec.enableMNNVL) computed once in buildWorkflowSpec — the same value
+// BaseNCCLEnvVars puts on the runtime container, so the MPI launcher's
+// -x NCCL_MNNVL_ENABLE forwarding never disagrees with the worker env.
+func (r *WorkloadRunReconciler) buildJobTemplate(run *crev1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32, enableMNNVL bool) *crev1alpha1.JobTemplateSpec {
 	spec := &run.Spec
 
 	// Build trainer spec based on framework.
@@ -390,7 +394,7 @@ func (r *WorkloadRunReconciler) buildJobTemplate(run *crev1alpha1.WorkloadRun, f
 		)
 		mpiArgs = append(mpiArgs, "-x", "NCCL_DEBUG=INFO")
 		enableStr := "0"
-		if spec.EnableMNNVL != nil && *spec.EnableMNNVL {
+		if enableMNNVL {
 			enableStr = "1"
 		}
 		mpiArgs = append(mpiArgs, "-x", fmt.Sprintf("NCCL_MNNVL_ENABLE=%s", enableStr))
@@ -420,6 +424,14 @@ func (r *WorkloadRunReconciler) buildJobTemplate(run *crev1alpha1.WorkloadRun, f
 	}
 
 	workload.SetImagePullSecrets(trainJobSpec, spec.ImagePullSecrets)
+
+	// MPI runs have a launcher replicated job that must be pinned and
+	// tolerated like the workers (issue #175 UAT: an unregistered launcher
+	// gets no node affinity from the Workflow controller and schedules on
+	// arbitrary nodes).
+	if frameworkType == FrameworkMPI {
+		workload.EnsureLauncherTarget(trainJobSpec)
+	}
 
 	jobSpec := crev1alpha1.JobSpec{
 		Workload: crev1alpha1.WorkloadSpec{

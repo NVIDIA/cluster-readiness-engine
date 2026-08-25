@@ -1,0 +1,16 @@
+[deps] Kubeflow Trainer release is in state "deployed"; attempting install of v2.2.1...
+[deps] Installing Kubeflow Trainer Helm release "kubeflow-trainer" in namespace kubeflow-system...
+Error: UPGRADE FAILED: Unable to continue with update: could not update Secret "kubeflow-trainer-webhook-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "trainer-controller" using v1: .data.tls.crt, .data.tls.key
+could not update Secret "jobset-webhook-server-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "jobset-controller" using v1: .data.tls.crt, .data.tls.key
+[deps] The install output matches the webhook Secret field-ownership conflict signature, but the release state is "deployed" — not recovering automatically.
+
+[deps] Manual recovery procedure (issue #180):
+  1. helm uninstall kubeflow-trainer --namespace kubeflow-system
+  2. kubectl delete crd trainjobs.trainer.kubeflow.org trainingruntimes.trainer.kubeflow.org clustertrainingruntimes.trainer.kubeflow.org jobsets.jobset.x-k8s.io
+  3. kubectl delete namespace kubeflow-system
+  4. Re-run 'ncrectl setup init' to reinstall Kubeflow Trainer v2.2.1
+
+--- result ---
+error: [deps] helm upgrade: exit status 1
+installCalls: 1
+uninstallCalls: 0

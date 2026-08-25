@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# OCI GB300 has no field-validated WorkloadRun configuration yet, so no
+# platform mpirun block matches: the user's own mpiArgs pass through unchanged
+# (ADR-070 defers other RoCE CSPs, same as ADR-060 did for untuned SKUs).
+run:
+  metadata:
+    name: wr-mpi-oci-gb300
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:26.01-py3
+    numNodes: 2
+    framework:
+      mpi:
+        binary: /usr/local/bin/all_reduce_perf_mpi
+        mpirunPath: /usr/local/mpi/bin/mpirun
+        mpiArgs: ["--tag-output"]
+platform: oci
+gpuArch: gb300
+gpusPerNode: 4
+mlnxPerNode: 0
+enableMNNVL: true
+frameworkType: mpi

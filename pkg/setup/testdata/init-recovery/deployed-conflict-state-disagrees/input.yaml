@@ -1,0 +1,11 @@
+# The output matches the conflict signature but the release state stays
+# "deployed": the two signals disagree, so recovery is refused and the
+# manual procedure is printed alongside the failure (ADR-073 decision 2 —
+# both signals must agree before anything destructive happens).
+releaseState: deployed
+chartVersion: "2.1.0"
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: Unable to continue with update: could not update Secret "kubeflow-trainer-webhook-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "trainer-controller" using v1: .data.tls.crt, .data.tls.key
+      could not update Secret "jobset-webhook-server-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "jobset-controller" using v1: .data.tls.crt, .data.tls.key

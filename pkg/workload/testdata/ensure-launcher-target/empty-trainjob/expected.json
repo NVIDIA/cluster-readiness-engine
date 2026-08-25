@@ -1,0 +1,15 @@
+{
+  "hasLauncherTarget": true,
+  "runtimePatches": [
+    {
+      "targetJobs": [
+        "node"
+      ]
+    },
+    {
+      "targetJobs": [
+        "launcher"
+      ]
+    }
+  ]
+}
