@@ -14,18 +14,4 @@
 - --mca
 - orte_keep_fqdn_hostnames
 - "true"
-- --mca
-- pml
-- ob1
-- --mca
-- btl
-- tcp,self
-- --mca
-- btl_tcp_if_include
-- eth0
-- --mca
-- oob
-- tcp
-- --mca
-- oob_tcp_if_include
-- eth0
+{{ lib "nccl/roce-tcp-mpi-transport-args.yaml" . }}

@@ -60,7 +60,15 @@ func collectJobMeasuredValues(ctx context.Context, c client.Reader, job *crev1al
 		values["algBandwidthGBps"] = maxAlgBandwidth(bm.Status.Results)
 	}
 
-	if gm := findJobGoodputMeasurement(ctx, c, job); gm != nil {
+	// Goodput-derived values are provisional until the measurement's Complete
+	// condition is True: the GoodputMeasurement controller freezes the status
+	// in a single terminal write anchored to the Job's terminal transition
+	// (ADR-072). Evaluating earlier would make pass/fail depend on when this
+	// controller happened to read. The missing-key requeue and the
+	// measurementTimeout machinery in checkPerformanceThresholds handle the
+	// wait for Complete.
+	if gm := findJobGoodputMeasurement(ctx, c, job); gm != nil &&
+		meta.IsStatusConditionTrue(gm.Status.Conditions, crev1alpha1.GoodputMeasurementComplete) {
 		if v := parseStallFloat(gm.Status.Result); v > 0 {
 			values["goodputRatio"] = v
 		}

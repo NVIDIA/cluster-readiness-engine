@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Issue #175 / ADR-070: MPI WorkloadRun on AWS GB300 (RoCE). The platform
+# override table must pin OpenMPI's transport to TCP on eth0, disable
+# UCC/HCOLL, and forward the RoCE NCCL env via mpirun -x.
+apiVersion: cre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: aws-gb300-workloadrun
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300
+  image: nvcr.io/nvidia/pytorch:25.08-py3
+  framework:
+    mpi:
+      mpirunPath: /usr/local/mpi/bin/mpirun
+      binary: /usr/local/bin/all_reduce_perf_mpi
+      args: ["-b", "8", "-e", "32G", "-f", "2"]
+  numNodes: 2

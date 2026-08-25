@@ -1,0 +1,7 @@
+[deps] Kubeflow Trainer release is in state "deployed"; attempting install of v2.2.1...
+[deps] Installing Kubeflow Trainer Helm release "kubeflow-trainer" in namespace kubeflow-system...
+
+--- result ---
+error: <nil>
+installCalls: 1
+uninstallCalls: 0

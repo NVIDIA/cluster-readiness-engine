@@ -21,6 +21,7 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -99,6 +100,13 @@ func TestIntegration(t *testing.T) {
 
 		waitForCondition(tt, mgr.GetClient(), cfg)
 
+		// Verify a Complete GoodputMeasurement stays frozen across a terminal
+		// re-entry (ADR-072). Runs before collection so the golden pins it.
+		var frozenGoodput map[string]any
+		if cfg.VerifyFrozenGoodput != nil {
+			frozenGoodput = verifyFrozenGoodput(tt, suite.Client, mgr.GetClient(), cfg)
+		}
+
 		// Delete resources after the initial wait (e.g., to test deletion cascade).
 		if len(cfg.DeleteAfterWait) > 0 {
 			deleteAfterWait(tt, mgr.GetClient(), cfg.DeleteAfterWait)
@@ -108,7 +116,7 @@ func TestIntegration(t *testing.T) {
 			waitForDeletion(tt, mgr.GetClient(), cfg)
 		}
 
-		tc.Actual = collectAndSerialize(tt, mgr.GetClient(), cfg)
+		tc.Actual = collectAndSerialize(tt, mgr.GetClient(), cfg, frozenGoodput)
 		return nil
 	})
 }
@@ -422,11 +430,28 @@ type fakeLogFetcher struct {
 	logs map[string][]string
 }
 
-func (f *fakeLogFetcher) FetchLogs(_ context.Context, _, podName string, _ podlogs.LogOptions) ([]string, error) {
-	if lines, ok := f.logs[podName]; ok {
+func (f *fakeLogFetcher) FetchLogs(_ context.Context, _, podName string, opts podlogs.LogOptions) ([]string, error) {
+	lines, ok := f.logs[podName]
+	if !ok {
+		return nil, fmt.Errorf("no fake logs for pod %s", podName)
+	}
+	if opts.SinceTime == nil {
 		return lines, nil
 	}
-	return nil, fmt.Errorf("no fake logs for pod %s", podName)
+	// Mirror the real fetcher: SinceTime is passed server-side and the kubelet
+	// returns only records at or after it (pkg/podlogs/fetcher.go). Filter the
+	// canned lines by their leading RFC3339 timestamp; lines without a parseable
+	// timestamp are kept so fixtures without timestamps behave as before.
+	since := opts.SinceTime.Time
+	filtered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		fields := strings.SplitN(line, " ", 2)
+		if ts, err := time.Parse(time.RFC3339Nano, fields[0]); err == nil && ts.Before(since) {
+			continue
+		}
+		filtered = append(filtered, line)
+	}
+	return filtered, nil
 }
 
 func buildFakeLogFetcher(tc *testutil.TestCase) podlogs.PodLogFetcher {
@@ -457,6 +482,14 @@ type waitConfig struct {
 	// GenerateNodes creates N GPU nodes programmatically before test objects.
 	// Avoids repeating Node YAML in fixtures for multi-node tests.
 	GenerateNodes *generateNodesSpec `json:"generateNodes,omitempty"`
+	// VerifyFrozenGoodput drives the ADR-072 determinism check: after the
+	// initial wait it snapshots the named GoodputMeasurement's status, touches
+	// the referenced Job, strips the Complete condition to force the
+	// controller back through the full terminal path (the stale-cache /
+	// restart re-entry from issue #177), waits for Complete to be restored,
+	// and asserts the regenerated status is byte-identical (modulo condition
+	// transition timestamps, which re-adding a condition necessarily moves).
+	VerifyFrozenGoodput *verifyFrozenGoodputSpec `json:"verifyFrozenGoodput,omitempty"`
 	// DeleteAfterWait lists resources to delete after the initial wait completes.
 	// The manager remains running so controllers can process the deletion cascade.
 	DeleteAfterWait []collectSpec `json:"deleteAfterWait,omitempty"`
@@ -469,6 +502,20 @@ type generateNodesSpec struct {
 	Count      int               `json:"count"`
 	Labels     map[string]string `json:"labels"`
 	ProviderID string            `json:"providerID,omitempty"`
+}
+
+type verifyFrozenGoodputSpec struct {
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+	// Mode selects the re-entry style. "strip" (default) removes the Complete
+	// condition to force a full terminal re-run and asserts byte-identical
+	// regeneration — valid where every terminal field is a pure recompute.
+	// "intact" leaves Complete in place and asserts the first-write-wins guard
+	// keeps every status byte untouched. That is the honest assertion for the
+	// Failed path: handleFailed's lostWorkTime/interruptionCount are
+	// accumulators, so a strip-and-rerun legitimately re-adds them and
+	// byte-identity cannot hold there.
+	Mode string `json:"mode,omitempty"`
 }
 
 type collectMetricsSpec struct {
@@ -579,6 +626,131 @@ func waitForDeletion(t *testing.T, c client.Client, cfg waitConfig) {
 	}
 }
 
+// verifyFrozenGoodput pins the ADR-072 freeze: a Complete GoodputMeasurement's
+// status must be a pure function of its persisted status, the Job, and the
+// final log parse. It snapshots the status, touches the referenced Job, strips
+// the Complete condition so the controller replays the entire terminal path —
+// exactly what a stale informer cache or a controller restart before the
+// Complete write causes — waits for Complete to be restored, and requires the
+// regenerated status (including result, trainingTimeSec, and completionTime)
+// to be byte-identical. Only condition transition timestamps are cleared
+// before comparing: re-adding the stripped condition necessarily refreshes its
+// LastTransitionTime.
+// direct must be an uncached API client: the check strips a condition and then
+// waits for the controller to restore it, and a cached read could satisfy the
+// wait with the stale pre-strip object. cached is the manager's client, polled
+// at the end so the subsequent collection sees the restored state.
+func verifyFrozenGoodput(t *testing.T, direct, cached client.Client, cfg waitConfig) map[string]any {
+	t.Helper()
+	ctx := context.Background()
+	key := types.NamespacedName{Name: cfg.VerifyFrozenGoodput.Name, Namespace: cfg.VerifyFrozenGoodput.Namespace}
+	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
+
+	gm := &crev1alpha1.GoodputMeasurement{}
+	require.NoError(t, direct.Get(ctx, key, gm))
+	before := frozenStatusJSON(t, gm)
+
+	// Touch the referenced Job: reconciling a terminal Job must not move the
+	// measurement.
+	if jobName := gm.Spec.JobRef.Name; jobName != "" {
+		job := &crev1alpha1.Job{}
+		require.NoError(t, direct.Get(ctx, types.NamespacedName{Name: jobName, Namespace: key.Namespace}, job))
+		if job.Annotations == nil {
+			job.Annotations = map[string]string{}
+		}
+		job.Annotations["test.cre.nvidia.com/touched"] = "true"
+		require.NoError(t, direct.Update(ctx, job))
+	}
+
+	// Intact mode: the GM controller has no Job watch, so the Job touch above
+	// does not itself trigger a GM reconcile — and any GM reconcile that does
+	// run (GM watch events, requeues) returns at the Complete gate. The
+	// require.Never below therefore pins the ADR-072 convention directly:
+	// nothing writes to a GoodputMeasurement whose Complete condition is True,
+	// so nothing in the status — condition timestamps included — may move
+	// during the window.
+	if cfg.VerifyFrozenGoodput.Mode == "intact" {
+		beforeRaw := rawStatusJSON(t, gm)
+		require.Never(t, func() bool {
+			fresh := &crev1alpha1.GoodputMeasurement{}
+			if err := direct.Get(ctx, key, fresh); err != nil {
+				return false
+			}
+			return rawStatusJSON(t, fresh) != beforeRaw
+		}, 4*time.Second, 250*time.Millisecond,
+			"status moved during a replay with Complete intact (first-write-wins violated, ADR-072)")
+		return map[string]any{
+			"untouchedWithCompleteIntact": true,
+			"result":                      gm.Status.Result,
+			"trainingTimeSec":             gm.Status.TrainingTimeSec,
+			"startTime":                   gm.Status.StartTime,
+			"completionTime":              gm.Status.CompletionTime,
+		}
+	}
+
+	// Strip Complete to force the controller back through the terminal path.
+	apimeta.RemoveStatusCondition(&gm.Status.Conditions, crev1alpha1.GoodputMeasurementComplete)
+	require.NoError(t, direct.Status().Update(ctx, gm))
+
+	require.Eventually(t, func() bool {
+		fresh := &crev1alpha1.GoodputMeasurement{}
+		if err := direct.Get(ctx, key, fresh); err != nil {
+			return false
+		}
+		return hasConditionWithReason(fresh.Status.Conditions, crev1alpha1.GoodputMeasurementComplete, "")
+	}, timeout, 250*time.Millisecond, "Complete was not restored after terminal re-entry")
+
+	after := &crev1alpha1.GoodputMeasurement{}
+	require.NoError(t, direct.Get(ctx, key, after))
+	afterJSON := frozenStatusJSON(t, after)
+
+	require.Equal(t, before, afterJSON,
+		"terminal re-entry must regenerate a byte-identical status (ADR-072)")
+
+	// Let the manager's cache catch up so collection sees the restored state.
+	require.Eventually(t, func() bool {
+		fresh := &crev1alpha1.GoodputMeasurement{}
+		if err := cached.Get(ctx, key, fresh); err != nil {
+			return false
+		}
+		return hasConditionWithReason(fresh.Status.Conditions, crev1alpha1.GoodputMeasurementComplete, "")
+	}, timeout, 250*time.Millisecond, "manager cache did not observe the restored Complete condition")
+
+	return map[string]any{
+		"byteIdenticalAfterReentry": before == afterJSON,
+		"result":                    after.Status.Result,
+		"trainingTimeSec":           after.Status.TrainingTimeSec,
+		"startTime":                 after.Status.StartTime,
+		"completionTime":            after.Status.CompletionTime,
+	}
+}
+
+// rawStatusJSON marshals the full status, timestamps included — used by the
+// intact-mode check where nothing at all may change.
+func rawStatusJSON(t *testing.T, gm *crev1alpha1.GoodputMeasurement) string {
+	t.Helper()
+	b, err := json.Marshal(gm.Status)
+	require.NoError(t, err)
+	return string(b)
+}
+
+// frozenStatusJSON marshals a measurement status for byte-level comparison
+// across terminal re-entries. Conditions are a set keyed by type: stripping
+// and re-adding one necessarily re-appends it and refreshes its transition
+// timestamp, so conditions are sorted by type and their timestamps cleared.
+// Every other byte must match.
+func frozenStatusJSON(t *testing.T, gm *crev1alpha1.GoodputMeasurement) string {
+	t.Helper()
+	s := gm.Status.DeepCopy()
+	clearConditionTimestamps(s.Conditions)
+	slices.SortFunc(s.Conditions, func(a, b metav1.Condition) int {
+		return strings.Compare(a.Type, b.Type)
+	})
+	b, err := json.Marshal(s)
+	require.NoError(t, err)
+	return string(b)
+}
+
 func hasConditionWithReason(conditions []metav1.Condition, condType, reason string) bool {
 	for _, c := range conditions {
 		if c.Type == condType && c.Status == metav1.ConditionTrue {
@@ -679,11 +851,14 @@ func getObject(ctx context.Context, t *testing.T, c client.Client, spec collectS
 	}
 }
 
-func collectAndSerialize(t *testing.T, c client.Client, cfg waitConfig) string {
+func collectAndSerialize(t *testing.T, c client.Client, cfg waitConfig, frozenGoodput map[string]any) string {
 	t.Helper()
 	ctx := context.Background()
 
 	results := make(map[string]any)
+	if frozenGoodput != nil {
+		results["frozenGoodput"] = frozenGoodput
+	}
 	for _, spec := range cfg.Collect {
 		obj := getObject(ctx, t, c, spec)
 		require.NotNil(t, obj, "failed to collect %s/%s in namespace %s", spec.Kind, spec.Name, spec.Namespace)

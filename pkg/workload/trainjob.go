@@ -306,6 +306,23 @@ func ensurePodSpecPatch(spec *trainerv1alpha1.TrainJobSpec, replicatedJobName st
 	return podTemplate.Spec
 }
 
+// EnsureLauncherTarget registers the worker and launcher replicated jobs in
+// the controller-owned RuntimePatch. SetNodeAffinity and SetTolerations derive
+// their targets from existing runtimePatches (allTargetJobs), and the Workflow
+// controller's blanket MPI toleration is gated on HasLauncherTarget — so an
+// MPI TrainJob without a launcher entry gets its launcher pod scheduled with
+// no node pinning and no tolerations. Catalog MPI entries satisfy this
+// contract with an explicit bare `- name: launcher` runtimePatch entry; MPI
+// WorkloadRuns build their TrainJob programmatically and must register the
+// launcher here. The bare entries are a no-op for the trainer's patch merge.
+func EnsureLauncherTarget(trainJobSpec *trainerv1alpha1.TrainJobSpec) {
+	if trainJobSpec == nil {
+		return
+	}
+	getOrCreateReplicatedJobPatch(trainJobSpec, NodeJobName)
+	getOrCreateReplicatedJobPatch(trainJobSpec, LauncherJobName)
+}
+
 // SetImagePullSecrets applies imagePullSecrets to the worker replicated job via RuntimePatches.
 func SetImagePullSecrets(trainJobSpec *trainerv1alpha1.TrainJobSpec, secrets []corev1.LocalObjectReference) {
 	if trainJobSpec == nil || len(secrets) == 0 {

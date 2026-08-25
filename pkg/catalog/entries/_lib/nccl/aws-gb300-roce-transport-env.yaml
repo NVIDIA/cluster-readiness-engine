@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# AWS GB300 RoCE transport env vars, shared by aws-gb300-roce-env.yaml and
+# the WorkloadRun platform overrides (pkg/platform/overrides/workloadrun.yaml).
+# NCCL_DEBUG and NCCL_MNNVL_ENABLE stay with the callers: the WorkloadRun
+# controller already injects both as -x flags on the launcher baseline, and
+# PATH/LD_LIBRARY_PATH are specific to the catalog's nccl-tests image.
+- name: NCCL_DEBUG_SUBSYS
+  value: NET,INIT
+- name: NCCL_SOCKET_IFNAME
+  value: eth0
+- name: NCCL_IB_GID_INDEX
+  value: "3"
+- name: NCCL_NVLS_ENABLE
+  value: "1"
+- name: NCCL_CUMEM_ENABLE
+  value: "1"
+- name: NCCL_NET_GDR_C2C
+  value: "1"
