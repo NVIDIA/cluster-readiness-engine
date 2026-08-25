@@ -1,0 +1,5 @@
+Warning: could not retrieve certification "unknown-cert" after timeout; partial report unavailable: API server unavailable
+
+Unable to determine whether the certification is still running in namespace test-ns.
+Check its status:
+  kubectl get certification unknown-cert -n test-ns

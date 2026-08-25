@@ -1077,6 +1077,9 @@ Check its status:
 		}
 	}
 
+	// Preserve the timeout as the command result even if the post-timeout Get
+	// observes a terminal Certification. The report shows the freshest state,
+	// while the nonzero exit consistently indicates that the wait deadline elapsed.
 	return waitErr
 }
 
@@ -1179,6 +1182,9 @@ func certificationWaitContextError(ctx context.Context, timeout time.Duration, s
 			timeout: timeout,
 			elapsed: time.Since(start).Truncate(time.Second),
 		}
+	}
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return errors.New("interrupted")
 	}
 	return ctx.Err()
 }

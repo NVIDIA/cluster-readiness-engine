@@ -1,6 +1,6 @@
 Certification Report
 
-Name:      timeout-cert
+  Name:      timeout-cert
 
 Summary
 Categories:   0/0 passed

@@ -1,6 +1,6 @@
 Certification Report
 
-Name:      timeout-cert
+  Name:      timeout-cert
 
 communication/nccl-all-reduce
 Status:    Running
@@ -14,8 +14,8 @@ Results written to <results-file>
 
 The certification is still running in namespace test-ns.
 Monitor its progress:
-kubectl get certification timeout-cert -n test-ns --watch
+  kubectl get certification timeout-cert -n test-ns --watch
 Print an updated report (exits nonzero while still running):
-nvcrectl certification report timeout-cert -n test-ns
+  nvcrectl certification report timeout-cert -n test-ns
 Stop it:
-kubectl delete certification timeout-cert -n test-ns
+  kubectl delete certification timeout-cert -n test-ns
