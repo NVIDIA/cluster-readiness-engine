@@ -1,0 +1,3 @@
+classifiedAsSSAConflict: true
+conflictPaths: .data.tls.crt .data.tls.key
+recoveryDecision(releaseState=failed): automatic recovery arm (safety gate still applies)

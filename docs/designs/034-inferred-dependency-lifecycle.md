@@ -1,6 +1,6 @@
 # ADR-034: Eliminate LifecycleSpec — Infer Dependency Scope and Ordering from References
 
-> **Supersedes:** [ADR-011](011-workflow-dependency-lifecycle.md) (Workflow Dependency Lifecycle Management)
+> **Supersedes:** ADR-011 (internal; predates the public repository) (Workflow Dependency Lifecycle Management)
 
 ## Context
 
@@ -105,6 +105,6 @@ Remove all `lifecycle` blocks from catalog YAML entries. The inference engine de
 
 ## References
 
-- [ADR-011](011-workflow-dependency-lifecycle.md) — original dependency lifecycle design (superseded)
+- ADR-011 (internal; predates the public repository) — original dependency lifecycle design (superseded)
 - `api/v1alpha1/workflow_types.go` — DependencySpec type changes
 - `pkg/controller/workflow_deps.go` — classification, ordering, and cross-ref detection

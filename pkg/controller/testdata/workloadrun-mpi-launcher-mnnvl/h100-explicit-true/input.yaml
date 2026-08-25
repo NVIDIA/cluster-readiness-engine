@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# H100 with spec.enableMNNVL=true: the explicit spec value wins over the
+# non-MNNVL architecture default, so the launcher forwards 1.
+gpuProduct: NVIDIA-H100-80GB-HBM3
+enableMNNVL: true

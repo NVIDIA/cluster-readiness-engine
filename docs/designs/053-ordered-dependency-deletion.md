@@ -100,7 +100,7 @@ Remove `cleanupDependencies()` from `setFinalStatus()` entirely. **Rejected:** D
 ## References
 
 - [ADR-034](034-inferred-dependency-lifecycle.md) — Inferred dependency scope and topological ordering
-- [ADR-011](011-workflow-dependency-lifecycle.md) — Original dependency lifecycle design (superseded by ADR-034)
+- ADR-011 (internal; predates the public repository) — Original dependency lifecycle design (superseded by ADR-034)
 - `pkg/controller/workflow_deps.go` — `orderDependencies()`, `classifyDependencies()`, `cleanupScopedDependencies()`
 - `pkg/controller/workflow_controller.go` — `handleDeletion()`, `setFinalStatus()`, `cleanupDependencies()`
 - `pkg/controller/job_controller.go` — `handleDeletion()` (Job-level workload cleanup)

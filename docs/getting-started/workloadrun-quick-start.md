@@ -27,7 +27,7 @@ spec:
     mpi:
       binary: /usr/local/bin/all_reduce_perf_mpi
       args: ["-b", "8", "-e", "32G", "-f", "2", "-n", "100"]
-      mpirunPath: /usr/local/bin/mpirun
+      mpirunPath: /usr/local/mpi/bin/mpirun
   numNodes: 4
   bandwidthMeasurement:
     logProfileRef: nccl-bandwidth

@@ -1,0 +1,27 @@
+{
+  "launcherCommand": [
+    "timeout",
+    "3600",
+    "/usr/local/mpi/bin/mpirun"
+  ],
+  "launcherArgs": [
+    "-N",
+    "8",
+    "--allow-run-as-root",
+    "--mca",
+    "plm_rsh_args",
+    "-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
+    "-x",
+    "NCCL_DEBUG=INFO",
+    "-x",
+    "NCCL_MNNVL_ENABLE=1",
+    "/usr/local/bin/all_reduce_perf_mpi",
+    "-b",
+    "8",
+    "-e",
+    "32G"
+  ],
+  "envMNNVL": [
+    "1"
+  ]
+}

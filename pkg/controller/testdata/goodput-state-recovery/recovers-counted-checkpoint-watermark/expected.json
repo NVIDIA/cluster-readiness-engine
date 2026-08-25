@@ -1,0 +1,10 @@
+{
+  "trainingStarted": true,
+  "highestStep": 180,
+  "lastKnownStep": 180,
+  "lastCheckpointStep": 150,
+  "lastCountedCheckpointStep": 150,
+  "lastNonWarmupStep": 180,
+  "warmupBaseStep": 10,
+  "hasPendingInterruption": false
+}

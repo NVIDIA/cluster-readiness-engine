@@ -82,12 +82,14 @@ vet: ## Run go vet against code, including build-tagged test suites.
 
 .PHONY: test
 test: setup-envtest ## Run unit and integration tests.
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	go test -v $$(go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v /cmd/integration)
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	go test ./cmd/integration/ -v -timeout 300s -count=1
 
 .PHONY: test-ci
 test-ci:setup-envtest ## Run tests with JUnit XML and coverage reports for CI.
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	gotestsum --junitfile unit-report.xml -- \
 		-coverprofile=cover-unit.out -covermode=atomic \
 		$$(go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v /cmd/integration)
@@ -182,8 +184,12 @@ verify-license-headers: addlicense ## Verify Go sources carry the SPDX license h
 	  -ignore '**/*.yaml' -ignore '**/*.yml' -ignore '**/*.json' \
 	  api pkg cmd test hack
 
+.PHONY: verify-doc-links
+verify-doc-links: ## Verify relative markdown links in README.md and docs/ resolve to files in the tree.
+	hack/verify-doc-links.sh
+
 .PHONY: verify
-verify: verify-codegen verify-mod verify-license-headers ## Run all verification checks.
+verify: verify-codegen verify-mod verify-license-headers verify-doc-links ## Run all verification checks.
 
 .PHONY: ci
 ci: verify lint build test ## Run the full CI gate locally: verify, lint, build, and test.
@@ -191,11 +197,17 @@ ci: verify lint build test ## Run the full CI gate locally: verify, lint, build,
 ##@ Build
 
 .PHONY: check-clean-version
-check-clean-version: ## Verify VERSION is a clean release tag (no -dirty, -N-gXXX, or dev).
+check-clean-version: ## Verify VERSION is a clean release tag (vX.Y.Z with optional -prerelease; no -dirty, -N-gXXX, dev, or bare SHA).
 	@case "$(VERSION)" in \
 	  dev|*-dirty|*-*-g*) \
 	    echo "ERROR: VERSION=$(VERSION) is not a clean release tag."; \
 	    echo "Commit and tag your changes first (e.g., git tag v1.14.0)."; \
+	    exit 1 ;; \
+	  v[0-9]*.[0-9]*.[0-9]*) ;; \
+	  *) \
+	    echo "ERROR: VERSION=$(VERSION) does not look like a release tag (vX.Y.Z or vX.Y.Z-rc.N)."; \
+	    echo "git describe falls back to a bare commit SHA when no tag is reachable;"; \
+	    echo "fetch tags (git fetch --tags) or pass VERSION=<tag> explicitly."; \
 	    exit 1 ;; \
 	esac
 

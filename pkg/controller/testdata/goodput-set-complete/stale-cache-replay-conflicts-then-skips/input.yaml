@@ -1,0 +1,9 @@
+# Stale-cache replay: the copy handed to setComplete predates the live
+# object's Complete write, so its own conditions show no Complete and the
+# first update attempt conflicts on resourceVersion. The retry refreshes the
+# object, the guard sees Complete=True, and the write is skipped — the frozen
+# status survives a replay that could not even see it (ADR-072).
+staleInMemory: true
+attemptedResult: "0.500000"
+anchor: "2026-01-22T10:06:00Z"
+reason: JobSucceeded

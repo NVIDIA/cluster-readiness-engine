@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# repeatCount overrides orchestration iterations, so the budget multiplies:
+# nccl-all-reduce = 1h (catalog default) x 4 iterations x 1.5 = 6h.
+explicitTimeout: false
+flagTimeout: 30m
+certification:
+  apiVersion: cre.nvidia.com/v1alpha1
+  kind: Certification
+  metadata:
+    name: repeat
+  spec:
+    target:
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-GB200
+    repeatCount: 4
+    categories:
+    - domain: communication
+      variant: nccl-all-reduce

@@ -1,0 +1,9 @@
+# The live object already carries a landed terminal write (Complete=True,
+# result 0.900000, completionTime 10:05). A replay that recomputed different
+# values (result 0.500000, a different anchor) must not write at all: the
+# guard returns false, the status bytes and resourceVersion do not move, and
+# the frozen values stand (ADR-072 first-write-wins).
+liveComplete: true
+attemptedResult: "0.500000"
+anchor: "2026-01-22T10:06:00Z"
+reason: JobSucceeded

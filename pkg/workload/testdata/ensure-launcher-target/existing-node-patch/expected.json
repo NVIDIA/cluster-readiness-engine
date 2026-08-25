@@ -1,0 +1,18 @@
+{
+  "hasLauncherTarget": true,
+  "runtimePatches": [
+    {
+      "nodeSelector": {
+        "existing": "selector"
+      },
+      "targetJobs": [
+        "node"
+      ]
+    },
+    {
+      "targetJobs": [
+        "launcher"
+      ]
+    }
+  ]
+}

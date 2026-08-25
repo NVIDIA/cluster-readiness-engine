@@ -60,24 +60,25 @@ Run `kubectl ncre setup status` at any time to see what is present.
 
 **1. Install the CLI**
 
-Every release so far is a pre-release, and `releases/latest` resolves only to the
-newest **stable** release. Until `v0.1.0` is tagged, name the version explicitly:
+While this repository is internal, GitHub serves release assets only through
+authenticated API downloads — plain `curl` against `releases/download/...` returns a
+404 "Not Found" page instead of the script, even with a token. Fetch the installer
+with the gh CLI (authenticate with `gh auth login` first):
 
 ```bash
-CRE_VERSION=v0.1.0-rc.8
-curl -sSL https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/download/${CRE_VERSION}/installer \
-  | bash -s -- -v "${CRE_VERSION}"
+CRE_VERSION=v0.1.0-rc.9
+gh release download "${CRE_VERSION}" --repo dsx-ai-factory/cluster-readiness-engine \
+  --pattern installer --output - | bash -s -- -v "${CRE_VERSION}"
 ```
 
-Once a stable release exists, this shorter form works and picks up the newest one:
+Once the repository is public and a stable release exists, this shorter form works
+and picks up the newest stable release:
 
 ```bash
 curl -sSL https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/latest/download/installer | bash
 ```
 
 The installer places `ncrectl` on your `$PATH` and creates a `kubectl-ncre` symlink so the CLI is also available as `kubectl ncre`.
-
-The installer needs a GitHub token while this repository is internal: authenticate with `gh auth login`, or set `GITHUB_TOKEN`.
 
 **2. Set up the cluster**
 
@@ -143,6 +144,14 @@ kubectl ncre certification report <name> -n <namespace>
 Helm, or need to pin the controller image in your own manifests, both are
 published to the GitHub Container Registry on every release.
 
+While this repository is internal, Helm needs to authenticate to the registry
+before it can pull the chart:
+
+```bash
+gh auth token | helm registry login ghcr.io \
+  --username "$(gh api user --jq .login)" --password-stdin
+```
+
 ```bash
 CRE_VERSION=v0.1.0-rc.8
 
@@ -180,9 +189,9 @@ Pin an explicit version rather than installing whatever is newest. Chart and
 image versions move together, so the two commands above and your own manifests
 should all name the same tag.
 
-## Run a training workload
+## Run a workload
 
-WorkloadRun is a simplified API for running training, NCCL, or custom workloads. Write a YAML file with an image, a framework, and a node count. CRE detects the platform and GPU architecture.
+WorkloadRun is a simplified API for running training, NCCL, or custom workloads. Write a YAML file with an image, a framework, and a node count. CRE detects the platform and GPU architecture. The quickest example is an NCCL bandwidth check:
 
 ```yaml
 # nccl-all-reduce.yaml
@@ -196,16 +205,24 @@ spec:
   framework:
     mpi:
       binary: /usr/local/bin/all_reduce_perf_mpi
-      mpirunPath: /usr/local/bin/mpirun
+      mpirunPath: /usr/local/mpi/bin/mpirun
       args: ["-b", "8", "-e", "32G", "-f", "2", "-n", "100"]
   bandwidthMeasurement:
     logProfileRef: nccl-bandwidth
     testType: all_reduce
 ```
 
+`numNodes` is the node count **per job group**, not the total: CRE partitions all
+eligible nodes into groups of this size and runs one job per group, so
+`numNodes: 4` on a 16-node cluster produces four 4-node jobs.
+
 ```bash
 kubectl ncre workloadrun run nccl-all-reduce.yaml --wait
 ```
+
+For the full NCCL benchmark suite, see [Run NCCL Benchmarks](docs/how-to-guides/nccl-benchmarks.md).
+For training workloads, see the [Nemotron 5](docs/how-to-guides/workloadrun-nemotron5.md) and
+[DeepSeek-V3](docs/how-to-guides/workloadrun-deepseek-v3.md) quickstarts.
 
 ## Scope and non-goals
 

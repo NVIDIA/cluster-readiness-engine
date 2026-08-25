@@ -1,0 +1,10 @@
+# The Succeeded condition's LastTransitionTime is the terminal anchor.
+conditions:
+  - type: Succeeded
+    status: "True"
+    reason: WorkloadCompleted
+    lastTransitionTime: "2026-01-22T10:05:00Z"
+  - type: InProgress
+    status: "False"
+    reason: NotApplicable
+    lastTransitionTime: "2026-01-22T10:06:00Z"

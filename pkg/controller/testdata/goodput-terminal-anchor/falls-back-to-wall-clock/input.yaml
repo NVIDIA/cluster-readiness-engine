@@ -1,0 +1,7 @@
+# A Job with no true terminal condition should never reach the terminal path;
+# if it somehow does, the anchor degrades to the wall clock rather than zero.
+conditions:
+  - type: InProgress
+    status: "True"
+    reason: WorkloadRunning
+    lastTransitionTime: "2026-01-22T10:00:00Z"

@@ -1,0 +1,7 @@
+# The first terminal write is not blocked by the guard: Complete lands with
+# the caller's reason, completionTime is stamped from the Job's terminal
+# anchor (not the wall clock), Measuring flips to False, and the computed
+# payload (result, avg) is persisted.
+attemptedResult: "0.950000"
+anchor: "2026-01-22T10:05:00Z"
+reason: JobSucceeded

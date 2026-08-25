@@ -1,0 +1,9 @@
+# The release is failed but the retry fails for an unrelated reason (a wait
+# timeout). The output does not carry the conflict signature, so setup init
+# fails with the raw helm output and never recovers (ADR-073 decision 2).
+releaseState: failed
+chartVersion: ""
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: timed out waiting for the condition

@@ -35,7 +35,7 @@ jobs:
       # Use the pre-populated buildkitd config on NVIDIA GHA runners, which
       # routes image pulls through a per-environment Docker mirror cache.
       # See https://docs.gha-runners.nvidia.com/platform/best-practices/#use-docker-cache-for-buildkit
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
         with:
           buildkitd-config: /etc/buildkit/buildkitd.toml
 

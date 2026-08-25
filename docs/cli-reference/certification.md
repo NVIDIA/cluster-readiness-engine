@@ -25,7 +25,7 @@ ncrectl certification run --category communication/nccl-all-reduce [flags]
 | `--setup` | `false` | Install CRDs, controller, and LogProfiles before creating the certification |
 | `--image` | — | Controller image for `--setup` (default: `ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager:<version>`) |
 | `--wait` | `false` | Block until the certification completes and print a report |
-| `--timeout` | `30m` | Timeout for `--wait` |
+| `--timeout` | derived | Timeout for `--wait`. When not set, derived from the selected categories' `timeoutPerJob` budgets (max across categories × iterations × 1.5), floored at `30m`; the CLI prints the derived value when the watch starts. An explicit value always wins. |
 | `--cleanup` | `false` | Delete the certification, namespace, and installed components after completion |
 | `--nodes-per-job` | `0` | Nodes per job (0 = auto-select) |
 | `--gpus-per-node` | `0` | GPUs per node (0 = auto-detect from GPU architecture) |
@@ -73,7 +73,7 @@ ncrectl certification render [flags] <cert-file>
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--platform` | auto | Override platform detection (`aws`, `gcp`, `azure`, `oci`, `onprem`, `togetherai`, `mistral`, `forge`) |
+| `--platform` | auto | Override platform detection (`aws`, `gcp`, `azure`, `oci`, `onprem`, `togetherai`, `mistral`, `forge`, `nscale`) |
 | `--dry-run` | `false` | Validate against the live API server without creating resources |
 | `--output` | `yaml` | Output format: `yaml` or `json` |
 
