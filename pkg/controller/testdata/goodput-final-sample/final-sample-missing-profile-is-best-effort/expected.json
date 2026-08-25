@@ -3,5 +3,5 @@
   "applicationStopTimeCappedAt": "",
   "apiStatusUntouched": true,
   "throttleUntouched": true,
-  "askedForRequeue": true
+  "askedForRequeue": false
 }

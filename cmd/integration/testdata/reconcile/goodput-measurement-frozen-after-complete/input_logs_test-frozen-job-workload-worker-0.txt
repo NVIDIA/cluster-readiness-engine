@@ -1,0 +1,5 @@
+2026-01-22T10:00:00.000000000Z Application initialized
+2026-01-22T10:00:05.000000000Z step 10 step_timing: 5.0 tflops: 100.0
+2026-01-22T10:01:00.000000000Z step 20 step_timing: 5.5 tflops: 110.0
+2026-01-22T10:02:00.000000000Z Checkpoint saved at step 20 duration 12.0s
+2026-01-22T10:03:00.000000000Z step 30 step_timing: 6.0 tflops: 120.0

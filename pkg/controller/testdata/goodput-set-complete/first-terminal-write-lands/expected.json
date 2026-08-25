@@ -1,0 +1,10 @@
+{
+  "errored": false,
+  "liveResourceVersionMoved": true,
+  "liveStatusBytesUnchanged": false,
+  "liveResult": "0.950000",
+  "liveCompletionTime": "2026-01-22T10:05:00Z",
+  "liveCompleteReason": "JobSucceeded",
+  "liveMeasuringStatus": "False",
+  "liveAvgStepTimeSec": "9.999999"
+}

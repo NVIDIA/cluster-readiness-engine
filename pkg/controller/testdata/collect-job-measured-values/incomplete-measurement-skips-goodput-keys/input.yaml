@@ -1,0 +1,9 @@
+# While the GoodputMeasurement is not Complete, its values are provisional and
+# must not feed threshold evaluation — only the bandwidth keys are collected,
+# and the missing goodput keys make checkPerformanceThresholds requeue.
+goodputComplete: false
+result: "0.88"
+avgTFLOPSPerGPU: "512.5"
+avgStepTimeSec: "1.25"
+busBW: "980.1"
+algBW: "450.2"

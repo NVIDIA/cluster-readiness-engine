@@ -1,0 +1,10 @@
+# ADR-072 Decision 4: the log window is capped at the anchor. A step line
+# stamped after the Job's terminal transition (10:05:00) must not flow into
+# terminal metrics: the merged step stays 30, not 40, and ApplicationStopTime
+# stays capped at the anchor.
+call: collectFinalSample
+sampledSecondsAgo: 1
+logProfileRef: lp
+logs:
+  - "2026-01-22T10:00:05.000000000Z step 30"
+  - "2026-01-22T10:06:00.000000000Z step 40"

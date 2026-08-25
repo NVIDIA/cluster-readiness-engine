@@ -1,0 +1,10 @@
+# The Failed condition's LastTransitionTime is the terminal anchor.
+conditions:
+  - type: Failed
+    status: "True"
+    reason: WorkloadFailed
+    lastTransitionTime: "2026-01-22T10:07:30Z"
+  - type: Succeeded
+    status: "False"
+    reason: NotApplicable
+    lastTransitionTime: "2026-01-22T10:07:30Z"

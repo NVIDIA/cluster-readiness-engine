@@ -16,6 +16,14 @@ A `LogProfile` (cluster-scoped) defines named regex capture groups that match lo
 
 Built-in LogProfiles installed by `ncrectl setup init`: `megatron-training`, `megatron-bridge`, `nccl-bandwidth`, `nccl-loopback`.
 
+### Measurement lifecycle
+
+While the measured `Job` is running, the measurement's `Measuring` condition is `True` and every value in its status — including `result` — is **provisional**: it is recomputed on each sampling pass and changes as the run progresses.
+
+When the `Job` reaches a terminal state, the controller performs one final log read and folds it into a single terminal status write, anchored to the timestamp of the Job's terminal condition rather than the controller's wall clock: `completionTime` is the Job's terminal transition time, and `trainingTimeSec` (and therefore `result`) is measured up to that instant. That write sets `Complete=True` and `Measuring=False`.
+
+Once `Complete` is `True` the measurement is **frozen**: its status never changes again, so `ncrectl certification report` returns the same goodput on every read, and controller restarts or repeated reconciles cannot move the value (see [ADR-072](../designs/072-goodput-terminal-freeze.md)). Goodput-based threshold evaluation (`goodputRatio`, `avgTFLOPSPerGPU`, `avgStepTimeSec`) waits for `Complete=True` and only ever consumes the frozen values.
+
 ### Interpreting goodput
 
 A goodput ratio of 1.0 means the job was making continuous progress. Values below ~0.95 indicate meaningful overhead — stalls, restarts, or slow nodes.
