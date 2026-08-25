@@ -1,0 +1,2 @@
+maxConcurrentReconciles: -1
+measurementMaxConcurrentReconciles: 5

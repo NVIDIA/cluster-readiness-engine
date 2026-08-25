@@ -68,6 +68,9 @@ rules:
 - apiGroups: ["resource.k8s.io"]
   resources: ["resourceclaims/status"]
   verbs: ["update", "patch"]
+- apiGroups: ["resource.k8s.io"]
+  resources: ["resourceclaims/binding"]
+  verbs: ["patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -104,6 +107,9 @@ spec:
         app: ${SERVICE_NAME}
     spec:
       serviceAccountName: ${SERVICE_NAME}
+      # The stub must run on a real Kind node, not a simulated KWOK node.
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
       containers:
       - name: dra-stub
         image: ${IMAGE}

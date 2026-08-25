@@ -108,6 +108,7 @@ test-integration: fmt vet setup-envtest ## Run integration tests.
 ##@ UAT Tests (Kind + KWOK + Tilt + e2e-framework)
 
 KIND_CLUSTER_UAT ?= cre-test-uat
+KIND_NODE_IMAGE ?=
 KWOK_VERSION ?= v0.7.0
 UAT_IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):uat-test
 
@@ -119,7 +120,7 @@ setup-test-uat: ## Create Kind cluster for UAT tests and wait for it to be ready
 			echo "Kind cluster '$(KIND_CLUSTER_UAT)' already exists. Skipping creation." ;; \
 		*) \
 			echo "Creating Kind cluster '$(KIND_CLUSTER_UAT)'..."; \
-			$(KIND) create cluster --name $(KIND_CLUSTER_UAT) ;; \
+			$(KIND) create cluster --name $(KIND_CLUSTER_UAT) $(if $(KIND_NODE_IMAGE),--image "$(KIND_NODE_IMAGE)",) ;; \
 	esac
 	@echo "Waiting for nodes to be ready..."
 	@$(KUBECTL) wait --for=condition=Ready nodes --all --timeout=120s

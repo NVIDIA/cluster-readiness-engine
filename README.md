@@ -165,6 +165,22 @@ helm install cluster-readiness-engine \
   --create-namespace
 ```
 
+By default, each Job, Workflow, Certification, and WorkloadRun controller runs
+up to 10 reconciles concurrently, while each log-processing measurement
+controller runs up to 5. Tune these limits for the controller resources and
+Kubernetes API-server capacity available in your cluster:
+
+```bash
+helm upgrade cluster-readiness-engine \
+  oci://ghcr.io/dsx-ai-factory/cluster-readiness-engine \
+  --version "$CRE_VERSION" \
+  --namespace cluster-readiness-engine \
+  --set manager.maxConcurrentReconciles=20 \
+  --set manager.measurementMaxConcurrentReconciles=10
+```
+
+Both values must be greater than zero.
+
 The controller image is `ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager`, tagged
 with the same release version. Builds from `main` are also published, tagged
 `main-<commit-sha>`; use a release tag rather than one of those.

@@ -157,6 +157,26 @@ make test-uat-run     # re-run as needed
 make cleanup-test-uat # when finished
 ```
 
+By default, Kind uses the Kubernetes node image bundled with the developer's
+installed Kind version. To exercise a specific Kubernetes version, select its
+node image when creating the cluster (Kind v0.32 or newer is required for the
+Kubernetes 1.36 image):
+
+```bash
+make setup-test-uat \
+  KIND_NODE_IMAGE=kindest/node:v1.34.8
+```
+
+or:
+
+```bash
+make setup-test-uat \
+  KIND_NODE_IMAGE=kindest/node:v1.36.1
+```
+
+The image is used only when creating a new cluster. If `cre-test-uat` already
+exists, delete it with `make cleanup-test-uat` before changing versions.
+
 Notes:
 
 - Run `make ci` on a committed tree. `make verify` regenerates code and fails when the result differs from what is committed.

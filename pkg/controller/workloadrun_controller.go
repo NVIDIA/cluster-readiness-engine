@@ -16,6 +16,7 @@ import (
 	kruntime "k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	controlleropts "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -31,6 +32,8 @@ import (
 type WorkloadRunReconciler struct {
 	client.Client
 	Scheme *kruntime.Scheme
+	// MaxConcurrentReconciles bounds the number of WorkloadRun objects reconciled concurrently.
+	MaxConcurrentReconciles int
 }
 
 // +kubebuilder:rbac:groups=cre.nvidia.com,resources=workloadruns,verbs=get;list;watch;create;update;patch;delete
@@ -577,6 +580,7 @@ func (r *WorkloadRunReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&crev1alpha1.WorkloadRun{}).
 		Owns(&crev1alpha1.Workflow{}).
+		WithOptions(controlleropts.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Complete(r)
 }
 
