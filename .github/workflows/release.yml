@@ -98,10 +98,10 @@ jobs:
       # the released binary (issue #195). check-clean-version rejects
       # anything that is not a clean vX.Y.Z[-prerelease] tag, so a malformed
       # workflow_dispatch input fails here instead of mislabeling binaries.
-      - name: Cross-compile ncrectl
+      - name: Cross-compile nvcrectl
         run: |
           make check-clean-version VERSION="${{ steps.tag.outputs.value }}"
-          make build-ncrectl-cross VERSION="${{ steps.tag.outputs.value }}"
+          make build-nvcrectl-cross VERSION="${{ steps.tag.outputs.value }}"
 
       # The runner is linux/amd64, so that binary runs natively. Require the
       # self-reported version to equal the tag exactly — a `-N-gSHA`/`-dirty`
@@ -110,7 +110,7 @@ jobs:
       - name: Verify stamped version matches the tag
         run: |
           tag="${{ steps.tag.outputs.value }}"
-          got="$(./bin/ncrectl-linux-amd64 --version | awk '{print $NF}')"
+          got="$(./bin/nvcrectl-linux-amd64 --version | awk '{print $NF}')"
           echo "tag=${tag} binary-reported=${got}"
           if [[ "${got}" != "${tag}" ]]; then
             echo "ERROR: binary reports version ${got}, expected ${tag}" >&2
@@ -120,8 +120,8 @@ jobs:
       - name: Upload CLI binaries
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ncrectl-binaries
-          path: bin/ncrectl-*
+          name: nvcrectl-binaries
+          path: bin/nvcrectl-*
           retention-days: 7
 
   create-github-release:
@@ -142,7 +142,7 @@ jobs:
       - name: Download CLI binaries
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ncrectl-binaries
+          name: nvcrectl-binaries
           path: dist/
 
       - name: Resolve tag
@@ -158,7 +158,7 @@ jobs:
         run: |
           cp installer dist/
           cd dist
-          sha256sum installer ncrectl-* > checksums.txt
+          sha256sum installer nvcrectl-* > checksums.txt
           cat checksums.txt
 
       # Gate. This runs after the artifacts exist and before the release is
@@ -200,7 +200,7 @@ jobs:
             [README](https://github.com/${{ github.repository }}/blob/${{ steps.tag.outputs.value }}/README.md)
             for the full feature list.
 
-            ## Install ncrectl
+            ## Install nvcrectl
 
             While this repository is internal, GitHub serves release assets only through
             authenticated API downloads — plain `curl` against `releases/download/...`
@@ -236,16 +236,16 @@ jobs:
             The controller image for this release is
             `ghcr.io/${{ github.repository }}/manager:${{ steps.tag.outputs.value }}`.
 
-            ## ncrectl CLI
+            ## nvcrectl CLI
 
             Download the binary for your platform from the assets below and place it on your `$PATH`.
 
             | Platform | Binary |
             |---|---|
-            | Linux amd64 | `ncrectl-linux-amd64` |
-            | Linux arm64 | `ncrectl-linux-arm64` |
-            | macOS amd64 | `ncrectl-darwin-amd64` |
-            | macOS arm64 (Apple Silicon) | `ncrectl-darwin-arm64` |
+            | Linux amd64 | `nvcrectl-linux-amd64` |
+            | Linux arm64 | `nvcrectl-linux-arm64` |
+            | macOS amd64 | `nvcrectl-darwin-amd64` |
+            | macOS arm64 (Apple Silicon) | `nvcrectl-darwin-arm64` |
 
             ## Verify your download
 
@@ -268,7 +268,7 @@ jobs:
             - Report bugs with the [issue templates](https://github.com/${{ github.repository }}/issues/new/choose).
             - Report security issues per [SECURITY.md](https://github.com/${{ github.repository }}/blob/main/SECURITY.md), never through GitHub issues.
           files: |
-            dist/ncrectl-*
+            dist/nvcrectl-*
             dist/installer
             dist/checksums.txt
             THIRD_PARTY_NOTICES.md
@@ -291,7 +291,7 @@ jobs:
           tag="${{ steps.tag.outputs.value }}"
           rm -rf verify-release && mkdir verify-release
           gh release download "${tag}" --repo "${GITHUB_REPOSITORY}" \
-            --pattern installer --pattern checksums.txt --pattern ncrectl-linux-amd64 \
+            --pattern installer --pattern checksums.txt --pattern nvcrectl-linux-amd64 \
             --dir verify-release
           # The installer must be a shell script, not an HTML/text error page.
           [[ "$(head -c 2 verify-release/installer)" == '#!' ]]
@@ -299,7 +299,7 @@ jobs:
           # Every downloaded asset must match its published checksum.
           (cd verify-release && sha256sum --check --ignore-missing checksums.txt)
           # The published binary must self-report exactly the released tag.
-          chmod +x verify-release/ncrectl-linux-amd64
-          got="$(./verify-release/ncrectl-linux-amd64 --version | awk '{print $NF}')"
+          chmod +x verify-release/nvcrectl-linux-amd64
+          got="$(./verify-release/nvcrectl-linux-amd64 --version | awk '{print $NF}')"
           echo "tag=${tag} binary-reported=${got}"
           [[ "${got}" == "${tag}" ]]

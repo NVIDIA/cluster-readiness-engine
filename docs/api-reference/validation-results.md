@@ -18,7 +18,7 @@ The Cluster Readiness Engine (CRE) has been validated on the following platform 
 | GCP      | H100  | 2     | TCPXO        | 4/4        | PASSED   |
 | GCP      | GB200 | 2     | RoCE         | 8/8        | PASSED   |
 
-Catalog variant names evolve between releases. The training entry used during these validation runs (`training/nemotron4-15b`) has since been superseded — the current catalog offers `training/nemotron5-8b` and `training/nemotron5-56b`. List the categories available in your installed version with `ncrectl certification list-categories`.
+Catalog variant names evolve between releases. The training entry used during these validation runs (`training/nemotron4-15b`) has since been superseded — the current catalog offers `training/nemotron5-8b` and `training/nemotron5-56b`. List the categories available in your installed version with `nvcrectl certification list-categories`.
 
 ## Detailed Reports
 
@@ -577,7 +577,7 @@ Catalog variant names evolve between releases. The training entry used during th
 
 ## Machine-readable results
 
-`ncrectl certification run --wait --results-file <path>` and `ncrectl certification report <name> --results-file <path>` write the same report as JSON. The file contains a single report object (or an array when multiple certifications are combined into one report):
+`nvcrectl certification run --wait --results-file <path>` and `nvcrectl certification report <name> --results-file <path>` write the same report as JSON. The file contains a single report object (or an array when multiple certifications are combined into one report):
 
 ```json
 {

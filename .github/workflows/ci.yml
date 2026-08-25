@@ -52,8 +52,8 @@ jobs:
       - name: Build manager binary
         run: make build
 
-      - name: Build ncrectl binary
-        run: make build-ncrectl
+      - name: Build nvcrectl binary
+        run: make build-nvcrectl
 
       # The same scan that gates publication in release.yml. Running it here on
       # every pull request exercises the mechanism continuously, instead of

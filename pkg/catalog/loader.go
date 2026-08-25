@@ -504,7 +504,7 @@ func defaultIterations(emptyRender []byte) int {
 // resolveTimeoutPerJob resolves the effective timeoutPerJob for an entry.
 // Precedence: explicit user value > entry meta.yaml default > test-scale
 // global default. Used by buildTemplateData at render time and by
-// Entry.EffectiveTimeoutPerJob for offline derivation (ncrectl --wait).
+// Entry.EffectiveTimeoutPerJob for offline derivation (nvcrectl --wait).
 func resolveTimeoutPerJob(userTimeout, entryDefault, testScale string) string {
 	if userTimeout != "" {
 		return userTimeout

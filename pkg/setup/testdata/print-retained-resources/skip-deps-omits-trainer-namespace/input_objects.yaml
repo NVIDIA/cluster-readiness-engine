@@ -11,6 +11,6 @@ metadata:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: ncrectl-pull-secret
+  name: nvcrectl-pull-secret
   namespace: cluster-readiness-engine
 type: kubernetes.io/dockerconfigjson

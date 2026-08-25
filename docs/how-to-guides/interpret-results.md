@@ -9,8 +9,8 @@ description: Read and act on certification and WorkloadRun reports.
 ## Get a report
 
 ```bash
-ncrectl certification report <name>
-ncrectl workloadrun report <name>
+nvcrectl certification report <name>
+nvcrectl workloadrun report <name>
 ```
 
 ## Report structure
@@ -57,7 +57,7 @@ kubectl get configmap <ref-name> -o yaml
 Or use the CLI for a formatted report:
 
 ```bash
-ncrectl certification report <name>
+nvcrectl certification report <name>
 ```
 
 CRE records which nodes failed and why — it does not taint or cordon them. To quarantine a failed node:

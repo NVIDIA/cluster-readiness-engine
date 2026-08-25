@@ -46,18 +46,18 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 032 | [Orchestration Overrides](032-orchestration-overrides.md) |
 | 034 | [Eliminate LifecycleSpec — Infer Dependency Scope and Ordering from References](034-inferred-dependency-lifecycle.md) |
 | 035 | [Optional Legacy Kubeflow Training Operator Support](035-optional-legacy-kubeflow.md) |
-| 038 | [Shell Installer Script for ncrectl](038-installer-script.md) |
+| 038 | [Shell Installer Script for nvcrectl](038-installer-script.md) |
 | 039 | [CLI Self-Upgrade Command](039-cli-self-upgrade.md) |
 | 041 | [kubeadm-Style Init/Reset with Phases](041-kubeadm-style-init-reset.md) |
 | 042 | [CLI Command for Running Certifications](042-certification-run.md) |
 | 043 | [Per-Category nodesPerJob with Auto-Selection and Early Overlay Resolution](043-per-category-nodes-per-job.md) |
-| 044 | [Full Certification Lifecycle in ncrectl](044-xcalctl-certification-lifecycle.md) |
-| 045 | [Embedded Config and Go Client Apply in ncrectl](045-xcalctl-embedded-config.md) |
+| 044 | [Full Certification Lifecycle in nvcrectl](044-xcalctl-certification-lifecycle.md) |
+| 045 | [Embedded Config and Go Client Apply in nvcrectl](045-xcalctl-embedded-config.md) |
 | 046 | [Shared Template Library for Catalog Entries](046-shared-template-library.md) |
 | 047 | [Standardize NCCL Communication Entries on AWS EFA Configuration](047-standardize-nccl-aws.md) |
 | 048 | [Embedded Trainer Manifests](048-embedded-trainer-manifests.md) |
 | 049 | [Kind + KWOK End-to-End UAT Tests with e2e-framework](049-kind-kwok-uat-tests.md) |
-| 050 | [Unified ncrectl certification run Pipeline](050-xcalctl-unified-run-pipeline.md) |
+| 050 | [Unified nvcrectl certification run Pipeline](050-xcalctl-unified-run-pipeline.md) |
 | 051 | [Tolerate All Taints and Avoid GPU Nodes for Controllers](051-tolerate-all-taints.md) |
 | 052 | [Forced CLI Upgrade Check for Release Builds](052-forced-cli-upgrade.md) |
 | 053 | [Ordered Dependency Deletion via Reverse Topological Sort](053-ordered-dependency-deletion.md) |
@@ -72,9 +72,9 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 062 | [Succeeded Node Attribution via a Compressed ConfigMap](062-node-detail-propagation.md) |
 | 063 | [Auto-Inject Tolerations from `target.taintSelectors`](063-taint-selector-tolerations.md) |
 | 064 | [Helm Chart Distribution](064-helm-chart-distribution.md) |
-| 065 | [ncrectl Helm Install](065-xcalctl-helm-install.md) |
+| 065 | [nvcrectl Helm Install](065-xcalctl-helm-install.md) |
 | 066 | [Remove the `kubeJob` Workload Type](066-remove-kubejob-workload-type.md) |
-| 067 | [`kubectl ncrectl` Plugin Support and Full kubectl Flag Parity](067-kubectl-plugin-support.md) |
+| 067 | [`kubectl nvcrectl` Plugin Support and Full kubectl Flag Parity](067-kubectl-plugin-support.md) |
 | 068 | [Offloading Inline Node Lists from the Workflow CR via Compressed ConfigMaps](068-group-nodes-compressed-configmap.md) |
 | 069 | [cmd/ layout — kubernetes/kubernetes convention](069-cmd-layout.md) |
 | 070 | [WorkloadRun MPI Transport-Layer Overrides for AWS GB300 (RoCE)](070-workloadrun-gb300-mpi-transport.md) |

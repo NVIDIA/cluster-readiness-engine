@@ -5,7 +5,7 @@
 #
 # Key labels for CRE detection:
 #   nvidia.com/gpu.product: NVIDIA-GB200                       -> GPU arch "gb200"
-#   nvidia.com/gpu.present: "true"                             -> ncrectl GPU discovery
+#   nvidia.com/gpu.present: "true"                             -> nvcrectl GPU discovery
 #   nvidia.com/gpu.clique: <uuid>                              -> NVLink clique
 #   topology.k8s.aws/network-node-layer-1: <id>                -> physical rack (T1 leaf)
 #   spec.providerID: "aws:///..."                              -> platform "aws"

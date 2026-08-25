@@ -14,7 +14,7 @@ import (
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 )
 
-// BuildWorkflowSpec renders the Workflow that "ncrectl workloadrun render" and
+// BuildWorkflowSpec renders the Workflow that "nvcrectl workloadrun render" and
 // "--dry-run" print. The controller does not call it. The controller has its
 // own copy in pkg/controller/workloadrun_controller.go, and the two copies have
 // already drifted apart, so these cases cover the preview only. A passing run

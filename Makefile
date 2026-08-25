@@ -134,13 +134,13 @@ tilt-uat-ci: setup-test-uat ## Start Tilt for UAT in CI mode (headless, exits af
 
 .PHONY: test-uat
 test-uat: tilt-uat-ci ## Run UAT tests (Tilt deploys everything, then run tests).
-	KIND_CLUSTER=$(KIND_CLUSTER_UAT) NCRECTL=$(LOCALBIN)/ncrectl \
+	KIND_CLUSTER=$(KIND_CLUSTER_UAT) NVCRECTL=$(LOCALBIN)/nvcrectl \
 		go test -tags=uat ./test/uat/ -v -timeout 1800s -count=1
 	$(MAKE) cleanup-test-uat
 
 .PHONY: test-uat-run
 test-uat-run: ## Run UAT tests against existing Tilt-managed cluster (dev iteration).
-	NCRECTL=$(LOCALBIN)/ncrectl go test -tags=uat ./test/uat/ -v -timeout 1800s -count=1
+	NVCRECTL=$(LOCALBIN)/nvcrectl go test -tags=uat ./test/uat/ -v -timeout 1800s -count=1
 
 .PHONY: cleanup-test-uat
 cleanup-test-uat: ## Delete Kind cluster for UAT tests.
@@ -215,20 +215,20 @@ check-clean-version: ## Verify VERSION is a clean release tag (vX.Y.Z with optio
 build: manifests generate fmt vet ## Build manager binary.
 	go build -ldflags "$(LDFLAGS)" -o bin/manager ./cmd/manager/
 
-.PHONY: build-ncrectl
-build-ncrectl: $(LOCALBIN) ## Build ncrectl CLI tool.
-	go build -ldflags "$(LDFLAGS)" -o bin/ncrectl ./cmd/ncrectl/
-	ln -sf ncrectl bin/kubectl-ncrectl
+.PHONY: build-nvcrectl
+build-nvcrectl: $(LOCALBIN) ## Build nvcrectl CLI tool.
+	go build -ldflags "$(LDFLAGS)" -o bin/nvcrectl ./cmd/nvcrectl/
+	ln -sf nvcrectl bin/kubectl-nvcrectl
 
-.PHONY: build-ncrectl-cross
-build-ncrectl-cross: $(LOCALBIN) ## Cross-compile ncrectl for all NCRECTL_PLATFORMS (linux, macOS).
-	@for platform in $(subst $(comma), ,$(NCRECTL_PLATFORMS)); do \
+.PHONY: build-nvcrectl-cross
+build-nvcrectl-cross: $(LOCALBIN) ## Cross-compile nvcrectl for all NVCRECTL_PLATFORMS (linux, macOS).
+	@for platform in $(subst $(comma), ,$(NVCRECTL_PLATFORMS)); do \
 		os=$${platform%/*}; \
 		arch=$${platform#*/}; \
 		ext=""; if [ "$${os}" = "windows" ]; then ext=".exe"; fi; \
-		echo "Building ncrectl for $${os}/$${arch}..."; \
+		echo "Building nvcrectl for $${os}/$${arch}..."; \
 		CGO_ENABLED=0 GOOS=$${os} GOARCH=$${arch} \
-			go build -ldflags "$(LDFLAGS)" -o bin/ncrectl-$${os}-$${arch}$${ext} ./cmd/ncrectl/ || exit 1; \
+			go build -ldflags "$(LDFLAGS)" -o bin/nvcrectl-$${os}-$${arch}$${ext} ./cmd/nvcrectl/ || exit 1; \
 	done
 
 .PHONY: run
@@ -254,8 +254,8 @@ docker-push: check-clean-version ## Push docker image with the manager.
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
 PLATFORMS ?= linux/arm64,linux/amd64
 
-# Platforms for ncrectl CLI cross-compilation (includes macOS and Windows for end-user workstations).
-NCRECTL_PLATFORMS ?= linux/amd64,linux/arm64,darwin/amd64,darwin/arm64
+# Platforms for nvcrectl CLI cross-compilation (includes macOS and Windows for end-user workstations).
+NVCRECTL_PLATFORMS ?= linux/amd64,linux/arm64,darwin/amd64,darwin/arm64
 
 # BUILDX_PUSH controls whether docker-buildx pushes the image.
 # Default pushes. Set BUILDX_PUSH= (empty) to build without pushing,

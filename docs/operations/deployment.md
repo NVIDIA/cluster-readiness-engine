@@ -14,22 +14,22 @@ CRE supports two install paths. Both pull the same artifacts from the GitHub Con
 
 | Method | Audience | Installs Kubeflow Trainer |
 |--------|----------|---------------------------|
-| `ncrectl setup init` | Operators, quick setup | Yes (skip with `--skip-phases=deps`) |
+| `nvcrectl setup init` | Operators, quick setup | Yes (skip with `--skip-phases=deps`) |
 | Helm chart (`oci://ghcr.io/dsx-ai-factory/cluster-readiness-engine`) | GitOps / platform teams | No (install separately) |
 
-### ncrectl setup init
+### nvcrectl setup init
 
 Install the CLI first with the installer script (see [Install](../getting-started/install.md) for the full walkthrough):
 
 ```bash
-export NCRECTL_VERSION=v0.1.0-rc.8
-curl -sSL "https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/download/${NCRECTL_VERSION}/installer" | bash
+export NVCRECTL_VERSION=v0.1.0-rc.8
+curl -sSL "https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/download/${NVCRECTL_VERSION}/installer" | bash
 ```
 
 Then set up the cluster:
 
 ```bash
-ncrectl setup init --image-pull-secret $GITHUB_TOKEN
+nvcrectl setup init --image-pull-secret $GITHUB_TOKEN
 ```
 
 `setup init` runs two phases:
@@ -40,15 +40,15 @@ ncrectl setup init --image-pull-secret $GITHUB_TOKEN
 The Helm chart is pulled from GHCR at the CLI's own version, so a tagged release needs no version flag. **Dev builds (built from `main`) require `--version`** to name the chart version explicitly:
 
 ```bash
-ncrectl setup init --version <chart-version> --image-pull-secret $GITHUB_TOKEN
+nvcrectl setup init --version <chart-version> --image-pull-secret $GITHUB_TOKEN
 ```
 
-`--image-pull-secret` takes a GitHub token; it creates the `ncrectl-pull-secret` image pull secret in the `cluster-readiness-engine` namespace and authenticates the Helm chart pull. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, and `--auto-approve` to skip the confirmation prompt in CI.
+`--image-pull-secret` takes a GitHub token; it creates the `nvcrectl-pull-secret` image pull secret in the `cluster-readiness-engine` namespace and authenticates the Helm chart pull. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, and `--auto-approve` to skip the confirmation prompt in CI.
 
 Check the installation at any time:
 
 ```bash
-ncrectl setup status
+nvcrectl setup status
 ```
 
 ### Helm chart
@@ -183,7 +183,7 @@ If you want to restrict egress to the Kubernetes API server or gate health probe
 
 The controller uses controller-runtime's work queue model — each reconciler processes events concurrently. A single replica comfortably handles clusters up to 1,000 nodes and hundreds of concurrent burn-in Jobs. Leader election ensures only one replica reconciles at a time, while standby replicas provide automatic failover.
 
-The controller has no external database, no admission webhook, and no sidecar injection. It depends on Kubeflow Trainer for `TrainJob` workloads, and `ncrectl setup init` installs Kubeflow Trainer by default unless you skip the `deps` phase. CRD validation is handled through CEL-based validation rules embedded in the CRD schema, which the API server evaluates natively. Operationally, that reduces the stack to the controller Deployment plus the Kubernetes APIs and Trainer CRDs it uses.
+The controller has no external database, no admission webhook, and no sidecar injection. It depends on Kubeflow Trainer for `TrainJob` workloads, and `nvcrectl setup init` installs Kubeflow Trainer by default unless you skip the `deps` phase. CRD validation is handled through CEL-based validation rules embedded in the CRD schema, which the API server evaluates natively. Operationally, that reduces the stack to the controller Deployment plus the Kubernetes APIs and Trainer CRDs it uses.
 
 ### Tuning for large clusters (200+ nodes)
 
@@ -254,14 +254,14 @@ To roll back:
 helm rollback cluster-readiness-engine <revision> --namespace cluster-readiness-engine
 ```
 
-If you installed with `ncrectl setup init`, upgrade by installing the new CLI version and re-running `ncrectl setup init`.
+If you installed with `nvcrectl setup init`, upgrade by installing the new CLI version and re-running `nvcrectl setup init`.
 
 ## Uninstall and cleanup
 
-### ncrectl setup reset
+### nvcrectl setup reset
 
 ```bash
-ncrectl setup reset
+nvcrectl setup reset
 ```
 
 `setup reset` runs three phases: **cr** (deletes all CRE custom resource instances while the controller can still process finalizers), **helm** (removes the CRE Helm release and then explicitly deletes the CRE CRDs), and **deps** (removes Kubeflow Trainer and its CRDs). Use `--skip-phases=deps` to keep Kubeflow Trainer.
@@ -269,7 +269,7 @@ ncrectl setup reset
 **What `setup reset` retains** — clean these up yourself if you want a pristine cluster:
 
 - The `cluster-readiness-engine` and `kubeflow-system` namespaces are not deleted.
-- The `ncrectl-pull-secret` image pull secret created by `setup init --image-pull-secret` remains in the `cluster-readiness-engine` namespace.
+- The `nvcrectl-pull-secret` image pull secret created by `setup init --image-pull-secret` remains in the `cluster-readiness-engine` namespace.
 
 ```bash
 # Removes both retained namespaces (and the pull secret inside them)
@@ -291,7 +291,7 @@ kubectl delete crd \
   workloadruns.cre.nvidia.com
 ```
 
-**Warning:** deleting a CRD deletes all instances of that resource cluster-wide, including any Certification results you have not exported. Save reports first with `ncrectl certification report <name> --results-file <path>`.
+**Warning:** deleting a CRD deletes all instances of that resource cluster-wide, including any Certification results you have not exported. Save reports first with `nvcrectl certification report <name> --results-file <path>`.
 
 ## Production security checklist
 

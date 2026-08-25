@@ -71,7 +71,7 @@ Different nodes in the same category can fail with different reasons. A node tha
 Use the CLI for a structured report:
 
 ```bash
-ncrectl certification report <name>
+nvcrectl certification report <name>
 ```
 
 Or read the raw ConfigMap directly:

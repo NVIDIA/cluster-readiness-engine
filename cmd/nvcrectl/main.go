@@ -26,7 +26,7 @@ func main() {
 
 func newRootCommand() *cobra.Command {
 	root := &cobra.Command{
-		Use:          "ncrectl",
+		Use:          "nvcrectl",
 		Short:        "CLI for GPU cluster readiness and certification",
 		Version:      version,
 		SilenceUsage: true,

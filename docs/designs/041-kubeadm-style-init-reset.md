@@ -17,8 +17,8 @@ This pattern is well-established in the Kubernetes ecosystem and maps naturally 
 
 Replace the four separate commands with two phase-based commands:
 
-- `ncrectl setup init` — runs all init phases sequentially
-- `ncrectl setup reset` — runs all reset phases (reverse order)
+- `nvcrectl setup init` — runs all init phases sequentially
+- `nvcrectl setup reset` — runs all reset phases (reverse order)
 
 Both support `--skip-phases=<comma-separated>` to skip specific phases.
 
@@ -60,13 +60,13 @@ Skipped phases show: `[deps] Skipped.`
 
 ```bash
 # Skip deps (already installed separately)
-ncrectl setup init --skip-phases=deps
+nvcrectl setup init --skip-phases=deps
 
 # Skip deps on reset (leave Kubeflow Trainer installed)
-ncrectl setup reset --skip-phases=deps
+nvcrectl setup reset --skip-phases=deps
 
 # Skip multiple phases
-ncrectl setup init --skip-phases=deps,logprofiles
+nvcrectl setup init --skip-phases=deps,logprofiles
 ```
 
 ## Implementation
@@ -88,8 +88,8 @@ New functions:
 ## Consequences
 
 ### Positive
-- Single command for full deployment: `ncrectl setup init --auto-approve`
-- Single command for full teardown: `ncrectl setup reset --auto-approve`
+- Single command for full deployment: `nvcrectl setup init --auto-approve`
+- Single command for full teardown: `nvcrectl setup reset --auto-approve`
 - Familiar kubeadm UX pattern
 - `--skip-phases` handles all edge cases (pre-installed deps, keep deps on reset, etc.)
 
