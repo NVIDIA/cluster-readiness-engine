@@ -34,7 +34,7 @@ Helm release cluster-readiness-engine   ✗ pending-upgrade
 Helm release kubeflow-trainer           ✓ deployed
 
 Status: not ready — a managed Helm release is unhealthy
-  Helm release cluster-readiness-engine (namespace: cluster-readiness-engine) is pending-upgrade — run 'ncrectl setup init' to repair it
+  Helm release cluster-readiness-engine (namespace: cluster-readiness-engine) is pending-upgrade — run 'nvcrectl setup init' to repair it
 
 Note: service gpu-operator/nvidia-dcgm is missing. Only the diagnostics/dcgm-level4
       category needs it. Your cluster administrator can add it with:

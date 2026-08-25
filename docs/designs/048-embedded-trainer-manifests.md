@@ -2,7 +2,7 @@
 
 ## Context
 
-ADR-045 embedded all CRE manifests (CRDs, controller, LogProfiles) into the ncrectl binary and applied them via the Go Kubernetes client. The Kubeflow Trainer `[deps]` phase was intentionally kept remote ("it is an external dependency with its own release cadence") and continues to shell out to `kubectl apply -k <github-url>`.
+ADR-045 embedded all CRE manifests (CRDs, controller, LogProfiles) into the nvcrectl binary and applied them via the Go Kubernetes client. The Kubeflow Trainer `[deps]` phase was intentionally kept remote ("it is an external dependency with its own release cadence") and continues to shell out to `kubectl apply -k <github-url>`.
 
 In practice, this has three problems:
 
@@ -18,7 +18,7 @@ The force-cleanup fallback added for network failures (deleting known resources 
 2. **Embed** the file via `go:embed embedded/trainer.yaml` alongside the existing CRE embeds.
 3. **Apply/delete via Go client** using the existing `applyManifests`/`deleteManifests` functions — no kubectl needed in the default path.
 4. **Retain kubectl** only for the `--version` override path, which still fetches from remote URLs.
-5. **Add a Makefile target** `embed-trainer` for re-rendering on version bumps. This is NOT a dependency of `embed-ncrectl` — it runs on-demand when the Trainer version changes.
+5. **Add a Makefile target** `embed-trainer` for re-rendering on version bumps. This is NOT a dependency of `embed-nvcrectl` — it runs on-demand when the Trainer version changes.
 
 ### Embedded File
 
@@ -69,14 +69,14 @@ The separate `[deps]` cleanup block (which required kubectl and had its own forc
 
 ### Positive
 
-- `ncrectl setup init` and `setup reset` work fully offline.
+- `nvcrectl setup init` and `setup reset` work fully offline.
 - kubectl is no longer required in the default install flow.
 - No more GitHub timeout failures during install.
 - Binary size increases by ~150KB (Trainer manifests).
 
 ### Negative
 
-- Bumping the Kubeflow Trainer version requires running `make embed-trainer` and committing the updated `trainer.yaml`. This is the same workflow as `make embed-ncrectl` for CRE manifests.
+- Bumping the Kubeflow Trainer version requires running `make embed-trainer` and committing the updated `trainer.yaml`. This is the same workflow as `make embed-nvcrectl` for CRE manifests.
 - The `trainer.yaml` file is large (~4000 lines) and checked into the repository.
 
 ## Alternatives Considered
@@ -87,10 +87,10 @@ The separate `[deps]` cleanup block (which required kubectl and had its own forc
 
 ## Notes
 
-- Supersedes ADR-045 decision #3 ("Keep kubectl only for the `[deps]` phase") and alternative #2 ("Embed everything including Kubeflow: Couples ncrectl releases to Kubeflow releases. Rejected.").
+- Supersedes ADR-045 decision #3 ("Keep kubectl only for the `[deps]` phase") and alternative #2 ("Embed everything including Kubeflow: Couples nvcrectl releases to Kubeflow releases. Rejected.").
 - `forceCleanupTrainer` is retained for the `--version` reset fallback path.
 
 ## References
 
-- ADR-045: Embedded Config and Go Client Apply in ncrectl
+- ADR-045: Embedded Config and Go Client Apply in nvcrectl
 - ADR-041: Kubeadm-style Init/Reset

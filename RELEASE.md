@@ -12,7 +12,7 @@ CRE follows [Semantic Versioning](https://semver.org/). Tags are `vMAJOR.MINOR.P
 optionally with a pre-release suffix, for example `v0.1.0` or `v0.1.0-rc.8`.
 
 The project is at `v0.x`. Under SemVer that means the public surface can still change in
-a minor release. Treat CRD schemas, the `ncrectl` command line, and Helm values as
+a minor release. Treat CRD schemas, the `nvcrectl` command line, and Helm values as
 unstable until `v1.0.0`. Breaking changes are called out in the release notes.
 
 ## Cadence
@@ -81,7 +81,7 @@ Pushing a `v*` tag runs three jobs in `.github/workflows/release.yml`:
 | Job | Publishes |
 |---|---|
 | Publish Helm Chart | `oci://ghcr.io/dsx-ai-factory/cluster-readiness-engine` |
-| Build CLI Binaries | cross-compiled `ncrectl` for linux and macOS, amd64 and arm64 |
+| Build CLI Binaries | cross-compiled `nvcrectl` for linux and macOS, amd64 and arm64 |
 | Create GitHub Release | the GitHub Release, its notes, and the assets below |
 
 The container image is published separately by `.github/workflows/publish.yml` as
@@ -90,16 +90,16 @@ The container image is published separately by `.github/workflows/publish.yml` a
 Release assets:
 
 - `installer` — the install script the README points at
-- `ncrectl-linux-amd64`, `ncrectl-linux-arm64`
-- `ncrectl-darwin-amd64`, `ncrectl-darwin-arm64`
+- `nvcrectl-linux-amd64`, `nvcrectl-linux-arm64`
+- `nvcrectl-darwin-amd64`, `nvcrectl-darwin-arm64`
 - `checksums.txt` — SHA-256 of every asset above
 
 ## Verifying a release
 
 The release workflow verifies its own output: the Build CLI Binaries job stamps the
-binaries with the tag explicitly and fails if `ncrectl --version` does not report the
+binaries with the tag explicitly and fails if `nvcrectl --version` does not report the
 tag exactly, and the Create GitHub Release job re-downloads the published `installer`,
-`checksums.txt`, and `ncrectl-linux-amd64` assets, checks the installer is a runnable
+`checksums.txt`, and `nvcrectl-linux-amd64` assets, checks the installer is a runnable
 shell script (not an error page), verifies checksums, and re-checks the binary's
 self-reported version.
 
@@ -110,7 +110,7 @@ works too):
 ```bash
 VERSION=v0.1.0
 gh release download "$VERSION" --repo dsx-ai-factory/cluster-readiness-engine \
-  --pattern checksums.txt --pattern ncrectl-linux-amd64
+  --pattern checksums.txt --pattern nvcrectl-linux-amd64
 sha256sum --check --ignore-missing checksums.txt
 ```
 

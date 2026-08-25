@@ -46,7 +46,7 @@ body:
         - Configuration
         - API / CRDs
         - Catalog / Workloads
-        - CLI (ncrectl)
+        - CLI (nvcrectl)
         - Controller / Reconcilers
         - Runbooks
         - Other

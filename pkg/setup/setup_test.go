@@ -142,7 +142,7 @@ func TestParseSkipPhases(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Tests for ncrectl setup init/reset helpers
+// Tests for nvcrectl setup init/reset helpers
 // ---------------------------------------------------------------------------
 
 func TestParseImage(t *testing.T) {

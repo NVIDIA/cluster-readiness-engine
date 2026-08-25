@@ -13,7 +13,7 @@ For an introduction to WorkloadRun and when to use it instead of a full Certific
 ## Prerequisites
 
 - A Kubernetes cluster with GPU nodes (`nvidia.com/gpu.present=true`) and `kubectl` access
-- `ncrectl` installed and the CRE controller running on the cluster — see [Installation](../getting-started/install.md)
+- `nvcrectl` installed and the CRE controller running on the cluster — see [Installation](../getting-started/install.md)
 - An NGC API key for pulling the NeMo container image from `nvcr.io`
 - The DeepSeek-V3 recipe fetches the model configuration from Hugging Face Hub at startup, so worker pods need outbound access to `huggingface.co` (or a pre-populated Hugging Face cache mounted into the pods — see the env var comments below)
 
@@ -196,7 +196,7 @@ CRE auto-handles NCCL environment variables, ComputeDomain and DRA setup, EFA/Ro
 ```bash
 export NGC_API_KEY=<your-ngc-api-key>
 
-ncrectl workloadrun run \
+nvcrectl workloadrun run \
   --workload-registry nvcr.io \
   --workload-registry-username '$oauthtoken' \
   --workload-registry-password "$NGC_API_KEY" \
@@ -216,7 +216,7 @@ kubectl get pods -w
 Lightweight status check:
 
 ```bash
-ncrectl workloadrun status deepseek-v3-bf16
+nvcrectl workloadrun status deepseek-v3-bf16
 ```
 
 Check goodput measurement in real time:
@@ -239,7 +239,7 @@ The training-loop log lines (in `kubectl logs <pod> -c node -f`) will look like:
 ## Generate a report
 
 ```bash
-ncrectl workloadrun report deepseek-v3-bf16
+nvcrectl workloadrun report deepseek-v3-bf16
 ```
 
 Example output (16 nodes × 4 GPUs, BF16 proxy model):
@@ -284,7 +284,7 @@ If a node fails, CRE records it in the WorkloadRun status with a reason (`Hardwa
 To save as JSON:
 
 ```bash
-ncrectl workloadrun report deepseek-v3-bf16 --results-file report.json
+nvcrectl workloadrun report deepseek-v3-bf16 --results-file report.json
 ```
 
 ## Gang scheduling
@@ -305,7 +305,7 @@ The `queue` value is applied as the `kai.scheduler/queue` label on the pod templ
 Cancel the WorkloadRun (cascades to its Workflow, Jobs, and pods):
 
 ```bash
-ncrectl workloadrun cancel deepseek-v3-bf16 -n default
+nvcrectl workloadrun cancel deepseek-v3-bf16 -n default
 ```
 
 ## Changing precision

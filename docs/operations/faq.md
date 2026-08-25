@@ -42,7 +42,7 @@ Always run `make manifests generate` immediately after any change to `api/v1alph
 
 ### Why doesn't my custom catalog entry appear?
 
-The catalog uses Go `init()` functions for registration. `pkg/catalog` (which loads the entries in `pkg/catalog/entries/`) must be imported by every binary and test suite that resolves catalog lookups — it is blank-imported in `cmd/ncrectl/main.go` and imported by the controller in `cmd/manager/main.go`.
+The catalog uses Go `init()` functions for registration. `pkg/catalog` (which loads the entries in `pkg/catalog/entries/`) must be imported by every binary and test suite that resolves catalog lookups — it is blank-imported in `cmd/nvcrectl/main.go` and imported by the controller in `cmd/manager/main.go`.
 
 If you created a new catalog entry but the `init()` registration never runs in your binary or test suite, `catalog.Lookup()` returns "not found". See [Custom Catalog Entries](../how-to-guides/custom-catalog-entries.md).
 

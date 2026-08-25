@@ -29,7 +29,7 @@ An operator looking at a FAILED report today must `kubectl get job -o yaml` or g
 1. **No CRD schema change.** Flagged explicitly: the threshold detail already survives report generation in two durable stores (the Job CR's `ValidationFailed` condition and the failed-nodes ConfigMap). Plumbing the last hop is a pure `pkg/report` change. If a status field had been required, it would need separate schema approval — it is not.
 2. **Extend the condition scan in `buildFailedGroups` to a priority order:** `Failed` → `HardwareFailed` → `ValidationFailed`. The first condition with `Status=True` supplies `failedGroups[].reason`. The existing `Failed` path keeps its `batchJobFailureReason` enrichment; the two new branches use the condition message verbatim — for threshold violations that message already contains the threshold name, measured value, and expression.
 3. **Fall back to the failed-nodes ConfigMap when the Job CR is unreachable** (deleted by a group retry, or the group lives only in iteration history). `PopulateCategoryFromWorkflow` already resolves `wf.status.failedNodesRef` ([report.go:521](../../pkg/report/report.go#L521)); pass those `FailedNode` entries into `buildFailedGroups` and, when no Job condition was found, use the message of the first entry whose name is in the group's node list, preferring `reason: ThresholdViolation` entries.
-4. **No renderer changes.** `printFailedGroups` already prints `fg.Reason` when non-empty, so the human report gains the threshold line automatically. Both surfaces are covered by the same fix: `ncrectl certification report`/`run --wait` and `ncrectl workloadrun run/report` both flow through `PopulateCategoryFromWorkflow` → `buildFailedGroups` → `Print`/`WriteJSON`.
+4. **No renderer changes.** `printFailedGroups` already prints `fg.Reason` when non-empty, so the human report gains the threshold line automatically. Both surfaces are covered by the same fix: `nvcrectl certification report`/`run --wait` and `nvcrectl workloadrun run/report` both flow through `PopulateCategoryFromWorkflow` → `buildFailedGroups` → `Print`/`WriteJSON`.
 
 ## Implementation
 
@@ -75,7 +75,7 @@ An operator looking at a FAILED report today must `kubectl get job -o yaml` or g
 
 - Exact message format consumed verbatim (from [`evaluator.go`](../../pkg/threshold/evaluator.go#L113)): `Threshold %q violated: measured %.4f, expression: %s`. The `job-goodput-threshold-fail` integration golden pins this string today, so any future format change will trip existing tests before it reaches the report.
 - `job.status.failedNodes` is only populated when the `cre.nvidia.com/group-nodes` annotation is present (`groupNodeNames`); standalone Jobs without it still surface the reason via the condition path, just with no node attribution — same as today.
-- `ncrectl workloadrun status` (lightweight poll) is intentionally unchanged; it reports names only by design (ADR-059).
+- `nvcrectl workloadrun status` (lightweight poll) is intentionally unchanged; it reports names only by design (ADR-059).
 
 ## References
 

@@ -6,14 +6,14 @@ description: End-to-end guide to running a Nemotron 5 (56B) Megatron-LM training
 ---
 
 
-This guide walks through running a Nemotron 5 (56B) training workload on a GPU cluster using Cluster Readiness Engine (CRE) and `ncrectl`, from manifest to report. It uses the `exec` framework to launch a Megatron-LM training script with mock data, so no dataset or checkpoint download is required.
+This guide walks through running a Nemotron 5 (56B) training workload on a GPU cluster using Cluster Readiness Engine (CRE) and `nvcrectl`, from manifest to report. It uses the `exec` framework to launch a Megatron-LM training script with mock data, so no dataset or checkpoint download is required.
 
 For an introduction to WorkloadRun and when to use it instead of a full Certification, see the [WorkloadRun Quick Start](../getting-started/workloadrun-quick-start.md). For generic WorkloadRun options (targeting nodes, measurements, framework types), see [Run a WorkloadRun](./run-workloadrun.md).
 
 ## Prerequisites
 
 - A Kubernetes cluster with GPU nodes (`nvidia.com/gpu.present=true`) and `kubectl` access
-- `ncrectl` installed and the CRE controller running on the cluster — see [Installation](../getting-started/install.md)
+- `nvcrectl` installed and the CRE controller running on the cluster — see [Installation](../getting-started/install.md)
 - An NGC API key for pulling the `nvcr.io/nvidia/pytorch` workload image
 
 If a cluster administrator has already installed the controller, you only need the NGC API key for the workload image — skip straight to creating the manifest below.
@@ -233,7 +233,7 @@ CRE auto-handles NCCL environment variables, ComputeDomain and DRA setup, EFA/Ro
 ```bash
 export NGC_API_KEY=<your-ngc-api-key>
 
-ncrectl workloadrun run \
+nvcrectl workloadrun run \
   --workload-registry nvcr.io \
   --workload-registry-username '$oauthtoken' \
   --workload-registry-password "$NGC_API_KEY" \
@@ -263,7 +263,7 @@ kubectl get pods -w
 Check WorkloadRun status (lightweight):
 
 ```bash
-ncrectl workloadrun status nemotron5-56b
+nvcrectl workloadrun status nemotron5-56b
 ```
 
 For the full resource spec:
@@ -277,7 +277,7 @@ kubectl get workloadrun nemotron5-56b -o yaml
 After the workload completes (or fails), generate a report:
 
 ```bash
-ncrectl workloadrun report nemotron5-56b
+nvcrectl workloadrun report nemotron5-56b
 ```
 
 Output:
@@ -322,7 +322,7 @@ If a node fails, CRE records it in the WorkloadRun status with a reason (`Hardwa
 To save the report as JSON:
 
 ```bash
-ncrectl workloadrun report nemotron5-56b --results-file report.json
+nvcrectl workloadrun report nemotron5-56b --results-file report.json
 ```
 
 ## Gang scheduling
@@ -343,13 +343,13 @@ The `queue` value is applied as the `kai.scheduler/queue` label on the pod templ
 Cancel the WorkloadRun (cascades to its Workflow, Jobs, and pods):
 
 ```bash
-ncrectl workloadrun cancel nemotron5-56b -n default
+nvcrectl workloadrun cancel nemotron5-56b -n default
 ```
 
 To uninstall CRE entirely:
 
 ```bash
-ncrectl setup reset
+nvcrectl setup reset
 ```
 
 ## Alternative: one-shot run with wait and report
@@ -357,7 +357,7 @@ ncrectl setup reset
 Combine run, wait, and report in a single command:
 
 ```bash
-ncrectl workloadrun run \
+nvcrectl workloadrun run \
   --workload-registry nvcr.io \
   --workload-registry-username '$oauthtoken' \
   --workload-registry-password "$NGC_API_KEY" \

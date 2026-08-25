@@ -1,17 +1,17 @@
 ---
-title: ncrectl setup
+title: nvcrectl setup
 description: Install and uninstall the Cluster Readiness Engine controller and its dependencies.
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 ---
 
 
-## ncrectl setup init
+## nvcrectl setup init
 
 Installs CRE via Helm and its dependencies on the target cluster.
 
 ```bash
-ncrectl setup init [flags]
+nvcrectl setup init [flags]
 ```
 
 ### What it installs
@@ -38,7 +38,7 @@ Use `--skip-phases=deps` to skip Kubeflow Trainer if it is already installed.
   kubectl delete crd trainjobs.trainer.kubeflow.org trainingruntimes.trainer.kubeflow.org \
     clustertrainingruntimes.trainer.kubeflow.org jobsets.jobset.x-k8s.io
   kubectl delete namespace kubeflow-system
-  ncrectl setup init   # reinstalls the pinned Kubeflow Trainer
+  nvcrectl setup init   # reinstalls the pinned Kubeflow Trainer
   ```
 
 - **Confirmation**: in interactive mode the recovery plan is printed and re-confirmed before anything is deleted; `--auto-approve` covers CI.
@@ -61,21 +61,21 @@ Automatic recovery deletes the `kubeflow-system` namespace, including anything y
 
 ```bash
 # Standard install
-ncrectl setup init
+nvcrectl setup init
 
 # With GHCR authentication
-ncrectl setup init --image-pull-secret $GITHUB_TOKEN
+nvcrectl setup init --image-pull-secret $GITHUB_TOKEN
 
 # Skip Kubeflow Trainer (already installed)
-ncrectl setup init --skip-phases=deps
+nvcrectl setup init --skip-phases=deps
 ```
 
-## ncrectl setup status
+## nvcrectl setup status
 
 Reports the installation status of CRE and its dependencies by querying the cluster.
 
 ```bash
-ncrectl setup status [flags]
+nvcrectl setup status [flags]
 ```
 
 Components checked: `creCRDs`, `creController`, `kubeflowTrainer`, `logProfiles`, `gpuOperator`, `dcgm` (optional).
@@ -91,16 +91,16 @@ The Helm releases managed by `setup init` (`cluster-readiness-engine` and `kubef
 ### Example
 
 ```bash
-ncrectl setup status
-ncrectl setup status -o json
+nvcrectl setup status
+nvcrectl setup status -o json
 ```
 
-## ncrectl setup reset
+## nvcrectl setup reset
 
 Removes CRE and its dependencies from the target cluster. Kubeflow Trainer is removed by default.
 
 ```bash
-ncrectl setup reset [flags]
+nvcrectl setup reset [flags]
 ```
 
 ### What it removes
@@ -126,10 +126,10 @@ Use `--skip-phases=deps` to keep Kubeflow Trainer.
 
 ```bash
 # Full uninstall (including Kubeflow Trainer)
-ncrectl setup reset
+nvcrectl setup reset
 
 # Keep Kubeflow Trainer
-ncrectl setup reset --skip-phases=deps
+nvcrectl setup reset --skip-phases=deps
 ```
 
 <Warning>

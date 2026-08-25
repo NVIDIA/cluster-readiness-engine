@@ -114,7 +114,7 @@ Allowed types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`, `ci`,
 5. Build the binaries:
    ```bash
    make build          # controller manager -> bin/manager
-   make build-ncrectl  # CLI -> bin/ncrectl
+   make build-nvcrectl  # CLI -> bin/nvcrectl
    ```
 
 **Running a single test**:

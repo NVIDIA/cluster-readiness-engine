@@ -1,18 +1,18 @@
 ---
-title: ncrectl certification
+title: nvcrectl certification
 description: Manage the full lifecycle of Certification resources.
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 ---
 
 
-## ncrectl certification run
+## nvcrectl certification run
 
 Applies a Certification manifest (or runs categories by flag), waits for completion, prints a report, and optionally cleans up.
 
 ```bash
-ncrectl certification run --cert-file <file> [flags]
-ncrectl certification run --category communication/nccl-all-reduce [flags]
+nvcrectl certification run --cert-file <file> [flags]
+nvcrectl certification run --category communication/nccl-all-reduce [flags]
 ```
 
 ### Flags
@@ -21,7 +21,7 @@ ncrectl certification run --category communication/nccl-all-reduce [flags]
 |------|---------|-------------|
 | `--cert-file` | — | Path to a Certification YAML (mutually exclusive with `--category`) |
 | `--category` | — | Category in `domain/variant` format; repeatable (mutually exclusive with `--cert-file`) |
-| `--name` | auto | Certification name (default: `ncrectl-<timestamp>`) |
+| `--name` | auto | Certification name (default: `nvcrectl-<timestamp>`) |
 | `--setup` | `false` | Install CRDs, controller, and LogProfiles before creating the certification |
 | `--image` | — | Controller image for `--setup` (default: `ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager:<version>`) |
 | `--wait` | `false` | Block until the certification completes and print a report |
@@ -40,12 +40,12 @@ ncrectl certification run --category communication/nccl-all-reduce [flags]
 | `--controller-pull-secret` | — | Token for controller registry auth during `--setup` (e.g. GitHub PAT for `ghcr.io`) — separate from workload image credentials |
 | `--workload-registry` | — | Registry server for workload image pull (e.g. `nvcr.io`, `ghcr.io`) — required when `--workload-registry-password` is set |
 | `--workload-registry-username` | — | Registry username for workload image pull (e.g. `$oauthtoken` for NGC) — required when `--workload-registry-password` is set |
-| `--workload-registry-password` | — | Registry password or API key — creates an `ncrectl-pull-<name>` imagePullSecret in the namespace, deleted automatically when the Certification is deleted |
+| `--workload-registry-password` | — | Registry password or API key — creates an `nvcrectl-pull-<name>` imagePullSecret in the namespace, deleted automatically when the Certification is deleted |
 
 ### Examples
 
 ```bash
-ncrectl certification run \
+nvcrectl certification run \
   --cert-file certification.yaml \
   --wait
 ```
@@ -53,7 +53,7 @@ ncrectl certification run \
 Pull workload images from NGC:
 
 ```bash
-ncrectl certification run \
+nvcrectl certification run \
   --category communication/nccl-all-reduce \
   --workload-registry nvcr.io \
   --workload-registry-username '$oauthtoken' \
@@ -61,12 +61,12 @@ ncrectl certification run \
   --wait
 ```
 
-## ncrectl certification render
+## nvcrectl certification render
 
 Renders the Workflow manifests that would be created for a Certification, without applying them. Useful for inspecting override application and resource requests before running.
 
 ```bash
-ncrectl certification render [flags] <cert-file>
+nvcrectl certification render [flags] <cert-file>
 ```
 
 ### Flags
@@ -77,12 +77,12 @@ ncrectl certification render [flags] <cert-file>
 | `--dry-run` | `false` | Validate against the live API server without creating resources |
 | `--output` | `yaml` | Output format: `yaml` or `json` |
 
-## ncrectl certification report
+## nvcrectl certification report
 
 Fetches a completed Certification from the cluster and generates a pass/fail report. Multiple names can be provided to combine them into a single report.
 
 ```bash
-ncrectl certification report <name> [<name>...] [flags]
+nvcrectl certification report <name> [<name>...] [flags]
 ```
 
 ### Flags
@@ -91,12 +91,12 @@ ncrectl certification report <name> [<name>...] [flags]
 |------|---------|-------------|
 | `--results-file` | — | Write the report as JSON to this file path |
 
-## ncrectl certification list-categories
+## nvcrectl certification list-categories
 
 Lists all available catalog categories that can be used in a Certification.
 
 ```bash
-ncrectl certification list-categories [flags]
+nvcrectl certification list-categories [flags]
 ```
 
 ### Flags

@@ -13,7 +13,7 @@ import (
 	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
 )
 
-// workloadRunWatchLine formats the "[watch]" heartbeat that "ncrectl
+// workloadRunWatchLine formats the "[watch]" heartbeat that "nvcrectl
 // workloadrun run --wait" prints while polling. These cases pin the line
 // format: which phase is picked from the execution conditions, when the
 // condition message is appended, and the pending line before the controller

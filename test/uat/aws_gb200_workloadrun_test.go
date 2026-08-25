@@ -37,7 +37,7 @@ func TestAWSGB200WorkloadRunNemotron5(t *testing.T) {
 				util.CleanupYAML(context.Background(), c, nodesDir+"/nodes.yaml", "")
 			})
 
-			util.RunNcrectlWorkloadRun(ctx, t, dataDir+"/input_workloadrun.yaml")
+			util.RunNvcrectlWorkloadRun(ctx, t, dataDir+"/input_workloadrun.yaml")
 			t.Cleanup(func() {
 				util.DeleteWorkloadRun(context.Background(), c, runName, "default")
 			})

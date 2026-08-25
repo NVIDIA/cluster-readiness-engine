@@ -19,7 +19,7 @@ CRE is for platform and infrastructure teams that bring up, validate, or resell 
 - Topology-aware node grouping and adaptive fault isolation
 - Checkpoint restart for training jobs
 - WorkloadRun, a single resource to run a training, NCCL, or custom workload
-- The `ncrectl` CLI for setup, render, run, report, and cleanup
+- The `nvcrectl` CLI for setup, render, run, report, and cleanup
 
 ## How it works
 
@@ -56,7 +56,7 @@ kubectl patch clusterpolicy cluster-policy --type=merge \
   -p '{"spec":{"dcgm":{"enabled":true}}}'
 ```
 
-Run `kubectl ncre setup status` at any time to see what is present.
+Run `kubectl nvcre setup status` at any time to see what is present.
 
 **1. Install the CLI**
 
@@ -78,12 +78,12 @@ and picks up the newest stable release:
 curl -sSL https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/latest/download/installer | bash
 ```
 
-The installer places `ncrectl` on your `$PATH` and creates a `kubectl-ncre` symlink so the CLI is also available as `kubectl ncre`.
+The installer places `nvcrectl` on your `$PATH` and creates a `kubectl-nvcre` symlink so the CLI is also available as `kubectl nvcre`.
 
 **2. Set up the cluster**
 
 ```bash
-kubectl ncre setup init --image-pull-secret "$(gh auth token)"
+kubectl nvcre setup init --image-pull-secret "$(gh auth token)"
 ```
 
 This installs Kubeflow Trainer, the CRE CRDs, the controller, and the built-in LogProfiles.
@@ -91,7 +91,7 @@ This installs Kubeflow Trainer, the CRE CRDs, the controller, and the built-in L
 **3. Certify**
 
 ```bash
-kubectl ncre certification run \
+kubectl nvcre certification run \
   --category communication/nccl-all-reduce \
   --wait
 ```
@@ -101,7 +101,7 @@ kubectl ncre certification run \
 The report prints when the run completes. To print it again later, pass the name and the namespace from the run output:
 
 ```bash
-kubectl ncre certification report <name> -n <namespace>
+kubectl nvcre certification report <name> -n <namespace>
 ```
 
 ```
@@ -109,7 +109,7 @@ kubectl ncre certification report <name> -n <namespace>
 ║                      Certification Report                      ║
 ╚════════════════════════════════════════════════════════════════╝
 
-  Name:      ncrectl-20260806-162730
+  Name:      nvcrectl-20260806-162730
   Platform:  aws
   GPU:       gb300
   Nodes:     16
@@ -217,7 +217,7 @@ eligible nodes into groups of this size and runs one job per group, so
 `numNodes: 4` on a 16-node cluster produces four 4-node jobs.
 
 ```bash
-kubectl ncre workloadrun run nccl-all-reduce.yaml --wait
+kubectl nvcre workloadrun run nccl-all-reduce.yaml --wait
 ```
 
 For the full NCCL benchmark suite, see [Run NCCL Benchmarks](docs/how-to-guides/nccl-benchmarks.md).
@@ -244,7 +244,7 @@ A hosted documentation site is in progress.
 
 ## Roadmap
 
-- First tagged release (v0.1.0) with `ncrectl` binaries and the Helm chart
+- First tagged release (v0.1.0) with `nvcrectl` binaries and the Helm chart
 - Hosted documentation site
 - Signed artifacts, SBOMs, and build provenance in the release pipeline
 - Branch protection and DCO checks for public contributions
