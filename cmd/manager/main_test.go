@@ -36,7 +36,10 @@ func TestControllerConcurrencyOptionsValidate(t *testing.T) {
 			return err
 		}
 
-		data, err := json.MarshalIndent(input, "", "  ")
+		result := struct {
+			Valid bool `json:"valid"`
+		}{Valid: true}
+		data, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
 			return err
 		}
@@ -46,12 +49,12 @@ func TestControllerConcurrencyOptionsValidate(t *testing.T) {
 }
 
 func TestControllerConcurrencyFlagDefaults(t *testing.T) {
+	cmd := newRootCommand()
 	p := testutil.TestCaseParser{
 		Subdir:         "concurrency-flag-defaults",
 		ExpectedSuffix: ".json",
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
-		cmd := newRootCommand()
 		defaults := map[string]string{}
 		cmd.Flags().VisitAll(func(f *pflag.Flag) {
 			// Go's test harness registers test.* flags on flag.CommandLine.

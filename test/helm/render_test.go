@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -80,14 +81,24 @@ func chartDir(t *testing.T) string {
 	return filepath.Clean(filepath.Join(filepath.Dir(filename), "..", "..", "helm", "cluster-readiness-engine"))
 }
 
-// requireChartInputs reads the chart files that determine the manager args in
-// process. Go's test cache cannot observe files read only by the Helm subprocess.
+// requireChartInputs reads the chart in process. Go's test cache cannot observe
+// files read only by the Helm subprocess.
 func requireChartInputs(t *testing.T, chartDir string) {
 	t.Helper()
-	for _, name := range []string{"Chart.yaml", "values.yaml", filepath.Join("templates", "deployment.yaml")} {
-		if _, err := os.ReadFile(filepath.Join(chartDir, name)); err != nil {
-			t.Fatalf("read chart input %s: %v", name, err)
+	err := filepath.WalkDir(chartDir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
+		if entry.IsDir() {
+			return nil
+		}
+		if _, err := os.ReadFile(path); err != nil {
+			return fmt.Errorf("read chart input %s: %w", path, err)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("read chart inputs: %v", err)
 	}
 }
 
