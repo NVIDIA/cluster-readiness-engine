@@ -42,7 +42,7 @@ func TestAWSGB300NCCL(t *testing.T) {
 				util.CleanupYAML(context.Background(), c, nodesDir+"/nodes.yaml", "")
 			})
 
-			util.RunNcrectl(ctx, t,
+			util.RunNvcrectl(ctx, t,
 				"--category", "communication/nccl-all-reduce",
 				"--name", certName,
 				"--namespace", "default",

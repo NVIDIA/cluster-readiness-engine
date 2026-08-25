@@ -27,7 +27,7 @@ const (
 	dcgmServiceNamespace = "gpu-operator"
 )
 
-// SetupStatus is the JSON output structure for ncrectl setup status.
+// SetupStatus is the JSON output structure for nvcrectl setup status.
 type SetupStatus struct {
 	// Installed is true when all required components are present and ready
 	// and no managed Helm release is in a failed or pending state.
@@ -320,7 +320,7 @@ func printSetupStatus(out io.Writer, s *SetupStatus) {
 	case s.Installed:
 		_, _ = fmt.Fprintln(out, "Status: ready")
 	case !s.Components.allRequired():
-		_, _ = fmt.Fprintln(out, "Status: not ready — run 'ncrectl setup init' to install missing components")
+		_, _ = fmt.Fprintln(out, "Status: not ready — run 'nvcrectl setup init' to install missing components")
 		if !s.Components.GPUOperator {
 			_, _ = fmt.Fprintln(out, "  GPU Operator must be installed by your cluster administrator")
 		}
@@ -329,7 +329,7 @@ func printSetupStatus(out io.Writer, s *SetupStatus) {
 	}
 	for _, rel := range unhealthy {
 		_, _ = fmt.Fprintf(out,
-			"  Helm release %s (namespace: %s) is %s — run 'ncrectl setup init' to repair it\n",
+			"  Helm release %s (namespace: %s) is %s — run 'nvcrectl setup init' to repair it\n",
 			rel.Name, rel.Namespace, rel.State)
 	}
 

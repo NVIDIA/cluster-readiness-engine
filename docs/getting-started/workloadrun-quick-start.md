@@ -12,7 +12,7 @@ description: Run a distributed training or NCCL workload without writing a full 
 
 ## Before you begin
 
-[Install ncrectl and set up the cluster](./install.md) before continuing.
+[Install nvcrectl and set up the cluster](./install.md) before continuing.
 
 ## Define a WorkloadRun
 
@@ -37,7 +37,7 @@ spec:
 ## Run it
 
 ```bash
-ncrectl workloadrun run \
+nvcrectl workloadrun run \
   --workload-registry nvcr.io \
   --workload-registry-username '$oauthtoken' \
   --workload-registry-password "$NGC_API_KEY" \
@@ -45,12 +45,12 @@ ncrectl workloadrun run \
   nccl-all-reduce.yaml
 ```
 
-ncrectl auto-detects the platform and GPU architecture from the cluster's node labels, applies the appropriate overrides, and streams log output until the workload completes.
+nvcrectl auto-detects the platform and GPU architecture from the cluster's node labels, applies the appropriate overrides, and streams log output until the workload completes.
 
 ## View results
 
 ```bash
-ncrectl workloadrun report nccl-all-reduce
+nvcrectl workloadrun report nccl-all-reduce
 ```
 
 For workloads with `bandwidthMeasurement` configured, the report includes per-bus bandwidth results parsed from the NCCL output.

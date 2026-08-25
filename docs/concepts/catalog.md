@@ -41,7 +41,7 @@ spec:
 To see all available categories from the CLI:
 
 ```bash
-ncrectl certification list-categories
+nvcrectl certification list-categories
 ```
 
 ## Per-node category options

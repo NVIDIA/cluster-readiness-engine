@@ -6,9 +6,9 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# ncrectl installer / upgrader
+# nvcrectl installer / upgrader
 #
-# Installs ncrectl if it is not present; upgrades it if it already is.
+# Installs nvcrectl if it is not present; upgrades it if it already is.
 #
 # Usage:
 #   While the repository is internal, GitHub serves release assets only
@@ -27,7 +27,7 @@ set -euo pipefail
 GH_REPO="dsx-ai-factory/cluster-readiness-engine"
 GH_API_URL="https://api.github.com/repos/${GH_REPO}"
 GH_RELEASE_URL="https://github.com/${GH_REPO}/releases/download"
-BIN_NAME="ncrectl"
+BIN_NAME="nvcrectl"
 INSTALL_DIR="/usr/local/bin"
 
 # Colors
@@ -301,11 +301,11 @@ ok "Checksum verified."
 #
 # kubectl discovers plugins by looking for executables named "kubectl-<name>"
 # on $PATH (see https://kubernetes.io/docs/tasks/extend-kubectl/kubectl-plugins/).
-# A relative symlink lets "kubectl ncre ..." work identically to
-# "ncrectl ..." with no separate binary to maintain or upgrade.
+# A relative symlink lets "kubectl nvcre ..." work identically to
+# "nvcrectl ..." with no separate binary to maintain or upgrade.
 # ---------------------------------------------------------------------------
 
-PLUGIN_NAME="kubectl-ncre"
+PLUGIN_NAME="kubectl-nvcre"
 STATUS=0
 
 if [[ -w "${INSTALL_DIR}" ]]; then
@@ -336,7 +336,7 @@ if command -v "${BIN_NAME}" &>/dev/null; then
   ok "${BIN_NAME} ${VERSION} installed successfully to ${INSTALL_DIR}/${BIN_NAME}"
   "${BIN_NAME}" --version
   if [[ -e "${INSTALL_DIR}/${PLUGIN_NAME}" ]]; then
-    msg "Also available as a kubectl plugin: kubectl ncre ..."
+    msg "Also available as a kubectl plugin: kubectl nvcre ..."
   fi
 else
   msg "${BIN_NAME} installed to ${INSTALL_DIR}/${BIN_NAME}"

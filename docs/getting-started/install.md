@@ -1,6 +1,6 @@
 ---
 title: Install
-description: Install the ncrectl CLI and set up the Cluster Readiness Engine controller on your Kubernetes cluster.
+description: Install the nvcrectl CLI and set up the Cluster Readiness Engine controller on your Kubernetes cluster.
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 ---
@@ -22,9 +22,9 @@ with the gh CLI (authenticate with `gh auth login` first). Set the version you w
 to install, then run the installer:
 
 ```bash
-export NCRECTL_VERSION=v0.1.0-rc.9
-gh release download "${NCRECTL_VERSION}" --repo dsx-ai-factory/cluster-readiness-engine \
-  --pattern installer --output - | bash -s -- -v "${NCRECTL_VERSION}"
+export NVCRECTL_VERSION=v0.1.0-rc.9
+gh release download "${NVCRECTL_VERSION}" --repo dsx-ai-factory/cluster-readiness-engine \
+  --pattern installer --output - | bash -s -- -v "${NVCRECTL_VERSION}"
 ```
 
 The installer automatically downloads and verifies a SHA-256 checksum before installing. On air-gapped systems, ensure `checksums.txt` from the same release is reachable alongside the binary.
@@ -32,18 +32,18 @@ The installer automatically downloads and verifies a SHA-256 checksum before ins
 Verify the installation:
 
 ```bash
-ncrectl --version
+nvcrectl --version
 ```
 
 ## Set up the cluster
 
-`ncrectl setup init` installs the controller and its dependencies in two phases:
+`nvcrectl setup init` installs the controller and its dependencies in two phases:
 
 1. **deps** — Kubeflow Trainer (required for `TrainJob` workloads)
 2. **helm** — CRE Helm chart (CRDs, controller deployment, built-in LogProfiles)
 
 ```bash
-ncrectl setup init
+nvcrectl setup init
 ```
 
 ### GHCR authentication
@@ -51,7 +51,7 @@ ncrectl setup init
 The controller image and Helm chart are pulled from GHCR. Pass a GitHub token to authenticate — the CLI creates the pull secret for you:
 
 ```bash
-ncrectl setup init --image-pull-secret $GITHUB_TOKEN
+nvcrectl setup init --image-pull-secret $GITHUB_TOKEN
 ```
 
 ## Verify
@@ -71,11 +71,11 @@ kubectl get crds | grep cre.nvidia.com
 ## Uninstall
 
 ```bash
-ncrectl setup reset
+nvcrectl setup reset
 ```
 
 This removes all CRE custom resources, the controller, CRDs, and Kubeflow Trainer. To keep Kubeflow Trainer, pass `--skip-phases=deps`:
 
 ```bash
-ncrectl setup reset --skip-phases=deps
+nvcrectl setup reset --skip-phases=deps
 ```

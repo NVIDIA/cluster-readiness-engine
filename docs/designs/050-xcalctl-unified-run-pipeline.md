@@ -1,10 +1,10 @@
-# ADR-050: Unified ncrectl certification run Pipeline
+# ADR-050: Unified nvcrectl certification run Pipeline
 
 > **Status:** Proposed
 
 ## Context
 
-`ncrectl certification run` has three divergent execution paths that independently handle namespace creation, secret management, wait/watch logic, and report printing:
+`nvcrectl certification run` has three divergent execution paths that independently handle namespace creation, secret management, wait/watch logic, and report printing:
 
 1. **`runCertificationRun()`** — `--category` flags path
 2. **`runCertificationFromFile()`** — `--cert-file` without `--watch`
@@ -77,8 +77,8 @@ type certRunConfig struct {
 
 ### Reusing setup.go Functions
 
-- **`--setup`** calls `runInit(image, imagePullSecret, skipPhases, true, kubeconfig, kubeContext, "", nil, out)` — the same function used by `ncrectl setup init`.
-- **`--cleanup`** calls `runReset(skipPhases, true, kubeconfig, kubeContext, "", nil, out)` — the same function used by `ncrectl setup reset`. The `skipPhases` argument ensures only phases installed by `--setup` are torn down.
+- **`--setup`** calls `runInit(image, imagePullSecret, skipPhases, true, kubeconfig, kubeContext, "", nil, out)` — the same function used by `nvcrectl setup init`.
+- **`--cleanup`** calls `runReset(skipPhases, true, kubeconfig, kubeContext, "", nil, out)` — the same function used by `nvcrectl setup reset`. The `skipPhases` argument ensures only phases installed by `--setup` are torn down.
 - Certification and namespace deletion (cert-run-specific) execute before `runReset()` in the cleanup defer.
 
 This eliminates `cleanupLifecycle()` which previously duplicated `runReset`'s embedded manifest deletion logic.
@@ -128,8 +128,8 @@ All helper functions remain unchanged: `watchCertification`, `discoverGPUProduct
 
 ## References
 
-- ADR-044: ncrectl certification lifecycle (`--watch` original design)
-- ADR-045: ncrectl embedded config (embedded manifests used by `runInit`/`runReset`)
+- ADR-044: nvcrectl certification lifecycle (`--watch` original design)
+- ADR-045: nvcrectl embedded config (embedded manifests used by `runInit`/`runReset`)
 - `pkg/setup/setup.go`: `runInit()` (line 137), `runReset()` (line 330)
 - `pkg/certification/certification.go`: current three paths
 

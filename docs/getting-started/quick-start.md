@@ -6,13 +6,13 @@ description: Certify a GPU cluster end-to-end in minutes.
 ---
 
 
-This guide walks through a full cluster certification: install ncrectl, run the certification suite, and review the results.
+This guide walks through a full cluster certification: install nvcrectl, run the certification suite, and review the results.
 
-**Certification vs WorkloadRun:** Use `ncrectl certification run` to run a full burn-in suite — it tests multiple categories (NCCL benchmarks, training workloads) against all node groups and records pass/fail results per node. Use `ncrectl workloadrun run` when you want to run a single workload ad hoc, such as a quick bandwidth check or a one-off training smoke test, without setting up a full certification. See [WorkloadRun Quick Start](./workloadrun-quick-start.md).
+**Certification vs WorkloadRun:** Use `nvcrectl certification run` to run a full burn-in suite — it tests multiple categories (NCCL benchmarks, training workloads) against all node groups and records pass/fail results per node. Use `nvcrectl workloadrun run` when you want to run a single workload ad hoc, such as a quick bandwidth check or a one-off training smoke test, without setting up a full certification. See [WorkloadRun Quick Start](./workloadrun-quick-start.md).
 
 ## Before you begin
 
-[Install ncrectl and set up the cluster](./install.md) before continuing.
+[Install nvcrectl and set up the cluster](./install.md) before continuing.
 
 You will also need an NGC API key to pull the certification workload images.
 
@@ -40,20 +40,20 @@ spec:
 
 ## Run the certification
 
-Use `ncrectl certification run` to handle the full lifecycle — apply the manifest, wait for completion, print the report, and clean up:
+Use `nvcrectl certification run` to handle the full lifecycle — apply the manifest, wait for completion, print the report, and clean up:
 
 ```bash
-ncrectl certification run \
+nvcrectl certification run \
   --cert-file certification.yaml \
   --wait
 ```
 
 ## Review the results
 
-When the certification completes, ncrectl prints a pass/fail summary per node group and category. A full report is available with:
+When the certification completes, nvcrectl prints a pass/fail summary per node group and category. A full report is available with:
 
 ```bash
-ncrectl certification report gpu-cluster-cert
+nvcrectl certification report gpu-cluster-cert
 ```
 
 Failed categories indicate nodes that did not meet performance thresholds. CRE records which nodes failed and why — it does not taint or cordon them. Use `kubectl cordon <node>` to quarantine nodes as needed.

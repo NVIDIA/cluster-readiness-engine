@@ -15,7 +15,7 @@ The controller detects two dimensions at runtime:
 | Cloud platform | `spec.providerID` on the Node object (e.g. `aws://...`, `gce://...`) |
 | GPU architecture | `nvidia.com/gpu.product` node label (e.g. `NVIDIA-GB200`, `NVIDIA-H100-80GB-HBM3`) |
 
-The live controller writes detection results to `status.orchestration.detectedPlatform` and `status.orchestration.detectedGPUArchitecture` on the Workflow. When using `ncrectl workflow render` (client-side), these values are also written as annotations (`ncrectl.nvidia.com/detected-platform`, `ncrectl.nvidia.com/detected-gpu-architecture`) on the rendered manifest for offline inspection.
+The live controller writes detection results to `status.orchestration.detectedPlatform` and `status.orchestration.detectedGPUArchitecture` on the Workflow. When using `nvcrectl workflow render` (client-side), these values are also written as annotations (`nvcrectl.nvidia.com/detected-platform`, `nvcrectl.nvidia.com/detected-gpu-architecture`) on the rendered manifest for offline inspection.
 
 ## Override matching
 
@@ -67,4 +67,4 @@ Different GPU architectures require different Kubernetes resources:
 | GB300 | RoCE (AWS) | `roce-channel` resource claim, no hugepages, no EFA |
 | H100 | EFA (AWS) | `vpc.amazonaws.com/efa: 32`, no hugepages |
 
-The live controller tracks which overrides matched in `status.orchestration.appliedOverrides`. When using `ncrectl workflow render`, the same information is also written to the `ncrectl.nvidia.com/applied-overrides` annotation on the rendered manifest.
+The live controller tracks which overrides matched in `status.orchestration.appliedOverrides`. When using `nvcrectl workflow render`, the same information is also written to the `nvcrectl.nvidia.com/applied-overrides` annotation on the rendered manifest.

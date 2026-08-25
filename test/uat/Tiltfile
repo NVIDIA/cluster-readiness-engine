@@ -3,7 +3,7 @@
 
 # Tiltfile for CRE UAT tests.
 #
-# Orchestrates: image build, ncrectl build, KWOK deployment, Helm installs.
+# Orchestrates: image build, nvcrectl build, KWOK deployment, Helm installs.
 #
 # Usage:
 #   make tilt-uat        # Interactive dev mode (hot reload)
@@ -11,7 +11,7 @@
 
 KWOK_VERSION = os.getenv('KWOK_VERSION', 'v0.7.0')
 IMG = os.getenv('IMG', 'ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager:uat-test')
-NCRECTL = os.getenv('NCRECTL', '../../bin/ncrectl')
+NVCRECTL = os.getenv('NVCRECTL', '../../bin/nvcrectl')
 KIND_CLUSTER = os.getenv('KIND_CLUSTER_UAT', 'cre-test-uat')
 
 # Split IMG into repository and tag for helm --set flags.
@@ -25,10 +25,10 @@ local_resource('build-image',
     deps=['../../cmd/main.go', '../../Dockerfile'],
     labels=['build'])
 
-# ─── 2. Build ncrectl binary (used by UAT tests) ───
-local_resource('build-ncrectl',
-    cmd='cd ../.. && make build-ncrectl',
-    deps=['../../tools/ncrectl/main.go'],
+# ─── 2. Build nvcrectl binary (used by UAT tests) ───
+local_resource('build-nvcrectl',
+    cmd='cd ../.. && make build-nvcrectl',
+    deps=['../../cmd/nvcrectl/main.go'],
     labels=['build'])
 
 # ─── 3. Deploy KWOK controller + default stages ───

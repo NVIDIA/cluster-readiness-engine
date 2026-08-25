@@ -198,25 +198,25 @@ func WaitForPods(
 	return pods
 }
 
-// ── ncrectl integration ──
+// ── nvcrectl integration ──
 
-// RunNcrectl runs `ncrectl certification run` with the given args.
-func RunNcrectl(ctx context.Context, t *testing.T, args ...string) {
+// RunNvcrectl runs `nvcrectl certification run` with the given args.
+func RunNvcrectl(ctx context.Context, t *testing.T, args ...string) {
 	t.Helper()
 
-	ncrectl := os.Getenv("NCRECTL")
-	if ncrectl == "" {
-		ncrectl = filepath.Join(ProjectDir(t), "bin", "ncrectl")
+	nvcrectl := os.Getenv("NVCRECTL")
+	if nvcrectl == "" {
+		nvcrectl = filepath.Join(ProjectDir(t), "bin", "nvcrectl")
 	}
 
 	fullArgs := append([]string{"certification", "run"}, args...)
-	cmd := exec.CommandContext(ctx, ncrectl, fullArgs...)
+	cmd := exec.CommandContext(ctx, nvcrectl, fullArgs...)
 	cmd.Dir = ProjectDir(t)
-	t.Logf("running: %s %s", ncrectl, strings.Join(fullArgs, " "))
+	t.Logf("running: %s %s", nvcrectl, strings.Join(fullArgs, " "))
 
 	output, err := cmd.CombinedOutput()
-	t.Logf("ncrectl output:\n%s", string(output))
-	require.NoError(t, err, "ncrectl certification run failed")
+	t.Logf("nvcrectl output:\n%s", string(output))
+	require.NoError(t, err, "nvcrectl certification run failed")
 }
 
 // ProjectDir returns the CRE project root.
@@ -511,13 +511,13 @@ func CertificationKey(name, namespace string) types.NamespacedName {
 
 // ── WorkloadRun helpers ──
 
-// RunNcrectlWorkloadRun runs `ncrectl workloadrun run` with a YAML file.
-func RunNcrectlWorkloadRun(ctx context.Context, t *testing.T, yamlFile string) {
+// RunNvcrectlWorkloadRun runs `nvcrectl workloadrun run` with a YAML file.
+func RunNvcrectlWorkloadRun(ctx context.Context, t *testing.T, yamlFile string) {
 	t.Helper()
 
-	ncrectl := os.Getenv("NCRECTL")
-	if ncrectl == "" {
-		ncrectl = filepath.Join(ProjectDir(t), "bin", "ncrectl")
+	nvcrectl := os.Getenv("NVCRECTL")
+	if nvcrectl == "" {
+		nvcrectl = filepath.Join(ProjectDir(t), "bin", "nvcrectl")
 	}
 
 	// Resolve relative paths against test/uat/ (where tests run from).
@@ -525,13 +525,13 @@ func RunNcrectlWorkloadRun(ctx context.Context, t *testing.T, yamlFile string) {
 		yamlFile = filepath.Join(ProjectDir(t), "test", "uat", yamlFile)
 	}
 	fullArgs := []string{"workloadrun", "run", yamlFile}
-	cmd := exec.CommandContext(ctx, ncrectl, fullArgs...)
+	cmd := exec.CommandContext(ctx, nvcrectl, fullArgs...)
 	cmd.Dir = ProjectDir(t)
-	t.Logf("running: %s %s", ncrectl, strings.Join(fullArgs, " "))
+	t.Logf("running: %s %s", nvcrectl, strings.Join(fullArgs, " "))
 
 	output, err := cmd.CombinedOutput()
-	t.Logf("ncrectl output:\n%s", string(output))
-	require.NoError(t, err, "ncrectl workloadrun run failed")
+	t.Logf("nvcrectl output:\n%s", string(output))
+	require.NoError(t, err, "nvcrectl workloadrun run failed")
 }
 
 // WaitForWorkloadRun polls until the WorkloadRun has the given condition True.

@@ -4,7 +4,7 @@
 
 ## Context
 
-The goodput reported for a completed certification changes between report reads (issue #177). `ncrectl certification report` reads `GoodputMeasurement.status.result` live from the cluster on every invocation ([report.go:758](../../pkg/report/report.go#L758), `buildDomainReports`), and GoodputMeasurements are deliberately owned by the Workflow and preserved until teardown so the report can read them after Jobs are gone ([workflow_controller.go:1710-1713](../../pkg/controller/workflow_controller.go#L1710)). Nothing snapshots the measurement when the measured Job reaches a terminal condition, so any post-success status churn shows up as report-to-report drift.
+The goodput reported for a completed certification changes between report reads (issue #177). `nvcrectl certification report` reads `GoodputMeasurement.status.result` live from the cluster on every invocation ([report.go:758](../../pkg/report/report.go#L758), `buildDomainReports`), and GoodputMeasurements are deliberately owned by the Workflow and preserved until teardown so the report can read them after Jobs are gone ([workflow_controller.go:1710-1713](../../pkg/controller/workflow_controller.go#L1710)). Nothing snapshots the measurement when the measured Job reaches a terminal condition, so any post-success status churn shows up as report-to-report drift.
 
 The terminal path in [goodputmeasurement_controller.go](../../pkg/controller/goodputmeasurement_controller.go) has three distinct sources of that churn:
 

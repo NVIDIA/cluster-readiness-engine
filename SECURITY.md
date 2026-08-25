@@ -48,7 +48,7 @@ CVEs affecting CRE are published through the NVIDIA PSIRT process (NVIDIA is a C
 
 ## Scope
 
-In scope: vulnerabilities in CRE itself — the controller, the `ncrectl` CLI, the Helm chart, and the container images this repository publishes.
+In scope: vulnerabilities in CRE itself — the controller, the `nvcrectl` CLI, the Helm chart, and the container images this repository publishes.
 
 Out of scope:
 

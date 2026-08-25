@@ -1,17 +1,17 @@
 ---
-title: ncrectl workflow
+title: nvcrectl workflow
 description: Render Workflow manifests offline with overrides applied.
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 ---
 
 
-## ncrectl workflow render
+## nvcrectl workflow render
 
 Renders a Workflow manifest with platform and GPU overrides applied, without connecting to a cluster. Useful for inspecting what the controller would create or diffing override changes.
 
 ```bash
-ncrectl workflow render [flags] <workflow.yaml>
+nvcrectl workflow render [flags] <workflow.yaml>
 ```
 
 ### Flags
@@ -28,7 +28,7 @@ ncrectl workflow render [flags] <workflow.yaml>
 
 ```bash
 # Render with explicit platform and GPU arch overrides
-ncrectl workflow render \
+nvcrectl workflow render \
   --platform aws \
   --gpu-arch h100 \
   my-workflow.yaml

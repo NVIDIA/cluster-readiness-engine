@@ -95,7 +95,7 @@ New helpers:
 - `createJobForGroup()`: always call `adapter.SetNumNodes()` (not just bisection mode)
 - Overlay logic unchanged — naturally handles remaining unresolved overlays
 
-### ncrectl changes (`pkg/certification/certification.go`)
+### nvcrectl changes (`pkg/certification/certification.go`)
 
 - `render` command: full resolution (same as CertificationController) — resolve options, nodesPerJob, templates, overlays
 - `run` command: `--nodes-per-job` default changes from 2 to 0 (auto-select); when 0, leave nil on spec
@@ -108,7 +108,7 @@ New helpers:
 - **Pointer types for optional fields** — `*bool` and `*int32` distinguish "not set" (nil, use global) from "explicitly set to zero/false." This is essential for the override semantics.
 - **Early overlay resolution** — resolving overlays in CertificationController (1) reduces Workflow CR size, (2) ensures dependencies have correct values when created, and (3) gives a single resolution point for the Certification path.
 - **Best-effort platform detection** — CertificationController uses `DetectPlatform(nodes)` (first-node heuristic) rather than the strict `detectPlatformConsistent()`. If detection fails, overlays are left for WorkflowController. This avoids failing the Certification on detection edge cases.
-- **WorkflowController as safety net** — remaining overlays and nodesPerJob clamping in WorkflowController handle Workflows not created via the Certification path (kubectl apply, ncrectl).
+- **WorkflowController as safety net** — remaining overlays and nodesPerJob clamping in WorkflowController handle Workflows not created via the Certification path (kubectl apply, nvcrectl).
 
 ## Consequences
 

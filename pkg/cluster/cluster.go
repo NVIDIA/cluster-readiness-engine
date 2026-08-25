@@ -38,7 +38,7 @@ const (
 	platformAzure = "azure"
 )
 
-// ClusterInfo is the JSON/YAML output structure for ncrectl cluster info.
+// ClusterInfo is the JSON/YAML output structure for nvcrectl cluster info.
 type ClusterInfo struct {
 	Platform        string `json:"platform"`
 	GPUArchitecture string `json:"gpuArchitecture"`

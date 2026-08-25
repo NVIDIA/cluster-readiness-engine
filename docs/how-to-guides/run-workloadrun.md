@@ -28,7 +28,7 @@ spec:
 `numNodes` is the number of nodes **per job group**, not a total: the orchestrator partitions all eligible nodes into groups of that size. For example, `numNodes: 4` on 16 eligible nodes produces four 4-node jobs.
 
 ```bash
-ncrectl workloadrun run \
+nvcrectl workloadrun run \
   --workload-registry nvcr.io \
   --workload-registry-username '$oauthtoken' \
   --workload-registry-password "$NGC_API_KEY" \
@@ -109,13 +109,13 @@ duplicate-parameter handling.
 | AWS | GB300 | MPI | Pins OpenMPI transport to TCP on `eth0` (`--mca pml ob1`, `--mca btl tcp,self`, …), disables UCC/HCOLL (SIGSEGV in `MPI_Init` on RoCE otherwise), and forwards the RoCE NCCL env (`NCCL_SOCKET_IFNAME=eth0`, `NCCL_IB_GID_INDEX=3`, …) via `mpirun -x` |
 | AWS | GB200/GB300 | all | ComputeDomain + DRA resource claims; GB300 adds the RoCE `ResourceClaimTemplate` |
 
-Use `ncrectl workloadrun render --platform aws my-workload.yaml` to preview
+Use `nvcrectl workloadrun render --platform aws my-workload.yaml` to preview
 the exact rendered Workflow, including the platform-applied mpirun args.
 
 ## View results
 
 ```bash
-ncrectl workloadrun report my-workload
+nvcrectl workloadrun report my-workload
 ```
 
 See [API Reference: WorkloadRun](../api-reference/workloadrun.md) for the full spec.

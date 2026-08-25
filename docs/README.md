@@ -24,7 +24,7 @@ The Cluster Readiness Engine is a Kubernetes controller for GPU cluster burn-in 
 | `Workflow` | Manages one category run; applies catalog, overrides, and orchestration |
 | `Job` | Creates and monitors the actual workload; drives health monitoring and measurement |
 | `WorkloadRun` | Simplified API for ad-hoc workloads without full certification overhead |
-| `ncrectl` | CLI for setup, certification lifecycle, rendering, and reporting |
+| `nvcrectl` | CLI for setup, certification lifecycle, rendering, and reporting |
 
 ## Next steps
 

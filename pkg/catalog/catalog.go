@@ -142,7 +142,7 @@ type Entry struct {
 	// TimeoutPerJob is the entry's default job timeout from its meta.yaml
 	// (e.g., "2h" for dcgm-level4). Empty means the global default applies
 	// (DefaultTimeoutPerJob, or DiagnoseTimeoutPerJob for diagnose scale).
-	// Exposed so callers (e.g., the ncrectl --wait timeout derivation) can
+	// Exposed so callers (e.g., the nvcrectl --wait timeout derivation) can
 	// compute a category's job budget without a full Build.
 	TimeoutPerJob string
 

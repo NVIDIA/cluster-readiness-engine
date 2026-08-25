@@ -1,9 +1,9 @@
 # Third-Party Notices
 
-CRE ncrectl CLI
+CRE nvcrectl CLI
 
 This file lists every third-party Go module that is a direct dependency of the
-`ncrectl` binary (including the internal packages it imports), along with the
+`nvcrectl` binary (including the internal packages it imports), along with the
 verbatim text of each module's license. Standard library packages are excluded
 (their license is covered by the Go distribution). Test-only dependencies are
 also excluded.
