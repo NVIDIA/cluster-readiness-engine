@@ -17,9 +17,9 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/gpu"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/platform"
+	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/gpu"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
 )
 
 const (

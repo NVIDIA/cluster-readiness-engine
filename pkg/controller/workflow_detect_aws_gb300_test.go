@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/catalog"
+	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 )
 
 // TestAWSGB300EFAStripInvariant asserts that every NCCL-using catalog entry,

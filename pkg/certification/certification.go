@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/kubeconfig"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -26,15 +26,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/catalog"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/cluster"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/naming"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/platform"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/render"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/report"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/setup"
+	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/cluster"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/render"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/report"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/setup"
 )
 
 // NewCommand returns the "certification" cobra command.
@@ -578,7 +578,7 @@ Use --cleanup to teardown installed components after completion.`,
 	cmd.Flags().StringVar(&workloadRegistryPassword, "workload-registry-password", "",
 		"Registry password or API key for workload image pull — creates an workloadRegistryPassword in the certification namespace")
 	cmd.Flags().StringVar(&controllerImage, "image", "",
-		"Controller image for --setup (default: ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager:<version>)")
+		"Controller image for --setup (default: ghcr.io/NVIDIA/cluster-readiness-engine/manager:<version>)")
 	cmd.Flags().StringVar(&name, "name", "",
 		"Certification name (default: nvcrectl-<timestamp>)")
 	cmd.Flags().Int32Var(&nodesPerJob, "nodes-per-job", 0,

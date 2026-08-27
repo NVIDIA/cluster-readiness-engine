@@ -30,7 +30,7 @@ While this repository is internal, GitHub serves release assets only through aut
 
 ```bash
 CRE_VERSION=v0.1.0-rc.9
-gh release download "${CRE_VERSION}" --repo dsx-ai-factory/cluster-readiness-engine \
+gh release download "${CRE_VERSION}" --repo NVIDIA/cluster-readiness-engine \
   --pattern installer --output - | bash -s -- -v "${CRE_VERSION}"
 ```
 

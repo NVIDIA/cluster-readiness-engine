@@ -15,7 +15,7 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/test/uat/util"
+	"github.com/NVIDIA/cluster-readiness-engine/test/uat/util"
 )
 
 // TestAWSGB300WorkloadRunMPI runs an MPI (nccl-tests style) WorkloadRun on

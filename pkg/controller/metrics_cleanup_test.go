@@ -12,7 +12,7 @@ import (
 	promtest "github.com/prometheus/client_golang/prometheus/testutil"
 	"sigs.k8s.io/yaml"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
 // TestCleanupJobMetricsRemovesEveryJobScopedSeries pins the cardinality

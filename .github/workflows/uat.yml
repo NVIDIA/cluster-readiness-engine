@@ -32,7 +32,7 @@ jobs:
   uat:
     name: UAT (Kind + KWOK + Tilt)
     runs-on: linux-amd64-cpu32
-    if: github.repository == 'dsx-ai-factory/cluster-readiness-engine'
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 60
 
     steps:

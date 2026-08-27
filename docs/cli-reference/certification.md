@@ -23,7 +23,7 @@ nvcrectl certification run --category communication/nccl-all-reduce [flags]
 | `--category` | — | Category in `domain/variant` format; repeatable (mutually exclusive with `--cert-file`) |
 | `--name` | auto | Certification name (default: `nvcrectl-<timestamp>`) |
 | `--setup` | `false` | Install CRDs, controller, and LogProfiles before creating the certification |
-| `--image` | — | Controller image for `--setup` (default: `ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager:<version>`) |
+| `--image` | — | Controller image for `--setup` (default: `ghcr.io/NVIDIA/cluster-readiness-engine/manager:<version>`) |
 | `--wait` | `false` | Block until the certification completes and print a report |
 | `--timeout` | derived | Timeout for `--wait`. When not set, derived from the selected categories' `timeoutPerJob` budgets (max across categories × iterations × 1.5), floored at `30m`; the CLI prints the derived value when the watch starts. An explicit value always wins. On timeout, the CLI prints a partial report and leaves the Certification running unless `--cleanup` is set. |
 | `--cleanup` | `false` | Delete the certification, namespace, and installed components after completion |

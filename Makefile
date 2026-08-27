@@ -9,7 +9,7 @@ LDFLAGS ?= -s -w -X main.version=$(VERSION)
 # Image configuration
 # Registry and repository for the controller image
 IMAGE_REGISTRY ?= ghcr.io
-IMAGE_REPOSITORY ?= dsx-ai-factory/cluster-readiness-engine/manager
+IMAGE_REPOSITORY ?= NVIDIA/cluster-readiness-engine/manager
 IMAGE_TAG ?= $(VERSION)
 # Full image URL
 IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):$(IMAGE_TAG)
@@ -281,7 +281,7 @@ HELM ?= helm
 HELM_PACKAGE_VERSION ?= $(VERSION)
 # OCI registry base for Helm chart publishing.
 # helm push pushes to $(HELM_OCI_REGISTRY)/<chart-name>:<version>.
-HELM_OCI_REGISTRY ?= oci://ghcr.io/dsx-ai-factory
+HELM_OCI_REGISTRY ?= oci://ghcr.io/nvidia
 
 .PHONY: helm-lint
 helm-lint: ## Lint the cluster-readiness-engine Helm chart.

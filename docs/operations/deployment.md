@@ -15,7 +15,7 @@ CRE supports two install paths. Both pull the same artifacts from the GitHub Con
 | Method | Audience | Installs Kubeflow Trainer |
 |--------|----------|---------------------------|
 | `nvcrectl setup init` | Operators, quick setup | Yes (skip with `--skip-phases=deps`) |
-| Helm chart (`oci://ghcr.io/dsx-ai-factory/cluster-readiness-engine`) | GitOps / platform teams | No (install separately) |
+| Helm chart (`oci://ghcr.io/NVIDIA/cluster-readiness-engine`) | GitOps / platform teams | No (install separately) |
 
 ### nvcrectl setup init
 
@@ -23,7 +23,7 @@ Install the CLI first with the installer script (see [Install](../getting-starte
 
 ```bash
 export NVCRECTL_VERSION=v0.1.0-rc.8
-curl -sSL "https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/download/${NVCRECTL_VERSION}/installer" | bash
+curl -sSL "https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${NVCRECTL_VERSION}/installer" | bash
 ```
 
 Then set up the cluster:
@@ -64,23 +64,23 @@ Then inspect and install, pinning an explicit version:
 ```bash
 CRE_VERSION=v0.1.0-rc.8
 
-helm show chart oci://ghcr.io/dsx-ai-factory/cluster-readiness-engine --version "$CRE_VERSION"
+helm show chart oci://ghcr.io/NVIDIA/cluster-readiness-engine --version "$CRE_VERSION"
 
 helm install cluster-readiness-engine \
-  oci://ghcr.io/dsx-ai-factory/cluster-readiness-engine \
+  oci://ghcr.io/NVIDIA/cluster-readiness-engine \
   --version "$CRE_VERSION" \
   --namespace cluster-readiness-engine \
   --create-namespace
 ```
 
-The controller image is `ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager`, tagged with the same release version. Chart and image versions move together — name the same tag everywhere. The Helm path does not install Kubeflow Trainer; install it separately before running `TrainJob` workloads.
+The controller image is `ghcr.io/NVIDIA/cluster-readiness-engine/manager`, tagged with the same release version. Chart and image versions move together — name the same tag everywhere. The Helm path does not install Kubeflow Trainer; install it separately before running `TrainJob` workloads.
 
 Key chart values:
 
 | Value | Default | Purpose |
 |-------|---------|---------|
 | `manager.replicas` | `1` | Controller Deployment replicas |
-| `manager.image.repository` | `ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager` | Controller image |
+| `manager.image.repository` | `ghcr.io/NVIDIA/cluster-readiness-engine/manager` | Controller image |
 | `manager.image.tag` | `""` (uses chart `appVersion`) | Controller image tag |
 | `manager.imagePullSecrets` | `[]` | Pull secrets for the controller image |
 | `manager.resources` | `10m/500m` CPU, `1Gi/1Gi` memory | Controller resource requests/limits |
@@ -200,7 +200,7 @@ CEL evaluation is lightweight per node, pod-to-node lookups use field indexes, a
 
 The controller runs without external network access at runtime. All catalog entries are embedded in the binary at compile time, and the controller makes no outbound API calls — it communicates only with the Kubernetes API server. For air-gapped deployment:
 
-1. Mirror the controller image (`ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager`) and the Kubeflow Trainer images to your internal registry
+1. Mirror the controller image (`ghcr.io/NVIDIA/cluster-readiness-engine/manager`) and the Kubeflow Trainer images to your internal registry
 2. Install the Helm chart with `manager.image.repository` pointing at your internal registry
 3. Pre-load any workload images referenced by catalog entries (NeMo, NCCL tests)
 
@@ -239,7 +239,7 @@ readinessProbe:
 2. Upgrade the Helm release (log in to `ghcr.io` first, as above):
    ```bash
    helm upgrade cluster-readiness-engine \
-     oci://ghcr.io/dsx-ai-factory/cluster-readiness-engine \
+     oci://ghcr.io/NVIDIA/cluster-readiness-engine \
      --version <new-version> \
      --namespace cluster-readiness-engine
    ```

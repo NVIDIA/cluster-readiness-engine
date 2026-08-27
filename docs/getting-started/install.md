@@ -23,7 +23,7 @@ to install, then run the installer:
 
 ```bash
 export NVCRECTL_VERSION=v0.1.0-rc.9
-gh release download "${NVCRECTL_VERSION}" --repo dsx-ai-factory/cluster-readiness-engine \
+gh release download "${NVCRECTL_VERSION}" --repo NVIDIA/cluster-readiness-engine \
   --pattern installer --output - | bash -s -- -v "${NVCRECTL_VERSION}"
 ```
 

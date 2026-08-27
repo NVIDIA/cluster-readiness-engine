@@ -7,7 +7,7 @@ domain: nvidia.com
 layout:
 - go.kubebuilder.io/v4
 projectName: cluster-readiness-engine
-repo: github.com/dsx-ai-factory/cluster-readiness-engine
+repo: github.com/NVIDIA/cluster-readiness-engine
 resources:
 - api:
     crdVersion: v1
@@ -16,7 +16,7 @@ resources:
   domain: nvidia.com
   group: cre
   kind: Job
-  path: github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1
+  path: github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -25,7 +25,7 @@ resources:
   domain: nvidia.com
   group: cre
   kind: Workflow
-  path: github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1
+  path: github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -34,7 +34,7 @@ resources:
   domain: nvidia.com
   group: cre
   kind: Certification
-  path: github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1
+  path: github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -43,6 +43,6 @@ resources:
   domain: nvidia.com
   group: cre
   kind: GoodputMeasurement
-  path: github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1
+  path: github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1
   version: v1alpha1
 version: "3"

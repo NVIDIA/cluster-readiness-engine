@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"github.com/spf13/pflag"
 	"sigs.k8s.io/yaml"
 )

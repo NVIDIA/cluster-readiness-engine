@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/test/uat/util"
+	"github.com/NVIDIA/cluster-readiness-engine/test/uat/util"
 )
 
 // TestAWSH100WorkloadRunNemotron5 runs a Nemotron 5 (56B) training WorkloadRun

@@ -7,10 +7,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"sigs.k8s.io/yaml"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/goodput"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/goodput"
 )
 
 func TestComputeAvgTFLOPS(t *testing.T) {
