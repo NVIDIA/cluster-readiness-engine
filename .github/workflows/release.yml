@@ -227,14 +227,14 @@ jobs:
 
             ```bash
             helm install cluster-readiness-engine \
-              oci://ghcr.io/${{ github.repository }} \
+              oci://ghcr.io/nvidia \
               --version ${{ steps.tag.outputs.value }} \
               --namespace cluster-readiness-engine \
               --create-namespace
             ```
 
             The controller image for this release is
-            `ghcr.io/${{ github.repository }}/manager:${{ steps.tag.outputs.value }}`.
+            `ghcr.io/nvidia/manager:${{ steps.tag.outputs.value }}`.
 
             ## nvcrectl CLI
 
