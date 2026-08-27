@@ -34,7 +34,7 @@ const (
 	kubeflowTrainerVersion = "v2.2.1"
 
 	defaultImageRegistry   = "ghcr.io"
-	defaultImageRepository = "NVIDIA/cluster-readiness-engine/manager"
+	defaultImageRepository = "nvidia/cluster-readiness-engine/manager"
 
 	creNamespace = "cluster-readiness-engine"
 
