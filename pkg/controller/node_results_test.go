@@ -15,9 +15,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	gzip "github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller/compress"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/noderesults"
+	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	gzip "github.com/NVIDIA/cluster-readiness-engine/pkg/controller/compress"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
 )
 
 func decodeOrFail(t *testing.T, b []byte) []string {

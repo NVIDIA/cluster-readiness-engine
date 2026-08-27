@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/kubeconfig"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -34,7 +34,7 @@ const (
 	kubeflowTrainerVersion = "v2.2.1"
 
 	defaultImageRegistry   = "ghcr.io"
-	defaultImageRepository = "dsx-ai-factory/cluster-readiness-engine/manager"
+	defaultImageRepository = "nvidia/cluster-readiness-engine/manager"
 
 	creNamespace = "cluster-readiness-engine"
 
@@ -89,7 +89,7 @@ func newInitCommand(version string) *cobra.Command {
 
 Phases:
   [deps]  Kubeflow Trainer ` + kubeflowTrainerVersion + `
-  [helm]  CRE Helm chart (oci://ghcr.io/dsx-ai-factory/cluster-readiness-engine)
+  [helm]  CRE Helm chart (oci://ghcr.io/nvidia/cluster-readiness-engine)
 
 The Helm chart is pulled from GHCR at the CLI version. Dev builds require --version.
 Pass --image-pull-secret to authenticate against a private GHCR registry.

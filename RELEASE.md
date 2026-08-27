@@ -44,7 +44,7 @@ people do not tag at the same time.
    ```
 
    If you work from a fork, push the tag to the remote that points at
-   `dsx-ai-factory/cluster-readiness-engine`, which is usually `upstream`.
+   `NVIDIA/cluster-readiness-engine`, which is usually `upstream`.
 
    Sign the tag (`-s`). Pushing the tag is the release trigger; there is no button to
    press afterwards.
@@ -80,12 +80,12 @@ Pushing a `v*` tag runs three jobs in `.github/workflows/release.yml`:
 
 | Job | Publishes |
 |---|---|
-| Publish Helm Chart | `oci://ghcr.io/dsx-ai-factory/cluster-readiness-engine` |
+| Publish Helm Chart | `oci://ghcr.io/nvidia/cluster-readiness-engine` |
 | Build CLI Binaries | cross-compiled `nvcrectl` for linux and macOS, amd64 and arm64 |
 | Create GitHub Release | the GitHub Release, its notes, and the assets below |
 
 The container image is published separately by `.github/workflows/publish.yml` as
-`ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager:<tag>`.
+`ghcr.io/nvidia/cluster-readiness-engine/manager:<tag>`.
 
 Release assets:
 
@@ -104,12 +104,12 @@ shell script (not an error page), verifies checksums, and re-checks the binary's
 self-reported version.
 
 To verify manually (via gh while the repository is internal; once public, plain
-`curl -sSLO "https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/download/$VERSION/<asset>"`
+`curl -sSLO "https://github.com/NVIDIA/cluster-readiness-engine/releases/download/$VERSION/<asset>"`
 works too):
 
 ```bash
 VERSION=v0.1.0
-gh release download "$VERSION" --repo dsx-ai-factory/cluster-readiness-engine \
+gh release download "$VERSION" --repo NVIDIA/cluster-readiness-engine \
   --pattern checksums.txt --pattern nvcrectl-linux-amd64
 sha256sum --check --ignore-missing checksums.txt
 ```

@@ -29,13 +29,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/naming"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/noderesults"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/orchestration"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/podlogs"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/threshold"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/workload"
+	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/orchestration"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/threshold"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
 
 const (

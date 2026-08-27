@@ -12,8 +12,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/gpu"
+	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/gpu"
 )
 
 // categoryKey uniquely identifies a certification category.

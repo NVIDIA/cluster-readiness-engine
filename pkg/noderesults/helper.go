@@ -6,7 +6,7 @@ package noderesults
 import (
 	"sort"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
 // NodesWithFailureDetails wraps a list of node names into FailedNode entries with the

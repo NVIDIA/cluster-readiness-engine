@@ -11,7 +11,7 @@ body:
     id: prerequisites
     attributes:
       label: Prerequisites
-      description: Please review existing [documentation issues](https://github.com/dsx-ai-factory/cluster-readiness-engine/issues?q=is%3Aopen+is%3Aissue+label%3Aarea%2Fdocs) before submitting.
+      description: Please review existing [documentation issues](https://github.com/NVIDIA/cluster-readiness-engine/issues?q=is%3Aopen+is%3Aissue+label%3Aarea%2Fdocs) before submitting.
       options:
         - label: I searched existing documentation and open documentation issues
           required: true
@@ -20,7 +20,7 @@ body:
     id: terms
     attributes:
       label: Code of Conduct
-      description: By submitting this issue, you agree to follow our [Code of Conduct](https://github.com/dsx-ai-factory/cluster-readiness-engine/blob/main/CODE_OF_CONDUCT.md).
+      description: By submitting this issue, you agree to follow our [Code of Conduct](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/CODE_OF_CONDUCT.md).
       options:
         - label: I agree to follow the project's Code of Conduct
           required: true
@@ -42,7 +42,7 @@ body:
     attributes:
       label: Documentation Location
       description: Link to the existing docs or source that needs correction.
-      placeholder: https://github.com/dsx-ai-factory/cluster-readiness-engine/blob/main/docs/
+      placeholder: https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/
     validations:
       required: true
 
