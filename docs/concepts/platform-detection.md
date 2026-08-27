@@ -59,12 +59,15 @@ A `jobTemplatePatch` that appends to an array must come **after** any `jobTempla
 
 ## Architecture-specific resources
 
-Different GPU architectures require different Kubernetes resources:
+Different GPU architectures and cloud platforms require different Kubernetes resources:
 
-| Architecture | Interconnect | Key resources |
-|-------------|-------------|--------------|
-| GB200 | EFA (AWS) | `hugepages-2Mi`, `vpc.amazonaws.com/efa`, EFA hostPath volume |
-| GB300 | RoCE (AWS) | `roce-channel` resource claim, no hugepages, no EFA |
-| H100 | EFA (AWS) | `vpc.amazonaws.com/efa: 32`, no hugepages |
+| Architecture | Platform | Interconnect | Key resources |
+|-------------|---------|-------------|--------------|
+| GB200 | AWS | EFA | `hugepages-2Mi`, `vpc.amazonaws.com/efa`, EFA hostPath volume, ComputeDomain |
+| GB200 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
+| GB300 | AWS | RoCE | `roce-channel` resource claim (DRA), no hugepages, no EFA |
+| GB300 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
+| H100 | AWS | EFA | `vpc.amazonaws.com/efa: 32`, no hugepages |
+| H100 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap |
 
 The live controller tracks which overrides matched in `status.orchestration.appliedOverrides`. When using `nvcrectl workflow render`, the same information is also written to the `nvcrectl.nvidia.com/applied-overrides` annotation on the rendered manifest.
