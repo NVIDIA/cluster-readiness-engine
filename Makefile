@@ -9,7 +9,7 @@ LDFLAGS ?= -s -w -X main.version=$(VERSION)
 # Image configuration
 # Registry and repository for the controller image
 IMAGE_REGISTRY ?= ghcr.io
-IMAGE_REPOSITORY ?= NVIDIA/cluster-readiness-engine/manager
+IMAGE_REPOSITORY ?= nvidia/cluster-readiness-engine/manager
 IMAGE_TAG ?= $(VERSION)
 # Full image URL
 IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):$(IMAGE_TAG)
