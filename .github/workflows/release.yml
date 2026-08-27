@@ -65,7 +65,7 @@ jobs:
         env:
           # Derive the OCI registry from the repository so a future org
           # transfer cannot leave this workflow pushing to a stale path.
-          HELM_OCI_REGISTRY: oci://ghcr.io/${{ github.repository_owner }}
+          HELM_OCI_REGISTRY: oci://ghcr.io/nvidia
 
   build-cli:
     name: Build CLI Binaries
