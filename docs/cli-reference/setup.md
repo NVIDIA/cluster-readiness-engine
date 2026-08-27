@@ -115,6 +115,8 @@ Runs three phases in order:
 
 Use `--skip-phases=deps` to keep Kubeflow Trainer.
 
+After all phases complete, `setup reset` prints a **Retained resources** block listing any namespaces or secrets that were not deleted (Helm never removes the release namespace, and the `nvcrectl-pull-secret` created by `setup init` is outside the Helm release). Each entry includes the `kubectl delete` command to remove it manually if you want a pristine cluster.
+
 ### Flags
 
 | Flag | Default | Description |

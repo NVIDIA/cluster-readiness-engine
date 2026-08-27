@@ -22,7 +22,7 @@ CRE supports two install paths. Both pull the same artifacts from the GitHub Con
 Install the CLI first with the installer script (see [Install](../getting-started/install.md) for the full walkthrough):
 
 ```bash
-export NVCRECTL_VERSION=v0.1.0-rc.8
+export NVCRECTL_VERSION=v0.1.0-rc.9
 curl -sSL "https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${NVCRECTL_VERSION}/installer" | bash
 ```
 
@@ -62,7 +62,7 @@ echo $GITHUB_TOKEN | helm registry login ghcr.io --username <github-username> --
 Then inspect and install, pinning an explicit version:
 
 ```bash
-CRE_VERSION=v0.1.0-rc.8
+CRE_VERSION=v0.1.0-rc.9
 
 helm show chart oci://ghcr.io/nvidia/cluster-readiness-engine --version "$CRE_VERSION"
 
