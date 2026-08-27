@@ -175,7 +175,7 @@ func TestParseImage(t *testing.T) {
 func TestDefaultImage(t *testing.T) {
 	img := defaultImage("dev")
 	assert.Equal(t, defaultImageRegistry+"/"+defaultImageRepository+":"+"dev", img)
-	assert.Contains(t, img, "ghcr.io/NVIDIA/cluster-readiness-engine/manager:")
+	assert.Contains(t, img, "ghcr.io/nvidia/cluster-readiness-engine/manager:")
 }
 
 // ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@
 #   make tilt-uat-ci     # CI mode (headless, exits after deploy)
 
 KWOK_VERSION = os.getenv('KWOK_VERSION', 'v0.7.0')
-IMG = os.getenv('IMG', 'ghcr.io/NVIDIA/cluster-readiness-engine/manager:uat-test')
+IMG = os.getenv('IMG', 'ghcr.io/nvidia/cluster-readiness-engine/manager:uat-test')
 NVCRECTL = os.getenv('NVCRECTL', '../../bin/nvcrectl')
 KIND_CLUSTER = os.getenv('KIND_CLUSTER_UAT', 'cre-test-uat')
 

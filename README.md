@@ -156,10 +156,10 @@ gh auth token | helm registry login ghcr.io \
 CRE_VERSION=v0.1.0-rc.8
 
 # Inspect the chart before installing it
-helm show chart oci://ghcr.io/NVIDIA/cluster-readiness-engine --version "$CRE_VERSION"
+helm show chart oci://ghcr.io/nvidia/cluster-readiness-engine --version "$CRE_VERSION"
 
 helm install cluster-readiness-engine \
-  oci://ghcr.io/NVIDIA/cluster-readiness-engine \
+  oci://ghcr.io/nvidia/cluster-readiness-engine \
   --version "$CRE_VERSION" \
   --namespace cluster-readiness-engine \
   --create-namespace
@@ -172,7 +172,7 @@ Kubernetes API-server capacity available in your cluster:
 
 ```bash
 helm upgrade cluster-readiness-engine \
-  oci://ghcr.io/NVIDIA/cluster-readiness-engine \
+  oci://ghcr.io/nvidia/cluster-readiness-engine \
   --version "$CRE_VERSION" \
   --namespace cluster-readiness-engine \
   --set manager.maxConcurrentReconciles=20 \
@@ -181,7 +181,7 @@ helm upgrade cluster-readiness-engine \
 
 Both values must be greater than zero.
 
-The controller image is `ghcr.io/NVIDIA/cluster-readiness-engine/manager`, tagged
+The controller image is `ghcr.io/nvidia/cluster-readiness-engine/manager`, tagged
 with the same release version. Builds from `main` are also published, tagged
 `main-<commit-sha>`; use a release tag rather than one of those.
 

@@ -578,7 +578,7 @@ Use --cleanup to teardown installed components after completion.`,
 	cmd.Flags().StringVar(&workloadRegistryPassword, "workload-registry-password", "",
 		"Registry password or API key for workload image pull — creates an workloadRegistryPassword in the certification namespace")
 	cmd.Flags().StringVar(&controllerImage, "image", "",
-		"Controller image for --setup (default: ghcr.io/NVIDIA/cluster-readiness-engine/manager:<version>)")
+		"Controller image for --setup (default: ghcr.io/nvidia/cluster-readiness-engine/manager:<version>)")
 	cmd.Flags().StringVar(&name, "name", "",
 		"Certification name (default: nvcrectl-<timestamp>)")
 	cmd.Flags().Int32Var(&nodesPerJob, "nodes-per-job", 0,

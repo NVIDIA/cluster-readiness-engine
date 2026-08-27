@@ -13,7 +13,7 @@ manager:
   # Measurement controllers fetch and parse Pod logs, so their default is lower.
   measurementMaxConcurrentReconciles: 5
   image:
-    repository: ghcr.io/NVIDIA/cluster-readiness-engine/manager
+    repository: ghcr.io/nvidia/cluster-readiness-engine/manager
     tag: ""
     pullPolicy: IfNotPresent
   imagePullSecrets: []

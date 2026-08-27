@@ -80,12 +80,12 @@ Pushing a `v*` tag runs three jobs in `.github/workflows/release.yml`:
 
 | Job | Publishes |
 |---|---|
-| Publish Helm Chart | `oci://ghcr.io/NVIDIA/cluster-readiness-engine` |
+| Publish Helm Chart | `oci://ghcr.io/nvidia/cluster-readiness-engine` |
 | Build CLI Binaries | cross-compiled `nvcrectl` for linux and macOS, amd64 and arm64 |
 | Create GitHub Release | the GitHub Release, its notes, and the assets below |
 
 The container image is published separately by `.github/workflows/publish.yml` as
-`ghcr.io/NVIDIA/cluster-readiness-engine/manager:<tag>`.
+`ghcr.io/nvidia/cluster-readiness-engine/manager:<tag>`.
 
 Release assets:
 
