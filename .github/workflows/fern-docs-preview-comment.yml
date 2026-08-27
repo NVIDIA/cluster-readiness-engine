@@ -39,10 +39,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-artifact:
+    runs-on: linux-amd64-cpu8
+    timeout-minutes: 5
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      has_artifact: ${{ steps.check.outputs.has_artifact }}
+    steps:
+      - name: Check for fern-preview artifact
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          COUNT=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/artifacts" \
+            --jq '[.artifacts[] | select(.name == "fern-preview" and .expired == false)] | length')
+          echo "has_artifact=$([ "$COUNT" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
   preview:
+    needs: check-artifact
+    if: needs.check-artifact.outputs.has_artifact == 'true'
     runs-on: linux-amd64-cpu8
     timeout-minutes: 15
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Download fern sources and metadata
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1

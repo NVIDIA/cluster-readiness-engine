@@ -52,7 +52,7 @@ permissions:
 
 concurrency:
   group: fern-publish
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   YQ_VERSION: v4.53.2
