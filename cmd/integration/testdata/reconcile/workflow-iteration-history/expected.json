@@ -6,7 +6,7 @@
       "name": "test-wf-history-group-0-iter-2",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "app.kubernetes.io/managed-by": "nvcre",
         "nvcre.nvidia.com/group": "group-0",
         "nvcre.nvidia.com/workflow": "test-wf-history"
       },
@@ -138,7 +138,7 @@
       "name": "test-wf-history-group-0-iter-2-workload",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "app.kubernetes.io/managed-by": "nvcre",
         "nvcre.nvidia.com/job": "test-wf-history-group-0-iter-2"
       },
       "ownerReferences": [

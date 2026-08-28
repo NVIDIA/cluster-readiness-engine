@@ -2,7 +2,7 @@
 
 ## Context
 
-The cluster-readiness-engine measures bandwidth (`BandwidthMeasurement`) and goodput (`GoodputMeasurement`) for every Job that configures them, but has no mechanism to enforce minimum performance thresholds. Measurements are recorded, conditions are set (`Measuring` -> `Complete`), and results are stored in status — but the controller never compares those results against acceptable minimums. Operators must manually inspect `BandwidthMeasurement.status.results` and `GoodputMeasurement.status.result` to determine whether hardware meets performance requirements.
+The nvcre measures bandwidth (`BandwidthMeasurement`) and goodput (`GoodputMeasurement`) for every Job that configures them, but has no mechanism to enforce minimum performance thresholds. Measurements are recorded, conditions are set (`Measuring` -> `Complete`), and results are stored in status — but the controller never compares those results against acceptable minimums. Operators must manually inspect `BandwidthMeasurement.status.results` and `GoodputMeasurement.status.result` to determine whether hardware meets performance requirements.
 
 This manual inspection does not scale. A certification run across a 10,000-GPU cluster with topology-aware orchestration produces hundreds of Jobs, each with its own measurement resources. Without automated pass/fail evaluation, the entire certification pipeline stops at "results collected" and requires human judgment to proceed.
 

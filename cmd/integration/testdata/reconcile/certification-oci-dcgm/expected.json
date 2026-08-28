@@ -69,7 +69,7 @@
       "name": "oci-dcgm-diagnostics-dcgm-9e8ef",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "app.kubernetes.io/managed-by": "nvcre",
         "nvcre.nvidia.com/category-domain": "diagnostics",
         "nvcre.nvidia.com/category-variant": "dcgm-level4",
         "nvcre.nvidia.com/certification": "oci-dcgm"

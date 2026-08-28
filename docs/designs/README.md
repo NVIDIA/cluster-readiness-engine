@@ -19,8 +19,8 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 
 | ADR | Title |
 |---|---|
-| 000 | [CRE Architecture for GPU Cluster Certification](000-adr.md) |
-| 001 | [Architecture — CRE for GPU Cluster Certification](001-adr-abridged.md) |
+| 000 | [NVCRE Architecture for GPU Cluster Certification](000-adr.md) |
+| 001 | [Architecture — NVCRE for GPU Cluster Certification](001-adr-abridged.md) |
 | 002 | [Architecture — Layered CRD Hierarchy](002-layered-crd-hierarchy.md) |
 | 003 | [Architecture — Strongly-Typed Workload Adapter Pattern](003-workload-adapter-pattern.md) |
 | 004 | [Feature — CEL-Based Node Health Monitoring](004-cel-node-health-monitoring.md) |

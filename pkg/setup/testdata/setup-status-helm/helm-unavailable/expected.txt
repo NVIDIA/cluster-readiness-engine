@@ -10,8 +10,8 @@
   },
   "helmReleases": [
     {
-      "name": "cluster-readiness-engine",
-      "namespace": "cluster-readiness-engine",
+      "name": "nvcre",
+      "namespace": "nvcre",
       "state": "unknown"
     },
     {
@@ -22,16 +22,16 @@
   ]
 }
 
-Component                               Status
-─────────────────────────               ──────────
-CRE CRDs                                ✓ installed
-CRE Controller                          ✓ installed
-Kubeflow Trainer                        ✓ installed
-Log Profiles                            ✓ installed
-GPU Operator                            ✓ installed
-DCGM (optional)                         ✗ not found
-Helm release cluster-readiness-engine   ✓ unknown
-Helm release kubeflow-trainer           ✓ unknown
+Component                       Status
+─────────────────────────       ──────────
+NVCRE CRDs                      ✓ installed
+NVCRE Controller                ✓ installed
+Kubeflow Trainer                ✓ installed
+Log Profiles                    ✓ installed
+GPU Operator                    ✓ installed
+DCGM (optional)                 ✗ not found
+Helm release nvcre              ✓ unknown
+Helm release kubeflow-trainer   ✓ unknown
 
 Status: ready
 

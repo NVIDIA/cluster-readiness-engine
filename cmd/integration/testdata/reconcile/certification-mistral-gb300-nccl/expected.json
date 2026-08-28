@@ -69,7 +69,7 @@
       "name": "mistral-nc-g3-communicati-1a2fa",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "app.kubernetes.io/managed-by": "nvcre",
         "nvcre.nvidia.com/category-domain": "communication",
         "nvcre.nvidia.com/category-variant": "nccl-all-gather",
         "nvcre.nvidia.com/certification": "mistral-nc-g3"

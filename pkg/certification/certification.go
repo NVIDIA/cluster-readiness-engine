@@ -349,7 +349,7 @@ func renderCertification(cert *crev1alpha1.Certification, platformName string) (
 			ObjectMeta: metav1.ObjectMeta{
 				Name: workflowName,
 				Labels: map[string]string{
-					"app.kubernetes.io/managed-by":      "cluster-readiness-engine",
+					"app.kubernetes.io/managed-by":      "nvcre",
 					"nvcre.nvidia.com/certification":    cert.Name,
 					"nvcre.nvidia.com/category-domain":  cat.Domain,
 					"nvcre.nvidia.com/category-variant": cat.Variant,
@@ -719,7 +719,7 @@ func buildConfigFromFlags(
 			Name:      name,
 			Namespace: namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "cluster-readiness-engine",
+				"app.kubernetes.io/managed-by": "nvcre",
 				"app.kubernetes.io/created-by": "nvcrectl",
 			},
 		},

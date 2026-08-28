@@ -1,8 +1,8 @@
-# ADR-001: Architecture — CRE for GPU Cluster Certification
+# ADR-001: Architecture — NVCRE for GPU Cluster Certification
 
 **Status:** Proposed
 **Date:** 2026-02-10
-**Deciders:** CRE Maintainers
+**Deciders:** NVCRE Maintainers
 
 ## Context
 
@@ -22,7 +22,7 @@ The problem breaks down into three parts:
 
 ## Decision
 
-Build the cluster-readiness-engine as layered Kubernetes CRDs following the Deployment → ReplicaSet → Pod composition pattern: **Certification** composes a burn-in suite, **Workflow** orchestrates iterations across node groups, and **Job** runs a single workload with health monitoring. Measurement APIs (GoodputMeasurement, BandwidthMeasurement) are opt-in child resources that Jobs create when configured, keeping measurement concerns out of the core orchestration path. A Remediation CRD handles post-failure node isolation.
+Build the nvcre as layered Kubernetes CRDs following the Deployment → ReplicaSet → Pod composition pattern: **Certification** composes a burn-in suite, **Workflow** orchestrates iterations across node groups, and **Job** runs a single workload with health monitoring. Measurement APIs (GoodputMeasurement, BandwidthMeasurement) are opt-in child resources that Jobs create when configured, keeping measurement concerns out of the core orchestration path. A Remediation CRD handles post-failure node isolation.
 
 ## Implementation
 

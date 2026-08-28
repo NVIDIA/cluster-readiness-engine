@@ -69,7 +69,7 @@
       "name": "ns-test-communication-ncc-f2bcd",
       "namespace": "cert-ns",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "app.kubernetes.io/managed-by": "nvcre",
         "nvcre.nvidia.com/category-domain": "communication",
         "nvcre.nvidia.com/category-variant": "nccl-all-reduce",
         "nvcre.nvidia.com/certification": "ns-test"

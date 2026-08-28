@@ -3,12 +3,12 @@
 
 # Release Process
 
-How a release of the Cluster Readiness Engine is cut, what it publishes, and how to
+How a release of the NVIDIA Cluster Readiness Engine is cut, what it publishes, and how to
 check that you received what we published.
 
 ## Versioning
 
-CRE follows [Semantic Versioning](https://semver.org/). Tags are `vMAJOR.MINOR.PATCH`,
+NVCRE follows [Semantic Versioning](https://semver.org/). Tags are `vMAJOR.MINOR.PATCH`,
 optionally with a pre-release suffix, for example `v0.1.0` or `v0.1.0-rc.8`.
 
 The project is at `v0.x`. Under SemVer that means the public surface can still change in
@@ -17,7 +17,7 @@ unstable until `v1.0.0`. Breaking changes are called out in the release notes.
 
 ## Cadence
 
-There is no fixed schedule. CRE releases when there is something worth releasing.
+There is no fixed schedule. NVCRE releases when there is something worth releasing.
 
 Do not wait for a date to ship a fix, and do not cut a release to meet one.
 
@@ -80,7 +80,7 @@ Pushing a `v*` tag runs three jobs in `.github/workflows/release.yml`:
 
 | Job | Publishes |
 |---|---|
-| Publish Helm Chart | `oci://ghcr.io/nvidia/cluster-readiness-engine` |
+| Publish Helm Chart | `oci://ghcr.io/nvidia/nvcre` |
 | Build CLI Binaries | cross-compiled `nvcrectl` for linux and macOS, amd64 and arm64 |
 | Create GitHub Release | the GitHub Release, its notes, and the assets below |
 

@@ -316,7 +316,7 @@ func Build(ctx context.Context, c client.Client, cert *crev1alpha1.Certification
 	return report
 }
 
-// batchJobFailureReason extracts the batch/v1 Job name from the CRE
+// batchJobFailureReason extracts the batch/v1 Job name from the NVCRE
 // Job's failure message and returns its failure reason.
 func batchJobFailureReason(ctx context.Context, c client.Client, excalMsg, namespace string) string {
 	// Parse "first failed job: <name>" from the message.
@@ -481,7 +481,7 @@ func fmtSecs(secs int64) string {
 	return fmt.Sprintf("%dh %dm", secs/3600, (secs%3600)/60)
 }
 
-// jobFailureReason returns the failure cause recorded on a CRE Job's
+// jobFailureReason returns the failure cause recorded on a NVCRE Job's
 // conditions, scanned in priority order: Failed (execution failure, enriched
 // with the batch/v1 Job's reason when resolvable) → HardwareFailed →
 // ValidationFailed. A threshold violation leaves the Job with Succeeded=True

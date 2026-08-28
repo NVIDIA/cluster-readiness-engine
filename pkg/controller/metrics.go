@@ -19,13 +19,13 @@ const (
 )
 
 var (
-	// jobStatusGauge tracks the current status of CRE jobs.
+	// jobStatusGauge tracks the current status of NVCRE jobs.
 	// Values: 1 for the current status, 0 for other statuses.
 	// Status can be: "in_progress", "succeeded", "failed"
 	jobStatusGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "cre_job_status",
-			Help: "Current status of CRE jobs (1 = current status, 0 = not current status)",
+			Help: "Current status of NVCRE jobs (1 = current status, 0 = not current status)",
 		},
 		[]string{labelNamespace, labelJob, labelWorkflow, labelStatus},
 	)

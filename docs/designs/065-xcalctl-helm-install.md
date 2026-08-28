@@ -2,14 +2,14 @@
 
 ## Context
 
-ADR-064 added a Helm chart at `helm/cluster-readiness-engine/` that bundles Kubeflow Trainer, CRE CRDs, the controller, and LogProfiles. `nvcrectl setup init` still applies four separate embedded YAML phases (Trainer, CRDs, controller, LogProfiles) generated from kustomize. Operators now maintain two install paths with the same components.
+ADR-064 added a Helm chart at `helm/nvcre/` that bundles Kubeflow Trainer, NVCRE CRDs, the controller, and LogProfiles. `nvcrectl setup init` still applies four separate embedded YAML phases (Trainer, CRDs, controller, LogProfiles) generated from kustomize. Operators now maintain two install paths with the same components.
 
 ## Decision
 
 | # | Topic | Decision |
 |---|--------|----------|
 | 1 | **Default install path** | `nvcrectl setup init` applies embedded YAML phases (deps, CRDs, controller, LogProfiles). **YAML is default.** |
-| 2 | **`--helm` flag** | Opt-in. `nvcrectl setup init --helm` / `setup reset --helm` install/uninstall via the Helm 3 Go SDK, pulling the chart from `oci://ghcr.io/nvidia/cluster-readiness-engine` at the CLI version (or `--version`). Helm becomes default once validated in production. |
+| 2 | **`--helm` flag** | Opt-in. `nvcrectl setup init --helm` / `setup reset --helm` install/uninstall via the Helm 3 Go SDK, pulling the chart from `oci://ghcr.io/nvidia/nvcre` at the CLI version (or `--version`). Helm becomes default once validated in production. |
 | 3 | **Chart source** | No embedded chart. The Helm path pulls from NGC OCI (requires network and NGC auth via `--image-pull-secret` or prior `helm registry login`). Dev builds require `--version`. Legacy YAML phases remain embedded for the default path. |
 | 4 | **Helm SDK** | The opt-in path uses `helm.sh/helm/v3` (not v4 — see comment in `setup_helm.go`); the `helm` CLI is not required for `nvcrectl setup init --helm`. Manual `helm install` still needs Helm 3+. |
 | 5 | **`--skip-phases=deps`** | On the Helm path: `trainer.enabled=false` on init; reset uninstalls the release without touching Trainer installed out-of-band. |

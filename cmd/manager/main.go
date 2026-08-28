@@ -100,8 +100,8 @@ func newRootCommand() *cobra.Command {
 	opts.BindFlags(flag.CommandLine)
 
 	cmd := &cobra.Command{
-		Use:     "cluster-readiness-engine",
-		Short:   "CRE controller manager",
+		Use:     "nvcre",
+		Short:   "NVCRE controller manager",
 		Version: version,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := concurrency.validate(); err != nil {

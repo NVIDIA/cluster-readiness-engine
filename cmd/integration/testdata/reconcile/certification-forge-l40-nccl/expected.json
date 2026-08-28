@@ -69,7 +69,7 @@
       "name": "forge-l40-nc-communicatio-84d5e",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "app.kubernetes.io/managed-by": "nvcre",
         "nvcre.nvidia.com/category-domain": "communication",
         "nvcre.nvidia.com/category-variant": "nccl-all-reduce",
         "nvcre.nvidia.com/certification": "forge-l40-nc"

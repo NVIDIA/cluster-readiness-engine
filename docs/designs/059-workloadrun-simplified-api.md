@@ -4,7 +4,7 @@
 
 ## Context
 
-Running workloads on CRE today requires creating a Certification with catalog domain/variant pairs. The catalog system is powerful for burn-in campaigns but too complex for ad-hoc workloads: users must know catalog entry names, all model configs are baked in, and there is no way to run custom containers with CRE's platform auto-detection.
+Running workloads on NVCRE today requires creating a Certification with catalog domain/variant pairs. The catalog system is powerful for burn-in campaigns but too complex for ad-hoc workloads: users must know catalog entry names, all model configs are baked in, and there is no way to run custom containers with NVCRE's platform auto-detection.
 
 An internal benchmark tool supports submitting arbitrary training jobs and NCCL tests with a simple interface — platform, container image, node count, and command. We need an equivalent Kubernetes-native path that:
 

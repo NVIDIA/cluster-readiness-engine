@@ -56,7 +56,7 @@ func TestIntegration(t *testing.T) {
 
 	suite := &testutil.IntegrationTestSuite{}
 	suite.Environment.CRDDirectoryPaths = []string{
-		"../../helm/cluster-readiness-engine/crds",
+		"../../helm/nvcre/crds",
 		"../../hack/crds",
 	}
 	suite.Environment.ErrorIfCRDPathMissing = true

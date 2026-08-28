@@ -3,7 +3,7 @@ metadata:
   - nvcre.nvidia.com/certification-finalizer
   labels:
     app.kubernetes.io/created-by: nvcrectl
-    app.kubernetes.io/managed-by: cluster-readiness-engine
+    app.kubernetes.io/managed-by: nvcre
   name: aws-h100-nccl
 spec:
   categories:

@@ -314,7 +314,7 @@ func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *crev1al
 		return ctrl.Result{}, fmt.Errorf("failed to resolve workload adapter: %w", err)
 	}
 
-	// Deep-copy the spec and inject the CRE pod label automatically
+	// Deep-copy the spec and inject the NVCRE pod label automatically
 	specCopy := job.Spec.Workload.DeepCopy()
 	adapter.InjectPodLabel(specCopy, "nvcre.nvidia.com/job", job.Name)
 
@@ -333,7 +333,7 @@ func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *crev1al
 	if labels == nil {
 		labels = make(map[string]string)
 	}
-	labels["app.kubernetes.io/managed-by"] = "cluster-readiness-engine"
+	labels["app.kubernetes.io/managed-by"] = "nvcre"
 	labels["nvcre.nvidia.com/job"] = job.Name
 	obj.SetLabels(labels)
 
@@ -1267,7 +1267,7 @@ func (r *JobReconciler) ensureGoodputMeasurement(ctx context.Context, job *crev1
 			Name:      gmName,
 			Namespace: job.Namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "cluster-readiness-engine",
+				"app.kubernetes.io/managed-by": "nvcre",
 				"nvcre.nvidia.com/job":         job.Name,
 			},
 		},
@@ -1325,7 +1325,7 @@ func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *cre
 			Name:      bmName,
 			Namespace: job.Namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "cluster-readiness-engine",
+				"app.kubernetes.io/managed-by": "nvcre",
 				"nvcre.nvidia.com/job":         job.Name,
 			},
 		},
@@ -1407,7 +1407,7 @@ func (r *JobReconciler) nodeToJobRequests(ctx context.Context, obj client.Object
 		return nil
 	}
 
-	// Find all pods running on this node that have the CRE job label.
+	// Find all pods running on this node that have the NVCRE job label.
 	//
 	// This runs in the watch path for every Node event in the cluster, so it must
 	// stay a keyed lookup. The index is registered unconditionally at manager

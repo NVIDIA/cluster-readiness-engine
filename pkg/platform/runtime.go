@@ -23,10 +23,10 @@ const gpuResourceName = corev1.ResourceName("nvidia.com/gpu")
 // not provide spec.resources.
 //
 // This used to add memory: 800Gi as well, copied from the training catalog
-// entries, which set their own. CRE cannot know what an arbitrary WorkloadRun
+// entries, which set their own. NVCRE cannot know what an arbitrary WorkloadRun
 // needs, and 800Gi is satisfiable only on a DGX-sized node, so omitting
 // spec.resources left the pod Pending forever anywhere else. The GPU count is
-// the part CRE does know, so it is the only part it fills in.
+// the part NVCRE does know, so it is the only part it fills in.
 func defaultWorkerResources(gpusPerNode int32) map[string]any {
 	gpuStr := strconv.Itoa(int(gpusPerNode))
 	return map[string]any{

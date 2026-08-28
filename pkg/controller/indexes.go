@@ -61,7 +61,7 @@ func RegisterFieldIndexes(ctx context.Context, indexer client.FieldIndexer) erro
 			}
 			return nil
 		}); err != nil {
-		return fmt.Errorf("registering Pod CRE job label index: %w", err)
+		return fmt.Errorf("registering Pod NVCRE job label index: %w", err)
 	}
 
 	if err := indexer.IndexField(ctx, &corev1.PersistentVolume{}, pvClaimRefIndexField,

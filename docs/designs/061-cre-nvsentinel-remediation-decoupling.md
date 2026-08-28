@@ -2,26 +2,26 @@
 
 ## Context
 
-CRE historically created a Remediation CR when a Certification failed, and a Remediation controller applied taints, cordons, and node conditions to failed nodes (ADR-006 (internal; predates the public repository)).
+NVCRE historically created a Remediation CR when a Certification failed, and a Remediation controller applied taints, cordons, and node conditions to failed nodes (ADR-006 (internal; predates the public repository)).
 
 This approach has several problems:
 
 - **Ownership conflict** — In clusters with an external node lifecycle operator (e.g. NVSentinel), both systems cordon/taint the same node independently, causing double cordon and desync on cleanup.
-- **Tight coupling to remediation strategy** — CRE's job is to certify nodes and identify failures. How failed nodes are quarantined or repaired is a separate concern that should not be embedded in the certification controller.
+- **Tight coupling to remediation strategy** — NVCRE's job is to certify nodes and identify failures. How failed nodes are quarantined or repaired is a separate concern that should not be embedded in the certification controller.
 - **Cleanup desync** — Deleting the Remediation CR removes taints/cordons/conditions, potentially undoing quarantine that an external system still expects to be in place.
 
-CRE should focus on its core responsibility: run certification tests and clearly report which nodes failed which tests. External systems can consume that signal to trigger their own remediation pipelines.
+NVCRE should focus on its core responsibility: run certification tests and clearly report which nodes failed which tests. External systems can consume that signal to trigger their own remediation pipelines.
 
 ## Decision
 
-1. **Remove the Remediation CRD and controller entirely.** CRE does not taint, cordon, or patch Node conditions.
+1. **Remove the Remediation CRD and controller entirely.** NVCRE does not taint, cordon, or patch Node conditions.
 2. **Record failed nodes on the Certification CR per category** at `status.categoryStatuses[].failedNodes`. This preserves which test failed on which node and serves as the contract for external consumers.
 
 ## Failed node attribution
 
 ### How failed nodes are identified
 
-CRE uses a **Job → Workflow → Certification** hierarchy. Each tier has its own `failedNodes` field. Names bubble **up**; nothing is copied down.
+NVCRE uses a **Job → Workflow → Certification** hierarchy. Each tier has its own `failedNodes` field. Names bubble **up**; nothing is copied down.
 
 ```text
 Certification  status.categoryStatuses[].failedNodes   ← []FailedNode (name + reason), per category

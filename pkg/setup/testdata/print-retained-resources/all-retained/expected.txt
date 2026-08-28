@@ -1,8 +1,8 @@
 
 Retained resources (not removed by reset):
-  - Namespace cluster-readiness-engine
-      kubectl delete namespace cluster-readiness-engine
-  - Secret cluster-readiness-engine/nvcrectl-pull-secret
-      kubectl delete secret nvcrectl-pull-secret -n cluster-readiness-engine
+  - Namespace nvcre
+      kubectl delete namespace nvcre
+  - Secret nvcre/nvcrectl-pull-secret
+      kubectl delete secret nvcrectl-pull-secret -n nvcre
   - Namespace kubeflow-system
       kubectl delete namespace kubeflow-system

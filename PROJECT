@@ -6,7 +6,7 @@ cliVersion: 4.11.1
 domain: nvidia.com
 layout:
 - go.kubebuilder.io/v4
-projectName: cluster-readiness-engine
+projectName: nvcre
 repo: github.com/NVIDIA/cluster-readiness-engine
 resources:
 - api:

@@ -1,6 +1,6 @@
 ---
 title: Goodput & Bandwidth Measurement
-description: How the Cluster Readiness Engine measures training throughput and network bandwidth.
+description: How the NVIDIA Cluster Readiness Engine measures training throughput and network bandwidth.
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 ---

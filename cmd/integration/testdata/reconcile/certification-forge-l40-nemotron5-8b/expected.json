@@ -72,7 +72,7 @@
       "name": "forge-l40-nemo5-training-da917",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "app.kubernetes.io/managed-by": "nvcre",
         "nvcre.nvidia.com/category-domain": "training",
         "nvcre.nvidia.com/category-variant": "nemotron5-8b",
         "nvcre.nvidia.com/certification": "forge-l40-nemo5"

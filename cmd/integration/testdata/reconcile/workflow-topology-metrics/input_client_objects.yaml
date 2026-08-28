@@ -102,7 +102,7 @@ metadata:
   name: test-topo-metrics-job-0
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
+    app.kubernetes.io/managed-by: nvcre
     nvcre.nvidia.com/workflow: test-topo-metrics
     nvcre.nvidia.com/group: group-0
 spec:
@@ -140,7 +140,7 @@ metadata:
   name: test-topo-metrics-job-1
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
+    app.kubernetes.io/managed-by: nvcre
     nvcre.nvidia.com/workflow: test-topo-metrics
     nvcre.nvidia.com/group: group-1
 spec:

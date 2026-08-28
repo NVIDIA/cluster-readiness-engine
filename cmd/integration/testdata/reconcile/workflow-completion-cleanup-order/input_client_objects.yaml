@@ -60,7 +60,7 @@ metadata:
   name: test-wf-comp-deps-group-0-iter-1
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
+    app.kubernetes.io/managed-by: nvcre
     nvcre.nvidia.com/workflow: test-wf-comp-deps
     nvcre.nvidia.com/group: group-0
 spec:

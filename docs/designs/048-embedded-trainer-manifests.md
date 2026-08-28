@@ -2,7 +2,7 @@
 
 ## Context
 
-ADR-045 embedded all CRE manifests (CRDs, controller, LogProfiles) into the nvcrectl binary and applied them via the Go Kubernetes client. The Kubeflow Trainer `[deps]` phase was intentionally kept remote ("it is an external dependency with its own release cadence") and continues to shell out to `kubectl apply -k <github-url>`.
+ADR-045 embedded all NVCRE manifests (CRDs, controller, LogProfiles) into the nvcrectl binary and applied them via the Go Kubernetes client. The Kubeflow Trainer `[deps]` phase was intentionally kept remote ("it is an external dependency with its own release cadence") and continues to shell out to `kubectl apply -k <github-url>`.
 
 In practice, this has three problems:
 
@@ -15,7 +15,7 @@ The force-cleanup fallback added for network failures (deleting known resources 
 ## Decision
 
 1. **Pre-render** the Kubeflow Trainer kustomize overlay (`manifests/overlays/manager?ref=v2.1.0`) into `pkg/setup/embedded/trainer.yaml` and commit it.
-2. **Embed** the file via `go:embed embedded/trainer.yaml` alongside the existing CRE embeds.
+2. **Embed** the file via `go:embed embedded/trainer.yaml` alongside the existing NVCRE embeds.
 3. **Apply/delete via Go client** using the existing `applyManifests`/`deleteManifests` functions — no kubectl needed in the default path.
 4. **Retain kubectl** only for the `--version` override path, which still fetches from remote URLs.
 5. **Add a Makefile target** `embed-trainer` for re-rendering on version bumps. This is NOT a dependency of `embed-nvcrectl` — it runs on-demand when the Trainer version changes.
@@ -24,9 +24,9 @@ The force-cleanup fallback added for network failures (deleting known resources 
 
 ```
 pkg/setup/embedded/
-├── crds/                   # (existing) CRE CRDs
-├── logprofiles/            # (existing) CRE LogProfiles
-├── controller.yaml         # (existing) CRE controller stack
+├── crds/                   # (existing) NVCRE CRDs
+├── logprofiles/            # (existing) NVCRE LogProfiles
+├── controller.yaml         # (existing) NVCRE controller stack
 └── trainer.yaml            # (new) Pre-rendered Kubeflow Trainer manifests
 ```
 
@@ -76,7 +76,7 @@ The separate `[deps]` cleanup block (which required kubectl and had its own forc
 
 ### Negative
 
-- Bumping the Kubeflow Trainer version requires running `make embed-trainer` and committing the updated `trainer.yaml`. This is the same workflow as `make embed-nvcrectl` for CRE manifests.
+- Bumping the Kubeflow Trainer version requires running `make embed-trainer` and committing the updated `trainer.yaml`. This is the same workflow as `make embed-nvcrectl` for NVCRE manifests.
 - The `trainer.yaml` file is large (~4000 lines) and checked into the repository.
 
 ## Alternatives Considered

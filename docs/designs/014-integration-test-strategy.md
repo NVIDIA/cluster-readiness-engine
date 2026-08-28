@@ -2,7 +2,7 @@
 
 ## Context
 
-The cluster-readiness-engine has five reconcilers, each with complex state machines. Unit tests for individual functions aren't sufficient — the interactions between reconcilers, the Kubernetes API, and external resources (nodes, workloads) need end-to-end verification.
+The nvcre has five reconcilers, each with complex state machines. Unit tests for individual functions aren't sufficient — the interactions between reconcilers, the Kubernetes API, and external resources (nodes, workloads) need end-to-end verification.
 
 Ginkgo/Gomega with inline assertions is the standard approach for Kubebuilder controllers. However, for this project it has drawbacks: tests are verbose (~300 lines per scenario), assertions are fragile (checking individual fields rather than full state), and adding a new test requires significant boilerplate.
 

@@ -1,12 +1,12 @@
 ---
 title: Prometheus Metrics
-description: Complete reference for all Prometheus metrics exposed by the Cluster Readiness Engine controller.
+description: Complete reference for all Prometheus metrics exposed by the NVIDIA Cluster Readiness Engine controller.
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 ---
 
 
-This page is the full reference for Prometheus metrics exposed by the Cluster Readiness Engine (CRE) controller. All metrics are registered with the controller-runtime metrics registry and served on the `/metrics` endpoint.
+This page is the full reference for Prometheus metrics exposed by the NVIDIA Cluster Readiness Engine (NVCRE) controller. All metrics are registered with the controller-runtime metrics registry and served on the `/metrics` endpoint.
 
 ## Scrape configuration
 
@@ -16,8 +16,8 @@ The Helm chart ships a `ServiceMonitor` for the Prometheus Operator (enabled by 
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: cluster-readiness-engine-metrics-monitor
-  namespace: cluster-readiness-engine
+  name: nvcre-metrics-monitor
+  namespace: nvcre
 spec:
   endpoints:
     - path: /metrics
@@ -207,9 +207,9 @@ The following `PrometheusRule` examples provide starting points for monitoring a
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: cre-alerts
+  name: nvcre-alerts
   labels:
-    app.kubernetes.io/name: cluster-readiness-engine
+    app.kubernetes.io/name: nvcre
 spec:
   groups:
     - name: burnin.rules
@@ -254,7 +254,7 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "CRE job {{ $labels.job }} appears stuck"
+            summary: "NVCRE job {{ $labels.job }} appears stuck"
             description: >
               Job {{ $labels.job }} in namespace {{ $labels.namespace }}
               has been in_progress for at least 30 minutes with no

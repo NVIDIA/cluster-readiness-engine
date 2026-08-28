@@ -65,7 +65,7 @@ body:
     attributes:
       label: Environment
       value: |
-        - CRE version:
+        - NVCRE version:
         - Kubernetes version:
         - GPU architecture:
         - Cloud provider / platform:

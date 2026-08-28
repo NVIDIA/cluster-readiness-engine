@@ -195,13 +195,13 @@ change since `""` is already its native default.
 
 **Gap 2 — commands with no real namespace concept would gain a silently-ignored flag.**
 `cluster info` operates on cluster-scoped `Node` objects, and `setup init`/`reset` install into a
-hardcoded `cluster-readiness-engine` constant namespace — neither has a `--namespace` flag today, and
+hardcoded `nvcre` constant namespace — neither has a `--namespace` flag today, and
 `AddFlags()` would add one that looks functional but does nothing, which is worse than not having
 it. Concretely: `setup init`/`reset` already ignore `--namespace`, so an `nvcrectl`-driven install
 can never land anywhere but the hardcoded namespace — but the raw Helm path documented in
 `installation.md` does let a user pick an arbitrary namespace. Someone who installed that way
 into `my-team-ns`, then ran `setup reset -n my-team-ns --auto-approve` expecting `-n` to target
-that install, would instead silently reset the hardcoded `cluster-readiness-engine` namespace.
+that install, would instead silently reset the hardcoded `nvcre` namespace.
 
 Workaround: set `configFlags.Namespace = nil` before `AddFlags` on exactly these commands (`nil`
 fields are skipped):

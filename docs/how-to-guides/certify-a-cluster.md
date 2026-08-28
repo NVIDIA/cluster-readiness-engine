@@ -72,7 +72,7 @@ kubectl get certifications.nvcre.nvidia.com -w
 kubectl get workflows.nvcre.nvidia.com -w
 
 # Tail controller logs
-kubectl logs -n cluster-readiness-engine deploy/cluster-readiness-engine-controller -f
+kubectl logs -n nvcre deploy/nvcre-controller -f
 ```
 
 ## Reviewing results

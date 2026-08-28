@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: cluster-readiness-engine
+  name: nvcre
 ---
 apiVersion: v1
 kind: Namespace

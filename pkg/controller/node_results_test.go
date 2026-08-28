@@ -36,7 +36,7 @@ func newNodeResultsScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 	s := runtime.NewScheme()
 	if err := crev1alpha1.AddToScheme(s); err != nil {
-		t.Fatalf("add CRE scheme: %v", err)
+		t.Fatalf("add NVCRE scheme: %v", err)
 	}
 	if err := corev1.AddToScheme(s); err != nil {
 		t.Fatalf("add corev1 scheme: %v", err)

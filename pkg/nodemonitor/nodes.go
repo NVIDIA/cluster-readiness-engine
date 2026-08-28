@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	// CREJobLabel is the label used to identify pods belonging to an CRE Job.
+	// CREJobLabel is the label used to identify pods belonging to an NVCRE Job.
 	CREJobLabel = "nvcre.nvidia.com/job"
 
-	// PodCREJobIndexField is the field index for pod lookups by CRE job label.
+	// PodCREJobIndexField is the field index for pod lookups by NVCRE job label.
 	// This enables efficient cache-based queries when discovering nodes for a Job.
 	PodCREJobIndexField = "metadata.labels.nvcre.nvidia.com/job"
 )
@@ -30,7 +30,7 @@ func NewNodeDiscoverer(c client.Client) *NodeDiscoverer {
 	return &NodeDiscoverer{client: c}
 }
 
-// DiscoverNodesForJob finds all nodes running pods associated with a CRE Job.
+// DiscoverNodesForJob finds all nodes running pods associated with a NVCRE Job.
 // It uses a field index on the nvcre.nvidia.com/job label for efficient cache-based lookups.
 // Only returns nodes where pods are Running or Pending (i.e., scheduled).
 func (d *NodeDiscoverer) DiscoverNodesForJob(ctx context.Context, namespace, jobName string) ([]string, error) {

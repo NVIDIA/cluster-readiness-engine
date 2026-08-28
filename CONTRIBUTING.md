@@ -1,4 +1,4 @@
-# Contributing to CRE
+# Contributing to NVCRE
 
 Thank you for your interest in contributing! We welcome contributions from the community.
 
@@ -39,7 +39,7 @@ When reporting issues:
 
 1. Use the issue templates — they ask for what we need
 2. Provide clear reproduction steps
-3. Include environment details (CRE version, Kubernetes version, GPU architecture, platform)
+3. Include environment details (NVCRE version, Kubernetes version, GPU architecture, platform)
 4. Add relevant logs or error messages, with secrets removed
 5. Search existing issues first to avoid duplicates
 
@@ -92,7 +92,7 @@ Allowed types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`, `ci`,
 1. Clone the repository:
    ```bash
    git clone https://github.com/NVIDIA/cluster-readiness-engine.git
-   cd cluster-readiness-engine
+   cd nvcre
    ```
 
 2. Generate code and manifests (required after modifying `*_types.go`):

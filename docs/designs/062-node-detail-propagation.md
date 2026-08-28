@@ -2,7 +2,7 @@
 
 ## Summary
 
-CRE reports failed nodes at `Certification.status.categoryStatuses[].failedNodes`
+NVCRE reports failed nodes at `Certification.status.categoryStatuses[].failedNodes`
 ([ADR-061](061-cre-nvsentinel-remediation-decoupling.md)) but has no equivalent signal for
 **which nodes passed**. An inline `succeededNodes []string` does not scale: at thousands of nodes the
 list exceeds the ~1 MiB Kubernetes object limit and the write is rejected, wedging the controller.

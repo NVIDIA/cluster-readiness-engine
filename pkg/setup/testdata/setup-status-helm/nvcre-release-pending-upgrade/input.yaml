@@ -1,0 +1,5 @@
+# The NVCRE release is stuck in pending-upgrade (e.g. an interrupted helm
+# upgrade). Pending states block readiness the same way failed does.
+states:
+  nvcre: pending-upgrade
+  kubeflow-trainer: deployed

@@ -1,6 +1,6 @@
 ---
 title: Workload Types
-description: The training frameworks and workload adapters supported by the Cluster Readiness Engine.
+description: The training frameworks and workload adapters supported by the NVIDIA Cluster Readiness Engine.
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 ---

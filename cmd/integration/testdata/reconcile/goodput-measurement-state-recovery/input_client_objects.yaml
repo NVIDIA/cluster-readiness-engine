@@ -58,7 +58,7 @@ metadata:
   name: test-state-recovery-job-workload
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
+    app.kubernetes.io/managed-by: nvcre
     nvcre.nvidia.com/job: test-state-recovery-job
 spec:
   runtimeRef:

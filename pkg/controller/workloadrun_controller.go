@@ -85,7 +85,7 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			Name:      run.Name,
 			Namespace: run.Namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by":  "cluster-readiness-engine",
+				"app.kubernetes.io/managed-by":  "nvcre",
 				"nvcre.nvidia.com/workload-run": run.Name,
 			},
 		},

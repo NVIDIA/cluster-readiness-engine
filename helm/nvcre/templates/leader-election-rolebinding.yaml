@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nvcre.labels" . | nindent 4 }}
+  name: nvcre-leader-election-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nvcre-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "nvcre.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}

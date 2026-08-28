@@ -11,7 +11,7 @@ GPU cluster validation requires testing at multiple scales to isolate failures a
 3. **Pairwise/Combinatorial**: Inter-rack fabric, rail mapping, transceiver health
 4. **Full-scale**: Spine/core switches, adaptive routing, sustained load under thermal stress
 
-CRE currently runs NCCL tests at a single scale (all target nodes in one group). There is no way to test racks independently, validate pairwise inter-rack links, or control NCCL test parameters (message size, iterations, cycles) per category.
+NVCRE currently runs NCCL tests at a single scale (all target nodes in one group). There is no way to test racks independently, validate pairwise inter-rack links, or control NCCL test parameters (message size, iterations, cycles) per category.
 
 The existing orchestration constructs — topology-aware partitioning, combinatorial grouping, maxConcurrent execution — already support all required partitioning strategies. The gap is exposing these through the catalog and user-facing API.
 

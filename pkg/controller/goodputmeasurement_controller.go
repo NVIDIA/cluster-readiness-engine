@@ -126,7 +126,7 @@ func (r *GoodputMeasurementReconciler) reconcileMeasurement(ctx context.Context,
 		return ctrl.Result{}, nil
 	}
 
-	// Fetch the referenced CRE Job.
+	// Fetch the referenced NVCRE Job.
 	job := &crev1alpha1.Job{}
 	jobKey := types.NamespacedName{
 		Name:      measurement.Spec.JobRef.Name,

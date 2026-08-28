@@ -884,7 +884,7 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *cr
 	// Merge labels from template metadata
 	labels := make(map[string]string)
 	maps.Copy(labels, workflow.Spec.JobTemplate.Labels)
-	labels["app.kubernetes.io/managed-by"] = "cluster-readiness-engine"
+	labels["app.kubernetes.io/managed-by"] = "nvcre"
 	labels["nvcre.nvidia.com/workflow"] = workflow.Name
 	labels["nvcre.nvidia.com/group"] = group.Name
 	job.SetLabels(labels)

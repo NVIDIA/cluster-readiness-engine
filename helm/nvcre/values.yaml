@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# NVCRE Helm chart values.
+
+nameOverride: nvcre
+
+manager:
+  replicas: 1
+  # Maximum number of objects reconciled concurrently by each core controller
+  # (Job, Workflow, Certification, and WorkloadRun).
+  maxConcurrentReconciles: 10
+  # Measurement controllers fetch and parse Pod logs, so their default is lower.
+  measurementMaxConcurrentReconciles: 5
+  image:
+    repository: ghcr.io/nvidia/cluster-readiness-engine/manager
+    tag: ""
+    pullPolicy: IfNotPresent
+  imagePullSecrets: []
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1Gi
+    requests:
+      cpu: 10m
+      memory: 1Gi
+  affinity: {}
+  tolerations:
+    - operator: Exists
+  terminationGracePeriodSeconds: 10
+
+metrics:
+  port: 8443
+  serviceMonitor:
+    # The ServiceMonitor needs the Prometheus Operator CRDs
+    # (monitoring.coreos.com/v1). Set to false on clusters without them.
+    enabled: true

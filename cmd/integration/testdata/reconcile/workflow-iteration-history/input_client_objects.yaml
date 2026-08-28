@@ -53,7 +53,7 @@ metadata:
   name: test-wf-history-group-0-iter-1
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
+    app.kubernetes.io/managed-by: nvcre
     nvcre.nvidia.com/workflow: test-wf-history
     nvcre.nvidia.com/group: group-0
 spec:
@@ -97,7 +97,7 @@ metadata:
   name: test-wf-history-group-0-iter-1-workload
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
+    app.kubernetes.io/managed-by: nvcre
     nvcre.nvidia.com/job: test-wf-history-group-0-iter-1
 spec:
   runtimeRef:

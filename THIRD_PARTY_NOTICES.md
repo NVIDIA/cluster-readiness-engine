@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-CRE nvcrectl CLI
+NVCRE nvcrectl CLI
 
 This file lists every third-party Go module that is a direct dependency of the
 `nvcrectl` binary (including the internal packages it imports), along with the

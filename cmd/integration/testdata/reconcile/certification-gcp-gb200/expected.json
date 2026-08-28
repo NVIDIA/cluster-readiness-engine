@@ -71,7 +71,7 @@
       "name": "gcp-gb-training-nemotron5-8b-job",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "app.kubernetes.io/managed-by": "nvcre",
         "nvcre.nvidia.com/group": "group-0",
         "nvcre.nvidia.com/workflow": "gcp-gb-training-nemotron5-8b"
       },
@@ -213,7 +213,7 @@
       "name": "gcp-gb-training-nemotron5-8b",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "app.kubernetes.io/managed-by": "nvcre",
         "nvcre.nvidia.com/category-domain": "training",
         "nvcre.nvidia.com/category-variant": "nemotron5-8b",
         "nvcre.nvidia.com/certification": "gcp-gb"

@@ -18,7 +18,7 @@ That detail is already recorded in two places that outlive the run:
 
 The report generator drops all of it:
 
-- [`buildFailedGroups`](../../pkg/report/report.go#L477) fetches the CRE Job for each failed group but reads **only the `Failed` condition**. A threshold violation leaves the Job with `Succeeded=True` + `ValidationFailed=True` and no `Failed` condition, so `failedGroups[].reason` in the results JSON is empty — and [`printFailedGroups`](../../pkg/report/report.go#L1005) skips the reason line in the human card when the string is empty.
+- [`buildFailedGroups`](../../pkg/report/report.go#L477) fetches the NVCRE Job for each failed group but reads **only the `Failed` condition**. A threshold violation leaves the Job with `Succeeded=True` + `ValidationFailed=True` and no `Failed` condition, so `failedGroups[].reason` in the results JSON is empty — and [`printFailedGroups`](../../pkg/report/report.go#L1005) skips the reason line in the human card when the string is empty.
 - `CategoryReport.FailureReason` comes from the Workflow `Failed` condition message, which is the aggregate `"N groups failed across M iterations"` — reason `JobValidationFailed` names the class of failure but not the threshold, value, or expression.
 - The top-level `failedNodes` JSON field is names-only ([`CertFailedNodes`](../../pkg/report/report.go#L195) → `FailedNodeNames`); the per-node messages decoded from the ConfigMap are discarded.
 

@@ -4,7 +4,7 @@
 
 ## Context
 
-CRE has 78+ envtest-based integration tests with golden file comparison (ADR-014). These tests are fast (~2-3s startup) and thorough for controller logic. However, they have a critical gap: **workloads (TrainJob) are pre-created in test inputs, never verified as created by the Job controller**. The code path at `pkg/controller/job_controller.go:264-333` (`createWorkloadFromSpec()`) — which calls `adapter.Build()`, sets labels, sets OwnerReference, then `r.Create()` — is untested in integration. This has caused 2 regressions in the past sprint.
+NVCRE has 78+ envtest-based integration tests with golden file comparison (ADR-014). These tests are fast (~2-3s startup) and thorough for controller logic. However, they have a critical gap: **workloads (TrainJob) are pre-created in test inputs, never verified as created by the Job controller**. The code path at `pkg/controller/job_controller.go:264-333` (`createWorkloadFromSpec()`) — which calls `adapter.Build()`, sets labels, sets OwnerReference, then `r.Create()` — is untested in integration. This has caused 2 regressions in the past sprint.
 
 envtest lacks:
 
@@ -35,7 +35,7 @@ Key design choices:
 
 ```
 nvcrectl certification run --category communication/nccl-all-reduce --namespace default
-  └─ CRE: Certification → Workflow → Job → TrainJob (createWorkloadFromSpec)
+  └─ NVCRE: Certification → Workflow → Job → TrainJob (createWorkloadFromSpec)
       └─ Trainer: TrainJob → Secret + ConfigMap + JobSet
           └─ JobSet controller: JobSet → batch/v1 Jobs (launcher + node)
               └─ K8s Job controller: Jobs → Pods
@@ -97,7 +97,7 @@ local_resource('prometheus-crds', cmd='kubectl apply --server-side -f .../stripp
 
 # 5. nvcrectl setup init (installs Trainer+JobSet, CRDs, controller, LogProfiles)
 local_resource('nvcrectl-setup',
-    cmd='../../bin/nvcrectl setup init --image <img> --auto-approve',
+    cmd='../../bin/nvcrectl setup init --image <controller-image> --auto-approve',
     resource_deps=['build-image', 'build-nvcrectl', 'kwok-stage-override', 'prometheus-crds'])
 ```
 
@@ -196,7 +196,7 @@ make cleanup-test-uat   # Delete Kind cluster
 
 - KWOK nodes must NOT have the `kwok.x-k8s.io/node` taint — only the annotation. KWOK identifies managed nodes by annotation, but pods must schedule freely on these nodes.
 - Kubeflow Trainer v2.1.0 requires the JobSet controller v0.10.1. The `nvcrectl setup init` command installs both from the Trainer kustomize overlay.
-- The KWOK `pod-complete` Stage selects pods with `ownerReferences[].kind == Job`. This matches the batch/v1 Jobs created by the JobSet controller. The 30s delay gives CRE's health monitoring time to observe Running pods.
+- The KWOK `pod-complete` Stage selects pods with `ownerReferences[].kind == Job`. This matches the batch/v1 Jobs created by the JobSet controller. The 30s delay gives NVCRE's health monitoring time to observe Running pods.
 - `nvcrectl certification run --namespace default` is used to avoid namespace creation issues. Tests run in the `default` namespace.
 - `spec.providerID: "aws://us-east-1a/i-..."` triggers AWS platform detection in `workflow_detect.go:49`, which activates the EFA override in the NCCL catalog entry.
 - Tilt `deps` for build resources are narrowly scoped (`cmd/manager/main.go`, `cmd/nvcrectl/main.go`) to avoid rebuild loops between `build-image` and `build-nvcrectl` — both depend on `internal/` which `make build-nvcrectl` regenerates via `embed-nvcrectl`.

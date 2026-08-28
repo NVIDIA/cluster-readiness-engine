@@ -24,9 +24,9 @@ reviews:
   # Generated files and fixtures. Nobody edits these by hand.
   path_filters:
     - "!**/zz_generated.*.go"
-    - "!helm/cluster-readiness-engine/crds/**"
-    - "!helm/cluster-readiness-engine/templates/*role*.yaml"
-    - "!helm/cluster-readiness-engine/templates/service_account.yaml"
+    - "!helm/nvcre/crds/**"
+    - "!helm/nvcre/templates/*role*.yaml"
+    - "!helm/nvcre/templates/service_account.yaml"
     - "!**/testdata/**"
     - "!THIRD_PARTY_NOTICES.md"
     - "!PROJECT"

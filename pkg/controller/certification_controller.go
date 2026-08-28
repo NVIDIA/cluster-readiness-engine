@@ -477,7 +477,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 			Name:      workflowName,
 			Namespace: certification.Namespace,
 			Labels: map[string]string{
-				labelManagedBy:       "cluster-readiness-engine",
+				labelManagedBy:       "nvcre",
 				labelCertification:   certification.Name,
 				labelCategoryDomain:  category.Domain,
 				labelCategoryVariant: category.Variant,

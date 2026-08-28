@@ -2,7 +2,7 @@
 
 ## Context
 
-CRE supports five training workload types via the adapter pattern (ADR-003): TrainJob (Kubeflow Trainer v2), PyTorchJob, MPIJob, TFJob, and JAXJob (Kubeflow Training Operator v1). The Job controller's `SetupWithManager()` registers `Owns()` watches on all five types. Controller-runtime requires the corresponding CRDs to exist in the cluster at startup — if any CRD is missing, the controller crashes with "no matches for kind".
+NVCRE supports five training workload types via the adapter pattern (ADR-003): TrainJob (Kubeflow Trainer v2), PyTorchJob, MPIJob, TFJob, and JAXJob (Kubeflow Training Operator v1). The Job controller's `SetupWithManager()` registers `Owns()` watches on all five types. Controller-runtime requires the corresponding CRDs to exist in the cluster at startup — if any CRD is missing, the controller crashes with "no matches for kind".
 
 This creates a hard dependency: operators must install **both** the Kubeflow Trainer v2 CRDs and the Training Operator v1 CRDs even if they only use TrainJob. All built-in catalog entries (communication, diagnostics, stress, training) have been migrated to TrainJob, making the v1 CRDs an installation burden with no production benefit for most deployments.
 

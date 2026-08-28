@@ -71,7 +71,7 @@ metadata:
   name: test-topo-all-fail-job
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
+    app.kubernetes.io/managed-by: nvcre
     nvcre.nvidia.com/workflow: test-topo-all-fail
     nvcre.nvidia.com/group: group-0
 spec:

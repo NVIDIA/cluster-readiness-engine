@@ -6,7 +6,7 @@
       "name": "test-auto-goodput-goodput",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "app.kubernetes.io/managed-by": "nvcre",
         "nvcre.nvidia.com/job": "test-auto-goodput"
       },
       "ownerReferences": [

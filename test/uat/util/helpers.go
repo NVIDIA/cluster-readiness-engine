@@ -219,7 +219,7 @@ func RunNvcrectl(ctx context.Context, t *testing.T, args ...string) {
 	require.NoError(t, err, "nvcrectl certification run failed")
 }
 
-// ProjectDir returns the CRE project root.
+// ProjectDir returns the NVCRE project root.
 func ProjectDir(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()
@@ -455,7 +455,7 @@ func DeleteCertification(ctx context.Context, c client.Client, name, namespace s
 	_ = client.IgnoreNotFound(c.Delete(ctx, cert))
 }
 
-// RestartController restarts the CRE controller by deleting its pods.
+// RestartController restarts the NVCRE controller by deleting its pods.
 // The Deployment recreates them with a fresh informer cache.
 // Waits for the new pod to be Ready.
 func RestartController(ctx context.Context, t *testing.T, c client.Client) {
@@ -464,7 +464,7 @@ func RestartController(ctx context.Context, t *testing.T, c client.Client) {
 	// Delete all controller pods.
 	podList := &corev1.PodList{}
 	require.NoError(t, c.List(ctx, podList,
-		client.InNamespace("cluster-readiness-engine"),
+		client.InNamespace("nvcre"),
 		client.MatchingLabels{"control-plane": "manager"}))
 	for i := range podList.Items {
 		_ = c.Delete(ctx, &podList.Items[i])
@@ -474,7 +474,7 @@ func RestartController(ctx context.Context, t *testing.T, c client.Client) {
 	require.Eventually(t, func() bool {
 		list := &corev1.PodList{}
 		if err := c.List(ctx, list,
-			client.InNamespace("cluster-readiness-engine"),
+			client.InNamespace("nvcre"),
 			client.MatchingLabels{"control-plane": "manager"}); err != nil {
 			return false
 		}

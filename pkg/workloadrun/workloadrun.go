@@ -208,7 +208,7 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 			Name:      run.Name,
 			Namespace: run.Namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by":  "cluster-readiness-engine",
+				"app.kubernetes.io/managed-by":  "nvcre",
 				"nvcre.nvidia.com/workload-run": run.Name,
 			},
 			Annotations: map[string]string{
@@ -592,7 +592,7 @@ func runWorkloadRunRenderDryRun(
 			Name:      run.Name,
 			Namespace: run.Namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by":  "cluster-readiness-engine",
+				"app.kubernetes.io/managed-by":  "nvcre",
 				"nvcre.nvidia.com/workload-run": run.Name,
 			},
 			Annotations: map[string]string{
@@ -725,7 +725,7 @@ func runWorkloadRunExecute(
 
 	// Setup phase.
 	if doSetup {
-		_, _ = fmt.Fprintln(out, "Installing CRE components...")
+		_, _ = fmt.Fprintln(out, "Installing NVCRE components...")
 		if initErr := setup.RunInit("", controllerImage, controllerPullSecret, "",
 			true, configFlags, "", os.Stdin, out); initErr != nil {
 			return fmt.Errorf("setup: %w", initErr)

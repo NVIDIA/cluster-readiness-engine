@@ -82,18 +82,18 @@ func newSetupStatusCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Report the installation status of CRE and its dependencies",
-		Long: `Check whether CRE and all required cluster components are installed and ready.
+		Short: "Report the installation status of NVCRE and its dependencies",
+		Long: `Check whether NVCRE and all required cluster components are installed and ready.
 
 Components checked:
-  creCRDs        CRE CustomResourceDefinitions (nvcre.nvidia.com)
-  creController  CRE controller deployment (namespace: cluster-readiness-engine)
+  creCRDs        NVCRE CustomResourceDefinitions (nvcre.nvidia.com)
+  creController  NVCRE controller deployment (namespace: nvcre)
   kubeflowTrainer      Kubeflow Trainer TrainJob CRD (kubeflow.org)
-  logProfiles          CRE LogProfile resources
+  logProfiles          NVCRE LogProfile resources
   gpuOperator          NVIDIA GPU Operator (nodes with nvidia.com/gpu.present=true)
   dcgm                 NVIDIA DCGM service (optional; diagnostics/dcgm-level4 only)
 
-The Helm releases managed by 'setup init' (cluster-readiness-engine and
+The Helm releases managed by 'setup init' (nvcre and
 kubeflow-trainer) are also checked via the helm CLI.
 
 'installed' is true only when all required components are present and no
@@ -171,7 +171,7 @@ func checkHelmReleases(query helmStateFunc) []HelmReleaseStatus {
 
 // helmStateBlocksReady reports whether a release state must block readiness.
 // Failed and pending states block. Deployed does not. Absent and unknown
-// states do not block either: CRE may have been installed without Helm, and
+// states do not block either: NVCRE may have been installed without Helm, and
 // a missing helm binary must not fail the status command.
 func helmStateBlocksReady(state string) bool {
 	switch state {
@@ -192,7 +192,7 @@ func unhealthyHelmReleases(releases []HelmReleaseStatus) []HelmReleaseStatus {
 	return unhealthy
 }
 
-// checkCRECRDs returns true if CRE CRDs are installed.
+// checkCRECRDs returns true if NVCRE CRDs are installed.
 func checkCRECRDs(ctx context.Context, c client.Client) bool {
 	list := &unstructured.UnstructuredList{}
 	list.SetAPIVersion("apiextensions.k8s.io/v1")
@@ -209,8 +209,8 @@ func checkCRECRDs(ctx context.Context, c client.Client) bool {
 	return false
 }
 
-// checkCREController returns true if the CRE controller deployment
-// has at least one available replica in the cluster-readiness-engine namespace.
+// checkCREController returns true if the NVCRE controller deployment
+// has at least one available replica in the nvcre namespace.
 func checkCREController(ctx context.Context, c client.Client) bool {
 	list := &unstructured.UnstructuredList{}
 	list.SetAPIVersion("apps/v1")
@@ -300,8 +300,8 @@ func printSetupStatus(out io.Writer, s *SetupStatus) {
 	w := tabwriter.NewWriter(out, 0, 0, 3, ' ', 0)
 	_, _ = fmt.Fprintln(w, "Component\tStatus")
 	_, _ = fmt.Fprintln(w, "─────────────────────────\t──────────")
-	_, _ = fmt.Fprintf(w, "CRE CRDs\t%s %s\n", check(s.Components.CRECRDs), status(s.Components.CRECRDs))
-	_, _ = fmt.Fprintf(w, "CRE Controller\t%s %s\n",
+	_, _ = fmt.Fprintf(w, "NVCRE CRDs\t%s %s\n", check(s.Components.CRECRDs), status(s.Components.CRECRDs))
+	_, _ = fmt.Fprintf(w, "NVCRE Controller\t%s %s\n",
 		check(s.Components.CREController), status(s.Components.CREController))
 	_, _ = fmt.Fprintf(w, "Kubeflow Trainer\t%s %s\n",
 		check(s.Components.KubeflowTrainer), status(s.Components.KubeflowTrainer))

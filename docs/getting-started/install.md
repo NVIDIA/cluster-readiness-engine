@@ -1,6 +1,6 @@
 ---
 title: Install
-description: Install the nvcrectl CLI and set up the Cluster Readiness Engine controller on your Kubernetes cluster.
+description: Install the nvcrectl CLI and set up the NVIDIA Cluster Readiness Engine controller on your Kubernetes cluster.
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 ---
@@ -40,7 +40,7 @@ nvcrectl --version
 `nvcrectl setup init` installs the controller and its dependencies in two phases:
 
 1. **deps** — Kubeflow Trainer (required for `TrainJob` workloads)
-2. **helm** — CRE Helm chart (CRDs, controller deployment, built-in LogProfiles)
+2. **helm** — NVCRE Helm chart (CRDs, controller deployment, built-in LogProfiles)
 
 ```bash
 nvcrectl setup init
@@ -59,7 +59,7 @@ nvcrectl setup init --image-pull-secret $GITHUB_TOKEN
 Check that the controller is running:
 
 ```bash
-kubectl get pods -n cluster-readiness-engine
+kubectl get pods -n nvcre
 ```
 
 Check that the CRDs are installed:
@@ -74,7 +74,7 @@ kubectl get crds | grep nvcre.nvidia.com
 nvcrectl setup reset
 ```
 
-This removes all CRE custom resources, the controller, CRDs, and Kubeflow Trainer. To keep Kubeflow Trainer, pass `--skip-phases=deps`:
+This removes all NVCRE custom resources, the controller, CRDs, and Kubeflow Trainer. To keep Kubeflow Trainer, pass `--skip-phases=deps`:
 
 ```bash
 nvcrectl setup reset --skip-phases=deps

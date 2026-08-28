@@ -72,9 +72,11 @@ gh release download "${NVCRE_VERSION}" --repo NVIDIA/cluster-readiness-engine \
 ```
 
 > **Note**: Releases up to and including `v0.1.0-rc.10` serve the old
-> `cre.nvidia.com` API group. The YAML examples in this README use the renamed
-> `nvcre.nvidia.com` group and require the first release cut after the rename
-> (or a build from `main`).
+> `cre.nvidia.com` API group and publish the Helm chart as
+> `oci://ghcr.io/nvidia/cluster-readiness-engine`. The examples in this README
+> use the renamed `nvcre.nvidia.com` group and the `oci://ghcr.io/nvidia/nvcre`
+> chart, which require the first release cut after the rename (or a build from
+> `main`).
 
 Once the repository is public and a stable release exists, this shorter form works
 and picks up the newest stable release:
@@ -161,12 +163,12 @@ gh auth token | helm registry login ghcr.io \
 NVCRE_VERSION=v0.1.0-rc.8
 
 # Inspect the chart before installing it
-helm show chart oci://ghcr.io/nvidia/cluster-readiness-engine --version "$NVCRE_VERSION"
+helm show chart oci://ghcr.io/nvidia/nvcre --version "$NVCRE_VERSION"
 
-helm install cluster-readiness-engine \
-  oci://ghcr.io/nvidia/cluster-readiness-engine \
+helm install nvcre \
+  oci://ghcr.io/nvidia/nvcre \
   --version "$NVCRE_VERSION" \
-  --namespace cluster-readiness-engine \
+  --namespace nvcre \
   --create-namespace
 ```
 
@@ -176,10 +178,10 @@ controller runs up to 5. Tune these limits for the controller resources and
 Kubernetes API-server capacity available in your cluster:
 
 ```bash
-helm upgrade cluster-readiness-engine \
-  oci://ghcr.io/nvidia/cluster-readiness-engine \
+helm upgrade nvcre \
+  oci://ghcr.io/nvidia/nvcre \
   --version "$NVCRE_VERSION" \
-  --namespace cluster-readiness-engine \
+  --namespace nvcre \
   --set manager.maxConcurrentReconciles=20 \
   --set manager.measurementMaxConcurrentReconciles=10
 ```

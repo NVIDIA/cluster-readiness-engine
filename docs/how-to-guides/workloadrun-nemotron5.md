@@ -6,14 +6,14 @@ description: End-to-end guide to running a Nemotron 5 (56B) Megatron-LM training
 ---
 
 
-This guide walks through running a Nemotron 5 (56B) training workload on a GPU cluster using Cluster Readiness Engine (CRE) and `nvcrectl`, from manifest to report. It uses the `exec` framework to launch a Megatron-LM training script with mock data, so no dataset or checkpoint download is required.
+This guide walks through running a Nemotron 5 (56B) training workload on a GPU cluster using NVIDIA Cluster Readiness Engine (NVCRE) and `nvcrectl`, from manifest to report. It uses the `exec` framework to launch a Megatron-LM training script with mock data, so no dataset or checkpoint download is required.
 
 For an introduction to WorkloadRun and when to use it instead of a full Certification, see the [WorkloadRun Quick Start](../getting-started/workloadrun-quick-start.md). For generic WorkloadRun options (targeting nodes, measurements, framework types), see [Run a WorkloadRun](./run-workloadrun.md).
 
 ## Prerequisites
 
 - A Kubernetes cluster with GPU nodes (`nvidia.com/gpu.present=true`) and `kubectl` access
-- `nvcrectl` installed and the CRE controller running on the cluster — see [Installation](../getting-started/install.md)
+- `nvcrectl` installed and the NVCRE controller running on the cluster — see [Installation](../getting-started/install.md)
 - An NGC API key for pulling the `nvcr.io/nvidia/pytorch` workload image
 
 If a cluster administrator has already installed the controller, you only need the NGC API key for the workload image — skip straight to creating the manifest below.
@@ -221,12 +221,12 @@ spec:
 Key fields:
 
 - **`numNodes: 16`** — the number of nodes **per job group**, not a total. The orchestrator partitions **all** eligible GPU nodes into groups of this size and creates one job per group: `numNodes: 16` on a 16-node cluster creates a single 16-node job, while `numNodes: 4` on the same cluster would create four 4-node jobs that certify the nodes in parallel. Set it to your full cluster size for a single full-scale run.
-- **`resources`** — optional. When omitted, CRE auto-sets only `nvidia.com/gpu: <gpusPerNode>` (both limits and requests); it does not guess memory or CPU. Set the block explicitly, as here, if you need CPU pinning or memory sizing.
+- **`resources`** — optional. When omitted, NVCRE auto-sets only `nvidia.com/gpu: <gpusPerNode>` (both limits and requests); it does not guess memory or CPU. Set the block explicitly, as here, if you need CPU pinning or memory sizing.
 - **`TP` in `train.sh`** — tensor parallelism: 4 for GB200/GB300, 8 for H100.
-- **No `target` needed** — CRE auto-discovers all GPU nodes. See [Run a WorkloadRun](./run-workloadrun.md) to target specific nodes.
+- **No `target` needed** — NVCRE auto-discovers all GPU nodes. See [Run a WorkloadRun](./run-workloadrun.md) to target specific nodes.
 - **`goodputMeasurement`** — parses training logs with the built-in `megatron-training` LogProfile to compute goodput, TFLOPs/GPU, and step time for the report.
 
-CRE auto-handles NCCL environment variables, ComputeDomain and DRA setup, EFA/RoCE networking, and topology-aware orchestration based on the detected platform and GPU architecture.
+NVCRE auto-handles NCCL environment variables, ComputeDomain and DRA setup, EFA/RoCE networking, and topology-aware orchestration based on the detected platform and GPU architecture.
 
 ## Submit the WorkloadRun
 
@@ -317,7 +317,7 @@ Output:
 └────────────────────────────────────────────────────────────────┘
 ```
 
-If a node fails, CRE records it in the WorkloadRun status with a reason (`HardwareFailureDetected`, `ThresholdViolation`, or `WorkloadFailed`); it never taints, cordons, or otherwise modifies the node.
+If a node fails, NVCRE records it in the WorkloadRun status with a reason (`HardwareFailureDetected`, `ThresholdViolation`, or `WorkloadFailed`); it never taints, cordons, or otherwise modifies the node.
 
 To save the report as JSON:
 
@@ -346,7 +346,7 @@ Cancel the WorkloadRun (cascades to its Workflow, Jobs, and pods):
 nvcrectl workloadrun cancel nemotron5-56b -n default
 ```
 
-To uninstall CRE entirely:
+To uninstall NVCRE entirely:
 
 ```bash
 nvcrectl setup reset

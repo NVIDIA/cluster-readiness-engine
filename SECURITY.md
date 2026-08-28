@@ -35,20 +35,20 @@ Security fixes land on `main` and are released in the latest minor release line.
 | Latest `v0.x` minor release | ✅ |
 | Older releases | ❌ — upgrade to the latest release |
 
-While CRE is pre-1.0, we do not backport fixes to older minor versions.
+While NVCRE is pre-1.0, we do not backport fixes to older minor versions.
 
 ## Vulnerability Fix Timelines
 
-Once a vulnerability in CRE is confirmed:
+Once a vulnerability in NVCRE is confirmed:
 
 - **Critical / High severity**: a fix or a documented mitigation ships within **30 days** of confirmation.
 - **Medium / Low severity**: a fix ships in the next scheduled release.
 
-CVEs affecting CRE are published through the NVIDIA PSIRT process (NVIDIA is a CVE Numbering Authority).
+CVEs affecting NVCRE are published through the NVIDIA PSIRT process (NVIDIA is a CVE Numbering Authority).
 
 ## Scope
 
-In scope: vulnerabilities in CRE itself — the controller, the `nvcrectl` CLI, the Helm chart, and the container images this repository publishes.
+In scope: vulnerabilities in NVCRE itself — the controller, the `nvcrectl` CLI, the Helm chart, and the container images this repository publishes.
 
 Out of scope:
 
@@ -56,7 +56,7 @@ Out of scope:
 - Social engineering of maintainers or users
 - Denial of service that requires cluster-admin or the ability to schedule arbitrary workloads
 - Theoretical issues without a proof of concept or demonstrated impact
-- Vulnerabilities in third-party dependencies without a demonstrated impact on CRE (report those upstream; we still welcome a heads-up)
+- Vulnerabilities in third-party dependencies without a demonstrated impact on NVCRE (report those upstream; we still welcome a heads-up)
 
 ## Reporter Credit
 
@@ -64,7 +64,7 @@ We credit reporters of confirmed vulnerabilities in the release notes of the fix
 
 ## Supply Chain
 
-- CRE is licensed under Apache-2.0. Dependencies are reviewed for license compatibility with Apache-2.0; attributions are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+- NVCRE is licensed under Apache-2.0. Dependencies are reviewed for license compatibility with Apache-2.0; attributions are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 - Container images are signed with Sigstore cosign (keyless OIDC) and ship with CycloneDX SBOMs attested via `cosign attest`. To verify: `cosign verify ghcr.io/nvidia/cluster-readiness-engine/manager:<tag> --certificate-identity-regexp='https://github.com/NVIDIA/cluster-readiness-engine' --certificate-oidc-issuer='https://token.actions.githubusercontent.com'`. CLI binaries include SHA256 checksums in each release.
 
 ## Product Security Resources

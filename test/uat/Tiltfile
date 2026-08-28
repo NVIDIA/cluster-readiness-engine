@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Tiltfile for CRE UAT tests.
+# Tiltfile for NVCRE UAT tests.
 #
 # Orchestrates: image build, nvcrectl build, KWOK deployment, Helm installs.
 #
@@ -19,7 +19,7 @@ img_parts = IMG.rsplit(':', 1)
 IMG_REPO = img_parts[0]
 IMG_TAG = img_parts[1] if len(img_parts) > 1 else 'latest'
 
-# ─── 1. Build CRE controller image and load into Kind ───
+# ─── 1. Build NVCRE controller image and load into Kind ───
 local_resource('build-image',
     cmd='cd ../.. && make docker-build IMG=%s && kind load docker-image %s --name %s' % (IMG, IMG, KIND_CLUSTER),
     deps=['../../cmd/manager/main.go', '../../Dockerfile'],
@@ -56,19 +56,19 @@ local_resource('install-trainer',
     resource_deps=['kwok-stage-override'],
     labels=['infra'])
 
-# ─── 6. Install CRE via Helm (local chart, test image pre-loaded into Kind) ───
-local_resource('install-cluster-readiness-engine',
-    cmd='helm upgrade --install cluster-readiness-engine ../../helm/cluster-readiness-engine --namespace cluster-readiness-engine --create-namespace --values tilt/cre-values.yaml --set manager.image.repository=%s --set manager.image.tag=%s --set manager.imagePullSecrets=null --wait --timeout 5m' % (IMG_REPO, IMG_TAG),
-    deps=['tilt/cre-values.yaml'],
+# ─── 6. Install NVCRE via Helm (local chart, test image pre-loaded into Kind) ───
+local_resource('install-nvcre',
+    cmd='helm upgrade --install nvcre ../../helm/nvcre --namespace nvcre --create-namespace --values tilt/nvcre-values.yaml --set manager.image.repository=%s --set manager.image.tag=%s --set manager.imagePullSecrets=null --wait --timeout 5m' % (IMG_REPO, IMG_TAG),
+    deps=['tilt/nvcre-values.yaml'],
     resource_deps=['build-image', 'install-trainer', 'kwok-stage-override', 'prometheus-crds'],
-    labels=['cluster-readiness-engine'])
+    labels=['nvcre'])
 
 # ─── 7. Install external CRDs not included in the Helm chart ───
 # ComputeDomain CRD is needed by GB200/GB300 catalog entries (DRA networking).
 local_resource('external-crds',
     cmd='kubectl apply -f ../../hack/crds/resource.nvidia.com_computedomains.yaml',
-    resource_deps=['install-cluster-readiness-engine'],
-    labels=['cluster-readiness-engine'])
+    resource_deps=['install-nvcre'],
+    labels=['nvcre'])
 
 # ─── 8. Deploy DRA stub controller ───
 # Simulates GPU operator DRA driver for GB200/GB300: creates ResourceClaimTemplates

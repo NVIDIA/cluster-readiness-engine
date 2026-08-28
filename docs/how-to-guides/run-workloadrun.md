@@ -85,7 +85,7 @@ spec:
 
 `schedulerName` is required. `queue` is optional and defaults to `default-queue`; when set, it must be a valid Kubernetes label value (at most 63 characters, beginning and ending with an alphanumeric character, containing only alphanumerics, hyphens, underscores, or dots).
 
-When `gangScheduler` is set, CRE modifies every pod template generated for the workload — for MPI frameworks that includes both the launcher and the worker pods:
+When `gangScheduler` is set, NVCRE modifies every pod template generated for the workload — for MPI frameworks that includes both the launcher and the worker pods:
 
 - The configured scheduler name is injected as `schedulerName` in each pod spec, so the pods bypass the default scheduler.
 - The queue is applied as the `kai.scheduler/queue` label on the pod template metadata, so a gang-aware scheduler can hold all pods in the gang until they can be placed together.

@@ -2,7 +2,7 @@
 
 ## Context
 
-`nvcrectl setup init` installs CRE by shelling out to `kubectl apply -k` with remote kustomize URLs pointing at the Git repository:
+`nvcrectl setup init` installs NVCRE by shelling out to `kubectl apply -k` with remote kustomize URLs pointing at the Git repository:
 
 ```
 https://github.com/NVIDIA/cluster-readiness-engine/releases/download/<version>/crds.yaml
@@ -18,8 +18,8 @@ The catalog (benchmark configurations) is already embedded into the binary via `
 
 ## Decision
 
-1. **Embed** all CRE manifests (CRDs, controller stack, LogProfiles) into the nvcrectl binary via `go:embed`.
-2. **Apply via Go client** using controller-runtime server-side apply on `unstructured.Unstructured` — no kubectl needed for CRE resources.
+1. **Embed** all NVCRE manifests (CRDs, controller stack, LogProfiles) into the nvcrectl binary via `go:embed`.
+2. **Apply via Go client** using controller-runtime server-side apply on `unstructured.Unstructured` — no kubectl needed for NVCRE resources.
 3. **Keep kubectl** only for the `[deps]` phase (Kubeflow Trainer), which is fetched from a remote GitHub kustomize URL.
 4. **Add `--version` flag** to `setup init` and `setup reset` as an override to fetch from a remote URL instead of using embedded manifests (for installing a different version than the binary).
 5. **Add a Makefile version guard** to prevent release artifacts from being built with dirty or dev versions.
@@ -48,7 +48,7 @@ New core functions replace the kubectl-based approach:
 ### Modified runInit Flow (default embedded path)
 
 ```
-1. [preflight]    getClusterInfo (no longer requires kubectl for CRE phases)
+1. [preflight]    getClusterInfo (no longer requires kubectl for NVCRE phases)
 2. [deps]         runKubectlApply (Kubeflow Trainer from GitHub — unchanged)
 3. [crds]         applyEmbeddedDir(ctx, c, embeddedCRDs, "embedded/crds", out)
 4. [controller]   patchControllerImage(embeddedController, image, pullSecret)
@@ -77,18 +77,18 @@ A new `check-clean-version` Makefile target blocks release artifact builds when 
 
 `runCertificationLifecycle` calls `runInit("", "", "", true, ...)` with empty imagePullSecret. When `--image-pull-secret` is provided to `certification run`, the NGC API key should also flow to `runInit` so the controller Deployment can pull from `nvcr.io`. The fix:
 
-1. Create the `dockerconfigjson` secret in the `cluster-readiness-engine` namespace before `runInit`.
+1. Create the `dockerconfigjson` secret in the `nvcre` namespace before `runInit`.
 2. Pass the secret **name** to `runInit` (which expects a name, not a raw key).
 3. Also create the same secret in the certification target namespace for workload pods (existing behavior).
 
 ### probeExistingComponents Migration
 
-Replace `probeKubectl` (shells out to kubectl) with Go client probes using `c.Get(ctx, ...)` on the relevant resources. Fix the controller namespace from `cre-system` to `cluster-readiness-engine`.
+Replace `probeKubectl` (shells out to kubectl) with Go client probes using `c.Get(ctx, ...)` on the relevant resources. Fix the controller namespace from `cre-system` to `nvcre`.
 
 ## Rationale
 
 - **Embedded manifests** eliminate the version mismatch problem. The binary always carries the manifests for its own version.
-- **Go client apply** removes the kubectl dependency for CRE phases and enables air-gapped operation.
+- **Go client apply** removes the kubectl dependency for NVCRE phases and enables air-gapped operation.
 - **Server-side apply** with `FieldOwner("nvcrectl")` provides the same conflict detection as `kubectl apply --server-side`.
 - **Kubeflow Trainer stays remote** because it is an external dependency with its own release cadence. Embedding it would require updating nvcrectl for every Kubeflow release.
 - **Version guard** catches the dirty/dev problem at build time rather than at install time.

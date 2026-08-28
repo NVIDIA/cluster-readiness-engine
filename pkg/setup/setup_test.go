@@ -230,7 +230,7 @@ func TestDecodeUnstructured(t *testing.T) {
 
 func TestNsLabel(t *testing.T) {
 	assert.Equal(t, "", nsLabel(""))
-	assert.Equal(t, "(namespace: cluster-readiness-engine)", nsLabel("cluster-readiness-engine"))
+	assert.Equal(t, "(namespace: nvcre)", nsLabel("nvcre"))
 }
 
 // nsLabel returns a formatted namespace label or empty string for cluster-scoped resources.

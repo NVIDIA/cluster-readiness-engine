@@ -1,6 +1,6 @@
 ---
 title: Your first certification
-description: Install CRE on a GPU cluster, run one certification category, read the report, and clean up.
+description: Install NVCRE on a GPU cluster, run one certification category, read the report, and clean up.
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 ---
@@ -8,13 +8,13 @@ description: Install CRE on a GPU cluster, run one certification category, read 
 
 # Your first certification
 
-This guide takes you from an empty GPU cluster to a completed certification report. You install the `nvcrectl` CLI, check that your cluster is a valid target, install CRE, run one communication test, and read the result. Plan for 30 to 60 minutes. Most of that time is the workload itself.
+This guide takes you from an empty GPU cluster to a completed certification report. You install the `nvcrectl` CLI, check that your cluster is a valid target, install NVCRE, run one communication test, and read the result. Plan for 30 to 60 minutes. Most of that time is the workload itself.
 
 ## Before you start
 
 You need:
 
-- A Kubernetes cluster with NVIDIA GPU nodes. Every target GPU node must carry the same `nvidia.com/gpu.product` label value. The [NVIDIA GPU Operator](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/) provides these labels. CRE does not install the GPU Operator.
+- A Kubernetes cluster with NVIDIA GPU nodes. Every target GPU node must carry the same `nvidia.com/gpu.product` label value. The [NVIDIA GPU Operator](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/) provides these labels. NVCRE does not install the GPU Operator.
 - `kubectl` access with permission to create CRDs, cluster roles, and namespaces. The setup step needs this. Later certification runs need less.
 - `helm` on your PATH. The setup step calls it.
 - The Prometheus Operator CRDs (`monitoring.coreos.com/v1`), **or** the ServiceMonitor turned off. The chart creates a `ServiceMonitor` by default, so the install fails without those CRDs. Either install them — the [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) chart provides them — or set `metrics.serviceMonitor.enabled=false` and skip them. Turning it off only disables the Prometheus scrape config; the controller still serves metrics.
@@ -22,16 +22,16 @@ You need:
 - For GB200 and GB300 clusters only: the NVIDIA DRA driver, because those catalog entries create `ComputeDomain` resources. GB300 RoCE entries also need a Kubernetes version that serves `resource.k8s.io/v1`.
 - For training categories only: egress to `github.com` from worker nodes. The training pods clone Megatron-LM at start.
 
-Cordoned nodes are skipped. If a node is cordoned, CRE does not select it, and it does not appear in the results.
+Cordoned nodes are skipped. If a node is cordoned, NVCRE does not select it, and it does not appear in the results.
 
 ## Step 1: install the CLI
 
 While this repository is internal, GitHub serves release assets only through authenticated API downloads — plain `curl` against `releases/download/...` returns a 404 "Not Found" page instead of the script, even with a token. Fetch the installer with the gh CLI (authenticate with `gh auth login` first) and name the version explicitly:
 
 ```bash
-CRE_VERSION=v0.1.0-rc.9
-gh release download "${CRE_VERSION}" --repo NVIDIA/cluster-readiness-engine \
-  --pattern installer --output - | bash -s -- -v "${CRE_VERSION}"
+NVCRE_VERSION=v0.1.0-rc.9
+gh release download "${NVCRE_VERSION}" --repo NVIDIA/cluster-readiness-engine \
+  --pattern installer --output - | bash -s -- -v "${NVCRE_VERSION}"
 ```
 
 Once the repository is public and `v0.1.0` is tagged, the shorter `curl -sSL .../releases/latest/download/installer | bash` form works and installs the newest stable release. (`releases/latest` resolves only to the newest **stable** release, and every release so far is a pre-release.)
@@ -57,17 +57,17 @@ Run the preflight commands before you install anything:
 kubectl nvcre cluster info
 ```
 
-The output shows the detected platform (for example `aws`, `gcp`, `azure`, `onprem`), the GPU product with the architecture and GPU count per node, the number of ready nodes, and the network topology if your nodes carry topology labels. Confirm the platform and GPU architecture look right. CRE tunes each workload per platform and per GPU architecture from this detection.
+The output shows the detected platform (for example `aws`, `gcp`, `azure`, `onprem`), the GPU product with the architecture and GPU count per node, the number of ready nodes, and the network topology if your nodes carry topology labels. Confirm the platform and GPU architecture look right. NVCRE tunes each workload per platform and per GPU architecture from this detection.
 
 ```bash
 kubectl nvcre setup status
 ```
 
-Before installation, the expected output is `Status: not ready — run 'nvcrectl setup init' to install missing components`. The status also tells you if the GPU Operator is missing. Install the GPU Operator first if it is; CRE cannot do that for you.
+Before installation, the expected output is `Status: not ready — run 'nvcrectl setup init' to install missing components`. The status also tells you if the GPU Operator is missing. Install the GPU Operator first if it is; NVCRE cannot do that for you.
 
 If `cluster info` reports `no nodes have nvidia.com/gpu.product label`, the GPU Operator is not labeling your nodes. If it reports `heterogeneous GPUs`, your cluster mixes GPU products. Certify one product at a time by giving a narrower node selector in a Certification YAML.
 
-## Step 3: install CRE
+## Step 3: install NVCRE
 
 ```bash
 kubectl nvcre setup init --image-pull-secret "$(gh auth token)"
@@ -77,8 +77,8 @@ The command shows the target cluster and asks for confirmation. Type exactly `ye
 
 Two phases run:
 
-1. `deps` installs Kubeflow Trainer 2.2.1 into the `kubeflow-system` namespace. CRE runs every workload through a Trainer `TrainJob`.
-2. `helm` installs the CRE chart into the `cluster-readiness-engine` namespace: the controller, seven CRDs, and five `LogProfile` resources that parse workload logs.
+1. `deps` installs Kubeflow Trainer 2.2.1 into the `kubeflow-system` namespace. NVCRE runs every workload through a Trainer `TrainJob`.
+2. `helm` installs the NVCRE chart into the `nvcre` namespace: the controller, seven CRDs, and five `LogProfile` resources that parse workload logs.
 
 The GitHub token creates a ghcr.io pull secret for the controller image and authenticates the chart pull. Verify the result:
 
@@ -140,7 +140,7 @@ Pass the certification name and the namespace from the run output. The `report` 
 
 Pass and fail are informational unless you set thresholds. No thresholds ship by default. To enforce them, use a Certification YAML with `options.thresholds` (for example `busBandwidthGBps: "value >= 300"`) and run with `--cert-file` instead of `--category`.
 
-CRE reports failed nodes. It does not modify them. Quarantining a bad node (cordon, taint, drain) is your platform's job. Because CRE skips cordoned nodes, `kubectl uncordon <node>` is what makes a repaired node eligible for the next run.
+NVCRE reports failed nodes. It does not modify them. Quarantining a bad node (cordon, taint, drain) is your platform's job. Because NVCRE skips cordoned nodes, `kubectl uncordon <node>` is what makes a repaired node eligible for the next run.
 
 
 ## Step 6: clean up
@@ -151,7 +151,7 @@ The run namespace and everything in it:
 kubectl delete namespace <namespace>
 ```
 
-To remove CRE itself:
+To remove NVCRE itself:
 
 ```bash
 kubectl nvcre setup reset

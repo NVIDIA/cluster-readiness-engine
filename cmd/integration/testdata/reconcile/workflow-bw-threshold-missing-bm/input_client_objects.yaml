@@ -112,7 +112,7 @@ metadata:
   name: test-bw-missing-bm-screen-0-iter-1
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
+    app.kubernetes.io/managed-by: nvcre
     nvcre.nvidia.com/workflow: test-bw-missing-bm
     nvcre.nvidia.com/group: screen-0
 spec:
@@ -144,7 +144,7 @@ metadata:
   name: test-bw-missing-bm-screen-1-iter-1
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
+    app.kubernetes.io/managed-by: nvcre
     nvcre.nvidia.com/workflow: test-bw-missing-bm
     nvcre.nvidia.com/group: screen-1
 spec:

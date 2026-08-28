@@ -6,16 +6,16 @@ description: Resource sizing, high availability, RBAC, install paths, and cleanu
 ---
 
 
-This page covers deploying the Cluster Readiness Engine (CRE) controller in production: install paths, resource sizing, high availability, RBAC, network policies, health probes, and the cleanup steps that are easy to miss.
+This page covers deploying the NVIDIA Cluster Readiness Engine (NVCRE) controller in production: install paths, resource sizing, high availability, RBAC, network policies, health probes, and the cleanup steps that are easy to miss.
 
 ## Installation methods
 
-CRE supports two install paths. Both pull the same artifacts from the GitHub Container Registry (GHCR).
+NVCRE supports two install paths. Both pull the same artifacts from the GitHub Container Registry (GHCR).
 
 | Method | Audience | Installs Kubeflow Trainer |
 |--------|----------|---------------------------|
 | `nvcrectl setup init` | Operators, quick setup | Yes (skip with `--skip-phases=deps`) |
-| Helm chart (`oci://ghcr.io/nvidia/cluster-readiness-engine`) | GitOps / platform teams | No (install separately) |
+| Helm chart (`oci://ghcr.io/nvidia/nvcre`) | GitOps / platform teams | No (install separately) |
 
 ### nvcrectl setup init
 
@@ -35,7 +35,7 @@ nvcrectl setup init --image-pull-secret $GITHUB_TOKEN
 `setup init` runs two phases:
 
 1. **deps** — Kubeflow Trainer (required for `TrainJob` workloads)
-2. **helm** — the CRE Helm chart: CRDs, controller Deployment, RBAC, metrics Service/ServiceMonitor, and built-in LogProfiles
+2. **helm** — the NVCRE Helm chart: CRDs, controller Deployment, RBAC, metrics Service/ServiceMonitor, and built-in LogProfiles
 
 The Helm chart is pulled from GHCR at the CLI's own version, so a tagged release needs no version flag. **Dev builds (built from `main`) require `--version`** to name the chart version explicitly:
 
@@ -43,7 +43,7 @@ The Helm chart is pulled from GHCR at the CLI's own version, so a tagged release
 nvcrectl setup init --version <chart-version> --image-pull-secret $GITHUB_TOKEN
 ```
 
-`--image-pull-secret` takes a GitHub token; it creates the `nvcrectl-pull-secret` image pull secret in the `cluster-readiness-engine` namespace and authenticates the Helm chart pull. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, and `--auto-approve` to skip the confirmation prompt in CI.
+`--image-pull-secret` takes a GitHub token; it creates the `nvcrectl-pull-secret` image pull secret in the `nvcre` namespace and authenticates the Helm chart pull. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, and `--auto-approve` to skip the confirmation prompt in CI.
 
 Check the installation at any time:
 
@@ -62,14 +62,14 @@ echo $GITHUB_TOKEN | helm registry login ghcr.io --username <github-username> --
 Then inspect and install, pinning an explicit version:
 
 ```bash
-CRE_VERSION=v0.1.0-rc.9
+NVCRE_VERSION=v0.1.0-rc.9
 
-helm show chart oci://ghcr.io/nvidia/cluster-readiness-engine --version "$CRE_VERSION"
+helm show chart oci://ghcr.io/nvidia/nvcre --version "$NVCRE_VERSION"
 
-helm install cluster-readiness-engine \
-  oci://ghcr.io/nvidia/cluster-readiness-engine \
-  --version "$CRE_VERSION" \
-  --namespace cluster-readiness-engine \
+helm install nvcre \
+  oci://ghcr.io/nvidia/nvcre \
+  --version "$NVCRE_VERSION" \
+  --namespace nvcre \
   --create-namespace
 ```
 
@@ -123,7 +123,7 @@ Only one replica holds the leader lease at a time. Standby replicas take over au
 
 ## RBAC requirements
 
-The controller's ClusterRole (`cre-manager-role`) is scoped to the resource types CRE actually manages — there are no wildcard rules. Review these before deploying to locked-down clusters:
+The controller's ClusterRole (`nvcre-manager-role`) is scoped to the resource types NVCRE actually manages — there are no wildcard rules. Review these before deploying to locked-down clusters:
 
 | Resource | Verbs | Purpose |
 |----------|-------|---------|
@@ -142,14 +142,14 @@ The controller's ClusterRole (`cre-manager-role`) is scoped to the resource type
 The Workflow dependency system creates supporting resources (ConfigMaps, PVCs, ComputeDomains, TrainingRuntimes) before workloads start, so the role includes create/delete on exactly those types. Inspect the full ClusterRole:
 
 ```bash
-kubectl get clusterrole cre-manager-role -o yaml
+kubectl get clusterrole nvcre-manager-role -o yaml
 ```
 
 ## Cluster scope and tenancy model
 
 The controller operates as a cluster-scoped infrastructure service, the same model used by the GPU Operator, Node Problem Detector, and other Kubernetes-native controllers. Burn-in certification is an infrastructure concern that reads cluster-scoped Node objects to evaluate GPU health.
 
-CRE never modifies nodes — it does not taint, cordon, or patch them. It **records** failed nodes with a reason (`HardwareFailureDetected`, `ThresholdViolation`, or `WorkloadFailed`) in the Certification status, and leaves quarantine and repair to your platform's own tooling.
+NVCRE never modifies nodes — it does not taint, cordon, or patch them. It **records** failed nodes with a reason (`HardwareFailureDetected`, `ThresholdViolation`, or `WorkloadFailed`) in the Certification status, and leaves quarantine and repair to your platform's own tooling.
 
 For teams that need per-team access control, the chart ships `admin`, `editor`, and `viewer` ClusterRoles for the Certification, Workflow, Job, and GoodputMeasurement CRDs. Bind these to team-specific groups or service accounts using standard Kubernetes RoleBindings scoped to each team's namespace.
 
@@ -162,7 +162,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-metrics-traffic
-  namespace: cluster-readiness-engine
+  namespace: nvcre
 spec:
   podSelector:
     matchLabels:
@@ -238,20 +238,20 @@ readinessProbe:
 1. Review the release notes for breaking changes.
 2. Upgrade the Helm release (log in to `ghcr.io` first, as above):
    ```bash
-   helm upgrade cluster-readiness-engine \
-     oci://ghcr.io/nvidia/cluster-readiness-engine \
+   helm upgrade nvcre \
+     oci://ghcr.io/nvidia/nvcre \
      --version <new-version> \
-     --namespace cluster-readiness-engine
+     --namespace nvcre
    ```
 3. Verify the rollout:
    ```bash
-   kubectl rollout status -n cluster-readiness-engine deploy/cluster-readiness-engine-manager
+   kubectl rollout status -n nvcre deploy/nvcre-manager
    ```
 
 To roll back:
 
 ```bash
-helm rollback cluster-readiness-engine <revision> --namespace cluster-readiness-engine
+helm rollback nvcre <revision> --namespace nvcre
 ```
 
 If you installed with `nvcrectl setup init`, upgrade by installing the new CLI version and re-running `nvcrectl setup init`.
@@ -264,21 +264,21 @@ If you installed with `nvcrectl setup init`, upgrade by installing the new CLI v
 nvcrectl setup reset
 ```
 
-`setup reset` runs three phases: **cr** (deletes all CRE custom resource instances while the controller can still process finalizers), **helm** (removes the CRE Helm release and then explicitly deletes the CRE CRDs), and **deps** (removes Kubeflow Trainer and its CRDs). Use `--skip-phases=deps` to keep Kubeflow Trainer.
+`setup reset` runs three phases: **cr** (deletes all NVCRE custom resource instances while the controller can still process finalizers), **helm** (removes the NVCRE Helm release and then explicitly deletes the NVCRE CRDs), and **deps** (removes Kubeflow Trainer and its CRDs). Use `--skip-phases=deps` to keep Kubeflow Trainer.
 
 **What `setup reset` retains** — clean these up yourself if you want a pristine cluster:
 
-- The `cluster-readiness-engine` and `kubeflow-system` namespaces are not deleted.
-- The `nvcrectl-pull-secret` image pull secret created by `setup init --image-pull-secret` remains in the `cluster-readiness-engine` namespace.
+- The `nvcre` and `kubeflow-system` namespaces are not deleted.
+- The `nvcrectl-pull-secret` image pull secret created by `setup init --image-pull-secret` remains in the `nvcre` namespace.
 
 ```bash
 # Removes both retained namespaces (and the pull secret inside them)
-kubectl delete namespace cluster-readiness-engine kubeflow-system
+kubectl delete namespace nvcre kubeflow-system
 ```
 
 ### helm uninstall leaves the CRDs behind
 
-Helm intentionally never deletes CRDs that live in a chart's `crds/` directory (to avoid accidental data loss), so a manual `helm uninstall cluster-readiness-engine` leaves all seven `nvcre.nvidia.com` CRDs — and every remaining custom resource instance — in the cluster. Delete them explicitly:
+Helm intentionally never deletes CRDs that live in a chart's `crds/` directory (to avoid accidental data loss), so a manual `helm uninstall nvcre` leaves all seven `nvcre.nvidia.com` CRDs — and every remaining custom resource instance — in the cluster. Delete them explicitly:
 
 ```bash
 kubectl delete crd \
@@ -300,12 +300,12 @@ Use this checklist before going live. Each item addresses a specific risk surfac
 | Item | Status | What to verify |
 |------|--------|----------------|
 | **Network policy** | Required | Restrict egress to the Kubernetes API server and DNS only. No NetworkPolicy ships with the chart — add one for your environment. |
-| **RBAC audit** | Required | Run `kubectl get clusterrole cre-manager-role -o yaml` and verify the permissions match your security requirements. |
+| **RBAC audit** | Required | Run `kubectl get clusterrole nvcre-manager-role -o yaml` and verify the permissions match your security requirements. |
 | **TLS for metrics** | Recommended | The default ServiceMonitor uses `insecureSkipVerify: true`. Configure cert-manager to issue a serving certificate for the controller's metrics endpoint. |
 | **Controller node affinity** | Recommended | Schedule the controller on infrastructure nodes, not GPU nodes, using the `manager.affinity` chart value to avoid consuming GPU resources. |
 | **Image provenance** | Recommended | Pin container images by digest rather than tag. Scan images with your vulnerability tooling before deployment. |
-| **Pod Security Standards** | Verify | The controller runs as non-root with `seccompProfile: RuntimeDefault`, a read-only root filesystem, and all capabilities dropped. Verify with `kubectl get pod -n cluster-readiness-engine -o yaml`. |
-| **CRD backup** | Recommended | Include the CRE CRDs in your cluster backup strategy. Certification resources contain node health state that may be needed for audit. |
+| **Pod Security Standards** | Verify | The controller runs as non-root with `seccompProfile: RuntimeDefault`, a read-only root filesystem, and all capabilities dropped. Verify with `kubectl get pod -n nvcre -o yaml`. |
+| **CRD backup** | Recommended | Include the NVCRE CRDs in your cluster backup strategy. Certification resources contain node health state that may be needed for audit. |
 
 ## Next steps
 

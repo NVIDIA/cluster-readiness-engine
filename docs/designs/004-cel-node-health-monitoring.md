@@ -4,7 +4,7 @@
 
 Burn-in workloads run for hours or days. Hardware failures — GPU faults, NVLink degradation, thermal events — can occur mid-run. The controller needs to detect these failures during workload execution, not just at completion.
 
-GPU health monitoring is already handled by specialized tools like NVSentinel (DCGM telemetry, Xid events) and gpud (GPU metrics daemon). These tools write signals to Kubernetes node objects as conditions, taints, or labels. The cluster-readiness-engine should consume these signals rather than re-implementing GPU diagnostics.
+GPU health monitoring is already handled by specialized tools like NVSentinel (DCGM telemetry, Xid events) and gpud (GPU metrics daemon). These tools write signals to Kubernetes node objects as conditions, taints, or labels. The nvcre should consume these signals rather than re-implementing GPU diagnostics.
 
 The challenge: different deployments use different health tools with different signal formats. NVSentinel sets `NVSentinelGPUHealthy` conditions, gpud might set custom labels, and AKS NPD sets GPU-specific conditions. The detection logic must be configurable without code changes.
 
@@ -61,7 +61,7 @@ celExpression: >-
 
 ### Positive
 - Works with any health tool that writes to node objects (NVSentinel, gpud, NPD, custom DaemonSets)
-- No coupling between the cluster-readiness-engine and health tools
+- No coupling between the nvcre and health tools
 - CEL expressions are sandboxed — cannot execute arbitrary code
 - Expressions can be tested independently against node YAML
 - HardwareFailed condition is independent of workload state (a node can fail while the workload is still running)

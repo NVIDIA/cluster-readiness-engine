@@ -1,12 +1,12 @@
 ---
 title: Monitoring
-description: Prometheus metrics, structured logging, and alerting for the Cluster Readiness Engine controller.
+description: Prometheus metrics, structured logging, and alerting for the NVIDIA Cluster Readiness Engine controller.
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 ---
 
 
-Set up Prometheus metrics, structured log queries, and alert rules for the Cluster Readiness Engine (CRE) controller.
+Set up Prometheus metrics, structured log queries, and alert rules for the NVIDIA Cluster Readiness Engine (NVCRE) controller.
 
 ## Prometheus integration
 
@@ -18,8 +18,8 @@ The Helm chart installs a `ServiceMonitor` for the Prometheus Operator by defaul
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: cluster-readiness-engine-metrics-monitor
-  namespace: cluster-readiness-engine
+  name: nvcre-metrics-monitor
+  namespace: nvcre
 spec:
   endpoints:
     - path: /metrics
@@ -36,7 +36,7 @@ spec:
 Verify it is installed:
 
 ```bash
-kubectl get servicemonitor -n cluster-readiness-engine
+kubectl get servicemonitor -n nvcre
 ```
 
 ### Key metrics
@@ -84,17 +84,17 @@ args:
 
 ### Example log queries
 
-Using Loki or a similar log aggregation system (adjust the stream selector to how your agent labels the controller pods — the pods carry the `control-plane=manager` label in the `cluster-readiness-engine` namespace):
+Using Loki or a similar log aggregation system (adjust the stream selector to how your agent labels the controller pods — the pods carry the `control-plane=manager` label in the `nvcre` namespace):
 
 ```
 # Hardware failures
-{namespace="cluster-readiness-engine"} |= "Hardware failure detected"
+{namespace="nvcre"} |= "Hardware failure detected"
 
 # Errors for a specific job
-{namespace="cluster-readiness-engine"} |= "my-job" |= "error"
+{namespace="nvcre"} |= "my-job" |= "error"
 
 # All hardware failure detections
-{namespace="cluster-readiness-engine"} |= "HardwareFailed"
+{namespace="nvcre"} |= "HardwareFailed"
 ```
 
 If you switch the manager to JSON logs with `--zap-encoder=json`, you can filter on fields like `controller`, `name`, and `reconcileID` directly in your log backend.
@@ -105,7 +105,7 @@ Production GPU fleets require alerting across three dimensions: **hardware failu
 
 ```yaml
 groups:
-  - name: cluster-readiness-engine
+  - name: nvcre
     rules:
       - alert: CREHardwareFailure
         expr: cre_job_failed_nodes > 0

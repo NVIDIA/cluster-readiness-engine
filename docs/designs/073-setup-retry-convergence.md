@@ -27,7 +27,7 @@ So the reporting gap is closed by #188, but `setup init` itself still retries in
 
 4. **Enumerate the partial states and give each a deterministic action**, so `setup init` converges from any of them:
 
-   | Observed state (Trainer release / CRE release) | `[deps]` action | `[helm]` action |
+   | Observed state (Trainer release / NVCRE release) | `[deps]` action | `[helm]` action |
    |---|---|---|
    | not installed / not installed | fresh install | fresh install |
    | `deployed` at pinned version / any | skip (print "already deployed") | `upgrade --install` as today |
@@ -35,7 +35,7 @@ So the reporting gap is closed by #188, but `setup init` itself still retries in
    | `failed` or `pending-*` / any | attempt once → classify → recover (3a) or fail fast (3c) | reached only after `[deps]` converges |
    | `unknown` (state query could not complete) / any | `upgrade --install` as today; on failure, fail with raw Helm output | as today |
 
-   The CRE release keeps its existing always-`upgrade --install` behavior: its chart renders no per-render certificate material, so it has no equivalent failure class. The same attempt-then-classify wrapper wraps it for symmetric error reporting, but with no automatic recovery arm.
+   The NVCRE release keeps its existing always-`upgrade --install` behavior: its chart renders no per-render certificate material, so it has no equivalent failure class. The same attempt-then-classify wrapper wraps it for symmetric error reporting, but with no automatic recovery arm.
 
 5. **Safety rails.**
    - Automatic recovery is refused if **any `TrainJob` or `JobSet` instance exists** in the cluster — the same precondition the field recovery honored — or if any `TrainingRuntime`/`ClusterTrainingRuntime` exists that is not Helm-owned (missing the chart's `app.kubernetes.io/managed-by: Helm` metadata), since deleting the CRDs would destroy it.

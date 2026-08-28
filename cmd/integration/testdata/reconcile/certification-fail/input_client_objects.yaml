@@ -30,7 +30,7 @@ metadata:
   name: test-cert-fail-allreduce-wf
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
+    app.kubernetes.io/managed-by: nvcre
     nvcre.nvidia.com/certification: test-cert-fail
     nvcre.nvidia.com/category-domain: communication
     nvcre.nvidia.com/category-variant: nccl-all-reduce

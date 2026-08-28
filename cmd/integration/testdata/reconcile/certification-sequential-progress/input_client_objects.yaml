@@ -38,7 +38,7 @@ metadata:
   name: test-cert-seq-progress-allgather-wf
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
+    app.kubernetes.io/managed-by: nvcre
     nvcre.nvidia.com/certification: test-cert-seq-progress
     nvcre.nvidia.com/category-domain: communication
     nvcre.nvidia.com/category-variant: nccl-all-gather

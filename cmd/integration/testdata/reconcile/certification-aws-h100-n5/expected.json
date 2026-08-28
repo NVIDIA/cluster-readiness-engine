@@ -71,7 +71,7 @@
       "name": "aws-h1-training-nemotron5-56b-job",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "app.kubernetes.io/managed-by": "nvcre",
         "nvcre.nvidia.com/group": "group-0",
         "nvcre.nvidia.com/workflow": "aws-h1-training-nemotron5-56b"
       },
@@ -220,7 +220,7 @@
       "name": "aws-h1-training-nemotron5-56b",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "app.kubernetes.io/managed-by": "nvcre",
         "nvcre.nvidia.com/category-domain": "training",
         "nvcre.nvidia.com/category-variant": "nemotron5-56b",
         "nvcre.nvidia.com/certification": "aws-h1"

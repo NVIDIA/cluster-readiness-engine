@@ -30,13 +30,13 @@ import (
 const (
 	// Keep this in step with github.com/kubeflow/trainer/v2 in go.mod. The
 	// controller compiles against those API types, so installing an older
-	// chart means the CRDs it creates can lag the types CRE writes.
+	// chart means the CRDs it creates can lag the types NVCRE writes.
 	kubeflowTrainerVersion = "v2.2.1"
 
 	defaultImageRegistry   = "ghcr.io"
 	defaultImageRepository = "nvidia/cluster-readiness-engine/manager"
 
-	creNamespace = "cluster-readiness-engine"
+	creNamespace = "nvcre"
 
 	// Phase names (kubeadm-style).
 	phaseCR   = "cr"
@@ -50,7 +50,7 @@ const (
 	crGracefulTimeout = 10 * time.Minute
 )
 
-// creResource describes an CRE CRD type for cleanup.
+// creResource describes an NVCRE CRD type for cleanup.
 type creResource struct {
 	resource   string // plural name (e.g. "certifications")
 	kind       string // singular Kind (e.g. "Certification")
@@ -84,12 +84,12 @@ func newInitCommand(version string) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize CRE on the target cluster",
-		Long: `Installs CRE via Helm and its dependencies.
+		Short: "Initialize NVCRE on the target cluster",
+		Long: `Installs NVCRE via Helm and its dependencies.
 
 Phases:
   [deps]  Kubeflow Trainer ` + kubeflowTrainerVersion + `
-  [helm]  CRE Helm chart (oci://ghcr.io/nvidia/cluster-readiness-engine)
+  [helm]  NVCRE Helm chart (oci://ghcr.io/nvidia/nvcre)
 
 The Helm chart is pulled from GHCR at the CLI version. Dev builds require --version.
 Pass --image-pull-secret to authenticate against a private GHCR registry.
@@ -165,7 +165,7 @@ func RunInit(
 		_, _ = fmt.Fprintf(out, "\n  Phases:\n")
 		printPhaseList(out, skip, []phaseInfo{
 			{phaseDeps, fmt.Sprintf("Kubeflow Trainer %s", kubeflowTrainerVersion)},
-			{"helm", fmt.Sprintf("CRE Helm chart (%s)", image)},
+			{"helm", fmt.Sprintf("NVCRE Helm chart (%s)", image)},
 		})
 		_, _ = fmt.Fprintf(out,
 			"\nDo you want to proceed? Only 'yes' will be accepted to confirm.\n")
@@ -206,7 +206,7 @@ func RunInit(
 		out:             out,
 	}); err != nil {
 		// Same attempt-then-classify wrapper as the [deps] phase for
-		// symmetric error reporting, but the CRE chart renders no
+		// symmetric error reporting, but the NVCRE chart renders no
 		// per-render certificate material, so there is no recovery arm
 		// (ADR-073 decision 4).
 		if classifyHelmInstallFailure(creOutput, creNamespace) == failureClassSSAConflict {
@@ -586,12 +586,12 @@ func newResetCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "reset",
-		Short: "Remove CRE from the target cluster",
-		Long: `Removes CRE and its dependencies via Helm.
+		Short: "Remove NVCRE from the target cluster",
+		Long: `Removes NVCRE and its dependencies via Helm.
 
 Phases:
-  [cr]    CRE custom resource instances (Certifications, Workflows, etc.)
-  [helm]  CRE Helm release (CRDs, controller, LogProfiles)
+  [cr]    NVCRE custom resource instances (Certifications, Workflows, etc.)
+  [helm]  NVCRE Helm release (CRDs, controller, LogProfiles)
   [deps]  Kubeflow Trainer ` + kubeflowTrainerVersion + `
 
 Shared namespaces and the controller pull secret are intentionally retained;
@@ -645,8 +645,8 @@ func RunReset(
 		_, _ = fmt.Fprintf(out, "  Server:   %s\n", serverURL)
 		_, _ = fmt.Fprintf(out, "\n  Phases:\n")
 		printPhaseList(out, skip, []phaseInfo{
-			{phaseCR, "CRE custom resources"},
-			{"helm", "CRE Helm release (CRDs, controller, LogProfiles)"},
+			{phaseCR, "NVCRE custom resources"},
+			{"helm", "NVCRE Helm release (CRDs, controller, LogProfiles)"},
 			{phaseDeps, fmt.Sprintf("Kubeflow Trainer %s", kubeflowTrainerVersion)},
 		})
 		_, _ = fmt.Fprintf(out,
@@ -658,7 +658,7 @@ func RunReset(
 		_, _ = fmt.Fprintln(out)
 	}
 
-	// [cr] — Delete all CRE custom resource instances while the
+	// [cr] — Delete all NVCRE custom resource instances while the
 	// controller is still alive to process finalizer removal.
 	if skip[phaseCR] {
 		_, _ = fmt.Fprintln(out, "[cr] Skipped.")
@@ -678,9 +678,9 @@ func RunReset(
 
 	// Helm intentionally never deletes CRDs that live in a chart's crds/
 	// directory (to avoid accidental data loss on uninstall), so `helm
-	// uninstall` leaves the CRE CRDs behind. Delete them explicitly to
+	// uninstall` leaves the NVCRE CRDs behind. Delete them explicitly to
 	// leave the cluster clean and let a subsequent init start fresh.
-	if err := deleteCRDsByGroup(ctx, c, creAPIGroup, "[helm]", "CRE", out); err != nil {
+	if err := deleteCRDsByGroup(ctx, c, creAPIGroup, "[helm]", "NVCRE", out); err != nil {
 		return fmt.Errorf("[helm] %w", err)
 	}
 
@@ -944,30 +944,30 @@ func newSetupClient(cf *kubeconfig.ConfigFlags) (client.Client, error) {
 }
 
 // ---------------------------------------------------------------------------
-// [cr] phase — CRE custom resource cleanup
+// [cr] phase — NVCRE custom resource cleanup
 // ---------------------------------------------------------------------------
 
 // deleteCRECRs implements the [cr] reset phase. It performs graceful,
 // controller-driven cleanup only and fails if resources remain.
 func deleteCRECRs(ctx context.Context, c client.Client, out io.Writer) error {
-	_, _ = fmt.Fprintln(out, "[cr] Deleting CRE custom resources...")
+	_, _ = fmt.Fprintln(out, "[cr] Deleting NVCRE custom resources...")
 
 	resources, err := discoverCREResources(ctx, c)
 	if err != nil {
-		return fmt.Errorf("discover CRE resources: %w", err)
+		return fmt.Errorf("discover NVCRE resources: %w", err)
 	}
 	if len(resources) == 0 {
-		_, _ = fmt.Fprintln(out, "[cr] No CRE custom resources found.")
+		_, _ = fmt.Fprintln(out, "[cr] No NVCRE custom resources found.")
 		return nil
 	}
 
-	// Check if any CRE CRs exist at all.
+	// Check if any NVCRE CRs exist at all.
 	if !anyCRECRsExist(ctx, c, resources) {
-		_, _ = fmt.Fprintln(out, "[cr] No CRE custom resources found.")
+		_, _ = fmt.Fprintln(out, "[cr] No NVCRE custom resources found.")
 		return nil
 	}
 
-	// Stage 1: Graceful deletion — delete all CRE resources and let
+	// Stage 1: Graceful deletion — delete all NVCRE resources and let
 	// controllers reconcile finalizers/ownership cleanup.
 	gracefulCtx, gracefulCancel := context.WithTimeout(ctx, crGracefulTimeout)
 	defer gracefulCancel()
@@ -980,11 +980,11 @@ func deleteCRECRs(ctx context.Context, c client.Client, out io.Writer) error {
 			crGracefulTimeout, err)
 	}
 
-	_, _ = fmt.Fprintln(out, "  All CRE custom resources removed.")
+	_, _ = fmt.Fprintln(out, "  All NVCRE custom resources removed.")
 	return nil
 }
 
-// gracefulCascadeDelete deletes all known CRE resources.
+// gracefulCascadeDelete deletes all known NVCRE resources.
 func gracefulCascadeDelete(
 	ctx context.Context, c client.Client, out io.Writer, resources []creResource,
 ) {
@@ -1016,7 +1016,7 @@ func gracefulCascadeDelete(
 	}
 }
 
-// waitForAllCRECRsGone polls until no CRE CR instances remain.
+// waitForAllCRECRsGone polls until no NVCRE CR instances remain.
 func waitForAllCRECRsGone(
 	ctx context.Context, c client.Client, resources []creResource,
 ) error {
@@ -1035,7 +1035,7 @@ func waitForAllCRECRsGone(
 	}
 }
 
-// listCRECRs lists all instances of an CRE resource type across
+// listCRECRs lists all instances of an NVCRE resource type across
 // all namespaces using an unstructured client.
 func listCRECRs(
 	ctx context.Context, c client.Client, res creResource,
@@ -1049,7 +1049,7 @@ func listCRECRs(
 	return list.Items, nil
 }
 
-// anyCRECRsExist returns true if any CRE CR instances exist
+// anyCRECRsExist returns true if any NVCRE CR instances exist
 // across all resource types.
 func anyCRECRsExist(
 	ctx context.Context, c client.Client, resources []creResource,
@@ -1066,7 +1066,7 @@ func anyCRECRsExist(
 	return false
 }
 
-// discoverCREResources returns all CRD-backed CRE resources for the
+// discoverCREResources returns all CRD-backed NVCRE resources for the
 // configured API group, including their served apiVersion and Kind metadata.
 func discoverCREResources(ctx context.Context, c client.Client) ([]creResource, error) {
 	resources, err := discoverResourcesByGroup(ctx, c, creAPIGroup)
@@ -1145,7 +1145,7 @@ func discoverResourcesByGroup(ctx context.Context, c client.Client, apiGroup str
 // given API group and waits for them to be fully removed. Helm intentionally
 // never deletes CRDs on `helm uninstall` (to avoid accidental data loss), so
 // every phase that installs CRDs via Helm needs this explicit cleanup.
-// phaseTag (e.g. "[helm]", "[deps]") and label (e.g. "CRE") are used
+// phaseTag (e.g. "[helm]", "[deps]") and label (e.g. "NVCRE") are used
 // purely for log message prefixes/wording.
 func deleteCRDsByGroup(ctx context.Context, c client.Client, group, phaseTag, label string, out io.Writer) error {
 	names, err := listCRDNamesByGroup(ctx, c, group)

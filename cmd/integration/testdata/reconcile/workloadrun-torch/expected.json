@@ -6,7 +6,7 @@
       "name": "test-torch-run",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "app.kubernetes.io/managed-by": "nvcre",
         "nvcre.nvidia.com/workload-run": "test-torch-run"
       },
       "ownerReferences": [

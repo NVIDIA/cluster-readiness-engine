@@ -67,7 +67,7 @@ The `stallMultiplier` defaults to a conservative value. A multiplier of 3 means 
 **Rejected** because: Users would need to know the expected step time for each workload on each hardware configuration. This information often isn't available until the workload runs. Adaptive detection derives the threshold from observation, eliminating this guesswork.
 
 ### Heartbeat-based detection (workload pushes signal)
-**Rejected** because: Requires modifying training code to emit heartbeats. The cluster-readiness-engine operates on unmodified workloads (ADR-005). Log-based step detection achieves the same result without code changes.
+**Rejected** because: Requires modifying training code to emit heartbeats. The nvcre operates on unmodified workloads (ADR-005). Log-based step detection achieves the same result without code changes.
 
 ## Notes
 

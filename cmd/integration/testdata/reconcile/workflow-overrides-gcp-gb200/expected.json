@@ -6,7 +6,7 @@
       "name": "test-gcp-gb200-overrides-job",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
+        "app.kubernetes.io/managed-by": "nvcre",
         "nvcre.nvidia.com/group": "group-0",
         "nvcre.nvidia.com/workflow": "test-gcp-gb200-overrides"
       },
