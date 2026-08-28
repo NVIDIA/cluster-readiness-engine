@@ -124,9 +124,9 @@
     }
   },
   "topologyMetrics": {
-    "cre_topology_failed_nodes{domain=zone-b,node=topo-node-03}": 1,
-    "cre_topology_failed_nodes{domain=zone-b,node=topo-node-04}": 1,
-    "cre_topology_validated_nodes{domain=zone-a,node=topo-node-01}": 1,
-    "cre_topology_validated_nodes{domain=zone-a,node=topo-node-02}": 1
+    "nvcre_topology_failed_nodes{domain=zone-b,node=topo-node-03}": 1,
+    "nvcre_topology_failed_nodes{domain=zone-b,node=topo-node-04}": 1,
+    "nvcre_topology_validated_nodes{domain=zone-a,node=topo-node-01}": 1,
+    "nvcre_topology_validated_nodes{domain=zone-a,node=topo-node-02}": 1
   }
 }

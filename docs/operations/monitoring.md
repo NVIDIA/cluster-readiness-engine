@@ -45,15 +45,15 @@ The table below highlights the most important metrics. See the [Metrics Referenc
 
 | Metric | Type | What it tells you |
 |--------|------|-------------------|
-| `cre_job_status` | Gauge | Current state of each job (in_progress, succeeded, failed) |
-| `cre_job_failed_nodes` | Gauge | Number of nodes with hardware failures per job |
-| `cre_hardware_failures_detected_total` | Counter | Cumulative hardware failure detections per node |
-| `cre_reconcile_duration_seconds` | Histogram | How long each reconcile loop takes |
-| `cre_reconcile_total` | Counter | Reconcile attempts by result (success, error, requeue) |
-| `cre_goodput_ratio` | Gauge | Training efficiency from 0.0 to 1.0 |
-| `cre_nccl_algbw_gbps` | Gauge | NCCL algorithmic bandwidth in GB/s per message size |
-| `cre_nccl_busbw_gbps` | Gauge | NCCL bus bandwidth in GB/s per message size |
-| `cre_topology_validated_nodes` | Gauge | Nodes that passed validation per topology domain |
+| `nvcre_job_status` | Gauge | Current state of each job (in_progress, succeeded, failed) |
+| `nvcre_job_failed_nodes` | Gauge | Number of nodes with hardware failures per job |
+| `nvcre_hardware_failures_detected_total` | Counter | Cumulative hardware failure detections per node |
+| `nvcre_reconcile_duration_seconds` | Histogram | How long each reconcile loop takes |
+| `nvcre_reconcile_total` | Counter | Reconcile attempts by result (success, error, requeue) |
+| `nvcre_goodput_ratio` | Gauge | Training efficiency from 0.0 to 1.0 |
+| `nvcre_nccl_algbw_gbps` | Gauge | NCCL algorithmic bandwidth in GB/s per message size |
+| `nvcre_nccl_busbw_gbps` | Gauge | NCCL bus bandwidth in GB/s per message size |
+| `nvcre_topology_validated_nodes` | Gauge | Nodes that passed validation per topology domain |
 
 ## Structured logging
 
@@ -108,7 +108,7 @@ groups:
   - name: nvcre
     rules:
       - alert: NVCREHardwareFailure
-        expr: cre_job_failed_nodes > 0
+        expr: nvcre_job_failed_nodes > 0
         for: 1m
         labels:
           severity: warning
@@ -117,7 +117,7 @@ groups:
           description: "{{ $value }} node(s) failed in {{ $labels.namespace }}/{{ $labels.job }}."
 
       - alert: NVCREJobStuck
-        expr: cre_job_status{status="in_progress"} == 1
+        expr: nvcre_job_status{status="in_progress"} == 1
         for: 6h
         labels:
           severity: warning
@@ -126,7 +126,7 @@ groups:
           description: "Job has been in_progress for over 6 hours."
 
       - alert: NVCRELowGoodput
-        expr: cre_goodput_ratio > 0 and cre_goodput_ratio < 0.5
+        expr: nvcre_goodput_ratio > 0 and nvcre_goodput_ratio < 0.5
         for: 5m
         labels:
           severity: warning
@@ -137,7 +137,7 @@ groups:
       - alert: NVCREHighReconcileLatency
         expr: |
           histogram_quantile(0.95,
-            sum by (le) (rate(cre_reconcile_duration_seconds_bucket[5m]))
+            sum by (le) (rate(nvcre_reconcile_duration_seconds_bucket[5m]))
           ) > 5
         for: 10m
         labels:
@@ -147,8 +147,8 @@ groups:
 
       - alert: NVCREReconcileErrors
         expr: |
-          sum(rate(cre_reconcile_total{result="error"}[5m]))
-          / sum(rate(cre_reconcile_total[5m])) > 0.1
+          sum(rate(nvcre_reconcile_total{result="error"}[5m]))
+          / sum(rate(nvcre_reconcile_total[5m])) > 0.1
         for: 5m
         labels:
           severity: warning

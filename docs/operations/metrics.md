@@ -35,7 +35,7 @@ spec:
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `cre_job_status` | Gauge | `namespace`, `job`, `workflow`, `status` | Current status of burn-in Jobs. Value is `1` for the current status, `0` for others. Status values: `in_progress`, `succeeded`, `failed`. |
+| `nvcre_job_status` | Gauge | `namespace`, `job`, `workflow`, `status` | Current status of burn-in Jobs. Value is `1` for the current status, `0` for others. Status values: `in_progress`, `succeeded`, `failed`. |
 
 The gauge is set for all three status values on each update, ensuring that a transition from `in_progress` to `succeeded` also zeroes out the `in_progress` series. Metrics are cleaned up when a Job is deleted.
 
@@ -43,29 +43,29 @@ The gauge is set for all three status values on each update, ensuring that a tra
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `cre_hardware_failed_jobs_total` | Counter | `namespace`, `job`, `workflow` | Total number of Jobs that detected hardware failures. Incremented once per Job on first detection. |
-| `cre_job_failed_nodes` | Gauge | `namespace`, `job`, `workflow` | Number of nodes with detected hardware failures per Job. |
-| `cre_hardware_failures_detected_total` | Counter | `namespace`, `job`, `workflow`, `node` | Total number of hardware failures detected across all evaluations. Per-node granularity. |
+| `nvcre_hardware_failed_jobs_total` | Counter | `namespace`, `job`, `workflow` | Total number of Jobs that detected hardware failures. Incremented once per Job on first detection. |
+| `nvcre_job_failed_nodes` | Gauge | `namespace`, `job`, `workflow` | Number of nodes with detected hardware failures per Job. |
+| `nvcre_hardware_failures_detected_total` | Counter | `namespace`, `job`, `workflow`, `node` | Total number of hardware failures detected across all evaluations. Per-node granularity. |
 
 ## Node health check metrics
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `cre_node_health_check_duration_seconds` | Histogram | `namespace`, `job`, `workflow` | Duration of node health check operations in seconds. Buckets: 1ms to ~16s (exponential). |
-| `cre_nodes_evaluated_total` | Counter | `namespace`, `job`, `workflow` | Total number of node health evaluations performed. |
+| `nvcre_node_health_check_duration_seconds` | Histogram | `namespace`, `job`, `workflow` | Duration of node health check operations in seconds. Buckets: 1ms to ~16s (exponential). |
+| `nvcre_nodes_evaluated_total` | Counter | `namespace`, `job`, `workflow` | Total number of node health evaluations performed. |
 
 ## Reconciliation metrics
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `cre_reconcile_total` | Counter | `namespace`, `job`, `workflow`, `result` | Total number of reconciliation attempts. `result` values: `success`, `error`, `requeue`. |
-| `cre_reconcile_duration_seconds` | Histogram | `namespace`, `job`, `workflow` | Duration of reconciliation operations in seconds. Buckets: 10ms to ~20s (exponential). |
+| `nvcre_reconcile_total` | Counter | `namespace`, `job`, `workflow`, `result` | Total number of reconciliation attempts. `result` values: `success`, `error`, `requeue`. |
+| `nvcre_reconcile_duration_seconds` | Histogram | `namespace`, `job`, `workflow` | Duration of reconciliation operations in seconds. Buckets: 10ms to ~20s (exponential). |
 
 ## Workload metrics
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `cre_workload_created_total` | Counter | `namespace`, `job`, `workflow` | Total number of workloads created by the Job controller. |
+| `nvcre_workload_created_total` | Counter | `namespace`, `job`, `workflow` | Total number of workloads created by the Job controller. |
 
 ## Goodput metrics
 
@@ -73,16 +73,16 @@ All goodput metrics share the same label set: `namespace`, `measurement`, `job`,
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `cre_goodput_ratio` | Gauge | Runtime goodput ratio (0.0 to 1.0) |
-| `cre_goodput_avg_tflops_per_gpu` | Gauge | Average TFLOPS per GPU from goodput measurement |
-| `cre_goodput_training_time_seconds` | Gauge | Total training wall-clock time in seconds |
-| `cre_goodput_reschedule_time_seconds` | Gauge | Cumulative reschedule time in seconds |
-| `cre_goodput_resume_time_seconds` | Gauge | Cumulative resume time in seconds |
-| `cre_goodput_checkpoint_save_time_seconds` | Gauge | Cumulative checkpoint save time in seconds |
-| `cre_goodput_warmup_time_seconds` | Gauge | Total warmup step time in seconds |
-| `cre_goodput_non_warmup_time_seconds` | Gauge | Total non-warmup step time in seconds |
-| `cre_goodput_avg_step_time_seconds` | Gauge | Average time per training step in seconds |
-| `cre_goodput_lost_work_time_seconds` | Gauge | Cumulative lost work time in seconds (work done after last checkpoint, lost on restart) |
+| `nvcre_goodput_ratio` | Gauge | Runtime goodput ratio (0.0 to 1.0) |
+| `nvcre_goodput_avg_tflops_per_gpu` | Gauge | Average TFLOPS per GPU from goodput measurement |
+| `nvcre_goodput_training_time_seconds` | Gauge | Total training wall-clock time in seconds |
+| `nvcre_goodput_reschedule_time_seconds` | Gauge | Cumulative reschedule time in seconds |
+| `nvcre_goodput_resume_time_seconds` | Gauge | Cumulative resume time in seconds |
+| `nvcre_goodput_checkpoint_save_time_seconds` | Gauge | Cumulative checkpoint save time in seconds |
+| `nvcre_goodput_warmup_time_seconds` | Gauge | Total warmup step time in seconds |
+| `nvcre_goodput_non_warmup_time_seconds` | Gauge | Total non-warmup step time in seconds |
+| `nvcre_goodput_avg_step_time_seconds` | Gauge | Average time per training step in seconds |
+| `nvcre_goodput_lost_work_time_seconds` | Gauge | Cumulative lost work time in seconds (work done after last checkpoint, lost on restart) |
 
 Goodput metrics are cleaned up when a GoodputMeasurement is deleted.
 
@@ -92,7 +92,7 @@ Goodput metrics are cleaned up at specific lifecycle events to prevent stale dat
 
 | Event | What is cleaned up | What is preserved |
 |-------|--------------------|-------------------|
-| Job completes (succeeded or failed) | Operational metrics (every `cre_goodput_*` gauge except the ratio: TFLOPS, step time, training/warmup/non-warmup time, checkpoint, reschedule, resume, lost work) | `cre_goodput_ratio` (the outcome) |
+| Job completes (succeeded or failed) | Operational metrics (every `nvcre_goodput_*` gauge except the ratio: TFLOPS, step time, training/warmup/non-warmup time, checkpoint, reschedule, resume, lost work) | `nvcre_goodput_ratio` (the outcome) |
 | Job restarts from checkpoint | Instantaneous metrics (TFLOPS, avg step time) | All cumulative metrics |
 | GoodputMeasurement deleted | All goodput metrics for that measurement | — |
 | BandwidthMeasurement completes or is deleted | All NCCL bandwidth metrics for that measurement | — |
@@ -103,8 +103,8 @@ All NCCL bandwidth metrics share the same label set: `namespace`, `measurement`,
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `cre_nccl_algbw_gbps` | Gauge | NCCL algorithmic bandwidth in GB/s per message size |
-| `cre_nccl_busbw_gbps` | Gauge | NCCL bus bandwidth in GB/s per message size |
+| `nvcre_nccl_algbw_gbps` | Gauge | NCCL algorithmic bandwidth in GB/s per message size |
+| `nvcre_nccl_busbw_gbps` | Gauge | NCCL bus bandwidth in GB/s per message size |
 
 The `nccl_test` label identifies the collective operation (e.g., `all_reduce`, `all_gather`, `alltoall`). The `message_size_bytes` label tracks results per message size tested.
 
@@ -116,8 +116,8 @@ NCCL bandwidth metrics are cleaned up when a BandwidthMeasurement is deleted.
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `cre_topology_validated_nodes` | Gauge | `namespace`, `workflow`, `topology_key`, `domain`, `node` | Set to `1` for each node that passed burn-in validation. Per-node granularity for identifying exactly which nodes are certified in each topology domain. |
-| `cre_topology_failed_nodes` | Gauge | `namespace`, `workflow`, `topology_key`, `domain`, `node` | Set to `1` for each node that failed burn-in validation. Useful for identifying bad switches, racks, or NVLink cliques from Prometheus. |
+| `nvcre_topology_validated_nodes` | Gauge | `namespace`, `workflow`, `topology_key`, `domain`, `node` | Set to `1` for each node that passed burn-in validation. Per-node granularity for identifying exactly which nodes are certified in each topology domain. |
+| `nvcre_topology_failed_nodes` | Gauge | `namespace`, `workflow`, `topology_key`, `domain`, `node` | Set to `1` for each node that failed burn-in validation. Useful for identifying bad switches, racks, or NVLink cliques from Prometheus. |
 
 ## Example PromQL queries
 
@@ -125,78 +125,78 @@ NCCL bandwidth metrics are cleaned up when a BandwidthMeasurement is deleted.
 
 ```promql
 # Count of failed jobs
-count(cre_job_status{status="failed"} == 1) by (namespace)
+count(nvcre_job_status{status="failed"} == 1) by (namespace)
 
 # All currently running jobs
-cre_job_status{status="in_progress"} == 1
+nvcre_job_status{status="in_progress"} == 1
 
 # Job status breakdown per namespace
-sum by (namespace, status) (cre_job_status == 1)
+sum by (namespace, status) (nvcre_job_status == 1)
 ```
 
 ### Hardware failures
 
 ```promql
 # Nodes with hardware failures across all jobs
-count(cre_hardware_failures_detected_total) by (node)
+count(nvcre_hardware_failures_detected_total) by (node)
 
 # Hardware failure rate (per hour)
-sum(rate(cre_hardware_failures_detected_total[1h])) by (namespace)
+sum(rate(nvcre_hardware_failures_detected_total[1h])) by (namespace)
 
 # Jobs with the most failed nodes
-topk(10, cre_job_failed_nodes)
+topk(10, nvcre_job_failed_nodes)
 ```
 
 ### Goodput
 
 ```promql
 # Average goodput across all measurements in a namespace
-avg(cre_goodput_ratio) by (namespace)
+avg(nvcre_goodput_ratio) by (namespace)
 
 # Jobs with low goodput (below 80%)
-cre_goodput_ratio < 0.8
+nvcre_goodput_ratio < 0.8
 
 # Training time breakdown for a specific job
-{__name__=~"cre_goodput_(training|reschedule|resume|checkpoint_save|warmup|non_warmup)_time_seconds", job="my-training-job"}
+{__name__=~"nvcre_goodput_(training|reschedule|resume|checkpoint_save|warmup|non_warmup)_time_seconds", job="my-training-job"}
 
 # Average TFLOPS per GPU across measurements
-avg(cre_goodput_avg_tflops_per_gpu) by (namespace)
+avg(nvcre_goodput_avg_tflops_per_gpu) by (namespace)
 ```
 
 ### NCCL bandwidth
 
 ```promql
 # Bus bandwidth for all_reduce across all message sizes
-cre_nccl_busbw_gbps{nccl_test="all_reduce"}
+nvcre_nccl_busbw_gbps{nccl_test="all_reduce"}
 
 # Average algorithmic bandwidth per test type
-avg(cre_nccl_algbw_gbps) by (nccl_test)
+avg(nvcre_nccl_algbw_gbps) by (nccl_test)
 
 # Compare bandwidth across message sizes for a specific measurement
-cre_nccl_algbw_gbps{measurement="nccl-allreduce-bw"}
+nvcre_nccl_algbw_gbps{measurement="nccl-allreduce-bw"}
 ```
 
 ### Reconciliation performance
 
 ```promql
 # Reconciliation error rate
-sum(rate(cre_reconcile_total{result="error"}[5m])) by (namespace)
+sum(rate(nvcre_reconcile_total{result="error"}[5m])) by (namespace)
 
 # 99th percentile reconciliation duration
-histogram_quantile(0.99, sum(rate(cre_reconcile_duration_seconds_bucket[5m])) by (le))
+histogram_quantile(0.99, sum(rate(nvcre_reconcile_duration_seconds_bucket[5m])) by (le))
 
 # Node health check duration (p95)
-histogram_quantile(0.95, sum(rate(cre_node_health_check_duration_seconds_bucket[5m])) by (le))
+histogram_quantile(0.95, sum(rate(nvcre_node_health_check_duration_seconds_bucket[5m])) by (le))
 ```
 
 ### Topology validation
 
 ```promql
 # Nodes validated per topology domain
-cre_topology_validated_nodes{topology_key="nvidia.com/gpu.clique"}
+nvcre_topology_validated_nodes{topology_key="nvidia.com/gpu.clique"}
 
 # Total validated nodes per workflow
-sum(cre_topology_validated_nodes) by (namespace, workflow)
+sum(nvcre_topology_validated_nodes) by (namespace, workflow)
 ```
 
 ## Example alerting rules
@@ -217,7 +217,7 @@ spec:
         # Alert when hardware failure rate exceeds threshold
         - alert: NVCREHighHardwareFailureRate
           expr: |
-            sum(rate(cre_hardware_failures_detected_total[1h])) by (namespace) > 0.5
+            sum(rate(nvcre_hardware_failures_detected_total[1h])) by (namespace) > 0.5
           for: 10m
           labels:
             severity: critical
@@ -230,8 +230,8 @@ spec:
         # Alert when goodput drops below acceptable threshold
         - alert: NVCRELowGoodput
           expr: |
-            cre_goodput_ratio < 0.75
-            and cre_goodput_ratio > 0
+            nvcre_goodput_ratio < 0.75
+            and nvcre_goodput_ratio > 0
           for: 15m
           labels:
             severity: warning
@@ -246,9 +246,9 @@ spec:
         # Alert when a job appears stuck (in_progress for too long)
         - alert: NVCREJobStuck
           expr: |
-            cre_job_status{status="in_progress"} == 1
+            nvcre_job_status{status="in_progress"} == 1
             unless on(namespace, job) (
-              increase(cre_reconcile_total[30m]) > 0
+              increase(nvcre_reconcile_total[30m]) > 0
             )
           for: 30m
           labels:

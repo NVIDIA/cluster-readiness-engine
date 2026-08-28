@@ -69,8 +69,8 @@
     }
   },
   "jobMetrics": {
-    "cre_job_status{status=failed}": 0,
-    "cre_job_status{status=in_progress}": 1,
-    "cre_job_status{status=succeeded}": 0
+    "nvcre_job_status{status=failed}": 0,
+    "nvcre_job_status{status=in_progress}": 1,
+    "nvcre_job_status{status=succeeded}": 0
   }
 }

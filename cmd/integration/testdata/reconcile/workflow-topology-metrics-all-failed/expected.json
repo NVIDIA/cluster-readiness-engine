@@ -102,7 +102,7 @@
     }
   },
   "topologyMetrics": {
-    "cre_topology_failed_nodes{domain=clique-a,node=topo-fail-node-01}": 1,
-    "cre_topology_failed_nodes{domain=clique-a,node=topo-fail-node-02}": 1
+    "nvcre_topology_failed_nodes{domain=clique-a,node=topo-fail-node-01}": 1,
+    "nvcre_topology_failed_nodes{domain=clique-a,node=topo-fail-node-02}": 1
   }
 }

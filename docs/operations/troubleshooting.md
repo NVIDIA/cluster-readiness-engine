@@ -87,7 +87,7 @@ kubectl logs -n nvcre deploy/nvcre-manager \
 
 ## High reconciliation latency
 
-**Symptoms:** Status updates are slow. The `cre_reconcile_duration_seconds` P95 is above 5 seconds.
+**Symptoms:** Status updates are slow. The `nvcre_reconcile_duration_seconds` P95 is above 5 seconds.
 
 **Diagnosis:**
 
