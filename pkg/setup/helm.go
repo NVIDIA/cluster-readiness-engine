@@ -127,7 +127,7 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 	imageName, imageTag := parseImage(p.image)
 	args := []string{
 		"upgrade", "--install", helmReleaseName, helmChartOCI,
-		"--namespace", creNamespace,
+		"--namespace", nvcreNamespace,
 		"--create-namespace",
 		"--version", chartVersion,
 		"--set", "manager.image.repository=" + imageName,
@@ -142,7 +142,7 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 
 	_, _ = fmt.Fprintf(p.out,
 		"[helm] Installing NVCRE Helm release %q in namespace %s...\n",
-		helmReleaseName, creNamespace)
+		helmReleaseName, nvcreNamespace)
 	return runHelmCapture(helmPath, args, p.out)
 }
 
@@ -161,7 +161,7 @@ func uninstallHelmRelease(p helmUninstallParams) error {
 
 	args := []string{
 		"uninstall", helmReleaseName,
-		"--namespace", creNamespace,
+		"--namespace", nvcreNamespace,
 		"--ignore-not-found",
 		"--wait",
 		"--timeout", helmInstallTimeout.String(),
@@ -170,7 +170,7 @@ func uninstallHelmRelease(p helmUninstallParams) error {
 
 	_, _ = fmt.Fprintf(p.out,
 		"[helm] Removing NVCRE Helm release %q from namespace %s...\n",
-		helmReleaseName, creNamespace)
+		helmReleaseName, nvcreNamespace)
 	return runHelm(helmPath, args, p.out)
 }
 

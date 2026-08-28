@@ -215,7 +215,7 @@ spec:
     - name: burnin.rules
       rules:
         # Alert when hardware failure rate exceeds threshold
-        - alert: CREHighHardwareFailureRate
+        - alert: NVCREHighHardwareFailureRate
           expr: |
             sum(rate(cre_hardware_failures_detected_total[1h])) by (namespace) > 0.5
           for: 10m
@@ -228,7 +228,7 @@ spec:
               namespace {{ $labels.namespace }} over the last hour.
 
         # Alert when goodput drops below acceptable threshold
-        - alert: CRELowGoodput
+        - alert: NVCRELowGoodput
           expr: |
             cre_goodput_ratio < 0.75
             and cre_goodput_ratio > 0
@@ -244,7 +244,7 @@ spec:
               or rescheduling overhead.
 
         # Alert when a job appears stuck (in_progress for too long)
-        - alert: CREJobStuck
+        - alert: NVCREJobStuck
           expr: |
             cre_job_status{status="in_progress"} == 1
             unless on(namespace, job) (

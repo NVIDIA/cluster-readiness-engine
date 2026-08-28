@@ -12,7 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -61,7 +61,7 @@ func TestDiscoverCordonedNodes(t *testing.T) {
 
 		nodes, cordoned, err := discoverTargetNodes(context.Background(),
 			unorderedReader{nodes: given},
-			&crev1alpha1.TargetSpec{})
+			&nvcrev1alpha1.TargetSpec{})
 		if err != nil {
 			return err
 		}

@@ -9,7 +9,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -30,13 +30,13 @@ func TestApplyPlatformMPIArgs(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Run           crev1alpha1.WorkloadRun `json:"run"`
-			Platform      string                  `json:"platform"`
-			GPUArch       string                  `json:"gpuArch"`
-			GpusPerNode   int32                   `json:"gpusPerNode"`
-			MlnxPerNode   int32                   `json:"mlnxPerNode"`
-			EnableMNNVL   bool                    `json:"enableMNNVL"`
-			FrameworkType string                  `json:"frameworkType"`
+			Run           nvcrev1alpha1.WorkloadRun `json:"run"`
+			Platform      string                    `json:"platform"`
+			GPUArch       string                    `json:"gpuArch"`
+			GpusPerNode   int32                     `json:"gpusPerNode"`
+			MlnxPerNode   int32                     `json:"mlnxPerNode"`
+			EnableMNNVL   bool                      `json:"enableMNNVL"`
+			FrameworkType string                    `json:"frameworkType"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err

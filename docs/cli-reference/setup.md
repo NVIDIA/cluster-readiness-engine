@@ -78,7 +78,7 @@ Reports the installation status of NVCRE and its dependencies by querying the cl
 nvcrectl setup status [flags]
 ```
 
-Components checked: `creCRDs`, `creController`, `kubeflowTrainer`, `logProfiles`, `gpuOperator`, `dcgm` (optional).
+Components checked: `nvcreCRDs`, `nvcreController`, `kubeflowTrainer`, `logProfiles`, `gpuOperator`, `dcgm` (optional).
 
 The Helm releases managed by `setup init` (`nvcre` and `kubeflow-trainer`) are also checked via the helm CLI and reported under `helmReleases`. A release in a failed or pending state (e.g. `failed`, `pending-upgrade`) makes the status not ready. A release helm has no record of, or that cannot be queried (helm not in PATH), is reported but does not affect readiness.
 

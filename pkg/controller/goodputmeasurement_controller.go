@@ -21,7 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/goodput"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/numstr"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
@@ -87,7 +87,7 @@ func (r *GoodputMeasurementReconciler) getLogFetcher() podlogs.PodLogFetcher {
 func (r *GoodputMeasurementReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	measurement := &crev1alpha1.GoodputMeasurement{}
+	measurement := &nvcrev1alpha1.GoodputMeasurement{}
 	if err := r.Get(ctx, req.NamespacedName, measurement); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("GoodputMeasurement resource not found, likely deleted")
@@ -112,7 +112,7 @@ func (r *GoodputMeasurementReconciler) Reconcile(ctx context.Context, req ctrl.R
 }
 
 // reconcileMeasurement watches the referenced Job and drives goodput computation.
-func (r *GoodputMeasurementReconciler) reconcileMeasurement(ctx context.Context, measurement *crev1alpha1.GoodputMeasurement) (ctrl.Result, error) {
+func (r *GoodputMeasurementReconciler) reconcileMeasurement(ctx context.Context, measurement *nvcrev1alpha1.GoodputMeasurement) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	// If no JobRef is set, nothing to measure.
@@ -122,12 +122,12 @@ func (r *GoodputMeasurementReconciler) reconcileMeasurement(ctx context.Context,
 	}
 
 	// If measurement is already complete, nothing to do.
-	if cond := meta.FindStatusCondition(measurement.Status.Conditions, crev1alpha1.GoodputMeasurementComplete); cond != nil && cond.Status == metav1.ConditionTrue {
+	if cond := meta.FindStatusCondition(measurement.Status.Conditions, nvcrev1alpha1.GoodputMeasurementComplete); cond != nil && cond.Status == metav1.ConditionTrue {
 		return ctrl.Result{}, nil
 	}
 
 	// Fetch the referenced NVCRE Job.
-	job := &crev1alpha1.Job{}
+	job := &nvcrev1alpha1.Job{}
 	jobKey := types.NamespacedName{
 		Name:      measurement.Spec.JobRef.Name,
 		Namespace: measurement.Namespace,
@@ -144,17 +144,17 @@ func (r *GoodputMeasurementReconciler) reconcileMeasurement(ctx context.Context,
 	// anchored to the Job's terminal condition timestamp so that replaying the
 	// terminal path (stale cache, conflict retry, controller restart) produces
 	// the same status bytes (ADR-072).
-	if cond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
+	if cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
 		anchor := terminalAnchor(job)
 		r.collectFinalSample(ctx, measurement, job, anchor)
 		return r.handleSucceeded(ctx, measurement, job, anchor)
 	}
-	if cond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobFailed); cond != nil && cond.Status == metav1.ConditionTrue {
+	if cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobFailed); cond != nil && cond.Status == metav1.ConditionTrue {
 		anchor := terminalAnchor(job)
 		r.collectFinalSample(ctx, measurement, job, anchor)
 		return r.handleFailed(ctx, measurement, job, anchor)
 	}
-	if cond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobInProgress); cond != nil && cond.Status == metav1.ConditionTrue {
+	if cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobInProgress); cond != nil && cond.Status == metav1.ConditionTrue {
 		return r.handleRunning(ctx, measurement, job)
 	}
 
@@ -169,8 +169,8 @@ func (r *GoodputMeasurementReconciler) reconcileMeasurement(ctx context.Context,
 // lands on the same values (ADR-072). A terminal condition always carries a
 // LastTransitionTime; time.Now() is a last-resort fallback for one that
 // somehow does not.
-func terminalAnchor(job *crev1alpha1.Job) time.Time {
-	for _, condType := range []string{crev1alpha1.JobSucceeded, crev1alpha1.JobFailed} {
+func terminalAnchor(job *nvcrev1alpha1.Job) time.Time {
+	for _, condType := range []string{nvcrev1alpha1.JobSucceeded, nvcrev1alpha1.JobFailed} {
 		cond := meta.FindStatusCondition(job.Status.Conditions, condType)
 		if cond != nil && cond.Status == metav1.ConditionTrue && !cond.LastTransitionTime.IsZero() {
 			return cond.LastTransitionTime.Time
@@ -197,7 +197,7 @@ func terminalAnchor(job *crev1alpha1.Job) time.Time {
 // capped at anchor so terminal metrics cannot move past the Job's terminal
 // transition. Best effort: on any failure the previously persisted values
 // stand, which is what would have happened anyway.
-func (r *GoodputMeasurementReconciler) collectFinalSample(ctx context.Context, measurement *crev1alpha1.GoodputMeasurement, job *crev1alpha1.Job, anchor time.Time) {
+func (r *GoodputMeasurementReconciler) collectFinalSample(ctx context.Context, measurement *nvcrev1alpha1.GoodputMeasurement, job *nvcrev1alpha1.Job, anchor time.Time) {
 	log := logf.FromContext(ctx)
 	key := fmt.Sprintf("%s/%s", measurement.Namespace, measurement.Name)
 
@@ -416,7 +416,7 @@ func capParseResultAtAnchor(result *goodput.ParseResult, anchor time.Time) {
 }
 
 // handleRunning processes a running job: reads logs, parses them, computes goodput.
-func (r *GoodputMeasurementReconciler) handleRunning(ctx context.Context, measurement *crev1alpha1.GoodputMeasurement, job *crev1alpha1.Job) (ctrl.Result, error) { //nolint:gocyclo
+func (r *GoodputMeasurementReconciler) handleRunning(ctx context.Context, measurement *nvcrev1alpha1.GoodputMeasurement, job *nvcrev1alpha1.Job) (ctrl.Result, error) { //nolint:gocyclo
 	log := logf.FromContext(ctx)
 	key := fmt.Sprintf("%s/%s", measurement.Namespace, measurement.Name)
 	interval := r.getSampleInterval(measurement)
@@ -557,7 +557,7 @@ func (r *GoodputMeasurementReconciler) handleRunning(ctx context.Context, measur
 		measurement.Status.StartTime = &now
 	}
 	meta.SetStatusCondition(&measurement.Status.Conditions, metav1.Condition{
-		Type:               crev1alpha1.GoodputMeasurementMeasuring,
+		Type:               nvcrev1alpha1.GoodputMeasurementMeasuring,
 		Status:             metav1.ConditionTrue,
 		Reason:             "JobRunning",
 		Message:            "Referenced Job is running, measurement in progress",
@@ -606,10 +606,10 @@ func (r *GoodputMeasurementReconciler) handleRunning(ctx context.Context, measur
 // state's lock.
 func (r *GoodputMeasurementReconciler) mergeSampleWindow( //nolint:gocyclo
 	ctx context.Context,
-	measurement *crev1alpha1.GoodputMeasurement,
+	measurement *nvcrev1alpha1.GoodputMeasurement,
 	state *goodput.JobState,
 	cm *goodput.CumulativeMetrics,
-	profile *crev1alpha1.LogProfile,
+	profile *nvcrev1alpha1.LogProfile,
 	result *goodput.ParseResult,
 	now time.Time,
 ) {
@@ -834,7 +834,7 @@ func (r *GoodputMeasurementReconciler) mergeSampleWindow( //nolint:gocyclo
 }
 
 // handleSucceeded processes a succeeded job.
-func (r *GoodputMeasurementReconciler) handleSucceeded(ctx context.Context, measurement *crev1alpha1.GoodputMeasurement, job *crev1alpha1.Job, anchor time.Time) (ctrl.Result, error) {
+func (r *GoodputMeasurementReconciler) handleSucceeded(ctx context.Context, measurement *nvcrev1alpha1.GoodputMeasurement, job *nvcrev1alpha1.Job, anchor time.Time) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	cm := r.buildCumulativeFromStatus(measurement)
@@ -885,7 +885,7 @@ func (r *GoodputMeasurementReconciler) handleSucceeded(ctx context.Context, meas
 }
 
 // handleFailed processes a failed job by recording an interruption event.
-func (r *GoodputMeasurementReconciler) handleFailed(ctx context.Context, measurement *crev1alpha1.GoodputMeasurement, job *crev1alpha1.Job, anchor time.Time) (ctrl.Result, error) {
+func (r *GoodputMeasurementReconciler) handleFailed(ctx context.Context, measurement *nvcrev1alpha1.GoodputMeasurement, job *nvcrev1alpha1.Job, anchor time.Time) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	key := fmt.Sprintf("%s/%s", measurement.Namespace, measurement.Name)
 
@@ -1035,7 +1035,7 @@ func (r *GoodputMeasurementReconciler) completeInterruption(state *goodput.JobSt
 // interruption to Status so it survives controller restarts.
 //
 // The caller must hold state's lock.
-func (r *GoodputMeasurementReconciler) recordInterruptionFromRestart(ctx context.Context, state *goodput.JobState, measurement *crev1alpha1.GoodputMeasurement, workflow string) {
+func (r *GoodputMeasurementReconciler) recordInterruptionFromRestart(ctx context.Context, state *goodput.JobState, measurement *nvcrev1alpha1.GoodputMeasurement, workflow string) {
 	log := logf.FromContext(ctx)
 
 	interruptTime := state.ApplicationStopTime
@@ -1080,8 +1080,8 @@ func (r *GoodputMeasurementReconciler) recordInterruptionFromRestart(ctx context
 }
 
 // getLogProfile fetches a cluster-scoped LogProfile by name.
-func (r *GoodputMeasurementReconciler) getLogProfile(ctx context.Context, name string) (*crev1alpha1.LogProfile, error) {
-	profile := &crev1alpha1.LogProfile{}
+func (r *GoodputMeasurementReconciler) getLogProfile(ctx context.Context, name string) (*nvcrev1alpha1.LogProfile, error) {
+	profile := &nvcrev1alpha1.LogProfile{}
 	if err := r.Get(ctx, types.NamespacedName{Name: name}, profile); err != nil {
 		return nil, fmt.Errorf("failed to get LogProfile %s: %w", name, err)
 	}
@@ -1093,7 +1093,7 @@ func (r *GoodputMeasurementReconciler) getLogProfile(ctx context.Context, name s
 // The cache is keyed by LogProfile name but validated against its resourceVersion,
 // so editing a LogProfile's patterns takes effect on the next reconcile rather
 // than requiring a controller restart. Only one entry per profile is retained.
-func (r *GoodputMeasurementReconciler) getOrCreateParser(profile *crev1alpha1.LogProfile) (*goodput.ProfileParser, error) {
+func (r *GoodputMeasurementReconciler) getOrCreateParser(profile *nvcrev1alpha1.LogProfile) (*goodput.ProfileParser, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -1119,7 +1119,7 @@ func (r *GoodputMeasurementReconciler) getOrCreateParser(profile *crev1alpha1.Lo
 // getOrCreateState returns the in-memory job state, creating it if needed.
 // When creating a new state, it recovers from the measurement's persisted Status
 // so that state survives controller restarts.
-func (r *GoodputMeasurementReconciler) getOrCreateState(key string, measurement *crev1alpha1.GoodputMeasurement) *goodput.JobState {
+func (r *GoodputMeasurementReconciler) getOrCreateState(key string, measurement *nvcrev1alpha1.GoodputMeasurement) *goodput.JobState {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -1200,7 +1200,7 @@ func (r *GoodputMeasurementReconciler) cleanupState(key string) {
 }
 
 // buildCumulativeFromStatus reconstructs CumulativeMetrics from the measurement status.
-func (r *GoodputMeasurementReconciler) buildCumulativeFromStatus(measurement *crev1alpha1.GoodputMeasurement) *goodput.CumulativeMetrics {
+func (r *GoodputMeasurementReconciler) buildCumulativeFromStatus(measurement *nvcrev1alpha1.GoodputMeasurement) *goodput.CumulativeMetrics {
 	cm := goodput.NewCumulativeMetrics()
 
 	cm.CurrentStep = measurement.Status.CurrentStep
@@ -1240,7 +1240,7 @@ func (r *GoodputMeasurementReconciler) buildCumulativeFromStatus(measurement *cr
 }
 
 // writeStatusFromCumulative writes CumulativeMetrics back to the measurement status.
-func (r *GoodputMeasurementReconciler) writeStatusFromCumulative(measurement *crev1alpha1.GoodputMeasurement, cm *goodput.CumulativeMetrics) {
+func (r *GoodputMeasurementReconciler) writeStatusFromCumulative(measurement *nvcrev1alpha1.GoodputMeasurement, cm *goodput.CumulativeMetrics) {
 	measurement.Status.Result = formatFloat(cm.Goodput)
 	measurement.Status.CurrentStep = cm.CurrentStep
 	measurement.Status.HighestStep = cm.HighestStep
@@ -1255,7 +1255,7 @@ func (r *GoodputMeasurementReconciler) writeStatusFromCumulative(measurement *cr
 	// Persist pending interruption so it survives controller restarts.
 	if cm.PendingInterruption != nil {
 		pi := cm.PendingInterruption
-		pending := &crev1alpha1.PendingInterruptionStatus{
+		pending := &nvcrev1alpha1.PendingInterruptionStatus{
 			CheckpointStep: pi.CheckpointStep,
 			LastStep:       pi.LastStep,
 			TCh:            formatFloat(pi.TCh),
@@ -1279,11 +1279,11 @@ func (r *GoodputMeasurementReconciler) writeStatusFromCumulative(measurement *cr
 // measurement, so the cause is visible in status and not only in the controller
 // log. This is deliberately not terminal: a cluster-scoped LogProfile can be
 // created after the run starts, and the next sample picks it up.
-func (r *GoodputMeasurementReconciler) noteLogProfileUnresolved(ctx context.Context, measurement *crev1alpha1.GoodputMeasurement, cause error) {
+func (r *GoodputMeasurementReconciler) noteLogProfileUnresolved(ctx context.Context, measurement *nvcrev1alpha1.GoodputMeasurement, cause error) {
 	message := fmt.Sprintf("LogProfile %q could not be resolved: %v", measurement.Spec.LogProfileRef, cause)
-	err := updateStatusWithRetry(ctx, r.Client, measurement, func(m *crev1alpha1.GoodputMeasurement) bool {
+	err := updateStatusWithRetry(ctx, r.Client, measurement, func(m *nvcrev1alpha1.GoodputMeasurement) bool {
 		return meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
-			Type:               crev1alpha1.GoodputMeasurementMeasuring,
+			Type:               nvcrev1alpha1.GoodputMeasurementMeasuring,
 			Status:             metav1.ConditionFalse,
 			ObservedGeneration: m.Generation,
 			Reason:             reasonGoodputLogProfileMissing,
@@ -1300,20 +1300,20 @@ func (r *GoodputMeasurementReconciler) noteLogProfileUnresolved(ctx context.Cont
 // the terminal metrics, completionTime, Complete=True, and Measuring=False all
 // land atomically, so a reader can never observe a half-final state (ADR-072).
 // CompletionTime is the Job's terminal anchor, not the reconcile wall clock.
-func (r *GoodputMeasurementReconciler) setComplete(ctx context.Context, measurement *crev1alpha1.GoodputMeasurement, anchor time.Time, reason, message string) error {
+func (r *GoodputMeasurementReconciler) setComplete(ctx context.Context, measurement *nvcrev1alpha1.GoodputMeasurement, anchor time.Time, reason, message string) error {
 	// The computed status payload is carried over on retry: a conflicting write
 	// only means the object moved on, not that this measurement's result changed.
 	status := measurement.Status.DeepCopy()
 	completion := metav1.NewTime(anchor)
 
-	err := updateStatusWithRetry(ctx, r.Client, measurement, func(m *crev1alpha1.GoodputMeasurement) bool {
+	err := updateStatusWithRetry(ctx, r.Client, measurement, func(m *nvcrev1alpha1.GoodputMeasurement) bool {
 		// First terminal write wins (ADR-072). A replay normally recomputes
 		// the same bytes from the same persisted inputs, but a replay whose
 		// final log read fails (pod garbage-collected, logs rotated) proceeds
 		// from older persisted values instead, so once Complete is True on the
 		// live object the frozen status must never be overwritten, whatever
 		// this pass computed. Returning false skips the write entirely.
-		if meta.IsStatusConditionTrue(m.Status.Conditions, crev1alpha1.GoodputMeasurementComplete) {
+		if meta.IsStatusConditionTrue(m.Status.Conditions, nvcrev1alpha1.GoodputMeasurementComplete) {
 			return false
 		}
 		conditions := m.Status.Conditions
@@ -1322,14 +1322,14 @@ func (r *GoodputMeasurementReconciler) setComplete(ctx context.Context, measurem
 		m.Status.CompletionTime = &completion
 
 		meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
-			Type:               crev1alpha1.GoodputMeasurementComplete,
+			Type:               nvcrev1alpha1.GoodputMeasurementComplete,
 			Status:             metav1.ConditionTrue,
 			Reason:             reason,
 			Message:            message,
 			ObservedGeneration: m.Generation,
 		})
 		meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
-			Type:               crev1alpha1.GoodputMeasurementMeasuring,
+			Type:               nvcrev1alpha1.GoodputMeasurementMeasuring,
 			Status:             metav1.ConditionFalse,
 			Reason:             reason,
 			Message:            "Measurement completed",
@@ -1347,7 +1347,7 @@ func (r *GoodputMeasurementReconciler) setComplete(ctx context.Context, measurem
 }
 
 // handleDeletion handles the cleanup when a GoodputMeasurement is being deleted.
-func (r *GoodputMeasurementReconciler) handleDeletion(ctx context.Context, measurement *crev1alpha1.GoodputMeasurement) (ctrl.Result, error) {
+func (r *GoodputMeasurementReconciler) handleDeletion(ctx context.Context, measurement *nvcrev1alpha1.GoodputMeasurement) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	if !controllerutil.ContainsFinalizer(measurement, goodputMeasurementFinalizer) {
@@ -1360,7 +1360,7 @@ func (r *GoodputMeasurementReconciler) handleDeletion(ctx context.Context, measu
 	// Fetch the Job to read the workflow label for metric cleanup.
 	var workflow string
 	if measurement.Spec.JobRef.Name != "" {
-		job := &crev1alpha1.Job{}
+		job := &nvcrev1alpha1.Job{}
 		jobKey := types.NamespacedName{Name: measurement.Spec.JobRef.Name, Namespace: measurement.Namespace}
 		if err := r.Get(ctx, jobKey, job); err == nil {
 			workflow = job.Labels["nvcre.nvidia.com/workflow"]
@@ -1377,7 +1377,7 @@ func (r *GoodputMeasurementReconciler) handleDeletion(ctx context.Context, measu
 }
 
 // getSampleInterval returns the configured sample interval or the default.
-func (r *GoodputMeasurementReconciler) getSampleInterval(measurement *crev1alpha1.GoodputMeasurement) time.Duration {
+func (r *GoodputMeasurementReconciler) getSampleInterval(measurement *nvcrev1alpha1.GoodputMeasurement) time.Duration {
 	if measurement.Spec.SampleInterval != nil {
 		return measurement.Spec.SampleInterval.Duration
 	}
@@ -1385,7 +1385,7 @@ func (r *GoodputMeasurementReconciler) getSampleInterval(measurement *crev1alpha
 }
 
 // getWorkerStrategy returns the worker strategy type from the profile.
-func getWorkerStrategy(profile *crev1alpha1.LogProfile) string {
+func getWorkerStrategy(profile *nvcrev1alpha1.LogProfile) string {
 	if profile.Spec.WorkerStrategy != nil {
 		return profile.Spec.WorkerStrategy.Type
 	}
@@ -1507,7 +1507,7 @@ func formatFloat(f float64) string {
 // SetupWithManager sets up the controller with the Manager.
 func (r *GoodputMeasurementReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&crev1alpha1.GoodputMeasurement{}).
+		For(&nvcrev1alpha1.GoodputMeasurement{}).
 		Named("goodputmeasurement").
 		WithOptions(controlleropts.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Complete(r)

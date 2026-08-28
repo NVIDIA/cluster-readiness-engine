@@ -10,7 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor"
 )
 
@@ -50,13 +50,13 @@ func RegisterFieldIndexes(ctx context.Context, indexer client.FieldIndexer) erro
 		return fmt.Errorf("registering Pod nodeName index: %w", err)
 	}
 
-	if err := indexer.IndexField(ctx, &corev1.Pod{}, nodemonitor.PodCREJobIndexField,
+	if err := indexer.IndexField(ctx, &corev1.Pod{}, nodemonitor.PodNVCREJobIndexField,
 		func(obj client.Object) []string {
 			pod, ok := obj.(*corev1.Pod)
 			if !ok {
 				return nil
 			}
-			if jobName, found := pod.Labels[nodemonitor.CREJobLabel]; found {
+			if jobName, found := pod.Labels[nodemonitor.NVCREJobLabel]; found {
 				return []string{jobName}
 			}
 			return nil
@@ -75,9 +75,9 @@ func RegisterFieldIndexes(ctx context.Context, indexer client.FieldIndexer) erro
 		return fmt.Errorf("registering PersistentVolume claimRef index: %w", err)
 	}
 
-	if err := indexer.IndexField(ctx, &crev1alpha1.GoodputMeasurement{}, measurementJobRefIndexField,
+	if err := indexer.IndexField(ctx, &nvcrev1alpha1.GoodputMeasurement{}, measurementJobRefIndexField,
 		func(obj client.Object) []string {
-			m, ok := obj.(*crev1alpha1.GoodputMeasurement)
+			m, ok := obj.(*nvcrev1alpha1.GoodputMeasurement)
 			if !ok || m.Spec.JobRef.Name == "" {
 				return nil
 			}
@@ -86,9 +86,9 @@ func RegisterFieldIndexes(ctx context.Context, indexer client.FieldIndexer) erro
 		return fmt.Errorf("registering GoodputMeasurement jobRef index: %w", err)
 	}
 
-	if err := indexer.IndexField(ctx, &crev1alpha1.BandwidthMeasurement{}, measurementJobRefIndexField,
+	if err := indexer.IndexField(ctx, &nvcrev1alpha1.BandwidthMeasurement{}, measurementJobRefIndexField,
 		func(obj client.Object) []string {
-			m, ok := obj.(*crev1alpha1.BandwidthMeasurement)
+			m, ok := obj.(*nvcrev1alpha1.BandwidthMeasurement)
 			if !ok || m.Spec.JobRef.Name == "" {
 				return nil
 			}

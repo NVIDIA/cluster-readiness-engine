@@ -8,7 +8,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
 func TestMissingJobThresholdKeys(t *testing.T) {
@@ -26,14 +26,14 @@ func TestMissingJobThresholdKeys(t *testing.T) {
 func TestIsJobAwaitingThresholdEvaluation(t *testing.T) {
 	t.Parallel()
 
-	job := &crev1alpha1.Job{
+	job := &nvcrev1alpha1.Job{
 		ObjectMeta: metav1.ObjectMeta{Name: "job", Namespace: "default"},
-		Spec: crev1alpha1.JobSpec{
+		Spec: nvcrev1alpha1.JobSpec{
 			Thresholds: map[string]string{"busBandwidthGBps": "value >= 900"},
 		},
-		Status: crev1alpha1.JobStatus{
+		Status: nvcrev1alpha1.JobStatus{
 			Conditions: []metav1.Condition{{
-				Type:   crev1alpha1.JobSucceeded,
+				Type:   nvcrev1alpha1.JobSucceeded,
 				Status: metav1.ConditionTrue,
 			}},
 		},
@@ -44,7 +44,7 @@ func TestIsJobAwaitingThresholdEvaluation(t *testing.T) {
 	}
 
 	job.Status.Conditions = append(job.Status.Conditions, metav1.Condition{
-		Type:   crev1alpha1.JobValidationFailed,
+		Type:   nvcrev1alpha1.JobValidationFailed,
 		Status: metav1.ConditionFalse,
 	})
 	if isJobAwaitingThresholdEvaluation(job) {

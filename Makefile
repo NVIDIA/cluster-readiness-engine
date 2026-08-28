@@ -107,7 +107,7 @@ test-integration: fmt vet setup-envtest ## Run integration tests.
 
 ##@ UAT Tests (Kind + KWOK + Tilt + e2e-framework)
 
-KIND_CLUSTER_UAT ?= cre-test-uat
+KIND_CLUSTER_UAT ?= nvcre-test-uat
 KIND_NODE_IMAGE ?=
 KWOK_VERSION ?= v0.7.0
 UAT_IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):uat-test

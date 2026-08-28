@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -54,7 +54,7 @@ func TestGoodputSetComplete(t *testing.T) {
 		}
 
 		scheme := runtime.NewScheme()
-		if err := crev1alpha1.AddToScheme(scheme); err != nil {
+		if err := nvcrev1alpha1.AddToScheme(scheme); err != nil {
 			return err
 		}
 
@@ -62,9 +62,9 @@ func TestGoodputSetComplete(t *testing.T) {
 		key := types.NamespacedName{Namespace: "ns", Name: "m"}
 		frozenAt := metav1.NewTime(time.Date(2026, 1, 22, 10, 5, 0, 0, time.UTC))
 
-		m := &crev1alpha1.GoodputMeasurement{
+		m := &nvcrev1alpha1.GoodputMeasurement{
 			ObjectMeta: metav1.ObjectMeta{Name: "m", Namespace: "ns"},
-			Status: crev1alpha1.GoodputMeasurementStatus{
+			Status: nvcrev1alpha1.GoodputMeasurementStatus{
 				Result:          "0.900000",
 				TrainingTimeSec: "295.000000",
 			},
@@ -72,7 +72,7 @@ func TestGoodputSetComplete(t *testing.T) {
 		if in.LiveComplete {
 			m.Status.CompletionTime = &frozenAt
 			meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
-				Type:    crev1alpha1.GoodputMeasurementComplete,
+				Type:    nvcrev1alpha1.GoodputMeasurementComplete,
 				Status:  metav1.ConditionTrue,
 				Reason:  "JobSucceeded",
 				Message: "Referenced Job completed successfully",
@@ -85,18 +85,18 @@ func TestGoodputSetComplete(t *testing.T) {
 
 		// The copy handed to setComplete: fetched fresh, or — for the
 		// stale-cache replay — taken before the live object gained Complete.
-		arg := &crev1alpha1.GoodputMeasurement{}
+		arg := &nvcrev1alpha1.GoodputMeasurement{}
 		if err := c.Get(ctx, key, arg); err != nil {
 			return err
 		}
 		if in.StaleInMemory {
-			live := &crev1alpha1.GoodputMeasurement{}
+			live := &nvcrev1alpha1.GoodputMeasurement{}
 			if err := c.Get(ctx, key, live); err != nil {
 				return err
 			}
 			live.Status.CompletionTime = &frozenAt
 			meta.SetStatusCondition(&live.Status.Conditions, metav1.Condition{
-				Type:    crev1alpha1.GoodputMeasurementComplete,
+				Type:    nvcrev1alpha1.GoodputMeasurementComplete,
 				Status:  metav1.ConditionTrue,
 				Reason:  "JobSucceeded",
 				Message: "Referenced Job completed successfully",
@@ -106,7 +106,7 @@ func TestGoodputSetComplete(t *testing.T) {
 			}
 		}
 
-		before := &crev1alpha1.GoodputMeasurement{}
+		before := &nvcrev1alpha1.GoodputMeasurement{}
 		if err := c.Get(ctx, key, before); err != nil {
 			return err
 		}
@@ -122,7 +122,7 @@ func TestGoodputSetComplete(t *testing.T) {
 		}
 		callErr := r.setComplete(ctx, arg, anchor, in.Reason, "test message")
 
-		after := &crev1alpha1.GoodputMeasurement{}
+		after := &nvcrev1alpha1.GoodputMeasurement{}
 		if err := c.Get(ctx, key, after); err != nil {
 			return err
 		}
@@ -136,11 +136,11 @@ func TestGoodputSetComplete(t *testing.T) {
 			completionTime = after.Status.CompletionTime.UTC().Format(time.RFC3339)
 		}
 		completeReason := ""
-		if cond := meta.FindStatusCondition(after.Status.Conditions, crev1alpha1.GoodputMeasurementComplete); cond != nil {
+		if cond := meta.FindStatusCondition(after.Status.Conditions, nvcrev1alpha1.GoodputMeasurementComplete); cond != nil {
 			completeReason = cond.Reason
 		}
 		measuringStatus := ""
-		if cond := meta.FindStatusCondition(after.Status.Conditions, crev1alpha1.GoodputMeasurementMeasuring); cond != nil {
+		if cond := meta.FindStatusCondition(after.Status.Conditions, nvcrev1alpha1.GoodputMeasurementMeasuring); cond != nil {
 			measuringStatus = string(cond.Status)
 		}
 

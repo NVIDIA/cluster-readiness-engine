@@ -3,7 +3,7 @@
 ## Summary
 
 NVCRE reports failed nodes at `Certification.status.categoryStatuses[].failedNodes`
-([ADR-061](061-cre-nvsentinel-remediation-decoupling.md)) but has no equivalent signal for
+([ADR-061](061-nvcre-nvsentinel-remediation-decoupling.md)) but has no equivalent signal for
 **which nodes passed**. An inline `succeededNodes []string` does not scale: at thousands of nodes the
 list exceeds the ~1 MiB Kubernetes object limit and the write is rejected, wedging the controller.
 
@@ -180,6 +180,6 @@ sequenceDiagram
 
 ## References
 
-- [ADR-061: Remove Remediation Controller — Failed Node Attribution via Certification CR](061-cre-nvsentinel-remediation-decoupling.md) — the `failedNodes` counterpart
+- [ADR-061: Remove Remediation Controller — Failed Node Attribution via Certification CR](061-nvcre-nvsentinel-remediation-decoupling.md) — the `failedNodes` counterpart
 - [ADR-055: Adaptive Fault Isolation](055-adaptive-fault-isolation.md) — diagnose `healthyNodes`
 - [ADR-002: Layered CRD Hierarchy](002-layered-crd-hierarchy.md)

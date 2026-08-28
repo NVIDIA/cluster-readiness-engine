@@ -8,7 +8,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
 // TestJobWarnfNilRecorder pins that warnf tolerates an unset Recorder.
@@ -19,7 +19,7 @@ func TestJobWarnfNilRecorder(t *testing.T) {
 	t.Parallel()
 
 	r := &JobReconciler{} // Recorder deliberately unset
-	job := &crev1alpha1.Job{
+	job := &nvcrev1alpha1.Job{
 		ObjectMeta: metav1.ObjectMeta{Name: "job", Namespace: "default"},
 	}
 

@@ -29,7 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
@@ -38,7 +38,7 @@ import (
 func newCertificationFakeClient(t testing.TB, objects ...client.Object) client.WithWatch {
 	t.Helper()
 	scheme := runtime.NewScheme()
-	require.NoError(t, crev1alpha1.AddToScheme(scheme))
+	require.NoError(t, nvcrev1alpha1.AddToScheme(scheme))
 	require.NoError(t, corev1.AddToScheme(scheme))
 	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 }
@@ -164,7 +164,7 @@ func TestCategoryWatchLabels(t *testing.T) {
 		ExpectedSuffix: ".json",
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
-		var cert crev1alpha1.Certification
+		var cert nvcrev1alpha1.Certification
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input_certification.yaml"]), &cert); err != nil {
 			return err
 		}
@@ -570,15 +570,15 @@ func TestFinishCertificationWaitTimeout(t *testing.T) {
 			input.Name = "timeout-cert"
 		}
 
-		cert := &crev1alpha1.Certification{
+		cert := &nvcrev1alpha1.Certification{
 			ObjectMeta: metav1.ObjectMeta{Name: input.Name, Namespace: "test-ns"},
-			Spec: crev1alpha1.CertificationSpec{
-				Categories: []crev1alpha1.CertificateCategory{{
+			Spec: nvcrev1alpha1.CertificationSpec{
+				Categories: []nvcrev1alpha1.CertificateCategory{{
 					Domain: "communication", Variant: "nccl-all-reduce",
 				}},
 			},
-			Status: crev1alpha1.CertificationStatus{
-				CategoryStatuses: []crev1alpha1.CertificationCategoryStatus{{
+			Status: nvcrev1alpha1.CertificationStatus{
+				CategoryStatuses: []nvcrev1alpha1.CertificationCategoryStatus{{
 					Domain: "communication", Variant: "nccl-all-reduce", Status: "InProgress",
 				}},
 			},
@@ -631,7 +631,7 @@ func TestFinishCertificationWaitTimeout(t *testing.T) {
 }
 
 func TestFinishCertificationWaitBoundsPostTimeoutReads(t *testing.T) {
-	cert := &crev1alpha1.Certification{
+	cert := &nvcrev1alpha1.Certification{
 		ObjectMeta: metav1.ObjectMeta{Name: "timeout-cert", Namespace: "test-ns"},
 	}
 	wc := &certificationDeadlineClient{WithWatch: newCertificationFakeClient(t, cert)}
@@ -649,10 +649,10 @@ func TestFinishCertificationWaitBoundsPostTimeoutReads(t *testing.T) {
 func TestExecuteCertificationRunReportsBeforeCleanup(t *testing.T) {
 	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test-ns"}}
 	wc := newCertificationFakeClient(t, namespace)
-	cert := &crev1alpha1.Certification{
+	cert := &nvcrev1alpha1.Certification{
 		ObjectMeta: metav1.ObjectMeta{Name: "timeout-cert", Namespace: namespace.Name},
-		Spec: crev1alpha1.CertificationSpec{
-			Categories: []crev1alpha1.CertificateCategory{{
+		Spec: nvcrev1alpha1.CertificationSpec{
+			Categories: []nvcrev1alpha1.CertificateCategory{{
 				Domain: "communication", Variant: "nccl-all-reduce",
 			}},
 		},
@@ -674,7 +674,7 @@ func TestExecuteCertificationRunReportsBeforeCleanup(t *testing.T) {
 	assert.GreaterOrEqual(t, reportIndex, 0)
 	assert.Greater(t, cleanupIndex, reportIndex)
 
-	gotCert := &crev1alpha1.Certification{}
+	gotCert := &nvcrev1alpha1.Certification{}
 	err = wc.Get(context.Background(), client.ObjectKeyFromObject(cert), gotCert)
 	assert.True(t, apierrors.IsNotFound(err))
 
@@ -695,9 +695,9 @@ func TestFinishCertificationWaitTerminalAtTimeout(t *testing.T) {
 			return err
 		}
 
-		cert := &crev1alpha1.Certification{
+		cert := &nvcrev1alpha1.Certification{
 			ObjectMeta: metav1.ObjectMeta{Name: "timeout-cert", Namespace: "test-ns"},
-			Status: crev1alpha1.CertificationStatus{Conditions: []metav1.Condition{{
+			Status: nvcrev1alpha1.CertificationStatus{Conditions: []metav1.Condition{{
 				Type: input.ConditionType, Status: metav1.ConditionTrue,
 			}}},
 		}
@@ -715,7 +715,7 @@ func TestFinishCertificationWaitTerminalAtTimeout(t *testing.T) {
 }
 
 func TestFinishCertificationWaitDoesNotMaskOtherWatchErrors(t *testing.T) {
-	cert := &crev1alpha1.Certification{
+	cert := &nvcrev1alpha1.Certification{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-cert", Namespace: "test-ns"},
 	}
 	wc := newCertificationFakeClient(t, cert)
@@ -923,7 +923,7 @@ func TestCategoryRunOptsWiringIntoCert(t *testing.T) {
 			storageClass:     "gp3",
 		}
 
-		cert := &crev1alpha1.Certification{}
+		cert := &nvcrev1alpha1.Certification{}
 
 		// Simulate the wiring logic from runCertificationRun.
 		if opts.enableCheckpoint != nil {
@@ -961,7 +961,7 @@ func TestCategoryRunOptsWiringIntoCert(t *testing.T) {
 
 	t.Run("zero opts leave fields nil", func(t *testing.T) {
 		opts := categoryRunOpts{}
-		cert := &crev1alpha1.Certification{}
+		cert := &nvcrev1alpha1.Certification{}
 
 		if opts.enableCheckpoint != nil {
 			cert.Spec.EnableCheckpoint = opts.enableCheckpoint
@@ -991,7 +991,7 @@ func TestCategoryRunOptsWiringIntoCert(t *testing.T) {
 	})
 
 	t.Run("nodesPerJob wiring", func(t *testing.T) {
-		cert := &crev1alpha1.Certification{}
+		cert := &nvcrev1alpha1.Certification{}
 		nodesPerJob := int32(4)
 		if nodesPerJob > 0 {
 			cert.Spec.NodesPerJob = &nodesPerJob
@@ -1001,7 +1001,7 @@ func TestCategoryRunOptsWiringIntoCert(t *testing.T) {
 	})
 
 	t.Run("nodesPerJob zero leaves nil", func(t *testing.T) {
-		cert := &crev1alpha1.Certification{}
+		cert := &nvcrev1alpha1.Certification{}
 		nodesPerJob := int32(0)
 		if nodesPerJob > 0 {
 			cert.Spec.NodesPerJob = &nodesPerJob

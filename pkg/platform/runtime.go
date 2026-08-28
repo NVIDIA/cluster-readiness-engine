@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strconv"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -123,7 +123,7 @@ func applyGangScheduler(cfg RuntimeConfig, podSpec, podLabels map[string]any) {
 
 // BuildTorchRuntime creates a TrainingRuntime dependency for PyTorch distributed
 // training. Generates a runtime with torch mlPolicy and a single "node" replicatedJob.
-func BuildTorchRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
+func BuildTorchRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	// Build container spec
 	container := map[string]any{
 		"name":  "node",
@@ -216,7 +216,7 @@ func BuildTorchRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
 	}
 
 	data, _ := json.Marshal(rt)
-	return crev1alpha1.DependencySpec{
+	return nvcrev1alpha1.DependencySpec{
 		RawExtension: runtime.RawExtension{Raw: data},
 	}
 }
@@ -226,7 +226,7 @@ func BuildTorchRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
 // - A runtime with MPI mlPolicy and launcher+node replicatedJobs
 // - Worker nodes with sshd, IPC_LOCK, readiness probe
 // - Launcher with mpirun and SSH key setup
-func BuildMPIRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
+func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	// Worker (node) container: runs sshd
 	workerContainer := map[string]any{
 		"name":    "node",
@@ -402,14 +402,14 @@ func BuildMPIRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
 	}
 
 	data, _ := json.Marshal(rt)
-	return crev1alpha1.DependencySpec{
+	return nvcrev1alpha1.DependencySpec{
 		RawExtension: runtime.RawExtension{Raw: data},
 	}
 }
 
 // BuildExecRuntime creates a TrainingRuntime dependency for arbitrary command execution.
 // Uses a simple single-replicatedJob layout with torch mlPolicy.
-func BuildExecRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
+func BuildExecRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	// Exec uses the same runtime shape as torch (simple single-replicatedJob)
 	// since the command is injected via the JobTemplate trainer field.
 	return BuildTorchRuntime(cfg)

@@ -385,7 +385,7 @@ guard. Test churn is significant: many fixtures and golden files reference the i
 ## References
 
 - [ADR-062: Succeeded Node Attribution via a Compressed ConfigMap](062-node-detail-propagation.md) - the passed-node counterpart and shared gzip/ConfigMap plumbing
-- [ADR-061: Remove Remediation Controller, Failed Node Attribution via Certification CR](061-cre-nvsentinel-remediation-decoupling.md) - the failed-node counterpart
+- [ADR-061: Remove Remediation Controller, Failed Node Attribution via Certification CR](061-nvcre-nvsentinel-remediation-decoupling.md) - the failed-node counterpart
 - [ADR-055: Adaptive Fault Isolation](055-adaptive-fault-isolation.md) - diagnose grouping and `healthyNodes`
 - [ADR-002: Layered CRD Hierarchy](002-layered-crd-hierarchy.md)
 

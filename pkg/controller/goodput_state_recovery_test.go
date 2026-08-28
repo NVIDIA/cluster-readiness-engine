@@ -9,7 +9,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -26,13 +26,13 @@ func TestGoodputStateRecovery(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
-			Status crev1alpha1.GoodputMeasurementStatus `yaml:"status"`
+			Status nvcrev1alpha1.GoodputMeasurementStatus `yaml:"status"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
 			return err
 		}
 
-		m := &crev1alpha1.GoodputMeasurement{}
+		m := &nvcrev1alpha1.GoodputMeasurement{}
 		m.Name = "m"
 		m.Namespace = "ns"
 		m.Status = in.Status

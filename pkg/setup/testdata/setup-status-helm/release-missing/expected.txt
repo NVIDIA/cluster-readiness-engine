@@ -1,8 +1,8 @@
 {
   "installed": true,
   "components": {
-    "creCRDs": true,
-    "creController": true,
+    "nvcreCRDs": true,
+    "nvcreController": true,
     "kubeflowTrainer": true,
     "logProfiles": true,
     "gpuOperator": true,

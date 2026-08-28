@@ -36,10 +36,10 @@ func newSetupScheme(t *testing.T) *runtime.Scheme {
 	// LogProfile has no typed Go package here, so register the list kind the
 	// check function asks for.
 	s.AddKnownTypeWithName(
-		schema.GroupVersionKind{Group: creAPIGroup, Version: "v1alpha1", Kind: "LogProfile"},
+		schema.GroupVersionKind{Group: nvcreAPIGroup, Version: "v1alpha1", Kind: "LogProfile"},
 		&unstructured.Unstructured{})
 	s.AddKnownTypeWithName(
-		schema.GroupVersionKind{Group: creAPIGroup, Version: "v1alpha1", Kind: "LogProfileList"},
+		schema.GroupVersionKind{Group: nvcreAPIGroup, Version: "v1alpha1", Kind: "LogProfileList"},
 		&unstructured.UnstructuredList{})
 	return s
 }
@@ -116,7 +116,7 @@ func crd(name, group, kind string) *unstructured.Unstructured {
 // logProfile builds a LogProfile that checkLogProfiles can count.
 func logProfile(name string) *unstructured.Unstructured {
 	u := &unstructured.Unstructured{Object: map[string]any{}}
-	u.SetAPIVersion(creAPIGroup + "/v1alpha1")
+	u.SetAPIVersion(nvcreAPIGroup + "/v1alpha1")
 	u.SetKind("LogProfile")
 	u.SetName(name)
 	return u
@@ -126,11 +126,11 @@ func logProfile(name string) *unstructured.Unstructured {
 // with no DCGM service.
 func readyClusterObjects() []client.Object {
 	return []client.Object{
-		crd("certifications."+creAPIGroup, creAPIGroup, "Certification"),
+		crd("certifications."+nvcreAPIGroup, nvcreAPIGroup, "Certification"),
 		crd("trainjobs."+trainerAPIGroup, trainerAPIGroup, "TrainJob"),
 		logProfile("megatron-training"),
 		&appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{Name: "cre-controller", Namespace: creNamespace},
+			ObjectMeta: metav1.ObjectMeta{Name: "cre-controller", Namespace: nvcreNamespace},
 			Status:     appsv1.DeploymentStatus{AvailableReplicas: 1},
 		},
 		&corev1.Node{

@@ -100,7 +100,7 @@ if workflow.Spec.Validation != nil &&
 }
 ```
 
-This runs after `DeepCopy()` and before `job := &crev1alpha1.Job{...}`, so the threshold fields are part of the Job spec from creation.
+This runs after `DeepCopy()` and before `job := &nvcrev1alpha1.Job{...}`, so the threshold fields are part of the Job spec from creation.
 
 ### Workflow Controller: ValidationFailed Aggregation
 
@@ -108,7 +108,7 @@ In the group evaluation logic and `setFinalStatus()`, aggregate `ValidationFaile
 
 ```go
 // In group evaluation (after checking Job Succeeded/Failed/HardwareFailed):
-validationCond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobValidationFailed)
+validationCond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobValidationFailed)
 if validationCond != nil && validationCond.Status == metav1.ConditionTrue {
     // Mark group as Failed with reason JobValidationFailed
 }
@@ -123,7 +123,7 @@ In `setFinalStatus()`, if any group failed due to validation, the Workflow is ma
 After the workload reaches `Succeeded`, the Job controller calls `checkPerformanceThresholds()`:
 
 ```go
-func (r *JobReconciler) checkPerformanceThresholds(ctx context.Context, job *crev1alpha1.Job) error {
+func (r *JobReconciler) checkPerformanceThresholds(ctx context.Context, job *nvcrev1alpha1.Job) error {
     // Check bandwidth threshold
     if job.Spec.BandwidthMeasurement != nil && job.Spec.BandwidthMeasurement.MinBusBandwidthGBps != nil {
         if err := r.checkBandwidthThreshold(ctx, job); err != nil {
@@ -157,9 +157,9 @@ func (r *JobReconciler) checkPerformanceThresholds(ctx context.Context, job *cre
 **`setJobValidationFailed()`** mirrors `setJobHardwareFailed()`:
 
 ```go
-func (r *JobReconciler) setJobValidationFailed(ctx context.Context, job *crev1alpha1.Job, reason, message string) error {
+func (r *JobReconciler) setJobValidationFailed(ctx context.Context, job *nvcrev1alpha1.Job, reason, message string) error {
     changed := meta.SetStatusCondition(&job.Status.Conditions, metav1.Condition{
-        Type:               crev1alpha1.JobValidationFailed,
+        Type:               nvcrev1alpha1.JobValidationFailed,
         Status:             metav1.ConditionTrue,
         Reason:             reason,
         Message:            message,
@@ -198,7 +198,7 @@ The feature starts disabled. Catalog entries that produce `BandwidthMeasurement`
 ```go
 // To enforce minimum bandwidth thresholds, add to the Workflow's
 // PerformanceValidationSpec:
-//   Thresholds: &crev1alpha1.ThresholdSpec{
+//   Thresholds: &nvcrev1alpha1.ThresholdSpec{
 //       MinBusBandwidthGBps: ptr("370"), // 92% of 400 GB/s fabric
 //   },
 ```

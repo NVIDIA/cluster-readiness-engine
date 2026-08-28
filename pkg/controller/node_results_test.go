@@ -15,7 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	gzip "github.com/NVIDIA/cluster-readiness-engine/pkg/controller/compress"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
 )
@@ -35,7 +35,7 @@ func decodeOrFail(t *testing.T, b []byte) []string {
 func newNodeResultsScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 	s := runtime.NewScheme()
-	if err := crev1alpha1.AddToScheme(s); err != nil {
+	if err := nvcrev1alpha1.AddToScheme(s); err != nil {
 		t.Fatalf("add NVCRE scheme: %v", err)
 	}
 	if err := corev1.AddToScheme(s); err != nil {
@@ -44,8 +44,8 @@ func newNodeResultsScheme(t *testing.T) *runtime.Scheme {
 	return s
 }
 
-func testWorkflow(name string) *crev1alpha1.Workflow {
-	return &crev1alpha1.Workflow{
+func testWorkflow(name string) *nvcrev1alpha1.Workflow {
+	return &nvcrev1alpha1.Workflow{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default", UID: types.UID(name + "-uid")},
 	}
 }
@@ -62,7 +62,7 @@ func getCMByRef(t *testing.T, c client.Client, ref *corev1.TypedLocalObjectRefer
 	return cm
 }
 
-func readSucceededNodes(t *testing.T, c client.Client, wf *crev1alpha1.Workflow) []string {
+func readSucceededNodes(t *testing.T, c client.Client, wf *nvcrev1alpha1.Workflow) []string {
 	t.Helper()
 	cm := getCMByRef(t, c, wf.Status.SucceededNodesRef)
 	decoded, err := gzip.GunzipString(cm.BinaryData[noderesults.SucceededNodesConfigMapKey])
@@ -75,7 +75,7 @@ func readSucceededNodes(t *testing.T, c client.Client, wf *crev1alpha1.Workflow)
 	return strings.Split(decoded, ",")
 }
 
-func readFailedNodes(t *testing.T, c client.Client, wf *crev1alpha1.Workflow) []crev1alpha1.FailedNode {
+func readFailedNodes(t *testing.T, c client.Client, wf *nvcrev1alpha1.Workflow) []nvcrev1alpha1.FailedNode {
 	t.Helper()
 	cm := getCMByRef(t, c, wf.Status.FailedNodesRef)
 	nodes, err := noderesults.DecodeFailedNodesFromConfigMap(cm)
@@ -132,7 +132,7 @@ func TestMergeSucceededNodesCSV(t *testing.T) {
 }
 
 func TestMergeFailedNodesJSON(t *testing.T) {
-	enc := func(nodes []crev1alpha1.FailedNode) []byte {
+	enc := func(nodes []nvcrev1alpha1.FailedNode) []byte {
 		jsonBytes, err := noderesults.FailedNodesToJSON(nodes)
 		if err != nil {
 			t.Fatalf("FailedNodesToJSON: %v", err)
@@ -145,41 +145,41 @@ func TestMergeFailedNodesJSON(t *testing.T) {
 	}
 
 	cases := map[string]struct {
-		existing []crev1alpha1.FailedNode // nil => no existing entry
-		incoming []crev1alpha1.FailedNode
-		want     []crev1alpha1.FailedNode
+		existing []nvcrev1alpha1.FailedNode // nil => no existing entry
+		incoming []nvcrev1alpha1.FailedNode
+		want     []nvcrev1alpha1.FailedNode
 	}{
 		"empty existing": {
-			incoming: []crev1alpha1.FailedNode{{Name: "gpu-02", Reason: crev1alpha1.NodeFailureWorkloadFailed, Message: "boom"}},
-			want:     []crev1alpha1.FailedNode{{Name: "gpu-02", Reason: crev1alpha1.NodeFailureWorkloadFailed, Message: "boom"}},
+			incoming: []nvcrev1alpha1.FailedNode{{Name: "gpu-02", Reason: nvcrev1alpha1.NodeFailureWorkloadFailed, Message: "boom"}},
+			want:     []nvcrev1alpha1.FailedNode{{Name: "gpu-02", Reason: nvcrev1alpha1.NodeFailureWorkloadFailed, Message: "boom"}},
 		},
 		"union sort and dedupe by name+reason": {
-			existing: []crev1alpha1.FailedNode{{Name: "gpu-03", Reason: crev1alpha1.NodeFailureWorkloadFailed}},
-			incoming: []crev1alpha1.FailedNode{
-				{Name: "gpu-01", Reason: crev1alpha1.NodeFailureHardwareDetected},
-				{Name: "gpu-03", Reason: crev1alpha1.NodeFailureWorkloadFailed},
+			existing: []nvcrev1alpha1.FailedNode{{Name: "gpu-03", Reason: nvcrev1alpha1.NodeFailureWorkloadFailed}},
+			incoming: []nvcrev1alpha1.FailedNode{
+				{Name: "gpu-01", Reason: nvcrev1alpha1.NodeFailureHardwareDetected},
+				{Name: "gpu-03", Reason: nvcrev1alpha1.NodeFailureWorkloadFailed},
 			},
-			want: []crev1alpha1.FailedNode{
-				{Name: "gpu-01", Reason: crev1alpha1.NodeFailureHardwareDetected},
-				{Name: "gpu-03", Reason: crev1alpha1.NodeFailureWorkloadFailed},
+			want: []nvcrev1alpha1.FailedNode{
+				{Name: "gpu-01", Reason: nvcrev1alpha1.NodeFailureHardwareDetected},
+				{Name: "gpu-03", Reason: nvcrev1alpha1.NodeFailureWorkloadFailed},
 			},
 		},
 		"same node two reasons kept": {
-			incoming: []crev1alpha1.FailedNode{
-				{Name: "gpu-01", Reason: crev1alpha1.NodeFailureThresholdViolation},
-				{Name: "gpu-01", Reason: crev1alpha1.NodeFailureHardwareDetected},
+			incoming: []nvcrev1alpha1.FailedNode{
+				{Name: "gpu-01", Reason: nvcrev1alpha1.NodeFailureThresholdViolation},
+				{Name: "gpu-01", Reason: nvcrev1alpha1.NodeFailureHardwareDetected},
 			},
-			want: []crev1alpha1.FailedNode{
-				{Name: "gpu-01", Reason: crev1alpha1.NodeFailureHardwareDetected},
-				{Name: "gpu-01", Reason: crev1alpha1.NodeFailureThresholdViolation},
+			want: []nvcrev1alpha1.FailedNode{
+				{Name: "gpu-01", Reason: nvcrev1alpha1.NodeFailureHardwareDetected},
+				{Name: "gpu-01", Reason: nvcrev1alpha1.NodeFailureThresholdViolation},
 			},
 		},
 		"message with comma and quote preserved": {
-			incoming: []crev1alpha1.FailedNode{
-				{Name: "gpu-09", Reason: crev1alpha1.NodeFailureWorkloadFailed, Message: `exited 1, signal "kill"`},
+			incoming: []nvcrev1alpha1.FailedNode{
+				{Name: "gpu-09", Reason: nvcrev1alpha1.NodeFailureWorkloadFailed, Message: `exited 1, signal "kill"`},
 			},
-			want: []crev1alpha1.FailedNode{
-				{Name: "gpu-09", Reason: crev1alpha1.NodeFailureWorkloadFailed, Message: `exited 1, signal "kill"`},
+			want: []nvcrev1alpha1.FailedNode{
+				{Name: "gpu-09", Reason: nvcrev1alpha1.NodeFailureWorkloadFailed, Message: `exited 1, signal "kill"`},
 			},
 		},
 	}
@@ -249,8 +249,8 @@ func TestRecordFailedNodes(t *testing.T) {
 	wf := testWorkflow("test-cert-training-hello")
 	ctx := context.Background()
 
-	if err := r.recordFailedNodes(ctx, wf, []crev1alpha1.FailedNode{
-		{Name: "gpu-02", Reason: crev1alpha1.NodeFailureWorkloadFailed, Message: "boom"},
+	if err := r.recordFailedNodes(ctx, wf, []nvcrev1alpha1.FailedNode{
+		{Name: "gpu-02", Reason: nvcrev1alpha1.NodeFailureWorkloadFailed, Message: "boom"},
 	}); err != nil {
 		t.Fatalf("recordFailedNodes (1): %v", err)
 	}
@@ -263,9 +263,9 @@ func TestRecordFailedNodes(t *testing.T) {
 		t.Fatalf("after first write got %+v", got)
 	}
 
-	if err := r.recordFailedNodes(ctx, wf, []crev1alpha1.FailedNode{
-		{Name: "gpu-02", Reason: crev1alpha1.NodeFailureWorkloadFailed, Message: "boom"},
-		{Name: "gpu-01", Reason: crev1alpha1.NodeFailureHardwareDetected},
+	if err := r.recordFailedNodes(ctx, wf, []nvcrev1alpha1.FailedNode{
+		{Name: "gpu-02", Reason: nvcrev1alpha1.NodeFailureWorkloadFailed, Message: "boom"},
+		{Name: "gpu-01", Reason: nvcrev1alpha1.NodeFailureHardwareDetected},
 	}); err != nil {
 		t.Fatalf("recordFailedNodes (2): %v", err)
 	}

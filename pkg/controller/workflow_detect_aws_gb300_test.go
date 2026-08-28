@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 )
 
@@ -42,7 +42,7 @@ func TestAWSGB300EFAStripInvariant(t *testing.T) {
 		{NodesPerJob: 128, GpusPerNode: 4, GPUArchitecture: "gb300"},
 	}
 
-	target := crev1alpha1.TargetSpec{
+	target := nvcrev1alpha1.TargetSpec{
 		NodeSelector: map[string]string{
 			"nvidia.com/gpu.product": "NVIDIA-GB300",
 		},
@@ -125,9 +125,9 @@ func mustContain(t *testing.T, set []string, want string) {
 // successful WorkflowSpec. Returns the last build error if every config fails.
 func buildWithFallback(
 	entry *catalog.Entry,
-	target crev1alpha1.TargetSpec,
+	target nvcrev1alpha1.TargetSpec,
 	configs []catalog.BuildConfig,
-) (crev1alpha1.WorkflowSpec, error) {
+) (nvcrev1alpha1.WorkflowSpec, error) {
 	var lastErr error
 	for _, cfg := range configs {
 		spec, err := entry.Build(target, cfg)
@@ -136,7 +136,7 @@ func buildWithFallback(
 		}
 		lastErr = err
 	}
-	return crev1alpha1.WorkflowSpec{}, lastErr
+	return nvcrev1alpha1.WorkflowSpec{}, lastErr
 }
 
 // entryUsesNCCL returns true if the entry's rendered trainer plausibly loads
@@ -147,7 +147,7 @@ func buildWithFallback(
 //     thought about platform-specific behavior, which only matters when
 //     networking/NCCL is involved. This catches Nemotron entries whose base
 //     trainer.args are just "/config/train.sh".
-func entryUsesNCCL(spec crev1alpha1.WorkflowSpec) bool {
+func entryUsesNCCL(spec nvcrev1alpha1.WorkflowSpec) bool {
 	if spec.JobTemplate.Spec.Workload.TrainJob != nil &&
 		spec.JobTemplate.Spec.Workload.TrainJob.Trainer != nil {
 		trainer := spec.JobTemplate.Spec.Workload.TrainJob.Trainer
@@ -187,7 +187,7 @@ func entryUsesNCCL(spec crev1alpha1.WorkflowSpec) bool {
 // hasAWSGB300When reports whether a When clause selects (platform=aws,
 // gpuArchitecture=gb300) — used to identify entries that have explicit
 // AWS+GB300 behavior even when the base trainer args do not name NCCL.
-func hasAWSGB300When(w crev1alpha1.WhenSpec) bool {
+func hasAWSGB300When(w nvcrev1alpha1.WhenSpec) bool {
 	if w.Platform == nil || w.GPUArchitecture == nil {
 		return false
 	}
@@ -221,7 +221,7 @@ func hasNCCLMarker(s string) bool {
 
 // efaStripViolations returns a list of human-readable violations in the
 // trainer container. Empty result means the EFA stack is properly stripped.
-func efaStripViolations(spec crev1alpha1.WorkflowSpec) []string {
+func efaStripViolations(spec nvcrev1alpha1.WorkflowSpec) []string {
 	var problems []string
 	if spec.JobTemplate.Spec.Workload.TrainJob == nil {
 		return problems
@@ -279,7 +279,7 @@ func efaStripViolations(spec crev1alpha1.WorkflowSpec) []string {
 // (in TrainingRuntime worker args or ConfigMap data) that contains an
 // EFA-strip preamble. Used by the multi-node comm pattern where strip lives
 // in the sshd worker container's args, not the trainer's args.
-func depsHaveEFAStrip(deps []crev1alpha1.DependencySpec) bool {
+func depsHaveEFAStrip(deps []nvcrev1alpha1.DependencySpec) bool {
 	for _, dep := range deps {
 		// The strip preamble is plain text in the JSON-encoded RawExtension
 		// regardless of which container/configmap it lives in, so a flat

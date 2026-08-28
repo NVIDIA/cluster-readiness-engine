@@ -46,9 +46,9 @@ In `JobReconciler.SetupWithManager()`, split the builder chain:
 
 ```go
 b := ctrl.NewControllerManagedBy(mgr).
-    For(&crev1alpha1.Job{}).
+    For(&nvcrev1alpha1.Job{}).
     Owns(&trainerv1alpha1.TrainJob{}).
-    Owns(&crev1alpha1.GoodputMeasurement{})
+    Owns(&nvcrev1alpha1.GoodputMeasurement{})
 
 if r.EnableLegacyKubeflow {
     b = b.Owns(&kubeflowv1.PyTorchJob{}).

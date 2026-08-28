@@ -174,7 +174,7 @@ make setup-test-uat \
   KIND_NODE_IMAGE=kindest/node:v1.36.1
 ```
 
-The image is used only when creating a new cluster. If `cre-test-uat` already
+The image is used only when creating a new cluster. If `nvcre-test-uat` already
 exists, delete it with `make cleanup-test-uat` before changing versions.
 
 Notes:

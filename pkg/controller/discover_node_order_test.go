@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -63,7 +63,7 @@ func TestDiscoverNodeOrder(t *testing.T) {
 
 		nodes, _, err := discoverTargetNodes(context.Background(),
 			unorderedReader{nodes: given},
-			&crev1alpha1.TargetSpec{
+			&nvcrev1alpha1.TargetSpec{
 				NodeSelector: map[string]string{"nvidia.com/gpu.present": "true"},
 			})
 		if err != nil {

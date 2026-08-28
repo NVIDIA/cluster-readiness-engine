@@ -12,7 +12,7 @@ Kubeflow Trainer publishes an official Helm chart at `oci://ghcr.io/kubeflow/cha
    - **Kubeflow Trainer** as an OCI chart dependency (`trainer.enabled` condition).
    - **CRDs** in `helm/nvcre/crds/` — synced from `make manifests` (`controller-gen` → `config/crd/bases` → copy to chart).
    - **Manager ClusterRole** in `helm/nvcre/templates/manager-role.yaml` — copied from `config/rbac/role.yaml` in `make manifests` (same loop as static RBAC).
-   - **Static RBAC** — one file per manifest in `helm/nvcre/templates/`, copied from `config/rbac/` via `cp` + `sed` in `make manifests` (kustomize parity: `cre-` name prefix, Helm namespace labels).
+   - **Static RBAC** — one file per manifest in `helm/nvcre/templates/`, copied from `config/rbac/` via `cp` + `sed` in `make manifests` (kustomize parity: `nvcre-` name prefix, Helm namespace labels).
    - **Namespace** — no `templates/namespace.yaml`; use `helm --create-namespace`, ArgoCD `CreateNamespace`, or nvcrectl `CreateNamespace=true`.
    - **Controller Deployment, metrics Service, ServiceMonitor** — flat Helm templates (`deployment.yaml`, `metrics-service.yaml`, `metrics-monitor.yaml`).
    - **LogProfiles** — one file per CR in `helm/nvcre/templates/`, copied from `config/logprofiles/` (always installed; not optional).

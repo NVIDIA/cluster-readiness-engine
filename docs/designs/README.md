@@ -68,7 +68,7 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 058 | [Mistral GB300 SKU Support (InfiniBand)](058-mistral-gb300-ib-support.md) |
 | 059 | [WorkloadRun — Simplified Workload Execution API](059-workloadrun-simplified-api.md) |
 | 060 | [Azure H100 Multi-Node NCCL Support](060-azure-h100-nccl-support.md) |
-| 061 | [Remove Remediation Controller — Failed Node Attribution via Certification CR](061-cre-nvsentinel-remediation-decoupling.md) |
+| 061 | [Remove Remediation Controller — Failed Node Attribution via Certification CR](061-nvcre-nvsentinel-remediation-decoupling.md) |
 | 062 | [Succeeded Node Attribution via a Compressed ConfigMap](062-node-detail-propagation.md) |
 | 063 | [Auto-Inject Tolerations from `target.taintSelectors`](063-taint-selector-tolerations.md) |
 | 064 | [Helm Chart Distribution](064-helm-chart-distribution.md) |

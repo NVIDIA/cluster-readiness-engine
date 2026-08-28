@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
@@ -69,7 +69,7 @@ func TestGoodputFinalSample(t *testing.T) {
 		}
 
 		scheme := runtime.NewScheme()
-		if err := crev1alpha1.AddToScheme(scheme); err != nil {
+		if err := nvcrev1alpha1.AddToScheme(scheme); err != nil {
 			return err
 		}
 		if err := corev1.AddToScheme(scheme); err != nil {
@@ -78,21 +78,21 @@ func TestGoodputFinalSample(t *testing.T) {
 
 		anchor := time.Date(2026, 1, 22, 10, 5, 0, 0, time.UTC)
 
-		profile := &crev1alpha1.LogProfile{
+		profile := &nvcrev1alpha1.LogProfile{
 			ObjectMeta: metav1.ObjectMeta{Name: "lp"},
-			Spec: crev1alpha1.LogProfileSpec{
-				Timestamp: crev1alpha1.TimestampSpec{Layout: "2006-01-02T15:04:05.999999999Z"},
-				Patterns: crev1alpha1.LogPatternSet{
-					TrainingStep: &crev1alpha1.EventPattern{
+			Spec: nvcrev1alpha1.LogProfileSpec{
+				Timestamp: nvcrev1alpha1.TimestampSpec{Layout: "2006-01-02T15:04:05.999999999Z"},
+				Patterns: nvcrev1alpha1.LogPatternSet{
+					TrainingStep: &nvcrev1alpha1.EventPattern{
 						Regex:   `step (?P<globalStep>\d+)`,
 						Example: "step 100",
 					},
 				},
 			},
 		}
-		m := &crev1alpha1.GoodputMeasurement{
+		m := &nvcrev1alpha1.GoodputMeasurement{
 			ObjectMeta: metav1.ObjectMeta{Name: "m", Namespace: "ns"},
-			Spec: crev1alpha1.GoodputMeasurementSpec{
+			Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 				JobRef:        corev1.TypedLocalObjectReference{Name: "j"},
 				LogProfileRef: in.LogProfileRef,
 			},
@@ -109,12 +109,12 @@ func TestGoodputFinalSample(t *testing.T) {
 			m.Status.LastStepTimestamp = &mt
 		}
 		initialStatus := m.Status.DeepCopy()
-		job := &crev1alpha1.Job{
+		job := &nvcrev1alpha1.Job{
 			ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"},
-			Status: crev1alpha1.JobStatus{
-				WorkloadRef: &crev1alpha1.WorkloadReference{Kind: "TrainJob", Name: "w"},
+			Status: nvcrev1alpha1.JobStatus{
+				WorkloadRef: &nvcrev1alpha1.WorkloadReference{Kind: "TrainJob", Name: "w"},
 				Conditions: []metav1.Condition{{
-					Type:               crev1alpha1.JobSucceeded,
+					Type:               nvcrev1alpha1.JobSucceeded,
 					Status:             metav1.ConditionTrue,
 					Reason:             "WorkloadCompleted",
 					LastTransitionTime: metav1.NewTime(anchor),
@@ -163,7 +163,7 @@ func TestGoodputFinalSample(t *testing.T) {
 		stamp, present := r.lastSample[key]
 		r.mu.Unlock()
 
-		fresh := &crev1alpha1.GoodputMeasurement{}
+		fresh := &nvcrev1alpha1.GoodputMeasurement{}
 		if err := c.Get(context.Background(), types.NamespacedName{Namespace: "ns", Name: "m"}, fresh); err != nil {
 			return err
 		}

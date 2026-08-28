@@ -34,8 +34,8 @@ An operator looking at a FAILED report today must `kubectl get job -o yaml` or g
 ## Implementation
 
 - **`pkg/report/report.go`**:
-  - Change `buildFailedGroups(ctx, c, wf)` to `buildFailedGroups(ctx, c, wf, failedNodes []crev1alpha1.FailedNode)` — the caller (`PopulateCategoryFromWorkflow`) already holds the decoded list; today it feeds only `buildCliqueReport`.
-  - Extract a `jobFailureReason(ctx, c, job, namespace) string` helper implementing the priority scan: `crev1alpha1.JobFailed` (with `batchJobFailureReason` enrichment, unchanged) → `crev1alpha1.JobHardwareFailed` → `crev1alpha1.JobValidationFailed`, returning the condition message.
+  - Change `buildFailedGroups(ctx, c, wf)` to `buildFailedGroups(ctx, c, wf, failedNodes []nvcrev1alpha1.FailedNode)` — the caller (`PopulateCategoryFromWorkflow`) already holds the decoded list; today it feeds only `buildCliqueReport`.
+  - Extract a `jobFailureReason(ctx, c, job, namespace) string` helper implementing the priority scan: `nvcrev1alpha1.JobFailed` (with `batchJobFailureReason` enrichment, unchanged) → `nvcrev1alpha1.JobHardwareFailed` → `nvcrev1alpha1.JobValidationFailed`, returning the condition message.
   - Add `failedNodeReason(failedNodes, groupNodes) string` for the ConfigMap fallback: first match by node name, `ThresholdViolation` entries first (the merged list is sorted by name then reason, so selection is deterministic).
 - **No changes** to `pkg/controller/`, `pkg/threshold/`, `api/v1alpha1/`, or the catalog. Condition contents, `FailedNode` records, and ConfigMap payloads are already correct; this ADR only stops the report from ignoring them.
 - **Tests** (testutil golden pattern, mirroring [`build_excluded_test.go`](../../pkg/report/build_excluded_test.go)): new `TestBuildFailedGroups` with `pkg/report/testdata/build-failed-groups/` cases driven through `Build` + `Print`/JSON against a fake client:

@@ -22,7 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
 )
@@ -31,7 +31,7 @@ import (
 // selector matched nothing, and how much of the discovery window is left. Note
 // that discoverTargetNodes filters unschedulable nodes before counting, so this
 // covers a cordoned fleet as well as a selector that matches nothing at all.
-func waitingForNodesMessage(cert *crev1alpha1.Certification) string {
+func waitingForNodesMessage(cert *nvcrev1alpha1.Certification) string {
 	remaining := max((nodeDiscoveryTimeout - time.Since(cert.CreationTimestamp.Time)).Round(time.Second), 0)
 	sel := "any node"
 	if len(cert.Spec.Target.NodeSelector) > 0 {
@@ -94,7 +94,7 @@ type CertificationReconciler struct {
 func (r *CertificationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	certification := &crev1alpha1.Certification{}
+	certification := &nvcrev1alpha1.Certification{}
 	if err := r.Get(ctx, req.NamespacedName, certification); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("Certification resource not found, likely deleted")
@@ -120,7 +120,7 @@ func (r *CertificationReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 // reconcileWorkflows ensures Workflows are created sequentially for each category
 // and their status is reflected on the Certification.
-func (r *CertificationReconciler) reconcileWorkflows(ctx context.Context, certification *crev1alpha1.Certification) (ctrl.Result, error) {
+func (r *CertificationReconciler) reconcileWorkflows(ctx context.Context, certification *nvcrev1alpha1.Certification) (ctrl.Result, error) {
 	if r.isTerminal(certification) {
 		// Verify child Workflows are actually terminal. A Workflow with repeatCount
 		// may restart after a failed iteration, making the Certification's terminal
@@ -142,7 +142,7 @@ func (r *CertificationReconciler) reconcileWorkflows(ctx context.Context, certif
 
 // initializeCategoryStatuses validates all categories, initializes their statuses as Pending,
 // and creates the Workflow for the first category.
-func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context, certification *crev1alpha1.Certification) (ctrl.Result, error) {
+func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context, certification *nvcrev1alpha1.Certification) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	// Validate all categories in the catalog upfront (fail-fast on unknown category)
@@ -158,9 +158,9 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 	}
 
 	// Initialize all categories as Pending
-	categoryStatuses := make([]crev1alpha1.CertificationCategoryStatus, 0, len(certification.Spec.Categories))
+	categoryStatuses := make([]nvcrev1alpha1.CertificationCategoryStatus, 0, len(certification.Spec.Categories))
 	for _, category := range certification.Spec.Categories {
-		categoryStatuses = append(categoryStatuses, crev1alpha1.CertificationCategoryStatus{
+		categoryStatuses = append(categoryStatuses, nvcrev1alpha1.CertificationCategoryStatus{
 			Domain:  category.Domain,
 			Variant: category.Variant,
 			Status:  categoryStatusPending,
@@ -190,7 +190,7 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 	}
 
 	categoryStatuses[0].Status = categoryStatusInProgress
-	categoryStatuses[0].WorkflowRef = &crev1alpha1.WorkflowReference{
+	categoryStatuses[0].WorkflowRef = &nvcrev1alpha1.WorkflowReference{
 		Name:      workflowName,
 		Namespace: certification.Namespace,
 	}
@@ -207,7 +207,7 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 // processNextCategory finds the first non-terminal category and either checks its
 // active Workflow or creates the next Workflow. When all categories are terminal,
 // it finalizes the Certification.
-func (r *CertificationReconciler) processNextCategory(ctx context.Context, certification *crev1alpha1.Certification) (ctrl.Result, error) {
+func (r *CertificationReconciler) processNextCategory(ctx context.Context, certification *nvcrev1alpha1.Certification) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	// Find the first non-terminal category
@@ -254,7 +254,7 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 	}
 
 	catStatus.Status = categoryStatusInProgress
-	catStatus.WorkflowRef = &crev1alpha1.WorkflowReference{
+	catStatus.WorkflowRef = &nvcrev1alpha1.WorkflowReference{
 		Name:      workflowName,
 		Namespace: certification.Namespace,
 	}
@@ -271,10 +271,10 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 // checkActiveWorkflow fetches the active Workflow and updates the category status
 // based on its conditions. If the Workflow is terminal, it requeues immediately
 // to advance to the next category.
-func (r *CertificationReconciler) checkActiveWorkflow(ctx context.Context, certification *crev1alpha1.Certification, idx int) (ctrl.Result, error) {
+func (r *CertificationReconciler) checkActiveWorkflow(ctx context.Context, certification *nvcrev1alpha1.Certification, idx int) (ctrl.Result, error) {
 	catStatus := &certification.Status.CategoryStatuses[idx]
 
-	workflow := &crev1alpha1.Workflow{}
+	workflow := &nvcrev1alpha1.Workflow{}
 	ns := catStatus.WorkflowRef.Namespace
 	if ns == "" {
 		ns = certification.Namespace
@@ -300,7 +300,7 @@ func (r *CertificationReconciler) checkActiveWorkflow(ctx context.Context, certi
 	}
 
 	// Check for terminal Workflow conditions
-	if cond := meta.FindStatusCondition(workflow.Status.Conditions, crev1alpha1.WorkflowFailed); cond != nil && cond.Status == metav1.ConditionTrue {
+	if cond := meta.FindStatusCondition(workflow.Status.Conditions, nvcrev1alpha1.WorkflowFailed); cond != nil && cond.Status == metav1.ConditionTrue {
 		catStatus.Status = categoryStatusFailed
 		if err := r.setCertificationInProgress(ctx, certification, ReasonWorkflowRunning,
 			fmt.Sprintf("Workflow for category %s/%s failed, advancing to next category", catStatus.Domain, catStatus.Variant)); err != nil {
@@ -309,7 +309,7 @@ func (r *CertificationReconciler) checkActiveWorkflow(ctx context.Context, certi
 		return ctrl.Result{RequeueAfter: requeueImmediate}, nil
 	}
 
-	if cond := meta.FindStatusCondition(workflow.Status.Conditions, crev1alpha1.WorkflowSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
+	if cond := meta.FindStatusCondition(workflow.Status.Conditions, nvcrev1alpha1.WorkflowSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
 		catStatus.Status = categoryStatusSucceeded
 		if err := r.setCertificationInProgress(ctx, certification, ReasonWorkflowRunning,
 			fmt.Sprintf("Workflow for category %s/%s succeeded, advancing to next category", catStatus.Domain, catStatus.Variant)); err != nil {
@@ -328,7 +328,7 @@ func (r *CertificationReconciler) checkActiveWorkflow(ctx context.Context, certi
 
 // finalizeCertification aggregates results when all categories are terminal and sets
 // the final Certification status.
-func (r *CertificationReconciler) finalizeCertification(ctx context.Context, certification *crev1alpha1.Certification) (ctrl.Result, error) {
+func (r *CertificationReconciler) finalizeCertification(ctx context.Context, certification *nvcrev1alpha1.Certification) (ctrl.Result, error) {
 	anyFailed := false
 	for _, catStatus := range certification.Status.CategoryStatuses {
 		if catStatus.Status == categoryStatusFailed {
@@ -357,7 +357,7 @@ func (r *CertificationReconciler) finalizeCertification(ctx context.Context, cer
 // createWorkflowForCategory creates a single Workflow for the given category.
 // It performs full resolution: discovers nodes, detects platform/GPU, resolves
 // options, renders templates, applies overlays, and prunes applied overlays.
-func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context, certification *crev1alpha1.Certification, category crev1alpha1.CertificateCategory) (string, error) {
+func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context, certification *nvcrev1alpha1.Certification, category nvcrev1alpha1.CertificateCategory) (string, error) {
 	log := logf.FromContext(ctx)
 
 	entry := catalog.Lookup(category.Domain, category.Variant)
@@ -453,7 +453,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	}
 
 	// --- 4. Apply overlays (best-effort, prune applied) ---
-	orch := &crev1alpha1.OrchestrationStatus{
+	orch := &nvcrev1alpha1.OrchestrationStatus{
 		DetectedPlatform:        platform,
 		DetectedGPUArchitecture: gpuArch,
 	}
@@ -472,7 +472,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 
 	// --- 5. Create Workflow ---
 	workflowName := r.getWorkflowName(certification, category)
-	workflow := &crev1alpha1.Workflow{
+	workflow := &nvcrev1alpha1.Workflow{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      workflowName,
 			Namespace: certification.Namespace,
@@ -518,7 +518,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 
 // ResolveOptions merges per-category overrides with global defaults.
 // Returns a flat CategoryOptions with all values resolved.
-func ResolveOptions(global *crev1alpha1.CategoryOptions, override *crev1alpha1.CategoryOptions) crev1alpha1.CategoryOptions {
+func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alpha1.CategoryOptions) nvcrev1alpha1.CategoryOptions {
 	resolved := *global
 	if override == nil {
 		return resolved
@@ -603,7 +603,7 @@ func ResolveOptions(global *crev1alpha1.CategoryOptions, override *crev1alpha1.C
 // Otherwise auto-selects the largest valid node count <= available nodes.
 // "Valid" means satisfying the entry's constraints (minGPUs, TP×PP divisibility).
 // When no constraints are defined, uses all available nodes.
-func resolveNodesPerJob(nodes []corev1.Node, cat crev1alpha1.CertificateCategory, opts crev1alpha1.CategoryOptions, entry *catalog.Entry, gpusPerNode int32, gpuArch string) (int32, error) {
+func resolveNodesPerJob(nodes []corev1.Node, cat nvcrev1alpha1.CertificateCategory, opts nvcrev1alpha1.CategoryOptions, entry *catalog.Entry, gpusPerNode int32, gpuArch string) (int32, error) {
 	n := int32(len(nodes))
 	if n == 0 {
 		return 0, fmt.Errorf("no matching nodes for %s/%s", cat.Domain, cat.Variant)
@@ -630,7 +630,7 @@ func resolveNodesPerJob(nodes []corev1.Node, cat crev1alpha1.CertificateCategory
 
 // pruneAppliedOverrides removes applied overlays from the spec, keeping
 // only unresolved ones for the WorkflowController to handle.
-func pruneAppliedOverrides(spec *crev1alpha1.WorkflowSpec, applied []crev1alpha1.AppliedOverride) {
+func pruneAppliedOverrides(spec *nvcrev1alpha1.WorkflowSpec, applied []nvcrev1alpha1.AppliedOverride) {
 	if len(applied) == 0 {
 		return
 	}
@@ -638,7 +638,7 @@ func pruneAppliedOverrides(spec *crev1alpha1.WorkflowSpec, applied []crev1alpha1
 	for _, a := range applied {
 		appliedSet[a.Index] = true
 	}
-	remaining := make([]crev1alpha1.OverrideSpec, 0, len(spec.Overrides)-len(applied))
+	remaining := make([]nvcrev1alpha1.OverrideSpec, 0, len(spec.Overrides)-len(applied))
 	for i, o := range spec.Overrides {
 		if !appliedSet[i] {
 			remaining = append(remaining, o)
@@ -650,8 +650,8 @@ func pruneAppliedOverrides(spec *crev1alpha1.WorkflowSpec, applied []crev1alpha1
 // pruneUnmatchableOverrides removes overrides whose when conditions cannot
 // match the detected platform and GPU architecture. Since these are known at
 // Certification build time, non-matching overrides are noise in the Workflow.
-func pruneUnmatchableOverrides(spec *crev1alpha1.WorkflowSpec, octx OverrideContext) {
-	remaining := make([]crev1alpha1.OverrideSpec, 0, len(spec.Overrides))
+func pruneUnmatchableOverrides(spec *nvcrev1alpha1.WorkflowSpec, octx OverrideContext) {
+	remaining := make([]nvcrev1alpha1.OverrideSpec, 0, len(spec.Overrides))
 	for _, o := range spec.Overrides {
 		matches, err := matchesWhen(o.When, octx)
 		if err != nil || matches {
@@ -670,15 +670,15 @@ func derefBool(p *bool) bool {
 }
 
 // setCertificationInProgress sets the Certification to InProgress state.
-func (r *CertificationReconciler) setCertificationInProgress(ctx context.Context, certification *crev1alpha1.Certification, reason, message string) error {
-	return r.setExclusiveCondition(ctx, certification, crev1alpha1.CertificationInProgress, reason, message)
+func (r *CertificationReconciler) setCertificationInProgress(ctx context.Context, certification *nvcrev1alpha1.Certification, reason, message string) error {
+	return r.setExclusiveCondition(ctx, certification, nvcrev1alpha1.CertificationInProgress, reason, message)
 }
 
 // recoverIfWorkflowStillRunning checks child Workflows of a terminal Certification.
 // If any Workflow is still running (e.g., restarted after a failed iteration with
 // repeatCount), it resets the Certification and category status back to InProgress
 // so reconciliation continues. Returns true if recovery occurred.
-func (r *CertificationReconciler) recoverIfWorkflowStillRunning(ctx context.Context, certification *crev1alpha1.Certification) bool {
+func (r *CertificationReconciler) recoverIfWorkflowStillRunning(ctx context.Context, certification *nvcrev1alpha1.Certification) bool {
 	log := logf.FromContext(ctx)
 
 	for i := range certification.Status.CategoryStatuses {
@@ -687,7 +687,7 @@ func (r *CertificationReconciler) recoverIfWorkflowStillRunning(ctx context.Cont
 			continue
 		}
 
-		wf := &crev1alpha1.Workflow{}
+		wf := &nvcrev1alpha1.Workflow{}
 		ns := catStatus.WorkflowRef.Namespace
 		if ns == "" {
 			ns = certification.Namespace
@@ -698,8 +698,8 @@ func (r *CertificationReconciler) recoverIfWorkflowStillRunning(ctx context.Cont
 
 		// If the Workflow is not terminal (InProgress), the Certification's Failed
 		// state is stale — the Workflow restarted a new iteration.
-		wfFailed := meta.FindStatusCondition(wf.Status.Conditions, crev1alpha1.WorkflowFailed)
-		wfSucceeded := meta.FindStatusCondition(wf.Status.Conditions, crev1alpha1.WorkflowSucceeded)
+		wfFailed := meta.FindStatusCondition(wf.Status.Conditions, nvcrev1alpha1.WorkflowFailed)
+		wfSucceeded := meta.FindStatusCondition(wf.Status.Conditions, nvcrev1alpha1.WorkflowSucceeded)
 		wfTerminal := (wfFailed != nil && wfFailed.Status == metav1.ConditionTrue) ||
 			(wfSucceeded != nil && wfSucceeded.Status == metav1.ConditionTrue)
 
@@ -720,34 +720,34 @@ func (r *CertificationReconciler) recoverIfWorkflowStillRunning(ctx context.Cont
 
 // isTerminal returns true if the Certification is in a terminal state
 // (Succeeded or Failed). Matches the pattern used by Workflow and Job controllers.
-func (r *CertificationReconciler) isTerminal(certification *crev1alpha1.Certification) bool {
-	if cond := meta.FindStatusCondition(certification.Status.Conditions, crev1alpha1.CertificationSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
+func (r *CertificationReconciler) isTerminal(certification *nvcrev1alpha1.Certification) bool {
+	if cond := meta.FindStatusCondition(certification.Status.Conditions, nvcrev1alpha1.CertificationSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
 		return true
 	}
-	if cond := meta.FindStatusCondition(certification.Status.Conditions, crev1alpha1.CertificationFailed); cond != nil && cond.Status == metav1.ConditionTrue {
+	if cond := meta.FindStatusCondition(certification.Status.Conditions, nvcrev1alpha1.CertificationFailed); cond != nil && cond.Status == metav1.ConditionTrue {
 		return true
 	}
 	return false
 }
 
 // setCertificationSucceeded sets the Certification to Succeeded state.
-func (r *CertificationReconciler) setCertificationSucceeded(ctx context.Context, certification *crev1alpha1.Certification, reason, message string) error {
-	return r.setExclusiveCondition(ctx, certification, crev1alpha1.CertificationSucceeded, reason, message)
+func (r *CertificationReconciler) setCertificationSucceeded(ctx context.Context, certification *nvcrev1alpha1.Certification, reason, message string) error {
+	return r.setExclusiveCondition(ctx, certification, nvcrev1alpha1.CertificationSucceeded, reason, message)
 }
 
 // setCertificationFailed sets the Certification to Failed state.
-func (r *CertificationReconciler) setCertificationFailed(ctx context.Context, certification *crev1alpha1.Certification, reason, message string) error {
-	return r.setExclusiveCondition(ctx, certification, crev1alpha1.CertificationFailed, reason, message)
+func (r *CertificationReconciler) setCertificationFailed(ctx context.Context, certification *nvcrev1alpha1.Certification, reason, message string) error {
+	return r.setExclusiveCondition(ctx, certification, nvcrev1alpha1.CertificationFailed, reason, message)
 }
 
 // setExclusiveCondition sets one condition True and all others False (mutually exclusive).
-func (r *CertificationReconciler) setExclusiveCondition(ctx context.Context, certification *crev1alpha1.Certification, conditionType, reason, message string) error {
+func (r *CertificationReconciler) setExclusiveCondition(ctx context.Context, certification *nvcrev1alpha1.Certification, conditionType, reason, message string) error {
 	changed, err := setExclusiveStatusCondition(ctx, r.Client, certification,
-		func(c *crev1alpha1.Certification) *[]metav1.Condition { return &c.Status.Conditions },
+		func(c *nvcrev1alpha1.Certification) *[]metav1.Condition { return &c.Status.Conditions },
 		[]string{
-			crev1alpha1.CertificationInProgress,
-			crev1alpha1.CertificationSucceeded,
-			crev1alpha1.CertificationFailed,
+			nvcrev1alpha1.CertificationInProgress,
+			nvcrev1alpha1.CertificationSucceeded,
+			nvcrev1alpha1.CertificationFailed,
 		},
 		conditionType, reason, message,
 	)
@@ -763,7 +763,7 @@ func (r *CertificationReconciler) setExclusiveCondition(ctx context.Context, cer
 // getWorkflowName returns the name for the Workflow created for a given category.
 // When per-category options are set, a deterministic suffix is appended so that
 // duplicate domain/variant entries with different options get unique Workflows.
-func (r *CertificationReconciler) getWorkflowName(certification *crev1alpha1.Certification, category crev1alpha1.CertificateCategory) string {
+func (r *CertificationReconciler) getWorkflowName(certification *nvcrev1alpha1.Certification, category nvcrev1alpha1.CertificateCategory) string {
 	raw := fmt.Sprintf("%s-%s-%s", certification.Name, category.Domain, category.Variant)
 	if opts := category.Options; opts != nil {
 		raw += categoryOptionsSuffix(opts)
@@ -774,7 +774,7 @@ func (r *CertificationReconciler) getWorkflowName(certification *crev1alpha1.Cer
 // categoryOptionsSuffix returns a deterministic string from the category options
 // that distinguishes duplicate domain/variant entries. Uses short human-readable
 // tokens where possible; Truncate() hashes if the result is too long.
-func categoryOptionsSuffix(opts *crev1alpha1.CategoryOptions) string {
+func categoryOptionsSuffix(opts *nvcrev1alpha1.CategoryOptions) string {
 	var parts []string
 	if opts.NodesPerJob != nil {
 		parts = append(parts, fmt.Sprintf("n%d", *opts.NodesPerJob))
@@ -816,7 +816,7 @@ func (r *CertificationReconciler) getRequeueInterval() time.Duration {
 }
 
 // handleDeletion handles the cleanup when a Certification is being deleted.
-func (r *CertificationReconciler) handleDeletion(ctx context.Context, certification *crev1alpha1.Certification) (ctrl.Result, error) {
+func (r *CertificationReconciler) handleDeletion(ctx context.Context, certification *nvcrev1alpha1.Certification) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	if !controllerutil.ContainsFinalizer(certification, certificationFinalizer) {
@@ -834,7 +834,7 @@ func (r *CertificationReconciler) handleDeletion(ctx context.Context, certificat
 		if ns == "" {
 			ns = certification.Namespace
 		}
-		workflow := &crev1alpha1.Workflow{}
+		workflow := &nvcrev1alpha1.Workflow{}
 		if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: catStatus.WorkflowRef.Name}, workflow); err == nil {
 			log.Info("Deleting owned Workflow", "name", catStatus.WorkflowRef.Name)
 			if err := r.Delete(ctx, workflow); err != nil && !apierrors.IsNotFound(err) {
@@ -865,8 +865,8 @@ func derefInt32(p *int32) int32 {
 // SetupWithManager sets up the controller with the Manager.
 func (r *CertificationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&crev1alpha1.Certification{}).
-		Owns(&crev1alpha1.Workflow{}).
+		For(&nvcrev1alpha1.Certification{}).
+		Owns(&nvcrev1alpha1.Workflow{}).
 		Named("certification").
 		WithOptions(controlleropts.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Complete(r)

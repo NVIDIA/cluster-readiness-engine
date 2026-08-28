@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
 func TestClassifyDependencies(t *testing.T) {
@@ -31,9 +31,9 @@ func TestClassifyDependencies(t *testing.T) {
 			return err
 		}
 
-		var deps []crev1alpha1.DependencySpec
+		var deps []nvcrev1alpha1.DependencySpec
 		for _, d := range input.Deps {
-			deps = append(deps, crev1alpha1.DependencySpec{
+			deps = append(deps, nvcrev1alpha1.DependencySpec{
 				RawExtension: runtime.RawExtension{Raw: []byte(d.Raw)},
 			})
 		}
@@ -81,9 +81,9 @@ func TestOrderDependencies(t *testing.T) {
 			return err
 		}
 
-		var deps []crev1alpha1.DependencySpec
+		var deps []nvcrev1alpha1.DependencySpec
 		for _, d := range input.Deps {
-			deps = append(deps, crev1alpha1.DependencySpec{
+			deps = append(deps, nvcrev1alpha1.DependencySpec{
 				RawExtension: runtime.RawExtension{Raw: []byte(d.Raw)},
 			})
 		}
@@ -123,9 +123,9 @@ func TestDetectCrossRefs(t *testing.T) {
 			return err
 		}
 
-		var deps []crev1alpha1.DependencySpec
+		var deps []nvcrev1alpha1.DependencySpec
 		for _, d := range input.Deps {
-			deps = append(deps, crev1alpha1.DependencySpec{
+			deps = append(deps, nvcrev1alpha1.DependencySpec{
 				RawExtension: runtime.RawExtension{Raw: []byte(d.Raw)},
 			})
 		}
@@ -201,9 +201,9 @@ func TestBuildReplacementMap(t *testing.T) {
 			return err
 		}
 
-		var deps []crev1alpha1.DependencySpec
+		var deps []nvcrev1alpha1.DependencySpec
 		for _, d := range input.Deps {
-			dep := crev1alpha1.DependencySpec{
+			dep := nvcrev1alpha1.DependencySpec{
 				RawExtension: runtime.RawExtension{Raw: []byte(d.Raw)},
 			}
 			deps = append(deps, dep)
@@ -277,7 +277,7 @@ func TestSuffixJobSpec(t *testing.T) {
 			return err
 		}
 
-		spec := &crev1alpha1.JobSpec{}
+		spec := &nvcrev1alpha1.JobSpec{}
 		if err := json.Unmarshal([]byte(input.Spec), spec); err != nil {
 			return err
 		}
@@ -355,7 +355,7 @@ func TestReverseDependencyRefs(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Refs []crev1alpha1.DependencyResourceRef `yaml:"refs"`
+			Refs []nvcrev1alpha1.DependencyResourceRef `yaml:"refs"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -366,7 +366,7 @@ func TestReverseDependencyRefs(t *testing.T) {
 		// reversal is verified too, not just ordering.
 		got := reverseDependencyRefs(input.Refs)
 		if got == nil {
-			got = []crev1alpha1.DependencyResourceRef{}
+			got = []nvcrev1alpha1.DependencyResourceRef{}
 		}
 
 		data, err := json.MarshalIndent(got, "", "  ")

@@ -107,7 +107,7 @@ Production GPU fleets require alerting across three dimensions: **hardware failu
 groups:
   - name: nvcre
     rules:
-      - alert: CREHardwareFailure
+      - alert: NVCREHardwareFailure
         expr: cre_job_failed_nodes > 0
         for: 1m
         labels:
@@ -116,7 +116,7 @@ groups:
           summary: "Hardware failure in job {{ $labels.job }}"
           description: "{{ $value }} node(s) failed in {{ $labels.namespace }}/{{ $labels.job }}."
 
-      - alert: CREJobStuck
+      - alert: NVCREJobStuck
         expr: cre_job_status{status="in_progress"} == 1
         for: 6h
         labels:
@@ -125,7 +125,7 @@ groups:
           summary: "Job {{ $labels.job }} stuck in progress"
           description: "Job has been in_progress for over 6 hours."
 
-      - alert: CRELowGoodput
+      - alert: NVCRELowGoodput
         expr: cre_goodput_ratio > 0 and cre_goodput_ratio < 0.5
         for: 5m
         labels:
@@ -134,7 +134,7 @@ groups:
           summary: "Low goodput for {{ $labels.measurement }}"
           description: "Goodput ratio is {{ $value | humanizePercentage }}."
 
-      - alert: CREHighReconcileLatency
+      - alert: NVCREHighReconcileLatency
         expr: |
           histogram_quantile(0.95,
             sum by (le) (rate(cre_reconcile_duration_seconds_bucket[5m]))
@@ -145,7 +145,7 @@ groups:
         annotations:
           summary: "Reconciliation P95 latency above 5s"
 
-      - alert: CREReconcileErrors
+      - alert: NVCREReconcileErrors
         expr: |
           sum(rate(cre_reconcile_total{result="error"}[5m]))
           / sum(rate(cre_reconcile_total[5m])) > 0.1
@@ -156,7 +156,7 @@ groups:
           summary: "Reconciliation error rate above 10%"
 ```
 
-**Tune alert thresholds:** the `for` durations and thresholds above are starting points. Adjust them based on your workload profiles — long-running multi-day training jobs will need a longer `CREJobStuck` threshold.
+**Tune alert thresholds:** the `for` durations and thresholds above are starting points. Adjust them based on your workload profiles — long-running multi-day training jobs will need a longer `NVCREJobStuck` threshold.
 
 ## Next steps
 

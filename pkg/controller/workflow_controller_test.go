@@ -12,7 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
 func TestBuildTolerations(t *testing.T) {
@@ -22,7 +22,7 @@ func TestBuildTolerations(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Selectors []crev1alpha1.TaintSelector `yaml:"selectors"`
+			Selectors []nvcrev1alpha1.TaintSelector `yaml:"selectors"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -46,8 +46,8 @@ func TestNodeMatchesTaints(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Node      corev1.Node                 `yaml:"node"`
-			Selectors []crev1alpha1.TaintSelector `yaml:"selectors"`
+			Node      corev1.Node                   `yaml:"node"`
+			Selectors []nvcrev1alpha1.TaintSelector `yaml:"selectors"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -73,8 +73,8 @@ func TestCanLaunchOverflow(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Overflow  crev1alpha1.GroupStatus   `yaml:"overflow"`
-			AllGroups []crev1alpha1.GroupStatus `yaml:"allGroups"`
+			Overflow  nvcrev1alpha1.GroupStatus   `yaml:"overflow"`
+			AllGroups []nvcrev1alpha1.GroupStatus `yaml:"allGroups"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -100,8 +100,8 @@ func TestHasNodeOverlap(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Candidate crev1alpha1.GroupStatus   `yaml:"candidate"`
-			AllGroups []crev1alpha1.GroupStatus `yaml:"allGroups"`
+			Candidate nvcrev1alpha1.GroupStatus   `yaml:"candidate"`
+			AllGroups []nvcrev1alpha1.GroupStatus `yaml:"allGroups"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -127,13 +127,13 @@ func TestCountRunningGroups(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Groups []crev1alpha1.GroupStatus `yaml:"groups"`
+			Groups []nvcrev1alpha1.GroupStatus `yaml:"groups"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
 		}
 
-		orch := &crev1alpha1.OrchestrationStatus{Groups: input.Groups}
+		orch := &nvcrev1alpha1.OrchestrationStatus{Groups: input.Groups}
 		result := countRunningGroups(orch)
 
 		data, err := json.MarshalIndent(struct {
@@ -154,14 +154,14 @@ func TestAllGroupsTerminal(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Groups []crev1alpha1.GroupStatus `yaml:"groups"`
+			Groups []nvcrev1alpha1.GroupStatus `yaml:"groups"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
 		}
 
 		r := &WorkflowReconciler{}
-		orch := &crev1alpha1.OrchestrationStatus{Groups: input.Groups}
+		orch := &nvcrev1alpha1.OrchestrationStatus{Groups: input.Groups}
 		result := r.allGroupsTerminal(orch)
 
 		data, err := json.MarshalIndent(struct {
@@ -182,14 +182,14 @@ func TestHasRunningGroups(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Groups []crev1alpha1.GroupStatus `yaml:"groups"`
+			Groups []nvcrev1alpha1.GroupStatus `yaml:"groups"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
 		}
 
 		r := &WorkflowReconciler{}
-		orch := &crev1alpha1.OrchestrationStatus{Groups: input.Groups}
+		orch := &nvcrev1alpha1.OrchestrationStatus{Groups: input.Groups}
 		result := r.hasRunningGroups(orch)
 
 		data, err := json.MarshalIndent(struct {
@@ -220,15 +220,15 @@ func TestGetGroupJobName(t *testing.T) {
 			return err
 		}
 
-		workflow := &crev1alpha1.Workflow{
+		workflow := &nvcrev1alpha1.Workflow{
 			ObjectMeta: metav1.ObjectMeta{Name: input.WorkflowName},
-			Spec: crev1alpha1.WorkflowSpec{
-				Orchestration: crev1alpha1.OrchestrationSpec{
+			Spec: nvcrev1alpha1.WorkflowSpec{
+				Orchestration: nvcrev1alpha1.OrchestrationSpec{
 					Iterations: input.Iterations,
 				},
 			},
-			Status: crev1alpha1.WorkflowStatus{
-				Orchestration: &crev1alpha1.OrchestrationStatus{
+			Status: nvcrev1alpha1.WorkflowStatus{
+				Orchestration: &nvcrev1alpha1.OrchestrationStatus{
 					TotalGroups: input.TotalGroups,
 				},
 			},
@@ -261,7 +261,7 @@ func TestEffectiveIterations(t *testing.T) {
 			return err
 		}
 
-		orch := crev1alpha1.OrchestrationSpec{Iterations: input.Iterations}
+		orch := nvcrev1alpha1.OrchestrationSpec{Iterations: input.Iterations}
 		result := effectiveIterations(orch)
 
 		data, err := json.MarshalIndent(struct {
@@ -288,7 +288,7 @@ func TestHasMultipleIterations(t *testing.T) {
 			return err
 		}
 
-		orch := crev1alpha1.OrchestrationSpec{Iterations: input.Iterations}
+		orch := nvcrev1alpha1.OrchestrationSpec{Iterations: input.Iterations}
 		result := hasMultipleIterations(orch)
 
 		data, err := json.MarshalIndent(struct {

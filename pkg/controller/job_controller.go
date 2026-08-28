@@ -32,7 +32,7 @@ import (
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor/cel"
@@ -107,7 +107,7 @@ func (r *JobReconciler) getWorkloadRequeueInterval() time.Duration {
 
 // getMeasurementTimeout returns the effective timeout for waiting on measurement data
 // after a Job has succeeded. Priority: Job.Spec > reconciler field > default (5m).
-func (r *JobReconciler) getMeasurementTimeout(job *crev1alpha1.Job) time.Duration {
+func (r *JobReconciler) getMeasurementTimeout(job *nvcrev1alpha1.Job) time.Duration {
 	if job.Spec.MeasurementTimeout != nil && job.Spec.MeasurementTimeout.Duration > 0 {
 		return job.Spec.MeasurementTimeout.Duration
 	}
@@ -135,7 +135,7 @@ func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	log.V(1).Info("Starting reconciliation")
 
 	// Fetch the Job instance
-	job := &crev1alpha1.Job{}
+	job := &nvcrev1alpha1.Job{}
 	if err := r.Get(ctx, req.NamespacedName, job); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("Job resource not found, likely deleted")
@@ -202,7 +202,7 @@ func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 }
 
 // handleDeletion handles the cleanup when a Job is being deleted
-func (r *JobReconciler) handleDeletion(ctx context.Context, job *crev1alpha1.Job) (ctrl.Result, error) { //nolint:unparam
+func (r *JobReconciler) handleDeletion(ctx context.Context, job *nvcrev1alpha1.Job) (ctrl.Result, error) { //nolint:unparam
 	log := logf.FromContext(ctx)
 
 	if !controllerutil.ContainsFinalizer(job, jobFinalizer) {
@@ -233,7 +233,7 @@ func (r *JobReconciler) handleDeletion(ctx context.Context, job *crev1alpha1.Job
 
 // deleteWorkloadByRef deletes the workload referenced by the Job's status.
 // Returns nil if the workload is already gone or the adapter cannot be resolved.
-func (r *JobReconciler) deleteWorkloadByRef(ctx context.Context, job *crev1alpha1.Job) error {
+func (r *JobReconciler) deleteWorkloadByRef(ctx context.Context, job *nvcrev1alpha1.Job) error {
 	ref := job.Status.WorkloadRef
 	if ref == nil {
 		return nil
@@ -264,7 +264,7 @@ func (r *JobReconciler) deleteWorkloadByRef(ctx context.Context, job *crev1alpha
 }
 
 // reconcileWorkload ensures the workload exists and is up to date
-func (r *JobReconciler) reconcileWorkload(ctx context.Context, job *crev1alpha1.Job) (ctrl.Result, error) {
+func (r *JobReconciler) reconcileWorkload(ctx context.Context, job *nvcrev1alpha1.Job) (ctrl.Result, error) {
 	// If the Job is already in a terminal state, preserve the workload and
 	// its pods for log inspection (both success and failure). Cleanup
 	// happens via owner reference cascade when the Certification is deleted.
@@ -302,7 +302,7 @@ func (r *JobReconciler) reconcileWorkload(ctx context.Context, job *crev1alpha1.
 }
 
 // createWorkloadFromSpec creates a new workload resource from the Job's inline workload spec.
-func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *crev1alpha1.Job) (ctrl.Result, error) {
+func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *nvcrev1alpha1.Job) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	adapter, err := workload.ForSpec(&job.Spec.Workload)
@@ -359,7 +359,7 @@ func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *crev1al
 	log.Info("Workload created successfully", "kind", gvk.Kind, "name", workloadName)
 
 	// Store workload reference in status
-	job.Status.WorkloadRef = &crev1alpha1.WorkloadReference{
+	job.Status.WorkloadRef = &nvcrev1alpha1.WorkloadReference{
 		APIVersion: gvk.GroupVersion().String(),
 		Kind:       gvk.Kind,
 		Name:       workloadName,
@@ -376,7 +376,7 @@ func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *crev1al
 }
 
 // updateStatusFromWorkload updates the Job status based on the workload status conditions
-func (r *JobReconciler) updateStatusFromWorkload(ctx context.Context, job *crev1alpha1.Job) (ctrl.Result, error) {
+func (r *JobReconciler) updateStatusFromWorkload(ctx context.Context, job *nvcrev1alpha1.Job) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	ref := job.Status.WorkloadRef
 
@@ -470,7 +470,7 @@ func (r *JobReconciler) updateStatusFromWorkload(ctx context.Context, job *crev1
 
 // shouldRestart checks whether a failed Job should be restarted from checkpoint.
 // It returns true only if the Job has a Checkpoint config, restarts remain, and a checkpoint exists.
-func (r *JobReconciler) shouldRestart(ctx context.Context, job *crev1alpha1.Job) bool {
+func (r *JobReconciler) shouldRestart(ctx context.Context, job *nvcrev1alpha1.Job) bool {
 	if job.Spec.Checkpoint == nil {
 		return false
 	}
@@ -486,9 +486,9 @@ func (r *JobReconciler) shouldRestart(ctx context.Context, job *crev1alpha1.Job)
 
 // hasCheckpoint returns true if there is a GoodputMeasurement for this Job that has recorded
 // at least one checkpoint step (LastCheckpointStep > 0).
-func (r *JobReconciler) hasCheckpoint(ctx context.Context, job *crev1alpha1.Job) bool {
+func (r *JobReconciler) hasCheckpoint(ctx context.Context, job *nvcrev1alpha1.Job) bool {
 	log := logf.FromContext(ctx)
-	var measurements crev1alpha1.GoodputMeasurementList
+	var measurements nvcrev1alpha1.GoodputMeasurementList
 	if err := r.List(ctx, &measurements, matchingJobRef(job.Namespace, job.Name)...); err != nil {
 		log.Error(err, "Failed to list GoodputMeasurements")
 		return false
@@ -516,7 +516,7 @@ func (r *JobReconciler) hasCheckpoint(ctx context.Context, job *crev1alpha1.Job)
 // for log parsing lag: LastStepTimestamp reflects the last step the GM parsed,
 // not the last step the workload produced. Without this buffer, the stall
 // detector fires false positives when the GM hasn't read logs recently.
-func (r *JobReconciler) checkStallTimeout(ctx context.Context, job *crev1alpha1.Job) (bool, string) {
+func (r *JobReconciler) checkStallTimeout(ctx context.Context, job *nvcrev1alpha1.Job) (bool, string) {
 	if job.Spec.StallMultiplier == nil {
 		return false, ""
 	}
@@ -606,7 +606,7 @@ func parseStallFloat(s string) float64 {
 
 // maxBusBandwidth returns the maximum bus bandwidth across all message sizes in the results.
 // Returns 0 if no results are present.
-func maxBusBandwidth(results []crev1alpha1.BandwidthResult) float64 {
+func maxBusBandwidth(results []nvcrev1alpha1.BandwidthResult) float64 {
 	var max float64
 	for _, r := range results {
 		bw := parseStallFloat(r.BusBW)
@@ -622,7 +622,7 @@ func maxBusBandwidth(results []crev1alpha1.BandwidthResult) float64 {
 // collected from BandwidthMeasurement and GoodputMeasurement status fields.
 // If any threshold is violated, the ValidationFailed condition is set on the Job.
 // Returns true if measurements are pending and the caller should requeue.
-func (r *JobReconciler) checkPerformanceThresholds(ctx context.Context, job *crev1alpha1.Job) bool {
+func (r *JobReconciler) checkPerformanceThresholds(ctx context.Context, job *nvcrev1alpha1.Job) bool {
 	if len(job.Spec.Thresholds) == 0 {
 		return false
 	}
@@ -662,8 +662,8 @@ func (r *JobReconciler) checkPerformanceThresholds(ctx context.Context, job *cre
 
 // measurementTimedOut returns true if the Job has been in Succeeded state longer
 // than the measurement timeout, meaning we've waited long enough for data.
-func (r *JobReconciler) measurementTimedOut(job *crev1alpha1.Job) bool {
-	succeededCond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobSucceeded)
+func (r *JobReconciler) measurementTimedOut(job *nvcrev1alpha1.Job) bool {
+	succeededCond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobSucceeded)
 	if succeededCond == nil || succeededCond.Status != metav1.ConditionTrue {
 		return false
 	}
@@ -671,7 +671,7 @@ func (r *JobReconciler) measurementTimedOut(job *crev1alpha1.Job) bool {
 }
 
 // maxAlgBandwidth returns the maximum algorithm bandwidth across all message sizes.
-func maxAlgBandwidth(results []crev1alpha1.BandwidthResult) float64 {
+func maxAlgBandwidth(results []nvcrev1alpha1.BandwidthResult) float64 {
 	var m float64
 	for _, r := range results {
 		bw := parseStallFloat(r.AlgBW)
@@ -684,14 +684,14 @@ func maxAlgBandwidth(results []crev1alpha1.BandwidthResult) float64 {
 
 // setJobValidationFailed sets the ValidationFailed condition independently of execution state.
 // This mirrors setJobHardwareFailed — the condition is additive, not exclusive.
-func (r *JobReconciler) setJobValidationStatus(ctx context.Context, job *crev1alpha1.Job, status metav1.ConditionStatus, reason, message string) error {
+func (r *JobReconciler) setJobValidationStatus(ctx context.Context, job *nvcrev1alpha1.Job, status metav1.ConditionStatus, reason, message string) error {
 	changed := false
-	err := updateStatusWithRetry(ctx, r.Client, job, func(j *crev1alpha1.Job) bool {
+	err := updateStatusWithRetry(ctx, r.Client, job, func(j *nvcrev1alpha1.Job) bool {
 		if status == metav1.ConditionTrue && len(j.Status.FailedNodes) == 0 {
 			j.Status.FailedNodes = noderesults.NodesWithFailureDetails(groupNodeNames(j), ReasonThresholdViolation, message)
 		}
 		c := meta.SetStatusCondition(&j.Status.Conditions, metav1.Condition{
-			Type:               crev1alpha1.JobValidationFailed,
+			Type:               nvcrev1alpha1.JobValidationFailed,
 			Status:             status,
 			Reason:             reason,
 			Message:            message,
@@ -712,7 +712,7 @@ func (r *JobReconciler) setJobValidationStatus(ctx context.Context, job *crev1al
 // restartFromCheckpoint deletes the failed workload, increments the restart count,
 // clears the workload reference, and requeues so that reconcileWorkload() will
 // create a fresh workload from spec on the next loop.
-func (r *JobReconciler) restartFromCheckpoint(ctx context.Context, job *crev1alpha1.Job, ref *crev1alpha1.WorkloadReference, adapter workload.Adapter) (ctrl.Result, error) {
+func (r *JobReconciler) restartFromCheckpoint(ctx context.Context, job *nvcrev1alpha1.Job, ref *nvcrev1alpha1.WorkloadReference, adapter workload.Adapter) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	// Delete the failed workload
@@ -773,13 +773,13 @@ func (r *JobReconciler) restartFromCheckpoint(ctx context.Context, job *crev1alp
 }
 
 // setJobInProgress sets the Job status to InProgress
-func (r *JobReconciler) setJobInProgress(ctx context.Context, job *crev1alpha1.Job, reason, message string) error {
-	return r.setExclusiveCondition(ctx, job, crev1alpha1.JobInProgress, reason, message)
+func (r *JobReconciler) setJobInProgress(ctx context.Context, job *nvcrev1alpha1.Job, reason, message string) error {
+	return r.setExclusiveCondition(ctx, job, nvcrev1alpha1.JobInProgress, reason, message)
 }
 
 // setJobSucceeded sets the Job status to Succeeded
-func (r *JobReconciler) setJobSucceeded(ctx context.Context, job *crev1alpha1.Job, reason, message string) error {
-	return r.setExclusiveCondition(ctx, job, crev1alpha1.JobSucceeded, reason, message)
+func (r *JobReconciler) setJobSucceeded(ctx context.Context, job *nvcrev1alpha1.Job, reason, message string) error {
+	return r.setExclusiveCondition(ctx, job, nvcrev1alpha1.JobSucceeded, reason, message)
 }
 
 // setJobFailed sets the Job status to Failed and captures failure logs.
@@ -789,16 +789,16 @@ func (r *JobReconciler) setJobSucceeded(ctx context.Context, job *crev1alpha1.Jo
 // on a 409 conflict the retry re-applies them to the freshly-fetched object.
 // Setting them on the stale object before the closure would cause them to be
 // silently discarded whenever the API server returns a conflict.
-func (r *JobReconciler) setJobFailed(ctx context.Context, job *crev1alpha1.Job, reason, message string) error {
+func (r *JobReconciler) setJobFailed(ctx context.Context, job *nvcrev1alpha1.Job, reason, message string) error {
 	changed, err := setExclusiveStatusCondition(ctx, r.Client, job,
-		func(j *crev1alpha1.Job) *[]metav1.Condition { return &j.Status.Conditions },
+		func(j *nvcrev1alpha1.Job) *[]metav1.Condition { return &j.Status.Conditions },
 		[]string{
-			crev1alpha1.JobInProgress,
-			crev1alpha1.JobSucceeded,
-			crev1alpha1.JobFailed,
+			nvcrev1alpha1.JobInProgress,
+			nvcrev1alpha1.JobSucceeded,
+			nvcrev1alpha1.JobFailed,
 		},
-		crev1alpha1.JobFailed, reason, message,
-		func(j *crev1alpha1.Job) bool {
+		nvcrev1alpha1.JobFailed, reason, message,
+		func(j *nvcrev1alpha1.Job) bool {
 			c := false
 			if j.Status.FailureLog == nil {
 				r.captureFailureLog(ctx, j)
@@ -816,7 +816,7 @@ func (r *JobReconciler) setJobFailed(ctx context.Context, job *crev1alpha1.Job, 
 	}
 	if changed {
 		recordJobStatus(job.Namespace, job.Name, job.Labels["nvcre.nvidia.com/workflow"], "failed")
-		logf.FromContext(ctx).Info("Job status updated", "status", crev1alpha1.JobFailed, "reason", reason)
+		logf.FromContext(ctx).Info("Job status updated", "status", nvcrev1alpha1.JobFailed, "reason", reason)
 	}
 	return nil
 }
@@ -862,7 +862,7 @@ func readLogTail(r io.Reader, max int) (string, error) {
 
 // captureFailureLog finds the pod that caused the failure and stores its last
 // N log lines in job.Status.FailureLog. Best-effort: errors are logged, not returned.
-func (r *JobReconciler) captureFailureLog(ctx context.Context, job *crev1alpha1.Job) {
+func (r *JobReconciler) captureFailureLog(ctx context.Context, job *nvcrev1alpha1.Job) {
 	log := logf.FromContext(ctx)
 	if r.Clientset == nil {
 		return
@@ -872,7 +872,7 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *crev1alpha1.
 	podList := &corev1.PodList{}
 	if err := r.List(ctx, podList,
 		client.InNamespace(job.Namespace),
-		client.MatchingFields{nodemonitor.PodCREJobIndexField: job.Name},
+		client.MatchingFields{nodemonitor.PodNVCREJobIndexField: job.Name},
 	); err != nil {
 		log.V(1).Info("Failed to list pods for failure log capture", "error", err)
 		return
@@ -906,12 +906,12 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *crev1alpha1.
 			reason = "PodNotFound"
 			tail = "no pods for this Job were found when the failure was recorded; the pod was most likely deleted before its logs could be read"
 		}
-		job.Status.FailureLog = &crev1alpha1.FailureLog{Reason: reason, Tail: tail}
+		job.Status.FailureLog = &nvcrev1alpha1.FailureLog{Reason: reason, Tail: tail}
 		log.Info("No failed pod available for failure log capture", "reason", reason)
 		return
 	}
 
-	fl := &crev1alpha1.FailureLog{
+	fl := &nvcrev1alpha1.FailureLog{
 		PodName:  failedPod.Name,
 		NodeName: failedPod.Spec.NodeName,
 		ExitCode: failedContainer.State.Terminated.ExitCode,
@@ -945,21 +945,21 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *crev1alpha1.
 
 // setJobHardwareFailed sets the HardwareFailed condition and records the failed nodes.
 // This condition is independent of job execution state (InProgress/Succeeded/Failed).
-func (r *JobReconciler) setJobHardwareFailed(ctx context.Context, job *crev1alpha1.Job, reason, message string, failedNodes []crev1alpha1.FailedNode) error {
+func (r *JobReconciler) setJobHardwareFailed(ctx context.Context, job *nvcrev1alpha1.Job, reason, message string, failedNodes []nvcrev1alpha1.FailedNode) error {
 	log := logf.FromContext(ctx)
 
 	// Whether this is the first hardware failure is evaluated against the state
 	// this attempt observed, so it is recomputed inside the retry rather than
 	// captured from a possibly-stale read.
 	var isFirstFailure, changed bool
-	err := updateStatusWithRetry(ctx, r.Client, job, func(j *crev1alpha1.Job) bool {
+	err := updateStatusWithRetry(ctx, r.Client, job, func(j *nvcrev1alpha1.Job) bool {
 		isFirstFailure = len(j.Status.FailedNodes) == 0 && len(failedNodes) > 0
 		j.Status.FailedNodes = failedNodes
 
 		// Set HardwareFailed independently — it is not exclusive with the
 		// InProgress/Succeeded/Failed set.
 		c := meta.SetStatusCondition(&j.Status.Conditions, metav1.Condition{
-			Type:               crev1alpha1.JobHardwareFailed,
+			Type:               nvcrev1alpha1.JobHardwareFailed,
 			Status:             metav1.ConditionTrue,
 			Reason:             reason,
 			Message:            message,
@@ -990,13 +990,13 @@ func (r *JobReconciler) setJobHardwareFailed(ctx context.Context, job *crev1alph
 
 // isTerminalState checks if the job is in a terminal state (Succeeded or Failed).
 // Note: HardwareFailed is NOT a terminal state - job execution continues regardless of hardware failures.
-func (r *JobReconciler) isTerminalState(job *crev1alpha1.Job) bool {
-	succeededCond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobSucceeded)
+func (r *JobReconciler) isTerminalState(job *nvcrev1alpha1.Job) bool {
+	succeededCond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobSucceeded)
 	if succeededCond != nil && succeededCond.Status == metav1.ConditionTrue {
 		return true
 	}
 
-	failedCond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobFailed)
+	failedCond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobFailed)
 	if failedCond != nil && failedCond.Status == metav1.ConditionTrue {
 		return true
 	}
@@ -1007,7 +1007,7 @@ func (r *JobReconciler) isTerminalState(job *crev1alpha1.Job) bool {
 // checkNodeHealth evaluates node health for the job using the configured detector.
 // Node health evaluation is parallelized for performance with large node counts.
 // The failed nodes list is additive - nodes that recover are NOT removed from the list.
-func (r *JobReconciler) checkNodeHealth(ctx context.Context, job *crev1alpha1.Job) (ctrl.Result, error) { //nolint:unparam
+func (r *JobReconciler) checkNodeHealth(ctx context.Context, job *nvcrev1alpha1.Job) (ctrl.Result, error) { //nolint:unparam
 	startTime := time.Now()
 	log := logf.FromContext(ctx)
 
@@ -1140,7 +1140,7 @@ func (r *JobReconciler) checkNodeHealth(ctx context.Context, job *crev1alpha1.Jo
 // (nodes are never removed from the list). Returns the merged list and a boolean
 // indicating whether any new (name, reason) attribution was added — so a new
 // reason for an already-listed node still counts as a new failure.
-func mergeFailedNodes(existing []crev1alpha1.FailedNode, newNames []string, reason crev1alpha1.NodeFailureReason, message string) ([]crev1alpha1.FailedNode, bool) {
+func mergeFailedNodes(existing []nvcrev1alpha1.FailedNode, newNames []string, reason nvcrev1alpha1.NodeFailureReason, message string) ([]nvcrev1alpha1.FailedNode, bool) {
 	existingSet := make(map[[2]string]struct{}, len(existing))
 	for _, fn := range existing {
 		existingSet[[2]string{fn.Name, string(fn.Reason)}] = struct{}{}
@@ -1162,7 +1162,7 @@ func mergeFailedNodes(existing []crev1alpha1.FailedNode, newNames []string, reas
 
 // groupNodeNames reads the group-nodes Job annotation and returns the deduped,
 // sorted node names.
-func groupNodeNames(job *crev1alpha1.Job) []string {
+func groupNodeNames(job *nvcrev1alpha1.Job) []string {
 	raw := job.Annotations["nvcre.nvidia.com/group-nodes"]
 	if raw == "" {
 		return nil
@@ -1188,15 +1188,15 @@ func groupNodeNames(job *crev1alpha1.Job) []string {
 // setExclusiveCondition sets a job execution condition to True and all other execution conditions to False.
 // This ensures only one of InProgress/Succeeded/Failed is True at any given time.
 // Note: HardwareFailed is NOT part of this exclusive set - it's independent.
-func (r *JobReconciler) setExclusiveCondition(ctx context.Context, job *crev1alpha1.Job, conditionType, reason, message string) error {
+func (r *JobReconciler) setExclusiveCondition(ctx context.Context, job *nvcrev1alpha1.Job, conditionType, reason, message string) error {
 	// Only job execution states are mutually exclusive; HardwareFailed is set
 	// independently and must not be cleared here.
 	changed, err := setExclusiveStatusCondition(ctx, r.Client, job,
-		func(j *crev1alpha1.Job) *[]metav1.Condition { return &j.Status.Conditions },
+		func(j *nvcrev1alpha1.Job) *[]metav1.Condition { return &j.Status.Conditions },
 		[]string{
-			crev1alpha1.JobInProgress,
-			crev1alpha1.JobSucceeded,
-			crev1alpha1.JobFailed,
+			nvcrev1alpha1.JobInProgress,
+			nvcrev1alpha1.JobSucceeded,
+			nvcrev1alpha1.JobFailed,
 		},
 		conditionType, reason, message,
 	)
@@ -1208,11 +1208,11 @@ func (r *JobReconciler) setExclusiveCondition(ctx context.Context, job *crev1alp
 		// Record job status metric
 		var metricStatus string
 		switch conditionType {
-		case crev1alpha1.JobInProgress:
+		case nvcrev1alpha1.JobInProgress:
 			metricStatus = "in_progress"
-		case crev1alpha1.JobSucceeded:
+		case nvcrev1alpha1.JobSucceeded:
 			metricStatus = "succeeded"
-		case crev1alpha1.JobFailed:
+		case nvcrev1alpha1.JobFailed:
 			metricStatus = "failed"
 		}
 		recordJobStatus(job.Namespace, job.Name, job.Labels["nvcre.nvidia.com/workflow"], metricStatus)
@@ -1222,21 +1222,21 @@ func (r *JobReconciler) setExclusiveCondition(ctx context.Context, job *crev1alp
 }
 
 // getWorkloadName returns the name of the workload for a given Job
-func (r *JobReconciler) getWorkloadName(job *crev1alpha1.Job) string {
+func (r *JobReconciler) getWorkloadName(job *nvcrev1alpha1.Job) string {
 	return naming.Truncate(job.Name+"-workload", naming.MaxWorkloadNameLen)
 }
 
 // getGoodputMeasurementName returns the name of the auto-created GoodputMeasurement for a given Job
-func (r *JobReconciler) getGoodputMeasurementName(job *crev1alpha1.Job) string {
+func (r *JobReconciler) getGoodputMeasurementName(job *nvcrev1alpha1.Job) string {
 	return naming.Truncate(job.Name+"-goodput", naming.MaxK8sNameLen)
 }
 
 // getOwnerWorkflow returns the parent Workflow for a Job by looking up its OwnerReference.
 // Measurements are owned by the Workflow (not the Job) so they survive iteration restarts.
-func (r *JobReconciler) getOwnerWorkflow(ctx context.Context, job *crev1alpha1.Job) *crev1alpha1.Workflow {
+func (r *JobReconciler) getOwnerWorkflow(ctx context.Context, job *nvcrev1alpha1.Job) *nvcrev1alpha1.Workflow {
 	for _, ref := range job.OwnerReferences {
 		if ref.Kind == "Workflow" {
-			wf := &crev1alpha1.Workflow{}
+			wf := &nvcrev1alpha1.Workflow{}
 			if err := r.Get(ctx, client.ObjectKey{Name: ref.Name, Namespace: job.Namespace}, wf); err == nil {
 				return wf
 			}
@@ -1247,7 +1247,7 @@ func (r *JobReconciler) getOwnerWorkflow(ctx context.Context, job *crev1alpha1.J
 
 // ensureGoodputMeasurement creates a GoodputMeasurement child resource if the Job has
 // spec.goodputMeasurement configured and the resource doesn't already exist.
-func (r *JobReconciler) ensureGoodputMeasurement(ctx context.Context, job *crev1alpha1.Job) error {
+func (r *JobReconciler) ensureGoodputMeasurement(ctx context.Context, job *nvcrev1alpha1.Job) error {
 	if job.Spec.GoodputMeasurement == nil {
 		return nil
 	}
@@ -1256,13 +1256,13 @@ func (r *JobReconciler) ensureGoodputMeasurement(ctx context.Context, job *crev1
 	gmName := r.getGoodputMeasurementName(job)
 
 	// Check if already exists
-	existing := &crev1alpha1.GoodputMeasurement{}
+	existing := &nvcrev1alpha1.GoodputMeasurement{}
 	if err := r.Get(ctx, client.ObjectKey{Namespace: job.Namespace, Name: gmName}, existing); err == nil {
 		return nil // already exists
 	}
 
 	apiGroup := "nvcre.nvidia.com"
-	gm := &crev1alpha1.GoodputMeasurement{
+	gm := &nvcrev1alpha1.GoodputMeasurement{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      gmName,
 			Namespace: job.Namespace,
@@ -1271,7 +1271,7 @@ func (r *JobReconciler) ensureGoodputMeasurement(ctx context.Context, job *crev1
 				"nvcre.nvidia.com/job":         job.Name,
 			},
 		},
-		Spec: crev1alpha1.GoodputMeasurementSpec{
+		Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 			JobRef: corev1.TypedLocalObjectReference{
 				APIGroup: &apiGroup,
 				Kind:     "Job",
@@ -1305,7 +1305,7 @@ func (r *JobReconciler) ensureGoodputMeasurement(ctx context.Context, job *crev1
 	return nil
 }
 
-func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *crev1alpha1.Job) error {
+func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *nvcrev1alpha1.Job) error {
 	if job.Spec.BandwidthMeasurement == nil {
 		return nil
 	}
@@ -1314,13 +1314,13 @@ func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *cre
 	bmName := naming.Truncate(job.Name+"-bandwidth", naming.MaxK8sNameLen)
 
 	// Check if already exists
-	existing := &crev1alpha1.BandwidthMeasurement{}
+	existing := &nvcrev1alpha1.BandwidthMeasurement{}
 	if err := r.Get(ctx, client.ObjectKey{Namespace: job.Namespace, Name: bmName}, existing); err == nil {
 		return nil // already exists
 	}
 
 	apiGroup := "nvcre.nvidia.com"
-	bm := &crev1alpha1.BandwidthMeasurement{
+	bm := &nvcrev1alpha1.BandwidthMeasurement{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      bmName,
 			Namespace: job.Namespace,
@@ -1329,7 +1329,7 @@ func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *cre
 				"nvcre.nvidia.com/job":         job.Name,
 			},
 		},
-		Spec: crev1alpha1.BandwidthMeasurementSpec{
+		Spec: nvcrev1alpha1.BandwidthMeasurementSpec{
 			JobRef: corev1.TypedLocalObjectReference{
 				APIGroup: &apiGroup,
 				Kind:     "Job",
@@ -1383,10 +1383,10 @@ func (r *JobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 
 	b := ctrl.NewControllerManagedBy(mgr).
-		For(&crev1alpha1.Job{}).
+		For(&nvcrev1alpha1.Job{}).
 		// Watch owned workload resources for status changes (event-driven reconciliation)
 		Owns(&trainerv1alpha1.TrainJob{}).
-		Owns(&crev1alpha1.GoodputMeasurement{})
+		Owns(&nvcrev1alpha1.GoodputMeasurement{})
 
 	return b.
 		// Watch Nodes for health changes - maps node events to jobs via pod lookups

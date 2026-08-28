@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -24,12 +24,12 @@ func TestApplyRunOverrides(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Run            crev1alpha1.WorkloadRun `yaml:"run"`
-			NameOverride   string                  `yaml:"nameOverride"`
-			NodeList       string                  `yaml:"nodeList"`
-			TopologyDomain string                  `yaml:"topologyDomain"`
-			TopologyKey    string                  `yaml:"topologyKey"`
-			TestScale      string                  `yaml:"testScale"`
+			Run            nvcrev1alpha1.WorkloadRun `yaml:"run"`
+			NameOverride   string                    `yaml:"nameOverride"`
+			NodeList       string                    `yaml:"nodeList"`
+			TopologyDomain string                    `yaml:"topologyDomain"`
+			TopologyKey    string                    `yaml:"topologyKey"`
+			TestScale      string                    `yaml:"testScale"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -40,10 +40,10 @@ func TestApplyRunOverrides(t *testing.T) {
 			input.TopologyDomain, input.TopologyKey, input.TestScale)
 
 		out := struct {
-			Name     string                             `json:"name"`
-			NumNodes int32                              `json:"numNodes"`
-			Target   *crev1alpha1.TargetSpec            `json:"target"`
-			Orch     *crev1alpha1.WorkloadOrchestration `json:"orchestration"`
+			Name     string                               `json:"name"`
+			NumNodes int32                                `json:"numNodes"`
+			Target   *nvcrev1alpha1.TargetSpec            `json:"target"`
+			Orch     *nvcrev1alpha1.WorkloadOrchestration `json:"orchestration"`
 		}{run.Name, run.Spec.NumNodes, run.Spec.Target, run.Spec.Orchestration}
 
 		b, err := json.MarshalIndent(out, "", "  ")

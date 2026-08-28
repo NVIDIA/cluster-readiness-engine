@@ -55,7 +55,7 @@ make test-uat-run                # Run as needed
 
 Run a single UAT test:
 ```bash
-kind get kubeconfig --name cre-test-uat > /tmp/kind-uat.kubeconfig
+kind get kubeconfig --name nvcre-test-uat > /tmp/kind-uat.kubeconfig
 KUBECONFIG=/tmp/kind-uat.kubeconfig NVCRECTL=bin/nvcrectl \
   go test -tags=uat ./test/uat/ -v -timeout 900s -count=1 -run TestAWSGB200NCCL
 ```

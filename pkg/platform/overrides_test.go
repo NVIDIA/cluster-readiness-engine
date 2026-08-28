@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
@@ -121,8 +121,8 @@ func TestBuildOverridesMPIArgs(t *testing.T) {
 		}
 
 		type mpiOverride struct {
-			When    crev1alpha1.WhenSpec `json:"when"`
-			MPIArgs []string             `json:"mpiArgs"`
+			When    nvcrev1alpha1.WhenSpec `json:"when"`
+			MPIArgs []string               `json:"mpiArgs"`
 		}
 		out := []mpiOverride{}
 		for _, o := range overrides {

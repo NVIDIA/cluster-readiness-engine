@@ -11,7 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
@@ -70,8 +70,8 @@ func TestResolveNodesPerJobAfterArchFilter(t *testing.T) {
 			}}
 		}
 
-		opts := crev1alpha1.CategoryOptions{NodesPerJob: input.NodesPerJob}
-		cat := crev1alpha1.CertificateCategory{Domain: "communication", Variant: "nccl-all-reduce"}
+		opts := nvcrev1alpha1.CategoryOptions{NodesPerJob: input.NodesPerJob}
+		cat := nvcrev1alpha1.CertificateCategory{Domain: "communication", Variant: "nccl-all-reduce"}
 
 		// The two steps the Certification controller performs, in order.
 		gpuArch, archNodes := detectGPUArchConsistent(nodes)

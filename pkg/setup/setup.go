@@ -36,13 +36,13 @@ const (
 	defaultImageRegistry   = "ghcr.io"
 	defaultImageRepository = "nvidia/cluster-readiness-engine/manager"
 
-	creNamespace = "nvcre"
+	nvcreNamespace = "nvcre"
 
 	// Phase names (kubeadm-style).
 	phaseCR   = "cr"
 	phaseDeps = "deps"
 
-	creAPIGroup = "nvcre.nvidia.com"
+	nvcreAPIGroup = "nvcre.nvidia.com"
 
 	trainerAPIGroup = "trainer.kubeflow.org"
 	jobsetAPIGroup  = "jobset.x-k8s.io"
@@ -50,8 +50,8 @@ const (
 	crGracefulTimeout = 10 * time.Minute
 )
 
-// creResource describes an NVCRE CRD type for cleanup.
-type creResource struct {
+// nvcreResource describes an NVCRE CRD type for cleanup.
+type nvcreResource struct {
 	resource   string // plural name (e.g. "certifications")
 	kind       string // singular Kind (e.g. "Certification")
 	apiVersion string // full apiVersion (e.g. "nvcre.nvidia.com/v1alpha1")
@@ -195,7 +195,7 @@ func RunInit(
 	if err != nil {
 		return fmt.Errorf("[helm] %w", err)
 	}
-	if creOutput, err := installHelmRelease(helmInstallParams{
+	if nvcreOutput, err := installHelmRelease(helmInstallParams{
 		version:         version,
 		kubeconfig:      kubeconfigPath,
 		kubeContext:     kubeContext,
@@ -209,12 +209,12 @@ func RunInit(
 		// symmetric error reporting, but the NVCRE chart renders no
 		// per-render certificate material, so there is no recovery arm
 		// (ADR-073 decision 4).
-		if classifyHelmInstallFailure(creOutput, creNamespace) == failureClassSSAConflict {
+		if classifyHelmInstallFailure(nvcreOutput, nvcreNamespace) == failureClassSSAConflict {
 			_, _ = fmt.Fprintf(out,
 				"[helm] The failure matches the Secret field-ownership conflict signature. "+
 					"Automatic recovery covers only the %s release; inspect the %s release with "+
 					"'helm status %s --namespace %s' and resolve the conflict manually.\n",
-				trainerReleaseName, helmReleaseName, helmReleaseName, creNamespace)
+				trainerReleaseName, helmReleaseName, helmReleaseName, nvcreNamespace)
 		}
 		return fmt.Errorf("[helm] %w", err)
 	}
@@ -431,7 +431,7 @@ func trainerRecoveryGate(ctx context.Context, c client.Client) (bool, []string) 
 			continue
 		}
 		for _, res := range resources {
-			items, err := listCRECRs(ctx, c, res)
+			items, err := listNVCRECRs(ctx, c, res)
 			if err != nil {
 				blockers = append(blockers, fmt.Sprintf("cannot list %s instances: %v", res.kind, err))
 				continue
@@ -559,17 +559,17 @@ func setupControllerSecret(
 	if imagePullSecret == "" {
 		return "", nil
 	}
-	if _, err := EnsureNamespace(sp.ctx, sp.c, creNamespace, sp.out); err != nil {
+	if _, err := EnsureNamespace(sp.ctx, sp.c, nvcreNamespace, sp.out); err != nil {
 		return "", fmt.Errorf("[helm] %w", err)
 	}
 	name, _, err := CreateImagePullSecret(sp.ctx, sp.c,
-		creNamespace, pullSecretName, defaultImageRegistry, "token", imagePullSecret)
+		nvcreNamespace, pullSecretName, defaultImageRegistry, "token", imagePullSecret)
 	if err != nil {
 		return "", fmt.Errorf("[helm] create pull secret: %w", err)
 	}
 	_, _ = fmt.Fprintf(sp.out,
 		"[helm] Created image pull secret %q in namespace %s.\n",
-		name, creNamespace)
+		name, nvcreNamespace)
 	return name, nil
 }
 
@@ -663,7 +663,7 @@ func RunReset(
 	if skip[phaseCR] {
 		_, _ = fmt.Fprintln(out, "[cr] Skipped.")
 	} else {
-		if err := deleteCRECRs(ctx, c, out); err != nil {
+		if err := deleteNVCRECRs(ctx, c, out); err != nil {
 			return fmt.Errorf("[cr] %w", err)
 		}
 	}
@@ -680,7 +680,7 @@ func RunReset(
 	// directory (to avoid accidental data loss on uninstall), so `helm
 	// uninstall` leaves the NVCRE CRDs behind. Delete them explicitly to
 	// leave the cluster clean and let a subsequent init start fresh.
-	if err := deleteCRDsByGroup(ctx, c, creAPIGroup, "[helm]", "NVCRE", out); err != nil {
+	if err := deleteCRDsByGroup(ctx, c, nvcreAPIGroup, "[helm]", "NVCRE", out); err != nil {
 		return fmt.Errorf("[helm] %w", err)
 	}
 
@@ -753,17 +753,17 @@ func printRetainedResources(
 		}
 	}
 
-	exists, err := namespaceExists(ctx, c, creNamespace)
+	exists, err := namespaceExists(ctx, c, nvcreNamespace)
 	record(exists, err, retainedResource{
-		description: "Namespace " + creNamespace,
-		cleanup:     "kubectl delete namespace " + creNamespace,
+		description: "Namespace " + nvcreNamespace,
+		cleanup:     "kubectl delete namespace " + nvcreNamespace,
 	})
 
-	exists, err = secretExists(ctx, c, creNamespace, pullSecretName)
+	exists, err = secretExists(ctx, c, nvcreNamespace, pullSecretName)
 	record(exists, err, retainedResource{
-		description: fmt.Sprintf("Secret %s/%s", creNamespace, pullSecretName),
+		description: fmt.Sprintf("Secret %s/%s", nvcreNamespace, pullSecretName),
 		cleanup: fmt.Sprintf("kubectl delete secret %s -n %s",
-			pullSecretName, creNamespace),
+			pullSecretName, nvcreNamespace),
 	})
 
 	// Only mention the Trainer namespace when the deps phase actually ran;
@@ -947,12 +947,12 @@ func newSetupClient(cf *kubeconfig.ConfigFlags) (client.Client, error) {
 // [cr] phase — NVCRE custom resource cleanup
 // ---------------------------------------------------------------------------
 
-// deleteCRECRs implements the [cr] reset phase. It performs graceful,
+// deleteNVCRECRs implements the [cr] reset phase. It performs graceful,
 // controller-driven cleanup only and fails if resources remain.
-func deleteCRECRs(ctx context.Context, c client.Client, out io.Writer) error {
+func deleteNVCRECRs(ctx context.Context, c client.Client, out io.Writer) error {
 	_, _ = fmt.Fprintln(out, "[cr] Deleting NVCRE custom resources...")
 
-	resources, err := discoverCREResources(ctx, c)
+	resources, err := discoverNVCREResources(ctx, c)
 	if err != nil {
 		return fmt.Errorf("discover NVCRE resources: %w", err)
 	}
@@ -962,7 +962,7 @@ func deleteCRECRs(ctx context.Context, c client.Client, out io.Writer) error {
 	}
 
 	// Check if any NVCRE CRs exist at all.
-	if !anyCRECRsExist(ctx, c, resources) {
+	if !anyNVCRECRsExist(ctx, c, resources) {
 		_, _ = fmt.Fprintln(out, "[cr] No NVCRE custom resources found.")
 		return nil
 	}
@@ -975,7 +975,7 @@ func deleteCRECRs(ctx context.Context, c client.Client, out io.Writer) error {
 	gracefulCascadeDelete(gracefulCtx, c, out, resources)
 
 	// Wait for remaining resources to terminate naturally.
-	if err := waitForAllCRECRsGone(gracefulCtx, c, resources); err != nil {
+	if err := waitForAllNVCRECRsGone(gracefulCtx, c, resources); err != nil {
 		return fmt.Errorf("graceful cleanup did not complete within %s: %w",
 			crGracefulTimeout, err)
 	}
@@ -986,10 +986,10 @@ func deleteCRECRs(ctx context.Context, c client.Client, out io.Writer) error {
 
 // gracefulCascadeDelete deletes all known NVCRE resources.
 func gracefulCascadeDelete(
-	ctx context.Context, c client.Client, out io.Writer, resources []creResource,
+	ctx context.Context, c client.Client, out io.Writer, resources []nvcreResource,
 ) {
 	for _, res := range resources {
-		items, err := listCRECRs(ctx, c, res)
+		items, err := listNVCRECRs(ctx, c, res)
 		if err != nil {
 			continue // CRD may not exist
 		}
@@ -1016,15 +1016,15 @@ func gracefulCascadeDelete(
 	}
 }
 
-// waitForAllCRECRsGone polls until no NVCRE CR instances remain.
-func waitForAllCRECRsGone(
-	ctx context.Context, c client.Client, resources []creResource,
+// waitForAllNVCRECRsGone polls until no NVCRE CR instances remain.
+func waitForAllNVCRECRsGone(
+	ctx context.Context, c client.Client, resources []nvcreResource,
 ) error {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
 	for {
-		if !anyCRECRsExist(ctx, c, resources) {
+		if !anyNVCRECRsExist(ctx, c, resources) {
 			return nil
 		}
 		select {
@@ -1035,10 +1035,10 @@ func waitForAllCRECRsGone(
 	}
 }
 
-// listCRECRs lists all instances of an NVCRE resource type across
+// listNVCRECRs lists all instances of an NVCRE resource type across
 // all namespaces using an unstructured client.
-func listCRECRs(
-	ctx context.Context, c client.Client, res creResource,
+func listNVCRECRs(
+	ctx context.Context, c client.Client, res nvcreResource,
 ) ([]unstructured.Unstructured, error) {
 	list := &unstructured.UnstructuredList{}
 	list.SetAPIVersion(res.apiVersion)
@@ -1049,13 +1049,13 @@ func listCRECRs(
 	return list.Items, nil
 }
 
-// anyCRECRsExist returns true if any NVCRE CR instances exist
+// anyNVCRECRsExist returns true if any NVCRE CR instances exist
 // across all resource types.
-func anyCRECRsExist(
-	ctx context.Context, c client.Client, resources []creResource,
+func anyNVCRECRsExist(
+	ctx context.Context, c client.Client, resources []nvcreResource,
 ) bool {
 	for _, res := range resources {
-		items, err := listCRECRs(ctx, c, res)
+		items, err := listNVCRECRs(ctx, c, res)
 		if err != nil {
 			continue
 		}
@@ -1066,10 +1066,10 @@ func anyCRECRsExist(
 	return false
 }
 
-// discoverCREResources returns all CRD-backed NVCRE resources for the
+// discoverNVCREResources returns all CRD-backed NVCRE resources for the
 // configured API group, including their served apiVersion and Kind metadata.
-func discoverCREResources(ctx context.Context, c client.Client) ([]creResource, error) {
-	resources, err := discoverResourcesByGroup(ctx, c, creAPIGroup)
+func discoverNVCREResources(ctx context.Context, c client.Client) ([]nvcreResource, error) {
+	resources, err := discoverResourcesByGroup(ctx, c, nvcreAPIGroup)
 	if err != nil {
 		return nil, err
 	}
@@ -1085,7 +1085,7 @@ func discoverCREResources(ctx context.Context, c client.Client) ([]creResource, 
 
 // discoverResourcesByGroup returns all CRD-backed resources for an API
 // group, including their served apiVersion and Kind metadata.
-func discoverResourcesByGroup(ctx context.Context, c client.Client, apiGroup string) ([]creResource, error) {
+func discoverResourcesByGroup(ctx context.Context, c client.Client, apiGroup string) ([]nvcreResource, error) {
 	list := &unstructured.UnstructuredList{}
 	list.SetAPIVersion("apiextensions.k8s.io/v1")
 	list.SetKind("CustomResourceDefinitionList")
@@ -1093,7 +1093,7 @@ func discoverResourcesByGroup(ctx context.Context, c client.Client, apiGroup str
 		return nil, err
 	}
 
-	resources := make([]creResource, 0, len(list.Items))
+	resources := make([]nvcreResource, 0, len(list.Items))
 	for _, item := range list.Items {
 		group, found, err := unstructured.NestedString(item.Object, "spec", "group")
 		if err != nil || !found || group != apiGroup {
@@ -1128,7 +1128,7 @@ func discoverResourcesByGroup(ctx context.Context, c client.Client, apiGroup str
 			continue
 		}
 
-		resources = append(resources, creResource{
+		resources = append(resources, nvcreResource{
 			resource:   resource,
 			kind:       kind,
 			apiVersion: apiVersion,
