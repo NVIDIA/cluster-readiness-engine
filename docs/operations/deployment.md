@@ -73,6 +73,12 @@ helm install nvcre \
   --create-namespace
 ```
 
+> **Note**: Releases up to and including `v0.1.0-rc.10` serve the old
+> `cre.nvidia.com` API group and publish the Helm chart as
+> `oci://ghcr.io/nvidia/cluster-readiness-engine`. The renamed
+> `nvcre.nvidia.com` group and `oci://ghcr.io/nvidia/nvcre` chart require the
+> first release cut after the rename (or a build from `main`).
+
 The controller image is `ghcr.io/nvidia/cluster-readiness-engine/manager`, tagged with the same release version. Chart and image versions move together — name the same tag everywhere. The Helm path does not install Kubeflow Trainer; install it separately before running `TrainJob` workloads.
 
 Key chart values:

@@ -92,7 +92,7 @@ Allowed types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`, `ci`,
 1. Clone the repository:
    ```bash
    git clone https://github.com/NVIDIA/cluster-readiness-engine.git
-   cd nvcre
+   cd cluster-readiness-engine
    ```
 
 2. Generate code and manifests (required after modifying `*_types.go`):

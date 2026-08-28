@@ -227,14 +227,14 @@ jobs:
 
             ```bash
             helm install nvcre \
-              oci://ghcr.io/nvidia \
+              oci://ghcr.io/nvidia/nvcre \
               --version ${{ steps.tag.outputs.value }} \
               --namespace nvcre \
               --create-namespace
             ```
 
             The controller image for this release is
-            `ghcr.io/nvidia/manager:${{ steps.tag.outputs.value }}`.
+            `ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}`.
 
             ## nvcrectl CLI
 

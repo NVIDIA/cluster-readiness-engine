@@ -34,6 +34,12 @@ gh release download "${NVCRE_VERSION}" --repo NVIDIA/cluster-readiness-engine \
   --pattern installer --output - | bash -s -- -v "${NVCRE_VERSION}"
 ```
 
+> **Note**: Releases up to and including `v0.1.0-rc.10` serve the old
+> `cre.nvidia.com` API group and publish the Helm chart as
+> `oci://ghcr.io/nvidia/cluster-readiness-engine`. The renamed
+> `nvcre.nvidia.com` group and `oci://ghcr.io/nvidia/nvcre` chart require the
+> first release cut after the rename (or a build from `main`).
+
 Once the repository is public and `v0.1.0` is tagged, the shorter `curl -sSL .../releases/latest/download/installer | bash` form works and installs the newest stable release. (`releases/latest` resolves only to the newest **stable** release, and every release so far is a pre-release.)
 
 The installer takes `-p` to accept pre-releases when it resolves a version itself. That flag is an argument to the script, so it cannot help you download the script — which is why the version is named explicitly above.

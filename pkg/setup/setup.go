@@ -223,7 +223,7 @@ func RunInit(
 	if versionOverride != "" {
 		displayVersion = versionOverride
 	}
-	_, _ = fmt.Fprintf(out, "\nCRE %s initialized successfully.\n", displayVersion)
+	_, _ = fmt.Fprintf(out, "\nNVCRE %s initialized successfully.\n", displayVersion)
 	return nil
 }
 
@@ -696,7 +696,7 @@ func RunReset(
 		return err
 	}
 	printRetainedResources(ctx, c, skip, out)
-	_, _ = fmt.Fprintln(out, "\nCRE reset successfully.")
+	_, _ = fmt.Fprintln(out, "\nNVCRE reset successfully.")
 	return nil
 }
 

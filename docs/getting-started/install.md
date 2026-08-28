@@ -27,6 +27,12 @@ gh release download "${NVCRECTL_VERSION}" --repo NVIDIA/cluster-readiness-engine
   --pattern installer --output - | bash -s -- -v "${NVCRECTL_VERSION}"
 ```
 
+> **Note**: Releases up to and including `v0.1.0-rc.10` serve the old
+> `cre.nvidia.com` API group and publish the Helm chart as
+> `oci://ghcr.io/nvidia/cluster-readiness-engine`. The renamed
+> `nvcre.nvidia.com` group and `oci://ghcr.io/nvidia/nvcre` chart require the
+> first release cut after the rename (or a build from `main`).
+
 The installer automatically downloads and verifies a SHA-256 checksum before installing. On air-gapped systems, ensure `checksums.txt` from the same release is reachable alongside the binary.
 
 Verify the installation:
