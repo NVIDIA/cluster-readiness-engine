@@ -11,7 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
 )
 
@@ -19,7 +19,7 @@ import (
 // nodes share the same nvidia.com/gpu.product, and returns them with the
 // product string. If target is nil all GPU nodes are selected.
 func DiscoverGPUNodes(
-	ctx context.Context, c client.Client, target *crev1alpha1.TargetSpec,
+	ctx context.Context, c client.Client, target *nvcrev1alpha1.TargetSpec,
 ) ([]corev1.Node, string, error) {
 	nodes, err := controller.DiscoverTargetNodes(ctx, c, target)
 	if err != nil {

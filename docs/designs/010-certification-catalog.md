@@ -27,11 +27,11 @@ Example category file:
 // pkg/catalog/training_nemotron.go
 func init() {
     Register("training", "nemotron", Entry{
-        Build: func(target crev1alpha1.TargetSpec) crev1alpha1.WorkflowSpec {
-            return crev1alpha1.WorkflowSpec{
-                JobTemplate: crev1alpha1.JobTemplateSpec{
-                    Spec: crev1alpha1.JobSpec{
-                        Workload: &crev1alpha1.WorkloadSpec{
+        Build: func(target nvcrev1alpha1.TargetSpec) nvcrev1alpha1.WorkflowSpec {
+            return nvcrev1alpha1.WorkflowSpec{
+                JobTemplate: nvcrev1alpha1.JobTemplateSpec{
+                    Spec: nvcrev1alpha1.JobSpec{
+                        Workload: &nvcrev1alpha1.WorkloadSpec{
                             TrainJob: &trainerv1alpha1.TrainJob{...},
                         },
                     },

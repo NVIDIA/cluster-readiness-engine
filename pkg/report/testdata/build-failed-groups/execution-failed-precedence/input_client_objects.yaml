@@ -3,7 +3,7 @@
 # the execution cause. The Failed message names the batch/v1 Job, so the
 # existing batchJobFailureReason enrichment resolves it to
 # "BackoffLimitExceeded — 2 of 2 pods failed", unchanged by ADR-071.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: cert-exec
@@ -30,13 +30,13 @@ status:
         name: cert-exec-training-nemotron5-8b
         namespace: default
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: cert-exec-training-nemotron5-8b
   namespace: default
   labels:
-    cre.nvidia.com/certification: cert-exec
+    nvcre.nvidia.com/certification: cert-exec
 spec:
   jobTemplate:
     spec:
@@ -68,7 +68,7 @@ status:
           - node002
         phase: Failed
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: cert-exec-training-nemotron5-8b-job-group-0
           namespace: default
@@ -81,14 +81,14 @@ status:
       message: 1 groups failed across 1 iterations
       lastTransitionTime: "2026-08-07T00:10:00Z"
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: cert-exec-training-nemotron5-8b-job-group-0
   namespace: default
   labels:
-    cre.nvidia.com/workflow: cert-exec-training-nemotron5-8b
-    cre.nvidia.com/group: group-0
+    nvcre.nvidia.com/workflow: cert-exec-training-nemotron5-8b
+    nvcre.nvidia.com/group: group-0
 spec:
   workload:
     trainJob:

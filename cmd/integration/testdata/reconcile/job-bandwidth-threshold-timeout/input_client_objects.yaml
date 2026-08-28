@@ -23,7 +23,7 @@ status:
       message: "All workers completed"
       lastTransitionTime: "2026-01-22T10:00:00Z"
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-bw-timeout
@@ -52,14 +52,14 @@ status:
     namespace: default
 ---
 # BandwidthMeasurement exists but has NO results — simulating permanent log parsing failure.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: BandwidthMeasurement
 metadata:
   name: test-bw-timeout-bandwidth
   namespace: default
 spec:
   jobRef:
-    apiGroup: cre.nvidia.com
+    apiGroup: nvcre.nvidia.com
     kind: Job
     name: test-bw-timeout
   logProfileRef: nccl-bandwidth

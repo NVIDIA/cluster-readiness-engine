@@ -44,7 +44,7 @@ surface the root-cause failure reason in reports. This serves TrainJob, not Kube
 retained, along with the `batchv1` scheme registration in the UAT test helpers.
 
 By contrast, `Owns(&batchv1.Job{})` only ever fired for KubeJobs: JobSet's batch Jobs are owned
-by JobSet (not the CRE Job), so the watch never observed them. It is removed.
+by JobSet (not the NVCRE Job), so the watch never observed them. It is removed.
 
 ## Consequences
 

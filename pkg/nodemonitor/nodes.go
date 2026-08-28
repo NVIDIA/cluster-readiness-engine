@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	// CREJobLabel is the label used to identify pods belonging to an CRE Job.
-	CREJobLabel = "cre.nvidia.com/job"
+	// NVCREJobLabel is the label used to identify pods belonging to an NVCRE Job.
+	NVCREJobLabel = "nvcre.nvidia.com/job"
 
-	// PodCREJobIndexField is the field index for pod lookups by CRE job label.
+	// PodNVCREJobIndexField is the field index for pod lookups by NVCRE job label.
 	// This enables efficient cache-based queries when discovering nodes for a Job.
-	PodCREJobIndexField = "metadata.labels.cre.nvidia.com/job"
+	PodNVCREJobIndexField = "metadata.labels.nvcre.nvidia.com/job"
 )
 
 // NodeDiscoverer finds nodes running pods for a given workload.
@@ -30,8 +30,8 @@ func NewNodeDiscoverer(c client.Client) *NodeDiscoverer {
 	return &NodeDiscoverer{client: c}
 }
 
-// DiscoverNodesForJob finds all nodes running pods associated with a CRE Job.
-// It uses a field index on the cre.nvidia.com/job label for efficient cache-based lookups.
+// DiscoverNodesForJob finds all nodes running pods associated with an NVCRE Job.
+// It uses a field index on the nvcre.nvidia.com/job label for efficient cache-based lookups.
 // Only returns nodes where pods are Running or Pending (i.e., scheduled).
 func (d *NodeDiscoverer) DiscoverNodesForJob(ctx context.Context, namespace, jobName string) ([]string, error) {
 	podList := &corev1.PodList{}
@@ -39,12 +39,12 @@ func (d *NodeDiscoverer) DiscoverNodesForJob(ctx context.Context, namespace, job
 	// Use field index if available, fall back to label selector
 	listOpts := []client.ListOption{
 		client.InNamespace(namespace),
-		client.MatchingFields{PodCREJobIndexField: jobName},
+		client.MatchingFields{PodNVCREJobIndexField: jobName},
 	}
 
 	if err := d.client.List(ctx, podList, listOpts...); err != nil {
 		// Fall back to label selector if field index is not available
-		labelSelector := client.MatchingLabels{CREJobLabel: jobName}
+		labelSelector := client.MatchingLabels{NVCREJobLabel: jobName}
 		if err := d.client.List(ctx, podList, client.InNamespace(namespace), labelSelector); err != nil {
 			return nil, fmt.Errorf("failed to list pods for Job %s: %w", jobName, err)
 		}

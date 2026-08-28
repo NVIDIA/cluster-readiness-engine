@@ -1,21 +1,21 @@
 {
   "Job/test-gcp-h100-overrides-job": {
     "kind": "Job",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-gcp-h100-overrides-job",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
-        "cre.nvidia.com/group": "group-0",
-        "cre.nvidia.com/workflow": "test-gcp-h100-overrides"
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/group": "group-0",
+        "nvcre.nvidia.com/workflow": "test-gcp-h100-overrides"
       },
       "annotations": {
-        "cre.nvidia.com/group-nodes": "gcp-h100-node-01"
+        "nvcre.nvidia.com/group-nodes": "gcp-h100-node-01"
       },
       "ownerReferences": [
         {
-          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
           "kind": "Workflow",
           "name": "test-gcp-h100-overrides",
           "uid": "",
@@ -24,7 +24,7 @@
         }
       ],
       "finalizers": [
-        "cre.nvidia.com/finalizer"
+        "nvcre.nvidia.com/finalizer"
       ]
     },
     "spec": {
@@ -58,7 +58,7 @@
           },
           "runtimePatches": [
             {
-              "manager": "cre.nvidia.com/controller",
+              "manager": "nvcre.nvidia.com/controller",
               "trainingRuntimeSpec": {
                 "template": {
                   "spec": {
@@ -146,12 +146,12 @@
   },
   "Workflow/test-gcp-h100-overrides": {
     "kind": "Workflow",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-gcp-h100-overrides",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/workflow-finalizer"
+        "nvcre.nvidia.com/workflow-finalizer"
       ]
     },
     "spec": {
@@ -349,7 +349,7 @@
             ],
             "phase": "Running",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "test-gcp-h100-overrides-job",
               "namespace": "default"

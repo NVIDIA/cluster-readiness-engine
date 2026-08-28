@@ -3,7 +3,7 @@
 
 # KWOK-simulated AWS H100 GPU nodes.
 #
-# Key labels for CRE detection:
+# Key labels for NVCRE detection:
 #   nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3  -> GPU arch "h100" (workflow_detect.go)
 #   nvidia.com/gpu.present: "true"                  -> nvcrectl GPU discovery
 #   spec.providerID: "aws:///..."                   -> platform "aws" (workflow_detect.go)

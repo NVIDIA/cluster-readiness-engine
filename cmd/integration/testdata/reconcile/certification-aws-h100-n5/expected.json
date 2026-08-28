@@ -1,12 +1,12 @@
 {
   "Certification/aws-h1": {
     "kind": "Certification",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "aws-h1",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/certification-finalizer"
+        "nvcre.nvidia.com/certification-finalizer"
       ]
     },
     "spec": {
@@ -66,21 +66,21 @@
   },
   "Job/aws-h1-training-nemotron5-56b-job": {
     "kind": "Job",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "aws-h1-training-nemotron5-56b-job",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
-        "cre.nvidia.com/group": "group-0",
-        "cre.nvidia.com/workflow": "aws-h1-training-nemotron5-56b"
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/group": "group-0",
+        "nvcre.nvidia.com/workflow": "aws-h1-training-nemotron5-56b"
       },
       "annotations": {
-        "cre.nvidia.com/group-nodes": "gen-b2c56c-node-01,gen-b2c56c-node-02,gen-b2c56c-node-03,gen-b2c56c-node-04,gen-b2c56c-node-05,gen-b2c56c-node-06,gen-b2c56c-node-07,gen-b2c56c-node-08"
+        "nvcre.nvidia.com/group-nodes": "gen-b2c56c-node-01,gen-b2c56c-node-02,gen-b2c56c-node-03,gen-b2c56c-node-04,gen-b2c56c-node-05,gen-b2c56c-node-06,gen-b2c56c-node-07,gen-b2c56c-node-08"
       },
       "ownerReferences": [
         {
-          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
           "kind": "Workflow",
           "name": "aws-h1-training-nemotron5-56b",
           "uid": "",
@@ -89,7 +89,7 @@
         }
       ],
       "finalizers": [
-        "cre.nvidia.com/finalizer"
+        "nvcre.nvidia.com/finalizer"
       ]
     },
     "spec": {
@@ -114,7 +114,7 @@
           },
           "runtimePatches": [
             {
-              "manager": "cre.nvidia.com/controller",
+              "manager": "nvcre.nvidia.com/controller",
               "trainingRuntimeSpec": {
                 "template": {
                   "spec": {
@@ -215,19 +215,19 @@
   },
   "Workflow/aws-h1-training-nemotron5-56b": {
     "kind": "Workflow",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "aws-h1-training-nemotron5-56b",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
-        "cre.nvidia.com/category-domain": "training",
-        "cre.nvidia.com/category-variant": "nemotron5-56b",
-        "cre.nvidia.com/certification": "aws-h1"
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/category-domain": "training",
+        "nvcre.nvidia.com/category-variant": "nemotron5-56b",
+        "nvcre.nvidia.com/certification": "aws-h1"
       },
       "ownerReferences": [
         {
-          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
           "kind": "Certification",
           "name": "aws-h1",
           "uid": "",
@@ -236,7 +236,7 @@
         }
       ],
       "finalizers": [
-        "cre.nvidia.com/workflow-finalizer"
+        "nvcre.nvidia.com/workflow-finalizer"
       ]
     },
     "spec": {
@@ -617,7 +617,7 @@
             ],
             "phase": "Running",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "aws-h1-training-nemotron5-56b-job",
               "namespace": "default"

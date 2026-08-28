@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -46,7 +46,7 @@ func TestWorkloadRunMPILauncherMNNVL(t *testing.T) {
 		if err := clientgoscheme.AddToScheme(scheme); err != nil {
 			return err
 		}
-		if err := crev1alpha1.AddToScheme(scheme); err != nil {
+		if err := nvcrev1alpha1.AddToScheme(scheme); err != nil {
 			return err
 		}
 
@@ -61,14 +61,14 @@ func TestWorkloadRunMPILauncherMNNVL(t *testing.T) {
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(node).Build()
 
-		run := &crev1alpha1.WorkloadRun{
+		run := &nvcrev1alpha1.WorkloadRun{
 			ObjectMeta: metav1.ObjectMeta{Name: "mnnvl-run", Namespace: "default"},
-			Spec: crev1alpha1.WorkloadRunSpec{
+			Spec: nvcrev1alpha1.WorkloadRunSpec{
 				Image:       "nvcr.io/nvidia/pytorch:24.01-py3",
 				NumNodes:    2,
 				EnableMNNVL: in.EnableMNNVL,
-				Framework: crev1alpha1.FrameworkSpec{
-					MPI: &crev1alpha1.MPIFramework{
+				Framework: nvcrev1alpha1.FrameworkSpec{
+					MPI: &nvcrev1alpha1.MPIFramework{
 						Binary:     "/usr/local/bin/all_reduce_perf_mpi",
 						Args:       []string{"-b", "8", "-e", "32G"},
 						MpirunPath: "/usr/local/mpi/bin/mpirun",

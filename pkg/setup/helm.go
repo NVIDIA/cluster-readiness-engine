@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	helmReleaseName    = "cluster-readiness-engine"
-	helmChartOCI       = "oci://ghcr.io/nvidia/cluster-readiness-engine"
+	helmReleaseName    = "nvcre"
+	helmChartOCI       = "oci://ghcr.io/nvidia/nvcre"
 	ghcrRegistryUser   = "token"
 	helmInstallTimeout = 5 * time.Minute
 
@@ -102,7 +102,7 @@ type helmInstallParams struct {
 	out             io.Writer
 }
 
-// installHelmRelease installs or upgrades CRE via the helm CLI. It returns
+// installHelmRelease installs or upgrades NVCRE via the helm CLI. It returns
 // the captured helm transcript so RunInit can classify a failure the same
 // way the [deps] phase does (ADR-073) — symmetric error reporting, but with
 // no automatic recovery arm.
@@ -127,7 +127,7 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 	imageName, imageTag := parseImage(p.image)
 	args := []string{
 		"upgrade", "--install", helmReleaseName, helmChartOCI,
-		"--namespace", creNamespace,
+		"--namespace", nvcreNamespace,
 		"--create-namespace",
 		"--version", chartVersion,
 		"--set", "manager.image.repository=" + imageName,
@@ -141,8 +141,8 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 	args = appendKubeconfigArgs(args, p.kubeconfig, p.kubeContext)
 
 	_, _ = fmt.Fprintf(p.out,
-		"[helm] Installing CRE Helm release %q in namespace %s...\n",
-		helmReleaseName, creNamespace)
+		"[helm] Installing NVCRE Helm release %q in namespace %s...\n",
+		helmReleaseName, nvcreNamespace)
 	return runHelmCapture(helmPath, args, p.out)
 }
 
@@ -152,7 +152,7 @@ type helmUninstallParams struct {
 	out         io.Writer
 }
 
-// uninstallHelmRelease removes the CRE Helm release.
+// uninstallHelmRelease removes the NVCRE Helm release.
 func uninstallHelmRelease(p helmUninstallParams) error {
 	helmPath, err := ensureHelm()
 	if err != nil {
@@ -161,7 +161,7 @@ func uninstallHelmRelease(p helmUninstallParams) error {
 
 	args := []string{
 		"uninstall", helmReleaseName,
-		"--namespace", creNamespace,
+		"--namespace", nvcreNamespace,
 		"--ignore-not-found",
 		"--wait",
 		"--timeout", helmInstallTimeout.String(),
@@ -169,8 +169,8 @@ func uninstallHelmRelease(p helmUninstallParams) error {
 	args = appendKubeconfigArgs(args, p.kubeconfig, p.kubeContext)
 
 	_, _ = fmt.Fprintf(p.out,
-		"[helm] Removing CRE Helm release %q from namespace %s...\n",
-		helmReleaseName, creNamespace)
+		"[helm] Removing NVCRE Helm release %q from namespace %s...\n",
+		helmReleaseName, nvcreNamespace)
 	return runHelm(helmPath, args, p.out)
 }
 
@@ -225,7 +225,7 @@ func uninstallTrainerHelmRelease(kubeconfig, kubeContext string, out io.Writer) 
 // Helm release states as reported by `helm status`, plus two sentinel values
 // for states the helm CLI cannot report: a release helm has no record of, and
 // a query that could not be completed (helm missing from PATH, cluster
-// unreachable). Neither sentinel blocks readiness, because CRE may have been
+// unreachable). Neither sentinel blocks readiness, because NVCRE may have been
 // installed without Helm and `setup status` must still work without the CLI.
 const (
 	helmStateDeployed     = "deployed"

@@ -60,7 +60,7 @@ Or use the CLI for a formatted report:
 nvcrectl certification report <name>
 ```
 
-CRE records which nodes failed and why — it does not taint or cordon them. To quarantine a failed node:
+NVCRE records which nodes failed and why — it does not taint or cordon them. To quarantine a failed node:
 
 ```bash
 kubectl cordon <node>    # prevent new workloads

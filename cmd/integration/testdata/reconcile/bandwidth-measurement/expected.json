@@ -1,17 +1,17 @@
 {
   "BandwidthMeasurement/test-bw": {
     "kind": "BandwidthMeasurement",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-bw",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/bandwidthmeasurement-finalizer"
+        "nvcre.nvidia.com/bandwidthmeasurement-finalizer"
       ]
     },
     "spec": {
       "jobRef": {
-        "apiGroup": "cre.nvidia.com",
+        "apiGroup": "nvcre.nvidia.com",
         "kind": "Job",
         "name": "test-bw-job"
       },
@@ -65,15 +65,15 @@
     }
   },
   "bandwidthMetrics": {
-    "cre_nccl_algbw_gbps:1048576": 15.41,
-    "cre_nccl_algbw_gbps:1073741824": 397.14,
-    "cre_nccl_algbw_gbps:17179869184": 476.36,
-    "cre_nccl_algbw_gbps:65536": 1.13,
-    "cre_nccl_algbw_gbps:8": 0,
-    "cre_nccl_busbw_gbps:1048576": 29.87,
-    "cre_nccl_busbw_gbps:1073741824": 769.45,
-    "cre_nccl_busbw_gbps:17179869184": 922.94,
-    "cre_nccl_busbw_gbps:65536": 2.18,
-    "cre_nccl_busbw_gbps:8": 0
+    "nvcre_nccl_algbw_gbps:1048576": 15.41,
+    "nvcre_nccl_algbw_gbps:1073741824": 397.14,
+    "nvcre_nccl_algbw_gbps:17179869184": 476.36,
+    "nvcre_nccl_algbw_gbps:65536": 1.13,
+    "nvcre_nccl_algbw_gbps:8": 0,
+    "nvcre_nccl_busbw_gbps:1048576": 29.87,
+    "nvcre_nccl_busbw_gbps:1073741824": 769.45,
+    "nvcre_nccl_busbw_gbps:17179869184": 922.94,
+    "nvcre_nccl_busbw_gbps:65536": 2.18,
+    "nvcre_nccl_busbw_gbps:8": 0
   }
 }

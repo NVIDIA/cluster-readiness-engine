@@ -1,12 +1,12 @@
 {
   "Workflow/test-topo-all-fail": {
     "kind": "Workflow",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-topo-all-fail",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/workflow-finalizer"
+        "nvcre.nvidia.com/workflow-finalizer"
       ]
     },
     "spec": {
@@ -91,7 +91,7 @@
             ],
             "phase": "Failed",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "test-topo-all-fail-job",
               "namespace": "default"
@@ -102,7 +102,7 @@
     }
   },
   "topologyMetrics": {
-    "cre_topology_failed_nodes{domain=clique-a,node=topo-fail-node-01}": 1,
-    "cre_topology_failed_nodes{domain=clique-a,node=topo-fail-node-02}": 1
+    "nvcre_topology_failed_nodes{domain=clique-a,node=topo-fail-node-01}": 1,
+    "nvcre_topology_failed_nodes{domain=clique-a,node=topo-fail-node-02}": 1
   }
 }

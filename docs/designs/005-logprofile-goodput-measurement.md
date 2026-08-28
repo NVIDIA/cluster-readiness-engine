@@ -24,7 +24,7 @@ Implement a cluster-scoped `LogProfile` CRD that defines regex patterns with nam
 - **Log reader** (`pkg/goodput/reader.go`): Reads pod logs via `PodLogFetcher` interface. Uses `sinceTime` for incremental log fetching. The interface enables dependency injection for testing.
 
 The GoodputMeasurement controller runs on a configurable sample interval (default 15s). On each cycle:
-1. Reads logs from all workload pods (via `cre.nvidia.com/job` label)
+1. Reads logs from all workload pods (via `nvcre.nvidia.com/job` label)
 2. Parses logs using the referenced LogProfile
 3. Computes goodput metrics
 4. Updates status with latest values
@@ -63,7 +63,7 @@ Warmup handling: The `warmupSteps` field in LogProfile specifies how many initia
 ## Alternatives Considered
 
 ### SDK/library in training code
-**Rejected** because: Requires modifying training code. Different teams use different frameworks and different versions. The cluster-readiness-engine should work with unmodified workloads — this is a validation tool, not a training framework.
+**Rejected** because: Requires modifying training code. Different teams use different frameworks and different versions. The nvcre should work with unmodified workloads — this is a validation tool, not a training framework.
 
 ### Sidecar container
 **Rejected** because: Adds a container to every workload pod. Requires shared volume or log forwarding. Increases pod resource requests. The sidecar must be framework-aware, moving the same regex logic to a different location without reducing complexity.

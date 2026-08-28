@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: LogProfile
 metadata:
   name: nemotron-4-nemo
@@ -39,7 +39,7 @@ spec:
       - train.py
     numNodes: 1
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-goodput-job
@@ -85,7 +85,7 @@ metadata:
   labels:
     jobset.sigs.k8s.io/jobset-name: test-goodput-job-workload
     batch.kubernetes.io/job-completion-index: "0"
-    cre.nvidia.com/job: test-goodput-job
+    nvcre.nvidia.com/job: test-goodput-job
 spec:
   containers:
     - name: node
@@ -93,14 +93,14 @@ spec:
 status:
   phase: Running
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: GoodputMeasurement
 metadata:
   name: test-goodput
   namespace: default
 spec:
   jobRef:
-    apiGroup: cre.nvidia.com
+    apiGroup: nvcre.nvidia.com
     kind: Job
     name: test-goodput-job
   logProfileRef: nemotron-4-nemo

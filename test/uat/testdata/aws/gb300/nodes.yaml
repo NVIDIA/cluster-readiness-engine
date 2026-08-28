@@ -3,7 +3,7 @@
 
 # KWOK-simulated AWS GB300 GPU nodes.
 #
-# Key labels for CRE detection:
+# Key labels for NVCRE detection:
 #   nvidia.com/gpu.product: NVIDIA-GB300                       -> GPU arch "gb300"
 #   nvidia.com/gpu.present: "true"                             -> nvcrectl GPU discovery
 #   nvidia.com/gpu.clique: <uuid>                              -> NVLink clique

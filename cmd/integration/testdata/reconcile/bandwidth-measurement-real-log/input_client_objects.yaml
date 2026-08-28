@@ -17,9 +17,9 @@
 # The LogProfile below is a verbatim copy of the shipped `nccl-bandwidth`
 # profile (same regex, same timestamp layout), renamed only to avoid colliding
 # with other cases. Keep it in step with
-# helm/cluster-readiness-engine/templates/nccl-all-reduce.yaml.
+# helm/nvcre/templates/nccl-all-reduce.yaml.
 
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: LogProfile
 metadata:
   name: nccl-bandwidth-shipped
@@ -49,7 +49,7 @@ spec:
       - mpirun
     numNodes: 2
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-bw-real-job
@@ -95,7 +95,7 @@ metadata:
     jobset.sigs.k8s.io/jobset-name: test-bw-real-job-workload
     jobset.sigs.k8s.io/replicatedjob-name: launcher
     batch.kubernetes.io/job-completion-index: "0"
-    cre.nvidia.com/job: test-bw-real-job
+    nvcre.nvidia.com/job: test-bw-real-job
 spec:
   containers:
     - name: node
@@ -103,14 +103,14 @@ spec:
 status:
   phase: Running
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: BandwidthMeasurement
 metadata:
   name: test-bw-real
   namespace: default
 spec:
   jobRef:
-    apiGroup: cre.nvidia.com
+    apiGroup: nvcre.nvidia.com
     kind: Job
     name: test-bw-real-job
   logProfileRef: nccl-bandwidth-shipped

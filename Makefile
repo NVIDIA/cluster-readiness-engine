@@ -15,7 +15,7 @@ IMAGE_TAG ?= $(VERSION)
 IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):$(IMAGE_TAG)
 
 # Helm chart directory (used by manifests and helm-* targets).
-HELM_CHART_DIR ?= helm/cluster-readiness-engine
+HELM_CHART_DIR ?= helm/nvcre
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -63,7 +63,7 @@ help: ## Display this help.
 .PHONY: manifests
 manifests: controller-gen ## Generate CRDs directly into the Helm chart (RBAC is maintained manually in templates/manager-role.yaml).
 	mkdir -p "$(HELM_CHART_DIR)/crds" "$(HELM_CHART_DIR)/templates"
-	"$(CONTROLLER_GEN)" rbac:roleName=cre-manager-role crd webhook paths="./..." \
+	"$(CONTROLLER_GEN)" rbac:roleName=nvcre-manager-role crd webhook paths="./..." \
 		output:crd:artifacts:config="$(HELM_CHART_DIR)/crds" \
 		output:rbac:none
 
@@ -107,7 +107,7 @@ test-integration: fmt vet setup-envtest ## Run integration tests.
 
 ##@ UAT Tests (Kind + KWOK + Tilt + e2e-framework)
 
-KIND_CLUSTER_UAT ?= cre-test-uat
+KIND_CLUSTER_UAT ?= nvcre-test-uat
 KIND_NODE_IMAGE ?=
 KWOK_VERSION ?= v0.7.0
 UAT_IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):uat-test
@@ -267,10 +267,10 @@ BUILDX_PUSH ?= --push
 docker-buildx: #check-clean-version ## Build and push docker image for the manager for cross-platform support
 	# Run as one shell, so the trap removes the builder and the temporary
 	# Dockerfile even when the build fails.
-	trap '$(CONTAINER_TOOL) buildx rm cre-builder >/dev/null 2>&1 || true; rm -f Dockerfile.cross' EXIT; \
+	trap '$(CONTAINER_TOOL) buildx rm nvcre-builder >/dev/null 2>&1 || true; rm -f Dockerfile.cross' EXIT; \
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross; \
-	$(CONTAINER_TOOL) buildx create --name cre-builder >/dev/null 2>&1 || true; \
-	$(CONTAINER_TOOL) buildx use cre-builder; \
+	$(CONTAINER_TOOL) buildx create --name nvcre-builder >/dev/null 2>&1 || true; \
+	$(CONTAINER_TOOL) buildx use nvcre-builder; \
 	$(CONTAINER_TOOL) buildx build --build-arg VERSION=$(VERSION) $(BUILDX_PUSH) --platform=$(PLATFORMS) --tag "${IMG}" -f Dockerfile.cross .
 
 ##@ Deployment
@@ -284,12 +284,12 @@ HELM_PACKAGE_VERSION ?= $(VERSION)
 HELM_OCI_REGISTRY ?= oci://ghcr.io/nvidia
 
 .PHONY: helm-lint
-helm-lint: ## Lint the cluster-readiness-engine Helm chart.
+helm-lint: ## Lint the nvcre Helm chart.
 	"$(HELM)" dependency build $(HELM_CHART_DIR) --skip-refresh
 	"$(HELM)" lint $(HELM_CHART_DIR)
 
 .PHONY: helm-package
-helm-package: helm-lint ## Package the cluster-readiness-engine Helm chart.
+helm-package: helm-lint ## Package the nvcre Helm chart.
 	"$(HELM)" package $(HELM_CHART_DIR) \
 		--version "$(HELM_PACKAGE_VERSION)" \
 		--app-version "$(VERSION)"
@@ -297,7 +297,7 @@ helm-package: helm-lint ## Package the cluster-readiness-engine Helm chart.
 .PHONY: helm-push
 helm-push: check-clean-version helm-package ## Push the Helm chart to the OCI registry.
 	"$(HELM)" push \
-		cluster-readiness-engine-$(HELM_PACKAGE_VERSION).tgz \
+		nvcre-$(HELM_PACKAGE_VERSION).tgz \
 		$(HELM_OCI_REGISTRY)
 
 ##@ Dependencies

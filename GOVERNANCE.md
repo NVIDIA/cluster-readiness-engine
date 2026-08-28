@@ -1,10 +1,10 @@
 # Governance
 
-This document describes how the cluster-readiness-engine (CRE) project makes decisions and how contributors gain responsibility.
+This document describes how the nvcre (NVCRE) project makes decisions and how contributors gain responsibility.
 
 ## Scope and Charter
 
-CRE is a Kubernetes controller and CLI for GPU cluster burn-in certification: it runs cataloged training and communication workloads against a cluster, measures goodput and bandwidth, and remediates failing nodes. Changes that serve this charter are in scope. Features unrelated to cluster certification are out of scope and are declined, with reasons, in the issue discussion.
+NVCRE is a Kubernetes controller and CLI for GPU cluster burn-in certification: it runs cataloged training and communication workloads against a cluster, measures goodput and bandwidth, and remediates failing nodes. Changes that serve this charter are in scope. Features unrelated to cluster certification are out of scope and are declined, with reasons, in the issue discussion.
 
 ## Roles
 

@@ -6,14 +6,14 @@ description: End-to-end guide to running DeepSeek-V3 BF16 training with Megatron
 ---
 
 
-This guide walks through running DeepSeek-V3 BF16 training on a GPU cluster with Cluster Readiness Engine (CRE), using Megatron-Bridge and WorkloadRun. Unlike the [Nemotron 5 guide](./workloadrun-nemotron5.md), which uses raw Megatron-LM, this example uses Megatron-Bridge's recipe system *and* demonstrates the developer-friendly pattern of overriding the container's `scripts/performance/` with a cloned branch checkout — so developers can iterate on their own `run_script.py` / `utils/overrides.py` without rebuilding the image.
+This guide walks through running DeepSeek-V3 BF16 training on a GPU cluster with NVIDIA Cluster Readiness Engine (NVCRE), using Megatron-Bridge and WorkloadRun. Unlike the [Nemotron 5 guide](./workloadrun-nemotron5.md), which uses raw Megatron-LM, this example uses Megatron-Bridge's recipe system *and* demonstrates the developer-friendly pattern of overriding the container's `scripts/performance/` with a cloned branch checkout — so developers can iterate on their own `run_script.py` / `utils/overrides.py` without rebuilding the image.
 
 For an introduction to WorkloadRun and when to use it instead of a full Certification, see the [WorkloadRun Quick Start](../getting-started/workloadrun-quick-start.md). For generic WorkloadRun options (targeting nodes, measurements, framework types), see [Run a WorkloadRun](./run-workloadrun.md).
 
 ## Prerequisites
 
 - A Kubernetes cluster with GPU nodes (`nvidia.com/gpu.present=true`) and `kubectl` access
-- `nvcrectl` installed and the CRE controller running on the cluster — see [Installation](../getting-started/install.md)
+- `nvcrectl` installed and the NVCRE controller running on the cluster — see [Installation](../getting-started/install.md)
 - An NGC API key for pulling the NeMo container image from `nvcr.io`
 - The DeepSeek-V3 recipe fetches the model configuration from Hugging Face Hub at startup, so worker pods need outbound access to `huggingface.co` (or a pre-populated Hugging Face cache mounted into the pods — see the env var comments below)
 
@@ -35,7 +35,7 @@ No dataset or checkpoint download is required: the recipe trains on synthetic da
 Save the following as `deepseek-v3-bf16.yaml`:
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: WorkloadRun
 metadata:
   name: deepseek-v3-bf16
@@ -187,9 +187,9 @@ Branch choice matters: pick a branch whose script + bridge API expectations matc
 - **`model.pipeline_model_parallel_layout=null model.virtual_pipeline_model_parallel_size=null`** — clears the recipe's layout/VPP defaults so they don't conflict with the `-pp 1` we're forcing.
 - **`logger.log_throughput=true`** — emits TFLOPS per iteration into the training log; the built-in `megatron-bridge` LogProfile parses these for goodput.
 - **`train.manual_gc=true train.manual_gc_interval=100`** — explicit garbage-collection pacing recommended for this recipe.
-- **`resources`** — optional. When omitted, CRE auto-sets only `nvidia.com/gpu: <gpusPerNode>` (both limits and requests); it does not guess memory or CPU. Set the block explicitly, as here, if you need CPU pinning or memory sizing.
+- **`resources`** — optional. When omitted, NVCRE auto-sets only `nvidia.com/gpu: <gpusPerNode>` (both limits and requests); it does not guess memory or CPU. Set the block explicitly, as here, if you need CPU pinning or memory sizing.
 
-CRE auto-handles NCCL environment variables, ComputeDomain and DRA setup, EFA/RoCE networking, and topology-aware orchestration based on the detected platform and GPU architecture.
+NVCRE auto-handles NCCL environment variables, ComputeDomain and DRA setup, EFA/RoCE networking, and topology-aware orchestration based on the detected platform and GPU architecture.
 
 ## Submit the WorkloadRun
 
@@ -279,7 +279,7 @@ Example output (16 nodes × 4 GPUs, BF16 proxy model):
 └────────────────────────────────────────────────────────────────┘
 ```
 
-If a node fails, CRE records it in the WorkloadRun status with a reason (`HardwareFailureDetected`, `ThresholdViolation`, or `WorkloadFailed`); it never taints, cordons, or otherwise modifies the node.
+If a node fails, NVCRE records it in the WorkloadRun status with a reason (`HardwareFailureDetected`, `ThresholdViolation`, or `WorkloadFailed`); it never taints, cordons, or otherwise modifies the node.
 
 To save as JSON:
 

@@ -16,7 +16,7 @@ description: Platform-specific guides for running a full cluster certification o
 ### GB200 (EFA interconnect)
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: gb200-cert
@@ -66,13 +66,13 @@ _Content coming soon._
 
 ```bash
 # Watch overall status
-kubectl get certifications.cre.nvidia.com -w
+kubectl get certifications.nvcre.nvidia.com -w
 
 # Watch individual workflows
-kubectl get workflows.cre.nvidia.com -w
+kubectl get workflows.nvcre.nvidia.com -w
 
 # Tail controller logs
-kubectl logs -n cluster-readiness-engine deploy/cluster-readiness-engine-controller -f
+kubectl logs -n nvcre deploy/nvcre-manager -f
 ```
 
 ## Reviewing results

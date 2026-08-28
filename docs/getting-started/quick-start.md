@@ -21,7 +21,7 @@ You will also need an NGC API key to pull the certification workload images.
 Create a `certification.yaml` targeting your GPU nodes:
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: gpu-cluster-cert
@@ -56,7 +56,7 @@ When the certification completes, nvcrectl prints a pass/fail summary per node g
 nvcrectl certification report gpu-cluster-cert
 ```
 
-Failed categories indicate nodes that did not meet performance thresholds. CRE records which nodes failed and why — it does not taint or cordon them. Use `kubectl cordon <node>` to quarantine nodes as needed.
+Failed categories indicate nodes that did not meet performance thresholds. NVCRE records which nodes failed and why — it does not taint or cordon them. Use `kubectl cordon <node>` to quarantine nodes as needed.
 
 ## Next steps
 

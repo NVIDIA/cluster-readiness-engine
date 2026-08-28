@@ -5,7 +5,7 @@
 # No Job object for iteration 1 — the Workflow should detect NotFound,
 # mark group Failed, complete iteration 1, reset group to Pending,
 # advance to iteration 2, and create a new Job.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: test-wf-relaunch
@@ -41,7 +41,7 @@ status:
           - gpu-node-01
         phase: Running
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: test-wf-relaunch-group-0-iter-1
           namespace: default

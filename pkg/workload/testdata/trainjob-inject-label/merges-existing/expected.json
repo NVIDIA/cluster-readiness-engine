@@ -1,8 +1,8 @@
 [
   {
     "labels": {
-      "cre.nvidia.com/job": "my-job",
-      "existing": "label"
+      "existing": "label",
+      "nvcre.nvidia.com/job": "my-job"
     },
     "targetJobs": [
       "node"

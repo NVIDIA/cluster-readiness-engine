@@ -9,7 +9,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -27,9 +27,9 @@ func TestWorkloadRunWatchLine(t *testing.T) {
 		// json tags, not yaml: sigs.k8s.io/yaml converts YAML to JSON and
 		// encoding/json ignores yaml tags, silently zeroing mistyped keys.
 		var input struct {
-			Name    string                  `json:"name"`
-			Elapsed string                  `json:"elapsed"`
-			Run     crev1alpha1.WorkloadRun `json:"run"`
+			Name    string                    `json:"name"`
+			Elapsed string                    `json:"elapsed"`
+			Run     nvcrev1alpha1.WorkloadRun `json:"run"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err

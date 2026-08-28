@@ -116,7 +116,7 @@ writes are also self-healing: every save is the complete current truth.
 diagnose/bisection path). These are unchanged once hydration runs first.
 - **External:** `pkg/report/report.go` reads `orch.Groups[].Nodes` directly from the CR. Since it does
 not run the controller's hydration, it must load and decode the ConfigMap itself before rendering.
-- The per-Job `cre.nvidia.com/group-nodes` annotation (one group's nodes, set at job creation and
+- The per-Job `nvcre.nvidia.com/group-nodes` annotation (one group's nodes, set at job creation and
 read by failed-node attribution and `getJobNodes`) is small and unchanged.
 
 
@@ -278,11 +278,11 @@ controller needs `nodes` `patch` and `update` RBAC.
 A node can carry many labels at once, so membership is encoded as one presence-style key per group rather
 than a single key whose value is the group name. This is what lets a node belong to more than one group at
 the same time, which happens with overflow and borrowed nodes and during diagnose confirmation. A node in
-group-0 carries `group.cre.nvidia.com/<uid8>.group-0="true"`; if it is also borrowed into
-group-2-overflow it additionally carries `group.cre.nvidia.com/<uid8>.group-2-overflow="true"`. Each
+group-0 carries `group.nvcre.nvidia.com/<uid8>.group-0="true"`; if it is also borrowed into
+group-2-overflow it additionally carries `group.nvcre.nvidia.com/<uid8>.group-2-overflow="true"`. Each
 Workflow's keys are scoped by its UID (`<uid8>`), so a node shared between two concurrently running
 Workflows carries an independent set of keys per run and the two never overlap. A group's members are then
-whatever match the selector `-l group.cre.nvidia.com/<uid8>.group-0`.
+whatever match the selector `-l group.nvcre.nvidia.com/<uid8>.group-0`.
 
 At partition the controller adds each node's group key(s), so a shared node receives one key per group it
 belongs to. In diagnose mode the groups are recomputed every round, so on each round the controller adds
@@ -291,7 +291,7 @@ second group simply gains a second key.
 
 Because a label is not an object with its own lifecycle, removing it is explicit work the controller must
 do. It would strip a node's keys at three points: on completion, once a group or the whole Workflow
-finishes; on deletion, by extending the existing Workflow finalizer (`cre.nvidia.com/workflow-finalizer`)
+finishes; on deletion, by extending the existing Workflow finalizer (`nvcre.nvidia.com/workflow-finalizer`)
 to strip every labelled node before the finalizer is released; and through a periodic sweep that removes
 keys whose owning Workflow no longer exists or has already completed. For a shared node, removal on
 completion first confirms no other still-running group needs the node before dropping its key, a form of
@@ -385,7 +385,7 @@ guard. Test churn is significant: many fixtures and golden files reference the i
 ## References
 
 - [ADR-062: Succeeded Node Attribution via a Compressed ConfigMap](062-node-detail-propagation.md) - the passed-node counterpart and shared gzip/ConfigMap plumbing
-- [ADR-061: Remove Remediation Controller, Failed Node Attribution via Certification CR](061-cre-nvsentinel-remediation-decoupling.md) - the failed-node counterpart
+- [ADR-061: Remove Remediation Controller, Failed Node Attribution via Certification CR](061-nvcre-nvsentinel-remediation-decoupling.md) - the failed-node counterpart
 - [ADR-055: Adaptive Fault Isolation](055-adaptive-fault-isolation.md) - diagnose grouping and `healthyNodes`
 - [ADR-002: Layered CRD Hierarchy](002-layered-crd-hierarchy.md)
 

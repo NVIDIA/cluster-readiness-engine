@@ -38,7 +38,7 @@ import (
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	_ "github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
@@ -47,7 +47,7 @@ import (
 const metricLabelNamespace = "namespace"
 
 func init() {
-	_ = crev1alpha1.AddToScheme(scheme.Scheme)
+	_ = nvcrev1alpha1.AddToScheme(scheme.Scheme)
 	_ = trainerv1alpha1.AddToScheme(scheme.Scheme)
 }
 
@@ -56,7 +56,7 @@ func TestIntegration(t *testing.T) {
 
 	suite := &testutil.IntegrationTestSuite{}
 	suite.Environment.CRDDirectoryPaths = []string{
-		"../../helm/cluster-readiness-engine/crds",
+		"../../helm/nvcre/crds",
 		"../../hack/crds",
 	}
 	suite.Environment.ErrorIfCRDPathMissing = true
@@ -244,36 +244,36 @@ func createTestObjects(t *testing.T, c client.Client, tc *testutil.TestCase) []c
 // copyStatus copies status from src to dst. Returns true if status was non-empty.
 func copyStatus(dst, src client.Object) bool { //nolint:gocyclo
 	switch d := dst.(type) {
-	case *crev1alpha1.Job:
-		s := src.(*crev1alpha1.Job)
+	case *nvcrev1alpha1.Job:
+		s := src.(*nvcrev1alpha1.Job)
 		hasStatus := len(s.Status.Conditions) > 0 || s.Status.WorkloadRef != nil ||
 			len(s.Status.FailedNodes) > 0 || s.Status.RestartCount > 0
 		if hasStatus {
 			d.Status = s.Status
 			return true
 		}
-	case *crev1alpha1.Workflow:
-		s := src.(*crev1alpha1.Workflow)
+	case *nvcrev1alpha1.Workflow:
+		s := src.(*nvcrev1alpha1.Workflow)
 		if len(s.Status.Conditions) > 0 || s.Status.Orchestration != nil ||
 			s.Status.SucceededNodesRef != nil || s.Status.FailedNodesRef != nil ||
 			len(s.Status.DependencyRefs) > 0 {
 			d.Status = s.Status
 			return true
 		}
-	case *crev1alpha1.Certification:
-		s := src.(*crev1alpha1.Certification)
+	case *nvcrev1alpha1.Certification:
+		s := src.(*nvcrev1alpha1.Certification)
 		if len(s.Status.Conditions) > 0 || len(s.Status.CategoryStatuses) > 0 {
 			d.Status = s.Status
 			return true
 		}
-	case *crev1alpha1.WorkloadRun:
-		s := src.(*crev1alpha1.WorkloadRun)
+	case *nvcrev1alpha1.WorkloadRun:
+		s := src.(*nvcrev1alpha1.WorkloadRun)
 		if len(s.Status.Conditions) > 0 || s.Status.WorkflowRef != nil {
 			d.Status = s.Status
 			return true
 		}
-	case *crev1alpha1.GoodputMeasurement:
-		s := src.(*crev1alpha1.GoodputMeasurement)
+	case *nvcrev1alpha1.GoodputMeasurement:
+		s := src.(*nvcrev1alpha1.GoodputMeasurement)
 		if len(s.Status.Conditions) > 0 || s.Status.Result != "" ||
 			s.Status.CurrentStep > 0 || s.Status.PendingInterruption != nil ||
 			s.Status.StartTime != nil || s.Status.InterruptionCount > 0 ||
@@ -283,8 +283,8 @@ func copyStatus(dst, src client.Object) bool { //nolint:gocyclo
 			d.Status = s.Status
 			return true
 		}
-	case *crev1alpha1.BandwidthMeasurement:
-		s := src.(*crev1alpha1.BandwidthMeasurement)
+	case *nvcrev1alpha1.BandwidthMeasurement:
+		s := src.(*nvcrev1alpha1.BandwidthMeasurement)
 		if len(s.Status.Conditions) > 0 || len(s.Status.Results) > 0 ||
 			s.Status.StartTime != nil || s.Status.CompletionTime != nil {
 			d.Status = s.Status
@@ -580,17 +580,17 @@ func waitForCondition(t *testing.T, c client.Client, cfg waitConfig) {
 
 		reason := cfg.WaitFor.Reason
 		switch o := obj.(type) {
-		case *crev1alpha1.Job:
+		case *nvcrev1alpha1.Job:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
-		case *crev1alpha1.Workflow:
+		case *nvcrev1alpha1.Workflow:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
-		case *crev1alpha1.Certification:
+		case *nvcrev1alpha1.Certification:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
-		case *crev1alpha1.WorkloadRun:
+		case *nvcrev1alpha1.WorkloadRun:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
-		case *crev1alpha1.GoodputMeasurement:
+		case *nvcrev1alpha1.GoodputMeasurement:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
-		case *crev1alpha1.BandwidthMeasurement:
+		case *nvcrev1alpha1.BandwidthMeasurement:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
 		}
 		return false
@@ -646,19 +646,19 @@ func verifyFrozenGoodput(t *testing.T, direct, cached client.Client, cfg waitCon
 	key := types.NamespacedName{Name: cfg.VerifyFrozenGoodput.Name, Namespace: cfg.VerifyFrozenGoodput.Namespace}
 	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
 
-	gm := &crev1alpha1.GoodputMeasurement{}
+	gm := &nvcrev1alpha1.GoodputMeasurement{}
 	require.NoError(t, direct.Get(ctx, key, gm))
 	before := frozenStatusJSON(t, gm)
 
 	// Touch the referenced Job: reconciling a terminal Job must not move the
 	// measurement.
 	if jobName := gm.Spec.JobRef.Name; jobName != "" {
-		job := &crev1alpha1.Job{}
+		job := &nvcrev1alpha1.Job{}
 		require.NoError(t, direct.Get(ctx, types.NamespacedName{Name: jobName, Namespace: key.Namespace}, job))
 		if job.Annotations == nil {
 			job.Annotations = map[string]string{}
 		}
-		job.Annotations["test.cre.nvidia.com/touched"] = "true"
+		job.Annotations["test.nvcre.nvidia.com/touched"] = "true"
 		require.NoError(t, direct.Update(ctx, job))
 	}
 
@@ -672,7 +672,7 @@ func verifyFrozenGoodput(t *testing.T, direct, cached client.Client, cfg waitCon
 	if cfg.VerifyFrozenGoodput.Mode == "intact" {
 		beforeRaw := rawStatusJSON(t, gm)
 		require.Never(t, func() bool {
-			fresh := &crev1alpha1.GoodputMeasurement{}
+			fresh := &nvcrev1alpha1.GoodputMeasurement{}
 			if err := direct.Get(ctx, key, fresh); err != nil {
 				return false
 			}
@@ -689,18 +689,18 @@ func verifyFrozenGoodput(t *testing.T, direct, cached client.Client, cfg waitCon
 	}
 
 	// Strip Complete to force the controller back through the terminal path.
-	apimeta.RemoveStatusCondition(&gm.Status.Conditions, crev1alpha1.GoodputMeasurementComplete)
+	apimeta.RemoveStatusCondition(&gm.Status.Conditions, nvcrev1alpha1.GoodputMeasurementComplete)
 	require.NoError(t, direct.Status().Update(ctx, gm))
 
 	require.Eventually(t, func() bool {
-		fresh := &crev1alpha1.GoodputMeasurement{}
+		fresh := &nvcrev1alpha1.GoodputMeasurement{}
 		if err := direct.Get(ctx, key, fresh); err != nil {
 			return false
 		}
-		return hasConditionWithReason(fresh.Status.Conditions, crev1alpha1.GoodputMeasurementComplete, "")
+		return hasConditionWithReason(fresh.Status.Conditions, nvcrev1alpha1.GoodputMeasurementComplete, "")
 	}, timeout, 250*time.Millisecond, "Complete was not restored after terminal re-entry")
 
-	after := &crev1alpha1.GoodputMeasurement{}
+	after := &nvcrev1alpha1.GoodputMeasurement{}
 	require.NoError(t, direct.Get(ctx, key, after))
 	afterJSON := frozenStatusJSON(t, after)
 
@@ -709,11 +709,11 @@ func verifyFrozenGoodput(t *testing.T, direct, cached client.Client, cfg waitCon
 
 	// Let the manager's cache catch up so collection sees the restored state.
 	require.Eventually(t, func() bool {
-		fresh := &crev1alpha1.GoodputMeasurement{}
+		fresh := &nvcrev1alpha1.GoodputMeasurement{}
 		if err := cached.Get(ctx, key, fresh); err != nil {
 			return false
 		}
-		return hasConditionWithReason(fresh.Status.Conditions, crev1alpha1.GoodputMeasurementComplete, "")
+		return hasConditionWithReason(fresh.Status.Conditions, nvcrev1alpha1.GoodputMeasurementComplete, "")
 	}, timeout, 250*time.Millisecond, "manager cache did not observe the restored Complete condition")
 
 	return map[string]any{
@@ -727,7 +727,7 @@ func verifyFrozenGoodput(t *testing.T, direct, cached client.Client, cfg waitCon
 
 // rawStatusJSON marshals the full status, timestamps included — used by the
 // intact-mode check where nothing at all may change.
-func rawStatusJSON(t *testing.T, gm *crev1alpha1.GoodputMeasurement) string {
+func rawStatusJSON(t *testing.T, gm *nvcrev1alpha1.GoodputMeasurement) string {
 	t.Helper()
 	b, err := json.Marshal(gm.Status)
 	require.NoError(t, err)
@@ -739,7 +739,7 @@ func rawStatusJSON(t *testing.T, gm *crev1alpha1.GoodputMeasurement) string {
 // and re-adding one necessarily re-appends it and refreshes its transition
 // timestamp, so conditions are sorted by type and their timestamps cleared.
 // Every other byte must match.
-func frozenStatusJSON(t *testing.T, gm *crev1alpha1.GoodputMeasurement) string {
+func frozenStatusJSON(t *testing.T, gm *nvcrev1alpha1.GoodputMeasurement) string {
 	t.Helper()
 	s := gm.Status.DeepCopy()
 	clearConditionTimestamps(s.Conditions)
@@ -768,37 +768,37 @@ func getObject(ctx context.Context, t *testing.T, c client.Client, spec collectS
 
 	switch spec.Kind {
 	case "Job":
-		obj := &crev1alpha1.Job{}
+		obj := &nvcrev1alpha1.Job{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
 		return obj
 	case "Workflow":
-		obj := &crev1alpha1.Workflow{}
+		obj := &nvcrev1alpha1.Workflow{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
 		return obj
 	case "Certification":
-		obj := &crev1alpha1.Certification{}
+		obj := &nvcrev1alpha1.Certification{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
 		return obj
 	case "WorkloadRun":
-		obj := &crev1alpha1.WorkloadRun{}
+		obj := &nvcrev1alpha1.WorkloadRun{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
 		return obj
 	case "GoodputMeasurement":
-		obj := &crev1alpha1.GoodputMeasurement{}
+		obj := &nvcrev1alpha1.GoodputMeasurement{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
 		return obj
 	case "BandwidthMeasurement":
-		obj := &crev1alpha1.BandwidthMeasurement{}
+		obj := &nvcrev1alpha1.BandwidthMeasurement{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
@@ -914,7 +914,7 @@ func sanitizeObject(obj client.Object) {
 
 	// Clear condition timestamps.
 	switch o := obj.(type) {
-	case *crev1alpha1.Job:
+	case *nvcrev1alpha1.Job:
 		clearConditionTimestamps(o.Status.Conditions)
 		// Sanitize stall detection messages (contain non-deterministic elapsed time).
 		for i := range o.Status.Conditions {
@@ -922,7 +922,7 @@ func sanitizeObject(obj client.Object) {
 				o.Status.Conditions[i].Message = "Workload stalled"
 			}
 		}
-	case *crev1alpha1.Workflow:
+	case *nvcrev1alpha1.Workflow:
 		clearConditionTimestamps(o.Status.Conditions)
 		// Node-result ConfigMaps use generateName, so their names are
 		// non-deterministic; normalize the refs to stable placeholders.
@@ -940,15 +940,15 @@ func sanitizeObject(obj client.Object) {
 				}
 			}
 		}
-	case *crev1alpha1.Certification:
+	case *nvcrev1alpha1.Certification:
 		clearConditionTimestamps(o.Status.Conditions)
 		for i := range o.Status.CategoryStatuses {
 			sanitizeNodeResultsRef(o.Status.CategoryStatuses[i].SucceededNodesRef, o.Status.CategoryStatuses[i].FailedNodesRef)
 		}
-	case *crev1alpha1.WorkloadRun:
+	case *nvcrev1alpha1.WorkloadRun:
 		clearConditionTimestamps(o.Status.Conditions)
 		sanitizeNodeResultsRef(o.Status.SucceededNodesRef, o.Status.FailedNodesRef)
-	case *crev1alpha1.GoodputMeasurement:
+	case *nvcrev1alpha1.GoodputMeasurement:
 		clearConditionTimestamps(o.Status.Conditions)
 		// Clear time-dependent fields.
 		o.Status.StartTime = nil
@@ -964,7 +964,7 @@ func sanitizeObject(obj client.Object) {
 			o.Status.PendingInterruption.TCheckpoint = nil
 			o.Status.PendingInterruption.TInterrupt = nil
 		}
-	case *crev1alpha1.BandwidthMeasurement:
+	case *nvcrev1alpha1.BandwidthMeasurement:
 		clearConditionTimestamps(o.Status.Conditions)
 		o.Status.StartTime = nil
 		o.Status.CompletionTime = nil
@@ -1026,16 +1026,16 @@ func collectGoodputMetrics(t *testing.T, namespace, measurementName string) map[
 	}
 
 	names := []string{
-		"cre_goodput_avg_step_time_seconds",
-		"cre_goodput_avg_tflops_per_gpu",
-		"cre_goodput_checkpoint_save_time_seconds",
-		"cre_goodput_lost_work_time_seconds",
-		"cre_goodput_non_warmup_time_seconds",
-		"cre_goodput_ratio",
-		"cre_goodput_reschedule_time_seconds",
-		"cre_goodput_resume_time_seconds",
-		"cre_goodput_training_time_seconds",
-		"cre_goodput_warmup_time_seconds",
+		"nvcre_goodput_avg_step_time_seconds",
+		"nvcre_goodput_avg_tflops_per_gpu",
+		"nvcre_goodput_checkpoint_save_time_seconds",
+		"nvcre_goodput_lost_work_time_seconds",
+		"nvcre_goodput_non_warmup_time_seconds",
+		"nvcre_goodput_ratio",
+		"nvcre_goodput_reschedule_time_seconds",
+		"nvcre_goodput_resume_time_seconds",
+		"nvcre_goodput_training_time_seconds",
+		"nvcre_goodput_warmup_time_seconds",
 	}
 
 	result := make(map[string]float64, len(names))
@@ -1079,8 +1079,8 @@ func collectBandwidthMetrics(t *testing.T, namespace, measurementName string) ma
 	}
 
 	names := []string{
-		"cre_nccl_algbw_gbps",
-		"cre_nccl_busbw_gbps",
+		"nvcre_nccl_algbw_gbps",
+		"nvcre_nccl_busbw_gbps",
 	}
 
 	result := make(map[string]float64)
@@ -1129,8 +1129,8 @@ func collectJobMetrics(t *testing.T, namespace, jobName, workflow string) map[st
 
 	// Only collect gauge metrics (not counters or histograms) for stable golden output.
 	names := []string{
-		"cre_job_status",
-		"cre_job_failed_nodes",
+		"nvcre_job_status",
+		"nvcre_job_failed_nodes",
 	}
 
 	result := make(map[string]float64, len(names))
@@ -1183,8 +1183,8 @@ func collectTopologyMetrics(t *testing.T, namespace, workflow, topologyKey strin
 	}
 
 	names := []string{
-		"cre_topology_validated_nodes",
-		"cre_topology_failed_nodes",
+		"nvcre_topology_validated_nodes",
+		"nvcre_topology_failed_nodes",
 	}
 
 	result := make(map[string]float64)

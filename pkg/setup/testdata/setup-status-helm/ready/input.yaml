@@ -1,4 +1,4 @@
 # Both managed releases healthy: status is ready.
 states:
-  cluster-readiness-engine: deployed
+  nvcre: deployed
   kubeflow-trainer: deployed

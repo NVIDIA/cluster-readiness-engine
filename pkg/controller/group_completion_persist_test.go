@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -41,57 +41,57 @@ func TestGroupCompletionPersists(t *testing.T) {
 		}
 
 		scheme := runtime.NewScheme()
-		if err := crev1alpha1.AddToScheme(scheme); err != nil {
+		if err := nvcrev1alpha1.AddToScheme(scheme); err != nil {
 			return err
 		}
 
-		groups := make([]crev1alpha1.GroupStatus, 0, in.Groups)
-		jobs := make([]*crev1alpha1.Job, 0, in.Groups)
+		groups := make([]nvcrev1alpha1.GroupStatus, 0, in.Groups)
+		jobs := make([]*nvcrev1alpha1.Job, 0, in.Groups)
 		for i := 0; i < in.Groups; i++ {
 			name := []string{"g0", "g1", "g2"}[i]
-			job := &crev1alpha1.Job{
+			job := &nvcrev1alpha1.Job{
 				ObjectMeta: metav1.ObjectMeta{Name: name + "-job", Namespace: "ns"},
-				Status: crev1alpha1.JobStatus{Conditions: []metav1.Condition{{
+				Status: nvcrev1alpha1.JobStatus{Conditions: []metav1.Condition{{
 					Type: in.JobCondition, Status: metav1.ConditionTrue,
 					Reason: "WorkloadCompleted", LastTransitionTime: metav1.Now(),
 				}}},
 			}
 			jobs = append(jobs, job)
-			groups = append(groups, crev1alpha1.GroupStatus{
+			groups = append(groups, nvcrev1alpha1.GroupStatus{
 				Name:   name,
-				Phase:  crev1alpha1.GroupRunning,
+				Phase:  nvcrev1alpha1.GroupRunning,
 				Nodes:  []string{"node" + name},
-				JobRef: &crev1alpha1.WorkloadReference{Name: name + "-job", Namespace: "ns"},
+				JobRef: &nvcrev1alpha1.WorkloadReference{Name: name + "-job", Namespace: "ns"},
 			})
 		}
 
-		wf := &crev1alpha1.Workflow{
+		wf := &nvcrev1alpha1.Workflow{
 			ObjectMeta: metav1.ObjectMeta{Name: "wf", Namespace: "ns", Generation: 1},
-			Spec: crev1alpha1.WorkflowSpec{
-				Orchestration: crev1alpha1.OrchestrationSpec{Iterations: 1},
+			Spec: nvcrev1alpha1.WorkflowSpec{
+				Orchestration: nvcrev1alpha1.OrchestrationSpec{Iterations: 1},
 			},
-			Status: crev1alpha1.WorkflowStatus{
+			Status: nvcrev1alpha1.WorkflowStatus{
 				// Seed every condition exactly as the reconcile will recompute them,
 				// ObservedGeneration included. Without that the condition write
 				// reports a change for an unrelated reason and masks the bug.
 				Conditions: []metav1.Condition{
 					{
-						Type: crev1alpha1.WorkflowInProgress, Status: metav1.ConditionTrue,
+						Type: nvcrev1alpha1.WorkflowInProgress, Status: metav1.ConditionTrue,
 						Reason: ReasonJobRunning, Message: in.PreexistingConditionMessage,
 						ObservedGeneration: 1, LastTransitionTime: metav1.Now(),
 					},
 					{
-						Type: crev1alpha1.WorkflowSucceeded, Status: metav1.ConditionFalse,
+						Type: nvcrev1alpha1.WorkflowSucceeded, Status: metav1.ConditionFalse,
 						Reason: ReasonNotApplicable, Message: "",
 						ObservedGeneration: 1, LastTransitionTime: metav1.Now(),
 					},
 					{
-						Type: crev1alpha1.WorkflowFailed, Status: metav1.ConditionFalse,
+						Type: nvcrev1alpha1.WorkflowFailed, Status: metav1.ConditionFalse,
 						Reason: ReasonNotApplicable, Message: "",
 						ObservedGeneration: 1, LastTransitionTime: metav1.Now(),
 					},
 				},
-				Orchestration: &crev1alpha1.OrchestrationStatus{
+				Orchestration: &nvcrev1alpha1.OrchestrationStatus{
 					CurrentIteration: 1,
 					Groups:           groups,
 				},
@@ -109,7 +109,7 @@ func TestGroupCompletionPersists(t *testing.T) {
 			return err
 		}
 
-		got := &crev1alpha1.Workflow{}
+		got := &nvcrev1alpha1.Workflow{}
 		if err := c.Get(context.Background(), types.NamespacedName{Name: "wf", Namespace: "ns"}, got); err != nil {
 			return err
 		}

@@ -23,7 +23,7 @@ status:
       message: "All workers completed"
       lastTransitionTime: "2026-01-22T10:00:00Z"
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-bw-threshold-pass
@@ -50,14 +50,14 @@ status:
     name: test-bw-threshold-pass-workload
     namespace: default
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: BandwidthMeasurement
 metadata:
   name: test-bw-threshold-pass-bandwidth
   namespace: default
 spec:
   jobRef:
-    apiGroup: cre.nvidia.com
+    apiGroup: nvcre.nvidia.com
     kind: Job
     name: test-bw-threshold-pass
   logProfileRef: nccl-bandwidth

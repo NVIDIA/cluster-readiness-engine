@@ -18,7 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -44,19 +44,19 @@ func TestWaitingForNodes(t *testing.T) {
 		if err := clientgoscheme.AddToScheme(scheme); err != nil {
 			return err
 		}
-		if err := crev1alpha1.AddToScheme(scheme); err != nil {
+		if err := nvcrev1alpha1.AddToScheme(scheme); err != nil {
 			return err
 		}
 
-		cert := &crev1alpha1.Certification{
+		cert := &nvcrev1alpha1.Certification{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "c", Namespace: "ns",
 				CreationTimestamp: metav1.Now(),
 				Finalizers:        []string{certificationFinalizer},
 			},
-			Spec: crev1alpha1.CertificationSpec{
-				Target: crev1alpha1.TargetSpec{NodeSelector: in.NodeSelector},
-				Categories: []crev1alpha1.CertificateCategory{
+			Spec: nvcrev1alpha1.CertificationSpec{
+				Target: nvcrev1alpha1.TargetSpec{NodeSelector: in.NodeSelector},
+				Categories: []nvcrev1alpha1.CertificateCategory{
 					{Domain: "communication", Variant: "nccl-all-reduce"},
 				},
 			},
@@ -72,7 +72,7 @@ func TestWaitingForNodes(t *testing.T) {
 		r := &CertificationReconciler{Client: c, Scheme: scheme}
 		_, _ = r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "c", Namespace: "ns"}})
 
-		got := &crev1alpha1.Certification{}
+		got := &nvcrev1alpha1.Certification{}
 		if err := c.Get(context.Background(), types.NamespacedName{Name: "c", Namespace: "ns"}, got); err != nil {
 			return err
 		}

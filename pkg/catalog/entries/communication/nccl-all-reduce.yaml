@@ -125,7 +125,7 @@ jobTemplate:
     workload:
       trainJob:
         runtimePatches:
-        - manager: cre.nvidia.com/catalog
+        - manager: nvcre.nvidia.com/catalog
           trainingRuntimeSpec:
             template:
               spec:

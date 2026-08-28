@@ -10,7 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	_ "github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
@@ -26,7 +26,7 @@ func TestRenderOrchestrationOptions(t *testing.T) {
 		ExpectedSuffix: ".json",
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
-		var opts crev1alpha1.CategoryOptions
+		var opts nvcrev1alpha1.CategoryOptions
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &opts); err != nil {
 			return err
 		}
@@ -39,21 +39,21 @@ func TestRenderOrchestrationOptions(t *testing.T) {
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &sel); err != nil {
 			return err
 		}
-		cat := crev1alpha1.CertificateCategory{Domain: "communication", Variant: "nccl-all-reduce"}
+		cat := nvcrev1alpha1.CertificateCategory{Domain: "communication", Variant: "nccl-all-reduce"}
 		if sel.Category != nil {
-			cat = crev1alpha1.CertificateCategory{Domain: sel.Category.Domain, Variant: sel.Category.Variant}
+			cat = nvcrev1alpha1.CertificateCategory{Domain: sel.Category.Domain, Variant: sel.Category.Variant}
 		}
 
-		cert := &crev1alpha1.Certification{
+		cert := &nvcrev1alpha1.Certification{
 			ObjectMeta: metav1.ObjectMeta{Name: "render-test"},
-			Spec: crev1alpha1.CertificationSpec{
-				Target: crev1alpha1.TargetSpec{
+			Spec: nvcrev1alpha1.CertificationSpec{
+				Target: nvcrev1alpha1.TargetSpec{
 					NodeSelector: map[string]string{
 						"nvidia.com/gpu.product": "NVIDIA-H100-80GB-HBM3",
 					},
 				},
 				CategoryOptions: opts,
-				Categories:      []crev1alpha1.CertificateCategory{cat},
+				Categories:      []nvcrev1alpha1.CertificateCategory{cat},
 			},
 		}
 
@@ -64,10 +64,10 @@ func TestRenderOrchestrationOptions(t *testing.T) {
 
 		wf := workflows[0]
 		out := struct {
-			Orchestration crev1alpha1.OrchestrationSpec `json:"orchestration"`
-			NumNodes      *int32                        `json:"numNodes,omitempty"`
-			MaxRestarts   int32                         `json:"maxRestarts,omitempty"`
-			Measurement   string                        `json:"measurementTimeout,omitempty"`
+			Orchestration nvcrev1alpha1.OrchestrationSpec `json:"orchestration"`
+			NumNodes      *int32                          `json:"numNodes,omitempty"`
+			MaxRestarts   int32                           `json:"maxRestarts,omitempty"`
+			Measurement   string                          `json:"measurementTimeout,omitempty"`
 		}{Orchestration: wf.Spec.Orchestration}
 
 		if tj := wf.Spec.JobTemplate.Spec.Workload.TrainJob; tj != nil && tj.Trainer != nil {

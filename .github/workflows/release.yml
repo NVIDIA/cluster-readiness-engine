@@ -190,9 +190,9 @@ jobs:
           tag_name: ${{ steps.tag.outputs.value }}
           name: Release ${{ steps.tag.outputs.value }}
           body: |
-            CRE ${{ steps.tag.outputs.value }}
+            NVCRE ${{ steps.tag.outputs.value }}
 
-            The Cluster Readiness Engine (CRE) is a Kubernetes controller that
+            The NVIDIA Cluster Readiness Engine (NVCRE) is a Kubernetes controller that
             certifies GPU clusters before production use. It runs real training
             and communication workloads across topology-aware node groups,
             measures goodput and bandwidth, detects hardware failures, and
@@ -226,15 +226,15 @@ jobs:
             ## Helm Chart
 
             ```bash
-            helm install cluster-readiness-engine \
-              oci://ghcr.io/nvidia \
+            helm install nvcre \
+              oci://ghcr.io/nvidia/nvcre \
               --version ${{ steps.tag.outputs.value }} \
-              --namespace cluster-readiness-engine \
+              --namespace nvcre \
               --create-namespace
             ```
 
             The controller image for this release is
-            `ghcr.io/nvidia/manager:${{ steps.tag.outputs.value }}`.
+            `ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}`.
 
             ## nvcrectl CLI
 

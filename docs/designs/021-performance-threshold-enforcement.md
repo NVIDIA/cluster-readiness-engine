@@ -2,7 +2,7 @@
 
 ## Context
 
-The cluster-readiness-engine measures bandwidth (`BandwidthMeasurement`) and goodput (`GoodputMeasurement`) for every Job that configures them, but has no mechanism to enforce minimum performance thresholds. Measurements are recorded, conditions are set (`Measuring` -> `Complete`), and results are stored in status — but the controller never compares those results against acceptable minimums. Operators must manually inspect `BandwidthMeasurement.status.results` and `GoodputMeasurement.status.result` to determine whether hardware meets performance requirements.
+The nvcre measures bandwidth (`BandwidthMeasurement`) and goodput (`GoodputMeasurement`) for every Job that configures them, but has no mechanism to enforce minimum performance thresholds. Measurements are recorded, conditions are set (`Measuring` -> `Complete`), and results are stored in status — but the controller never compares those results against acceptable minimums. Operators must manually inspect `BandwidthMeasurement.status.results` and `GoodputMeasurement.status.result` to determine whether hardware meets performance requirements.
 
 This manual inspection does not scale. A certification run across a 10,000-GPU cluster with topology-aware orchestration produces hundreds of Jobs, each with its own measurement resources. Without automated pass/fail evaluation, the entire certification pipeline stops at "results collected" and requires human judgment to proceed.
 
@@ -100,7 +100,7 @@ if workflow.Spec.Validation != nil &&
 }
 ```
 
-This runs after `DeepCopy()` and before `job := &crev1alpha1.Job{...}`, so the threshold fields are part of the Job spec from creation.
+This runs after `DeepCopy()` and before `job := &nvcrev1alpha1.Job{...}`, so the threshold fields are part of the Job spec from creation.
 
 ### Workflow Controller: ValidationFailed Aggregation
 
@@ -108,7 +108,7 @@ In the group evaluation logic and `setFinalStatus()`, aggregate `ValidationFaile
 
 ```go
 // In group evaluation (after checking Job Succeeded/Failed/HardwareFailed):
-validationCond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobValidationFailed)
+validationCond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobValidationFailed)
 if validationCond != nil && validationCond.Status == metav1.ConditionTrue {
     // Mark group as Failed with reason JobValidationFailed
 }
@@ -123,7 +123,7 @@ In `setFinalStatus()`, if any group failed due to validation, the Workflow is ma
 After the workload reaches `Succeeded`, the Job controller calls `checkPerformanceThresholds()`:
 
 ```go
-func (r *JobReconciler) checkPerformanceThresholds(ctx context.Context, job *crev1alpha1.Job) error {
+func (r *JobReconciler) checkPerformanceThresholds(ctx context.Context, job *nvcrev1alpha1.Job) error {
     // Check bandwidth threshold
     if job.Spec.BandwidthMeasurement != nil && job.Spec.BandwidthMeasurement.MinBusBandwidthGBps != nil {
         if err := r.checkBandwidthThreshold(ctx, job); err != nil {
@@ -157,9 +157,9 @@ func (r *JobReconciler) checkPerformanceThresholds(ctx context.Context, job *cre
 **`setJobValidationFailed()`** mirrors `setJobHardwareFailed()`:
 
 ```go
-func (r *JobReconciler) setJobValidationFailed(ctx context.Context, job *crev1alpha1.Job, reason, message string) error {
+func (r *JobReconciler) setJobValidationFailed(ctx context.Context, job *nvcrev1alpha1.Job, reason, message string) error {
     changed := meta.SetStatusCondition(&job.Status.Conditions, metav1.Condition{
-        Type:               crev1alpha1.JobValidationFailed,
+        Type:               nvcrev1alpha1.JobValidationFailed,
         Status:             metav1.ConditionTrue,
         Reason:             reason,
         Message:            message,
@@ -198,7 +198,7 @@ The feature starts disabled. Catalog entries that produce `BandwidthMeasurement`
 ```go
 // To enforce minimum bandwidth thresholds, add to the Workflow's
 // PerformanceValidationSpec:
-//   Thresholds: &crev1alpha1.ThresholdSpec{
+//   Thresholds: &nvcrev1alpha1.ThresholdSpec{
 //       MinBusBandwidthGBps: ptr("370"), // 92% of 400 GB/s fabric
 //   },
 ```

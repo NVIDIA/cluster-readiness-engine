@@ -5,11 +5,11 @@
 #
 # Overrides the default pod-complete from stage-fast.yaml (same metadata.name = replace).
 # The default stage completes pods immediately; this adds a 30s delay so that
-# CRE's health monitoring and status propagation have time to observe Running pods.
+# NVCRE's health monitoring and status propagation have time to observe Running pods.
 #
 # Lifecycle: Pod Created -> Running (instant, pod-ready stage) -> Succeeded (30s, this stage)
 # Triggers:  Jobs complete -> JobSet completes -> Trainer marks TrainJob Complete ->
-#            CRE Job -> Workflow -> Certification Succeeded
+#            NVCRE Job -> Workflow -> Certification Succeeded
 apiVersion: kwok.x-k8s.io/v1alpha1
 kind: Stage
 metadata:

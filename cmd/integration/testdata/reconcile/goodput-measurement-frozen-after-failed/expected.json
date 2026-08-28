@@ -1,17 +1,17 @@
 {
   "GoodputMeasurement/test-frozenf-gm": {
     "kind": "GoodputMeasurement",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-frozenf-gm",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/goodputmeasurement-finalizer"
+        "nvcre.nvidia.com/goodputmeasurement-finalizer"
       ]
     },
     "spec": {
       "jobRef": {
-        "apiGroup": "cre.nvidia.com",
+        "apiGroup": "nvcre.nvidia.com",
         "kind": "Job",
         "name": "test-frozenf-job"
       },

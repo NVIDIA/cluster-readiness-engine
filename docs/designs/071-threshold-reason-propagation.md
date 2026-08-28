@@ -18,7 +18,7 @@ That detail is already recorded in two places that outlive the run:
 
 The report generator drops all of it:
 
-- [`buildFailedGroups`](../../pkg/report/report.go#L477) fetches the CRE Job for each failed group but reads **only the `Failed` condition**. A threshold violation leaves the Job with `Succeeded=True` + `ValidationFailed=True` and no `Failed` condition, so `failedGroups[].reason` in the results JSON is empty — and [`printFailedGroups`](../../pkg/report/report.go#L1005) skips the reason line in the human card when the string is empty.
+- [`buildFailedGroups`](../../pkg/report/report.go#L477) fetches the NVCRE Job for each failed group but reads **only the `Failed` condition**. A threshold violation leaves the Job with `Succeeded=True` + `ValidationFailed=True` and no `Failed` condition, so `failedGroups[].reason` in the results JSON is empty — and [`printFailedGroups`](../../pkg/report/report.go#L1005) skips the reason line in the human card when the string is empty.
 - `CategoryReport.FailureReason` comes from the Workflow `Failed` condition message, which is the aggregate `"N groups failed across M iterations"` — reason `JobValidationFailed` names the class of failure but not the threshold, value, or expression.
 - The top-level `failedNodes` JSON field is names-only ([`CertFailedNodes`](../../pkg/report/report.go#L195) → `FailedNodeNames`); the per-node messages decoded from the ConfigMap are discarded.
 
@@ -34,8 +34,8 @@ An operator looking at a FAILED report today must `kubectl get job -o yaml` or g
 ## Implementation
 
 - **`pkg/report/report.go`**:
-  - Change `buildFailedGroups(ctx, c, wf)` to `buildFailedGroups(ctx, c, wf, failedNodes []crev1alpha1.FailedNode)` — the caller (`PopulateCategoryFromWorkflow`) already holds the decoded list; today it feeds only `buildCliqueReport`.
-  - Extract a `jobFailureReason(ctx, c, job, namespace) string` helper implementing the priority scan: `crev1alpha1.JobFailed` (with `batchJobFailureReason` enrichment, unchanged) → `crev1alpha1.JobHardwareFailed` → `crev1alpha1.JobValidationFailed`, returning the condition message.
+  - Change `buildFailedGroups(ctx, c, wf)` to `buildFailedGroups(ctx, c, wf, failedNodes []nvcrev1alpha1.FailedNode)` — the caller (`PopulateCategoryFromWorkflow`) already holds the decoded list; today it feeds only `buildCliqueReport`.
+  - Extract a `jobFailureReason(ctx, c, job, namespace) string` helper implementing the priority scan: `nvcrev1alpha1.JobFailed` (with `batchJobFailureReason` enrichment, unchanged) → `nvcrev1alpha1.JobHardwareFailed` → `nvcrev1alpha1.JobValidationFailed`, returning the condition message.
   - Add `failedNodeReason(failedNodes, groupNodes) string` for the ConfigMap fallback: first match by node name, `ThresholdViolation` entries first (the merged list is sorted by name then reason, so selection is deterministic).
 - **No changes** to `pkg/controller/`, `pkg/threshold/`, `api/v1alpha1/`, or the catalog. Condition contents, `FailedNode` records, and ConfigMap payloads are already correct; this ADR only stops the report from ignoring them.
 - **Tests** (testutil golden pattern, mirroring [`build_excluded_test.go`](../../pkg/report/build_excluded_test.go)): new `TestBuildFailedGroups` with `pkg/report/testdata/build-failed-groups/` cases driven through `Build` + `Print`/JSON against a fake client:
@@ -74,7 +74,7 @@ An operator looking at a FAILED report today must `kubectl get job -o yaml` or g
 ## Notes
 
 - Exact message format consumed verbatim (from [`evaluator.go`](../../pkg/threshold/evaluator.go#L113)): `Threshold %q violated: measured %.4f, expression: %s`. The `job-goodput-threshold-fail` integration golden pins this string today, so any future format change will trip existing tests before it reaches the report.
-- `job.status.failedNodes` is only populated when the `cre.nvidia.com/group-nodes` annotation is present (`groupNodeNames`); standalone Jobs without it still surface the reason via the condition path, just with no node attribution — same as today.
+- `job.status.failedNodes` is only populated when the `nvcre.nvidia.com/group-nodes` annotation is present (`groupNodeNames`); standalone Jobs without it still surface the reason via the condition path, just with no node attribution — same as today.
 - `nvcrectl workloadrun status` (lightweight poll) is intentionally unchanged; it reports names only by design (ADR-059).
 
 ## References

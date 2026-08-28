@@ -55,7 +55,7 @@ make test-uat-run                # Run as needed
 
 Run a single UAT test:
 ```bash
-kind get kubeconfig --name cre-test-uat > /tmp/kind-uat.kubeconfig
+kind get kubeconfig --name nvcre-test-uat > /tmp/kind-uat.kubeconfig
 KUBECONFIG=/tmp/kind-uat.kubeconfig NVCRECTL=bin/nvcrectl \
   go test -tags=uat ./test/uat/ -v -timeout 900s -count=1 -run TestAWSGB200NCCL
 ```
@@ -79,7 +79,7 @@ Follows the Deployment → ReplicaSet → Pod composition pattern:
 - **BandwidthMeasurement** watches a Job, parses NCCL log output, and computes per-bus bandwidth metrics.
 - **LogProfile** (cluster-scoped) defines regex patterns with named capture groups for parsing training framework logs.
 
-There is no Remediation controller. ADR-061 removed it. CRE does not taint, cordon, or patch nodes; it records failed nodes with a reason (`HardwareFailureDetected`, `ThresholdViolation`, or `WorkloadFailed`) in the Certification status.
+There is no Remediation controller. ADR-061 removed it. NVCRE does not taint, cordon, or patch nodes; it records failed nodes with a reason (`HardwareFailureDetected`, `ThresholdViolation`, or `WorkloadFailed`) in the Certification status.
 
 ### Key Packages
 
@@ -111,13 +111,13 @@ Unit tests in most packages use `testutil.TestCaseParser` (in `pkg/testutil/`) w
 
 ## Critical Pitfalls
 
-- **After modifying `*_types.go`**: Must run `make manifests generate` before anything else compiles (stale deepcopy). `make manifests` writes CRDs directly to `helm/cluster-readiness-engine/crds/` and RBAC to `helm/cluster-readiness-engine/templates/`.
+- **After modifying `*_types.go`**: Must run `make manifests generate` before anything else compiles (stale deepcopy). `make manifests` writes CRDs directly to `helm/nvcre/crds/` and RBAC to `helm/nvcre/templates/`.
 - **Blank imports required**: `pkg/catalog` must be blank-imported in `cmd/nvcrectl/main.go` and test suites to trigger `init()` registration.
 - **envtest has no GC controller**: Cascade deletion via OwnerReference won't work in tests. Controllers must explicitly delete child resources in `handleDeletion()`.
 - **`runtime.RawExtension` with `json:",inline"`**: Loses sibling fields during marshal/unmarshal. Requires custom `MarshalJSON`/`UnmarshalJSON` on the parent struct (see `api/v1alpha1/dependency_json.go`).
 - **Test timeout is 10s**: If requeue interval > 10s, status update tests will time out.
 - **`Trainer.NumProcPerNode`** is `*intstr.IntOrString` — use `intstr.FromInt32()`, not `*int32`.
-- **Never edit auto-generated files**: `helm/cluster-readiness-engine/crds/*.yaml`, `helm/cluster-readiness-engine/templates/role*.yaml`, `helm/cluster-readiness-engine/templates/*_role*.yaml`, `helm/cluster-readiness-engine/templates/service_account.yaml`, `**/zz_generated.*.go`, `PROJECT`.
+- **Never edit auto-generated files**: `helm/nvcre/crds/*.yaml`, `helm/nvcre/templates/role*.yaml`, `helm/nvcre/templates/*_role*.yaml`, `helm/nvcre/templates/service_account.yaml`, `**/zz_generated.*.go`, `PROJECT`.
 - **Never remove scaffold markers**: `// +kubebuilder:scaffold:*` comments are used by the CLI.
 
 ## Development Workflow (MANDATORY)
@@ -196,7 +196,7 @@ Create a temp cert file per GPU architecture. Change `nvidia.com/gpu.product`, `
 
 ```yaml
 # /tmp/cert-gb300.yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: gpu-cluster-cert
@@ -285,7 +285,7 @@ spec:
 
 **Never do**:
 - Never commit credentials, secrets, API keys, or tokens. Do not write them to code, tests, logs, or documentation. Use environment variables and Kubernetes Secrets instead.
-- Never edit auto-generated files: `helm/cluster-readiness-engine/crds/*.yaml`, the generated `role*.yaml` and `service_account.yaml` templates, `**/zz_generated.*.go`, and `PROJECT`.
+- Never edit auto-generated files: `helm/nvcre/crds/*.yaml`, the generated `role*.yaml` and `service_account.yaml` templates, `**/zz_generated.*.go`, and `PROJECT`.
 - Never remove `// +kubebuilder:scaffold:*` markers.
 - Never create git tags. The user creates tags.
 - Never push to `main`.

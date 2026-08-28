@@ -1,12 +1,12 @@
-# Cluster Readiness Engine (CRE)
+# NVIDIA Cluster Readiness Engine (NVCRE)
 
 [![CI](https://github.com/NVIDIA/cluster-readiness-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/NVIDIA/cluster-readiness-engine/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](go.mod)
 
-New GPU clusters often contain faulty nodes, and those faults surface only under real distributed load. CRE is a Kubernetes controller that certifies GPU clusters before production workloads run on them. It runs real training and communication workloads across topology-aware node groups, measures performance, detects hardware failures, and reports every bad node with a reason. Quarantine is left to your platform: CRE never cordons, taints, or otherwise modifies a node.
+New GPU clusters often contain faulty nodes, and those faults surface only under real distributed load. NVCRE is a Kubernetes controller that certifies GPU clusters before production workloads run on them. It runs real training and communication workloads across topology-aware node groups, measures performance, detects hardware failures, and reports every bad node with a reason. Quarantine is left to your platform: NVCRE never cordons, taints, or otherwise modifies a node.
 
-CRE is for platform and infrastructure teams that bring up, validate, or resell GPU clusters.
+NVCRE is for platform and infrastructure teams that bring up, validate, or resell GPU clusters.
 
 ## Features
 
@@ -34,7 +34,7 @@ flowchart LR
     J -.-> B[BandwidthMeasurement]
 ```
 
-A Certification creates one Workflow per catalog category. Each Workflow creates a Job from its template. The Job creates the workload through an adapter, for example a Kubeflow Trainer TrainJob. Measurement resources parse pod logs with LogProfile regex patterns and compute goodput and bandwidth. When a node fails, CRE records it in the certification result with a reason. CRE does not modify nodes; quarantine is left to your platform.
+A Certification creates one Workflow per catalog category. Each Workflow creates a Job from its template. The Job creates the workload through an adapter, for example a Kubeflow Trainer TrainJob. Measurement resources parse pod logs with LogProfile regex patterns and compute goodput and bandwidth. When a node fails, NVCRE records it in the certification result with a reason. NVCRE does not modify nodes; quarantine is left to your platform.
 
 ## Quickstart
 
@@ -43,7 +43,7 @@ For complete prerequisites, installation, a first run, and cleanup, see
 
 **0. Check the cluster**
 
-CRE requires the NVIDIA GPU Operator and, with the default metrics settings,
+NVCRE requires the NVIDIA GPU Operator and, with the default metrics settings,
 the Prometheus Operator CRDs that serve `monitoring.coreos.com/v1`; GB200 and
 GB300 catalog entries also require the NVIDIA DRA driver for `ComputeDomain`
 resources. The `diagnostics/dcgm-level4` category additionally requires the
@@ -66,10 +66,17 @@ authenticated API downloads — plain `curl` against `releases/download/...` ret
 with the gh CLI (authenticate with `gh auth login` first):
 
 ```bash
-CRE_VERSION=v0.1.0-rc.9
-gh release download "${CRE_VERSION}" --repo NVIDIA/cluster-readiness-engine \
-  --pattern installer --output - | bash -s -- -v "${CRE_VERSION}"
+NVCRE_VERSION=v0.1.0-rc.9
+gh release download "${NVCRE_VERSION}" --repo NVIDIA/cluster-readiness-engine \
+  --pattern installer --output - | bash -s -- -v "${NVCRE_VERSION}"
 ```
+
+> **Note**: Releases up to and including `v0.1.0-rc.10` serve the old
+> `cre.nvidia.com` API group and publish the Helm chart as
+> `oci://ghcr.io/nvidia/cluster-readiness-engine`. The examples in this README
+> use the renamed `nvcre.nvidia.com` group and the `oci://ghcr.io/nvidia/nvcre`
+> chart, which require the first release cut after the rename (or a build from
+> `main`).
 
 Once the repository is public and a stable release exists, this shorter form works
 and picks up the newest stable release:
@@ -86,7 +93,7 @@ The installer places `nvcrectl` on your `$PATH` and creates a `kubectl-nvcre` sy
 kubectl nvcre setup init --image-pull-secret "$(gh auth token)"
 ```
 
-This installs Kubeflow Trainer, the CRE CRDs, the controller, and the built-in LogProfiles.
+This installs Kubeflow Trainer, the NVCRE CRDs, the controller, and the built-in LogProfiles.
 
 **3. Certify**
 
@@ -140,7 +147,7 @@ kubectl nvcre certification report <name> -n <namespace>
 
 ### Install from the registry instead
 
-`setup init` above is the quickest path. If you would rather manage CRE with
+`setup init` above is the quickest path. If you would rather manage NVCRE with
 Helm, or need to pin the controller image in your own manifests, both are
 published to the GitHub Container Registry on every release.
 
@@ -153,15 +160,15 @@ gh auth token | helm registry login ghcr.io \
 ```
 
 ```bash
-CRE_VERSION=v0.1.0-rc.8
+NVCRE_VERSION=v0.1.0-rc.8
 
 # Inspect the chart before installing it
-helm show chart oci://ghcr.io/nvidia/cluster-readiness-engine --version "$CRE_VERSION"
+helm show chart oci://ghcr.io/nvidia/nvcre --version "$NVCRE_VERSION"
 
-helm install cluster-readiness-engine \
-  oci://ghcr.io/nvidia/cluster-readiness-engine \
-  --version "$CRE_VERSION" \
-  --namespace cluster-readiness-engine \
+helm install nvcre \
+  oci://ghcr.io/nvidia/nvcre \
+  --version "$NVCRE_VERSION" \
+  --namespace nvcre \
   --create-namespace
 ```
 
@@ -171,10 +178,10 @@ controller runs up to 5. Tune these limits for the controller resources and
 Kubernetes API-server capacity available in your cluster:
 
 ```bash
-helm upgrade cluster-readiness-engine \
-  oci://ghcr.io/nvidia/cluster-readiness-engine \
-  --version "$CRE_VERSION" \
-  --namespace cluster-readiness-engine \
+helm upgrade nvcre \
+  oci://ghcr.io/nvidia/nvcre \
+  --version "$NVCRE_VERSION" \
+  --namespace nvcre \
   --set manager.maxConcurrentReconciles=20 \
   --set manager.measurementMaxConcurrentReconciles=10
 ```
@@ -191,11 +198,11 @@ should all name the same tag.
 
 ## Run a workload
 
-WorkloadRun is a simplified API for running training, NCCL, or custom workloads. Write a YAML file with an image, a framework, and a node count. CRE detects the platform and GPU architecture. The quickest example is an NCCL bandwidth check:
+WorkloadRun is a simplified API for running training, NCCL, or custom workloads. Write a YAML file with an image, a framework, and a node count. NVCRE detects the platform and GPU architecture. The quickest example is an NCCL bandwidth check:
 
 ```yaml
 # nccl-all-reduce.yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: WorkloadRun
 metadata:
   name: nccl-all-reduce
@@ -212,7 +219,7 @@ spec:
     testType: all_reduce
 ```
 
-`numNodes` is the node count **per job group**, not the total: CRE partitions all
+`numNodes` is the node count **per job group**, not the total: NVCRE partitions all
 eligible nodes into groups of this size and runs one job per group, so
 `numNodes: 4` on a 16-node cluster produces four 4-node jobs.
 
@@ -226,9 +233,9 @@ For training workloads, see the [Nemotron 5](docs/how-to-guides/workloadrun-nemo
 
 ## Scope and non-goals
 
-CRE certifies clusters with burn-in workloads and reports the nodes that fail. CRE is not:
+NVCRE certifies clusters with burn-in workloads and reports the nodes that fail. NVCRE is not:
 
-- A continuous monitoring system. CRE watches nodes only while its workloads run.
+- A continuous monitoring system. NVCRE watches nodes only while its workloads run.
 - A general workload scheduler or a training platform for production pipelines.
 - A benchmark leaderboard. The measurements exist to find faults, not to rank hardware.
 

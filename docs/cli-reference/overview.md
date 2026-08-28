@@ -6,7 +6,7 @@ description: The nvcrectl CLI manages the full lifecycle of cluster certificatio
 ---
 
 
-`nvcrectl` is the command-line interface for the Cluster Readiness Engine. It handles installation, certification lifecycle, workload execution, and reporting — without requiring direct `kubectl` access for most operations.
+`nvcrectl` is the command-line interface for the NVIDIA Cluster Readiness Engine. It handles installation, certification lifecycle, workload execution, and reporting — without requiring direct `kubectl` access for most operations.
 
 ## Install
 

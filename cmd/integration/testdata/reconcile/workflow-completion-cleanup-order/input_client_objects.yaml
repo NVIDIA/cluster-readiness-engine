@@ -6,7 +6,7 @@
 # The Workflow controller then calls setFinalStatus(), which should delete
 # Jobs BEFORE cleaning up dependencies (ADR-053). The test verifies the Workflow
 # reaches Succeeded and deps are cleaned up.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: test-wf-comp-deps
@@ -49,20 +49,20 @@ status:
           - gpu-node-01
         phase: Running
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: test-wf-comp-deps-group-0-iter-1
           namespace: default
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-wf-comp-deps-group-0-iter-1
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
-    cre.nvidia.com/workflow: test-wf-comp-deps
-    cre.nvidia.com/group: group-0
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: test-wf-comp-deps
+    nvcre.nvidia.com/group: group-0
 spec:
   workload:
     trainJob:
@@ -129,7 +129,7 @@ metadata:
   name: test-comp-dep-config
   namespace: default
   labels:
-    cre.nvidia.com/workflow: test-wf-comp-deps
+    nvcre.nvidia.com/workflow: test-wf-comp-deps
 data:
   config.yaml: |
     test: completion-data

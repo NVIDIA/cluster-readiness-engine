@@ -2,7 +2,7 @@
 # failed-nodes ConfigMap. The reason must stay empty — the report never
 # invents a cause — and nothing crashes: the JSON carries "reason": "" and
 # the human card prints the group line without a reason line.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: cert-noreason
@@ -29,13 +29,13 @@ status:
         name: cert-noreason-training-nemotron5-8b
         namespace: default
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: cert-noreason-training-nemotron5-8b
   namespace: default
   labels:
-    cre.nvidia.com/certification: cert-noreason
+    nvcre.nvidia.com/certification: cert-noreason
 spec:
   jobTemplate:
     spec:
@@ -67,7 +67,7 @@ status:
           - node002
         phase: Failed
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: cert-noreason-training-nemotron5-8b-job-group-0
           namespace: default

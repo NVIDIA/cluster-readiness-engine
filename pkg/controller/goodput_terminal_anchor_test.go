@@ -11,7 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -32,8 +32,8 @@ func TestTerminalAnchor(t *testing.T) {
 			return err
 		}
 
-		job := &crev1alpha1.Job{
-			Status: crev1alpha1.JobStatus{Conditions: in.Conditions},
+		job := &nvcrev1alpha1.Job{
+			Status: nvcrev1alpha1.JobStatus{Conditions: in.Conditions},
 		}
 
 		before := time.Now()

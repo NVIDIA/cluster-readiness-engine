@@ -1,8 +1,8 @@
 {
   "installed": true,
   "components": {
-    "creCRDs": true,
-    "creController": true,
+    "nvcreCRDs": true,
+    "nvcreController": true,
     "kubeflowTrainer": true,
     "logProfiles": true,
     "gpuOperator": true,
@@ -10,8 +10,8 @@
   },
   "helmReleases": [
     {
-      "name": "cluster-readiness-engine",
-      "namespace": "cluster-readiness-engine",
+      "name": "nvcre",
+      "namespace": "nvcre",
       "state": "deployed"
     },
     {
@@ -22,16 +22,16 @@
   ]
 }
 
-Component                               Status
-─────────────────────────               ──────────
-CRE CRDs                                ✓ installed
-CRE Controller                          ✓ installed
-Kubeflow Trainer                        ✓ installed
-Log Profiles                            ✓ installed
-GPU Operator                            ✓ installed
-DCGM (optional)                         ✗ not found
-Helm release cluster-readiness-engine   ✓ deployed
-Helm release kubeflow-trainer           ✓ deployed
+Component                       Status
+─────────────────────────       ──────────
+NVCRE CRDs                      ✓ installed
+NVCRE Controller                ✓ installed
+Kubeflow Trainer                ✓ installed
+Log Profiles                    ✓ installed
+GPU Operator                    ✓ installed
+DCGM (optional)                 ✗ not found
+Helm release nvcre              ✓ deployed
+Helm release kubeflow-trainer   ✓ deployed
 
 Status: ready
 

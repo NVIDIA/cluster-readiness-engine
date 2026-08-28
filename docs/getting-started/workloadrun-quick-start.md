@@ -17,7 +17,7 @@ description: Run a distributed training or NCCL workload without writing a full 
 ## Define a WorkloadRun
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: WorkloadRun
 metadata:
   name: nccl-all-reduce

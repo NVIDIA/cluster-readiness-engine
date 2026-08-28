@@ -1,17 +1,17 @@
 {
   "BandwidthMeasurement/test-bw-succeed": {
     "kind": "BandwidthMeasurement",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-bw-succeed",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/bandwidthmeasurement-finalizer"
+        "nvcre.nvidia.com/bandwidthmeasurement-finalizer"
       ]
     },
     "spec": {
       "jobRef": {
-        "apiGroup": "cre.nvidia.com",
+        "apiGroup": "nvcre.nvidia.com",
         "kind": "Job",
         "name": "test-bw-succeed-job"
       },

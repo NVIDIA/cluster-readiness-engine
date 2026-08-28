@@ -12,7 +12,7 @@ affinity:
 spec:
   trainJob:
     runtimePatches:
-      - manager: cre.nvidia.com/controller
+      - manager: nvcre.nvidia.com/controller
         trainingRuntimeSpec:
           template:
             spec:

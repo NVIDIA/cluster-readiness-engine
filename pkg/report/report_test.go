@@ -19,10 +19,10 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
-const testAPIGroup = "cre.nvidia.com"
+const testAPIGroup = "nvcre.nvidia.com"
 
 func TestHumanSize(t *testing.T) {
 	p := testutil.TestCaseParser{
@@ -180,33 +180,33 @@ func TestBuildDomainReports(t *testing.T) {
 	apiGroup := testAPIGroup
 
 	t.Run("multi-domain grouping", func(t *testing.T) {
-		orch := &crev1alpha1.OrchestrationStatus{
-			Groups: []crev1alpha1.GroupStatus{
+		orch := &nvcrev1alpha1.OrchestrationStatus{
+			Groups: []nvcrev1alpha1.GroupStatus{
 				{
 					Name:    "group-0",
 					Nodes:   []string{"node-0", "node-1"},
 					Domains: []string{"clique-0"},
-					JobRef:  &crev1alpha1.WorkloadReference{Name: "job-0"},
+					JobRef:  &nvcrev1alpha1.WorkloadReference{Name: "job-0"},
 				},
 				{
 					Name:    "group-1",
 					Nodes:   []string{"node-2", "node-3"},
 					Domains: []string{"clique-1"},
-					JobRef:  &crev1alpha1.WorkloadReference{Name: "job-1"},
+					JobRef:  &nvcrev1alpha1.WorkloadReference{Name: "job-1"},
 				},
 			},
 		}
 
-		measurements := []crev1alpha1.GoodputMeasurement{
+		measurements := []nvcrev1alpha1.GoodputMeasurement{
 			{
-				Spec: crev1alpha1.GoodputMeasurementSpec{
+				Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 					JobRef: corev1.TypedLocalObjectReference{
 						APIGroup: &apiGroup,
 						Kind:     "Job",
 						Name:     "job-0",
 					},
 				},
-				Status: crev1alpha1.GoodputMeasurementStatus{
+				Status: nvcrev1alpha1.GoodputMeasurementStatus{
 					Result:          "0.95",
 					AvgTFLOPSPerGPU: "800.5",
 					TrainingTimeSec: "120",
@@ -214,14 +214,14 @@ func TestBuildDomainReports(t *testing.T) {
 				},
 			},
 			{
-				Spec: crev1alpha1.GoodputMeasurementSpec{
+				Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 					JobRef: corev1.TypedLocalObjectReference{
 						APIGroup: &apiGroup,
 						Kind:     "Job",
 						Name:     "job-1",
 					},
 				},
-				Status: crev1alpha1.GoodputMeasurementStatus{
+				Status: nvcrev1alpha1.GoodputMeasurementStatus{
 					Result:          "0.90",
 					AvgTFLOPSPerGPU: "750.0",
 					TrainingTimeSec: "130",
@@ -249,16 +249,16 @@ func TestBuildDomainReports(t *testing.T) {
 	})
 
 	t.Run("no-domain fallback", func(t *testing.T) {
-		measurements := []crev1alpha1.GoodputMeasurement{
+		measurements := []nvcrev1alpha1.GoodputMeasurement{
 			{
-				Spec: crev1alpha1.GoodputMeasurementSpec{
+				Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 					JobRef: corev1.TypedLocalObjectReference{
 						APIGroup: &apiGroup,
 						Kind:     "Job",
 						Name:     "job-x",
 					},
 				},
-				Status: crev1alpha1.GoodputMeasurementStatus{
+				Status: nvcrev1alpha1.GoodputMeasurementStatus{
 					Result:          "0.88",
 					AvgTFLOPSPerGPU: "600",
 				},
@@ -272,12 +272,12 @@ func TestBuildDomainReports(t *testing.T) {
 	})
 
 	t.Run("empty measurements", func(t *testing.T) {
-		orch := &crev1alpha1.OrchestrationStatus{
-			Groups: []crev1alpha1.GroupStatus{
+		orch := &nvcrev1alpha1.OrchestrationStatus{
+			Groups: []nvcrev1alpha1.GroupStatus{
 				{
 					Name:    "group-0",
 					Domains: []string{"clique-0"},
-					JobRef:  &crev1alpha1.WorkloadReference{Name: "job-0"},
+					JobRef:  &nvcrev1alpha1.WorkloadReference{Name: "job-0"},
 				},
 			},
 		}
@@ -788,16 +788,16 @@ func TestBuildDomainReportsPartialMetrics(t *testing.T) {
 	apiGroup := testAPIGroup
 
 	// Only goodput set, other metrics are empty.
-	measurements := []crev1alpha1.GoodputMeasurement{
+	measurements := []nvcrev1alpha1.GoodputMeasurement{
 		{
-			Spec: crev1alpha1.GoodputMeasurementSpec{
+			Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 				JobRef: corev1.TypedLocalObjectReference{
 					APIGroup: &apiGroup,
 					Kind:     "Job",
 					Name:     "job-0",
 				},
 			},
-			Status: crev1alpha1.GoodputMeasurementStatus{
+			Status: nvcrev1alpha1.GoodputMeasurementStatus{
 				Result: "0.85",
 				// All other fields empty.
 			},
@@ -831,11 +831,11 @@ func TestBuildCliqueReport(t *testing.T) {
 			return err
 		}
 
-		wf := &crev1alpha1.Workflow{}
+		wf := &nvcrev1alpha1.Workflow{}
 		if !input.NilOrchestration {
-			orch := &crev1alpha1.OrchestrationStatus{}
+			orch := &nvcrev1alpha1.OrchestrationStatus{}
 			for _, g := range input.Groups {
-				orch.Groups = append(orch.Groups, crev1alpha1.GroupStatus{
+				orch.Groups = append(orch.Groups, nvcrev1alpha1.GroupStatus{
 					Name:             g.Name,
 					Nodes:            g.Nodes,
 					Domains:          g.Domains,
@@ -844,10 +844,10 @@ func TestBuildCliqueReport(t *testing.T) {
 			}
 			wf.Status.Orchestration = orch
 		}
-		var failedNodes []crev1alpha1.FailedNode
+		var failedNodes []nvcrev1alpha1.FailedNode
 		for _, n := range input.FailedNodes {
 			failedNodes = append(failedNodes,
-				crev1alpha1.FailedNode{Name: n, Reason: "WorkloadFailed"})
+				nvcrev1alpha1.FailedNode{Name: n, Reason: "WorkloadFailed"})
 		}
 
 		reports := buildCliqueReport(wf, failedNodes)
@@ -882,20 +882,20 @@ func TestDetectTestScale(t *testing.T) {
 			return err
 		}
 
-		wf := &crev1alpha1.Workflow{}
+		wf := &nvcrev1alpha1.Workflow{}
 		if input.RequestedTestScale != "" {
 			wf.Annotations = map[string]string{
 				annotationRequestedTestScale: input.RequestedTestScale,
 			}
 		}
 		if input.Topology != nil {
-			wf.Spec.Orchestration.Topology = &crev1alpha1.TopologySpec{
+			wf.Spec.Orchestration.Topology = &nvcrev1alpha1.TopologySpec{
 				TopologyKey:  input.Topology.TopologyKey,
 				StrictDomain: input.Topology.StrictDomain,
 			}
 		}
 		if input.NodesPerJob > 0 {
-			wf.Status.Orchestration = &crev1alpha1.OrchestrationStatus{
+			wf.Status.Orchestration = &nvcrev1alpha1.OrchestrationStatus{
 				NodesPerJob: input.NodesPerJob,
 			}
 		}
@@ -916,41 +916,41 @@ func TestDetectTestScale(t *testing.T) {
 func TestBuildDomainReportsMultipleMeasurementsSameDomain(t *testing.T) {
 	apiGroup := testAPIGroup
 
-	orch := &crev1alpha1.OrchestrationStatus{
-		Groups: []crev1alpha1.GroupStatus{
+	orch := &nvcrev1alpha1.OrchestrationStatus{
+		Groups: []nvcrev1alpha1.GroupStatus{
 			{
 				Name:    "group-0",
 				Nodes:   []string{"node-0", "node-1"},
 				Domains: []string{"rack-a"},
-				JobRef:  &crev1alpha1.WorkloadReference{Name: "job-0"},
+				JobRef:  &nvcrev1alpha1.WorkloadReference{Name: "job-0"},
 			},
 			{
 				Name:    "group-1",
 				Nodes:   []string{"node-2", "node-3"},
 				Domains: []string{"rack-a"}, // Same domain.
-				JobRef:  &crev1alpha1.WorkloadReference{Name: "job-1"},
+				JobRef:  &nvcrev1alpha1.WorkloadReference{Name: "job-1"},
 			},
 		},
 	}
 
-	measurements := []crev1alpha1.GoodputMeasurement{
+	measurements := []nvcrev1alpha1.GoodputMeasurement{
 		{
-			Spec: crev1alpha1.GoodputMeasurementSpec{
+			Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 				JobRef: corev1.TypedLocalObjectReference{
 					APIGroup: &apiGroup, Kind: "Job", Name: "job-0",
 				},
 			},
-			Status: crev1alpha1.GoodputMeasurementStatus{
+			Status: nvcrev1alpha1.GoodputMeasurementStatus{
 				Result: "0.90", AvgTFLOPSPerGPU: "800",
 			},
 		},
 		{
-			Spec: crev1alpha1.GoodputMeasurementSpec{
+			Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 				JobRef: corev1.TypedLocalObjectReference{
 					APIGroup: &apiGroup, Kind: "Job", Name: "job-1",
 				},
 			},
-			Status: crev1alpha1.GoodputMeasurementStatus{
+			Status: nvcrev1alpha1.GoodputMeasurementStatus{
 				Result: "0.80", AvgTFLOPSPerGPU: "700",
 			},
 		},
@@ -969,11 +969,11 @@ func TestBuildDomainReportsMultipleMeasurementsSameDomain(t *testing.T) {
 func TestPeakBandwidthResult(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
 		assert.Nil(t, peakBandwidthResult(nil))
-		assert.Nil(t, peakBandwidthResult([]crev1alpha1.BandwidthResult{}))
+		assert.Nil(t, peakBandwidthResult([]nvcrev1alpha1.BandwidthResult{}))
 	})
 
 	t.Run("ascending — last is peak", func(t *testing.T) {
-		results := []crev1alpha1.BandwidthResult{
+		results := []nvcrev1alpha1.BandwidthResult{
 			{SizeBytes: 1024, BusBW: "1.0"},
 			{SizeBytes: 1048576, BusBW: "100.0"},
 			{SizeBytes: 17179869184, BusBW: "350.0"},
@@ -985,7 +985,7 @@ func TestPeakBandwidthResult(t *testing.T) {
 	})
 
 	t.Run("unsorted — picks largest size, not last", func(t *testing.T) {
-		results := []crev1alpha1.BandwidthResult{
+		results := []nvcrev1alpha1.BandwidthResult{
 			{SizeBytes: 17179869184, BusBW: "350.0"},
 			{SizeBytes: 1024, BusBW: "1.0"},
 			{SizeBytes: 1048576, BusBW: "100.0"},
@@ -997,7 +997,7 @@ func TestPeakBandwidthResult(t *testing.T) {
 	})
 
 	t.Run("single entry", func(t *testing.T) {
-		results := []crev1alpha1.BandwidthResult{{SizeBytes: 8, BusBW: "0.1"}}
+		results := []nvcrev1alpha1.BandwidthResult{{SizeBytes: 8, BusBW: "0.1"}}
 		peak := peakBandwidthResult(results)
 		require.NotNil(t, peak)
 		assert.Equal(t, int64(8), peak.SizeBytes)
@@ -1006,25 +1006,25 @@ func TestPeakBandwidthResult(t *testing.T) {
 
 func TestBuildGroupBandwidthRowsUnsorted(t *testing.T) {
 	apiGroup := testAPIGroup
-	orch := &crev1alpha1.OrchestrationStatus{
-		Groups: []crev1alpha1.GroupStatus{
+	orch := &nvcrev1alpha1.OrchestrationStatus{
+		Groups: []nvcrev1alpha1.GroupStatus{
 			{
 				Name:    "group-0",
 				Nodes:   []string{"node-0", "node-1"},
 				Domains: []string{"clique-0"},
-				JobRef:  &crev1alpha1.WorkloadReference{Name: "job-0"},
+				JobRef:  &nvcrev1alpha1.WorkloadReference{Name: "job-0"},
 			},
 		},
 	}
-	measurements := []crev1alpha1.BandwidthMeasurement{
+	measurements := []nvcrev1alpha1.BandwidthMeasurement{
 		{
-			Spec: crev1alpha1.BandwidthMeasurementSpec{
+			Spec: nvcrev1alpha1.BandwidthMeasurementSpec{
 				JobRef: corev1.TypedLocalObjectReference{
 					APIGroup: &apiGroup, Kind: "Job", Name: "job-0",
 				},
 			},
-			Status: crev1alpha1.BandwidthMeasurementStatus{
-				Results: []crev1alpha1.BandwidthResult{
+			Status: nvcrev1alpha1.BandwidthMeasurementStatus{
+				Results: []nvcrev1alpha1.BandwidthResult{
 					// Largest size first — last entry is NOT the peak.
 					{SizeBytes: 17179869184, BusBW: "350.0"},
 					{SizeBytes: 1024, BusBW: "1.0"},

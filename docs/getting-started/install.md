@@ -1,6 +1,6 @@
 ---
 title: Install
-description: Install the nvcrectl CLI and set up the Cluster Readiness Engine controller on your Kubernetes cluster.
+description: Install the nvcrectl CLI and set up the NVIDIA Cluster Readiness Engine controller on your Kubernetes cluster.
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 ---
@@ -27,6 +27,12 @@ gh release download "${NVCRECTL_VERSION}" --repo NVIDIA/cluster-readiness-engine
   --pattern installer --output - | bash -s -- -v "${NVCRECTL_VERSION}"
 ```
 
+> **Note**: Releases up to and including `v0.1.0-rc.10` serve the old
+> `cre.nvidia.com` API group and publish the Helm chart as
+> `oci://ghcr.io/nvidia/cluster-readiness-engine`. The renamed
+> `nvcre.nvidia.com` group and `oci://ghcr.io/nvidia/nvcre` chart require the
+> first release cut after the rename (or a build from `main`).
+
 The installer automatically downloads and verifies a SHA-256 checksum before installing. On air-gapped systems, ensure `checksums.txt` from the same release is reachable alongside the binary.
 
 Verify the installation:
@@ -40,7 +46,7 @@ nvcrectl --version
 `nvcrectl setup init` installs the controller and its dependencies in two phases:
 
 1. **deps** — Kubeflow Trainer (required for `TrainJob` workloads)
-2. **helm** — CRE Helm chart (CRDs, controller deployment, built-in LogProfiles)
+2. **helm** — NVCRE Helm chart (CRDs, controller deployment, built-in LogProfiles)
 
 ```bash
 nvcrectl setup init
@@ -59,13 +65,13 @@ nvcrectl setup init --image-pull-secret $GITHUB_TOKEN
 Check that the controller is running:
 
 ```bash
-kubectl get pods -n cluster-readiness-engine
+kubectl get pods -n nvcre
 ```
 
 Check that the CRDs are installed:
 
 ```bash
-kubectl get crds | grep cre.nvidia.com
+kubectl get crds | grep nvcre.nvidia.com
 ```
 
 ## Uninstall
@@ -74,7 +80,7 @@ kubectl get crds | grep cre.nvidia.com
 nvcrectl setup reset
 ```
 
-This removes all CRE custom resources, the controller, CRDs, and Kubeflow Trainer. To keep Kubeflow Trainer, pass `--skip-phases=deps`:
+This removes all NVCRE custom resources, the controller, CRDs, and Kubeflow Trainer. To keep Kubeflow Trainer, pass `--skip-phases=deps`:
 
 ```bash
 nvcrectl setup reset --skip-phases=deps

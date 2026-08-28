@@ -44,8 +44,9 @@ site/resources/
 site/.hugo_build.lock
 
 # Helm package artifacts
-cluster-readiness-engine-*.tgz
-helm/cluster-readiness-engine/charts/*.tgz
+nvcre-*.tgz
+helm/nvcre/charts/*.tgz
 
 # Build artifacts
 dist/
+.claude/worktrees/

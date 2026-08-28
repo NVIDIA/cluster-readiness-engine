@@ -78,7 +78,7 @@ func chartDir(t *testing.T) string {
 	if !ok {
 		t.Fatal("runtime.Caller failed")
 	}
-	return filepath.Clean(filepath.Join(filepath.Dir(filename), "..", "..", "helm", "cluster-readiness-engine"))
+	return filepath.Clean(filepath.Join(filepath.Dir(filename), "..", "..", "helm", "nvcre"))
 }
 
 // requireChartInputs reads the chart in process. Go's test cache cannot observe

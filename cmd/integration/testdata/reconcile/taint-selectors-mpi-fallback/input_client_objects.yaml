@@ -9,7 +9,7 @@ metadata:
     nvidia.com/gpu.present: "true"
     kubernetes.io/hostname: gpu-node-01
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: test-taint-mpi-fallback
@@ -28,7 +28,7 @@ spec:
               - mpirun
             numNodes: 1
           runtimePatches:
-            - manager: cre.nvidia.com/catalog
+            - manager: nvcre.nvidia.com/catalog
               trainingRuntimeSpec:
                 template:
                   spec:

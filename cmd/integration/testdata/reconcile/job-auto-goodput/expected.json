@@ -1,17 +1,17 @@
 {
   "GoodputMeasurement/test-auto-goodput-goodput": {
     "kind": "GoodputMeasurement",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-auto-goodput-goodput",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
-        "cre.nvidia.com/job": "test-auto-goodput"
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/job": "test-auto-goodput"
       },
       "ownerReferences": [
         {
-          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
           "kind": "Job",
           "name": "test-auto-goodput",
           "uid": "",
@@ -20,12 +20,12 @@
         }
       ],
       "finalizers": [
-        "cre.nvidia.com/goodputmeasurement-finalizer"
+        "nvcre.nvidia.com/goodputmeasurement-finalizer"
       ]
     },
     "spec": {
       "jobRef": {
-        "apiGroup": "cre.nvidia.com",
+        "apiGroup": "nvcre.nvidia.com",
         "kind": "Job",
         "name": "test-auto-goodput"
       },
@@ -35,12 +35,12 @@
   },
   "Job/test-auto-goodput": {
     "kind": "Job",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-auto-goodput",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/finalizer"
+        "nvcre.nvidia.com/finalizer"
       ]
     },
     "spec": {

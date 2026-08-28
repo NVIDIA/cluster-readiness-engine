@@ -4,7 +4,7 @@
 # Issue #175 / ADR-070: MPI WorkloadRun on AWS GB300 (RoCE). The platform
 # override table must pin OpenMPI's transport to TCP on eth0, disable
 # UCC/HCOLL, and forward the RoCE NCCL env via mpirun -x.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: WorkloadRun
 metadata:
   name: aws-gb300-workloadrun

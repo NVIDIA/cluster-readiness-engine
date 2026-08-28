@@ -6,7 +6,7 @@
 # mark the Job Failed. The Workflow controller then marks the Workflow
 # Failed. Once Failed, the test deletes the Workflow and verifies that
 # the controller cascade-deletes the Job and its TrainJob workload.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: test-wf-del-fail
@@ -43,22 +43,22 @@ status:
           - gpu-node-01
         phase: Running
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: test-wf-del-fail-group-0-iter-1
           namespace: default
 ---
 # Job owned by the Workflow, currently InProgress with workloadRef.
 # The Job controller detects the failed TrainJob and transitions to Failed.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-wf-del-fail-group-0-iter-1
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
-    cre.nvidia.com/workflow: test-wf-del-fail
-    cre.nvidia.com/group: group-0
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: test-wf-del-fail
+    nvcre.nvidia.com/group: group-0
 spec:
   workload:
     trainJob:

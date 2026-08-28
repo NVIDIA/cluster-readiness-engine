@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: cluster-readiness-engine
+  name: nvcre
 ---
 apiVersion: v1
 kind: Namespace
@@ -12,5 +12,5 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: nvcrectl-pull-secret
-  namespace: cluster-readiness-engine
+  namespace: nvcre
 type: kubernetes.io/dockerconfigjson

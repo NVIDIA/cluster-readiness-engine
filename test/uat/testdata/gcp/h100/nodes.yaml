@@ -3,7 +3,7 @@
 
 # KWOK-simulated GCP H100 GPU nodes (a3-highgpu-8g).
 #
-# Key labels for CRE detection:
+# Key labels for NVCRE detection:
 #   nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3  -> GPU arch "h100"
 #   nvidia.com/gpu.present: "true"                  -> nvcrectl GPU discovery
 #   spec.providerID: "gce://..."                    -> platform "gcp" (workflow_detect.go)

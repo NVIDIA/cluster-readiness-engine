@@ -6,7 +6,7 @@ cliVersion: 4.11.1
 domain: nvidia.com
 layout:
 - go.kubebuilder.io/v4
-projectName: cluster-readiness-engine
+projectName: nvcre
 repo: github.com/NVIDIA/cluster-readiness-engine
 resources:
 - api:
@@ -14,7 +14,7 @@ resources:
     namespaced: true
   controller: true
   domain: nvidia.com
-  group: cre
+  group: nvcre
   kind: Job
   path: github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1
   version: v1alpha1
@@ -23,7 +23,7 @@ resources:
     namespaced: true
   controller: true
   domain: nvidia.com
-  group: cre
+  group: nvcre
   kind: Workflow
   path: github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1
   version: v1alpha1
@@ -32,7 +32,7 @@ resources:
     namespaced: true
   controller: true
   domain: nvidia.com
-  group: cre
+  group: nvcre
   kind: Certification
   path: github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1
   version: v1alpha1
@@ -41,7 +41,7 @@ resources:
     namespaced: true
   controller: true
   domain: nvidia.com
-  group: cre
+  group: nvcre
   kind: GoodputMeasurement
   path: github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1
   version: v1alpha1

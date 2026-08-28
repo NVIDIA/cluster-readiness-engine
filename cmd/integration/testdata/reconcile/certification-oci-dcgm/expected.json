@@ -1,12 +1,12 @@
 {
   "Certification/oci-dcgm": {
     "kind": "Certification",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "oci-dcgm",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/certification-finalizer"
+        "nvcre.nvidia.com/certification-finalizer"
       ]
     },
     "spec": {
@@ -64,19 +64,19 @@
   },
   "Workflow/oci-dcgm-diagnostics-dcgm-9e8ef": {
     "kind": "Workflow",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "oci-dcgm-diagnostics-dcgm-9e8ef",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
-        "cre.nvidia.com/category-domain": "diagnostics",
-        "cre.nvidia.com/category-variant": "dcgm-level4",
-        "cre.nvidia.com/certification": "oci-dcgm"
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/category-domain": "diagnostics",
+        "nvcre.nvidia.com/category-variant": "dcgm-level4",
+        "nvcre.nvidia.com/certification": "oci-dcgm"
       },
       "ownerReferences": [
         {
-          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
           "kind": "Certification",
           "name": "oci-dcgm",
           "uid": "",
@@ -85,7 +85,7 @@
         }
       ],
       "finalizers": [
-        "cre.nvidia.com/workflow-finalizer"
+        "nvcre.nvidia.com/workflow-finalizer"
       ]
     },
     "spec": {
@@ -265,7 +265,7 @@
             ],
             "phase": "Running",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "oci-dcgm-diagnostics-dcgm-9e8ef-job",
               "namespace": "default"

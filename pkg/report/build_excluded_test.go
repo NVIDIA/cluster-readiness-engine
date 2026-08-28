@@ -12,7 +12,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -31,7 +31,7 @@ func TestBuildExcludedReport(t *testing.T) {
 		if err := clientgoscheme.AddToScheme(scheme); err != nil {
 			return err
 		}
-		if err := crev1alpha1.AddToScheme(scheme); err != nil {
+		if err := nvcrev1alpha1.AddToScheme(scheme); err != nil {
 			return err
 		}
 
@@ -41,10 +41,10 @@ func TestBuildExcludedReport(t *testing.T) {
 		}
 
 		builder := fake.NewClientBuilder().WithScheme(scheme)
-		var cert *crev1alpha1.Certification
+		var cert *nvcrev1alpha1.Certification
 		for _, o := range objs {
 			builder = builder.WithObjects(o)
-			if c, ok := o.(*crev1alpha1.Certification); ok {
+			if c, ok := o.(*nvcrev1alpha1.Certification); ok {
 				cert = c
 			}
 		}

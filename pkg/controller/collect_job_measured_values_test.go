@@ -15,7 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -42,15 +42,15 @@ func TestCollectJobMeasuredValues(t *testing.T) {
 		}
 
 		scheme := runtime.NewScheme()
-		if err := crev1alpha1.AddToScheme(scheme); err != nil {
+		if err := nvcrev1alpha1.AddToScheme(scheme); err != nil {
 			return err
 		}
 
 		jobRef := corev1.TypedLocalObjectReference{Name: "j"}
-		gm := &crev1alpha1.GoodputMeasurement{
+		gm := &nvcrev1alpha1.GoodputMeasurement{
 			ObjectMeta: metav1.ObjectMeta{Name: "j-goodput", Namespace: "ns"},
-			Spec:       crev1alpha1.GoodputMeasurementSpec{JobRef: jobRef},
-			Status: crev1alpha1.GoodputMeasurementStatus{
+			Spec:       nvcrev1alpha1.GoodputMeasurementSpec{JobRef: jobRef},
+			Status: nvcrev1alpha1.GoodputMeasurementStatus{
 				Result:          in.Result,
 				AvgTFLOPSPerGPU: in.AvgTFLOPSPerGPU,
 				AvgStepTimeSec:  in.AvgStepTimeSec,
@@ -58,32 +58,32 @@ func TestCollectJobMeasuredValues(t *testing.T) {
 		}
 		if in.GoodputComplete {
 			gm.Status.Conditions = []metav1.Condition{{
-				Type:               crev1alpha1.GoodputMeasurementComplete,
+				Type:               nvcrev1alpha1.GoodputMeasurementComplete,
 				Status:             metav1.ConditionTrue,
 				Reason:             "JobSucceeded",
 				LastTransitionTime: metav1.Now(),
 			}}
 		}
-		bm := &crev1alpha1.BandwidthMeasurement{
+		bm := &nvcrev1alpha1.BandwidthMeasurement{
 			ObjectMeta: metav1.ObjectMeta{Name: "j-bandwidth", Namespace: "ns"},
-			Spec:       crev1alpha1.BandwidthMeasurementSpec{JobRef: jobRef},
-			Status: crev1alpha1.BandwidthMeasurementStatus{
-				Results: []crev1alpha1.BandwidthResult{{
+			Spec:       nvcrev1alpha1.BandwidthMeasurementSpec{JobRef: jobRef},
+			Status: nvcrev1alpha1.BandwidthMeasurementStatus{
+				Results: []nvcrev1alpha1.BandwidthResult{{
 					SizeBytes: 1 << 30, BusBW: in.BusBW, AlgBW: in.AlgBW, Samples: 1,
 				}},
 			},
 		}
-		job := &crev1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"}}
+		job := &nvcrev1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"}}
 
 		gmIndex := func(obj client.Object) []string {
-			return []string{obj.(*crev1alpha1.GoodputMeasurement).Spec.JobRef.Name}
+			return []string{obj.(*nvcrev1alpha1.GoodputMeasurement).Spec.JobRef.Name}
 		}
 		bmIndex := func(obj client.Object) []string {
-			return []string{obj.(*crev1alpha1.BandwidthMeasurement).Spec.JobRef.Name}
+			return []string{obj.(*nvcrev1alpha1.BandwidthMeasurement).Spec.JobRef.Name}
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).
-			WithIndex(&crev1alpha1.GoodputMeasurement{}, measurementJobRefIndexField, gmIndex).
-			WithIndex(&crev1alpha1.BandwidthMeasurement{}, measurementJobRefIndexField, bmIndex).
+			WithIndex(&nvcrev1alpha1.GoodputMeasurement{}, measurementJobRefIndexField, gmIndex).
+			WithIndex(&nvcrev1alpha1.BandwidthMeasurement{}, measurementJobRefIndexField, bmIndex).
 			WithObjects(gm, bm, job).Build()
 
 		values := collectJobMeasuredValues(context.Background(), c, job)

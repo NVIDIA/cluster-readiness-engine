@@ -19,13 +19,13 @@ const (
 )
 
 var (
-	// jobStatusGauge tracks the current status of CRE jobs.
+	// jobStatusGauge tracks the current status of NVCRE jobs.
 	// Values: 1 for the current status, 0 for other statuses.
 	// Status can be: "in_progress", "succeeded", "failed"
 	jobStatusGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cre_job_status",
-			Help: "Current status of CRE jobs (1 = current status, 0 = not current status)",
+			Name: "nvcre_job_status",
+			Help: "Current status of NVCRE jobs (1 = current status, 0 = not current status)",
 		},
 		[]string{labelNamespace, labelJob, labelWorkflow, labelStatus},
 	)
@@ -33,7 +33,7 @@ var (
 	// hardwareFailedJobsTotal counts the total number of jobs that detected hardware failures.
 	hardwareFailedJobsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "cre_hardware_failed_jobs_total",
+			Name: "nvcre_hardware_failed_jobs_total",
 			Help: "Total number of jobs that detected hardware failures",
 		},
 		[]string{labelNamespace, labelJob, labelWorkflow},
@@ -42,7 +42,7 @@ var (
 	// failedNodesGauge tracks the number of failed nodes per job.
 	failedNodesGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cre_job_failed_nodes",
+			Name: "nvcre_job_failed_nodes",
 			Help: "Number of nodes with detected hardware failures per job",
 		},
 		[]string{labelNamespace, labelJob, labelWorkflow},
@@ -51,7 +51,7 @@ var (
 	// nodeHealthCheckDuration tracks the duration of node health check operations.
 	nodeHealthCheckDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "cre_node_health_check_duration_seconds",
+			Name:    "nvcre_node_health_check_duration_seconds",
 			Help:    "Duration of node health check operations in seconds",
 			Buckets: prometheus.ExponentialBuckets(0.001, 2, 15), // 1ms to ~16s
 		},
@@ -61,7 +61,7 @@ var (
 	// nodesEvaluatedTotal counts the total number of node health evaluations performed.
 	nodesEvaluatedTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "cre_nodes_evaluated_total",
+			Name: "nvcre_nodes_evaluated_total",
 			Help: "Total number of node health evaluations performed",
 		},
 		[]string{labelNamespace, labelJob, labelWorkflow},
@@ -70,7 +70,7 @@ var (
 	// hardwareFailuresDetectedTotal counts the total number of hardware failures detected.
 	hardwareFailuresDetectedTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "cre_hardware_failures_detected_total",
+			Name: "nvcre_hardware_failures_detected_total",
 			Help: "Total number of hardware failures detected across all evaluations",
 		},
 		[]string{labelNamespace, labelJob, labelWorkflow, labelNode},
@@ -79,7 +79,7 @@ var (
 	// reconcileTotal counts the total number of reconciliations.
 	reconcileTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "cre_reconcile_total",
+			Name: "nvcre_reconcile_total",
 			Help: "Total number of reconciliation attempts",
 		},
 		[]string{labelNamespace, labelJob, labelWorkflow, "result"},
@@ -88,7 +88,7 @@ var (
 	// reconcileDuration tracks the duration of reconciliation operations.
 	reconcileDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name:    "cre_reconcile_duration_seconds",
+			Name:    "nvcre_reconcile_duration_seconds",
 			Help:    "Duration of reconciliation operations in seconds",
 			Buckets: prometheus.ExponentialBuckets(0.01, 2, 12), // 10ms to ~20s
 		},
@@ -98,7 +98,7 @@ var (
 	// workloadCreatedTotal counts the total number of workloads created.
 	workloadCreatedTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: "cre_workload_created_total",
+			Name: "nvcre_workload_created_total",
 			Help: "Total number of workloads created",
 		},
 		[]string{labelNamespace, labelJob, labelWorkflow},
@@ -108,7 +108,7 @@ var (
 
 	goodputRatioGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cre_goodput_ratio",
+			Name: "nvcre_goodput_ratio",
 			Help: "Runtime goodput ratio (0.0 to 1.0)",
 		},
 		goodputLabels,
@@ -116,7 +116,7 @@ var (
 
 	goodputAvgTFLOPSGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cre_goodput_avg_tflops_per_gpu",
+			Name: "nvcre_goodput_avg_tflops_per_gpu",
 			Help: "Average TFLOPS per GPU from goodput measurement",
 		},
 		goodputLabels,
@@ -124,7 +124,7 @@ var (
 
 	goodputRescheduleTimeGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cre_goodput_reschedule_time_seconds",
+			Name: "nvcre_goodput_reschedule_time_seconds",
 			Help: "Cumulative reschedule time in seconds",
 		},
 		goodputLabels,
@@ -132,7 +132,7 @@ var (
 
 	goodputResumeTimeGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cre_goodput_resume_time_seconds",
+			Name: "nvcre_goodput_resume_time_seconds",
 			Help: "Cumulative resume time in seconds",
 		},
 		goodputLabels,
@@ -140,7 +140,7 @@ var (
 
 	goodputCheckpointSaveTimeGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cre_goodput_checkpoint_save_time_seconds",
+			Name: "nvcre_goodput_checkpoint_save_time_seconds",
 			Help: "Cumulative checkpoint save time in seconds",
 		},
 		goodputLabels,
@@ -148,7 +148,7 @@ var (
 
 	goodputLostWorkTimeGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cre_goodput_lost_work_time_seconds",
+			Name: "nvcre_goodput_lost_work_time_seconds",
 			Help: "Cumulative lost work time in seconds (work done after last checkpoint, lost on restart)",
 		},
 		goodputLabels,
@@ -156,7 +156,7 @@ var (
 
 	goodputTrainingTimeGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cre_goodput_training_time_seconds",
+			Name: "nvcre_goodput_training_time_seconds",
 			Help: "Total training wall-clock time in seconds",
 		},
 		goodputLabels,
@@ -164,7 +164,7 @@ var (
 
 	goodputWarmupTimeGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cre_goodput_warmup_time_seconds",
+			Name: "nvcre_goodput_warmup_time_seconds",
 			Help: "Total warmup step time in seconds",
 		},
 		goodputLabels,
@@ -172,7 +172,7 @@ var (
 
 	goodputNonWarmupTimeGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cre_goodput_non_warmup_time_seconds",
+			Name: "nvcre_goodput_non_warmup_time_seconds",
 			Help: "Total non-warmup step time in seconds",
 		},
 		goodputLabels,
@@ -180,7 +180,7 @@ var (
 
 	goodputAvgStepTimeGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cre_goodput_avg_step_time_seconds",
+			Name: "nvcre_goodput_avg_step_time_seconds",
 			Help: "Average time per training step in seconds",
 		},
 		goodputLabels,
@@ -192,7 +192,7 @@ var (
 	// one time series per node with value 1.
 	topologyValidatedNodesGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cre_topology_validated_nodes",
+			Name: "nvcre_topology_validated_nodes",
 			Help: "Nodes that passed burn-in validation per topology domain (1 per node)",
 		},
 		topologyNodeLabels,
@@ -202,7 +202,7 @@ var (
 	// one time series per node with value 1.
 	topologyFailedNodesGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cre_topology_failed_nodes",
+			Name: "nvcre_topology_failed_nodes",
 			Help: "Nodes that failed burn-in validation per topology domain (1 per node)",
 		},
 		topologyNodeLabels,
@@ -212,7 +212,7 @@ var (
 
 	ncclAlgBWGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cre_nccl_algbw_gbps",
+			Name: "nvcre_nccl_algbw_gbps",
 			Help: "NCCL algorithmic bandwidth in GB/s per message size",
 		},
 		ncclBandwidthLabels,
@@ -220,7 +220,7 @@ var (
 
 	ncclBusBWGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cre_nccl_busbw_gbps",
+			Name: "nvcre_nccl_busbw_gbps",
 			Help: "NCCL bus bandwidth in GB/s per message size",
 		},
 		ncclBandwidthLabels,

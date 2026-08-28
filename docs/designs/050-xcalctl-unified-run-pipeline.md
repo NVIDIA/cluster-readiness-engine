@@ -43,7 +43,7 @@ Both return a `certRunConfig` struct consumed by the single pipeline:
 
 ```go
 type certRunConfig struct {
-    cert            *crev1alpha1.Certification
+    cert            *nvcrev1alpha1.Certification
     namespace       string
     imagePullSecret string
     doWait          bool
@@ -62,7 +62,7 @@ type certRunConfig struct {
 [setup]   SIGINT/SIGTERM handling
 [setup]   probeExistingComponents() → buildSkipPhasesFromProbe()
 [setup]   runInit() (from setup.go, autoApprove=true, skip pre-existing)
-[setup]   Create controller pull secret in cluster-readiness-engine namespace
+[setup]   Create controller pull secret in nvcre namespace
 
 [ALL]     Create K8s watch client (newK8sWatchClient)
 [cleanup] Register cleanup defer (delete cert, namespace, call runReset)

@@ -1,6 +1,6 @@
 ---
 title: nvcrectl setup
-description: Install and uninstall the Cluster Readiness Engine controller and its dependencies.
+description: Install and uninstall the NVIDIA Cluster Readiness Engine controller and its dependencies.
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 ---
@@ -8,7 +8,7 @@ description: Install and uninstall the Cluster Readiness Engine controller and i
 
 ## nvcrectl setup init
 
-Installs CRE via Helm and its dependencies on the target cluster.
+Installs NVCRE via Helm and its dependencies on the target cluster.
 
 ```bash
 nvcrectl setup init [flags]
@@ -21,7 +21,7 @@ Runs two phases in order:
 | Phase | What |
 |-------|------|
 | `deps` | Kubeflow Trainer v2.2.1 |
-| `helm` | CRE Helm chart (CRDs, controller, built-in LogProfiles) pulled from GHCR |
+| `helm` | NVCRE Helm chart (CRDs, controller, built-in LogProfiles) pulled from GHCR |
 
 Use `--skip-phases=deps` to skip Kubeflow Trainer if it is already installed.
 
@@ -72,15 +72,15 @@ nvcrectl setup init --skip-phases=deps
 
 ## nvcrectl setup status
 
-Reports the installation status of CRE and its dependencies by querying the cluster.
+Reports the installation status of NVCRE and its dependencies by querying the cluster.
 
 ```bash
 nvcrectl setup status [flags]
 ```
 
-Components checked: `creCRDs`, `creController`, `kubeflowTrainer`, `logProfiles`, `gpuOperator`, `dcgm` (optional).
+Components checked: `nvcreCRDs`, `nvcreController`, `kubeflowTrainer`, `logProfiles`, `gpuOperator`, `dcgm` (optional).
 
-The Helm releases managed by `setup init` (`cluster-readiness-engine` and `kubeflow-trainer`) are also checked via the helm CLI and reported under `helmReleases`. A release in a failed or pending state (e.g. `failed`, `pending-upgrade`) makes the status not ready. A release helm has no record of, or that cannot be queried (helm not in PATH), is reported but does not affect readiness.
+The Helm releases managed by `setup init` (`nvcre` and `kubeflow-trainer`) are also checked via the helm CLI and reported under `helmReleases`. A release in a failed or pending state (e.g. `failed`, `pending-upgrade`) makes the status not ready. A release helm has no record of, or that cannot be queried (helm not in PATH), is reported but does not affect readiness.
 
 ### Flags
 
@@ -97,7 +97,7 @@ nvcrectl setup status -o json
 
 ## nvcrectl setup reset
 
-Removes CRE and its dependencies from the target cluster. Kubeflow Trainer is removed by default.
+Removes NVCRE and its dependencies from the target cluster. Kubeflow Trainer is removed by default.
 
 ```bash
 nvcrectl setup reset [flags]
@@ -109,8 +109,8 @@ Runs three phases in order:
 
 | Phase | What |
 |-------|------|
-| `cr` | All CRE custom resource instances (Certifications, Workflows, Jobs) |
-| `helm` | CRE Helm release (CRDs, controller, LogProfiles) |
+| `cr` | All NVCRE custom resource instances (Certifications, Workflows, Jobs) |
+| `helm` | NVCRE Helm release (CRDs, controller, LogProfiles) |
 | `deps` | Kubeflow Trainer |
 
 Use `--skip-phases=deps` to keep Kubeflow Trainer.

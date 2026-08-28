@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The Helm chart CRE installs and the Go module it compiles against are pinned
+// The Helm chart NVCRE installs and the Go module it compiles against are pinned
 // in two different files, so they can drift apart without anything failing.
 // They did: the chart constant said v2.2.0 while go.mod said v2.2.1, from the
 // initial commit onwards. This test ties them together.

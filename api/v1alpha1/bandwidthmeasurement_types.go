@@ -19,7 +19,7 @@ const (
 
 // BandwidthMeasurementSpec defines the desired state of BandwidthMeasurement
 type BandwidthMeasurementSpec struct {
-	// jobRef is the reference to the CRE Job for which bandwidth should be measured.
+	// jobRef is the reference to the NVCRE Job for which bandwidth should be measured.
 	// +optional
 	JobRef corev1.TypedLocalObjectReference `json:"jobRef,omitempty"`
 

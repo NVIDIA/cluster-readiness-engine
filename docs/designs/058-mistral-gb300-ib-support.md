@@ -4,7 +4,7 @@
 
 ## Context
 
-Mistral is a new CSP running CRE certifications on bare-metal Grace+GB300 nodes provisioned via Cluster API + Metal3. An example target node reports:
+Mistral is a new CSP running NVCRE certifications on bare-metal Grace+GB300 nodes provisioned via Cluster API + Metal3. An example target node reports:
 
 - `spec.providerID: metal3://<uuid>` — a prefix not currently recognized by [`workflow_detect.go`](../../pkg/controller/workflow_detect.go), so platform detection falls through to `onprem` and no overrides match.
 - `nvidia.com/gpu.product: NVIDIA-GB300`, `kubernetes.io/arch: arm64`, `nvidia.com/gpu.count: 4`.
@@ -38,7 +38,7 @@ No existing platform override targets Mistral, and no catalog path emits `rdma/i
 
 ## Rationale
 
-- **Map `metal3://` outright.** No Mistral-specific label exists on the target nodes, and requiring operators to add one would shift per-tenant setup burden for no practical gain today. The `metal3://` prefix is currently unclaimed by any CRE platform; the trade-off is explicit and reversible (ADR-012's override precedence lets us add a label check later without breaking existing configs).
+- **Map `metal3://` outright.** No Mistral-specific label exists on the target nodes, and requiring operators to add one would shift per-tenant setup burden for no practical gain today. The `metal3://` prefix is currently unclaimed by any NVCRE platform; the trade-off is explicit and reversible (ADR-012's override precedence lets us add a label check later without breaking existing configs).
 - **`rdma/ib` over `mlnxnics`.** The node's `nvidia.com/mlnxnics: 0` makes `mlnxnics`-based requests unschedulable. Using `rdma/ib` matches what the shared RDMA device plugin actually advertises.
 - **Full-catalog coverage in one change.** Phased scoping would leave certain certifications (training, diagnostics) silently rendering incorrect manifests on Mistral until subsequent PRs, which is a worse operator experience than one larger atomic change. ADR-058 (Azure A100) landed full coverage for the same reasons.
 - **Leverage `[gb200, gb300]` shared override.** Duplicating the ComputeDomain dep in our mistral-specific file would create drift if the GB200/GB300 DRA definition evolves.

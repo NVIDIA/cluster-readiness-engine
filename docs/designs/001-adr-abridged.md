@@ -1,8 +1,8 @@
-# ADR-001: Architecture — CRE for GPU Cluster Certification
+# ADR-001: Architecture — NVCRE for GPU Cluster Certification
 
 **Status:** Proposed
 **Date:** 2026-02-10
-**Deciders:** CRE Maintainers
+**Deciders:** NVCRE Maintainers
 
 ## Context
 
@@ -22,7 +22,7 @@ The problem breaks down into three parts:
 
 ## Decision
 
-Build the cluster-readiness-engine as layered Kubernetes CRDs following the Deployment → ReplicaSet → Pod composition pattern: **Certification** composes a burn-in suite, **Workflow** orchestrates iterations across node groups, and **Job** runs a single workload with health monitoring. Measurement APIs (GoodputMeasurement, BandwidthMeasurement) are opt-in child resources that Jobs create when configured, keeping measurement concerns out of the core orchestration path. A Remediation CRD handles post-failure node isolation.
+Build the nvcre as layered Kubernetes CRDs following the Deployment → ReplicaSet → Pod composition pattern: **Certification** composes a burn-in suite, **Workflow** orchestrates iterations across node groups, and **Job** runs a single workload with health monitoring. Measurement APIs (GoodputMeasurement, BandwidthMeasurement) are opt-in child resources that Jobs create when configured, keeping measurement concerns out of the core orchestration path. A Remediation CRD handles post-failure node isolation.
 
 ## Implementation
 
@@ -35,7 +35,7 @@ Certification creates Workflows from a catalog, Workflow creates Jobs, Job creat
 **Certification** is the push-button entry point. The controller taints target nodes for isolation, looks up each category in the catalog, and creates one Workflow per category. On failure, it creates a Remediation resource listing failed nodes.
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: gpu-cluster-certification
@@ -53,7 +53,7 @@ spec:
 **Workflow** orchestrates multi-node, multi-iteration execution. Takes a `jobTemplate`, applies orchestration targets to each Job's workload, and creates N sequential Jobs per group. Failed nodes accumulate across iterations. Supports topology-aware node grouping and dependency resources with configurable cleanup policies.
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: nemotron-6-8b-burnin
@@ -82,7 +82,7 @@ spec:
 **Job** is the lowest level. The controller creates a workload via the adapter pattern, evaluates CEL health expressions against nodes running the Job's pods, and manages checkpoint restart and stall detection.
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: nemotron-6-8b-burnin
@@ -118,23 +118,23 @@ spec:
 **GoodputMeasurement** tracks training efficiency for a referenced Job. The controller parses pod logs using a cluster-scoped LogProfile, computes goodput ratio, and publishes stall detection metrics that the Job controller reads.
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: GoodputMeasurement
 metadata:
   name: nemotron-6-8b-burnin-goodput
 spec:
   jobRef:
-    apiGroup: cre.nvidia.com
+    apiGroup: nvcre.nvidia.com
     kind: Job
     name: nemotron-6-8b-burnin
   logProfileRef: megatron-training
   sampleInterval: 30s
 ```
 
-**Remediation** is auto-created by Certification on failure. The controller taints each failed node (`cre.nvidia.com/preflight-failed:NoExecute`), cordons it, and sets a node condition. Deleting the Remediation reverses all actions, enabling re-certification after repair.
+**Remediation** is auto-created by Certification on failure. The controller taints each failed node (`nvcre.nvidia.com/preflight-failed:NoExecute`), cordons it, and sets a node condition. Deleting the Remediation reverses all actions, enabling re-certification after repair.
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Remediation
 metadata:
   name: gpu-cluster-certification-remediation
@@ -197,7 +197,7 @@ The controller's catalog and adapter architecture supports all four ClusterMAX�
 
 ### Additional
 
-- `cre.nvidia.com` API group with `v1alpha1`. Breaking changes expected before `v1beta1`.
+- `nvcre.nvidia.com` API group with `v1alpha1`. Breaking changes expected before `v1beta1`.
 - Catalog supports Go-code registration only (`init()`). Adding a category requires a new Go file and a controller rebuild.
 - The controller is not in the critical path for tenant workloads. If unavailable, existing workloads and taints persist (fail-safe).
 - Controller upgrades are non-disruptive. Brief reconciliation pause during pod replacement, then resumes from persisted state.

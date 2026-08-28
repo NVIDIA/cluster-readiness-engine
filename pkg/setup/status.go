@@ -54,8 +54,8 @@ type HelmReleaseStatus struct {
 
 // SetupStatusComponents reports the status of each individual component.
 type SetupStatusComponents struct {
-	CRECRDs         bool `json:"creCRDs"`
-	CREController   bool `json:"creController"`
+	NVCRECRDs       bool `json:"nvcreCRDs"`
+	NVCREController bool `json:"nvcreController"`
 	KubeflowTrainer bool `json:"kubeflowTrainer"`
 	LogProfiles     bool `json:"logProfiles"`
 	GPUOperator     bool `json:"gpuOperator"`
@@ -67,8 +67,8 @@ type SetupStatusComponents struct {
 // allRequired reports whether every required component is present, ignoring
 // Helm release health. DCGM is optional and does not count.
 func (c SetupStatusComponents) allRequired() bool {
-	return c.CRECRDs &&
-		c.CREController &&
+	return c.NVCRECRDs &&
+		c.NVCREController &&
 		c.KubeflowTrainer &&
 		c.LogProfiles &&
 		c.GPUOperator
@@ -82,18 +82,18 @@ func newSetupStatusCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Report the installation status of CRE and its dependencies",
-		Long: `Check whether CRE and all required cluster components are installed and ready.
+		Short: "Report the installation status of NVCRE and its dependencies",
+		Long: `Check whether NVCRE and all required cluster components are installed and ready.
 
 Components checked:
-  creCRDs        CRE CustomResourceDefinitions (cre.nvidia.com)
-  creController  CRE controller deployment (namespace: cluster-readiness-engine)
+  nvcreCRDs        NVCRE CustomResourceDefinitions (nvcre.nvidia.com)
+  nvcreController  NVCRE controller deployment (namespace: nvcre)
   kubeflowTrainer      Kubeflow Trainer TrainJob CRD (kubeflow.org)
-  logProfiles          CRE LogProfile resources
+  logProfiles          NVCRE LogProfile resources
   gpuOperator          NVIDIA GPU Operator (nodes with nvidia.com/gpu.present=true)
   dcgm                 NVIDIA DCGM service (optional; diagnostics/dcgm-level4 only)
 
-The Helm releases managed by 'setup init' (cluster-readiness-engine and
+The Helm releases managed by 'setup init' (nvcre and
 kubeflow-trainer) are also checked via the helm CLI.
 
 'installed' is true only when all required components are present and no
@@ -133,8 +133,8 @@ be queried (helm not in PATH), does not affect 'installed' either.`,
 func collectSetupStatus(ctx context.Context, c client.Client, query helmStateFunc) *SetupStatus {
 	comp := SetupStatusComponents{}
 
-	comp.CRECRDs = checkCRECRDs(ctx, c)
-	comp.CREController = checkCREController(ctx, c)
+	comp.NVCRECRDs = checkNVCRECRDs(ctx, c)
+	comp.NVCREController = checkNVCREController(ctx, c)
 	comp.KubeflowTrainer = checkKubeflowTrainer(ctx, c)
 	comp.LogProfiles = checkLogProfiles(ctx, c)
 	comp.GPUOperator = checkGPUOperator(ctx, c)
@@ -155,7 +155,7 @@ func collectSetupStatus(ctx context.Context, c client.Client, query helmStateFun
 // checkHelmReleases queries the state of every Helm release setup init manages.
 func checkHelmReleases(query helmStateFunc) []HelmReleaseStatus {
 	managed := []struct{ name, namespace string }{
-		{helmReleaseName, creNamespace},
+		{helmReleaseName, nvcreNamespace},
 		{trainerReleaseName, trainerNamespace},
 	}
 	releases := make([]HelmReleaseStatus, 0, len(managed))
@@ -171,7 +171,7 @@ func checkHelmReleases(query helmStateFunc) []HelmReleaseStatus {
 
 // helmStateBlocksReady reports whether a release state must block readiness.
 // Failed and pending states block. Deployed does not. Absent and unknown
-// states do not block either: CRE may have been installed without Helm, and
+// states do not block either: NVCRE may have been installed without Helm, and
 // a missing helm binary must not fail the status command.
 func helmStateBlocksReady(state string) bool {
 	switch state {
@@ -192,8 +192,8 @@ func unhealthyHelmReleases(releases []HelmReleaseStatus) []HelmReleaseStatus {
 	return unhealthy
 }
 
-// checkCRECRDs returns true if CRE CRDs are installed.
-func checkCRECRDs(ctx context.Context, c client.Client) bool {
+// checkNVCRECRDs returns true if NVCRE CRDs are installed.
+func checkNVCRECRDs(ctx context.Context, c client.Client) bool {
 	list := &unstructured.UnstructuredList{}
 	list.SetAPIVersion("apiextensions.k8s.io/v1")
 	list.SetKind("CustomResourceDefinitionList")
@@ -202,20 +202,20 @@ func checkCRECRDs(ctx context.Context, c client.Client) bool {
 	}
 	for _, item := range list.Items {
 		group, _, _ := unstructured.NestedString(item.Object, "spec", "group")
-		if group == creAPIGroup {
+		if group == nvcreAPIGroup {
 			return true
 		}
 	}
 	return false
 }
 
-// checkCREController returns true if the CRE controller deployment
-// has at least one available replica in the cluster-readiness-engine namespace.
-func checkCREController(ctx context.Context, c client.Client) bool {
+// checkNVCREController returns true if the NVCRE controller deployment
+// has at least one available replica in the nvcre namespace.
+func checkNVCREController(ctx context.Context, c client.Client) bool {
 	list := &unstructured.UnstructuredList{}
 	list.SetAPIVersion("apps/v1")
 	list.SetKind("DeploymentList")
-	if err := c.List(ctx, list, client.InNamespace(creNamespace)); err != nil {
+	if err := c.List(ctx, list, client.InNamespace(nvcreNamespace)); err != nil {
 		return false
 	}
 	for _, item := range list.Items {
@@ -248,7 +248,7 @@ func checkKubeflowTrainer(ctx context.Context, c client.Client) bool {
 // checkLogProfiles returns true if at least one LogProfile resource exists.
 func checkLogProfiles(ctx context.Context, c client.Client) bool {
 	list := &unstructured.UnstructuredList{}
-	list.SetAPIVersion(creAPIGroup + "/v1alpha1")
+	list.SetAPIVersion(nvcreAPIGroup + "/v1alpha1")
 	list.SetKind("LogProfileList")
 	if err := c.List(ctx, list); err != nil {
 		return false
@@ -300,9 +300,9 @@ func printSetupStatus(out io.Writer, s *SetupStatus) {
 	w := tabwriter.NewWriter(out, 0, 0, 3, ' ', 0)
 	_, _ = fmt.Fprintln(w, "Component\tStatus")
 	_, _ = fmt.Fprintln(w, "─────────────────────────\t──────────")
-	_, _ = fmt.Fprintf(w, "CRE CRDs\t%s %s\n", check(s.Components.CRECRDs), status(s.Components.CRECRDs))
-	_, _ = fmt.Fprintf(w, "CRE Controller\t%s %s\n",
-		check(s.Components.CREController), status(s.Components.CREController))
+	_, _ = fmt.Fprintf(w, "NVCRE CRDs\t%s %s\n", check(s.Components.NVCRECRDs), status(s.Components.NVCRECRDs))
+	_, _ = fmt.Fprintf(w, "NVCRE Controller\t%s %s\n",
+		check(s.Components.NVCREController), status(s.Components.NVCREController))
 	_, _ = fmt.Fprintf(w, "Kubeflow Trainer\t%s %s\n",
 		check(s.Components.KubeflowTrainer), status(s.Components.KubeflowTrainer))
 	_, _ = fmt.Fprintf(w, "Log Profiles\t%s %s\n", check(s.Components.LogProfiles), status(s.Components.LogProfiles))

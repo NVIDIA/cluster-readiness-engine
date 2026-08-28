@@ -4,27 +4,27 @@
 # SPDX-License-Identifier: Apache-2.0
 
 instances:
-  - url: nvidia-cluster-readiness-engine.docs.buildwithfern.com/cluster-readiness-engine
-    custom-domain: docs.nvidia.com/cluster-readiness-engine
+  - url: nvidia-nvcre.docs.buildwithfern.com/nvcre
+    custom-domain: docs.nvidia.com/nvcre
     multi-source: true
 
 redirects:
-  - source: /cluster-readiness-engine/index.html
-    destination: /cluster-readiness-engine
+  - source: /nvcre/index.html
+    destination: /nvcre
 
 title: NVIDIA Cluster Readiness Engine
 
 global-theme: nvidia
 
 logo:
-  href: /cluster-readiness-engine
-  right-text: Cluster Readiness Engine
+  href: /nvcre
+  right-text: NVIDIA Cluster Readiness Engine
 
 navbar-links:
   - type: github
     value: https://github.com/NVIDIA/cluster-readiness-engine
 
 products:
-  - display-name: Cluster Readiness Engine
+  - display-name: NVIDIA Cluster Readiness Engine
     slug: /
     path: ../docs/index.yml

@@ -1,1 +1,1 @@
-input: "localhost:5000/cluster-readiness-engine:dev"
+input: "localhost:5000/nvcre:dev"

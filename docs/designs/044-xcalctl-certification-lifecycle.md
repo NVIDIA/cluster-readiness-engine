@@ -69,13 +69,13 @@ Report destination: stdout on success (exit 0), stderr on failure (exit 1).
 
 ### Cleanup Strategy
 
-Before setup, nvcrectl probes for existing components (Kubeflow CRDs, CRE CRDs, controller Deployment, LogProfiles). On cleanup, `setup reset` is called with `--skip-phases` for any component that was already present, ensuring only newly-installed components are removed.
+Before setup, nvcrectl probes for existing components (Kubeflow CRDs, NVCRE CRDs, controller Deployment, LogProfiles). On cleanup, `setup reset` is called with `--skip-phases` for any component that was already present, ensuring only newly-installed components are removed.
 
 ## Rationale
 
 - **`--cert-file` over extending `--category`**: Certification YAML files allow full spec control (namespace, per-category options, target selectors) that CLI flags cannot easily express.
 - **K8s watch over polling**: Events are immediate. For certifications running minutes to hours, watch is more responsive and generates less API traffic.
-- **NGC-specific secret creation**: All CRE workload images come from `nvcr.io`. Hardcoding the registry and `token` username eliminates configuration for the 99% case.
+- **NGC-specific secret creation**: All NVCRE workload images come from `nvcr.io`. Hardcoding the registry and `token` username eliminates configuration for the 99% case.
 - **Probe-based cleanup tracking**: More robust than a state file. Idempotent — multiple runs don't accumulate state.
 - **New `report.go` file**: Report logic is substantial (~300+ lines) and deserves its own file rather than inflating `certification.go`.
 

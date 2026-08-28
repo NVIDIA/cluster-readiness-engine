@@ -28,7 +28,7 @@ metadata:
 spec:
   providerID: "aws://us-east-1a/i-0123456789abcdef1"
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: WorkloadRun
 metadata:
   name: test-mpi-gb300-run

@@ -19,7 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
@@ -78,7 +78,7 @@ func TestFailureLogCapture(t *testing.T) {
 		}
 
 		scheme := runtime.NewScheme()
-		if err := crev1alpha1.AddToScheme(scheme); err != nil {
+		if err := nvcrev1alpha1.AddToScheme(scheme); err != nil {
 			return err
 		}
 		if err := corev1.AddToScheme(scheme); err != nil {
@@ -90,7 +90,7 @@ func TestFailureLogCapture(t *testing.T) {
 			pod := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: sp.Name, Namespace: "ns",
-					Labels: map[string]string{"cre.nvidia.com/job": "j"},
+					Labels: map[string]string{"nvcre.nvidia.com/job": "j"},
 				},
 			}
 			if sp.Running {
@@ -102,14 +102,14 @@ func TestFailureLogCapture(t *testing.T) {
 			objs = append(objs, pod)
 		}
 
-		job := &crev1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"}}
+		job := &nvcrev1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"}}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).
-			WithIndex(&corev1.Pod{}, nodemonitor.PodCREJobIndexField, func(obj client.Object) []string {
+			WithIndex(&corev1.Pod{}, nodemonitor.PodNVCREJobIndexField, func(obj client.Object) []string {
 				pod, ok := obj.(*corev1.Pod)
 				if !ok {
 					return nil
 				}
-				if jn, found := pod.Labels[nodemonitor.CREJobLabel]; found {
+				if jn, found := pod.Labels[nodemonitor.NVCREJobLabel]; found {
 					return []string{jn}
 				}
 				return nil

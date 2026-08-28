@@ -6,7 +6,7 @@ description: Cluster certification results across validated platform and GPU com
 ---
 
 
-The Cluster Readiness Engine (CRE) has been validated on the following platform and GPU combinations. Each certification ran NCCL communication tests (all-reduce, all-gather, alltoall) and NeMo training. GB200/GB300 configurations include both MNNVL-enabled and MNNVL-disabled variants.
+The NVIDIA Cluster Readiness Engine (NVCRE) has been validated on the following platform and GPU combinations. Each certification ran NCCL communication tests (all-reduce, all-gather, alltoall) and NeMo training. GB200/GB300 configurations include both MNNVL-enabled and MNNVL-disabled variants.
 
 ## Summary
 

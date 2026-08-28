@@ -27,7 +27,7 @@ So the reporting gap is closed by #188, but `setup init` itself still retries in
 
 4. **Enumerate the partial states and give each a deterministic action**, so `setup init` converges from any of them:
 
-   | Observed state (Trainer release / CRE release) | `[deps]` action | `[helm]` action |
+   | Observed state (Trainer release / NVCRE release) | `[deps]` action | `[helm]` action |
    |---|---|---|
    | not installed / not installed | fresh install | fresh install |
    | `deployed` at pinned version / any | skip (print "already deployed") | `upgrade --install` as today |
@@ -35,7 +35,7 @@ So the reporting gap is closed by #188, but `setup init` itself still retries in
    | `failed` or `pending-*` / any | attempt once → classify → recover (3a) or fail fast (3c) | reached only after `[deps]` converges |
    | `unknown` (state query could not complete) / any | `upgrade --install` as today; on failure, fail with raw Helm output | as today |
 
-   The CRE release keeps its existing always-`upgrade --install` behavior: its chart renders no per-render certificate material, so it has no equivalent failure class. The same attempt-then-classify wrapper wraps it for symmetric error reporting, but with no automatic recovery arm.
+   The NVCRE release keeps its existing always-`upgrade --install` behavior: its chart renders no per-render certificate material, so it has no equivalent failure class. The same attempt-then-classify wrapper wraps it for symmetric error reporting, but with no automatic recovery arm.
 
 5. **Safety rails.**
    - Automatic recovery is refused if **any `TrainJob` or `JobSet` instance exists** in the cluster — the same precondition the field recovery honored — or if any `TrainingRuntime`/`ClusterTrainingRuntime` exists that is not Helm-owned (missing the chart's `app.kubernetes.io/managed-by: Helm` metadata), since deleting the CRDs would destroy it.
@@ -49,7 +49,7 @@ So the reporting gap is closed by #188, but `setup init` itself still retries in
 - **`pkg/setup/helm.go`** — extend the #188 plumbing: `helmReleaseState` already returns the state string; add `helmReleaseChartVersion` (from the same `helm status -o json` payload) for the pinned-version skip. Add `classifyTrainerInstallFailure(output string) failureClass` matching the SSA conflict signature (`conflict` wording + `.data.` paths + Secret references) — a plain classifier over the captured `runHelm` transcript.
 - **`pkg/setup/setup.go`** — `installDepsPhase` becomes the state machine from decision 4. New helpers:
   - `planTrainerPhase(state, chartVersion string) trainerAction` — pure function returning skip / install / attempt-with-recovery.
-  - `trainerRecoveryGate(ctx, c)` — lists `TrainJob`, `JobSet`, `TrainingRuntime`, `ClusterTrainingRuntime` instances via the unstructured-list pattern already used by [`anyCRECRsExist`](../../pkg/setup/setup.go) and returns (safe bool, blockers []string).
+  - `trainerRecoveryGate(ctx, c)` — lists `TrainJob`, `JobSet`, `TrainingRuntime`, `ClusterTrainingRuntime` instances via the unstructured-list pattern already used by [`anyNVCRECRsExist`](../../pkg/setup/setup.go) and returns (safe bool, blockers []string).
   - `recoverTrainerRelease(sp setupPhaseParams)` — composes the existing [`uninstallTrainerHelmRelease`](../../pkg/setup/helm.go), [`deleteCRDsByGroup`](../../pkg/setup/setup.go) for both API groups (both already exist for `setup reset`), namespace deletion + [`WaitForNamespaceDeletion`](../../pkg/setup/setup.go#L477), then [`installTrainerHelmRelease`](../../pkg/setup/helm.go).
   - `printManualTrainerRecovery(out)` — the issue #180 procedure, printed on every fail-fast path.
 - **Helm subprocess injection** — thread a `trainerHelm` struct of function fields (`state`, `install`, `uninstall helmStateFunc`-style func types) through `setupPhaseParams`, defaulting to the real CLI-backed implementations. This is the same substitution shape `status_test.go` on the #179 branch uses for `helmStateFunc` (a stub closure over an `input.yaml` state map).

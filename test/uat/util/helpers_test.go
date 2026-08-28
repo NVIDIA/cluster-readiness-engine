@@ -26,7 +26,7 @@ func TestStripPodVolatileRemovesCNIAnnotations(t *testing.T) {
 				"k8s.v1.cni.cncf.io/network-status": "[{...}]",
 				"io.cilium/whatever":                "x",
 				"jobset.sigs.k8s.io/jobset-uid":     "1234",
-				// Must survive: CRE writes this one on purpose.
+				// Must survive: NVCRE writes this one on purpose.
 				"nvcrectl.nvidia.com/applied-overrides": "gb200",
 			},
 		},
@@ -46,7 +46,7 @@ func TestStripPodVolatileRemovesCNIAnnotations(t *testing.T) {
 	}
 
 	assert.Equal(t, "gb200", pod.Annotations["nvcrectl.nvidia.com/applied-overrides"],
-		"annotations CRE sets on purpose must survive")
+		"annotations NVCRE sets on purpose must survive")
 }
 
 // Two reads of the same pod must produce the same stripped result even when

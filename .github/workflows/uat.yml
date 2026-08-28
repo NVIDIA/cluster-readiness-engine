@@ -91,7 +91,7 @@ jobs:
         if: always()
         run: |
           mkdir -p /tmp/kind-logs
-          kind export logs /tmp/kind-logs --name cre-test-uat || true
+          kind export logs /tmp/kind-logs --name nvcre-test-uat || true
 
       - name: Collect debug artifacts
         if: failure()
@@ -100,7 +100,7 @@ jobs:
           kubectl get all --all-namespaces > /tmp/debug-artifacts/all-resources.yaml || true
           kubectl get events --all-namespaces --sort-by='.lastTimestamp' > /tmp/debug-artifacts/events.yaml || true
           kubectl describe nodes > /tmp/debug-artifacts/nodes.txt || true
-          kubectl logs -n cluster-readiness-engine --all-containers=true --tail=500 > /tmp/debug-artifacts/cre-logs.txt || true
+          kubectl logs -n nvcre -l app.kubernetes.io/name=nvcre --all-containers=true --prefix --tail=500 > /tmp/debug-artifacts/nvcre-logs.txt || true
           df -h > /tmp/debug-artifacts/disk-usage.txt || true
 
       - name: Upload Kind logs

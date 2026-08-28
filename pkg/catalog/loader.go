@@ -16,7 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
 // Default values for template variables when not specified by the user.
@@ -27,7 +27,7 @@ const (
 	DefaultSaveRetainInterval = 1000
 	DefaultSaveTopK           = 1
 	DefaultStorageSize        = "10Ti"
-	DefaultTestScale          = crev1alpha1.TestScaleFullScale
+	DefaultTestScale          = nvcrev1alpha1.TestScaleFullScale
 	DefaultMaxBytes           = "16G"
 	DefaultNumIterations      = 100
 	DefaultNumCycles          = 10
@@ -347,9 +347,9 @@ func loadAndRegisterEntries() error {
 				}
 				return 0
 			},
-			Build: func(target crev1alpha1.TargetSpec, config BuildConfig) (crev1alpha1.WorkflowSpec, error) {
+			Build: func(target nvcrev1alpha1.TargetSpec, config BuildConfig) (nvcrev1alpha1.WorkflowSpec, error) {
 				if config.GPUArchitecture == "" {
-					return crev1alpha1.WorkflowSpec{}, fmt.Errorf(
+					return nvcrev1alpha1.WorkflowSpec{}, fmt.Errorf(
 						"%s/%s: GPUArchitecture is required but was not provided",
 						domain, variant)
 				}
@@ -358,19 +358,19 @@ func loadAndRegisterEntries() error {
 
 				// Validate GPU count against entry constraints.
 				if err := validateParallelism(domain, variant, meta, configArch, config.NodesPerJob, config.GpusPerNode); err != nil {
-					return crev1alpha1.WorkflowSpec{}, err
+					return nvcrev1alpha1.WorkflowSpec{}, err
 				}
 
 				td := buildTemplateData(config, configArch, variant, meta)
 
 				var rendered bytes.Buffer
 				if err := tmpl.Execute(&rendered, td); err != nil {
-					return crev1alpha1.WorkflowSpec{}, fmt.Errorf("executing template %s/%s: %w", domain, variant, err)
+					return nvcrev1alpha1.WorkflowSpec{}, fmt.Errorf("executing template %s/%s: %w", domain, variant, err)
 				}
 
-				var spec crev1alpha1.WorkflowSpec
+				var spec nvcrev1alpha1.WorkflowSpec
 				if err := yaml.Unmarshal(rendered.Bytes(), &spec); err != nil {
-					return crev1alpha1.WorkflowSpec{}, fmt.Errorf("parsing rendered %s/%s: %w", domain, variant, err)
+					return nvcrev1alpha1.WorkflowSpec{}, fmt.Errorf("parsing rendered %s/%s: %w", domain, variant, err)
 				}
 
 				spec.Orchestration.Target = &target
@@ -449,21 +449,21 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 	// Job. Partitioning reads the workload's numNodes, so this is the knob that
 	// makes the setting do anything; without it the template rendered the full
 	// node count and the scale was a no-op.
-	if td.TestScale == crev1alpha1.TestScaleIntraNode {
+	if td.TestScale == nvcrev1alpha1.TestScaleIntraNode {
 		td.NodesPerJob = 1
 	}
 	if td.MaxBytes == "" {
 		td.MaxBytes = DefaultMaxBytes
 	}
 	if td.NumIterations == 0 {
-		if td.TestScale == crev1alpha1.TestScaleDiagnose {
+		if td.TestScale == nvcrev1alpha1.TestScaleDiagnose {
 			td.NumIterations = DiagnoseNumIterations
 		} else {
 			td.NumIterations = DefaultNumIterations
 		}
 	}
 	if td.NumCycles == 0 {
-		if td.TestScale == crev1alpha1.TestScaleDiagnose {
+		if td.TestScale == nvcrev1alpha1.TestScaleDiagnose {
 			td.NumCycles = DiagnoseNumCycles
 		} else {
 			td.NumCycles = DefaultNumCycles
@@ -491,7 +491,7 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 // entry (no template variables), so the empty render carries it faithfully.
 // Best effort: any parse failure falls back to 1, the catalog-wide value.
 func defaultIterations(emptyRender []byte) int {
-	var spec crev1alpha1.WorkflowSpec
+	var spec nvcrev1alpha1.WorkflowSpec
 	if err := yaml.Unmarshal(emptyRender, &spec); err != nil {
 		return 1
 	}
@@ -512,7 +512,7 @@ func resolveTimeoutPerJob(userTimeout, entryDefault, testScale string) string {
 	if entryDefault != "" {
 		return entryDefault
 	}
-	if testScale == crev1alpha1.TestScaleDiagnose {
+	if testScale == nvcrev1alpha1.TestScaleDiagnose {
 		return DiagnoseTimeoutPerJob
 	}
 	return DefaultTimeoutPerJob

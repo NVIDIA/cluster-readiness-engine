@@ -1,12 +1,12 @@
 {
   "Workflow/test-topo-metrics": {
     "kind": "Workflow",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-topo-metrics",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/workflow-finalizer"
+        "nvcre.nvidia.com/workflow-finalizer"
       ]
     },
     "spec": {
@@ -96,7 +96,7 @@
             ],
             "phase": "Succeeded",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "test-topo-metrics-job-0",
               "namespace": "default"
@@ -113,7 +113,7 @@
             ],
             "phase": "Failed",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "test-topo-metrics-job-1",
               "namespace": "default"
@@ -124,9 +124,9 @@
     }
   },
   "topologyMetrics": {
-    "cre_topology_failed_nodes{domain=zone-b,node=topo-node-03}": 1,
-    "cre_topology_failed_nodes{domain=zone-b,node=topo-node-04}": 1,
-    "cre_topology_validated_nodes{domain=zone-a,node=topo-node-01}": 1,
-    "cre_topology_validated_nodes{domain=zone-a,node=topo-node-02}": 1
+    "nvcre_topology_failed_nodes{domain=zone-b,node=topo-node-03}": 1,
+    "nvcre_topology_failed_nodes{domain=zone-b,node=topo-node-04}": 1,
+    "nvcre_topology_validated_nodes{domain=zone-a,node=topo-node-01}": 1,
+    "nvcre_topology_validated_nodes{domain=zone-a,node=topo-node-02}": 1
   }
 }

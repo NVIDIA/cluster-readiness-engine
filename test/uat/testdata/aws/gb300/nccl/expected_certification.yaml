@@ -1,9 +1,9 @@
 metadata:
   finalizers:
-  - cre.nvidia.com/certification-finalizer
+  - nvcre.nvidia.com/certification-finalizer
   labels:
     app.kubernetes.io/created-by: nvcrectl
-    app.kubernetes.io/managed-by: cluster-readiness-engine
+    app.kubernetes.io/managed-by: nvcre
   name: aws-gb300-nccl
 spec:
   categories:

@@ -1,4 +1,4 @@
-# Contributing to CRE
+# Contributing to NVCRE
 
 Thank you for your interest in contributing! We welcome contributions from the community.
 
@@ -39,7 +39,7 @@ When reporting issues:
 
 1. Use the issue templates — they ask for what we need
 2. Provide clear reproduction steps
-3. Include environment details (CRE version, Kubernetes version, GPU architecture, platform)
+3. Include environment details (NVCRE version, Kubernetes version, GPU architecture, platform)
 4. Add relevant logs or error messages, with secrets removed
 5. Search existing issues first to avoid duplicates
 
@@ -174,7 +174,7 @@ make setup-test-uat \
   KIND_NODE_IMAGE=kindest/node:v1.36.1
 ```
 
-The image is used only when creating a new cluster. If `cre-test-uat` already
+The image is used only when creating a new cluster. If `nvcre-test-uat` already
 exists, delete it with `make cleanup-test-uat` before changing versions.
 
 Notes:
