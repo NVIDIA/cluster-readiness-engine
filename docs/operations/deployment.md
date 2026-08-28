@@ -127,8 +127,8 @@ The controller's ClusterRole (`cre-manager-role`) is scoped to the resource type
 
 | Resource | Verbs | Purpose |
 |----------|-------|---------|
-| `cre.nvidia.com/*` (Certifications, Workflows, Jobs, GoodputMeasurements, BandwidthMeasurements, WorkloadRuns) + `/status`, `/finalizers` | full lifecycle | Reconcile the CRD hierarchy |
-| `cre.nvidia.com` LogProfiles | get, list, watch | Read log-parsing profiles |
+| `nvcre.nvidia.com/*` (Certifications, Workflows, Jobs, GoodputMeasurements, BandwidthMeasurements, WorkloadRuns) + `/status`, `/finalizers` | full lifecycle | Reconcile the CRD hierarchy |
+| `nvcre.nvidia.com` LogProfiles | get, list, watch | Read log-parsing profiles |
 | `nodes`, `pods` | get, list, watch | Discover nodes for scheduling and health checks; track workload pod placement |
 | `pods/log` | get | Read training logs for goodput and bandwidth measurement |
 | `configmaps` | full lifecycle | Workflow dependencies and failed-node result records |
@@ -278,17 +278,17 @@ kubectl delete namespace cluster-readiness-engine kubeflow-system
 
 ### helm uninstall leaves the CRDs behind
 
-Helm intentionally never deletes CRDs that live in a chart's `crds/` directory (to avoid accidental data loss), so a manual `helm uninstall cluster-readiness-engine` leaves all seven `cre.nvidia.com` CRDs — and every remaining custom resource instance — in the cluster. Delete them explicitly:
+Helm intentionally never deletes CRDs that live in a chart's `crds/` directory (to avoid accidental data loss), so a manual `helm uninstall cluster-readiness-engine` leaves all seven `nvcre.nvidia.com` CRDs — and every remaining custom resource instance — in the cluster. Delete them explicitly:
 
 ```bash
 kubectl delete crd \
-  bandwidthmeasurements.cre.nvidia.com \
-  certifications.cre.nvidia.com \
-  goodputmeasurements.cre.nvidia.com \
-  jobs.cre.nvidia.com \
-  logprofiles.cre.nvidia.com \
-  workflows.cre.nvidia.com \
-  workloadruns.cre.nvidia.com
+  bandwidthmeasurements.nvcre.nvidia.com \
+  certifications.nvcre.nvidia.com \
+  goodputmeasurements.nvcre.nvidia.com \
+  jobs.nvcre.nvidia.com \
+  logprofiles.nvcre.nvidia.com \
+  workflows.nvcre.nvidia.com \
+  workloadruns.nvcre.nvidia.com
 ```
 
 **Warning:** deleting a CRD deletes all instances of that resource cluster-wide, including any Certification results you have not exported. Save reports first with `nvcrectl certification report <name> --results-file <path>`.

@@ -19,7 +19,7 @@ metadata:
     nvidia.com/gpu.product: "NVIDIA-GB200"
     kubernetes.io/hostname: gpu-node-02
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: nemotron-6-8b-burnin

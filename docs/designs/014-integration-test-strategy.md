@@ -91,7 +91,7 @@ Replace Ginkgo tests with envtest-based integration tests using golden file comp
 
 ## Notes
 
-- Field indexes for `spec.nodeName` and `metadata.labels.cre.nvidia.com/job` must be registered in the test suite for pod lookups to work
+- Field indexes for `spec.nodeName` and `metadata.labels.nvcre.nvidia.com/job` must be registered in the test suite for pod lookups to work
 - Test timeout is 10s — if requeue interval > 10s, status update tests will time out
 - Blank imports of `pkg/catalog` are needed in `suite_test.go` to trigger `init()` registration
 - Goodput ratio comparison should sanitize floating-point values to handle non-determinism across runs

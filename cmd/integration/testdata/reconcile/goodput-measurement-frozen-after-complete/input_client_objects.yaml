@@ -7,7 +7,7 @@
 # verifyFrozenGoodput step then strips the Complete condition to force a full
 # terminal re-run (the issue #177 re-entry) and requires a byte-identical
 # status.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: LogProfile
 metadata:
   name: test-frozen-logprofile
@@ -45,7 +45,7 @@ spec:
       - train.py
     numNodes: 1
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-frozen-job
@@ -92,7 +92,7 @@ metadata:
   labels:
     jobset.sigs.k8s.io/jobset-name: test-frozen-job-workload
     batch.kubernetes.io/job-completion-index: "0"
-    cre.nvidia.com/job: test-frozen-job
+    nvcre.nvidia.com/job: test-frozen-job
 spec:
   containers:
     - name: node
@@ -100,14 +100,14 @@ spec:
 status:
   phase: Running
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: GoodputMeasurement
 metadata:
   name: test-frozen-gm
   namespace: default
 spec:
   jobRef:
-    apiGroup: cre.nvidia.com
+    apiGroup: nvcre.nvidia.com
     kind: Job
     name: test-frozen-job
   logProfileRef: test-frozen-logprofile

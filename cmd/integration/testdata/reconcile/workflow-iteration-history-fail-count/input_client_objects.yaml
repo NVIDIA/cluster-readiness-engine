@@ -6,7 +6,7 @@
 # Failed, so the Job controller marks the Job Failed, and the Workflow
 # controller reaches terminal with countFailedGroups = 2
 # (1 from history + 1 from current).
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: test-wf-hist-count
@@ -48,22 +48,22 @@ status:
           - gpu-node-01
         phase: Running
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: test-wf-hist-count-group-0-iter-2
           namespace: default
 ---
 # Iteration-2 Job with workloadRef — not yet terminal.
 # The Job controller will detect the workload failure and set Failed.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-wf-hist-count-group-0-iter-2
   namespace: default
   labels:
     app.kubernetes.io/managed-by: cluster-readiness-engine
-    cre.nvidia.com/workflow: test-wf-hist-count
-    cre.nvidia.com/group: group-0
+    nvcre.nvidia.com/workflow: test-wf-hist-count
+    nvcre.nvidia.com/group: group-0
 spec:
   workload:
     trainJob:

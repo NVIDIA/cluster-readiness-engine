@@ -22,7 +22,7 @@ import (
 	crev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
-const testAPIGroup = "cre.nvidia.com"
+const testAPIGroup = "nvcre.nvidia.com"
 
 func TestHumanSize(t *testing.T) {
 	p := testutil.TestCaseParser{

@@ -23,7 +23,7 @@ metadata:
 spec:
   providerID: ""
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: forge-l40-nc

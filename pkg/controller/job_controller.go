@@ -44,7 +44,7 @@ import (
 
 const (
 	// jobFinalizer is the finalizer added to Job resources to ensure cleanup
-	jobFinalizer = "cre.nvidia.com/finalizer"
+	jobFinalizer = "nvcre.nvidia.com/finalizer"
 
 	// workloadRequeueInterval is the safety-net requeue interval for workload status polling.
 	// Primary status updates are event-driven via Owns(), but this ensures eventual consistency.
@@ -117,9 +117,9 @@ func (r *JobReconciler) getMeasurementTimeout(job *crev1alpha1.Job) time.Duratio
 	return defaultMeasurementTimeout
 }
 
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=jobs,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=jobs/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=jobs/finalizers,verbs=update
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs/finalizers,verbs=update
 // +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainjobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainjobs/status,verbs=get
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
@@ -145,7 +145,7 @@ func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 		return ctrl.Result{}, fmt.Errorf("failed to get Job: %w", err)
 	}
 
-	workflow := job.Labels["cre.nvidia.com/workflow"]
+	workflow := job.Labels["nvcre.nvidia.com/workflow"]
 
 	// Defer metrics recording
 	defer func() {
@@ -316,7 +316,7 @@ func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *crev1al
 
 	// Deep-copy the spec and inject the CRE pod label automatically
 	specCopy := job.Spec.Workload.DeepCopy()
-	adapter.InjectPodLabel(specCopy, "cre.nvidia.com/job", job.Name)
+	adapter.InjectPodLabel(specCopy, "nvcre.nvidia.com/job", job.Name)
 
 	workloadName := r.getWorkloadName(job)
 	obj, err := adapter.Build(workloadName, job.Namespace, specCopy)
@@ -334,7 +334,7 @@ func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *crev1al
 		labels = make(map[string]string)
 	}
 	labels["app.kubernetes.io/managed-by"] = "cluster-readiness-engine"
-	labels["cre.nvidia.com/job"] = job.Name
+	labels["nvcre.nvidia.com/job"] = job.Name
 	obj.SetLabels(labels)
 
 	// Set owner reference so the workload is garbage collected when the Job is deleted
@@ -355,7 +355,7 @@ func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *crev1al
 	}
 
 	// Record workload creation metric
-	recordWorkloadCreated(job.Namespace, job.Name, job.Labels["cre.nvidia.com/workflow"])
+	recordWorkloadCreated(job.Namespace, job.Name, job.Labels["nvcre.nvidia.com/workflow"])
 	log.Info("Workload created successfully", "kind", gvk.Kind, "name", workloadName)
 
 	// Store workload reference in status
@@ -815,7 +815,7 @@ func (r *JobReconciler) setJobFailed(ctx context.Context, job *crev1alpha1.Job, 
 		return err
 	}
 	if changed {
-		recordJobStatus(job.Namespace, job.Name, job.Labels["cre.nvidia.com/workflow"], "failed")
+		recordJobStatus(job.Namespace, job.Name, job.Labels["nvcre.nvidia.com/workflow"], "failed")
 		logf.FromContext(ctx).Info("Job status updated", "status", crev1alpha1.JobFailed, "reason", reason)
 	}
 	return nil
@@ -974,7 +974,7 @@ func (r *JobReconciler) setJobHardwareFailed(ctx context.Context, job *crev1alph
 
 	if changed {
 		// Record metrics
-		workflow := job.Labels["cre.nvidia.com/workflow"]
+		workflow := job.Labels["nvcre.nvidia.com/workflow"]
 		nodeNames := noderesults.FailedNodeNames(failedNodes)
 		if isFirstFailure {
 			recordFirstHardwareFailure(job.Namespace, job.Name, workflow)
@@ -1034,7 +1034,7 @@ func (r *JobReconciler) checkNodeHealth(ctx context.Context, job *crev1alpha1.Jo
 	}
 	r.detectorCacheMu.Unlock()
 
-	// Discover nodes running the job's workload via cre.nvidia.com/job label
+	// Discover nodes running the job's workload via nvcre.nvidia.com/job label
 	nodeNames, err := r.NodeDiscoverer.DiscoverNodesForJob(ctx, job.Namespace, job.Name)
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to discover nodes: %w", err)
@@ -1109,8 +1109,8 @@ func (r *JobReconciler) checkNodeHealth(ctx context.Context, job *crev1alpha1.Jo
 
 	// Record metrics for node health check
 	duration := time.Since(startTime).Seconds()
-	observeNodeHealthCheckDuration(job.Namespace, job.Name, job.Labels["cre.nvidia.com/workflow"], duration)
-	recordNodesEvaluated(job.Namespace, job.Name, job.Labels["cre.nvidia.com/workflow"], len(nodes))
+	observeNodeHealthCheckDuration(job.Namespace, job.Name, job.Labels["nvcre.nvidia.com/workflow"], duration)
+	recordNodesEvaluated(job.Namespace, job.Name, job.Labels["nvcre.nvidia.com/workflow"], len(nodes))
 
 	log.V(1).Info("Node health evaluation complete",
 		"nodesEvaluated", len(nodes),
@@ -1163,7 +1163,7 @@ func mergeFailedNodes(existing []crev1alpha1.FailedNode, newNames []string, reas
 // groupNodeNames reads the group-nodes Job annotation and returns the deduped,
 // sorted node names.
 func groupNodeNames(job *crev1alpha1.Job) []string {
-	raw := job.Annotations["cre.nvidia.com/group-nodes"]
+	raw := job.Annotations["nvcre.nvidia.com/group-nodes"]
 	if raw == "" {
 		return nil
 	}
@@ -1215,7 +1215,7 @@ func (r *JobReconciler) setExclusiveCondition(ctx context.Context, job *crev1alp
 		case crev1alpha1.JobFailed:
 			metricStatus = "failed"
 		}
-		recordJobStatus(job.Namespace, job.Name, job.Labels["cre.nvidia.com/workflow"], metricStatus)
+		recordJobStatus(job.Namespace, job.Name, job.Labels["nvcre.nvidia.com/workflow"], metricStatus)
 		logf.FromContext(ctx).Info("Job status updated", "status", conditionType, "reason", reason)
 	}
 	return nil
@@ -1261,14 +1261,14 @@ func (r *JobReconciler) ensureGoodputMeasurement(ctx context.Context, job *crev1
 		return nil // already exists
 	}
 
-	apiGroup := "cre.nvidia.com"
+	apiGroup := "nvcre.nvidia.com"
 	gm := &crev1alpha1.GoodputMeasurement{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      gmName,
 			Namespace: job.Namespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by": "cluster-readiness-engine",
-				"cre.nvidia.com/job":           job.Name,
+				"nvcre.nvidia.com/job":         job.Name,
 			},
 		},
 		Spec: crev1alpha1.GoodputMeasurementSpec{
@@ -1319,14 +1319,14 @@ func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *cre
 		return nil // already exists
 	}
 
-	apiGroup := "cre.nvidia.com"
+	apiGroup := "nvcre.nvidia.com"
 	bm := &crev1alpha1.BandwidthMeasurement{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      bmName,
 			Namespace: job.Namespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by": "cluster-readiness-engine",
-				"cre.nvidia.com/job":           job.Name,
+				"nvcre.nvidia.com/job":         job.Name,
 			},
 		},
 		Spec: crev1alpha1.BandwidthMeasurementSpec{
@@ -1428,7 +1428,7 @@ func (r *JobReconciler) nodeToJobRequests(ctx context.Context, obj client.Object
 			continue
 		}
 
-		if jobName, ok := pod.Labels["cre.nvidia.com/job"]; ok {
+		if jobName, ok := pod.Labels["nvcre.nvidia.com/job"]; ok {
 			key := pod.Namespace + "/" + jobName
 			requests[key] = reconcile.Request{
 				NamespacedName: client.ObjectKey{

@@ -7,7 +7,7 @@
 # After reaching Failed, the test deletes the Workflow and verifies that the
 # controller cascade-deletes the Job, TrainJob, AND the dependency ConfigMap.
 # This tests that handleDeletion() deletes Jobs before dependencies (ADR-053).
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: test-wf-del-deps
@@ -50,21 +50,21 @@ status:
           - gpu-node-01
         phase: Running
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: test-wf-del-deps-group-0-iter-1
           namespace: default
 ---
 # Job owned by the Workflow, currently InProgress with workloadRef.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-wf-del-deps-group-0-iter-1
   namespace: default
   labels:
     app.kubernetes.io/managed-by: cluster-readiness-engine
-    cre.nvidia.com/workflow: test-wf-del-deps
-    cre.nvidia.com/group: group-0
+    nvcre.nvidia.com/workflow: test-wf-del-deps
+    nvcre.nvidia.com/group: group-0
 spec:
   workload:
     trainJob:
@@ -131,7 +131,7 @@ metadata:
   name: test-dep-config
   namespace: default
   labels:
-    cre.nvidia.com/workflow: test-wf-del-deps
+    nvcre.nvidia.com/workflow: test-wf-del-deps
 data:
   config.yaml: |
     test: data

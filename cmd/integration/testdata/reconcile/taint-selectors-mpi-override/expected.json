@@ -1,21 +1,21 @@
 {
   "Job/test-taint-mpi-override-job": {
     "kind": "Job",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-taint-mpi-override-job",
       "namespace": "default",
       "labels": {
         "app.kubernetes.io/managed-by": "cluster-readiness-engine",
-        "cre.nvidia.com/group": "group-0",
-        "cre.nvidia.com/workflow": "test-taint-mpi-override"
+        "nvcre.nvidia.com/group": "group-0",
+        "nvcre.nvidia.com/workflow": "test-taint-mpi-override"
       },
       "annotations": {
-        "cre.nvidia.com/group-nodes": "gpu-node-01"
+        "nvcre.nvidia.com/group-nodes": "gpu-node-01"
       },
       "ownerReferences": [
         {
-          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
           "kind": "Workflow",
           "name": "test-taint-mpi-override",
           "uid": "",
@@ -24,7 +24,7 @@
         }
       ],
       "finalizers": [
-        "cre.nvidia.com/finalizer"
+        "nvcre.nvidia.com/finalizer"
       ]
     },
     "spec": {
@@ -44,7 +44,7 @@
           },
           "runtimePatches": [
             {
-              "manager": "cre.nvidia.com/catalog",
+              "manager": "nvcre.nvidia.com/catalog",
               "trainingRuntimeSpec": {
                 "template": {
                   "spec": {
@@ -61,7 +61,7 @@
               }
             },
             {
-              "manager": "cre.nvidia.com/controller",
+              "manager": "nvcre.nvidia.com/controller",
               "trainingRuntimeSpec": {
                 "template": {
                   "spec": {
@@ -195,12 +195,12 @@
   },
   "Workflow/test-taint-mpi-override": {
     "kind": "Workflow",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-taint-mpi-override",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/workflow-finalizer"
+        "nvcre.nvidia.com/workflow-finalizer"
       ]
     },
     "spec": {
@@ -222,7 +222,7 @@
               },
               "runtimePatches": [
                 {
-                  "manager": "cre.nvidia.com/catalog",
+                  "manager": "nvcre.nvidia.com/catalog",
                   "trainingRuntimeSpec": {
                     "template": {
                       "spec": {
@@ -304,7 +304,7 @@
             ],
             "phase": "Running",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "test-taint-mpi-override-job",
               "namespace": "default"

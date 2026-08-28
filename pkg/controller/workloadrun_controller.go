@@ -36,10 +36,10 @@ type WorkloadRunReconciler struct {
 	MaxConcurrentReconciles int
 }
 
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=workloadruns,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=workloadruns/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=workloadruns/finalizers,verbs=update
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=workflows,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workloadruns,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workloadruns/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workloadruns/finalizers,verbs=update
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workflows,verbs=get;list;watch;create;update;patch;delete
 
 const workloadRunRequeueInterval = 15 * time.Second
 
@@ -85,8 +85,8 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			Name:      run.Name,
 			Namespace: run.Namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "cluster-readiness-engine",
-				"cre.nvidia.com/workload-run":  run.Name,
+				"app.kubernetes.io/managed-by":  "cluster-readiness-engine",
+				"nvcre.nvidia.com/workload-run": run.Name,
 			},
 		},
 		Spec: *workflowSpec,

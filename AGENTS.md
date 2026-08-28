@@ -196,7 +196,7 @@ Create a temp cert file per GPU architecture. Change `nvidia.com/gpu.product`, `
 
 ```yaml
 # /tmp/cert-gb300.yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: gpu-cluster-cert

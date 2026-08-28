@@ -24,7 +24,7 @@ metadata:
     nvidia.com/gpu.clique: clique-a
     kubernetes.io/hostname: node-a2
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: test-bw-invalid-expr
@@ -73,20 +73,20 @@ status:
         domains: [clique-a]
         phase: Running
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: test-bw-invalid-expr-screen-0-iter-1
           namespace: default
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-bw-invalid-expr-screen-0-iter-1
   namespace: default
   labels:
     app.kubernetes.io/managed-by: cluster-readiness-engine
-    cre.nvidia.com/workflow: test-bw-invalid-expr
-    cre.nvidia.com/group: screen-0
+    nvcre.nvidia.com/workflow: test-bw-invalid-expr
+    nvcre.nvidia.com/group: screen-0
 spec:
   workload:
     trainJob:
@@ -110,14 +110,14 @@ status:
       reason: NotApplicable
       lastTransitionTime: "2026-01-22T10:00:00Z"
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: BandwidthMeasurement
 metadata:
   name: test-bw-invalid-expr-screen-0-bw
   namespace: default
 spec:
   jobRef:
-    apiGroup: cre.nvidia.com
+    apiGroup: nvcre.nvidia.com
     kind: Job
     name: test-bw-invalid-expr-screen-0-iter-1
   logProfileRef: nccl-bandwidth

@@ -19,7 +19,7 @@ import (
 
 const (
 	// RuntimePatchManager is the manager key for CRE controller-owned RuntimePatches.
-	RuntimePatchManager = "cre.nvidia.com/controller"
+	RuntimePatchManager = "nvcre.nvidia.com/controller"
 
 	LauncherJobName = "launcher"
 	NodeJobName     = "node"

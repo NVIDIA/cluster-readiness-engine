@@ -168,7 +168,7 @@ func render(workflowFile, platform, gpuArch, nodesFile string) (*crev1alpha1.Wor
 	}
 
 	workflow.TypeMeta = metav1.TypeMeta{
-		APIVersion: "cre.nvidia.com/v1alpha1",
+		APIVersion: "nvcre.nvidia.com/v1alpha1",
 		Kind:       "Workflow",
 	}
 
@@ -271,7 +271,7 @@ func renderDryRun(workflowFile string, configFlags *kubeconfig.ConfigFlags) (
 	}
 
 	workflow.TypeMeta = metav1.TypeMeta{
-		APIVersion: "cre.nvidia.com/v1alpha1",
+		APIVersion: "nvcre.nvidia.com/v1alpha1",
 		Kind:       "Workflow",
 	}
 
@@ -411,7 +411,7 @@ func DryRunCreate(ctx context.Context, c client.Client, namespace string,
 	// --- 2. Validate Job ---
 	job := &crev1alpha1.Job{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "cre.nvidia.com/v1alpha1",
+			APIVersion: "nvcre.nvidia.com/v1alpha1",
 			Kind:       "Job",
 		},
 		ObjectMeta: metav1.ObjectMeta{

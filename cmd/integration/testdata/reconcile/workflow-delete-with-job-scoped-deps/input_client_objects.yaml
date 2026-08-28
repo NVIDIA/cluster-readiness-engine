@@ -5,7 +5,7 @@
 # failed TrainJob. Same as workflow-delete-with-deps but the ConfigMap dep
 # is job-scoped (scope: job, groupName, iteration set). Tests that
 # handleDeletion() also cleans up job-scoped deps after Jobs are deleted.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: test-wf-del-jdeps
@@ -50,20 +50,20 @@ status:
           - gpu-node-01
         phase: Running
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: test-wf-del-jdeps-group-0-iter-1
           namespace: default
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-wf-del-jdeps-group-0-iter-1
   namespace: default
   labels:
     app.kubernetes.io/managed-by: cluster-readiness-engine
-    cre.nvidia.com/workflow: test-wf-del-jdeps
-    cre.nvidia.com/group: group-0
+    nvcre.nvidia.com/workflow: test-wf-del-jdeps
+    nvcre.nvidia.com/group: group-0
 spec:
   workload:
     trainJob:
@@ -129,7 +129,7 @@ metadata:
   name: test-jdep-config-job
   namespace: default
   labels:
-    cre.nvidia.com/workflow: test-wf-del-jdeps
+    nvcre.nvidia.com/workflow: test-wf-del-jdeps
 data:
   config.yaml: |
     test: job-scoped-data

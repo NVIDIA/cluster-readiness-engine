@@ -23,7 +23,7 @@ If a cluster administrator has already installed the controller, you only need t
 Save the following as `nemotron5.yaml`. It runs Nemotron 5 (56B) using Megatron-LM with the `exec` framework:
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: WorkloadRun
 metadata:
   name: nemotron5-56b

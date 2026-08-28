@@ -6,7 +6,7 @@
 explicitTimeout: true
 flagTimeout: 45m
 certification:
-  apiVersion: cre.nvidia.com/v1alpha1
+  apiVersion: nvcre.nvidia.com/v1alpha1
   kind: Certification
   metadata:
     name: explicit

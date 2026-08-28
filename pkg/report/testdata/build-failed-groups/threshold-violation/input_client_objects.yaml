@@ -2,7 +2,7 @@
 # threshold, so the Job carries Succeeded=True + ValidationFailed=True and no
 # Failed condition. The report must surface the ValidationFailed message —
 # threshold name, measured value, expression — as the failed group's reason.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: cert-threshold
@@ -29,13 +29,13 @@ status:
         name: cert-threshold-training-nemotron5-8b
         namespace: default
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: cert-threshold-training-nemotron5-8b
   namespace: default
   labels:
-    cre.nvidia.com/certification: cert-threshold
+    nvcre.nvidia.com/certification: cert-threshold
 spec:
   jobTemplate:
     spec:
@@ -67,7 +67,7 @@ status:
           - node002
         phase: Failed
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: cert-threshold-training-nemotron5-8b-job-group-0
           namespace: default
@@ -80,14 +80,14 @@ status:
       message: 1 groups failed across 1 iterations
       lastTransitionTime: "2026-08-07T00:10:00Z"
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: cert-threshold-training-nemotron5-8b-job-group-0
   namespace: default
   labels:
-    cre.nvidia.com/workflow: cert-threshold-training-nemotron5-8b
-    cre.nvidia.com/group: group-0
+    nvcre.nvidia.com/workflow: cert-threshold-training-nemotron5-8b
+    nvcre.nvidia.com/group: group-0
 spec:
   workload:
     trainJob:

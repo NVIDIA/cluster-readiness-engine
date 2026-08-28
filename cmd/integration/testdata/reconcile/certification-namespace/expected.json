@@ -1,12 +1,12 @@
 {
   "Certification/ns-test": {
     "kind": "Certification",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "ns-test",
       "namespace": "cert-ns",
       "finalizers": [
-        "cre.nvidia.com/certification-finalizer"
+        "nvcre.nvidia.com/certification-finalizer"
       ]
     },
     "spec": {
@@ -64,19 +64,19 @@
   },
   "Workflow/ns-test-communication-ncc-f2bcd": {
     "kind": "Workflow",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "ns-test-communication-ncc-f2bcd",
       "namespace": "cert-ns",
       "labels": {
         "app.kubernetes.io/managed-by": "cluster-readiness-engine",
-        "cre.nvidia.com/category-domain": "communication",
-        "cre.nvidia.com/category-variant": "nccl-all-reduce",
-        "cre.nvidia.com/certification": "ns-test"
+        "nvcre.nvidia.com/category-domain": "communication",
+        "nvcre.nvidia.com/category-variant": "nccl-all-reduce",
+        "nvcre.nvidia.com/certification": "ns-test"
       },
       "ownerReferences": [
         {
-          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
           "kind": "Certification",
           "name": "ns-test",
           "uid": "",
@@ -85,7 +85,7 @@
         }
       ],
       "finalizers": [
-        "cre.nvidia.com/workflow-finalizer"
+        "nvcre.nvidia.com/workflow-finalizer"
       ]
     },
     "spec": {
@@ -187,7 +187,7 @@
               },
               "runtimePatches": [
                 {
-                  "manager": "cre.nvidia.com/catalog",
+                  "manager": "nvcre.nvidia.com/catalog",
                   "trainingRuntimeSpec": {
                     "template": {
                       "spec": {
@@ -574,7 +574,7 @@
             ],
             "phase": "Running",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "ns-test-communication-ncc-f2bcd-job",
               "namespace": "cert-ns"

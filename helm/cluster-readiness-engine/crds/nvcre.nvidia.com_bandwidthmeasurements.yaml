@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
-  name: bandwidthmeasurements.cre.nvidia.com
+  name: bandwidthmeasurements.nvcre.nvidia.com
 spec:
-  group: cre.nvidia.com
+  group: nvcre.nvidia.com
   names:
     kind: BandwidthMeasurement
     listKind: BandwidthMeasurementList

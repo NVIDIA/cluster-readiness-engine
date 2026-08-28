@@ -33,7 +33,7 @@ const GPUNodeLabel = "nvidia.com/gpu.present"
 //     controllers.
 //
 // Pods are deliberately not label-scoped. The obvious selector,
-// cre.nvidia.com/job, is injected only into the worker replicatedJob's pod
+// nvcre.nvidia.com/job, is injected only into the worker replicatedJob's pod
 // template — MPI launcher pods do not carry it (see workerTargetJob in
 // pkg/workload), and the launcher is exactly the pod that NCCL bandwidth
 // measurement and timeout log capture read from. Scoping on that label would

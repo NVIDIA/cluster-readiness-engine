@@ -343,16 +343,16 @@ func renderCertification(cert *crev1alpha1.Certification, platformName string) (
 
 		workflow := crev1alpha1.Workflow{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: "cre.nvidia.com/v1alpha1",
+				APIVersion: "nvcre.nvidia.com/v1alpha1",
 				Kind:       "Workflow",
 			},
 			ObjectMeta: metav1.ObjectMeta{
 				Name: workflowName,
 				Labels: map[string]string{
-					"app.kubernetes.io/managed-by":    "cluster-readiness-engine",
-					"cre.nvidia.com/certification":    cert.Name,
-					"cre.nvidia.com/category-domain":  cat.Domain,
-					"cre.nvidia.com/category-variant": cat.Variant,
+					"app.kubernetes.io/managed-by":      "cluster-readiness-engine",
+					"nvcre.nvidia.com/certification":    cert.Name,
+					"nvcre.nvidia.com/category-domain":  cat.Domain,
+					"nvcre.nvidia.com/category-variant": cat.Variant,
 				},
 			},
 			Spec: workflowSpec,
@@ -712,7 +712,7 @@ func buildConfigFromFlags(
 
 	cert := &crev1alpha1.Certification{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "cre.nvidia.com/v1alpha1",
+			APIVersion: "nvcre.nvidia.com/v1alpha1",
 			Kind:       "Certification",
 		},
 		ObjectMeta: metav1.ObjectMeta{
@@ -969,7 +969,7 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 				setup.WorkloadPullSecretName(cfg.cert.Name), getErr)
 		} else {
 			sec.OwnerReferences = append(sec.OwnerReferences, metav1.OwnerReference{
-				APIVersion: "cre.nvidia.com/v1alpha1",
+				APIVersion: "nvcre.nvidia.com/v1alpha1",
 				Kind:       "Certification",
 				Name:       cfg.cert.Name,
 				UID:        cfg.cert.UID,

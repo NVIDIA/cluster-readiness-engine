@@ -470,7 +470,7 @@ func TestDerefInt32Ptr(t *testing.T) {
 func TestReadCertification(t *testing.T) {
 	t.Run("valid file", func(t *testing.T) {
 		content := `
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: test-cert

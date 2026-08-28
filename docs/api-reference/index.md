@@ -6,7 +6,7 @@ description: Kubernetes CRD reference for the Cluster Readiness Engine.
 ---
 
 
-The Cluster Readiness Engine defines the following custom resources under the `cre.nvidia.com/v1alpha1` API group.
+The Cluster Readiness Engine defines the following custom resources under the `nvcre.nvidia.com/v1alpha1` API group.
 
 | Resource | Scope | Purpose |
 |----------|-------|---------|

@@ -1,17 +1,17 @@
 {
   "GoodputMeasurement/test-goodput": {
     "kind": "GoodputMeasurement",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-goodput",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/goodputmeasurement-finalizer"
+        "nvcre.nvidia.com/goodputmeasurement-finalizer"
       ]
     },
     "spec": {
       "jobRef": {
-        "apiGroup": "cre.nvidia.com",
+        "apiGroup": "nvcre.nvidia.com",
         "kind": "Job",
         "name": "test-goodput-job"
       },

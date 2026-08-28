@@ -5,7 +5,7 @@
 # The controller should detect success, mark group Succeeded, complete
 # iteration 1, snapshot the history (with jobName), and advance to
 # iteration 2 — creating a new Job and workload.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: test-wf-history
@@ -41,21 +41,21 @@ status:
           - gpu-node-01
         phase: Running
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: test-wf-history-group-0-iter-1
           namespace: default
 ---
 # Succeeded Job from iteration 1.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-wf-history-group-0-iter-1
   namespace: default
   labels:
     app.kubernetes.io/managed-by: cluster-readiness-engine
-    cre.nvidia.com/workflow: test-wf-history
-    cre.nvidia.com/group: group-0
+    nvcre.nvidia.com/workflow: test-wf-history
+    nvcre.nvidia.com/group: group-0
 spec:
   workload:
     trainJob:
@@ -98,7 +98,7 @@ metadata:
   namespace: default
   labels:
     app.kubernetes.io/managed-by: cluster-readiness-engine
-    cre.nvidia.com/job: test-wf-history-group-0-iter-1
+    nvcre.nvidia.com/job: test-wf-history-group-0-iter-1
 spec:
   runtimeRef:
     kind: TrainingRuntime

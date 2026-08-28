@@ -1,7 +1,7 @@
 # HardwareFailed sits between Failed and ValidationFailed in the priority
 # scan: with no Failed condition, the detector's message becomes the group
 # reason, and it wins over the sibling ValidationFailed condition.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: cert-hw
@@ -28,13 +28,13 @@ status:
         name: cert-hw-training-nemotron5-8b
         namespace: default
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: cert-hw-training-nemotron5-8b
   namespace: default
   labels:
-    cre.nvidia.com/certification: cert-hw
+    nvcre.nvidia.com/certification: cert-hw
 spec:
   jobTemplate:
     spec:
@@ -66,7 +66,7 @@ status:
           - node002
         phase: Failed
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: cert-hw-training-nemotron5-8b-job-group-0
           namespace: default
@@ -79,14 +79,14 @@ status:
       message: 1 groups failed across 1 iterations
       lastTransitionTime: "2026-08-07T00:10:00Z"
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: cert-hw-training-nemotron5-8b-job-group-0
   namespace: default
   labels:
-    cre.nvidia.com/workflow: cert-hw-training-nemotron5-8b
-    cre.nvidia.com/group: group-0
+    nvcre.nvidia.com/workflow: cert-hw-training-nemotron5-8b
+    nvcre.nvidia.com/group: group-0
 spec:
   workload:
     trainJob:

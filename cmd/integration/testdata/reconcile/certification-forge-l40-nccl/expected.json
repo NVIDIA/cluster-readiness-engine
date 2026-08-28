@@ -1,12 +1,12 @@
 {
   "Certification/forge-l40-nc": {
     "kind": "Certification",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "forge-l40-nc",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/certification-finalizer"
+        "nvcre.nvidia.com/certification-finalizer"
       ]
     },
     "spec": {
@@ -64,19 +64,19 @@
   },
   "Workflow/forge-l40-nc-communicatio-84d5e": {
     "kind": "Workflow",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "forge-l40-nc-communicatio-84d5e",
       "namespace": "default",
       "labels": {
         "app.kubernetes.io/managed-by": "cluster-readiness-engine",
-        "cre.nvidia.com/category-domain": "communication",
-        "cre.nvidia.com/category-variant": "nccl-all-reduce",
-        "cre.nvidia.com/certification": "forge-l40-nc"
+        "nvcre.nvidia.com/category-domain": "communication",
+        "nvcre.nvidia.com/category-variant": "nccl-all-reduce",
+        "nvcre.nvidia.com/certification": "forge-l40-nc"
       },
       "ownerReferences": [
         {
-          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
           "kind": "Certification",
           "name": "forge-l40-nc",
           "uid": "",
@@ -85,7 +85,7 @@
         }
       ],
       "finalizers": [
-        "cre.nvidia.com/workflow-finalizer"
+        "nvcre.nvidia.com/workflow-finalizer"
       ]
     },
     "spec": {
@@ -159,7 +159,7 @@
               },
               "runtimePatches": [
                 {
-                  "manager": "cre.nvidia.com/catalog",
+                  "manager": "nvcre.nvidia.com/catalog",
                   "trainingRuntimeSpec": {
                     "template": {
                       "spec": {
@@ -454,7 +454,7 @@
             ],
             "phase": "Running",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "forge-l40-nc-communicatio-84d5e-job",
               "namespace": "default"

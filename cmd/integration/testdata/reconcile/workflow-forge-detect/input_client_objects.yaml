@@ -10,7 +10,7 @@ metadata:
     nvidia.com/gpu.product: NVIDIA-L40
     kubernetes.io/hostname: forge-l40-node-01
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: forge-detect-workflow

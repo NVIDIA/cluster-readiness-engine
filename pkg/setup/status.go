@@ -86,7 +86,7 @@ func newSetupStatusCommand() *cobra.Command {
 		Long: `Check whether CRE and all required cluster components are installed and ready.
 
 Components checked:
-  creCRDs        CRE CustomResourceDefinitions (cre.nvidia.com)
+  creCRDs        CRE CustomResourceDefinitions (nvcre.nvidia.com)
   creController  CRE controller deployment (namespace: cluster-readiness-engine)
   kubeflowTrainer      Kubeflow Trainer TrainJob CRD (kubeflow.org)
   logProfiles          CRE LogProfile resources

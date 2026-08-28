@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
-  name: workloadruns.cre.nvidia.com
+  name: workloadruns.nvcre.nvidia.com
 spec:
-  group: cre.nvidia.com
+  group: nvcre.nvidia.com
   names:
     kind: WorkloadRun
     listKind: WorkloadRunList

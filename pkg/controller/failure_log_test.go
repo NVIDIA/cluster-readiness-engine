@@ -90,7 +90,7 @@ func TestFailureLogCapture(t *testing.T) {
 			pod := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: sp.Name, Namespace: "ns",
-					Labels: map[string]string{"cre.nvidia.com/job": "j"},
+					Labels: map[string]string{"nvcre.nvidia.com/job": "j"},
 				},
 			}
 			if sp.Running {

@@ -32,7 +32,7 @@ import (
 const (
 	defaultBandwidthMeasurementRequeueInterval = 15 * time.Second
 
-	bandwidthMeasurementFinalizer = "cre.nvidia.com/bandwidthmeasurement-finalizer"
+	bandwidthMeasurementFinalizer = "nvcre.nvidia.com/bandwidthmeasurement-finalizer"
 
 	reasonBandwidthJobRunning   = "JobRunning"
 	reasonBandwidthJobSucceeded = "JobSucceeded"
@@ -112,9 +112,9 @@ func (r *BandwidthMeasurementReconciler) getRequeueInterval() time.Duration {
 	return defaultBandwidthMeasurementRequeueInterval
 }
 
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=bandwidthmeasurements,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=bandwidthmeasurements/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=bandwidthmeasurements/finalizers,verbs=update
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=bandwidthmeasurements,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=bandwidthmeasurements/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=bandwidthmeasurements/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop.
 func (r *BandwidthMeasurementReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -335,7 +335,7 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 
 	// Emit Prometheus metrics.
 	jobName := measurement.Spec.JobRef.Name
-	workflow := measurement.Labels["cre.nvidia.com/workflow"]
+	workflow := measurement.Labels["nvcre.nvidia.com/workflow"]
 	ncclTest := measurement.Spec.TestType
 	for _, r := range measurement.Status.Results {
 		algBW, _ := strconv.ParseFloat(r.AlgBW, 64)
@@ -410,7 +410,7 @@ func (r *BandwidthMeasurementReconciler) handleTerminal(ctx context.Context, mea
 
 	// Clean up NCCL bandwidth gauges so stale values don't persist in Prometheus.
 	jobName := measurement.Spec.JobRef.Name
-	workflow := measurement.Labels["cre.nvidia.com/workflow"]
+	workflow := measurement.Labels["nvcre.nvidia.com/workflow"]
 	sizes := make([]string, 0, len(measurement.Status.Results))
 	for _, r := range measurement.Status.Results {
 		sizes = append(sizes, strconv.FormatInt(r.SizeBytes, 10))
@@ -426,7 +426,7 @@ func (r *BandwidthMeasurementReconciler) handleDeletion(ctx context.Context, mea
 	if controllerutil.ContainsFinalizer(measurement, bandwidthMeasurementFinalizer) {
 		// Cleanup Prometheus metrics.
 		jobName := measurement.Spec.JobRef.Name
-		workflow := measurement.Labels["cre.nvidia.com/workflow"]
+		workflow := measurement.Labels["nvcre.nvidia.com/workflow"]
 		sizes := make([]string, 0, len(measurement.Status.Results))
 		for _, r := range measurement.Status.Results {
 			sizes = append(sizes, strconv.FormatInt(r.SizeBytes, 10))

@@ -65,7 +65,7 @@ kubectl get pods -n cluster-readiness-engine
 Check that the CRDs are installed:
 
 ```bash
-kubectl get crds | grep cre.nvidia.com
+kubectl get crds | grep nvcre.nvidia.com
 ```
 
 ## Uninstall

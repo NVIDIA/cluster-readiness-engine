@@ -1,12 +1,12 @@
 {
   "Certification/mistral-nc-g3": {
     "kind": "Certification",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "mistral-nc-g3",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/certification-finalizer"
+        "nvcre.nvidia.com/certification-finalizer"
       ]
     },
     "spec": {
@@ -64,19 +64,19 @@
   },
   "Workflow/mistral-nc-g3-communicati-1a2fa": {
     "kind": "Workflow",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "mistral-nc-g3-communicati-1a2fa",
       "namespace": "default",
       "labels": {
         "app.kubernetes.io/managed-by": "cluster-readiness-engine",
-        "cre.nvidia.com/category-domain": "communication",
-        "cre.nvidia.com/category-variant": "nccl-all-gather",
-        "cre.nvidia.com/certification": "mistral-nc-g3"
+        "nvcre.nvidia.com/category-domain": "communication",
+        "nvcre.nvidia.com/category-variant": "nccl-all-gather",
+        "nvcre.nvidia.com/certification": "mistral-nc-g3"
       },
       "ownerReferences": [
         {
-          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
           "kind": "Certification",
           "name": "mistral-nc-g3",
           "uid": "",
@@ -85,7 +85,7 @@
         }
       ],
       "finalizers": [
-        "cre.nvidia.com/workflow-finalizer"
+        "nvcre.nvidia.com/workflow-finalizer"
       ]
     },
     "spec": {
@@ -149,7 +149,7 @@
               },
               "runtimePatches": [
                 {
-                  "manager": "cre.nvidia.com/catalog",
+                  "manager": "nvcre.nvidia.com/catalog",
                   "trainingRuntimeSpec": {
                     "template": {
                       "spec": {
@@ -503,7 +503,7 @@
             ],
             "phase": "Running",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "mistral-nc-g3-communicati-1a2fa-job",
               "namespace": "default"

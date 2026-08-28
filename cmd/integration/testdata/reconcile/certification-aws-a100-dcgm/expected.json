@@ -1,12 +1,12 @@
 {
   "Certification/aws-a100-dcgm": {
     "kind": "Certification",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "aws-a100-dcgm",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/certification-finalizer"
+        "nvcre.nvidia.com/certification-finalizer"
       ]
     },
     "spec": {
@@ -64,19 +64,19 @@
   },
   "Workflow/aws-a100-dcgm-diagnostics-f73af": {
     "kind": "Workflow",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "aws-a100-dcgm-diagnostics-f73af",
       "namespace": "default",
       "labels": {
         "app.kubernetes.io/managed-by": "cluster-readiness-engine",
-        "cre.nvidia.com/category-domain": "diagnostics",
-        "cre.nvidia.com/category-variant": "dcgm-level4",
-        "cre.nvidia.com/certification": "aws-a100-dcgm"
+        "nvcre.nvidia.com/category-domain": "diagnostics",
+        "nvcre.nvidia.com/category-variant": "dcgm-level4",
+        "nvcre.nvidia.com/certification": "aws-a100-dcgm"
       },
       "ownerReferences": [
         {
-          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
           "kind": "Certification",
           "name": "aws-a100-dcgm",
           "uid": "",
@@ -85,7 +85,7 @@
         }
       ],
       "finalizers": [
-        "cre.nvidia.com/workflow-finalizer"
+        "nvcre.nvidia.com/workflow-finalizer"
       ]
     },
     "spec": {
@@ -265,7 +265,7 @@
             ],
             "phase": "Running",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "aws-a100-dcgm-diagnostics-f73af-job",
               "namespace": "default"

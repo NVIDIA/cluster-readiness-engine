@@ -63,7 +63,7 @@ rules:
   - create
   - patch
 - apiGroups:
-  - cre.nvidia.com
+  - nvcre.nvidia.com
   resources:
   - bandwidthmeasurements
   - certifications
@@ -80,7 +80,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - cre.nvidia.com
+  - nvcre.nvidia.com
   resources:
   - bandwidthmeasurements/finalizers
   - certifications/finalizers
@@ -91,7 +91,7 @@ rules:
   verbs:
   - update
 - apiGroups:
-  - cre.nvidia.com
+  - nvcre.nvidia.com
   resources:
   - bandwidthmeasurements/status
   - certifications/status
@@ -104,7 +104,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - cre.nvidia.com
+  - nvcre.nvidia.com
   resources:
   - logprofiles
   verbs:

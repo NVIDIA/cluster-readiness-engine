@@ -6,7 +6,7 @@
 explicitTimeout: false
 flagTimeout: 30m
 certification:
-  apiVersion: cre.nvidia.com/v1alpha1
+  apiVersion: nvcre.nvidia.com/v1alpha1
   kind: Certification
   metadata:
     name: repeat

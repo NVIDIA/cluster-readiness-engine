@@ -23,7 +23,7 @@ metadata:
 spec:
   providerID: "azure://test/azure-a100-node-02"
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: az-a100-at

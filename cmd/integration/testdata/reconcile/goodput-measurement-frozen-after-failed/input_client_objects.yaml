@@ -9,7 +9,7 @@
 # to move at all (first-write-wins, ADR-072). Strip-and-rerun byte-identity
 # cannot hold on the Failed path because lostWorkTime/interruptionCount are
 # accumulators, not pure recomputes.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: LogProfile
 metadata:
   name: test-frozenf-logprofile
@@ -47,7 +47,7 @@ spec:
       - train.py
     numNodes: 1
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-frozenf-job
@@ -94,7 +94,7 @@ metadata:
   labels:
     jobset.sigs.k8s.io/jobset-name: test-frozenf-job-workload
     batch.kubernetes.io/job-completion-index: "0"
-    cre.nvidia.com/job: test-frozenf-job
+    nvcre.nvidia.com/job: test-frozenf-job
 spec:
   containers:
     - name: node
@@ -102,14 +102,14 @@ spec:
 status:
   phase: Running
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: GoodputMeasurement
 metadata:
   name: test-frozenf-gm
   namespace: default
 spec:
   jobRef:
-    apiGroup: cre.nvidia.com
+    apiGroup: nvcre.nvidia.com
     kind: Job
     name: test-frozenf-job
   logProfileRef: test-frozenf-logprofile

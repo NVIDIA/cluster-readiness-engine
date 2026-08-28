@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	goodputMeasurementFinalizer = "cre.nvidia.com/goodputmeasurement-finalizer"
+	goodputMeasurementFinalizer = "nvcre.nvidia.com/goodputmeasurement-finalizer"
 	defaultSampleInterval       = 60 * time.Second
 
 	// reasonGoodputLogProfileMissing marks a spec.logProfileRef that does not
@@ -75,11 +75,11 @@ func (r *GoodputMeasurementReconciler) getLogFetcher() podlogs.PodLogFetcher {
 	return podlogs.NewKubernetesLogFetcher(r.Clientset)
 }
 
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=goodputmeasurements,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=goodputmeasurements/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=goodputmeasurements/finalizers,verbs=update
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=jobs,verbs=get;list;watch
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=logprofiles,verbs=get;list;watch
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=goodputmeasurements,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=goodputmeasurements/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=goodputmeasurements/finalizers,verbs=update
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs,verbs=get;list;watch
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=logprofiles,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods/log,verbs=get
 
@@ -462,7 +462,7 @@ func (r *GoodputMeasurementReconciler) handleRunning(ctx context.Context, measur
 		// Detect workload restart: if training had started and no pending interruption
 		// exists yet, the Job is being restarted from checkpoint.
 		if state.TrainingStarted && state.PendingInterruption == nil {
-			workflow := job.Labels["cre.nvidia.com/workflow"]
+			workflow := job.Labels["nvcre.nvidia.com/workflow"]
 			r.recordInterruptionFromRestart(ctx, state, measurement, workflow)
 			if err := r.Status().Update(ctx, measurement); err != nil {
 				log.Error(err, "Failed to persist interruption to status")
@@ -497,7 +497,7 @@ func (r *GoodputMeasurementReconciler) handleRunning(ctx context.Context, measur
 	// was nil only briefly and the GM controller missed the transition.
 	if job.Status.RestartCount > int32(measurement.Status.InterruptionCount) &&
 		state.TrainingStarted && state.PendingInterruption == nil {
-		workflow := job.Labels["cre.nvidia.com/workflow"]
+		workflow := job.Labels["nvcre.nvidia.com/workflow"]
 		r.recordInterruptionFromRestart(ctx, state, measurement, workflow)
 	}
 
@@ -567,7 +567,7 @@ func (r *GoodputMeasurementReconciler) handleRunning(ctx context.Context, measur
 	// Write cumulative metrics to status.
 	r.writeStatusFromCumulative(measurement, cm)
 
-	workflow := job.Labels["cre.nvidia.com/workflow"]
+	workflow := job.Labels["nvcre.nvidia.com/workflow"]
 	recordGoodputMetrics(
 		measurement.Namespace, measurement.Name, measurement.Spec.JobRef.Name, workflow,
 		goodputMetricValues{
@@ -851,7 +851,7 @@ func (r *GoodputMeasurementReconciler) handleSucceeded(ctx context.Context, meas
 	r.writeStatusFromCumulative(measurement, cm)
 	log.Info("Job succeeded", "goodput", cm.Goodput, "trainingTime", cm.TrainingTime)
 
-	workflow := job.Labels["cre.nvidia.com/workflow"]
+	workflow := job.Labels["nvcre.nvidia.com/workflow"]
 	recordGoodputMetrics(
 		measurement.Namespace, measurement.Name, measurement.Spec.JobRef.Name, workflow,
 		goodputMetricValues{
@@ -968,7 +968,7 @@ func (r *GoodputMeasurementReconciler) handleFailed(ctx context.Context, measure
 	r.writeStatusFromCumulative(measurement, cm)
 	measurement.Status.ApplicationStartTime = nil
 
-	workflow := job.Labels["cre.nvidia.com/workflow"]
+	workflow := job.Labels["nvcre.nvidia.com/workflow"]
 	recordGoodputMetrics(
 		measurement.Namespace, measurement.Name, measurement.Spec.JobRef.Name, workflow,
 		goodputMetricValues{
@@ -1363,7 +1363,7 @@ func (r *GoodputMeasurementReconciler) handleDeletion(ctx context.Context, measu
 		job := &crev1alpha1.Job{}
 		jobKey := types.NamespacedName{Name: measurement.Spec.JobRef.Name, Namespace: measurement.Namespace}
 		if err := r.Get(ctx, jobKey, job); err == nil {
-			workflow = job.Labels["cre.nvidia.com/workflow"]
+			workflow = job.Labels["nvcre.nvidia.com/workflow"]
 		}
 	}
 	cleanupGoodputMetrics(measurement.Namespace, measurement.Name, measurement.Spec.JobRef.Name, workflow)

@@ -24,7 +24,7 @@ Implement a cluster-scoped `LogProfile` CRD that defines regex patterns with nam
 - **Log reader** (`pkg/goodput/reader.go`): Reads pod logs via `PodLogFetcher` interface. Uses `sinceTime` for incremental log fetching. The interface enables dependency injection for testing.
 
 The GoodputMeasurement controller runs on a configurable sample interval (default 15s). On each cycle:
-1. Reads logs from all workload pods (via `cre.nvidia.com/job` label)
+1. Reads logs from all workload pods (via `nvcre.nvidia.com/job` label)
 2. Parses logs using the referenced LogProfile
 3. Computes goodput metrics
 4. Updates status with latest values

@@ -24,7 +24,7 @@ spec:
       - train.py
     numNodes: 1
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-hw-nomatch-job
@@ -71,7 +71,7 @@ metadata:
   name: test-hw-nomatch-pod
   namespace: default
   labels:
-    cre.nvidia.com/job: test-hw-nomatch-job
+    nvcre.nvidia.com/job: test-hw-nomatch-job
 spec:
   nodeName: test-hw-node
   containers:

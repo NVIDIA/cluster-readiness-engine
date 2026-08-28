@@ -54,7 +54,7 @@ func waitingForNodesMessage(cert *crev1alpha1.Certification) string {
 var errNoNodesMatch = errors.New("no nodes match target")
 
 const (
-	certificationFinalizer              = "cre.nvidia.com/certification-finalizer"
+	certificationFinalizer              = "nvcre.nvidia.com/certification-finalizer"
 	defaultCertificationRequeueInterval = 15 * time.Second
 	nodeDiscoveryTimeout                = 5 * time.Minute
 
@@ -63,12 +63,12 @@ const (
 	categoryStatusSucceeded  = "Succeeded"
 	categoryStatusFailed     = "Failed"
 
-	labelCertification   = "cre.nvidia.com/certification"
-	labelCategoryDomain  = "cre.nvidia.com/category-domain"
-	labelCategoryVariant = "cre.nvidia.com/category-variant"
+	labelCertification   = "nvcre.nvidia.com/certification"
+	labelCategoryDomain  = "nvcre.nvidia.com/category-domain"
+	labelCategoryVariant = "nvcre.nvidia.com/category-variant"
 	// annotationRequestedTestScale carries the testScale the operator asked for
 	// through to the report, which otherwise infers it from what was applied.
-	annotationRequestedTestScale = "cre.nvidia.com/requested-test-scale"
+	annotationRequestedTestScale = "nvcre.nvidia.com/requested-test-scale"
 
 	labelManagedBy = "app.kubernetes.io/managed-by"
 )
@@ -82,11 +82,11 @@ type CertificationReconciler struct {
 	MaxConcurrentReconciles int
 }
 
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=certifications,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=certifications/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=certifications/finalizers,verbs=update
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=workflows,verbs=get;list;watch;create;delete
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=workflows/status,verbs=get
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=certifications,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=certifications/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=certifications/finalizers,verbs=update
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workflows,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workflows/status,verbs=get
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to

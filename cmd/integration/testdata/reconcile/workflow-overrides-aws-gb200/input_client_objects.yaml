@@ -12,7 +12,7 @@ metadata:
 spec:
   providerID: "aws://us-east-1a/i-1234567890abcdef0"
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: test-aws-gb200-overrides

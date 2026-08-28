@@ -201,15 +201,15 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 	// Build output Workflow.
 	workflow := &crev1alpha1.Workflow{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "cre.nvidia.com/v1alpha1",
+			APIVersion: "nvcre.nvidia.com/v1alpha1",
 			Kind:       "Workflow",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      run.Name,
 			Namespace: run.Namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "cluster-readiness-engine",
-				"cre.nvidia.com/workload-run":  run.Name,
+				"app.kubernetes.io/managed-by":  "cluster-readiness-engine",
+				"nvcre.nvidia.com/workload-run": run.Name,
 			},
 			Annotations: map[string]string{
 				"nvcrectl.nvidia.com/detected-gpu-architecture": gpuArch,
@@ -585,15 +585,15 @@ func runWorkloadRunRenderDryRun(
 
 	workflow := &crev1alpha1.Workflow{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "cre.nvidia.com/v1alpha1",
+			APIVersion: "nvcre.nvidia.com/v1alpha1",
 			Kind:       "Workflow",
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      run.Name,
 			Namespace: run.Namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "cluster-readiness-engine",
-				"cre.nvidia.com/workload-run":  run.Name,
+				"app.kubernetes.io/managed-by":  "cluster-readiness-engine",
+				"nvcre.nvidia.com/workload-run": run.Name,
 			},
 			Annotations: map[string]string{
 				"nvcrectl.nvidia.com/detected-gpu-architecture": gpuArch,
@@ -820,7 +820,7 @@ func runWorkloadRunExecute(
 				setup.WorkloadPullSecretName(run.Name), getErr)
 		} else {
 			sec.OwnerReferences = append(sec.OwnerReferences, metav1.OwnerReference{
-				APIVersion: "cre.nvidia.com/v1alpha1",
+				APIVersion: "nvcre.nvidia.com/v1alpha1",
 				Kind:       "WorkloadRun",
 				Name:       run.Name,
 				UID:        run.UID,

@@ -1,17 +1,17 @@
 {
   "Workflow/test-mpi-gb300-run": {
     "kind": "Workflow",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-mpi-gb300-run",
       "namespace": "default",
       "labels": {
         "app.kubernetes.io/managed-by": "cluster-readiness-engine",
-        "cre.nvidia.com/workload-run": "test-mpi-gb300-run"
+        "nvcre.nvidia.com/workload-run": "test-mpi-gb300-run"
       },
       "ownerReferences": [
         {
-          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
           "kind": "WorkloadRun",
           "name": "test-mpi-gb300-run",
           "uid": "",
@@ -20,7 +20,7 @@
         }
       ],
       "finalizers": [
-        "cre.nvidia.com/workflow-finalizer"
+        "nvcre.nvidia.com/workflow-finalizer"
       ]
     },
     "spec": {
@@ -47,7 +47,7 @@
               },
               "runtimePatches": [
                 {
-                  "manager": "cre.nvidia.com/controller",
+                  "manager": "nvcre.nvidia.com/controller",
                   "trainingRuntimeSpec": {
                     "template": {
                       "spec": {
@@ -1115,7 +1115,7 @@
   },
   "WorkloadRun/test-mpi-gb300-run": {
     "kind": "WorkloadRun",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-mpi-gb300-run",
       "namespace": "default"

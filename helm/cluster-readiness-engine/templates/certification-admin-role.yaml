@@ -4,7 +4,7 @@
 # This rule is not used by the project cluster-readiness-engine itself.
 # It is provided to allow the cluster admin to help manage permissions for users.
 #
-# Grants full permissions ('*') over cre.nvidia.com.
+# Grants full permissions ('*') over nvcre.nvidia.com.
 # This role is intended for users authorized to modify roles and bindings within the cluster,
 # enabling them to delegate specific permissions to other users or groups as needed.
 
@@ -16,13 +16,13 @@ metadata:
   name: cre-certification-admin-role
 rules:
 - apiGroups:
-  - cre.nvidia.com
+  - nvcre.nvidia.com
   resources:
   - certifications
   verbs:
   - '*'
 - apiGroups:
-  - cre.nvidia.com
+  - nvcre.nvidia.com
   resources:
   - certifications/status
   verbs:

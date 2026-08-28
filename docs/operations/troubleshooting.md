@@ -16,11 +16,11 @@ This page is for operators who need to diagnose problems with the Cluster Readin
 
 ```bash
 # Check the Job conditions
-kubectl describe jobs.cre.nvidia.com <name> -n <namespace>
+kubectl describe jobs.nvcre.nvidia.com <name> -n <namespace>
 
 # Check the underlying workload (use the kind from status.workloadRef)
 kubectl get trainjob -n <namespace>
-kubectl get pods -l cre.nvidia.com/job=<name> -n <namespace> -o wide
+kubectl get pods -l nvcre.nvidia.com/job=<name> -n <namespace> -o wide
 
 # Check controller logs for this job
 kubectl logs -n cluster-readiness-engine deploy/cluster-readiness-engine-manager \
@@ -41,13 +41,13 @@ kubectl logs -n cluster-readiness-engine deploy/cluster-readiness-engine-manager
 
 ```bash
 # Check Workflow status and conditions
-kubectl get workflows.cre.nvidia.com <name> -o yaml
+kubectl get workflows.nvcre.nvidia.com <name> -o yaml
 
 # Look for the child Job
-kubectl get jobs.cre.nvidia.com -l cre.nvidia.com/workflow=<name>
+kubectl get jobs.nvcre.nvidia.com -l nvcre.nvidia.com/workflow=<name>
 
 # Check if dependencies were created
-kubectl get workflows.cre.nvidia.com <name> \
+kubectl get workflows.nvcre.nvidia.com <name> \
   -o jsonpath='{.status.dependencyRefs}' | jq .
 ```
 
@@ -65,10 +65,10 @@ kubectl get workflows.cre.nvidia.com <name> \
 
 ```bash
 # Verify pods are running on the expected nodes
-kubectl get pods -l cre.nvidia.com/job=<name> -o wide
+kubectl get pods -l nvcre.nvidia.com/job=<name> -o wide
 
 # Check that the pod label was injected
-kubectl get pods -l cre.nvidia.com/job=<name> --show-labels
+kubectl get pods -l nvcre.nvidia.com/job=<name> --show-labels
 
 # Inspect the node for the expected conditions/taints
 kubectl get node <node> -o yaml
@@ -82,7 +82,7 @@ kubectl logs -n cluster-readiness-engine deploy/cluster-readiness-engine-manager
 
 - The CEL expression has a syntax error — look for parse errors in controller logs. Test your expression against a node object.
 - Pods are not scheduled on target nodes — the controller only evaluates nodes where Job pods are running. Verify pod placement.
-- The pod label is missing — the controller injects `cre.nvidia.com/job` automatically. If pods were created before the controller started, they may lack the label.
+- The pod label is missing — the controller injects `nvcre.nvidia.com/job` automatically. If pods were created before the controller started, they may lack the label.
 - Node conditions or taints do not exist yet — CRE only reads node state; it relies on your cluster's health monitoring stack to set the conditions or taints your CEL expression checks. Verify with `kubectl describe node`.
 
 ## High reconciliation latency
@@ -114,11 +114,11 @@ kubectl logs -n cluster-readiness-engine deploy/cluster-readiness-engine-manager
 
 ```bash
 # Check category statuses
-kubectl get certifications.cre.nvidia.com <name> \
+kubectl get certifications.nvcre.nvidia.com <name> \
   -o jsonpath='{.status.categoryStatuses}' | jq .
 
 # List child Workflows
-kubectl get workflows.cre.nvidia.com -l cre.nvidia.com/certification=<name>
+kubectl get workflows.nvcre.nvidia.com -l nvcre.nvidia.com/certification=<name>
 
 # Check for CategoryNotFound errors
 kubectl logs -n cluster-readiness-engine deploy/cluster-readiness-engine-manager \
@@ -138,13 +138,13 @@ kubectl logs -n cluster-readiness-engine deploy/cluster-readiness-engine-manager
 
 ```bash
 # Verify stallMultiplier is set on the Job
-kubectl get jobs.cre.nvidia.com <name> -o jsonpath='{.spec.stallMultiplier}'
+kubectl get jobs.nvcre.nvidia.com <name> -o jsonpath='{.spec.stallMultiplier}'
 
 # Check if a GoodputMeasurement exists and has step data
-kubectl get goodputmeasurement -l cre.nvidia.com/job=<name> -o yaml
+kubectl get goodputmeasurement -l nvcre.nvidia.com/job=<name> -o yaml
 
 # Look for avgStepTimeSec and lastStepTimestamp
-kubectl get goodputmeasurement -l cre.nvidia.com/job=<name> \
+kubectl get goodputmeasurement -l nvcre.nvidia.com/job=<name> \
   -o jsonpath='{.items[0].status.avgStepTimeSec}'
 ```
 

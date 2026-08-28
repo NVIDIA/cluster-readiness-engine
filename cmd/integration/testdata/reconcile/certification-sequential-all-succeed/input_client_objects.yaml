@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: test-cert-seq-succeed
@@ -32,16 +32,16 @@ status:
         namespace: default
       status: InProgress
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: test-cert-seq-succeed-allgather-wf
   namespace: default
   labels:
     app.kubernetes.io/managed-by: cluster-readiness-engine
-    cre.nvidia.com/certification: test-cert-seq-succeed
-    cre.nvidia.com/category-domain: communication
-    cre.nvidia.com/category-variant: nccl-all-gather
+    nvcre.nvidia.com/certification: test-cert-seq-succeed
+    nvcre.nvidia.com/category-domain: communication
+    nvcre.nvidia.com/category-variant: nccl-all-gather
 spec:
   jobTemplate:
     spec:

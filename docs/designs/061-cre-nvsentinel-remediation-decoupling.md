@@ -75,7 +75,7 @@ Within the same Workflow (category), different nodes can have different reasons.
 | Case | Trigger | `job.status.failedNodes` source | `reason` |
 |------|---------|--------------------------------|----------|
 | **1** | External cordon during cert | CEL health check on Job pods' nodes via `checkNodeHealth` | `HardwareFailureDetected` |
-| **2** | Threshold validation fail | `cre.nvidia.com/group-nodes` annotation on the Job | `ThresholdViolation` |
+| **2** | Threshold validation fail | `nvcre.nvidia.com/group-nodes` annotation on the Job | `ThresholdViolation` |
 | **3** | Workload exit ≠ 0 or stall | `group-nodes` annotation (comma-separated node list) | `WorkloadFailed` |
 | **4** | Same node fails in **multiple categories** | Each category's Workflow independently copies into `categoryStatuses[i].failedNodes` | per-category reason (may differ across categories) |
 
@@ -88,12 +88,12 @@ Certification `gpu-cluster-cert` runs two categories. Training runs one Job on `
 **Job** (training — workload exit non-zero):
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: gpu-cluster-cert-training-nemotron5-8b-job-0
   annotations:
-    cre.nvidia.com/group-nodes: gpu-01
+    nvcre.nvidia.com/group-nodes: gpu-01
 status:
   conditions:
     - type: Failed
@@ -107,12 +107,12 @@ status:
 **Job** (NCCL — hardware cordon on gpu-01):
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: gpu-cluster-cert-communication-nccl-job-0
   annotations:
-    cre.nvidia.com/group-nodes: gpu-01
+    nvcre.nvidia.com/group-nodes: gpu-01
 status:
   conditions:
     - type: HardwareFailed
@@ -126,12 +126,12 @@ status:
 **Job** (NCCL — threshold violation on gpu-02):
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: gpu-cluster-cert-communication-nccl-job-1
   annotations:
-    cre.nvidia.com/group-nodes: gpu-02
+    nvcre.nvidia.com/group-nodes: gpu-02
 status:
   conditions:
     - type: ValidationFailed
@@ -145,7 +145,7 @@ status:
 **Workflow** (training — single failed Job):
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: gpu-cluster-cert-training-nemotron5-8b
@@ -161,7 +161,7 @@ status:
 **Workflow** (NCCL — two failed Jobs with different reasons):
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: gpu-cluster-cert-communication-nccl
@@ -179,7 +179,7 @@ status:
 **Certification** (final state — per-category, per-node reasons):
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: gpu-cluster-cert

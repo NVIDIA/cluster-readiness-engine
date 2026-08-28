@@ -5,7 +5,7 @@
 # ThresholdViolation message even though the other entry sorts first:
 #   [{"name":"node001","reason":"WorkloadFailed","message":"workload exited non-zero"},
 #    {"name":"node002","reason":"ThresholdViolation","message":"Threshold \"goodputRatio\" violated: measured 0.8800, expression: value >= 0.95"}]
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: cert-fallback
@@ -35,13 +35,13 @@ status:
         kind: ConfigMap
         name: cert-fallback-training-nemotron5-8b-node-results
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: cert-fallback-training-nemotron5-8b
   namespace: default
   labels:
-    cre.nvidia.com/certification: cert-fallback
+    nvcre.nvidia.com/certification: cert-fallback
 spec:
   jobTemplate:
     spec:
@@ -73,7 +73,7 @@ status:
           - node002
         phase: Failed
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: cert-fallback-training-nemotron5-8b-job-group-0
           namespace: default
@@ -95,6 +95,6 @@ metadata:
   name: cert-fallback-training-nemotron5-8b-node-results
   namespace: default
   labels:
-    cre.nvidia.com/workflow: cert-fallback-training-nemotron5-8b
+    nvcre.nvidia.com/workflow: cert-fallback-training-nemotron5-8b
 binaryData:
   failed-nodes.json.gz: H4sIAAAAAAAC/12OQQrCQAxFrxKyrjIKQi3o0gOI6MK6CEyog9NJmWmrKL27qYgUt//9/5LzCwPVjAUGsWzMAjOMTEmCRieJNy9kd+Q8WyU1p0TV2L5/EfDDtWwhSJg9OQoO2Z9xOTUerpHTVbw9OvHUOg2n1h+GEisR23TtfmyVCP1nwLaAWmVd1JtmnufGZPpCo7OksgJ68h3DdqNwvcLh8gbxFZA/4AAAAA==

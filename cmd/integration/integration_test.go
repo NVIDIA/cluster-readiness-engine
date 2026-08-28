@@ -658,7 +658,7 @@ func verifyFrozenGoodput(t *testing.T, direct, cached client.Client, cfg waitCon
 		if job.Annotations == nil {
 			job.Annotations = map[string]string{}
 		}
-		job.Annotations["test.cre.nvidia.com/touched"] = "true"
+		job.Annotations["test.nvcre.nvidia.com/touched"] = "true"
 		require.NoError(t, direct.Update(ctx, job))
 	}
 

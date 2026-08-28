@@ -953,7 +953,7 @@ func buildCliqueReport(wf *crev1alpha1.Workflow, failedNodes []crev1alpha1.Faile
 // Returns "" when no explicit test scale was set (e.g., training workloads).
 // annotationRequestedTestScale carries the testScale the operator asked for, set
 // by the Certification controller when it creates the Workflow.
-const annotationRequestedTestScale = "cre.nvidia.com/requested-test-scale"
+const annotationRequestedTestScale = "nvcre.nvidia.com/requested-test-scale"
 
 func detectTestScale(wf *crev1alpha1.Workflow) string {
 	// What the operator asked for, when the Certification recorded it. The
@@ -1364,7 +1364,7 @@ func collectWorkflowJobs(
 	if orch != nil && orch.Diagnose != nil {
 		var jobList crev1alpha1.JobList
 		if err := c.List(ctx, &jobList, client.InNamespace(wf.Namespace),
-			client.MatchingLabels{"cre.nvidia.com/workflow": wf.Name}); err == nil {
+			client.MatchingLabels{"nvcre.nvidia.com/workflow": wf.Name}); err == nil {
 			for _, j := range jobList.Items {
 				jobs[j.Name] = true
 			}
@@ -1397,13 +1397,13 @@ func buildDiagnoseTests(
 	// List all Jobs for this Workflow.
 	var jobList crev1alpha1.JobList
 	if err := c.List(ctx, &jobList, client.InNamespace(wf.Namespace),
-		client.MatchingLabels{"cre.nvidia.com/workflow": wf.Name}); err != nil {
+		client.MatchingLabels{"nvcre.nvidia.com/workflow": wf.Name}); err != nil {
 		return nil
 	}
 
 	var rows []DiagnoseTestRow
 	for _, j := range jobList.Items {
-		groupName := j.GetLabels()["cre.nvidia.com/group"]
+		groupName := j.GetLabels()["nvcre.nvidia.com/group"]
 		stage := inferDiagnoseStage(groupName)
 		passed := controller.CondIsTrue(j.Status.Conditions, crev1alpha1.JobSucceeded)
 		nodes := getJobNodes(&j)
@@ -1464,7 +1464,7 @@ func lookupScreeningDomain(wf *crev1alpha1.Workflow, nodes []string) string {
 
 // getJobNodes reads the group-nodes annotation set by the workflow controller.
 func getJobNodes(job *crev1alpha1.Job) []string {
-	ann := job.GetAnnotations()["cre.nvidia.com/group-nodes"]
+	ann := job.GetAnnotations()["nvcre.nvidia.com/group-nodes"]
 	if ann == "" {
 		return nil
 	}

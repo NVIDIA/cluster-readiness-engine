@@ -14,7 +14,7 @@
 #
 # Usage:
 #   Reference as logProfileRef: "megatron-training" in a Job or GoodputMeasurement.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: LogProfile
 metadata:
   name: megatron-training

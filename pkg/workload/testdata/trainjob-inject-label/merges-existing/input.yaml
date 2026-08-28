@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-labelKey: "cre.nvidia.com/job"
+labelKey: "nvcre.nvidia.com/job"
 labelValue: "my-job"
 spec:
   trainJob:
     runtimePatches:
-      - manager: cre.nvidia.com/controller
+      - manager: nvcre.nvidia.com/controller
         trainingRuntimeSpec:
           template:
             spec:

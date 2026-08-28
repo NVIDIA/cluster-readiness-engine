@@ -62,7 +62,7 @@ ConfigMap "<workflow-name>-node-results"     (ownerRef → Workflow, same namesp
   category's passed-node list under the key `succeeded-nodes.csv.gz`.
 - The value is a gzip-compressed **comma-separated list** of node names. Node names are DNS-1123
   subdomains and can never contain a comma, so no escaping is needed; this matches the existing
-  `cre.nvidia.com/group-nodes` annotation convention.
+  `nvcre.nvidia.com/group-nodes` annotation convention.
 - The ConfigMap name is `categoryStatuses[i].workflowRef.name + "-node-results"`, so the reference is
   technically derivable — but it is published explicitly so consumers do not have to assume the naming rule.
 

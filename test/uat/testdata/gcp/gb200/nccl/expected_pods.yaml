@@ -216,7 +216,6 @@ metadata:
   labels:
     batch.kubernetes.io/job-completion-index: "0"
     batch.kubernetes.io/job-name: gcp-gb200-nccl-communicat-61b6d-job-workload-node-0
-    cre.nvidia.com/job: gcp-gb200-nccl-communicat-61b6d-job
     job-name: gcp-gb200-nccl-communicat-61b6d-job-workload-node-0
     jobset.sigs.k8s.io/global-replicas: "2"
     jobset.sigs.k8s.io/group-name: default
@@ -229,6 +228,7 @@ metadata:
     jobset.sigs.k8s.io/replicatedjob-name: node
     jobset.sigs.k8s.io/replicatedjob-replicas: "1"
     jobset.sigs.k8s.io/restart-attempt: "0"
+    nvcre.nvidia.com/job: gcp-gb200-nccl-communicat-61b6d-job
   ownerReferences:
   - apiVersion: batch/v1
     blockOwnerDeletion: true
@@ -383,7 +383,6 @@ metadata:
   labels:
     batch.kubernetes.io/job-completion-index: "1"
     batch.kubernetes.io/job-name: gcp-gb200-nccl-communicat-61b6d-job-workload-node-0
-    cre.nvidia.com/job: gcp-gb200-nccl-communicat-61b6d-job
     job-name: gcp-gb200-nccl-communicat-61b6d-job-workload-node-0
     jobset.sigs.k8s.io/global-replicas: "2"
     jobset.sigs.k8s.io/group-name: default
@@ -396,6 +395,7 @@ metadata:
     jobset.sigs.k8s.io/replicatedjob-name: node
     jobset.sigs.k8s.io/replicatedjob-replicas: "1"
     jobset.sigs.k8s.io/restart-attempt: "0"
+    nvcre.nvidia.com/job: gcp-gb200-nccl-communicat-61b6d-job
   ownerReferences:
   - apiVersion: batch/v1
     blockOwnerDeletion: true

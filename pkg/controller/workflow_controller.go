@@ -39,7 +39,7 @@ import (
 )
 
 const (
-	workflowFinalizer              = "cre.nvidia.com/workflow-finalizer"
+	workflowFinalizer              = "nvcre.nvidia.com/workflow-finalizer"
 	defaultWorkflowRequeueInterval = 15 * time.Second
 
 	// Workflow tier reason constants are in helpers.go.
@@ -56,11 +56,11 @@ type WorkflowReconciler struct {
 	MaxConcurrentReconciles int
 }
 
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=workflows,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=workflows/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=workflows/finalizers,verbs=update
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=jobs,verbs=get;list;watch;create;delete
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=jobs/status,verbs=get
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workflows,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workflows/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workflows/finalizers,verbs=update
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs/status,verbs=get
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get
 // +kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;patch;watch
@@ -885,8 +885,8 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *cr
 	labels := make(map[string]string)
 	maps.Copy(labels, workflow.Spec.JobTemplate.Labels)
 	labels["app.kubernetes.io/managed-by"] = "cluster-readiness-engine"
-	labels["cre.nvidia.com/workflow"] = workflow.Name
-	labels["cre.nvidia.com/group"] = group.Name
+	labels["nvcre.nvidia.com/workflow"] = workflow.Name
+	labels["nvcre.nvidia.com/group"] = group.Name
 	job.SetLabels(labels)
 
 	// Merge annotations from template metadata and store group nodes.
@@ -894,7 +894,7 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *cr
 	if len(workflow.Spec.JobTemplate.Annotations) > 0 {
 		maps.Copy(annotations, workflow.Spec.JobTemplate.Annotations)
 	}
-	annotations["cre.nvidia.com/group-nodes"] = strings.Join(group.Nodes, ",")
+	annotations["nvcre.nvidia.com/group-nodes"] = strings.Join(group.Nodes, ",")
 	job.SetAnnotations(annotations)
 
 	// Set owner reference so the Job is garbage collected when the Workflow is deleted
@@ -946,7 +946,7 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *cr
 	now := metav1.Now()
 	group.Phase = crev1alpha1.GroupRunning
 	group.JobRef = &crev1alpha1.WorkloadReference{
-		APIVersion: "cre.nvidia.com/v1alpha1",
+		APIVersion: "nvcre.nvidia.com/v1alpha1",
 		Kind:       "Job",
 		Name:       jobName,
 		Namespace:  workflow.Namespace,
@@ -2081,7 +2081,7 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *crev1al
 	podList := &corev1.PodList{}
 	if err := r.List(ctx, podList,
 		client.InNamespace(job.Namespace),
-		client.MatchingLabels{"cre.nvidia.com/job": job.Name},
+		client.MatchingLabels{"nvcre.nvidia.com/job": job.Name},
 	); err != nil {
 		log.V(1).Info("Failed to list pods for timeout log capture", "error", err)
 		return
@@ -2174,7 +2174,7 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *crev1
 	jobList := &crev1alpha1.JobList{}
 	if err := r.List(ctx, jobList,
 		client.InNamespace(workflow.Namespace),
-		client.MatchingLabels{"cre.nvidia.com/workflow": workflow.Name},
+		client.MatchingLabels{"nvcre.nvidia.com/workflow": workflow.Name},
 	); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to list Jobs for deletion: %w", err)
 	}
@@ -2599,7 +2599,7 @@ func (r *WorkflowReconciler) createDependencyResource(ctx context.Context, owner
 	if labels == nil {
 		labels = make(map[string]string)
 	}
-	labels["cre.nvidia.com/workflow"] = workflow.Name
+	labels["nvcre.nvidia.com/workflow"] = workflow.Name
 	obj.SetLabels(labels)
 
 	log.Info("Creating dependency resource", "apiVersion", obj.GetAPIVersion(), "kind", obj.GetKind(), "name", obj.GetName())

@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
-  name: workflows.cre.nvidia.com
+  name: workflows.nvcre.nvidia.com
 spec:
-  group: cre.nvidia.com
+  group: nvcre.nvidia.com
   names:
     kind: Workflow
     listKind: WorkflowList

@@ -74,7 +74,7 @@ An operator looking at a FAILED report today must `kubectl get job -o yaml` or g
 ## Notes
 
 - Exact message format consumed verbatim (from [`evaluator.go`](../../pkg/threshold/evaluator.go#L113)): `Threshold %q violated: measured %.4f, expression: %s`. The `job-goodput-threshold-fail` integration golden pins this string today, so any future format change will trip existing tests before it reaches the report.
-- `job.status.failedNodes` is only populated when the `cre.nvidia.com/group-nodes` annotation is present (`groupNodeNames`); standalone Jobs without it still surface the reason via the condition path, just with no node attribution — same as today.
+- `job.status.failedNodes` is only populated when the `nvcre.nvidia.com/group-nodes` annotation is present (`groupNodeNames`); standalone Jobs without it still surface the reason via the condition path, just with no node attribution — same as today.
 - `nvcrectl workloadrun status` (lightweight poll) is intentionally unchanged; it reports names only by design (ADR-059).
 
 ## References

@@ -42,7 +42,7 @@ const (
 	phaseCR   = "cr"
 	phaseDeps = "deps"
 
-	creAPIGroup = "cre.nvidia.com"
+	creAPIGroup = "nvcre.nvidia.com"
 
 	trainerAPIGroup = "trainer.kubeflow.org"
 	jobsetAPIGroup  = "jobset.x-k8s.io"
@@ -54,7 +54,7 @@ const (
 type creResource struct {
 	resource   string // plural name (e.g. "certifications")
 	kind       string // singular Kind (e.g. "Certification")
-	apiVersion string // full apiVersion (e.g. "cre.nvidia.com/v1alpha1")
+	apiVersion string // full apiVersion (e.g. "nvcre.nvidia.com/v1alpha1")
 }
 
 // NewCommand returns the "setup" cobra command. version is the running binary

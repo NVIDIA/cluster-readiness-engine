@@ -9,7 +9,7 @@
 #
 # Used by communication/nccl-loopback{,-nvswitch} to validate NVLink/NVSwitch
 # bandwidth independently of the network fabric.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: LogProfile
 metadata:
   labels:

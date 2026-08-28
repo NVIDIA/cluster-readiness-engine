@@ -125,7 +125,7 @@ Same pattern as existing options (`enableCheckpoint`, `maxSteps`, etc.).
 ### Example Certification
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: gb200-cluster-validation

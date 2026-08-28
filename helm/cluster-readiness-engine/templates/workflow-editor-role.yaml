@@ -4,7 +4,7 @@
 # This rule is not used by the project cluster-readiness-engine itself.
 # It is provided to allow the cluster admin to help manage permissions for users.
 #
-# Grants permissions to create, update, and delete resources within the cre.nvidia.com.
+# Grants permissions to create, update, and delete resources within the nvcre.nvidia.com.
 # This role is intended for users who need to manage these resources
 # but should not control RBAC or manage permissions for others.
 
@@ -16,7 +16,7 @@ metadata:
   name: cre-workflow-editor-role
 rules:
 - apiGroups:
-  - cre.nvidia.com
+  - nvcre.nvidia.com
   resources:
   - workflows
   verbs:
@@ -28,7 +28,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - cre.nvidia.com
+  - nvcre.nvidia.com
   resources:
   - workflows/status
   verbs:

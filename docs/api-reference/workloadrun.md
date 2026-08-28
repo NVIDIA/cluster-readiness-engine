@@ -11,7 +11,7 @@ description: CRD reference for the WorkloadRun resource.
 ## Example
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: WorkloadRun
 metadata:
   name: nccl-all-reduce

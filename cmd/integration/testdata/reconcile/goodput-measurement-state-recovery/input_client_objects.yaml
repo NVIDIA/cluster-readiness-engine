@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: LogProfile
 metadata:
   name: test-state-recovery-logprofile
@@ -13,7 +13,7 @@ spec:
       regex: 'step (?P<globalStep>\d+)'
       example: "step 100"
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-state-recovery-job
@@ -59,7 +59,7 @@ metadata:
   namespace: default
   labels:
     app.kubernetes.io/managed-by: cluster-readiness-engine
-    cre.nvidia.com/job: test-state-recovery-job
+    nvcre.nvidia.com/job: test-state-recovery-job
 spec:
   runtimeRef:
     kind: TrainingRuntime
@@ -79,7 +79,7 @@ metadata:
   labels:
     jobset.sigs.k8s.io/jobset-name: test-state-recovery-job-workload
     batch.kubernetes.io/job-completion-index: "0"
-    cre.nvidia.com/job: test-state-recovery-job
+    nvcre.nvidia.com/job: test-state-recovery-job
 spec:
   containers:
     - name: node
@@ -87,14 +87,14 @@ spec:
 status:
   phase: Running
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: GoodputMeasurement
 metadata:
   name: test-state-recovery-gm
   namespace: default
 spec:
   jobRef:
-    apiGroup: cre.nvidia.com
+    apiGroup: nvcre.nvidia.com
     kind: Job
     name: test-state-recovery-job
   logProfileRef: test-state-recovery-logprofile

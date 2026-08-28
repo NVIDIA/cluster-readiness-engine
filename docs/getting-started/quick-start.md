@@ -21,7 +21,7 @@ You will also need an NGC API key to pull the certification workload images.
 Create a `certification.yaml` targeting your GPU nodes:
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: gpu-cluster-cert

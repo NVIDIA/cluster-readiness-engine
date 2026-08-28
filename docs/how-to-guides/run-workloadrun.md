@@ -11,7 +11,7 @@ description: Run an ad-hoc distributed workload against a specific set of nodes.
 ## Basic example
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: WorkloadRun
 metadata:
   name: my-workload
@@ -66,7 +66,7 @@ spec:
 Distributed workloads can deadlock under the default scheduler when only some of their pods fit on the cluster: the placed pods hold GPUs while waiting for peers that never arrive. Set `spec.gangScheduler` to opt every workload pod into a gang-aware scheduler, such as KAI Scheduler, which holds all pods until the entire gang can be placed at once.
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: WorkloadRun
 metadata:
   name: gang-scheduled-workload

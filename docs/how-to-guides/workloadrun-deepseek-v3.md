@@ -35,7 +35,7 @@ No dataset or checkpoint download is required: the recipe trains on synthetic da
 Save the following as `deepseek-v3-bf16.yaml`:
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: WorkloadRun
 metadata:
   name: deepseek-v3-bf16
