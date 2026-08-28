@@ -164,7 +164,7 @@ elif [[ "${GH_AVAILABLE}" == "true" ]]; then
   if [[ "${PRERELEASE}" == "true" ]]; then
     VERSION=$(gh release list --repo "${GH_REPO}" --limit 1 --json tagName -q '.[0].tagName')
   else
-    VERSION=$(gh release view --repo "${GH_REPO}" --json tagName -q '.tagName')
+    VERSION=$(gh release view --repo "${GH_REPO}" --json tagName -q '.tagName' || true)
   fi
 else
   msg "Fetching latest version..."
@@ -172,17 +172,17 @@ else
   if [[ "${PRERELEASE}" == "true" ]]; then
     ENDPOINT="${GH_API_URL}/releases?per_page=1"
     RELEASE_JSON=$(curl -sSf "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
-      -H "Accept: application/vnd.github.v3+json" "${ENDPOINT}")
-    VERSION=$(echo "${RELEASE_JSON}" | grep -o '"tag_name" *: *"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+      -H "Accept: application/vnd.github.v3+json" "${ENDPOINT}" || true)
+    VERSION=$(echo "${RELEASE_JSON}" | grep -o '"tag_name" *: *"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)
   else
     RELEASE_JSON=$(curl -sSf "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
-      -H "Accept: application/vnd.github.v3+json" "${GH_API_URL}/releases/latest")
-    VERSION=$(echo "${RELEASE_JSON}" | grep -o '"tag_name" *: *"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+      -H "Accept: application/vnd.github.v3+json" "${GH_API_URL}/releases/latest" || true)
+    VERSION=$(echo "${RELEASE_JSON}" | grep -o '"tag_name" *: *"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)
   fi
 fi
 
 if [[ -z "${VERSION}" ]]; then
-  err "Failed to determine latest version from GitHub releases"
+  err "Failed to determine latest version from GitHub releases. If every release is a pre-release, re-run with -p, or pin a version with -v <tag>."
 fi
 
 # Decide whether this is a fresh install or an upgrade and print intent.
@@ -212,9 +212,14 @@ if [[ "${GH_AVAILABLE}" == "true" ]]; then
   gh release download "${VERSION}" \
     --repo "${GH_REPO}" \
     --pattern "${BINARY_NAME}" \
-    --output "${TEMP_DIR}/${BINARY_NAME}" \
-    --clobber
+    --dir "${TEMP_DIR}"
 elif [[ -n "${GH_TOKEN}" ]]; then
+  # RELEASE_JSON is only set by the latest-version curl fallback above; fetch
+  # the release for the exact tag when the version came from -v or gh.
+  if [[ -z "${RELEASE_JSON:-}" ]]; then
+    RELEASE_JSON=$(curl -sSf "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
+      -H "Accept: application/vnd.github.v3+json" "${GH_API_URL}/releases/tags/${VERSION}")
+  fi
   # Use the GitHub API asset endpoint with Accept: application/octet-stream.
   # GitHub redirects to a pre-signed S3 URL; the auth header is not forwarded.
   # Put each asset object on its own line, then pick the line whose name
@@ -225,7 +230,7 @@ elif [[ -n "${GH_TOKEN}" ]]; then
     | grep "\"name\" *: *\"${BINARY_NAME}\"" \
     | grep -o '"url" *: *"https://api\.github\.com[^"]*releases/assets/[0-9]*"' \
     | head -1 \
-    | sed 's/.*"\(https[^"]*\)".*/\1/')
+    | sed 's/.*"\(https[^"]*\)".*/\1/' || true)
 
   if [[ -z "${ASSET_URL}" ]]; then
     err "Binary ${BINARY_NAME} not found in release ${VERSION}"
@@ -256,14 +261,13 @@ if [[ "${GH_AVAILABLE}" == "true" ]]; then
   gh release download "${VERSION}" \
     --repo "${GH_REPO}" \
     --pattern "checksums.txt" \
-    --output "${CHECKSUMS_FILE}" \
-    --clobber 2>/dev/null || true
+    --dir "${TEMP_DIR}" 2>/dev/null || true
 elif [[ -n "${GH_TOKEN}" ]]; then
-  CHECKSUM_ASSET_URL=$(echo "${RELEASE_JSON}" | tr -d '\n' | tr '{' '\n' \
+  CHECKSUM_ASSET_URL=$(echo "${RELEASE_JSON:-}" | tr -d '\n' | tr '{' '\n' \
     | grep '"name" *: *"checksums\.txt"' \
     | grep -o '"url" *: *"https://api\.github\.com[^"]*releases/assets/[0-9]*"' \
     | head -1 \
-    | sed 's/.*"\(https[^"]*\)".*/\1/')
+    | sed 's/.*"\(https[^"]*\)".*/\1/' || true)
   if [[ -n "${CHECKSUM_ASSET_URL}" ]]; then
     curl -fsSL \
       -H "Authorization: token ${GH_TOKEN}" \
