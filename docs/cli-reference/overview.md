@@ -14,7 +14,7 @@ While this repository is internal, release assets require authenticated API
 downloads, so fetch the installer with the gh CLI (`gh auth login` first):
 
 ```bash
-export NVCRECTL_VERSION=v0.1.0-rc.9
+export NVCRECTL_VERSION=$(gh release list --repo NVIDIA/cluster-readiness-engine --limit 1 --json tagName -q '.[0].tagName')
 gh release download "${NVCRECTL_VERSION}" --repo NVIDIA/cluster-readiness-engine \
   --pattern installer --output - | bash -s -- -v "${NVCRECTL_VERSION}"
 nvcrectl --version
