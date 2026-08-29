@@ -22,7 +22,7 @@ NVCRE supports two install paths. Both pull the same artifacts from the GitHub C
 Install the CLI first with the installer script (see [Install](../getting-started/install.md) for the full walkthrough):
 
 ```bash
-export NVCRECTL_VERSION=v0.1.0-rc.9
+export NVCRECTL_VERSION=$(gh release list --repo NVIDIA/cluster-readiness-engine --limit 1 --json tagName -q '.[0].tagName')
 curl -sSL "https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${NVCRECTL_VERSION}/installer" | bash
 ```
 
@@ -59,10 +59,10 @@ For GitOps workflows, install the chart directly. **Log in to the GHCR Helm regi
 echo $GITHUB_TOKEN | helm registry login ghcr.io --username <github-username> --password-stdin
 ```
 
-Then inspect and install, pinning an explicit version:
+Then inspect and install (the snippet resolves the newest release; set `NVCRE_VERSION` to an explicit tag for reproducible installs):
 
 ```bash
-NVCRE_VERSION=v0.1.0-rc.9
+NVCRE_VERSION=$(gh release list --repo NVIDIA/cluster-readiness-engine --limit 1 --json tagName -q '.[0].tagName')
 
 helm show chart oci://ghcr.io/nvidia/nvcre --version "$NVCRE_VERSION"
 
@@ -72,12 +72,6 @@ helm install nvcre \
   --namespace nvcre \
   --create-namespace
 ```
-
-> **Note**: Releases up to and including `v0.1.0-rc.10` serve the old
-> `cre.nvidia.com` API group and publish the Helm chart as
-> `oci://ghcr.io/nvidia/cluster-readiness-engine`. The renamed
-> `nvcre.nvidia.com` group and `oci://ghcr.io/nvidia/nvcre` chart require the
-> first release cut after the rename (or a build from `main`).
 
 The controller image is `ghcr.io/nvidia/cluster-readiness-engine/manager`, tagged with the same release version. Chart and image versions move together — name the same tag everywhere. The Helm path does not install Kubeflow Trainer; install it separately before running `TrainJob` workloads.
 

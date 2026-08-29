@@ -66,17 +66,10 @@ authenticated API downloads — plain `curl` against `releases/download/...` ret
 with the gh CLI (authenticate with `gh auth login` first):
 
 ```bash
-NVCRE_VERSION=v0.1.0-rc.9
+NVCRE_VERSION=$(gh release list --repo NVIDIA/cluster-readiness-engine --limit 1 --json tagName -q '.[0].tagName')
 gh release download "${NVCRE_VERSION}" --repo NVIDIA/cluster-readiness-engine \
   --pattern installer --output - | bash -s -- -v "${NVCRE_VERSION}"
 ```
-
-> **Note**: Releases up to and including `v0.1.0-rc.10` serve the old
-> `cre.nvidia.com` API group and publish the Helm chart as
-> `oci://ghcr.io/nvidia/cluster-readiness-engine`. The examples in this README
-> use the renamed `nvcre.nvidia.com` group and the `oci://ghcr.io/nvidia/nvcre`
-> chart, which require the first release cut after the rename (or a build from
-> `main`).
 
 Once the repository is public and a stable release exists, this shorter form works
 and picks up the newest stable release:
@@ -160,7 +153,7 @@ gh auth token | helm registry login ghcr.io \
 ```
 
 ```bash
-NVCRE_VERSION=v0.1.0-rc.8
+NVCRE_VERSION=$(gh release list --repo NVIDIA/cluster-readiness-engine --limit 1 --json tagName -q '.[0].tagName')
 
 # Inspect the chart before installing it
 helm show chart oci://ghcr.io/nvidia/nvcre --version "$NVCRE_VERSION"
@@ -192,9 +185,9 @@ The controller image is `ghcr.io/nvidia/cluster-readiness-engine/manager`, tagge
 with the same release version. Builds from `main` are also published, tagged
 `main-<commit-sha>`; use a release tag rather than one of those.
 
-Pin an explicit version rather than installing whatever is newest. Chart and
-image versions move together, so the two commands above and your own manifests
-should all name the same tag.
+The snippets above resolve the newest release. For reproducible installs, set
+`NVCRE_VERSION` to an explicit tag instead. Chart and image versions move
+together, so both commands and your own manifests should all name the same tag.
 
 ## Run a workload
 

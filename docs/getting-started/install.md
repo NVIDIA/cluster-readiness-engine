@@ -18,20 +18,14 @@ description: Install the nvcrectl CLI and set up the NVIDIA Cluster Readiness En
 While this repository is internal, GitHub serves release assets only through
 authenticated API downloads — plain `curl` against `releases/download/...` returns a
 404 "Not Found" page instead of the script, even with a token. Fetch the installer
-with the gh CLI (authenticate with `gh auth login` first). Set the version you want
-to install, then run the installer:
+with the gh CLI (authenticate with `gh auth login` first). Resolve the newest
+release, then run the installer:
 
 ```bash
-export NVCRECTL_VERSION=v0.1.0-rc.9
+export NVCRECTL_VERSION=$(gh release list --repo NVIDIA/cluster-readiness-engine --limit 1 --json tagName -q '.[0].tagName')
 gh release download "${NVCRECTL_VERSION}" --repo NVIDIA/cluster-readiness-engine \
   --pattern installer --output - | bash -s -- -v "${NVCRECTL_VERSION}"
 ```
-
-> **Note**: Releases up to and including `v0.1.0-rc.10` serve the old
-> `cre.nvidia.com` API group and publish the Helm chart as
-> `oci://ghcr.io/nvidia/cluster-readiness-engine`. The renamed
-> `nvcre.nvidia.com` group and `oci://ghcr.io/nvidia/nvcre` chart require the
-> first release cut after the rename (or a build from `main`).
 
 The installer automatically downloads and verifies a SHA-256 checksum before installing. On air-gapped systems, ensure `checksums.txt` from the same release is reachable alongside the binary.
 
