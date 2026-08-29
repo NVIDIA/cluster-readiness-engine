@@ -63,8 +63,9 @@ jobs:
       - name: Package and push Helm chart
         run: make helm-push VERSION="${{ steps.tag.outputs.value }}"
         env:
-          # Derive the OCI registry from the repository so a future org
-          # transfer cannot leave this workflow pushing to a stale path.
+          # GHCR requires lowercase paths but the repo slug is uppercase
+          # 'NVIDIA', so the value is hardcoded. Keep in sync with
+          # RELEASE.md and pkg/setup/helm.go.
           HELM_OCI_REGISTRY: oci://ghcr.io/nvidia
 
   build-cli:

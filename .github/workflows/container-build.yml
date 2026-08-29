@@ -55,4 +55,4 @@ jobs:
       - name: Build container image (no push)
         run: make docker-buildx BUILDX_PUSH=
         env:
-          IMG: ghcr.io/nvidia/manager:${{ steps.tag.outputs.value }}
+          IMG: ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}
