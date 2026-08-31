@@ -1,0 +1,13 @@
+# Both filters contributed to the shortfall: one node dropped for a different
+# GPU architecture, one for insufficient GPU capacity. Both causes are named,
+# and the "Set nodesPerJob to N" advice appears once with every applicable
+# remedy after it — not once per cause.
+needed: 4
+found: 2
+gpuArch: h100
+archExcluded:
+  - node003
+capacityExcluded:
+  - node: node002
+    has: 1
+gpusPerNode: 2

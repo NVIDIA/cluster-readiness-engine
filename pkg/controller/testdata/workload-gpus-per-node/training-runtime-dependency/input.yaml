@@ -1,0 +1,49 @@
+# Catalog entries render the request into the TrainingRuntime dependency that
+# templates the worker pods, not into the jobTemplate itself. The PVC's
+# storage request sits inside a "requests" map too and must not be misread,
+# and the gpu.product nodeSelector must not be mistaken for a GPU request.
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          kind: TrainingRuntime
+          name: nccl-runtime
+        trainer:
+          image: test-image:latest
+          numNodes: 2
+orchestration:
+  iterations: 1
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100
+dependencies:
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    name: scratch
+  spec:
+    accessModes: ["ReadWriteMany"]
+    resources:
+      requests:
+        storage: 100Gi
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: nccl-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    resources:
+                      limits:
+                        nvidia.com/gpu: "2"
+                      requests:
+                        nvidia.com/gpu: "2"

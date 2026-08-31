@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: test-no-gpu-capacity
+  namespace: default
+  condition: Failed
+  reason: PartitionError
+collect:
+  - kind: Workflow
+    name: test-no-gpu-capacity
+    namespace: default

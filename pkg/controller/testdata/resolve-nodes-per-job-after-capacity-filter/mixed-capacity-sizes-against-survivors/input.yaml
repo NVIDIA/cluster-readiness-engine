@@ -1,0 +1,20 @@
+# The issue #82 fleet: six nodes under one selector and one gpu.product, two
+# of them with a single GPU. With gpusPerNode 2 and nodesPerJob 4 the old code
+# partitioned node002/node003 into a group anyway and their pods sat Pending
+# forever. Sized against the four capable survivors, nodesPerJob 4 fits
+# exactly and every group can schedule.
+nodes:
+  - name: node002
+    allocatableGPUs: 1
+  - name: node003
+    allocatableGPUs: 1
+  - name: node004
+    allocatableGPUs: 2
+  - name: node005
+    allocatableGPUs: 2
+  - name: node006
+    allocatableGPUs: 2
+  - name: node007
+    allocatableGPUs: 2
+nodesPerJob: 4
+gpusPerNode: 2

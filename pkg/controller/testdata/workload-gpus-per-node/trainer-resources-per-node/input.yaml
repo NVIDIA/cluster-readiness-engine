@@ -1,0 +1,19 @@
+# Hand-written Workflows put the request on trainer.resourcesPerNode.
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          kind: TrainingRuntime
+          name: test-runtime
+        trainer:
+          image: test-image:latest
+          numNodes: 2
+          resourcesPerNode:
+            requests:
+              nvidia.com/gpu: "4"
+              cpu: "64"
+            limits:
+              nvidia.com/gpu: "4"
+orchestration:
+  iterations: 1

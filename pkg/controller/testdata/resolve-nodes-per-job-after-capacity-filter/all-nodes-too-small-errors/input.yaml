@@ -1,0 +1,10 @@
+# No node can supply the request. This must be a hard error naming the
+# requirement and the best available count — not a job quietly sized to zero
+# capable nodes, and not a partition that can never schedule.
+nodes:
+  - name: node001
+    allocatableGPUs: 1
+  - name: node002
+    allocatableGPUs: 4
+nodesPerJob: 2
+gpusPerNode: 8

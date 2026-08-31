@@ -1,0 +1,14 @@
+# A node reporting zero allocatable nvidia.com/gpu is kept, like one that
+# reports nothing: the kubelet zeroes an extended resource when the device
+# plugin endpoint goes away rather than removing it, so on a GPU-labeled node
+# a zero is a plugin restart in a different encoding. Excluding on it would
+# turn a self-healing Pending into a terminal failure. Only a positive count
+# below the request is a stable statement about the hardware.
+nodes:
+  - name: node001
+    allocatableGPUs: 0
+  - name: node002
+    allocatableGPUs: 1
+  - name: node003
+    allocatableGPUs: 2
+gpusPerNode: 2
