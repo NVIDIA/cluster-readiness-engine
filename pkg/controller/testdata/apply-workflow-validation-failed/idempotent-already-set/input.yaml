@@ -1,0 +1,13 @@
+message: One or more Jobs failed performance threshold validation
+workflow:
+  metadata:
+    name: w
+  spec:
+    categories: []
+  status:
+    conditions:
+      - type: ValidationFailed
+        status: "True"
+        reason: JobValidationFailed
+        message: One or more Jobs failed performance threshold validation
+        lastTransitionTime: "2026-01-22T10:05:00Z"

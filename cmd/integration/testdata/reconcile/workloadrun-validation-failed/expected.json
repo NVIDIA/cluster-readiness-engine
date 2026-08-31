@@ -1,9 +1,9 @@
 {
-  "Workflow/test-workflow-validation-fail": {
+  "Workflow/test-wr-validation-fail": {
     "kind": "Workflow",
     "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
-      "name": "test-workflow-validation-fail",
+      "name": "test-wr-validation-fail",
       "namespace": "default",
       "finalizers": [
         "nvcre.nvidia.com/workflow-finalizer"
@@ -99,11 +99,80 @@
             "jobRef": {
               "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
-              "name": "test-workflow-validation-fail-job",
+              "name": "test-wr-validation-fail-job",
               "namespace": "default"
             }
           }
         ]
+      }
+    }
+  },
+  "WorkloadRun/test-wr-validation-fail": {
+    "kind": "WorkloadRun",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-wr-validation-fail",
+      "namespace": "default"
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.present": "true"
+        }
+      },
+      "image": "test-image:latest",
+      "framework": {
+        "exec": {
+          "command": [
+            "python",
+            "train.py"
+          ]
+        }
+      },
+      "numNodes": 1,
+      "thresholds": {
+        "busBandwidthGBps": "value \u003e= 900"
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "ValidationFailed",
+          "status": "True",
+          "lastTransitionTime": null,
+          "reason": "ThresholdViolation",
+          "message": "One or more Jobs failed performance threshold validation"
+        },
+        {
+          "type": "InProgress",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "Superseded",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "Superseded",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "lastTransitionTime": null,
+          "reason": "WorkflowValidationFailed",
+          "message": "1 groups failed across 1 iterations"
+        }
+      ],
+      "workflowRef": {
+        "name": "test-wr-validation-fail",
+        "namespace": "default"
+      },
+      "failedNodesRef": {
+        "apiGroup": null,
+        "kind": "ConfigMap",
+        "name": "failed-nodes"
       }
     }
   }

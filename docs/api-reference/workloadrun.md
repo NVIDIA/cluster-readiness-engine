@@ -52,7 +52,7 @@ _Generated from CRD schema — coming soon. Fields documented so far:_
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `conditions` | []Condition | Exclusive set: `InProgress`, `Succeeded`, `Failed`. Independent (additive): `ValidationFailed` (can be True alongside `Succeeded` — workload finished but violated a threshold) |
+| `conditions` | []Condition | Exclusive set: `InProgress`, `Succeeded`, `Failed`. Independent (additive): `ValidationFailed` — mirrored from the Workflow whenever any Job violated a performance threshold. When the threshold miss is the failure cause, `Failed` carries reason `WorkflowValidationFailed` so a threshold miss is distinguishable from an execution failure |
 | `workflowRef` | WorkflowReference | Reference to the underlying `Workflow` resource |
 | `detectedGPUArchitecture` | string | Auto-detected GPU type (e.g., `h100`, `gb200`) |
 | `detectedPlatform` | string | Auto-detected CSP platform (e.g., `aws`, `gcp`, `azure`) |
