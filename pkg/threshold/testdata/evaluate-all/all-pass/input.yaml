@@ -1,0 +1,6 @@
+thresholds:
+  busBandwidthGBps: "value >= 400"
+  goodputRatio: "value >= 0.9"
+measured:
+  busBandwidthGBps: 480.5
+  goodputRatio: 0.95

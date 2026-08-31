@@ -5,6 +5,7 @@ package setup
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -92,6 +95,10 @@ func ensureHelm() (string, error) {
 }
 
 type helmInstallParams struct {
+	// ctx and c are used to server-side-apply the chart CRDs before the
+	// helm upgrade runs (issue #145).
+	ctx             context.Context
+	c               client.Client
 	version         string
 	kubeconfig      string
 	kubeContext     string
@@ -102,7 +109,8 @@ type helmInstallParams struct {
 	out             io.Writer
 }
 
-// installHelmRelease installs or upgrades NVCRE via the helm CLI. It returns
+// installHelmRelease installs or upgrades NVCRE via the helm CLI, after
+// reconciling the chart CRDs with server-side apply (issue #145). It returns
 // the captured helm transcript so RunInit can classify a failure the same
 // way the [deps] phase does (ADR-073) — symmetric error reporting, but with
 // no automatic recovery arm.
@@ -122,6 +130,20 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 			return "", err
 		}
 		defer helmRegistryLogout(helmPath, defaultImageRegistry, p.out)
+	}
+
+	// Helm applies the chart's crds/ directory only on the first install, so
+	// `helm upgrade --install` alone would leave the CRDs at the old schema
+	// after an upgrade (issue #145). Reconcile them from the same chart
+	// source on every run; server-side apply is idempotent, so first-install
+	// behavior is unchanged.
+	_, _ = fmt.Fprintf(p.out, "[helm] Applying NVCRE CRDs from chart version %s...\n", chartVersion)
+	crds, err := fetchChartCRDs(helmPath, chartVersion, p.out)
+	if err != nil {
+		return "", err
+	}
+	if err := applyChartCRDs(p.ctx, p.c, crds, p.out); err != nil {
+		return "", err
 	}
 
 	imageName, imageTag := parseImage(p.image)
@@ -400,13 +422,19 @@ func runHelmCapture(helmPath string, args []string, out io.Writer) (string, erro
 	if err := cmd.Run(); err != nil {
 		output := buf.String()
 		_, _ = io.Copy(out, &buf)
-		if strings.Contains(output, "403") {
-			_, _ = fmt.Fprintln(out, "\nHint: GHCR returned 403. Your token may be missing the read:packages scope.")
-			_, _ = fmt.Fprintln(out, "      Run: gh auth refresh -s read:packages")
-		}
+		printGHCR403Hint(out, output)
 		return output, fmt.Errorf("helm %s: %w", args[0], err)
 	}
 	return buf.String(), nil
+}
+
+// printGHCR403Hint prints the read:packages remediation hint when a failed
+// helm transcript contains a GHCR 403.
+func printGHCR403Hint(out io.Writer, output string) {
+	if strings.Contains(output, "403") {
+		_, _ = fmt.Fprintln(out, "\nHint: GHCR returned 403. Your token may be missing the read:packages scope.")
+		_, _ = fmt.Fprintln(out, "      Run: gh auth refresh -s read:packages")
+	}
 }
 
 // helmRegistryLogin logs in to an OCI registry.

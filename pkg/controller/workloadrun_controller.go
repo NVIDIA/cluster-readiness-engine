@@ -140,18 +140,10 @@ func (r *WorkloadRunReconciler) mirrorWorkflowStatus(ctx context.Context, run *n
 	run.Status.SucceededNodesRef = workflow.Status.SucceededNodesRef
 	run.Status.FailedNodesRef = workflow.Status.FailedNodesRef
 
-	// Mirror terminal conditions.
-	if condIsTrue(workflow.Status.Conditions, nvcrev1alpha1.WorkflowSucceeded) {
-		r.setWorkloadRunCondition(run, nvcrev1alpha1.WorkloadRunSucceeded, ReasonWorkflowSucceeded, "Workflow completed successfully")
-		return ctrl.Result{}, r.Status().Update(ctx, run)
-	}
-	if condIsTrue(workflow.Status.Conditions, nvcrev1alpha1.WorkflowFailed) {
-		msg := condMsg(workflow.Status.Conditions, nvcrev1alpha1.WorkflowFailed)
-		r.setWorkloadRunCondition(run, nvcrev1alpha1.WorkloadRunFailed, ReasonWorkflowFailed, msg)
-		return ctrl.Result{}, r.Status().Update(ctx, run)
-	}
-
-	// Mirror validation failed (independent condition).
+	// Mirror validation failed (independent condition) BEFORE the terminal
+	// mirrors below: the Workflow controller sets ValidationFailed alongside
+	// Failed, so mirroring it after the Failed early-return would leave this
+	// code unreachable in the only case it exists for (issue #67).
 	if condIsTrue(workflow.Status.Conditions, nvcrev1alpha1.WorkflowValidationFailed) {
 		msg := condMsg(workflow.Status.Conditions, nvcrev1alpha1.WorkflowValidationFailed)
 		meta.SetStatusCondition(&run.Status.Conditions, metav1.Condition{
@@ -160,6 +152,27 @@ func (r *WorkloadRunReconciler) mirrorWorkflowStatus(ctx context.Context, run *n
 			Reason:  ReasonThresholdViolation,
 			Message: msg,
 		})
+	}
+
+	// Mirror terminal conditions.
+	if condIsTrue(workflow.Status.Conditions, nvcrev1alpha1.WorkflowSucceeded) {
+		r.setWorkloadRunCondition(run, nvcrev1alpha1.WorkloadRunSucceeded, ReasonWorkflowSucceeded, "Workflow completed successfully")
+		return ctrl.Result{}, r.Status().Update(ctx, run)
+	}
+	if condIsTrue(workflow.Status.Conditions, nvcrev1alpha1.WorkflowFailed) {
+		msg := condMsg(workflow.Status.Conditions, nvcrev1alpha1.WorkflowFailed)
+		// A threshold miss gets a distinguishing reason so consumers can tell
+		// "the run worked but missed its numbers" apart from "the run broke".
+		// Keyed off the Workflow's Failed reason, not the ValidationFailed
+		// condition, so a mixed hardware+validation failure keeps the generic
+		// reason (hardware takes precedence) while ValidationFailed above
+		// still carries the quality signal.
+		reason := ReasonWorkflowFailed
+		if condReason(workflow.Status.Conditions, nvcrev1alpha1.WorkflowFailed) == ReasonJobValidationFailed {
+			reason = ReasonWorkflowValidationFailed
+		}
+		r.setWorkloadRunCondition(run, nvcrev1alpha1.WorkloadRunFailed, reason, msg)
+		return ctrl.Result{}, r.Status().Update(ctx, run)
 	}
 
 	if err := r.Status().Update(ctx, run); err != nil {
@@ -595,6 +608,15 @@ func condMsg(conditions []metav1.Condition, condType string) string {
 	c := meta.FindStatusCondition(conditions, condType)
 	if c != nil {
 		return c.Message
+	}
+	return ""
+}
+
+// condReason returns the reason for a condition type.
+func condReason(conditions []metav1.Condition, condType string) string {
+	c := meta.FindStatusCondition(conditions, condType)
+	if c != nil {
+		return c.Reason
 	}
 	return ""
 }

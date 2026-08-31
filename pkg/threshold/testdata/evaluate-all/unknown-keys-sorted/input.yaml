@@ -1,0 +1,6 @@
+# Multiple unknown keys are reported sorted, so the error message (and the
+# ValidationFailed condition message built from it) is deterministic.
+thresholds:
+  zzzNotAKey: "value >= 1"
+  aaaNotAKey: "value >= 1"
+measured: {}

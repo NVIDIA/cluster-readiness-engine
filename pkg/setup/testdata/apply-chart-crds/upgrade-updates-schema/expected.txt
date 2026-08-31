@@ -1,0 +1,4 @@
+--- apply round 1 ---
+  CRD widgets.upgrade.nvcre.example.com applied.
+--- cluster state ---
+crd: widgets.upgrade.nvcre.example.com generation=2 versions=[v1alpha1] specProperties=[color size] applyManagers=[helm nvcrectl-setup]

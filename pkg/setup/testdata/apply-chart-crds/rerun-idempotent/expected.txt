@@ -1,0 +1,6 @@
+--- apply round 1 ---
+  CRD widgets.rerun.nvcre.example.com applied.
+--- apply round 2 ---
+  CRD widgets.rerun.nvcre.example.com applied.
+--- cluster state ---
+crd: widgets.rerun.nvcre.example.com generation=1 versions=[v1alpha1] specProperties=[size] applyManagers=[nvcrectl-setup]
