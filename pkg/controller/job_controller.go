@@ -206,7 +206,7 @@ func (r *JobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 }
 
 // handleDeletion handles the cleanup when a Job is being deleted
-func (r *JobReconciler) handleDeletion(ctx context.Context, job *nvcrev1alpha1.Job) (ctrl.Result, error) { //nolint:unparam
+func (r *JobReconciler) handleDeletion(ctx context.Context, job *nvcrev1alpha1.Job) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	if !controllerutil.ContainsFinalizer(job, jobFinalizer) {
@@ -218,6 +218,21 @@ func (r *JobReconciler) handleDeletion(ctx context.Context, job *nvcrev1alpha1.J
 	// Delete the associated workload if we have a reference to it
 	if err := r.deleteWorkloadByRef(ctx, job); err != nil {
 		return ctrl.Result{}, err
+	}
+
+	// Pod-drain barrier (issue #121): the workload delete above only starts
+	// the teardown — pods keep running (Terminating) after the workload
+	// object is gone. Waiters on Job deletion — the Workflow's handleDeletion
+	// and its Job-NotFound group handling — treat "Job object gone" as the
+	// signal that it is safe to delete the dependency resources
+	// (ComputeDomain, ResourceClaimTemplate) whose DRA allocations those pods
+	// still hold. Keep the finalizer until the pods are gone so that signal
+	// is truthful; podDrainGracePeriod (measured from the Job's own
+	// deletionTimestamp inside drainStart) bounds the wait so a pod stuck
+	// Terminating cannot wedge Job deletion forever.
+	if shouldWaitForPodDrain(ctx, r.Client, job) {
+		log.Info("Waiting for workload pods to terminate before removing Job finalizer")
+		return ctrl.Result{RequeueAfter: r.getWorkloadRequeueInterval()}, nil
 	}
 
 	// Clean up metrics for this job

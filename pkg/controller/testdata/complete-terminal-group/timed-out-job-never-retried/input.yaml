@@ -1,0 +1,7 @@
+# A job whose Failed condition carries ReasonJobTimedOut must not be retried
+# even with retry budget left: the timeout path terminated it for good, and it
+# re-enters this path while its pods drain. The group goes Failed and the Job
+# object survives for the report.
+retryFailedGroups: 1
+jobFailedReason: JobTimedOut
+pods: []

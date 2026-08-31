@@ -1,0 +1,7 @@
+# A Terminating pod stays in phase Running until its containers exit and holds
+# its DRA allocation the whole time — the barrier must hold.
+job:
+  failedAgeSeconds: 30
+pods:
+  - name: worker-0
+    phase: Running

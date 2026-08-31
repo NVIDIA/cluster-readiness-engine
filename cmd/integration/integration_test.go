@@ -983,6 +983,10 @@ func sanitizeObject(obj client.Object) {
 	obj.SetCreationTimestamp(metav1.Time{})
 	obj.SetManagedFields(nil)
 	obj.SetSelfLink("")
+	// Objects collected mid-deletion (e.g. a Job held by its pod-drain
+	// barrier) carry wall-clock deletion metadata; clear it for stable goldens.
+	obj.SetDeletionTimestamp(nil)
+	obj.SetDeletionGracePeriodSeconds(nil)
 
 	// Clear owner reference UIDs (they are non-deterministic).
 	refs := obj.GetOwnerReferences()

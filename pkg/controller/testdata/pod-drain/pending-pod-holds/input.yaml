@@ -1,0 +1,7 @@
+# A non-terminal phase that is not Running (Pending here, Unknown likewise)
+# still counts as active: the pod may come up and claim its allocation.
+job:
+  failedAgeSeconds: 30
+pods:
+  - name: worker-0
+    phase: Pending

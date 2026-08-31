@@ -1,0 +1,9 @@
+# drainStart picks the LATEST persisted timestamp: the stale Failed condition
+# (10m) must not expire the grace period when the deletionTimestamp (30s)
+# shows the teardown only just began.
+job:
+  failedAgeSeconds: 600
+  deletionAgeSeconds: 30
+pods:
+  - name: worker-0
+    phase: Running

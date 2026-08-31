@@ -1,0 +1,6 @@
+{
+  "wait": false,
+  "drainAnchor": "condition:Failed",
+  "activePods": null,
+  "listError": true
+}

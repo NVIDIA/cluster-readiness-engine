@@ -1,0 +1,7 @@
+{
+  "wait": true,
+  "drainAnchor": "deletionTimestamp",
+  "activePods": [
+    "worker-0"
+  ]
+}
