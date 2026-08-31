@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-unknown-key-workload
+  namespace: default
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - mpirun
+    numNodes: 1
+status:
+  conditions:
+    - type: Complete
+      status: "True"
+      reason: JobCompleted
+      message: "All workers completed"
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+---
+# The threshold key avgTFLOPSPerGPU (capital S) is the GoodputMeasurement
+# status field, not the registry key avgTFLOPsPerGPU — the typo from issue #52.
+# Before the fix the unknown key could never be measured, so the Job sat in the
+# missing-key path until it failed with a misleading MeasurementTimeout. Now
+# the Job controller rejects it immediately with reason UnknownThresholdKey,
+# even though the valid busBandwidthGBps threshold has no measurement yet.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-unknown-key
+  namespace: default
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - mpirun
+        numNodes: 1
+  thresholds:
+    avgTFLOPSPerGPU: "value >= 1000"
+    busBandwidthGBps: "value >= 400"
+status:
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-unknown-key-workload
+    namespace: default
