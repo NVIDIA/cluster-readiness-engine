@@ -1,9 +1,9 @@
 {
-  "Workflow/test-workflow-validation-fail": {
+  "Workflow/test-workflow-hw-and-validation-fail": {
     "kind": "Workflow",
     "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
-      "name": "test-workflow-validation-fail",
+      "name": "test-workflow-hw-and-validation-fail",
       "namespace": "default",
       "finalizers": [
         "nvcre.nvidia.com/workflow-finalizer"
@@ -66,8 +66,8 @@
           "status": "True",
           "observedGeneration": 1,
           "lastTransitionTime": null,
-          "reason": "JobValidationFailed",
-          "message": "1 groups failed across 1 iterations"
+          "reason": "JobHardwareFailed",
+          "message": "2 groups failed across 1 iterations; hardware failures occurred on one or more nodes"
         },
         {
           "type": "ValidationFailed",
@@ -84,9 +84,9 @@
         "name": "failed-nodes"
       },
       "orchestration": {
-        "totalNodes": 1,
+        "totalNodes": 2,
         "nodesPerJob": 1,
-        "totalGroups": 1,
+        "totalGroups": 2,
         "currentIteration": 1,
         "completedIterations": 1,
         "groups": [
@@ -99,7 +99,20 @@
             "jobRef": {
               "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
-              "name": "test-workflow-validation-fail-job",
+              "name": "test-workflow-hw-and-validation-fail-job-0",
+              "namespace": "default"
+            }
+          },
+          {
+            "name": "group-1",
+            "nodes": [
+              "gpu-node-02"
+            ],
+            "phase": "Failed",
+            "jobRef": {
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "test-workflow-hw-and-validation-fail-job-1",
               "namespace": "default"
             }
           }
