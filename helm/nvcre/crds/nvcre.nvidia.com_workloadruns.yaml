@@ -40,7 +40,12 @@ spec:
           metadata:
             type: object
           spec:
-            description: spec defines the desired state of WorkloadRun
+            description: |-
+              spec defines the desired state of WorkloadRun.
+              The entire spec is immutable after creation: once status.workflowRef is
+              set the controller only mirrors the existing Workflow and never rebuilds
+              it, so accepting edits would silently ignore them. To run with different
+              inputs, delete the WorkloadRun and create a new one.
             properties:
               bandwidthMeasurement:
                 description: |-
@@ -4488,6 +4493,9 @@ spec:
             - image
             - numNodes
             type: object
+            x-kubernetes-validations:
+            - message: spec is immutable after creation
+              rule: self == oldSelf
           status:
             description: status defines the observed state of WorkloadRun
             properties:

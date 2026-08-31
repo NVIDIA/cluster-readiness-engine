@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Certification
+  name: immutable-certification
+  namespace: default
+  condition: InProgress
+  # WorkflowRunning is the steady state the golden pins; without it the
+  # single-shot golden comparison can race the earlier WaitingForNodes /
+  # WorkflowCreated reasons.
+  reason: WorkflowRunning
+# Once the first category's Workflow exists (second still Pending), every spec
+# edit must be rejected by the CRD's whole-spec transition rule (issue #215):
+# a mutable global option, the node target, and the category list itself.
+verifySpecImmutable:
+  - kind: Certification
+    name: immutable-certification
+    namespace: default
+    field: nodesPerJob
+    specPatch: {"nodesPerJob": 1}
+  - kind: Certification
+    name: immutable-certification
+    namespace: default
+    field: enableMNNVL
+    specPatch: {"enableMNNVL": true}
+  - kind: Certification
+    name: immutable-certification
+    namespace: default
+    field: target
+    specPatch: {"target": {"nodeSelector": {"nvidia.com/gpu.product": "NVIDIA-H100-80GB-HBM3"}}}
+  - kind: Certification
+    name: immutable-certification
+    namespace: default
+    field: categories
+    specPatch: {"categories": [{"domain": "communication", "variant": "nccl-alltoall"}]}
+collect:
+  - kind: Certification
+    name: immutable-certification
+    namespace: default

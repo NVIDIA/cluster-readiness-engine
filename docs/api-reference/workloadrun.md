@@ -38,6 +38,10 @@ spec:
 
 ## Spec fields
 
+<Warning>
+The entire `spec` is **immutable** after the WorkloadRun is created (a `self == oldSelf` transition rule on the CRD rejects every update with `spec is immutable after creation`). Once `status.workflowRef` is set the controller only mirrors the existing Workflow and never rebuilds it, so mutable fields would be silently ignored. To run with different inputs, delete the WorkloadRun and create a new one.
+</Warning>
+
 _Generated from CRD schema — coming soon. Fields documented so far:_
 
 | Field | Type | Description |

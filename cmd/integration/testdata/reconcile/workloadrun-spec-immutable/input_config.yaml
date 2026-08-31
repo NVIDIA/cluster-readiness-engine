@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: WorkloadRun
+  name: immutable-run
+  namespace: default
+  condition: InProgress
+# Once status.workflowRef exists the controller only mirrors the Workflow and
+# never rebuilds it, so every execution-defining spec edit must be rejected by
+# the CRD's whole-spec transition rule (issue #215).
+verifySpecImmutable:
+  - kind: WorkloadRun
+    name: immutable-run
+    namespace: default
+    field: image
+    specPatch: {"image": "nvcr.io/nvidia/pytorch:26.01-py3"}
+  - kind: WorkloadRun
+    name: immutable-run
+    namespace: default
+    field: numNodes
+    specPatch: {"numNodes": 1}
+  - kind: WorkloadRun
+    name: immutable-run
+    namespace: default
+    field: env
+    specPatch: {"env": [{"name": "NCCL_DEBUG", "value": "INFO"}]}
+collect:
+  - kind: WorkloadRun
+    name: immutable-run
+    namespace: default

@@ -1,0 +1,66 @@
+{
+  "Certification/immutable-terminal-certification": {
+    "kind": "Certification",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "immutable-terminal-certification",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.present": "true",
+          "nvidia.com/gpu.product": "NVIDIA-GB200-NVL72"
+        }
+      },
+      "categories": [
+        {
+          "domain": "unknown",
+          "variant": "unknown"
+        }
+      ],
+      "nodesPerJob": 2
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "CategoryNotFound",
+          "message": "Unknown certification category: unknown/unknown"
+        }
+      ]
+    }
+  },
+  "specImmutability": {
+    "Certification/immutable-terminal-certification/spec.categories": {
+      "message": "spec is immutable after creation",
+      "rejected": true
+    },
+    "Certification/immutable-terminal-certification/spec.nodesPerJob": {
+      "message": "spec is immutable after creation",
+      "rejected": true
+    }
+  }
+}
