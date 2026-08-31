@@ -18,6 +18,7 @@ _Generated from CRD schema — coming soon._
 |-------|------|-------------|
 | `conditions` | []Condition | Exclusive set: `InProgress`, `Succeeded`, `Failed`. Independent (additive): `HardwareFailed` (can be True alongside execution state), `ValidationFailed` (can be True alongside `Succeeded`) |
 | `workloadRef` | WorkloadReference | Reference to the created workload (`TrainJob`) |
+| `workloadStartTime` | Time | When the workload was first observed running rather than pending (e.g. suspended by Kueue). `timeoutPerJob` is measured from this timestamp, and the stall clock never starts before it, so queued time counts against neither. Cleared on checkpoint restart |
 | `failedNodes` | []FailedNode | Nodes identified as failed; each entry has `name`, `reason`, and optional `message` |
 | `restartCount` | int32 | Number of checkpoint-based restarts |
 | `failureLog` | FailureLog | Tail of pod logs from the most recent failure (pod name, node, exit code, log tail) |

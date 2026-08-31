@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The workload exists but was never observed running (suspended by Kueue,
+# waiting for quota). The group started hours ago, but queued time does not
+# accrue against timeoutPerJob.
+timeoutPerJob: 1s
+groupStartAgo: 2h
+hasWorkloadRef: true

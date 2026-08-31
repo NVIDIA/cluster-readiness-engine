@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The group start is old (includes queued time) but the workload only just
+# started running: the budget is measured from the workload start.
+timeoutPerJob: 1h
+groupStartAgo: 2h
+workloadStartAgo: 1s
+hasWorkloadRef: true

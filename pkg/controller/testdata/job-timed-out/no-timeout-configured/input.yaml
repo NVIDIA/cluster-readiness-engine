@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No timeoutPerJob configured: never times out, however old the job is.
+groupStartAgo: 2h
+workloadStartAgo: 2h
+hasWorkloadRef: true

@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-trainjob-suspended
+  namespace: default
+  annotations:
+    nvcre.nvidia.com/group-nodes: "gpu-node-01,gpu-node-02"
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 2
+  stallMultiplier: 2
+  startupStallTimeoutSeconds: 10
+status:
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-trainjob-suspended-workload
+    namespace: default
+---
+# Suspended as Kueue's webhook leaves it: spec.suspend=true, no pods, no
+# status conditions.
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-trainjob-suspended-workload
+  namespace: default
+spec:
+  suspend: true
+  managedBy: trainer.kubeflow.org/trainjob-controller
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - python
+      - train.py
+    numNodes: 2
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: GoodputMeasurement
+metadata:
+  name: test-trainjob-suspended-gm
+  namespace: default
+spec:
+  jobRef:
+    apiGroup: nvcre.nvidia.com
+    kind: Job
+    name: test-trainjob-suspended
+  logProfileRef: test-logprofile
+  sampleInterval: 1s
+status:
+  applicationStartTime: "2025-01-01T00:00:00Z"

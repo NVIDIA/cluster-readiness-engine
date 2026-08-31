@@ -169,6 +169,25 @@ func (a *TrainJobAdapter) GetStatus(obj client.Object) (*WorkloadStatus, error) 
 		}
 	}
 
+	// A suspended TrainJob has no pods and typically no conditions — it is
+	// queued, not running. Kueue's webhook creates TrainJobs with
+	// spec.suspend=true and flips it only once quota is admitted, so falling
+	// through to Running here would start stall/timeout clocks against
+	// hardware that never ran anything. Terminal conditions are checked first
+	// so a finished TrainJob that was suspended afterwards still reports its
+	// true outcome.
+	if trainJob.Spec.Suspend != nil && *trainJob.Spec.Suspend {
+		message := "TrainJob is suspended (spec.suspend=true), waiting for it to be resumed"
+		if trainJob.Spec.ManagedBy != nil && *trainJob.Spec.ManagedBy != "" {
+			message += "; managed by " + *trainJob.Spec.ManagedBy
+		}
+		return &WorkloadStatus{
+			Phase:   WorkloadPending,
+			Reason:  trainerv1alpha1.TrainJobSuspendedReason,
+			Message: message,
+		}, nil
+	}
+
 	return &WorkloadStatus{Phase: WorkloadRunning}, nil
 }
 

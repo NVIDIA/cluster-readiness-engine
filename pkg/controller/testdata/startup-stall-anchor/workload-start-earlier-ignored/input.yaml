@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Normal flow: the workload was observed running before the GM anchors were
+# recorded, so the clamp is a no-op and behavior is unchanged.
+gmStatus:
+  applicationStartTime: "2026-01-03T00:00:00Z"
+jobStatus:
+  workloadStartTime: "2026-01-01T00:00:00Z"
