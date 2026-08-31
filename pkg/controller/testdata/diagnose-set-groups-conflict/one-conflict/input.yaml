@@ -1,0 +1,11 @@
+# diagnoseSetGroups replaces Groups/TotalGroups and advances CurrentIteration
+# before its status write. The write is rejected once with a 409; without
+# applyOrchestration the re-fetch dropped the new groups and the advanced
+# iteration, so the previous diagnose round's groups were re-run.
+conflicts: 1
+completedIterations: 1
+stage: inter-screening
+round: 2
+groups:
+  - name: inter-domain
+    nodes: [node-a, node-b]
