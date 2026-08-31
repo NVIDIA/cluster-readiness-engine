@@ -1,0 +1,9 @@
+# The first status write is rejected with a 409, forcing updateStatusWithRetry
+# to re-fetch the Workflow and re-run its closure. Without applyOrchestration
+# the CompletedIterations increment, iteration-history snapshot, and group
+# resets performed before the write were dropped: completedIterations stayed 0
+# and the terminal groups were re-processed as a fresh iteration completion.
+conflicts: 1
+iterations: 2
+completedIterations: 0
+groupPhases: [Succeeded, Failed]

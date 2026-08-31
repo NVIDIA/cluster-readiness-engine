@@ -1,0 +1,19 @@
+{
+  "statusWrites": 2,
+  "completedIterations": 1,
+  "currentIteration": 2,
+  "totalGroups": 2,
+  "iterationHistory": 1,
+  "groups": [
+    {
+      "name": "g0",
+      "phase": "Pending"
+    },
+    {
+      "name": "g1",
+      "phase": "Pending"
+    }
+  ],
+  "trueCondition": "InProgress",
+  "reason": "IterationCompleted"
+}
