@@ -21,6 +21,7 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -107,6 +108,14 @@ func TestIntegration(t *testing.T) {
 			frozenGoodput = verifyFrozenGoodput(tt, suite.Client, mgr.GetClient(), cfg)
 		}
 
+		// Verify post-launch spec edits are rejected by the CRD transition
+		// rule (issue #215). Runs before collection so the golden pins both
+		// the rejections and the unchanged spec.
+		var specImmutability map[string]any
+		if len(cfg.VerifySpecImmutable) > 0 {
+			specImmutability = verifySpecImmutable(tt, suite.Client, cfg.VerifySpecImmutable)
+		}
+
 		// Delete resources after the initial wait (e.g., to test deletion cascade).
 		if len(cfg.DeleteAfterWait) > 0 {
 			deleteAfterWait(tt, mgr.GetClient(), cfg.DeleteAfterWait)
@@ -116,7 +125,7 @@ func TestIntegration(t *testing.T) {
 			waitForDeletion(tt, mgr.GetClient(), cfg)
 		}
 
-		tc.Actual = collectAndSerialize(tt, mgr.GetClient(), cfg, frozenGoodput)
+		tc.Actual = collectAndSerialize(tt, mgr.GetClient(), cfg, frozenGoodput, specImmutability)
 		return nil
 	})
 }
@@ -492,6 +501,12 @@ type waitConfig struct {
 	// GenerateNodes creates N GPU nodes programmatically before test objects.
 	// Avoids repeating Node YAML in fixtures for multi-node tests.
 	GenerateNodes *generateNodesSpec `json:"generateNodes,omitempty"`
+	// VerifySpecImmutable attempts a spec edit on each listed object after the
+	// initial wait and requires the API server to reject it via the CRD's
+	// spec-level transition rule (issue #215: specs are immutable after
+	// creation because the controllers never apply post-launch edits).
+	// Each rejection is recorded in the golden output.
+	VerifySpecImmutable []verifySpecImmutableSpec `json:"verifySpecImmutable,omitempty"`
 	// VerifyFrozenGoodput drives the ADR-072 determinism check: after the
 	// initial wait it snapshots the named GoodputMeasurement's status, touches
 	// the referenced Job, strips the Complete condition to force the
@@ -506,6 +521,17 @@ type waitConfig struct {
 	// WaitForDeletion lists resources that must be fully deleted before collection.
 	WaitForDeletion []collectSpec `json:"waitForDeletion,omitempty"`
 	TimeoutSeconds  int           `json:"timeoutSeconds"`
+}
+
+// verifySpecImmutableSpec describes one spec edit that must be rejected.
+// SpecPatch is a JSON merge patch document applied under .spec; Field names
+// the edited field so multiple edits on one object stay distinct in the golden.
+type verifySpecImmutableSpec struct {
+	Kind      string          `json:"kind"`
+	Name      string          `json:"name"`
+	Namespace string          `json:"namespace"`
+	Field     string          `json:"field"`
+	SpecPatch json.RawMessage `json:"specPatch"`
 }
 
 type generateNodesSpec struct {
@@ -735,6 +761,44 @@ func verifyFrozenGoodput(t *testing.T, direct, cached client.Client, cfg waitCon
 	}
 }
 
+// verifySpecImmutable pins the whole-spec transition rule from issue #215:
+// once a Certification or WorkloadRun exists, every spec edit must be rejected
+// by the API server with the CRD's "spec is immutable after creation" message
+// — the controllers never propagate post-launch edits to the child Workflow,
+// so accepting one would silently ignore it (single category / WorkloadRun) or
+// apply it only to later pending categories (multi-category Certification).
+// Each entry applies a JSON merge patch under .spec via a direct (uncached)
+// client and requires an Invalid rejection carrying the rule message. The
+// returned map is embedded in the golden so every rejection is pinned.
+func verifySpecImmutable(t *testing.T, c client.Client, specs []verifySpecImmutableSpec) map[string]any {
+	t.Helper()
+	ctx := context.Background()
+
+	results := make(map[string]any, len(specs))
+	for _, s := range specs {
+		obj := getObject(ctx, t, c, collectSpec{Kind: s.Kind, Name: s.Name, Namespace: s.Namespace})
+		require.NotNil(t, obj, "verifySpecImmutable: %s/%s not found", s.Kind, s.Name)
+
+		patch := fmt.Sprintf(`{"spec":%s}`, s.SpecPatch)
+		err := c.Patch(ctx, obj, client.RawPatch(types.MergePatchType, []byte(patch)))
+		require.Error(t, err,
+			"verifySpecImmutable: spec.%s edit on %s/%s was accepted; expected rejection",
+			s.Field, s.Kind, s.Name)
+		require.True(t, apierrors.IsInvalid(err),
+			"verifySpecImmutable: expected Invalid rejection for spec.%s on %s/%s, got: %v",
+			s.Field, s.Kind, s.Name, err)
+		require.Contains(t, err.Error(), "spec is immutable after creation",
+			"verifySpecImmutable: wrong rejection message for spec.%s on %s/%s",
+			s.Field, s.Kind, s.Name)
+
+		results[fmt.Sprintf("%s/%s/%s/spec.%s", s.Kind, s.Namespace, s.Name, s.Field)] = map[string]any{
+			"rejected": true,
+			"message":  "spec is immutable after creation",
+		}
+	}
+	return results
+}
+
 // rawStatusJSON marshals the full status, timestamps included — used by the
 // intact-mode check where nothing at all may change.
 func rawStatusJSON(t *testing.T, gm *nvcrev1alpha1.GoodputMeasurement) string {
@@ -867,13 +931,18 @@ func getObject(ctx context.Context, t *testing.T, c client.Client, spec collectS
 	}
 }
 
-func collectAndSerialize(t *testing.T, c client.Client, cfg waitConfig, frozenGoodput map[string]any) string {
+func collectAndSerialize(
+	t *testing.T, c client.Client, cfg waitConfig, frozenGoodput, specImmutability map[string]any,
+) string {
 	t.Helper()
 	ctx := context.Background()
 
 	results := make(map[string]any)
 	if frozenGoodput != nil {
 		results["frozenGoodput"] = frozenGoodput
+	}
+	if specImmutability != nil {
+		results["specImmutability"] = specImmutability
 	}
 	for _, spec := range cfg.Collect {
 		obj := getObject(ctx, t, c, spec)

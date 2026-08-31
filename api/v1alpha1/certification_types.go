@@ -276,7 +276,6 @@ type CertificationSpec struct {
 	// Categories are the list of certificate categories required for the Target
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="categories is immutable after creation"
 	Categories []CertificateCategory `json:"categories,omitempty"`
 
 	// Global defaults for all categories. Per-category options override these.
@@ -314,8 +313,13 @@ type Certification struct {
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitzero"`
 
-	// spec defines the desired state of Certification
+	// spec defines the desired state of Certification.
+	// The entire spec is immutable after creation: the controller never updates
+	// an active Workflow from an edited parent, so accepting edits would either
+	// silently ignore them or apply them only to later categories. To run with
+	// different inputs, delete the Certification and create a new one.
 	// +required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec is immutable after creation"
 	Spec CertificationSpec `json:"spec"`
 
 	// status defines the observed state of Certification
