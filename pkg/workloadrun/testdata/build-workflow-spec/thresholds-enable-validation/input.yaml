@@ -4,9 +4,10 @@
 # collected. The presence of the block decides whether a run is measured or only
 # watched.
 #
-# Note the spelling of the key. Issue #52 is open because one unknown threshold
-# key turns off all threshold checks without saying so, which makes the exact
-# string here important.
+# Note the spelling of the key. Since issue #52 was fixed, an unknown threshold
+# key is rejected outright — by readWorkloadRun at the CLI and by the Job
+# controller with ValidationFailed reason UnknownThresholdKey — so the exact
+# string here decides whether the run is accepted at all.
 run:
   metadata:
     name: wr-thresholds

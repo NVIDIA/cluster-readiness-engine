@@ -1,0 +1,7 @@
+# The key is valid but the expression does not return a bool. This is a
+# violation with reason InvalidThresholdExpression, not an EvaluateAll error:
+# only unknown keys abort evaluation.
+thresholds:
+  busBandwidthGBps: "value + 1.0"
+measured:
+  busBandwidthGBps: 100

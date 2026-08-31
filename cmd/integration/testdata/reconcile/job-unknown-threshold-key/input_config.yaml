@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Job succeeded but its thresholds name a key that is not in the threshold
+# registry. The controller must fail validation immediately with reason
+# UnknownThresholdKey — naming the key and listing the valid ones — instead of
+# waiting for a measurement that can never arrive and reporting
+# MeasurementTimeout (issue #52).
+waitFor:
+  kind: Job
+  name: test-unknown-key
+  namespace: default
+  condition: ValidationFailed
+  reason: UnknownThresholdKey
+collect:
+  - kind: Job
+    name: test-unknown-key
+    namespace: default
