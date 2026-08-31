@@ -25,6 +25,8 @@ Runs two phases in order:
 
 Use `--skip-phases=deps` to skip Kubeflow Trainer if it is already installed.
 
+The `helm` phase reconciles the NVCRE CRDs on every run: it extracts the CRD manifests from the same chart version it is about to install (`helm show crds`) and server-side-applies them (field manager `nvcrectl-setup`, force ownership) before running `helm upgrade --install`. Helm itself applies a chart's `crds/` directory only on the *first* install, so without this step an upgrade would leave the installed CRDs at the old schema. Server-side apply is idempotent, so a fresh install and an unchanged re-run behave exactly as before.
+
 ### Retry behavior and automatic recovery
 
 `setup init` converges from any partial state, so re-running it after a failure is always safe to try:

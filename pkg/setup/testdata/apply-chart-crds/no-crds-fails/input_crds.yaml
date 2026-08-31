@@ -1,0 +1,9 @@
+# A chart CRD stream with no CustomResourceDefinition documents means the
+# fetch went wrong; failing loudly beats silently skipping the reconcile.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: not-a-crd
+  namespace: default
+data:
+  key: value

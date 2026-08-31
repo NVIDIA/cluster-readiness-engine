@@ -35,6 +35,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/render"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/report"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/setup"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/threshold"
 )
 
 // NewCommand returns the "certification" cobra command.
@@ -390,6 +391,23 @@ func readCertification(path string) (*nvcrev1alpha1.Certification, error) {
 	var cert nvcrev1alpha1.Certification
 	if err := yaml.Unmarshal(data, &cert); err != nil {
 		return nil, fmt.Errorf("parse certification: %w", err)
+	}
+
+	// Reject unknown threshold keys at read time — render and run --cert-file
+	// both pass through here — so a typo'd key is reported immediately instead
+	// of failing validation after the workload has already run (issue #52).
+	// Thresholds appear at the spec level and per category.
+	if err := threshold.ValidateKeysError(cert.Spec.Thresholds); err != nil {
+		return nil, fmt.Errorf("certification %s: %w", cert.Name, err)
+	}
+	for _, cat := range cert.Spec.Categories {
+		if cat.Options == nil {
+			continue
+		}
+		if err := threshold.ValidateKeysError(cat.Options.Thresholds); err != nil {
+			return nil, fmt.Errorf("certification %s: category %s/%s: %w",
+				cert.Name, cat.Domain, cat.Variant, err)
+		}
 	}
 	return &cert, nil
 }

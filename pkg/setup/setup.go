@@ -100,7 +100,11 @@ Use --auto-approve to skip the confirmation prompt (for CI/automation).
 Re-running init is safe: a Kubeflow Trainer release already deployed at the
 pinned version is skipped, and a release wedged by webhook Secret
 field-ownership conflicts (issue #180) is recovered automatically when no
-Trainer workloads exist, or the manual procedure is printed.`,
+Trainer workloads exist, or the manual procedure is printed.
+
+The NVCRE CRDs are server-side-applied from the chart before every Helm
+upgrade, so re-running init after a version bump also updates the CRD
+schemas (Helm alone only installs CRDs on the first install).`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return RunInit(version, image, imagePullSecret, skipPhases, autoApprove,
@@ -196,6 +200,8 @@ func RunInit(
 		return fmt.Errorf("[helm] %w", err)
 	}
 	if nvcreOutput, err := installHelmRelease(helmInstallParams{
+		ctx:             ctx,
+		c:               c,
 		version:         version,
 		kubeconfig:      kubeconfigPath,
 		kubeContext:     kubeContext,

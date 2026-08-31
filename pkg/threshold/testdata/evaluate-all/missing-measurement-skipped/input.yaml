@@ -1,0 +1,8 @@
+# A registry key with no measured value is not evaluated here. The Job
+# controller's missing-key path owns that case: it requeues until the
+# measurement arrives and fails with MeasurementTimeout if it never does.
+thresholds:
+  busBandwidthGBps: "value >= 400"
+  goodputRatio: "value >= 0.9"
+measured:
+  goodputRatio: 0.95
