@@ -1,0 +1,9 @@
+Discovered 1 GPU nodes with product: NVIDIA-H100-80GB-HBM3
+WorkloadRun demo-run created in namespace wr-cleanup-ns.
+
+To check status:
+  kubectl get workloadrun demo-run -n wr-cleanup-ns
+[cleanup] Cleaning up...
+[cleanup] Deleting WorkloadRun...
+[cleanup] Warning: failed to delete WorkloadRun: simulated API failure
+[cleanup] Done (with warnings).

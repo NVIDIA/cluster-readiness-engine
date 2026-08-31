@@ -1,0 +1,8 @@
+# A workload that requests no GPUs imposes no per-node GPU requirement, so
+# nothing is filtered — not even a node that reports zero allocatable GPUs.
+nodes:
+  - name: node001
+    allocatableGPUs: 0
+  - name: node002
+    allocatableGPUs: 8
+gpusPerNode: 0

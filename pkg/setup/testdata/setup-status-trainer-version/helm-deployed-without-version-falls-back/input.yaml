@@ -1,0 +1,5 @@
+# Helm reports the release deployed but strips the chart version from its
+# payload: detection falls through to the Deployment image tag.
+helm:
+  state: deployed
+deploymentImage: ghcr.io/kubeflow/trainer/trainer-controller-manager:v2.2.1

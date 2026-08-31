@@ -1,0 +1,4 @@
+# The Trainer controller Deployment runs a tag that is not a version, so
+# detection falls through to the CRD label, which matches.
+deploymentImage: ghcr.io/kubeflow/trainer/trainer-controller-manager:latest
+crdVersionLabel: "2.2.1"

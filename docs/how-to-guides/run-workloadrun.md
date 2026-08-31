@@ -44,6 +44,27 @@ spec:
       kubernetes.io/hostname: gpu-node-01
 ```
 
+## Environment variables
+
+`spec.env` sets container-level environment on the workload containers for
+every framework — for MPI that is both the launcher and the worker containers.
+The variables are merged with the auto-detected NCCL defaults, and a value you
+set overrides a default with the same name.
+
+```yaml
+spec:
+  env:
+    - name: NCCL_DEBUG
+      value: TRACE
+```
+
+One caveat for MPI runs: the container env reaches `mpirun` on the launcher
+and the `sshd` process on each worker, but `mpirun` starts the ranks on
+workers through SSH, and `sshd` gives every session a fresh, sanitized
+environment — so the MPI ranks themselves may not inherit `spec.env`. A
+variable the ranks must see should be passed as `-x NAME=value` in
+`spec.framework.mpi.mpiArgs`, which forwards it through `mpirun` itself.
+
 ## With bandwidth measurement
 
 ```yaml

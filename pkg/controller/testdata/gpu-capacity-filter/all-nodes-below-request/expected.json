@@ -1,0 +1,14 @@
+{
+  "kept": [],
+  "excluded": [
+    {
+      "has": 1,
+      "node": "node001"
+    },
+    {
+      "has": 4,
+      "node": "node002"
+    }
+  ],
+  "bestAvailable": 4
+}

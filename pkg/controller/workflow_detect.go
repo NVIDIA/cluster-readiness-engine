@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"math"
 	"reflect"
 	"slices"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/google/cel-go/cel"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -130,6 +132,151 @@ func excludedNodeNames(all, kept []corev1.Node) []string {
 		}
 	}
 	return out
+}
+
+// gpuCapacityExclusion names a node dropped for reporting fewer allocatable
+// GPUs than the workload requests per node, along with what it does report so
+// exclusion messages can say "has X, needs Y" instead of just naming the node.
+type gpuCapacityExclusion struct {
+	Node string
+	// AllocatableGPUs is the node's reported allocatable nvidia.com/gpu count.
+	AllocatableGPUs int64
+}
+
+// filterNodesByGPUCapacity splits nodes into those that can satisfy a per-node
+// request of gpusPerNode and those that report fewer allocatable
+// nvidia.com/gpu. An under-capacity node can never schedule the workload's
+// pods, so partitioning it into a group leaves that group Pending until the
+// run times out with nothing naming the cause (issue #82).
+//
+// A node that does not report allocatable nvidia.com/gpu at all is kept, not
+// excluded: the resource is advertised asynchronously by the device plugin, so
+// its absence means "unknown", and dropping a node over a plugin restart would
+// spuriously shrink the run and flip a clean PASSED to INCOMPLETE.
+//
+// A reported count of zero is treated the same way. The kubelet does not
+// remove an extended resource when its device plugin endpoint goes away — it
+// zeroes the count — so on a GPU-labeled node a zero is the restart window in
+// a different encoding, not a statement about the hardware. Excluding on it
+// would turn a self-healing Pending (pods schedule once the plugin
+// re-advertises) into a terminal failure or a permanent INCOMPLETE. Only a
+// positive count below the request is a stable "this node has fewer GPUs"
+// report, which is the failure issue #82 is about.
+//
+// A gpusPerNode of zero or less means the workload requests no GPUs, so
+// nothing is filtered.
+func filterNodesByGPUCapacity(nodes []corev1.Node, gpusPerNode int32) ([]corev1.Node, []gpuCapacityExclusion) {
+	if gpusPerNode <= 0 {
+		return nodes, nil
+	}
+	kept := make([]corev1.Node, 0, len(nodes))
+	var excluded []gpuCapacityExclusion
+	for _, n := range nodes {
+		q, ok := n.Status.Allocatable[corev1.ResourceName("nvidia.com/gpu")]
+		if ok {
+			if count, exact := q.AsInt64(); exact && count > 0 && count < int64(gpusPerNode) {
+				excluded = append(excluded, gpuCapacityExclusion{Node: n.Name, AllocatableGPUs: count})
+				continue
+			}
+		}
+		kept = append(kept, n)
+	}
+	return kept, excluded
+}
+
+// maxAllocatableGPUs returns the largest allocatable GPU count among the
+// exclusions, so an all-nodes-too-small failure can name the best the fleet
+// has to offer next to what the workload asked for.
+func maxAllocatableGPUs(excluded []gpuCapacityExclusion) int64 {
+	var best int64
+	for _, e := range excluded {
+		best = max(best, e.AllocatableGPUs)
+	}
+	return best
+}
+
+// workloadGPUsPerNode returns the number of GPUs each node must supply for the
+// workflow's pods to schedule. It is read back from the rendered spec rather
+// than re-derived from architecture defaults so it is exactly the value the
+// pod resources will request: an operator-supplied gpusPerNode override or an
+// override patch that rewrites the resources block is already baked in here,
+// where a re-derivation from gpu.ParseProduct defaults would disagree with it.
+//
+// The request can live in different places depending on how the spec was
+// built — trainer.resourcesPerNode on a hand-written Workflow, or the
+// TrainingRuntime dependency that templates the worker pods for catalog
+// entries and WorkloadRuns — so this walks the job template and every
+// dependency and returns the largest nvidia.com/gpu quantity found. Every
+// dependency is walked, not only the runtime named by trainJob.runtimeRef:
+// rendered specs today ship exactly the runtime the job template references,
+// so the two are the same set, and if a spec ever carried an unreferenced
+// GPU-requesting dependency this errs toward over-requiring (excluding a node
+// that might have scheduled) rather than under-requiring (partitioning a node
+// whose pods can never schedule, the silent hang this filter exists to
+// prevent). Returns 0 when nothing requests GPUs, which callers treat as "no
+// per-node GPU requirement".
+func workloadGPUsPerNode(spec *nvcrev1alpha1.WorkflowSpec) int32 {
+	var found int64
+	if b, err := json.Marshal(&spec.JobTemplate); err == nil {
+		var doc any
+		if json.Unmarshal(b, &doc) == nil {
+			found = max(found, maxGPURequest(doc))
+		}
+	}
+	for i := range spec.Dependencies {
+		var doc any
+		if json.Unmarshal(spec.Dependencies[i].Raw, &doc) == nil {
+			found = max(found, maxGPURequest(doc))
+		}
+	}
+	if found > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	return int32(found)
+}
+
+// maxGPURequest walks a decoded JSON document for resource requirement blocks
+// and returns the largest nvidia.com/gpu quantity found. Only values inside a
+// "requests" or "limits" map count, so a label or topology key that happens to
+// mention the resource name is never misread as a request.
+func maxGPURequest(doc any) int64 {
+	var found int64
+	switch v := doc.(type) {
+	case map[string]any:
+		for key, val := range v {
+			if key == "requests" || key == "limits" {
+				if rl, ok := val.(map[string]any); ok {
+					if q, ok := rl["nvidia.com/gpu"]; ok {
+						found = max(found, gpuQuantityValue(q))
+					}
+				}
+			}
+			found = max(found, maxGPURequest(val))
+		}
+	case []any:
+		for _, item := range v {
+			found = max(found, maxGPURequest(item))
+		}
+	}
+	return found
+}
+
+// gpuQuantityValue parses a JSON resource quantity — a string like "8" or a
+// bare number — into a GPU count. Anything unparseable or non-positive is 0.
+func gpuQuantityValue(v any) int64 {
+	switch q := v.(type) {
+	case string:
+		if qty, err := resource.ParseQuantity(q); err == nil {
+			if n, ok := qty.AsInt64(); ok && n > 0 {
+				return n
+			}
+		}
+	case float64:
+		if q > 0 {
+			return int64(q)
+		}
+	}
+	return 0
 }
 
 // detectGPUArchConsistent detects the GPU architecture and filters out nodes

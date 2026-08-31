@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -198,10 +199,11 @@ func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *nvcrev1
 // says why. The report turns a non-empty list into an INCOMPLETE verdict, so
 // this is what stops a partly-certified fleet reporting a clean PASSED.
 //
-// Both causes can apply to one run, which is why they are merged rather than
-// assigned in turn: on a fleet that is part cordoned and part mixed-architecture,
-// writing each cause as it is found lets the second silently drop the first.
-func exclusionSummary(cordoned, archExcluded []string, gpuArch string) ([]string, string) {
+// All three causes can apply to one run, which is why they are merged rather
+// than assigned in turn: on a fleet that is part cordoned and part
+// mixed-architecture, writing each cause as it is found lets the second
+// silently drop the first.
+func exclusionSummary(cordoned, archExcluded []string, gpuArch string, capacityExcluded []gpuCapacityExclusion, gpusPerNode int32) ([]string, string) {
 	var nodes, reasons []string
 
 	if len(cordoned) > 0 {
@@ -218,6 +220,15 @@ func exclusionSummary(cordoned, archExcluded []string, gpuArch string) ([]string
 			gpuArch))
 	}
 
+	if len(capacityExcluded) > 0 {
+		for _, e := range capacityExcluded {
+			nodes = append(nodes, e.Node)
+		}
+		reasons = append(reasons, fmt.Sprintf(
+			"%d node(s) matched the target but have insufficient GPU capacity, the workload requests %d nvidia.com/gpu per node: %s",
+			len(capacityExcluded), gpusPerNode, gpuShortfallDetail(capacityExcluded)))
+	}
+
 	if len(nodes) == 0 {
 		return nil, ""
 	}
@@ -227,20 +238,46 @@ func exclusionSummary(cordoned, archExcluded []string, gpuArch string) ([]string
 	return nodes, strings.Join(reasons, ". ")
 }
 
+// gpuShortfallDetail formats capacity exclusions as "node002 has 1, node003
+// has 1", so every message about them says what each node actually reports
+// next to what was needed rather than only naming the node.
+func gpuShortfallDetail(excluded []gpuCapacityExclusion) string {
+	parts := make([]string, 0, len(excluded))
+	for _, e := range excluded {
+		parts = append(parts, fmt.Sprintf("%s has %d", e.Node, e.AllocatableGPUs))
+	}
+	return strings.Join(parts, ", ")
+}
+
 // notEnoughNodesMessage explains a node shortfall. "Schedulable" is Kubernetes
 // vocabulary for cordons, taints and capacity, so the bare form sends an operator
 // looking at the wrong thing when the real cause is that a heterogeneous target
-// was filtered to one GPU architecture. When that is what happened, say so and
-// name the nodes that were dropped.
-func notEnoughNodesMessage(needed, found int, gpuArch string, archExcluded []string) string {
-	base := fmt.Sprintf("Not enough schedulable nodes: need %d, found %d", needed, found)
-	if len(archExcluded) == 0 {
-		return base
+// was filtered to one GPU architecture or that under-capacity nodes were
+// dropped. When that is what happened, say so and name the nodes that were
+// dropped. Causes and remedies are collected separately so that when both
+// filters contributed, the "Set nodesPerJob to N" advice appears once with
+// every applicable remedy after it, not once per cause.
+func notEnoughNodesMessage(needed, found int, gpuArch string, archExcluded []string, capacityExcluded []gpuCapacityExclusion, gpusPerNode int32) string {
+	msg := fmt.Sprintf("Not enough schedulable nodes: need %d, found %d", needed, found)
+	var causes, remedies []string
+	if len(archExcluded) > 0 {
+		causes = append(causes, fmt.Sprintf(
+			"%d node(s) matched the target but were excluded for not being GPU architecture %s: %s",
+			len(archExcluded), gpuArch, strings.Join(archExcluded, ", ")))
+		remedies = append(remedies, "narrow the target to one architecture")
 	}
-	return fmt.Sprintf(
-		"%s. %d node(s) matched the target but were excluded for not being GPU architecture %s: %s. "+
-			"Set nodesPerJob to %d, or narrow the target to one architecture",
-		base, len(archExcluded), gpuArch, strings.Join(archExcluded, ", "), found)
+	if len(capacityExcluded) > 0 {
+		causes = append(causes, fmt.Sprintf(
+			"%d node(s) matched the target but were excluded for having fewer than the %d allocatable "+
+				"nvidia.com/gpu the workload requests per node: %s",
+			len(capacityExcluded), gpusPerNode, gpuShortfallDetail(capacityExcluded)))
+		remedies = append(remedies, "lower gpusPerNode")
+	}
+	if len(causes) == 0 {
+		return msg
+	}
+	return fmt.Sprintf("%s. %s. Set nodesPerJob to %d, or %s",
+		msg, strings.Join(causes, ". "), found, strings.Join(remedies, ", or "))
 }
 
 // discoverAndPartition discovers target nodes, auto-detects nodesPerJob, and partitions nodes into groups.
@@ -306,10 +343,11 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	}
 	orch.DetectedGPUArchitecture = gpuArch
 
-	// Record the dropped nodes on the status, not just in an event. A run that
-	// excludes nodes still reports Succeeded, so without this the report says
-	// PASSED and never mentions what went untested.
-	orch.ExcludedNodes, orch.ExclusionReason = exclusionSummary(cordoned, archExcluded, gpuArch)
+	// Record the cordon and architecture exclusions before overrides run, so a
+	// failure in override application still leaves the coverage record behind.
+	// The GPU capacity check below has to read the post-override spec, so the
+	// summary is recomputed with the full set once that filter has run.
+	orch.ExcludedNodes, orch.ExclusionReason = exclusionSummary(cordoned, archExcluded, gpuArch, nil, 0)
 
 	// Apply overrides now that platform/gpuArch are known, before computing nodesPerJob.
 	// This is the authoritative call — emit events, log details, and populate status.
@@ -318,13 +356,52 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	if err != nil {
 		r.eventf(workflow, corev1.EventTypeWarning, "OverrideError", "Override failed: %v", err)
 		if statusErr := r.setWorkflowFailed(ctx, workflow, "OverrideError",
-			fmt.Sprintf("Failed to apply overrides: %v", err)); statusErr != nil {
+			fmt.Sprintf("Failed to apply overrides: %v", err),
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
 			log.Error(statusErr, "Failed to update Workflow status after override failure")
 		}
 		return ctrl.Result{}, err
 	}
 	orch.AppliedOverrides = applied
 	r.logOverrideResults(ctx, workflow, applied, octx)
+
+	// Drop nodes that cannot supply the workload's per-node GPU request. A node
+	// with fewer allocatable GPUs than the pods ask for is partitioned into a
+	// group whose pods stay Pending forever, and the run hangs at
+	// InProgress/JobRunning with nothing naming the cause (issue #82). The
+	// check runs after override application because overrides can rewrite the
+	// resources block, and workloadGPUsPerNode must see the request the pods
+	// will actually make; it cannot run inside discoverTargetNodes because the
+	// request is only known once the spec is fully resolved.
+	gpusPerNode := workloadGPUsPerNode(&workflow.Spec)
+	capableNodes, capacityExcluded := filterNodesByGPUCapacity(nodes, gpusPerNode)
+	if len(capacityExcluded) > 0 {
+		log.Info("Nodes with insufficient GPU capacity excluded from certification",
+			"gpusPerNode", gpusPerNode, "excluded", gpuShortfallDetail(capacityExcluded))
+		r.eventf(workflow, corev1.EventTypeWarning, "InsufficientGPUCapacity",
+			"Excluded %d node(s) with fewer than %d allocatable nvidia.com/gpu: %s",
+			len(capacityExcluded), gpusPerNode, gpuShortfallDetail(capacityExcluded))
+		nodes = capableNodes
+	}
+
+	// Record the dropped nodes on the status, not just in an event. A run that
+	// excludes nodes still reports Succeeded, so without this the report says
+	// PASSED and never mentions what went untested.
+	orch.ExcludedNodes, orch.ExclusionReason = exclusionSummary(cordoned, archExcluded, gpuArch, capacityExcluded, gpusPerNode)
+
+	// Every surviving node was dropped for capacity. Fail with the requirement
+	// and the best the fleet offers instead of partitioning into groups that
+	// can never schedule.
+	if len(nodes) == 0 {
+		msg := fmt.Sprintf(
+			"No node can supply the %d nvidia.com/gpu the workload requests per node; best available is %d",
+			gpusPerNode, maxAllocatableGPUs(capacityExcluded))
+		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, msg,
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
+			log.Error(statusErr, "Failed to update status")
+		}
+		return ctrl.Result{}, fmt.Errorf("%s", msg)
+	}
 
 	// Create workflow-scoped dependencies AFTER overrides are applied.
 	// Override dependency merges (e.g. EFA resources into TrainingRuntime) have
@@ -335,7 +412,8 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	if err := r.ensureWorkflowDependencies(ctx, workflow); err != nil {
 		log.Error(err, "Failed to create dependencies")
 		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonDependencyCreationError,
-			fmt.Sprintf("Failed to create dependency: %v", err)); statusErr != nil {
+			fmt.Sprintf("Failed to create dependency: %v", err),
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
 			log.Error(statusErr, "Failed to update status")
 		}
 		return ctrl.Result{}, err
@@ -345,7 +423,8 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	adapter, err := workload.ForSpec(&workflow.Spec.JobTemplate.Spec.Workload)
 	if err != nil {
 		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError,
-			fmt.Sprintf("Failed to determine workload adapter: %v", err)); statusErr != nil {
+			fmt.Sprintf("Failed to determine workload adapter: %v", err),
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
 			log.Error(statusErr, "Failed to update status")
 		}
 		return ctrl.Result{}, err
@@ -354,7 +433,8 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	nodesPerJob, err := adapter.NodesRequired(&workflow.Spec.JobTemplate.Spec.Workload)
 	if err != nil {
 		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError,
-			fmt.Sprintf("Failed to detect nodesPerJob: %v", err)); statusErr != nil {
+			fmt.Sprintf("Failed to detect nodesPerJob: %v", err),
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
 			log.Error(statusErr, "Failed to update status")
 		}
 		return ctrl.Result{}, err
@@ -363,8 +443,9 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 		nodesPerJob = len(nodes)
 	}
 	if nodesPerJob > len(nodes) {
-		msg := notEnoughNodesMessage(nodesPerJob, len(nodes), gpuArch, archExcluded)
-		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, msg); statusErr != nil {
+		msg := notEnoughNodesMessage(nodesPerJob, len(nodes), gpuArch, archExcluded, capacityExcluded, gpusPerNode)
+		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, msg,
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
 			log.Error(statusErr, "Failed to update status")
 		}
 		return ctrl.Result{}, fmt.Errorf("%s", msg)
@@ -405,7 +486,8 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	}
 	if err != nil {
 		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError,
-			fmt.Sprintf("Failed to partition nodes: %v", err)); statusErr != nil {
+			fmt.Sprintf("Failed to partition nodes: %v", err),
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
 			log.Error(statusErr, "Failed to update status")
 		}
 		return ctrl.Result{}, err
@@ -2096,6 +2178,33 @@ func applySucceededNodesRef(ref *corev1.TypedLocalObjectReference) func(*nvcrev1
 			return false
 		}
 		w.Status.SucceededNodesRef = ref
+		return true
+	}
+}
+
+// applyExclusionRecord returns an extra func suitable for setWorkflowFailed
+// that re-applies the excludedNodes/exclusionReason coverage record inside the
+// updateStatusWithRetry closure. discoverAndPartition writes the record onto
+// the in-memory orchestration status and then fails; without this, a 409
+// conflict re-fetches the object in place (wiping the orchestration fields)
+// and the retry re-applies only the conditions — and since the Workflow is
+// terminal afterwards, nothing ever recomputes the record. The values are
+// captured, not read through the orchestration pointer, because the re-fetch
+// overwrites what that pointer refers to.
+func applyExclusionRecord(excludedNodes []string, exclusionReason string) func(*nvcrev1alpha1.Workflow) bool {
+	if len(excludedNodes) == 0 && exclusionReason == "" {
+		return nil
+	}
+	return func(w *nvcrev1alpha1.Workflow) bool {
+		if w.Status.Orchestration == nil {
+			w.Status.Orchestration = &nvcrev1alpha1.OrchestrationStatus{}
+		}
+		orch := w.Status.Orchestration
+		if slices.Equal(orch.ExcludedNodes, excludedNodes) && orch.ExclusionReason == exclusionReason {
+			return false
+		}
+		orch.ExcludedNodes = excludedNodes
+		orch.ExclusionReason = exclusionReason
 		return true
 	}
 }

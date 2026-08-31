@@ -1,0 +1,6 @@
+# Without --cleanup nothing is deleted and no cleanup output is printed.
+doWait: false
+doCleanup: false
+namespaceExists: true
+expectRunExists: true
+expectNamespaceExists: true

@@ -61,7 +61,7 @@ Each failed node entry carries a `reason`:
 | `WorkloadFailed` | The workload exited non-zero or stalled |
 
 <Note>
-Cordoned nodes are filtered **before** a Job runs, not attributed as `HardwareFailureDetected`. They appear in `status.orchestration.excludedNodes` and cause the run to be marked `INCOMPLETE` rather than `Failed`.
+Cordoned nodes and nodes reporting fewer allocatable GPUs than the workload requests per node are filtered **before** a Job runs, not attributed as `HardwareFailureDetected`. They appear in `status.orchestration.excludedNodes` with the reason in `exclusionReason` and cause the run to be marked `INCOMPLETE` rather than `Failed`. If **no** matching node can supply the requested GPU count, the run fails immediately with a message naming the requirement and the best available count instead of scheduling pods that would stay `Pending` forever.
 </Note>
 
 Different nodes in the same category can fail with different reasons. A node that fails in multiple categories appears in each category's failed-nodes ConfigMap, potentially with a different reason each time.

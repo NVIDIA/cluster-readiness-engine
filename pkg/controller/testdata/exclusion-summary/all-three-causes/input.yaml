@@ -1,0 +1,12 @@
+# All three causes at once. Each is merged into the one list and the one
+# reason string, because the report derives its INCOMPLETE verdict from this
+# list alone and recording causes in turn lets the last overwrite the rest.
+cordoned:
+  - node001
+archExcluded:
+  - node007
+gpuArch: h100
+capacityExcluded:
+  - node: node004
+    has: 4
+gpusPerNode: 8

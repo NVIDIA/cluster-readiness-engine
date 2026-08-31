@@ -296,6 +296,16 @@ func copyStatus(dst, src client.Object) bool { //nolint:gocyclo
 			d.Status = s.Status
 			return true
 		}
+	case *corev1.Node:
+		// Node fixtures carry status.allocatable so tests can model differing
+		// GPU capacity (issue #82). The API server allows status on Node
+		// create, but re-applying it here keeps fixtures working even where
+		// that changes.
+		s := src.(*corev1.Node)
+		if len(s.Status.Allocatable) > 0 || len(s.Status.Capacity) > 0 {
+			d.Status = s.Status
+			return true
+		}
 	case *trainerv1alpha1.TrainJob:
 		s := src.(*trainerv1alpha1.TrainJob)
 		if len(s.Status.Conditions) > 0 {

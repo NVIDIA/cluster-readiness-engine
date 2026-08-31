@@ -1,0 +1,3 @@
+# The only version signal is the CRD label, and it names an unsupported
+# version: the check fails from the crd label source.
+crdVersionLabel: "2.0.0"

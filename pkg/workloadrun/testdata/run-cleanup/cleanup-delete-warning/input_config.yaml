@@ -1,0 +1,8 @@
+# The delete call fails; cleanup reports a warning and finishes with
+# "Done (with warnings)." instead of aborting.
+doWait: false
+doCleanup: true
+deleteError: simulated API failure
+namespaceExists: true
+expectRunExists: true
+expectNamespaceExists: true
