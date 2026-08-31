@@ -1,0 +1,13 @@
+WorkloadRun Report
+
+  Name:      timeout-run
+
+workloadrun/timeout-run
+Status:
+
+Summary
+Categories:   0/1 passed
+Failed Nodes: none
+Result:       PASSED
+
+The WorkloadRun completed while the timeout was being handled.
