@@ -92,7 +92,7 @@ jobs:
             ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}@${{ steps.push.outputs.digest }}
 
       - name: Generate SBOM
-        uses: anchore/sbom-action@v0.24.0
+        uses: anchore/sbom-action@v0.24.2
         with:
           image: ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}@${{ steps.push.outputs.digest }}
           format: cyclonedx-json
