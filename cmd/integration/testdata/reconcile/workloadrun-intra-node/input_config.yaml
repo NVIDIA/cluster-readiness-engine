@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Wait on the Workflow rather than the WorkloadRun: JobRunning only appears
+# after every group's Job is launched, so the collected orchestration status
+# deterministically holds all four single-node groups.
+waitFor:
+  kind: Workflow
+  name: test-intra-node-run
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: WorkloadRun
+    name: test-intra-node-run
+    namespace: default
+  - kind: Workflow
+    name: test-intra-node-run
+    namespace: default
