@@ -1,0 +1,9 @@
+# Every node reports fewer GPUs than the request. Callers must fail with the
+# requirement and the best available count rather than partitioning into
+# groups that can never schedule; bestAvailable is what that message names.
+nodes:
+  - name: node001
+    allocatableGPUs: 1
+  - name: node002
+    allocatableGPUs: 4
+gpusPerNode: 8

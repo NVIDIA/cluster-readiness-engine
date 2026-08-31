@@ -410,7 +410,12 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		mlnxPerNode = *opts.MlnxPerNode
 	}
 
-	nodesPerJob, err := resolveNodesPerJob(archNodes, category, opts, entry, gpusPerNode, gpuArch)
+	capableNodes, err := dropUnderCapacityNodes(archNodes, category, gpusPerNode)
+	if err != nil {
+		return "", err
+	}
+
+	nodesPerJob, err := resolveNodesPerJob(capableNodes, category, opts, entry, gpusPerNode, gpuArch)
 	if err != nil {
 		return "", err
 	}
@@ -596,6 +601,44 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 		resolved.MeasurementTimeout = override.MeasurementTimeout
 	}
 	return resolved
+}
+
+// dropUnderCapacityNodes removes nodes that cannot supply gpusPerNode before
+// the job is sized. A node reporting fewer allocatable GPUs than the per-node
+// request can never schedule the workload's pods, so counting it inflates
+// nodesPerJob and the resulting groups hang Pending forever (issue #82). It
+// runs after gpusPerNode is resolved, because that value derives from the GPU
+// architecture of the arch-filter survivors plus any explicit option — it
+// never depends on the node count, so filtering by it cannot loop back into
+// its own inputs.
+//
+// When no node can supply the request this is a hard error naming the
+// requirement and the best the fleet offers, never a quiet downsize: a job
+// sized for nodes that do not exist would partition into groups that cannot
+// schedule. The dropped names are discarded here for the same reason cordoned
+// names are (see createWorkflowForCategory): the Workflow repeats the filter
+// against the rendered spec and records them on its status, which is where the
+// report reads coverage from.
+//
+// The two tiers deliberately read the requirement from different sources.
+// This tier filters with the resolved catalog-default/option gpusPerNode; the
+// Workflow filters with the post-override rendered request (see
+// workloadGPUsPerNode), because overrides are only applied at that tier. An
+// override that raises the request therefore surfaces as a workflow-tier
+// PartitionError rather than this fail-fast — the Workflow's check is the
+// authoritative one, this one exists so the job is sized against nodes that
+// can run the common case.
+func dropUnderCapacityNodes(nodes []corev1.Node, cat nvcrev1alpha1.CertificateCategory, gpusPerNode int32) ([]corev1.Node, error) {
+	capableNodes, capacityExcluded := filterNodesByGPUCapacity(nodes, gpusPerNode)
+	if len(capableNodes) == 0 {
+		return nil, fmt.Errorf(
+			"%s/%s: no node can supply the %d nvidia.com/gpu the workload requests per node;"+
+				" best available is %d across %d matching node(s)."+
+				" Lower gpusPerNode or target nodes with more GPUs",
+			cat.Domain, cat.Variant, gpusPerNode,
+			maxAllocatableGPUs(capacityExcluded), len(capacityExcluded))
+	}
+	return capableNodes, nil
 }
 
 // resolveNodesPerJob determines the nodesPerJob for a category.

@@ -1,0 +1,8 @@
+# Creation fails (a WorkloadRun with the same name already exists). Cleanup
+# still runs but must NOT delete a WorkloadRun this invocation did not create.
+doWait: false
+doCleanup: true
+runPreexists: true
+namespaceExists: true
+expectRunExists: true
+expectNamespaceExists: true

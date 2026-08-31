@@ -1,0 +1,10 @@
+# The run completes while --wait watches; the report must be printed BEFORE
+# the deferred cleanup deletes the WorkloadRun (mirrors certification's
+# reports-before-cleanup test). The pre-existing namespace is preserved.
+doWait: true
+doCleanup: true
+timeoutSeconds: 30
+completeOnCreate: true
+namespaceExists: true
+expectRunExists: false
+expectNamespaceExists: true

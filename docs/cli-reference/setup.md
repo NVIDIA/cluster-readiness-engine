@@ -82,6 +82,8 @@ nvcrectl setup status [flags]
 
 Components checked: `nvcreCRDs`, `nvcreController`, `kubeflowTrainer`, `logProfiles`, `gpuOperator`, `dcgm` (optional).
 
+The `kubeflowTrainer` check verifies the installed Kubeflow Trainer version, not just that the TrainJob CRD exists. The version is detected from the managed Helm release chart version, the Trainer controller Deployment image tag, or the `app.kubernetes.io/version` label on the TrainJob CRD — whichever answers first — and reported under `kubeflowTrainerVersion` with its detection source. A version other than the one this NVCRE build supports fails the check with a message naming the detected and supported versions; a Trainer install whose version cannot be determined passes with a warning.
+
 The Helm releases managed by `setup init` (`nvcre` and `kubeflow-trainer`) are also checked via the helm CLI and reported under `helmReleases`. A release in a failed or pending state (e.g. `failed`, `pending-upgrade`) makes the status not ready. A release helm has no record of, or that cannot be queried (helm not in PATH), is reported but does not affect readiness.
 
 ### Flags

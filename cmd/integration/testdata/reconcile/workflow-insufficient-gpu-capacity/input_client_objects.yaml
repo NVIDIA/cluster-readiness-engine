@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Three nodes under one selector with the same gpu.product but different GPU
+# counts — the fleet from issue #82, where a cluster was expanded from
+# single-GPU to dual-GPU nodes. The workload requests 2 GPUs per node, so the
+# 1-GPU node can never schedule its pods. Before the capacity filter it was
+# partitioned into a group anyway and the run hung at InProgress/JobRunning
+# with the pods Pending forever; now it is excluded up front and recorded on
+# the status like a cordoned or wrong-architecture node. The under-capacity
+# node is declared in the middle so the case does not depend on name order.
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100"
+    kubernetes.io/hostname: gpu-node-01
+status:
+  allocatable:
+    nvidia.com/gpu: "2"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-02-small
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100"
+    kubernetes.io/hostname: gpu-node-02-small
+status:
+  allocatable:
+    nvidia.com/gpu: "1"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-03
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100"
+    kubernetes.io/hostname: gpu-node-03
+status:
+  allocatable:
+    nvidia.com/gpu: "2"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-gpu-capacity
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 2
+            resourcesPerNode:
+              requests:
+                nvidia.com/gpu: "2"
+              limits:
+                nvidia.com/gpu: "2"
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
