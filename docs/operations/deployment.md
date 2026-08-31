@@ -35,7 +35,7 @@ nvcrectl setup init --image-pull-secret $GITHUB_TOKEN
 `setup init` runs two phases:
 
 1. **deps** — Kubeflow Trainer (required for `TrainJob` workloads)
-2. **helm** — the NVCRE Helm chart: CRDs, controller Deployment, RBAC, metrics Service/ServiceMonitor, and built-in LogProfiles
+2. **helm** — the NVCRE Helm chart: CRDs, controller Deployment, RBAC, metrics Service/ServiceMonitor, and built-in LogProfiles. The CRDs are server-side-applied from the chart before the Helm release is installed or upgraded, on every run — Helm alone would only install them once and never update them.
 
 The Helm chart is pulled from GHCR at the CLI's own version, so a tagged release needs no version flag. **Dev builds (built from `main`) require `--version`** to name the chart version explicitly:
 
@@ -236,14 +236,19 @@ readinessProbe:
 ## Upgrades
 
 1. Review the release notes for breaking changes.
-2. Upgrade the Helm release (log in to `ghcr.io` first, as above):
+2. Apply the new chart version's CRDs. Helm never updates CRDs on `helm upgrade` — it applies a chart's `crds/` directory only on the first install — so skipping this step leaves the installed CRDs at the old schema:
+   ```bash
+   helm show crds oci://ghcr.io/nvidia/nvcre --version <new-version> \
+     | kubectl apply --server-side --force-conflicts -f -
+   ```
+3. Upgrade the Helm release (log in to `ghcr.io` first, as above):
    ```bash
    helm upgrade nvcre \
      oci://ghcr.io/nvidia/nvcre \
      --version <new-version> \
      --namespace nvcre
    ```
-3. Verify the rollout:
+4. Verify the rollout:
    ```bash
    kubectl rollout status -n nvcre deploy/nvcre-manager
    ```
@@ -254,7 +259,7 @@ To roll back:
 helm rollback nvcre <revision> --namespace nvcre
 ```
 
-If you installed with `nvcrectl setup init`, upgrade by installing the new CLI version and re-running `nvcrectl setup init`.
+If you installed with `nvcrectl setup init`, upgrade by installing the new CLI version and re-running `nvcrectl setup init` — it reconciles the CRDs from the chart on every run before upgrading the Helm release, so no manual CRD step is needed.
 
 ## Uninstall and cleanup
 
