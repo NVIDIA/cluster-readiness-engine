@@ -321,7 +321,8 @@
         "kind": "TrainJob",
         "name": "gcp-h1-training-nemotron5-8b-job-workload",
         "namespace": "default"
-      }
+      },
+      "workloadStartTime": "1970-01-01T00:00:00Z"
     }
   },
   "Workflow/gcp-h1-training-nemotron5-8b": {

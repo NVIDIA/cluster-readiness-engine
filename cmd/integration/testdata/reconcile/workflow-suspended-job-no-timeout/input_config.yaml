@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# timeoutPerJob must not accrue while the workload is suspended (issue #213).
+# The group started in 2020 against a 1s budget: measuring from group start
+# would mark the Job JobTimedOut and fail the group on the workflow's first
+# monitoring pass. Because the Job's workload exists but was never observed
+# running, no timeout accrues — the group stays Running and the Workflow
+# stays InProgress with one running group.
+waitFor:
+  kind: Workflow
+  name: test-workflow-suspended
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Workflow
+    name: test-workflow-suspended
+    namespace: default

@@ -358,6 +358,9 @@ func statusToJSON(status *WorkloadStatus) ([]byte, error) {
 	output := map[string]any{
 		"phase": string(status.Phase),
 	}
+	if status.Reason != "" {
+		output["reason"] = status.Reason
+	}
 	if status.Message != "" {
 		output["message"] = status.Message
 	}

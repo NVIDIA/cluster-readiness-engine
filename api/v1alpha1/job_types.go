@@ -291,6 +291,16 @@ type JobStatus struct {
 	// +optional
 	WorkloadRef *WorkloadReference `json:"workloadRef,omitempty"`
 
+	// workloadStartTime is when the workload was first observed running rather
+	// than pending. A workload held by an admission controller (for example a
+	// TrainJob suspended by Kueue until quota is available) is pending, and its
+	// queued time does not count against timeoutPerJob or stall detection:
+	// timeoutPerJob is measured from this timestamp, and the stall clock never
+	// starts before it. Cleared on checkpoint restart so the replacement
+	// workload gets a fresh budget.
+	// +optional
+	WorkloadStartTime *metav1.Time `json:"workloadStartTime,omitempty"`
+
 	// restartCount tracks the number of times the workload has been restarted from checkpoint.
 	// +optional
 	RestartCount int32 `json:"restartCount,omitempty"`

@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# After a checkpoint restart the GM start is reset to the restart initiation;
+# if the replacement workload then sat suspended in a queue, the anchor is
+# clamped forward to when it was actually observed running.
+gmStatus:
+  startTime: "2026-01-01T00:00:00Z"
+jobStatus:
+  workloadStartTime: "2026-01-02T00:00:00Z"

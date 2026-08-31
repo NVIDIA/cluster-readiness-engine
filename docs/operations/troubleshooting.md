@@ -29,6 +29,7 @@ kubectl logs -n nvcre deploy/nvcre-manager \
 
 **Solutions:**
 
+- The `InProgress` condition has reason `WorkloadPending` — the workload is queued, not stuck. On Kueue-managed clusters the TrainJob is created with `spec.suspend: true` and held until quota is admitted. NVCRE waits without counting queued time against `timeoutPerJob` or stall detection; check the queue (`kubectl get workloads -A` for Kueue) to see why admission is not happening.
 - The workload resource exists but is not completing — check Kubeflow Trainer logs and pod events.
 - Pods are `Pending` — verify GPU resources are available on target nodes (`kubectl describe node <node>`).
 - Kubeflow Trainer is not running — confirm its pods are healthy (`kubectl get pods -n kubeflow-system`).

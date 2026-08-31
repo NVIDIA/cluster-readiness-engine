@@ -17,6 +17,12 @@ import (
 type WorkloadPhase string
 
 const (
+	// WorkloadPending means the workload resource exists but has not started
+	// running — for example a TrainJob suspended by an admission controller
+	// such as Kueue while it waits for quota. Controllers must not count
+	// pending time against job timeouts or stall detection, and must not
+	// attribute node failures while a workload is pending.
+	WorkloadPending   WorkloadPhase = "Pending"
 	WorkloadRunning   WorkloadPhase = "Running"
 	WorkloadSucceeded WorkloadPhase = "Succeeded"
 	WorkloadFailed    WorkloadPhase = "Failed"

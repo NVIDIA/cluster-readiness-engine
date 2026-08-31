@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The unsuspended counterpart of job-trainjob-suspended: a TrainJob with
+# spec.suspend=false follows the normal flow — the Job goes
+# InProgress/WorkloadRunning and records workloadStartTime (normalized to the
+# epoch placeholder in the golden), from which timeoutPerJob and the stall
+# budget are measured.
+#
+# The stall fixture is the same hostile one as job-trainjob-suspended (GM
+# applicationStartTime years in the past, well beyond the startup budget). It
+# pins the ordering inside the running branch: workloadStartTime must be
+# recorded BEFORE the stall check runs on the very reconcile that first
+# observes the workload running, so the startup-stall anchor is clamped to
+# "now". If the stall check ran first (against a nil workloadStartTime), the
+# ancient anchor would fail the Job with WorkloadStalled and this waitFor
+# would never match.
+waitFor:
+  kind: Job
+  name: test-trainjob-unsuspended
+  namespace: default
+  condition: InProgress
+  reason: WorkloadRunning
+collect:
+  - kind: Job
+    name: test-trainjob-unsuspended
+    namespace: default

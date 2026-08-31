@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A TrainJob that finished and was suspended afterwards: terminal conditions
+# win over the suspend flag, so the true outcome is reported.
+kind: TrainJob
+spec:
+  suspend: true
+status:
+  conditions:
+    - type: Complete
+      status: "True"
+      reason: JobCompleted
+      message: "All workers completed"

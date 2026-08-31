@@ -466,9 +466,44 @@ func (r *JobReconciler) updateStatusFromWorkload(ctx context.Context, job *nvcre
 		}
 		return ctrl.Result{}, nil
 
+	case workload.WorkloadPending:
+		// The workload has not started — e.g. a TrainJob suspended by Kueue
+		// until quota is admitted. It is NOT running: skip stall detection and
+		// leave WorkloadStartTime unset, so queued time never counts against
+		// timeoutPerJob or the stall budget and no node failures are
+		// attributed. Requeue and wait for it to start.
+		message := fmt.Sprintf("Workload %s/%s is pending", ref.Kind, ref.Name)
+		if status.Message != "" {
+			message = fmt.Sprintf("Workload %s/%s is pending: %s", ref.Kind, ref.Name, status.Message)
+		}
+		log.V(1).Info("Workload is pending, waiting for it to start",
+			"kind", ref.Kind, "name", ref.Name, "reason", status.Reason)
+		if err := r.setJobInProgress(ctx, job, ReasonWorkloadPending, message); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to update Job status: %w", err)
+		}
+		return ctrl.Result{RequeueAfter: r.getWorkloadRequeueInterval()}, nil
+
 	default:
+		// The startup-stall clamp must hold on the very reconcile that first
+		// observes the workload running — right after an admission controller
+		// unsuspends it, and especially after a checkpoint restart, where the
+		// GoodputMeasurement's anchors were reset to the restart initiation
+		// and would otherwise charge the replacement workload's queued time to
+		// the stall budget on the deciding reconcile. The candidate timestamp
+		// is passed to the stall check explicitly; job.Status is only mutated
+		// inside the persisting status write below, so a Job declared stalled
+		// on this reconcile never carries a workloadStartTime it did not
+		// record while running.
+		workloadStart := job.Status.WorkloadStartTime
+		var firstObservedRunning *metav1.Time
+		if workloadStart == nil {
+			now := metav1.Now()
+			firstObservedRunning = &now
+			workloadStart = firstObservedRunning
+		}
+
 		// Check for stall before marking as running.
-		if stalled, stallMsg := r.checkStallTimeout(ctx, job); stalled {
+		if stalled, stallMsg := r.checkStallTimeout(ctx, job, workloadStart); stalled {
 			if r.shouldRestart(ctx, job) {
 				return r.restartFromCheckpoint(ctx, job, ref, adapter)
 			}
@@ -479,8 +514,27 @@ func (r *JobReconciler) updateStatusFromWorkload(ctx context.Context, job *nvcre
 		}
 
 		log.V(1).Info("Workload is running", "kind", ref.Kind, "name", ref.Name)
+		// Persist the observation in the same status write as the condition.
+		// timeoutPerJob (Workflow controller) and the startup stall budget are
+		// measured from this timestamp, so a workload that sat suspended in an
+		// admission queue is only "on the clock" from the moment it actually
+		// started. Persisting it makes the accounting survive controller
+		// restarts.
 		if err := r.setJobInProgress(ctx, job, ReasonWorkloadRunning,
-			fmt.Sprintf("Workload %s/%s is running", ref.Kind, ref.Name)); err != nil {
+			fmt.Sprintf("Workload %s/%s is running", ref.Kind, ref.Name),
+			func(j *nvcrev1alpha1.Job) bool {
+				if firstObservedRunning == nil {
+					// Already persisted on a previous reconcile.
+					return false
+				}
+				if j.Status.WorkloadStartTime != nil {
+					// The conflict-retry refetch found a value persisted by a
+					// concurrent writer; keep it.
+					return false
+				}
+				j.Status.WorkloadStartTime = firstObservedRunning
+				return true
+			}); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to update Job status: %w", err)
 		}
 		return ctrl.Result{RequeueAfter: r.getWorkloadRequeueInterval()}, nil
@@ -535,7 +589,7 @@ func (r *JobReconciler) hasCheckpoint(ctx context.Context, job *nvcrev1alpha1.Jo
 // for log parsing lag: LastStepTimestamp reflects the last step the GM parsed,
 // not the last step the workload produced. Without this buffer, the stall
 // detector fires false positives when the GM hasn't read logs recently.
-func (r *JobReconciler) checkStallTimeout(ctx context.Context, job *nvcrev1alpha1.Job) (bool, string) {
+func (r *JobReconciler) checkStallTimeout(ctx context.Context, job *nvcrev1alpha1.Job, workloadStart *metav1.Time) (bool, string) {
 	if job.Spec.StallMultiplier == nil {
 		return false, ""
 	}
@@ -550,12 +604,8 @@ func (r *JobReconciler) checkStallTimeout(ctx context.Context, job *nvcrev1alpha
 		// available, otherwise from measurement start. This catches both
 		// post-init stalls (app started but no steps) and pre-init stalls
 		// (NCCL hang, crash loop — app never started).
-		var since time.Time
-		if gm.Status.ApplicationStartTime != nil {
-			since = gm.Status.ApplicationStartTime.Time
-		} else if gm.Status.StartTime != nil {
-			since = gm.Status.StartTime.Time
-		} else {
+		since, ok := startupStallAnchor(gm, workloadStart)
+		if !ok {
 			return false, ""
 		}
 		timeout := defaultStartupStallTimeout
@@ -611,6 +661,39 @@ func (r *JobReconciler) checkStallTimeout(ctx context.Context, job *nvcrev1alpha
 	}
 
 	return false, ""
+}
+
+// startupStallAnchor returns the time the startup-stall budget is measured
+// from, or false when startup stall detection cannot run yet.
+//
+// The base anchor is the GoodputMeasurement's ApplicationStartTime (first
+// application framework log marker) or, before that arrives, its StartTime.
+// The anchor is then clamped forward to workloadStart — the Job's persisted
+// status.workloadStartTime, or the candidate timestamp on the reconcile that
+// first observes the workload running — so time spent suspended in an
+// admission queue (e.g. Kueue) never counts against the startup budget. The
+// clamp matters after a checkpoint restart, where the GM StartTime is reset
+// to the restart initiation and would otherwise include any queued time of
+// the replacement workload.
+//
+// workloadStart alone is deliberately not an anchor: before the GM has
+// sampled a running pod there is no evidence the workload is unhealthy
+// (image pulls and scheduling can legitimately take a long time), and
+// timeoutPerJob already bounds that phase.
+func startupStallAnchor(gm *nvcrev1alpha1.GoodputMeasurement, workloadStart *metav1.Time) (time.Time, bool) {
+	var since time.Time
+	switch {
+	case gm.Status.ApplicationStartTime != nil:
+		since = gm.Status.ApplicationStartTime.Time
+	case gm.Status.StartTime != nil:
+		since = gm.Status.StartTime.Time
+	default:
+		return time.Time{}, false
+	}
+	if workloadStart != nil && workloadStart.After(since) {
+		since = workloadStart.Time
+	}
+	return since, true
 }
 
 // parseStallFloat parses a string to float64 for stall detection, returning 0 on error.
@@ -770,8 +853,11 @@ func (r *JobReconciler) restartFromCheckpoint(ctx context.Context, job *nvcrev1a
 		}
 	}
 
-	// Clear workload reference and increment restart count
+	// Clear workload reference and increment restart count. WorkloadStartTime
+	// is cleared with it: the replacement workload gets a fresh timeout and
+	// stall budget, recorded when it is first observed running.
 	job.Status.WorkloadRef = nil
+	job.Status.WorkloadStartTime = nil
 	job.Status.RestartCount++
 
 	// Reset stall detection: clear step state and reset StartTime so
@@ -815,9 +901,11 @@ func (r *JobReconciler) restartFromCheckpoint(ctx context.Context, job *nvcrev1a
 	return ctrl.Result{RequeueAfter: grace}, nil
 }
 
-// setJobInProgress sets the Job status to InProgress
-func (r *JobReconciler) setJobInProgress(ctx context.Context, job *nvcrev1alpha1.Job, reason, message string) error {
-	return r.setExclusiveCondition(ctx, job, nvcrev1alpha1.JobInProgress, reason, message)
+// setJobInProgress sets the Job status to InProgress. Optional extra status
+// mutations are applied inside the same retry-on-conflict write as the
+// condition, so they are re-applied to a fresh object on 409 and never lost.
+func (r *JobReconciler) setJobInProgress(ctx context.Context, job *nvcrev1alpha1.Job, reason, message string, extra ...func(*nvcrev1alpha1.Job) bool) error {
+	return r.setExclusiveCondition(ctx, job, nvcrev1alpha1.JobInProgress, reason, message, extra...)
 }
 
 // setJobSucceeded sets the Job status to Succeeded
@@ -1231,7 +1319,7 @@ func groupNodeNames(job *nvcrev1alpha1.Job) []string {
 // setExclusiveCondition sets a job execution condition to True and all other execution conditions to False.
 // This ensures only one of InProgress/Succeeded/Failed is True at any given time.
 // Note: HardwareFailed is NOT part of this exclusive set - it's independent.
-func (r *JobReconciler) setExclusiveCondition(ctx context.Context, job *nvcrev1alpha1.Job, conditionType, reason, message string) error {
+func (r *JobReconciler) setExclusiveCondition(ctx context.Context, job *nvcrev1alpha1.Job, conditionType, reason, message string, extra ...func(*nvcrev1alpha1.Job) bool) error {
 	// Only job execution states are mutually exclusive; HardwareFailed is set
 	// independently and must not be cleared here.
 	changed, err := setExclusiveStatusCondition(ctx, r.Client, job,
@@ -1242,6 +1330,7 @@ func (r *JobReconciler) setExclusiveCondition(ctx context.Context, job *nvcrev1a
 			nvcrev1alpha1.JobFailed,
 		},
 		conditionType, reason, message,
+		extra...,
 	)
 	if err != nil {
 		return err

@@ -770,9 +770,30 @@ func (r *WorkflowReconciler) deleteWorkloadForJob(ctx context.Context, job *nvcr
 }
 
 // isJobTimedOut returns true if the group's job has exceeded timeoutPerJob.
-func (r *WorkflowReconciler) isJobTimedOut(workflow *nvcrev1alpha1.Workflow, g *nvcrev1alpha1.GroupStatus) bool {
+//
+// The clock starts when the Job first observed its workload running
+// (job.status.workloadStartTime), not when the Job was created: a workload
+// suspended by an admission controller (e.g. Kueue holding a TrainJob until
+// quota is available) has not started, and failing healthy hardware for
+// sitting in a queue would be a false certification result. While the
+// workload exists but has not been observed running, no timeout accrues.
+// Only when no workload has been created at all does the group's StartTime
+// remain the bound, so a Job whose workload can never be created still
+// terminates.
+func (r *WorkflowReconciler) isJobTimedOut(workflow *nvcrev1alpha1.Workflow, g *nvcrev1alpha1.GroupStatus, job *nvcrev1alpha1.Job) bool {
 	timeout := workflow.Spec.Orchestration.Execution.TimeoutPerJob
-	if timeout == nil || g.StartTime == nil {
+	if timeout == nil {
+		return false
+	}
+	if job.Status.WorkloadStartTime != nil {
+		return time.Since(job.Status.WorkloadStartTime.Time) > timeout.Duration
+	}
+	if job.Status.WorkloadRef != nil {
+		// Workload created but not yet observed running (e.g. suspended,
+		// pending admission): the job has not started, do not time it out.
+		return false
+	}
+	if g.StartTime == nil {
 		return false
 	}
 	return time.Since(g.StartTime.Time) > timeout.Duration
@@ -1105,7 +1126,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		ts := getJobTerminalState(job)
 
 		if !ts.terminal {
-			if r.isJobTimedOut(workflow, g) {
+			if r.isJobTimedOut(workflow, g, job) {
 				log.Info("Job timed out, terminating workload",
 					"group", g.Name, "job", ref.Name)
 				// Capture logs from running pods BEFORE deleting the workload.

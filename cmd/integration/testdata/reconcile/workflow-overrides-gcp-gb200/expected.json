@@ -137,7 +137,8 @@
         "kind": "TrainJob",
         "name": "test-gcp-gb200-overrides-job-workload",
         "namespace": "default"
-      }
+      },
+      "workloadStartTime": "1970-01-01T00:00:00Z"
     }
   },
   "Workflow/test-gcp-gb200-overrides": {

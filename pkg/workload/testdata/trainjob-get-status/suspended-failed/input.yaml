@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A TrainJob that failed and was suspended afterwards: Failed wins over the
+# suspend flag.
+kind: TrainJob
+spec:
+  suspend: true
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: WorkerFailed
+      message: "Worker crashed"

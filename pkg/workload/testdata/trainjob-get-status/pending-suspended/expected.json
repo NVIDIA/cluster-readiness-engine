@@ -1,0 +1,5 @@
+{
+  "message": "TrainJob is suspended (spec.suspend=true), waiting for it to be resumed",
+  "phase": "Pending",
+  "reason": "Suspended"
+}
