@@ -1,0 +1,8 @@
+# Last iteration, all groups succeeded: handleIterationComplete increments
+# CompletedIterations and hands off to setFinalStatus, whose Succeeded write is
+# rejected once with a 409. The increment must survive the re-fetch, otherwise
+# the terminal status reports one fewer iteration than actually ran.
+conflicts: 1
+iterations: 1
+completedIterations: 0
+groupPhases: [Succeeded, Succeeded]

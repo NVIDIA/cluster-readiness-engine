@@ -1,0 +1,7 @@
+# Control case: no conflict injected. The persisted state must be identical to
+# the one-conflict case (only the write count differs), proving the conflict
+# handling changes nothing on the happy path.
+conflicts: 0
+iterations: 2
+completedIterations: 0
+groupPhases: [Succeeded, Failed]

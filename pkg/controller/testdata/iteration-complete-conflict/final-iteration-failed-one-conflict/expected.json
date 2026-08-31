@@ -1,0 +1,19 @@
+{
+  "statusWrites": 2,
+  "completedIterations": 1,
+  "currentIteration": 1,
+  "totalGroups": 2,
+  "iterationHistory": 0,
+  "groups": [
+    {
+      "name": "g0",
+      "phase": "Succeeded"
+    },
+    {
+      "name": "g1",
+      "phase": "Failed"
+    }
+  ],
+  "trueCondition": "Failed",
+  "reason": "IterationsFailed"
+}

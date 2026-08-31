@@ -1373,9 +1373,14 @@ func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workfl
 			orch.Groups[i].Retries = 0
 		}
 
+		// The mutations above (CompletedIterations, IterationHistory, group
+		// resets) were applied to the cached object. Hand them to the condition
+		// write via applyOrchestration so they are re-applied inside the
+		// updateStatusWithRetry closure and survive a 409 conflict re-fetch.
 		if err := r.setWorkflowInProgress(ctx, workflow, ReasonIterationCompleted,
 			fmt.Sprintf("Iteration %d/%d completed, starting next",
-				orch.CompletedIterations, effectiveIterations(workflow.Spec.Orchestration))); err != nil {
+				orch.CompletedIterations, effectiveIterations(workflow.Spec.Orchestration)),
+			applyOrchestration(orch)); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{RequeueAfter: requeueImmediate}, nil
@@ -1536,7 +1541,8 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 
 		return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, ReasonIterationsFailed, msg,
 			applySucceededNodesRef(workflow.Status.SucceededNodesRef),
-			applyFailedNodesRef(workflow.Status.FailedNodesRef))
+			applyFailedNodesRef(workflow.Status.FailedNodesRef),
+			applyOrchestration(orch))
 
 	default:
 		return ctrl.Result{}, fmt.Errorf("unknown diagnose stage: %s", diag.Stage)
@@ -1722,7 +1728,8 @@ func (r *WorkflowReconciler) handleDiagnoseCrossBoundary(
 		log.Info(msg)
 		return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, ReasonIterationsFailed, msg,
 			applySucceededNodesRef(workflow.Status.SucceededNodesRef),
-			applyFailedNodesRef(workflow.Status.FailedNodesRef))
+			applyFailedNodesRef(workflow.Status.FailedNodesRef),
+			applyOrchestration(orch))
 	}
 
 	return r.diagnoseDone(ctx, workflow, diag, "Cross-boundary probing complete: no faults confirmed")
@@ -1785,7 +1792,8 @@ func (r *WorkflowReconciler) diagnoseNextGroups(
 			diag.Stage = nvcrev1alpha1.DiagnoseStageComplete
 			return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, ReasonIterationsFailed, msg,
 				applySucceededNodesRef(workflow.Status.SucceededNodesRef),
-				applyFailedNodesRef(workflow.Status.FailedNodesRef))
+				applyFailedNodesRef(workflow.Status.FailedNodesRef),
+				applyOrchestration(orch))
 		}
 		diag.Stage = nvcrev1alpha1.DiagnoseStageConfirmation
 		return r.diagnoseSetGroups(ctx, workflow, orch, diag, groups,
@@ -1815,7 +1823,11 @@ func (r *WorkflowReconciler) diagnoseSetGroups(
 	orch.TotalGroups = len(groups)
 	orch.CurrentIteration = orch.CompletedIterations + 1
 
-	if err := r.setWorkflowInProgress(ctx, workflow, ReasonIterationCompleted, msg); err != nil {
+	// Groups, TotalGroups, CurrentIteration above — plus the CompletedIterations
+	// increment and diagnose stage/round transitions made by callers — live on
+	// the cached object. Re-apply them inside the retry closure so a 409
+	// conflict re-fetch does not silently drop them.
+	if err := r.setWorkflowInProgress(ctx, workflow, ReasonIterationCompleted, msg, applyOrchestration(orch)); err != nil {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{RequeueAfter: requeueImmediate}, nil
@@ -1833,7 +1845,9 @@ func (r *WorkflowReconciler) diagnoseDone(
 	if err := r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)); err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to record succeeded nodes to ConfigMap")
 	}
-	return ctrl.Result{}, r.setWorkflowSucceeded(ctx, workflow, ReasonJobCompleted, msg, applySucceededNodesRef(workflow.Status.SucceededNodesRef))
+	return ctrl.Result{}, r.setWorkflowSucceeded(ctx, workflow, ReasonJobCompleted, msg,
+		applySucceededNodesRef(workflow.Status.SucceededNodesRef),
+		applyOrchestration(workflow.Status.Orchestration))
 }
 
 // buildInterDomainGroup selects one healthy representative per screening group.
@@ -1923,6 +1937,9 @@ func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *nvcre
 		extras := []func(*nvcrev1alpha1.Workflow) bool{
 			applySucceededNodesRef(workflow.Status.SucceededNodesRef),
 			applyFailedNodesRef(workflow.Status.FailedNodesRef),
+			// applyOrchestration persists the final iteration's CompletedIterations
+			// increment made by handleIterationComplete through a 409 re-fetch.
+			applyOrchestration(workflow.Status.Orchestration),
 		}
 		if hasValidation {
 			// Supplementary quality signal alongside the exclusive Failed
@@ -1943,7 +1960,9 @@ func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *nvcre
 	if err := r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)); err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to record succeeded nodes to ConfigMap")
 	}
-	return ctrl.Result{}, r.setWorkflowSucceeded(ctx, workflow, ReasonJobCompleted, msg, applySucceededNodesRef(workflow.Status.SucceededNodesRef))
+	return ctrl.Result{}, r.setWorkflowSucceeded(ctx, workflow, ReasonJobCompleted, msg,
+		applySucceededNodesRef(workflow.Status.SucceededNodesRef),
+		applyOrchestration(workflow.Status.Orchestration))
 }
 
 // countFailedGroups counts groups with Failed phase across all iterations.
@@ -2265,6 +2284,44 @@ func applyWorkflowValidationFailed(message string) func(*nvcrev1alpha1.Workflow)
 			Message:            message,
 			ObservedGeneration: w.GetGeneration(),
 		})
+	}
+}
+
+// applyOrchestration returns an extra func suitable for the setWorkflow* status
+// writers that re-applies the caller-computed orchestration state inside the
+// updateStatusWithRetry closure. Iteration and diagnose transitions mutate
+// workflow.Status.Orchestration on the cached object before the condition
+// write; on a 409 conflict the object is re-fetched in place and only closure
+// mutations are re-applied, so the CompletedIterations increment, group
+// resets, and diagnose stage transitions are silently dropped. Snapshotting
+// the desired state and re-applying it inside the closure makes those
+// mutations survive the retry.
+//
+// It reports a change unconditionally: every call site has just advanced the
+// orchestration state, so the persisted state always lags what the caller
+// computed and the write must not be skipped as a no-op even when the
+// conditions happen to be unchanged. Comparing against the passed object
+// cannot detect this, because that object already carries the mutation.
+//
+// Replacing the whole struct is safe against concurrent writers: the Workflow
+// reconciler is the sole writer of status.orchestration and controller-runtime
+// serialises reconciles per object. The remaining window is a serial
+// stale-cache replay — a reconcile starting from a cached object that predates
+// this reconciler's own prior writes recomputes the same transition and, on a
+// 409 re-fetch, overwrites fresher orchestration state with the recomputed
+// snapshot. The recomputation is deterministic, so counters and history
+// converge to identical values; the only state that can be reverted is a group
+// launch (Running phase, JobRef) from an intervening reconcile, which
+// self-heals on the next pass because createJobForGroup adopts the existing
+// Job on AlreadyExists and re-adds its dependency refs.
+func applyOrchestration(orch *nvcrev1alpha1.OrchestrationStatus) func(*nvcrev1alpha1.Workflow) bool {
+	if orch == nil {
+		return nil
+	}
+	want := orch.DeepCopy()
+	return func(w *nvcrev1alpha1.Workflow) bool {
+		w.Status.Orchestration = want.DeepCopy()
+		return true
 	}
 }
 
