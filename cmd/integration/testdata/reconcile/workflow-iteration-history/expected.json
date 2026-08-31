@@ -128,7 +128,8 @@
         "kind": "TrainJob",
         "name": "test-wf-history-group-0-iter-2-workload",
         "namespace": "default"
-      }
+      },
+      "workloadStartTime": "1970-01-01T00:00:00Z"
     }
   },
   "TrainJob/test-wf-history-group-0-iter-2-workload": {

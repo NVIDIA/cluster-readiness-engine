@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# workloadStartTime alone is deliberately NOT an anchor: before the GM has
+# sampled a running pod there is no evidence of a stall (image pulls and
+# scheduling can be slow); timeoutPerJob bounds that phase instead.
+gmStatus: {}
+jobStatus:
+  workloadStartTime: "2026-01-01T00:00:00Z"

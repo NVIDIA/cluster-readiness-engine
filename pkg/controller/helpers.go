@@ -79,7 +79,12 @@ const (
 
 // Job tier reasons (Job → Workload).
 const (
-	ReasonWorkloadCreated       = "WorkloadCreated"
+	ReasonWorkloadCreated = "WorkloadCreated"
+	// ReasonWorkloadPending indicates the workload exists but has not started
+	// running — e.g. a TrainJob suspended by Kueue while it waits for quota.
+	// The Job stays InProgress; pending time is not counted against
+	// timeoutPerJob or stall detection.
+	ReasonWorkloadPending       = "WorkloadPending"
 	ReasonWorkloadRunning       = "WorkloadRunning"
 	ReasonWorkloadCompleted     = "WorkloadCompleted"
 	ReasonWorkloadFailed        = "WorkloadFailed"

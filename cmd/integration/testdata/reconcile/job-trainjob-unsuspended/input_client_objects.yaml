@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-trainjob-unsuspended
+  namespace: default
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 2
+  stallMultiplier: 2
+  startupStallTimeoutSeconds: 300
+status:
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-trainjob-unsuspended-workload
+    namespace: default
+---
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-trainjob-unsuspended-workload
+  namespace: default
+spec:
+  suspend: false
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - python
+      - train.py
+    numNodes: 2
+---
+# Hostile stall fixture: the GM's applicationStartTime is years in the past.
+# The Job must record workloadStartTime BEFORE the stall check runs on the
+# same reconcile — the first reconcile that observes the workload running —
+# so the startup-stall anchor is clamped to "now" and the ancient anchor
+# cannot fail the Job with WorkloadStalled.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: GoodputMeasurement
+metadata:
+  name: test-trainjob-unsuspended-gm
+  namespace: default
+spec:
+  jobRef:
+    apiGroup: nvcre.nvidia.com
+    kind: Job
+    name: test-trainjob-unsuspended
+  logProfileRef: test-logprofile
+  sampleInterval: 1s
+status:
+  applicationStartTime: "2025-01-01T00:00:00Z"

@@ -141,7 +141,8 @@
         "kind": "TrainJob",
         "name": "test-gcp-h100-overrides-job-workload",
         "namespace": "default"
-      }
+      },
+      "workloadStartTime": "1970-01-01T00:00:00Z"
     }
   },
   "Workflow/test-gcp-h100-overrides": {
