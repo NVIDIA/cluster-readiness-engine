@@ -1,0 +1,6 @@
+{
+  "totalNodes": 2,
+  "capableNodes": null,
+  "nodesPerJob": 0,
+  "error": "communication/nccl-all-reduce: no node can supply the 8 nvidia.com/gpu the workload requests per node; best available is 4 across 2 matching node(s). Lower gpusPerNode or target nodes with more GPUs"
+}

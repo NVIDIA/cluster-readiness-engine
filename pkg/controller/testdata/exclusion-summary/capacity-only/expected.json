@@ -1,0 +1,8 @@
+{
+  "excludedNodes": [
+    "node002",
+    "node003"
+  ],
+  "exclusionReason": "2 node(s) matched the target but have insufficient GPU capacity, the workload requests 2 nvidia.com/gpu per node: node002 has 1, node003 has 1",
+  "verdictAfterPassingRun": "INCOMPLETE"
+}
