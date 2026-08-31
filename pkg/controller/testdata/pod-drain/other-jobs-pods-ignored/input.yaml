@@ -1,0 +1,8 @@
+# The barrier is scoped by the nvcre.nvidia.com/job label: another Job's
+# running pod in the same namespace must not hold this Job's cleanup.
+job:
+  failedAgeSeconds: 30
+pods:
+  - name: other-worker-0
+    phase: Running
+    otherJob: true

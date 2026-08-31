@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Delete the Workflow once it is running, then wait for the Job finalizer to
+# delete the TrainJob. With the workload pod still Running, the deletion
+# cascade must park right there: the Job keeps its finalizer (and so still
+# exists), the Workflow stays in Phase 1 with its dependencyRefs intact, and
+# the ConfigMap dependency survives. Collection after the TrainJob is gone is
+# deterministic: in the broken (pre-barrier) world the Job finalizer
+# unregisters in the same reconcile that deletes the TrainJob, so the Job and
+# then the dependency would already be gone.
+waitFor:
+  kind: Workflow
+  name: test-wf-drain-del
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+deleteAfterWait:
+  - kind: Workflow
+    name: test-wf-drain-del
+    namespace: default
+waitForDeletion:
+  - kind: TrainJob
+    name: test-wf-drain-del-group-0-iter-1-workload
+    namespace: default
+collect:
+  - kind: Workflow
+    name: test-wf-drain-del
+    namespace: default
+  - kind: Job
+    name: test-wf-drain-del-group-0-iter-1
+    namespace: default
+  - kind: ConfigMap
+    name: test-drain-del-dep
+    namespace: default
