@@ -1,0 +1,9 @@
+# Control case: no conflict injected. Persisted state must match the
+# one-conflict case apart from the write count.
+conflicts: 0
+completedIterations: 1
+stage: inter-screening
+round: 2
+groups:
+  - name: inter-domain
+    nodes: [node-a, node-b]

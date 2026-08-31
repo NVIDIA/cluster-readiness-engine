@@ -1,0 +1,19 @@
+{
+  "statusWrites": 1,
+  "completedIterations": 1,
+  "currentIteration": 2,
+  "totalGroups": 1,
+  "iterationHistory": 0,
+  "groups": [
+    {
+      "name": "inter-domain",
+      "phase": "Pending"
+    }
+  ],
+  "diagnose": {
+    "stage": "inter-screening",
+    "round": 2
+  },
+  "trueCondition": "InProgress",
+  "reason": "IterationCompleted"
+}

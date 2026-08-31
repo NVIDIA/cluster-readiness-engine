@@ -1,0 +1,7 @@
+# Last iteration with a failed group: setFinalStatus takes the Failed branch.
+# Its write is rejected once with a 409; the CompletedIterations increment made
+# by handleIterationComplete must survive the re-fetch.
+conflicts: 1
+iterations: 1
+completedIterations: 0
+groupPhases: [Succeeded, Failed]
