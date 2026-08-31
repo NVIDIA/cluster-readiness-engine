@@ -1,0 +1,41 @@
+# B7, filed as issue #68 and fixed: BuildMPIRuntime now emits spec.env on both
+# MPI containers, the same way BuildTorchRuntime always has.
+#
+# Before the fix, a torch run received spec.env and an MPI run did not, because
+# BuildMPIRuntime never read the field. The variables now land as container-level
+# env on the launcher and worker containers. Ranks launched on workers through
+# sshd get a fresh environment from sshd and may still need "-x NAME=value" in
+# mpiArgs to see a variable.
+#
+# The workerEnv and launcherEnv fields in the expected file are what to read.
+# workerEnv lists "NAME=value" for the worker container of the runtime
+# dependency, which is the container the workload runs in. launcherEnv lists
+# the same for the launcher container, which gets env too so that the two MPI
+# containers cannot drift apart again.
+#
+#   torch-run-renders...  workerEnv holds the 10 defaults from BaseNCCLEnvVars
+#   mpi-keeps-spec-env    workerEnv holds those 10 plus the user's variable
+#
+# The variable below is named CRE_TEST_MARKER on purpose. No default sets that
+# name, so the expected file can show whether the user's variable arrived. An
+# earlier version of this case used NCCL_DEBUG, which BaseNCCLEnvVars also sets,
+# so a regression that emitted the defaults and dropped the user's variable
+# would have looked correct.
+run:
+  metadata:
+    name: wr-mpi
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      mpi:
+        binary: /workspace/all_reduce_perf
+        mpirunPath: /usr/local/mpi/bin/mpirun
+    env:
+      - name: CRE_TEST_MARKER
+        value: present
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: mpi
