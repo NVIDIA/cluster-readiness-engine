@@ -57,6 +57,28 @@ kubectl get workflows.nvcre.nvidia.com <name> \
 - Target nodes do not match — verify the Workflow's `nodeSelector` or `nodeNames` matches existing nodes (`kubectl get nodes -l <selector>`).
 - The Workflow spec is invalid — look for validation errors in the controller logs.
 
+## Workflow cleanup or deletion pauses on terminating pods
+
+**Symptoms:** After a Job fails, times out, or the Workflow is deleted, the group stays `Running` (or the Workflow stays terminating) for a while, and dependency resources such as the ComputeDomain are not removed immediately.
+
+This is expected: the controllers wait for the workload's pods to finish terminating before deleting the dependency resources that provide their DRA allocations. Deleting a ComputeDomain while pods are still terminating would revoke NVLink/NVSwitch channel allocations under running CUDA kernels and kill every pod process with CUDA error 719. The wait is bounded to 5 minutes per Job; after that, cleanup proceeds anyway and the controller logs a warning.
+
+**Diagnosis:**
+
+```bash
+# See which pods the controller is waiting on
+kubectl get pods -l nvcre.nvidia.com/job=<name> -n <namespace>
+
+# Confirm the wait in the controller logs
+kubectl logs -n nvcre deploy/nvcre-manager \
+  | grep -E "still terminating|drain"
+```
+
+**Solutions:**
+
+- Pods are terminating normally — no action needed; cleanup resumes as soon as they are gone.
+- A pod is stuck `Terminating` (for example, its node is unreachable) — cleanup proceeds automatically after the 5-minute grace period. To unblock sooner, force-delete the pod: `kubectl delete pod <pod> --grace-period=0 --force`.
+
 ## Hardware failures not detected
 
 **Symptoms:** A node has a known hardware problem, but the Job does not report the `HardwareFailed` condition.

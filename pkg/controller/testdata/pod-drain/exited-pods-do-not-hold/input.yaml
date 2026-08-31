@@ -1,0 +1,9 @@
+# Succeeded/Failed pods have exited; they hold no running CUDA context, so a
+# stuck Failed pod must not wedge dependency cleanup.
+job:
+  failedAgeSeconds: 30
+pods:
+  - name: worker-0
+    phase: Succeeded
+  - name: worker-1
+    phase: Failed

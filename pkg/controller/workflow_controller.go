@@ -63,6 +63,10 @@ type WorkflowReconciler struct {
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs/status,verbs=get
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
+//
+// Pods are read for the timeout failure-log capture and for the pod-drain
+// barrier (shouldWaitForPodDrain) that gates scoped-dependency cleanup.
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get
 // +kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;patch;watch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
@@ -1042,7 +1046,6 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow *nvcrev1alpha1.Workflow) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	orch := r.ensureOrchestrationStatus(workflow)
-	retryLimit := workflow.Spec.Orchestration.Execution.RetryFailedGroups
 
 	anyRunning := false
 	statusChanged := false
@@ -1062,6 +1065,10 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 
 		if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: ref.Name}, job); err != nil {
 			if apierrors.IsNotFound(err) {
+				// No pod-drain barrier needed here: the Job finalizer only
+				// unregisters after the workload's pods are gone (bounded by
+				// podDrainGracePeriod), so a NotFound Job implies its pods
+				// have already drained.
 				log.Info("Job was deleted, marking group as failed", "group", g.Name, "job", ref.Name)
 				r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
 				now := metav1.Now()
@@ -1075,8 +1082,15 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		}
 
 		// Treat a Job with DeletionTimestamp as deleted — its finalizer will
-		// clean up the workload, but the Workflow should not wait for it.
+		// clean up the workload, but the Workflow should not wait for it
+		// beyond the pod-drain barrier: the scoped dependencies below provide
+		// DRA allocations to the workload's pods, and deleting them while
+		// pods are still terminating causes CUDA error 719 (issue #121).
 		if !job.DeletionTimestamp.IsZero() {
+			if shouldWaitForPodDrain(ctx, r.Client, job) {
+				anyRunning = true
+				continue
+			}
 			log.Info("Job is being deleted, marking group as failed", "group", g.Name, "job", ref.Name)
 			r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
 			now := metav1.Now()
@@ -1101,19 +1115,29 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 				meta.SetStatusCondition(&job.Status.Conditions, metav1.Condition{
 					Type:    nvcrev1alpha1.JobFailed,
 					Status:  metav1.ConditionTrue,
-					Reason:  "JobTimedOut",
+					Reason:  ReasonJobTimedOut,
 					Message: "Job exceeded timeoutPerJob",
 				})
 				if err := r.Status().Update(ctx, job); err != nil {
 					return ctrl.Result{}, fmt.Errorf("failed to update timed-out Job %s status: %w", ref.Name, err)
 				}
-				// Delete the workload to free GPUs. The Job object is
-				// preserved for the report; only the TrainJob is removed.
-				r.deleteWorkloadForJob(ctx, job)
-				r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
-				now := metav1.Now()
-				g.Phase = nvcrev1alpha1.GroupFailed
-				g.CompletionTime = &now
+				// Complete through the same path a re-observed terminal Job
+				// takes: completeTerminalGroup deletes the workload (the Job
+				// object is preserved for the report; only the TrainJob is
+				// removed) and holds the group and its scoped dependencies
+				// behind the pod-drain barrier (issue #121). Routing both the
+				// no-pods and the pods-draining timeout completions through
+				// one path keeps the side effects identical regardless of
+				// drain timing; the ReasonJobTimedOut condition set above
+				// keeps the job from being retried on either pass.
+				draining, err := r.completeTerminalGroup(ctx, workflow, orch, g, job, getJobTerminalState(job))
+				if err != nil {
+					return ctrl.Result{}, err
+				}
+				if draining {
+					anyRunning = true
+					continue
+				}
 				statusChanged = true
 				continue
 			}
@@ -1130,48 +1154,15 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 			continue
 		}
 
-		now := metav1.Now()
-		g.CompletionTime = &now
+		draining, err := r.completeTerminalGroup(ctx, workflow, orch, g, job, ts)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if draining {
+			anyRunning = true
+			continue
+		}
 		statusChanged = true
-
-		if len(job.Status.FailedNodes) > 0 {
-			if err := r.recordFailedNodes(ctx, workflow, job.Status.FailedNodes); err != nil {
-				log.Error(err, "Failed to record failed nodes to ConfigMap")
-			}
-		}
-
-		if ts.failed || ts.hwFailed || ts.validationFailed {
-			// Check if we can retry
-			if retryLimit > 0 && g.Retries < retryLimit {
-				log.Info("Retrying failed group", "group", g.Name, "retry", g.Retries+1, "limit", retryLimit)
-				// Delete the failed Job BEFORE cleaning up deps. Dependencies
-				// provide DRA allocations; deleting them first causes CUDA failure 719.
-				if err := r.Delete(ctx, job); err != nil && !apierrors.IsNotFound(err) {
-					return ctrl.Result{}, fmt.Errorf("failed to delete Job %s for retry: %w", ref.Name, err)
-				}
-				// Clean up job-scoped deps after Job deletion
-				r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
-				g.Retries++
-				g.Phase = nvcrev1alpha1.GroupPending
-				g.JobRef = nil
-				g.StartTime = nil
-				g.CompletionTime = nil
-			} else {
-				// Delete the workload to free GPUs and stop hanging pods.
-				r.deleteWorkloadForJob(ctx, job)
-				// Clean up job-scoped deps on terminal failure
-				r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
-				g.Phase = nvcrev1alpha1.GroupFailed
-				r.updateTopologyMetric(ctx, workflow)
-			}
-		} else {
-			// Clean up job-scoped deps on success
-			r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
-			g.Phase = nvcrev1alpha1.GroupSucceeded
-			r.updateTopologyMetric(ctx, workflow)
-		}
-
-		log.Info("Group job completed", "group", g.Name, "phase", g.Phase, "job", ref.Name)
 	}
 
 	if statusChanged || anyRunning {
@@ -1202,6 +1193,82 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 	return ctrl.Result{RequeueAfter: r.getJobRequeueInterval()}, nil
 }
 
+// completeTerminalGroup finishes a group whose Job reached a terminal state.
+// On failure it terminates the workload first and holds the group open —
+// draining=true, no phase change, no dependency cleanup — until the workload's
+// pods are gone (the pod-drain barrier, issue #121): the job-scoped
+// dependencies provide DRA allocations (ComputeDomain channels) to those pods,
+// and deleting them while pods are still terminating kills every pod process
+// with CUDA error 719. The Job keeps its terminal conditions, so the next
+// reconcile re-enters here and retries the check; podDrainGracePeriod bounds
+// the wait. Once drained (or on success, whose pods have already exited) it
+// cleans up job-scoped dependencies and moves the group to its final phase, or
+// resets it to Pending for a retry.
+func (r *WorkflowReconciler) completeTerminalGroup(
+	ctx context.Context,
+	workflow *nvcrev1alpha1.Workflow,
+	orch *nvcrev1alpha1.OrchestrationStatus,
+	g *nvcrev1alpha1.GroupStatus,
+	job *nvcrev1alpha1.Job,
+	ts jobTerminalState,
+) (draining bool, err error) {
+	log := logf.FromContext(ctx)
+	jobFailed := ts.failed || ts.hwFailed || ts.validationFailed
+
+	if jobFailed {
+		// Delete the workload to free GPUs and stop hanging pods. This happens
+		// before the retry/terminal decision so pods start draining either way.
+		r.deleteWorkloadForJob(ctx, job)
+		if shouldWaitForPodDrain(ctx, r.Client, job) {
+			return true, nil
+		}
+	}
+
+	now := metav1.Now()
+	g.CompletionTime = &now
+
+	if len(job.Status.FailedNodes) > 0 {
+		if err := r.recordFailedNodes(ctx, workflow, job.Status.FailedNodes); err != nil {
+			log.Error(err, "Failed to record failed nodes to ConfigMap")
+		}
+	}
+
+	retryLimit := workflow.Spec.Orchestration.Execution.RetryFailedGroups
+	switch {
+	case jobFailed && retryLimit > 0 && g.Retries < retryLimit && !isJobTimedOutFailure(job):
+		// Retry. Timed-out jobs are excluded: the timeout path terminates them
+		// for good, and without the exclusion a timed-out job re-entering here
+		// during the pod-drain wait would be retried.
+		log.Info("Retrying failed group", "group", g.Name, "retry", g.Retries+1, "limit", retryLimit)
+		// The workload is already deleted and its pods have drained (barrier
+		// above). Delete the failed Job BEFORE cleaning up deps (ADR-053 ordering).
+		if err := r.Delete(ctx, job); err != nil && !apierrors.IsNotFound(err) {
+			return false, fmt.Errorf("failed to delete Job %s for retry: %w", job.Name, err)
+		}
+		// Clean up job-scoped deps after Job deletion
+		r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
+		g.Retries++
+		g.Phase = nvcrev1alpha1.GroupPending
+		g.JobRef = nil
+		g.StartTime = nil
+		g.CompletionTime = nil
+	case jobFailed:
+		// Clean up job-scoped deps on terminal failure (workload already
+		// deleted and drained above).
+		r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
+		g.Phase = nvcrev1alpha1.GroupFailed
+		r.updateTopologyMetric(ctx, workflow)
+	default:
+		// Clean up job-scoped deps on success
+		r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
+		g.Phase = nvcrev1alpha1.GroupSucceeded
+		r.updateTopologyMetric(ctx, workflow)
+	}
+
+	log.Info("Group job completed", "group", g.Name, "phase", g.Phase, "job", job.Name)
+	return false, nil
+}
+
 type jobTerminalState struct {
 	hwFailed         bool
 	failed           bool
@@ -1225,6 +1292,16 @@ func getJobTerminalState(job *nvcrev1alpha1.Job) jobTerminalState {
 	}
 	s.terminal = s.hwFailed || s.failed || s.succeeded
 	return s
+}
+
+// isJobTimedOutFailure reports whether the Job's Failed condition was set by
+// the Workflow timeout path (updateStatusFromJobs). Timed-out jobs are
+// terminated by the Workflow and are never retried; the retry branch checks
+// this because a timed-out job re-enters the terminal path while its pods
+// drain (issue #121) instead of completing inside the timeout branch.
+func isJobTimedOutFailure(job *nvcrev1alpha1.Job) bool {
+	c := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobFailed)
+	return c != nil && c.Status == metav1.ConditionTrue && c.Reason == ReasonJobTimedOut
 }
 
 // handleIterationComplete handles the transition when all groups in the current iteration are terminal.
@@ -2357,6 +2434,15 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 // Jobs must be deleted before dependencies because dependencies (ComputeDomain,
 // ResourceClaimTemplate) provide DRA allocations for GPU interconnects. Deleting
 // them while workload pods are still running causes CUDA failure 719.
+//
+// The Phase 1 wait is also the pod-drain barrier for this path (issue #121):
+// the Job finalizer only unregisters once the workload's pods are gone
+// (bounded by podDrainGracePeriod, see shouldWaitForPodDrain), so "no Job
+// objects remain" implies "no workload pods remain" and Phase 2 cannot revoke
+// a DRA allocation that a terminating pod still holds. This keeps the
+// finalizer path correct without garbage collection: the explicit deletes
+// below are still required under envtest, and the drain wait is bounded, so a
+// stuck Terminating pod delays Workflow deletion by at most the grace period.
 func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *nvcrev1alpha1.Workflow) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
@@ -2386,9 +2472,11 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *nvcre
 		}
 	}
 
-	// Wait for all Jobs to be fully removed. Jobs have finalizers that handle
-	// workload deletion and pod termination; we must wait for that to complete
-	// before removing dependencies that provide DRA allocations.
+	// Wait for all Jobs to be fully removed. The Job finalizer deletes the
+	// workload and then holds until the workload's pods are gone (the
+	// pod-drain barrier in JobReconciler.handleDeletion, bounded by
+	// podDrainGracePeriod), so once no Job objects remain it is safe to
+	// remove the dependencies that provide their DRA allocations.
 	if len(jobList.Items) > 0 {
 		log.Info("Waiting for Jobs to complete deletion before removing dependencies", "remaining", len(jobList.Items))
 		return ctrl.Result{RequeueAfter: r.getJobRequeueInterval()}, nil

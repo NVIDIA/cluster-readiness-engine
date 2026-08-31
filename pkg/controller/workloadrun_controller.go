@@ -205,6 +205,21 @@ func (r *WorkloadRunReconciler) setWorkloadRunCondition(run *nvcrev1alpha1.Workl
 	}
 }
 
+// NodesPerJobForScale returns how many nodes a single Job should span.
+// intra-node means each node is tested on its own, so one node per Job however
+// many the run targets; the Workflow then makes one group per node. Anything
+// else keeps the requested count.
+//
+// It lives here so the reconcile path and the "workloadrun render" preview in
+// pkg/workloadrun (which imports this package) apply the same rule — issue #85
+// was the controller not applying it at all.
+func NodesPerJobForScale(orch *nvcrev1alpha1.WorkloadOrchestration, numNodes int32) int32 {
+	if orch != nil && orch.TestScale == nvcrev1alpha1.TestScaleIntraNode {
+		return 1
+	}
+	return numNodes
+}
+
 // buildWorkflowSpec translates a WorkloadRunSpec into a WorkflowSpec.
 func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcrev1alpha1.WorkloadRun) *nvcrev1alpha1.WorkflowSpec {
 	spec := &run.Spec
@@ -274,11 +289,16 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 		})
 	}
 
+	// Scale-adjusted node count: testScale intra-node sizes each Job to a
+	// single node so the Workflow partitions the target into one group per
+	// node — the same rule the render path applies.
+	nodesPerJob := NodesPerJobForScale(spec.Orchestration, spec.NumNodes)
+
 	// Build runtime dependency.
 	rtCfg := platform.RuntimeConfig{
 		EntryName:        run.Name,
 		Image:            spec.Image,
-		NodesPerJob:      spec.NumNodes,
+		NodesPerJob:      nodesPerJob,
 		GpusPerNode:      gpusPerNode,
 		Env:              mergedEnv,
 		Volumes:          volumes,
@@ -321,7 +341,7 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 	// Build platform overrides.
 	overrideCfg := platform.OverrideConfig{
 		EntryName:     run.Name,
-		NodesPerJob:   spec.NumNodes,
+		NodesPerJob:   nodesPerJob,
 		GpusPerNode:   gpusPerNode,
 		MlnxPerNode:   mlnxPerNode,
 		EnableMNNVL:   enableMNNVL,
@@ -424,7 +444,10 @@ func (r *WorkloadRunReconciler) buildJobTemplate(run *nvcrev1alpha1.WorkloadRun,
 		args = exec.Args
 	}
 
-	// Build the TrainJobSpec.
+	// Build the TrainJobSpec. NumNodes is scale-adjusted: the Workflow
+	// controller partitions the target by the trainer's node count, so
+	// testScale intra-node must land here as 1 for one group per node.
+	numNodes := NodesPerJobForScale(spec.Orchestration, spec.NumNodes)
 	trainJobSpec := &trainerv1alpha1.TrainJobSpec{
 		RuntimeRef: trainerv1alpha1.RuntimeRef{
 			Name: fmt.Sprintf("%s-runtime", run.Name),
@@ -434,7 +457,7 @@ func (r *WorkloadRunReconciler) buildJobTemplate(run *nvcrev1alpha1.WorkloadRun,
 			Image:          &spec.Image,
 			Command:        command,
 			Args:           args,
-			NumNodes:       &spec.NumNodes,
+			NumNodes:       &numNodes,
 			NumProcPerNode: &gpusPerNode,
 		},
 	}
@@ -548,9 +571,9 @@ func buildWROrchestration(spec *nvcrev1alpha1.WorkloadRunSpec) *nvcrev1alpha1.Or
 		}
 		switch spec.Orchestration.TestScale {
 		case nvcrev1alpha1.TestScaleIntraNode:
-			// Handled by nodesPerJobForScale when the workload is built:
-			// one node per Job, so the Workflow makes one group per node.
-			// Nothing to set on the orchestration itself.
+			// Handled by NodesPerJobForScale in buildWorkflowSpec and
+			// buildJobTemplate: one node per Job, so the Workflow makes one
+			// group per node. Nothing to set on the orchestration itself.
 		case "intra-rack":
 			// TopologyKey is set by platform override (workloadrun.yaml)
 			// to the platform's physical rack label.

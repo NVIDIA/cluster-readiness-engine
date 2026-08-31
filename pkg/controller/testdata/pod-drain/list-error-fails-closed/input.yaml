@@ -1,0 +1,8 @@
+# Before the grace period expires a pod-list failure fails closed: keep
+# waiting rather than risk revoking an allocation a live pod still holds.
+job:
+  failedAgeSeconds: 30
+pods:
+  - name: worker-0
+    phase: Running
+listError: true

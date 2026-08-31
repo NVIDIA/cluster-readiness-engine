@@ -64,6 +64,10 @@ const (
 	ReasonJobCreationError    = "JobCreationError"
 	ReasonJobValidationFailed = "JobValidationFailed"
 
+	// ReasonJobTimedOut marks a Job's Failed condition set by the Workflow when
+	// the Job exceeded timeoutPerJob. Timed-out jobs are never retried.
+	ReasonJobTimedOut = "JobTimedOut"
+
 	ReasonGroupsPartitioned  = "GroupsPartitioned"
 	ReasonIterationCompleted = "IterationCompleted"
 	ReasonIterationsFailed   = "IterationsFailed"

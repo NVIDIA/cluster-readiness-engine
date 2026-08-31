@@ -1,0 +1,8 @@
+# After the grace period a persistent pod-list failure fails open: proceeding
+# is the bounded worst case, wedging the Workflow forever is not acceptable.
+job:
+  failedAgeSeconds: 600
+pods:
+  - name: worker-0
+    phase: Running
+listError: true

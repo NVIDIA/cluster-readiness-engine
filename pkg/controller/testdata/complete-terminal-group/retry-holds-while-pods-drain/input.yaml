@@ -1,0 +1,9 @@
+# Failed job with retry budget while a workload pod is still terminating: the
+# workload must be deleted immediately (drain starts now), but the group must
+# be held exactly as it was — no Pending reset, no dependency cleanup, no
+# completion time — so the retry cannot relaunch onto undrained nodes.
+retryFailedGroups: 1
+jobFailedReason: WorkloadFailed
+pods:
+  - name: worker-0
+    phase: Running
