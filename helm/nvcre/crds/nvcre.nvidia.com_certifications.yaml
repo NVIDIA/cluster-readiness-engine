@@ -198,6 +198,60 @@ spec:
                           format: int32
                           minimum: 1
                           type: integer
+                        resources:
+                          description: |-
+                            resources overrides the CPU and memory resources of training workload
+                            containers. Training entries default to DGX-class sizing (limits:
+                            cpu "128" / memory "800Gi"; requests: cpu "64" / memory "500Gi") — set
+                            this on smaller nodes so training pods can schedule. Each of the four
+                            values independently falls back to its default when unset. GPU count is
+                            controlled by gpusPerNode. Non-training entries ignore this field.
+                            Platform-specific catalog overrides (for example AWS with H100 GPUs)
+                            may supersede these values.
+                          properties:
+                            limits:
+                              description: limits overrides the container resource
+                                limits.
+                              properties:
+                                cpu:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  description: cpu is the CPU quantity (e.g., "6",
+                                    "1500m").
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                                memory:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  description: memory is the memory quantity (e.g.,
+                                    "48Gi").
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                              type: object
+                            requests:
+                              description: requests overrides the container resource
+                                requests.
+                              properties:
+                                cpu:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  description: cpu is the CPU quantity (e.g., "6",
+                                    "1500m").
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                                memory:
+                                  anyOf:
+                                  - type: integer
+                                  - type: string
+                                  description: memory is the memory quantity (e.g.,
+                                    "48Gi").
+                                  pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                  x-kubernetes-int-or-string: true
+                              type: object
+                          type: object
                         saveInterval:
                           description: |-
                             saveInterval sets the checkpoint save frequency in training steps.
@@ -419,6 +473,54 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
+              resources:
+                description: |-
+                  resources overrides the CPU and memory resources of training workload
+                  containers. Training entries default to DGX-class sizing (limits:
+                  cpu "128" / memory "800Gi"; requests: cpu "64" / memory "500Gi") — set
+                  this on smaller nodes so training pods can schedule. Each of the four
+                  values independently falls back to its default when unset. GPU count is
+                  controlled by gpusPerNode. Non-training entries ignore this field.
+                  Platform-specific catalog overrides (for example AWS with H100 GPUs)
+                  may supersede these values.
+                properties:
+                  limits:
+                    description: limits overrides the container resource limits.
+                    properties:
+                      cpu:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: cpu is the CPU quantity (e.g., "6", "1500m").
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      memory:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: memory is the memory quantity (e.g., "48Gi").
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                    type: object
+                  requests:
+                    description: requests overrides the container resource requests.
+                    properties:
+                      cpu:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: cpu is the CPU quantity (e.g., "6", "1500m").
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      memory:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: memory is the memory quantity (e.g., "48Gi").
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                    type: object
+                type: object
               saveInterval:
                 description: |-
                   saveInterval sets the checkpoint save frequency in training steps.

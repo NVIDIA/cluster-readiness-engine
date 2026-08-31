@@ -33,6 +33,13 @@ const (
 	DefaultNumCycles          = 10
 	DefaultMinGroupSize       = 2
 
+	// Training container resource defaults (DGX-class sizing). Overridable
+	// per value via CategoryOptions.resources (issue #83).
+	DefaultTrainingCPULimit      = "128"
+	DefaultTrainingMemoryLimit   = "800Gi"
+	DefaultTrainingCPURequest    = "64"
+	DefaultTrainingMemoryRequest = "500Gi"
+
 	// Diagnose mode uses fewer iterations for faster fault detection.
 	DiagnoseNumIterations = 5
 	DiagnoseNumCycles     = 1
@@ -87,6 +94,22 @@ type TemplateData struct {
 	// MlnxPerNode is the Mellanox NIC count per node for IB/RoCE platforms.
 	// 0 means omit nvidia.com/mlnxnics. Templates use: {{ .MlnxPerNode }}
 	MlnxPerNode int32
+
+	// TrainingCPULimit is the CPU limit for training containers
+	// (always non-empty after defaults). Templates use: {{ .TrainingCPULimit }}
+	TrainingCPULimit string
+
+	// TrainingMemoryLimit is the memory limit for training containers
+	// (always non-empty after defaults). Templates use: {{ .TrainingMemoryLimit }}
+	TrainingMemoryLimit string
+
+	// TrainingCPURequest is the CPU request for training containers
+	// (always non-empty after defaults). Templates use: {{ .TrainingCPURequest }}
+	TrainingCPURequest string
+
+	// TrainingMemoryRequest is the memory request for training containers
+	// (always non-empty after defaults). Templates use: {{ .TrainingMemoryRequest }}
+	TrainingMemoryRequest string
 
 	// EnableMNNVL controls the NCCL_MNNVL_ENABLE env var.
 	// Templates use: {{ if .EnableMNNVL }}1{{ else }}0{{ end }}
@@ -472,6 +495,8 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 	if td.MinGroupSize == 0 {
 		td.MinGroupSize = DefaultMinGroupSize
 	}
+	td.TrainingCPULimit, td.TrainingMemoryLimit,
+		td.TrainingCPURequest, td.TrainingMemoryRequest = resolveTrainingResources(config.Resources)
 	td.TimeoutPerJob = resolveTimeoutPerJob(td.TimeoutPerJob, meta.TimeoutPerJob, td.TestScale)
 	tp, pp, ep := meta.getParallel(configArch)
 	if tp > 0 {
@@ -499,6 +524,39 @@ func defaultIterations(emptyRender []byte) int {
 		return 1
 	}
 	return spec.Orchestration.Iterations
+}
+
+// resolveTrainingResources resolves the CPU/memory values that training
+// entries template into their container resources. Each value falls back to
+// its DGX-class default independently, so a user who overrides only the
+// memory keeps the default CPU sizing (and vice versa). Kubernetes rejects a
+// pod whose requests exceed its limits, so a partial override that inverts
+// the two fails loudly at admission rather than silently here.
+func resolveTrainingResources(res *nvcrev1alpha1.CategoryResources) (cpuLimit, memLimit, cpuRequest, memRequest string) {
+	cpuLimit = DefaultTrainingCPULimit
+	memLimit = DefaultTrainingMemoryLimit
+	cpuRequest = DefaultTrainingCPURequest
+	memRequest = DefaultTrainingMemoryRequest
+	if res == nil {
+		return cpuLimit, memLimit, cpuRequest, memRequest
+	}
+	if res.Limits != nil {
+		if res.Limits.CPU != nil {
+			cpuLimit = res.Limits.CPU.String()
+		}
+		if res.Limits.Memory != nil {
+			memLimit = res.Limits.Memory.String()
+		}
+	}
+	if res.Requests != nil {
+		if res.Requests.CPU != nil {
+			cpuRequest = res.Requests.CPU.String()
+		}
+		if res.Requests.Memory != nil {
+			memRequest = res.Requests.Memory.String()
+		}
+	}
+	return cpuLimit, memLimit, cpuRequest, memRequest
 }
 
 // resolveTimeoutPerJob resolves the effective timeoutPerJob for an entry.

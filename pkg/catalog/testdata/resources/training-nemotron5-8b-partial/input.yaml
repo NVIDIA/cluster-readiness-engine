@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Partial override: only memory is set. CPU must keep the catalog defaults
+# (limit "128", request "64") — each value falls back independently.
+category: training
+subcategory: nemotron5-8b
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+nodesPerJob: 1
+gpusPerNode: 4
+resources:
+  limits:
+    memory: 400Gi
+  requests:
+    memory: 200Gi

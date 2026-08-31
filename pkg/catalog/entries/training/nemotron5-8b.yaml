@@ -145,12 +145,12 @@ dependencies:
                     resources:
                       limits:
                         nvidia.com/gpu: "{{ .GpusPerNode }}"
-                        memory: 800Gi
-                        cpu: "128"
+                        memory: "{{ .TrainingMemoryLimit }}"
+                        cpu: "{{ .TrainingCPULimit }}"
                       requests:
                         nvidia.com/gpu: "{{ .GpusPerNode }}"
-                        memory: 500Gi
-                        cpu: "64"
+                        memory: "{{ .TrainingMemoryRequest }}"
+                        cpu: "{{ .TrainingCPURequest }}"
                     volumeMounts:
                     - name: workspace
                       mountPath: /mnt/workspace

@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Full resources override, sized for the 8 vCPU / 64 GiB A100 nodes from
+# issue #83. All four CPU/memory values must render; the GPU count must
+# still come from gpusPerNode.
+category: training
+subcategory: nemotron5-8b
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+nodesPerJob: 4
+gpusPerNode: 2
+resources:
+  limits:
+    cpu: "6"
+    memory: 48Gi
+  requests:
+    cpu: "4"
+    memory: 32Gi

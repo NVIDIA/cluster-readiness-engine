@@ -5,6 +5,7 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -71,6 +72,31 @@ type CertificationCategoryStatus struct {
 	FailedNodesRef *corev1.TypedLocalObjectReference `json:"failedNodesRef,omitempty"`
 }
 
+// CategoryResourceList holds CPU and memory quantities for one side
+// (limits or requests) of a training container's resources.
+type CategoryResourceList struct {
+	// cpu is the CPU quantity (e.g., "6", "1500m").
+	// +optional
+	CPU *resource.Quantity `json:"cpu,omitempty"`
+
+	// memory is the memory quantity (e.g., "48Gi").
+	// +optional
+	Memory *resource.Quantity `json:"memory,omitempty"`
+}
+
+// CategoryResources overrides the CPU and memory resources applied to
+// training workload containers. Each value that is unset keeps the catalog
+// default for that value. GPU count is controlled by gpusPerNode, not here.
+type CategoryResources struct {
+	// limits overrides the container resource limits.
+	// +optional
+	Limits *CategoryResourceList `json:"limits,omitempty"`
+
+	// requests overrides the container resource requests.
+	// +optional
+	Requests *CategoryResourceList `json:"requests,omitempty"`
+}
+
 // CategoryOptions holds configuration for catalog workloads.
 // Used as global defaults in CertificationSpec (embedded inline)
 // and as per-category overrides in CertificateCategory.Options.
@@ -121,6 +147,17 @@ type CategoryOptions struct {
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	MlnxPerNode *int32 `json:"mlnxPerNode,omitempty"`
+
+	// resources overrides the CPU and memory resources of training workload
+	// containers. Training entries default to DGX-class sizing (limits:
+	// cpu "128" / memory "800Gi"; requests: cpu "64" / memory "500Gi") — set
+	// this on smaller nodes so training pods can schedule. Each of the four
+	// values independently falls back to its default when unset. GPU count is
+	// controlled by gpusPerNode. Non-training entries ignore this field.
+	// Platform-specific catalog overrides (for example AWS with H100 GPUs)
+	// may supersede these values.
+	// +optional
+	Resources *CategoryResources `json:"resources,omitempty"`
 
 	// enableMNNVL enables Multi-Node NVLink (NCCL_MNNVL_ENABLE=1) for training
 	// and communication workloads. Defaults to false (NCCL_MNNVL_ENABLE=0).
