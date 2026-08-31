@@ -1,0 +1,13 @@
+# A dependency carrying the workflow-uid annotation stamped at creation
+# (cluster-scoped or job-scoped dependency that cannot own-reference the
+# Workflow).
+workflow:
+  name: my-workflow
+  uid: 11111111-1111-1111-1111-111111111111
+object:
+  apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: ClusterTrainingRuntime
+  metadata:
+    name: my-runtime
+    annotations:
+      nvcre.nvidia.com/workflow-uid: 11111111-1111-1111-1111-111111111111

@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Wait for the Certification to fail with WorkflowNameCollision (a foreign
+# Workflow holds the generated child name), then delete the Certification and
+# verify the foreign Workflow survives the finalizer.
+waitFor:
+  kind: Certification
+  name: cert-wf-collide
+  namespace: default
+  condition: Failed
+  reason: WorkflowNameCollision
+deleteAfterWait:
+  - kind: Certification
+    name: cert-wf-collide
+    namespace: default
+waitForDeletion:
+  - kind: Certification
+    name: cert-wf-collide
+    namespace: default
+collect:
+  - kind: Workflow
+    name: cert-wf-collide-communica-2e0b0
+    namespace: default

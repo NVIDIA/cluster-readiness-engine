@@ -182,6 +182,16 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 			}
 			return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 		}
+		// A foreign Workflow holds the generated name: terminal, no retry, and
+		// the collision is never recorded so cleanup cannot touch the object.
+		var collision *nameCollisionError
+		if errors.As(err, &collision) {
+			log.Error(err, "Workflow name collision", "domain", firstCategory.Domain, "variant", firstCategory.Variant)
+			if statusErr := r.setCertificationFailed(ctx, certification, collision.Reason, err.Error()); statusErr != nil {
+				log.Error(statusErr, "Failed to update Certification status after Workflow name collision")
+			}
+			return ctrl.Result{}, nil
+		}
 		log.Error(err, "Failed to build Workflow for category", "domain", firstCategory.Domain, "variant", firstCategory.Variant)
 		if statusErr := r.setCertificationFailed(ctx, certification, ReasonWorkflowValidationFailed, err.Error()); statusErr != nil {
 			log.Error(statusErr, "Failed to update Certification status after Workflow build failure")
@@ -245,6 +255,16 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 				log.Error(statusErr, "Failed to record waiting-for-nodes status")
 			}
 			return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
+		}
+		// A foreign Workflow holds the generated name: terminal, no retry, and
+		// the collision is never recorded so cleanup cannot touch the object.
+		var collision *nameCollisionError
+		if errors.As(err, &collision) {
+			log.Error(err, "Workflow name collision", "domain", category.Domain, "variant", category.Variant)
+			if statusErr := r.setCertificationFailed(ctx, certification, collision.Reason, err.Error()); statusErr != nil {
+				log.Error(statusErr, "Failed to update Certification status after Workflow name collision")
+			}
+			return ctrl.Result{}, nil
 		}
 		log.Error(err, "Failed to build Workflow for category", "domain", category.Domain, "variant", category.Variant)
 		if statusErr := r.setCertificationFailed(ctx, certification, ReasonWorkflowValidationFailed, err.Error()); statusErr != nil {
@@ -507,7 +527,29 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	log.Info("Creating Workflow", "name", workflowName, "domain", category.Domain, "variant", category.Variant)
 	if err := r.Create(ctx, workflow); err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			log.Info("Workflow already exists, proceeding", "name", workflowName)
+			// Never adopt a pre-existing Workflow blindly. Fetch it and verify it
+			// is the one this Certification created (a duplicate create caused by
+			// cache lag or a crash-retry). A foreign Workflow with the generated
+			// name is never recorded — the finalizer would otherwise delete it.
+			existing := &nvcrev1alpha1.Workflow{}
+			if getErr := r.Get(ctx, client.ObjectKeyFromObject(workflow), existing); getErr != nil {
+				return "", fmt.Errorf("failed to get existing Workflow %s: %w", workflowName, getErr)
+			}
+			if !metav1.IsControlledBy(existing, certification) {
+				// A foreign holder that is already terminating (e.g. the child of
+				// a same-named Certification that was just deleted) releases the
+				// name shortly: retry with backoff instead of failing terminally.
+				if !existing.DeletionTimestamp.IsZero() {
+					return "", fmt.Errorf("existing Workflow %q in namespace %q is being deleted; retrying",
+						workflowName, certification.Namespace)
+				}
+				return "", &nameCollisionError{
+					Reason: ReasonWorkflowNameCollision,
+					Message: fmt.Sprintf("Workflow %q already exists in namespace %q and is not controlled by Certification %q; refusing to adopt it",
+						workflowName, certification.Namespace, certification.Name),
+				}
+			}
+			log.Info("Workflow already exists and is controlled by this Certification, proceeding", "name", workflowName)
 		} else {
 			log.Error(err, "Failed to create Workflow", "name", workflowName)
 			if statusErr := r.setCertificationFailed(ctx, certification, ReasonWorkflowFailed,
@@ -879,8 +921,20 @@ func (r *CertificationReconciler) handleDeletion(ctx context.Context, certificat
 		}
 		workflow := &nvcrev1alpha1.Workflow{}
 		if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: catStatus.WorkflowRef.Name}, workflow); err == nil {
+			// Only delete Workflows this Certification actually created. A
+			// same-named foreign Workflow (a name collision, or a stale ref)
+			// must survive the finalizer.
+			if !metav1.IsControlledBy(workflow, certification) {
+				log.Info("Skipping Workflow not controlled by this Certification", "name", catStatus.WorkflowRef.Name)
+				continue
+			}
 			log.Info("Deleting owned Workflow", "name", catStatus.WorkflowRef.Name)
-			if err := r.Delete(ctx, workflow); err != nil && !apierrors.IsNotFound(err) {
+			// The UID precondition closes the window between the ownership check
+			// above and this delete: if the owned Workflow was replaced by a
+			// same-named foreign one in between, the API server rejects the
+			// delete with a conflict and we leave the newcomer alone.
+			if err := r.Delete(ctx, workflow, client.Preconditions{UID: new(workflow.UID)}); err != nil &&
+				!apierrors.IsNotFound(err) && !apierrors.IsConflict(err) {
 				return ctrl.Result{}, fmt.Errorf("failed to delete Workflow %s: %w", catStatus.WorkflowRef.Name, err)
 			}
 		} else if !apierrors.IsNotFound(err) {

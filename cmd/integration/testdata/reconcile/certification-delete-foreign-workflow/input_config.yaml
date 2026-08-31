@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Wait for the Certification to reach Failed (its only category is already
+# Failed, so finalizeCertification runs), then delete the Certification and
+# verify the finalizer skips the referenced Workflow it does not control.
+waitFor:
+  kind: Certification
+  name: cert-del-foreign
+  namespace: default
+  condition: Failed
+  reason: WorkflowFailed
+deleteAfterWait:
+  - kind: Certification
+    name: cert-del-foreign
+    namespace: default
+waitForDeletion:
+  - kind: Certification
+    name: cert-del-foreign
+    namespace: default
+collect:
+  - kind: Workflow
+    name: foreign-wf-keep
+    namespace: default

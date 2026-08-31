@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A user's pre-existing CLUSTER-SCOPED object (a LogProfile with no NVCRE
+# labels, annotations, or owner references) collides with the name of a
+# Workflow dependency. Cluster-scoped dependencies cannot carry an owner
+# reference to the namespaced Workflow, so the workflow-uid annotation is the
+# only creation identity — and this object has none. The controller must NOT
+# adopt it: the Workflow fails with DependencyNameCollision, the LogProfile is
+# never recorded in status.dependencyRefs, and deleting the Workflow leaves it
+# untouched.
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: gpu-node-01
+---
+# The user's pre-existing cluster-scoped LogProfile. No NVCRE ownership markers.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: user-logprofile-keep
+spec:
+  timestamp:
+    layout: "2006-01-02T15:04:05.999999999Z"
+  patterns:
+    applicationStart:
+      regex: 'Application initialized'
+      example: '[user I 2026-01-22 10:20:00] Application initialized'
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: wf-cluster-dep-collision
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+  dependencies:
+    - apiVersion: nvcre.nvidia.com/v1alpha1
+      kind: LogProfile
+      metadata:
+        name: user-logprofile-keep
+      spec:
+        timestamp:
+          layout: "2006-01-02T15:04:05.999999999Z"
+        patterns:
+          applicationStart:
+            regex: 'NVCRE application started'
+            example: '[nvcre I 2026-01-22 10:20:00] NVCRE application started'

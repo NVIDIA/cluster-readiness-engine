@@ -1,0 +1,16 @@
+# A dependency carrying an owner reference with the Workflow's UID
+# (workflow-scoped dependency created by this Workflow).
+workflow:
+  name: my-workflow
+  uid: 11111111-1111-1111-1111-111111111111
+object:
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: my-dep
+    namespace: default
+    ownerReferences:
+      - apiVersion: nvcre.nvidia.com/v1alpha1
+        kind: Workflow
+        name: my-workflow
+        uid: 11111111-1111-1111-1111-111111111111

@@ -837,6 +837,12 @@ func getObject(ctx context.Context, t *testing.T, c client.Client, spec collectS
 			return nil
 		}
 		return obj
+	case "LogProfile":
+		obj := &nvcrev1alpha1.LogProfile{}
+		if err := c.Get(ctx, types.NamespacedName{Name: spec.Name}, obj); err != nil {
+			return nil
+		}
+		return obj
 	case "Namespace":
 		obj := &corev1.Namespace{}
 		if err := c.Get(ctx, types.NamespacedName{Name: spec.Name}, obj); err != nil {
@@ -925,6 +931,13 @@ func sanitizeObject(obj client.Object) {
 		refs[i].UID = ""
 	}
 	obj.SetOwnerReferences(refs)
+
+	// Normalize the workflow-uid creation-identity annotation: it embeds the
+	// Workflow's UID, which changes every envtest run.
+	if ann := obj.GetAnnotations(); ann["nvcre.nvidia.com/workflow-uid"] != "" {
+		ann["nvcre.nvidia.com/workflow-uid"] = "workflow-uid"
+		obj.SetAnnotations(ann)
+	}
 
 	// Clear condition timestamps.
 	switch o := obj.(type) {
