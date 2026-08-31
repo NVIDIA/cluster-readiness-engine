@@ -1,0 +1,4 @@
+thresholds:
+  busBandwidthGBps: "value >= 400"
+measured:
+  busBandwidthGBps: 350

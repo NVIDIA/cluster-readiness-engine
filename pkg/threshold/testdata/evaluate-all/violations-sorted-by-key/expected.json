@@ -1,0 +1,18 @@
+{
+  "violations": [
+    {
+      "Key": "avgStepTimeSec",
+      "Expression": "value <= 3.0",
+      "Measured": 5,
+      "Reason": "ThresholdViolated",
+      "Message": "Threshold \"avgStepTimeSec\" violated: measured 5.0000, expression: value <= 3.0"
+    },
+    {
+      "Key": "goodputRatio",
+      "Expression": "value >= 0.9",
+      "Measured": 0.5,
+      "Reason": "ThresholdViolated",
+      "Message": "Threshold \"goodputRatio\" violated: measured 0.5000, expression: value >= 0.9"
+    }
+  ]
+}

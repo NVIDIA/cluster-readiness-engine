@@ -52,6 +52,43 @@ func TestEvaluate(t *testing.T) {
 	})
 }
 
+// TestEvaluateAll covers the pass, violation, invalid-expression, and
+// missing-measurement paths, plus the unknown-key error (issue #52): a key
+// that is not in the Registry makes EvaluateAll return an error naming the
+// key and listing the valid keys, instead of silently skipping validation.
+func TestEvaluateAll(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "evaluate-all",
+		ExpectedSuffix: ".json",
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			Thresholds map[string]string  `json:"thresholds"`
+			Measured   map[string]float64 `json:"measured"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
+
+		violations, err := EvaluateAll(in.Thresholds, in.Measured)
+		if err != nil {
+			return err
+		}
+
+		var buf bytes.Buffer
+		enc := json.NewEncoder(&buf)
+		enc.SetEscapeHTML(false)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(struct {
+			Violations []Violation `json:"violations"`
+		}{violations}); err != nil {
+			return err
+		}
+		tc.Actual = buf.String()
+		return nil
+	})
+}
+
 func TestValidateKeys(t *testing.T) {
 	t.Run("all known", func(t *testing.T) {
 		unknown := ValidateKeys(map[string]string{

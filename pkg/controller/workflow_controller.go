@@ -1799,11 +1799,12 @@ func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *nvcre
 
 	if failedGroups > 0 {
 		isHardware := r.hasHardwareFailures(ctx, workflow)
+		hasValidation := r.hasValidationFailures(ctx, workflow)
 
 		reason := ReasonIterationsFailed
-		if r.hasHardwareFailures(ctx, workflow) {
+		if isHardware {
 			reason = ReasonJobHardwareFailed
-		} else if r.hasValidationFailures(ctx, workflow) {
+		} else if hasValidation {
 			reason = ReasonJobValidationFailed
 		}
 
@@ -1816,9 +1817,22 @@ func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *nvcre
 			logf.FromContext(ctx).Error(err, "Failed to record succeeded nodes to ConfigMap")
 		}
 
-		return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, reason, msg,
+		extras := []func(*nvcrev1alpha1.Workflow) bool{
 			applySucceededNodesRef(workflow.Status.SucceededNodesRef),
-			applyFailedNodesRef(workflow.Status.FailedNodesRef))
+			applyFailedNodesRef(workflow.Status.FailedNodesRef),
+		}
+		if hasValidation {
+			// Supplementary quality signal alongside the exclusive Failed
+			// condition: it lets consumers (the WorkloadRun controller,
+			// certification reports) tell a threshold miss apart from an
+			// execution failure. Set whenever any Job failed threshold
+			// validation, even when hardware failures win the Failed reason,
+			// so mixed-failure runs do not lose the quality signal.
+			extras = append(extras, applyWorkflowValidationFailed(
+				"One or more Jobs failed performance threshold validation"))
+		}
+
+		return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, reason, msg, extras...)
 	}
 
 	msg := fmt.Sprintf("All %d iterations completed successfully", totalIter)
@@ -2102,6 +2116,25 @@ func applyFailedNodesRef(ref *corev1.TypedLocalObjectReference) func(*nvcrev1alp
 		}
 		w.Status.FailedNodesRef = ref
 		return true
+	}
+}
+
+// applyWorkflowValidationFailed returns an extra func for setWorkflowFailed that
+// sets the supplementary WorkflowValidationFailed condition alongside the
+// exclusive Failed condition. ValidationFailed is deliberately NOT part of the
+// exclusive InProgress/Succeeded/Failed trio (see workflow_types.go): it is an
+// independent quality signal that distinguishes "the workload ran but missed
+// its thresholds" from "the workload broke". Applied inside the
+// updateStatusWithRetry closure so it survives 409 conflict re-fetches.
+func applyWorkflowValidationFailed(message string) func(*nvcrev1alpha1.Workflow) bool {
+	return func(w *nvcrev1alpha1.Workflow) bool {
+		return meta.SetStatusCondition(&w.Status.Conditions, metav1.Condition{
+			Type:               nvcrev1alpha1.WorkflowValidationFailed,
+			Status:             metav1.ConditionTrue,
+			Reason:             ReasonJobValidationFailed,
+			Message:            message,
+			ObservedGeneration: w.GetGeneration(),
+		})
 	}
 }
 
