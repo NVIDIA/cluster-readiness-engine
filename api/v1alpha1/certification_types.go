@@ -74,19 +74,33 @@ type CertificationCategoryStatus struct {
 
 // CategoryResourceList holds CPU and memory quantities for one side
 // (limits or requests) of a training container's resources.
+// The MaxLength bounds keep the CEL request/limit comparison on
+// CategoryResources within the API server's validation cost budget; any
+// realistic quantity is far shorter.
 type CategoryResourceList struct {
 	// cpu is the CPU quantity (e.g., "6", "1500m").
 	// +optional
+	// +kubebuilder:validation:XIntOrString
+	// +kubebuilder:validation:MaxLength=32
 	CPU *resource.Quantity `json:"cpu,omitempty"`
 
 	// memory is the memory quantity (e.g., "48Gi").
 	// +optional
+	// +kubebuilder:validation:XIntOrString
+	// +kubebuilder:validation:MaxLength=32
 	Memory *resource.Quantity `json:"memory,omitempty"`
 }
 
 // CategoryResources overrides the CPU and memory resources applied to
 // training workload containers. Each value that is unset keeps the catalog
 // default for that value. GPU count is controlled by gpusPerNode, not here.
+// When a request and its matching limit are both set, the request must not
+// exceed the limit; the CRD rejects the inverted pair at admission. A request
+// set without its matching limit is only checked against the resolved default
+// at pod admission, so raise the limit alongside the request when overriding
+// upward.
+// +kubebuilder:validation:XValidation:rule="!has(self.requests) || !has(self.limits) || !has(self.requests.cpu) || !has(self.limits.cpu) || quantity(string(self.requests.cpu)).compareTo(quantity(string(self.limits.cpu))) <= 0",message="requests.cpu must not exceed limits.cpu"
+// +kubebuilder:validation:XValidation:rule="!has(self.requests) || !has(self.limits) || !has(self.requests.memory) || !has(self.limits.memory) || quantity(string(self.requests.memory)).compareTo(quantity(string(self.limits.memory))) <= 0",message="requests.memory must not exceed limits.memory"
 type CategoryResources struct {
 	// limits overrides the container resource limits.
 	// +optional
@@ -310,9 +324,13 @@ type CertificationSpec struct {
 	// +kubebuilder:validation:Required
 	Target TargetSpec `json:"target"`
 
-	// Categories are the list of certificate categories required for the Target
+	// Categories are the list of certificate categories required for the Target.
+	// The MaxItems bound keeps the CEL rules nested under each category (the
+	// resources request/limit comparison) within the API server's validation
+	// cost budget; the catalog defines far fewer entries than 64.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=64
 	Categories []CertificateCategory `json:"categories,omitempty"`
 
 	// Global defaults for all categories. Per-category options override these.

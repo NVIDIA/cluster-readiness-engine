@@ -529,9 +529,11 @@ func defaultIterations(emptyRender []byte) int {
 // resolveTrainingResources resolves the CPU/memory values that training
 // entries template into their container resources. Each value falls back to
 // its DGX-class default independently, so a user who overrides only the
-// memory keeps the default CPU sizing (and vice versa). Kubernetes rejects a
-// pod whose requests exceed its limits, so a partial override that inverts
-// the two fails loudly at admission rather than silently here.
+// memory keeps the default CPU sizing (and vice versa). When a request and
+// its matching limit are both set, the Certification CRD's CEL rules reject
+// an inverted pair at admission (see CategoryResources). A partial override
+// that inverts against a default (e.g. a request raised above the default
+// limit) still fails loudly at pod admission rather than silently here.
 func resolveTrainingResources(res *nvcrev1alpha1.CategoryResources) (cpuLimit, memLimit, cpuRequest, memRequest string) {
 	cpuLimit = DefaultTrainingCPULimit
 	memLimit = DefaultTrainingMemoryLimit

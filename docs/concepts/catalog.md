@@ -82,6 +82,8 @@ categories:
 
 Each of the four values independently falls back to its default when unset. Values are standard Kubernetes resource quantities. The GPU count is not part of `resources` — it is controlled by `gpusPerNode`. Like all category options, `resources` can also be set at the `Certification` spec level as a global default for every category; a per-category `resources` block replaces the global one entirely (the two are not merged field by field). Non-training entries ignore it.
 
+When a request and its matching limit are both set in the same `resources` block, the request must not exceed the limit — the Certification CRD rejects an inverted pair at admission (`requests.cpu must not exceed limits.cpu`). A request set without its matching limit is only checked against the resolved default when the training pod is admitted, so raise the limit alongside the request when overriding upward.
+
 Note: platform-specific catalog overrides may still supersede these values. On AWS with H100 GPUs, the training entries apply an instance-sized override (limits `cpu: "192"` / `memory: 1800Gi`, requests `cpu: "128"` / `memory: 1200Gi` for p5-class instances) that takes precedence over `resources`.
 
 ## Overrides
