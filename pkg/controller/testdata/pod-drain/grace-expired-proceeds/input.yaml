@@ -1,0 +1,8 @@
+# The Job's terminal condition is older than podDrainGracePeriod (5m): the
+# bound wins over the still-active pod so a pod stuck Terminating cannot
+# wedge the Workflow forever.
+job:
+  failedAgeSeconds: 600
+pods:
+  - name: worker-0
+    phase: Running

@@ -1,0 +1,151 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Pod-drain barrier on the deletion path (issue #121): a healthy running
+# Workflow with a job-scoped ConfigMap dependency and a still-running workload
+# pod. The test deletes the Workflow; handleDeletion deletes the Job, whose
+# finalizer deletes the TrainJob — but with the pod still present, the Job
+# finalizer must NOT unregister, the Workflow must stay in Phase 1 (waiting
+# for Jobs), and the dependency must survive. Deleting the dependency here
+# would revoke the pod's DRA allocation mid-termination (CUDA error 719).
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-wf-drain-del
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  dependencyRefs:
+    - apiVersion: v1
+      kind: ConfigMap
+      name: test-drain-del-dep
+      namespace: default
+      scope: job
+      groupName: group-0
+      iteration: 1
+  orchestration:
+    totalNodes: 1
+    nodesPerJob: 1
+    totalGroups: 1
+    currentIteration: 1
+    completedIterations: 0
+    groups:
+      - name: group-0
+        nodes:
+          - gpu-node-01
+        phase: Running
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: test-wf-drain-del-group-0-iter-1
+          namespace: default
+---
+# The InProgress message matches what the Job controller writes for a running
+# TrainJob so the collected Job status is identical whether or not the Job
+# controller reconciles it again before the Workflow deletion starts.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-wf-drain-del-group-0-iter-1
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: test-wf-drain-del
+    nvcre.nvidia.com/group: group-0
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "True"
+      reason: WorkloadRunning
+      message: "Workload TrainJob/test-wf-drain-del-group-0-iter-1-workload is running"
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+    - type: Succeeded
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+    - type: Failed
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-wf-drain-del-group-0-iter-1-workload
+    namespace: default
+---
+# Healthy running TrainJob workload; deleted by the Job finalizer during the cascade.
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-wf-drain-del-group-0-iter-1-workload
+  namespace: default
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - python
+      - train.py
+    numNodes: 1
+  suspend: false
+  managedBy: trainer.kubeflow.org/trainjob-controller
+---
+# A workload pod that stays Running for the whole test (envtest has no
+# kubelet); the Job finalizer's drain barrier must hold on it.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-wf-drain-del-worker-0
+  namespace: default
+  labels:
+    nvcre.nvidia.com/job: test-wf-drain-del-group-0-iter-1
+spec:
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Running
+---
+# Job-scoped ConfigMap dependency; must survive while the pod is draining.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-drain-del-dep
+  namespace: default
+  labels:
+    nvcre.nvidia.com/workflow: test-wf-drain-del
+data:
+  config.yaml: |
+    test: drain-del-data

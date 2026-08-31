@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# intra-node tests each node on its own: however many nodes the run targets,
+# every Job spans exactly one, and the Workflow makes one group per node.
+numNodes: 4
+orchestration:
+  testScale: intra-node

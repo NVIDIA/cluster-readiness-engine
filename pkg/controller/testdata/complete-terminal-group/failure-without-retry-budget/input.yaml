@@ -1,0 +1,5 @@
+# No retry budget: terminal failure cleans up the job-scoped dependency and
+# fails the group; the Job object survives for the report.
+retryFailedGroups: 0
+jobFailedReason: WorkloadFailed
+pods: []

@@ -1,0 +1,8 @@
+# Success path: dependencies are cleaned and the group succeeds without
+# deleting the workload and without consulting the drain barrier — a
+# succeeded workload's pods have already exited on their own.
+retryFailedGroups: 1
+jobSucceeded: true
+pods:
+  - name: worker-0
+    phase: Succeeded

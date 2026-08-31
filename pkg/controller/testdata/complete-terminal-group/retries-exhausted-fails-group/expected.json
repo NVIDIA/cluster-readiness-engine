@@ -1,0 +1,11 @@
+{
+  "draining": false,
+  "groupPhase": "Failed",
+  "retries": 1,
+  "hasJobRef": true,
+  "hasCompletionTime": true,
+  "dependencyRefs": [],
+  "depConfigMapExists": false,
+  "workloadExists": false,
+  "jobExists": true
+}

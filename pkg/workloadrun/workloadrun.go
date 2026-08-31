@@ -49,17 +49,6 @@ const (
 	statusFailed = "Failed"
 )
 
-// nodesPerJobForScale returns how many nodes a single Job should span.
-// intra-node means each node is tested on its own, so one node per Job however
-// many the run targets; the Workflow then makes one group per node. Anything
-// else keeps the requested count.
-func nodesPerJobForScale(orch *nvcrev1alpha1.WorkloadOrchestration, numNodes int32) int32 {
-	if orch != nil && orch.TestScale == nvcrev1alpha1.TestScaleIntraNode {
-		return 1
-	}
-	return numNodes
-}
-
 // resolveWRTimeout turns a user-supplied timeoutPerJob into a duration, falling
 // back to the WorkloadRun default. An unparseable value falls back too rather
 // than leaving the Job unbounded, which is what used to happen silently.
@@ -275,7 +264,7 @@ func BuildWorkflowSpec(
 	rtCfg := platform.RuntimeConfig{
 		EntryName:        run.Name,
 		Image:            spec.Image,
-		NodesPerJob:      nodesPerJobForScale(spec.Orchestration, spec.NumNodes),
+		NodesPerJob:      controller.NodesPerJobForScale(spec.Orchestration, spec.NumNodes),
 		GpusPerNode:      gpusPerNode,
 		Env:              mergedEnv,
 		Volumes:          volumes,
@@ -340,7 +329,7 @@ func BuildWorkflowSpec(
 	// Build platform overrides.
 	overrideCfg := platform.OverrideConfig{
 		EntryName:     run.Name,
-		NodesPerJob:   nodesPerJobForScale(spec.Orchestration, spec.NumNodes),
+		NodesPerJob:   controller.NodesPerJobForScale(spec.Orchestration, spec.NumNodes),
 		GpusPerNode:   gpusPerNode,
 		MlnxPerNode:   mlnxPerNode,
 		EnableMNNVL:   enableMNNVL,
@@ -388,7 +377,7 @@ func applyPlatformMPIArgs(
 	}
 	wrOverrides := platform.BuildOverrides(platform.OverrideConfig{
 		EntryName:     run.Name,
-		NodesPerJob:   nodesPerJobForScale(run.Spec.Orchestration, run.Spec.NumNodes),
+		NodesPerJob:   controller.NodesPerJobForScale(run.Spec.Orchestration, run.Spec.NumNodes),
 		GpusPerNode:   gpusPerNode,
 		MlnxPerNode:   mlnxPerNode,
 		EnableMNNVL:   enableMNNVL,
@@ -464,7 +453,7 @@ func buildCLIJobTemplate(
 			Image:          &spec.Image,
 			Command:        command,
 			Args:           args,
-			NumNodes:       new(nodesPerJobForScale(spec.Orchestration, spec.NumNodes)),
+			NumNodes:       new(controller.NodesPerJobForScale(spec.Orchestration, spec.NumNodes)),
 			NumProcPerNode: &gpusPerNode,
 		},
 	}
