@@ -581,6 +581,12 @@ type collectSpec struct {
 	Kind      string `json:"kind"`
 	Name      string `json:"name"`
 	Namespace string `json:"namespace"`
+	// StripFinalizers is honored by deleteAfterWait only: it force-removes the
+	// object's finalizers after the delete, for kinds whose finalizer-removing
+	// controller does not run under envtest (e.g. the pvc-protection controller
+	// for PVCs). This makes the object actually disappear, simulating the API
+	// server's GC cascade fully removing it mid-test.
+	StripFinalizers bool `json:"stripFinalizers,omitempty"`
 }
 
 func parseWaitConfig(tc *testutil.TestCase) waitConfig {
@@ -645,6 +651,23 @@ func deleteAfterWait(t *testing.T, c client.Client, specs []collectSpec) {
 		require.NoError(t, c.Delete(ctx, obj),
 			"deleteAfterWait: failed to delete %s/%s", spec.Kind, spec.Name)
 		t.Logf("deleteAfterWait: deleted %s/%s", spec.Kind, spec.Name)
+		if spec.StripFinalizers {
+			require.Eventually(t, func() bool {
+				fresh := getObject(ctx, t, c, spec)
+				if fresh == nil {
+					return true
+				}
+				if len(fresh.GetFinalizers()) > 0 {
+					fresh.SetFinalizers(nil)
+					if err := c.Update(ctx, fresh); err != nil {
+						t.Logf("deleteAfterWait: retrying finalizer strip on %s/%s: %v", spec.Kind, spec.Name, err)
+						return false
+					}
+				}
+				return true
+			}, 10*time.Second, 100*time.Millisecond,
+				"deleteAfterWait: failed to strip finalizers from %s/%s", spec.Kind, spec.Name)
+		}
 	}
 }
 

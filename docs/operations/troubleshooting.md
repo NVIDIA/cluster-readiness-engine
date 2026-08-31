@@ -78,7 +78,7 @@ kubectl logs -n nvcre deploy/nvcre-manager \
 **Solutions:**
 
 - Pods are terminating normally — no action needed; cleanup resumes as soon as they are gone.
-- A pod is stuck `Terminating` (for example, its node is unreachable) — cleanup proceeds automatically after the 5-minute grace period. To unblock sooner, force-delete the pod: `kubectl delete pod <pod> --grace-period=0 --force`.
+- A pod is stuck `Terminating` (for example, its node is unreachable) — cleanup proceeds automatically after the 5-minute grace period. To unblock sooner, force-delete the pod: `kubectl delete pod <pod> --grace-period=0 --force`. **Only do this when the node is confirmed unreachable or the pod's processes are known to be dead**: force deletion removes the Pod object without waiting for its processes to stop, so the controller may then delete the ComputeDomain while CUDA kernels are still running on the node — the exact CUDA error 719 failure the drain wait exists to prevent.
 
 ## Failed with a name-collision reason
 
@@ -90,8 +90,8 @@ kubectl logs -n nvcre deploy/nvcre-manager \
 
 ```bash
 # The condition message names the colliding object
-kubectl get certifications.nvcre.nvidia.com <name> -o yaml
-kubectl get workflows.nvcre.nvidia.com <name> -o yaml
+kubectl get certifications.nvcre.nvidia.com <name> -n <namespace> -o yaml
+kubectl get workflows.nvcre.nvidia.com <name> -n <namespace> -o yaml
 
 # Inspect the colliding object's owners and labels
 kubectl get <kind> <colliding-name> -n <namespace> -o yaml

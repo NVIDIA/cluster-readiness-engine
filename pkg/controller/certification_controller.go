@@ -189,6 +189,11 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 			log.Error(err, "Workflow name collision", "domain", firstCategory.Domain, "variant", firstCategory.Variant)
 			if statusErr := r.setCertificationFailed(ctx, certification, collision.Reason, err.Error()); statusErr != nil {
 				log.Error(statusErr, "Failed to update Certification status after Workflow name collision")
+				// setCertificationFailed already retries conflicts, so a
+				// surviving error is a real write failure. This branch is
+				// terminal (no requeue): return the error so the Failed status
+				// is retried rather than silently dropped.
+				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{}, nil
 		}
@@ -263,6 +268,11 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 			log.Error(err, "Workflow name collision", "domain", category.Domain, "variant", category.Variant)
 			if statusErr := r.setCertificationFailed(ctx, certification, collision.Reason, err.Error()); statusErr != nil {
 				log.Error(statusErr, "Failed to update Certification status after Workflow name collision")
+				// setCertificationFailed already retries conflicts, so a
+				// surviving error is a real write failure. This branch is
+				// terminal (no requeue): return the error so the Failed status
+				// is retried rather than silently dropped.
+				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{}, nil
 		}
