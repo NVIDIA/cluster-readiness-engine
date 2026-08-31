@@ -60,6 +60,11 @@ func TestBuildWorkflowSpec(t *testing.T) {
 	})
 }
 
+// nodeJobName is the name of both the worker replicatedJob and the workload
+// container inside a rendered TrainingRuntime. An MPI runtime also holds a
+// "launcher" replicatedJob, whose container is likewise named "node".
+const nodeJobName = "node"
+
 // projection holds the parts of a rendered WorkflowSpec that these cases check.
 type projection struct {
 	Trainer         *trainerv1alpha1.Trainer `json:"trainer"`
@@ -75,6 +80,11 @@ type projection struct {
 	// and not only names, so a case can tell a variable the user asked for apart
 	// from a default that has the same name.
 	WorkerEnv []string `json:"workerEnv"`
+	// LauncherEnv holds the same for the launcher container. Only MPI runtimes
+	// render a launcher, so torch and exec cases omit the field. It exists
+	// because the fix for issue #68 emits env on both MPI containers, and the
+	// worker projection alone cannot see the launcher half regressing.
+	LauncherEnv []string `json:"launcherEnv,omitempty"`
 	// WorkerVolumeMounts and RuntimeVolumes cover the two halves of an inline
 	// config, which a person can remove one at a time.
 	WorkerVolumeMounts []string `json:"workerVolumeMounts"`
@@ -108,6 +118,7 @@ func project(s *nvcrev1alpha1.WorkflowSpec) projection {
 		out.DependencyKinds = append(out.DependencyKinds, dependencyKind(&s.Dependencies[i]))
 	}
 	out.WorkerEnv, out.WorkerVolumeMounts, out.RuntimeVolumes, out.GangSchedulerName, out.GangSchedulerQueue = runtimeWorker(s)
+	out.LauncherEnv = runtimeLauncherEnv(s)
 	return out
 }
 
@@ -138,7 +149,7 @@ func runtimeWorker(s *nvcrev1alpha1.WorkflowSpec) (env, mounts, volumes []string
 	// Pick the job by name. An MPI runtime holds two jobs, "node" and
 	// "launcher", and only "node" runs the worker processes.
 	for _, rj := range rt.Spec.Template.Spec.ReplicatedJobs {
-		if rj.Name != "node" {
+		if rj.Name != nodeJobName {
 			continue
 		}
 		schedulerName = rj.Template.Spec.Template.Spec.SchedulerName
@@ -148,7 +159,7 @@ func runtimeWorker(s *nvcrev1alpha1.WorkflowSpec) (env, mounts, volumes []string
 			volumes = append(volumes, v.Name)
 		}
 		for _, c := range pod.Containers {
-			if c.Name != "node" {
+			if c.Name != nodeJobName {
 				continue
 			}
 			for _, e := range c.Env {
@@ -161,6 +172,36 @@ func runtimeWorker(s *nvcrev1alpha1.WorkflowSpec) (env, mounts, volumes []string
 		return env, mounts, volumes, schedulerName, queueLabel
 	}
 	return nil, nil, nil, "", ""
+}
+
+// runtimeLauncherEnv reads the env vars of the "node" container inside the
+// "launcher" replicatedJob of the runtime dependency. Only MPI runtimes render
+// a launcher, so the result is nil for torch and exec cases. It follows the
+// same named path as runtimeWorker rather than searching the document.
+func runtimeLauncherEnv(s *nvcrev1alpha1.WorkflowSpec) []string {
+	if len(s.Dependencies) == 0 || len(s.Dependencies[0].Raw) == 0 {
+		return nil
+	}
+	var rt trainerv1alpha1.TrainingRuntime
+	if err := json.Unmarshal(s.Dependencies[0].Raw, &rt); err != nil {
+		return nil
+	}
+	var env []string
+	for _, rj := range rt.Spec.Template.Spec.ReplicatedJobs {
+		if rj.Name != "launcher" {
+			continue
+		}
+		for _, c := range rj.Template.Spec.Template.Spec.Containers {
+			if c.Name != nodeJobName {
+				continue
+			}
+			for _, e := range c.Env {
+				env = append(env, e.Name+"="+e.Value)
+			}
+		}
+		return env
+	}
+	return nil
 }
 
 // TestValidateExecFramework drives golden-file cases for validateExecFramework.
