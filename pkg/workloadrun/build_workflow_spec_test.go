@@ -16,9 +16,10 @@ import (
 
 // BuildWorkflowSpec renders the Workflow that "nvcrectl workloadrun render" and
 // "--dry-run" print. The controller does not call it. The controller has its
-// own copy in pkg/controller/workloadrun_controller.go, and the two copies have
-// already drifted apart, so these cases cover the preview only. A passing run
-// here tells you nothing about what happens on a cluster.
+// own copy in pkg/controller/workloadrun_controller.go (both now share
+// controller.NodesPerJobForScale for scale-based sizing, issue #85), so these
+// cases cover the preview only. On-cluster behaviour is covered by
+// cmd/integration/testdata/reconcile/workloadrun-*.
 //
 // Each case records only the fields it is about, instead of the whole spec. The
 // whole spec is about 1040 lines, and about 85% of it is the platform override
