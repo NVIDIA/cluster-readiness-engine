@@ -57,8 +57,10 @@ func TestIsJobTimedOutUsesTheResolvedTimeout(t *testing.T) {
 	wf := &nvcrev1alpha1.Workflow{Spec: nvcrev1alpha1.WorkflowSpec{Orchestration: *orch}}
 
 	started := metav1.NewTime(time.Now().Add(-2 * time.Second))
-	require.True(t, r.isJobTimedOut(wf, &nvcrev1alpha1.GroupStatus{StartTime: &started}))
+	jobStarted := &nvcrev1alpha1.Job{Status: nvcrev1alpha1.JobStatus{WorkloadStartTime: &started}}
+	require.True(t, r.isJobTimedOut(wf, &nvcrev1alpha1.GroupStatus{}, jobStarted))
 
 	fresh := metav1.NewTime(time.Now())
-	require.False(t, r.isJobTimedOut(wf, &nvcrev1alpha1.GroupStatus{StartTime: &fresh}))
+	jobFresh := &nvcrev1alpha1.Job{Status: nvcrev1alpha1.JobStatus{WorkloadStartTime: &fresh}}
+	require.False(t, r.isJobTimedOut(wf, &nvcrev1alpha1.GroupStatus{}, jobFresh))
 }

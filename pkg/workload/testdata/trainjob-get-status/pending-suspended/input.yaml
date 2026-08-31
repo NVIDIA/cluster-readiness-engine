@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A Kueue-suspended TrainJob: spec.suspend=true, no pods, no status
+# conditions. Must report Pending, not Running (issue #213).
+kind: TrainJob
+spec:
+  suspend: true

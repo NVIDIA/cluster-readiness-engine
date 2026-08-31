@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No workload was ever created (creation keeps failing): fall back to the
+# group start time so the job still terminates.
+timeoutPerJob: 1s
+groupStartAgo: 2h
+hasWorkloadRef: false

@@ -1005,6 +1005,12 @@ func sanitizeObject(obj client.Object) {
 				o.Status.Conditions[i].Message = "Workload stalled"
 			}
 		}
+		// workloadStartTime is wall clock; normalize to a fixed placeholder so
+		// goldens stay deterministic while still pinning whether it was set.
+		// A pending (e.g. suspended) workload must NOT have it.
+		if o.Status.WorkloadStartTime != nil {
+			o.Status.WorkloadStartTime = &metav1.Time{Time: time.Unix(0, 0).UTC()}
+		}
 	case *nvcrev1alpha1.Workflow:
 		clearConditionTimestamps(o.Status.Conditions)
 		// Node-result ConfigMaps use generateName, so their names are

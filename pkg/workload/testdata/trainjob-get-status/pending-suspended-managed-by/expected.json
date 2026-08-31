@@ -1,0 +1,5 @@
+{
+  "message": "TrainJob is suspended (spec.suspend=true), waiting for it to be resumed; managed by kueue.x-k8s.io/multikueue",
+  "phase": "Pending",
+  "reason": "Suspended"
+}

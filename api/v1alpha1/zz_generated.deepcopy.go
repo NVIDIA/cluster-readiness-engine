@@ -1274,6 +1274,10 @@ func (in *JobStatus) DeepCopyInto(out *JobStatus) {
 		*out = new(WorkloadReference)
 		**out = **in
 	}
+	if in.WorkloadStartTime != nil {
+		in, out := &in.WorkloadStartTime, &out.WorkloadStartTime
+		*out = (*in).DeepCopy()
+	}
 	if in.FailureLog != nil {
 		in, out := &in.FailureLog, &out.FailureLog
 		*out = new(FailureLog)
