@@ -19,7 +19,7 @@ nvcrectl workloadrun run [flags] <file>
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--wait` | `false` | Block until the workload completes |
-| `--timeout` | `30m` | Timeout for `--wait`. On timeout, the WorkloadRun is left running in the cluster unless `--cleanup` is set |
+| `--timeout` | `30m` | Timeout for `--wait`. On timeout, the CLI prints a partial report and leaves the WorkloadRun running in the cluster unless `--cleanup` is set |
 | `--setup` | `false` | Install CRDs, controller, and LogProfiles before creating the WorkloadRun |
 | `--cleanup` | `false` | Delete the WorkloadRun, the namespace (when created by this run), and installed components after completion |
 | `--image` | — | Override controller image |
@@ -35,6 +35,8 @@ nvcrectl workloadrun run [flags] <file>
 | `--results-file` | — | Write results as JSON to this file path (requires `--wait`) |
 
 `--cleanup` runs on every exit path — success, failure, or `--wait` timeout — matching `certification run --cleanup`. It deletes the WorkloadRun only when this invocation created it (Kubernetes garbage collection then removes the owned Workflow, whose finalizer deletes the Jobs, workloads, and dependency resources), deletes the namespace only when this run created it, and, when combined with `--setup`, uninstalls the installed components after the cascade completes. On a `--wait` timeout the CLI prints a partial report from the still-live WorkloadRun before any cleanup runs. Without `--cleanup`, a `--wait` timeout stops only the CLI watch and the WorkloadRun continues running.
+
+When `--wait` reaches its timeout, the command prints the WorkloadRun's current report, writes it to `--results-file` when requested, and exits with a timeout error. Without `--cleanup`, the WorkloadRun continues running in the cluster — the timeout stops only the CLI watch — and the timeout output includes commands to watch its progress, print an updated report, or stop it. `nvcrectl workloadrun report` exits nonzero while the WorkloadRun is still running.
 
 ### Examples
 

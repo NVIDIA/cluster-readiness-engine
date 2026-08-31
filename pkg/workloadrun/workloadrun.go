@@ -899,29 +899,50 @@ func executeWorkloadRunRun(cfg *wrRunConfig) error {
 	// Wait for completion.
 	_, _ = fmt.Fprintf(out, "\nWaiting for completion (timeout: %s)...\n", cfg.timeout)
 	finalRun, waitErr := watchWorkloadRun(ctx, wc, run.Name, run.Namespace, cfg.timeout, out)
+	return finishWorkloadRunWait(ctx, wc, cfg, finalRun, waitErr)
+}
 
-	// A --wait timeout ends only the CLI watch; the WorkloadRun is still
-	// live. Retrieve it so a partial report prints before the deferred
-	// cleanup (if any) destroys the evidence — mirroring
-	// finishCertificationWait in pkg/certification.
-	if finalRun == nil && isWorkloadRunWaitTimeout(waitErr) {
+// finishWorkloadRunWait reports the best available state after the watch
+// finishes. A timeout ends only the CLI watch, so retrieve the still-live
+// WorkloadRun and emit a partial report — before any deferred cleanup
+// destroys the evidence — instead of exiting silently. Mirrors
+// finishCertificationWait on the certification side.
+func finishWorkloadRunWait(
+	ctx context.Context, wc client.WithWatch, cfg *wrRunConfig,
+	finalRun *nvcrev1alpha1.WorkloadRun, waitErr error,
+) error {
+	name, namespace := cfg.run.Name, cfg.run.Namespace
+	out := cfg.out
+	timedOut := isWorkloadRunWaitTimeout(waitErr)
+	reportCtx := ctx
+	if timedOut {
+		var cancel context.CancelFunc
+		reportCtx, cancel = context.WithTimeout(ctx, postTimeoutReportTimeout)
+		defer cancel()
+	}
+
+	var retrievalErr error
+	if finalRun == nil && timedOut {
 		current := &nvcrev1alpha1.WorkloadRun{}
-		key := client.ObjectKey{Name: run.Name, Namespace: run.Namespace}
-		if getErr := wc.Get(ctx, key, current); getErr != nil {
-			_, _ = fmt.Fprintf(out,
-				"Warning: could not retrieve WorkloadRun %q after timeout; partial report unavailable: %v\n",
-				run.Name, getErr)
+		key := client.ObjectKey{Name: name, Namespace: namespace}
+		if err := wc.Get(reportCtx, key, current); err != nil {
+			retrievalErr = err
+			if apierrors.IsNotFound(err) {
+				_, _ = fmt.Fprintf(out,
+					"WorkloadRun %q no longer exists after timeout; partial report unavailable.\n",
+					name)
+			} else {
+				_, _ = fmt.Fprintf(out,
+					"Warning: could not retrieve WorkloadRun %q after timeout; partial report unavailable: %v\n",
+					name, err)
+			}
 		} else {
 			finalRun = current
 		}
 	}
 
-	// Print the report from the best available state — the terminal
-	// WorkloadRun, or the still-running one after a timeout. This happens
-	// before the deferred cleanup runs, so the report reflects the live
-	// resources.
 	if finalRun != nil {
-		r := buildWorkloadRunReport(ctx, wc, finalRun)
+		r := buildWorkloadRunReport(reportCtx, wc, finalRun)
 		report.Print(out, r)
 		if cfg.resultsFile != "" {
 			if err := report.WriteJSON(cfg.resultsFile, []*report.CertReport{r}); err != nil {
@@ -930,10 +951,59 @@ func executeWorkloadRunRun(cfg *wrRunConfig) error {
 				_, _ = fmt.Fprintf(out, "Results written to %s\n", cfg.resultsFile)
 			}
 		}
+		if timedOut && errors.Is(reportCtx.Err(), context.DeadlineExceeded) {
+			_, _ = fmt.Fprintln(out,
+				"Warning: timed out fetching all data for the partial report; some details may be missing.")
+		}
 	}
 
+	if timedOut && !cfg.doCleanup {
+		switch {
+		case finalRun != nil && workloadRunIsTerminal(finalRun):
+			_, _ = fmt.Fprintln(out,
+				"The WorkloadRun completed while the timeout was being handled.")
+
+		case finalRun != nil:
+			_, _ = fmt.Fprintf(out, `
+The WorkloadRun is still running in namespace %s.
+Monitor its progress:
+  kubectl get workloadrun %s -n %s --watch
+Print an updated report (exits nonzero while still running):
+  nvcrectl workloadrun report %s -n %s
+Stop it:
+  nvcrectl workloadrun cancel %s -n %s
+`, namespace,
+				name, namespace,
+				name, namespace,
+				name, namespace)
+
+		case retrievalErr != nil && !apierrors.IsNotFound(retrievalErr):
+			_, _ = fmt.Fprintf(out, `
+Unable to determine whether the WorkloadRun is still running in namespace %s.
+Check its status:
+  kubectl get workloadrun %s -n %s
+`, namespace, name, namespace)
+		}
+	}
+
+	// Preserve the timeout as the command result even if the post-timeout Get
+	// observes a terminal WorkloadRun. The report shows the freshest state,
+	// while the nonzero exit consistently indicates that the wait deadline elapsed.
 	return waitErr
 }
+
+func workloadRunIsTerminal(run *nvcrev1alpha1.WorkloadRun) bool {
+	return controller.CondIsTrue(
+		run.Status.Conditions, nvcrev1alpha1.WorkloadRunSucceeded,
+	) || controller.CondIsTrue(
+		run.Status.Conditions, nvcrev1alpha1.WorkloadRunFailed,
+	)
+}
+
+// postTimeoutReportTimeout bounds the API reads that build the partial report
+// after the wait deadline elapsed, so a slow or unreachable API server cannot
+// hang the command indefinitely.
+const postTimeoutReportTimeout = 30 * time.Second
 
 // runWorkloadRunCleanup tears down what this invocation created, mirroring
 // the certification run cleanup defer: delete the WorkloadRun (only when this
@@ -1351,7 +1421,11 @@ func buildWorkloadRunReport(
 		}
 		if err := c.Get(ctx, key, wf); err == nil {
 			report.PopulateCategoryFromWorkflow(ctx, c, &cat, wf)
-			r.TotalNodes = wf.Status.Orchestration.TotalNodes
+			// Orchestration status is nil until the controller partitions
+			// nodes; partial reports after a wait timeout can observe that.
+			if orch := wf.Status.Orchestration; orch != nil {
+				r.TotalNodes = orch.TotalNodes
+			}
 
 			// Set category status from Workflow conditions.
 			switch {
