@@ -1,0 +1,10 @@
+# --wait times out immediately; a partial report from the still-live
+# WorkloadRun prints BEFORE cleanup destroys the evidence, then --cleanup
+# deletes the WorkloadRun and the namespace this run created. The timeout
+# error stays the exit status.
+doWait: true
+doCleanup: true
+timeoutSeconds: 0
+namespaceExists: false
+expectRunExists: false
+expectNamespaceExists: false
