@@ -1,0 +1,29 @@
+# The new chart version adds the "color" property. Before issue #145 the
+# upgrade never touched the installed CRD, so the field stayed absent.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: widgets.upgrade.nvcre.example.com
+spec:
+  group: upgrade.nvcre.example.com
+  names:
+    kind: Widget
+    listKind: WidgetList
+    plural: widgets
+    singular: widget
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                size:
+                  type: integer
+                color:
+                  type: string

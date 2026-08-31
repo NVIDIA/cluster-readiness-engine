@@ -257,7 +257,7 @@ type WorkloadRunSpec struct {
 	Orchestration *WorkloadOrchestration `json:"orchestration,omitempty"`
 
 	// thresholds defines performance pass/fail criteria as CEL expressions.
-	// Keys are metric names (e.g., "busBandwidthGBps", "avgTFLOPSPerGPU").
+	// Keys are metric names (e.g., "busBandwidthGBps", "avgTFLOPsPerGPU").
 	// Values are CEL expressions using a `value` variable (e.g., "value >= 900").
 	// +optional
 	Thresholds map[string]string `json:"thresholds,omitempty"`
