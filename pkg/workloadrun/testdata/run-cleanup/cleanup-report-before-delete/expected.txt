@@ -1,0 +1,21 @@
+Discovered 1 GPU nodes with product: NVIDIA-H100-80GB-HBM3
+WorkloadRun demo-run created in namespace wr-cleanup-ns.
+
+Waiting for completion (timeout: 30s)...
+[watch] WorkloadRun succeeded. (elapsed)
+
+WorkloadRun Report
+
+  Name:      demo-run
+
+workloadrun/demo-run
+Status:
+
+Summary
+Categories:   0/1 passed
+Failed Nodes: none
+Result:       PASSED
+
+[cleanup] Cleaning up...
+[cleanup] Deleting WorkloadRun...
+[cleanup] Done.
