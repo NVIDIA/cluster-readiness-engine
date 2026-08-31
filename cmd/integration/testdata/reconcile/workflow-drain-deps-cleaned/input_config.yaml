@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# With no workload pods, the drain barrier passes immediately: the Workflow
+# reaches Failed, the TrainJob and the job-scoped ConfigMap dependency are both
+# deleted by the controller (no deleteAfterWait here — this is entirely
+# controller-driven), and the collected Workflow shows the cleaned state.
+waitFor:
+  kind: Workflow
+  name: test-wf-drain-done
+  namespace: default
+  condition: Failed
+waitForDeletion:
+  - kind: TrainJob
+    name: test-wf-drain-done-group-0-iter-1-workload
+    namespace: default
+  - kind: ConfigMap
+    name: test-drain-done-dep
+    namespace: default
+collect:
+  - kind: Workflow
+    name: test-wf-drain-done
+    namespace: default

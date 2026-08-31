@@ -1,0 +1,4 @@
+# The workload's pods are already gone: cleanup may proceed immediately.
+job:
+  failedAgeSeconds: 30
+pods: []

@@ -1,0 +1,6 @@
+# Same failed job once the pods are gone: now the retry proceeds — the Job and
+# the job-scoped dependency are deleted and the group resets to Pending with
+# the retry counted.
+retryFailedGroups: 1
+jobFailedReason: WorkloadFailed
+pods: []

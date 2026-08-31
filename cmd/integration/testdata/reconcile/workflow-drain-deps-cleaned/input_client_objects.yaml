@@ -1,0 +1,137 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Pod-drain barrier, pods-gone half (issue #121): identical to
+# workflow-drain-deps-retained but with no workload pod. With nothing left to
+# drain, the terminal-failure path must clean up the job-scoped dependency in
+# the same reconcile, mark the group Failed, and drive the Workflow to Failed —
+# the barrier must not wedge cleanup when the pods are already gone.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-wf-drain-done
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  dependencyRefs:
+    - apiVersion: v1
+      kind: ConfigMap
+      name: test-drain-done-dep
+      namespace: default
+      scope: job
+      groupName: group-0
+      iteration: 1
+  orchestration:
+    totalNodes: 1
+    nodesPerJob: 1
+    totalGroups: 1
+    currentIteration: 1
+    completedIterations: 0
+    groups:
+      - name: group-0
+        nodes:
+          - gpu-node-01
+        phase: Running
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: test-wf-drain-done-group-0-iter-1
+          namespace: default
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-wf-drain-done-group-0-iter-1
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: test-wf-drain-done
+    nvcre.nvidia.com/group: group-0
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "True"
+      reason: WorkloadRunning
+      message: "Workload is running"
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+    - type: Succeeded
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+    - type: Failed
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-wf-drain-done-group-0-iter-1-workload
+    namespace: default
+---
+# Failed TrainJob workload.
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-wf-drain-done-group-0-iter-1-workload
+  namespace: default
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - python
+      - train.py
+    numNodes: 1
+  suspend: false
+  managedBy: trainer.kubeflow.org/trainjob-controller
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: TrainJobFailed
+      message: "Training job failed"
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+---
+# Job-scoped ConfigMap dependency; must be deleted by the terminal-failure path.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-drain-done-dep
+  namespace: default
+  labels:
+    nvcre.nvidia.com/workflow: test-wf-drain-done
+data:
+  config.yaml: |
+    test: drain-done-data
