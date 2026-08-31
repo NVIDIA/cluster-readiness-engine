@@ -1,0 +1,10 @@
+{
+  "name": "wr-valid-thresholds",
+  "thresholds": {
+    "algBandwidthGBps": "value >= 300",
+    "avgStepTimeSec": "value <= 3.0",
+    "avgTFLOPsPerGPU": "value >= 1000",
+    "busBandwidthGBps": "value >= 400",
+    "goodputRatio": "value >= 0.85"
+  }
+}

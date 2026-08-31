@@ -28,7 +28,7 @@ The existing `Complete=True` gate at [goodputmeasurement_controller.go:122](../.
 
 4. **Deterministic handling of in-flight parsing at the boundary.** The final log read remains best-effort: on failure, the terminal write proceeds from the last persisted values (today's behavior, minus the second write). `ApplicationStopTime` and the log read window are capped at `anchor` so late-arriving log timestamps cannot push terminal metrics past the Job's terminal time. Because re-entry recomputes from the same anchored inputs, a duplicate terminal write (stale cache, conflict retry, controller restart) is byte-identical rather than a new value.
 
-5. **Threshold evaluation consumes only frozen values.** `collectJobMeasuredValues` skips goodput-derived keys (`goodputRatio`, `avgTFLOPSPerGPU`, `avgStepTimeSec`) while the GoodputMeasurement's `Complete` condition is not `True`. The existing missing-key requeue and `measurementTimeout` machinery in `checkPerformanceThresholds` already handles the wait.
+5. **Threshold evaluation consumes only frozen values.** `collectJobMeasuredValues` skips goodput-derived keys (`goodputRatio`, `avgTFLOPsPerGPU`, `avgStepTimeSec`) while the GoodputMeasurement's `Complete` condition is not `True`. The existing missing-key requeue and `measurementTimeout` machinery in `checkPerformanceThresholds` already handles the wait.
 
 6. **Do not copy final values into Job/Workflow/Certification status.** The report aggregates GoodputMeasurements directly, and they already outlive their Jobs by design.
 

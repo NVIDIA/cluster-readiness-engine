@@ -71,6 +71,10 @@ const (
 
 	// reasonThresholdsMet indicates threshold validation passed explicitly.
 	reasonThresholdsMet = "ThresholdsMet"
+
+	// reasonUnknownThresholdKey indicates threshold validation failed because
+	// the Job spec names a threshold key that is not in the threshold registry.
+	reasonUnknownThresholdKey = "UnknownThresholdKey"
 )
 
 // JobReconciler reconciles a Job object
@@ -627,6 +631,20 @@ func (r *JobReconciler) checkPerformanceThresholds(ctx context.Context, job *nvc
 		return false
 	}
 	log := logf.FromContext(ctx)
+
+	// Reject unknown threshold keys before waiting for measurements. An
+	// unknown key can never be measured — collectJobMeasuredValues only emits
+	// registry keys — so letting it reach the missing-key path below would
+	// stall until it surfaced as a misleading MeasurementTimeout. Fail
+	// validation immediately, naming the offending key.
+	if keyErr := threshold.ValidateKeysError(job.Spec.Thresholds); keyErr != nil {
+		log.Info("Threshold check failed: unknown threshold key", "message", keyErr.Error())
+		if err := r.setJobValidationStatus(ctx, job, metav1.ConditionTrue, reasonUnknownThresholdKey, keyErr.Error()); err != nil {
+			log.Error(err, "Failed to set ValidationFailed for unknown threshold key")
+		}
+		return false
+	}
+
 	measured := collectJobMeasuredValues(ctx, r.Client, job)
 
 	if missing := missingJobThresholdKeys(job.Spec.Thresholds, measured); len(missing) > 0 {
@@ -645,7 +663,17 @@ func (r *JobReconciler) checkPerformanceThresholds(ctx context.Context, job *nvc
 		return true
 	}
 
-	if violations := threshold.EvaluateAll(job.Spec.Thresholds, measured); len(violations) > 0 {
+	violations, evalErr := threshold.EvaluateAll(job.Spec.Thresholds, measured)
+	if evalErr != nil {
+		// Unreachable when the upfront key check above passed, but fail loudly
+		// rather than treating an evaluation error as a pass.
+		log.Error(evalErr, "Threshold evaluation failed")
+		if err := r.setJobValidationStatus(ctx, job, metav1.ConditionTrue, reasonUnknownThresholdKey, evalErr.Error()); err != nil {
+			log.Error(err, "Failed to set ValidationFailed for threshold evaluation error")
+		}
+		return false
+	}
+	if len(violations) > 0 {
 		v := violations[0]
 		log.Info("Threshold check failed", "key", v.Key, "reason", v.Reason, "message", v.Message)
 		if err := r.setJobValidationStatus(ctx, job, metav1.ConditionTrue, v.Reason, v.Message); err != nil {

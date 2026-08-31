@@ -72,8 +72,10 @@ type projection struct {
 	Iterations      int                      `json:"iterations"`
 	DependencyKinds []string                 `json:"dependencyKinds"`
 	// Validation records the contents and not only whether the block is
-	// present. The exact threshold key is part of it, because issue #52 is open
-	// about one unknown key turning off every threshold check without saying so.
+	// present. The exact threshold key is part of it: since issue #52 was
+	// fixed, a key must be a threshold-registry key — readWorkloadRun rejects
+	// unknown keys and the Job controller fails validation on them — so the
+	// exact string decides whether a run is accepted at all.
 	Validation *nvcrev1alpha1.ValidationSpec `json:"validation"`
 	// WorkerEnv holds "NAME=value" for the worker container of the runtime
 	// dependency, which is the container the workload runs in. It records values
