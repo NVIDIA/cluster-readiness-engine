@@ -1,0 +1,9 @@
+# The shortfall was caused by the GPU capacity filter, not by cordons or
+# taints. The message must name the dropped nodes with what they report so
+# the operator is not sent chasing schedulability.
+needed: 4
+found: 3
+capacityExcluded:
+  - node: node002
+    has: 1
+gpusPerNode: 2

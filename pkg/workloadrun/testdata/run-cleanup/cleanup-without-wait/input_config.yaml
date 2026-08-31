@@ -1,0 +1,7 @@
+# --cleanup without --wait still tears down at command exit (same as
+# certification run). The pre-existing namespace is not touched.
+doWait: false
+doCleanup: true
+namespaceExists: true
+expectRunExists: false
+expectNamespaceExists: true

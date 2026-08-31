@@ -1,0 +1,11 @@
+# Insufficient GPU capacity on its own: the issue #82 fleet, where two 1-GPU
+# nodes matched a target whose workload requests 2 GPUs per node. Before this
+# cause existed the nodes were partitioned anyway and the run hung silently;
+# now they are reported "has X" against the request so the operator sees the
+# shortfall instead of chasing a scheduler mystery.
+capacityExcluded:
+  - node: node002
+    has: 1
+  - node: node003
+    has: 1
+gpusPerNode: 2

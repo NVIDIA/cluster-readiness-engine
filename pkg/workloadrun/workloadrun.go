@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -650,7 +651,8 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 
 	cmd.Flags().BoolVar(&doWait, "wait", false, "Watch for completion")
 	cmd.Flags().BoolVar(&doSetup, "setup", false, "Install CRDs, controller, LogProfiles before creating")
-	cmd.Flags().BoolVar(&doCleanup, "cleanup", false, "Delete WorkloadRun and installed components after completion")
+	cmd.Flags().BoolVar(&doCleanup, "cleanup", false,
+		"Delete the WorkloadRun, the namespace (when created by this run), and installed components after completion")
 	cmd.Flags().StringVar(&controllerPullSecret, "controller-pull-secret", "",
 		"Token for controller registry authentication during --setup (e.g. GitHub PAT for ghcr.io) — separate from workload image credentials")
 	cmd.Flags().StringVar(&workloadRegistry, "workload-registry", "",
@@ -660,7 +662,8 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 	cmd.Flags().StringVar(&workloadRegistryPassword, "workload-registry-password", "",
 		"Registry password or API key for workload image pull — creates an imagePullSecret in the WorkloadRun namespace")
 	cmd.Flags().StringVar(&controllerImage, "image", "", "Override controller image")
-	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Minute, "Wait timeout")
+	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Minute,
+		"Wait timeout (on timeout, the WorkloadRun is left running unless --cleanup is set)")
 	cmd.Flags().StringVar(&resultsFile, "results-file", "",
 		"Write report as JSON to this file path (requires --wait)")
 	cmd.Flags().StringVar(&nameOverride, "name", "",
@@ -678,9 +681,32 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 	return cmd
 }
 
+// wrRunConfig captures the fully-resolved intent for a workloadrun run,
+// mirroring certRunConfig in pkg/certification. Built from CLI flags by
+// runWorkloadRunExecute, then consumed by executeWorkloadRunRun.
+type wrRunConfig struct {
+	run                      *nvcrev1alpha1.WorkloadRun
+	workloadRegistry         string // --workload-registry: workload registry hostname
+	workloadRegistryUsername string // --workload-registry-username: workload registry username
+	workloadRegistryPassword string // --workload-registry-password: workload registry password/token
+	controllerImage          string // --image: controller image for --setup
+	controllerPullSecret     string // --controller-pull-secret: controller registry token forwarded to setup init
+	doWait                   bool   // --wait: watch + report
+	doSetup                  bool   // --setup: runInit before create
+	doCleanup                bool   // --cleanup: delete run/ns + runReset after
+	timeout                  time.Duration
+	resultsFile              string // --results-file: path to write JSON report
+	configFlags              *kubeconfig.ConfigFlags
+	nodeList                 string // --node-list: used for numNodes clamping after discovery
+	topologyDomain           string // --topology-domain: used for auto topology key + numNodes
+	topologyKey              string // --topology-key: explicit topology label key
+	out                      io.Writer
+	watchClient              client.WithWatch // optional test client; production builds one from configFlags
+}
+
 func runWorkloadRunExecute(
 	file, namespace, workloadRegistry, workloadRegistryUsername, workloadRegistryPassword, controllerImage, controllerPullSecret string,
-	doWait, doSetup, _ bool, timeout time.Duration,
+	doWait, doSetup, doCleanup bool, timeout time.Duration,
 	resultsFile string, configFlags *kubeconfig.ConfigFlags,
 	nameOverride, nodeList, topologyDomain,
 	topologyKey, testScale string,
@@ -702,31 +728,76 @@ func runWorkloadRunExecute(
 		run.Namespace = defaultNS
 	}
 
-	out := os.Stderr
+	return executeWorkloadRunRun(&wrRunConfig{
+		run:                      run,
+		workloadRegistry:         workloadRegistry,
+		workloadRegistryUsername: workloadRegistryUsername,
+		workloadRegistryPassword: workloadRegistryPassword,
+		controllerImage:          controllerImage,
+		controllerPullSecret:     controllerPullSecret,
+		doWait:                   doWait,
+		doSetup:                  doSetup,
+		doCleanup:                doCleanup,
+		timeout:                  timeout,
+		resultsFile:              resultsFile,
+		configFlags:              configFlags,
+		nodeList:                 nodeList,
+		topologyDomain:           topologyDomain,
+		topologyKey:              topologyKey,
+		out:                      os.Stderr,
+	})
+}
 
-	// Build client.
-	wc, err := render.NewK8sWatchClient(configFlags)
-	if err != nil {
-		return fmt.Errorf("build client: %w", err)
+// executeWorkloadRunRun is the unified pipeline for workloadrun run. Setup,
+// wait, and cleanup are composable phases controlled by the config flags,
+// mirroring executeCertificationRun in pkg/certification.
+func executeWorkloadRunRun(cfg *wrRunConfig) error {
+	run := cfg.run
+	out := cfg.out
+
+	// Build client early so the cleanup defer can use it.
+	wc := cfg.watchClient
+	if wc == nil {
+		var err error
+		wc, err = render.NewK8sWatchClient(cfg.configFlags)
+		if err != nil {
+			return fmt.Errorf("build client: %w", err)
+		}
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	// --- Cleanup defer (registered BEFORE setup so it runs on setup failures) ---
+	// It runs on every exit path — success, failure, or wait timeout — matching
+	// certification run --cleanup semantics.
+	runCreated := false
+	createdNamespace := ""
+
+	if cfg.doCleanup {
+		defer func() {
+			runWorkloadRunCleanup(wc, cfg, runCreated, createdNamespace)
+		}()
+	}
+
 	// Setup phase.
-	if doSetup {
+	if cfg.doSetup {
 		_, _ = fmt.Fprintln(out, "Installing NVCRE components...")
-		if initErr := setup.RunInit("", controllerImage, controllerPullSecret, "",
-			true, configFlags, "", os.Stdin, out); initErr != nil {
+		if initErr := setup.RunInit("", cfg.controllerImage, cfg.controllerPullSecret, "",
+			true, cfg.configFlags, "", os.Stdin, out); initErr != nil {
 			return fmt.Errorf("setup: %w", initErr)
 		}
 		_, _ = fmt.Fprintln(out, "Setup complete.")
 	}
 
-	// Create namespace if needed.
-	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: run.Namespace}}
-	if err := wc.Create(ctx, ns); err != nil && !apierrors.IsAlreadyExists(err) {
-		return fmt.Errorf("create namespace %s: %w", run.Namespace, err)
+	// Create namespace if needed, remembering whether this run created it so
+	// cleanup only deletes namespaces it owns.
+	wasNamespaceCreated, err := setup.EnsureNamespace(ctx, wc, run.Namespace, out)
+	if err != nil {
+		return err
+	}
+	if wasNamespaceCreated {
+		createdNamespace = run.Namespace
 	}
 
 	// Create pull secret before the WorkloadRun so pods can pull immediately.
@@ -734,9 +805,9 @@ func runWorkloadRunExecute(
 	// wasCreatedByUs is false when an existing secret was only updated (concurrent
 	// run) — do not delete on rollback in that case.
 	wasCreatedByUs := false
-	if workloadRegistryPassword != "" {
+	if cfg.workloadRegistryPassword != "" {
 		secretName, created, secretErr := setup.CreateImagePullSecret(ctx, wc,
-			run.Namespace, setup.WorkloadPullSecretName(run.Name), workloadRegistry, workloadRegistryUsername, workloadRegistryPassword)
+			run.Namespace, setup.WorkloadPullSecretName(run.Name), cfg.workloadRegistry, cfg.workloadRegistryUsername, cfg.workloadRegistryPassword)
 		if secretErr != nil {
 			return fmt.Errorf("create image pull secret: %w", secretErr)
 		}
@@ -749,7 +820,7 @@ func runWorkloadRunExecute(
 	// Resolve auto topology key before discovery. The __auto__ placeholder
 	// can't be used for node filtering, so we do a preliminary discovery
 	// without matchExpressions to detect the platform first.
-	if topologyDomain != "" && topologyKey == "" {
+	if cfg.topologyDomain != "" && cfg.topologyKey == "" {
 		prelimNodes, _, _ := cluster.DiscoverGPUNodes(ctx, wc, nil)
 		if len(prelimNodes) > 0 {
 			detectedPlatform := controller.DetectPlatform(prelimNodes)
@@ -778,10 +849,10 @@ func runWorkloadRunExecute(
 	// Auto-infer numNodes from target node count.
 	// --node-list: clamp down if fewer nodes than spec.
 	// --topology-domain: set to discovered count (all nodes in the domain).
-	if nodeList != "" && run.Spec.NumNodes > int32(len(nodes)) {
+	if cfg.nodeList != "" && run.Spec.NumNodes > int32(len(nodes)) {
 		run.Spec.NumNodes = int32(len(nodes))
 	}
-	if topologyDomain != "" {
+	if cfg.topologyDomain != "" {
 		run.Spec.NumNodes = int32(len(nodes))
 	}
 
@@ -797,6 +868,7 @@ func runWorkloadRunExecute(
 		}
 		return fmt.Errorf("create WorkloadRun: %w", err)
 	}
+	runCreated = true
 	_, _ = fmt.Fprintf(out, "WorkloadRun %s created in namespace %s.\n",
 		run.Name, run.Namespace)
 
@@ -804,48 +876,195 @@ func runWorkloadRunExecute(
 	// Only when wasCreatedByUs: if we only updated an existing secret we don't own
 	// it and must not manage its lifecycle.
 	if wasCreatedByUs {
-		sec := &corev1.Secret{}
-		if getErr := wc.Get(ctx, client.ObjectKey{Name: setup.WorkloadPullSecretName(run.Name), Namespace: run.Namespace}, sec); getErr != nil {
-			_, _ = fmt.Fprintf(out, "Warning: could not retrieve pull secret %q to set OwnerReference: %v\n",
-				setup.WorkloadPullSecretName(run.Name), getErr)
-		} else {
-			sec.OwnerReferences = append(sec.OwnerReferences, metav1.OwnerReference{
-				APIVersion: "nvcre.nvidia.com/v1alpha1",
-				Kind:       "WorkloadRun",
-				Name:       run.Name,
-				UID:        run.UID,
-			})
-			if updateErr := wc.Update(ctx, sec); updateErr != nil {
-				_, _ = fmt.Fprintf(out, "Warning: could not set OwnerReference on pull secret %q — it will not be GC'd automatically: %v\n",
-					setup.WorkloadPullSecretName(run.Name), updateErr)
-			}
-		}
+		setPullSecretOwnerReference(ctx, wc, run, out)
 	}
 
-	if !doWait {
+	if !cfg.doWait {
 		_, _ = fmt.Fprintf(out, "\nTo check status:\n")
 		_, _ = fmt.Fprintf(out, "  kubectl get workloadrun %s -n %s\n", run.Name, run.Namespace)
 		return nil
 	}
 
 	// Wait for completion.
-	_, _ = fmt.Fprintf(out, "\nWaiting for completion (timeout: %s)...\n", timeout)
-	finalRun, waitErr := watchWorkloadRun(ctx, wc, run.Name, run.Namespace, timeout, out)
+	_, _ = fmt.Fprintf(out, "\nWaiting for completion (timeout: %s)...\n", cfg.timeout)
+	finalRun, waitErr := watchWorkloadRun(ctx, wc, run.Name, run.Namespace, cfg.timeout, out)
 
-	// Print report if we have a terminal WorkloadRun.
+	// A --wait timeout ends only the CLI watch; the WorkloadRun is still
+	// live. Retrieve it so a partial report prints before the deferred
+	// cleanup (if any) destroys the evidence — mirroring
+	// finishCertificationWait in pkg/certification.
+	if finalRun == nil && isWorkloadRunWaitTimeout(waitErr) {
+		current := &nvcrev1alpha1.WorkloadRun{}
+		key := client.ObjectKey{Name: run.Name, Namespace: run.Namespace}
+		if getErr := wc.Get(ctx, key, current); getErr != nil {
+			_, _ = fmt.Fprintf(out,
+				"Warning: could not retrieve WorkloadRun %q after timeout; partial report unavailable: %v\n",
+				run.Name, getErr)
+		} else {
+			finalRun = current
+		}
+	}
+
+	// Print the report from the best available state — the terminal
+	// WorkloadRun, or the still-running one after a timeout. This happens
+	// before the deferred cleanup runs, so the report reflects the live
+	// resources.
 	if finalRun != nil {
 		r := buildWorkloadRunReport(ctx, wc, finalRun)
 		report.Print(out, r)
-		if resultsFile != "" {
-			if err := report.WriteJSON(resultsFile, []*report.CertReport{r}); err != nil {
+		if cfg.resultsFile != "" {
+			if err := report.WriteJSON(cfg.resultsFile, []*report.CertReport{r}); err != nil {
 				_, _ = fmt.Fprintf(out, "Warning: failed to write results: %v\n", err)
 			} else {
-				_, _ = fmt.Fprintf(out, "Results written to %s\n", resultsFile)
+				_, _ = fmt.Fprintf(out, "Results written to %s\n", cfg.resultsFile)
 			}
 		}
 	}
 
 	return waitErr
+}
+
+// runWorkloadRunCleanup tears down what this invocation created, mirroring
+// the certification run cleanup defer: delete the WorkloadRun (only when this
+// run created it) and wait for the cascade, delete the namespace (only when
+// this run created it), then reset installed components when --setup was
+// given. Failures are reported as warnings; cleanup never aborts.
+func runWorkloadRunCleanup(wc client.Client, cfg *wrRunConfig, runCreated bool, createdNamespace string) {
+	out := cfg.out
+	run := cfg.run
+
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cleanupCancel()
+
+	_, _ = fmt.Fprintln(out, "[cleanup] Cleaning up...")
+	warnings := false
+
+	// Delete the WorkloadRun and wait for the cascade to finish. A WorkloadRun
+	// carries no finalizer of its own; Kubernetes GC deletes the owned
+	// Workflow, whose finalizer deletes Jobs, workloads, and dependencies.
+	// The controller needs its RBAC and Deployment to process that cascade,
+	// so we MUST wait for it to complete before running reset.
+	if runCreated {
+		_, _ = fmt.Fprintln(out, "[cleanup] Deleting WorkloadRun...")
+		if err := wc.Delete(cleanupCtx, run); err != nil && !apierrors.IsNotFound(err) {
+			_, _ = fmt.Fprintf(out, "[cleanup] Warning: failed to delete WorkloadRun: %v\n", err)
+			warnings = true
+		} else {
+			waitForWorkloadRunDeletion(cleanupCtx, wc, run.Name, run.Namespace, out)
+		}
+	}
+
+	// Note: the workload pull secret is owned by the WorkloadRun and will be
+	// garbage-collected automatically when the WorkloadRun is deleted above.
+	// No explicit deletion needed.
+
+	// Delete namespace if we created it, and wait for it to fully terminate
+	// so the next run doesn't fail with "namespace is being terminated".
+	if createdNamespace != "" {
+		_, _ = fmt.Fprintf(out, "[cleanup] Deleting namespace %s...\n", createdNamespace)
+		ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: createdNamespace}}
+		if err := wc.Delete(cleanupCtx, ns); err != nil && !apierrors.IsNotFound(err) {
+			_, _ = fmt.Fprintf(out, "[cleanup] Warning: failed to delete namespace %s: %v\n", createdNamespace, err)
+			warnings = true
+		} else {
+			setup.WaitForNamespaceDeletion(cleanupCtx, wc, createdNamespace, out)
+		}
+	}
+
+	// Reset all installed phases via runReset. SSA makes setup idempotent,
+	// so we reset everything unconditionally.
+	if cfg.doSetup {
+		if err := setup.RunReset("", true, cfg.configFlags, nil, out); err != nil {
+			_, _ = fmt.Fprintf(out, "[cleanup] Warning: reset failed: %v\n", err)
+			warnings = true
+		}
+	}
+
+	if warnings {
+		_, _ = fmt.Fprintln(out, "[cleanup] Done (with warnings).")
+	} else {
+		_, _ = fmt.Fprintln(out, "[cleanup] Done.")
+	}
+}
+
+// setPullSecretOwnerReference points the workload pull secret at the created
+// WorkloadRun so Kubernetes GC deletes the secret whenever the WorkloadRun is
+// deleted by any means. Failures only warn: the run itself is already created.
+func setPullSecretOwnerReference(ctx context.Context, wc client.Client, run *nvcrev1alpha1.WorkloadRun, out io.Writer) {
+	sec := &corev1.Secret{}
+	if getErr := wc.Get(ctx, client.ObjectKey{Name: setup.WorkloadPullSecretName(run.Name), Namespace: run.Namespace}, sec); getErr != nil {
+		_, _ = fmt.Fprintf(out, "Warning: could not retrieve pull secret %q to set OwnerReference: %v\n",
+			setup.WorkloadPullSecretName(run.Name), getErr)
+		return
+	}
+	sec.OwnerReferences = append(sec.OwnerReferences, metav1.OwnerReference{
+		APIVersion: "nvcre.nvidia.com/v1alpha1",
+		Kind:       "WorkloadRun",
+		Name:       run.Name,
+		UID:        run.UID,
+	})
+	if updateErr := wc.Update(ctx, sec); updateErr != nil {
+		_, _ = fmt.Fprintf(out, "Warning: could not set OwnerReference on pull secret %q — it will not be GC'd automatically: %v\n",
+			setup.WorkloadPullSecretName(run.Name), updateErr)
+	}
+}
+
+// wrDeletionPollInterval is how often cleanup polls for the deletion cascade
+// to complete. A variable so tests can shorten it instead of blocking on the
+// production ticker.
+var wrDeletionPollInterval = 2 * time.Second
+
+// waitForWorkloadRunDeletion waits for a deleted WorkloadRun and its child
+// Workflow (same name, per the WorkloadRun controller) to be fully gone.
+// The WorkloadRun itself has no finalizer, so it disappears quickly; the
+// cascade that matters is the owned Workflow, whose finalizer deletes Jobs,
+// workloads, and dependency resources. The timeout is generous because the
+// controller must process that finalizer before the Workflow goes away.
+//
+// Because the WorkloadRun has no finalizer to serialize the cascade (unlike
+// a Certification), there is a narrow window where a reconcile already in
+// flight creates the Workflow after both Gets observed NotFound. The residual
+// risk is sub-second against the poll interval and only matters when
+// --setup --cleanup resets the controller immediately afterwards.
+func waitForWorkloadRunDeletion(ctx context.Context, c client.Client, name, namespace string, out io.Writer) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	ticker := time.NewTicker(wrDeletionPollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			_, _ = fmt.Fprintln(out, "[cleanup] Timed out waiting for deletion.")
+			return
+		case <-ticker.C:
+			run := &nvcrev1alpha1.WorkloadRun{}
+			if err := c.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, run); err == nil || !apierrors.IsNotFound(err) {
+				continue
+			}
+			workflow := &nvcrev1alpha1.Workflow{}
+			if err := c.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, workflow); apierrors.IsNotFound(err) {
+				return // fully cascaded
+			}
+		}
+	}
+}
+
+// workloadRunWaitTimeoutError identifies the CLI watch deadline without
+// changing the existing user-facing error text, mirroring
+// certificationWaitTimeoutError in pkg/certification.
+type workloadRunWaitTimeoutError struct {
+	name string
+}
+
+func (e *workloadRunWaitTimeoutError) Error() string {
+	return fmt.Sprintf("timeout waiting for WorkloadRun %s", e.name)
+}
+
+func isWorkloadRunWaitTimeout(err error) bool {
+	var timeoutErr *workloadRunWaitTimeoutError
+	return errors.As(err, &timeoutErr)
 }
 
 // watchWorkloadRun polls until the WorkloadRun reaches a terminal state.
@@ -871,7 +1090,7 @@ func watchWorkloadRun(
 		case <-ctx.Done():
 			return nil, fmt.Errorf("interrupted")
 		case <-deadline:
-			return nil, fmt.Errorf("timeout waiting for WorkloadRun %s", name)
+			return nil, &workloadRunWaitTimeoutError{name: name}
 		case <-heartbeat.C:
 			elapsed := time.Since(start).Truncate(time.Second)
 			_, _ = fmt.Fprintln(out, workloadRunWatchLine(&current, name, elapsed))

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
@@ -27,12 +28,36 @@ const (
 	dcgmServiceNamespace = "gpu-operator"
 )
 
+const (
+	// trainerDeploymentName is the Trainer controller Deployment the
+	// kubeflow-trainer Helm chart creates in trainerNamespace.
+	trainerDeploymentName = "kubeflow-trainer-controller-manager"
+	// trainerContainerName is the manager container inside that Deployment.
+	// The image tag is read from this container by name, so a sidecar with a
+	// semver tag can never be mistaken for the Trainer version.
+	trainerContainerName = "manager"
+	// trainerVersionLabel is the standard chart version label Helm stamps on
+	// the CRDs it installs.
+	trainerVersionLabel = "app.kubernetes.io/version"
+)
+
+// Sources a detected Trainer version can come from, in detection order.
+const (
+	trainerVersionSourceHelm       = "helm release"
+	trainerVersionSourceDeployment = "deployment image"
+	trainerVersionSourceCRDLabel   = "crd label"
+)
+
 // SetupStatus is the JSON output structure for nvcrectl setup status.
 type SetupStatus struct {
 	// Installed is true when all required components are present and ready
 	// and no managed Helm release is in a failed or pending state.
 	Installed  bool                  `json:"installed"`
 	Components SetupStatusComponents `json:"components"`
+	// KubeflowTrainerVersion reports the detected Kubeflow Trainer version
+	// against the version this build supports. Nil when the TrainJob CRD is
+	// not installed.
+	KubeflowTrainerVersion *TrainerVersionStatus `json:"kubeflowTrainerVersion,omitempty"`
 	// HelmReleases reports the state of the Helm releases setup init manages.
 	HelmReleases []HelmReleaseStatus `json:"helmReleases"`
 
@@ -40,6 +65,19 @@ type SetupStatus struct {
 	// does not exist. A denied or failed lookup leaves it false, so the
 	// command does not tell the user to enable a service that may be there.
 	dcgmAbsent bool
+}
+
+// TrainerVersionStatus reports the installed Kubeflow Trainer version
+// against the version this NVCRE build is pinned to.
+type TrainerVersionStatus struct {
+	// Supported is the Trainer version this NVCRE build supports.
+	Supported string `json:"supported"`
+	// Detected is the installed Trainer version, empty when it could not be
+	// determined.
+	Detected string `json:"detected,omitempty"`
+	// Source names where Detected came from: "helm release", "deployment
+	// image", or "crd label".
+	Source string `json:"source,omitempty"`
 }
 
 // HelmReleaseStatus reports the Helm state of one managed release.
@@ -88,13 +126,19 @@ func newSetupStatusCommand() *cobra.Command {
 Components checked:
   nvcreCRDs        NVCRE CustomResourceDefinitions (nvcre.nvidia.com)
   nvcreController  NVCRE controller deployment (namespace: nvcre)
-  kubeflowTrainer      Kubeflow Trainer TrainJob CRD (kubeflow.org)
+  kubeflowTrainer      Kubeflow Trainer TrainJob CRD and version (supported: ` + kubeflowTrainerVersion + `)
   logProfiles          NVCRE LogProfile resources
   gpuOperator          NVIDIA GPU Operator (nodes with nvidia.com/gpu.present=true)
   dcgm                 NVIDIA DCGM service (optional; diagnostics/dcgm-level4 only)
 
 The Helm releases managed by 'setup init' (nvcre and
 kubeflow-trainer) are also checked via the helm CLI.
+
+The installed Kubeflow Trainer version is detected from the managed Helm
+release, the Trainer controller Deployment image tag, or the CRD
+app.kubernetes.io/version label — whichever answers first. A version other
+than the supported one fails the kubeflowTrainer check; a Trainer install
+whose version cannot be determined passes with a warning.
 
 'installed' is true only when all required components are present and no
 managed Helm release is in a failed or pending state. DCGM is optional, so it
@@ -108,7 +152,8 @@ be queried (helm not in PATH), does not affect 'installed' either.`,
 			}
 
 			query := newHelmStateQuery(*configFlags.KubeConfig, *configFlags.Context)
-			status := collectSetupStatus(ctx, c, query)
+			trainerState := newTrainerStateQuery(*configFlags.KubeConfig, *configFlags.Context)
+			status := collectSetupStatus(ctx, c, query, trainerState)
 
 			switch output {
 			case outputJSON:
@@ -130,43 +175,54 @@ be queried (helm not in PATH), does not affect 'installed' either.`,
 
 // collectSetupStatus queries the cluster and the helm CLI and returns the
 // current component and release status.
-func collectSetupStatus(ctx context.Context, c client.Client, query helmStateFunc) *SetupStatus {
+func collectSetupStatus(
+	ctx context.Context, c client.Client, query helmStateFunc, trainerState trainerStateFunc,
+) *SetupStatus {
 	comp := SetupStatusComponents{}
 
 	comp.NVCRECRDs = checkNVCRECRDs(ctx, c)
 	comp.NVCREController = checkNVCREController(ctx, c)
-	comp.KubeflowTrainer = checkKubeflowTrainer(ctx, c)
 	comp.LogProfiles = checkLogProfiles(ctx, c)
 	comp.GPUOperator = checkGPUOperator(ctx, c)
+
+	// One helm query answers both the trainer release row and the version
+	// detection, so status does not run the same subprocess twice.
+	trainerHelmState, trainerChartVersion := trainerState()
+
+	// The TrainJob CRD must exist, and when the installed Trainer version can
+	// be determined it must be the supported one. A Trainer whose version
+	// cannot be determined passes with a warning, not a failure: NVCRE may
+	// have been installed out-of-band and a version probe must not brick the
+	// status command.
+	var trainerVersion *TrainerVersionStatus
+	if trainJobCRD := findTrainJobCRD(ctx, c); trainJobCRD != nil {
+		tv := detectTrainerVersion(ctx, c, trainerHelmState, trainerChartVersion, trainJobCRD)
+		trainerVersion = &tv
+		comp.KubeflowTrainer = tv.Detected == "" || trainerVersionMatches(tv.Detected)
+	}
 
 	dcgmErr := checkDCGM(ctx, c)
 	comp.DCGM = dcgmErr == nil
 
-	releases := checkHelmReleases(query)
+	releases := checkHelmReleases(query, trainerHelmState)
 
 	return &SetupStatus{
-		Installed:    comp.allRequired() && len(unhealthyHelmReleases(releases)) == 0,
-		Components:   comp,
-		HelmReleases: releases,
-		dcgmAbsent:   apierrors.IsNotFound(dcgmErr),
+		Installed:              comp.allRequired() && len(unhealthyHelmReleases(releases)) == 0,
+		Components:             comp,
+		KubeflowTrainerVersion: trainerVersion,
+		HelmReleases:           releases,
+		dcgmAbsent:             apierrors.IsNotFound(dcgmErr),
 	}
 }
 
-// checkHelmReleases queries the state of every Helm release setup init manages.
-func checkHelmReleases(query helmStateFunc) []HelmReleaseStatus {
-	managed := []struct{ name, namespace string }{
-		{helmReleaseName, nvcreNamespace},
-		{trainerReleaseName, trainerNamespace},
+// checkHelmReleases reports the state of every Helm release setup init
+// manages. The trainer release state comes from the caller's version query,
+// which already asked helm about that release.
+func checkHelmReleases(query helmStateFunc, trainerHelmState string) []HelmReleaseStatus {
+	return []HelmReleaseStatus{
+		{Name: helmReleaseName, Namespace: nvcreNamespace, State: query(helmReleaseName, nvcreNamespace)},
+		{Name: trainerReleaseName, Namespace: trainerNamespace, State: trainerHelmState},
 	}
-	releases := make([]HelmReleaseStatus, 0, len(managed))
-	for _, rel := range managed {
-		releases = append(releases, HelmReleaseStatus{
-			Name:      rel.name,
-			Namespace: rel.namespace,
-			State:     query(rel.name, rel.namespace),
-		})
-	}
-	return releases
 }
 
 // helmStateBlocksReady reports whether a release state must block readiness.
@@ -227,22 +283,91 @@ func checkNVCREController(ctx context.Context, c client.Client) bool {
 	return false
 }
 
-// checkKubeflowTrainer returns true if the Kubeflow TrainJob CRD is installed.
-func checkKubeflowTrainer(ctx context.Context, c client.Client) bool {
+// findTrainJobCRD returns the Kubeflow TrainJob CRD, or nil when it is not
+// installed (or the CRD list could not be read).
+func findTrainJobCRD(ctx context.Context, c client.Client) *unstructured.Unstructured {
 	list := &unstructured.UnstructuredList{}
 	list.SetAPIVersion("apiextensions.k8s.io/v1")
 	list.SetKind("CustomResourceDefinitionList")
 	if err := c.List(ctx, list); err != nil {
-		return false
+		return nil
 	}
-	for _, item := range list.Items {
+	for i := range list.Items {
+		item := &list.Items[i]
 		group, _, _ := unstructured.NestedString(item.Object, "spec", "group")
 		kind, _, _ := unstructured.NestedString(item.Object, "spec", "names", "kind")
 		if group == trainerAPIGroup && kind == "TrainJob" {
-			return true
+			return item
 		}
 	}
-	return false
+	return nil
+}
+
+// detectTrainerVersion determines the installed Kubeflow Trainer version.
+// Detection order: the managed Helm release chart version, the Trainer
+// controller Deployment image tag, then the app.kubernetes.io/version label
+// on the TrainJob CRD. A source that yields nothing falls through to the
+// next; when none answer, Detected stays empty.
+func detectTrainerVersion(
+	ctx context.Context, c client.Client, trainerHelmState, trainerChartVersion string,
+	trainJobCRD *unstructured.Unstructured,
+) TrainerVersionStatus {
+	tv := TrainerVersionStatus{Supported: kubeflowTrainerVersion}
+
+	if trainerHelmState == helmStateDeployed && trainerChartVersion != "" {
+		tv.Detected, tv.Source = trainerChartVersion, trainerVersionSourceHelm
+		return tv
+	}
+	if tag := trainerDeploymentImageTag(ctx, c); tag != "" {
+		tv.Detected, tv.Source = tag, trainerVersionSourceDeployment
+		return tv
+	}
+	if v := trainJobCRD.GetLabels()[trainerVersionLabel]; v != "" {
+		tv.Detected, tv.Source = v, trainerVersionSourceCRDLabel
+		return tv
+	}
+	return tv
+}
+
+// trainerDeploymentImageTag returns the image tag of the manager container in
+// the Trainer controller Deployment, or "" when the Deployment or container is
+// absent or the tag does not look like a version (a "latest" tag or a digest
+// says nothing about the release). The container is matched by name so a
+// sidecar with a semver tag is never read as the Trainer version.
+func trainerDeploymentImageTag(ctx context.Context, c client.Client) string {
+	dep := &unstructured.Unstructured{}
+	dep.SetAPIVersion("apps/v1")
+	dep.SetKind("Deployment")
+	key := client.ObjectKey{Name: trainerDeploymentName, Namespace: trainerNamespace}
+	if err := c.Get(ctx, key, dep); err != nil {
+		return ""
+	}
+	containers, found, err := unstructured.NestedSlice(dep.Object, "spec", "template", "spec", "containers")
+	if err != nil || !found {
+		return ""
+	}
+	for _, item := range containers {
+		container, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if name, _ := container["name"].(string); name != trainerContainerName {
+			continue
+		}
+		image, _ := container["image"].(string)
+		_, tag := parseImage(image)
+		if !isReleaseBuild(tag) {
+			return ""
+		}
+		return tag
+	}
+	return ""
+}
+
+// trainerVersionMatches reports whether a detected Trainer version equals the
+// supported pin, ignoring the leading "v" the way Helm stores chart versions.
+func trainerVersionMatches(detected string) bool {
+	return strings.TrimPrefix(detected, "v") == strings.TrimPrefix(kubeflowTrainerVersion, "v")
 }
 
 // checkLogProfiles returns true if at least one LogProfile resource exists.
@@ -282,6 +407,30 @@ func checkDCGM(ctx context.Context, c client.Client) error {
 	return c.Get(ctx, key, svc)
 }
 
+// trainerVersionMismatch reports whether a Trainer version was detected and
+// does not match the supported pin.
+func (s *SetupStatus) trainerVersionMismatch() bool {
+	return s.KubeflowTrainerVersion != nil &&
+		s.KubeflowTrainerVersion.Detected != "" &&
+		!trainerVersionMatches(s.KubeflowTrainerVersion.Detected)
+}
+
+// trainerStatusCell renders the Kubeflow Trainer table cell, folding the
+// version verdict into the installed/not-found wording of the other rows.
+func trainerStatusCell(s *SetupStatus) string {
+	switch {
+	case s.KubeflowTrainerVersion == nil:
+		return "✗ not found"
+	case s.KubeflowTrainerVersion.Detected == "":
+		return "✓ installed (version unknown)"
+	case s.trainerVersionMismatch():
+		return fmt.Sprintf("✗ version %s (supported %s)",
+			s.KubeflowTrainerVersion.Detected, s.KubeflowTrainerVersion.Supported)
+	default:
+		return "✓ installed (" + s.KubeflowTrainerVersion.Supported + ")"
+	}
+}
+
 // printSetupStatus renders a human-readable table.
 func printSetupStatus(out io.Writer, s *SetupStatus) {
 	check := func(ok bool) string {
@@ -303,8 +452,7 @@ func printSetupStatus(out io.Writer, s *SetupStatus) {
 	_, _ = fmt.Fprintf(w, "NVCRE CRDs\t%s %s\n", check(s.Components.NVCRECRDs), status(s.Components.NVCRECRDs))
 	_, _ = fmt.Fprintf(w, "NVCRE Controller\t%s %s\n",
 		check(s.Components.NVCREController), status(s.Components.NVCREController))
-	_, _ = fmt.Fprintf(w, "Kubeflow Trainer\t%s %s\n",
-		check(s.Components.KubeflowTrainer), status(s.Components.KubeflowTrainer))
+	_, _ = fmt.Fprintf(w, "Kubeflow Trainer\t%s\n", trainerStatusCell(s))
 	_, _ = fmt.Fprintf(w, "Log Profiles\t%s %s\n", check(s.Components.LogProfiles), status(s.Components.LogProfiles))
 	_, _ = fmt.Fprintf(w, "GPU Operator\t%s %s\n", check(s.Components.GPUOperator), status(s.Components.GPUOperator))
 	_, _ = fmt.Fprintf(w, "DCGM (optional)\t%s %s\n", check(s.Components.DCGM), status(s.Components.DCGM))
@@ -324,6 +472,12 @@ func printSetupStatus(out io.Writer, s *SetupStatus) {
 		if !s.Components.GPUOperator {
 			_, _ = fmt.Fprintln(out, "  GPU Operator must be installed by your cluster administrator")
 		}
+		if s.trainerVersionMismatch() {
+			_, _ = fmt.Fprintf(out,
+				"  Kubeflow Trainer %s is installed but this NVCRE build supports %s — "+
+					"run 'nvcrectl setup init' to install the supported version\n",
+				s.KubeflowTrainerVersion.Detected, s.KubeflowTrainerVersion.Supported)
+		}
 	default:
 		_, _ = fmt.Fprintln(out, "Status: not ready — a managed Helm release is unhealthy")
 	}
@@ -331,6 +485,13 @@ func printSetupStatus(out io.Writer, s *SetupStatus) {
 		_, _ = fmt.Fprintf(out,
 			"  Helm release %s (namespace: %s) is %s — run 'nvcrectl setup init' to repair it\n",
 			rel.Name, rel.Namespace, rel.State)
+	}
+
+	if s.KubeflowTrainerVersion != nil && s.KubeflowTrainerVersion.Detected == "" {
+		_, _ = fmt.Fprintln(out)
+		_, _ = fmt.Fprintln(out, "Warning: could not determine the installed Kubeflow Trainer version.")
+		_, _ = fmt.Fprintf(out, "         This NVCRE build supports Kubeflow Trainer %s.\n",
+			s.KubeflowTrainerVersion.Supported)
 	}
 
 	if s.dcgmAbsent {

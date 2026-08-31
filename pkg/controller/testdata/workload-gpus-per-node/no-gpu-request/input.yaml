@@ -1,0 +1,17 @@
+# Nothing requests GPUs, so there is no per-node requirement and the capacity
+# filter must not drop anything.
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          kind: TrainingRuntime
+          name: test-runtime
+        trainer:
+          image: test-image:latest
+          numNodes: 1
+orchestration:
+  iterations: 1
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"

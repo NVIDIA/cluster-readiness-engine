@@ -1,0 +1,4 @@
+Discovered 1 GPU nodes with product: NVIDIA-H100-80GB-HBM3
+[cleanup] Cleaning up...
+[cleanup] Done.
+--- error: create WorkloadRun: workloadruns.nvcre.nvidia.com "demo-run" already exists

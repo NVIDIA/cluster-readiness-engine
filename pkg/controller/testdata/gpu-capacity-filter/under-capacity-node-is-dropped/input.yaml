@@ -1,0 +1,13 @@
+# The issue #82 repro in miniature: one selector, one gpu.product, mixed GPU
+# counts. The 1-GPU nodes cannot satisfy a 2-GPU per-node request, so they must
+# be dropped before partitioning, not handed a group whose pods never schedule.
+nodes:
+  - name: node002
+    allocatableGPUs: 1
+  - name: node003
+    allocatableGPUs: 1
+  - name: node004
+    allocatableGPUs: 2
+  - name: node005
+    allocatableGPUs: 2
+gpusPerNode: 2

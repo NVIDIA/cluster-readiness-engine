@@ -1,0 +1,25 @@
+[namespace] Creating namespace wr-cleanup-ns...
+Discovered 1 GPU nodes with product: NVIDIA-H100-80GB-HBM3
+WorkloadRun demo-run created in namespace wr-cleanup-ns.
+
+Waiting for completion (timeout: 0s)...
+
+WorkloadRun Report
+
+  Name:      demo-run
+
+workloadrun/demo-run
+Status:
+
+Summary
+Categories:   0/1 passed
+Failed Nodes: none
+Result:       RUNNING
+
+[cleanup] Cleaning up...
+[cleanup] Deleting WorkloadRun...
+[cleanup] Deleting namespace wr-cleanup-ns...
+  Waiting for namespace wr-cleanup-ns to terminate...
+  Namespace wr-cleanup-ns deleted.
+[cleanup] Done.
+--- error: timeout waiting for WorkloadRun demo-run

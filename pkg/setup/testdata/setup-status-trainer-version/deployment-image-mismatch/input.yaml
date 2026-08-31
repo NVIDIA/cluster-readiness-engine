@@ -1,0 +1,3 @@
+# No Helm record and the Trainer controller Deployment runs an unsupported
+# version: the check fails from the deployment image source.
+deploymentImage: ghcr.io/kubeflow/trainer/trainer-controller-manager:v2.1.0

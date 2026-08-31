@@ -458,9 +458,10 @@ type OrchestrationStatus struct {
 
 	// excludedNodes lists nodes that matched the target but were dropped before
 	// scheduling, and exclusionReason says why. A Workflow can succeed while
-	// excluding nodes, so these record what was left untested. Today the only
-	// cause is a target set with more than one GPU architecture, where the run
-	// continues on the primary architecture alone.
+	// excluding nodes, so these record what was left untested. Causes: the node
+	// was cordoned, the target set has more than one GPU architecture and the
+	// run continued on the primary architecture alone, or the node reports
+	// fewer allocatable GPUs than the workload requests per node.
 	// +optional
 	ExcludedNodes []string `json:"excludedNodes,omitempty"`
 

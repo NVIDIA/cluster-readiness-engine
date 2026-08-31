@@ -1,0 +1,9 @@
+# A node that reports no allocatable nvidia.com/gpu at all is kept. The device
+# plugin advertises the resource asynchronously, so absence means "unknown",
+# and dropping the node over a plugin restart would spuriously shrink the run
+# and downgrade a clean PASSED to INCOMPLETE.
+nodes:
+  - name: node001
+  - name: node002
+    allocatableGPUs: 8
+gpusPerNode: 8

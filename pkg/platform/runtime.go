@@ -224,13 +224,23 @@ func BuildTorchRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 // BuildMPIRuntime creates TrainingRuntime dependencies for MPI-based workloads.
 // Generates:
 // - A runtime with MPI mlPolicy and launcher+node replicatedJobs
-// - Worker nodes with sshd, IPC_LOCK, readiness probe
-// - Launcher with mpirun and SSH key setup
+// - Worker nodes with sshd, IPC_LOCK, readiness probe, and cfg.Env
+// - Launcher with mpirun, SSH key setup, and cfg.Env
+//
+// cfg.Env goes on both containers as container-level env, the same way
+// BuildTorchRuntime emits it (issue #68: it used to be dropped here, so
+// spec.env behaved differently between the two frameworks). On the launcher
+// the variables reach mpirun directly; on the worker they reach the sshd
+// process, but sshd gives each SSH session a fresh environment, so ranks
+// launched through it may not inherit them. A variable that must reach the
+// ranks should be passed as "-x NAME=value" in mpiArgs, which forwards it
+// through mpirun itself.
 func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	// Worker (node) container: runs sshd
 	workerContainer := map[string]any{
 		"name":    "node",
 		"image":   cfg.Image,
+		"env":     cfg.Env,
 		"command": []string{"sh", "-c"},
 		"args": []string{
 			"set -x && " +
@@ -289,6 +299,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	launcherContainer := map[string]any{
 		"name":  "node",
 		"image": cfg.Image,
+		"env":   cfg.Env,
 		"resources": map[string]any{
 			"limits": map[string]any{
 				"cpu":    "2",
