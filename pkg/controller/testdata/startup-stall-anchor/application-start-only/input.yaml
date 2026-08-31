@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Application framework start marker is the preferred anchor.
+gmStatus:
+  applicationStartTime: "2026-01-03T00:00:00Z"
+  startTime: "2026-01-01T00:00:00Z"
+jobStatus: {}

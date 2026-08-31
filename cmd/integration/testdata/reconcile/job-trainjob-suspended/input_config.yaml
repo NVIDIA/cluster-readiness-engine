@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A Kueue-suspended TrainJob is Pending, not Running (issue #213). The stall
+# fixture is deliberately hostile: the GM's applicationStartTime is years past
+# a 10s startup budget, so treating the suspended workload as running would
+# fail the Job with WorkloadStalled on the very first reconcile and attribute
+# WorkloadFailed to every group node. Reaching InProgress/WorkloadPending at
+# all proves the stall clock never ran; the golden pins no Failed condition,
+# no failedNodes, and no workloadStartTime.
+waitFor:
+  kind: Job
+  name: test-trainjob-suspended
+  namespace: default
+  condition: InProgress
+  reason: WorkloadPending
+collect:
+  - kind: Job
+    name: test-trainjob-suspended
+    namespace: default

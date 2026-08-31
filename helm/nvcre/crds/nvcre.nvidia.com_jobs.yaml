@@ -6540,6 +6540,17 @@ spec:
                 - kind
                 - name
                 type: object
+              workloadStartTime:
+                description: |-
+                  workloadStartTime is when the workload was first observed running rather
+                  than pending. A workload held by an admission controller (for example a
+                  TrainJob suspended by Kueue until quota is available) is pending, and its
+                  queued time does not count against timeoutPerJob or stall detection:
+                  timeoutPerJob is measured from this timestamp, and the stall clock never
+                  starts before it. Cleared on checkpoint restart so the replacement
+                  workload gets a fresh budget.
+                format: date-time
+                type: string
             type: object
         required:
         - spec

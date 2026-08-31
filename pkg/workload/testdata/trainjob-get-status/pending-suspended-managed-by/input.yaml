@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Suspended TrainJob with an external manager: the admitting controller is
+# named in the message so an operator can see who holds the workload.
+kind: TrainJob
+spec:
+  suspend: true
+  managedBy: kueue.x-k8s.io/multikueue

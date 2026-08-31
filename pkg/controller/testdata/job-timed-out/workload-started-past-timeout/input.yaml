@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The workload was observed running hours ago with a 1s budget: timed out.
+timeoutPerJob: 1s
+groupStartAgo: 3h
+workloadStartAgo: 2h
+hasWorkloadRef: true
