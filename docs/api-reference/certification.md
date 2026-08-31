@@ -36,7 +36,7 @@ spec:
 _Generated from CRD schema — coming soon._
 
 <Warning>
-`spec.categories` is **immutable** after the Certification is created (`self == oldSelf` validation). To change the category list, delete the Certification and recreate it. The minimum is 1 category.
+The entire `spec` is **immutable** after the Certification is created (a `self == oldSelf` transition rule on the CRD rejects every update with `spec is immutable after creation`). The controller never applies edits to an active run, so mutable fields would either be silently ignored or applied only to later categories. To run with different inputs, delete the Certification and create a new one. The minimum is 1 category.
 </Warning>
 
 ## Status fields
@@ -57,7 +57,7 @@ kubectl get configmap <ref-name> -o yaml
 
 ## Lifecycle
 
-1. Controller creates one `Workflow` per entry in `spec.categories`. The category list cannot be changed after creation — delete and recreate to modify it.
+1. Controller creates one `Workflow` per entry in `spec.categories`. The spec cannot be changed after creation — delete and recreate to modify it.
 2. Workflows run **sequentially** — the controller processes one category at a time. `maxConcurrent` controls job/group parallelism *within* a single Workflow (how many node groups run at once), not across categories.
 3. When all Workflows complete, Certification is marked `Succeeded` or `Failed`.
 4. Failed nodes are recorded in ConfigMaps referenced by `status.categoryStatuses[].failedNodesRef`. NVCRE does not taint or cordon nodes.

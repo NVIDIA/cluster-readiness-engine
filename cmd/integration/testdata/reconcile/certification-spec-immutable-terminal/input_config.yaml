@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Certification
+  name: immutable-terminal-certification
+  namespace: default
+  condition: Failed
+# Issue #215's post-terminal window on a single-category Certification: once
+# terminal, reconciliation short-circuits without a status write, so an
+# accepted edit would leave observedGeneration behind the object's generation.
+# The whole-spec transition rule must reject the edit instead — including the
+# tempting "fix the unknown category and let it re-run" patch; the contract is
+# delete and recreate.
+verifySpecImmutable:
+  - kind: Certification
+    name: immutable-terminal-certification
+    namespace: default
+    field: categories
+    specPatch: {"categories": [{"domain": "communication", "variant": "nccl-all-reduce"}]}
+  - kind: Certification
+    name: immutable-terminal-certification
+    namespace: default
+    field: nodesPerJob
+    specPatch: {"nodesPerJob": 4}
+collect:
+  - kind: Certification
+    name: immutable-terminal-certification
+    namespace: default
