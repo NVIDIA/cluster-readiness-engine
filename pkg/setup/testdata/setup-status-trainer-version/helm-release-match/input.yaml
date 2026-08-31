@@ -1,0 +1,5 @@
+# The managed Helm release is deployed at the pinned chart version: the
+# version check passes from the first detection source.
+helm:
+  state: deployed
+  chartVersion: "2.2.1"

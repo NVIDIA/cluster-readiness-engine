@@ -1,0 +1,5 @@
+# A sidecar with a semver tag listed ahead of the manager container must not
+# be read as the Trainer version: the tag comes from the container named
+# "manager", so the check passes from the manager image.
+deploymentSidecarImage: gcr.io/kubebuilder/kube-rbac-proxy:v0.15.0
+deploymentImage: ghcr.io/kubeflow/trainer/trainer-controller-manager:v2.2.1

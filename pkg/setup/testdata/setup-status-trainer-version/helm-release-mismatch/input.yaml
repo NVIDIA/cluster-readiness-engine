@@ -1,0 +1,5 @@
+# The managed Helm release is deployed at an older chart version: the
+# kubeflowTrainer check fails and status names detected vs supported.
+helm:
+  state: deployed
+  chartVersion: "2.0.0"

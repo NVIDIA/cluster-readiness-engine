@@ -10,19 +10,19 @@
   },
   "kubeflowTrainerVersion": {
     "supported": "v2.2.1",
-    "detected": "2.2.1",
-    "source": "crd label"
+    "detected": "v2.2.1",
+    "source": "deployment image"
   },
   "helmReleases": [
     {
       "name": "nvcre",
       "namespace": "nvcre",
-      "state": "unknown"
+      "state": "deployed"
     },
     {
       "name": "kubeflow-trainer",
       "namespace": "kubeflow-system",
-      "state": "unknown"
+      "state": "deployed"
     }
   ]
 }
@@ -35,8 +35,8 @@ Kubeflow Trainer                ✓ installed (v2.2.1)
 Log Profiles                    ✓ installed
 GPU Operator                    ✓ installed
 DCGM (optional)                 ✗ not found
-Helm release nvcre              ✓ unknown
-Helm release kubeflow-trainer   ✓ unknown
+Helm release nvcre              ✓ deployed
+Helm release kubeflow-trainer   ✓ deployed
 
 Status: ready
 

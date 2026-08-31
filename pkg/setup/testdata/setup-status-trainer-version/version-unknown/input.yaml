@@ -1,0 +1,3 @@
+# The TrainJob CRD exists but no source can name a version: the check passes
+# with a warning instead of failing, so out-of-band installs keep working.
+{}
