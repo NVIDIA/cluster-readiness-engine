@@ -1,0 +1,22 @@
+WorkloadRun Report
+
+  Name:      timeout-run
+
+workloadrun/timeout-run
+Status:    Running
+Scale:     full-scale
+
+Summary
+Categories:   0/1 passed
+Failed Nodes: none
+Result:       RUNNING
+
+Results written to <results-file>
+
+The WorkloadRun is still running in namespace test-ns.
+Monitor its progress:
+  kubectl get workloadrun timeout-run -n test-ns --watch
+Print an updated report (exits nonzero while still running):
+  nvcrectl workloadrun report timeout-run -n test-ns
+Stop it:
+  nvcrectl workloadrun cancel timeout-run -n test-ns
