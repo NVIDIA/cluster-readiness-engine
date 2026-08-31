@@ -5,7 +5,7 @@
 # Base images are pinned by digest so a rebuild uses the same bits every time.
 # The tag is kept for readability; the digest is what resolves. Dependabot
 # raises the digest on its weekly docker run.
-FROM public.ecr.aws/docker/library/golang:1.26.6-trixie AS builder
+FROM public.ecr.aws/docker/library/golang:1.27.0-trixie AS builder
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION=dev
