@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: WorkloadRun
+  name: test-wr-validation-fail
+  namespace: default
+  condition: Failed
+  reason: WorkflowValidationFailed
+# The WorkloadRun controller's requeue interval is a fixed 15s (not tunable in
+# tests), so the terminal mirror can take a full interval after the Workflow
+# turns Failed.
+timeoutSeconds: 60
+collect:
+  - kind: WorkloadRun
+    name: test-wr-validation-fail
+    namespace: default
+  - kind: Workflow
+    name: test-wr-validation-fail
+    namespace: default

@@ -1,0 +1,12 @@
+{
+  "changed": false,
+  "conditions": [
+    {
+      "type": "ValidationFailed",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "JobValidationFailed",
+      "message": "One or more Jobs failed performance threshold validation"
+    }
+  ]
+}

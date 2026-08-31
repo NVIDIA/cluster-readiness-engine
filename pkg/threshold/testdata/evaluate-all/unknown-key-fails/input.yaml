@@ -1,0 +1,9 @@
+# The scenario from issue #52: avgTFLOPSPerGPU (capital S) is the
+# GoodputMeasurement status field, one character away from the threshold key
+# avgTFLOPsPerGPU. It used to make EvaluateAll skip every threshold silently;
+# now it is an error, even when the other keys are valid and measured.
+thresholds:
+  avgTFLOPSPerGPU: "value >= 1000"
+  busBandwidthGBps: "value >= 400"
+measured:
+  busBandwidthGBps: 100

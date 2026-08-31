@@ -1,0 +1,8 @@
+# Two violated thresholds must come back in sorted key order, so the caller's
+# use of violations[0] and any golden file built on the output are deterministic.
+thresholds:
+  goodputRatio: "value >= 0.9"
+  avgStepTimeSec: "value <= 3.0"
+measured:
+  goodputRatio: 0.5
+  avgStepTimeSec: 5
