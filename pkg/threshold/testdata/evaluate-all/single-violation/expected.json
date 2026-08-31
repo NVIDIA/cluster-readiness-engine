@@ -1,0 +1,11 @@
+{
+  "violations": [
+    {
+      "Key": "busBandwidthGBps",
+      "Expression": "value >= 400",
+      "Measured": 350,
+      "Reason": "ThresholdViolated",
+      "Message": "Threshold \"busBandwidthGBps\" violated: measured 350.0000, expression: value >= 400"
+    }
+  ]
+}

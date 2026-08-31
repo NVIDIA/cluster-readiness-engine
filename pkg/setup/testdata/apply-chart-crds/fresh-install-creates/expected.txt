@@ -1,0 +1,6 @@
+--- apply round 1 ---
+  CRD widgets.fresh.nvcre.example.com applied.
+  CRD gadgets.fresh.nvcre.example.com applied.
+--- cluster state ---
+crd: gadgets.fresh.nvcre.example.com generation=1 versions=[v1] specProperties=[enabled] applyManagers=[nvcrectl-setup]
+crd: widgets.fresh.nvcre.example.com generation=1 versions=[v1alpha1] specProperties=[size] applyManagers=[nvcrectl-setup]

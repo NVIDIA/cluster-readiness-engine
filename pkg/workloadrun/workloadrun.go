@@ -39,6 +39,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/render"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/report"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/setup"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/threshold"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
 
@@ -1176,6 +1177,13 @@ func readWorkloadRun(file string) (*nvcrev1alpha1.WorkloadRun, error) {
 
 	if run.Kind != "" && run.Kind != "WorkloadRun" {
 		return nil, fmt.Errorf("expected kind WorkloadRun, got %q", run.Kind)
+	}
+
+	// Reject unknown threshold keys at read time — render, dry-run, and run
+	// all pass through here — so a typo'd key is reported immediately instead
+	// of failing validation after the workload has already run (issue #52).
+	if err := threshold.ValidateKeysError(run.Spec.Thresholds); err != nil {
+		return nil, fmt.Errorf("workloadrun %s: %w", run.Name, err)
 	}
 
 	return &run, nil

@@ -68,6 +68,14 @@
           "lastTransitionTime": null,
           "reason": "JobValidationFailed",
           "message": "1 groups failed across 1 iterations"
+        },
+        {
+          "type": "ValidationFailed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobValidationFailed",
+          "message": "One or more Jobs failed performance threshold validation"
         }
       ],
       "failedNodesRef": {

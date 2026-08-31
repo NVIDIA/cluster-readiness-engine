@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The typo from issue #52 at the spec level: avgTFLOPSPerGPU is the
+# GoodputMeasurement status field, one character away from the threshold key
+# avgTFLOPsPerGPU. readCertification rejects it before anything is rendered
+# or created, mirroring the WorkloadRun CLI behavior.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: test-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  thresholds:
+    avgTFLOPSPerGPU: "value >= 1000"
+    busBandwidthGBps: "value >= 400"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

@@ -1,0 +1,3 @@
+# Re-running setup init applies the same chart CRDs again; the second apply
+# must succeed and must not bump the CRD generation.
+rounds: 2
