@@ -54,11 +54,11 @@
     }
   },
   "specImmutability": {
-    "Certification/immutable-terminal-certification/spec.categories": {
+    "Certification/default/immutable-terminal-certification/spec.categories": {
       "message": "spec is immutable after creation",
       "rejected": true
     },
-    "Certification/immutable-terminal-certification/spec.nodesPerJob": {
+    "Certification/default/immutable-terminal-certification/spec.nodesPerJob": {
       "message": "spec is immutable after creation",
       "rejected": true
     }

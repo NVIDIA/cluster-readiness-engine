@@ -64,15 +64,15 @@
     }
   },
   "specImmutability": {
-    "WorkloadRun/immutable-run/spec.env": {
+    "WorkloadRun/default/immutable-run/spec.env": {
       "message": "spec is immutable after creation",
       "rejected": true
     },
-    "WorkloadRun/immutable-run/spec.image": {
+    "WorkloadRun/default/immutable-run/spec.image": {
       "message": "spec is immutable after creation",
       "rejected": true
     },
-    "WorkloadRun/immutable-run/spec.numNodes": {
+    "WorkloadRun/default/immutable-run/spec.numNodes": {
       "message": "spec is immutable after creation",
       "rejected": true
     }

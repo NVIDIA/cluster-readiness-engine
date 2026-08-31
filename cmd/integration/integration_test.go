@@ -791,7 +791,7 @@ func verifySpecImmutable(t *testing.T, c client.Client, specs []verifySpecImmuta
 			"verifySpecImmutable: wrong rejection message for spec.%s on %s/%s",
 			s.Field, s.Kind, s.Name)
 
-		results[fmt.Sprintf("%s/%s/spec.%s", s.Kind, s.Name, s.Field)] = map[string]any{
+		results[fmt.Sprintf("%s/%s/%s/spec.%s", s.Kind, s.Namespace, s.Name, s.Field)] = map[string]any{
 			"rejected": true,
 			"message":  "spec is immutable after creation",
 		}

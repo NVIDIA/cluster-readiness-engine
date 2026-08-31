@@ -74,19 +74,19 @@
     }
   },
   "specImmutability": {
-    "Certification/immutable-certification/spec.categories": {
+    "Certification/default/immutable-certification/spec.categories": {
       "message": "spec is immutable after creation",
       "rejected": true
     },
-    "Certification/immutable-certification/spec.enableMNNVL": {
+    "Certification/default/immutable-certification/spec.enableMNNVL": {
       "message": "spec is immutable after creation",
       "rejected": true
     },
-    "Certification/immutable-certification/spec.nodesPerJob": {
+    "Certification/default/immutable-certification/spec.nodesPerJob": {
       "message": "spec is immutable after creation",
       "rejected": true
     },
-    "Certification/immutable-certification/spec.target": {
+    "Certification/default/immutable-certification/spec.target": {
       "message": "spec is immutable after creation",
       "rejected": true
     }
