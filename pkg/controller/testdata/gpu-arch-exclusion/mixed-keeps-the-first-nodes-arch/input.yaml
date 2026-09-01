@@ -1,8 +1,0 @@
-# Nodes arrive in name order, because discoverTargetNodes sorts them.
-nodes:
-  - name: node-a
-    product: NVIDIA-H100-80GB-HBM3
-  - name: node-b
-    product: NVIDIA-H100-80GB-HBM3
-  - name: node-c
-    product: NVIDIA-A100-PCIE-40GB

@@ -1,0 +1,6 @@
+{
+  "gpuArch": "a100",
+  "totalNodes": 4,
+  "archNodes": 3,
+  "nodesPerJob": 3
+}
