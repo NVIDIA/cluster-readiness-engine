@@ -29,6 +29,16 @@ spec:
       options:
         maxSteps: 50
         nodesPerJob: 8
+        # Optional: override the DGX-class CPU/memory defaults
+        # (limits: cpu "128" / memory 800Gi; requests: cpu "64" / memory 500Gi)
+        # so training pods can schedule on smaller GPU nodes.
+        resources:
+          limits:
+            cpu: "6"
+            memory: 48Gi
+          requests:
+            cpu: "4"
+            memory: 32Gi
 ```
 
 ## Spec fields

@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Negative request and limit that compare equal: the pairwise rule passes,
+# the per-field non-negative rule must reject both.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-negative-pair
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        resources:
+          limits:
+            cpu: "-1"
+          requests:
+            cpu: "-1"

@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Request equal to limit is allowed, including across units (1500m < 2).
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-equal-limits
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        resources:
+          limits:
+            cpu: "2"
+            memory: 48Gi
+          requests:
+            cpu: 1500m
+            memory: 48Gi

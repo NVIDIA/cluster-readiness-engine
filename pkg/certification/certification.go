@@ -308,6 +308,7 @@ func renderCertification(cert *nvcrev1alpha1.Certification, platformName string)
 			NodesPerJob:        nodesPerJob,
 			GpusPerNode:        gpusPerNode,
 			MlnxPerNode:        mlnxPerNode,
+			Resources:          opts.Resources,
 			EnableMNNVL:        enableMNNVL,
 			EnableCheckpoint:   derefBoolPtr(opts.EnableCheckpoint),
 			MaxSteps:           derefInt32Ptr(opts.MaxSteps),
