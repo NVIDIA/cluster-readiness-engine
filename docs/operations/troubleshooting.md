@@ -78,7 +78,31 @@ kubectl logs -n nvcre deploy/nvcre-manager \
 **Solutions:**
 
 - Pods are terminating normally — no action needed; cleanup resumes as soon as they are gone.
-- A pod is stuck `Terminating` (for example, its node is unreachable) — cleanup proceeds automatically after the 5-minute grace period. To unblock sooner, force-delete the pod: `kubectl delete pod <pod> --grace-period=0 --force`.
+- A pod is stuck `Terminating` (for example, its node is unreachable) — cleanup proceeds automatically after the 5-minute grace period. To unblock sooner, force-delete the pod: `kubectl delete pod <pod> --grace-period=0 --force`. **Only do this when the node is confirmed unreachable or the pod's processes are known to be dead**: force deletion removes the Pod object without waiting for its processes to stop, so the controller may then delete the ComputeDomain while CUDA kernels are still running on the node — the exact CUDA error 719 failure the drain wait exists to prevent.
+
+## Failed with a name-collision reason
+
+**Symptoms:** A Certification fails with reason `WorkflowNameCollision`, or a Workflow fails with reason `JobNameCollision` or `DependencyNameCollision`.
+
+**What it means:** The name NVCRE generated for a child resource (a Workflow, a Job, or a dependency such as a PVC, ConfigMap, or TrainingRuntime) is already taken by an object NVCRE did not create. NVCRE never adopts such an object and never deletes it during cleanup — it fails the run instead, and the pre-existing object is left untouched.
+
+**Diagnosis:**
+
+```bash
+# The condition message names the colliding object
+kubectl get certifications.nvcre.nvidia.com <name> -n <namespace> -o yaml
+kubectl get workflows.nvcre.nvidia.com <name> -n <namespace> -o yaml
+
+# Inspect the colliding object's owners and labels
+kubectl get <kind> <colliding-name> -n <namespace> -o yaml
+```
+
+**Solutions:**
+
+- The colliding object belongs to someone else — run the certification in a dedicated namespace, or rename your Certification/Workflow so the generated child names no longer collide.
+- The colliding object is a leftover from an earlier run that you no longer need — delete it manually, then re-create the Certification or Workflow.
+
+If the colliding object is already being deleted (it has a `deletionTimestamp`), NVCRE does not fail: it retries with backoff until the name is released. This covers deleting and re-creating a same-named Certification or Workflow while the previous run's children are still terminating.
 
 ## Hardware failures not detected
 

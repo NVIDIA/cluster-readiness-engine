@@ -581,6 +581,12 @@ type collectSpec struct {
 	Kind      string `json:"kind"`
 	Name      string `json:"name"`
 	Namespace string `json:"namespace"`
+	// StripFinalizers is honored by deleteAfterWait only: it force-removes the
+	// object's finalizers after the delete, for kinds whose finalizer-removing
+	// controller does not run under envtest (e.g. the pvc-protection controller
+	// for PVCs). This makes the object actually disappear, simulating the API
+	// server's GC cascade fully removing it mid-test.
+	StripFinalizers bool `json:"stripFinalizers,omitempty"`
 }
 
 func parseWaitConfig(tc *testutil.TestCase) waitConfig {
@@ -645,6 +651,23 @@ func deleteAfterWait(t *testing.T, c client.Client, specs []collectSpec) {
 		require.NoError(t, c.Delete(ctx, obj),
 			"deleteAfterWait: failed to delete %s/%s", spec.Kind, spec.Name)
 		t.Logf("deleteAfterWait: deleted %s/%s", spec.Kind, spec.Name)
+		if spec.StripFinalizers {
+			require.Eventually(t, func() bool {
+				fresh := getObject(ctx, t, c, spec)
+				if fresh == nil {
+					return true
+				}
+				if len(fresh.GetFinalizers()) > 0 {
+					fresh.SetFinalizers(nil)
+					if err := c.Update(ctx, fresh); err != nil {
+						t.Logf("deleteAfterWait: retrying finalizer strip on %s/%s: %v", spec.Kind, spec.Name, err)
+						return false
+					}
+				}
+				return true
+			}, 10*time.Second, 100*time.Millisecond,
+				"deleteAfterWait: failed to strip finalizers from %s/%s", spec.Kind, spec.Name)
+		}
 	}
 }
 
@@ -901,6 +924,12 @@ func getObject(ctx context.Context, t *testing.T, c client.Client, spec collectS
 			return nil
 		}
 		return obj
+	case "LogProfile":
+		obj := &nvcrev1alpha1.LogProfile{}
+		if err := c.Get(ctx, types.NamespacedName{Name: spec.Name}, obj); err != nil {
+			return nil
+		}
+		return obj
 	case "Namespace":
 		obj := &corev1.Namespace{}
 		if err := c.Get(ctx, types.NamespacedName{Name: spec.Name}, obj); err != nil {
@@ -994,6 +1023,13 @@ func sanitizeObject(obj client.Object) {
 		refs[i].UID = ""
 	}
 	obj.SetOwnerReferences(refs)
+
+	// Normalize the workflow-uid creation-identity annotation: it embeds the
+	// Workflow's UID, which changes every envtest run.
+	if ann := obj.GetAnnotations(); ann["nvcre.nvidia.com/workflow-uid"] != "" {
+		ann["nvcre.nvidia.com/workflow-uid"] = "workflow-uid"
+		obj.SetAnnotations(ann)
+	}
 
 	// Clear condition timestamps.
 	switch o := obj.(type) {

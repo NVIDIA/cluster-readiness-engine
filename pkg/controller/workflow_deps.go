@@ -13,7 +13,9 @@ import (
 	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -23,6 +25,17 @@ import (
 const (
 	scopeJob = "job"
 	kindPVC  = "PersistentVolumeClaim"
+
+	// labelWorkflowTracking is the tracking label stamped on every dependency
+	// resource the Workflow controller creates.
+	labelWorkflowTracking = "nvcre.nvidia.com/workflow"
+
+	// annotationWorkflowUID records the UID of the Workflow that created a
+	// dependency resource. It is the creation identity used to verify ownership
+	// of dependencies that cannot carry an owner reference to the Workflow:
+	// cluster-scoped resources, and job-scoped copies that are created before
+	// the Job that later owns them.
+	annotationWorkflowUID = "nvcre.nvidia.com/workflow-uid"
 )
 
 // errDependencyNotReady is returned when a job-scoped dependency (e.g. ComputeDomain)
@@ -260,6 +273,62 @@ func reverseDependencyRefs(refs []nvcrev1alpha1.DependencyResourceRef) []nvcrev1
 	return reversed
 }
 
+// dependencyOwnedByWorkflow reports whether obj carries a UID-strong creation
+// identity for the given Workflow: an owner reference with the Workflow's UID,
+// or the workflow-uid annotation recorded at creation. This is the adoption
+// check for AlreadyExists on create — a match means the object is this
+// Workflow's own earlier create surfacing through cache lag or a crash-retry,
+// so proceeding is safe. Anything else is a foreign object and must not be
+// adopted.
+func dependencyOwnedByWorkflow(obj metav1.Object, workflow *nvcrev1alpha1.Workflow) bool {
+	for _, ref := range obj.GetOwnerReferences() {
+		if ref.UID == workflow.GetUID() {
+			return true
+		}
+	}
+	return obj.GetAnnotations()[annotationWorkflowUID] == string(workflow.GetUID())
+}
+
+// dependencyOwnedForCleanup reports whether a tracked dependency may be
+// deleted during cleanup. In addition to the UID-strong identities accepted by
+// dependencyOwnedByWorkflow, it accepts the tracking label stamped at creation
+// so that dependencies created by controller versions that predate the
+// workflow-uid annotation are still cleaned up after an in-place upgrade.
+// A genuinely foreign object carries none of these markers and is skipped.
+func dependencyOwnedForCleanup(obj metav1.Object, workflow *nvcrev1alpha1.Workflow) bool {
+	if dependencyOwnedByWorkflow(obj, workflow) {
+		return true
+	}
+	return obj.GetLabels()[labelWorkflowTracking] == workflow.GetName()
+}
+
+// dependencyRefKey returns a map key identifying the object a
+// DependencyResourceRef points at.
+func dependencyRefKey(ref nvcrev1alpha1.DependencyResourceRef) string {
+	return ref.APIVersion + "/" + ref.Kind + "/" + ref.Namespace + "/" + ref.Name
+}
+
+// scopedDependencyRefKey extends dependencyRefKey with the ref's scope, group,
+// and iteration, uniquely identifying the tracking entry itself.
+func scopedDependencyRefKey(ref nvcrev1alpha1.DependencyResourceRef) string {
+	return fmt.Sprintf("%s|%s|%s|%d", dependencyRefKey(ref), ref.Scope, ref.GroupName, ref.Iteration)
+}
+
+// getDependencyObject fetches the object a DependencyResourceRef points at.
+// Returns (nil, nil) when the object no longer exists.
+func (r *WorkflowReconciler) getDependencyObject(ctx context.Context, ref nvcrev1alpha1.DependencyResourceRef) (*unstructured.Unstructured, error) {
+	obj := &unstructured.Unstructured{}
+	obj.SetAPIVersion(ref.APIVersion)
+	obj.SetKind(ref.Kind)
+	if err := r.Get(ctx, client.ObjectKey{Namespace: ref.Namespace, Name: ref.Name}, obj); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return obj, nil
+}
+
 // depJobSuffix computes the name suffix for a job-scoped dependency.
 // It mirrors getGroupJobName logic: for a single group and single iteration,
 // the suffix is "-job"; otherwise it's "-{groupName}-iter-{iteration}".
@@ -399,7 +468,11 @@ func (r *WorkflowReconciler) ensureJobDependencies(
 
 			ref, created, err := r.createDependencyResource(ctx, nil, workflow, dep, obj)
 			if err != nil {
-				return nil, nil, err
+				// Return the refs accumulated so far so the caller can record
+				// them: on a terminal error (e.g. a name collision on a later
+				// dependency) there is no retry to re-adopt the copies already
+				// created, and without tracking they would leak permanently.
+				return nil, refs, err
 			}
 			if created && extractKind(dep.Raw) == "ComputeDomain" {
 				hasNewComputeDomain = true
@@ -423,7 +496,7 @@ func (r *WorkflowReconciler) ensureJobDependencies(
 	// Always patch the job spec (even if refs already existed)
 	patchedSpec, err := suffixJobSpec(spec, replacements)
 	if err != nil {
-		return nil, nil, err
+		return nil, refs, err
 	}
 
 	return patchedSpec, refs, nil
@@ -447,35 +520,70 @@ func (r *WorkflowReconciler) cleanupScopedDependencies(ctx context.Context, work
 	}
 
 	// Delete in reverse topological order (reverse of creation order).
+	// Each delete is gated on ownership: the object is fetched and verified to
+	// carry this Workflow's creation identity before it is removed. A foreign
+	// object with a colliding name is skipped (and dropped from tracking) — we
+	// never delete what we did not create.
 	for _, ref := range reverseDependencyRefs(toDelete) {
+		obj, err := r.getDependencyObject(ctx, ref)
+		if err != nil {
+			log.Error(err, "Failed to fetch scoped dependency resource before deletion", "name", ref.Name)
+			// Keep the ref so we can retry later
+			remaining = append(remaining, ref)
+			continue
+		}
+
+		foreign := obj != nil && !dependencyOwnedForCleanup(obj, workflow)
+		if foreign {
+			log.Info("Skipping scoped dependency resource not owned by this Workflow",
+				"scope", scope, "group", groupName, "iteration", iteration,
+				"kind", ref.Kind, "name", ref.Name)
+		}
+
 		if ref.Kind == kindPVC {
 			// Delete PVC first, then check if PV is Released and patchable.
 			// If PV is still Bound, keep the ref for retry on next reconcile.
-			obj := &unstructured.Unstructured{}
-			obj.SetAPIVersion(ref.APIVersion)
-			obj.SetKind(ref.Kind)
-			obj.SetName(ref.Name)
-			obj.SetNamespace(ref.Namespace)
-			log.Info("Deleting scoped dependency resource", "scope", scope, "group", groupName, "iteration", iteration,
-				"kind", ref.Kind, "name", ref.Name)
-			if err := r.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
-				log.Error(err, "Failed to delete scoped dependency resource", "name", ref.Name)
-				remaining = append(remaining, ref)
-			} else if !r.cleanupPVForPVC(ctx, ref.Namespace, ref.Name) {
+			// A foreign PVC is neither deleted nor is its backing PV patched.
+			if foreign {
+				continue
+			}
+			if obj != nil {
+				// Stamp the backing PV with our creation identity before the PVC
+				// disappears — cleanupPVForPVC only patches PVs that carry it.
+				if err := r.markPVOwnedByWorkflow(ctx, workflow, obj); err != nil {
+					log.Error(err, "Failed to mark PV for owned PVC before deletion", "name", ref.Name)
+					remaining = append(remaining, ref)
+					continue
+				}
+				log.Info("Deleting scoped dependency resource", "scope", scope, "group", groupName, "iteration", iteration,
+					"kind", ref.Kind, "name", ref.Name)
+				// The UID precondition closes the window between the ownership
+				// check above and this delete: if the owned object was replaced
+				// by a same-named foreign one in between, the API server rejects
+				// the delete with a conflict and we leave the newcomer alone.
+				if err := r.Delete(ctx, obj, client.Preconditions{UID: new(obj.GetUID())}); err != nil &&
+					!apierrors.IsNotFound(err) && !apierrors.IsConflict(err) {
+					log.Error(err, "Failed to delete scoped dependency resource", "name", ref.Name)
+					remaining = append(remaining, ref)
+					continue
+				}
+			}
+			if !r.cleanupPVForPVC(ctx, workflow, ref.Namespace, ref.Name) {
 				remaining = append(remaining, ref)
 			}
 			continue
 		}
 
-		obj := &unstructured.Unstructured{}
-		obj.SetAPIVersion(ref.APIVersion)
-		obj.SetKind(ref.Kind)
-		obj.SetName(ref.Name)
-		obj.SetNamespace(ref.Namespace)
+		if foreign || obj == nil {
+			continue
+		}
 
 		log.Info("Deleting scoped dependency resource", "scope", scope, "group", groupName, "iteration", iteration,
 			"kind", ref.Kind, "name", ref.Name)
-		if err := r.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
+		// UID precondition: never delete a same-named object that replaced the
+		// one whose ownership was verified above.
+		if err := r.Delete(ctx, obj, client.Preconditions{UID: new(obj.GetUID())}); err != nil &&
+			!apierrors.IsNotFound(err) && !apierrors.IsConflict(err) {
 			log.Error(err, "Failed to delete scoped dependency resource", "name", ref.Name)
 			// Keep the ref so we can retry later
 			remaining = append(remaining, ref)

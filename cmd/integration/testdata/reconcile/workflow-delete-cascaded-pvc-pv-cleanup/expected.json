@@ -1,0 +1,38 @@
+{
+  "PersistentVolume/cascade-checkpoint-pv": {
+    "kind": "PersistentVolume",
+    "apiVersion": "v1",
+    "metadata": {
+      "name": "cascade-checkpoint-pv",
+      "annotations": {
+        "nvcre.nvidia.com/workflow-uid": "workflow-uid"
+      },
+      "finalizers": [
+        "kubernetes.io/pv-protection"
+      ]
+    },
+    "spec": {
+      "capacity": {
+        "storage": "1Gi"
+      },
+      "hostPath": {
+        "path": "/tmp/cascade-checkpoint",
+        "type": ""
+      },
+      "accessModes": [
+        "ReadWriteOnce"
+      ],
+      "claimRef": {
+        "kind": "PersistentVolumeClaim",
+        "namespace": "default",
+        "name": "ckpt-pvc-17276-job",
+        "apiVersion": "v1"
+      },
+      "persistentVolumeReclaimPolicy": "Delete",
+      "volumeMode": "Filesystem"
+    },
+    "status": {
+      "phase": "Pending"
+    }
+  }
+}

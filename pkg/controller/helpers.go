@@ -52,6 +52,11 @@ const (
 	ReasonWorkflowDeleted          = "WorkflowDeleted"
 	ReasonWorkflowSucceeded        = "WorkflowSucceeded"
 	ReasonThresholdViolation       = "ThresholdViolation"
+
+	// ReasonWorkflowNameCollision marks a Certification whose generated child
+	// Workflow name is already taken by a Workflow this Certification does not
+	// own. The foreign object is neither adopted nor recorded for cleanup.
+	ReasonWorkflowNameCollision = "WorkflowNameCollision"
 )
 
 // Workflow tier reasons (Workflow → Job).
@@ -75,6 +80,15 @@ const (
 	ReasonDependencyCreationError = "DependencyCreationError"
 	ReasonNodeDiscoveryError      = "NodeDiscoveryError"
 	ReasonPartitionError          = "PartitionError"
+
+	// ReasonJobNameCollision marks a Workflow whose generated Job name is
+	// already taken by a Job this Workflow does not control. The foreign
+	// object is neither adopted nor recorded for cleanup.
+	ReasonJobNameCollision = "JobNameCollision"
+	// ReasonDependencyNameCollision marks a Workflow whose dependency resource
+	// name is already taken by an object this Workflow did not create. The
+	// foreign object is neither adopted nor recorded for cleanup.
+	ReasonDependencyNameCollision = "DependencyNameCollision"
 )
 
 // Job tier reasons (Job → Workload).
@@ -107,6 +121,21 @@ const (
 	FrameworkMPI   = "mpi"
 	FrameworkExec  = "exec"
 )
+
+// --- Shared name-collision error ---
+
+// nameCollisionError reports that a child object the controller tried to
+// create already exists but is not owned by the expected parent. Reconcilers
+// detect it with errors.As, set their tier's Failed condition using Reason,
+// and stop without recording the foreign object for cleanup.
+type nameCollisionError struct {
+	// Reason is the tier-specific condition reason (ReasonWorkflowNameCollision,
+	// ReasonJobNameCollision, or ReasonDependencyNameCollision).
+	Reason  string
+	Message string
+}
+
+func (e *nameCollisionError) Error() string { return e.Message }
 
 // --- Shared condition helpers ---
 

@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Wait for the Workflow to fail with JobNameCollision (a foreign Job holds the
+# generated group Job name), then delete the Workflow and verify the foreign
+# Job survives the finalizer (it carries no NVCRE workflow label and is not
+# owned by the Workflow).
+waitFor:
+  kind: Workflow
+  name: wf-job-collide
+  namespace: default
+  condition: Failed
+  reason: JobNameCollision
+deleteAfterWait:
+  - kind: Workflow
+    name: wf-job-collide
+    namespace: default
+waitForDeletion:
+  - kind: Workflow
+    name: wf-job-collide
+    namespace: default
+collect:
+  - kind: Job
+    name: wf-job-collide-job
+    namespace: default

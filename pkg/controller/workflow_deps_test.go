@@ -9,7 +9,10 @@ import (
 	"testing"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/yaml"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -370,6 +373,46 @@ func TestReverseDependencyRefs(t *testing.T) {
 		}
 
 		data, err := json.MarshalIndent(got, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
+func TestDependencyOwnership(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "dependency-ownership",
+		ExpectedSuffix: ".json",
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			Workflow struct {
+				Name string `yaml:"name"`
+				UID  string `yaml:"uid"`
+			} `yaml:"workflow"`
+			Object map[string]any `yaml:"object"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		workflow := &nvcrev1alpha1.Workflow{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: input.Workflow.Name,
+				UID:  types.UID(input.Workflow.UID),
+			},
+		}
+		obj := &unstructured.Unstructured{Object: input.Object}
+
+		data, err := json.MarshalIndent(struct {
+			OwnedForAdoption bool `json:"ownedForAdoption"`
+			OwnedForCleanup  bool `json:"ownedForCleanup"`
+		}{
+			OwnedForAdoption: dependencyOwnedByWorkflow(obj, workflow),
+			OwnedForCleanup:  dependencyOwnedForCleanup(obj, workflow),
+		}, "", "  ")
 		if err != nil {
 			return err
 		}

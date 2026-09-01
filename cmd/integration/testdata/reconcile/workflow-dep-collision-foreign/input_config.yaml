@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Wait for the Workflow to fail with DependencyNameCollision (the foreign PVC
+# holds the dependency's name), then delete the Workflow and verify the
+# finalizer leaves the user's PVC and PV untouched: the PVC survives and the
+# PV keeps its Retain reclaim policy.
+waitFor:
+  kind: Workflow
+  name: wf-dep-collision
+  namespace: default
+  condition: Failed
+  reason: DependencyNameCollision
+deleteAfterWait:
+  - kind: Workflow
+    name: wf-dep-collision
+    namespace: default
+waitForDeletion:
+  - kind: Workflow
+    name: wf-dep-collision
+    namespace: default
+collect:
+  - kind: PersistentVolumeClaim
+    name: user-data
+    namespace: default
+  - kind: PersistentVolume
+    name: user-pv

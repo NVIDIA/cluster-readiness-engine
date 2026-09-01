@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A Workflow whose status.dependencyRefs records a PVC that no longer exists
+# (the state a pre-fix controller could leave behind after adopting a foreign
+# PVC whose real owner then deleted it). The backing PV still exists with a
+# claimRef pointing at the vanished PVC. On Workflow deletion the finalizer
+# finds the PVC already gone; it must NOT patch the PV's reclaim policy from
+# Retain to Delete, because the PV does not carry this Workflow's creation
+# identity (the workflow-uid annotation stamped when NVCRE deletes a PVC it
+# owns).
+#
+# The Workflow's single group references a Job that does not exist, so the
+# controller marks the group Failed and the Workflow Failed, which guarantees
+# the finalizer was added before the test deletes the Workflow.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: user-ghost-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /tmp/user-ghost
+  claimRef:
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    namespace: default
+    name: ghost-pvc
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: wf-legacy-foreign-pv
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  dependencyRefs:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      name: ghost-pvc
+      namespace: default
+      scope: workflow
+  orchestration:
+    totalNodes: 1
+    nodesPerJob: 1
+    totalGroups: 1
+    currentIteration: 1
+    groups:
+      - name: group-0
+        nodes:
+          - gpu-node-01
+        phase: Running
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: wf-legacy-foreign-pv-job
+          namespace: default

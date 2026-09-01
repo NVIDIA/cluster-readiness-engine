@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A pre-existing Workflow (no owner references) occupies the deterministic
+# child name the Certification generates for its category:
+#   Truncate("cert-wf-collide-communication-nccl-all-reduce", 31)
+#   = "cert-wf-collide-communica-2e0b0"
+# The Certification must NOT adopt it: it fails with WorkflowNameCollision,
+# never records the Workflow in categoryStatuses, and deleting the
+# Certification leaves the foreign Workflow untouched.
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: gpu-node-01
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: gpu-node-02
+---
+# The user's pre-existing Workflow. Its target matches no nodes, so the
+# Workflow controller marks it Failed deterministically and leaves it there.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: cert-wf-collide-communica-2e0b0
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: user-runtime
+          trainer:
+            image: user-image:latest
+            command:
+              - python
+              - user_train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        example.com/user-pool: "true"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: cert-wf-collide
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+      nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+  nodesPerJob: 2
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

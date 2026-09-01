@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The OWNED counterpart of the foreign-PVC collision tests: the controller
+# creates the PVC dependency itself (stamping the tracking label and the
+# workflow-uid annotation), and on Workflow deletion the finalizer must still
+# clean it up end to end — delete the PVC and patch the backing PV's reclaim
+# policy from Retain to Delete. The PV carries a claimRef to the PVC (as the
+# binder would set in a real cluster) plus the workflow-uid annotation stamped
+# by the finalizer before the PVC delete, which is what authorizes the patch.
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: gpu-node-01
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: owned-checkpoint-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /tmp/owned-checkpoint
+  claimRef:
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    namespace: default
+    name: owned-checkpoint-pvc
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: wf-owned-pvc-cleanup
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+  dependencies:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: owned-checkpoint-pvc
+        namespace: default
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+        volumeName: owned-checkpoint-pv

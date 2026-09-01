@@ -174,9 +174,30 @@ func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *nvcrev1
 	if err := r.ensureWorkflowDependencies(ctx, workflow); err != nil {
 		log := logf.FromContext(ctx)
 		log.Error(err, "Failed to create dependencies")
-		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonDependencyCreationError,
-			fmt.Sprintf("Failed to create dependency: %v", err)); statusErr != nil {
+		reason := ReasonDependencyCreationError
+		message := fmt.Sprintf("Failed to create dependency: %v", err)
+		var collision *nameCollisionError
+		terminal := errors.As(err, &collision)
+		if terminal {
+			// A foreign object holds the dependency's name: terminal, no retry.
+			reason = collision.Reason
+			message = err.Error()
+		}
+		// Persist refs for dependencies created before the failure so the
+		// finalizer can clean them up (conflict-safe via the extra func).
+		if statusErr := r.setWorkflowFailed(ctx, workflow, reason, message,
+			applyDependencyRefs(workflow.Status.DependencyRefs)); statusErr != nil {
 			log.Error(statusErr, "Failed to update Workflow status after dependency failure")
+			// setWorkflowFailed already retries conflicts, so a surviving error
+			// is a real write failure. On the terminal path nothing else would
+			// requeue: return the error so the Failed status (and the refs it
+			// persists) is retried rather than silently dropped.
+			if terminal {
+				return ctrl.Result{}, statusErr
+			}
+		}
+		if terminal {
+			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
@@ -278,6 +299,43 @@ func notEnoughNodesMessage(needed, found int, gpuArch string, archExcluded []str
 	}
 	return fmt.Sprintf("%s. %s. Set nodesPerJob to %d, or %s",
 		msg, strings.Join(causes, ". "), found, strings.Join(remedies, ", or "))
+}
+
+// failWorkflowForDependencyError marks the Workflow Failed after
+// ensureWorkflowDependencies returns err. A dependency name collision (a
+// foreign object holds the name) is terminal: the collision reason is
+// surfaced and the reconcile ends without requeueing. Any other error is
+// returned so the reconcile retries with backoff. Either way the exclusion
+// coverage record and the refs of dependencies created before the failure are
+// persisted with the Failed status (conflict-safe via the extra funcs), so
+// copies created before the collision do not leak untracked.
+func (r *WorkflowReconciler) failWorkflowForDependencyError(ctx context.Context, workflow *nvcrev1alpha1.Workflow, orch *nvcrev1alpha1.OrchestrationStatus, err error) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+	reason := ReasonDependencyCreationError
+	message := fmt.Sprintf("Failed to create dependency: %v", err)
+	var collision *nameCollisionError
+	terminal := errors.As(err, &collision)
+	if terminal {
+		// A foreign object holds the dependency's name: terminal, no retry.
+		reason = collision.Reason
+		message = err.Error()
+	}
+	if statusErr := r.setWorkflowFailed(ctx, workflow, reason, message,
+		applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason),
+		applyDependencyRefs(workflow.Status.DependencyRefs)); statusErr != nil {
+		log.Error(statusErr, "Failed to update status")
+		// setWorkflowFailed already retries conflicts, so a surviving error is
+		// a real write failure. On the terminal path nothing else would
+		// requeue: return the error so the Failed status (and the refs it
+		// persists) is retried rather than silently dropped.
+		if terminal {
+			return ctrl.Result{}, statusErr
+		}
+	}
+	if terminal {
+		return ctrl.Result{}, nil
+	}
+	return ctrl.Result{}, err
 }
 
 // discoverAndPartition discovers target nodes, auto-detects nodesPerJob, and partitions nodes into groups.
@@ -411,12 +469,7 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	// writes the full status (including refs) in a single update.
 	if err := r.ensureWorkflowDependencies(ctx, workflow); err != nil {
 		log.Error(err, "Failed to create dependencies")
-		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonDependencyCreationError,
-			fmt.Sprintf("Failed to create dependency: %v", err),
-			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
-			log.Error(statusErr, "Failed to update status")
-		}
-		return ctrl.Result{}, err
+		return r.failWorkflowForDependencyError(ctx, workflow, orch, err)
 	}
 
 	// Auto-detect nodesPerJob from workload template
@@ -879,6 +932,27 @@ func (r *WorkflowReconciler) launchPendingGroups(ctx context.Context, workflow *
 				logf.FromContext(ctx).Info("Waiting for ComputeDomain controller to create channel templates", "group", g.Name)
 				return ctrl.Result{RequeueAfter: r.getJobRequeueInterval()}, nil
 			}
+			// A name collision with a foreign Job or dependency is terminal:
+			// retrying cannot succeed while the foreign object holds the name,
+			// and adopting or deleting it is never safe.
+			var collision *nameCollisionError
+			if errors.As(err, &collision) {
+				logf.FromContext(ctx).Error(err, "Name collision while launching group", "group", g.Name)
+				// Persist refs for dependency copies created before the collision
+				// so the finalizer can clean them up (conflict-safe via the extra
+				// func) — this failure is terminal, so there is no retry that
+				// could re-record them.
+				if statusErr := r.setWorkflowFailed(ctx, workflow, collision.Reason, err.Error(),
+					applyDependencyRefs(workflow.Status.DependencyRefs)); statusErr != nil {
+					logf.FromContext(ctx).Error(statusErr, "Failed to update Workflow status after name collision")
+					// setWorkflowFailed already retries conflicts, so a
+					// surviving error is a real write failure. This branch is
+					// terminal (no requeue): return the error so the Failed
+					// status is retried rather than silently dropped.
+					return ctrl.Result{}, statusErr
+				}
+				return ctrl.Result{}, nil
+			}
 			return ctrl.Result{}, err
 		}
 		running++
@@ -914,11 +988,11 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 		}
 	}
 
-	// Create per-job dependency copies and patch the job spec references
+	// Create per-job dependency copies and patch the job spec references.
+	// Refs are appended even when ensureJobDependencies errors: copies created
+	// before a terminal failure (e.g. a name collision on a later dependency)
+	// must be tracked so the finalizer can clean them up.
 	patchedSpec, jobRefs, err := r.ensureJobDependencies(ctx, workflow, group, orch, specCopy)
-	if err != nil {
-		return fmt.Errorf("failed to ensure job dependencies for group %s: %w", group.Name, err)
-	}
 	if len(jobRefs) > 0 {
 		workflow.Status.DependencyRefs = append(workflow.Status.DependencyRefs, jobRefs...)
 		// Dep refs are written together with group status by setWorkflowInProgress.
@@ -927,6 +1001,9 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 		// group.Phase = Running (set below) to write to stale memory.
 		// Crash recovery: if we crash before the final write, ensureJobDependencies
 		// handles AlreadyExists on re-create and re-adds the refs.
+	}
+	if err != nil {
+		return fmt.Errorf("failed to ensure job dependencies for group %s: %w", group.Name, err)
 	}
 
 	job := &nvcrev1alpha1.Job{
@@ -1013,11 +1090,29 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 	log.Info("Creating Job for group", "name", jobName, "group", group.Name, "iteration", orch.CurrentIteration)
 	if err := r.Create(ctx, job); err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			log.Info("Job already exists, proceeding", "name", jobName)
-			// Fetch the existing Job so we have its UID for owner references
+			// Fetch the existing Job (also gives us its UID for owner references)
+			// and verify it is the one this Workflow created — a duplicate create
+			// caused by cache lag or a crash-retry. A foreign Job with a colliding
+			// name is never adopted: it would be used as the group's Job and made
+			// the owner of job-scoped dependencies it did not create.
 			if err := r.Get(ctx, client.ObjectKeyFromObject(job), job); err != nil {
 				return fmt.Errorf("failed to get existing Job %s: %w", jobName, err)
 			}
+			if !metav1.IsControlledBy(job, workflow) {
+				// A foreign holder that is already terminating (e.g. the child of
+				// a same-named parent that was just deleted) releases the name
+				// shortly: retry with backoff instead of failing terminally.
+				if !job.DeletionTimestamp.IsZero() {
+					return fmt.Errorf("existing Job %q in namespace %q is being deleted; retrying",
+						jobName, workflow.Namespace)
+				}
+				return &nameCollisionError{
+					Reason: ReasonJobNameCollision,
+					Message: fmt.Sprintf("Job %q already exists in namespace %q and is not controlled by Workflow %q; refusing to adopt it",
+						jobName, workflow.Namespace, workflow.Name),
+				}
+			}
+			log.Info("Job already exists and is controlled by this Workflow, proceeding", "name", jobName)
 		} else {
 			log.Error(err, "Failed to create Job", "name", jobName)
 			return fmt.Errorf("failed to create Job %s: %w", jobName, err)
@@ -1068,6 +1163,12 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow *nvcrev1alpha1.Workflow) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	orch := r.ensureOrchestrationStatus(workflow)
+
+	// Stamp the backing PV of owned PVCs as soon as they bind. Job-scoped
+	// PVCs cascade-delete with their Job on a real cluster, so waiting for a
+	// cleanup path to stamp the PV can be too late (the PVC may already be
+	// gone by then). See markPVsForOwnedPVCs.
+	r.markPVsForOwnedPVCs(ctx, workflow)
 
 	anyRunning := false
 	statusChanged := false
@@ -2326,6 +2427,33 @@ func applyOrchestration(orch *nvcrev1alpha1.OrchestrationStatus) func(*nvcrev1al
 	}
 }
 
+// applyDependencyRefs returns an extra func for setWorkflowFailed that
+// re-applies the given dependency refs inside the updateStatusWithRetry
+// closure. Refs appended to workflow.Status.DependencyRefs in memory (e.g.
+// copies created before a dependency name collision) would otherwise be
+// silently discarded when the API server returns a 409 conflict and the object
+// is re-fetched — and on a terminal failure there is no retry to re-record
+// them, so the created objects would leak untracked.
+func applyDependencyRefs(refs []nvcrev1alpha1.DependencyResourceRef) func(*nvcrev1alpha1.Workflow) bool {
+	if len(refs) == 0 {
+		return nil
+	}
+	return func(w *nvcrev1alpha1.Workflow) bool {
+		existing := make(map[string]bool, len(w.Status.DependencyRefs))
+		for _, ref := range w.Status.DependencyRefs {
+			existing[scopedDependencyRefKey(ref)] = true
+		}
+		changed := false
+		for _, ref := range refs {
+			if !existing[scopedDependencyRefKey(ref)] {
+				w.Status.DependencyRefs = append(w.Status.DependencyRefs, ref)
+				changed = true
+			}
+		}
+		return changed
+	}
+}
+
 // setExclusiveCondition sets one condition True and all others False (mutually exclusive).
 func (r *WorkflowReconciler) setExclusiveCondition(ctx context.Context, workflow *nvcrev1alpha1.Workflow, conditionType, reason, message string, extra ...func(*nvcrev1alpha1.Workflow) bool) error {
 	changed, err := setExclusiveStatusCondition(ctx, r.Client, workflow,
@@ -2474,6 +2602,12 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *nvcre
 
 	log.Info("Handling deletion of Workflow")
 
+	// Stamp the backing PV of every owned PVC while the PVCs still exist:
+	// Phase 1 deletes the Jobs, and job-scoped PVCs cascade-delete with them
+	// on a real cluster — before Phase 2 could fetch the PVC and stamp its PV.
+	// Without the stamp, Phase 3 would leave an owned PV on Retain forever.
+	r.markPVsForOwnedPVCs(ctx, workflow)
+
 	// Phase 1: Delete ALL owned Jobs (including completed iteration Jobs) by label selector.
 	// This is necessary because envtest has no GC controller, and with multiple iterations
 	// there may be completed Jobs from previous iterations that are no longer referenced.
@@ -2488,7 +2622,10 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *nvcre
 	for i := range jobList.Items {
 		if jobList.Items[i].DeletionTimestamp.IsZero() {
 			log.Info("Deleting owned Job", "name", jobList.Items[i].Name)
-			if err := r.Delete(ctx, &jobList.Items[i]); err != nil && !apierrors.IsNotFound(err) {
+			// UID precondition: never delete a same-named Job that replaced the
+			// listed one between the List above and this delete.
+			if err := r.Delete(ctx, &jobList.Items[i], client.Preconditions{UID: new(jobList.Items[i].UID)}); err != nil &&
+				!apierrors.IsNotFound(err) && !apierrors.IsConflict(err) {
 				return ctrl.Result{}, fmt.Errorf("failed to delete Job %s: %w", jobList.Items[i].Name, err)
 			}
 		}
@@ -2507,15 +2644,53 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *nvcre
 	// Phase 2: Delete all dependency resources in reverse topological order.
 	// Since DependencyRefs are stored in creation (topological) order,
 	// reversing ensures dependents are deleted before their dependencies.
+	//
+	// Every delete is gated on ownership: the object is fetched and verified to
+	// carry this Workflow's creation identity first. A foreign object with a
+	// colliding name (e.g. a user's pre-existing PVC recorded by an older
+	// controller version) is skipped and logged — we never delete what we did
+	// not create. Foreign PVCs are remembered so Phase 3 does not patch their
+	// backing PV's reclaim policy either.
 	var depErrs []error
+	foreignRefs := make(map[string]bool)
 	for _, ref := range reverseDependencyRefs(workflow.Status.DependencyRefs) {
-		obj := &unstructured.Unstructured{}
-		obj.SetAPIVersion(ref.APIVersion)
-		obj.SetKind(ref.Kind)
-		obj.SetName(ref.Name)
-		obj.SetNamespace(ref.Namespace)
+		obj, err := r.getDependencyObject(ctx, ref)
+		if err != nil {
+			log.Error(err, "Failed to fetch dependency resource before deletion", "name", ref.Name)
+			depErrs = append(depErrs, err)
+			continue
+		}
+		if obj == nil {
+			continue // already gone
+		}
+		if !dependencyOwnedForCleanup(obj, workflow) {
+			log.Info("Skipping dependency resource not owned by this Workflow",
+				"scope", ref.Scope, "kind", ref.Kind, "name", ref.Name)
+			foreignRefs[dependencyRefKey(ref)] = true
+			continue
+		}
+		if ref.Kind == kindPVC {
+			// Stamp the backing PV with our creation identity before the PVC
+			// disappears — cleanupPVForPVC (Phase 3) only patches PVs that
+			// carry it.
+			if err := r.markPVOwnedByWorkflow(ctx, workflow, obj); err != nil {
+				log.Error(err, "Failed to mark PV for owned PVC before deletion", "name", ref.Name)
+				depErrs = append(depErrs, err)
+				continue
+			}
+		}
 		log.Info("Deleting dependency resource", "scope", ref.Scope, "kind", ref.Kind, "name", ref.Name)
-		if err := r.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
+		// The UID precondition closes the window between the ownership check
+		// above and this delete: if the owned object was replaced by a
+		// same-named foreign one in between, the API server rejects the delete
+		// with a conflict and we leave the newcomer alone.
+		if err := r.Delete(ctx, obj, client.Preconditions{UID: new(obj.GetUID())}); err != nil && !apierrors.IsNotFound(err) {
+			if apierrors.IsConflict(err) {
+				log.Info("Skipping dependency resource replaced since ownership check",
+					"scope", ref.Scope, "kind", ref.Kind, "name", ref.Name)
+				foreignRefs[dependencyRefKey(ref)] = true
+				continue
+			}
 			log.Error(err, "Failed to delete dependency resource", "name", ref.Name)
 			depErrs = append(depErrs, err)
 		}
@@ -2526,12 +2701,17 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *nvcre
 
 	// Phase 3: Patch PVs for deleted PVCs. The PV must be Released (not Bound)
 	// for the reclaim policy patch to stick — if still Bound, requeue.
+	// PVCs identified as foreign in Phase 2 are excluded, and cleanupPVForPVC
+	// itself refuses to patch a PV that does not carry this Workflow's creation
+	// identity — a PV backing a same-named PVC that is already gone (e.g. a
+	// foreign ref recorded by a pre-fix controller whose PVC its owner deleted)
+	// is left untouched.
 	var pvPending bool
 	for _, ref := range workflow.Status.DependencyRefs {
-		if ref.Kind != kindPVC {
+		if ref.Kind != kindPVC || foreignRefs[dependencyRefKey(ref)] {
 			continue
 		}
-		if !r.cleanupPVForPVC(ctx, ref.Namespace, ref.Name) {
+		if !r.cleanupPVForPVC(ctx, workflow, ref.Namespace, ref.Name) {
 			pvPending = true
 		}
 	}
@@ -2908,18 +3088,73 @@ func (r *WorkflowReconciler) createDependencyResource(ctx context.Context, owner
 	if labels == nil {
 		labels = make(map[string]string)
 	}
-	labels["nvcre.nvidia.com/workflow"] = workflow.Name
+	labels[labelWorkflowTracking] = workflow.Name
 	obj.SetLabels(labels)
+
+	// Record a UID-strong creation identity. Owner references cannot carry it
+	// for every dependency (cluster-scoped resources cannot reference a
+	// namespaced Workflow, and job-scoped copies are created before their Job),
+	// so the Workflow UID is stamped as an annotation on all of them. It is
+	// what the AlreadyExists path below and the cleanup paths verify.
+	annotations := obj.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+	annotations[annotationWorkflowUID] = string(workflow.GetUID())
+	obj.SetAnnotations(annotations)
 
 	log.Info("Creating dependency resource", "apiVersion", obj.GetAPIVersion(), "kind", obj.GetKind(), "name", obj.GetName())
 	created := true
+	live := obj
 	if err := r.Create(ctx, obj); err != nil {
-		if apierrors.IsAlreadyExists(err) {
-			log.Info("Dependency resource already exists, proceeding", "name", obj.GetName())
-			created = false
-		} else {
+		if !apierrors.IsAlreadyExists(err) {
 			return nil, false, fmt.Errorf("failed to create dependency %s/%s %s: %w",
 				obj.GetAPIVersion(), obj.GetKind(), obj.GetName(), err)
+		}
+		// Never adopt a pre-existing object blindly. Fetch it and verify it is
+		// the one this Workflow created (a duplicate create caused by cache lag
+		// or a crash-retry). A foreign object with a colliding name fails the
+		// Workflow and is NOT recorded for cleanup.
+		existing := &unstructured.Unstructured{}
+		existing.SetAPIVersion(obj.GetAPIVersion())
+		existing.SetKind(obj.GetKind())
+		if err := r.Get(ctx, client.ObjectKeyFromObject(obj), existing); err != nil {
+			return nil, false, fmt.Errorf("failed to get existing dependency %s %s: %w",
+				obj.GetKind(), obj.GetName(), err)
+		}
+		if !dependencyOwnedByWorkflow(existing, workflow) {
+			location := obj.GetName()
+			if obj.GetNamespace() != "" {
+				location = obj.GetNamespace() + "/" + obj.GetName()
+			}
+			// A foreign holder that is already terminating releases the name
+			// shortly: retry with backoff instead of failing terminally.
+			if existing.GetDeletionTimestamp() != nil {
+				return nil, false, fmt.Errorf("dependency %s %q already exists but is being deleted; retrying",
+					obj.GetKind(), location)
+			}
+			return nil, false, &nameCollisionError{
+				Reason: ReasonDependencyNameCollision,
+				Message: fmt.Sprintf("dependency %s %q already exists and is not owned by Workflow %q; refusing to adopt it",
+					obj.GetKind(), location, workflow.Name),
+			}
+		}
+		log.Info("Dependency resource already exists and is owned by this Workflow, proceeding", "name", obj.GetName())
+		created = false
+		live = existing
+	}
+
+	// A PVC dependency that is already bound (spec.volumeName set) gets its
+	// backing PV stamped with the creation identity right away. Job-scoped
+	// PVCs carry a Job owner reference, so on a real cluster the API server
+	// cascade-deletes them with their Job — potentially before any cleanup
+	// path can fetch the PVC and stamp the PV. Stamping while the PVC exists
+	// (here, on every status poll, and again at the start of deletion) makes
+	// the identity survive any deletion order. A failure here is non-fatal:
+	// markPVsForOwnedPVCs retries on the next reconcile.
+	if live.GetKind() == kindPVC {
+		if err := r.markPVOwnedByWorkflow(ctx, workflow, live); err != nil {
+			log.Error(err, "Failed to mark PV for owned PVC at creation", "name", live.GetName())
 		}
 	}
 
@@ -2931,11 +3166,78 @@ func (r *WorkflowReconciler) createDependencyResource(ctx context.Context, owner
 	}, created, nil
 }
 
+// markPVsForOwnedPVCs stamps the workflow-uid creation identity on the PV
+// bound to every tracked PVC dependency that this Workflow owns. Job-scoped
+// PVCs carry a Job owner reference, so on a real cluster the API server
+// cascade-deletes them with their Job — before handleDeletion Phase 2 (or
+// cleanupScopedDependencies) can fetch the PVC and stamp its PV via
+// markPVOwnedByWorkflow. Once the PVC is gone the PV can no longer be proven
+// ours, and cleanupPVForPVC would leave an owned PV on Retain forever.
+// Stamping while the PVC still exists (at dependency creation, on every
+// status poll, and at the start of deletion before the Jobs — and therefore
+// the job-scoped PVCs — go away) makes the identity survive any deletion
+// order. Foreign PVCs are never a stamping source: ownership is verified on
+// the PVC before its PV is touched.
+func (r *WorkflowReconciler) markPVsForOwnedPVCs(ctx context.Context, workflow *nvcrev1alpha1.Workflow) {
+	log := logf.FromContext(ctx)
+	for _, ref := range workflow.Status.DependencyRefs {
+		if ref.Kind != kindPVC {
+			continue
+		}
+		pvc, err := r.getDependencyObject(ctx, ref)
+		if err != nil || pvc == nil {
+			continue // transient fetch error or already gone; retried on the next pass
+		}
+		if !dependencyOwnedForCleanup(pvc, workflow) {
+			continue
+		}
+		if err := r.markPVOwnedByWorkflow(ctx, workflow, pvc); err != nil {
+			log.Error(err, "Failed to mark PV for owned PVC", "pvc", ref.Name)
+		}
+	}
+}
+
+// markPVOwnedByWorkflow stamps the Workflow's creation identity (the
+// workflow-uid annotation) on the PV bound to an owned PVC that is about to be
+// deleted. cleanupPVForPVC later requires that annotation before flipping the
+// PV's reclaim policy — once the PVC is gone the PV found by claimRef cannot
+// otherwise be proven ours, and a same-named foreign or legacy-recorded PVC's
+// backing PV must never be patched from Retain to Delete.
+// pvc is the owned PVC as fetched by the cleanup path (unstructured).
+func (r *WorkflowReconciler) markPVOwnedByWorkflow(ctx context.Context, workflow *nvcrev1alpha1.Workflow, pvc *unstructured.Unstructured) error {
+	volumeName, _, err := unstructured.NestedString(pvc.Object, "spec", "volumeName")
+	if err != nil || volumeName == "" {
+		return nil // unbound PVC: no PV to mark (and none will be found by claimRef)
+	}
+	pv := &corev1.PersistentVolume{}
+	if err := r.Get(ctx, client.ObjectKey{Name: volumeName}, pv); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to get PV %s for PVC %s: %w", volumeName, pvc.GetName(), err)
+	}
+	if pv.Annotations[annotationWorkflowUID] == string(workflow.GetUID()) {
+		return nil
+	}
+	patch := client.MergeFrom(pv.DeepCopy())
+	if pv.Annotations == nil {
+		pv.Annotations = make(map[string]string)
+	}
+	pv.Annotations[annotationWorkflowUID] = string(workflow.GetUID())
+	if err := r.Patch(ctx, pv, patch); err != nil {
+		return fmt.Errorf("failed to mark PV %s as owned: %w", volumeName, err)
+	}
+	return nil
+}
+
 // cleanupPVForPVC patches the PV backing a PVC from Retain to Delete.
 // It finds the PV via the PVC (if it still exists) or by scanning claimRefs.
-// Returns true if the PV is handled (patched, already Delete, or not found).
-// Returns false if the PV is still Bound and needs a retry.
-func (r *WorkflowReconciler) cleanupPVForPVC(ctx context.Context, namespace, name string) bool {
+// The patch is only applied to PVs carrying this Workflow's creation identity
+// (stamped by markPVOwnedByWorkflow before the owned PVC was deleted): a PV
+// backing someone else's same-named PVC is left untouched.
+// Returns true if the PV is handled (patched, already Delete, not ours, or
+// not found). Returns false if the PV is still Bound and needs a retry.
+func (r *WorkflowReconciler) cleanupPVForPVC(ctx context.Context, workflow *nvcrev1alpha1.Workflow, namespace, name string) bool {
 	log := logf.FromContext(ctx)
 	var pvName string
 
@@ -2954,6 +3256,12 @@ func (r *WorkflowReconciler) cleanupPVForPVC(ctx context.Context, namespace, nam
 	pv := &corev1.PersistentVolume{}
 	if err := r.Get(ctx, client.ObjectKey{Name: pvName}, pv); err != nil {
 		return true // PV gone
+	}
+
+	if pv.Annotations[annotationWorkflowUID] != string(workflow.GetUID()) {
+		log.Info("Skipping PV reclaim policy patch: PV does not carry this Workflow's creation identity",
+			"pv", pvName, "pvc", name)
+		return true
 	}
 
 	if pv.Status.Phase == corev1.VolumeBound {

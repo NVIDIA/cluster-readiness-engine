@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Wait for the Workflow to reach Failed (its group's Job does not exist), then
+# delete the Workflow. The tracked PVC is already gone, so the finalizer must
+# leave the PV it finds by claimRef alone: no workflow-uid annotation means the
+# PV is not ours, and its reclaim policy stays Retain.
+waitFor:
+  kind: Workflow
+  name: wf-legacy-foreign-pv
+  namespace: default
+  condition: Failed
+deleteAfterWait:
+  - kind: Workflow
+    name: wf-legacy-foreign-pv
+    namespace: default
+waitForDeletion:
+  - kind: Workflow
+    name: wf-legacy-foreign-pv
+    namespace: default
+collect:
+  - kind: PersistentVolume
+    name: user-ghost-pv

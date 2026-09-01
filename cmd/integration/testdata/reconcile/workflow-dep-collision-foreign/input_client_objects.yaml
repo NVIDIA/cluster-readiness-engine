@@ -1,0 +1,81 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A user's pre-existing PVC (no NVCRE labels, annotations, or owner references)
+# collides with the name of a Workflow dependency. The controller must NOT
+# adopt it: the Workflow fails with DependencyNameCollision, the PVC is never
+# recorded in status.dependencyRefs, and deleting the Workflow leaves both the
+# PVC and its backing PV (reclaim policy Retain) untouched.
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: gpu-node-01
+---
+# The user's PV backing the foreign PVC. Reclaim policy Retain must survive.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: user-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /tmp/user-data
+---
+# The user's pre-existing PVC. Carries no NVCRE ownership markers.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: user-data
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: user-pv
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: wf-dep-collision
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+  dependencies:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: user-data
+        namespace: default
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+        volumeName: user-pv

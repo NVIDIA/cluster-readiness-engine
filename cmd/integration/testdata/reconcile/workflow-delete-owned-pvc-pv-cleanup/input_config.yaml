@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Wait for the Workflow to start running (its PVC dependency was created and
+# is owned by it), then delete the Workflow and verify the finalizer cleans up
+# the owned PVC and patches the PV's reclaim policy from Retain to Delete —
+# the ownership checks must not break cleanup of resources NVCRE created.
+waitFor:
+  kind: Workflow
+  name: wf-owned-pvc-cleanup
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+deleteAfterWait:
+  - kind: Workflow
+    name: wf-owned-pvc-cleanup
+    namespace: default
+waitForDeletion:
+  - kind: Workflow
+    name: wf-owned-pvc-cleanup
+    namespace: default
+collect:
+  - kind: PersistentVolume
+    name: owned-checkpoint-pv
