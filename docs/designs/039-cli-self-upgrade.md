@@ -4,15 +4,15 @@
 
 When a new version of nvcrectl is released, operators must manually download and replace the binary. There is no built-in mechanism to check for updates or perform in-place upgrades. This leads to version drift across teams and missed improvements.
 
-the nvcrectl installer solves this with a self-update mechanism that queries GitLab for newer releases and downloads them in-place. We adopt the same pattern for nvcrectl, adapted to use the Package Registry (where nvcrectl binaries are published) instead of GitLab Releases.
+A prior internal NVIDIA CLI solved this with a self-update mechanism that queries its release host for newer releases and downloads them in-place. We adopt the same pattern for nvcrectl, adapted to GitHub Releases (where nvcrectl binaries are published).
 
 ### Requirements
 
-1. **Version check**: Compare the running version against the latest GitLab tag.
+1. **Version check**: Compare the running version against the latest release tag.
 2. **Release notes**: Show what changed in the new version.
 3. **Interactive prompt**: Ask before replacing the binary.
 4. **Check-only mode**: `--check` flag to just report without installing.
-5. **No authentication**: Public repo, no GITLAB_TOKEN required.
+5. **No authentication**: Public repo, no token required.
 6. **Sudo fallback**: Handle system directories gracefully.
 
 ## Decision

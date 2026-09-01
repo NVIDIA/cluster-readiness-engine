@@ -128,9 +128,8 @@ fi
 if [[ -n "${GH_TOKEN}" ]]; then
   AUTH_HEADERS=(-H "Authorization: token ${GH_TOKEN}")
 else
+  # No token: anonymous downloads work fine against the public repository.
   AUTH_HEADERS=()
-  msg "Warning: no GitHub token found. This will fail for private repositories."
-  msg "         Set GITHUB_TOKEN or run 'gh auth login'."
 fi
 
 # ---------------------------------------------------------------------------

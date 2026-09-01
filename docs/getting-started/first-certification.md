@@ -6,8 +6,6 @@ description: Install NVCRE on a GPU cluster, run one certification category, rea
 ---
 
 
-# Your first certification
-
 This guide takes you from an empty GPU cluster to a completed certification report. You install the `nvcrectl` CLI, check that your cluster is a valid target, install NVCRE, run one communication test, and read the result. Plan for 30 to 60 minutes. Most of that time is the workload itself.
 
 ## Before you start
@@ -164,7 +162,7 @@ kubectl nvcre setup reset
 | Symptom | Cause | Fix |
 |---|---|---|
 | `setup init` hangs, then fails after 5 minutes in the helm phase | The controller pod is pending — check `kubectl get pod -n <namespace>` and `kubectl describe pod <controller-pod>` for the cause (resource limits, image pull failure, taint mismatch). | Address the scheduling issue shown in the pod events. |
-| `GHCR returned 403` | The token lacks the `read:packages` scope. | `gh auth refresh -s read:packages` |
+| `GHCR returned 403` | A stale or under-scoped token was passed via `--image-pull-secret`. Anonymous pulls need no token. | Retry without `--image-pull-secret`, or refresh the token (`gh auth refresh -s read:packages`) if a private mirror requires one. |
 | `helm not found in PATH` | Setup shells out to helm. | Install helm 3. |
 | `no matches for kind "ServiceMonitor"` in the helm phase | The Prometheus Operator CRDs are not installed, and the chart creates a `ServiceMonitor` by default. | Install the Prometheus Operator (or at least its CRDs), or skip the ServiceMonitor with `metrics.serviceMonitor.enabled=false`. |
 | `no nodes have nvidia.com/gpu.product label` | GPU Operator (feature discovery) is not running. | Install or fix the GPU Operator. |
@@ -176,7 +174,7 @@ kubectl nvcre setup reset
 
 ## Next steps
 
-- Run a single custom workload with the simplified WorkloadRun API: [ADR-059](../designs/059-workloadrun-simplified-api.md) describes it. Write a `WorkloadRun` YAML and run it with `kubectl nvcre workloadrun run <file> --wait`.
-- Understand the architecture: [ADR-001](../designs/001-adr-abridged.md) is the readable overview, and [ADR-002](../designs/002-layered-crd-hierarchy.md) explains the Certification, Workflow, and Job composition this guide walked through.
-- Understand why `certification run` does apply, wait, report, and cleanup in one command: [ADR-050](../designs/050-xcalctl-unified-run-pipeline.md).
+- Run a single custom workload with the simplified WorkloadRun API: [ADR-059](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/059-workloadrun-simplified-api.md) describes it. Write a `WorkloadRun` YAML and run it with `kubectl nvcre workloadrun run <file> --wait`.
+- Understand the architecture: [ADR-001](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/001-adr-abridged.md) is the readable overview, and [ADR-002](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/002-layered-crd-hierarchy.md) explains the Certification, Workflow, and Job composition this guide walked through.
+- Understand why `certification run` does apply, wait, report, and cleanup in one command: [ADR-050](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/050-nvcrectl-unified-run-pipeline.md).
 - Write a full Certification YAML with several categories, thresholds, and checkpointing, and run it with `--cert-file`.

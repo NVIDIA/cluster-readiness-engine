@@ -93,7 +93,7 @@ spec:
         kind: TrainingRuntime
         name: nemotron-6-8b-runtime
       trainer:
-        image: nvcr.io/nv-ngc-devops/nemo:25.07
+        image: nvcr.io/nvidia/nemo:25.07
         command: [/bin/bash, -c]
         args:
           - exec torchrun --nnodes 8 --nproc-per-node 4

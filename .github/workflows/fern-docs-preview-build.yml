@@ -19,8 +19,9 @@
 # uploads them as an artifact. Both directories are needed because
 # fern/docs.yml references ../docs/index.yml; omitting docs/ causes
 # `fern generate --docs` to fail in the companion workflow. No secrets are
-# used here, so this is safe to run on fork PRs via the regular pull_request
-# trigger.
+# used here. Like the other CI workflows, it runs on push to the
+# pull-request/<number> branches that copy-pr-bot creates once a trustee
+# vets the PR, not on a direct pull_request trigger.
 #
 # The companion workflow (fern-docs-preview-comment.yml) picks up the artifact,
 # builds the preview with DOCS_FERN_TOKEN, and posts the PR comment.

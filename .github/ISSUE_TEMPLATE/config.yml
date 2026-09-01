@@ -4,8 +4,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: 🔒 Security Issue
-    url: https://github.com/NVIDIA/cluster-readiness-engine/security/advisories/new
-    about: Report a security vulnerability (private disclosure)
+    url: https://github.com/NVIDIA/cluster-readiness-engine/blob/main/SECURITY.md
+    about: Report a security vulnerability privately to NVIDIA PSIRT (not through GitHub)
   - name: 💬 Discussions
     url: https://github.com/NVIDIA/cluster-readiness-engine/discussions
     about: Ask questions, share ideas, and discuss with the community

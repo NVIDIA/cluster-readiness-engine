@@ -197,7 +197,7 @@ jobs:
             certifies GPU clusters before production use. It runs real training
             and communication workloads across topology-aware node groups,
             measures goodput and bandwidth, detects hardware failures, and
-            quarantines bad nodes. See the
+            reports every failed node with a reason. See the
             [README](https://github.com/${{ github.repository }}/blob/${{ steps.tag.outputs.value }}/README.md)
             for the full feature list.
 
@@ -242,8 +242,9 @@ jobs:
 
             ## Verify your download
 
-            Every asset is listed in `checksums.txt` with its SHA-256 digest.
-            After you download an asset, verify it:
+            Every binary asset (the installer and the `nvcrectl-*` binaries) is
+            listed in `checksums.txt` with its SHA-256 digest. After you
+            download an asset, verify it:
 
             ```bash
             sha256sum --check --ignore-missing checksums.txt

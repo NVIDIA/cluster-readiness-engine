@@ -22,7 +22,7 @@ While the measured `Job` is running, the measurement's `Measuring` condition is 
 
 When the `Job` reaches a terminal state, the controller performs one final log read and folds it into a single terminal status write, anchored to the timestamp of the Job's terminal condition rather than the controller's wall clock: `completionTime` is the Job's terminal transition time, and `trainingTimeSec` (and therefore `result`) is measured up to that instant. That write sets `Complete=True` and `Measuring=False`.
 
-Once `Complete` is `True` the measurement is **frozen**: its status never changes again, so `nvcrectl certification report` returns the same goodput on every read, and controller restarts or repeated reconciles cannot move the value (see [ADR-072](../designs/072-goodput-terminal-freeze.md)). Goodput-based threshold evaluation (`goodputRatio`, `avgTFLOPsPerGPU`, `avgStepTimeSec`) waits for `Complete=True` and only ever consumes the frozen values.
+Once `Complete` is `True` the measurement is **frozen**: its status never changes again, so `nvcrectl certification report` returns the same goodput on every read, and controller restarts or repeated reconciles cannot move the value (see [ADR-072](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/072-goodput-terminal-freeze.md)). Goodput-based threshold evaluation (`goodputRatio`, `avgTFLOPsPerGPU`, `avgStepTimeSec`) waits for `Complete=True` and only ever consumes the frozen values.
 
 ### Interpreting goodput
 

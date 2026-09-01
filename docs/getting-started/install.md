@@ -47,15 +47,9 @@ nvcrectl --version
 nvcrectl setup init
 ```
 
-### GHCR authentication
+### Registry access
 
-The controller image and Helm chart are pulled anonymously from GHCR:
-
-```bash
-nvcrectl setup init
-```
-
-If your cluster pulls from a private mirror or fork instead, pass `--image-pull-secret <github-token>` and the CLI creates the pull secret for you.
+The controller image and Helm chart are pulled anonymously from GHCR; no token is needed. If your cluster pulls from a private mirror or fork instead, pass `--image-pull-secret <github-token>` and the CLI creates the pull secret for you.
 
 ## Verify
 

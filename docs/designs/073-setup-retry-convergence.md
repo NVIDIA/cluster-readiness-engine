@@ -102,6 +102,6 @@ So the reporting gap is closed by #188, but `setup init` itself still retries in
 - Issue #180 — `setup init` retry certificate field-ownership conflicts (field evidence and manual recovery).
 - Issue #179 / PR #188 — `setup status` Helm release health (`helmStateFunc` plumbing this ADR reuses).
 - ADR-064: Helm chart distribution.
-- ADR-065: xcalctl Helm install — the decision to drive Helm via CLI subprocess rather than SDK, which shapes the attempt-then-classify design.
+- ADR-065: nvcrectl Helm install — the decision to drive Helm via CLI subprocess rather than SDK, which shapes the attempt-then-classify design.
 - ADR-014: envtest integration tests with golden files — the testing pattern the SSA conflict fixture follows.
 - [`pkg/setup/helm.go`](../../pkg/setup/helm.go), [`pkg/setup/setup.go`](../../pkg/setup/setup.go), [`pkg/setup/status.go`](../../pkg/setup/status.go) — the code this ADR modifies.

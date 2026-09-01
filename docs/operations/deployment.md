@@ -52,10 +52,10 @@ nvcrectl setup status
 
 ### Helm chart
 
-For GitOps workflows, install the chart directly. The chart is public on GHCR, so no registry login is needed. Inspect and install (the snippet resolves the newest release; set `NVCRE_VERSION` to an explicit tag for reproducible installs):
+For GitOps workflows, install the chart directly. The chart is public on GHCR, so no registry login is needed. Inspect and install (the snippet resolves the newest stable release without authentication; set `NVCRE_VERSION` to an explicit tag for reproducible installs):
 
 ```bash
-NVCRE_VERSION=$(gh release list --repo NVIDIA/cluster-readiness-engine --limit 1 --json tagName -q '.[0].tagName')
+NVCRE_VERSION=$(curl -fsSL https://api.github.com/repos/NVIDIA/cluster-readiness-engine/releases/latest | jq -r .tag_name)
 
 helm show chart oci://ghcr.io/nvidia/nvcre --version "$NVCRE_VERSION"
 

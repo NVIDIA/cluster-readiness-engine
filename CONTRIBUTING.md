@@ -58,6 +58,8 @@ When reporting issues:
 - Ensure all CI checks pass
 - Be responsive to feedback and code review
 
+**CI on fork pull requests**: CI does not run directly on fork branches. After a maintainer vets your PR, the copy-pr-bot service copies it to a `pull-request/<number>` branch in this repository, and the required checks run there (a trustee triggers this by commenting `/ok to test` on the PR). If your PR shows no checks yet, nothing is wrong; wait for a maintainer to trigger them.
+
 ## Commit Message Format
 
 We use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Format the subject line as `type: short imperative summary`:
@@ -125,7 +127,7 @@ go test ./pkg/workload/ -run TestAdapterForSpec -v
 **Running a single integration test**:
 ```bash
 KUBEBUILDER_ASSETS="$(bin/setup-envtest use -p path)" \
-  go test ./cmd/integration/ -v -timeout 300s -count=1 -run TestReconcile/job-checkpoint-restart
+  go test ./cmd/integration/ -v -timeout 300s -count=1 -run TestIntegration/reconcile/job-checkpoint-restart
 ```
 
 ## Replicate CI Locally
