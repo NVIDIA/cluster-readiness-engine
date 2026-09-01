@@ -1,0 +1,15 @@
+# The first node is a minority of one, and two other architectures tie for the
+# majority. The minority never wins just for sorting first, and the tie goes to
+# the tied architecture whose earliest node appears first: h100 via node-b,
+# ahead of gb200's node-d.
+nodes:
+  - name: node-a
+    product: NVIDIA-A100-PCIE-40GB
+  - name: node-b
+    product: NVIDIA-H100-80GB-HBM3
+  - name: node-c
+    product: NVIDIA-H100-80GB-HBM3
+  - name: node-d
+    product: NVIDIA-GB200-NVL72
+  - name: node-e
+    product: NVIDIA-GB200-NVL72
