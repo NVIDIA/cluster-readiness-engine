@@ -18,7 +18,7 @@ You need:
 - `kubectl` access with permission to create CRDs, cluster roles, and namespaces. The setup step needs this. Later certification runs need less.
 - `helm` on your PATH. The setup step calls it.
 - The Prometheus Operator CRDs (`monitoring.coreos.com/v1`), **or** the ServiceMonitor turned off. The chart creates a `ServiceMonitor` by default, so the install fails without those CRDs. Either install them — the [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) chart provides them — or set `metrics.serviceMonitor.enabled=false` and skip them. Turning it off only disables the Prometheus scrape config; the controller still serves metrics.
-- A GitHub token with the `read:packages` scope. The controller image and the Helm chart live on ghcr.io. Run `gh auth login` once, or set `GITHUB_TOKEN`.
+- Only when your cluster pulls from a private mirror or fork: a GitHub token with the `read:packages` scope, passed to `setup init --image-pull-secret`. The public controller image and Helm chart on ghcr.io need no token.
 - For GB200 and GB300 clusters only: the NVIDIA DRA driver, because those catalog entries create `ComputeDomain` resources. GB300 RoCE entries also need a Kubernetes version that serves `resource.k8s.io/v1`.
 - For training categories only: egress to `github.com` from worker nodes. The training pods clone Megatron-LM at start.
 
@@ -80,7 +80,7 @@ Two phases run:
 1. `deps` installs Kubeflow Trainer 2.2.1 into the `kubeflow-system` namespace. NVCRE runs every workload through a Trainer `TrainJob`.
 2. `helm` installs the NVCRE chart into the `nvcre` namespace: the controller, seven CRDs, and five `LogProfile` resources that parse workload logs.
 
-The GitHub token creates a ghcr.io pull secret for the controller image and authenticates the chart pull. Verify the result:
+The image and chart pull anonymously from ghcr.io; `--image-pull-secret <github-token>` creates a pull secret instead when pulling from a private mirror or fork. Verify the result:
 
 ```bash
 kubectl nvcre setup status
