@@ -197,13 +197,7 @@ jobs:
           body: |
             NVCRE ${{ steps.tag.outputs.value }}
 
-            The NVIDIA Cluster Readiness Engine (NVCRE) is a Kubernetes controller that
-            certifies GPU clusters before production use. It runs real training
-            and communication workloads across topology-aware node groups,
-            measures goodput and bandwidth, detects hardware failures, and
-            reports every failed node with a reason. See the
-            [README](https://github.com/${{ github.repository }}/blob/${{ steps.tag.outputs.value }}/README.md)
-            for the full feature list.
+            The NVIDIA Cluster Readiness Engine (NVCRE) is a Kubernetes controller that certifies GPU clusters before production use. It runs real training and communication workloads across topology-aware node groups, measures goodput and bandwidth, detects hardware failures, and reports every failed node with a reason. See the [README](https://github.com/${{ github.repository }}/blob/${{ steps.tag.outputs.value }}/README.md) for the full feature list.
 
             ## Install nvcrectl
 
@@ -213,8 +207,7 @@ jobs:
             curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.value }}/installer | bash -s -- -v ${{ steps.tag.outputs.value }}
             ```
 
-            Or install the newest stable release (`releases/latest` resolves only to
-            stable releases, never pre-releases):
+            Or install the newest stable release (`releases/latest` resolves only to stable releases, never pre-releases):
 
             ```bash
             curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/installer | bash
@@ -230,8 +223,7 @@ jobs:
               --create-namespace
             ```
 
-            The controller image for this release is
-            `ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}`.
+            The controller image for this release is `ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}`.
 
             ## nvcrectl CLI
 
@@ -246,9 +238,7 @@ jobs:
 
             ## Verify your download
 
-            Every binary asset (the installer and the `nvcrectl-*` binaries) is
-            listed in `checksums.txt` with its SHA-256 digest. After you
-            download an asset, verify it:
+            Every binary asset (the installer and the `nvcrectl-*` binaries) is listed in `checksums.txt` with its SHA-256 digest. After you download an asset, verify it:
 
             ```bash
             sha256sum --check --ignore-missing checksums.txt
@@ -256,9 +246,7 @@ jobs:
 
             ## Third-Party Notices
 
-            Third-party Go module licenses are listed in
-            [`THIRD_PARTY_NOTICES.md`](https://github.com/${{ github.repository }}/blob/${{ steps.tag.outputs.value }}/THIRD_PARTY_NOTICES.md)
-            and attached as a release asset.
+            Third-party Go module licenses are listed in [`THIRD_PARTY_NOTICES.md`](https://github.com/${{ github.repository }}/blob/${{ steps.tag.outputs.value }}/THIRD_PARTY_NOTICES.md) and attached as a release asset.
 
             ## Support
 
