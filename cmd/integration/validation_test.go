@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"testing"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -75,6 +76,17 @@ func TestCertificationValidation(t *testing.T) {
 					})
 				}
 			}
+			// The API server reports CEL violations for sibling fields in
+			// nondeterministic order; sort so goldens are stable.
+			sort.Slice(result.Causes, func(i, j int) bool {
+				if result.Causes[i].Field != result.Causes[j].Field {
+					return result.Causes[i].Field < result.Causes[j].Field
+				}
+				if result.Causes[i].Message != result.Causes[j].Message {
+					return result.Causes[i].Message < result.Causes[j].Message
+				}
+				return result.Causes[i].Type < result.Causes[j].Type
+			})
 		} else if delErr := suite.Client.Delete(ctx, objs[0]); delErr != nil {
 			// Accepted: remove the object so cases stay independent.
 			return delErr
