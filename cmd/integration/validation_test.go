@@ -1,0 +1,90 @@
+// SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+package integration_test
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"testing"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/client-go/kubernetes/scheme"
+
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+)
+
+// validationResult is the golden-file shape for CRD admission test cases:
+// whether the API server accepted the object and, when it rejected it, the
+// field-level causes returned by schema validation.
+type validationResult struct {
+	Accepted bool              `json:"accepted"`
+	Causes   []validationCause `json:"causes,omitempty"`
+}
+
+type validationCause struct {
+	Type    string `json:"type"`
+	Field   string `json:"field"`
+	Message string `json:"message"`
+}
+
+// TestCertificationValidation exercises the CEL validation rules on the
+// Certification CRD schema against a real API server: a resources override
+// whose request exceeds its matching limit is rejected at admission, while
+// partial and correctly ordered overrides are accepted (issue #83).
+func TestCertificationValidation(t *testing.T) {
+	suite := &testutil.IntegrationTestSuite{}
+	suite.Environment.CRDDirectoryPaths = []string{"../../helm/nvcre/crds"}
+	suite.Environment.ErrorIfCRDPathMissing = true
+	suite.SetupTestSuite(t)
+	defer suite.TearDownTestSuite(t)
+
+	parser := &testutil.TestCaseParser{
+		Subdir:         "validation",
+		ExpectedSuffix: ".json",
+	}
+
+	parser.TestDir(t, func(tc *testutil.TestCase) error {
+		ctx := context.Background()
+
+		objs, _, err := tc.GetObjects(scheme.Scheme)
+		if err != nil {
+			return err
+		}
+		if len(objs) != 1 {
+			return fmt.Errorf("expected exactly one object in input.yaml, got %d", len(objs))
+		}
+
+		result := validationResult{Accepted: true}
+		if createErr := suite.Client.Create(ctx, objs[0]); createErr != nil {
+			if !apierrors.IsInvalid(createErr) {
+				return createErr
+			}
+			result.Accepted = false
+			status, ok := createErr.(apierrors.APIStatus)
+			if !ok {
+				return fmt.Errorf("invalid error does not expose a Status: %w", createErr)
+			}
+			if details := status.Status().Details; details != nil {
+				for _, cause := range details.Causes {
+					result.Causes = append(result.Causes, validationCause{
+						Type:    string(cause.Type),
+						Field:   cause.Field,
+						Message: cause.Message,
+					})
+				}
+			}
+		} else if delErr := suite.Client.Delete(ctx, objs[0]); delErr != nil {
+			// Accepted: remove the object so cases stay independent.
+			return delErr
+		}
+
+		b, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b)
+		return nil
+	})
+}
