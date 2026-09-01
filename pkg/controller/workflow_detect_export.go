@@ -18,7 +18,11 @@ func DetectPlatform(nodes []corev1.Node) string {
 	return detectPlatform(nodes)
 }
 
-// DetectGPUArchitecture is the exported version of detectGPUArchitecture for use by CLI tools.
+// DetectGPUArchitecture is the exported version of detectGPUArchitecture for
+// use by CLI tools. Like the controllers, it reports the architecture that
+// the most labeled nodes carry (gpu.MajorityArchitecture), so render, cluster
+// info, and workloadrun previews agree with what a reconcile of the same
+// target would detect.
 func DetectGPUArchitecture(nodes []corev1.Node) string {
 	return detectGPUArchitecture(nodes)
 }

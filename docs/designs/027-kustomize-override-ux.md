@@ -75,7 +75,7 @@ Pre-built mock node files in `tools/nodes/` (aws-h100, aws-gb200, aws-gb300) are
 
 **Platform:** Fail the Workflow if target nodes report different platforms. Emit `HeterogeneousPlatform` warning event with per-platform counts.
 
-**GPU Architecture:** Warn if heterogeneous, then filter the node list to only the primary architecture: the one with the most nodes, with ties broken by whichever tied architecture's earliest node appears first in the name-sorted node list (originally the first node's value; changed to majority-wins by issue #77 so a single odd node cannot shrink the certification to itself). The filtered list is used for partitioning, ensuring Jobs only run on nodes with matching GPUs.
+**GPU Architecture:** Warn if heterogeneous, then filter the node list to only the primary architecture: the one with the most nodes, with ties broken by whichever tied architecture's earliest node appears first in the name-sorted node list (originally the first node's value; changed to majority-wins by issue #77 so a single odd node cannot shrink the certification to itself). Nodes without the `nvidia.com/gpu.product` label do not vote, so an unlabeled node never outvotes labeled ones and "unknown" wins only when no node is labeled (issue #248). The vote lives in `gpu.MajorityArchitecture` and is shared by every detection path, controllers and CLI alike, so a mixed target resolves to the same architecture everywhere. The filtered list is used for partitioning, ensuring Jobs only run on nodes with matching GPUs.
 
 ## Rationale
 

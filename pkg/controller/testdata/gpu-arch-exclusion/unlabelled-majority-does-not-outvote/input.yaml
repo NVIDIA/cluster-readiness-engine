@@ -1,0 +1,11 @@
+# Unlabeled nodes outnumber the labeled one and sort first, but the majority
+# is computed among labeled architectures only (issue #248), so the lone h100
+# node is certified and the unlabeled pair is excluded. Before this rule the
+# unlabeled nodes won the vote and the run certified "unknown" hardware.
+nodes:
+  - name: node-a
+    product: ""
+  - name: node-b
+    product: ""
+  - name: node-c
+    product: NVIDIA-H100-80GB-HBM3

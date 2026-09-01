@@ -1,0 +1,8 @@
+# A node without the nvidia.com/gpu.product label does not vote (issue #248):
+# the labeled h100 node decides the architecture and the unlabeled node is
+# excluded from the run rather than counted as an architecture of its own.
+nodes:
+  - name: node-a
+    product: NVIDIA-H100-80GB-HBM3
+  - name: node-b
+    product: ""
