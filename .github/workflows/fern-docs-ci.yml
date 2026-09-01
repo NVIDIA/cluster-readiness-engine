@@ -29,6 +29,7 @@ permissions:
 jobs:
   changed-files:
     runs-on: linux-amd64-cpu8
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
     outputs:
       docs: ${{ steps.changes.outputs.docs }}
     steps:
@@ -53,7 +54,7 @@ jobs:
   fern-check:
     name: Fern Check
     needs: changed-files
-    if: needs.changed-files.outputs.docs == 'true'
+    if: github.repository == 'NVIDIA/cluster-readiness-engine' && needs.changed-files.outputs.docs == 'true'
     runs-on: linux-amd64-cpu8
     timeout-minutes: 10
     steps:

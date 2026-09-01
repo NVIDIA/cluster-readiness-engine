@@ -42,7 +42,7 @@ jobs:
   check-artifact:
     runs-on: linux-amd64-cpu8
     timeout-minutes: 5
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.repository == 'NVIDIA/cluster-readiness-engine' && github.event.workflow_run.conclusion == 'success' }}
     outputs:
       has_artifact: ${{ steps.check.outputs.has_artifact }}
     steps:
@@ -57,7 +57,7 @@ jobs:
 
   preview:
     needs: check-artifact
-    if: needs.check-artifact.outputs.has_artifact == 'true'
+    if: github.repository == 'NVIDIA/cluster-readiness-engine' && needs.check-artifact.outputs.has_artifact == 'true'
     runs-on: linux-amd64-cpu8
     timeout-minutes: 15
     steps:

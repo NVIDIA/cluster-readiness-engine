@@ -61,5 +61,5 @@ Failed categories indicate nodes that did not meet performance thresholds. NVCRE
 ## Next steps
 
 - [Concepts: Architecture](../concepts/architecture.md) — understand the Certification → Workflow → Job hierarchy
-- [How-to: Certify a Cluster](../how-to-guides/certify-a-cluster.md) — per-cloud-platform guides (AWS, GCP, Azure)
+- [How-to: Certify a Cluster](../how-to-guides/certify-a-cluster.md) — platform-specific guides (AWS)
 - [How-to: Interpret Results](../how-to-guides/interpret-results.md) — reading the report in detail

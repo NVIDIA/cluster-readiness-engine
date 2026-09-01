@@ -318,10 +318,10 @@ func Build(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certificati
 
 // batchJobFailureReason extracts the batch/v1 Job name from the NVCRE
 // Job's failure message and returns its failure reason.
-func batchJobFailureReason(ctx context.Context, c client.Client, excalMsg, namespace string) string {
+func batchJobFailureReason(ctx context.Context, c client.Client, jobMsg, namespace string) string {
 	// Parse "first failed job: <name>" from the message.
 	const prefix = "first failed job: "
-	_, after, ok := strings.Cut(excalMsg, prefix)
+	_, after, ok := strings.Cut(jobMsg, prefix)
 	if !ok {
 		return ""
 	}
@@ -564,9 +564,9 @@ func buildFailedGroups(
 			NodeCount: len(g.Nodes),
 			Nodes:     g.Nodes,
 		}
-		excalJob := &nvcrev1alpha1.Job{}
-		if err := c.Get(ctx, client.ObjectKey{Name: g.JobRef.Name, Namespace: wf.Namespace}, excalJob); err == nil {
-			fg.Reason = jobFailureReason(ctx, c, excalJob, wf.Namespace)
+		nvcreJob := &nvcrev1alpha1.Job{}
+		if err := c.Get(ctx, client.ObjectKey{Name: g.JobRef.Name, Namespace: wf.Namespace}, nvcreJob); err == nil {
+			fg.Reason = jobFailureReason(ctx, c, nvcreJob, wf.Namespace)
 		}
 		if fg.Reason == "" {
 			fg.Reason = failedNodeReason(failedNodes, g.Nodes)

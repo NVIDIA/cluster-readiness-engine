@@ -428,12 +428,17 @@ func runHelmCapture(helmPath string, args []string, out io.Writer) (string, erro
 	return buf.String(), nil
 }
 
-// printGHCR403Hint prints the read:packages remediation hint when a failed
-// helm transcript contains a GHCR 403.
+// printGHCR403Hint prints remediation guidance when a failed helm transcript
+// contains a GHCR 403. The published chart and controller image are public
+// and the default path is tokenless, so a 403 there is usually transient or
+// a registry mirror issue; a token scope only matters when the user passed
+// --image-pull-secret.
 func printGHCR403Hint(out io.Writer, output string) {
 	if strings.Contains(output, "403") {
-		_, _ = fmt.Fprintln(out, "\nHint: GHCR returned 403. Your token may be missing the read:packages scope.")
-		_, _ = fmt.Fprintln(out, "      Run: gh auth refresh -s read:packages")
+		_, _ = fmt.Fprintln(out, "\nHint: GHCR returned 403. The NVCRE chart and image are public and need no token,")
+		_, _ = fmt.Fprintln(out, "      so this is usually transient or a registry mirror issue. Retry the command.")
+		_, _ = fmt.Fprintln(out, "      If you passed --image-pull-secret, the token may be missing the read:packages")
+		_, _ = fmt.Fprintln(out, "      scope. Run: gh auth refresh -s read:packages")
 	}
 }
 
