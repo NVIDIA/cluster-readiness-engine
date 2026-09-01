@@ -227,6 +227,7 @@ func newRootCommand() *cobra.Command {
 			if err := (&controller.CertificationReconciler{
 				Client:                  mgr.GetClient(),
 				Scheme:                  mgr.GetScheme(),
+				Recorder:                mgr.GetEventRecorder("certification-controller"),
 				MaxConcurrentReconciles: concurrency.maxConcurrentReconciles,
 			}).SetupWithManager(mgr); err != nil {
 				return fmt.Errorf("unable to create controller Certification: %w", err)
@@ -235,6 +236,7 @@ func newRootCommand() *cobra.Command {
 				Client:                  mgr.GetClient(),
 				Scheme:                  mgr.GetScheme(),
 				Clientset:               clientset,
+				Recorder:                mgr.GetEventRecorder("goodputmeasurement-controller"),
 				LogFetcher:              podlogs.NewKubernetesLogFetcher(clientset),
 				MaxConcurrentReconciles: concurrency.measurementMaxConcurrentReconciles,
 			}).SetupWithManager(mgr); err != nil {
@@ -245,6 +247,7 @@ func newRootCommand() *cobra.Command {
 				APIReader:               mgr.GetAPIReader(),
 				Scheme:                  mgr.GetScheme(),
 				Clientset:               clientset,
+				Recorder:                mgr.GetEventRecorder("bandwidthmeasurement-controller"),
 				LogFetcher:              podlogs.NewKubernetesLogFetcher(clientset),
 				MaxConcurrentReconciles: concurrency.measurementMaxConcurrentReconciles,
 			}).SetupWithManager(mgr); err != nil {
@@ -253,6 +256,7 @@ func newRootCommand() *cobra.Command {
 			if err := (&controller.WorkloadRunReconciler{
 				Client:                  mgr.GetClient(),
 				Scheme:                  mgr.GetScheme(),
+				Recorder:                mgr.GetEventRecorder("workloadrun-controller"),
 				MaxConcurrentReconciles: concurrency.maxConcurrentReconciles,
 			}).SetupWithManager(mgr); err != nil {
 				return fmt.Errorf("unable to create controller WorkloadRun: %w", err)

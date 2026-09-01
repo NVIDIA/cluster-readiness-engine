@@ -9,12 +9,14 @@ import (
 	"sync"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	controlleropts "sigs.k8s.io/controller-runtime/pkg/controller"
@@ -52,6 +54,7 @@ type GoodputMeasurementReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme
 	Clientset  *kubernetes.Clientset
+	Recorder   events.EventRecorder
 	LogFetcher podlogs.PodLogFetcher // if nil, defaults to Clientset-backed fetcher
 	// MaxConcurrentReconciles bounds the number of GoodputMeasurement objects reconciled concurrently.
 	MaxConcurrentReconciles int
@@ -1281,6 +1284,11 @@ func (r *GoodputMeasurementReconciler) writeStatusFromCumulative(measurement *nv
 // created after the run starts, and the next sample picks it up.
 func (r *GoodputMeasurementReconciler) noteLogProfileUnresolved(ctx context.Context, measurement *nvcrev1alpha1.GoodputMeasurement, cause error) {
 	message := fmt.Sprintf("LogProfile %q could not be resolved: %v", measurement.Spec.LogProfileRef, cause)
+	// One event per failed resolution attempt: this helper only runs when a
+	// sampling pass actively tried and failed to fetch or compile the
+	// LogProfile, never from observed state; a Complete measurement returns
+	// before any fetch. Repeated failing attempts aggregate into one Event.
+	r.warnf(measurement, reasonGoodputLogProfileMissing, "%s", message)
 	err := updateStatusWithRetry(ctx, r.Client, measurement, func(m *nvcrev1alpha1.GoodputMeasurement) bool {
 		return meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
 			Type:               nvcrev1alpha1.GoodputMeasurementMeasuring,
@@ -1502,6 +1510,18 @@ func parseFloat(s string) float64 {
 // formatFloat formats a float64 as a string with up to 6 decimal places.
 func formatFloat(f float64) string {
 	return numstr.Format(f)
+}
+
+// warnf emits a Warning event if the Recorder is configured. Every
+// GoodputMeasurement-tier event is a warning; the Workflow reconciler's eventf
+// takes an explicit type because it emits Normal events too.
+//
+// Safe to call when Recorder is nil (e.g. in unit tests, or any embedding that
+// constructs GoodputMeasurementReconciler directly).
+func (r *GoodputMeasurementReconciler) warnf(obj runtime.Object, reason, messageFmt string, args ...any) {
+	if r.Recorder != nil {
+		r.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, reason, reason, messageFmt, args...)
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.
