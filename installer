@@ -11,16 +11,11 @@ set -euo pipefail
 # Installs nvcrectl if it is not present; upgrades it if it already is.
 #
 # Usage:
-#   While the repository is internal, GitHub serves release assets only
-#   through authenticated API downloads — plain curl against
-#   releases/download/... returns a 404 page, even with a token. Fetch the
-#   script with the gh CLI (gh auth login first):
-#     gh release download <tag> --repo NVIDIA/cluster-readiness-engine \
-#       --pattern installer --output - | bash -s -- -v <tag>
+#   curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
 #
-#   Once the repository is public:
-#     curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
-#     curl -sSL <url> | bash -s -- -d /custom/path
+#   Pin an exact release, or change the install directory:
+#     curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/<tag>/installer | bash -s -- -v <tag>
+#     curl -fsSL <url> | bash -s -- -d /custom/path
 # ---------------------------------------------------------------------------
 
 # Configuration

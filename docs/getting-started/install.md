@@ -15,16 +15,17 @@ description: Install the nvcrectl CLI and set up the NVIDIA Cluster Readiness En
 
 ## Install the CLI
 
-While this repository is internal, GitHub serves release assets only through
-authenticated API downloads — plain `curl` against `releases/download/...` returns a
-404 "Not Found" page instead of the script, even with a token. Fetch the installer
-with the gh CLI (authenticate with `gh auth login` first). Resolve the newest
-release, then run the installer:
+Download and run the installer. It detects your OS and architecture and resolves
+the newest stable release itself:
 
 ```bash
-export NVCRECTL_VERSION=$(gh release list --repo NVIDIA/cluster-readiness-engine --limit 1 --json tagName -q '.[0].tagName')
-gh release download "${NVCRECTL_VERSION}" --repo NVIDIA/cluster-readiness-engine \
-  --pattern installer --output - | bash -s -- -v "${NVCRECTL_VERSION}"
+curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
+```
+
+To pin a version, download the installer from that release and pass the tag:
+
+```bash
+curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/<tag>/installer | bash -s -- -v <tag>
 ```
 
 The installer automatically downloads and verifies a SHA-256 checksum before installing. On air-gapped systems, ensure `checksums.txt` from the same release is reachable alongside the binary.

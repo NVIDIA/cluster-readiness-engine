@@ -203,25 +203,17 @@ jobs:
 
             ## Install nvcrectl
 
-            While this repository is internal, GitHub serves release assets only through
-            authenticated API downloads — plain `curl` against `releases/download/...`
-            returns a 404 "Not Found" page instead of the script, even with a token.
-            Fetch the installer with the gh CLI (authenticate with `gh auth login`):
+            Install this release:
 
             ```bash
-            gh release download ${{ steps.tag.outputs.value }} \
-              --repo ${{ github.repository }} \
-              --pattern installer --output - | bash -s -- -v ${{ steps.tag.outputs.value }}
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.value }}/installer | bash -s -- -v ${{ steps.tag.outputs.value }}
             ```
 
-            Once the repository is public, the plain curl form works. The version is
-            named explicitly because `releases/latest` resolves only to the newest
-            **stable** release, and every release so far is a pre-release. Once `v0.1.0`
-            is tagged, the shorter form installs the newest stable one:
+            Or install the newest stable release (`releases/latest` resolves only to
+            stable releases, never pre-releases):
 
             ```bash
-            curl -sSL https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.value }}/installer | bash -s -- -v ${{ steps.tag.outputs.value }}
-            curl -sSL https://github.com/${{ github.repository }}/releases/latest/download/installer | bash
+            curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/installer | bash
             ```
 
             ## Helm Chart
@@ -278,22 +270,20 @@ jobs:
           generate_release_notes: true
 
       # Post-publish gate (issues #194, #195): download the just-published
-      # assets over the same authenticated channel the release notes tell
-      # users to use, and verify them. While the repository is internal, the
-      # unauthenticated browser URL (releases/download/<tag>/installer)
-      # serves a 404 "Not Found" page instead of the script — that page is
-      # what v0.1.0-rc.7 users piped into bash (issue #194) — so this check
-      # asserts the published asset really is a runnable shell script and the
-      # published binary really reports the released tag.
+      # assets over the same public unauthenticated URL the release notes
+      # tell users to use (releases/download/<tag>/<asset>), and verify
+      # them. v0.1.0-rc.7 users piped a "Not Found" page into bash (issue
+      # #194), so this check asserts the published asset really is a
+      # runnable shell script and the published binary really reports the
+      # released tag.
       - name: Verify published release assets
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${{ steps.tag.outputs.value }}"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}"
           rm -rf verify-release && mkdir verify-release
-          gh release download "${tag}" --repo "${GITHUB_REPOSITORY}" \
-            --pattern installer --pattern checksums.txt --pattern nvcrectl-linux-amd64 \
-            --dir verify-release
+          for asset in installer checksums.txt nvcrectl-linux-amd64; do
+            curl -fsSL -o "verify-release/${asset}" "${base}/${asset}"
+          done
           # The installer must be a shell script, not an HTML/text error page.
           [[ "$(head -c 2 verify-release/installer)" == '#!' ]]
           bash -n verify-release/installer

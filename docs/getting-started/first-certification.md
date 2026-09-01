@@ -26,17 +26,17 @@ Cordoned nodes are skipped. If a node is cordoned, NVCRE does not select it, and
 
 ## Step 1: install the CLI
 
-While this repository is internal, GitHub serves release assets only through authenticated API downloads — plain `curl` against `releases/download/...` returns a 404 "Not Found" page instead of the script, even with a token. Fetch the installer with the gh CLI (authenticate with `gh auth login` first); the snippet resolves the newest release:
-
 ```bash
-NVCRE_VERSION=$(gh release list --repo NVIDIA/cluster-readiness-engine --limit 1 --json tagName -q '.[0].tagName')
-gh release download "${NVCRE_VERSION}" --repo NVIDIA/cluster-readiness-engine \
-  --pattern installer --output - | bash -s -- -v "${NVCRE_VERSION}"
+curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
 ```
 
-Once the repository is public and `v0.1.0` is tagged, the shorter `curl -sSL .../releases/latest/download/installer | bash` form works and installs the newest stable release. (`releases/latest` resolves only to the newest **stable** release, and every release so far is a pre-release.)
+`releases/latest` resolves only to the newest **stable** release, never a pre-release. To install a specific version instead, download the installer from that release and pass the tag:
 
-The installer takes `-p` to accept pre-releases when it resolves a version itself. That flag is an argument to the script, so it cannot help you download the script — which is why the version is resolved with `gh release list` above.
+```bash
+curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/<tag>/installer | bash -s -- -v <tag>
+```
+
+The installer also takes `-p` to accept pre-releases when it resolves the version itself.
 
 The installer detects your OS and architecture, downloads the matching `nvcrectl` binary, installs it to `/usr/local/bin` (with sudo if needed), and adds a `kubectl-nvcre` symlink. After it finishes, both forms work and are the same binary:
 

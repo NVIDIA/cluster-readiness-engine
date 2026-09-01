@@ -68,11 +68,8 @@ When an RC is good, tag the **same commit** with the stable version. Do not rebu
 re-merge between the RC and the stable tag; that would ship something nobody validated.
 
 Note that `curl .../releases/latest/download/installer` resolves to the newest
-**stable** release. While only pre-releases exist, that URL returns 404. Additionally,
-while this repository is internal, GitHub serves release assets only through
-authenticated API downloads: plain `curl` against any `releases/download/...` URL
-returns a 404 "Not Found" page even with a token, which is why the README installs
-through `gh release download`.
+**stable** release, never a pre-release. To install an RC, name its tag explicitly
+in the `releases/download/<tag>/installer` URL and pass `-v <tag>` to the installer.
 
 ## What a release publishes
 
@@ -103,14 +100,12 @@ tag exactly, and the Create GitHub Release job re-downloads the published `insta
 shell script (not an error page), verifies checksums, and re-checks the binary's
 self-reported version.
 
-To verify manually (via gh while the repository is internal; once public, plain
-`curl -sSLO "https://github.com/NVIDIA/cluster-readiness-engine/releases/download/$VERSION/<asset>"`
-works too):
+To verify manually:
 
 ```bash
 VERSION=v0.1.0
-gh release download "$VERSION" --repo NVIDIA/cluster-readiness-engine \
-  --pattern checksums.txt --pattern nvcrectl-linux-amd64
+curl -fsSLO "https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${VERSION}/checksums.txt"
+curl -fsSLO "https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${VERSION}/nvcrectl-linux-amd64"
 sha256sum --check --ignore-missing checksums.txt
 ```
 

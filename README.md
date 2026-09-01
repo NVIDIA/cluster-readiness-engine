@@ -61,22 +61,15 @@ Run `kubectl nvcre setup status` at any time to see what is present.
 
 **1. Install the CLI**
 
-While this repository is internal, GitHub serves release assets only through
-authenticated API downloads — plain `curl` against `releases/download/...` returns a
-404 "Not Found" page instead of the script, even with a token. Fetch the installer
-with the gh CLI (authenticate with `gh auth login` first):
-
 ```bash
-NVCRE_VERSION=$(gh release list --repo NVIDIA/cluster-readiness-engine --limit 1 --json tagName -q '.[0].tagName')
-gh release download "${NVCRE_VERSION}" --repo NVIDIA/cluster-readiness-engine \
-  --pattern installer --output - | bash -s -- -v "${NVCRE_VERSION}"
+curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
 ```
 
-Once the repository is public and a stable release exists, this shorter form works
-and picks up the newest stable release:
+`releases/latest` resolves to the newest stable release. To pin a version, download
+the installer from that release and pass the tag:
 
 ```bash
-curl -sSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
+curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/<tag>/installer | bash -s -- -v <tag>
 ```
 
 The installer places `nvcrectl` on your `$PATH` and creates a `kubectl-nvcre` symlink so the CLI is also available as `kubectl nvcre`.
@@ -144,14 +137,6 @@ kubectl nvcre certification report <name> -n <namespace>
 `setup init` above is the quickest path. If you would rather manage NVCRE with
 Helm, or need to pin the controller image in your own manifests, both are
 published to the GitHub Container Registry on every release.
-
-While this repository is internal, Helm needs to authenticate to the registry
-before it can pull the chart:
-
-```bash
-gh auth token | helm registry login ghcr.io \
-  --username "$(gh api user --jq .login)" --password-stdin
-```
 
 ```bash
 NVCRE_VERSION=$(gh release list --repo NVIDIA/cluster-readiness-engine --limit 1 --json tagName -q '.[0].tagName')
