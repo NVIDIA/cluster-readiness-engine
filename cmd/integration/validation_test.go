@@ -82,7 +82,10 @@ func TestCertificationValidation(t *testing.T) {
 				if result.Causes[i].Field != result.Causes[j].Field {
 					return result.Causes[i].Field < result.Causes[j].Field
 				}
-				return result.Causes[i].Message < result.Causes[j].Message
+				if result.Causes[i].Message != result.Causes[j].Message {
+					return result.Causes[i].Message < result.Causes[j].Message
+				}
+				return result.Causes[i].Type < result.Causes[j].Type
 			})
 		} else if delErr := suite.Client.Delete(ctx, objs[0]); delErr != nil {
 			// Accepted: remove the object so cases stay independent.
