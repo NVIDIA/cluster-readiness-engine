@@ -22,8 +22,7 @@ NVCRE supports two install paths. Both pull the same artifacts from the GitHub C
 Install the CLI first with the installer script (see [Install](../getting-started/install.md) for the full walkthrough):
 
 ```bash
-export NVCRECTL_VERSION=$(gh release list --repo NVIDIA/cluster-readiness-engine --limit 1 --json tagName -q '.[0].tagName')
-curl -sSL "https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${NVCRECTL_VERSION}/installer" | bash
+curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
 ```
 
 Then set up the cluster:
@@ -53,13 +52,7 @@ nvcrectl setup status
 
 ### Helm chart
 
-For GitOps workflows, install the chart directly. **Log in to the GHCR Helm registry first** — the chart pull is authenticated:
-
-```bash
-echo $GITHUB_TOKEN | helm registry login ghcr.io --username <github-username> --password-stdin
-```
-
-Then inspect and install (the snippet resolves the newest release; set `NVCRE_VERSION` to an explicit tag for reproducible installs):
+For GitOps workflows, install the chart directly. The chart is public on GHCR, so no registry login is needed. Inspect and install (the snippet resolves the newest release; set `NVCRE_VERSION` to an explicit tag for reproducible installs):
 
 ```bash
 NVCRE_VERSION=$(gh release list --repo NVIDIA/cluster-readiness-engine --limit 1 --json tagName -q '.[0].tagName')

@@ -10,15 +10,12 @@ description: The nvcrectl CLI manages the full lifecycle of cluster certificatio
 
 ## Install
 
-While this repository is internal, release assets require authenticated API
-downloads, so fetch the installer with the gh CLI (`gh auth login` first):
-
 ```bash
-export NVCRECTL_VERSION=$(gh release list --repo NVIDIA/cluster-readiness-engine --limit 1 --json tagName -q '.[0].tagName')
-gh release download "${NVCRECTL_VERSION}" --repo NVIDIA/cluster-readiness-engine \
-  --pattern installer --output - | bash -s -- -v "${NVCRECTL_VERSION}"
+curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
 nvcrectl --version
 ```
+
+To pin a version: `curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/<tag>/installer | bash -s -- -v <tag>`.
 
 The installer also creates a `kubectl-nvcre` symlink so the CLI is available as a kubectl plugin (`kubectl nvcre ...`).
 
