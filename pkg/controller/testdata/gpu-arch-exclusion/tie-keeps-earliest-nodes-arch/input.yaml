@@ -1,0 +1,13 @@
+# A dead heat: two H100 nodes, two A100 nodes. The tie-break is the
+# architecture whose earliest node sorts first (h100 via node-a), derived by
+# walking the name-sorted node list, so the same cluster always certifies the
+# same subset no matter how the nodes were listed.
+nodes:
+  - name: node-a
+    product: NVIDIA-H100-80GB-HBM3
+  - name: node-b
+    product: NVIDIA-A100-PCIE-40GB
+  - name: node-c
+    product: NVIDIA-H100-80GB-HBM3
+  - name: node-d
+    product: NVIDIA-A100-PCIE-40GB
