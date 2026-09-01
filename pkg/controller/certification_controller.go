@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	controlleropts "sigs.k8s.io/controller-runtime/pkg/controller"
@@ -77,6 +78,7 @@ const (
 type CertificationReconciler struct {
 	client.Client
 	Scheme                  *runtime.Scheme
+	Recorder                events.EventRecorder
 	WorkflowRequeueInterval time.Duration
 	// MaxConcurrentReconciles bounds the number of Certification objects reconciled concurrently.
 	MaxConcurrentReconciles int
@@ -563,6 +565,13 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 			log.Info("Workflow already exists and is controlled by this Certification, proceeding", "name", workflowName)
 		} else {
 			log.Error(err, "Failed to create Workflow", "name", workflowName)
+			// One event per failed Create attempt. This branch is only reached
+			// while a category is being started (never from the steady-state
+			// polling path, which goes through checkActiveWorkflow), and the
+			// setCertificationFailed below makes the Certification terminal, so
+			// subsequent requeues short-circuit in reconcileWorkflows.
+			r.warnf(certification, ReasonWorkflowCreationError,
+				"Failed to create Workflow %s: %v", workflowName, err)
 			if statusErr := r.setCertificationFailed(ctx, certification, ReasonWorkflowFailed,
 				fmt.Sprintf("Failed to create Workflow %s: %v", workflowName, err)); statusErr != nil {
 				log.Error(statusErr, "Failed to update Certification status after Workflow creation failure")
@@ -971,6 +980,18 @@ func derefInt32(p *int32) int32 {
 		return 0
 	}
 	return *p
+}
+
+// warnf emits a Warning event if the Recorder is configured. Every
+// Certification-tier event is a warning; the Workflow reconciler's eventf
+// takes an explicit type because it emits Normal events too.
+//
+// Safe to call when Recorder is nil (e.g. in unit tests, or any embedding that
+// constructs CertificationReconciler directly).
+func (r *CertificationReconciler) warnf(obj runtime.Object, reason, messageFmt string, args ...any) {
+	if r.Recorder != nil {
+		r.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, reason, reason, messageFmt, args...)
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.

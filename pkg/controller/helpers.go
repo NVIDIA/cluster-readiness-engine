@@ -57,6 +57,14 @@ const (
 	// Workflow name is already taken by a Workflow this Certification does not
 	// own. The foreign object is neither adopted nor recorded for cleanup.
 	ReasonWorkflowNameCollision = "WorkflowNameCollision"
+
+	// ReasonWorkflowCreationError indicates a child Workflow could not be
+	// created. Emitted as a Warning event at the failed Create call by the
+	// Certification and WorkloadRun reconcilers, which both create Workflows,
+	// so the API server's rejection is visible on the parent object rather
+	// than only in the controller log. Mirrors ReasonJobCreationError
+	// (Workflow tier) and ReasonWorkloadCreationError (Job tier).
+	ReasonWorkflowCreationError = "WorkflowCreationError"
 )
 
 // Workflow tier reasons (Workflow → Job).

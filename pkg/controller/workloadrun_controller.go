@@ -14,6 +14,7 @@ import (
 	meta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	controlleropts "sigs.k8s.io/controller-runtime/pkg/controller"
@@ -31,7 +32,8 @@ import (
 // WorkloadRunReconciler reconciles a WorkloadRun object.
 type WorkloadRunReconciler struct {
 	client.Client
-	Scheme *kruntime.Scheme
+	Scheme   *kruntime.Scheme
+	Recorder events.EventRecorder
 	// MaxConcurrentReconciles bounds the number of WorkloadRun objects reconciled concurrently.
 	MaxConcurrentReconciles int
 }
@@ -73,6 +75,11 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Guard: exec is the default framework; spec.framework.exec must be non-nil when
 	// no other framework is configured, or buildJobTemplate will nil-dereference.
 	if run.Spec.Framework.Torch == nil && run.Spec.Framework.MPI == nil && run.Spec.Framework.Exec == nil {
+		// One event per failed build attempt. Once the status update lands the
+		// run is terminal Failed and the early return above stops re-entry; the
+		// spec is immutable, so this cannot alternate.
+		r.warnf(&run, ReasonBuildFailed,
+			"workloadrun %s: exec framework selected but spec.framework.exec is nil", run.Name)
 		r.setWorkloadRunCondition(&run, nvcrev1alpha1.WorkloadRunFailed, ReasonBuildFailed,
 			fmt.Sprintf("workloadrun %s: exec framework selected but spec.framework.exec is nil", run.Name))
 		return ctrl.Result{}, r.Status().Update(ctx, &run)
@@ -100,6 +107,11 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if apierrors.IsAlreadyExists(err) {
 			return ctrl.Result{RequeueAfter: workloadRunRequeueInterval}, nil
 		}
+		// One event per failed Create attempt. This path is only reached while
+		// status.workflowRef is unset; once the Workflow exists, reconciles go
+		// through mirrorWorkflowStatus and never re-enter here.
+		r.warnf(&run, ReasonWorkflowCreationError,
+			"Failed to create Workflow %s: %v", workflow.Name, err)
 		return ctrl.Result{}, fmt.Errorf("creating Workflow: %w", err)
 	}
 
@@ -619,6 +631,18 @@ func condReason(conditions []metav1.Condition, condType string) string {
 		return c.Reason
 	}
 	return ""
+}
+
+// warnf emits a Warning event if the Recorder is configured. Every
+// WorkloadRun-tier event is a warning; the Workflow reconciler's eventf takes
+// an explicit type because it emits Normal events too.
+//
+// Safe to call when Recorder is nil (e.g. in unit tests, or any embedding that
+// constructs WorkloadRunReconciler directly).
+func (r *WorkloadRunReconciler) warnf(obj kruntime.Object, reason, messageFmt string, args ...any) {
+	if r.Recorder != nil {
+		r.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, reason, reason, messageFmt, args...)
+	}
 }
 
 func (r *WorkloadRunReconciler) SetupWithManager(mgr ctrl.Manager) error {
