@@ -44,5 +44,3 @@ spec:
 ## Interpreting results
 
 The report shows measured bus bandwidth (GB/s) versus the expected threshold for the detected GPU architecture. Results below threshold indicate a network problem — degraded links, misconfigured EFA/RoCE, or a faulty NIC.
-
-_Threshold table by architecture coming soon._

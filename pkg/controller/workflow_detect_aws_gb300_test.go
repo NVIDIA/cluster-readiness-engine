@@ -301,7 +301,6 @@ func imageShipsEFAStack(image string) bool {
 	for _, prefix := range []string{
 		"nvcr.io/nvidia/pytorch:",
 		"public.ecr.aws/hpc-cloud/nccl-tests:",
-		"nvcr.io/nv-ngc-devops/nemo",
 		"nvcr.io/nvidia/nemo:",
 	} {
 		if strings.HasPrefix(image, prefix) {

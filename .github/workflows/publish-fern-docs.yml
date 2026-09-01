@@ -61,6 +61,7 @@ env:
 jobs:
   publish:
     runs-on: linux-amd64-cpu8
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 20
     steps:
       - name: Checkout repository

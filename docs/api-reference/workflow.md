@@ -8,10 +8,6 @@ description: CRD reference for the Workflow resource.
 
 `Workflow` manages a single certification category run. It is created by the `Certification` controller — one per category — and is not typically created directly by users.
 
-## Spec fields
-
-_Generated from CRD schema — coming soon._
-
 ## Status fields
 
 | Field | Type | Description |

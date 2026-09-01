@@ -77,10 +77,10 @@ The installer places `nvcrectl` on your `$PATH` and creates a `kubectl-nvcre` sy
 **2. Set up the cluster**
 
 ```bash
-kubectl nvcre setup init --image-pull-secret "$(gh auth token)"
+kubectl nvcre setup init
 ```
 
-This installs Kubeflow Trainer, the NVCRE CRDs, the controller, and the built-in LogProfiles.
+This installs Kubeflow Trainer, the NVCRE CRDs, the controller, and the built-in LogProfiles. The image and chart are public on GHCR; if your cluster pulls from a private mirror instead, pass `--image-pull-secret <github-token>` to create the pull secret.
 
 **3. Certify**
 
@@ -139,7 +139,9 @@ Helm, or need to pin the controller image in your own manifests, both are
 published to the GitHub Container Registry on every release.
 
 ```bash
-NVCRE_VERSION=$(gh release list --repo NVIDIA/cluster-readiness-engine --limit 1 --json tagName -q '.[0].tagName')
+# Resolve the newest stable release (no authentication needed)
+NVCRE_VERSION=$(curl -fsSL https://api.github.com/repos/NVIDIA/cluster-readiness-engine/releases/latest | jq -re .tag_name)
+: "${NVCRE_VERSION:?no stable release found}"
 
 # Inspect the chart before installing it
 helm show chart oci://ghcr.io/nvidia/nvcre --version "$NVCRE_VERSION"
@@ -230,10 +232,7 @@ A hosted documentation site is in progress.
 
 ## Roadmap
 
-- First tagged release (v0.1.0) with `nvcrectl` binaries and the Helm chart
 - Hosted documentation site
-- Signed artifacts, SBOMs, and build provenance in the release pipeline
-- Branch protection and DCO checks for public contributions
 
 ## Community
 

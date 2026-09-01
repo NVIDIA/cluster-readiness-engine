@@ -4,15 +4,15 @@
 
 When a new version of nvcrectl is released, operators must manually download and replace the binary. There is no built-in mechanism to check for updates or perform in-place upgrades. This leads to version drift across teams and missed improvements.
 
-the nvcrectl installer solves this with a self-update mechanism that queries GitLab for newer releases and downloads them in-place. We adopt the same pattern for nvcrectl, adapted to use the Package Registry (where nvcrectl binaries are published) instead of GitLab Releases.
+A prior internal NVIDIA CLI solved this with a self-update mechanism that queries its release host for newer releases and downloads them in-place. We adopt the same pattern for nvcrectl, adapted to GitHub Releases (where nvcrectl binaries are published).
 
 ### Requirements
 
-1. **Version check**: Compare the running version against the latest GitLab tag.
+1. **Version check**: Compare the running version against the latest release tag.
 2. **Release notes**: Show what changed in the new version.
 3. **Interactive prompt**: Ask before replacing the binary.
 4. **Check-only mode**: `--check` flag to just report without installing.
-5. **No authentication**: Public repo, no GITLAB_TOKEN required.
+5. **No authentication**: Public repo, no token required.
 6. **Sudo fallback**: Handle system directories gracefully.
 
 ## Decision
@@ -23,7 +23,7 @@ Add a top-level `nvcrectl upgrade` command that:
 2. Compares against the running version using semantic versioning.
 3. Shows release notes from the GitHub release notes.
 4. Prompts for confirmation (y/N).
-5. Downloads the correct binary from the Package Registry.
+5. Downloads the correct binary from the GitHub release assets.
 6. Replaces the running binary with `os.Rename` (sudo fallback on permission error).
 
 ### GitHub API Endpoints
@@ -45,7 +45,7 @@ Functions:
 - `runUpgrade()` — orchestrates the full flow
 - `fetchLatestVersion()` — GitHub Releases API
 - `fetchReleaseNotes()` — GitHub Releases API
-- `downloadBinary()` — Package Registry download to temp dir
+- `downloadBinary()` — GitHub release asset download to temp dir
 - `installBinary()` — rename with sudo fallback
 - `parseSemanticVersion()` — parse version string
 - `isNewer()` — compare two versions

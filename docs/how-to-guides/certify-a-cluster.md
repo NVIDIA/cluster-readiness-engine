@@ -1,6 +1,6 @@
 ---
 title: Certify a Cluster
-description: Platform-specific guides for running a full cluster certification on AWS, GCP, and Azure.
+description: Platform-specific guides for running a full cluster certification on AWS.
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 ---
@@ -53,14 +53,6 @@ spec:
 ```
 
 H100 on AWS uses `vpc.amazonaws.com/efa: 32`. No hugepages or ComputeDomain.
-
-## GCP
-
-_Content coming soon._
-
-## Azure
-
-_Content coming soon._
 
 ## Monitoring progress
 

@@ -151,7 +151,7 @@ After implementation, update **all** affected artifacts — do not stop partway:
 - **Tests**: Add/update integration test cases in `cmd/integration/testdata/reconcile/` with golden files
 - **Golden files**: Run `TESTUTIL_UPDATE_EXPECTED=true make test-integration` to regenerate. **NEVER blindly overwrite golden files when tests are failing** — investigate and fix the code or test inputs first. Only regenerate golden files when the new output is intentionally correct. For new tests that require golden file generation, thoroughly review the generated `expected.json` before considering the test complete. **NEVER silently regenerate golden files during implementation** — always stop and ask the user for explicit permission before regenerating any golden file, explaining what changed and why. **Always diagnose first**: before updating any integration golden file, read the existing expected.json, understand what fields are changing and why, and confirm the change is an expected consequence of the code changes — never jump straight to regeneration.
 - **Documentation**: Update `docs/` files if API or behavior changed
-- **Site**: Update `site/content/docs/` pages if user-facing behavior changed
+- **Site**: The public docs site is built with Fern from `docs/` (site config in `fern/docs.yml`, nav in `docs/index.yml`). Update the relevant `docs/` pages if user-facing behavior changed, and add new pages to `docs/index.yml` so they appear in the published nav
 - **Samples**: Update `config/samples/` if new fields or resources were added
 
 ### 5. Run Verification Until Green

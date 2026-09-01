@@ -27,7 +27,7 @@ A version string is a release build if `parseSemanticVersion` succeeds AND the o
 | Dev build (`1.20.0-dirty`) | Skip check, proceed normally |
 | Release build, up to date | Proceed normally |
 | Release build, outdated | Print upgrade message, exit 1 |
-| Release build, GitLab unreachable | Print warning, proceed |
+| Release build, GitHub unreachable | Print warning, proceed |
 | `upgrade` command | Skip check (it IS the upgrade) |
 | `--version` / `--help` | Skip check |
 

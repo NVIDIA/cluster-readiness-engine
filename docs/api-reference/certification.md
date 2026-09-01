@@ -41,9 +41,7 @@ spec:
             memory: 32Gi
 ```
 
-## Spec fields
-
-_Generated from CRD schema — coming soon._
+## Spec immutability
 
 <Warning>
 The entire `spec` is **immutable** after the Certification is created (a `self == oldSelf` transition rule on the CRD rejects every update with `spec is immutable after creation`). The controller never applies edits to an active run, so mutable fields would either be silently ignored or applied only to later categories. To run with different inputs, delete the Certification and create a new one. The minimum is 1 category.

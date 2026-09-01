@@ -8,10 +8,6 @@ description: CRD reference for the Job resource.
 
 `Job` creates and monitors the actual workload (a `TrainJob` or other adapter-supported resource). It is created by the `Workflow` controller and is not typically created directly by users.
 
-## Spec fields
-
-_Generated from CRD schema — coming soon._
-
 ## Status fields
 
 | Field | Type | Description |

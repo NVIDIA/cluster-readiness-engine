@@ -11,6 +11,8 @@ navigation:
     contents:
       - page: Install
         path: getting-started/install.md
+      - page: Your First Certification
+        path: getting-started/first-certification.md
       - page: Quick Start
         path: getting-started/quick-start.md
       - page: WorkloadRun Quick Start

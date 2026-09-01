@@ -6,8 +6,6 @@ description: Install NVCRE on a GPU cluster, run one certification category, rea
 ---
 
 
-# Your first certification
-
 This guide takes you from an empty GPU cluster to a completed certification report. You install the `nvcrectl` CLI, check that your cluster is a valid target, install NVCRE, run one communication test, and read the result. Plan for 30 to 60 minutes. Most of that time is the workload itself.
 
 ## Before you start
@@ -18,7 +16,7 @@ You need:
 - `kubectl` access with permission to create CRDs, cluster roles, and namespaces. The setup step needs this. Later certification runs need less.
 - `helm` on your PATH. The setup step calls it.
 - The Prometheus Operator CRDs (`monitoring.coreos.com/v1`), **or** the ServiceMonitor turned off. The chart creates a `ServiceMonitor` by default, so the install fails without those CRDs. Either install them — the [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) chart provides them — or set `metrics.serviceMonitor.enabled=false` and skip them. Turning it off only disables the Prometheus scrape config; the controller still serves metrics.
-- A GitHub token with the `read:packages` scope. The controller image and the Helm chart live on ghcr.io. Run `gh auth login` once, or set `GITHUB_TOKEN`.
+- Only when your cluster pulls from a private mirror or fork: a GitHub token with the `read:packages` scope, passed to `setup init --image-pull-secret`. The public controller image and Helm chart on ghcr.io need no token.
 - For GB200 and GB300 clusters only: the NVIDIA DRA driver, because those catalog entries create `ComputeDomain` resources. GB300 RoCE entries also need a Kubernetes version that serves `resource.k8s.io/v1`.
 - For training categories only: egress to `github.com` from worker nodes. The training pods clone Megatron-LM at start.
 
@@ -70,7 +68,7 @@ If `cluster info` reports `no nodes have nvidia.com/gpu.product label`, the GPU 
 ## Step 3: install NVCRE
 
 ```bash
-kubectl nvcre setup init --image-pull-secret "$(gh auth token)"
+kubectl nvcre setup init
 ```
 
 The command shows the target cluster and asks for confirmation. Type exactly `yes`. In scripts, pass `--auto-approve`.
@@ -80,7 +78,7 @@ Two phases run:
 1. `deps` installs Kubeflow Trainer 2.2.1 into the `kubeflow-system` namespace. NVCRE runs every workload through a Trainer `TrainJob`.
 2. `helm` installs the NVCRE chart into the `nvcre` namespace: the controller, seven CRDs, and five `LogProfile` resources that parse workload logs.
 
-The GitHub token creates a ghcr.io pull secret for the controller image and authenticates the chart pull. Verify the result:
+The image and chart pull anonymously from ghcr.io; `--image-pull-secret <github-token>` creates a pull secret instead when pulling from a private mirror or fork. Verify the result:
 
 ```bash
 kubectl nvcre setup status
@@ -164,7 +162,7 @@ kubectl nvcre setup reset
 | Symptom | Cause | Fix |
 |---|---|---|
 | `setup init` hangs, then fails after 5 minutes in the helm phase | The controller pod is pending — check `kubectl get pod -n <namespace>` and `kubectl describe pod <controller-pod>` for the cause (resource limits, image pull failure, taint mismatch). | Address the scheduling issue shown in the pod events. |
-| `GHCR returned 403` | The token lacks the `read:packages` scope. | `gh auth refresh -s read:packages` |
+| `GHCR returned 403` | A stale or under-scoped token was passed via `--image-pull-secret`. Anonymous pulls need no token. | Retry without `--image-pull-secret`, or refresh the token (`gh auth refresh -s read:packages`) if a private mirror requires one. |
 | `helm not found in PATH` | Setup shells out to helm. | Install helm 3. |
 | `no matches for kind "ServiceMonitor"` in the helm phase | The Prometheus Operator CRDs are not installed, and the chart creates a `ServiceMonitor` by default. | Install the Prometheus Operator (or at least its CRDs), or skip the ServiceMonitor with `metrics.serviceMonitor.enabled=false`. |
 | `no nodes have nvidia.com/gpu.product label` | GPU Operator (feature discovery) is not running. | Install or fix the GPU Operator. |
@@ -176,7 +174,7 @@ kubectl nvcre setup reset
 
 ## Next steps
 
-- Run a single custom workload with the simplified WorkloadRun API: [ADR-059](../designs/059-workloadrun-simplified-api.md) describes it. Write a `WorkloadRun` YAML and run it with `kubectl nvcre workloadrun run <file> --wait`.
-- Understand the architecture: [ADR-001](../designs/001-adr-abridged.md) is the readable overview, and [ADR-002](../designs/002-layered-crd-hierarchy.md) explains the Certification, Workflow, and Job composition this guide walked through.
-- Understand why `certification run` does apply, wait, report, and cleanup in one command: [ADR-050](../designs/050-xcalctl-unified-run-pipeline.md).
+- Run a single custom workload with the simplified WorkloadRun API: [ADR-059](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/059-workloadrun-simplified-api.md) describes it. Write a `WorkloadRun` YAML and run it with `kubectl nvcre workloadrun run <file> --wait`.
+- Understand the architecture: [ADR-001](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/001-adr-abridged.md) is the readable overview, and [ADR-002](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/002-layered-crd-hierarchy.md) explains the Certification, Workflow, and Job composition this guide walked through.
+- Understand why `certification run` does apply, wait, report, and cleanup in one command: [ADR-050](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/050-nvcrectl-unified-run-pipeline.md).
 - Write a full Certification YAML with several categories, thresholds, and checkpointing, and run it with `--cert-file`.

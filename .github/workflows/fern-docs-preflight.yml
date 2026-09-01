@@ -39,6 +39,7 @@ jobs:
   external-links:
     name: External Link Check
     runs-on: linux-amd64-cpu8
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 15
     steps:
       - name: Checkout repository

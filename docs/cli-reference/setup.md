@@ -53,7 +53,7 @@ Automatic recovery deletes the `kubeflow-system` namespace, including anything y
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--image-pull-secret` | — | GitHub token — the CLI creates a `ghcr.io` pull secret and uses it to authenticate the Helm chart pull |
+| `--image-pull-secret` | — | GitHub token for clusters that pull from a private GHCR mirror or fork: the CLI creates a `ghcr.io` pull secret and uses it to authenticate the Helm chart pull. The public image and chart need no token. |
 | `--image` | — | Override the controller image (default: `ghcr.io/nvidia/cluster-readiness-engine/manager:<version>`) |
 | `--skip-phases` | — | Comma-separated phases to skip (e.g., `deps`) |
 | `--version` | — | Helm chart version to install (required for dev builds) |
@@ -65,7 +65,7 @@ Automatic recovery deletes the `kubeflow-system` namespace, including anything y
 # Standard install
 nvcrectl setup init
 
-# With GHCR authentication
+# For a private GHCR mirror or fork (the public image and chart need no token)
 nvcrectl setup init --image-pull-secret $GITHUB_TOKEN
 
 # Skip Kubeflow Trainer (already installed)

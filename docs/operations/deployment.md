@@ -28,7 +28,7 @@ curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/do
 Then set up the cluster:
 
 ```bash
-nvcrectl setup init --image-pull-secret $GITHUB_TOKEN
+nvcrectl setup init
 ```
 
 `setup init` runs two phases:
@@ -39,10 +39,10 @@ nvcrectl setup init --image-pull-secret $GITHUB_TOKEN
 The Helm chart is pulled from GHCR at the CLI's own version, so a tagged release needs no version flag. **Dev builds (built from `main`) require `--version`** to name the chart version explicitly:
 
 ```bash
-nvcrectl setup init --version <chart-version> --image-pull-secret $GITHUB_TOKEN
+nvcrectl setup init --version <chart-version>
 ```
 
-`--image-pull-secret` takes a GitHub token; it creates the `nvcrectl-pull-secret` image pull secret in the `nvcre` namespace and authenticates the Helm chart pull. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, and `--auto-approve` to skip the confirmation prompt in CI.
+The image and chart are public on GHCR, so no token is needed. For clusters that pull from a private mirror or fork, `--image-pull-secret <github-token>` creates the `nvcrectl-pull-secret` image pull secret in the `nvcre` namespace and authenticates the Helm chart pull. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, and `--auto-approve` to skip the confirmation prompt in CI.
 
 Check the installation at any time:
 
@@ -52,10 +52,11 @@ nvcrectl setup status
 
 ### Helm chart
 
-For GitOps workflows, install the chart directly. The chart is public on GHCR, so no registry login is needed. Inspect and install (the snippet resolves the newest release; set `NVCRE_VERSION` to an explicit tag for reproducible installs):
+For GitOps workflows, install the chart directly. The chart is public on GHCR, so no registry login is needed. Inspect and install (the snippet resolves the newest stable release without authentication; set `NVCRE_VERSION` to an explicit tag for reproducible installs):
 
 ```bash
-NVCRE_VERSION=$(gh release list --repo NVIDIA/cluster-readiness-engine --limit 1 --json tagName -q '.[0].tagName')
+NVCRE_VERSION=$(curl -fsSL https://api.github.com/repos/NVIDIA/cluster-readiness-engine/releases/latest | jq -re .tag_name)
+: "${NVCRE_VERSION:?no stable release found}"
 
 helm show chart oci://ghcr.io/nvidia/nvcre --version "$NVCRE_VERSION"
 
