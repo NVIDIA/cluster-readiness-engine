@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.categories[0].options.resources",
+      "message": "Invalid value: requests.memory must not exceed limits.memory"
+    }
+  ]
+}
