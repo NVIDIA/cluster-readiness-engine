@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Filtering can leave too few nodes for the entry to run at all. That must still
-# be a clear error, not a silent downgrade to a smaller job.
+# be a clear error, not a silent downgrade to a smaller job. Every architecture
+# appears once, so the tie-break keeps the first node's h100 and only one node
+# survives the filter, short of the four the constraint demands.
 nodes:
   - {name: n1, product: NVIDIA-H100-80GB-HBM3}
   - {name: n2, product: NVIDIA-A100-PCIE-40GB}
-  - {name: n3, product: NVIDIA-A100-PCIE-40GB}
-  - {name: n4, product: NVIDIA-A100-PCIE-40GB}
+  - {name: n3, product: NVIDIA-GB200-NVL72}
+  - {name: n4, product: NVIDIA-GB300}
 constraint: min4

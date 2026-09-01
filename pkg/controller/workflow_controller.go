@@ -679,11 +679,12 @@ func discoverTargetNodes(ctx context.Context, reader client.Reader, target *nvcr
 	nodes = gpuFiltered
 
 	// Sort by name so discovery is reproducible. client.List gives no ordering
-	// guarantee, and callers pick nodes[0] to decide the platform and the GPU
-	// architecture for the whole run. Unsorted, the same cluster could certify a
-	// different subset on each reconcile: over two H100 nodes and one A100, two
-	// runs certified h100 with 2 nodes and a100 with 1 node. Name order also
-	// matches how pkg/orchestration already chunks nodes into groups.
+	// guarantee, and callers pick nodes[0] to decide the platform and use slice
+	// order to break ties in the majority GPU-architecture rule (issue #77).
+	// Unsorted, the same cluster could certify a different subset on each
+	// reconcile: over one H100 node and one A100, two runs would flip between
+	// certifying h100 and a100. Name order also matches how pkg/orchestration
+	// already chunks nodes into groups.
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].Name < nodes[j].Name })
 
 	// Sort the cordoned names for the same reason: they are written to status and

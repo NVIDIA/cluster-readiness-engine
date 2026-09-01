@@ -281,6 +281,14 @@ func gpuQuantityValue(v any) int64 {
 
 // detectGPUArchConsistent detects the GPU architecture and filters out nodes
 // with a different architecture if the target set is heterogeneous.
+//
+// The architecture with the most nodes wins, so a single odd node can never
+// shrink the certification to itself (issue #77). Ties go to the architecture
+// whose earliest node appears first in the input, which discoverTargetNodes
+// has already sorted by name. The winner is derived by walking the slice in
+// order, never by ranging over the counts map, so the result is deterministic
+// for a given node set (the property PR #57 established).
+//
 // Returns the primary architecture and the (potentially filtered) node list.
 func detectGPUArchConsistent(nodes []corev1.Node) (string, []corev1.Node) {
 	if len(nodes) == 0 {
@@ -290,7 +298,14 @@ func detectGPUArchConsistent(nodes []corev1.Node) (string, []corev1.Node) {
 	for _, n := range nodes {
 		counts[nodeGPUArchitecture(n)]++
 	}
+	// Majority wins; the strictly-greater comparison keeps the earliest-seen
+	// architecture on a tie.
 	primary := nodeGPUArchitecture(nodes[0])
+	for i := range nodes[1:] {
+		if arch := nodeGPUArchitecture(nodes[i+1]); counts[arch] > counts[primary] {
+			primary = arch
+		}
+	}
 	if len(counts) <= 1 {
 		return primary, nodes
 	}

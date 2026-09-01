@@ -1,0 +1,11 @@
+# Nodes arrive in name order, because discoverTargetNodes sorts them. The H100
+# nodes outnumber the A100 node, so H100 is the certified architecture; here
+# the majority also happens to sort first. See majority-beats-first-node for
+# the case where the first node is the minority.
+nodes:
+  - name: node-a
+    product: NVIDIA-H100-80GB-HBM3
+  - name: node-b
+    product: NVIDIA-H100-80GB-HBM3
+  - name: node-c
+    product: NVIDIA-A100-PCIE-40GB
