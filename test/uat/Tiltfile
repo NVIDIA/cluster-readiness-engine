@@ -58,7 +58,7 @@ local_resource('install-trainer',
 
 # ─── 6. Install NVCRE via Helm (local chart, test image pre-loaded into Kind) ───
 local_resource('install-nvcre',
-    cmd='helm upgrade --install nvcre ../../helm/nvcre --namespace nvcre --create-namespace --values tilt/nvcre-values.yaml --set manager.image.repository=%s --set manager.image.tag=%s --set manager.imagePullSecrets=null --wait --timeout 5m' % (IMG_REPO, IMG_TAG),
+    cmd='helm upgrade --install nvcre ../../helm/cluster-readiness-engine --namespace nvcre --create-namespace --values tilt/nvcre-values.yaml --set manager.image.repository=%s --set manager.image.tag=%s --set manager.imagePullSecrets=null --wait --timeout 5m' % (IMG_REPO, IMG_TAG),
     deps=['tilt/nvcre-values.yaml'],
     resource_deps=['build-image', 'install-trainer', 'kwok-stage-override', 'prometheus-crds'],
     labels=['nvcre'])

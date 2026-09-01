@@ -36,7 +36,7 @@ type validationCause struct {
 // partial and correctly ordered overrides are accepted (issue #83).
 func TestCertificationValidation(t *testing.T) {
 	suite := &testutil.IntegrationTestSuite{}
-	suite.Environment.CRDDirectoryPaths = []string{"../../helm/nvcre/crds"}
+	suite.Environment.CRDDirectoryPaths = []string{"../../helm/cluster-readiness-engine/crds"}
 	suite.Environment.ErrorIfCRDPathMissing = true
 	suite.SetupTestSuite(t)
 	defer suite.TearDownTestSuite(t)

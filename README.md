@@ -144,10 +144,10 @@ NVCRE_VERSION=$(curl -fsSL https://api.github.com/repos/NVIDIA/cluster-readiness
 : "${NVCRE_VERSION:?no stable release found}"
 
 # Inspect the chart before installing it
-helm show chart oci://ghcr.io/nvidia/nvcre --version "$NVCRE_VERSION"
+helm show chart oci://ghcr.io/nvidia/cluster-readiness-engine --version "$NVCRE_VERSION"
 
 helm install nvcre \
-  oci://ghcr.io/nvidia/nvcre \
+  oci://ghcr.io/nvidia/cluster-readiness-engine \
   --version "$NVCRE_VERSION" \
   --namespace nvcre \
   --create-namespace
@@ -160,7 +160,7 @@ Kubernetes API-server capacity available in your cluster:
 
 ```bash
 helm upgrade nvcre \
-  oci://ghcr.io/nvidia/nvcre \
+  oci://ghcr.io/nvidia/cluster-readiness-engine \
   --version "$NVCRE_VERSION" \
   --namespace nvcre \
   --set manager.maxConcurrentReconciles=20 \

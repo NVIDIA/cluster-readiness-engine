@@ -77,7 +77,7 @@ Pushing a `v*` tag runs three jobs in `.github/workflows/release.yml`:
 
 | Job | Publishes |
 |---|---|
-| Publish Helm Chart | `oci://ghcr.io/nvidia/nvcre` |
+| Publish Helm Chart | `oci://ghcr.io/nvidia/cluster-readiness-engine` |
 | Build CLI Binaries | cross-compiled `nvcrectl` for linux and macOS, amd64 and arm64 |
 | Create GitHub Release | the GitHub Release, its notes, and the assets below |
 
