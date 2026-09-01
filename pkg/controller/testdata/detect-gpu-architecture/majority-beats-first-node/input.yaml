@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# detectGPUArchitecture reports the majority architecture, not the first
+# node's (issue #248): the WorkloadRun controller and the CLI paths built on
+# it must agree with the Workflow controller's filter on mixed targets.
+nodes:
+  - metadata:
+      name: node-1
+      labels:
+        nvidia.com/gpu.product: "NVIDIA-GB200-NVL72"
+  - metadata:
+      name: node-2
+      labels:
+        nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+  - metadata:
+      name: node-3
+      labels:
+        nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"

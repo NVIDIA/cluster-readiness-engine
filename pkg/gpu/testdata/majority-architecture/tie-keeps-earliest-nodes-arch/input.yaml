@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A dead heat: two H100 nodes, two A100 nodes. The tie-break is the
+# architecture whose earliest node appears first in the (name-sorted) input,
+# h100 via node-a, exactly the walk detectGPUArchConsistent adopted for
+# issue #77.
+nodes:
+  - name: node-a
+    product: NVIDIA-H100-80GB-HBM3
+  - name: node-b
+    product: NVIDIA-A100-PCIE-40GB
+  - name: node-c
+    product: NVIDIA-H100-80GB-HBM3
+  - name: node-d
+    product: NVIDIA-A100-PCIE-40GB

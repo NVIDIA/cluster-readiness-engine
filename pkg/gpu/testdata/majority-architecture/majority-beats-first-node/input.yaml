@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The odd node sorts first, but the architecture with the most nodes wins:
+# two H100 nodes outvote the single A100 node even though it appears first.
+nodes:
+  - name: node-a
+    product: NVIDIA-A100-PCIE-40GB
+  - name: node-b
+    product: NVIDIA-H100-80GB-HBM3
+  - name: node-c
+    product: NVIDIA-H100-80GB-HBM3
