@@ -462,6 +462,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		NodesPerJob:        nodesPerJob,
 		GpusPerNode:        gpusPerNode,
 		MlnxPerNode:        mlnxPerNode,
+		Resources:          opts.Resources,
 		EnableMNNVL:        enableMNNVL,
 		EnableCheckpoint:   derefBool(opts.EnableCheckpoint),
 		MaxSteps:           derefInt32(opts.MaxSteps),
@@ -597,6 +598,9 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	}
 	if override.MlnxPerNode != nil {
 		resolved.MlnxPerNode = override.MlnxPerNode
+	}
+	if override.Resources != nil {
+		resolved.Resources = override.Resources
 	}
 	if override.EnableMNNVL != nil {
 		resolved.EnableMNNVL = override.EnableMNNVL

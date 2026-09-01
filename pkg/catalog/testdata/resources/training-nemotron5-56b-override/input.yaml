@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The 56b variant shares the templated resource block with 8b; the override
+# must apply there too. 8 nodes x 4 GPUs satisfies minGPUs: 32.
+category: training
+subcategory: nemotron5-56b
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+nodesPerJob: 8
+gpusPerNode: 4
+resources:
+  limits:
+    cpu: "32"
+    memory: 256Gi
+  requests:
+    cpu: "16"
+    memory: 128Gi

@@ -47,6 +47,12 @@ type BuildConfig struct {
 	// Resolved from gpu-defaults.yaml + platform overrides + user override.
 	MlnxPerNode int32
 
+	// Resources overrides the CPU and memory of training containers.
+	// Nil (or nil sub-fields) means the training entries keep their
+	// DGX-class defaults (limits: cpu 128 / memory 800Gi; requests:
+	// cpu 64 / memory 500Gi). Non-training entries ignore it.
+	Resources *nvcrev1alpha1.CategoryResources
+
 	// EnableMNNVL controls the NCCL_MNNVL_ENABLE env var in training entries.
 	// When true, entries set NCCL_MNNVL_ENABLE=1.
 	EnableMNNVL bool

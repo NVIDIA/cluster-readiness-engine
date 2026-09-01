@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.resources",
+      "message": "Invalid value: requests.cpu must not exceed limits.cpu"
+    }
+  ]
+}

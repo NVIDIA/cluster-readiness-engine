@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.resources.requests.memory",
+      "message": "Invalid value: \"-1Gi\": memory must be a non-negative quantity"
+    }
+  ]
+}
