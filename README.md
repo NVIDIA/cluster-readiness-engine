@@ -140,7 +140,8 @@ published to the GitHub Container Registry on every release.
 
 ```bash
 # Resolve the newest stable release (no authentication needed)
-NVCRE_VERSION=$(curl -fsSL https://api.github.com/repos/NVIDIA/cluster-readiness-engine/releases/latest | jq -r .tag_name)
+NVCRE_VERSION=$(curl -fsSL https://api.github.com/repos/NVIDIA/cluster-readiness-engine/releases/latest | jq -re .tag_name)
+: "${NVCRE_VERSION:?no stable release found}"
 
 # Inspect the chart before installing it
 helm show chart oci://ghcr.io/nvidia/nvcre --version "$NVCRE_VERSION"

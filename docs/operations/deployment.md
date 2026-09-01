@@ -55,7 +55,8 @@ nvcrectl setup status
 For GitOps workflows, install the chart directly. The chart is public on GHCR, so no registry login is needed. Inspect and install (the snippet resolves the newest stable release without authentication; set `NVCRE_VERSION` to an explicit tag for reproducible installs):
 
 ```bash
-NVCRE_VERSION=$(curl -fsSL https://api.github.com/repos/NVIDIA/cluster-readiness-engine/releases/latest | jq -r .tag_name)
+NVCRE_VERSION=$(curl -fsSL https://api.github.com/repos/NVIDIA/cluster-readiness-engine/releases/latest | jq -re .tag_name)
+: "${NVCRE_VERSION:?no stable release found}"
 
 helm show chart oci://ghcr.io/nvidia/nvcre --version "$NVCRE_VERSION"
 

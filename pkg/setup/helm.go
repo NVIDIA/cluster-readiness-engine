@@ -429,16 +429,20 @@ func runHelmCapture(helmPath string, args []string, out io.Writer) (string, erro
 }
 
 // printGHCR403Hint prints remediation guidance when a failed helm transcript
-// contains a GHCR 403. The published chart and controller image are public
-// and the default path is tokenless, so a 403 there is usually transient or
-// a registry mirror issue; a token scope only matters when the user passed
-// --image-pull-secret.
+// contains a GHCR 403. Both "403" and "ghcr.io" must appear so unrelated
+// failures (Kubernetes RBAC, other registries) do not get GHCR guidance.
+// The published chart and controller image are public and the default path
+// is tokenless, so a 403 there is usually transient or a registry mirror
+// issue; a token only matters when the user passed --image-pull-secret, and
+// fixing it means re-running setup init with a fresh token so the pull
+// secret is recreated, not just refreshing the local gh credential.
 func printGHCR403Hint(out io.Writer, output string) {
-	if strings.Contains(output, "403") {
+	if strings.Contains(output, "403") && strings.Contains(output, "ghcr.io") {
 		_, _ = fmt.Fprintln(out, "\nHint: GHCR returned 403. The NVCRE chart and image are public and need no token,")
 		_, _ = fmt.Fprintln(out, "      so this is usually transient or a registry mirror issue. Retry the command.")
-		_, _ = fmt.Fprintln(out, "      If you passed --image-pull-secret, the token may be missing the read:packages")
-		_, _ = fmt.Fprintln(out, "      scope. Run: gh auth refresh -s read:packages")
+		_, _ = fmt.Fprintln(out, "      If you passed --image-pull-secret, the token may be expired or missing the")
+		_, _ = fmt.Fprintln(out, "      read:packages scope. Re-run setup init --image-pull-secret with a fresh")
+		_, _ = fmt.Fprintln(out, "      token to recreate the pull secret.")
 	}
 }
 

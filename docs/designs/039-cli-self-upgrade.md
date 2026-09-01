@@ -23,7 +23,7 @@ Add a top-level `nvcrectl upgrade` command that:
 2. Compares against the running version using semantic versioning.
 3. Shows release notes from the GitHub release notes.
 4. Prompts for confirmation (y/N).
-5. Downloads the correct binary from the Package Registry.
+5. Downloads the correct binary from the GitHub release assets.
 6. Replaces the running binary with `os.Rename` (sudo fallback on permission error).
 
 ### GitHub API Endpoints
@@ -45,7 +45,7 @@ Functions:
 - `runUpgrade()` — orchestrates the full flow
 - `fetchLatestVersion()` — GitHub Releases API
 - `fetchReleaseNotes()` — GitHub Releases API
-- `downloadBinary()` — Package Registry download to temp dir
+- `downloadBinary()` — GitHub release asset download to temp dir
 - `installBinary()` — rename with sudo fallback
 - `parseSemanticVersion()` — parse version string
 - `isNewer()` — compare two versions
