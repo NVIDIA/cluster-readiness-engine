@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Requests without matching limits: the guard keeps the rules from firing,
+# so the object is accepted. The pairing against catalog defaults is only
+# checked at pod admission (see CategoryResources docs).
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-requests-only
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        resources:
+          requests:
+            cpu: "256"
+            memory: 900Gi

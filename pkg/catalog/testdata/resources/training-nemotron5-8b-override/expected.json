@@ -1,0 +1,12 @@
+{
+  "limits": {
+    "cpu": "6",
+    "memory": "48Gi",
+    "nvidia.com/gpu": "2"
+  },
+  "requests": {
+    "cpu": "4",
+    "memory": "32Gi",
+    "nvidia.com/gpu": "2"
+  }
+}
