@@ -82,12 +82,14 @@ type CategoryResourceList struct {
 	// +optional
 	// +kubebuilder:validation:XIntOrString
 	// +kubebuilder:validation:MaxLength=32
+	// +kubebuilder:validation:XValidation:rule="quantity(string(self)).compareTo(quantity(\"0\")) >= 0",message="cpu must be a non-negative quantity"
 	CPU *resource.Quantity `json:"cpu,omitempty"`
 
 	// memory is the memory quantity (e.g., "48Gi").
 	// +optional
 	// +kubebuilder:validation:XIntOrString
 	// +kubebuilder:validation:MaxLength=32
+	// +kubebuilder:validation:XValidation:rule="quantity(string(self)).compareTo(quantity(\"0\")) >= 0",message="memory must be a non-negative quantity"
 	Memory *resource.Quantity `json:"memory,omitempty"`
 }
 
