@@ -17,7 +17,7 @@
 # The LogProfile below is a verbatim copy of the shipped `nccl-bandwidth`
 # profile (same regex, same timestamp layout), renamed only to avoid colliding
 # with other cases. Keep it in step with
-# helm/nvcre/templates/nccl-all-reduce.yaml.
+# helm/cluster-readiness-engine/templates/nccl-all-reduce.yaml.
 
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: LogProfile

@@ -224,7 +224,7 @@ jobs:
 
             ```bash
             helm install nvcre \
-              oci://ghcr.io/nvidia/nvcre \
+              oci://ghcr.io/nvidia/cluster-readiness-engine \
               --version ${{ steps.tag.outputs.value }} \
               --namespace nvcre \
               --create-namespace

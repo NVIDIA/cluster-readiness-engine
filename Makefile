@@ -15,7 +15,7 @@ IMAGE_TAG ?= $(VERSION)
 IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):$(IMAGE_TAG)
 
 # Helm chart directory (used by manifests and helm-* targets).
-HELM_CHART_DIR ?= helm/nvcre
+HELM_CHART_DIR ?= helm/cluster-readiness-engine
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -284,12 +284,12 @@ HELM_PACKAGE_VERSION ?= $(VERSION)
 HELM_OCI_REGISTRY ?= oci://ghcr.io/nvidia
 
 .PHONY: helm-lint
-helm-lint: ## Lint the nvcre Helm chart.
+helm-lint: ## Lint the cluster-readiness-engine Helm chart.
 	"$(HELM)" dependency build $(HELM_CHART_DIR) --skip-refresh
 	"$(HELM)" lint $(HELM_CHART_DIR)
 
 .PHONY: helm-package
-helm-package: helm-lint ## Package the nvcre Helm chart.
+helm-package: helm-lint ## Package the cluster-readiness-engine Helm chart.
 	"$(HELM)" package $(HELM_CHART_DIR) \
 		--version "$(HELM_PACKAGE_VERSION)" \
 		--app-version "$(VERSION)"
@@ -297,7 +297,7 @@ helm-package: helm-lint ## Package the nvcre Helm chart.
 .PHONY: helm-push
 helm-push: check-clean-version helm-package ## Push the Helm chart to the OCI registry.
 	"$(HELM)" push \
-		nvcre-$(HELM_PACKAGE_VERSION).tgz \
+		cluster-readiness-engine-$(HELM_PACKAGE_VERSION).tgz \
 		$(HELM_OCI_REGISTRY)
 
 ##@ Dependencies

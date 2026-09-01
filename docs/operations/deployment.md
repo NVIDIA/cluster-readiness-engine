@@ -15,7 +15,7 @@ NVCRE supports two install paths. Both pull the same artifacts from the GitHub C
 | Method | Audience | Installs Kubeflow Trainer |
 |--------|----------|---------------------------|
 | `nvcrectl setup init` | Operators, quick setup | Yes (skip with `--skip-phases=deps`) |
-| Helm chart (`oci://ghcr.io/nvidia/nvcre`) | GitOps / platform teams | No (install separately) |
+| Helm chart (`oci://ghcr.io/nvidia/cluster-readiness-engine`) | GitOps / platform teams | No (install separately) |
 
 ### nvcrectl setup init
 
@@ -58,10 +58,10 @@ For GitOps workflows, install the chart directly. The chart is public on GHCR, s
 NVCRE_VERSION=$(curl -fsSL https://api.github.com/repos/NVIDIA/cluster-readiness-engine/releases/latest | jq -re .tag_name)
 : "${NVCRE_VERSION:?no stable release found}"
 
-helm show chart oci://ghcr.io/nvidia/nvcre --version "$NVCRE_VERSION"
+helm show chart oci://ghcr.io/nvidia/cluster-readiness-engine --version "$NVCRE_VERSION"
 
 helm install nvcre \
-  oci://ghcr.io/nvidia/nvcre \
+  oci://ghcr.io/nvidia/cluster-readiness-engine \
   --version "$NVCRE_VERSION" \
   --namespace nvcre \
   --create-namespace
@@ -232,13 +232,13 @@ readinessProbe:
 1. Review the release notes for breaking changes.
 2. Apply the new chart version's CRDs. Helm never updates CRDs on `helm upgrade` — it applies a chart's `crds/` directory only on the first install — so skipping this step leaves the installed CRDs at the old schema:
    ```bash
-   helm show crds oci://ghcr.io/nvidia/nvcre --version <new-version> \
+   helm show crds oci://ghcr.io/nvidia/cluster-readiness-engine --version <new-version> \
      | kubectl apply --server-side --force-conflicts -f -
    ```
 3. Upgrade the Helm release (log in to `ghcr.io` first, as above):
    ```bash
    helm upgrade nvcre \
-     oci://ghcr.io/nvidia/nvcre \
+     oci://ghcr.io/nvidia/cluster-readiness-engine \
      --version <new-version> \
      --namespace nvcre
    ```

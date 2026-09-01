@@ -89,7 +89,7 @@ func newInitCommand(version string) *cobra.Command {
 
 Phases:
   [deps]  Kubeflow Trainer ` + kubeflowTrainerVersion + `
-  [helm]  NVCRE Helm chart (oci://ghcr.io/nvidia/nvcre)
+  [helm]  NVCRE Helm chart (oci://ghcr.io/nvidia/cluster-readiness-engine)
 
 The Helm chart is pulled from GHCR at the CLI version. Dev builds require --version.
 Pass --image-pull-secret to authenticate against a private GHCR registry.
