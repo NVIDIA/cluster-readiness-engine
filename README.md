@@ -77,10 +77,10 @@ The installer places `nvcrectl` on your `$PATH` and creates a `kubectl-nvcre` sy
 **2. Set up the cluster**
 
 ```bash
-kubectl nvcre setup init --image-pull-secret "$(gh auth token)"
+kubectl nvcre setup init
 ```
 
-This installs Kubeflow Trainer, the NVCRE CRDs, the controller, and the built-in LogProfiles.
+This installs Kubeflow Trainer, the NVCRE CRDs, the controller, and the built-in LogProfiles. The image and chart are public on GHCR; if your cluster pulls from a private mirror instead, pass `--image-pull-secret <github-token>` to create the pull secret.
 
 **3. Certify**
 

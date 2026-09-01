@@ -28,7 +28,7 @@ curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/do
 Then set up the cluster:
 
 ```bash
-nvcrectl setup init --image-pull-secret $GITHUB_TOKEN
+nvcrectl setup init
 ```
 
 `setup init` runs two phases:
@@ -39,10 +39,10 @@ nvcrectl setup init --image-pull-secret $GITHUB_TOKEN
 The Helm chart is pulled from GHCR at the CLI's own version, so a tagged release needs no version flag. **Dev builds (built from `main`) require `--version`** to name the chart version explicitly:
 
 ```bash
-nvcrectl setup init --version <chart-version> --image-pull-secret $GITHUB_TOKEN
+nvcrectl setup init --version <chart-version>
 ```
 
-`--image-pull-secret` takes a GitHub token; it creates the `nvcrectl-pull-secret` image pull secret in the `nvcre` namespace and authenticates the Helm chart pull. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, and `--auto-approve` to skip the confirmation prompt in CI.
+The image and chart are public on GHCR, so no token is needed. For clusters that pull from a private mirror or fork, `--image-pull-secret <github-token>` creates the `nvcrectl-pull-secret` image pull secret in the `nvcre` namespace and authenticates the Helm chart pull. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, and `--auto-approve` to skip the confirmation prompt in CI.
 
 Check the installation at any time:
 

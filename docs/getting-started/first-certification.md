@@ -70,7 +70,7 @@ If `cluster info` reports `no nodes have nvidia.com/gpu.product label`, the GPU 
 ## Step 3: install NVCRE
 
 ```bash
-kubectl nvcre setup init --image-pull-secret "$(gh auth token)"
+kubectl nvcre setup init
 ```
 
 The command shows the target cluster and asks for confirmation. Type exactly `yes`. In scripts, pass `--auto-approve`.

@@ -49,11 +49,13 @@ nvcrectl setup init
 
 ### GHCR authentication
 
-The controller image and Helm chart are pulled from GHCR. Pass a GitHub token to authenticate — the CLI creates the pull secret for you:
+The controller image and Helm chart are pulled anonymously from GHCR:
 
 ```bash
-nvcrectl setup init --image-pull-secret $GITHUB_TOKEN
+nvcrectl setup init
 ```
+
+If your cluster pulls from a private mirror or fork instead, pass `--image-pull-secret <github-token>` and the CLI creates the pull secret for you.
 
 ## Verify
 
