@@ -109,12 +109,17 @@ func nodeGPUArchitecture(n corev1.Node) string {
 	return gpuArchUnknown
 }
 
-// detectGPUArchitecture determines the GPU architecture from the first node's labels.
+// detectGPUArchitecture determines the GPU architecture reported by the most
+// nodes via gpu.MajorityArchitecture, so the WorkloadRun controller and the
+// CLI paths that build on the exported DetectGPUArchitecture agree with the
+// Workflow and Certification controllers on heterogeneous targets (issue
+// #248). Unlabeled nodes do not vote; "unknown" is returned only when no node
+// carries the nvidia.com/gpu.product label.
 func detectGPUArchitecture(nodes []corev1.Node) string {
-	if len(nodes) == 0 {
-		return gpuArchUnknown
+	if arch := gpu.MajorityArchitecture(nodes); arch != "" {
+		return arch
 	}
-	return nodeGPUArchitecture(nodes[0])
+	return gpuArchUnknown
 }
 
 // excludedNodeNames returns the names in all that are absent from kept, in the
@@ -282,39 +287,32 @@ func gpuQuantityValue(v any) int64 {
 // detectGPUArchConsistent detects the GPU architecture and filters out nodes
 // with a different architecture if the target set is heterogeneous.
 //
-// The architecture with the most nodes wins, so a single odd node can never
-// shrink the certification to itself (issue #77). Ties go to the architecture
-// whose earliest node appears first in the input, which discoverTargetNodes
-// has already sorted by name. The winner is derived by walking the slice in
-// order, never by ranging over the counts map, so the result is deterministic
-// for a given node set (the property PR #57 established).
+// The primary architecture comes from the same gpu.MajorityArchitecture vote
+// every detection path shares: the architecture with the most labeled nodes
+// wins, so a single odd node can never shrink the certification to itself
+// (issue #77), and an unlabeled node can never outvote labeled ones (issue
+// #248). Ties go to the architecture whose earliest node appears first in the
+// input, which discoverTargetNodes has already sorted by name, so the result
+// is deterministic for a given node set (the property PR #57 established).
+// "unknown" is primary only when no node carries the label, in which case
+// every node is "unknown" and nothing is filtered; the Certification
+// controller then falls back to its nodeSelector-based detection.
 //
 // Returns the primary architecture and the (potentially filtered) node list.
 func detectGPUArchConsistent(nodes []corev1.Node) (string, []corev1.Node) {
 	if len(nodes) == 0 {
 		return gpuArchUnknown, nodes
 	}
-	counts := map[string]int{}
-	for _, n := range nodes {
-		counts[nodeGPUArchitecture(n)]++
-	}
-	// Majority wins; the strictly-greater comparison keeps the earliest-seen
-	// architecture on a tie.
-	primary := nodeGPUArchitecture(nodes[0])
-	for i := range nodes[1:] {
-		if arch := nodeGPUArchitecture(nodes[i+1]); counts[arch] > counts[primary] {
-			primary = arch
-		}
-	}
-	if len(counts) <= 1 {
-		return primary, nodes
-	}
-	// Heterogeneous: filter to primary architecture only
-	filtered := make([]corev1.Node, 0, counts[primary])
+	primary := detectGPUArchitecture(nodes)
+	filtered := make([]corev1.Node, 0, len(nodes))
 	for _, n := range nodes {
 		if nodeGPUArchitecture(n) == primary {
 			filtered = append(filtered, n)
 		}
+	}
+	if len(filtered) == len(nodes) {
+		// Homogeneous: hand back the input slice untouched.
+		return primary, nodes
 	}
 	return primary, filtered
 }

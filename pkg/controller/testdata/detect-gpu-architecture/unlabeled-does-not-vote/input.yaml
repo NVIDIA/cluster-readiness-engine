@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Unlabeled nodes do not vote even when they outnumber labeled ones and sort
+# first; "unknown" wins only when no node carries the label at all.
+nodes:
+  - metadata:
+      name: node-1
+      labels:
+        kubernetes.io/hostname: node-1
+  - metadata:
+      name: node-2
+      labels:
+        kubernetes.io/hostname: node-2
+  - metadata:
+      name: node-3
+      labels:
+        nvidia.com/gpu.product: "NVIDIA-GB200-NVL72"

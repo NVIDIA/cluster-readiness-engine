@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No node carries the label, so there is nothing to vote on and the result is
+# empty. Callers map this to their "unknown" sentinel; the Certification
+# controller then falls back to nodeSelector-based detection.
+nodes:
+  - name: node-a
+    product: ""
+  - name: node-b
+    product: ""

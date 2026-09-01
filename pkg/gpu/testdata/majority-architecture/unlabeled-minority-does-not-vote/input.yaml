@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# One node has no nvidia.com/gpu.product label. It does not vote, so the
+# labeled h100 node decides the architecture even though the pair would
+# otherwise be a 1-1 tie.
+nodes:
+  - name: node-a
+    product: NVIDIA-H100-80GB-HBM3
+  - name: node-b
+    product: ""
