@@ -1,23 +1,23 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "cre.name" -}}
+{{- define "nvcre.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "cre.chart" -}}
+{{- define "nvcre.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels
 */}}
-{{- define "cre.labels" -}}
-helm.sh/chart: {{ include "cre.chart" . }}
-{{ include "cre.selectorLabels" . }}
+{{- define "nvcre.labels" -}}
+helm.sh/chart: {{ include "nvcre.chart" . }}
+{{ include "nvcre.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -27,8 +27,8 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels
 */}}
-{{- define "cre.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "cre.name" . }}
+{{- define "nvcre.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "nvcre.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
@@ -37,7 +37,7 @@ Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.
 */}}
-{{- define "cre.fullname" -}}
+{{- define "nvcre.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -54,7 +54,7 @@ If release name contains chart name it will be used as a full name.
 Namespace for generated references.
 Always uses the Helm release namespace.
 */}}
-{{- define "cre.namespaceName" -}}
+{{- define "nvcre.namespaceName" -}}
 {{- .Release.Namespace }}
 {{- end }}
 
@@ -65,8 +65,8 @@ Takes a dict with:
   - .context: Template context (root context with .Values, .Release, etc.)
 Dynamically calculates safe truncation to ensure total name length <= 63 chars.
 */}}
-{{- define "cre.resourceName" -}}
-{{- $fullname := include "cre.fullname" .context }}
+{{- define "nvcre.resourceName" -}}
+{{- $fullname := include "nvcre.fullname" .context }}
 {{- $suffix := .suffix }}
 {{- $maxLen := sub 62 (len $suffix) | int }}
 {{- if gt (len $fullname) $maxLen }}
@@ -79,6 +79,6 @@ Dynamically calculates safe truncation to ensure total name length <= 63 chars.
 {{/*
 ServiceAccount name for the controller manager.
 */}}
-{{- define "cre.serviceAccountName" -}}
-{{- include "cre.resourceName" (dict "suffix" "manager" "context" .) }}
+{{- define "nvcre.serviceAccountName" -}}
+{{- include "nvcre.resourceName" (dict "suffix" "manager" "context" .) }}
 {{- end }}

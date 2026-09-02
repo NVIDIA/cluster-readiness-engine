@@ -7,22 +7,21 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
 func TestBuildTolerations(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "build-tolerations",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Selectors []crev1alpha1.TaintSelector `yaml:"selectors"`
+			Selectors []nvcrev1alpha1.TaintSelector `yaml:"selectors"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -42,12 +41,12 @@ func TestBuildTolerations(t *testing.T) {
 func TestNodeMatchesTaints(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "node-match-taints",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Node      corev1.Node                 `yaml:"node"`
-			Selectors []crev1alpha1.TaintSelector `yaml:"selectors"`
+			Node      corev1.Node                   `yaml:"node"`
+			Selectors []nvcrev1alpha1.TaintSelector `yaml:"selectors"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -69,12 +68,12 @@ func TestNodeMatchesTaints(t *testing.T) {
 func TestCanLaunchOverflow(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "can-launch-overflow",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Overflow  crev1alpha1.GroupStatus   `yaml:"overflow"`
-			AllGroups []crev1alpha1.GroupStatus `yaml:"allGroups"`
+			Overflow  nvcrev1alpha1.GroupStatus   `yaml:"overflow"`
+			AllGroups []nvcrev1alpha1.GroupStatus `yaml:"allGroups"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -96,12 +95,12 @@ func TestCanLaunchOverflow(t *testing.T) {
 func TestHasNodeOverlap(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "has-node-overlap",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Candidate crev1alpha1.GroupStatus   `yaml:"candidate"`
-			AllGroups []crev1alpha1.GroupStatus `yaml:"allGroups"`
+			Candidate nvcrev1alpha1.GroupStatus   `yaml:"candidate"`
+			AllGroups []nvcrev1alpha1.GroupStatus `yaml:"allGroups"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -123,17 +122,17 @@ func TestHasNodeOverlap(t *testing.T) {
 func TestCountRunningGroups(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "count-running-groups",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Groups []crev1alpha1.GroupStatus `yaml:"groups"`
+			Groups []nvcrev1alpha1.GroupStatus `yaml:"groups"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
 		}
 
-		orch := &crev1alpha1.OrchestrationStatus{Groups: input.Groups}
+		orch := &nvcrev1alpha1.OrchestrationStatus{Groups: input.Groups}
 		result := countRunningGroups(orch)
 
 		data, err := json.MarshalIndent(struct {
@@ -150,18 +149,18 @@ func TestCountRunningGroups(t *testing.T) {
 func TestAllGroupsTerminal(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "all-groups-terminal",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Groups []crev1alpha1.GroupStatus `yaml:"groups"`
+			Groups []nvcrev1alpha1.GroupStatus `yaml:"groups"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
 		}
 
 		r := &WorkflowReconciler{}
-		orch := &crev1alpha1.OrchestrationStatus{Groups: input.Groups}
+		orch := &nvcrev1alpha1.OrchestrationStatus{Groups: input.Groups}
 		result := r.allGroupsTerminal(orch)
 
 		data, err := json.MarshalIndent(struct {
@@ -178,18 +177,18 @@ func TestAllGroupsTerminal(t *testing.T) {
 func TestHasRunningGroups(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "has-running-groups",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Groups []crev1alpha1.GroupStatus `yaml:"groups"`
+			Groups []nvcrev1alpha1.GroupStatus `yaml:"groups"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
 		}
 
 		r := &WorkflowReconciler{}
-		orch := &crev1alpha1.OrchestrationStatus{Groups: input.Groups}
+		orch := &nvcrev1alpha1.OrchestrationStatus{Groups: input.Groups}
 		result := r.hasRunningGroups(orch)
 
 		data, err := json.MarshalIndent(struct {
@@ -206,7 +205,7 @@ func TestHasRunningGroups(t *testing.T) {
 func TestGetGroupJobName(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "get-group-job-name",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -220,15 +219,15 @@ func TestGetGroupJobName(t *testing.T) {
 			return err
 		}
 
-		workflow := &crev1alpha1.Workflow{
-			ObjectMeta: metav1.ObjectMeta{Name: input.WorkflowName},
-			Spec: crev1alpha1.WorkflowSpec{
-				Orchestration: crev1alpha1.OrchestrationSpec{
+		workflow := &nvcrev1alpha1.Workflow{
+			Name: input.WorkflowName,
+			Spec: nvcrev1alpha1.WorkflowSpec{
+				Orchestration: nvcrev1alpha1.OrchestrationSpec{
 					Iterations: input.Iterations,
 				},
 			},
-			Status: crev1alpha1.WorkflowStatus{
-				Orchestration: &crev1alpha1.OrchestrationStatus{
+			Status: nvcrev1alpha1.WorkflowStatus{
+				Orchestration: &nvcrev1alpha1.OrchestrationStatus{
 					TotalGroups: input.TotalGroups,
 				},
 			},
@@ -251,7 +250,7 @@ func TestGetGroupJobName(t *testing.T) {
 func TestEffectiveIterations(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "effective-iterations",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -261,7 +260,7 @@ func TestEffectiveIterations(t *testing.T) {
 			return err
 		}
 
-		orch := crev1alpha1.OrchestrationSpec{Iterations: input.Iterations}
+		orch := nvcrev1alpha1.OrchestrationSpec{Iterations: input.Iterations}
 		result := effectiveIterations(orch)
 
 		data, err := json.MarshalIndent(struct {
@@ -278,7 +277,7 @@ func TestEffectiveIterations(t *testing.T) {
 func TestHasMultipleIterations(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "has-multiple-iterations",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -288,7 +287,7 @@ func TestHasMultipleIterations(t *testing.T) {
 			return err
 		}
 
-		orch := crev1alpha1.OrchestrationSpec{Iterations: input.Iterations}
+		orch := nvcrev1alpha1.OrchestrationSpec{Iterations: input.Iterations}
 		result := hasMultipleIterations(orch)
 
 		data, err := json.MarshalIndent(struct {

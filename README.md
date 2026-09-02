@@ -1,12 +1,12 @@
-# Cluster Readiness Engine (CRE)
+# NVIDIA Cluster Readiness Engine (NVCRE)
 
-[![CI](https://github.com/dsx-ai-factory/cluster-readiness-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/dsx-ai-factory/cluster-readiness-engine/actions/workflows/ci.yml)
+[![CI](https://github.com/NVIDIA/cluster-readiness-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/NVIDIA/cluster-readiness-engine/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](go.mod)
+[![Go](https://img.shields.io/badge/Go-1.27+-00ADD8.svg)](go.mod)
 
-New GPU clusters often contain faulty nodes, and those faults surface only under real distributed load. CRE is a Kubernetes controller that certifies GPU clusters before production workloads run on them. It runs real training and communication workloads across topology-aware node groups, measures performance, detects hardware failures, and reports every bad node with a reason. Quarantine is left to your platform: CRE never cordons, taints, or otherwise modifies a node.
+New GPU clusters often contain faulty nodes, and those faults surface only under real distributed load. NVCRE is a Kubernetes controller that certifies GPU clusters before production workloads run on them. It runs real training and communication workloads across topology-aware node groups, measures performance, detects hardware failures, and reports every bad node with a reason. Quarantine is left to your platform: NVCRE never cordons, taints, or otherwise modifies a node.
 
-CRE is for platform and infrastructure teams that bring up, validate, or resell GPU clusters.
+NVCRE is for platform and infrastructure teams that bring up, validate, or resell GPU clusters.
 
 ## Features
 
@@ -19,7 +19,7 @@ CRE is for platform and infrastructure teams that bring up, validate, or resell 
 - Topology-aware node grouping and adaptive fault isolation
 - Checkpoint restart for training jobs
 - WorkloadRun, a single resource to run a training, NCCL, or custom workload
-- The `ncrectl` CLI for setup, render, run, report, and cleanup
+- The `nvcrectl` CLI for setup, render, run, report, and cleanup
 
 ## How it works
 
@@ -28,13 +28,14 @@ The APIs compose like Deployment, ReplicaSet, and Pod:
 ```mermaid
 flowchart LR
     C[Certification] -->|one per catalog category| W[Workflow]
+    R[WorkloadRun] -->|one| W
     W -->|one| J[Job]
     J -->|adapter| T[TrainJob and other workloads]
     J -.-> G[GoodputMeasurement]
     J -.-> B[BandwidthMeasurement]
 ```
 
-A Certification creates one Workflow per catalog category. Each Workflow creates a Job from its template. The Job creates the workload through an adapter, for example a Kubeflow Trainer TrainJob. Measurement resources parse pod logs with LogProfile regex patterns and compute goodput and bandwidth. When a node fails, CRE records it in the certification result with a reason. CRE does not modify nodes; quarantine is left to your platform.
+A Certification creates one Workflow per catalog category. A WorkloadRun is the single-run entry point: it creates one Workflow directly from its inline workload spec, bypassing the catalog. This is what `nvcrectl workloadrun run` uses for ad-hoc workloads. Each Workflow creates a Job from its template. The Job creates the workload through an adapter, for example a Kubeflow Trainer TrainJob. Measurement resources parse pod logs with LogProfile regex patterns and compute goodput and bandwidth. When a node fails, NVCRE records it in the certification result with a reason. NVCRE does not modify nodes; quarantine is left to your platform.
 
 ## Quickstart
 
@@ -43,7 +44,7 @@ For complete prerequisites, installation, a first run, and cleanup, see
 
 **0. Check the cluster**
 
-CRE requires the NVIDIA GPU Operator and, with the default metrics settings,
+NVCRE requires the NVIDIA GPU Operator and, with the default metrics settings,
 the Prometheus Operator CRDs that serve `monitoring.coreos.com/v1`; GB200 and
 GB300 catalog entries also require the NVIDIA DRA driver for `ComputeDomain`
 resources. The `diagnostics/dcgm-level4` category additionally requires the
@@ -56,41 +57,35 @@ kubectl patch clusterpolicy cluster-policy --type=merge \
   -p '{"spec":{"dcgm":{"enabled":true}}}'
 ```
 
-Run `kubectl ncre setup status` at any time to see what is present.
+Run `kubectl nvcre setup status` at any time to see what is present.
 
 **1. Install the CLI**
 
-Every release so far is a pre-release, and `releases/latest` resolves only to the
-newest **stable** release. Until `v0.1.0` is tagged, name the version explicitly:
-
 ```bash
-CRE_VERSION=v0.1.0-rc.8
-curl -sSL https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/download/${CRE_VERSION}/installer \
-  | bash -s -- -v "${CRE_VERSION}"
+curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
 ```
 
-Once a stable release exists, this shorter form works and picks up the newest one:
+`releases/latest` resolves to the newest stable release. To pin a version, download
+the installer from that release and pass the tag:
 
 ```bash
-curl -sSL https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/latest/download/installer | bash
+curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/<tag>/installer | bash -s -- -v <tag>
 ```
 
-The installer places `ncrectl` on your `$PATH` and creates a `kubectl-ncre` symlink so the CLI is also available as `kubectl ncre`.
-
-The installer needs a GitHub token while this repository is internal: authenticate with `gh auth login`, or set `GITHUB_TOKEN`.
+The installer places `nvcrectl` on your `$PATH` and creates a `kubectl-nvcre` symlink so the CLI is also available as `kubectl nvcre`.
 
 **2. Set up the cluster**
 
 ```bash
-kubectl ncre setup init --image-pull-secret "$(gh auth token)"
+kubectl nvcre setup init
 ```
 
-This installs Kubeflow Trainer, the CRE CRDs, the controller, and the built-in LogProfiles.
+This installs Kubeflow Trainer, the NVCRE CRDs, the controller, and the built-in LogProfiles. The image and chart are public on GHCR; if your cluster pulls from a private mirror instead, pass `--image-pull-secret <github-token>` to create the pull secret.
 
 **3. Certify**
 
 ```bash
-kubectl ncre certification run \
+kubectl nvcre certification run \
   --category communication/nccl-all-reduce \
   --wait
 ```
@@ -100,7 +95,7 @@ kubectl ncre certification run \
 The report prints when the run completes. To print it again later, pass the name and the namespace from the run output:
 
 ```bash
-kubectl ncre certification report <name> -n <namespace>
+kubectl nvcre certification report <name> -n <namespace>
 ```
 
 ```
@@ -108,7 +103,7 @@ kubectl ncre certification report <name> -n <namespace>
 ║                      Certification Report                      ║
 ╚════════════════════════════════════════════════════════════════╝
 
-  Name:      ncrectl-20260806-162730
+  Name:      nvcrectl-20260806-162730
   Platform:  aws
   GPU:       gb300
   Nodes:     16
@@ -139,38 +134,56 @@ kubectl ncre certification report <name> -n <namespace>
 
 ### Install from the registry instead
 
-`setup init` above is the quickest path. If you would rather manage CRE with
+`setup init` above is the quickest path. If you would rather manage NVCRE with
 Helm, or need to pin the controller image in your own manifests, both are
 published to the GitHub Container Registry on every release.
 
 ```bash
-CRE_VERSION=v0.1.0-rc.8
+# Resolve the newest stable release (no authentication needed)
+NVCRE_VERSION=$(curl -fsSL https://api.github.com/repos/NVIDIA/cluster-readiness-engine/releases/latest | jq -re .tag_name)
+: "${NVCRE_VERSION:?no stable release found}"
 
 # Inspect the chart before installing it
-helm show chart oci://ghcr.io/dsx-ai-factory/cluster-readiness-engine --version "$CRE_VERSION"
+helm show chart oci://ghcr.io/nvidia/cluster-readiness-engine --version "$NVCRE_VERSION"
 
-helm install cluster-readiness-engine \
-  oci://ghcr.io/dsx-ai-factory/cluster-readiness-engine \
-  --version "$CRE_VERSION" \
-  --namespace cluster-readiness-engine \
+helm install nvcre \
+  oci://ghcr.io/nvidia/cluster-readiness-engine \
+  --version "$NVCRE_VERSION" \
+  --namespace nvcre \
   --create-namespace
 ```
 
-The controller image is `ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager`, tagged
+By default, each Job, Workflow, Certification, and WorkloadRun controller runs
+up to 10 reconciles concurrently, while each log-processing measurement
+controller runs up to 5. Tune these limits for the controller resources and
+Kubernetes API-server capacity available in your cluster:
+
+```bash
+helm upgrade nvcre \
+  oci://ghcr.io/nvidia/cluster-readiness-engine \
+  --version "$NVCRE_VERSION" \
+  --namespace nvcre \
+  --set manager.maxConcurrentReconciles=20 \
+  --set manager.measurementMaxConcurrentReconciles=10
+```
+
+Both values must be greater than zero.
+
+The controller image is `ghcr.io/nvidia/cluster-readiness-engine/manager`, tagged
 with the same release version. Builds from `main` are also published, tagged
 `main-<commit-sha>`; use a release tag rather than one of those.
 
-Pin an explicit version rather than installing whatever is newest. Chart and
-image versions move together, so the two commands above and your own manifests
-should all name the same tag.
+The snippets above resolve the newest release. For reproducible installs, set
+`NVCRE_VERSION` to an explicit tag instead. Chart and image versions move
+together, so both commands and your own manifests should all name the same tag.
 
-## Run a training workload
+## Run a workload
 
-WorkloadRun is a simplified API for running training, NCCL, or custom workloads. Write a YAML file with an image, a framework, and a node count. CRE detects the platform and GPU architecture.
+WorkloadRun is a simplified API for running training, NCCL, or custom workloads. Write a YAML file with an image, a framework, and a node count. NVCRE detects the platform and GPU architecture. The quickest example is an NCCL bandwidth check:
 
 ```yaml
 # nccl-all-reduce.yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: WorkloadRun
 metadata:
   name: nccl-all-reduce
@@ -180,22 +193,30 @@ spec:
   framework:
     mpi:
       binary: /usr/local/bin/all_reduce_perf_mpi
-      mpirunPath: /usr/local/bin/mpirun
+      mpirunPath: /usr/local/mpi/bin/mpirun
       args: ["-b", "8", "-e", "32G", "-f", "2", "-n", "100"]
   bandwidthMeasurement:
     logProfileRef: nccl-bandwidth
     testType: all_reduce
 ```
 
+`numNodes` is the node count **per job group**, not the total: NVCRE partitions all
+eligible nodes into groups of this size and runs one job per group, so
+`numNodes: 4` on a 16-node cluster produces four 4-node jobs.
+
 ```bash
-kubectl ncre workloadrun run nccl-all-reduce.yaml --wait
+kubectl nvcre workloadrun run nccl-all-reduce.yaml --wait
 ```
+
+For the full NCCL benchmark suite, see [Run NCCL Benchmarks](docs/how-to-guides/nccl-benchmarks.md).
+For training workloads, see the [Nemotron 5](docs/how-to-guides/workloadrun-nemotron5.md) and
+[DeepSeek-V3](docs/how-to-guides/workloadrun-deepseek-v3.md) quickstarts.
 
 ## Scope and non-goals
 
-CRE certifies clusters with burn-in workloads and reports the nodes that fail. CRE is not:
+NVCRE certifies clusters with burn-in workloads and reports the nodes that fail. NVCRE is not:
 
-- A continuous monitoring system. CRE watches nodes only while its workloads run.
+- A continuous monitoring system. NVCRE watches nodes only while its workloads run.
 - A general workload scheduler or a training platform for production pipelines.
 - A benchmark leaderboard. The measurements exist to find faults, not to rank hardware.
 
@@ -211,15 +232,12 @@ A hosted documentation site is in progress.
 
 ## Roadmap
 
-- First tagged release (v0.1.0) with `ncrectl` binaries and the Helm chart
 - Hosted documentation site
-- Signed artifacts, SBOMs, and build provenance in the release pipeline
-- Branch protection and DCO checks for public contributions
 
 ## Community
 
-- Ask questions in [GitHub Discussions](https://github.com/dsx-ai-factory/cluster-readiness-engine/discussions).
-- Report bugs and request features with the [issue templates](https://github.com/dsx-ai-factory/cluster-readiness-engine/issues/new/choose).
+- Ask questions in [GitHub Discussions](https://github.com/NVIDIA/cluster-readiness-engine/discussions).
+- Report bugs and request features with the [issue templates](https://github.com/NVIDIA/cluster-readiness-engine/issues/new/choose).
 - Report security issues per [SECURITY.md](SECURITY.md), never through GitHub issues.
 - We follow the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
 

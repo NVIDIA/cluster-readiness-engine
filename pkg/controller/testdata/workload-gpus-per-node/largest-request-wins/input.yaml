@@ -1,0 +1,45 @@
+# The launcher requests fewer GPUs than the workers. A node has to satisfy the
+# largest single-pod request, so the worker's count is the binding one.
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          kind: TrainingRuntime
+          name: mpi-runtime
+        trainer:
+          image: test-image:latest
+          numNodes: 2
+dependencies:
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: mpi-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    resources:
+                      limits:
+                        nvidia.com/gpu: "8"
+                      requests:
+                        nvidia.com/gpu: "8"
+        - name: launcher
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: launcher
+                    resources:
+                      requests:
+                        nvidia.com/gpu: "1"
+orchestration:
+  iterations: 1

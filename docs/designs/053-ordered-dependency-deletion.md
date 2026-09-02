@@ -97,10 +97,38 @@ Add `GracePeriodSeconds` to dependency `Delete()` calls. **Rejected:** Does not 
 ### Defer all dependency cleanup to `handleDeletion()`
 Remove `cleanupDependencies()` from `setFinalStatus()` entirely. **Rejected:** Dependencies would linger until the Workflow is deleted by the Certification controller, wasting cluster resources during the gap between Workflow completion and Certification deletion.
 
+## Addendum: pod-drain barrier (issue #121)
+
+Ordering alone proved insufficient. Deleting a workload (TrainJob) is
+asynchronous: the object disappears immediately while its pods keep running
+(Terminating) for their termination grace period. Every path that deleted the
+workload and then called `cleanupScopedDependencies()` in the same reconcile —
+the timeout, retry, and terminal-failure paths in `updateStatusFromJobs()` —
+still deleted the ComputeDomain under live pods, and the Job finalizer
+(`JobReconciler.handleDeletion()`) removed itself right after issuing the
+workload delete, so `handleDeletion()`'s Phase 1→2 wait on Job objects was not
+actually a barrier for pods.
+
+The fix gates every DRA-revoking step on the workload's pods being gone
+(`shouldWaitForPodDrain()` in `pkg/controller/pod_drain.go`):
+
+- The Workflow tier defers scoped-dependency cleanup — keeping the group
+  Running and requeueing at the normal interval — until no pod carrying the
+  Job's `nvcre.nvidia.com/job` label remains in a non-terminal phase.
+- The Job finalizer stays registered until the same condition holds, so
+  "no Job objects remain" (the Phase 1→2 signal in the Workflow's
+  `handleDeletion()`, and the Job-NotFound group handling) truthfully implies
+  "no workload pods remain".
+- The wait is bounded by `podDrainGracePeriod` (5 minutes), measured from
+  persisted timestamps only (the Job's terminal-condition transition times
+  and its `deletionTimestamp`), so a pod stuck Terminating cannot wedge a
+  Workflow forever; after the grace period cleanup proceeds with a logged
+  warning.
+
 ## References
 
 - [ADR-034](034-inferred-dependency-lifecycle.md) — Inferred dependency scope and topological ordering
-- [ADR-011](011-workflow-dependency-lifecycle.md) — Original dependency lifecycle design (superseded by ADR-034)
+- ADR-011 (internal; predates the public repository) — Original dependency lifecycle design (superseded by ADR-034)
 - `pkg/controller/workflow_deps.go` — `orderDependencies()`, `classifyDependencies()`, `cleanupScopedDependencies()`
 - `pkg/controller/workflow_controller.go` — `handleDeletion()`, `setFinalStatus()`, `cleanupDependencies()`
 - `pkg/controller/job_controller.go` — `handleDeletion()` (Job-level workload cleanup)
@@ -110,3 +138,4 @@ Remove `cleanupDependencies()` from `setFinalStatus()` entirely. **Rejected:** D
 | Date | Change |
 |------|--------|
 | 2026-02-25 | Initial proposal |
+| 2026-08-31 | Addendum: pod-drain barrier gating dependency cleanup and Job finalizer removal (issue #121) |

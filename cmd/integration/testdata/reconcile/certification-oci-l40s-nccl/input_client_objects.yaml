@@ -23,7 +23,7 @@ metadata:
 spec:
   providerID: "ocid1.instance.oc1.iad.anuwcljt00000000000000000000000000000000000000000000000002"
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: oci-l40s

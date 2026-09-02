@@ -4,7 +4,7 @@
 
 Burn-in workloads run for hours or days. Hardware failures — GPU faults, NVLink degradation, thermal events — can occur mid-run. The controller needs to detect these failures during workload execution, not just at completion.
 
-GPU health monitoring is already handled by specialized tools like NVSentinel (DCGM telemetry, Xid events) and gpud (GPU metrics daemon). These tools write signals to Kubernetes node objects as conditions, taints, or labels. The cluster-readiness-engine should consume these signals rather than re-implementing GPU diagnostics.
+GPU health monitoring is already handled by specialized tools like NVSentinel (DCGM telemetry, Xid events) and gpud (GPU metrics daemon). These tools write signals to Kubernetes node objects as conditions, taints, or labels. The nvcre should consume these signals rather than re-implementing GPU diagnostics.
 
 The challenge: different deployments use different health tools with different signal formats. NVSentinel sets `NVSentinelGPUHealthy` conditions, gpud might set custom labels, and AKS NPD sets GPU-specific conditions. The detection logic must be configurable without code changes.
 
@@ -23,10 +23,10 @@ Use CEL (Common Expression Language) expressions evaluated against the full Kube
 - **Detector interface** (`pkg/nodemonitor/interface.go`): `NodeFailureDetector` with `Detect(ctx, node) → DetectionResult`
 - **Registry** (`pkg/nodemonitor/registry.go`): Pluggable detector factory registry. Built-in `cel` detector registered by default.
 - **CEL detector** (`pkg/nodemonitor/cel/detector.go`): Compiles CEL expression once at setup, evaluates against each node on every reconcile cycle
-- **Node discovery** (`pkg/nodemonitor/nodes.go`): Finds nodes running Job pods via field index on `spec.nodeName` and label index on `cre.nvidia.com/job`
+- **Node discovery** (`pkg/nodemonitor/nodes.go`): Finds nodes running Job pods via field index on `spec.nodeName` and label index on `nvcre.nvidia.com/job`
 
 The Job controller:
-1. On each reconcile, looks up pods with the `cre.nvidia.com/job` label
+1. On each reconcile, looks up pods with the `nvcre.nvidia.com/job` label
 2. Finds the nodes those pods are running on (via `spec.nodeName` field index)
 3. Evaluates the CEL expression against each node
 4. If any node fails, sets `HardwareFailed` condition on the Job (independent of workload execution state)
@@ -61,7 +61,7 @@ celExpression: >-
 
 ### Positive
 - Works with any health tool that writes to node objects (NVSentinel, gpud, NPD, custom DaemonSets)
-- No coupling between the cluster-readiness-engine and health tools
+- No coupling between the nvcre and health tools
 - CEL expressions are sandboxed — cannot execute arbitrary code
 - Expressions can be tested independently against node YAML
 - HardwareFailed condition is independent of workload state (a node can fail while the workload is still running)
@@ -91,7 +91,7 @@ celExpression: >-
 
 ## Notes
 
-- The `cre.nvidia.com/job` pod label is auto-injected by the workload adapter (ADR-003), so users don't need to configure it manually
+- The `nvcre.nvidia.com/job` pod label is auto-injected by the workload adapter (ADR-003), so users don't need to configure it manually
 - Field indexes for `spec.nodeName` and the pod label must be set up in `main.go` for efficient lookups
 - The HardwareFailed condition is set alongside InProgress/Succeeded/Failed — it's an orthogonal signal, not a replacement for workload status
 

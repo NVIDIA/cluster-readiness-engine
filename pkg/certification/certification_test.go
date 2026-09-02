@@ -4,28 +4,104 @@
 package certification
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/watch"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/catalog"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
 )
+
+const (
+	testDomainCommunication   = "communication"
+	testVariantNCCLAllReduce  = "nccl-all-reduce"
+	testCategoryNCCLAllReduce = testDomainCommunication + "/" + testVariantNCCLAllReduce
+	testCategoryFlag          = "--category"
+	testCertTimeoutCert       = "timeout-cert"
+	testCertNamespace         = "test-ns"
+)
+
+func newCertificationFakeClient(t testing.TB, objects ...client.Object) client.WithWatch {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	require.NoError(t, nvcrev1alpha1.AddToScheme(scheme))
+	require.NoError(t, corev1.AddToScheme(scheme))
+	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
+}
+
+type certificationGetErrorClient struct {
+	client.WithWatch
+	err error
+}
+
+func (c certificationGetErrorClient) Get(
+	context.Context, client.ObjectKey, client.Object, ...client.GetOption,
+) error {
+	return c.err
+}
+
+type certificationDeadlineClient struct {
+	client.WithWatch
+	sawDeadline     bool
+	sawLiveDeadline bool
+}
+
+func (c *certificationDeadlineClient) Get(
+	ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption,
+) error {
+	if deadline, ok := ctx.Deadline(); ok {
+		c.sawDeadline = true
+		c.sawLiveDeadline = ctx.Err() == nil && time.Now().Before(deadline)
+	}
+	return c.WithWatch.Get(ctx, key, obj, opts...)
+}
+
+func normalizeCertificationReportOutput(output string) string {
+	lines := make([]string, 0)
+	for line := range strings.SplitSeq(output, "\n") {
+		if strings.ContainsAny(line, "═─") {
+			continue
+		}
+		if strings.HasPrefix(line, "║") || strings.HasPrefix(line, "│") {
+			line = strings.TrimSpace(strings.Trim(line, "║│"))
+		} else {
+			line = strings.TrimRight(line, " \t")
+		}
+		if line == "" && (len(lines) == 0 || lines[len(lines)-1] == "") {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n")) + "\n"
+}
 
 func TestCatalogListCategories(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "list-categories",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		categories := catalog.List()
@@ -42,7 +118,7 @@ func TestCatalogListCategories(t *testing.T) {
 func TestCertificationRender(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "certification-render",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		certPath := filepath.Join(t.TempDir(), "certification.yaml")
@@ -91,10 +167,30 @@ func TestCertificationRender(t *testing.T) {
 	})
 }
 
+func TestCategoryWatchLabels(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "category-watch-labels",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var cert nvcrev1alpha1.Certification
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input_certification.yaml"]), &cert); err != nil {
+			return err
+		}
+
+		data, err := json.MarshalIndent(categoryWatchLabels(&cert), "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
 func TestCertificationRenderErrors(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "certification-render-errors",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg struct {
@@ -138,21 +234,21 @@ func TestCertificationRenderErrors(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Tests for ncrectl certification run helpers
+// Tests for nvcrectl certification run helpers
 // ---------------------------------------------------------------------------
 
 func TestParseCategories(t *testing.T) {
 	t.Run("valid single", func(t *testing.T) {
-		cats, err := parseCategories([]string{"communication/nccl-all-reduce"})
+		cats, err := parseCategories([]string{testCategoryNCCLAllReduce})
 		require.NoError(t, err)
 		require.Len(t, cats, 1)
-		assert.Equal(t, "communication", cats[0].Domain)
-		assert.Equal(t, "nccl-all-reduce", cats[0].Variant)
+		assert.Equal(t, testDomainCommunication, cats[0].Domain)
+		assert.Equal(t, testVariantNCCLAllReduce, cats[0].Variant)
 	})
 
 	t.Run("valid multiple", func(t *testing.T) {
 		cats, err := parseCategories([]string{
-			"communication/nccl-all-reduce",
+			testCategoryNCCLAllReduce,
 			"training/nemotron5-8b",
 		})
 		require.NoError(t, err)
@@ -160,7 +256,7 @@ func TestParseCategories(t *testing.T) {
 	})
 
 	t.Run("invalid format no slash", func(t *testing.T) {
-		_, err := parseCategories([]string{"nccl-all-reduce"})
+		_, err := parseCategories([]string{testVariantNCCLAllReduce})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "expected domain/variant")
 	})
@@ -181,16 +277,16 @@ func TestParseCategories(t *testing.T) {
 
 func TestGenerateCertName(t *testing.T) {
 	name := generateCertName()
-	assert.True(t, strings.HasPrefix(name, "ncrectl-"),
-		"expected prefix ncrectl-, got %s", name)
-	// Format: ncrectl-YYYYMMDD-HHMMSS (23 chars)
-	assert.Len(t, name, 23, "expected 23 chars, got %d: %s", len(name), name)
+	assert.True(t, strings.HasPrefix(name, "nvcrectl-"),
+		"expected prefix nvcrectl-, got %s", name)
+	// Format: nvcrectl-YYYYMMDD-HHMMSS (24 chars)
+	assert.Len(t, name, 24, "expected 24 chars, got %d: %s", len(name), name)
 }
 
 func TestCertificationNamespace(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "certification-namespace",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg struct {
@@ -221,19 +317,19 @@ func TestCertificationNamespace(t *testing.T) {
 
 		// Normalize auto-generated timestamps for golden file stability.
 		ns := cert.Namespace
-		if strings.HasPrefix(ns, "ncrectl-") && cfg.FlagNamespace == "" {
-			ns = "ncrectl-<generated>"
+		if strings.HasPrefix(ns, "nvcrectl-") && cfg.FlagNamespace == "" {
+			ns = "nvcrectl-<generated>"
 		}
 
 		type result struct {
-			Namespace        string `json:"namespace"`
-			AutoGenerated    bool   `json:"autoGenerated"`
-			HasXcalctlPrefix bool   `json:"hasXcalctlPrefix"`
+			Namespace         string `json:"namespace"`
+			AutoGenerated     bool   `json:"autoGenerated"`
+			HasNvcrectlPrefix bool   `json:"hasNvcrectlPrefix"`
 		}
 		r := result{
-			Namespace:        ns,
-			AutoGenerated:    cfg.FlagNamespace == "" && cert.Namespace != "",
-			HasXcalctlPrefix: strings.HasPrefix(cert.Namespace, "ncrectl-"),
+			Namespace:         ns,
+			AutoGenerated:     cfg.FlagNamespace == "" && cert.Namespace != "",
+			HasNvcrectlPrefix: strings.HasPrefix(cert.Namespace, "nvcrectl-"),
 		}
 
 		data, marshalErr := json.MarshalIndent(r, "", "  ")
@@ -247,23 +343,23 @@ func TestCertificationNamespace(t *testing.T) {
 
 func TestGenerateCertNamespace(t *testing.T) {
 	ns := generateCertNamespace()
-	assert.True(t, strings.HasPrefix(ns, "ncrectl-"),
-		"expected prefix ncrectl-, got %s", ns)
-	assert.Len(t, ns, 23, "expected 23 chars, got %d: %s", len(ns), ns)
+	assert.True(t, strings.HasPrefix(ns, "nvcrectl-"),
+		"expected prefix nvcrectl-, got %s", ns)
+	assert.Len(t, ns, 24, "expected 24 chars, got %d: %s", len(ns), ns)
 }
 
 func TestGenerateCertNameAndNamespaceAreIndependent(t *testing.T) {
 	// Both use the same timestamp format, but they're generated independently.
 	name := generateCertName()
 	ns := generateCertNamespace()
-	assert.True(t, strings.HasPrefix(name, "ncrectl-"))
-	assert.True(t, strings.HasPrefix(ns, "ncrectl-"))
+	assert.True(t, strings.HasPrefix(name, "nvcrectl-"))
+	assert.True(t, strings.HasPrefix(ns, "nvcrectl-"))
 }
 
 func TestPlatformToProviderID(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "platform-to-provider-id",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg struct {
@@ -284,6 +380,59 @@ func TestPlatformToProviderID(t *testing.T) {
 			Platform: cfg.Platform,
 			Result:   result,
 			Empty:    result == "",
+		}
+
+		data, err := json.MarshalIndent(r, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
+// runCertificationRender validates --platform before doing anything else, so
+// an invalid name must fail with the full list of valid names, and every name
+// platform detection can return must be accepted. For accepted platforms the
+// case also records what detection reports for the synthetic render node,
+// which is what override matching actually sees (nscale, for example, is only
+// detected when the node carries the nscale.com/rdmashare allocatable).
+func TestRenderPlatformFlag(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "render-platform-flag",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var cfg struct {
+			Platform string `yaml:"platform"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &cfg); err != nil {
+			return err
+		}
+
+		// Cases with a certification file exercise the full render path; cases
+		// without one must fail on flag validation before the file is read.
+		certPath := filepath.Join(t.TempDir(), "certification.yaml")
+		if certData, ok := tc.Inputs["input_certification.yaml"]; ok {
+			if err := os.WriteFile(certPath, []byte(certData), 0o644); err != nil {
+				return err
+			}
+		}
+
+		configFlags := kubeconfig.NewConfigFlags(true)
+		*configFlags.Namespace = defaultKubeNamespace
+		renderErr := runCertificationRender(certPath, "yaml", false, configFlags, cfg.Platform)
+
+		type result struct {
+			Error            string `json:"error"`
+			DetectedPlatform string `json:"detectedPlatform"`
+		}
+		var r result
+		if renderErr != nil {
+			r.Error = renderErr.Error()
+		} else if cfg.Platform != "" {
+			node := syntheticRenderNode(cfg.Platform, map[string]string{})
+			r.DetectedPlatform = controller.DetectPlatform([]corev1.Node{node})
 		}
 
 		data, err := json.MarshalIndent(r, "", "  ")
@@ -330,7 +479,7 @@ func TestDerefInt32Ptr(t *testing.T) {
 func TestReadCertification(t *testing.T) {
 	t.Run("valid file", func(t *testing.T) {
 		content := `
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: test-cert
@@ -349,14 +498,14 @@ spec:
 		cert, err := readCertification(path)
 		require.NoError(t, err)
 		assert.Equal(t, "test-cert", cert.Name)
-		assert.Equal(t, "test-ns", cert.Namespace)
+		assert.Equal(t, testCertNamespace, cert.Namespace)
 		require.Len(t, cert.Spec.Categories, 1)
-		assert.Equal(t, "communication", cert.Spec.Categories[0].Domain)
-		assert.Equal(t, "nccl-all-reduce", cert.Spec.Categories[0].Variant)
+		assert.Equal(t, testDomainCommunication, cert.Spec.Categories[0].Domain)
+		assert.Equal(t, testVariantNCCLAllReduce, cert.Spec.Categories[0].Variant)
 	})
 
 	t.Run("nonexistent file", func(t *testing.T) {
-		_, err := readCertification("/tmp/does-not-exist-ncrectl-test.yaml")
+		_, err := readCertification("/tmp/does-not-exist-nvcrectl-test.yaml")
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "read certification")
 	})
@@ -371,6 +520,229 @@ spec:
 	})
 }
 
+func TestWatchCertificationImmediateTimeout(t *testing.T) {
+	wc := newCertificationFakeClient(t)
+	var out bytes.Buffer
+
+	cert, err := watchCertification(context.Background(), wc, testCertTimeoutCert, testCertNamespace, 0, &out)
+
+	assert.Nil(t, cert)
+	require.Error(t, err)
+	assert.True(t, isCertificationWaitTimeout(err))
+	assert.Equal(t, "certification did not complete within 0s (ran for 0s)", err.Error())
+}
+
+func TestCertificationWaitContextErrorCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := certificationWaitContextError(ctx, time.Minute, time.Now())
+
+	assert.EqualError(t, err, "interrupted")
+}
+
+func TestProcessWatchEventsContextDoneDuringActiveWatch(t *testing.T) {
+	watcher := watch.NewRaceFreeFake()
+	defer watcher.Stop()
+	heartbeat := time.NewTicker(time.Hour)
+	defer heartbeat.Stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	var out bytes.Buffer
+
+	cert, done, err := processWatchEvents(
+		ctx, newCertificationFakeClient(t), watcher, time.Now(),
+		map[string]string{}, heartbeat, &out,
+	)
+
+	assert.Nil(t, cert)
+	assert.True(t, done)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestFinishCertificationWaitTimeout(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "finish-certification-wait-timeout",
+		ExpectedSuffix: testutil.SuffixTXT,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			Name       string `json:"name"`
+			DoCleanup  bool   `json:"doCleanup"`
+			CertExists *bool  `json:"certExists"`
+			GetError   string `json:"getError"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+		if input.Name == "" {
+			input.Name = testCertTimeoutCert
+		}
+
+		cert := &nvcrev1alpha1.Certification{
+			Name: input.Name, Namespace: testCertNamespace,
+			Spec: nvcrev1alpha1.CertificationSpec{
+				Categories: []nvcrev1alpha1.CertificateCategory{{
+					Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce,
+				}},
+			},
+			Status: nvcrev1alpha1.CertificationStatus{
+				CategoryStatuses: []nvcrev1alpha1.CertificationCategoryStatus{{
+					Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: "InProgress",
+				}},
+			},
+		}
+		certExists := input.CertExists == nil || *input.CertExists
+		var wc client.WithWatch
+		if certExists {
+			wc = newCertificationFakeClient(tc.T, cert)
+		} else {
+			wc = newCertificationFakeClient(tc.T)
+		}
+		if input.GetError != "" {
+			wc = certificationGetErrorClient{WithWatch: wc, err: errors.New(input.GetError)}
+		}
+		resultsFile := filepath.Join(tc.T.TempDir(), "results.json")
+		var out bytes.Buffer
+		cfg := &certRunConfig{
+			cert: cert.DeepCopy(), namespace: cert.Namespace, doCleanup: input.DoCleanup,
+			resultsFile: resultsFile, out: &out,
+		}
+		waitErr := &certificationWaitTimeoutError{timeout: 15 * time.Minute, elapsed: 15 * time.Minute}
+
+		gotErr := finishCertificationWait(context.Background(), wc, cfg, nil, waitErr)
+
+		assert.Same(tc.T, waitErr, gotErr)
+		if certExists && input.GetError == "" {
+			data, err := os.ReadFile(resultsFile)
+			if err != nil {
+				return err
+			}
+			var result struct {
+				Name   string `json:"name"`
+				Result string `json:"result"`
+			}
+			if err := json.Unmarshal(data, &result); err != nil {
+				return err
+			}
+			assert.Equal(tc.T, input.Name, result.Name)
+			assert.Equal(tc.T, "RUNNING", result.Result)
+		} else {
+			_, err := os.Stat(resultsFile)
+			assert.True(tc.T, os.IsNotExist(err))
+		}
+
+		tc.Actual = normalizeCertificationReportOutput(
+			strings.ReplaceAll(out.String(), resultsFile, "<results-file>"),
+		)
+		return nil
+	})
+}
+
+func TestFinishCertificationWaitBoundsPostTimeoutReads(t *testing.T) {
+	cert := &nvcrev1alpha1.Certification{
+		Name: testCertTimeoutCert, Namespace: testCertNamespace,
+	}
+	wc := &certificationDeadlineClient{WithWatch: newCertificationFakeClient(t, cert)}
+	var out bytes.Buffer
+	cfg := &certRunConfig{cert: cert.DeepCopy(), namespace: cert.Namespace, out: &out}
+	waitErr := &certificationWaitTimeoutError{timeout: time.Minute, elapsed: time.Minute}
+
+	gotErr := finishCertificationWait(context.Background(), wc, cfg, nil, waitErr)
+
+	assert.Same(t, waitErr, gotErr)
+	assert.True(t, wc.sawDeadline)
+	assert.True(t, wc.sawLiveDeadline)
+}
+
+func TestExecuteCertificationRunReportsBeforeCleanup(t *testing.T) {
+	namespace := &corev1.Namespace{Name: testCertNamespace}
+	wc := newCertificationFakeClient(t, namespace)
+	cert := &nvcrev1alpha1.Certification{
+		Name: testCertTimeoutCert, Namespace: namespace.Name,
+		Spec: nvcrev1alpha1.CertificationSpec{
+			Categories: []nvcrev1alpha1.CertificateCategory{{
+				Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce,
+			}},
+		},
+	}
+	var out bytes.Buffer
+	cfg := &certRunConfig{
+		cert: cert, namespace: namespace.Name,
+		doWait: true, doCleanup: true, timeout: 0,
+		out: &out, watchClient: wc,
+	}
+
+	err := executeCertificationRun(cfg)
+
+	require.Error(t, err)
+	assert.True(t, isCertificationWaitTimeout(err))
+	output := out.String()
+	reportIndex := strings.Index(output, "Certification Report")
+	cleanupIndex := strings.Index(output, "[cleanup] Deleting certification...")
+	assert.GreaterOrEqual(t, reportIndex, 0)
+	assert.Greater(t, cleanupIndex, reportIndex)
+
+	gotCert := &nvcrev1alpha1.Certification{}
+	err = wc.Get(context.Background(), client.ObjectKeyFromObject(cert), gotCert)
+	assert.True(t, apierrors.IsNotFound(err))
+
+	gotNamespace := &corev1.Namespace{}
+	require.NoError(t, wc.Get(context.Background(), client.ObjectKeyFromObject(namespace), gotNamespace))
+}
+
+func TestFinishCertificationWaitTerminalAtTimeout(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "finish-certification-wait-terminal-at-timeout",
+		ExpectedSuffix: testutil.SuffixTXT,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			ConditionType string `json:"conditionType"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		cert := &nvcrev1alpha1.Certification{
+			Name: testCertTimeoutCert, Namespace: testCertNamespace,
+			Status: nvcrev1alpha1.CertificationStatus{Conditions: []metav1.Condition{{
+				Type: input.ConditionType, Status: metav1.ConditionTrue,
+			}}},
+		}
+		wc := newCertificationFakeClient(tc.T, cert)
+		var out bytes.Buffer
+		cfg := &certRunConfig{cert: cert.DeepCopy(), namespace: cert.Namespace, out: &out}
+		waitErr := &certificationWaitTimeoutError{timeout: time.Minute, elapsed: time.Minute}
+
+		gotErr := finishCertificationWait(context.Background(), wc, cfg, nil, waitErr)
+
+		assert.Same(tc.T, waitErr, gotErr)
+		tc.Actual = normalizeCertificationReportOutput(out.String())
+		return nil
+	})
+}
+
+func TestFinishCertificationWaitDoesNotMaskOtherWatchErrors(t *testing.T) {
+	cert := &nvcrev1alpha1.Certification{
+		Name: "test-cert", Namespace: testCertNamespace,
+	}
+	wc := newCertificationFakeClient(t, cert)
+	resultsFile := filepath.Join(t.TempDir(), "results.json")
+	var out bytes.Buffer
+	cfg := &certRunConfig{
+		cert: cert.DeepCopy(), namespace: cert.Namespace, resultsFile: resultsFile, out: &out,
+	}
+	waitErr := errors.New("watch disconnected")
+
+	gotErr := finishCertificationWait(context.Background(), wc, cfg, nil, waitErr)
+
+	assert.Same(t, waitErr, gotErr)
+	assert.Empty(t, out.String())
+	_, err := os.Stat(resultsFile)
+	assert.True(t, os.IsNotExist(err))
+}
+
 func TestParseCategoriesEdgeCases(t *testing.T) {
 	t.Run("empty variant", func(t *testing.T) {
 		_, err := parseCategories([]string{"communication/"})
@@ -379,7 +751,7 @@ func TestParseCategoriesEdgeCases(t *testing.T) {
 	})
 
 	t.Run("triple slash", func(t *testing.T) {
-		// SplitN with n=2 means "communication" and "a/b"
+		// SplitN with n=2 means testDomainCommunication and "a/b"
 		_, err := parseCategories([]string{"communication/a/b"})
 		require.Error(t, err)
 		// "a/b" is not a valid variant in the catalog
@@ -400,7 +772,7 @@ func TestParseCategoriesEdgeCases(t *testing.T) {
 func TestNewRunCommandFlagDefaults(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "new-run-command-flag-defaults",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		cmd := newRunCommand("dev")
@@ -441,7 +813,7 @@ func TestNewRunCommandValidation(t *testing.T) {
 		cmd := newRunCommand("dev")
 		cmd.SetArgs([]string{
 			"--cert-file", "cert.yaml",
-			"--category", "communication/nccl-all-reduce",
+			testCategoryFlag, testCategoryNCCLAllReduce,
 		})
 		err := cmd.Execute()
 		require.Error(t, err)
@@ -491,7 +863,7 @@ func TestNewRunCommandCategoryRunOptsWiring(t *testing.T) {
 			}
 			return nil
 		}
-		cmd.SetArgs([]string{"--category", "communication/nccl-all-reduce"})
+		cmd.SetArgs([]string{testCategoryFlag, testCategoryNCCLAllReduce})
 		require.NoError(t, cmd.Execute())
 		assert.Nil(t, capturedOpts.enableCheckpoint, "omitted --enable-checkpoint should be nil")
 		assert.Nil(t, capturedOpts.enableMNNVL, "omitted --enable-mnnvl should be nil")
@@ -512,7 +884,7 @@ func TestNewRunCommandCategoryRunOptsWiring(t *testing.T) {
 			return nil
 		}
 		cmd.SetArgs([]string{
-			"--category", "communication/nccl-all-reduce",
+			testCategoryFlag, testCategoryNCCLAllReduce,
 			"--enable-checkpoint",
 			"--enable-mnnvl",
 		})
@@ -534,7 +906,7 @@ func TestNewRunCommandCategoryRunOptsWiring(t *testing.T) {
 			return nil
 		}
 		cmd.SetArgs([]string{
-			"--category", "communication/nccl-all-reduce",
+			testCategoryFlag, testCategoryNCCLAllReduce,
 			"--enable-mnnvl=false",
 		})
 		require.NoError(t, cmd.Execute())
@@ -560,7 +932,7 @@ func TestCategoryRunOptsWiringIntoCert(t *testing.T) {
 			storageClass:     "gp3",
 		}
 
-		cert := &crev1alpha1.Certification{}
+		cert := &nvcrev1alpha1.Certification{}
 
 		// Simulate the wiring logic from runCertificationRun.
 		if opts.enableCheckpoint != nil {
@@ -598,7 +970,7 @@ func TestCategoryRunOptsWiringIntoCert(t *testing.T) {
 
 	t.Run("zero opts leave fields nil", func(t *testing.T) {
 		opts := categoryRunOpts{}
-		cert := &crev1alpha1.Certification{}
+		cert := &nvcrev1alpha1.Certification{}
 
 		if opts.enableCheckpoint != nil {
 			cert.Spec.EnableCheckpoint = opts.enableCheckpoint
@@ -628,7 +1000,7 @@ func TestCategoryRunOptsWiringIntoCert(t *testing.T) {
 	})
 
 	t.Run("nodesPerJob wiring", func(t *testing.T) {
-		cert := &crev1alpha1.Certification{}
+		cert := &nvcrev1alpha1.Certification{}
 		nodesPerJob := int32(4)
 		if nodesPerJob > 0 {
 			cert.Spec.NodesPerJob = &nodesPerJob
@@ -638,7 +1010,7 @@ func TestCategoryRunOptsWiringIntoCert(t *testing.T) {
 	})
 
 	t.Run("nodesPerJob zero leaves nil", func(t *testing.T) {
-		cert := &crev1alpha1.Certification{}
+		cert := &nvcrev1alpha1.Certification{}
 		nodesPerJob := int32(0)
 		if nodesPerJob > 0 {
 			cert.Spec.NodesPerJob = &nodesPerJob

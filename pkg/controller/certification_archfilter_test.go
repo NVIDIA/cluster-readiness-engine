@@ -8,12 +8,11 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/catalog"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
 // TestResolveNodesPerJobAfterArchFilter covers sizing a job on a heterogeneous
@@ -28,7 +27,7 @@ import (
 func TestResolveNodesPerJobAfterArchFilter(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "resolve-nodes-per-job-after-arch-filter",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -49,10 +48,9 @@ func TestResolveNodesPerJobAfterArchFilter(t *testing.T) {
 
 		nodes := make([]corev1.Node, 0, len(input.Nodes))
 		for _, n := range input.Nodes {
-			nodes = append(nodes, corev1.Node{ObjectMeta: metav1.ObjectMeta{
+			nodes = append(nodes, corev1.Node{
 				Name:   n.Name,
-				Labels: map[string]string{"nvidia.com/gpu.product": n.Product},
-			}})
+				Labels: map[string]string{testGPUProductLabel: n.Product}})
 		}
 
 		var entry *catalog.Entry
@@ -70,8 +68,8 @@ func TestResolveNodesPerJobAfterArchFilter(t *testing.T) {
 			}}
 		}
 
-		opts := crev1alpha1.CategoryOptions{NodesPerJob: input.NodesPerJob}
-		cat := crev1alpha1.CertificateCategory{Domain: "communication", Variant: "nccl-all-reduce"}
+		opts := nvcrev1alpha1.CategoryOptions{NodesPerJob: input.NodesPerJob}
+		cat := nvcrev1alpha1.CertificateCategory{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce}
 
 		// The two steps the Certification controller performs, in order.
 		gpuArch, archNodes := detectGPUArchConsistent(nodes)

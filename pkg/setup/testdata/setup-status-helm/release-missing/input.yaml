@@ -1,0 +1,4 @@
+# Helm has no record of the kubeflow-trainer release (installed by other
+# means). The absent release is reported but does not block readiness.
+states:
+  nvcre: deployed

@@ -7,14 +7,14 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"sigs.k8s.io/yaml"
 )
 
 func TestPartitionNodes(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "partition",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input PartitionInput
@@ -39,7 +39,7 @@ func TestPartitionNodes(t *testing.T) {
 func TestPartitionNodesErrors(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "partition-errors",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input PartitionInput

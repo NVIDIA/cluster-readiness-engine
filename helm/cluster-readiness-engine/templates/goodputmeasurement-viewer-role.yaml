@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# This rule is not used by the project cluster-readiness-engine itself.
+# This rule is not used by the project nvcre itself.
 # It is provided to allow the cluster admin to help manage permissions for users.
 #
-# Grants read-only access to cre.nvidia.com resources.
+# Grants read-only access to nvcre.nvidia.com resources.
 # This role is intended for users who need visibility into these resources
 # without permissions to modify them. It is ideal for monitoring purposes and limited-access viewing.
 
@@ -12,11 +12,11 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    {{- include "cre.labels" . | nindent 4 }}
-  name: cre-goodputmeasurement-viewer-role
+    {{- include "nvcre.labels" . | nindent 4 }}
+  name: nvcre-goodputmeasurement-viewer-role
 rules:
 - apiGroups:
-  - cre.nvidia.com
+  - nvcre.nvidia.com
   resources:
   - goodputmeasurements
   verbs:
@@ -24,7 +24,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - cre.nvidia.com
+  - nvcre.nvidia.com
   resources:
   - goodputmeasurements/status
   verbs:

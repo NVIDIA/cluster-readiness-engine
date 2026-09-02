@@ -5,23 +5,33 @@ package setup
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os/exec"
 	"regexp"
 	"strings"
 	"time"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	helmReleaseName    = "cluster-readiness-engine"
-	helmChartOCI       = "oci://ghcr.io/dsx-ai-factory/cluster-readiness-engine"
+	helmReleaseName    = "nvcre"
+	helmChartOCI       = "oci://ghcr.io/nvidia/cluster-readiness-engine"
 	ghcrRegistryUser   = "token"
 	helmInstallTimeout = 5 * time.Minute
 
 	trainerReleaseName  = "kubeflow-trainer"
 	trainerHelmChartOCI = "oci://ghcr.io/kubeflow/charts/kubeflow-trainer"
 	trainerNamespace    = "kubeflow-system"
+
+	helmFlagNamespace = "--namespace"
+	helmFlagVersion   = "--version"
+	helmFlagSet       = "--set"
+	helmFlagWait      = "--wait"
+	helmFlagTimeout   = "--timeout"
 )
 
 // gitDescribeSuffix matches the trailing commit count and hash that git
@@ -91,6 +101,10 @@ func ensureHelm() (string, error) {
 }
 
 type helmInstallParams struct {
+	// ctx and c are used to server-side-apply the chart CRDs before the
+	// helm upgrade runs (issue #145).
+	ctx             context.Context
+	c               client.Client
 	version         string
 	kubeconfig      string
 	kubeContext     string
@@ -101,45 +115,63 @@ type helmInstallParams struct {
 	out             io.Writer
 }
 
-// installHelmRelease installs or upgrades CRE via the helm CLI.
-func installHelmRelease(p helmInstallParams) error {
+// installHelmRelease installs or upgrades NVCRE via the helm CLI, after
+// reconciling the chart CRDs with server-side apply (issue #145). It returns
+// the captured helm transcript so RunInit can classify a failure the same
+// way the [deps] phase does (ADR-073) — symmetric error reporting, but with
+// no automatic recovery arm.
+func installHelmRelease(p helmInstallParams) (string, error) {
 	helmPath, err := ensureHelm()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	chartVersion, err := resolveHelmChartVersion(p.version, p.versionOverride)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if p.registryToken != "" {
 		if err := helmRegistryLogin(helmPath, defaultImageRegistry, p.registryToken, p.out); err != nil {
-			return err
+			return "", err
 		}
 		defer helmRegistryLogout(helmPath, defaultImageRegistry, p.out)
+	}
+
+	// Helm applies the chart's crds/ directory only on the first install, so
+	// `helm upgrade --install` alone would leave the CRDs at the old schema
+	// after an upgrade (issue #145). Reconcile them from the same chart
+	// source on every run; server-side apply is idempotent, so first-install
+	// behavior is unchanged.
+	_, _ = fmt.Fprintf(p.out, "[helm] Applying NVCRE CRDs from chart version %s...\n", chartVersion)
+	crds, err := fetchChartCRDs(helmPath, chartVersion, p.out)
+	if err != nil {
+		return "", err
+	}
+	if err := applyChartCRDs(p.ctx, p.c, crds, p.out); err != nil {
+		return "", err
 	}
 
 	imageName, imageTag := parseImage(p.image)
 	args := []string{
 		"upgrade", "--install", helmReleaseName, helmChartOCI,
-		"--namespace", creNamespace,
+		helmFlagNamespace, nvcreNamespace,
 		"--create-namespace",
-		"--version", chartVersion,
-		"--set", "manager.image.repository=" + imageName,
-		"--set", "manager.image.tag=" + imageTag,
-		"--wait",
-		"--timeout", helmInstallTimeout.String(),
+		helmFlagVersion, chartVersion,
+		helmFlagSet, "manager.image.repository=" + imageName,
+		helmFlagSet, "manager.image.tag=" + imageTag,
+		helmFlagWait,
+		helmFlagTimeout, helmInstallTimeout.String(),
 	}
 	if p.pullSecretName != "" {
-		args = append(args, "--set", "manager.imagePullSecrets[0].name="+p.pullSecretName)
+		args = append(args, helmFlagSet, "manager.imagePullSecrets[0].name="+p.pullSecretName)
 	}
 	args = appendKubeconfigArgs(args, p.kubeconfig, p.kubeContext)
 
 	_, _ = fmt.Fprintf(p.out,
-		"[helm] Installing CRE Helm release %q in namespace %s...\n",
-		helmReleaseName, creNamespace)
-	return runHelm(helmPath, args, p.out)
+		"[helm] Installing NVCRE Helm release %q in namespace %s...\n",
+		helmReleaseName, nvcreNamespace)
+	return runHelmCapture(helmPath, args, p.out)
 }
 
 type helmUninstallParams struct {
@@ -148,7 +180,7 @@ type helmUninstallParams struct {
 	out         io.Writer
 }
 
-// uninstallHelmRelease removes the CRE Helm release.
+// uninstallHelmRelease removes the NVCRE Helm release.
 func uninstallHelmRelease(p helmUninstallParams) error {
 	helmPath, err := ensureHelm()
 	if err != nil {
@@ -157,41 +189,43 @@ func uninstallHelmRelease(p helmUninstallParams) error {
 
 	args := []string{
 		"uninstall", helmReleaseName,
-		"--namespace", creNamespace,
+		helmFlagNamespace, nvcreNamespace,
 		"--ignore-not-found",
-		"--wait",
-		"--timeout", helmInstallTimeout.String(),
+		helmFlagWait,
+		helmFlagTimeout, helmInstallTimeout.String(),
 	}
 	args = appendKubeconfigArgs(args, p.kubeconfig, p.kubeContext)
 
 	_, _ = fmt.Fprintf(p.out,
-		"[helm] Removing CRE Helm release %q from namespace %s...\n",
-		helmReleaseName, creNamespace)
+		"[helm] Removing NVCRE Helm release %q from namespace %s...\n",
+		helmReleaseName, nvcreNamespace)
 	return runHelm(helmPath, args, p.out)
 }
 
-// installTrainerHelmRelease installs Kubeflow Trainer via the helm CLI.
-// The helm CLI resolves OCI sub-chart dependencies (including JobSet) automatically.
-func installTrainerHelmRelease(kubeconfig, kubeContext string, out io.Writer) error {
+// installTrainerHelmRelease installs Kubeflow Trainer via the helm CLI and
+// returns the captured helm transcript so the [deps] phase can classify a
+// failure (ADR-073). The helm CLI resolves OCI sub-chart dependencies
+// (including JobSet) automatically.
+func installTrainerHelmRelease(kubeconfig, kubeContext string, out io.Writer) (string, error) {
 	helmPath, err := ensureHelm()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	_, _ = fmt.Fprintf(out, "[deps] Installing Kubeflow Trainer Helm release %q in namespace %s...\n",
 		trainerReleaseName, trainerNamespace)
 	args := []string{
 		"upgrade", "--install", trainerReleaseName, trainerHelmChartOCI,
-		"--namespace", trainerNamespace,
+		helmFlagNamespace, trainerNamespace,
 		"--create-namespace",
-		"--version", strings.TrimPrefix(kubeflowTrainerVersion, "v"),
-		"--set", "manager.tolerations[0].operator=Exists",
-		"--set", "jobset.controller.tolerations[0].operator=Exists",
-		"--wait",
-		"--timeout", helmInstallTimeout.String(),
+		helmFlagVersion, strings.TrimPrefix(kubeflowTrainerVersion, "v"),
+		helmFlagSet, "manager.tolerations[0].operator=Exists",
+		helmFlagSet, "jobset.controller.tolerations[0].operator=Exists",
+		helmFlagWait,
+		helmFlagTimeout, helmInstallTimeout.String(),
 	}
 	args = appendKubeconfigArgs(args, kubeconfig, kubeContext)
-	return runHelm(helmPath, args, out)
+	return runHelmCapture(helmPath, args, out)
 }
 
 // uninstallTrainerHelmRelease removes the Kubeflow Trainer Helm release.
@@ -203,10 +237,10 @@ func uninstallTrainerHelmRelease(kubeconfig, kubeContext string, out io.Writer) 
 
 	args := []string{
 		"uninstall", trainerReleaseName,
-		"--namespace", trainerNamespace,
+		helmFlagNamespace, trainerNamespace,
 		"--ignore-not-found",
-		"--wait",
-		"--timeout", helmInstallTimeout.String(),
+		helmFlagWait,
+		helmFlagTimeout, helmInstallTimeout.String(),
 	}
 	args = appendKubeconfigArgs(args, kubeconfig, kubeContext)
 	_, _ = fmt.Fprintf(out, "[deps] Removing Helm release %q from namespace %s...\n", trainerReleaseName, trainerNamespace)
@@ -216,8 +250,177 @@ func uninstallTrainerHelmRelease(kubeconfig, kubeContext string, out io.Writer) 
 	return nil
 }
 
+// Helm release states as reported by `helm status`, plus two sentinel values
+// for states the helm CLI cannot report: a release helm has no record of, and
+// a query that could not be completed (helm missing from PATH, cluster
+// unreachable). Neither sentinel blocks readiness, because NVCRE may have been
+// installed without Helm and `setup status` must still work without the CLI.
+const (
+	helmStateDeployed     = "deployed"
+	helmStateUninstalled  = "uninstalled"
+	helmStateNotInstalled = "not installed"
+	helmStateUnknown      = "unknown"
+)
+
+// helmStateFunc returns the state of a Helm release in a namespace. Tests
+// substitute a stub; production code uses newHelmStateQuery.
+type helmStateFunc func(release, namespace string) string
+
+// newHelmStateQuery returns a helmStateFunc backed by the helm CLI. When helm
+// is not in PATH every release reads as unknown, so the status command keeps
+// working instead of failing outright.
+func newHelmStateQuery(kubeconfig, kubeContext string) helmStateFunc {
+	helmPath, err := ensureHelm()
+	if err != nil {
+		return func(string, string) string { return helmStateUnknown }
+	}
+	return func(release, namespace string) string {
+		return helmReleaseState(helmPath, release, namespace, kubeconfig, kubeContext)
+	}
+}
+
+// helmReleaseState runs `helm status <release> -o json` and returns the
+// release state (e.g. "deployed", "failed", "pending-upgrade"). A release
+// helm has no record of reads as not installed; any other failure reads as
+// unknown.
+func helmReleaseState(helmPath, release, namespace, kubeconfig, kubeContext string) string {
+	state, _ := helmReleaseStateAndVersion(helmPath, release, namespace, kubeconfig, kubeContext)
+	return state
+}
+
+// helmReleaseStateAndVersion runs `helm status <release> -o json` and returns
+// the release state plus the installed chart version from the same payload
+// (ADR-073). Helm versions that strip chart metadata from the status output
+// report an empty version; callers that need it fall back to
+// helmReleaseMetadataVersion.
+func helmReleaseStateAndVersion(helmPath, release, namespace, kubeconfig, kubeContext string) (string, string) {
+	args := []string{"status", release, helmFlagNamespace, namespace, "-o", "json"}
+	args = appendKubeconfigArgs(args, kubeconfig, kubeContext)
+
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command(helmPath, args...) // #nosec G204 -- helmPath and args come from this CLI, not from untrusted input
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if strings.Contains(stderr.String(), "release: not found") {
+			return helmStateNotInstalled, ""
+		}
+		return helmStateUnknown, ""
+	}
+
+	var status struct {
+		Info struct {
+			Status string `json:"status"`
+		} `json:"info"`
+		Chart struct {
+			Metadata struct {
+				Version string `json:"version"`
+			} `json:"metadata"`
+		} `json:"chart"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &status); err != nil || status.Info.Status == "" {
+		return helmStateUnknown, ""
+	}
+	return status.Info.Status, status.Chart.Metadata.Version
+}
+
+// helmReleaseMetadataVersion runs `helm get metadata <release> -o json` and
+// returns the installed chart version, or "" when it cannot be determined.
+// Used only when `helm status` stripped the chart metadata from its payload.
+func helmReleaseMetadataVersion(helmPath, release, namespace, kubeconfig, kubeContext string) string {
+	args := []string{"get", "metadata", release, helmFlagNamespace, namespace, "-o", "json"}
+	args = appendKubeconfigArgs(args, kubeconfig, kubeContext)
+
+	var stdout bytes.Buffer
+	cmd := exec.Command(helmPath, args...) // #nosec G204 -- helmPath and args come from this CLI, not from untrusted input
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+	var md struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &md); err != nil {
+		return ""
+	}
+	return md.Version
+}
+
+// trainerStateFunc returns the Helm state and installed chart version of the
+// Kubeflow Trainer release. Tests substitute a stub; production code uses
+// newTrainerStateQuery.
+type trainerStateFunc func() (state, chartVersion string)
+
+// newTrainerStateQuery returns a trainerStateFunc backed by the helm CLI.
+// When helm is not in PATH the release reads as unknown, so the [deps] phase
+// falls back to a plain install attempt instead of failing outright.
+func newTrainerStateQuery(kubeconfig, kubeContext string) trainerStateFunc {
+	return func() (string, string) {
+		helmPath, err := ensureHelm()
+		if err != nil {
+			return helmStateUnknown, ""
+		}
+		state, version := helmReleaseStateAndVersion(
+			helmPath, trainerReleaseName, trainerNamespace, kubeconfig, kubeContext)
+		if state == helmStateDeployed && version == "" {
+			version = helmReleaseMetadataVersion(
+				helmPath, trainerReleaseName, trainerNamespace, kubeconfig, kubeContext)
+		}
+		return state, version
+	}
+}
+
+// failureClass is the result of classifying a captured helm install failure.
+type failureClass int
+
+const (
+	// failureClassOther is any failure the classifier does not recognize;
+	// the caller fails with the raw helm output.
+	failureClassOther failureClass = iota
+	// failureClassSSAConflict is the server-side-apply field-ownership
+	// conflict signature from issue #180: Helm's conflict wording naming
+	// conflicting paths under .data of Secrets in the release namespace.
+	failureClassSSAConflict
+)
+
+// classifyHelmInstallFailure matches a captured helm transcript against the
+// server-side-apply field-ownership conflict signature: conflict wording,
+// conflicting paths under .data, and a Secret in the given namespace. The
+// Helm framing half is matched loosely; the apiserver half is pinned by the
+// envtest fixture in ssa_conflict_test.go (ADR-073).
+func classifyHelmInstallFailure(output, namespace string) failureClass {
+	lower := strings.ToLower(output)
+	switch {
+	case !strings.Contains(lower, "conflict"):
+		return failureClassOther
+	case !strings.Contains(output, ".data."):
+		return failureClassOther
+	case !strings.Contains(lower, "secret"):
+		return failureClassOther
+	case !strings.Contains(output, namespace):
+		return failureClassOther
+	}
+	return failureClassSSAConflict
+}
+
+// classifyTrainerInstallFailure classifies a captured kubeflow-trainer
+// install transcript (ADR-073 decision 2). The classification alone is not
+// enough to act on: the caller must also confirm the release state is failed
+// or pending-* before treating the failure as this class.
+func classifyTrainerInstallFailure(output string) failureClass {
+	return classifyHelmInstallFailure(output, trainerNamespace)
+}
+
 // runHelm executes a helm subcommand, printing output only on failure.
 func runHelm(helmPath string, args []string, out io.Writer) error {
+	_, err := runHelmCapture(helmPath, args, out)
+	return err
+}
+
+// runHelmCapture executes a helm subcommand and returns the combined
+// stdout/stderr transcript. On failure the transcript is also printed to
+// out, so callers can both surface it and classify it (ADR-073).
+func runHelmCapture(helmPath string, args []string, out io.Writer) (string, error) {
 	var buf bytes.Buffer
 	cmd := exec.Command(helmPath, args...) // #nosec G204 -- helmPath and args come from this CLI, not from untrusted input
 	cmd.Stdout = &buf
@@ -225,13 +428,28 @@ func runHelm(helmPath string, args []string, out io.Writer) error {
 	if err := cmd.Run(); err != nil {
 		output := buf.String()
 		_, _ = io.Copy(out, &buf)
-		if strings.Contains(output, "403") {
-			_, _ = fmt.Fprintln(out, "\nHint: GHCR returned 403. Your token may be missing the read:packages scope.")
-			_, _ = fmt.Fprintln(out, "      Run: gh auth refresh -s read:packages")
-		}
-		return fmt.Errorf("helm %s: %w", args[0], err)
+		printGHCR403Hint(out, output)
+		return output, fmt.Errorf("helm %s: %w", args[0], err)
 	}
-	return nil
+	return buf.String(), nil
+}
+
+// printGHCR403Hint prints remediation guidance when a failed helm transcript
+// contains a GHCR 403. Both "403" and "ghcr.io" must appear so unrelated
+// failures (Kubernetes RBAC, other registries) do not get GHCR guidance.
+// The published chart and controller image are public and the default path
+// is tokenless, so a 403 there is usually transient or a registry mirror
+// issue; a token only matters when the user passed --image-pull-secret, and
+// fixing it means re-running setup init with a fresh token so the pull
+// secret is recreated, not just refreshing the local gh credential.
+func printGHCR403Hint(out io.Writer, output string) {
+	if strings.Contains(output, "403") && strings.Contains(output, "ghcr.io") {
+		_, _ = fmt.Fprintln(out, "\nHint: GHCR returned 403. The NVCRE chart and image are public and need no token,")
+		_, _ = fmt.Fprintln(out, "      so this is usually transient or a registry mirror issue. Retry the command.")
+		_, _ = fmt.Fprintln(out, "      If you passed --image-pull-secret, the token may be expired or missing the")
+		_, _ = fmt.Fprintln(out, "      read:packages scope. Re-run setup init --image-pull-secret with a fresh")
+		_, _ = fmt.Fprintln(out, "      token to recreate the pull secret.")
+	}
 }
 
 // helmRegistryLogin logs in to an OCI registry.

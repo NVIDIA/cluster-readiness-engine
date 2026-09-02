@@ -2,8 +2,8 @@
 
 ## Summary
 
-CRE reports failed nodes at `Certification.status.categoryStatuses[].failedNodes`
-([ADR-061](061-cre-nvsentinel-remediation-decoupling.md)) but has no equivalent signal for
+NVCRE reports failed nodes at `Certification.status.categoryStatuses[].failedNodes`
+([ADR-061](061-nvcre-nvsentinel-remediation-decoupling.md)) but has no equivalent signal for
 **which nodes passed**. An inline `succeededNodes []string` does not scale: at thousands of nodes the
 list exceeds the ~1 MiB Kubernetes object limit and the write is rejected, wedging the controller.
 
@@ -62,7 +62,7 @@ ConfigMap "<workflow-name>-node-results"     (ownerRef → Workflow, same namesp
   category's passed-node list under the key `succeeded-nodes.csv.gz`.
 - The value is a gzip-compressed **comma-separated list** of node names. Node names are DNS-1123
   subdomains and can never contain a comma, so no escaping is needed; this matches the existing
-  `cre.nvidia.com/group-nodes` annotation convention.
+  `nvcre.nvidia.com/group-nodes` annotation convention.
 - The ConfigMap name is `categoryStatuses[i].workflowRef.name + "-node-results"`, so the reference is
   technically derivable — but it is published explicitly so consumers do not have to assume the naming rule.
 
@@ -180,6 +180,6 @@ sequenceDiagram
 
 ## References
 
-- [ADR-061: Remove Remediation Controller — Failed Node Attribution via Certification CR](061-cre-nvsentinel-remediation-decoupling.md) — the `failedNodes` counterpart
+- [ADR-061: Remove Remediation Controller — Failed Node Attribution via Certification CR](061-nvcre-nvsentinel-remediation-decoupling.md) — the `failedNodes` counterpart
 - [ADR-055: Adaptive Fault Isolation](055-adaptive-fault-isolation.md) — diagnose `healthyNodes`
 - [ADR-002: Layered CRD Hierarchy](002-layered-crd-hierarchy.md)

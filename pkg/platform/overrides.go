@@ -15,8 +15,8 @@ import (
 	"fmt"
 	"text/template"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/catalog"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	sigyaml "sigs.k8s.io/yaml"
@@ -41,7 +41,7 @@ type OverrideConfig struct {
 // by the WorkloadRun controller at build time and never stored in the
 // Kubernetes API. Keeping them out of OverrideSpec avoids CRD schema changes.
 type WorkloadRunOverride struct {
-	crev1alpha1.OverrideSpec
+	nvcrev1alpha1.OverrideSpec
 
 	// PreCommand contains shell lines prepended to the trainer command.
 	// Applied by the WorkloadRun controller; baked into trainer.command/args.
@@ -138,7 +138,7 @@ func parseWorkloadRunFields(raw json.RawMessage, o *WorkloadRunOverride) error {
 // parseOneOverride populates an OverrideSpec from raw JSON. Fields that
 // the Workflow controller treats as opaque (jobTemplate, dependencies)
 // stay as raw bytes; typed fields (when, orchestration) are unmarshalled.
-func parseOneOverride(raw json.RawMessage, spec *crev1alpha1.OverrideSpec) error {
+func parseOneOverride(raw json.RawMessage, spec *nvcrev1alpha1.OverrideSpec) error {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		return err
@@ -170,14 +170,14 @@ func parseOneOverride(raw json.RawMessage, spec *crev1alpha1.OverrideSpec) error
 		if err := json.Unmarshal(deps, &depList); err != nil {
 			return err
 		}
-		spec.Dependencies = make([]crev1alpha1.DependencySpec, len(depList))
+		spec.Dependencies = make([]nvcrev1alpha1.DependencySpec, len(depList))
 		for i, d := range depList {
 			spec.Dependencies[i].RawExtension = runtime.RawExtension{Raw: d}
 		}
 	}
 
 	if o, ok := fields["orchestration"]; ok {
-		spec.Orchestration = &crev1alpha1.OrchestrationOverrideSpec{}
+		spec.Orchestration = &nvcrev1alpha1.OrchestrationOverrideSpec{}
 		if err := json.Unmarshal(o, spec.Orchestration); err != nil {
 			return err
 		}

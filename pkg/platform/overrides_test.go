@@ -15,8 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/catalog"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
 // TestEveryLibFragmentParsesThroughPlatform is the regression test for a
@@ -68,7 +69,7 @@ func TestEveryLibFragmentParsesThroughPlatform(t *testing.T) {
 func TestBuildOverridesRendersForEveryPlatform(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "build-overrides",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg OverrideConfig
@@ -88,6 +89,49 @@ func TestBuildOverridesRendersForEveryPlatform(t *testing.T) {
 			Config             OverrideConfig `json:"config"`
 			AtLeastOneOverride bool           `json:"atLeastOneOverride"`
 		}{cfg, len(overrides) > 0}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
+}
+
+// TestBuildOverridesMPIArgs records every rendered override that carries
+// mpiArgs, together with its when clause. mpiArgs never reach the Workflow CR
+// — the WorkloadRun controller bakes them into trainer.args before the
+// Workflow is created — so the Workflow-level goldens cannot guard the
+// platform table's mpirun blocks by themselves. This records them at the
+// source, including the AWS GB300 RoCE transport pins composed from the
+// catalog's _lib fragments (ADR-070).
+func TestBuildOverridesMPIArgs(t *testing.T) {
+	p := &testutil.TestCaseParser{
+		Subdir:         "override-mpi-args",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var cfg OverrideConfig
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &cfg); err != nil {
+			return err
+		}
+
+		overrides, err := buildOverridesRecovered(cfg)
+		if err != nil {
+			return err
+		}
+
+		type mpiOverride struct {
+			When    nvcrev1alpha1.WhenSpec `json:"when"`
+			MPIArgs []string               `json:"mpiArgs"`
+		}
+		out := []mpiOverride{}
+		for _, o := range overrides {
+			if len(o.MPIArgs) > 0 {
+				out = append(out, mpiOverride{When: o.When, MPIArgs: o.MPIArgs})
+			}
+		}
+
+		b, err := json.MarshalIndent(out, "", "  ")
 		if err != nil {
 			return err
 		}

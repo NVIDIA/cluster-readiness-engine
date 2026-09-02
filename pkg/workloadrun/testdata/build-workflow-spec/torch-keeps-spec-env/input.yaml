@@ -1,5 +1,5 @@
-# The other half of issue #68, and the case that makes mpi-ignores-spec-env
-# mean something. A torch run passes spec.env to the worker container.
+# The other half of issue #68, and the torch counterpart of
+# mpi-keeps-spec-env. A torch run passes spec.env to the worker container.
 #
 # The variable is named CRE_TEST_MARKER because no default sets that name, so
 # workerEnv in the expected file shows the user's variable next to the 10

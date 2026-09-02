@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Wait for the Workflow to start running (the job-scoped PVC copy exists, is
+# owned, and its backing PV has been stamped with the workflow-uid annotation),
+# then delete the PVC copy first — simulating the API server cascade-deleting
+# it with its Job before the finalizer's Phase 2 runs — and only then delete
+# the Workflow. The finalizer must still reset the owned PV's reclaim policy
+# from Retain to Delete via the identity stamped before the PVC disappeared.
+waitFor:
+  kind: Workflow
+  name: wf-cascade-pvc-pv
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+deleteAfterWait:
+  - kind: PersistentVolumeClaim
+    name: ckpt-pvc-17276-job
+    namespace: default
+    stripFinalizers: true
+  - kind: Workflow
+    name: wf-cascade-pvc-pv
+    namespace: default
+waitForDeletion:
+  - kind: PersistentVolumeClaim
+    name: ckpt-pvc-17276-job
+    namespace: default
+  - kind: Workflow
+    name: wf-cascade-pvc-pv
+    namespace: default
+collect:
+  - kind: PersistentVolume
+    name: cascade-checkpoint-pv

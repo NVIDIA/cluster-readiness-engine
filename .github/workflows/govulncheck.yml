@@ -23,7 +23,7 @@ jobs:
   govulncheck:
     name: Scan Go dependencies
     runs-on: linux-amd64-cpu16
-    if: github.repository == 'dsx-ai-factory/cluster-readiness-engine'
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,8 +33,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
-
+      # The version is pinned in the Makefile rather than resolved with
+      # `@latest`. An unpinned scanner makes the same commit scan clean one day
+      # and red the next with no change here to explain it, and it is a tool
+      # whose output gates the release path.
       - name: Run govulncheck
-        run: govulncheck ./...
+        run: make scan-vuln

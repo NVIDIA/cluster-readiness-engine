@@ -10,7 +10,7 @@ runs:
     - name: Install Kind
       shell: bash
       run: |
-        KIND_VERSION="v0.30.0"
+        KIND_VERSION="v0.32.0"
         if command -v kind &>/dev/null && kind version | grep -q "${KIND_VERSION}"; then
           echo "Kind ${KIND_VERSION} already installed"
         else

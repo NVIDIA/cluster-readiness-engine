@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: LogProfile
 metadata:
   name: test-ckpt-restart-deleted-logprofile
@@ -13,7 +13,7 @@ spec:
       regex: 'step (?P<globalStep>\d+)'
       example: "step 100"
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-checkpoint-restart-deleted
@@ -42,14 +42,14 @@ status:
 ---
 # NOTE: No TrainJob object — simulates external deletion of the workload.
 # The Job controller should detect the missing workload and restart from checkpoint.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: GoodputMeasurement
 metadata:
   name: test-checkpoint-restart-deleted-gm
   namespace: default
 spec:
   jobRef:
-    apiGroup: cre.nvidia.com
+    apiGroup: nvcre.nvidia.com
     kind: Job
     name: test-checkpoint-restart-deleted
   logProfileRef: test-ckpt-restart-deleted-logprofile

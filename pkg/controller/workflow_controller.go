@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -25,21 +26,25 @@ import (
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	controlleropts "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/naming"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/noderesults"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/orchestration"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/podlogs"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/threshold"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/workload"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/orchestration"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/threshold"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
 
 const (
-	workflowFinalizer              = "cre.nvidia.com/workflow-finalizer"
+	workflowFinalizer              = "nvcre.nvidia.com/workflow-finalizer"
 	defaultWorkflowRequeueInterval = 15 * time.Second
+
+	// mnnvlEnableEnvVar is the env var name used to toggle multi-node NVLink.
+	mnnvlEnableEnvVar = "NCCL_MNNVL_ENABLE"
 
 	// Workflow tier reason constants are in helpers.go.
 )
@@ -51,14 +56,20 @@ type WorkflowReconciler struct {
 	Clientset          *kubernetes.Clientset
 	Recorder           events.EventRecorder
 	JobRequeueInterval time.Duration
+	// MaxConcurrentReconciles bounds the number of Workflow objects reconciled concurrently.
+	MaxConcurrentReconciles int
 }
 
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=workflows,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=workflows/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=workflows/finalizers,verbs=update
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=jobs,verbs=get;list;watch;create;delete
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=jobs/status,verbs=get
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workflows,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workflows/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workflows/finalizers,verbs=update
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs/status,verbs=get
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
+//
+// Pods are read for the timeout failure-log capture and for the pod-drain
+// barrier (shouldWaitForPodDrain) that gates scoped-dependency cleanup.
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get
 // +kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;patch;watch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
@@ -91,7 +102,7 @@ type WorkflowReconciler struct {
 func (r *WorkflowReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	workflow := &crev1alpha1.Workflow{}
+	workflow := &nvcrev1alpha1.Workflow{}
 	if err := r.Get(ctx, req.NamespacedName, workflow); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("Workflow resource not found, likely deleted")
@@ -116,7 +127,7 @@ func (r *WorkflowReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 }
 
 // reconcileJob manages the multi-group iteration state machine.
-func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *crev1alpha1.Workflow) (ctrl.Result, error) {
+func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *nvcrev1alpha1.Workflow) (ctrl.Result, error) {
 	// Guard: if already terminal, do nothing
 	if r.isTerminal(workflow) {
 		return ctrl.Result{}, nil
@@ -166,9 +177,30 @@ func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *crev1al
 	if err := r.ensureWorkflowDependencies(ctx, workflow); err != nil {
 		log := logf.FromContext(ctx)
 		log.Error(err, "Failed to create dependencies")
-		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonDependencyCreationError,
-			fmt.Sprintf("Failed to create dependency: %v", err)); statusErr != nil {
+		reason := ReasonDependencyCreationError
+		message := fmt.Sprintf("Failed to create dependency: %v", err)
+		var collision *nameCollisionError
+		terminal := errors.As(err, &collision)
+		if terminal {
+			// A foreign object holds the dependency's name: terminal, no retry.
+			reason = collision.Reason
+			message = err.Error()
+		}
+		// Persist refs for dependencies created before the failure so the
+		// finalizer can clean them up (conflict-safe via the extra func).
+		if statusErr := r.setWorkflowFailed(ctx, workflow, reason, message,
+			applyDependencyRefs(workflow.Status.DependencyRefs)); statusErr != nil {
 			log.Error(statusErr, "Failed to update Workflow status after dependency failure")
+			// setWorkflowFailed already retries conflicts, so a surviving error
+			// is a real write failure. On the terminal path nothing else would
+			// requeue: return the error so the Failed status (and the refs it
+			// persists) is retried rather than silently dropped.
+			if terminal {
+				return ctrl.Result{}, statusErr
+			}
+		}
+		if terminal {
+			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
@@ -191,10 +223,11 @@ func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *crev1al
 // says why. The report turns a non-empty list into an INCOMPLETE verdict, so
 // this is what stops a partly-certified fleet reporting a clean PASSED.
 //
-// Both causes can apply to one run, which is why they are merged rather than
-// assigned in turn: on a fleet that is part cordoned and part mixed-architecture,
-// writing each cause as it is found lets the second silently drop the first.
-func exclusionSummary(cordoned, archExcluded []string, gpuArch string) ([]string, string) {
+// All three causes can apply to one run, which is why they are merged rather
+// than assigned in turn: on a fleet that is part cordoned and part
+// mixed-architecture, writing each cause as it is found lets the second
+// silently drop the first.
+func exclusionSummary(cordoned, archExcluded []string, gpuArch string, capacityExcluded []gpuCapacityExclusion, gpusPerNode int32) ([]string, string) {
 	var nodes, reasons []string
 
 	if len(cordoned) > 0 {
@@ -211,6 +244,15 @@ func exclusionSummary(cordoned, archExcluded []string, gpuArch string) ([]string
 			gpuArch))
 	}
 
+	if len(capacityExcluded) > 0 {
+		for _, e := range capacityExcluded {
+			nodes = append(nodes, e.Node)
+		}
+		reasons = append(reasons, fmt.Sprintf(
+			"%d node(s) matched the target but have insufficient GPU capacity, the workload requests %d nvidia.com/gpu per node: %s",
+			len(capacityExcluded), gpusPerNode, gpuShortfallDetail(capacityExcluded)))
+	}
+
 	if len(nodes) == 0 {
 		return nil, ""
 	}
@@ -220,24 +262,87 @@ func exclusionSummary(cordoned, archExcluded []string, gpuArch string) ([]string
 	return nodes, strings.Join(reasons, ". ")
 }
 
+// gpuShortfallDetail formats capacity exclusions as "node002 has 1, node003
+// has 1", so every message about them says what each node actually reports
+// next to what was needed rather than only naming the node.
+func gpuShortfallDetail(excluded []gpuCapacityExclusion) string {
+	parts := make([]string, 0, len(excluded))
+	for _, e := range excluded {
+		parts = append(parts, fmt.Sprintf("%s has %d", e.Node, e.AllocatableGPUs))
+	}
+	return strings.Join(parts, ", ")
+}
+
 // notEnoughNodesMessage explains a node shortfall. "Schedulable" is Kubernetes
 // vocabulary for cordons, taints and capacity, so the bare form sends an operator
 // looking at the wrong thing when the real cause is that a heterogeneous target
-// was filtered to one GPU architecture. When that is what happened, say so and
-// name the nodes that were dropped.
-func notEnoughNodesMessage(needed, found int, gpuArch string, archExcluded []string) string {
-	base := fmt.Sprintf("Not enough schedulable nodes: need %d, found %d", needed, found)
-	if len(archExcluded) == 0 {
-		return base
+// was filtered to one GPU architecture or that under-capacity nodes were
+// dropped. When that is what happened, say so and name the nodes that were
+// dropped. Causes and remedies are collected separately so that when both
+// filters contributed, the "Set nodesPerJob to N" advice appears once with
+// every applicable remedy after it, not once per cause.
+func notEnoughNodesMessage(needed, found int, gpuArch string, archExcluded []string, capacityExcluded []gpuCapacityExclusion, gpusPerNode int32) string {
+	msg := fmt.Sprintf("Not enough schedulable nodes: need %d, found %d", needed, found)
+	var causes, remedies []string
+	if len(archExcluded) > 0 {
+		causes = append(causes, fmt.Sprintf(
+			"%d node(s) matched the target but were excluded for not being GPU architecture %s: %s",
+			len(archExcluded), gpuArch, strings.Join(archExcluded, ", ")))
+		remedies = append(remedies, "narrow the target to one architecture")
 	}
-	return fmt.Sprintf(
-		"%s. %d node(s) matched the target but were excluded for not being GPU architecture %s: %s. "+
-			"Set nodesPerJob to %d, or narrow the target to one architecture",
-		base, len(archExcluded), gpuArch, strings.Join(archExcluded, ", "), found)
+	if len(capacityExcluded) > 0 {
+		causes = append(causes, fmt.Sprintf(
+			"%d node(s) matched the target but were excluded for having fewer than the %d allocatable "+
+				"nvidia.com/gpu the workload requests per node: %s",
+			len(capacityExcluded), gpusPerNode, gpuShortfallDetail(capacityExcluded)))
+		remedies = append(remedies, "lower gpusPerNode")
+	}
+	if len(causes) == 0 {
+		return msg
+	}
+	return fmt.Sprintf("%s. %s. Set nodesPerJob to %d, or %s",
+		msg, strings.Join(causes, ". "), found, strings.Join(remedies, ", or "))
+}
+
+// failWorkflowForDependencyError marks the Workflow Failed after
+// ensureWorkflowDependencies returns err. A dependency name collision (a
+// foreign object holds the name) is terminal: the collision reason is
+// surfaced and the reconcile ends without requeueing. Any other error is
+// returned so the reconcile retries with backoff. Either way the exclusion
+// coverage record and the refs of dependencies created before the failure are
+// persisted with the Failed status (conflict-safe via the extra funcs), so
+// copies created before the collision do not leak untracked.
+func (r *WorkflowReconciler) failWorkflowForDependencyError(ctx context.Context, workflow *nvcrev1alpha1.Workflow, orch *nvcrev1alpha1.OrchestrationStatus, err error) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+	reason := ReasonDependencyCreationError
+	message := fmt.Sprintf("Failed to create dependency: %v", err)
+	var collision *nameCollisionError
+	terminal := errors.As(err, &collision)
+	if terminal {
+		// A foreign object holds the dependency's name: terminal, no retry.
+		reason = collision.Reason
+		message = err.Error()
+	}
+	if statusErr := r.setWorkflowFailed(ctx, workflow, reason, message,
+		applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason),
+		applyDependencyRefs(workflow.Status.DependencyRefs)); statusErr != nil {
+		log.Error(statusErr, "Failed to update status")
+		// setWorkflowFailed already retries conflicts, so a surviving error is
+		// a real write failure. On the terminal path nothing else would
+		// requeue: return the error so the Failed status (and the refs it
+		// persists) is retried rather than silently dropped.
+		if terminal {
+			return ctrl.Result{}, statusErr
+		}
+	}
+	if terminal {
+		return ctrl.Result{}, nil
+	}
+	return ctrl.Result{}, err
 }
 
 // discoverAndPartition discovers target nodes, auto-detects nodesPerJob, and partitions nodes into groups.
-func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow *crev1alpha1.Workflow, orch *crev1alpha1.OrchestrationStatus) (ctrl.Result, error) {
+func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow *nvcrev1alpha1.Workflow, orch *nvcrev1alpha1.OrchestrationStatus) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	target := workflow.Spec.Orchestration.Target
 
@@ -299,10 +404,11 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	}
 	orch.DetectedGPUArchitecture = gpuArch
 
-	// Record the dropped nodes on the status, not just in an event. A run that
-	// excludes nodes still reports Succeeded, so without this the report says
-	// PASSED and never mentions what went untested.
-	orch.ExcludedNodes, orch.ExclusionReason = exclusionSummary(cordoned, archExcluded, gpuArch)
+	// Record the cordon and architecture exclusions before overrides run, so a
+	// failure in override application still leaves the coverage record behind.
+	// The GPU capacity check below has to read the post-override spec, so the
+	// summary is recomputed with the full set once that filter has run.
+	orch.ExcludedNodes, orch.ExclusionReason = exclusionSummary(cordoned, archExcluded, gpuArch, nil, 0)
 
 	// Apply overrides now that platform/gpuArch are known, before computing nodesPerJob.
 	// This is the authoritative call — emit events, log details, and populate status.
@@ -311,13 +417,52 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	if err != nil {
 		r.eventf(workflow, corev1.EventTypeWarning, "OverrideError", "Override failed: %v", err)
 		if statusErr := r.setWorkflowFailed(ctx, workflow, "OverrideError",
-			fmt.Sprintf("Failed to apply overrides: %v", err)); statusErr != nil {
+			fmt.Sprintf("Failed to apply overrides: %v", err),
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
 			log.Error(statusErr, "Failed to update Workflow status after override failure")
 		}
 		return ctrl.Result{}, err
 	}
 	orch.AppliedOverrides = applied
 	r.logOverrideResults(ctx, workflow, applied, octx)
+
+	// Drop nodes that cannot supply the workload's per-node GPU request. A node
+	// with fewer allocatable GPUs than the pods ask for is partitioned into a
+	// group whose pods stay Pending forever, and the run hangs at
+	// InProgress/JobRunning with nothing naming the cause (issue #82). The
+	// check runs after override application because overrides can rewrite the
+	// resources block, and workloadGPUsPerNode must see the request the pods
+	// will actually make; it cannot run inside discoverTargetNodes because the
+	// request is only known once the spec is fully resolved.
+	gpusPerNode := workloadGPUsPerNode(&workflow.Spec)
+	capableNodes, capacityExcluded := filterNodesByGPUCapacity(nodes, gpusPerNode)
+	if len(capacityExcluded) > 0 {
+		log.Info("Nodes with insufficient GPU capacity excluded from certification",
+			"gpusPerNode", gpusPerNode, "excluded", gpuShortfallDetail(capacityExcluded))
+		r.eventf(workflow, corev1.EventTypeWarning, "InsufficientGPUCapacity",
+			"Excluded %d node(s) with fewer than %d allocatable nvidia.com/gpu: %s",
+			len(capacityExcluded), gpusPerNode, gpuShortfallDetail(capacityExcluded))
+		nodes = capableNodes
+	}
+
+	// Record the dropped nodes on the status, not just in an event. A run that
+	// excludes nodes still reports Succeeded, so without this the report says
+	// PASSED and never mentions what went untested.
+	orch.ExcludedNodes, orch.ExclusionReason = exclusionSummary(cordoned, archExcluded, gpuArch, capacityExcluded, gpusPerNode)
+
+	// Every surviving node was dropped for capacity. Fail with the requirement
+	// and the best the fleet offers instead of partitioning into groups that
+	// can never schedule.
+	if len(nodes) == 0 {
+		msg := fmt.Sprintf(
+			"No node can supply the %d nvidia.com/gpu the workload requests per node; best available is %d",
+			gpusPerNode, maxAllocatableGPUs(capacityExcluded))
+		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, msg,
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
+			log.Error(statusErr, "Failed to update status")
+		}
+		return ctrl.Result{}, fmt.Errorf("%s", msg)
+	}
 
 	// Create workflow-scoped dependencies AFTER overrides are applied.
 	// Override dependency merges (e.g. EFA resources into TrainingRuntime) have
@@ -327,18 +472,15 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	// writes the full status (including refs) in a single update.
 	if err := r.ensureWorkflowDependencies(ctx, workflow); err != nil {
 		log.Error(err, "Failed to create dependencies")
-		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonDependencyCreationError,
-			fmt.Sprintf("Failed to create dependency: %v", err)); statusErr != nil {
-			log.Error(statusErr, "Failed to update status")
-		}
-		return ctrl.Result{}, err
+		return r.failWorkflowForDependencyError(ctx, workflow, orch, err)
 	}
 
 	// Auto-detect nodesPerJob from workload template
 	adapter, err := workload.ForSpec(&workflow.Spec.JobTemplate.Spec.Workload)
 	if err != nil {
 		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError,
-			fmt.Sprintf("Failed to determine workload adapter: %v", err)); statusErr != nil {
+			fmt.Sprintf("Failed to determine workload adapter: %v", err),
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
 			log.Error(statusErr, "Failed to update status")
 		}
 		return ctrl.Result{}, err
@@ -347,7 +489,8 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	nodesPerJob, err := adapter.NodesRequired(&workflow.Spec.JobTemplate.Spec.Workload)
 	if err != nil {
 		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError,
-			fmt.Sprintf("Failed to detect nodesPerJob: %v", err)); statusErr != nil {
+			fmt.Sprintf("Failed to detect nodesPerJob: %v", err),
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
 			log.Error(statusErr, "Failed to update status")
 		}
 		return ctrl.Result{}, err
@@ -356,8 +499,9 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 		nodesPerJob = len(nodes)
 	}
 	if nodesPerJob > len(nodes) {
-		msg := notEnoughNodesMessage(nodesPerJob, len(nodes), gpuArch, archExcluded)
-		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, msg); statusErr != nil {
+		msg := notEnoughNodesMessage(nodesPerJob, len(nodes), gpuArch, archExcluded, capacityExcluded, gpusPerNode)
+		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, msg,
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
 			log.Error(statusErr, "Failed to update status")
 		}
 		return ctrl.Result{}, fmt.Errorf("%s", msg)
@@ -398,7 +542,8 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	}
 	if err != nil {
 		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError,
-			fmt.Sprintf("Failed to partition nodes: %v", err)); statusErr != nil {
+			fmt.Sprintf("Failed to partition nodes: %v", err),
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
 			log.Error(statusErr, "Failed to update status")
 		}
 		return ctrl.Result{}, err
@@ -425,7 +570,7 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	return ctrl.Result{RequeueAfter: requeueImmediate}, nil
 }
 
-func (r *WorkflowReconciler) logOverrideResults(ctx context.Context, workflow *crev1alpha1.Workflow, applied []crev1alpha1.AppliedOverride, octx OverrideContext) {
+func (r *WorkflowReconciler) logOverrideResults(ctx context.Context, workflow *nvcrev1alpha1.Workflow, applied []nvcrev1alpha1.AppliedOverride, octx OverrideContext) {
 	log := logf.FromContext(ctx)
 	for _, a := range applied {
 		if a.NoOp {
@@ -454,7 +599,7 @@ func (r *WorkflowReconciler) logOverrideResults(ctx context.Context, workflow *c
 // dropped for being cordoned. Callers that record coverage need it: a cordoned
 // node was targeted and never tested, and without the names the run reports a
 // clean PASSED over a fleet it only partly certified.
-func discoverTargetNodes(ctx context.Context, reader client.Reader, target *crev1alpha1.TargetSpec) ([]corev1.Node, []string, error) {
+func discoverTargetNodes(ctx context.Context, reader client.Reader, target *nvcrev1alpha1.TargetSpec) ([]corev1.Node, []string, error) {
 	nodeList := &corev1.NodeList{}
 	var opts []client.ListOption
 
@@ -518,7 +663,7 @@ func discoverTargetNodes(ctx context.Context, reader client.Reader, target *crev
 	var cordoned []string
 	for _, n := range nodes {
 		if n.Spec.Unschedulable {
-			if n.Labels["nvidia.com/gpu.present"] == "true" {
+			if n.Labels[GPUNodeLabel] == present {
 				cordoned = append(cordoned, n.Name)
 			}
 			continue
@@ -530,18 +675,19 @@ func discoverTargetNodes(ctx context.Context, reader client.Reader, target *crev
 	// Filter to GPU-equipped nodes only
 	var gpuFiltered []corev1.Node
 	for _, n := range nodes {
-		if n.Labels["nvidia.com/gpu.present"] == "true" {
+		if n.Labels[GPUNodeLabel] == present {
 			gpuFiltered = append(gpuFiltered, n)
 		}
 	}
 	nodes = gpuFiltered
 
 	// Sort by name so discovery is reproducible. client.List gives no ordering
-	// guarantee, and callers pick nodes[0] to decide the platform and the GPU
-	// architecture for the whole run. Unsorted, the same cluster could certify a
-	// different subset on each reconcile: over two H100 nodes and one A100, two
-	// runs certified h100 with 2 nodes and a100 with 1 node. Name order also
-	// matches how pkg/orchestration already chunks nodes into groups.
+	// guarantee, and callers pick nodes[0] to decide the platform and use slice
+	// order to break ties in the majority GPU-architecture rule (issue #77).
+	// Unsorted, the same cluster could certify a different subset on each
+	// reconcile: over one H100 node and one A100, two runs would flip between
+	// certifying h100 and a100. Name order also matches how pkg/orchestration
+	// already chunks nodes into groups.
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].Name < nodes[j].Name })
 
 	// Sort the cordoned names for the same reason: they are written to status and
@@ -553,7 +699,7 @@ func discoverTargetNodes(ctx context.Context, reader client.Reader, target *crev
 }
 
 // nodeMatchesTaints returns true if the node has ALL of the specified taints.
-func nodeMatchesTaints(node corev1.Node, selectors []crev1alpha1.TaintSelector) bool {
+func nodeMatchesTaints(node corev1.Node, selectors []nvcrev1alpha1.TaintSelector) bool {
 	for _, sel := range selectors {
 		if !nodeHasTaint(node, sel) {
 			return false
@@ -563,7 +709,7 @@ func nodeMatchesTaints(node corev1.Node, selectors []crev1alpha1.TaintSelector) 
 }
 
 // nodeHasTaint returns true if the node has a taint matching the selector.
-func nodeHasTaint(node corev1.Node, sel crev1alpha1.TaintSelector) bool {
+func nodeHasTaint(node corev1.Node, sel nvcrev1alpha1.TaintSelector) bool {
 	for _, taint := range node.Spec.Taints {
 		if taint.Key != sel.Key {
 			continue
@@ -613,7 +759,7 @@ func convertOperator(op corev1.NodeSelectorOperator) (selection.Operator, error)
 }
 
 // buildTolerations creates tolerations from taint selectors.
-func buildTolerations(selectors []crev1alpha1.TaintSelector) []corev1.Toleration {
+func buildTolerations(selectors []nvcrev1alpha1.TaintSelector) []corev1.Toleration {
 	tolerations := make([]corev1.Toleration, len(selectors))
 	for i, sel := range selectors {
 		t := corev1.Toleration{
@@ -639,7 +785,7 @@ func buildTolerations(selectors []crev1alpha1.TaintSelector) []corev1.Toleration
 //   - pending=true means to requeue and try again later (BM absent or has no results yet)
 //   - err!=nil means the gate could not be evaluated; the caller should fail closed
 func (r *WorkflowReconciler) isBelowBandwidthThreshold(ctx context.Context, jobName, namespace, expr string) (below bool, pending bool, err error) {
-	var bwList crev1alpha1.BandwidthMeasurementList
+	var bwList nvcrev1alpha1.BandwidthMeasurementList
 	if listErr := r.List(ctx, &bwList, matchingJobRef(namespace, jobName)...); listErr != nil {
 		return false, false, fmt.Errorf("list BandwidthMeasurements: %w", listErr)
 	}
@@ -664,7 +810,7 @@ func (r *WorkflowReconciler) isBelowBandwidthThreshold(ctx context.Context, jobN
 
 // deleteWorkloadForJob deletes the workload (e.g., TrainJob) referenced by a Job
 // to free GPU resources. The Job object itself is preserved.
-func (r *WorkflowReconciler) deleteWorkloadForJob(ctx context.Context, job *crev1alpha1.Job) {
+func (r *WorkflowReconciler) deleteWorkloadForJob(ctx context.Context, job *nvcrev1alpha1.Job) {
 	ref := job.Status.WorkloadRef
 	if ref == nil {
 		return
@@ -681,17 +827,38 @@ func (r *WorkflowReconciler) deleteWorkloadForJob(ctx context.Context, job *crev
 }
 
 // isJobTimedOut returns true if the group's job has exceeded timeoutPerJob.
-func (r *WorkflowReconciler) isJobTimedOut(workflow *crev1alpha1.Workflow, g *crev1alpha1.GroupStatus) bool {
+//
+// The clock starts when the Job first observed its workload running
+// (job.status.workloadStartTime), not when the Job was created: a workload
+// suspended by an admission controller (e.g. Kueue holding a TrainJob until
+// quota is available) has not started, and failing healthy hardware for
+// sitting in a queue would be a false certification result. While the
+// workload exists but has not been observed running, no timeout accrues.
+// Only when no workload has been created at all does the group's StartTime
+// remain the bound, so a Job whose workload can never be created still
+// terminates.
+func (r *WorkflowReconciler) isJobTimedOut(workflow *nvcrev1alpha1.Workflow, g *nvcrev1alpha1.GroupStatus, job *nvcrev1alpha1.Job) bool {
 	timeout := workflow.Spec.Orchestration.Execution.TimeoutPerJob
-	if timeout == nil || g.StartTime == nil {
+	if timeout == nil {
+		return false
+	}
+	if job.Status.WorkloadStartTime != nil {
+		return time.Since(job.Status.WorkloadStartTime.Time) > timeout.Duration
+	}
+	if job.Status.WorkloadRef != nil {
+		// Workload created but not yet observed running (e.g. suspended,
+		// pending admission): the job has not started, do not time it out.
+		return false
+	}
+	if g.StartTime == nil {
 		return false
 	}
 	return time.Since(g.StartTime.Time) > timeout.Duration
 }
 
-func (r *WorkflowReconciler) hasRunningGroups(orch *crev1alpha1.OrchestrationStatus) bool {
+func (r *WorkflowReconciler) hasRunningGroups(orch *nvcrev1alpha1.OrchestrationStatus) bool {
 	for _, g := range orch.Groups {
-		if g.Phase == crev1alpha1.GroupRunning {
+		if g.Phase == nvcrev1alpha1.GroupRunning {
 			return true
 		}
 	}
@@ -699,9 +866,9 @@ func (r *WorkflowReconciler) hasRunningGroups(orch *crev1alpha1.OrchestrationSta
 }
 
 // allGroupsTerminal returns true if all groups have reached Succeeded or Failed phase.
-func (r *WorkflowReconciler) allGroupsTerminal(orch *crev1alpha1.OrchestrationStatus) bool {
+func (r *WorkflowReconciler) allGroupsTerminal(orch *nvcrev1alpha1.OrchestrationStatus) bool {
 	for _, g := range orch.Groups {
-		if g.Phase != crev1alpha1.GroupSucceeded && g.Phase != crev1alpha1.GroupFailed {
+		if g.Phase != nvcrev1alpha1.GroupSucceeded && g.Phase != nvcrev1alpha1.GroupFailed {
 			return false
 		}
 	}
@@ -709,10 +876,10 @@ func (r *WorkflowReconciler) allGroupsTerminal(orch *crev1alpha1.OrchestrationSt
 }
 
 // countRunningGroups returns the number of groups with Running phase.
-func countRunningGroups(orch *crev1alpha1.OrchestrationStatus) int {
+func countRunningGroups(orch *nvcrev1alpha1.OrchestrationStatus) int {
 	count := 0
 	for _, g := range orch.Groups {
-		if g.Phase == crev1alpha1.GroupRunning {
+		if g.Phase == nvcrev1alpha1.GroupRunning {
 			count++
 		}
 	}
@@ -722,10 +889,10 @@ func countRunningGroups(orch *crev1alpha1.OrchestrationStatus) int {
 // hasNodeOverlap returns true if any node in the candidate group is
 // already used by a Running group. This prevents scheduling conflicts
 // where concurrent jobs compete for GPU resources on the same node.
-func hasNodeOverlap(candidate *crev1alpha1.GroupStatus, allGroups []crev1alpha1.GroupStatus) bool {
+func hasNodeOverlap(candidate *nvcrev1alpha1.GroupStatus, allGroups []nvcrev1alpha1.GroupStatus) bool {
 	runningNodes := make(map[string]bool)
 	for _, g := range allGroups {
-		if g.Phase == crev1alpha1.GroupRunning && g.Name != candidate.Name {
+		if g.Phase == nvcrev1alpha1.GroupRunning && g.Name != candidate.Name {
 			for _, node := range g.Nodes {
 				runningNodes[node] = true
 			}
@@ -740,14 +907,14 @@ func hasNodeOverlap(candidate *crev1alpha1.GroupStatus, allGroups []crev1alpha1.
 }
 
 // launchPendingGroups creates Jobs for pending groups, respecting maxConcurrent and overflow constraints.
-func (r *WorkflowReconciler) launchPendingGroups(ctx context.Context, workflow *crev1alpha1.Workflow, orch *crev1alpha1.OrchestrationStatus) (ctrl.Result, error) {
+func (r *WorkflowReconciler) launchPendingGroups(ctx context.Context, workflow *nvcrev1alpha1.Workflow, orch *nvcrev1alpha1.OrchestrationStatus) (ctrl.Result, error) {
 	maxConcurrent := workflow.Spec.Orchestration.Execution.MaxConcurrent
 	running := countRunningGroups(orch)
 
 	launched := false
 	for i := range orch.Groups {
 		g := &orch.Groups[i]
-		if g.Phase != crev1alpha1.GroupPending {
+		if g.Phase != nvcrev1alpha1.GroupPending {
 			continue
 		}
 
@@ -768,6 +935,26 @@ func (r *WorkflowReconciler) launchPendingGroups(ctx context.Context, workflow *
 				logf.FromContext(ctx).Info("Waiting for ComputeDomain controller to create channel templates", "group", g.Name)
 				return ctrl.Result{RequeueAfter: r.getJobRequeueInterval()}, nil
 			}
+			// A name collision with a foreign Job or dependency is terminal:
+			// retrying cannot succeed while the foreign object holds the name,
+			// and adopting or deleting it is never safe.
+			if collision, ok := errors.AsType[*nameCollisionError](err); ok {
+				logf.FromContext(ctx).Error(err, "Name collision while launching group", "group", g.Name)
+				// Persist refs for dependency copies created before the collision
+				// so the finalizer can clean them up (conflict-safe via the extra
+				// func) — this failure is terminal, so there is no retry that
+				// could re-record them.
+				if statusErr := r.setWorkflowFailed(ctx, workflow, collision.Reason, err.Error(),
+					applyDependencyRefs(workflow.Status.DependencyRefs)); statusErr != nil {
+					logf.FromContext(ctx).Error(statusErr, "Failed to update Workflow status after name collision")
+					// setWorkflowFailed already retries conflicts, so a
+					// surviving error is a real write failure. This branch is
+					// terminal (no requeue): return the error so the Failed
+					// status is retried rather than silently dropped.
+					return ctrl.Result{}, statusErr
+				}
+				return ctrl.Result{}, nil
+			}
 			return ctrl.Result{}, err
 		}
 		running++
@@ -786,7 +973,7 @@ func (r *WorkflowReconciler) launchPendingGroups(ctx context.Context, workflow *
 }
 
 // createJobForGroup creates a Job for a specific group, pinned to that group's nodes.
-func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *crev1alpha1.Workflow, group *crev1alpha1.GroupStatus, orch *crev1alpha1.OrchestrationStatus) error {
+func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nvcrev1alpha1.Workflow, group *nvcrev1alpha1.GroupStatus, orch *nvcrev1alpha1.OrchestrationStatus) error {
 	log := logf.FromContext(ctx)
 
 	jobName := r.getGroupJobName(workflow, group.Name, orch.CurrentIteration)
@@ -803,11 +990,11 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *cr
 		}
 	}
 
-	// Create per-job dependency copies and patch the job spec references
+	// Create per-job dependency copies and patch the job spec references.
+	// Refs are appended even when ensureJobDependencies errors: copies created
+	// before a terminal failure (e.g. a name collision on a later dependency)
+	// must be tracked so the finalizer can clean them up.
 	patchedSpec, jobRefs, err := r.ensureJobDependencies(ctx, workflow, group, orch, specCopy)
-	if err != nil {
-		return fmt.Errorf("failed to ensure job dependencies for group %s: %w", group.Name, err)
-	}
 	if len(jobRefs) > 0 {
 		workflow.Status.DependencyRefs = append(workflow.Status.DependencyRefs, jobRefs...)
 		// Dep refs are written together with group status by setWorkflowInProgress.
@@ -817,13 +1004,14 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *cr
 		// Crash recovery: if we crash before the final write, ensureJobDependencies
 		// handles AlreadyExists on re-create and re-adds the refs.
 	}
+	if err != nil {
+		return fmt.Errorf("failed to ensure job dependencies for group %s: %w", group.Name, err)
+	}
 
-	job := &crev1alpha1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobName,
-			Namespace: workflow.Namespace,
-		},
-		Spec: *patchedSpec,
+	job := &nvcrev1alpha1.Job{
+		Name:      jobName,
+		Namespace: workflow.Namespace,
+		Spec:      *patchedSpec,
 	}
 
 	// Pin to this group's specific nodes via NodeAffinity
@@ -871,8 +1059,8 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *cr
 
 	// Set default node health monitor if not already configured
 	if job.Spec.NodeHealthMonitor == nil {
-		job.Spec.NodeHealthMonitor = &crev1alpha1.NodeHealthMonitor{
-			CEL: &crev1alpha1.CELNodeHealthCheck{
+		job.Spec.NodeHealthMonitor = &nvcrev1alpha1.NodeHealthMonitor{
+			CEL: &nvcrev1alpha1.CELNodeHealthCheck{
 				Expression: `node.spec.unschedulable == true`,
 			},
 		}
@@ -881,9 +1069,9 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *cr
 	// Merge labels from template metadata
 	labels := make(map[string]string)
 	maps.Copy(labels, workflow.Spec.JobTemplate.Labels)
-	labels["app.kubernetes.io/managed-by"] = "cluster-readiness-engine"
-	labels["cre.nvidia.com/workflow"] = workflow.Name
-	labels["cre.nvidia.com/group"] = group.Name
+	labels["app.kubernetes.io/managed-by"] = managedByValue
+	labels["nvcre.nvidia.com/workflow"] = workflow.Name
+	labels["nvcre.nvidia.com/group"] = group.Name
 	job.SetLabels(labels)
 
 	// Merge annotations from template metadata and store group nodes.
@@ -891,7 +1079,7 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *cr
 	if len(workflow.Spec.JobTemplate.Annotations) > 0 {
 		maps.Copy(annotations, workflow.Spec.JobTemplate.Annotations)
 	}
-	annotations["cre.nvidia.com/group-nodes"] = strings.Join(group.Nodes, ",")
+	annotations["nvcre.nvidia.com/group-nodes"] = strings.Join(group.Nodes, ",")
 	job.SetAnnotations(annotations)
 
 	// Set owner reference so the Job is garbage collected when the Workflow is deleted
@@ -902,11 +1090,29 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *cr
 	log.Info("Creating Job for group", "name", jobName, "group", group.Name, "iteration", orch.CurrentIteration)
 	if err := r.Create(ctx, job); err != nil {
 		if apierrors.IsAlreadyExists(err) {
-			log.Info("Job already exists, proceeding", "name", jobName)
-			// Fetch the existing Job so we have its UID for owner references
+			// Fetch the existing Job (also gives us its UID for owner references)
+			// and verify it is the one this Workflow created — a duplicate create
+			// caused by cache lag or a crash-retry. A foreign Job with a colliding
+			// name is never adopted: it would be used as the group's Job and made
+			// the owner of job-scoped dependencies it did not create.
 			if err := r.Get(ctx, client.ObjectKeyFromObject(job), job); err != nil {
 				return fmt.Errorf("failed to get existing Job %s: %w", jobName, err)
 			}
+			if !metav1.IsControlledBy(job, workflow) {
+				// A foreign holder that is already terminating (e.g. the child of
+				// a same-named parent that was just deleted) releases the name
+				// shortly: retry with backoff instead of failing terminally.
+				if !job.DeletionTimestamp.IsZero() {
+					return fmt.Errorf("existing Job %q in namespace %q is being deleted; retrying",
+						jobName, workflow.Namespace)
+				}
+				return &nameCollisionError{
+					Reason: ReasonJobNameCollision,
+					Message: fmt.Sprintf("Job %q already exists in namespace %q and is not controlled by Workflow %q; refusing to adopt it",
+						jobName, workflow.Namespace, workflow.Name),
+				}
+			}
+			log.Info("Job already exists and is controlled by this Workflow, proceeding", "name", jobName)
 		} else {
 			log.Error(err, "Failed to create Job", "name", jobName)
 			return fmt.Errorf("failed to create Job %s: %w", jobName, err)
@@ -941,10 +1147,10 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *cr
 
 	// Update group status
 	now := metav1.Now()
-	group.Phase = crev1alpha1.GroupRunning
-	group.JobRef = &crev1alpha1.WorkloadReference{
-		APIVersion: "cre.nvidia.com/v1alpha1",
-		Kind:       "Job",
+	group.Phase = nvcrev1alpha1.GroupRunning
+	group.JobRef = &nvcrev1alpha1.WorkloadReference{
+		APIVersion: "nvcre.nvidia.com/v1alpha1",
+		Kind:       kindJob,
 		Name:       jobName,
 		Namespace:  workflow.Namespace,
 	}
@@ -954,22 +1160,27 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *cr
 }
 
 // updateStatusFromJobs checks all running groups and updates their status from their Jobs.
-func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow *crev1alpha1.Workflow) (ctrl.Result, error) {
+func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow *nvcrev1alpha1.Workflow) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	orch := r.ensureOrchestrationStatus(workflow)
-	retryLimit := workflow.Spec.Orchestration.Execution.RetryFailedGroups
+
+	// Stamp the backing PV of owned PVCs as soon as they bind. Job-scoped
+	// PVCs cascade-delete with their Job on a real cluster, so waiting for a
+	// cleanup path to stamp the PV can be too late (the PVC may already be
+	// gone by then). See markPVsForOwnedPVCs.
+	r.markPVsForOwnedPVCs(ctx, workflow)
 
 	anyRunning := false
 	statusChanged := false
 
 	for i := range orch.Groups {
 		g := &orch.Groups[i]
-		if g.Phase != crev1alpha1.GroupRunning || g.JobRef == nil {
+		if g.Phase != nvcrev1alpha1.GroupRunning || g.JobRef == nil {
 			continue
 		}
 
 		ref := g.JobRef
-		job := &crev1alpha1.Job{}
+		job := &nvcrev1alpha1.Job{}
 		ns := ref.Namespace
 		if ns == "" {
 			ns = workflow.Namespace
@@ -977,10 +1188,14 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 
 		if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: ref.Name}, job); err != nil {
 			if apierrors.IsNotFound(err) {
+				// No pod-drain barrier needed here: the Job finalizer only
+				// unregisters after the workload's pods are gone (bounded by
+				// podDrainGracePeriod), so a NotFound Job implies its pods
+				// have already drained.
 				log.Info("Job was deleted, marking group as failed", "group", g.Name, "job", ref.Name)
 				r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
 				now := metav1.Now()
-				g.Phase = crev1alpha1.GroupFailed
+				g.Phase = nvcrev1alpha1.GroupFailed
 				g.CompletionTime = &now
 				g.JobRef = nil
 				statusChanged = true
@@ -990,12 +1205,19 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		}
 
 		// Treat a Job with DeletionTimestamp as deleted — its finalizer will
-		// clean up the workload, but the Workflow should not wait for it.
+		// clean up the workload, but the Workflow should not wait for it
+		// beyond the pod-drain barrier: the scoped dependencies below provide
+		// DRA allocations to the workload's pods, and deleting them while
+		// pods are still terminating causes CUDA error 719 (issue #121).
 		if !job.DeletionTimestamp.IsZero() {
+			if shouldWaitForPodDrain(ctx, r.Client, job) {
+				anyRunning = true
+				continue
+			}
 			log.Info("Job is being deleted, marking group as failed", "group", g.Name, "job", ref.Name)
 			r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
 			now := metav1.Now()
-			g.Phase = crev1alpha1.GroupFailed
+			g.Phase = nvcrev1alpha1.GroupFailed
 			g.CompletionTime = &now
 			g.JobRef = nil
 			statusChanged = true
@@ -1006,7 +1228,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		ts := getJobTerminalState(job)
 
 		if !ts.terminal {
-			if r.isJobTimedOut(workflow, g) {
+			if r.isJobTimedOut(workflow, g, job) {
 				log.Info("Job timed out, terminating workload",
 					"group", g.Name, "job", ref.Name)
 				// Capture logs from running pods BEFORE deleting the workload.
@@ -1014,21 +1236,31 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 				r.captureTimeoutLog(ctx, job)
 				// Mark Job as failed. The Job object stays for the report.
 				meta.SetStatusCondition(&job.Status.Conditions, metav1.Condition{
-					Type:    crev1alpha1.JobFailed,
+					Type:    nvcrev1alpha1.JobFailed,
 					Status:  metav1.ConditionTrue,
-					Reason:  "JobTimedOut",
+					Reason:  ReasonJobTimedOut,
 					Message: "Job exceeded timeoutPerJob",
 				})
 				if err := r.Status().Update(ctx, job); err != nil {
 					return ctrl.Result{}, fmt.Errorf("failed to update timed-out Job %s status: %w", ref.Name, err)
 				}
-				// Delete the workload to free GPUs. The Job object is
-				// preserved for the report; only the TrainJob is removed.
-				r.deleteWorkloadForJob(ctx, job)
-				r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
-				now := metav1.Now()
-				g.Phase = crev1alpha1.GroupFailed
-				g.CompletionTime = &now
+				// Complete through the same path a re-observed terminal Job
+				// takes: completeTerminalGroup deletes the workload (the Job
+				// object is preserved for the report; only the TrainJob is
+				// removed) and holds the group and its scoped dependencies
+				// behind the pod-drain barrier (issue #121). Routing both the
+				// no-pods and the pods-draining timeout completions through
+				// one path keeps the side effects identical regardless of
+				// drain timing; the ReasonJobTimedOut condition set above
+				// keeps the job from being retried on either pass.
+				draining, err := r.completeTerminalGroup(ctx, workflow, orch, g, job, getJobTerminalState(job))
+				if err != nil {
+					return ctrl.Result{}, err
+				}
+				if draining {
+					anyRunning = true
+					continue
+				}
 				statusChanged = true
 				continue
 			}
@@ -1045,48 +1277,15 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 			continue
 		}
 
-		now := metav1.Now()
-		g.CompletionTime = &now
+		draining, err := r.completeTerminalGroup(ctx, workflow, orch, g, job, ts)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if draining {
+			anyRunning = true
+			continue
+		}
 		statusChanged = true
-
-		if len(job.Status.FailedNodes) > 0 {
-			if err := r.recordFailedNodes(ctx, workflow, job.Status.FailedNodes); err != nil {
-				log.Error(err, "Failed to record failed nodes to ConfigMap")
-			}
-		}
-
-		if ts.failed || ts.hwFailed || ts.validationFailed {
-			// Check if we can retry
-			if retryLimit > 0 && g.Retries < retryLimit {
-				log.Info("Retrying failed group", "group", g.Name, "retry", g.Retries+1, "limit", retryLimit)
-				// Delete the failed Job BEFORE cleaning up deps. Dependencies
-				// provide DRA allocations; deleting them first causes CUDA failure 719.
-				if err := r.Delete(ctx, job); err != nil && !apierrors.IsNotFound(err) {
-					return ctrl.Result{}, fmt.Errorf("failed to delete Job %s for retry: %w", ref.Name, err)
-				}
-				// Clean up job-scoped deps after Job deletion
-				r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
-				g.Retries++
-				g.Phase = crev1alpha1.GroupPending
-				g.JobRef = nil
-				g.StartTime = nil
-				g.CompletionTime = nil
-			} else {
-				// Delete the workload to free GPUs and stop hanging pods.
-				r.deleteWorkloadForJob(ctx, job)
-				// Clean up job-scoped deps on terminal failure
-				r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
-				g.Phase = crev1alpha1.GroupFailed
-				r.updateTopologyMetric(ctx, workflow)
-			}
-		} else {
-			// Clean up job-scoped deps on success
-			r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
-			g.Phase = crev1alpha1.GroupSucceeded
-			r.updateTopologyMetric(ctx, workflow)
-		}
-
-		log.Info("Group job completed", "group", g.Name, "phase", g.Phase, "job", ref.Name)
 	}
 
 	if statusChanged || anyRunning {
@@ -1099,9 +1298,9 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		// and refetches on conflict, so status mutated outside the callback is
 		// dropped on both paths. That left a completed group stuck Running and the
 		// Workflow never finished — a passing run reported as a timeout.
-		want := make([]crev1alpha1.GroupStatus, len(orch.Groups))
+		want := make([]nvcrev1alpha1.GroupStatus, len(orch.Groups))
 		copy(want, orch.Groups)
-		applyGroups := func(w *crev1alpha1.Workflow) bool {
+		applyGroups := func(w *nvcrev1alpha1.Workflow) bool {
 			if w.Status.Orchestration == nil || !statusChanged {
 				return false
 			}
@@ -1117,6 +1316,82 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 	return ctrl.Result{RequeueAfter: r.getJobRequeueInterval()}, nil
 }
 
+// completeTerminalGroup finishes a group whose Job reached a terminal state.
+// On failure it terminates the workload first and holds the group open —
+// draining=true, no phase change, no dependency cleanup — until the workload's
+// pods are gone (the pod-drain barrier, issue #121): the job-scoped
+// dependencies provide DRA allocations (ComputeDomain channels) to those pods,
+// and deleting them while pods are still terminating kills every pod process
+// with CUDA error 719. The Job keeps its terminal conditions, so the next
+// reconcile re-enters here and retries the check; podDrainGracePeriod bounds
+// the wait. Once drained (or on success, whose pods have already exited) it
+// cleans up job-scoped dependencies and moves the group to its final phase, or
+// resets it to Pending for a retry.
+func (r *WorkflowReconciler) completeTerminalGroup(
+	ctx context.Context,
+	workflow *nvcrev1alpha1.Workflow,
+	orch *nvcrev1alpha1.OrchestrationStatus,
+	g *nvcrev1alpha1.GroupStatus,
+	job *nvcrev1alpha1.Job,
+	ts jobTerminalState,
+) (draining bool, err error) {
+	log := logf.FromContext(ctx)
+	jobFailed := ts.failed || ts.hwFailed || ts.validationFailed
+
+	if jobFailed {
+		// Delete the workload to free GPUs and stop hanging pods. This happens
+		// before the retry/terminal decision so pods start draining either way.
+		r.deleteWorkloadForJob(ctx, job)
+		if shouldWaitForPodDrain(ctx, r.Client, job) {
+			return true, nil
+		}
+	}
+
+	now := metav1.Now()
+	g.CompletionTime = &now
+
+	if len(job.Status.FailedNodes) > 0 {
+		if err := r.recordFailedNodes(ctx, workflow, job.Status.FailedNodes); err != nil {
+			log.Error(err, "Failed to record failed nodes to ConfigMap")
+		}
+	}
+
+	retryLimit := workflow.Spec.Orchestration.Execution.RetryFailedGroups
+	switch {
+	case jobFailed && retryLimit > 0 && g.Retries < retryLimit && !isJobTimedOutFailure(job):
+		// Retry. Timed-out jobs are excluded: the timeout path terminates them
+		// for good, and without the exclusion a timed-out job re-entering here
+		// during the pod-drain wait would be retried.
+		log.Info("Retrying failed group", "group", g.Name, "retry", g.Retries+1, "limit", retryLimit)
+		// The workload is already deleted and its pods have drained (barrier
+		// above). Delete the failed Job BEFORE cleaning up deps (ADR-053 ordering).
+		if err := r.Delete(ctx, job); err != nil && !apierrors.IsNotFound(err) {
+			return false, fmt.Errorf("failed to delete Job %s for retry: %w", job.Name, err)
+		}
+		// Clean up job-scoped deps after Job deletion
+		r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
+		g.Retries++
+		g.Phase = nvcrev1alpha1.GroupPending
+		g.JobRef = nil
+		g.StartTime = nil
+		g.CompletionTime = nil
+	case jobFailed:
+		// Clean up job-scoped deps on terminal failure (workload already
+		// deleted and drained above).
+		r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
+		g.Phase = nvcrev1alpha1.GroupFailed
+		r.updateTopologyMetric(ctx, workflow)
+	default:
+		// Clean up job-scoped deps on success
+		r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
+		g.Phase = nvcrev1alpha1.GroupSucceeded
+		r.updateTopologyMetric(ctx, workflow)
+	}
+
+	log.Info("Group job completed", "group", g.Name, "phase", g.Phase, "job", job.Name)
+	return false, nil
+}
+
 type jobTerminalState struct {
 	hwFailed         bool
 	failed           bool
@@ -1126,11 +1401,11 @@ type jobTerminalState struct {
 }
 
 // getJobTerminalState inspects Job conditions and returns a summary of its terminal state.
-func getJobTerminalState(job *crev1alpha1.Job) jobTerminalState {
-	hwFailedCond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobHardwareFailed)
-	jobFailedCond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobFailed)
-	jobSucceededCond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobSucceeded)
-	validationFailedCond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobValidationFailed)
+func getJobTerminalState(job *nvcrev1alpha1.Job) jobTerminalState {
+	hwFailedCond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobHardwareFailed)
+	jobFailedCond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobFailed)
+	jobSucceededCond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobSucceeded)
+	validationFailedCond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobValidationFailed)
 
 	s := jobTerminalState{
 		hwFailed:         hwFailedCond != nil && hwFailedCond.Status == metav1.ConditionTrue,
@@ -1142,8 +1417,18 @@ func getJobTerminalState(job *crev1alpha1.Job) jobTerminalState {
 	return s
 }
 
+// isJobTimedOutFailure reports whether the Job's Failed condition was set by
+// the Workflow timeout path (updateStatusFromJobs). Timed-out jobs are
+// terminated by the Workflow and are never retried; the retry branch checks
+// this because a timed-out job re-enters the terminal path while its pods
+// drain (issue #121) instead of completing inside the timeout branch.
+func isJobTimedOutFailure(job *nvcrev1alpha1.Job) bool {
+	c := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobFailed)
+	return c != nil && c.Status == metav1.ConditionTrue && c.Reason == ReasonJobTimedOut
+}
+
 // handleIterationComplete handles the transition when all groups in the current iteration are terminal.
-func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workflow *crev1alpha1.Workflow, orch *crev1alpha1.OrchestrationStatus) (ctrl.Result, error) {
+func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workflow *nvcrev1alpha1.Workflow, orch *nvcrev1alpha1.OrchestrationStatus) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	orch.CompletedIterations++
@@ -1166,7 +1451,7 @@ func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workfl
 			if g.JobRef == nil {
 				continue
 			}
-			job := &crev1alpha1.Job{}
+			job := &nvcrev1alpha1.Job{}
 			job.Name = g.JobRef.Name
 			job.Namespace = g.JobRef.Namespace
 			log.Info("Deleting completed iteration Job", "job", g.JobRef.Name, "iteration", orch.CompletedIterations)
@@ -1183,16 +1468,21 @@ func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workfl
 		// More iterations to go — reset all group phases to Pending
 		orch.CurrentIteration = orch.CompletedIterations + 1
 		for i := range orch.Groups {
-			orch.Groups[i].Phase = crev1alpha1.GroupPending
+			orch.Groups[i].Phase = nvcrev1alpha1.GroupPending
 			orch.Groups[i].JobRef = nil
 			orch.Groups[i].StartTime = nil
 			orch.Groups[i].CompletionTime = nil
 			orch.Groups[i].Retries = 0
 		}
 
+		// The mutations above (CompletedIterations, IterationHistory, group
+		// resets) were applied to the cached object. Hand them to the condition
+		// write via applyOrchestration so they are re-applied inside the
+		// updateStatusWithRetry closure and survive a 409 conflict re-fetch.
 		if err := r.setWorkflowInProgress(ctx, workflow, ReasonIterationCompleted,
 			fmt.Sprintf("Iteration %d/%d completed, starting next",
-				orch.CompletedIterations, effectiveIterations(workflow.Spec.Orchestration))); err != nil {
+				orch.CompletedIterations, effectiveIterations(workflow.Spec.Orchestration)),
+			applyOrchestration(orch)); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{RequeueAfter: requeueImmediate}, nil
@@ -1203,7 +1493,7 @@ func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workfl
 }
 
 // initDiagnose creates screening groups for adaptive fault isolation.
-func initDiagnose(nodeInfos []orchestration.NodeInfo, spec *crev1alpha1.DiagnoseSpec, orch *crev1alpha1.OrchestrationStatus) ([]orchestration.Group, int, error) {
+func initDiagnose(nodeInfos []orchestration.NodeInfo, spec *nvcrev1alpha1.DiagnoseSpec, orch *nvcrev1alpha1.OrchestrationStatus) ([]orchestration.Group, int, error) {
 	groups, err := orchestration.ScreenGroups(orchestration.DiagnoseScreenInput{
 		Nodes:       nodeInfos,
 		TopologyKey: spec.TopologyKey,
@@ -1215,15 +1505,15 @@ func initDiagnose(nodeInfos []orchestration.NodeInfo, spec *crev1alpha1.Diagnose
 	if len(groups) > 0 {
 		nodesPerJob = len(groups[0].Nodes)
 	}
-	orch.Diagnose = &crev1alpha1.DiagnoseStatus{
-		Stage: crev1alpha1.DiagnoseStageIntraScreening,
+	orch.Diagnose = &nvcrev1alpha1.DiagnoseStatus{
+		Stage: nvcrev1alpha1.DiagnoseStageIntraScreening,
 	}
 	return groups, nodesPerJob, nil
 }
 
 // handleDiagnoseRoundComplete advances the diagnose algorithm through its stages:
 // intra-screening → intra-screening-no-nvl → inter-screening → bisection → confirmation → done.
-func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, workflow *crev1alpha1.Workflow, orch *crev1alpha1.OrchestrationStatus) (ctrl.Result, error) {
+func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, workflow *nvcrev1alpha1.Workflow, orch *nvcrev1alpha1.OrchestrationStatus) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	diag := orch.Diagnose
 	spec := workflow.Spec.Orchestration.Diagnose
@@ -1241,14 +1531,14 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 	switch diag.Stage {
 
 	// --- Stage 1a complete: re-run intra-clique without NVLink ---
-	case crev1alpha1.DiagnoseStageIntraScreening:
+	case nvcrev1alpha1.DiagnoseStageIntraScreening:
 		recordScreeningResults(orch, diag, failedGroups)
 		// Skip the no-NVL stage if MNNVL is already disabled in the base job template —
 		// the intra-screening already ran without NVLink, so re-testing would be identical.
 		if isMNNVLEnabledInJobTemplate(&workflow.Spec.JobTemplate) {
 			noNVLGroups := buildNoNVLGroups(diag)
 			if len(noNVLGroups) > 0 {
-				diag.Stage = crev1alpha1.DiagnoseStageIntraScreeningNoNVL
+				diag.Stage = nvcrev1alpha1.DiagnoseStageIntraScreeningNoNVL
 				return r.diagnoseSetGroups(ctx, workflow, orch, diag, noNVLGroups,
 					fmt.Sprintf("Intra-screening with NVL done: %d healthy, %d suspect. Re-testing without NVL.",
 						len(diag.HealthyNodes), len(diag.SuspectNodes)))
@@ -1260,8 +1550,8 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 		fallthrough
 
 	// --- Stage 1b complete: build inter-domain test from healthy representatives ---
-	case crev1alpha1.DiagnoseStageIntraScreeningNoNVL:
-		if diag.Stage == crev1alpha1.DiagnoseStageIntraScreeningNoNVL {
+	case nvcrev1alpha1.DiagnoseStageIntraScreeningNoNVL:
+		if diag.Stage == nvcrev1alpha1.DiagnoseStageIntraScreeningNoNVL {
 			processNoNVLScreeningResults(orch, diag, failedGroups)
 		}
 
@@ -1283,14 +1573,14 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 			return r.diagnoseNextGroups(ctx, workflow, orch, diag, minGroupSize, perClique)
 		}
 
-		diag.Stage = crev1alpha1.DiagnoseStageInterScreening
+		diag.Stage = nvcrev1alpha1.DiagnoseStageInterScreening
 		return r.diagnoseSetGroups(ctx, workflow, orch, diag,
 			[]orchestration.Group{interGroup},
 			fmt.Sprintf("Screening done: %d healthy, %d suspect nodes. Testing inter-domain fabric.",
 				len(diag.HealthyNodes), len(diag.SuspectNodes)))
 
 	// --- Stage 1b complete: merge intra + inter failures, start bisection ---
-	case crev1alpha1.DiagnoseStageInterScreening:
+	case nvcrev1alpha1.DiagnoseStageInterScreening:
 		// Rebuild per-clique groups from stashed suspects (preserve clique boundaries).
 		var toSplit []orchestration.Group
 		if len(diag.SuspectNodes) > 0 {
@@ -1310,15 +1600,15 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 		return r.diagnoseNextGroups(ctx, workflow, orch, diag, minGroupSize, toSplit)
 
 	// --- Bisection round complete: continue splitting or move to confirmation ---
-	case crev1alpha1.DiagnoseStageBisection:
+	case nvcrev1alpha1.DiagnoseStageBisection:
 		return r.handleDiagnoseBisection(ctx, workflow, orch, diag, minGroupSize, failedGroups)
 
 	// --- Cross-boundary probing complete: record infrastructure faults ---
-	case crev1alpha1.DiagnoseStageCrossBoundary:
+	case nvcrev1alpha1.DiagnoseStageCrossBoundary:
 		return r.handleDiagnoseCrossBoundary(ctx, workflow, orch, diag, minGroupSize, failedGroups)
 
 	// --- Confirmation complete: report results ---
-	case crev1alpha1.DiagnoseStageConfirmation:
+	case nvcrev1alpha1.DiagnoseStageConfirmation:
 		var confirmedFaulty []string
 		var cleared []string
 		for _, g := range failedGroups {
@@ -1327,7 +1617,7 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 			}
 		}
 		for _, g := range orch.Groups {
-			if g.Phase == crev1alpha1.GroupSucceeded && len(g.Nodes) > 0 {
+			if g.Phase == nvcrev1alpha1.GroupSucceeded && len(g.Nodes) > 0 {
 				cleared = append(cleared, g.Nodes[0])
 			}
 		}
@@ -1349,11 +1639,12 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 		if err := r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)); err != nil {
 			log.Error(err, "Failed to record succeeded nodes to ConfigMap")
 		}
-		diag.Stage = crev1alpha1.DiagnoseStageComplete
+		diag.Stage = nvcrev1alpha1.DiagnoseStageComplete
 
 		return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, ReasonIterationsFailed, msg,
 			applySucceededNodesRef(workflow.Status.SucceededNodesRef),
-			applyFailedNodesRef(workflow.Status.FailedNodesRef))
+			applyFailedNodesRef(workflow.Status.FailedNodesRef),
+			applyOrchestration(orch))
 
 	default:
 		return ctrl.Result{}, fmt.Errorf("unknown diagnose stage: %s", diag.Stage)
@@ -1362,8 +1653,8 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 
 // handleDiagnoseBisection handles bisection round completion.
 func (r *WorkflowReconciler) handleDiagnoseBisection(
-	ctx context.Context, workflow *crev1alpha1.Workflow,
-	orch *crev1alpha1.OrchestrationStatus, diag *crev1alpha1.DiagnoseStatus,
+	ctx context.Context, workflow *nvcrev1alpha1.Workflow,
+	orch *nvcrev1alpha1.OrchestrationStatus, diag *nvcrev1alpha1.DiagnoseStatus,
 	minGroupSize int, failedGroups []orchestration.Group,
 ) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -1376,7 +1667,7 @@ func (r *WorkflowReconciler) handleDiagnoseBisection(
 			Name:    g.Name,
 			Nodes:   g.Nodes,
 			Domains: g.Domains,
-			Passed:  g.Phase == crev1alpha1.GroupSucceeded,
+			Passed:  g.Phase == nvcrev1alpha1.GroupSucceeded,
 		})
 	}
 	// Process failed groups first: move minGroupSize groups to suspects,
@@ -1395,11 +1686,11 @@ func (r *WorkflowReconciler) handleDiagnoseBisection(
 	// that both succeeded indicate an infrastructure fault at the boundary.
 	bhpResults := orchestration.DetectBothHalvesPass(groupResults)
 	if len(bhpResults) > 0 {
-		probes := make([]crev1alpha1.CrossBoundaryProbe, 0, len(bhpResults))
+		probes := make([]nvcrev1alpha1.CrossBoundaryProbe, 0, len(bhpResults))
 		for _, bhp := range bhpResults {
 			log.Info("Both-halves-pass detected — infrastructure fault candidate",
 				"domain", bhp.Domain, "halfA", len(bhp.HalfA), "halfB", len(bhp.HalfB))
-			probes = append(probes, crev1alpha1.CrossBoundaryProbe{
+			probes = append(probes, nvcrev1alpha1.CrossBoundaryProbe{
 				Domain: bhp.Domain, HalfA: bhp.HalfA, HalfB: bhp.HalfB, ProbeRound: 0,
 			})
 			// Remove BHP nodes from healthy (they were marked healthy by bisection pass)
@@ -1412,11 +1703,11 @@ func (r *WorkflowReconciler) handleDiagnoseBisection(
 		for i, p := range probes {
 			probeGroups = append(probeGroups, orchestration.BuildCrossBoundaryGroups(p.HalfA, p.HalfB, i)...)
 		}
-		diag.CrossBoundaryState = &crev1alpha1.CrossBoundaryState{
+		diag.CrossBoundaryState = &nvcrev1alpha1.CrossBoundaryState{
 			PendingProbes: probes,
-			OriginStage:   crev1alpha1.DiagnoseStageBisection,
+			OriginStage:   nvcrev1alpha1.DiagnoseStageBisection,
 		}
-		diag.Stage = crev1alpha1.DiagnoseStageCrossBoundary
+		diag.Stage = nvcrev1alpha1.DiagnoseStageCrossBoundary
 		return r.diagnoseSetGroups(ctx, workflow, orch, diag, probeGroups,
 			fmt.Sprintf("Both-halves-pass detected in %d groups. Probing cross-boundary infrastructure.",
 				len(bhpResults)))
@@ -1436,8 +1727,8 @@ func (r *WorkflowReconciler) handleDiagnoseBisection(
 // the boundary. When all probes resolve, results are stored as InfrastructureFaults
 // and the algorithm returns to bisection/confirmation for remaining work.
 func (r *WorkflowReconciler) handleDiagnoseCrossBoundary(
-	ctx context.Context, workflow *crev1alpha1.Workflow,
-	orch *crev1alpha1.OrchestrationStatus, diag *crev1alpha1.DiagnoseStatus,
+	ctx context.Context, workflow *nvcrev1alpha1.Workflow,
+	orch *nvcrev1alpha1.OrchestrationStatus, diag *nvcrev1alpha1.DiagnoseStatus,
 	minGroupSize int, failedGroups []orchestration.Group,
 ) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -1452,7 +1743,7 @@ func (r *WorkflowReconciler) handleDiagnoseCrossBoundary(
 	}
 
 	// Process each pending probe: check if its mixed groups passed or failed.
-	var nextProbes []crev1alpha1.CrossBoundaryProbe
+	var nextProbes []nvcrev1alpha1.CrossBoundaryProbe
 	for i, probe := range cbState.PendingProbes {
 		mix0 := fmt.Sprintf("cross-%d-mix0", i)
 		mix1 := fmt.Sprintf("cross-%d-mix1", i)
@@ -1470,7 +1761,7 @@ func (r *WorkflowReconciler) handleDiagnoseCrossBoundary(
 		if mix0Failed && mix1Failed {
 			// Both failed — full infrastructure fault across the boundary.
 			log.Info("Infrastructure fault confirmed (full boundary)", "domain", probe.Domain)
-			diag.InfrastructureFaults = append(diag.InfrastructureFaults, crev1alpha1.InfrastructureFault{
+			diag.InfrastructureFaults = append(diag.InfrastructureFaults, nvcrev1alpha1.InfrastructureFault{
 				Domain: probe.Domain,
 				GroupA: probe.HalfA,
 				GroupB: probe.HalfB,
@@ -1487,7 +1778,7 @@ func (r *WorkflowReconciler) handleDiagnoseCrossBoundary(
 			// Max rounds or min size — record as infrastructure fault.
 			log.Info("Infrastructure fault localized", "domain", probe.Domain,
 				"halfA", len(probe.HalfA), "halfB", len(probe.HalfB))
-			diag.InfrastructureFaults = append(diag.InfrastructureFaults, crev1alpha1.InfrastructureFault{
+			diag.InfrastructureFaults = append(diag.InfrastructureFaults, nvcrev1alpha1.InfrastructureFault{
 				Domain: probe.Domain,
 				GroupA: probe.HalfA,
 				GroupB: probe.HalfB,
@@ -1534,19 +1825,20 @@ func (r *WorkflowReconciler) handleDiagnoseCrossBoundary(
 
 	// Check if infrastructure faults were found.
 	if len(diag.InfrastructureFaults) > 0 {
-		diag.Stage = crev1alpha1.DiagnoseStageComplete
+		diag.Stage = nvcrev1alpha1.DiagnoseStageComplete
 		msg := fmt.Sprintf("Diagnosis complete: %d infrastructure faults detected", len(diag.InfrastructureFaults))
 		log.Info(msg)
 		return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, ReasonIterationsFailed, msg,
 			applySucceededNodesRef(workflow.Status.SucceededNodesRef),
-			applyFailedNodesRef(workflow.Status.FailedNodesRef))
+			applyFailedNodesRef(workflow.Status.FailedNodesRef),
+			applyOrchestration(orch))
 	}
 
 	return r.diagnoseDone(ctx, workflow, diag, "Cross-boundary probing complete: no faults confirmed")
 }
 
 // failedScreeningGroups rebuilds per-clique groups from screening results.
-func failedScreeningGroups(diag *crev1alpha1.DiagnoseStatus) []orchestration.Group {
+func failedScreeningGroups(diag *nvcrev1alpha1.DiagnoseStatus) []orchestration.Group {
 	var groups []orchestration.Group
 	for domain, sr := range diag.ScreeningResults {
 		if !sr.Passed {
@@ -1563,8 +1855,8 @@ func failedScreeningGroups(diag *crev1alpha1.DiagnoseStatus) []orchestration.Gro
 
 // diagnoseNextGroups bisects failed groups or transitions to confirmation if converged.
 func (r *WorkflowReconciler) diagnoseNextGroups(
-	ctx context.Context, workflow *crev1alpha1.Workflow,
-	orch *crev1alpha1.OrchestrationStatus, diag *crev1alpha1.DiagnoseStatus,
+	ctx context.Context, workflow *nvcrev1alpha1.Workflow,
+	orch *nvcrev1alpha1.OrchestrationStatus, diag *nvcrev1alpha1.DiagnoseStatus,
 	minGroupSize int, failedGroups []orchestration.Group,
 ) (ctrl.Result, error) {
 	result := orchestration.Bisect(orchestration.BisectInput{
@@ -1599,40 +1891,45 @@ func (r *WorkflowReconciler) diagnoseNextGroups(
 			if err := r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)); err != nil {
 				logf.FromContext(ctx).Error(err, "Failed to record succeeded nodes to ConfigMap")
 			}
-			diag.Stage = crev1alpha1.DiagnoseStageComplete
+			diag.Stage = nvcrev1alpha1.DiagnoseStageComplete
 			return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, ReasonIterationsFailed, msg,
 				applySucceededNodesRef(workflow.Status.SucceededNodesRef),
-				applyFailedNodesRef(workflow.Status.FailedNodesRef))
+				applyFailedNodesRef(workflow.Status.FailedNodesRef),
+				applyOrchestration(orch))
 		}
-		diag.Stage = crev1alpha1.DiagnoseStageConfirmation
+		diag.Stage = nvcrev1alpha1.DiagnoseStageConfirmation
 		return r.diagnoseSetGroups(ctx, workflow, orch, diag, groups,
 			fmt.Sprintf("Bisection converged: %d suspects, starting confirmation", len(diag.SuspectNodes)))
 	}
 
-	diag.Stage = crev1alpha1.DiagnoseStageBisection
+	diag.Stage = nvcrev1alpha1.DiagnoseStageBisection
 	return r.diagnoseSetGroups(ctx, workflow, orch, diag, result.Groups,
 		fmt.Sprintf("Bisection round %d: %d groups", diag.Round, len(result.Groups)))
 }
 
 // diagnoseSetGroups replaces the current groups and advances the iteration.
 func (r *WorkflowReconciler) diagnoseSetGroups(
-	ctx context.Context, workflow *crev1alpha1.Workflow,
-	orch *crev1alpha1.OrchestrationStatus, diag *crev1alpha1.DiagnoseStatus,
+	ctx context.Context, workflow *nvcrev1alpha1.Workflow,
+	orch *nvcrev1alpha1.OrchestrationStatus, diag *nvcrev1alpha1.DiagnoseStatus,
 	groups []orchestration.Group, msg string,
 ) (ctrl.Result, error) {
 	logf.FromContext(ctx).Info(msg, "stage", diag.Stage, "round", diag.Round)
 
-	orch.Groups = make([]crev1alpha1.GroupStatus, len(groups))
+	orch.Groups = make([]nvcrev1alpha1.GroupStatus, len(groups))
 	for i, g := range groups {
-		orch.Groups[i] = crev1alpha1.GroupStatus{
+		orch.Groups[i] = nvcrev1alpha1.GroupStatus{
 			Name: g.Name, Nodes: g.Nodes, Domains: g.Domains,
-			Phase: crev1alpha1.GroupPending,
+			Phase: nvcrev1alpha1.GroupPending,
 		}
 	}
 	orch.TotalGroups = len(groups)
 	orch.CurrentIteration = orch.CompletedIterations + 1
 
-	if err := r.setWorkflowInProgress(ctx, workflow, ReasonIterationCompleted, msg); err != nil {
+	// Groups, TotalGroups, CurrentIteration above — plus the CompletedIterations
+	// increment and diagnose stage/round transitions made by callers — live on
+	// the cached object. Re-apply them inside the retry closure so a 409
+	// conflict re-fetch does not silently drop them.
+	if err := r.setWorkflowInProgress(ctx, workflow, ReasonIterationCompleted, msg, applyOrchestration(orch)); err != nil {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{RequeueAfter: requeueImmediate}, nil
@@ -1640,21 +1937,23 @@ func (r *WorkflowReconciler) diagnoseSetGroups(
 
 // diagnoseDone sets the workflow as succeeded with the given message.
 func (r *WorkflowReconciler) diagnoseDone(
-	ctx context.Context, workflow *crev1alpha1.Workflow,
-	diag *crev1alpha1.DiagnoseStatus, msg string,
+	ctx context.Context, workflow *nvcrev1alpha1.Workflow,
+	diag *nvcrev1alpha1.DiagnoseStatus, msg string,
 ) (ctrl.Result, error) {
-	diag.Stage = crev1alpha1.DiagnoseStageComplete
+	diag.Stage = nvcrev1alpha1.DiagnoseStageComplete
 	logf.FromContext(ctx).Info(msg, "round", diag.Round,
 		"healthy", len(diag.HealthyNodes), "suspects", len(diag.SuspectNodes))
 
 	if err := r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)); err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to record succeeded nodes to ConfigMap")
 	}
-	return ctrl.Result{}, r.setWorkflowSucceeded(ctx, workflow, ReasonJobCompleted, msg, applySucceededNodesRef(workflow.Status.SucceededNodesRef))
+	return ctrl.Result{}, r.setWorkflowSucceeded(ctx, workflow, ReasonJobCompleted, msg,
+		applySucceededNodesRef(workflow.Status.SucceededNodesRef),
+		applyOrchestration(workflow.Status.Orchestration))
 }
 
 // buildInterDomainGroup selects one healthy representative per screening group.
-func buildInterDomainGroup(healthyNodes []string, groups []crev1alpha1.GroupStatus) orchestration.Group {
+func buildInterDomainGroup(healthyNodes []string, groups []nvcrev1alpha1.GroupStatus) orchestration.Group {
 	healthySet := make(map[string]bool, len(healthyNodes))
 	for _, n := range healthyNodes {
 		healthySet[n] = true
@@ -1677,17 +1976,17 @@ func buildInterDomainGroup(healthyNodes []string, groups []crev1alpha1.GroupStat
 }
 
 // snapshotIteration captures the current group outcomes as an IterationResult.
-func snapshotIteration(orch *crev1alpha1.OrchestrationStatus) crev1alpha1.IterationResult {
-	result := crev1alpha1.IterationResult{
+func snapshotIteration(orch *nvcrev1alpha1.OrchestrationStatus) nvcrev1alpha1.IterationResult {
+	result := nvcrev1alpha1.IterationResult{
 		Iteration: orch.CurrentIteration,
-		Groups:    make([]crev1alpha1.GroupIterationResult, len(orch.Groups)),
+		Groups:    make([]nvcrev1alpha1.GroupIterationResult, len(orch.Groups)),
 	}
 	for i, g := range orch.Groups {
 		var jobName string
 		if g.JobRef != nil {
 			jobName = g.JobRef.Name
 		}
-		result.Groups[i] = crev1alpha1.GroupIterationResult{
+		result.Groups[i] = nvcrev1alpha1.GroupIterationResult{
 			Name:           g.Name,
 			Phase:          g.Phase,
 			JobName:        jobName,
@@ -1699,9 +1998,9 @@ func snapshotIteration(orch *crev1alpha1.OrchestrationStatus) crev1alpha1.Iterat
 }
 
 // ensureOrchestrationStatus initializes the orchestration status if nil.
-func (r *WorkflowReconciler) ensureOrchestrationStatus(workflow *crev1alpha1.Workflow) *crev1alpha1.OrchestrationStatus {
+func (r *WorkflowReconciler) ensureOrchestrationStatus(workflow *nvcrev1alpha1.Workflow) *nvcrev1alpha1.OrchestrationStatus {
 	if workflow.Status.Orchestration == nil {
-		workflow.Status.Orchestration = &crev1alpha1.OrchestrationStatus{}
+		workflow.Status.Orchestration = &nvcrev1alpha1.OrchestrationStatus{}
 	}
 	return workflow.Status.Orchestration
 }
@@ -1711,7 +2010,7 @@ func (r *WorkflowReconciler) ensureOrchestrationStatus(workflow *crev1alpha1.Wor
 // when the Workflow is eventually deleted by the Certification controller. This preserves
 // GoodputMeasurement and BandwidthMeasurement resources (owned by Workflow via OwnerReference)
 // so the certification report can read metrics across all iterations before teardown.
-func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *crev1alpha1.Workflow) (ctrl.Result, error) {
+func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *nvcrev1alpha1.Workflow) (ctrl.Result, error) {
 	totalIter := effectiveIterations(workflow.Spec.Orchestration)
 
 	// Count failed groups across all iterations
@@ -1719,11 +2018,12 @@ func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *crev1
 
 	if failedGroups > 0 {
 		isHardware := r.hasHardwareFailures(ctx, workflow)
+		hasValidation := r.hasValidationFailures(ctx, workflow)
 
 		reason := ReasonIterationsFailed
-		if r.hasHardwareFailures(ctx, workflow) {
+		if isHardware {
 			reason = ReasonJobHardwareFailed
-		} else if r.hasValidationFailures(ctx, workflow) {
+		} else if hasValidation {
 			reason = ReasonJobValidationFailed
 		}
 
@@ -1736,9 +2036,25 @@ func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *crev1
 			logf.FromContext(ctx).Error(err, "Failed to record succeeded nodes to ConfigMap")
 		}
 
-		return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, reason, msg,
+		extras := []func(*nvcrev1alpha1.Workflow) bool{
 			applySucceededNodesRef(workflow.Status.SucceededNodesRef),
-			applyFailedNodesRef(workflow.Status.FailedNodesRef))
+			applyFailedNodesRef(workflow.Status.FailedNodesRef),
+			// applyOrchestration persists the final iteration's CompletedIterations
+			// increment made by handleIterationComplete through a 409 re-fetch.
+			applyOrchestration(workflow.Status.Orchestration),
+		}
+		if hasValidation {
+			// Supplementary quality signal alongside the exclusive Failed
+			// condition: it lets consumers (the WorkloadRun controller,
+			// certification reports) tell a threshold miss apart from an
+			// execution failure. Set whenever any Job failed threshold
+			// validation, even when hardware failures win the Failed reason,
+			// so mixed-failure runs do not lose the quality signal.
+			extras = append(extras, applyWorkflowValidationFailed(
+				"One or more Jobs failed performance threshold validation"))
+		}
+
+		return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, reason, msg, extras...)
 	}
 
 	msg := fmt.Sprintf("All %d iterations completed successfully", totalIter)
@@ -1746,11 +2062,13 @@ func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *crev1
 	if err := r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)); err != nil {
 		logf.FromContext(ctx).Error(err, "Failed to record succeeded nodes to ConfigMap")
 	}
-	return ctrl.Result{}, r.setWorkflowSucceeded(ctx, workflow, ReasonJobCompleted, msg, applySucceededNodesRef(workflow.Status.SucceededNodesRef))
+	return ctrl.Result{}, r.setWorkflowSucceeded(ctx, workflow, ReasonJobCompleted, msg,
+		applySucceededNodesRef(workflow.Status.SucceededNodesRef),
+		applyOrchestration(workflow.Status.Orchestration))
 }
 
 // countFailedGroups counts groups with Failed phase across all iterations.
-func (r *WorkflowReconciler) countFailedGroups(workflow *crev1alpha1.Workflow) int {
+func (r *WorkflowReconciler) countFailedGroups(workflow *nvcrev1alpha1.Workflow) int {
 	if workflow.Status.Orchestration == nil {
 		return 0
 	}
@@ -1758,14 +2076,14 @@ func (r *WorkflowReconciler) countFailedGroups(workflow *crev1alpha1.Workflow) i
 	// Count from iteration history (completed non-final iterations).
 	for _, iter := range workflow.Status.Orchestration.IterationHistory {
 		for _, g := range iter.Groups {
-			if g.Phase == crev1alpha1.GroupFailed {
+			if g.Phase == nvcrev1alpha1.GroupFailed {
 				count++
 			}
 		}
 	}
 	// Count from current (final) groups.
 	for _, g := range workflow.Status.Orchestration.Groups {
-		if g.Phase == crev1alpha1.GroupFailed {
+		if g.Phase == nvcrev1alpha1.GroupFailed {
 			count++
 		}
 	}
@@ -1774,13 +2092,13 @@ func (r *WorkflowReconciler) countFailedGroups(workflow *crev1alpha1.Workflow) i
 
 // hasValidationFailures checks if any failed group's Job has the ValidationFailed condition.
 // Used by setFinalStatus to distinguish validation failures from other failure types.
-func (r *WorkflowReconciler) hasValidationFailures(ctx context.Context, workflow *crev1alpha1.Workflow) bool {
-	return r.anyFailedGroupJobHasCondition(ctx, workflow, crev1alpha1.JobValidationFailed)
+func (r *WorkflowReconciler) hasValidationFailures(ctx context.Context, workflow *nvcrev1alpha1.Workflow) bool {
+	return r.anyFailedGroupJobHasCondition(ctx, workflow, nvcrev1alpha1.JobValidationFailed)
 }
 
 // hasHardwareFailures checks if any failed group's Job has the HardwareFailed condition.
-func (r *WorkflowReconciler) hasHardwareFailures(ctx context.Context, workflow *crev1alpha1.Workflow) bool {
-	return r.anyFailedGroupJobHasCondition(ctx, workflow, crev1alpha1.JobHardwareFailed)
+func (r *WorkflowReconciler) hasHardwareFailures(ctx context.Context, workflow *nvcrev1alpha1.Workflow) bool {
+	return r.anyFailedGroupJobHasCondition(ctx, workflow, nvcrev1alpha1.JobHardwareFailed)
 }
 
 // anyFailedGroupJobHasCondition reports whether the Job behind any failed group
@@ -1791,20 +2109,20 @@ func (r *WorkflowReconciler) hasHardwareFailures(ctx context.Context, workflow *
 // transient read error should leave the generic reason in place rather than
 // assert a cause that was never observed.
 func (r *WorkflowReconciler) anyFailedGroupJobHasCondition(
-	ctx context.Context, workflow *crev1alpha1.Workflow, conditionType string,
+	ctx context.Context, workflow *nvcrev1alpha1.Workflow, conditionType string,
 ) bool {
 	if workflow.Status.Orchestration == nil {
 		return false
 	}
 	for _, g := range workflow.Status.Orchestration.Groups {
-		if g.Phase != crev1alpha1.GroupFailed || g.JobRef == nil {
+		if g.Phase != nvcrev1alpha1.GroupFailed || g.JobRef == nil {
 			continue
 		}
 		ns := g.JobRef.Namespace
 		if ns == "" {
 			ns = workflow.Namespace
 		}
-		job := &crev1alpha1.Job{}
+		job := &nvcrev1alpha1.Job{}
 		if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: g.JobRef.Name}, job); err != nil {
 			continue
 		}
@@ -1818,7 +2136,7 @@ func (r *WorkflowReconciler) anyFailedGroupJobHasCondition(
 // deleteTerminalJobs deletes all Jobs referenced by the current iteration's groups.
 // The Job controller's finalizer handles workload cleanup and metrics.
 // updateTopologyMetric recomputes the topology validated nodes gauge from all succeeded groups.
-func (r *WorkflowReconciler) updateTopologyMetric(ctx context.Context, workflow *crev1alpha1.Workflow) {
+func (r *WorkflowReconciler) updateTopologyMetric(ctx context.Context, workflow *nvcrev1alpha1.Workflow) {
 	log := logf.FromContext(ctx)
 	topologyKey := getTopologyKey(workflow)
 	if topologyKey == "" {
@@ -1835,7 +2153,7 @@ func (r *WorkflowReconciler) updateTopologyMetric(ctx context.Context, workflow 
 	failedNodes := make(map[string]bool)
 	failedDomainNodes := make(map[string]map[string]bool) // domain -> set of node names
 	for _, g := range orch.Groups {
-		if g.Phase == crev1alpha1.GroupFailed {
+		if g.Phase == nvcrev1alpha1.GroupFailed {
 			for _, nodeName := range g.Nodes {
 				failedNodes[nodeName] = true
 				domain := r.getNodeDomain(ctx, nodeName, topologyKey, g.Domains)
@@ -1853,7 +2171,7 @@ func (r *WorkflowReconciler) updateTopologyMetric(ctx context.Context, workflow 
 	// excluding any node that appears in a failed group.
 	domainNodes := make(map[string]map[string]bool) // domain -> set of node names
 	for _, g := range orch.Groups {
-		if g.Phase != crev1alpha1.GroupSucceeded {
+		if g.Phase != nvcrev1alpha1.GroupSucceeded {
 			continue
 		}
 		for _, nodeName := range g.Nodes {
@@ -1894,7 +2212,7 @@ func (r *WorkflowReconciler) updateTopologyMetric(ctx context.Context, workflow 
 }
 
 // getTopologyKey returns the topology key from the workflow spec, or "" if not set.
-func getTopologyKey(workflow *crev1alpha1.Workflow) string {
+func getTopologyKey(workflow *nvcrev1alpha1.Workflow) string {
 	if workflow.Spec.Orchestration.Topology != nil {
 		return workflow.Spec.Orchestration.Topology.TopologyKey
 	}
@@ -1918,7 +2236,7 @@ func (r *WorkflowReconciler) getNodeDomain(ctx context.Context, nodeName, topolo
 
 // buildGroupStatuses converts orchestration groups into GroupStatus objects,
 // populating DomainNodeCounts for multi-domain groups using node topology labels.
-func buildGroupStatuses(groups []orchestration.Group, nodeInfos []orchestration.NodeInfo, topo *crev1alpha1.TopologySpec) []crev1alpha1.GroupStatus {
+func buildGroupStatuses(groups []orchestration.Group, nodeInfos []orchestration.NodeInfo, topo *nvcrev1alpha1.TopologySpec) []nvcrev1alpha1.GroupStatus {
 	// Build node→domain lookup for DomainNodeCounts.
 	nodeDomainMap := make(map[string]string)
 	if topo != nil && topo.TopologyKey != "" {
@@ -1929,14 +2247,14 @@ func buildGroupStatuses(groups []orchestration.Group, nodeInfos []orchestration.
 		}
 	}
 
-	statuses := make([]crev1alpha1.GroupStatus, len(groups))
+	statuses := make([]nvcrev1alpha1.GroupStatus, len(groups))
 	for i, g := range groups {
-		statuses[i] = crev1alpha1.GroupStatus{
+		statuses[i] = nvcrev1alpha1.GroupStatus{
 			Name:     g.Name,
 			Nodes:    g.Nodes,
 			Domains:  g.Domains,
 			Overflow: g.Overflow,
-			Phase:    crev1alpha1.GroupPending,
+			Phase:    nvcrev1alpha1.GroupPending,
 		}
 		if len(g.Domains) > 1 && len(nodeDomainMap) > 0 {
 			counts := make(map[string]int)
@@ -1954,7 +2272,7 @@ func buildGroupStatuses(groups []orchestration.Group, nodeInfos []orchestration.
 // collectAllDomainNodes returns domain → node list for all groups.
 // Most groups span a single domain, so assigns all nodes to that domain.
 // Multi-domain groups assign each node to every domain (conservative for cleanup).
-func collectAllDomainNodes(groups []crev1alpha1.GroupStatus) map[string][]string {
+func collectAllDomainNodes(groups []nvcrev1alpha1.GroupStatus) map[string][]string {
 	result := make(map[string][]string)
 	for _, g := range groups {
 		if len(g.Domains) == 1 {
@@ -1969,22 +2287,22 @@ func collectAllDomainNodes(groups []crev1alpha1.GroupStatus) map[string][]string
 }
 
 // setWorkflowInProgress sets the Workflow to InProgress state.
-func (r *WorkflowReconciler) setWorkflowInProgress(ctx context.Context, workflow *crev1alpha1.Workflow, reason, message string, extra ...func(*crev1alpha1.Workflow) bool) error {
-	return r.setExclusiveCondition(ctx, workflow, crev1alpha1.WorkflowInProgress, reason, message, extra...)
+func (r *WorkflowReconciler) setWorkflowInProgress(ctx context.Context, workflow *nvcrev1alpha1.Workflow, reason, message string, extra ...func(*nvcrev1alpha1.Workflow) bool) error {
+	return r.setExclusiveCondition(ctx, workflow, nvcrev1alpha1.WorkflowInProgress, reason, message, extra...)
 }
 
 // setWorkflowSucceeded sets the Workflow to Succeeded state.
 // extra funcs are applied inside the updateStatusWithRetry closure so their
 // status mutations survive 409 conflict re-fetches.
-func (r *WorkflowReconciler) setWorkflowSucceeded(ctx context.Context, workflow *crev1alpha1.Workflow, reason, message string, extra ...func(*crev1alpha1.Workflow) bool) error {
-	return r.setExclusiveCondition(ctx, workflow, crev1alpha1.WorkflowSucceeded, reason, message, extra...)
+func (r *WorkflowReconciler) setWorkflowSucceeded(ctx context.Context, workflow *nvcrev1alpha1.Workflow, reason, message string, extra ...func(*nvcrev1alpha1.Workflow) bool) error {
+	return r.setExclusiveCondition(ctx, workflow, nvcrev1alpha1.WorkflowSucceeded, reason, message, extra...)
 }
 
 // setWorkflowFailed sets the Workflow to Failed state.
 // extra funcs are applied inside the updateStatusWithRetry closure so their
 // status mutations survive 409 conflict re-fetches.
-func (r *WorkflowReconciler) setWorkflowFailed(ctx context.Context, workflow *crev1alpha1.Workflow, reason, message string, extra ...func(*crev1alpha1.Workflow) bool) error {
-	return r.setExclusiveCondition(ctx, workflow, crev1alpha1.WorkflowFailed, reason, message, extra...)
+func (r *WorkflowReconciler) setWorkflowFailed(ctx context.Context, workflow *nvcrev1alpha1.Workflow, reason, message string, extra ...func(*nvcrev1alpha1.Workflow) bool) error {
+	return r.setExclusiveCondition(ctx, workflow, nvcrev1alpha1.WorkflowFailed, reason, message, extra...)
 }
 
 // applySucceededNodesRef returns an extra func suitable for setWorkflowSucceeded
@@ -1992,11 +2310,11 @@ func (r *WorkflowReconciler) setWorkflowFailed(ctx context.Context, workflow *cr
 // closure. Without this, SucceededNodesRef set on the stale object before the
 // call is silently discarded when the API server returns a 409 conflict and the
 // object is re-fetched.
-func applySucceededNodesRef(ref *corev1.TypedLocalObjectReference) func(*crev1alpha1.Workflow) bool {
+func applySucceededNodesRef(ref *corev1.TypedLocalObjectReference) func(*nvcrev1alpha1.Workflow) bool {
 	if ref == nil {
 		return nil
 	}
-	return func(w *crev1alpha1.Workflow) bool {
+	return func(w *nvcrev1alpha1.Workflow) bool {
 		cur := w.Status.SucceededNodesRef
 		if cur != nil && cur.Name == ref.Name && cur.Kind == ref.Kind {
 			return false
@@ -2006,16 +2324,43 @@ func applySucceededNodesRef(ref *corev1.TypedLocalObjectReference) func(*crev1al
 	}
 }
 
+// applyExclusionRecord returns an extra func suitable for setWorkflowFailed
+// that re-applies the excludedNodes/exclusionReason coverage record inside the
+// updateStatusWithRetry closure. discoverAndPartition writes the record onto
+// the in-memory orchestration status and then fails; without this, a 409
+// conflict re-fetches the object in place (wiping the orchestration fields)
+// and the retry re-applies only the conditions — and since the Workflow is
+// terminal afterwards, nothing ever recomputes the record. The values are
+// captured, not read through the orchestration pointer, because the re-fetch
+// overwrites what that pointer refers to.
+func applyExclusionRecord(excludedNodes []string, exclusionReason string) func(*nvcrev1alpha1.Workflow) bool {
+	if len(excludedNodes) == 0 && exclusionReason == "" {
+		return nil
+	}
+	return func(w *nvcrev1alpha1.Workflow) bool {
+		if w.Status.Orchestration == nil {
+			w.Status.Orchestration = &nvcrev1alpha1.OrchestrationStatus{}
+		}
+		orch := w.Status.Orchestration
+		if slices.Equal(orch.ExcludedNodes, excludedNodes) && orch.ExclusionReason == exclusionReason {
+			return false
+		}
+		orch.ExcludedNodes = excludedNodes
+		orch.ExclusionReason = exclusionReason
+		return true
+	}
+}
+
 // applyFailedNodesRef returns an extra func suitable for setWorkflowFailed that
 // re-applies ref inside the updateStatusWithRetry closure. Without this,
 // FailedNodesRef set on the stale object before the call (e.g. by
 // recordFailedNodes) is silently discarded when the API server returns a 409
 // conflict and the object is re-fetched.
-func applyFailedNodesRef(ref *corev1.TypedLocalObjectReference) func(*crev1alpha1.Workflow) bool {
+func applyFailedNodesRef(ref *corev1.TypedLocalObjectReference) func(*nvcrev1alpha1.Workflow) bool {
 	if ref == nil {
 		return nil
 	}
-	return func(w *crev1alpha1.Workflow) bool {
+	return func(w *nvcrev1alpha1.Workflow) bool {
 		cur := w.Status.FailedNodesRef
 		if cur != nil && cur.Name == ref.Name && cur.Kind == ref.Kind {
 			return false
@@ -2025,14 +2370,98 @@ func applyFailedNodesRef(ref *corev1.TypedLocalObjectReference) func(*crev1alpha
 	}
 }
 
+// applyWorkflowValidationFailed returns an extra func for setWorkflowFailed that
+// sets the supplementary WorkflowValidationFailed condition alongside the
+// exclusive Failed condition. ValidationFailed is deliberately NOT part of the
+// exclusive InProgress/Succeeded/Failed trio (see workflow_types.go): it is an
+// independent quality signal that distinguishes "the workload ran but missed
+// its thresholds" from "the workload broke". Applied inside the
+// updateStatusWithRetry closure so it survives 409 conflict re-fetches.
+func applyWorkflowValidationFailed(message string) func(*nvcrev1alpha1.Workflow) bool {
+	return func(w *nvcrev1alpha1.Workflow) bool {
+		return meta.SetStatusCondition(&w.Status.Conditions, metav1.Condition{
+			Type:               nvcrev1alpha1.WorkflowValidationFailed,
+			Status:             metav1.ConditionTrue,
+			Reason:             ReasonJobValidationFailed,
+			Message:            message,
+			ObservedGeneration: w.GetGeneration(),
+		})
+	}
+}
+
+// applyOrchestration returns an extra func suitable for the setWorkflow* status
+// writers that re-applies the caller-computed orchestration state inside the
+// updateStatusWithRetry closure. Iteration and diagnose transitions mutate
+// workflow.Status.Orchestration on the cached object before the condition
+// write; on a 409 conflict the object is re-fetched in place and only closure
+// mutations are re-applied, so the CompletedIterations increment, group
+// resets, and diagnose stage transitions are silently dropped. Snapshotting
+// the desired state and re-applying it inside the closure makes those
+// mutations survive the retry.
+//
+// It reports a change unconditionally: every call site has just advanced the
+// orchestration state, so the persisted state always lags what the caller
+// computed and the write must not be skipped as a no-op even when the
+// conditions happen to be unchanged. Comparing against the passed object
+// cannot detect this, because that object already carries the mutation.
+//
+// Replacing the whole struct is safe against concurrent writers: the Workflow
+// reconciler is the sole writer of status.orchestration and controller-runtime
+// serialises reconciles per object. The remaining window is a serial
+// stale-cache replay — a reconcile starting from a cached object that predates
+// this reconciler's own prior writes recomputes the same transition and, on a
+// 409 re-fetch, overwrites fresher orchestration state with the recomputed
+// snapshot. The recomputation is deterministic, so counters and history
+// converge to identical values; the only state that can be reverted is a group
+// launch (Running phase, JobRef) from an intervening reconcile, which
+// self-heals on the next pass because createJobForGroup adopts the existing
+// Job on AlreadyExists and re-adds its dependency refs.
+func applyOrchestration(orch *nvcrev1alpha1.OrchestrationStatus) func(*nvcrev1alpha1.Workflow) bool {
+	if orch == nil {
+		return nil
+	}
+	want := orch.DeepCopy()
+	return func(w *nvcrev1alpha1.Workflow) bool {
+		w.Status.Orchestration = want.DeepCopy()
+		return true
+	}
+}
+
+// applyDependencyRefs returns an extra func for setWorkflowFailed that
+// re-applies the given dependency refs inside the updateStatusWithRetry
+// closure. Refs appended to workflow.Status.DependencyRefs in memory (e.g.
+// copies created before a dependency name collision) would otherwise be
+// silently discarded when the API server returns a 409 conflict and the object
+// is re-fetched — and on a terminal failure there is no retry to re-record
+// them, so the created objects would leak untracked.
+func applyDependencyRefs(refs []nvcrev1alpha1.DependencyResourceRef) func(*nvcrev1alpha1.Workflow) bool {
+	if len(refs) == 0 {
+		return nil
+	}
+	return func(w *nvcrev1alpha1.Workflow) bool {
+		existing := make(map[string]bool, len(w.Status.DependencyRefs))
+		for _, ref := range w.Status.DependencyRefs {
+			existing[scopedDependencyRefKey(ref)] = true
+		}
+		changed := false
+		for _, ref := range refs {
+			if !existing[scopedDependencyRefKey(ref)] {
+				w.Status.DependencyRefs = append(w.Status.DependencyRefs, ref)
+				changed = true
+			}
+		}
+		return changed
+	}
+}
+
 // setExclusiveCondition sets one condition True and all others False (mutually exclusive).
-func (r *WorkflowReconciler) setExclusiveCondition(ctx context.Context, workflow *crev1alpha1.Workflow, conditionType, reason, message string, extra ...func(*crev1alpha1.Workflow) bool) error {
+func (r *WorkflowReconciler) setExclusiveCondition(ctx context.Context, workflow *nvcrev1alpha1.Workflow, conditionType, reason, message string, extra ...func(*nvcrev1alpha1.Workflow) bool) error {
 	changed, err := setExclusiveStatusCondition(ctx, r.Client, workflow,
-		func(w *crev1alpha1.Workflow) *[]metav1.Condition { return &w.Status.Conditions },
+		func(w *nvcrev1alpha1.Workflow) *[]metav1.Condition { return &w.Status.Conditions },
 		[]string{
-			crev1alpha1.WorkflowInProgress,
-			crev1alpha1.WorkflowSucceeded,
-			crev1alpha1.WorkflowFailed,
+			nvcrev1alpha1.WorkflowInProgress,
+			nvcrev1alpha1.WorkflowSucceeded,
+			nvcrev1alpha1.WorkflowFailed,
 		},
 		conditionType, reason, message, extra...,
 	)
@@ -2046,7 +2475,7 @@ func (r *WorkflowReconciler) setExclusiveCondition(ctx context.Context, workflow
 }
 
 // getGroupJobName returns the name for a Job created for a specific group and iteration.
-func (r *WorkflowReconciler) getGroupJobName(workflow *crev1alpha1.Workflow, groupName string, iteration int) string {
+func (r *WorkflowReconciler) getGroupJobName(workflow *nvcrev1alpha1.Workflow, groupName string, iteration int) string {
 	var raw string
 	isDiagnose := workflow.Spec.Orchestration.Diagnose != nil
 	if !isDiagnose && !hasMultipleIterations(workflow.Spec.Orchestration) && workflow.Status.Orchestration != nil && workflow.Status.Orchestration.TotalGroups <= 1 {
@@ -2069,7 +2498,7 @@ func (r *WorkflowReconciler) getJobRequeueInterval() time.Duration {
 // is deleted. For MPI tests, targets the launcher pod (which has the actual NCCL
 // output). Falls back to the first running node pod for non-MPI workloads.
 // Best-effort: errors are logged, not returned.
-func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *crev1alpha1.Job) {
+func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1alpha1.Job) {
 	log := logf.FromContext(ctx)
 	if r.Clientset == nil {
 		return
@@ -2078,7 +2507,7 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *crev1al
 	podList := &corev1.PodList{}
 	if err := r.List(ctx, podList,
 		client.InNamespace(job.Namespace),
-		client.MatchingLabels{"cre.nvidia.com/job": job.Name},
+		client.MatchingLabels{labelJobKey: job.Name},
 	); err != nil {
 		log.V(1).Info("Failed to list pods for timeout log capture", "error", err)
 		return
@@ -2109,7 +2538,7 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *crev1al
 	// Find the main container name (prefer "node", fall back to first)
 	containerName := ""
 	for _, c := range targetPod.Spec.Containers {
-		if containerName == "" || c.Name == "node" {
+		if containerName == "" || c.Name == labelNode {
 			containerName = c.Name
 		}
 	}
@@ -2123,7 +2552,7 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *crev1al
 	stream, err := podlogs.OpenStream(ctx, req)
 	if err != nil {
 		log.V(1).Info("Failed to stream pod logs for timeout capture", "pod", targetPod.Name, "error", err)
-		job.Status.FailureLog = &crev1alpha1.FailureLog{
+		job.Status.FailureLog = &nvcrev1alpha1.FailureLog{
 			PodName:  targetPod.Name,
 			NodeName: targetPod.Spec.NodeName,
 			Reason:   "Timeout",
@@ -2137,7 +2566,7 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *crev1al
 		log.V(1).Info("Failed to read pod logs", "pod", targetPod.Name, "error", err)
 	}
 
-	job.Status.FailureLog = &crev1alpha1.FailureLog{
+	job.Status.FailureLog = &nvcrev1alpha1.FailureLog{
 		PodName:  targetPod.Name,
 		NodeName: targetPod.Spec.NodeName,
 		Reason:   "Timeout",
@@ -2155,7 +2584,16 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *crev1al
 // Jobs must be deleted before dependencies because dependencies (ComputeDomain,
 // ResourceClaimTemplate) provide DRA allocations for GPU interconnects. Deleting
 // them while workload pods are still running causes CUDA failure 719.
-func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *crev1alpha1.Workflow) (ctrl.Result, error) {
+//
+// The Phase 1 wait is also the pod-drain barrier for this path (issue #121):
+// the Job finalizer only unregisters once the workload's pods are gone
+// (bounded by podDrainGracePeriod, see shouldWaitForPodDrain), so "no Job
+// objects remain" implies "no workload pods remain" and Phase 2 cannot revoke
+// a DRA allocation that a terminating pod still holds. This keeps the
+// finalizer path correct without garbage collection: the explicit deletes
+// below are still required under envtest, and the drain wait is bounded, so a
+// stuck Terminating pod delays Workflow deletion by at most the grace period.
+func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *nvcrev1alpha1.Workflow) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	if !controllerutil.ContainsFinalizer(workflow, workflowFinalizer) {
@@ -2164,29 +2602,40 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *crev1
 
 	log.Info("Handling deletion of Workflow")
 
+	// Stamp the backing PV of every owned PVC while the PVCs still exist:
+	// Phase 1 deletes the Jobs, and job-scoped PVCs cascade-delete with them
+	// on a real cluster — before Phase 2 could fetch the PVC and stamp its PV.
+	// Without the stamp, Phase 3 would leave an owned PV on Retain forever.
+	r.markPVsForOwnedPVCs(ctx, workflow)
+
 	// Phase 1: Delete ALL owned Jobs (including completed iteration Jobs) by label selector.
 	// This is necessary because envtest has no GC controller, and with multiple iterations
 	// there may be completed Jobs from previous iterations that are no longer referenced.
 	// The Job controller's finalizer handles workload (TrainJob) deletion and pod termination.
-	jobList := &crev1alpha1.JobList{}
+	jobList := &nvcrev1alpha1.JobList{}
 	if err := r.List(ctx, jobList,
 		client.InNamespace(workflow.Namespace),
-		client.MatchingLabels{"cre.nvidia.com/workflow": workflow.Name},
+		client.MatchingLabels{"nvcre.nvidia.com/workflow": workflow.Name},
 	); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to list Jobs for deletion: %w", err)
 	}
 	for i := range jobList.Items {
 		if jobList.Items[i].DeletionTimestamp.IsZero() {
 			log.Info("Deleting owned Job", "name", jobList.Items[i].Name)
-			if err := r.Delete(ctx, &jobList.Items[i]); err != nil && !apierrors.IsNotFound(err) {
+			// UID precondition: never delete a same-named Job that replaced the
+			// listed one between the List above and this delete.
+			if err := r.Delete(ctx, &jobList.Items[i], client.Preconditions{UID: new(jobList.Items[i].UID)}); err != nil &&
+				!apierrors.IsNotFound(err) && !apierrors.IsConflict(err) {
 				return ctrl.Result{}, fmt.Errorf("failed to delete Job %s: %w", jobList.Items[i].Name, err)
 			}
 		}
 	}
 
-	// Wait for all Jobs to be fully removed. Jobs have finalizers that handle
-	// workload deletion and pod termination; we must wait for that to complete
-	// before removing dependencies that provide DRA allocations.
+	// Wait for all Jobs to be fully removed. The Job finalizer deletes the
+	// workload and then holds until the workload's pods are gone (the
+	// pod-drain barrier in JobReconciler.handleDeletion, bounded by
+	// podDrainGracePeriod), so once no Job objects remain it is safe to
+	// remove the dependencies that provide their DRA allocations.
 	if len(jobList.Items) > 0 {
 		log.Info("Waiting for Jobs to complete deletion before removing dependencies", "remaining", len(jobList.Items))
 		return ctrl.Result{RequeueAfter: r.getJobRequeueInterval()}, nil
@@ -2195,15 +2644,53 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *crev1
 	// Phase 2: Delete all dependency resources in reverse topological order.
 	// Since DependencyRefs are stored in creation (topological) order,
 	// reversing ensures dependents are deleted before their dependencies.
+	//
+	// Every delete is gated on ownership: the object is fetched and verified to
+	// carry this Workflow's creation identity first. A foreign object with a
+	// colliding name (e.g. a user's pre-existing PVC recorded by an older
+	// controller version) is skipped and logged — we never delete what we did
+	// not create. Foreign PVCs are remembered so Phase 3 does not patch their
+	// backing PV's reclaim policy either.
 	var depErrs []error
+	foreignRefs := make(map[string]bool)
 	for _, ref := range reverseDependencyRefs(workflow.Status.DependencyRefs) {
-		obj := &unstructured.Unstructured{}
-		obj.SetAPIVersion(ref.APIVersion)
-		obj.SetKind(ref.Kind)
-		obj.SetName(ref.Name)
-		obj.SetNamespace(ref.Namespace)
+		obj, err := r.getDependencyObject(ctx, ref)
+		if err != nil {
+			log.Error(err, "Failed to fetch dependency resource before deletion", "name", ref.Name)
+			depErrs = append(depErrs, err)
+			continue
+		}
+		if obj == nil {
+			continue // already gone
+		}
+		if !dependencyOwnedForCleanup(obj, workflow) {
+			log.Info("Skipping dependency resource not owned by this Workflow",
+				"scope", ref.Scope, "kind", ref.Kind, "name", ref.Name)
+			foreignRefs[dependencyRefKey(ref)] = true
+			continue
+		}
+		if ref.Kind == kindPVC {
+			// Stamp the backing PV with our creation identity before the PVC
+			// disappears — cleanupPVForPVC (Phase 3) only patches PVs that
+			// carry it.
+			if err := r.markPVOwnedByWorkflow(ctx, workflow, obj); err != nil {
+				log.Error(err, "Failed to mark PV for owned PVC before deletion", "name", ref.Name)
+				depErrs = append(depErrs, err)
+				continue
+			}
+		}
 		log.Info("Deleting dependency resource", "scope", ref.Scope, "kind", ref.Kind, "name", ref.Name)
-		if err := r.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
+		// The UID precondition closes the window between the ownership check
+		// above and this delete: if the owned object was replaced by a
+		// same-named foreign one in between, the API server rejects the delete
+		// with a conflict and we leave the newcomer alone.
+		if err := r.Delete(ctx, obj, client.Preconditions{UID: new(obj.GetUID())}); err != nil && !apierrors.IsNotFound(err) {
+			if apierrors.IsConflict(err) {
+				log.Info("Skipping dependency resource replaced since ownership check",
+					"scope", ref.Scope, "kind", ref.Kind, "name", ref.Name)
+				foreignRefs[dependencyRefKey(ref)] = true
+				continue
+			}
 			log.Error(err, "Failed to delete dependency resource", "name", ref.Name)
 			depErrs = append(depErrs, err)
 		}
@@ -2214,12 +2701,17 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *crev1
 
 	// Phase 3: Patch PVs for deleted PVCs. The PV must be Released (not Bound)
 	// for the reclaim policy patch to stick — if still Bound, requeue.
+	// PVCs identified as foreign in Phase 2 are excluded, and cleanupPVForPVC
+	// itself refuses to patch a PV that does not carry this Workflow's creation
+	// identity — a PV backing a same-named PVC that is already gone (e.g. a
+	// foreign ref recorded by a pre-fix controller whose PVC its owner deleted)
+	// is left untouched.
 	var pvPending bool
 	for _, ref := range workflow.Status.DependencyRefs {
-		if ref.Kind != kindPVC {
+		if ref.Kind != kindPVC || foreignRefs[dependencyRefKey(ref)] {
 			continue
 		}
-		if !r.cleanupPVForPVC(ctx, ref.Namespace, ref.Name) {
+		if !r.cleanupPVForPVC(ctx, workflow, ref.Namespace, ref.Name) {
 			pvPending = true
 		}
 	}
@@ -2247,7 +2739,7 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *crev1
 }
 
 // effectiveIterations returns the number of normal iterations to run, ensuring at least 1.
-func effectiveIterations(orch crev1alpha1.OrchestrationSpec) int {
+func effectiveIterations(orch nvcrev1alpha1.OrchestrationSpec) int {
 	if orch.Iterations < 1 {
 		return 1
 	}
@@ -2255,7 +2747,7 @@ func effectiveIterations(orch crev1alpha1.OrchestrationSpec) int {
 }
 
 // hasMultipleIterations returns true if the orchestration uses multiple iterations.
-func hasMultipleIterations(orch crev1alpha1.OrchestrationSpec) bool {
+func hasMultipleIterations(orch nvcrev1alpha1.OrchestrationSpec) bool {
 	return orch.Iterations > 1
 }
 
@@ -2276,17 +2768,17 @@ func appendUniqueNodes(existing []string, newNodes ...string) []string {
 
 // removeNodes removes specified nodes from a slice.
 // recordScreeningResults saves per-domain screening results and stashes failed nodes.
-func recordScreeningResults(orch *crev1alpha1.OrchestrationStatus, diag *crev1alpha1.DiagnoseStatus, failedGroups []orchestration.Group) {
+func recordScreeningResults(orch *nvcrev1alpha1.OrchestrationStatus, diag *nvcrev1alpha1.DiagnoseStatus, failedGroups []orchestration.Group) {
 	failedNames := failedGroupNameSet(failedGroups)
-	diag.ScreeningResults = make(map[string]crev1alpha1.DomainScreeningResult)
+	diag.ScreeningResults = make(map[string]nvcrev1alpha1.DomainScreeningResult)
 	for _, g := range orch.Groups {
 		domain := g.Name
 		if len(g.Domains) > 0 {
 			domain = g.Domains[0]
 		}
-		diag.ScreeningResults[domain] = crev1alpha1.DomainScreeningResult{
+		diag.ScreeningResults[domain] = nvcrev1alpha1.DomainScreeningResult{
 			Nodes:  g.Nodes,
-			Passed: g.Phase == crev1alpha1.GroupSucceeded && !failedNames[g.Name],
+			Passed: g.Phase == nvcrev1alpha1.GroupSucceeded && !failedNames[g.Name],
 		}
 	}
 	for _, g := range failedGroups {
@@ -2308,7 +2800,7 @@ func failedGroupNameSet(failedGroups []orchestration.Group) map[string]bool {
 }
 
 // buildNoNVLGroups rebuilds screening groups for the no-NVL stage.
-func buildNoNVLGroups(diag *crev1alpha1.DiagnoseStatus) []orchestration.Group {
+func buildNoNVLGroups(diag *nvcrev1alpha1.DiagnoseStatus) []orchestration.Group {
 	groups := make([]orchestration.Group, 0, len(diag.ScreeningResults))
 	for domain, result := range diag.ScreeningResults {
 		groups = append(groups, orchestration.Group{
@@ -2323,17 +2815,17 @@ func buildNoNVLGroups(diag *crev1alpha1.DiagnoseStatus) []orchestration.Group {
 // failedGroups carries the threshold-aware verdict from collectDiagnoseRoundResults
 // so groups that passed by phase but fell below the bandwidth threshold are still
 // recorded as not-passed and routed into the suspect set for follow-up.
-func processNoNVLScreeningResults(orch *crev1alpha1.OrchestrationStatus, diag *crev1alpha1.DiagnoseStatus, failedGroups []orchestration.Group) {
+func processNoNVLScreeningResults(orch *nvcrev1alpha1.OrchestrationStatus, diag *nvcrev1alpha1.DiagnoseStatus, failedGroups []orchestration.Group) {
 	failedNames := failedGroupNameSet(failedGroups)
-	diag.NoNVLScreeningResults = make(map[string]crev1alpha1.DomainScreeningResult)
+	diag.NoNVLScreeningResults = make(map[string]nvcrev1alpha1.DomainScreeningResult)
 	for _, g := range orch.Groups {
 		domain := g.Name
 		if len(g.Domains) > 0 {
 			domain = g.Domains[0]
 		}
-		result := crev1alpha1.DomainScreeningResult{
+		result := nvcrev1alpha1.DomainScreeningResult{
 			Nodes:  g.Nodes,
-			Passed: g.Phase == crev1alpha1.GroupSucceeded && !failedNames[g.Name],
+			Passed: g.Phase == nvcrev1alpha1.GroupSucceeded && !failedNames[g.Name],
 		}
 		diag.NoNVLScreeningResults[domain] = result
 		if !result.Passed {
@@ -2362,8 +2854,8 @@ func removeNodes(existing []string, toRemove []string) []string {
 // round, applying bandwidth threshold reclassification. Returns failed groups and
 // whether any bandwidth measurements are still pending (caller should requeue).
 func (r *WorkflowReconciler) collectDiagnoseRoundResults(
-	ctx context.Context, workflow *crev1alpha1.Workflow,
-	orch *crev1alpha1.OrchestrationStatus, diag *crev1alpha1.DiagnoseStatus,
+	ctx context.Context, workflow *nvcrev1alpha1.Workflow,
+	orch *nvcrev1alpha1.OrchestrationStatus, diag *nvcrev1alpha1.DiagnoseStatus,
 ) ([]orchestration.Group, bool) {
 	log := logf.FromContext(ctx)
 
@@ -2376,7 +2868,7 @@ func (r *WorkflowReconciler) collectDiagnoseRoundResults(
 	var failedGroups []orchestration.Group
 	for _, g := range orch.Groups {
 		switch g.Phase {
-		case crev1alpha1.GroupSucceeded:
+		case nvcrev1alpha1.GroupSucceeded:
 			if bwThresholdExpr != "" && g.JobRef != nil {
 				below, pending, bwErr := r.isBelowBandwidthThreshold(ctx, g.JobRef.Name, workflow.Namespace, bwThresholdExpr)
 				if bwErr != nil {
@@ -2400,7 +2892,7 @@ func (r *WorkflowReconciler) collectDiagnoseRoundResults(
 				}
 			}
 			diag.HealthyNodes = appendUniqueNodes(diag.HealthyNodes, g.Nodes...)
-		case crev1alpha1.GroupFailed:
+		case nvcrev1alpha1.GroupFailed:
 			failedGroups = append(failedGroups, orchestration.Group{
 				Name: g.Name, Nodes: g.Nodes, Domains: g.Domains,
 			})
@@ -2412,16 +2904,16 @@ func (r *WorkflowReconciler) collectDiagnoseRoundResults(
 // applyDiagnoseMNNVLOverride disables MNNVL for diagnose stages that require it:
 // no-NVL screening, cross-boundary probing (when origin stage ran without NVL),
 // and bisection/confirmation when the group contains no-NVL suspects.
-func applyDiagnoseMNNVLOverride(spec *crev1alpha1.WorkloadSpec, diag *crev1alpha1.DiagnoseStatus, nodes []string) {
+func applyDiagnoseMNNVLOverride(spec *nvcrev1alpha1.WorkloadSpec, diag *nvcrev1alpha1.DiagnoseStatus, nodes []string) {
 	switch diag.Stage {
-	case crev1alpha1.DiagnoseStageIntraScreeningNoNVL:
+	case nvcrev1alpha1.DiagnoseStageIntraScreeningNoNVL:
 		overrideMNNVL(spec, "0")
-	case crev1alpha1.DiagnoseStageCrossBoundary:
+	case nvcrev1alpha1.DiagnoseStageCrossBoundary:
 		if diag.CrossBoundaryState != nil &&
-			diag.CrossBoundaryState.OriginStage != crev1alpha1.DiagnoseStageIntraScreening {
+			diag.CrossBoundaryState.OriginStage != nvcrev1alpha1.DiagnoseStageIntraScreening {
 			overrideMNNVL(spec, "0")
 		}
-	case crev1alpha1.DiagnoseStageBisection, crev1alpha1.DiagnoseStageConfirmation:
+	case nvcrev1alpha1.DiagnoseStageBisection, nvcrev1alpha1.DiagnoseStageConfirmation:
 		if len(diag.NoNVLSuspectNodes) > 0 {
 			noNVLSet := make(map[string]bool, len(diag.NoNVLSuspectNodes))
 			for _, n := range diag.NoNVLSuspectNodes {
@@ -2439,7 +2931,7 @@ func applyDiagnoseMNNVLOverride(spec *crev1alpha1.WorkloadSpec, diag *crev1alpha
 
 // overrideMNNVL sets NCCL_MNNVL_ENABLE on the trainer. It checks Args first,
 // then Env, and appends as an env var if not found in either.
-func overrideMNNVL(spec *crev1alpha1.WorkloadSpec, value string) {
+func overrideMNNVL(spec *nvcrev1alpha1.WorkloadSpec, value string) {
 	if spec.TrainJob == nil || spec.TrainJob.Trainer == nil {
 		return
 	}
@@ -2455,7 +2947,7 @@ func overrideMNNVL(spec *crev1alpha1.WorkloadSpec, value string) {
 
 	// Check Env vars.
 	for i, e := range trainer.Env {
-		if e.Name == "NCCL_MNNVL_ENABLE" {
+		if e.Name == mnnvlEnableEnvVar {
 			trainer.Env[i].Value = value
 			return
 		}
@@ -2463,14 +2955,14 @@ func overrideMNNVL(spec *crev1alpha1.WorkloadSpec, value string) {
 
 	// Not found — add as env var.
 	trainer.Env = append(trainer.Env, corev1.EnvVar{
-		Name: "NCCL_MNNVL_ENABLE", Value: value,
+		Name: mnnvlEnableEnvVar, Value: value,
 	})
 }
 
 // isMNNVLEnabledInJobTemplate checks whether the base job template has
 // NCCL_MNNVL_ENABLE set to a non-zero value in either Trainer.Args or Trainer.Env.
 // Returns false if the env var is absent or set to "0".
-func isMNNVLEnabledInJobTemplate(tmpl *crev1alpha1.JobTemplateSpec) bool {
+func isMNNVLEnabledInJobTemplate(tmpl *nvcrev1alpha1.JobTemplateSpec) bool {
 	if tmpl.Spec.Workload.TrainJob == nil || tmpl.Spec.Workload.TrainJob.Trainer == nil {
 		return false
 	}
@@ -2484,7 +2976,7 @@ func isMNNVLEnabledInJobTemplate(tmpl *crev1alpha1.JobTemplateSpec) bool {
 		}
 	}
 	for _, e := range trainer.Env {
-		if e.Name == "NCCL_MNNVL_ENABLE" {
+		if e.Name == mnnvlEnableEnvVar {
 			return e.Value != "0"
 		}
 	}
@@ -2496,7 +2988,7 @@ func isMNNVLEnabledInJobTemplate(tmpl *crev1alpha1.JobTemplateSpec) bool {
 // Dependency refs are accumulated in the workflow object in memory but NOT persisted.
 // The caller's subsequent Status().Update() (e.g. setWorkflowInProgress, job status
 // updates) writes the full status including any new dependency refs.
-func (r *WorkflowReconciler) ensureWorkflowDependencies(ctx context.Context, workflow *crev1alpha1.Workflow) error {
+func (r *WorkflowReconciler) ensureWorkflowDependencies(ctx context.Context, workflow *nvcrev1alpha1.Workflow) error {
 	// Classify deps by reachability from the job template
 	jobSpecJSON, err := json.Marshal(&workflow.Spec.JobTemplate.Spec)
 	if err != nil {
@@ -2538,7 +3030,7 @@ func (r *WorkflowReconciler) ensureWorkflowDependencies(ctx context.Context, wor
 }
 
 // hasPVCDependency checks if the Workflow has a PVC dependency with the given name.
-func (r *WorkflowReconciler) hasPVCDependency(workflow *crev1alpha1.Workflow, pvcName string) bool {
+func (r *WorkflowReconciler) hasPVCDependency(workflow *nvcrev1alpha1.Workflow, pvcName string) bool {
 	for _, dep := range workflow.Spec.Dependencies {
 		var obj unstructured.Unstructured
 		if err := json.Unmarshal(dep.Raw, &obj.Object); err != nil {
@@ -2556,7 +3048,7 @@ func (r *WorkflowReconciler) hasPVCDependency(workflow *crev1alpha1.Workflow, pv
 // unmarshaling from dep.Raw (used for job-scoped deps with suffixed names).
 // The owner parameter sets an owner reference on the resource for GC cascading.
 // Pass nil to skip owner reference (e.g. for job-scoped deps that get the Job as owner later).
-func (r *WorkflowReconciler) createDependencyResource(ctx context.Context, owner client.Object, workflow *crev1alpha1.Workflow, dep crev1alpha1.DependencySpec, prebuilt ...*unstructured.Unstructured) (*crev1alpha1.DependencyResourceRef, bool, error) {
+func (r *WorkflowReconciler) createDependencyResource(ctx context.Context, owner client.Object, workflow *nvcrev1alpha1.Workflow, dep nvcrev1alpha1.DependencySpec, prebuilt ...*unstructured.Unstructured) (*nvcrev1alpha1.DependencyResourceRef, bool, error) {
 	log := logf.FromContext(ctx)
 
 	var obj *unstructured.Unstructured
@@ -2596,22 +3088,77 @@ func (r *WorkflowReconciler) createDependencyResource(ctx context.Context, owner
 	if labels == nil {
 		labels = make(map[string]string)
 	}
-	labels["cre.nvidia.com/workflow"] = workflow.Name
+	labels[labelWorkflowTracking] = workflow.Name
 	obj.SetLabels(labels)
+
+	// Record a UID-strong creation identity. Owner references cannot carry it
+	// for every dependency (cluster-scoped resources cannot reference a
+	// namespaced Workflow, and job-scoped copies are created before their Job),
+	// so the Workflow UID is stamped as an annotation on all of them. It is
+	// what the AlreadyExists path below and the cleanup paths verify.
+	annotations := obj.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+	annotations[annotationWorkflowUID] = string(workflow.GetUID())
+	obj.SetAnnotations(annotations)
 
 	log.Info("Creating dependency resource", "apiVersion", obj.GetAPIVersion(), "kind", obj.GetKind(), "name", obj.GetName())
 	created := true
+	live := obj
 	if err := r.Create(ctx, obj); err != nil {
-		if apierrors.IsAlreadyExists(err) {
-			log.Info("Dependency resource already exists, proceeding", "name", obj.GetName())
-			created = false
-		} else {
+		if !apierrors.IsAlreadyExists(err) {
 			return nil, false, fmt.Errorf("failed to create dependency %s/%s %s: %w",
 				obj.GetAPIVersion(), obj.GetKind(), obj.GetName(), err)
 		}
+		// Never adopt a pre-existing object blindly. Fetch it and verify it is
+		// the one this Workflow created (a duplicate create caused by cache lag
+		// or a crash-retry). A foreign object with a colliding name fails the
+		// Workflow and is NOT recorded for cleanup.
+		existing := &unstructured.Unstructured{}
+		existing.SetAPIVersion(obj.GetAPIVersion())
+		existing.SetKind(obj.GetKind())
+		if err := r.Get(ctx, client.ObjectKeyFromObject(obj), existing); err != nil {
+			return nil, false, fmt.Errorf("failed to get existing dependency %s %s: %w",
+				obj.GetKind(), obj.GetName(), err)
+		}
+		if !dependencyOwnedByWorkflow(existing, workflow) {
+			location := obj.GetName()
+			if obj.GetNamespace() != "" {
+				location = obj.GetNamespace() + "/" + obj.GetName()
+			}
+			// A foreign holder that is already terminating releases the name
+			// shortly: retry with backoff instead of failing terminally.
+			if existing.GetDeletionTimestamp() != nil {
+				return nil, false, fmt.Errorf("dependency %s %q already exists but is being deleted; retrying",
+					obj.GetKind(), location)
+			}
+			return nil, false, &nameCollisionError{
+				Reason: ReasonDependencyNameCollision,
+				Message: fmt.Sprintf("dependency %s %q already exists and is not owned by Workflow %q; refusing to adopt it",
+					obj.GetKind(), location, workflow.Name),
+			}
+		}
+		log.Info("Dependency resource already exists and is owned by this Workflow, proceeding", "name", obj.GetName())
+		created = false
+		live = existing
 	}
 
-	return &crev1alpha1.DependencyResourceRef{
+	// A PVC dependency that is already bound (spec.volumeName set) gets its
+	// backing PV stamped with the creation identity right away. Job-scoped
+	// PVCs carry a Job owner reference, so on a real cluster the API server
+	// cascade-deletes them with their Job — potentially before any cleanup
+	// path can fetch the PVC and stamp the PV. Stamping while the PVC exists
+	// (here, on every status poll, and again at the start of deletion) makes
+	// the identity survive any deletion order. A failure here is non-fatal:
+	// markPVsForOwnedPVCs retries on the next reconcile.
+	if live.GetKind() == kindPVC {
+		if err := r.markPVOwnedByWorkflow(ctx, workflow, live); err != nil {
+			log.Error(err, "Failed to mark PV for owned PVC at creation", "name", live.GetName())
+		}
+	}
+
+	return &nvcrev1alpha1.DependencyResourceRef{
 		APIVersion: obj.GetAPIVersion(),
 		Kind:       obj.GetKind(),
 		Name:       obj.GetName(),
@@ -2619,11 +3166,78 @@ func (r *WorkflowReconciler) createDependencyResource(ctx context.Context, owner
 	}, created, nil
 }
 
+// markPVsForOwnedPVCs stamps the workflow-uid creation identity on the PV
+// bound to every tracked PVC dependency that this Workflow owns. Job-scoped
+// PVCs carry a Job owner reference, so on a real cluster the API server
+// cascade-deletes them with their Job — before handleDeletion Phase 2 (or
+// cleanupScopedDependencies) can fetch the PVC and stamp its PV via
+// markPVOwnedByWorkflow. Once the PVC is gone the PV can no longer be proven
+// ours, and cleanupPVForPVC would leave an owned PV on Retain forever.
+// Stamping while the PVC still exists (at dependency creation, on every
+// status poll, and at the start of deletion before the Jobs — and therefore
+// the job-scoped PVCs — go away) makes the identity survive any deletion
+// order. Foreign PVCs are never a stamping source: ownership is verified on
+// the PVC before its PV is touched.
+func (r *WorkflowReconciler) markPVsForOwnedPVCs(ctx context.Context, workflow *nvcrev1alpha1.Workflow) {
+	log := logf.FromContext(ctx)
+	for _, ref := range workflow.Status.DependencyRefs {
+		if ref.Kind != kindPVC {
+			continue
+		}
+		pvc, err := r.getDependencyObject(ctx, ref)
+		if err != nil || pvc == nil {
+			continue // transient fetch error or already gone; retried on the next pass
+		}
+		if !dependencyOwnedForCleanup(pvc, workflow) {
+			continue
+		}
+		if err := r.markPVOwnedByWorkflow(ctx, workflow, pvc); err != nil {
+			log.Error(err, "Failed to mark PV for owned PVC", "pvc", ref.Name)
+		}
+	}
+}
+
+// markPVOwnedByWorkflow stamps the Workflow's creation identity (the
+// workflow-uid annotation) on the PV bound to an owned PVC that is about to be
+// deleted. cleanupPVForPVC later requires that annotation before flipping the
+// PV's reclaim policy — once the PVC is gone the PV found by claimRef cannot
+// otherwise be proven ours, and a same-named foreign or legacy-recorded PVC's
+// backing PV must never be patched from Retain to Delete.
+// pvc is the owned PVC as fetched by the cleanup path (unstructured).
+func (r *WorkflowReconciler) markPVOwnedByWorkflow(ctx context.Context, workflow *nvcrev1alpha1.Workflow, pvc *unstructured.Unstructured) error {
+	volumeName, _, err := unstructured.NestedString(pvc.Object, "spec", "volumeName")
+	if err != nil || volumeName == "" {
+		return nil // unbound PVC: no PV to mark (and none will be found by claimRef)
+	}
+	pv := &corev1.PersistentVolume{}
+	if err := r.Get(ctx, client.ObjectKey{Name: volumeName}, pv); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("failed to get PV %s for PVC %s: %w", volumeName, pvc.GetName(), err)
+	}
+	if pv.Annotations[annotationWorkflowUID] == string(workflow.GetUID()) {
+		return nil
+	}
+	patch := client.MergeFrom(pv.DeepCopy())
+	if pv.Annotations == nil {
+		pv.Annotations = make(map[string]string)
+	}
+	pv.Annotations[annotationWorkflowUID] = string(workflow.GetUID())
+	if err := r.Patch(ctx, pv, patch); err != nil {
+		return fmt.Errorf("failed to mark PV %s as owned: %w", volumeName, err)
+	}
+	return nil
+}
+
 // cleanupPVForPVC patches the PV backing a PVC from Retain to Delete.
 // It finds the PV via the PVC (if it still exists) or by scanning claimRefs.
-// Returns true if the PV is handled (patched, already Delete, or not found).
-// Returns false if the PV is still Bound and needs a retry.
-func (r *WorkflowReconciler) cleanupPVForPVC(ctx context.Context, namespace, name string) bool {
+// The patch is only applied to PVs carrying this Workflow's creation identity
+// (stamped by markPVOwnedByWorkflow before the owned PVC was deleted): a PV
+// backing someone else's same-named PVC is left untouched.
+// Returns true if the PV is handled (patched, already Delete, not ours, or
+// not found). Returns false if the PV is still Bound and needs a retry.
+func (r *WorkflowReconciler) cleanupPVForPVC(ctx context.Context, workflow *nvcrev1alpha1.Workflow, namespace, name string) bool {
 	log := logf.FromContext(ctx)
 	var pvName string
 
@@ -2642,6 +3256,12 @@ func (r *WorkflowReconciler) cleanupPVForPVC(ctx context.Context, namespace, nam
 	pv := &corev1.PersistentVolume{}
 	if err := r.Get(ctx, client.ObjectKey{Name: pvName}, pv); err != nil {
 		return true // PV gone
+	}
+
+	if pv.Annotations[annotationWorkflowUID] != string(workflow.GetUID()) {
+		log.Info("Skipping PV reclaim policy patch: PV does not carry this Workflow's creation identity",
+			"pv", pvName, "pvc", name)
+		return true
 	}
 
 	if pv.Status.Phase == corev1.VolumeBound {
@@ -2684,11 +3304,11 @@ func (r *WorkflowReconciler) findPVByClaimRef(ctx context.Context, pvcNamespace,
 }
 
 // isTerminal returns true if the Workflow has reached a terminal state (Succeeded or Failed).
-func (r *WorkflowReconciler) isTerminal(workflow *crev1alpha1.Workflow) bool {
-	if cond := meta.FindStatusCondition(workflow.Status.Conditions, crev1alpha1.WorkflowSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
+func (r *WorkflowReconciler) isTerminal(workflow *nvcrev1alpha1.Workflow) bool {
+	if cond := meta.FindStatusCondition(workflow.Status.Conditions, nvcrev1alpha1.WorkflowSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
 		return true
 	}
-	if cond := meta.FindStatusCondition(workflow.Status.Conditions, crev1alpha1.WorkflowFailed); cond != nil && cond.Status == metav1.ConditionTrue {
+	if cond := meta.FindStatusCondition(workflow.Status.Conditions, nvcrev1alpha1.WorkflowFailed); cond != nil && cond.Status == metav1.ConditionTrue {
 		return true
 	}
 	return false
@@ -2705,8 +3325,9 @@ func (r *WorkflowReconciler) eventf(obj runtime.Object, eventType, reason, messa
 // SetupWithManager sets up the controller with the Manager.
 func (r *WorkflowReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&crev1alpha1.Workflow{}).
-		Owns(&crev1alpha1.Job{}).
+		For(&nvcrev1alpha1.Workflow{}).
+		Owns(&nvcrev1alpha1.Job{}).
 		Named("workflow").
+		WithOptions(controlleropts.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Complete(r)
 }

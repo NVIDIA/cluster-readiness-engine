@@ -23,7 +23,7 @@ jobs:
   analyze:
     name: Analyze Go
     runs-on: linux-amd64-cpu16
-    if: github.repository == 'dsx-ai-factory/cluster-readiness-engine'
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 60
     permissions:
       contents: read
@@ -38,7 +38,7 @@ jobs:
           cache: true
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           languages: go
           build-mode: manual
@@ -47,6 +47,6 @@ jobs:
         run: go build ./...
 
       - name: Run CodeQL analysis
-        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           category: "/language:go"

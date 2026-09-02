@@ -1,4 +1,4 @@
 {
-  "name": "localhost:5000/cluster-readiness-engine",
+  "name": "localhost:5000/nvcre",
   "tag": "dev"
 }

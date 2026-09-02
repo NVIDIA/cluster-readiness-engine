@@ -1,0 +1,4 @@
+# Both managed releases healthy: status is ready.
+states:
+  nvcre: deployed
+  kubeflow-trainer: deployed

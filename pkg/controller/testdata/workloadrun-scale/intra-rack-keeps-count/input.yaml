@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# intra-rack constrains where the nodes come from (topology), not how many a
+# Job spans, so the requested count is kept.
+numNodes: 4
+orchestration:
+  testScale: intra-rack

@@ -1,0 +1,8 @@
+# Once the GoodputMeasurement is Complete=True, its frozen values feed
+# threshold evaluation alongside the bandwidth values.
+goodputComplete: true
+result: "0.88"
+avgTFLOPSPerGPU: "512.5"
+avgStepTimeSec: "1.25"
+busBW: "980.1"
+algBW: "450.2"

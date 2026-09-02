@@ -1,0 +1,114 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# ADR-072 determinism case: the Job is already terminal when the measurement
+# first reconciles, so every terminal value derives from log timestamps and
+# the Job's Succeeded transition time — never the wall clock. The harness's
+# verifyFrozenGoodput step then strips the Complete condition to force a full
+# terminal re-run (the issue #177 re-entry) and requires a byte-identical
+# status.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: test-frozen-logprofile
+spec:
+  timestamp:
+    layout: "2006-01-02T15:04:05.999999999Z"
+  patterns:
+    trainingStep:
+      regex: 'step (?P<globalStep>\d+) step_timing: (?P<stepTiming>[\d.]+) tflops: (?P<tflops>[\d.]+)'
+      example: "step 100 step_timing: 6.0 tflops: 100.0"
+      units:
+        stepTiming: s
+    applicationStart:
+      regex: 'Application initialized'
+      example: 'Application initialized'
+    checkpointSave:
+      regex: 'Checkpoint saved at step (?P<step>\d+) duration (?P<saveDuration>[\d.]+)s'
+      example: 'Checkpoint saved at step 150 duration 10.0s'
+      units:
+        saveDuration: s
+---
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-frozen-job-workload
+  namespace: default
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - python
+      - train.py
+    numNodes: 1
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-frozen-job
+  namespace: default
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: WorkloadCompleted
+      message: "Workload has completed"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: Succeeded
+      status: "True"
+      reason: WorkloadSucceeded
+      message: "Workload succeeded"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: Failed
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-frozen-job-workload
+    namespace: default
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-frozen-job-workload-worker-0
+  namespace: default
+  labels:
+    jobset.sigs.k8s.io/jobset-name: test-frozen-job-workload
+    batch.kubernetes.io/job-completion-index: "0"
+    nvcre.nvidia.com/job: test-frozen-job
+spec:
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Running
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: GoodputMeasurement
+metadata:
+  name: test-frozen-gm
+  namespace: default
+spec:
+  jobRef:
+    apiGroup: nvcre.nvidia.com
+    kind: Job
+    name: test-frozen-job
+  logProfileRef: test-frozen-logprofile
+  sampleInterval: 1s

@@ -6,7 +6,7 @@ description: NVIDIA Cluster Readiness Engine — GPU cluster certification, benc
 ---
 
 
-The Cluster Readiness Engine is a Kubernetes controller for GPU cluster burn-in certification, orchestrated benchmarking, and hardware failure detection. Run real distributed workloads across topology-aware node groups, measure training throughput and interconnect bandwidth, detect hardware failures, and record which nodes failed and why — before production workloads touch the cluster.
+The NVIDIA Cluster Readiness Engine is a Kubernetes controller for GPU cluster burn-in certification, orchestrated benchmarking, and hardware failure detection. Run real distributed workloads across topology-aware node groups, measure training throughput and interconnect bandwidth, detect hardware failures, and record which nodes failed and why — before production workloads touch the cluster.
 
 ## What it does
 
@@ -24,7 +24,7 @@ The Cluster Readiness Engine is a Kubernetes controller for GPU cluster burn-in 
 | `Workflow` | Manages one category run; applies catalog, overrides, and orchestration |
 | `Job` | Creates and monitors the actual workload; drives health monitoring and measurement |
 | `WorkloadRun` | Simplified API for ad-hoc workloads without full certification overhead |
-| `ncrectl` | CLI for setup, certification lifecycle, rendering, and reporting |
+| `nvcrectl` | CLI for setup, certification lifecycle, rendering, and reporting |
 
 ## Next steps
 

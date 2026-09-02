@@ -21,6 +21,8 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -35,18 +37,18 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	sigyaml "sigs.k8s.io/yaml"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	_ "github.com/dsx-ai-factory/cluster-readiness-engine/pkg/catalog"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/podlogs"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	_ "github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
 )
 
 const metricLabelNamespace = "namespace"
 
 func init() {
-	_ = crev1alpha1.AddToScheme(scheme.Scheme)
+	_ = nvcrev1alpha1.AddToScheme(scheme.Scheme)
 	_ = trainerv1alpha1.AddToScheme(scheme.Scheme)
 }
 
@@ -99,6 +101,21 @@ func TestIntegration(t *testing.T) {
 
 		waitForCondition(tt, mgr.GetClient(), cfg)
 
+		// Verify a Complete GoodputMeasurement stays frozen across a terminal
+		// re-entry (ADR-072). Runs before collection so the golden pins it.
+		var frozenGoodput map[string]any
+		if cfg.VerifyFrozenGoodput != nil {
+			frozenGoodput = verifyFrozenGoodput(tt, suite.Client, mgr.GetClient(), cfg)
+		}
+
+		// Verify post-launch spec edits are rejected by the CRD transition
+		// rule (issue #215). Runs before collection so the golden pins both
+		// the rejections and the unchanged spec.
+		var specImmutability map[string]any
+		if len(cfg.VerifySpecImmutable) > 0 {
+			specImmutability = verifySpecImmutable(tt, suite.Client, cfg.VerifySpecImmutable)
+		}
+
 		// Delete resources after the initial wait (e.g., to test deletion cascade).
 		if len(cfg.DeleteAfterWait) > 0 {
 			deleteAfterWait(tt, mgr.GetClient(), cfg.DeleteAfterWait)
@@ -108,7 +125,7 @@ func TestIntegration(t *testing.T) {
 			waitForDeletion(tt, mgr.GetClient(), cfg)
 		}
 
-		tc.Actual = collectAndSerialize(tt, mgr.GetClient(), cfg)
+		tc.Actual = collectAndSerialize(tt, mgr.GetClient(), cfg, frozenGoodput, specImmutability)
 		return nil
 	})
 }
@@ -178,10 +195,8 @@ func generateTestNodes(t *testing.T, c client.Client, spec *generateNodesSpec) {
 		labels["kubernetes.io/hostname"] = name
 		maps.Copy(labels, spec.Labels)
 		node := &corev1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   name,
-				Labels: labels,
-			},
+			Name:   name,
+			Labels: labels,
 			Spec: corev1.NodeSpec{
 				ProviderID: spec.ProviderID,
 			},
@@ -236,36 +251,36 @@ func createTestObjects(t *testing.T, c client.Client, tc *testutil.TestCase) []c
 // copyStatus copies status from src to dst. Returns true if status was non-empty.
 func copyStatus(dst, src client.Object) bool { //nolint:gocyclo
 	switch d := dst.(type) {
-	case *crev1alpha1.Job:
-		s := src.(*crev1alpha1.Job)
+	case *nvcrev1alpha1.Job:
+		s := src.(*nvcrev1alpha1.Job)
 		hasStatus := len(s.Status.Conditions) > 0 || s.Status.WorkloadRef != nil ||
 			len(s.Status.FailedNodes) > 0 || s.Status.RestartCount > 0
 		if hasStatus {
 			d.Status = s.Status
 			return true
 		}
-	case *crev1alpha1.Workflow:
-		s := src.(*crev1alpha1.Workflow)
+	case *nvcrev1alpha1.Workflow:
+		s := src.(*nvcrev1alpha1.Workflow)
 		if len(s.Status.Conditions) > 0 || s.Status.Orchestration != nil ||
 			s.Status.SucceededNodesRef != nil || s.Status.FailedNodesRef != nil ||
 			len(s.Status.DependencyRefs) > 0 {
 			d.Status = s.Status
 			return true
 		}
-	case *crev1alpha1.Certification:
-		s := src.(*crev1alpha1.Certification)
+	case *nvcrev1alpha1.Certification:
+		s := src.(*nvcrev1alpha1.Certification)
 		if len(s.Status.Conditions) > 0 || len(s.Status.CategoryStatuses) > 0 {
 			d.Status = s.Status
 			return true
 		}
-	case *crev1alpha1.WorkloadRun:
-		s := src.(*crev1alpha1.WorkloadRun)
+	case *nvcrev1alpha1.WorkloadRun:
+		s := src.(*nvcrev1alpha1.WorkloadRun)
 		if len(s.Status.Conditions) > 0 || s.Status.WorkflowRef != nil {
 			d.Status = s.Status
 			return true
 		}
-	case *crev1alpha1.GoodputMeasurement:
-		s := src.(*crev1alpha1.GoodputMeasurement)
+	case *nvcrev1alpha1.GoodputMeasurement:
+		s := src.(*nvcrev1alpha1.GoodputMeasurement)
 		if len(s.Status.Conditions) > 0 || s.Status.Result != "" ||
 			s.Status.CurrentStep > 0 || s.Status.PendingInterruption != nil ||
 			s.Status.StartTime != nil || s.Status.InterruptionCount > 0 ||
@@ -275,8 +290,8 @@ func copyStatus(dst, src client.Object) bool { //nolint:gocyclo
 			d.Status = s.Status
 			return true
 		}
-	case *crev1alpha1.BandwidthMeasurement:
-		s := src.(*crev1alpha1.BandwidthMeasurement)
+	case *nvcrev1alpha1.BandwidthMeasurement:
+		s := src.(*nvcrev1alpha1.BandwidthMeasurement)
 		if len(s.Status.Conditions) > 0 || len(s.Status.Results) > 0 ||
 			s.Status.StartTime != nil || s.Status.CompletionTime != nil {
 			d.Status = s.Status
@@ -285,6 +300,16 @@ func copyStatus(dst, src client.Object) bool { //nolint:gocyclo
 	case *corev1.Pod:
 		s := src.(*corev1.Pod)
 		if s.Status.Phase != "" {
+			d.Status = s.Status
+			return true
+		}
+	case *corev1.Node:
+		// Node fixtures carry status.allocatable so tests can model differing
+		// GPU capacity (issue #82). The API server allows status on Node
+		// create, but re-applying it here keeps fixtures working even where
+		// that changes.
+		s := src.(*corev1.Node)
+		if len(s.Status.Allocatable) > 0 || len(s.Status.Capacity) > 0 {
 			d.Status = s.Status
 			return true
 		}
@@ -422,11 +447,28 @@ type fakeLogFetcher struct {
 	logs map[string][]string
 }
 
-func (f *fakeLogFetcher) FetchLogs(_ context.Context, _, podName string, _ podlogs.LogOptions) ([]string, error) {
-	if lines, ok := f.logs[podName]; ok {
+func (f *fakeLogFetcher) FetchLogs(_ context.Context, _, podName string, opts podlogs.LogOptions) ([]string, error) {
+	lines, ok := f.logs[podName]
+	if !ok {
+		return nil, fmt.Errorf("no fake logs for pod %s", podName)
+	}
+	if opts.SinceTime == nil {
 		return lines, nil
 	}
-	return nil, fmt.Errorf("no fake logs for pod %s", podName)
+	// Mirror the real fetcher: SinceTime is passed server-side and the kubelet
+	// returns only records at or after it (pkg/podlogs/fetcher.go). Filter the
+	// canned lines by their leading RFC3339 timestamp; lines without a parseable
+	// timestamp are kept so fixtures without timestamps behave as before.
+	since := opts.SinceTime.Time
+	filtered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		fields := strings.SplitN(line, " ", 2)
+		if ts, err := time.Parse(time.RFC3339Nano, fields[0]); err == nil && ts.Before(since) {
+			continue
+		}
+		filtered = append(filtered, line)
+	}
+	return filtered, nil
 }
 
 func buildFakeLogFetcher(tc *testutil.TestCase) podlogs.PodLogFetcher {
@@ -457,6 +499,20 @@ type waitConfig struct {
 	// GenerateNodes creates N GPU nodes programmatically before test objects.
 	// Avoids repeating Node YAML in fixtures for multi-node tests.
 	GenerateNodes *generateNodesSpec `json:"generateNodes,omitempty"`
+	// VerifySpecImmutable attempts a spec edit on each listed object after the
+	// initial wait and requires the API server to reject it via the CRD's
+	// spec-level transition rule (issue #215: specs are immutable after
+	// creation because the controllers never apply post-launch edits).
+	// Each rejection is recorded in the golden output.
+	VerifySpecImmutable []verifySpecImmutableSpec `json:"verifySpecImmutable,omitempty"`
+	// VerifyFrozenGoodput drives the ADR-072 determinism check: after the
+	// initial wait it snapshots the named GoodputMeasurement's status, touches
+	// the referenced Job, strips the Complete condition to force the
+	// controller back through the full terminal path (the stale-cache /
+	// restart re-entry from issue #177), waits for Complete to be restored,
+	// and asserts the regenerated status is byte-identical (modulo condition
+	// transition timestamps, which re-adding a condition necessarily moves).
+	VerifyFrozenGoodput *verifyFrozenGoodputSpec `json:"verifyFrozenGoodput,omitempty"`
 	// DeleteAfterWait lists resources to delete after the initial wait completes.
 	// The manager remains running so controllers can process the deletion cascade.
 	DeleteAfterWait []collectSpec `json:"deleteAfterWait,omitempty"`
@@ -465,10 +521,35 @@ type waitConfig struct {
 	TimeoutSeconds  int           `json:"timeoutSeconds"`
 }
 
+// verifySpecImmutableSpec describes one spec edit that must be rejected.
+// SpecPatch is a JSON merge patch document applied under .spec; Field names
+// the edited field so multiple edits on one object stay distinct in the golden.
+type verifySpecImmutableSpec struct {
+	Kind      string          `json:"kind"`
+	Name      string          `json:"name"`
+	Namespace string          `json:"namespace"`
+	Field     string          `json:"field"`
+	SpecPatch json.RawMessage `json:"specPatch"`
+}
+
 type generateNodesSpec struct {
 	Count      int               `json:"count"`
 	Labels     map[string]string `json:"labels"`
 	ProviderID string            `json:"providerID,omitempty"`
+}
+
+type verifyFrozenGoodputSpec struct {
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+	// Mode selects the re-entry style. "strip" (default) removes the Complete
+	// condition to force a full terminal re-run and asserts byte-identical
+	// regeneration — valid where every terminal field is a pure recompute.
+	// "intact" leaves Complete in place and asserts the first-write-wins guard
+	// keeps every status byte untouched. That is the honest assertion for the
+	// Failed path: handleFailed's lostWorkTime/interruptionCount are
+	// accumulators, so a strip-and-rerun legitimately re-adds them and
+	// byte-identity cannot hold there.
+	Mode string `json:"mode,omitempty"`
 }
 
 type collectMetricsSpec struct {
@@ -498,6 +579,12 @@ type collectSpec struct {
 	Kind      string `json:"kind"`
 	Name      string `json:"name"`
 	Namespace string `json:"namespace"`
+	// StripFinalizers is honored by deleteAfterWait only: it force-removes the
+	// object's finalizers after the delete, for kinds whose finalizer-removing
+	// controller does not run under envtest (e.g. the pvc-protection controller
+	// for PVCs). This makes the object actually disappear, simulating the API
+	// server's GC cascade fully removing it mid-test.
+	StripFinalizers bool `json:"stripFinalizers,omitempty"`
 }
 
 func parseWaitConfig(tc *testutil.TestCase) waitConfig {
@@ -533,17 +620,17 @@ func waitForCondition(t *testing.T, c client.Client, cfg waitConfig) {
 
 		reason := cfg.WaitFor.Reason
 		switch o := obj.(type) {
-		case *crev1alpha1.Job:
+		case *nvcrev1alpha1.Job:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
-		case *crev1alpha1.Workflow:
+		case *nvcrev1alpha1.Workflow:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
-		case *crev1alpha1.Certification:
+		case *nvcrev1alpha1.Certification:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
-		case *crev1alpha1.WorkloadRun:
+		case *nvcrev1alpha1.WorkloadRun:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
-		case *crev1alpha1.GoodputMeasurement:
+		case *nvcrev1alpha1.GoodputMeasurement:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
-		case *crev1alpha1.BandwidthMeasurement:
+		case *nvcrev1alpha1.BandwidthMeasurement:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
 		}
 		return false
@@ -562,6 +649,23 @@ func deleteAfterWait(t *testing.T, c client.Client, specs []collectSpec) {
 		require.NoError(t, c.Delete(ctx, obj),
 			"deleteAfterWait: failed to delete %s/%s", spec.Kind, spec.Name)
 		t.Logf("deleteAfterWait: deleted %s/%s", spec.Kind, spec.Name)
+		if spec.StripFinalizers {
+			require.Eventually(t, func() bool {
+				fresh := getObject(ctx, t, c, spec)
+				if fresh == nil {
+					return true
+				}
+				if len(fresh.GetFinalizers()) > 0 {
+					fresh.SetFinalizers(nil)
+					if err := c.Update(ctx, fresh); err != nil {
+						t.Logf("deleteAfterWait: retrying finalizer strip on %s/%s: %v", spec.Kind, spec.Name, err)
+						return false
+					}
+				}
+				return true
+			}, 10*time.Second, 100*time.Millisecond,
+				"deleteAfterWait: failed to strip finalizers from %s/%s", spec.Kind, spec.Name)
+		}
 	}
 }
 
@@ -577,6 +681,169 @@ func waitForDeletion(t *testing.T, c client.Client, cfg waitConfig) {
 			return obj == nil
 		}, timeout, interval, "timed out waiting for deletion of %s/%s", spec.Kind, spec.Name)
 	}
+}
+
+// verifyFrozenGoodput pins the ADR-072 freeze: a Complete GoodputMeasurement's
+// status must be a pure function of its persisted status, the Job, and the
+// final log parse. It snapshots the status, touches the referenced Job, strips
+// the Complete condition so the controller replays the entire terminal path —
+// exactly what a stale informer cache or a controller restart before the
+// Complete write causes — waits for Complete to be restored, and requires the
+// regenerated status (including result, trainingTimeSec, and completionTime)
+// to be byte-identical. Only condition transition timestamps are cleared
+// before comparing: re-adding the stripped condition necessarily refreshes its
+// LastTransitionTime.
+// direct must be an uncached API client: the check strips a condition and then
+// waits for the controller to restore it, and a cached read could satisfy the
+// wait with the stale pre-strip object. cached is the manager's client, polled
+// at the end so the subsequent collection sees the restored state.
+func verifyFrozenGoodput(t *testing.T, direct, cached client.Client, cfg waitConfig) map[string]any {
+	t.Helper()
+	ctx := context.Background()
+	key := types.NamespacedName{Name: cfg.VerifyFrozenGoodput.Name, Namespace: cfg.VerifyFrozenGoodput.Namespace}
+	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
+
+	gm := &nvcrev1alpha1.GoodputMeasurement{}
+	require.NoError(t, direct.Get(ctx, key, gm))
+	before := frozenStatusJSON(t, gm)
+
+	// Touch the referenced Job: reconciling a terminal Job must not move the
+	// measurement.
+	if jobName := gm.Spec.JobRef.Name; jobName != "" {
+		job := &nvcrev1alpha1.Job{}
+		require.NoError(t, direct.Get(ctx, types.NamespacedName{Name: jobName, Namespace: key.Namespace}, job))
+		if job.Annotations == nil {
+			job.Annotations = map[string]string{}
+		}
+		job.Annotations["test.nvcre.nvidia.com/touched"] = "true"
+		require.NoError(t, direct.Update(ctx, job))
+	}
+
+	// Intact mode: the GM controller has no Job watch, so the Job touch above
+	// does not itself trigger a GM reconcile — and any GM reconcile that does
+	// run (GM watch events, requeues) returns at the Complete gate. The
+	// require.Never below therefore pins the ADR-072 convention directly:
+	// nothing writes to a GoodputMeasurement whose Complete condition is True,
+	// so nothing in the status — condition timestamps included — may move
+	// during the window.
+	if cfg.VerifyFrozenGoodput.Mode == "intact" {
+		beforeRaw := rawStatusJSON(t, gm)
+		require.Never(t, func() bool {
+			fresh := &nvcrev1alpha1.GoodputMeasurement{}
+			if err := direct.Get(ctx, key, fresh); err != nil {
+				return false
+			}
+			return rawStatusJSON(t, fresh) != beforeRaw
+		}, 4*time.Second, 250*time.Millisecond,
+			"status moved during a replay with Complete intact (first-write-wins violated, ADR-072)")
+		return map[string]any{
+			"untouchedWithCompleteIntact": true,
+			"result":                      gm.Status.Result,
+			"trainingTimeSec":             gm.Status.TrainingTimeSec,
+			"startTime":                   gm.Status.StartTime,
+			"completionTime":              gm.Status.CompletionTime,
+		}
+	}
+
+	// Strip Complete to force the controller back through the terminal path.
+	apimeta.RemoveStatusCondition(&gm.Status.Conditions, nvcrev1alpha1.GoodputMeasurementComplete)
+	require.NoError(t, direct.Status().Update(ctx, gm))
+
+	require.Eventually(t, func() bool {
+		fresh := &nvcrev1alpha1.GoodputMeasurement{}
+		if err := direct.Get(ctx, key, fresh); err != nil {
+			return false
+		}
+		return hasConditionWithReason(fresh.Status.Conditions, nvcrev1alpha1.GoodputMeasurementComplete, "")
+	}, timeout, 250*time.Millisecond, "Complete was not restored after terminal re-entry")
+
+	after := &nvcrev1alpha1.GoodputMeasurement{}
+	require.NoError(t, direct.Get(ctx, key, after))
+	afterJSON := frozenStatusJSON(t, after)
+
+	require.Equal(t, before, afterJSON,
+		"terminal re-entry must regenerate a byte-identical status (ADR-072)")
+
+	// Let the manager's cache catch up so collection sees the restored state.
+	require.Eventually(t, func() bool {
+		fresh := &nvcrev1alpha1.GoodputMeasurement{}
+		if err := cached.Get(ctx, key, fresh); err != nil {
+			return false
+		}
+		return hasConditionWithReason(fresh.Status.Conditions, nvcrev1alpha1.GoodputMeasurementComplete, "")
+	}, timeout, 250*time.Millisecond, "manager cache did not observe the restored Complete condition")
+
+	return map[string]any{
+		"byteIdenticalAfterReentry": before == afterJSON,
+		"result":                    after.Status.Result,
+		"trainingTimeSec":           after.Status.TrainingTimeSec,
+		"startTime":                 after.Status.StartTime,
+		"completionTime":            after.Status.CompletionTime,
+	}
+}
+
+// verifySpecImmutable pins the whole-spec transition rule from issue #215:
+// once a Certification or WorkloadRun exists, every spec edit must be rejected
+// by the API server with the CRD's "spec is immutable after creation" message
+// — the controllers never propagate post-launch edits to the child Workflow,
+// so accepting one would silently ignore it (single category / WorkloadRun) or
+// apply it only to later pending categories (multi-category Certification).
+// Each entry applies a JSON merge patch under .spec via a direct (uncached)
+// client and requires an Invalid rejection carrying the rule message. The
+// returned map is embedded in the golden so every rejection is pinned.
+func verifySpecImmutable(t *testing.T, c client.Client, specs []verifySpecImmutableSpec) map[string]any {
+	t.Helper()
+	ctx := context.Background()
+
+	results := make(map[string]any, len(specs))
+	for _, s := range specs {
+		obj := getObject(ctx, t, c, collectSpec{Kind: s.Kind, Name: s.Name, Namespace: s.Namespace})
+		require.NotNil(t, obj, "verifySpecImmutable: %s/%s not found", s.Kind, s.Name)
+
+		patch := fmt.Sprintf(`{"spec":%s}`, s.SpecPatch)
+		err := c.Patch(ctx, obj, client.RawPatch(types.MergePatchType, []byte(patch)))
+		require.Error(t, err,
+			"verifySpecImmutable: spec.%s edit on %s/%s was accepted; expected rejection",
+			s.Field, s.Kind, s.Name)
+		require.True(t, apierrors.IsInvalid(err),
+			"verifySpecImmutable: expected Invalid rejection for spec.%s on %s/%s, got: %v",
+			s.Field, s.Kind, s.Name, err)
+		require.Contains(t, err.Error(), "spec is immutable after creation",
+			"verifySpecImmutable: wrong rejection message for spec.%s on %s/%s",
+			s.Field, s.Kind, s.Name)
+
+		results[fmt.Sprintf("%s/%s/%s/spec.%s", s.Kind, s.Namespace, s.Name, s.Field)] = map[string]any{
+			"rejected": true,
+			"message":  "spec is immutable after creation",
+		}
+	}
+	return results
+}
+
+// rawStatusJSON marshals the full status, timestamps included — used by the
+// intact-mode check where nothing at all may change.
+func rawStatusJSON(t *testing.T, gm *nvcrev1alpha1.GoodputMeasurement) string {
+	t.Helper()
+	b, err := json.Marshal(gm.Status)
+	require.NoError(t, err)
+	return string(b)
+}
+
+// frozenStatusJSON marshals a measurement status for byte-level comparison
+// across terminal re-entries. Conditions are a set keyed by type: stripping
+// and re-adding one necessarily re-appends it and refreshes its transition
+// timestamp, so conditions are sorted by type and their timestamps cleared.
+// Every other byte must match.
+func frozenStatusJSON(t *testing.T, gm *nvcrev1alpha1.GoodputMeasurement) string {
+	t.Helper()
+	s := gm.Status.DeepCopy()
+	clearConditionTimestamps(s.Conditions)
+	slices.SortFunc(s.Conditions, func(a, b metav1.Condition) int {
+		return strings.Compare(a.Type, b.Type)
+	})
+	b, err := json.Marshal(s)
+	require.NoError(t, err)
+	return string(b)
 }
 
 func hasConditionWithReason(conditions []metav1.Condition, condType, reason string) bool {
@@ -596,37 +863,37 @@ func getObject(ctx context.Context, t *testing.T, c client.Client, spec collectS
 
 	switch spec.Kind {
 	case "Job":
-		obj := &crev1alpha1.Job{}
+		obj := &nvcrev1alpha1.Job{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
 		return obj
 	case "Workflow":
-		obj := &crev1alpha1.Workflow{}
+		obj := &nvcrev1alpha1.Workflow{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
 		return obj
 	case "Certification":
-		obj := &crev1alpha1.Certification{}
+		obj := &nvcrev1alpha1.Certification{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
 		return obj
 	case "WorkloadRun":
-		obj := &crev1alpha1.WorkloadRun{}
+		obj := &nvcrev1alpha1.WorkloadRun{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
 		return obj
 	case "GoodputMeasurement":
-		obj := &crev1alpha1.GoodputMeasurement{}
+		obj := &nvcrev1alpha1.GoodputMeasurement{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
 		return obj
 	case "BandwidthMeasurement":
-		obj := &crev1alpha1.BandwidthMeasurement{}
+		obj := &nvcrev1alpha1.BandwidthMeasurement{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
 		}
@@ -655,6 +922,12 @@ func getObject(ctx context.Context, t *testing.T, c client.Client, spec collectS
 			return nil
 		}
 		return obj
+	case "LogProfile":
+		obj := &nvcrev1alpha1.LogProfile{}
+		if err := c.Get(ctx, types.NamespacedName{Name: spec.Name}, obj); err != nil {
+			return nil
+		}
+		return obj
 	case "Namespace":
 		obj := &corev1.Namespace{}
 		if err := c.Get(ctx, types.NamespacedName{Name: spec.Name}, obj); err != nil {
@@ -679,11 +952,19 @@ func getObject(ctx context.Context, t *testing.T, c client.Client, spec collectS
 	}
 }
 
-func collectAndSerialize(t *testing.T, c client.Client, cfg waitConfig) string {
+func collectAndSerialize(
+	t *testing.T, c client.Client, cfg waitConfig, frozenGoodput, specImmutability map[string]any,
+) string {
 	t.Helper()
 	ctx := context.Background()
 
 	results := make(map[string]any)
+	if frozenGoodput != nil {
+		results["frozenGoodput"] = frozenGoodput
+	}
+	if specImmutability != nil {
+		results["specImmutability"] = specImmutability
+	}
 	for _, spec := range cfg.Collect {
 		obj := getObject(ctx, t, c, spec)
 		require.NotNil(t, obj, "failed to collect %s/%s in namespace %s", spec.Kind, spec.Name, spec.Namespace)
@@ -729,6 +1010,10 @@ func sanitizeObject(obj client.Object) {
 	obj.SetCreationTimestamp(metav1.Time{})
 	obj.SetManagedFields(nil)
 	obj.SetSelfLink("")
+	// Objects collected mid-deletion (e.g. a Job held by its pod-drain
+	// barrier) carry wall-clock deletion metadata; clear it for stable goldens.
+	obj.SetDeletionTimestamp(nil)
+	obj.SetDeletionGracePeriodSeconds(nil)
 
 	// Clear owner reference UIDs (they are non-deterministic).
 	refs := obj.GetOwnerReferences()
@@ -737,9 +1022,16 @@ func sanitizeObject(obj client.Object) {
 	}
 	obj.SetOwnerReferences(refs)
 
+	// Normalize the workflow-uid creation-identity annotation: it embeds the
+	// Workflow's UID, which changes every envtest run.
+	if ann := obj.GetAnnotations(); ann["nvcre.nvidia.com/workflow-uid"] != "" {
+		ann["nvcre.nvidia.com/workflow-uid"] = "workflow-uid"
+		obj.SetAnnotations(ann)
+	}
+
 	// Clear condition timestamps.
 	switch o := obj.(type) {
-	case *crev1alpha1.Job:
+	case *nvcrev1alpha1.Job:
 		clearConditionTimestamps(o.Status.Conditions)
 		// Sanitize stall detection messages (contain non-deterministic elapsed time).
 		for i := range o.Status.Conditions {
@@ -747,7 +1039,13 @@ func sanitizeObject(obj client.Object) {
 				o.Status.Conditions[i].Message = "Workload stalled"
 			}
 		}
-	case *crev1alpha1.Workflow:
+		// workloadStartTime is wall clock; normalize to a fixed placeholder so
+		// goldens stay deterministic while still pinning whether it was set.
+		// A pending (e.g. suspended) workload must NOT have it.
+		if o.Status.WorkloadStartTime != nil {
+			o.Status.WorkloadStartTime = &metav1.Time{Time: time.Unix(0, 0).UTC()}
+		}
+	case *nvcrev1alpha1.Workflow:
 		clearConditionTimestamps(o.Status.Conditions)
 		// Node-result ConfigMaps use generateName, so their names are
 		// non-deterministic; normalize the refs to stable placeholders.
@@ -765,15 +1063,15 @@ func sanitizeObject(obj client.Object) {
 				}
 			}
 		}
-	case *crev1alpha1.Certification:
+	case *nvcrev1alpha1.Certification:
 		clearConditionTimestamps(o.Status.Conditions)
 		for i := range o.Status.CategoryStatuses {
 			sanitizeNodeResultsRef(o.Status.CategoryStatuses[i].SucceededNodesRef, o.Status.CategoryStatuses[i].FailedNodesRef)
 		}
-	case *crev1alpha1.WorkloadRun:
+	case *nvcrev1alpha1.WorkloadRun:
 		clearConditionTimestamps(o.Status.Conditions)
 		sanitizeNodeResultsRef(o.Status.SucceededNodesRef, o.Status.FailedNodesRef)
-	case *crev1alpha1.GoodputMeasurement:
+	case *nvcrev1alpha1.GoodputMeasurement:
 		clearConditionTimestamps(o.Status.Conditions)
 		// Clear time-dependent fields.
 		o.Status.StartTime = nil
@@ -789,7 +1087,7 @@ func sanitizeObject(obj client.Object) {
 			o.Status.PendingInterruption.TCheckpoint = nil
 			o.Status.PendingInterruption.TInterrupt = nil
 		}
-	case *crev1alpha1.BandwidthMeasurement:
+	case *nvcrev1alpha1.BandwidthMeasurement:
 		clearConditionTimestamps(o.Status.Conditions)
 		o.Status.StartTime = nil
 		o.Status.CompletionTime = nil
@@ -851,16 +1149,16 @@ func collectGoodputMetrics(t *testing.T, namespace, measurementName string) map[
 	}
 
 	names := []string{
-		"cre_goodput_avg_step_time_seconds",
-		"cre_goodput_avg_tflops_per_gpu",
-		"cre_goodput_checkpoint_save_time_seconds",
-		"cre_goodput_lost_work_time_seconds",
-		"cre_goodput_non_warmup_time_seconds",
-		"cre_goodput_ratio",
-		"cre_goodput_reschedule_time_seconds",
-		"cre_goodput_resume_time_seconds",
-		"cre_goodput_training_time_seconds",
-		"cre_goodput_warmup_time_seconds",
+		"nvcre_goodput_avg_step_time_seconds",
+		"nvcre_goodput_avg_tflops_per_gpu",
+		"nvcre_goodput_checkpoint_save_time_seconds",
+		"nvcre_goodput_lost_work_time_seconds",
+		"nvcre_goodput_non_warmup_time_seconds",
+		"nvcre_goodput_ratio",
+		"nvcre_goodput_reschedule_time_seconds",
+		"nvcre_goodput_resume_time_seconds",
+		"nvcre_goodput_training_time_seconds",
+		"nvcre_goodput_warmup_time_seconds",
 	}
 
 	result := make(map[string]float64, len(names))
@@ -904,8 +1202,8 @@ func collectBandwidthMetrics(t *testing.T, namespace, measurementName string) ma
 	}
 
 	names := []string{
-		"cre_nccl_algbw_gbps",
-		"cre_nccl_busbw_gbps",
+		"nvcre_nccl_algbw_gbps",
+		"nvcre_nccl_busbw_gbps",
 	}
 
 	result := make(map[string]float64)
@@ -954,8 +1252,8 @@ func collectJobMetrics(t *testing.T, namespace, jobName, workflow string) map[st
 
 	// Only collect gauge metrics (not counters or histograms) for stable golden output.
 	names := []string{
-		"cre_job_status",
-		"cre_job_failed_nodes",
+		"nvcre_job_status",
+		"nvcre_job_failed_nodes",
 	}
 
 	result := make(map[string]float64, len(names))
@@ -1008,8 +1306,8 @@ func collectTopologyMetrics(t *testing.T, namespace, workflow, topologyKey strin
 	}
 
 	names := []string{
-		"cre_topology_validated_nodes",
-		"cre_topology_failed_nodes",
+		"nvcre_topology_validated_nodes",
+		"nvcre_topology_failed_nodes",
 	}
 
 	result := make(map[string]float64)

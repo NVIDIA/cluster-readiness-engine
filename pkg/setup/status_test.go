@@ -4,17 +4,20 @@
 package setup
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -22,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
+	sigsyaml "sigs.k8s.io/yaml"
 )
 
 func newSetupScheme(t *testing.T) *runtime.Scheme {
@@ -32,10 +36,10 @@ func newSetupScheme(t *testing.T) *runtime.Scheme {
 	// LogProfile has no typed Go package here, so register the list kind the
 	// check function asks for.
 	s.AddKnownTypeWithName(
-		schema.GroupVersionKind{Group: creAPIGroup, Version: "v1alpha1", Kind: "LogProfile"},
+		schema.GroupVersionKind{Group: nvcreAPIGroup, Version: testAPIVersionV1Alpha1, Kind: "LogProfile"},
 		&unstructured.Unstructured{})
 	s.AddKnownTypeWithName(
-		schema.GroupVersionKind{Group: creAPIGroup, Version: "v1alpha1", Kind: "LogProfileList"},
+		schema.GroupVersionKind{Group: nvcreAPIGroup, Version: testAPIVersionV1Alpha1, Kind: "LogProfileList"},
 		&unstructured.UnstructuredList{})
 	return s
 }
@@ -45,10 +49,8 @@ func TestCheckDCGM(t *testing.T) {
 		c := fake.NewClientBuilder().
 			WithScheme(newSetupScheme(t)).
 			WithObjects(&corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      dcgmServiceName,
-					Namespace: dcgmServiceNamespace,
-				},
+				Name:      dcgmServiceName,
+				Namespace: dcgmServiceNamespace,
 			}).
 			Build()
 		assert.NoError(t, checkDCGM(context.Background(), c))
@@ -63,17 +65,16 @@ func TestCheckDCGM(t *testing.T) {
 		c := fake.NewClientBuilder().
 			WithScheme(newSetupScheme(t)).
 			WithObjects(&corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      dcgmServiceName,
-					Namespace: "default",
-				},
+				Name:      dcgmServiceName,
+				Namespace: "default",
 			}).
 			Build()
 		assert.True(t, apierrors.IsNotFound(checkDCGM(context.Background(), c)))
 	})
 
 	t.Run("a denied lookup is not reported as absent", func(t *testing.T) {
-		status := collectSetupStatus(context.Background(), forbiddenServiceClient(t))
+		status := collectSetupStatus(
+			context.Background(), forbiddenServiceClient(t), allDeployedHelmQuery, trainerNotInHelm)
 		assert.False(t, status.Components.DCGM)
 		assert.False(t, status.dcgmAbsent, "a denied lookup must not print the patch command")
 	})
@@ -112,30 +113,38 @@ func crd(name, group, kind string) *unstructured.Unstructured {
 // logProfile builds a LogProfile that checkLogProfiles can count.
 func logProfile(name string) *unstructured.Unstructured {
 	u := &unstructured.Unstructured{Object: map[string]any{}}
-	u.SetAPIVersion(creAPIGroup + "/v1alpha1")
+	u.SetAPIVersion(nvcreAPIGroup + "/v1alpha1")
 	u.SetKind("LogProfile")
 	u.SetName(name)
 	return u
 }
 
-// readyClusterObjects returns every object needed for installed to be true,
-// with no DCGM service.
-func readyClusterObjects() []client.Object {
+// baseClusterObjects returns every object needed for installed to be true
+// except the TrainJob CRD, with no DCGM service.
+func baseClusterObjects() []client.Object {
 	return []client.Object{
-		crd("certifications."+creAPIGroup, creAPIGroup, "Certification"),
-		crd("trainjobs."+trainerAPIGroup, trainerAPIGroup, "TrainJob"),
+		crd("certifications."+nvcreAPIGroup, nvcreAPIGroup, "Certification"),
 		logProfile("megatron-training"),
 		&appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{Name: "cre-controller", Namespace: creNamespace},
-			Status:     appsv1.DeploymentStatus{AvailableReplicas: 1},
+			Name: "cre-controller", Namespace: nvcreNamespace,
+			Status: appsv1.DeploymentStatus{AvailableReplicas: 1},
 		},
 		&corev1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   "gpu-node-0",
-				Labels: map[string]string{"nvidia.com/gpu.present": "true"},
-			},
+			Name:   "gpu-node-0",
+			Labels: map[string]string{"nvidia.com/gpu.present": "true"},
 		},
 	}
+}
+
+// readyClusterObjects returns every object needed for installed to be true,
+// with no DCGM service. The TrainJob CRD carries the chart version label the
+// kubeflow-trainer Helm chart stamps, so the trainer version check passes.
+func readyClusterObjects() []client.Object {
+	trainJobCRD := crd("trainjobs."+trainerAPIGroup, trainerAPIGroup, "TrainJob")
+	trainJobCRD.SetLabels(map[string]string{
+		trainerVersionLabel: strings.TrimPrefix(kubeflowTrainerVersion, "v"),
+	})
+	return append(baseClusterObjects(), trainJobCRD)
 }
 
 // A missing DCGM service must not make the cluster look unready, because only
@@ -145,18 +154,167 @@ func TestCollectSetupStatusDCGMIsOptional(t *testing.T) {
 
 	t.Run("ready without dcgm", func(t *testing.T) {
 		c := fake.NewClientBuilder().WithScheme(newSetupScheme(t)).WithObjects(objs...).Build()
-		s := collectSetupStatus(context.Background(), c)
+		s := collectSetupStatus(context.Background(), c, allDeployedHelmQuery, trainerNotInHelm)
 		assert.True(t, s.Installed, "installed must not depend on DCGM")
 		assert.False(t, s.Components.DCGM)
 	})
 
 	t.Run("ready with dcgm", func(t *testing.T) {
 		withDCGM := append(objs, &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{Name: dcgmServiceName, Namespace: dcgmServiceNamespace},
+			Name: dcgmServiceName, Namespace: dcgmServiceNamespace,
 		})
 		c := fake.NewClientBuilder().WithScheme(newSetupScheme(t)).WithObjects(withDCGM...).Build()
-		s := collectSetupStatus(context.Background(), c)
+		s := collectSetupStatus(context.Background(), c, allDeployedHelmQuery, trainerNotInHelm)
 		assert.True(t, s.Installed)
 		assert.True(t, s.Components.DCGM)
+	})
+}
+
+// allDeployedHelmQuery reports every managed Helm release as deployed.
+func allDeployedHelmQuery(string, string) string { return helmStateDeployed }
+
+// trainerNotInHelm reports the trainer release as unknown to helm, forcing
+// version detection onto the cluster-object sources.
+func trainerNotInHelm() (string, string) { return helmStateNotInstalled, "" }
+
+// TestSetupStatusHelmReleases drives collectSetupStatus and printSetupStatus
+// against a ready cluster with the Helm release states given in input.yaml.
+// The golden file holds the JSON status followed by the rendered table, so a
+// failed release flipping 'installed' shows up in both output formats.
+func TestSetupStatusHelmReleases(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "setup-status-helm",
+		ExpectedSuffix: testutil.SuffixTXT,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			// States maps a managed release name to the state the helm stub
+			// reports. A missing key reads as a release helm has no record of.
+			States map[string]string `yaml:"states"`
+		}
+		if err := sigsyaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
+		query := func(release, _ string) string {
+			if state, ok := in.States[release]; ok {
+				return state
+			}
+			return helmStateNotInstalled
+		}
+		// The trainer version stub reports the pinned chart version when the
+		// release is deployed; any other state forces the fallback sources.
+		trainerState := func() (string, string) {
+			state := query(trainerReleaseName, trainerNamespace)
+			if state == helmStateDeployed {
+				return state, strings.TrimPrefix(kubeflowTrainerVersion, "v")
+			}
+			return state, ""
+		}
+
+		c := fake.NewClientBuilder().
+			WithScheme(newSetupScheme(t)).
+			WithObjects(readyClusterObjects()...).
+			Build()
+		s := collectSetupStatus(context.Background(), c, query, trainerState)
+
+		var out bytes.Buffer
+		enc := json.NewEncoder(&out)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(s); err != nil {
+			return err
+		}
+		out.WriteString("\n")
+		printSetupStatus(&out, s)
+
+		tc.Actual = out.String()
+		return nil
+	})
+}
+
+// TestSetupStatusTrainerVersion drives collectSetupStatus and printSetupStatus
+// through every Kubeflow Trainer version detection path (issue #152): the
+// managed Helm release chart version, the Trainer controller Deployment image
+// tag, the CRD app.kubernetes.io/version label, an undetectable version, and
+// version mismatches. The golden file holds the JSON status followed by the
+// rendered table, so a mismatch flipping 'installed' shows up in both formats.
+func TestSetupStatusTrainerVersion(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "setup-status-trainer-version",
+		ExpectedSuffix: testutil.SuffixTXT,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			// Helm is the trainer release state and chart version the helm
+			// stub reports. A missing state reads as not installed.
+			Helm struct {
+				State        string `yaml:"state"`
+				ChartVersion string `yaml:"chartVersion"`
+			} `yaml:"helm"`
+			// DeploymentImage, when set, creates the Trainer controller
+			// Deployment in kubeflow-system running this image in the
+			// manager container.
+			DeploymentImage string `yaml:"deploymentImage"`
+			// DeploymentSidecarImage, when set, lists a sidecar container
+			// running this image ahead of the manager container.
+			DeploymentSidecarImage string `yaml:"deploymentSidecarImage"`
+			// CRDVersionLabel, when set, stamps app.kubernetes.io/version on
+			// the TrainJob CRD.
+			CRDVersionLabel string `yaml:"crdVersionLabel"`
+			// TrainJobCRDAbsent leaves the TrainJob CRD out entirely.
+			TrainJobCRDAbsent bool `yaml:"trainJobCRDAbsent"`
+		}
+		if err := sigsyaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
+		if in.Helm.State == "" {
+			in.Helm.State = helmStateNotInstalled
+		}
+
+		objs := baseClusterObjects()
+		if !in.TrainJobCRDAbsent {
+			trainJobCRD := crd("trainjobs."+trainerAPIGroup, trainerAPIGroup, "TrainJob")
+			if in.CRDVersionLabel != "" {
+				trainJobCRD.SetLabels(map[string]string{trainerVersionLabel: in.CRDVersionLabel})
+			}
+			objs = append(objs, trainJobCRD)
+		}
+		if in.DeploymentImage != "" {
+			var containers []corev1.Container
+			if in.DeploymentSidecarImage != "" {
+				containers = append(containers,
+					corev1.Container{Name: "kube-rbac-proxy", Image: in.DeploymentSidecarImage})
+			}
+			containers = append(containers,
+				corev1.Container{Name: trainerContainerName, Image: in.DeploymentImage})
+			objs = append(objs, &appsv1.Deployment{
+				Name:      trainerDeploymentName,
+				Namespace: trainerNamespace,
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{Containers: containers},
+					},
+				},
+			})
+		}
+
+		// The trainer release state comes from trainerState; the helm query
+		// only answers for the nvcre release.
+		query := func(string, string) string { return helmStateDeployed }
+		trainerState := func() (string, string) { return in.Helm.State, in.Helm.ChartVersion }
+
+		c := fake.NewClientBuilder().WithScheme(newSetupScheme(t)).WithObjects(objs...).Build()
+		s := collectSetupStatus(context.Background(), c, query, trainerState)
+
+		var out bytes.Buffer
+		enc := json.NewEncoder(&out)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(s); err != nil {
+			return err
+		}
+		out.WriteString("\n")
+		printSetupStatus(&out, s)
+
+		tc.Actual = out.String()
+		return nil
 	})
 }

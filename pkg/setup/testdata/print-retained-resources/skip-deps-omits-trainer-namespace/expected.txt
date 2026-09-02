@@ -1,0 +1,6 @@
+
+Retained resources (not removed by reset):
+  - Namespace nvcre
+      kubectl delete namespace nvcre
+  - Secret nvcre/nvcrectl-pull-secret
+      kubectl delete secret nvcrectl-pull-secret -n nvcre

@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"sigs.k8s.io/yaml"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/podlogs"
+	"github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
 )
 
 // fakeLogFetcher returns pre-loaded log lines keyed by pod name.
@@ -28,7 +28,7 @@ func (f *fakeLogFetcher) FetchLogs(_ context.Context, _, podName string, _ podlo
 func TestReadMultiWorkerLogs(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "read-multi-worker-logs",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var profile v1alpha1.LogProfile

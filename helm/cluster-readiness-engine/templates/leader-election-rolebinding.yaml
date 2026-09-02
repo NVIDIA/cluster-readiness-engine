@@ -6,13 +6,13 @@ kind: RoleBinding
 metadata:
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cre.labels" . | nindent 4 }}
-  name: cre-leader-election-rolebinding
+    {{- include "nvcre.labels" . | nindent 4 }}
+  name: nvcre-leader-election-rolebinding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: cre-leader-election-role
+  name: nvcre-leader-election-role
 subjects:
 - kind: ServiceAccount
-  name: {{ include "cre.serviceAccountName" . }}
+  name: {{ include "nvcre.serviceAccountName" . }}
   namespace: {{ .Release.Namespace }}

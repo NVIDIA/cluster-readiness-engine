@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nvcre
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubeflow-system

@@ -6,12 +6,12 @@ package noderesults
 import (
 	"testing"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
 func TestFailedNodesToJSON(t *testing.T) {
-	nodes := []crev1alpha1.FailedNode{
-		{Name: "gpu-01", Reason: crev1alpha1.NodeFailureWorkloadFailed, Message: "boom"},
+	nodes := []nvcrev1alpha1.FailedNode{
+		{Name: "gpu-01", Reason: nvcrev1alpha1.NodeFailureWorkloadFailed, Message: "boom"},
 	}
 	b, err := FailedNodesToJSON(nodes)
 	if err != nil {

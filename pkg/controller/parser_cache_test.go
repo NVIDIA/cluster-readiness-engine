@@ -8,26 +8,23 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
 // logProfile builds a minimal LogProfile carrying the given resourceVersion and
 // trainingStep regex.
-func logProfile(name, resourceVersion, regex string) *crev1alpha1.LogProfile {
-	return &crev1alpha1.LogProfile{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            name,
-			ResourceVersion: resourceVersion,
-		},
-		Spec: crev1alpha1.LogProfileSpec{
-			Timestamp: crev1alpha1.TimestampSpec{Layout: "2006-01-02 15:04:05"},
-			Patterns: crev1alpha1.LogPatternSet{
-				TrainingStep: &crev1alpha1.EventPattern{Regex: regex},
+func logProfile(name, resourceVersion, regex string) *nvcrev1alpha1.LogProfile {
+	return &nvcrev1alpha1.LogProfile{
+		Name:            name,
+		ResourceVersion: resourceVersion,
+		Spec: nvcrev1alpha1.LogProfileSpec{
+			Timestamp: nvcrev1alpha1.TimestampSpec{Layout: "2006-01-02 15:04:05"},
+			Patterns: nvcrev1alpha1.LogPatternSet{
+				TrainingStep: &nvcrev1alpha1.EventPattern{Regex: regex},
 			},
 		},
 	}
@@ -39,7 +36,7 @@ func logProfile(name, resourceVersion, regex string) *crev1alpha1.LogProfile {
 func TestGoodputParserCacheInvalidatesOnResourceVersion(t *testing.T) {
 	tests := []struct {
 		name          string
-		second        *crev1alpha1.LogProfile
+		second        *nvcrev1alpha1.LogProfile
 		wantSameCache bool
 	}{
 		{
@@ -84,9 +81,9 @@ func TestGoodputParserCacheInvalidatesOnResourceVersion(t *testing.T) {
 // TestBandwidthParserCacheInvalidatesOnResourceVersion is the BandwidthMeasurement
 // counterpart: the same cache-keying bug existed in both controllers.
 func TestBandwidthParserCacheInvalidatesOnResourceVersion(t *testing.T) {
-	ncclProfile := func(resourceVersion, regex string) *crev1alpha1.LogProfile {
+	ncclProfile := func(resourceVersion, regex string) *nvcrev1alpha1.LogProfile {
 		p := logProfile("nccl", resourceVersion, `iteration (?P<globalStep>\d+)`)
-		p.Spec.Patterns.BandwidthResult = &crev1alpha1.EventPattern{Regex: regex}
+		p.Spec.Patterns.BandwidthResult = &nvcrev1alpha1.EventPattern{Regex: regex}
 		return p
 	}
 
@@ -120,7 +117,7 @@ func TestBandwidthParserCacheInvalidatesOnResourceVersion(t *testing.T) {
 			ctx := context.Background()
 
 			scheme := runtime.NewScheme()
-			require.NoError(t, crev1alpha1.AddToScheme(scheme))
+			require.NoError(t, nvcrev1alpha1.AddToScheme(scheme))
 
 			c := fake.NewClientBuilder().WithScheme(scheme).
 				WithObjects(ncclProfile("", regexV1)).Build()
@@ -131,7 +128,7 @@ func TestBandwidthParserCacheInvalidatesOnResourceVersion(t *testing.T) {
 			require.NotNil(t, p1)
 
 			if tt.editProfile {
-				stored := &crev1alpha1.LogProfile{}
+				stored := &nvcrev1alpha1.LogProfile{}
 				require.NoError(t, c.Get(ctx, types.NamespacedName{Name: "nccl"}, stored))
 				stored.Spec.Patterns.BandwidthResult.Regex = regexV2
 				require.NoError(t, c.Update(ctx, stored))

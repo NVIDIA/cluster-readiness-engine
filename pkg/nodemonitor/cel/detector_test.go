@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/yaml"
 )
@@ -21,7 +21,7 @@ import (
 func TestDetect(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "detect",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		expression := strings.TrimSpace(tc.Inputs["input_expression.txt"])
@@ -52,7 +52,7 @@ func TestDetect(t *testing.T) {
 func TestDetectorName(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "detector-name",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		expression := strings.TrimSpace(tc.Inputs["input_expression.txt"])

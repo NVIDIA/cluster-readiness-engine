@@ -8,11 +8,11 @@
 #
 # Captures out-of-place algBW and busBW per message size.
 # All NCCL collective tests produce the same output format.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: LogProfile
 metadata:
   labels:
-    {{- include "cre.labels" . | nindent 4 }}
+    {{- include "nvcre.labels" . | nindent 4 }}
   name: nccl-bandwidth
 spec:
   timestamp:

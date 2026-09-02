@@ -4,7 +4,7 @@
 
 ## Context
 
-Running workloads on CRE today requires creating a Certification with catalog domain/variant pairs. The catalog system is powerful for burn-in campaigns but too complex for ad-hoc workloads: users must know catalog entry names, all model configs are baked in, and there is no way to run custom containers with CRE's platform auto-detection.
+Running workloads on NVCRE today requires creating a Certification with catalog domain/variant pairs. The catalog system is powerful for burn-in campaigns but too complex for ad-hoc workloads: users must know catalog entry names, all model configs are baked in, and there is no way to run custom containers with NVCRE's platform auto-detection.
 
 An internal benchmark tool supports submitting arbitrary training jobs and NCCL tests with a simple interface — platform, container image, node count, and command. We need an equivalent Kubernetes-native path that:
 
@@ -49,10 +49,10 @@ Extract model-independent, CSP/GPU-arch-only overrides from the existing `_lib/`
 
 Model-dependent settings (CUDA_DEVICE_MAX_CONNECTIONS, NVTE_*, framework-specific vars, parallelism) are the user's responsibility via the `env` field.
 
-### ncrectl Support
+### nvcrectl Support
 
-- `ncrectl workloadrun render <file.yaml>` — offline or `--dry-run` rendering of the generated Workflow.
-- `ncrectl workloadrun run <file.yaml>` — create on cluster with `--setup`, `--wait`, `--cleanup`, `--image-pull-secret`.
+- `nvcrectl workloadrun render <file.yaml>` — offline or `--dry-run` rendering of the generated Workflow.
+- `nvcrectl workloadrun run <file.yaml>` — create on cluster with `--setup`, `--wait`, `--cleanup`, `--image-pull-secret`.
 
 ## Implementation
 
@@ -70,7 +70,7 @@ Model-dependent settings (CUDA_DEVICE_MAX_CONNECTIONS, NVTE_*, framework-specifi
 ### Modified Files
 
 - `cmd/manager/main.go` — register `WorkloadRunReconciler`.
-- `cmd/ncrectl/main.go` — add `workloadrun` subcommand group.
+- `cmd/nvcrectl/main.go` — add `workloadrun` subcommand group.
 - `pkg/setup/setup.go` — WorkloadRun CRD in embedded CRDs.
 
 ### Controller Flow
@@ -90,8 +90,8 @@ Model-dependent settings (CUDA_DEVICE_MAX_CONNECTIONS, NVTE_*, framework-specifi
 
 Secret data never touches the CRD — only `[]LocalObjectReference` name references. Three paths:
 
-- `ncrectl --image-pull-secret=<NGC_KEY>` creates a docker-registry secret for nvcr.io.
-- `ncrectl --image-pull-secret-from-env=NGC_API_KEY` reads from environment variable.
+- `nvcrectl --image-pull-secret=<NGC_KEY>` creates a docker-registry secret for nvcr.io.
+- `nvcrectl --image-pull-secret-from-env=NGC_API_KEY` reads from environment variable.
 - Pre-created secrets referenced by name in `spec.imagePullSecrets`.
 
 ## Rationale
@@ -109,7 +109,7 @@ Secret data never touches the CRD — only `[]LocalObjectReference` name referen
 - CSP/GPU adaptation is fully automatic — same override coverage as catalog entries.
 - MPI workloads (NCCL tests) are first-class with auto-generated SSH auth infrastructure.
 - Composes with existing Workflow/Job/measurement pipeline — no changes to existing controllers.
-- Other benchmark tools can invoke `ncrectl workloadrun run` for Kubernetes-based benchmarks.
+- Other benchmark tools can invoke `nvcrectl workloadrun run` for Kubernetes-based benchmarks.
 
 ### Negative
 

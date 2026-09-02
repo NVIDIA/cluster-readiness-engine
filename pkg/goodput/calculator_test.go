@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"sigs.k8s.io/yaml"
 )
 
@@ -27,7 +27,7 @@ type calculatorInput struct {
 func TestCalculateGoodput(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "calculate-goodput",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input calculatorInput
@@ -55,7 +55,7 @@ type progressInput struct {
 func TestCumulativeMetricsUpdateProgress(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "cumulative-update-progress",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input progressInput

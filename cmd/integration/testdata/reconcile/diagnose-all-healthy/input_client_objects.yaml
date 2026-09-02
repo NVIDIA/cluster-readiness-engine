@@ -55,7 +55,7 @@ metadata:
     nvidia.com/gpu.clique: clique-c
     kubernetes.io/hostname: node-c2
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: test-diagnose

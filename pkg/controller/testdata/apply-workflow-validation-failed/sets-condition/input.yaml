@@ -1,0 +1,17 @@
+message: One or more Jobs failed performance threshold validation
+workflow:
+  metadata:
+    name: w
+  spec:
+    categories: []
+  status:
+    conditions:
+      - type: InProgress
+        status: "False"
+        reason: NotApplicable
+        lastTransitionTime: "2026-01-22T10:00:00Z"
+      - type: Failed
+        status: "True"
+        reason: JobValidationFailed
+        message: 1 groups failed across 1 iterations
+        lastTransitionTime: "2026-01-22T10:05:00Z"

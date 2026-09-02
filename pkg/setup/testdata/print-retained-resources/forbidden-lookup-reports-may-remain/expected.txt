@@ -1,0 +1,8 @@
+
+Retained resources (not removed by reset):
+  - Namespace nvcre (may remain; existence check failed)
+      kubectl delete namespace nvcre
+  - Secret nvcre/nvcrectl-pull-secret (may remain; existence check failed)
+      kubectl delete secret nvcrectl-pull-secret -n nvcre
+  - Namespace kubeflow-system (may remain; existence check failed)
+      kubectl delete namespace kubeflow-system

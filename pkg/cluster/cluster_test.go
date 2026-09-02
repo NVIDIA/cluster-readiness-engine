@@ -11,17 +11,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
 // gpuNode builds a ready node. A negative count leaves nvidia.com/gpu unset,
 // which is what a node shows before the device plugin advertises the resource.
 func gpuNode(name string, count int64) corev1.Node {
 	n := corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Name: name,
 		Status: corev1.NodeStatus{
 			Allocatable: corev1.ResourceList{},
 			Conditions: []corev1.NodeCondition{
@@ -49,7 +48,7 @@ func TestNodeGPUCount(t *testing.T) {
 func TestBuildClusterInfoCountsRealGPUs(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "build-cluster-info-counts-real-gpus",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {

@@ -10,12 +10,11 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	gzip "github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller/compress"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/noderesults"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	gzip "github.com/NVIDIA/cluster-readiness-engine/pkg/controller/compress"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
 )
 
 const (
@@ -25,7 +24,7 @@ const (
 
 // succeededNodesForWorkflow returns the full set of nodes that passed for a Workflow
 // that has reached terminal success.
-func succeededNodesForWorkflow(workflow *crev1alpha1.Workflow) []string {
+func succeededNodesForWorkflow(workflow *nvcrev1alpha1.Workflow) []string {
 	orch := workflow.Status.Orchestration
 	if orch == nil {
 		return nil
@@ -37,7 +36,7 @@ func succeededNodesForWorkflow(workflow *crev1alpha1.Workflow) []string {
 	}
 	var nodes []string
 	for _, g := range orch.Groups {
-		if g.Phase == crev1alpha1.GroupSucceeded {
+		if g.Phase == nvcrev1alpha1.GroupSucceeded {
 			nodes = append(nodes, g.Nodes...)
 		}
 	}
@@ -47,10 +46,10 @@ func succeededNodesForWorkflow(workflow *crev1alpha1.Workflow) []string {
 // sortMergedFailedNodes merges incoming FailedNode entries into existing,
 // deduplicating by the (name, reason) pair and sorting the result by name then
 // reason.
-func sortMergedFailedNodes(existing, incoming []crev1alpha1.FailedNode) []crev1alpha1.FailedNode {
+func sortMergedFailedNodes(existing, incoming []nvcrev1alpha1.FailedNode) []nvcrev1alpha1.FailedNode {
 	seen := make(map[[2]string]struct{}, len(existing)+len(incoming))
-	merged := make([]crev1alpha1.FailedNode, 0, len(existing)+len(incoming))
-	add := func(nodes []crev1alpha1.FailedNode) {
+	merged := make([]nvcrev1alpha1.FailedNode, 0, len(existing)+len(incoming))
+	add := func(nodes []nvcrev1alpha1.FailedNode) {
 		for _, fn := range nodes {
 			if fn.Name == "" {
 				continue
@@ -86,12 +85,12 @@ func nodeResultsCMName(prefix string, workflowUID string) string {
 
 // recordSucceededNodes merges the given nodes into the Workflow's succeeded-nodes
 // ConfigMap and sets workflow.Status.SucceededNodesRef.
-func (r *WorkflowReconciler) recordSucceededNodes(ctx context.Context, workflow *crev1alpha1.Workflow, nodes []string) error {
+func (r *WorkflowReconciler) recordSucceededNodes(ctx context.Context, workflow *nvcrev1alpha1.Workflow, nodes []string) error {
 	return recordNodeResults(ctx, r, workflow, nodeResultsTarget[string]{
 		namePrefix: succeededNodesPrefix,
 		dataKey:    noderesults.SucceededNodesConfigMapKey,
 		merge:      mergeSucceededNodesCSV,
-		setRef: func(w *crev1alpha1.Workflow, ref *corev1.TypedLocalObjectReference) {
+		setRef: func(w *nvcrev1alpha1.Workflow, ref *corev1.TypedLocalObjectReference) {
 			w.Status.SucceededNodesRef = ref
 		},
 	}, nodes)
@@ -99,12 +98,12 @@ func (r *WorkflowReconciler) recordSucceededNodes(ctx context.Context, workflow 
 
 // recordFailedNodes merges the given failed nodes (name, reason, message) into the
 // Workflow's failed-nodes ConfigMap and sets workflow.Status.FailedNodesRef.
-func (r *WorkflowReconciler) recordFailedNodes(ctx context.Context, workflow *crev1alpha1.Workflow, nodes []crev1alpha1.FailedNode) error {
-	return recordNodeResults(ctx, r, workflow, nodeResultsTarget[crev1alpha1.FailedNode]{
+func (r *WorkflowReconciler) recordFailedNodes(ctx context.Context, workflow *nvcrev1alpha1.Workflow, nodes []nvcrev1alpha1.FailedNode) error {
+	return recordNodeResults(ctx, r, workflow, nodeResultsTarget[nvcrev1alpha1.FailedNode]{
 		namePrefix: failedNodesPrefix,
 		dataKey:    noderesults.FailedNodesConfigMapKey,
 		merge:      mergeFailedNodesJSON,
-		setRef:     func(w *crev1alpha1.Workflow, ref *corev1.TypedLocalObjectReference) { w.Status.FailedNodesRef = ref },
+		setRef:     func(w *nvcrev1alpha1.Workflow, ref *corev1.TypedLocalObjectReference) { w.Status.FailedNodesRef = ref },
 	}, nodes)
 }
 
@@ -118,7 +117,7 @@ type nodeResultsTarget[T any] struct {
 	// merge folds newEntries into the existing encoded payload (which may be
 	// empty) and returns the re-encoded bytes.
 	merge  func(existing []byte, newEntries []T) ([]byte, error)
-	setRef func(*crev1alpha1.Workflow, *corev1.TypedLocalObjectReference)
+	setRef func(*nvcrev1alpha1.Workflow, *corev1.TypedLocalObjectReference)
 }
 
 // recordNodeResults merges entries into the Workflow's node-result ConfigMap,
@@ -130,7 +129,7 @@ type nodeResultsTarget[T any] struct {
 func recordNodeResults[T any](
 	ctx context.Context,
 	r *WorkflowReconciler,
-	workflow *crev1alpha1.Workflow,
+	workflow *nvcrev1alpha1.Workflow,
 	target nodeResultsTarget[T],
 	entries []T,
 ) error {
@@ -140,10 +139,8 @@ func recordNodeResults[T any](
 
 	cmName := nodeResultsCMName(target.namePrefix, string(workflow.UID))
 	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cmName,
-			Namespace: workflow.Namespace,
-		},
+		Name:      cmName,
+		Namespace: workflow.Namespace,
 	}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, cm, func() error {
 		if err := controllerutil.SetControllerReference(workflow, cm, r.Scheme); err != nil {
@@ -163,7 +160,7 @@ func recordNodeResults[T any](
 		return fmt.Errorf("failed to write node-results ConfigMap %s: %w", cmName, err)
 	}
 
-	target.setRef(workflow, &corev1.TypedLocalObjectReference{Kind: "ConfigMap", Name: cmName})
+	target.setRef(workflow, &corev1.TypedLocalObjectReference{Kind: kindConfigMap, Name: cmName})
 	return nil
 }
 
@@ -200,8 +197,8 @@ func mergeSucceededNodesCSV(existing []byte, newNodes []string) ([]byte, error) 
 // mergeFailedNodesJSON decodes the existing gzip-compressed failed-nodes JSON (may be
 // empty), unions in newNodes (deduping by the (name, reason) pair via
 // SortMergedFailedNodes), and returns the re-encoded gzip-JSON bytes.
-func mergeFailedNodesJSON(existing []byte, newNodes []crev1alpha1.FailedNode) ([]byte, error) {
-	var existingNodes []crev1alpha1.FailedNode
+func mergeFailedNodesJSON(existing []byte, newNodes []nvcrev1alpha1.FailedNode) ([]byte, error) {
+	var existingNodes []nvcrev1alpha1.FailedNode
 	if len(existing) > 0 {
 		decoded, err := gzip.GunzipString(existing)
 		if err != nil {

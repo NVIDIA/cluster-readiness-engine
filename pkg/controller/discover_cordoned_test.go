@@ -9,11 +9,10 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
 // Discovery drops cordoned nodes because they cannot run workload pods. It used
@@ -27,7 +26,7 @@ import (
 func TestDiscoverCordonedNodes(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "discover-cordoned",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -46,10 +45,10 @@ func TestDiscoverCordonedNodes(t *testing.T) {
 
 		given := make([]corev1.Node, 0, len(input.Nodes))
 		for _, n := range input.Nodes {
-			node := corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: n.Name}}
+			node := corev1.Node{Name: n.Name}
 			if !n.Unlabelled {
 				node.Labels = map[string]string{
-					"nvidia.com/gpu.product": "NVIDIA-H100-80GB-HBM3",
+					testGPUProductLabel: testGPUProductH100,
 				}
 				if !n.NoGPU {
 					node.Labels[GPUNodeLabel] = present
@@ -61,7 +60,7 @@ func TestDiscoverCordonedNodes(t *testing.T) {
 
 		nodes, cordoned, err := discoverTargetNodes(context.Background(),
 			unorderedReader{nodes: given},
-			&crev1alpha1.TargetSpec{})
+			&nvcrev1alpha1.TargetSpec{})
 		if err != nil {
 			return err
 		}

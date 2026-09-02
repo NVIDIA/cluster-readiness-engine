@@ -1,0 +1,9 @@
+# A node that does not report allocatable nvidia.com/gpu is kept and counted
+# for sizing: the device plugin advertises the resource asynchronously, and
+# dropping the node over a restart would shrink the run for no real shortfall.
+nodes:
+  - name: node001
+  - name: node002
+    allocatableGPUs: 8
+nodesPerJob: 2
+gpusPerNode: 8

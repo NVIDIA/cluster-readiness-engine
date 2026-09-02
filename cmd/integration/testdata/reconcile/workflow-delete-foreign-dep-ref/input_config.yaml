@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Wait for the Workflow to reach Failed (its group's Job does not exist), then
+# delete the Workflow. The finalizer must skip the foreign PVC recorded in
+# status.dependencyRefs: the PVC survives and the PV stays Retain.
+waitFor:
+  kind: Workflow
+  name: wf-foreign-depref
+  namespace: default
+  condition: Failed
+deleteAfterWait:
+  - kind: Workflow
+    name: wf-foreign-depref
+    namespace: default
+waitForDeletion:
+  - kind: Workflow
+    name: wf-foreign-depref
+    namespace: default
+collect:
+  - kind: PersistentVolumeClaim
+    name: user-keep
+    namespace: default
+  - kind: PersistentVolume
+    name: user-keep-pv

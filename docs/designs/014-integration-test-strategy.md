@@ -2,7 +2,7 @@
 
 ## Context
 
-The cluster-readiness-engine has five reconcilers, each with complex state machines. Unit tests for individual functions aren't sufficient — the interactions between reconcilers, the Kubernetes API, and external resources (nodes, workloads) need end-to-end verification.
+The nvcre has five reconcilers, each with complex state machines. Unit tests for individual functions aren't sufficient — the interactions between reconcilers, the Kubernetes API, and external resources (nodes, workloads) need end-to-end verification.
 
 Ginkgo/Gomega with inline assertions is the standard approach for Kubebuilder controllers. However, for this project it has drawbacks: tests are verbose (~300 lines per scenario), assertions are fragile (checking individual fields rather than full state), and adding a new test requires significant boilerplate.
 
@@ -91,7 +91,7 @@ Replace Ginkgo tests with envtest-based integration tests using golden file comp
 
 ## Notes
 
-- Field indexes for `spec.nodeName` and `metadata.labels.cre.nvidia.com/job` must be registered in the test suite for pod lookups to work
+- Field indexes for `spec.nodeName` and `metadata.labels.nvcre.nvidia.com/job` must be registered in the test suite for pod lookups to work
 - Test timeout is 10s — if requeue interval > 10s, status update tests will time out
 - Blank imports of `pkg/catalog` are needed in `suite_test.go` to trigger `init()` registration
 - Goodput ratio comparison should sanitize floating-point values to handle non-determinism across runs

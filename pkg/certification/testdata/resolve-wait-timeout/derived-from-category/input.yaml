@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No explicit --timeout. dcgm-level4's meta.yaml timeoutPerJob is 2h
+# (field-verified 1h31m05s run), one iteration, 1.5x margin => 3h.
+explicitTimeout: false
+flagTimeout: 30m
+certification:
+  apiVersion: nvcre.nvidia.com/v1alpha1
+  kind: Certification
+  metadata:
+    name: derived
+  spec:
+    target:
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-GB200
+    categories:
+    - domain: diagnostics
+      variant: dcgm-level4

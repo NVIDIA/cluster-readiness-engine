@@ -6,20 +6,23 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# ncrectl installer / upgrader
+# nvcrectl installer / upgrader
 #
-# Installs ncrectl if it is not present; upgrades it if it already is.
+# Installs nvcrectl if it is not present; upgrades it if it already is.
 #
 # Usage:
-#   curl -sSL https://github.com/dsx-ai-factory/cluster-readiness-engine/releases/latest/download/installer | bash
-#   curl -sSL <url> | bash -s -- -d /custom/path
+#   curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/latest/download/installer | bash
+#
+#   Pin an exact release, or change the install directory:
+#     curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/<tag>/installer | bash -s -- -v <tag>
+#     curl -fsSL <url> | bash -s -- -d /custom/path
 # ---------------------------------------------------------------------------
 
 # Configuration
-GH_REPO="dsx-ai-factory/cluster-readiness-engine"
+GH_REPO="NVIDIA/cluster-readiness-engine"
 GH_API_URL="https://api.github.com/repos/${GH_REPO}"
 GH_RELEASE_URL="https://github.com/${GH_REPO}/releases/download"
-BIN_NAME="ncrectl"
+BIN_NAME="nvcrectl"
 INSTALL_DIR="/usr/local/bin"
 
 # Colors
@@ -40,7 +43,7 @@ Usage: $0 [-d install_dir] [-p] [-v version]
 Options:
   -d DIR    Installation directory (default: /usr/local/bin)
   -p        Include pre-release versions
-  -v TAG    Install this exact release tag (e.g. v0.1.0-rc.8)
+  -v TAG    Install this exact release tag (e.g. v0.1.0)
 EOF
   exit 1
 }
@@ -125,9 +128,8 @@ fi
 if [[ -n "${GH_TOKEN}" ]]; then
   AUTH_HEADERS=(-H "Authorization: token ${GH_TOKEN}")
 else
+  # No token: anonymous downloads work fine against the public repository.
   AUTH_HEADERS=()
-  msg "Warning: no GitHub token found. This will fail for private repositories."
-  msg "         Set GITHUB_TOKEN or run 'gh auth login'."
 fi
 
 # ---------------------------------------------------------------------------
@@ -156,7 +158,7 @@ elif [[ "${GH_AVAILABLE}" == "true" ]]; then
   if [[ "${PRERELEASE}" == "true" ]]; then
     VERSION=$(gh release list --repo "${GH_REPO}" --limit 1 --json tagName -q '.[0].tagName')
   else
-    VERSION=$(gh release view --repo "${GH_REPO}" --json tagName -q '.tagName')
+    VERSION=$(gh release view --repo "${GH_REPO}" --json tagName -q '.tagName' || true)
   fi
 else
   msg "Fetching latest version..."
@@ -164,17 +166,17 @@ else
   if [[ "${PRERELEASE}" == "true" ]]; then
     ENDPOINT="${GH_API_URL}/releases?per_page=1"
     RELEASE_JSON=$(curl -sSf "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
-      -H "Accept: application/vnd.github.v3+json" "${ENDPOINT}")
-    VERSION=$(echo "${RELEASE_JSON}" | grep -o '"tag_name" *: *"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+      -H "Accept: application/vnd.github.v3+json" "${ENDPOINT}" || true)
+    VERSION=$(echo "${RELEASE_JSON}" | grep -o '"tag_name" *: *"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)
   else
     RELEASE_JSON=$(curl -sSf "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
-      -H "Accept: application/vnd.github.v3+json" "${GH_API_URL}/releases/latest")
-    VERSION=$(echo "${RELEASE_JSON}" | grep -o '"tag_name" *: *"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+      -H "Accept: application/vnd.github.v3+json" "${GH_API_URL}/releases/latest" || true)
+    VERSION=$(echo "${RELEASE_JSON}" | grep -o '"tag_name" *: *"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)
   fi
 fi
 
 if [[ -z "${VERSION}" ]]; then
-  err "Failed to determine latest version from GitHub releases"
+  err "Failed to determine latest version from GitHub releases. If every release is a pre-release, re-run with -p, or pin a version with -v <tag>."
 fi
 
 # Decide whether this is a fresh install or an upgrade and print intent.
@@ -204,9 +206,14 @@ if [[ "${GH_AVAILABLE}" == "true" ]]; then
   gh release download "${VERSION}" \
     --repo "${GH_REPO}" \
     --pattern "${BINARY_NAME}" \
-    --output "${TEMP_DIR}/${BINARY_NAME}" \
-    --clobber
+    --dir "${TEMP_DIR}"
 elif [[ -n "${GH_TOKEN}" ]]; then
+  # RELEASE_JSON is only set by the latest-version curl fallback above; fetch
+  # the release for the exact tag when the version came from -v or gh.
+  if [[ -z "${RELEASE_JSON:-}" ]]; then
+    RELEASE_JSON=$(curl -sSf "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
+      -H "Accept: application/vnd.github.v3+json" "${GH_API_URL}/releases/tags/${VERSION}")
+  fi
   # Use the GitHub API asset endpoint with Accept: application/octet-stream.
   # GitHub redirects to a pre-signed S3 URL; the auth header is not forwarded.
   # Put each asset object on its own line, then pick the line whose name
@@ -217,7 +224,7 @@ elif [[ -n "${GH_TOKEN}" ]]; then
     | grep "\"name\" *: *\"${BINARY_NAME}\"" \
     | grep -o '"url" *: *"https://api\.github\.com[^"]*releases/assets/[0-9]*"' \
     | head -1 \
-    | sed 's/.*"\(https[^"]*\)".*/\1/')
+    | sed 's/.*"\(https[^"]*\)".*/\1/' || true)
 
   if [[ -z "${ASSET_URL}" ]]; then
     err "Binary ${BINARY_NAME} not found in release ${VERSION}"
@@ -248,14 +255,13 @@ if [[ "${GH_AVAILABLE}" == "true" ]]; then
   gh release download "${VERSION}" \
     --repo "${GH_REPO}" \
     --pattern "checksums.txt" \
-    --output "${CHECKSUMS_FILE}" \
-    --clobber 2>/dev/null || true
+    --dir "${TEMP_DIR}" 2>/dev/null || true
 elif [[ -n "${GH_TOKEN}" ]]; then
-  CHECKSUM_ASSET_URL=$(echo "${RELEASE_JSON}" | tr -d '\n' | tr '{' '\n' \
+  CHECKSUM_ASSET_URL=$(echo "${RELEASE_JSON:-}" | tr -d '\n' | tr '{' '\n' \
     | grep '"name" *: *"checksums\.txt"' \
     | grep -o '"url" *: *"https://api\.github\.com[^"]*releases/assets/[0-9]*"' \
     | head -1 \
-    | sed 's/.*"\(https[^"]*\)".*/\1/')
+    | sed 's/.*"\(https[^"]*\)".*/\1/' || true)
   if [[ -n "${CHECKSUM_ASSET_URL}" ]]; then
     curl -fsSL \
       -H "Authorization: token ${GH_TOKEN}" \
@@ -293,11 +299,11 @@ ok "Checksum verified."
 #
 # kubectl discovers plugins by looking for executables named "kubectl-<name>"
 # on $PATH (see https://kubernetes.io/docs/tasks/extend-kubectl/kubectl-plugins/).
-# A relative symlink lets "kubectl ncre ..." work identically to
-# "ncrectl ..." with no separate binary to maintain or upgrade.
+# A relative symlink lets "kubectl nvcre ..." work identically to
+# "nvcrectl ..." with no separate binary to maintain or upgrade.
 # ---------------------------------------------------------------------------
 
-PLUGIN_NAME="kubectl-ncre"
+PLUGIN_NAME="kubectl-nvcre"
 STATUS=0
 
 if [[ -w "${INSTALL_DIR}" ]]; then
@@ -328,7 +334,7 @@ if command -v "${BIN_NAME}" &>/dev/null; then
   ok "${BIN_NAME} ${VERSION} installed successfully to ${INSTALL_DIR}/${BIN_NAME}"
   "${BIN_NAME}" --version
   if [[ -e "${INSTALL_DIR}/${PLUGIN_NAME}" ]]; then
-    msg "Also available as a kubectl plugin: kubectl ncre ..."
+    msg "Also available as a kubectl plugin: kubectl nvcre ..."
   fi
 else
   msg "${BIN_NAME} installed to ${INSTALL_DIR}/${BIN_NAME}"

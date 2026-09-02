@@ -1,21 +1,21 @@
 {
   "Job/test-taint-trainjob-job": {
     "kind": "Job",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-taint-trainjob-job",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
-        "cre.nvidia.com/group": "group-0",
-        "cre.nvidia.com/workflow": "test-taint-trainjob"
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/group": "group-0",
+        "nvcre.nvidia.com/workflow": "test-taint-trainjob"
       },
       "annotations": {
-        "cre.nvidia.com/group-nodes": "gpu-node-01"
+        "nvcre.nvidia.com/group-nodes": "gpu-node-01"
       },
       "ownerReferences": [
         {
-          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
           "kind": "Workflow",
           "name": "test-taint-trainjob",
           "uid": "",
@@ -24,7 +24,7 @@
         }
       ],
       "finalizers": [
-        "cre.nvidia.com/finalizer"
+        "nvcre.nvidia.com/finalizer"
       ]
     },
     "spec": {
@@ -45,7 +45,7 @@
           },
           "runtimePatches": [
             {
-              "manager": "cre.nvidia.com/controller",
+              "manager": "nvcre.nvidia.com/controller",
               "trainingRuntimeSpec": {
                 "template": {
                   "spec": {
@@ -136,17 +136,18 @@
         "kind": "TrainJob",
         "name": "test-taint-trainjob-job-workload",
         "namespace": "default"
-      }
+      },
+      "workloadStartTime": "1970-01-01T00:00:00Z"
     }
   },
   "Workflow/test-taint-trainjob": {
     "kind": "Workflow",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-taint-trainjob",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/workflow-finalizer"
+        "nvcre.nvidia.com/workflow-finalizer"
       ]
     },
     "spec": {
@@ -232,7 +233,7 @@
             ],
             "phase": "Running",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "test-taint-trainjob-job",
               "namespace": "default"

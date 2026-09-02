@@ -10,8 +10,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/noderesults"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
 )
 
 const defaultKubeNamespace = "default"
@@ -21,7 +21,7 @@ const defaultKubeNamespace = "default"
 // message).
 func failedNodesFromRef(
 	ctx context.Context, c client.Client, namespace string, ref *corev1.TypedLocalObjectReference,
-) []crev1alpha1.FailedNode {
+) []nvcrev1alpha1.FailedNode {
 	if ref == nil || ref.Name == "" {
 		return nil
 	}
@@ -38,7 +38,7 @@ func failedNodesFromRef(
 
 // certFailedNodes returns the deduped union of failed node names across all
 // categories, resolved from each category's nodeResultsRef ConfigMap.
-func certFailedNodes(ctx context.Context, c client.Client, cert *crev1alpha1.Certification) []string {
+func certFailedNodes(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certification) []string {
 	seen := make(map[string]struct{})
 	var union []string
 	for _, cat := range cert.Status.CategoryStatuses {

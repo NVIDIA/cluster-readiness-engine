@@ -4,14 +4,14 @@
 name: Documentation Request
 description: Request new or missing documentation
 title: "[Docs]: "
-labels: ["area/docs", "needs-triage"]
+labels: ["documentation", "needs-triage"]
 
 body:
   - type: checkboxes
     id: prerequisites
     attributes:
       label: Prerequisites
-      description: Please review existing [documentation issues](https://github.com/dsx-ai-factory/cluster-readiness-engine/issues?q=is%3Aopen+is%3Aissue+label%3Aarea%2Fdocs) before submitting.
+      description: Please review existing [documentation issues](https://github.com/NVIDIA/cluster-readiness-engine/issues?q=is%3Aopen+is%3Aissue+label%3Adocumentation) before submitting.
       options:
         - label: I searched existing documentation and open documentation issues
           required: true
@@ -20,7 +20,7 @@ body:
     id: terms
     attributes:
       label: Code of Conduct
-      description: By submitting this issue, you agree to follow our [Code of Conduct](https://github.com/dsx-ai-factory/cluster-readiness-engine/blob/main/CODE_OF_CONDUCT.md).
+      description: By submitting this issue, you agree to follow our [Code of Conduct](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/CODE_OF_CONDUCT.md).
       options:
         - label: I agree to follow the project's Code of Conduct
           required: true
@@ -46,7 +46,7 @@ body:
         - Configuration
         - API / CRDs
         - Catalog / Workloads
-        - CLI (ncrectl)
+        - CLI (nvcrectl)
         - Controller / Reconcilers
         - Runbooks
         - Other
@@ -70,6 +70,6 @@ body:
       placeholder: |
         - README.md
         - docs/designs/
-        - site/content/docs/
+        - https://docs.nvidia.com/cluster-readiness-engine
     validations:
       required: false

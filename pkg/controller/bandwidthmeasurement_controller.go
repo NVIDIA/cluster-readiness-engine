@@ -17,21 +17,23 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	controlleropts "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/nccl"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/podlogs"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/podutil"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/nccl"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podutil"
 )
 
 const (
 	defaultBandwidthMeasurementRequeueInterval = 15 * time.Second
 
-	bandwidthMeasurementFinalizer = "cre.nvidia.com/bandwidthmeasurement-finalizer"
+	bandwidthMeasurementFinalizer = "nvcre.nvidia.com/bandwidthmeasurement-finalizer"
 
 	reasonBandwidthJobRunning   = "JobRunning"
 	reasonBandwidthJobSucceeded = "JobSucceeded"
@@ -56,7 +58,10 @@ type BandwidthMeasurementReconciler struct {
 	APIReader  client.Reader
 	Scheme     *runtime.Scheme
 	Clientset  *kubernetes.Clientset
+	Recorder   events.EventRecorder
 	LogFetcher podlogs.PodLogFetcher // if nil, defaults to Clientset-backed fetcher
+	// MaxConcurrentReconciles bounds the number of BandwidthMeasurement objects reconciled concurrently.
+	MaxConcurrentReconciles int
 
 	// RequeueInterval is the interval between reconcile cycles when polling.
 	// Tests set this to 1s; production uses 15s.
@@ -94,7 +99,7 @@ func (r *BandwidthMeasurementReconciler) getLogFetcher() podlogs.PodLogFetcher {
 	return podlogs.NewKubernetesLogFetcher(r.Clientset)
 }
 
-func (r *BandwidthMeasurementReconciler) getSampleInterval(m *crev1alpha1.BandwidthMeasurement) time.Duration {
+func (r *BandwidthMeasurementReconciler) getSampleInterval(m *nvcrev1alpha1.BandwidthMeasurement) time.Duration {
 	if m.Spec.SampleInterval != nil {
 		return m.Spec.SampleInterval.Duration
 	}
@@ -109,15 +114,15 @@ func (r *BandwidthMeasurementReconciler) getRequeueInterval() time.Duration {
 	return defaultBandwidthMeasurementRequeueInterval
 }
 
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=bandwidthmeasurements,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=bandwidthmeasurements/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=cre.nvidia.com,resources=bandwidthmeasurements/finalizers,verbs=update
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=bandwidthmeasurements,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=bandwidthmeasurements/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=bandwidthmeasurements/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop.
 func (r *BandwidthMeasurementReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	measurement := &crev1alpha1.BandwidthMeasurement{}
+	measurement := &nvcrev1alpha1.BandwidthMeasurement{}
 	if err := r.Get(ctx, req.NamespacedName, measurement); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("BandwidthMeasurement resource not found, likely deleted")
@@ -140,7 +145,7 @@ func (r *BandwidthMeasurementReconciler) Reconcile(ctx context.Context, req ctrl
 	return r.reconcileMeasurement(ctx, measurement)
 }
 
-func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Context, measurement *crev1alpha1.BandwidthMeasurement) (ctrl.Result, error) {
+func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	if measurement.Spec.JobRef.Name == "" {
@@ -149,12 +154,12 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 	}
 
 	// If already complete, nothing to do.
-	if cond := meta.FindStatusCondition(measurement.Status.Conditions, crev1alpha1.BandwidthMeasurementComplete); cond != nil && cond.Status == metav1.ConditionTrue {
+	if cond := meta.FindStatusCondition(measurement.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete); cond != nil && cond.Status == metav1.ConditionTrue {
 		return ctrl.Result{}, nil
 	}
 
-	// Fetch the referenced CRE Job.
-	job := &crev1alpha1.Job{}
+	// Fetch the referenced NVCRE Job.
+	job := &nvcrev1alpha1.Job{}
 	jobKey := types.NamespacedName{Name: measurement.Spec.JobRef.Name, Namespace: measurement.Namespace}
 	if err := r.Get(ctx, jobKey, job); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -165,7 +170,7 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 	}
 
 	// Determine Job phase from conditions.
-	if cond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
+	if cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
 		// Do a final log parse if we don't have results yet.
 		if len(measurement.Status.Results) == 0 {
 			if _, err := r.handleRunning(ctx, measurement, job); err != nil {
@@ -174,7 +179,7 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 		}
 		return r.handleTerminal(ctx, measurement, reasonBandwidthJobSucceeded, "Job succeeded")
 	}
-	if cond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobFailed); cond != nil && cond.Status == metav1.ConditionTrue {
+	if cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobFailed); cond != nil && cond.Status == metav1.ConditionTrue {
 		// Attempt final log parse — failed jobs may still have partial bandwidth data.
 		if len(measurement.Status.Results) == 0 {
 			if _, err := r.handleRunning(ctx, measurement, job); err != nil {
@@ -183,7 +188,7 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 		}
 		return r.handleTerminal(ctx, measurement, reasonBandwidthJobFailed, "Job failed")
 	}
-	if cond := meta.FindStatusCondition(job.Status.Conditions, crev1alpha1.JobInProgress); cond != nil && cond.Status == metav1.ConditionTrue {
+	if cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobInProgress); cond != nil && cond.Status == metav1.ConditionTrue {
 		return r.handleRunning(ctx, measurement, job)
 	}
 
@@ -191,7 +196,7 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 	return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 }
 
-func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, measurement *crev1alpha1.BandwidthMeasurement, job *crev1alpha1.Job) (ctrl.Result, error) {
+func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	key := measurement.Namespace + "/" + measurement.Name
 
@@ -215,7 +220,7 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 	}
 
 	// Determine which pod to read logs from.
-	replicatedJobName := "node"
+	replicatedJobName := labelNode
 	if profile.Spec.WorkerStrategy != nil && profile.Spec.WorkerStrategy.ReplicatedJobName != "" {
 		replicatedJobName = profile.Spec.WorkerStrategy.ReplicatedJobName
 	}
@@ -323,7 +328,7 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 
 	// Set Measuring condition.
 	meta.SetStatusCondition(&measurement.Status.Conditions, metav1.Condition{
-		Type:               crev1alpha1.BandwidthMeasurementMeasuring,
+		Type:               nvcrev1alpha1.BandwidthMeasurementMeasuring,
 		Status:             metav1.ConditionTrue,
 		ObservedGeneration: measurement.Generation,
 		Reason:             reasonBandwidthJobRunning,
@@ -332,7 +337,7 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 
 	// Emit Prometheus metrics.
 	jobName := measurement.Spec.JobRef.Name
-	workflow := measurement.Labels["cre.nvidia.com/workflow"]
+	workflow := measurement.Labels["nvcre.nvidia.com/workflow"]
 	ncclTest := measurement.Spec.TestType
 	for _, r := range measurement.Status.Results {
 		algBW, _ := strconv.ParseFloat(r.AlgBW, 64)
@@ -359,11 +364,16 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 // measurement, so the cause is visible in status and not only in the controller
 // log. This is deliberately not terminal: a cluster-scoped LogProfile can be
 // created after the run starts, and the next sample picks it up.
-func (r *BandwidthMeasurementReconciler) noteLogProfileUnresolved(ctx context.Context, measurement *crev1alpha1.BandwidthMeasurement, cause error) {
+func (r *BandwidthMeasurementReconciler) noteLogProfileUnresolved(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, cause error) {
 	message := fmt.Sprintf("LogProfile %q could not be resolved: %v", measurement.Spec.LogProfileRef, cause)
-	err := updateStatusWithRetry(ctx, r.Client, measurement, func(m *crev1alpha1.BandwidthMeasurement) bool {
+	// One event per failed resolution attempt: this helper only runs when a
+	// sampling pass actively tried and failed to fetch or compile the
+	// LogProfile, never from observed state; a Complete measurement returns
+	// before any fetch. Repeated failing attempts aggregate into one Event.
+	r.warnf(measurement, reasonBandwidthLogProfileMissing, "%s", message)
+	err := updateStatusWithRetry(ctx, r.Client, measurement, func(m *nvcrev1alpha1.BandwidthMeasurement) bool {
 		return meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
-			Type:               crev1alpha1.BandwidthMeasurementMeasuring,
+			Type:               nvcrev1alpha1.BandwidthMeasurementMeasuring,
 			Status:             metav1.ConditionFalse,
 			ObservedGeneration: m.Generation,
 			Reason:             reasonBandwidthLogProfileMissing,
@@ -375,7 +385,7 @@ func (r *BandwidthMeasurementReconciler) noteLogProfileUnresolved(ctx context.Co
 	}
 }
 
-func (r *BandwidthMeasurementReconciler) handleTerminal(ctx context.Context, measurement *crev1alpha1.BandwidthMeasurement, reason, message string) (ctrl.Result, error) {
+func (r *BandwidthMeasurementReconciler) handleTerminal(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, reason, message string) (ctrl.Result, error) {
 	now := metav1.Now()
 	measurement.Status.CompletionTime = &now
 
@@ -387,14 +397,14 @@ func (r *BandwidthMeasurementReconciler) handleTerminal(ctx context.Context, mea
 	}
 
 	meta.SetStatusCondition(&measurement.Status.Conditions, metav1.Condition{
-		Type:               crev1alpha1.BandwidthMeasurementMeasuring,
+		Type:               nvcrev1alpha1.BandwidthMeasurementMeasuring,
 		Status:             metav1.ConditionFalse,
 		ObservedGeneration: measurement.Generation,
 		Reason:             reason,
 		Message:            message,
 	})
 	meta.SetStatusCondition(&measurement.Status.Conditions, metav1.Condition{
-		Type:               crev1alpha1.BandwidthMeasurementComplete,
+		Type:               nvcrev1alpha1.BandwidthMeasurementComplete,
 		Status:             metav1.ConditionTrue,
 		ObservedGeneration: measurement.Generation,
 		Reason:             reason,
@@ -407,7 +417,7 @@ func (r *BandwidthMeasurementReconciler) handleTerminal(ctx context.Context, mea
 
 	// Clean up NCCL bandwidth gauges so stale values don't persist in Prometheus.
 	jobName := measurement.Spec.JobRef.Name
-	workflow := measurement.Labels["cre.nvidia.com/workflow"]
+	workflow := measurement.Labels["nvcre.nvidia.com/workflow"]
 	sizes := make([]string, 0, len(measurement.Status.Results))
 	for _, r := range measurement.Status.Results {
 		sizes = append(sizes, strconv.FormatInt(r.SizeBytes, 10))
@@ -417,13 +427,13 @@ func (r *BandwidthMeasurementReconciler) handleTerminal(ctx context.Context, mea
 	return ctrl.Result{}, nil
 }
 
-func (r *BandwidthMeasurementReconciler) handleDeletion(ctx context.Context, measurement *crev1alpha1.BandwidthMeasurement) (ctrl.Result, error) {
+func (r *BandwidthMeasurementReconciler) handleDeletion(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	if controllerutil.ContainsFinalizer(measurement, bandwidthMeasurementFinalizer) {
 		// Cleanup Prometheus metrics.
 		jobName := measurement.Spec.JobRef.Name
-		workflow := measurement.Labels["cre.nvidia.com/workflow"]
+		workflow := measurement.Labels["nvcre.nvidia.com/workflow"]
 		sizes := make([]string, 0, len(measurement.Status.Results))
 		for _, r := range measurement.Status.Results {
 			sizes = append(sizes, strconv.FormatInt(r.SizeBytes, 10))
@@ -452,11 +462,11 @@ func (r *BandwidthMeasurementReconciler) handleDeletion(ctx context.Context, mea
 // The cache is keyed by LogProfile name but validated against its resourceVersion,
 // so editing a LogProfile's patterns takes effect on the next reconcile rather
 // than requiring a controller restart. Only one entry per profile is retained.
-func (r *BandwidthMeasurementReconciler) getOrCreateParser(ctx context.Context, logProfileName string) (*nccl.Parser, *crev1alpha1.LogProfile, error) {
+func (r *BandwidthMeasurementReconciler) getOrCreateParser(ctx context.Context, logProfileName string) (*nccl.Parser, *nvcrev1alpha1.LogProfile, error) {
 	// The profile is always needed (workerStrategy, containerName) and this Get is
 	// served from the informer cache, so fetch it first and use its resourceVersion
 	// to decide whether the cached parser is still valid.
-	profile := &crev1alpha1.LogProfile{}
+	profile := &nvcrev1alpha1.LogProfile{}
 	if err := r.Get(ctx, types.NamespacedName{Name: logProfileName}, profile); err != nil {
 		return nil, nil, fmt.Errorf("getting LogProfile %s: %w", logProfileName, err)
 	}
@@ -489,7 +499,7 @@ func (r *BandwidthMeasurementReconciler) getOrCreateParser(ctx context.Context, 
 // mergeBandwidthResults merges new data points into existing results using running averages.
 // For sizes already in existing, the average is updated: newAvg = (oldAvg*oldN + sum(new)) / (oldN + newN).
 // New sizes are appended in the order they appear in the data points.
-func mergeBandwidthResults(existing []crev1alpha1.BandwidthResult, dataPoints []nccl.BandwidthDataPoint) []crev1alpha1.BandwidthResult {
+func mergeBandwidthResults(existing []nvcrev1alpha1.BandwidthResult, dataPoints []nccl.BandwidthDataPoint) []nvcrev1alpha1.BandwidthResult {
 	// Index existing results by size for O(1) lookup.
 	idx := make(map[int64]int, len(existing))
 	for i, r := range existing {
@@ -517,7 +527,7 @@ func mergeBandwidthResults(existing []crev1alpha1.BandwidthResult, dataPoints []
 	}
 
 	// Deep-copy existing results so we don't mutate the caller's slice.
-	results := make([]crev1alpha1.BandwidthResult, len(existing))
+	results := make([]nvcrev1alpha1.BandwidthResult, len(existing))
 	copy(results, existing)
 
 	for _, size := range newOrder {
@@ -533,7 +543,7 @@ func mergeBandwidthResults(existing []crev1alpha1.BandwidthResult, dataPoints []
 			results[i].Samples = totalN
 		} else {
 			// New size — append.
-			results = append(results, crev1alpha1.BandwidthResult{
+			results = append(results, nvcrev1alpha1.BandwidthResult{
 				SizeBytes: size,
 				AlgBW:     strconv.FormatFloat(a.sumAlgBW/float64(a.count), 'f', 2, 64),
 				BusBW:     strconv.FormatFloat(a.sumBusBW/float64(a.count), 'f', 2, 64),
@@ -545,10 +555,23 @@ func mergeBandwidthResults(existing []crev1alpha1.BandwidthResult, dataPoints []
 	return results
 }
 
+// warnf emits a Warning event if the Recorder is configured. Every
+// BandwidthMeasurement-tier event is a warning; the Workflow reconciler's
+// eventf takes an explicit type because it emits Normal events too.
+//
+// Safe to call when Recorder is nil (e.g. in unit tests, or any embedding that
+// constructs BandwidthMeasurementReconciler directly).
+func (r *BandwidthMeasurementReconciler) warnf(obj runtime.Object, reason, messageFmt string, args ...any) {
+	if r.Recorder != nil {
+		r.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, reason, reason, messageFmt, args...)
+	}
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *BandwidthMeasurementReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&crev1alpha1.BandwidthMeasurement{}).
+		For(&nvcrev1alpha1.BandwidthMeasurement{}).
 		Named("bandwidthmeasurement").
+		WithOptions(controlleropts.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Complete(r)
 }

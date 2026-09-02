@@ -6,8 +6,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    {{- include "cre.labels" . | nindent 4 }}
-  name: cre-manager-role
+    {{- include "nvcre.labels" . | nindent 4 }}
+  name: nvcre-manager-role
 rules:
 - apiGroups:
   - ""
@@ -63,7 +63,7 @@ rules:
   - create
   - patch
 - apiGroups:
-  - cre.nvidia.com
+  - nvcre.nvidia.com
   resources:
   - bandwidthmeasurements
   - certifications
@@ -80,7 +80,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - cre.nvidia.com
+  - nvcre.nvidia.com
   resources:
   - bandwidthmeasurements/finalizers
   - certifications/finalizers
@@ -91,7 +91,7 @@ rules:
   verbs:
   - update
 - apiGroups:
-  - cre.nvidia.com
+  - nvcre.nvidia.com
   resources:
   - bandwidthmeasurements/status
   - certifications/status
@@ -104,7 +104,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - cre.nvidia.com
+  - nvcre.nvidia.com
   resources:
   - logprofiles
   verbs:

@@ -9,14 +9,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"sigs.k8s.io/yaml"
 )
 
 func TestRender(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "render",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg struct {
@@ -60,7 +60,7 @@ func TestRender(t *testing.T) {
 func TestRenderErrors(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "render-errors",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg struct {
@@ -102,7 +102,7 @@ func TestRenderErrors(t *testing.T) {
 func TestValidateFlags(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "validate-flags",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg struct {
@@ -137,7 +137,7 @@ func TestValidateFlags(t *testing.T) {
 func TestListAvailable(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "list-available",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		avail := listAvailable()

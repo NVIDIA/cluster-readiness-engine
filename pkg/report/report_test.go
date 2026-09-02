@@ -15,19 +15,46 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
-const testAPIGroup = "cre.nvidia.com"
+const testAPIGroup = "nvcre.nvidia.com"
+
+// testBusBW1_0 is the "1.0" BusBW value shared by several bandwidth
+// measurement fixtures below.
+const testBusBW1_0 = "1.0"
+
+// testBusBW350_0 is the "350.0" BusBW value shared by several bandwidth
+// measurement fixtures below.
+const testBusBW350_0 = "350.0"
+
+// Fixture names shared by several test cases below.
+const (
+	testGroup0  = "group-0"
+	testNode0   = "node-0"
+	testNode1   = "node-1"
+	testClique0 = "clique-0"
+	testJob0    = "job-0"
+	testNode2   = "node-2"
+	testJob1    = "job-1"
+	testKindJob = "Job"
+
+	testDomainTraining       = "training"
+	testVariantNemotron      = "nemotron"
+	testDomainCommunication  = "communication"
+	testVariantNCCLAllReduce = "nccl-all-reduce"
+
+	testTFLOPs800_5 = "800.5"
+)
 
 func TestHumanSize(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "human-size",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -54,7 +81,7 @@ func TestHumanSize(t *testing.T) {
 func TestParseFloat(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "parse-float",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -81,7 +108,7 @@ func TestParseFloat(t *testing.T) {
 func TestAvg(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "avg",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -114,7 +141,7 @@ func TestFmtPercent(t *testing.T) {
 func TestFmtDuration(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "fmt-duration",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -155,16 +182,16 @@ func TestFmtAvg(t *testing.T) {
 
 func TestHasCondition(t *testing.T) {
 	conditions := []metav1.Condition{
-		{Type: "Succeeded", Status: metav1.ConditionTrue},
-		{Type: "Failed", Status: metav1.ConditionFalse},
+		{Type: statusSucceeded, Status: metav1.ConditionTrue},
+		{Type: statusFailed, Status: metav1.ConditionFalse},
 	}
 
 	t.Run("match true", func(t *testing.T) {
-		assert.True(t, controller.CondIsTrue(conditions, "Succeeded"))
+		assert.True(t, controller.CondIsTrue(conditions, statusSucceeded))
 	})
 
 	t.Run("exists but false", func(t *testing.T) {
-		assert.False(t, controller.CondIsTrue(conditions, "Failed"))
+		assert.False(t, controller.CondIsTrue(conditions, statusFailed))
 	})
 
 	t.Run("no match", func(t *testing.T) {
@@ -172,7 +199,7 @@ func TestHasCondition(t *testing.T) {
 	})
 
 	t.Run("empty list", func(t *testing.T) {
-		assert.False(t, controller.CondIsTrue(nil, "Succeeded"))
+		assert.False(t, controller.CondIsTrue(nil, statusSucceeded))
 	})
 }
 
@@ -180,48 +207,48 @@ func TestBuildDomainReports(t *testing.T) {
 	apiGroup := testAPIGroup
 
 	t.Run("multi-domain grouping", func(t *testing.T) {
-		orch := &crev1alpha1.OrchestrationStatus{
-			Groups: []crev1alpha1.GroupStatus{
+		orch := &nvcrev1alpha1.OrchestrationStatus{
+			Groups: []nvcrev1alpha1.GroupStatus{
 				{
-					Name:    "group-0",
-					Nodes:   []string{"node-0", "node-1"},
-					Domains: []string{"clique-0"},
-					JobRef:  &crev1alpha1.WorkloadReference{Name: "job-0"},
+					Name:    testGroup0,
+					Nodes:   []string{testNode0, testNode1},
+					Domains: []string{testClique0},
+					JobRef:  &nvcrev1alpha1.WorkloadReference{Name: testJob0},
 				},
 				{
 					Name:    "group-1",
-					Nodes:   []string{"node-2", "node-3"},
+					Nodes:   []string{testNode2, "node-3"},
 					Domains: []string{"clique-1"},
-					JobRef:  &crev1alpha1.WorkloadReference{Name: "job-1"},
+					JobRef:  &nvcrev1alpha1.WorkloadReference{Name: testJob1},
 				},
 			},
 		}
 
-		measurements := []crev1alpha1.GoodputMeasurement{
+		measurements := []nvcrev1alpha1.GoodputMeasurement{
 			{
-				Spec: crev1alpha1.GoodputMeasurementSpec{
+				Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 					JobRef: corev1.TypedLocalObjectReference{
 						APIGroup: &apiGroup,
-						Kind:     "Job",
-						Name:     "job-0",
+						Kind:     testKindJob,
+						Name:     testJob0,
 					},
 				},
-				Status: crev1alpha1.GoodputMeasurementStatus{
+				Status: nvcrev1alpha1.GoodputMeasurementStatus{
 					Result:          "0.95",
-					AvgTFLOPSPerGPU: "800.5",
+					AvgTFLOPSPerGPU: testTFLOPs800_5,
 					TrainingTimeSec: "120",
 					AvgStepTimeSec:  "1.25",
 				},
 			},
 			{
-				Spec: crev1alpha1.GoodputMeasurementSpec{
+				Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 					JobRef: corev1.TypedLocalObjectReference{
 						APIGroup: &apiGroup,
-						Kind:     "Job",
-						Name:     "job-1",
+						Kind:     testKindJob,
+						Name:     testJob1,
 					},
 				},
-				Status: crev1alpha1.GoodputMeasurementStatus{
+				Status: nvcrev1alpha1.GoodputMeasurementStatus{
 					Result:          "0.90",
 					AvgTFLOPSPerGPU: "750.0",
 					TrainingTimeSec: "130",
@@ -238,10 +265,10 @@ func TestBuildDomainReports(t *testing.T) {
 			byDomain[r.Name] = r
 		}
 
-		clique0 := byDomain["clique-0"]
+		clique0 := byDomain[testClique0]
 		assert.Equal(t, 2, clique0.NodeCount)
 		assert.Contains(t, clique0.Goodput, "0.95")
-		assert.Contains(t, clique0.TFLOPs, "800.5")
+		assert.Contains(t, clique0.TFLOPs, testTFLOPs800_5)
 
 		clique1 := byDomain["clique-1"]
 		assert.Equal(t, 2, clique1.NodeCount)
@@ -249,16 +276,16 @@ func TestBuildDomainReports(t *testing.T) {
 	})
 
 	t.Run("no-domain fallback", func(t *testing.T) {
-		measurements := []crev1alpha1.GoodputMeasurement{
+		measurements := []nvcrev1alpha1.GoodputMeasurement{
 			{
-				Spec: crev1alpha1.GoodputMeasurementSpec{
+				Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 					JobRef: corev1.TypedLocalObjectReference{
 						APIGroup: &apiGroup,
-						Kind:     "Job",
+						Kind:     testKindJob,
 						Name:     "job-x",
 					},
 				},
-				Status: crev1alpha1.GoodputMeasurementStatus{
+				Status: nvcrev1alpha1.GoodputMeasurementStatus{
 					Result:          "0.88",
 					AvgTFLOPSPerGPU: "600",
 				},
@@ -272,12 +299,12 @@ func TestBuildDomainReports(t *testing.T) {
 	})
 
 	t.Run("empty measurements", func(t *testing.T) {
-		orch := &crev1alpha1.OrchestrationStatus{
-			Groups: []crev1alpha1.GroupStatus{
+		orch := &nvcrev1alpha1.OrchestrationStatus{
+			Groups: []nvcrev1alpha1.GroupStatus{
 				{
-					Name:    "group-0",
-					Domains: []string{"clique-0"},
-					JobRef:  &crev1alpha1.WorkloadReference{Name: "job-0"},
+					Name:    testGroup0,
+					Domains: []string{testClique0},
+					JobRef:  &nvcrev1alpha1.WorkloadReference{Name: testJob0},
 				},
 			},
 		}
@@ -294,25 +321,25 @@ func TestPrintReport(t *testing.T) {
 		TotalNodes: 8,
 		Categories: []CategoryReport{
 			{
-				Domain:  "training",
-				Variant: "nemotron",
-				Status:  "Succeeded",
+				Domain:  testDomainTraining,
+				Variant: testVariantNemotron,
+				Status:  statusSucceeded,
 				Runtime: "2m 30s",
 				Domains: []DomainReport{
 					{
-						Name:      "clique-0",
+						Name:      testClique0,
 						NodeCount: 4,
 						Goodput:   "0.95 (95%)",
-						TFLOPs:    "800.5",
+						TFLOPs:    testTFLOPs800_5,
 
 						StepTime: "1.25s",
 					},
 				},
 			},
 			{
-				Domain:  "communication",
-				Variant: "nccl-all-reduce",
-				Status:  "Succeeded",
+				Domain:  testDomainCommunication,
+				Variant: testVariantNCCLAllReduce,
+				Status:  statusSucceeded,
 				Bandwidth: []BandwidthRow{
 					{Size: "1 MB", AlgBW: "10.5 GB/s", BusBW: "9.8 GB/s", Samples: 100},
 				},
@@ -339,12 +366,12 @@ func TestPrintReport(t *testing.T) {
 	// Check category cards.
 	assert.Contains(t, output, "training/nemotron")
 	assert.Contains(t, output, "communication/nccl-all-reduce")
-	assert.Contains(t, output, "Succeeded")
+	assert.Contains(t, output, statusSucceeded)
 
 	// Check training metrics.
 	assert.Contains(t, output, "Avg Runtime Goodput")
 	assert.Contains(t, output, "0.95 (95%)")
-	assert.Contains(t, output, "clique-0")
+	assert.Contains(t, output, testClique0)
 
 	// Check bandwidth table.
 	assert.Contains(t, output, "Bandwidth:")
@@ -361,9 +388,9 @@ func TestPrintReportFailed(t *testing.T) {
 	report := &CertReport{
 		Name: "fail-cert",
 		Categories: []CategoryReport{
-			{Domain: "training", Variant: "v1", Status: "Failed"},
+			{Domain: testDomainTraining, Variant: "v1", Status: statusFailed},
 		},
-		FailedNodes: []string{"node-1", "node-2"},
+		FailedNodes: []string{testNode1, testNode2},
 		Result:      "FAILED",
 	}
 
@@ -379,13 +406,13 @@ func TestPrintReportFailed(t *testing.T) {
 
 func TestPrintCategoryCardTraining(t *testing.T) {
 	cat := &CategoryReport{
-		Domain:  "training",
-		Variant: "nemotron",
-		Status:  "Succeeded",
+		Domain:  testDomainTraining,
+		Variant: testVariantNemotron,
+		Status:  statusSucceeded,
 		Runtime: "5m 0s",
 		Domains: []DomainReport{
 			{
-				Name:      "clique-0",
+				Name:      testClique0,
 				NodeCount: 4,
 				Goodput:   "0.92 (92%)",
 				TFLOPs:    "750.0",
@@ -423,9 +450,9 @@ func TestPrintCategoryCardTraining(t *testing.T) {
 
 func TestPrintCategoryCardCommunication(t *testing.T) {
 	cat := &CategoryReport{
-		Domain:  "communication",
-		Variant: "nccl-all-reduce",
-		Status:  "Succeeded",
+		Domain:  testDomainCommunication,
+		Variant: testVariantNCCLAllReduce,
+		Status:  statusSucceeded,
 		Bandwidth: []BandwidthRow{
 			{Size: "1 KB", AlgBW: "0.5 GB/s", BusBW: "0.4 GB/s", Samples: 50},
 			{Size: "1 MB", AlgBW: "10.5 GB/s", BusBW: "9.8 GB/s", Samples: 100},
@@ -448,9 +475,9 @@ func TestPrintCategoryCardCommunication(t *testing.T) {
 
 func TestPrintCategoryCardNoTopology(t *testing.T) {
 	cat := &CategoryReport{
-		Domain:  "training",
+		Domain:  testDomainTraining,
 		Variant: "v1",
-		Status:  "Succeeded",
+		Status:  statusSucceeded,
 		Domains: []DomainReport{
 			{
 				Name:    "", // no topology
@@ -490,7 +517,7 @@ func TestFmtFloat2(t *testing.T) {
 func TestCountDigits(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "count-digits",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -525,21 +552,21 @@ func TestFailureReason(t *testing.T) {
 	t.Run("has failed condition", func(t *testing.T) {
 		conditions := []metav1.Condition{
 			{Type: "InProgress", Status: metav1.ConditionFalse},
-			{Type: "Failed", Status: metav1.ConditionTrue, Message: "workload timeout"},
+			{Type: statusFailed, Status: metav1.ConditionTrue, Message: "workload timeout"},
 		}
 		assert.Equal(t, "workload timeout", failureReasonFromConditions(conditions))
 	})
 
 	t.Run("no failed condition", func(t *testing.T) {
 		conditions := []metav1.Condition{
-			{Type: "Succeeded", Status: metav1.ConditionTrue},
+			{Type: statusSucceeded, Status: metav1.ConditionTrue},
 		}
 		assert.Equal(t, "", failureReasonFromConditions(conditions))
 	})
 
 	t.Run("failed condition false", func(t *testing.T) {
 		conditions := []metav1.Condition{
-			{Type: "Failed", Status: metav1.ConditionFalse, Message: "old error"},
+			{Type: statusFailed, Status: metav1.ConditionFalse, Message: "old error"},
 		}
 		assert.Equal(t, "", failureReasonFromConditions(conditions))
 	})
@@ -555,10 +582,10 @@ func TestFailureReason(t *testing.T) {
 
 func TestPrintDomainBox(t *testing.T) {
 	d := &DomainReport{
-		Name:      "clique-0",
+		Name:      testClique0,
 		NodeCount: 4,
 		Goodput:   "0.95 (95%)",
-		TFLOPs:    "800.5",
+		TFLOPs:    testTFLOPs800_5,
 		StepTime:  "1.25s",
 	}
 
@@ -570,7 +597,7 @@ func TestPrintDomainBox(t *testing.T) {
 	assert.Contains(t, output, "Avg Runtime Goodput")
 	assert.Contains(t, output, "0.95 (95%)")
 	assert.Contains(t, output, "Avg TFLOPs/GPU")
-	assert.Contains(t, output, "800.5")
+	assert.Contains(t, output, testTFLOPs800_5)
 	assert.NotContains(t, output, "Avg Train Time")
 	assert.Contains(t, output, "Avg Step Time")
 	assert.Contains(t, output, "1.25s")
@@ -581,15 +608,15 @@ func TestPrintDomainBox(t *testing.T) {
 
 func TestPrintDomainBoxEmptyMetrics(t *testing.T) {
 	d := &DomainReport{
-		Name: "clique-0",
+		Name: testClique0,
 		// All metrics empty — lines should be omitted.
 	}
 
 	var buf bytes.Buffer
-	printDomainBox(&buf, "clique-0", d)
+	printDomainBox(&buf, testClique0, d)
 	output := buf.String()
 
-	assert.Contains(t, output, "clique-0")
+	assert.Contains(t, output, testClique0)
 	assert.NotContains(t, output, "Avg Runtime Goodput")
 	assert.NotContains(t, output, "Avg TFLOPs/GPU")
 }
@@ -632,9 +659,9 @@ func TestPrintMetricLine(t *testing.T) {
 
 func TestPrintCategoryCardWithFailureReason(t *testing.T) {
 	cat := &CategoryReport{
-		Domain:        "training",
-		Variant:       "nemotron",
-		Status:        "Failed",
+		Domain:        testDomainTraining,
+		Variant:       testVariantNemotron,
+		Status:        statusFailed,
 		FailureReason: "workload timed out after 30m",
 		Runtime:       "30m 0s",
 	}
@@ -652,9 +679,9 @@ func TestPrintCategoryCardWithFailureReason(t *testing.T) {
 func TestPrintCategoryCardLongReasonTruncated(t *testing.T) {
 	longReason := strings.Repeat("x", 100)
 	cat := &CategoryReport{
-		Domain:        "training",
+		Domain:        testDomainTraining,
 		Variant:       "v1",
-		Status:        "Failed",
+		Status:        statusFailed,
 		FailureReason: longReason,
 	}
 
@@ -673,7 +700,7 @@ func TestPrintReportMinimal(t *testing.T) {
 	report := &CertReport{
 		Name: "minimal-cert",
 		Categories: []CategoryReport{
-			{Domain: "communication", Variant: "nccl-loopback", Status: "Succeeded"},
+			{Domain: testDomainCommunication, Variant: "nccl-loopback", Status: statusSucceeded},
 		},
 		Result: "PASSED",
 	}
@@ -701,10 +728,10 @@ func TestPrintReportMultipleCategoriesMixed(t *testing.T) {
 		GPU:        "gb200",
 		TotalNodes: 16,
 		Categories: []CategoryReport{
-			{Domain: "communication", Variant: "nccl-all-reduce", Status: "Succeeded"},
-			{Domain: "training", Variant: "nemotron5-8b", Status: "Failed",
+			{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: statusSucceeded},
+			{Domain: testDomainTraining, Variant: "nemotron5-8b", Status: statusFailed,
 				FailureReason: "hardware failure detected"},
-			{Domain: "communication", Variant: "nccl-loopback", Status: "Succeeded"},
+			{Domain: testDomainCommunication, Variant: "nccl-loopback", Status: statusSucceeded},
 		},
 		FailedNodes: []string{"node-5"},
 		Result:      "FAILED",
@@ -788,16 +815,16 @@ func TestBuildDomainReportsPartialMetrics(t *testing.T) {
 	apiGroup := testAPIGroup
 
 	// Only goodput set, other metrics are empty.
-	measurements := []crev1alpha1.GoodputMeasurement{
+	measurements := []nvcrev1alpha1.GoodputMeasurement{
 		{
-			Spec: crev1alpha1.GoodputMeasurementSpec{
+			Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 				JobRef: corev1.TypedLocalObjectReference{
 					APIGroup: &apiGroup,
-					Kind:     "Job",
-					Name:     "job-0",
+					Kind:     testKindJob,
+					Name:     testJob0,
 				},
 			},
-			Status: crev1alpha1.GoodputMeasurementStatus{
+			Status: nvcrev1alpha1.GoodputMeasurementStatus{
 				Result: "0.85",
 				// All other fields empty.
 			},
@@ -814,7 +841,7 @@ func TestBuildDomainReportsPartialMetrics(t *testing.T) {
 func TestBuildCliqueReport(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "build-clique-report",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -831,11 +858,11 @@ func TestBuildCliqueReport(t *testing.T) {
 			return err
 		}
 
-		wf := &crev1alpha1.Workflow{}
+		wf := &nvcrev1alpha1.Workflow{}
 		if !input.NilOrchestration {
-			orch := &crev1alpha1.OrchestrationStatus{}
+			orch := &nvcrev1alpha1.OrchestrationStatus{}
 			for _, g := range input.Groups {
-				orch.Groups = append(orch.Groups, crev1alpha1.GroupStatus{
+				orch.Groups = append(orch.Groups, nvcrev1alpha1.GroupStatus{
 					Name:             g.Name,
 					Nodes:            g.Nodes,
 					Domains:          g.Domains,
@@ -844,10 +871,10 @@ func TestBuildCliqueReport(t *testing.T) {
 			}
 			wf.Status.Orchestration = orch
 		}
-		var failedNodes []crev1alpha1.FailedNode
+		var failedNodes []nvcrev1alpha1.FailedNode
 		for _, n := range input.FailedNodes {
 			failedNodes = append(failedNodes,
-				crev1alpha1.FailedNode{Name: n, Reason: "WorkloadFailed"})
+				nvcrev1alpha1.FailedNode{Name: n, Reason: "WorkloadFailed"})
 		}
 
 		reports := buildCliqueReport(wf, failedNodes)
@@ -867,7 +894,7 @@ func TestBuildCliqueReport(t *testing.T) {
 func TestDetectTestScale(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "detect-test-scale",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -882,20 +909,20 @@ func TestDetectTestScale(t *testing.T) {
 			return err
 		}
 
-		wf := &crev1alpha1.Workflow{}
+		wf := &nvcrev1alpha1.Workflow{}
 		if input.RequestedTestScale != "" {
 			wf.Annotations = map[string]string{
 				annotationRequestedTestScale: input.RequestedTestScale,
 			}
 		}
 		if input.Topology != nil {
-			wf.Spec.Orchestration.Topology = &crev1alpha1.TopologySpec{
+			wf.Spec.Orchestration.Topology = &nvcrev1alpha1.TopologySpec{
 				TopologyKey:  input.Topology.TopologyKey,
 				StrictDomain: input.Topology.StrictDomain,
 			}
 		}
 		if input.NodesPerJob > 0 {
-			wf.Status.Orchestration = &crev1alpha1.OrchestrationStatus{
+			wf.Status.Orchestration = &nvcrev1alpha1.OrchestrationStatus{
 				NodesPerJob: input.NodesPerJob,
 			}
 		}
@@ -916,41 +943,41 @@ func TestDetectTestScale(t *testing.T) {
 func TestBuildDomainReportsMultipleMeasurementsSameDomain(t *testing.T) {
 	apiGroup := testAPIGroup
 
-	orch := &crev1alpha1.OrchestrationStatus{
-		Groups: []crev1alpha1.GroupStatus{
+	orch := &nvcrev1alpha1.OrchestrationStatus{
+		Groups: []nvcrev1alpha1.GroupStatus{
 			{
-				Name:    "group-0",
-				Nodes:   []string{"node-0", "node-1"},
+				Name:    testGroup0,
+				Nodes:   []string{testNode0, testNode1},
 				Domains: []string{"rack-a"},
-				JobRef:  &crev1alpha1.WorkloadReference{Name: "job-0"},
+				JobRef:  &nvcrev1alpha1.WorkloadReference{Name: testJob0},
 			},
 			{
 				Name:    "group-1",
-				Nodes:   []string{"node-2", "node-3"},
+				Nodes:   []string{testNode2, "node-3"},
 				Domains: []string{"rack-a"}, // Same domain.
-				JobRef:  &crev1alpha1.WorkloadReference{Name: "job-1"},
+				JobRef:  &nvcrev1alpha1.WorkloadReference{Name: testJob1},
 			},
 		},
 	}
 
-	measurements := []crev1alpha1.GoodputMeasurement{
+	measurements := []nvcrev1alpha1.GoodputMeasurement{
 		{
-			Spec: crev1alpha1.GoodputMeasurementSpec{
+			Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 				JobRef: corev1.TypedLocalObjectReference{
-					APIGroup: &apiGroup, Kind: "Job", Name: "job-0",
+					APIGroup: &apiGroup, Kind: testKindJob, Name: testJob0,
 				},
 			},
-			Status: crev1alpha1.GoodputMeasurementStatus{
+			Status: nvcrev1alpha1.GoodputMeasurementStatus{
 				Result: "0.90", AvgTFLOPSPerGPU: "800",
 			},
 		},
 		{
-			Spec: crev1alpha1.GoodputMeasurementSpec{
+			Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 				JobRef: corev1.TypedLocalObjectReference{
-					APIGroup: &apiGroup, Kind: "Job", Name: "job-1",
+					APIGroup: &apiGroup, Kind: testKindJob, Name: testJob1,
 				},
 			},
-			Status: crev1alpha1.GoodputMeasurementStatus{
+			Status: nvcrev1alpha1.GoodputMeasurementStatus{
 				Result: "0.80", AvgTFLOPSPerGPU: "700",
 			},
 		},
@@ -969,35 +996,35 @@ func TestBuildDomainReportsMultipleMeasurementsSameDomain(t *testing.T) {
 func TestPeakBandwidthResult(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
 		assert.Nil(t, peakBandwidthResult(nil))
-		assert.Nil(t, peakBandwidthResult([]crev1alpha1.BandwidthResult{}))
+		assert.Nil(t, peakBandwidthResult([]nvcrev1alpha1.BandwidthResult{}))
 	})
 
 	t.Run("ascending — last is peak", func(t *testing.T) {
-		results := []crev1alpha1.BandwidthResult{
-			{SizeBytes: 1024, BusBW: "1.0"},
+		results := []nvcrev1alpha1.BandwidthResult{
+			{SizeBytes: 1024, BusBW: testBusBW1_0},
 			{SizeBytes: 1048576, BusBW: "100.0"},
-			{SizeBytes: 17179869184, BusBW: "350.0"},
+			{SizeBytes: 17179869184, BusBW: testBusBW350_0},
 		}
 		peak := peakBandwidthResult(results)
 		require.NotNil(t, peak)
 		assert.Equal(t, int64(17179869184), peak.SizeBytes)
-		assert.Equal(t, "350.0", peak.BusBW)
+		assert.Equal(t, testBusBW350_0, peak.BusBW)
 	})
 
 	t.Run("unsorted — picks largest size, not last", func(t *testing.T) {
-		results := []crev1alpha1.BandwidthResult{
-			{SizeBytes: 17179869184, BusBW: "350.0"},
-			{SizeBytes: 1024, BusBW: "1.0"},
+		results := []nvcrev1alpha1.BandwidthResult{
+			{SizeBytes: 17179869184, BusBW: testBusBW350_0},
+			{SizeBytes: 1024, BusBW: testBusBW1_0},
 			{SizeBytes: 1048576, BusBW: "100.0"},
 		}
 		peak := peakBandwidthResult(results)
 		require.NotNil(t, peak)
 		assert.Equal(t, int64(17179869184), peak.SizeBytes)
-		assert.Equal(t, "350.0", peak.BusBW)
+		assert.Equal(t, testBusBW350_0, peak.BusBW)
 	})
 
 	t.Run("single entry", func(t *testing.T) {
-		results := []crev1alpha1.BandwidthResult{{SizeBytes: 8, BusBW: "0.1"}}
+		results := []nvcrev1alpha1.BandwidthResult{{SizeBytes: 8, BusBW: "0.1"}}
 		peak := peakBandwidthResult(results)
 		require.NotNil(t, peak)
 		assert.Equal(t, int64(8), peak.SizeBytes)
@@ -1006,28 +1033,28 @@ func TestPeakBandwidthResult(t *testing.T) {
 
 func TestBuildGroupBandwidthRowsUnsorted(t *testing.T) {
 	apiGroup := testAPIGroup
-	orch := &crev1alpha1.OrchestrationStatus{
-		Groups: []crev1alpha1.GroupStatus{
+	orch := &nvcrev1alpha1.OrchestrationStatus{
+		Groups: []nvcrev1alpha1.GroupStatus{
 			{
-				Name:    "group-0",
-				Nodes:   []string{"node-0", "node-1"},
-				Domains: []string{"clique-0"},
-				JobRef:  &crev1alpha1.WorkloadReference{Name: "job-0"},
+				Name:    testGroup0,
+				Nodes:   []string{testNode0, testNode1},
+				Domains: []string{testClique0},
+				JobRef:  &nvcrev1alpha1.WorkloadReference{Name: testJob0},
 			},
 		},
 	}
-	measurements := []crev1alpha1.BandwidthMeasurement{
+	measurements := []nvcrev1alpha1.BandwidthMeasurement{
 		{
-			Spec: crev1alpha1.BandwidthMeasurementSpec{
+			Spec: nvcrev1alpha1.BandwidthMeasurementSpec{
 				JobRef: corev1.TypedLocalObjectReference{
-					APIGroup: &apiGroup, Kind: "Job", Name: "job-0",
+					APIGroup: &apiGroup, Kind: testKindJob, Name: testJob0,
 				},
 			},
-			Status: crev1alpha1.BandwidthMeasurementStatus{
-				Results: []crev1alpha1.BandwidthResult{
+			Status: nvcrev1alpha1.BandwidthMeasurementStatus{
+				Results: []nvcrev1alpha1.BandwidthResult{
 					// Largest size first — last entry is NOT the peak.
-					{SizeBytes: 17179869184, BusBW: "350.0"},
-					{SizeBytes: 1024, BusBW: "1.0"},
+					{SizeBytes: 17179869184, BusBW: testBusBW350_0},
+					{SizeBytes: 1024, BusBW: testBusBW1_0},
 				},
 			},
 		},

@@ -1,0 +1,7 @@
+{
+  "gpuArch": "a100",
+  "totalNodes": 4,
+  "archNodes": 3,
+  "nodesPerJob": 0,
+  "error": "communication/nccl-all-reduce: no valid node count \u003c= 3 satisfies model constraints (gpusPerNode=8, arch=a100)"
+}

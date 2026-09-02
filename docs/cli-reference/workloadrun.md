@@ -1,17 +1,17 @@
 ---
-title: ncrectl workloadrun
+title: nvcrectl workloadrun
 description: Run and report WorkloadRun resources.
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 ---
 
 
-## ncrectl workloadrun run
+## nvcrectl workloadrun run
 
 Applies a WorkloadRun manifest to the cluster and optionally waits for completion.
 
 ```bash
-ncrectl workloadrun run [flags] <file>
+nvcrectl workloadrun run [flags] <file>
 ```
 
 ### Flags
@@ -19,14 +19,14 @@ ncrectl workloadrun run [flags] <file>
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--wait` | `false` | Block until the workload completes |
-| `--timeout` | `30m` | Timeout for `--wait` |
+| `--timeout` | `30m` | Timeout for `--wait`. On timeout, the CLI prints a partial report and leaves the WorkloadRun running in the cluster unless `--cleanup` is set |
 | `--setup` | `false` | Install CRDs, controller, and LogProfiles before creating the WorkloadRun |
-| `--cleanup` | `false` | Delete the WorkloadRun and installed components after completion |
+| `--cleanup` | `false` | Delete the WorkloadRun, the namespace (when created by this run), and installed components after completion |
 | `--image` | — | Override controller image |
 | `--controller-pull-secret` | — | Token for controller registry auth during `--setup` (e.g. GitHub PAT for `ghcr.io`) — separate from workload image credentials |
 | `--workload-registry` | — | Registry server for workload image pull (e.g. `nvcr.io`, `ghcr.io`) — required when `--workload-registry-password` is set |
 | `--workload-registry-username` | — | Registry username for workload image pull (e.g. `$oauthtoken` for NGC) — required when `--workload-registry-password` is set |
-| `--workload-registry-password` | — | Registry password or API key — creates an `ncrectl-pull-<name>` imagePullSecret in the namespace, deleted automatically when the WorkloadRun is deleted |
+| `--workload-registry-password` | — | Registry password or API key — creates an `nvcrectl-pull-<name>` imagePullSecret in the namespace, deleted automatically when the WorkloadRun is deleted |
 | `--name` | — | Override the WorkloadRun name |
 | `--node-list` | — | Comma-separated list of nodes to target |
 | `--topology-domain` | — | Topology domain to target |
@@ -34,44 +34,48 @@ ncrectl workloadrun run [flags] <file>
 | `--test-scale` | — | Override testScale (`intra-node`, `intra-rack`, `full-scale`) |
 | `--results-file` | — | Write results as JSON to this file path (requires `--wait`) |
 
+`--cleanup` runs on every exit path — success, failure, or `--wait` timeout — matching `certification run --cleanup`. It deletes the WorkloadRun only when this invocation created it (Kubernetes garbage collection then removes the owned Workflow, whose finalizer deletes the Jobs, workloads, and dependency resources), deletes the namespace only when this run created it, and, when combined with `--setup`, uninstalls the installed components after the cascade completes. On a `--wait` timeout the CLI prints a partial report from the still-live WorkloadRun before any cleanup runs. Without `--cleanup`, a `--wait` timeout stops only the CLI watch and the WorkloadRun continues running.
+
+When `--wait` reaches its timeout, the command prints the WorkloadRun's current report, writes it to `--results-file` when requested, and exits with a timeout error. Without `--cleanup`, the WorkloadRun continues running in the cluster — the timeout stops only the CLI watch — and the timeout output includes commands to watch its progress, print an updated report, or stop it. `nvcrectl workloadrun report` exits nonzero while the WorkloadRun is still running.
+
 ### Examples
 
 ```bash
-ncrectl workloadrun run --wait my-workload.yaml
+nvcrectl workloadrun run --wait my-workload.yaml
 ```
 
 Pull workload images from NGC:
 
 ```bash
-ncrectl workloadrun run \
+nvcrectl workloadrun run \
   --workload-registry nvcr.io \
   --workload-registry-username '$oauthtoken' \
   --workload-registry-password "$NGC_API_KEY" \
   --wait my-workload.yaml
 ```
 
-## ncrectl workloadrun render
+## nvcrectl workloadrun render
 
 Renders the Workflow that would be created from a WorkloadRun, without applying it. Useful for offline inspection.
 
 ```bash
-ncrectl workloadrun render [flags] <workloadrun.yaml>
+nvcrectl workloadrun render [flags] <workloadrun.yaml>
 ```
 
 ### Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--platform` | auto | Override platform detection (`aws`, `gcp`, `azure`, `oci`, `onprem`, `togetherai`, `mistral`, `forge`) |
+| `--platform` | auto | Override platform detection (`aws`, `gcp`, `azure`, `oci`, `onprem`, `togetherai`, `mistral`, `forge`, `nscale`) |
 | `--dry-run` | `false` | Connect to cluster, discover real nodes, and render with actual platform/GPU detection |
 | `--output` | `yaml` | Output format: `yaml` or `json` |
 
-## ncrectl workloadrun report
+## nvcrectl workloadrun report
 
 Generates a report for a completed WorkloadRun, including bandwidth and goodput metrics if configured.
 
 ```bash
-ncrectl workloadrun report <name> [flags]
+nvcrectl workloadrun report <name> [flags]
 ```
 
 ### Flags
@@ -81,12 +85,12 @@ ncrectl workloadrun report <name> [flags]
 | `--results-file` | — | Write report as JSON to this file path |
 | `--output` / `-o` | `text` | Output format: `text` or `json` |
 
-## ncrectl workloadrun status
+## nvcrectl workloadrun status
 
 Prints the current status of a WorkloadRun.
 
 ```bash
-ncrectl workloadrun status <name> [flags]
+nvcrectl workloadrun status <name> [flags]
 ```
 
 ### Flags
@@ -95,10 +99,10 @@ ncrectl workloadrun status <name> [flags]
 |------|---------|-------------|
 | `--output` / `-o` | `text` | Output format: `text` or `json` |
 
-## ncrectl workloadrun cancel
+## nvcrectl workloadrun cancel
 
 Cancels one or more running WorkloadRuns.
 
 ```bash
-ncrectl workloadrun cancel <name> [<name>...]
+nvcrectl workloadrun cancel <name> [<name>...]
 ```

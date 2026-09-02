@@ -4,7 +4,7 @@
 # Workflow with a running group whose Job no longer exists (externally deleted).
 # No Job object is present — the Workflow controller should detect NotFound
 # and mark the group as Failed.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: test-workflow-job-deleted
@@ -40,7 +40,7 @@ status:
           - gpu-node-01
         phase: Running
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: test-workflow-job-deleted-job
           namespace: default

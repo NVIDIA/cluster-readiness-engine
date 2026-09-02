@@ -11,7 +11,7 @@ description: CRD reference for the LogProfile resource.
 ## Example
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: LogProfile
 metadata:
   name: my-framework

@@ -1,0 +1,22 @@
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: gpu-cluster-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  enableMNNVL: true
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: training
+      variant: nemotron5-8b
+status:
+  categoryStatuses:
+    - domain: communication
+      variant: nccl-all-reduce
+      status: InProgress
+    - domain: training
+      variant: nemotron5-8b
+      status: Pending

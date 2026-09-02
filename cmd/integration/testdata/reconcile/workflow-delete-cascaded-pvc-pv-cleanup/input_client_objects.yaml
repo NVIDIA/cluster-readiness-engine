@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Pins the cascade-deletion ordering hazard for job-scoped PVCs: the
+# checkpoint PVC is job-scoped (its name appears in the job template), so the
+# controller creates a per-job copy that carries a Job owner reference. On a
+# real cluster the API server cascade-deletes that copy together with its Job
+# during handleDeletion Phase 1 — BEFORE Phase 2 can fetch the PVC and stamp
+# the workflow-uid annotation on its backing PV. The controller must therefore
+# stamp the PV while the PVC still exists (at dependency creation / on the
+# status poll), so Phase 3 can still prove the PV ours and reset its reclaim
+# policy from Retain to Delete after the PVC is gone. The test simulates the
+# cascade by deleting the PVC copy (stripping its pvc-protection finalizer,
+# since the protection controller does not run under envtest) before deleting
+# the Workflow.
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: gpu-node-01
+---
+# The PV the job-scoped PVC copy is pre-bound to. claimRef points at the
+# SUFFIXED copy name ("ckpt-pvc" + "-<fnv32a(workflow name)[:5]>-job"), as the
+# binder would set it in a real cluster.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: cascade-checkpoint-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /tmp/cascade-checkpoint
+  claimRef:
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    namespace: default
+    name: ckpt-pvc-17276-job
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: wf-cascade-pvc-pv
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      checkpoint:
+        pvcName: ckpt-pvc
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+  dependencies:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: ckpt-pvc
+        namespace: default
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+        volumeName: cascade-checkpoint-pv

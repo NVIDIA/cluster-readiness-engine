@@ -10,15 +10,16 @@ import (
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
-// BuildWorkflowSpec renders the Workflow that "ncrectl workloadrun render" and
+// BuildWorkflowSpec renders the Workflow that "nvcrectl workloadrun render" and
 // "--dry-run" print. The controller does not call it. The controller has its
-// own copy in pkg/controller/workloadrun_controller.go, and the two copies have
-// already drifted apart, so these cases cover the preview only. A passing run
-// here tells you nothing about what happens on a cluster.
+// own copy in pkg/controller/workloadrun_controller.go (both now share
+// controller.NodesPerJobForScale for scale-based sizing, issue #85), so these
+// cases cover the preview only. On-cluster behaviour is covered by
+// cmd/integration/testdata/reconcile/workloadrun-*.
 //
 // Each case records only the fields it is about, instead of the whole spec. The
 // whole spec is about 1040 lines, and about 85% of it is the platform override
@@ -29,7 +30,7 @@ import (
 func TestBuildWorkflowSpec(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "build-workflow-spec",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		// The tags below are json, not yaml. sigs.k8s.io/yaml converts the YAML
@@ -38,11 +39,11 @@ func TestBuildWorkflowSpec(t *testing.T) {
 		// error. With yaml tags, a typo in a key would go unnoticed and would
 		// write gpusPerNode: 0 into the expected file.
 		var input struct {
-			Run           crev1alpha1.WorkloadRun `json:"run"`
-			GpusPerNode   int32                   `json:"gpusPerNode"`
-			MlnxPerNode   int32                   `json:"mlnxPerNode"`
-			EnableMNNVL   bool                    `json:"enableMNNVL"`
-			FrameworkType string                  `json:"frameworkType"`
+			Run           nvcrev1alpha1.WorkloadRun `json:"run"`
+			GpusPerNode   int32                     `json:"gpusPerNode"`
+			MlnxPerNode   int32                     `json:"mlnxPerNode"`
+			EnableMNNVL   bool                      `json:"enableMNNVL"`
+			FrameworkType string                    `json:"frameworkType"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -60,6 +61,11 @@ func TestBuildWorkflowSpec(t *testing.T) {
 	})
 }
 
+// nodeJobName is the name of both the worker replicatedJob and the workload
+// container inside a rendered TrainingRuntime. An MPI runtime also holds a
+// "launcher" replicatedJob, whose container is likewise named "node".
+const nodeJobName = "node"
+
 // projection holds the parts of a rendered WorkflowSpec that these cases check.
 type projection struct {
 	Trainer         *trainerv1alpha1.Trainer `json:"trainer"`
@@ -67,14 +73,21 @@ type projection struct {
 	Iterations      int                      `json:"iterations"`
 	DependencyKinds []string                 `json:"dependencyKinds"`
 	// Validation records the contents and not only whether the block is
-	// present. The exact threshold key is part of it, because issue #52 is open
-	// about one unknown key turning off every threshold check without saying so.
-	Validation *crev1alpha1.ValidationSpec `json:"validation"`
+	// present. The exact threshold key is part of it: since issue #52 was
+	// fixed, a key must be a threshold-registry key — readWorkloadRun rejects
+	// unknown keys and the Job controller fails validation on them — so the
+	// exact string decides whether a run is accepted at all.
+	Validation *nvcrev1alpha1.ValidationSpec `json:"validation"`
 	// WorkerEnv holds "NAME=value" for the worker container of the runtime
 	// dependency, which is the container the workload runs in. It records values
 	// and not only names, so a case can tell a variable the user asked for apart
 	// from a default that has the same name.
 	WorkerEnv []string `json:"workerEnv"`
+	// LauncherEnv holds the same for the launcher container. Only MPI runtimes
+	// render a launcher, so torch and exec cases omit the field. It exists
+	// because the fix for issue #68 emits env on both MPI containers, and the
+	// worker projection alone cannot see the launcher half regressing.
+	LauncherEnv []string `json:"launcherEnv,omitempty"`
 	// WorkerVolumeMounts and RuntimeVolumes cover the two halves of an inline
 	// config, which a person can remove one at a time.
 	WorkerVolumeMounts []string `json:"workerVolumeMounts"`
@@ -92,7 +105,7 @@ type projection struct {
 	GangSchedulerQueue string `json:"gangSchedulerQueue,omitempty"`
 }
 
-func project(s *crev1alpha1.WorkflowSpec) projection {
+func project(s *nvcrev1alpha1.WorkflowSpec) projection {
 	out := projection{
 		Iterations:    s.Orchestration.Iterations,
 		Validation:    s.Validation,
@@ -108,11 +121,12 @@ func project(s *crev1alpha1.WorkflowSpec) projection {
 		out.DependencyKinds = append(out.DependencyKinds, dependencyKind(&s.Dependencies[i]))
 	}
 	out.WorkerEnv, out.WorkerVolumeMounts, out.RuntimeVolumes, out.GangSchedulerName, out.GangSchedulerQueue = runtimeWorker(s)
+	out.LauncherEnv = runtimeLauncherEnv(s)
 	return out
 }
 
 // dependencyKind reads the Kind out of a dependency's embedded raw resource.
-func dependencyKind(d *crev1alpha1.DependencySpec) string {
+func dependencyKind(d *nvcrev1alpha1.DependencySpec) string {
 	var obj struct {
 		Kind string `json:"kind"`
 	}
@@ -127,7 +141,7 @@ func dependencyKind(d *crev1alpha1.DependencySpec) string {
 // gang-scheduler queue label. It follows one named path rather than searching
 // the document, because a search would also find containers the workload does
 // not run in (e.g. an MPI launcher).
-func runtimeWorker(s *crev1alpha1.WorkflowSpec) (env, mounts, volumes []string, schedulerName, queueLabel string) {
+func runtimeWorker(s *nvcrev1alpha1.WorkflowSpec) (env, mounts, volumes []string, schedulerName, queueLabel string) {
 	if len(s.Dependencies) == 0 || len(s.Dependencies[0].Raw) == 0 {
 		return nil, nil, nil, "", ""
 	}
@@ -138,7 +152,7 @@ func runtimeWorker(s *crev1alpha1.WorkflowSpec) (env, mounts, volumes []string, 
 	// Pick the job by name. An MPI runtime holds two jobs, "node" and
 	// "launcher", and only "node" runs the worker processes.
 	for _, rj := range rt.Spec.Template.Spec.ReplicatedJobs {
-		if rj.Name != "node" {
+		if rj.Name != nodeJobName {
 			continue
 		}
 		schedulerName = rj.Template.Spec.Template.Spec.SchedulerName
@@ -148,7 +162,7 @@ func runtimeWorker(s *crev1alpha1.WorkflowSpec) (env, mounts, volumes []string, 
 			volumes = append(volumes, v.Name)
 		}
 		for _, c := range pod.Containers {
-			if c.Name != "node" {
+			if c.Name != nodeJobName {
 				continue
 			}
 			for _, e := range c.Env {
@@ -163,16 +177,46 @@ func runtimeWorker(s *crev1alpha1.WorkflowSpec) (env, mounts, volumes []string, 
 	return nil, nil, nil, "", ""
 }
 
+// runtimeLauncherEnv reads the env vars of the "node" container inside the
+// "launcher" replicatedJob of the runtime dependency. Only MPI runtimes render
+// a launcher, so the result is nil for torch and exec cases. It follows the
+// same named path as runtimeWorker rather than searching the document.
+func runtimeLauncherEnv(s *nvcrev1alpha1.WorkflowSpec) []string {
+	if len(s.Dependencies) == 0 || len(s.Dependencies[0].Raw) == 0 {
+		return nil
+	}
+	var rt trainerv1alpha1.TrainingRuntime
+	if err := json.Unmarshal(s.Dependencies[0].Raw, &rt); err != nil {
+		return nil
+	}
+	var env []string
+	for _, rj := range rt.Spec.Template.Spec.ReplicatedJobs {
+		if rj.Name != "launcher" {
+			continue
+		}
+		for _, c := range rj.Template.Spec.Template.Spec.Containers {
+			if c.Name != nodeJobName {
+				continue
+			}
+			for _, e := range c.Env {
+				env = append(env, e.Name+"="+e.Value)
+			}
+		}
+		return env
+	}
+	return nil
+}
+
 // TestValidateExecFramework drives golden-file cases for validateExecFramework.
 // Each case provides a WorkloadRunSpec in input.yaml and expects a JSON object
 // with a single "error" key — null on success or the error message on failure.
 func TestValidateExecFramework(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "validate-exec-framework",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
-		var spec crev1alpha1.WorkloadRunSpec
+		var spec nvcrev1alpha1.WorkloadRunSpec
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &spec); err != nil {
 			return err
 		}

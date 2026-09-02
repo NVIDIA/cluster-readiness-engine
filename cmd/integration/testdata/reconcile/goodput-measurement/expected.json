@@ -1,17 +1,17 @@
 {
   "GoodputMeasurement/test-goodput": {
     "kind": "GoodputMeasurement",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-goodput",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/goodputmeasurement-finalizer"
+        "nvcre.nvidia.com/goodputmeasurement-finalizer"
       ]
     },
     "spec": {
       "jobRef": {
-        "apiGroup": "cre.nvidia.com",
+        "apiGroup": "nvcre.nvidia.com",
         "kind": "Job",
         "name": "test-goodput-job"
       },
@@ -45,15 +45,15 @@
     }
   },
   "metrics": {
-    "cre_goodput_avg_step_time_seconds": 1.128,
-    "cre_goodput_avg_tflops_per_gpu": 775.423333,
-    "cre_goodput_checkpoint_save_time_seconds": 2.4,
-    "cre_goodput_lost_work_time_seconds": 0,
-    "cre_goodput_non_warmup_time_seconds": 3.384,
-    "cre_goodput_ratio": 0,
-    "cre_goodput_reschedule_time_seconds": 0,
-    "cre_goodput_resume_time_seconds": 5.123456789,
-    "cre_goodput_training_time_seconds": 0,
-    "cre_goodput_warmup_time_seconds": 0
+    "nvcre_goodput_avg_step_time_seconds": 1.128,
+    "nvcre_goodput_avg_tflops_per_gpu": 775.423333,
+    "nvcre_goodput_checkpoint_save_time_seconds": 2.4,
+    "nvcre_goodput_lost_work_time_seconds": 0,
+    "nvcre_goodput_non_warmup_time_seconds": 3.384,
+    "nvcre_goodput_ratio": 0,
+    "nvcre_goodput_reschedule_time_seconds": 0,
+    "nvcre_goodput_resume_time_seconds": 5.123456789,
+    "nvcre_goodput_training_time_seconds": 0,
+    "nvcre_goodput_warmup_time_seconds": 0
   }
 }

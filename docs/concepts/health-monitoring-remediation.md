@@ -1,6 +1,6 @@
 ---
 title: Health Monitoring & Failed Node Attribution
-description: How the Cluster Readiness Engine detects node failures and records which nodes failed and why.
+description: How the NVIDIA Cluster Readiness Engine detects node failures and records which nodes failed and why.
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 ---
@@ -24,7 +24,7 @@ Custom detectors can be registered by implementing the `NodeFailureDetector` int
 
 ## Failed node attribution
 
-CRE does not taint, cordon, or patch nodes. Its job is to identify which nodes failed which tests and why. That signal is recorded on the Certification CR and is available for external systems (node lifecycle operators, alerting pipelines) to act on.
+NVCRE does not taint, cordon, or patch nodes. Its job is to identify which nodes failed which tests and why. That signal is recorded on the Certification CR and is available for external systems (node lifecycle operators, alerting pipelines) to act on.
 
 ### How failures propagate
 
@@ -61,8 +61,17 @@ Each failed node entry carries a `reason`:
 | `WorkloadFailed` | The workload exited non-zero or stalled |
 
 <Note>
-Cordoned nodes are filtered **before** a Job runs, not attributed as `HardwareFailureDetected`. They appear in `status.orchestration.excludedNodes` and cause the run to be marked `INCOMPLETE` rather than `Failed`.
+Cordoned nodes and nodes reporting fewer allocatable GPUs than the workload requests per node are filtered **before** a Job runs, not attributed as `HardwareFailureDetected`. They appear in `status.orchestration.excludedNodes` with the reason in `exclusionReason` and cause the run to be marked `INCOMPLETE` rather than `Failed`. If **no** matching node can supply the requested GPU count, the run fails immediately with a message naming the requirement and the best available count instead of scheduling pods that would stay `Pending` forever.
 </Note>
+
+### Queued (suspended) workloads
+
+A workload held by an admission controller — for example a TrainJob that Kueue suspends (`spec.suspend: true`) until quota is available — is **queued, not running**. The Job reports `InProgress` with reason `WorkloadPending` and simply waits:
+
+- No node failures are attributed while the workload is queued.
+- Queued time does not count against `timeoutPerJob` or stall detection. `timeoutPerJob` is measured from `status.workloadStartTime`, recorded when the workload is first observed running. The startup-stall clock is anchored on the GoodputMeasurement's timestamps but never starts before `status.workloadStartTime`.
+
+Without this distinction, a workload waiting for quota would eventually be treated as stalled or timed out and every node in the group would be recorded as `WorkloadFailed` — a false result on healthy hardware.
 
 Different nodes in the same category can fail with different reasons. A node that fails in multiple categories appears in each category's failed-nodes ConfigMap, potentially with a different reason each time.
 
@@ -71,7 +80,7 @@ Different nodes in the same category can fail with different reasons. A node tha
 Use the CLI for a structured report:
 
 ```bash
-ncrectl certification report <name>
+nvcrectl certification report <name>
 ```
 
 Or read the raw ConfigMap directly:
@@ -83,7 +92,7 @@ kubectl get configmap <ref-name> -o yaml
 
 ### Acting on failed nodes
 
-CRE reports failures — quarantine is your platform's responsibility. Common patterns:
+NVCRE reports failures — quarantine is your platform's responsibility. Common patterns:
 
 - Cordon the node (`kubectl cordon <node>`) to prevent new workloads from scheduling
 - Drain it (`kubectl drain <node>`) to evict existing workloads

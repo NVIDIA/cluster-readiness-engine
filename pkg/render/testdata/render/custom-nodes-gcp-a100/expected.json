@@ -1,11 +1,11 @@
 {
   "kind": "Workflow",
-  "apiVersion": "cre.nvidia.com/v1alpha1",
+  "apiVersion": "nvcre.nvidia.com/v1alpha1",
   "metadata": {
     "name": "test-workflow",
     "annotations": {
-      "ncrectl.nvidia.com/detected-gpu-architecture": "a100",
-      "ncrectl.nvidia.com/detected-platform": "gcp"
+      "nvcrectl.nvidia.com/detected-gpu-architecture": "a100",
+      "nvcrectl.nvidia.com/detected-platform": "gcp"
     }
   },
   "spec": {

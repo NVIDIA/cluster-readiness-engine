@@ -3,9 +3,9 @@
 
 # KWOK-simulated GCP GB200 GPU nodes (a4x-highgpu-4g).
 #
-# Key labels for CRE detection:
+# Key labels for NVCRE detection:
 #   nvidia.com/gpu.product: NVIDIA-GB200           -> GPU arch "gb200"
-#   nvidia.com/gpu.present: "true"                 -> ncrectl GPU discovery
+#   nvidia.com/gpu.present: "true"                 -> nvcrectl GPU discovery
 #   nvidia.com/gpu.clique: <uuid>                  -> topology-aware orchestration
 #   spec.providerID: "gce://..."                   -> platform "gcp"
 #

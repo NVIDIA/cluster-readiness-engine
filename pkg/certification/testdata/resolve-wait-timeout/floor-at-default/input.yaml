@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Diagnose scale uses the 15m diagnose timeoutPerJob default:
+# 15m x 1 x 1.5 = 22.5m, below the 30m flag default => floored at 30m,
+# not reported as derived.
+explicitTimeout: false
+flagTimeout: 30m
+certification:
+  apiVersion: nvcre.nvidia.com/v1alpha1
+  kind: Certification
+  metadata:
+    name: floor
+  spec:
+    target:
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-GB200
+    testScale: diagnose
+    categories:
+    - domain: communication
+      variant: nccl-all-reduce

@@ -9,7 +9,7 @@ LDFLAGS ?= -s -w -X main.version=$(VERSION)
 # Image configuration
 # Registry and repository for the controller image
 IMAGE_REGISTRY ?= ghcr.io
-IMAGE_REPOSITORY ?= dsx-ai-factory/cluster-readiness-engine/manager
+IMAGE_REPOSITORY ?= nvidia/cluster-readiness-engine/manager
 IMAGE_TAG ?= $(VERSION)
 # Full image URL
 IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):$(IMAGE_TAG)
@@ -63,7 +63,7 @@ help: ## Display this help.
 .PHONY: manifests
 manifests: controller-gen ## Generate CRDs directly into the Helm chart (RBAC is maintained manually in templates/manager-role.yaml).
 	mkdir -p "$(HELM_CHART_DIR)/crds" "$(HELM_CHART_DIR)/templates"
-	"$(CONTROLLER_GEN)" rbac:roleName=cre-manager-role crd webhook paths="./..." \
+	"$(CONTROLLER_GEN)" rbac:roleName=nvcre-manager-role crd webhook paths="./..." \
 		output:crd:artifacts:config="$(HELM_CHART_DIR)/crds" \
 		output:rbac:none
 
@@ -82,21 +82,23 @@ vet: ## Run go vet against code, including build-tagged test suites.
 
 .PHONY: test
 test: setup-envtest ## Run unit and integration tests.
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	go test -v $$(go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v /cmd/integration)
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	go test ./cmd/integration/ -v -timeout 300s -count=1
 
 .PHONY: test-ci
-test-ci:setup-envtest ## Run tests with JUnit XML and coverage reports for CI.
-	gotestsum --junitfile unit-report.xml -- \
+test-ci: setup-envtest gotestsum gocover-cobertura ## Run tests with JUnit XML and coverage reports for CI.
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
+	"$(GOTESTSUM)" --junitfile unit-report.xml -- \
 		-coverprofile=cover-unit.out -covermode=atomic \
 		$$(go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v /cmd/integration)
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
-	gotestsum --junitfile integration-report.xml -- \
+	"$(GOTESTSUM)" --junitfile integration-report.xml -- \
 		-coverprofile=cover-integration.out -covermode=atomic \
 		./cmd/integration/ -timeout 300s -count=1
 	go tool cover -func=cover-unit.out
-	gocover-cobertura < cover-unit.out > coverage.xml
+	"$(GOCOVER_COBERTURA)" < cover-unit.out > coverage.xml
 
 .PHONY: test-integration
 test-integration: fmt vet setup-envtest ## Run integration tests.
@@ -105,7 +107,8 @@ test-integration: fmt vet setup-envtest ## Run integration tests.
 
 ##@ UAT Tests (Kind + KWOK + Tilt + e2e-framework)
 
-KIND_CLUSTER_UAT ?= cre-test-uat
+KIND_CLUSTER_UAT ?= nvcre-test-uat
+KIND_NODE_IMAGE ?=
 KWOK_VERSION ?= v0.7.0
 UAT_IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):uat-test
 
@@ -117,7 +120,7 @@ setup-test-uat: ## Create Kind cluster for UAT tests and wait for it to be ready
 			echo "Kind cluster '$(KIND_CLUSTER_UAT)' already exists. Skipping creation." ;; \
 		*) \
 			echo "Creating Kind cluster '$(KIND_CLUSTER_UAT)'..."; \
-			$(KIND) create cluster --name $(KIND_CLUSTER_UAT) ;; \
+			$(KIND) create cluster --name $(KIND_CLUSTER_UAT) $(if $(KIND_NODE_IMAGE),--image "$(KIND_NODE_IMAGE)",) ;; \
 	esac
 	@echo "Waiting for nodes to be ready..."
 	@$(KUBECTL) wait --for=condition=Ready nodes --all --timeout=120s
@@ -132,13 +135,13 @@ tilt-uat-ci: setup-test-uat ## Start Tilt for UAT in CI mode (headless, exits af
 
 .PHONY: test-uat
 test-uat: tilt-uat-ci ## Run UAT tests (Tilt deploys everything, then run tests).
-	KIND_CLUSTER=$(KIND_CLUSTER_UAT) NCRECTL=$(LOCALBIN)/ncrectl \
+	KIND_CLUSTER=$(KIND_CLUSTER_UAT) NVCRECTL=$(LOCALBIN)/nvcrectl \
 		go test -tags=uat ./test/uat/ -v -timeout 1800s -count=1
 	$(MAKE) cleanup-test-uat
 
 .PHONY: test-uat-run
 test-uat-run: ## Run UAT tests against existing Tilt-managed cluster (dev iteration).
-	NCRECTL=$(LOCALBIN)/ncrectl go test -tags=uat ./test/uat/ -v -timeout 1800s -count=1
+	NVCRECTL=$(LOCALBIN)/nvcrectl go test -tags=uat ./test/uat/ -v -timeout 1800s -count=1
 
 .PHONY: cleanup-test-uat
 cleanup-test-uat: ## Delete Kind cluster for UAT tests.
@@ -181,8 +184,12 @@ verify-license-headers: addlicense ## Verify Go sources carry the SPDX license h
 	  -ignore '**/*.yaml' -ignore '**/*.yml' -ignore '**/*.json' \
 	  api pkg cmd test hack
 
+.PHONY: verify-doc-links
+verify-doc-links: ## Verify relative markdown links in README.md and docs/ resolve to files in the tree.
+	hack/verify-doc-links.sh
+
 .PHONY: verify
-verify: verify-codegen verify-mod verify-license-headers ## Run all verification checks.
+verify: verify-codegen verify-mod verify-license-headers verify-doc-links ## Run all verification checks.
 
 .PHONY: ci
 ci: verify lint build test ## Run the full CI gate locally: verify, lint, build, and test.
@@ -190,11 +197,17 @@ ci: verify lint build test ## Run the full CI gate locally: verify, lint, build,
 ##@ Build
 
 .PHONY: check-clean-version
-check-clean-version: ## Verify VERSION is a clean release tag (no -dirty, -N-gXXX, or dev).
+check-clean-version: ## Verify VERSION is a clean release tag (vX.Y.Z with optional -prerelease; no -dirty, -N-gXXX, dev, or bare SHA).
 	@case "$(VERSION)" in \
 	  dev|*-dirty|*-*-g*) \
 	    echo "ERROR: VERSION=$(VERSION) is not a clean release tag."; \
 	    echo "Commit and tag your changes first (e.g., git tag v1.14.0)."; \
+	    exit 1 ;; \
+	  v[0-9]*.[0-9]*.[0-9]*) ;; \
+	  *) \
+	    echo "ERROR: VERSION=$(VERSION) does not look like a release tag (vX.Y.Z or vX.Y.Z-rc.N)."; \
+	    echo "git describe falls back to a bare commit SHA when no tag is reachable;"; \
+	    echo "fetch tags (git fetch --tags) or pass VERSION=<tag> explicitly."; \
 	    exit 1 ;; \
 	esac
 
@@ -203,20 +216,20 @@ check-clean-version: ## Verify VERSION is a clean release tag (no -dirty, -N-gXX
 build: manifests generate fmt vet ## Build manager binary.
 	go build -ldflags "$(LDFLAGS)" -o bin/manager ./cmd/manager/
 
-.PHONY: build-ncrectl
-build-ncrectl: $(LOCALBIN) ## Build ncrectl CLI tool.
-	go build -ldflags "$(LDFLAGS)" -o bin/ncrectl ./cmd/ncrectl/
-	ln -sf ncrectl bin/kubectl-ncrectl
+.PHONY: build-nvcrectl
+build-nvcrectl: $(LOCALBIN) ## Build nvcrectl CLI tool.
+	go build -ldflags "$(LDFLAGS)" -o bin/nvcrectl ./cmd/nvcrectl/
+	ln -sf nvcrectl bin/kubectl-nvcrectl
 
-.PHONY: build-ncrectl-cross
-build-ncrectl-cross: $(LOCALBIN) ## Cross-compile ncrectl for all NCRECTL_PLATFORMS (linux, macOS).
-	@for platform in $(subst $(comma), ,$(NCRECTL_PLATFORMS)); do \
+.PHONY: build-nvcrectl-cross
+build-nvcrectl-cross: $(LOCALBIN) ## Cross-compile nvcrectl for all NVCRECTL_PLATFORMS (linux, macOS).
+	@for platform in $(subst $(comma), ,$(NVCRECTL_PLATFORMS)); do \
 		os=$${platform%/*}; \
 		arch=$${platform#*/}; \
 		ext=""; if [ "$${os}" = "windows" ]; then ext=".exe"; fi; \
-		echo "Building ncrectl for $${os}/$${arch}..."; \
+		echo "Building nvcrectl for $${os}/$${arch}..."; \
 		CGO_ENABLED=0 GOOS=$${os} GOARCH=$${arch} \
-			go build -ldflags "$(LDFLAGS)" -o bin/ncrectl-$${os}-$${arch}$${ext} ./cmd/ncrectl/ || exit 1; \
+			go build -ldflags "$(LDFLAGS)" -o bin/nvcrectl-$${os}-$${arch}$${ext} ./cmd/nvcrectl/ || exit 1; \
 	done
 
 .PHONY: run
@@ -242,8 +255,8 @@ docker-push: check-clean-version ## Push docker image with the manager.
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
 PLATFORMS ?= linux/arm64,linux/amd64
 
-# Platforms for ncrectl CLI cross-compilation (includes macOS and Windows for end-user workstations).
-NCRECTL_PLATFORMS ?= linux/amd64,linux/arm64,darwin/amd64,darwin/arm64
+# Platforms for nvcrectl CLI cross-compilation (includes macOS and Windows for end-user workstations).
+NVCRECTL_PLATFORMS ?= linux/amd64,linux/arm64,darwin/amd64,darwin/arm64
 
 # BUILDX_PUSH controls whether docker-buildx pushes the image.
 # Default pushes. Set BUILDX_PUSH= (empty) to build without pushing,
@@ -254,10 +267,10 @@ BUILDX_PUSH ?= --push
 docker-buildx: #check-clean-version ## Build and push docker image for the manager for cross-platform support
 	# Run as one shell, so the trap removes the builder and the temporary
 	# Dockerfile even when the build fails.
-	trap '$(CONTAINER_TOOL) buildx rm cre-builder >/dev/null 2>&1 || true; rm -f Dockerfile.cross' EXIT; \
+	trap '$(CONTAINER_TOOL) buildx rm nvcre-builder >/dev/null 2>&1 || true; rm -f Dockerfile.cross' EXIT; \
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross; \
-	$(CONTAINER_TOOL) buildx create --name cre-builder >/dev/null 2>&1 || true; \
-	$(CONTAINER_TOOL) buildx use cre-builder; \
+	$(CONTAINER_TOOL) buildx create --name nvcre-builder >/dev/null 2>&1 || true; \
+	$(CONTAINER_TOOL) buildx use nvcre-builder; \
 	$(CONTAINER_TOOL) buildx build --build-arg VERSION=$(VERSION) $(BUILDX_PUSH) --platform=$(PLATFORMS) --tag "${IMG}" -f Dockerfile.cross .
 
 ##@ Deployment
@@ -268,7 +281,10 @@ HELM ?= helm
 HELM_PACKAGE_VERSION ?= $(VERSION)
 # OCI registry base for Helm chart publishing.
 # helm push pushes to $(HELM_OCI_REGISTRY)/<chart-name>:<version>.
-HELM_OCI_REGISTRY ?= oci://ghcr.io/dsx-ai-factory
+HELM_OCI_REGISTRY ?= oci://ghcr.io/nvidia
+# When set, helm-push writes the pushed chart's digest here. CI reads it to hand
+# the digest to the signing workflow without scraping the log.
+CHART_DIGEST_FILE ?=
 
 .PHONY: helm-lint
 helm-lint: ## Lint the cluster-readiness-engine Helm chart.
@@ -282,10 +298,28 @@ helm-package: helm-lint ## Package the cluster-readiness-engine Helm chart.
 		--app-version "$(VERSION)"
 
 .PHONY: helm-push
-helm-push: check-clean-version helm-package ## Push the Helm chart to the OCI registry.
-	"$(HELM)" push \
+# The digest is what gets signed, so print it rather than leaving the operator
+# to look it up. Both streams are captured because helm's output stream for the
+# digest line is not a documented contract, and CHART_DIGEST_FILE lets CI take
+# the value without re-parsing a log.
+helm-push: check-clean-version helm-package ## Push the Helm chart to the OCI registry and print its digest.
+	@set -eu; \
+	log="$$(mktemp)"; \
+	trap 'rm -f "$$log"' EXIT; \
+	if ! "$(HELM)" push \
 		cluster-readiness-engine-$(HELM_PACKAGE_VERSION).tgz \
-		$(HELM_OCI_REGISTRY)
+		$(HELM_OCI_REGISTRY) >"$$log" 2>&1; then \
+		cat "$$log" >&2; \
+		exit 1; \
+	fi; \
+	cat "$$log"; \
+	digest="$$(sed -n 's/.*[Dd]igest: \(sha256:[0-9a-f]\{64\}\).*/\1/p' "$$log" | tail -1)"; \
+	if [ -z "$$digest" ]; then \
+		echo "ERROR: helm push reported no sha256 digest; refusing to continue because the digest is what gets signed" >&2; \
+		exit 1; \
+	fi; \
+	echo "chart digest: $$digest"; \
+	if [ -n "$(CHART_DIGEST_FILE)" ]; then printf '%s' "$$digest" > "$(CHART_DIGEST_FILE)"; fi
 
 ##@ Dependencies
 
@@ -301,10 +335,24 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 ADDLICENSE ?= $(LOCALBIN)/addlicense
+GOVULNCHECK ?= $(LOCALBIN)/govulncheck
+GOTESTSUM ?= $(LOCALBIN)/gotestsum
+GOCOVER_COBERTURA ?= $(LOCALBIN)/gocover-cobertura
 
 ## Tool Versions
 CONTROLLER_TOOLS_VERSION ?= v0.20.0
 ADDLICENSE_VERSION ?= v1.2.0
+# Pinned rather than installed with @latest so a CI run is reproducible and a
+# local run resolves the same tool. An @latest scanner also means a new release
+# can turn a green pipeline red with no commit here to explain it.
+#
+# `?=` matches the convention used by the pins above, which means an exported
+# environment variable of the same name silently wins over the value here. That
+# is intentional for local overrides, but it does mean "local matches CI" holds
+# only in a shell that does not already export these names.
+GOVULNCHECK_VERSION ?= v1.7.0
+GOTESTSUM_VERSION ?= v1.13.0
+GOCOVER_COBERTURA_VERSION ?= v1.5.0
 
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
@@ -316,7 +364,7 @@ ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
   [ -n "$$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api replace has no tag)" >&2; exit 1; }; \
   printf '%s\n' "$$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
 
-GOLANGCI_LINT_VERSION ?= v2.11.4
+GOLANGCI_LINT_VERSION ?= v2.13.2
 
 .PHONY: controller-gen
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
@@ -341,11 +389,36 @@ addlicense: $(ADDLICENSE) ## Download addlicense locally if necessary.
 $(ADDLICENSE): $(LOCALBIN)
 	$(call go-install-tool,$(ADDLICENSE),github.com/google/addlicense,$(ADDLICENSE_VERSION))
 
+.PHONY: govulncheck
+govulncheck: $(GOVULNCHECK) ## Download govulncheck locally if necessary.
+$(GOVULNCHECK): $(LOCALBIN)
+	$(call go-install-tool,$(GOVULNCHECK),golang.org/x/vuln/cmd/govulncheck,$(GOVULNCHECK_VERSION))
+
+.PHONY: gotestsum
+gotestsum: $(GOTESTSUM) ## Download gotestsum locally if necessary.
+$(GOTESTSUM): $(LOCALBIN)
+	$(call go-install-tool,$(GOTESTSUM),gotest.tools/gotestsum,$(GOTESTSUM_VERSION))
+
+.PHONY: gocover-cobertura
+gocover-cobertura: $(GOCOVER_COBERTURA) ## Download gocover-cobertura locally if necessary.
+$(GOCOVER_COBERTURA): $(LOCALBIN)
+	$(call go-install-tool,$(GOCOVER_COBERTURA),github.com/boumenot/gocover-cobertura,$(GOCOVER_COBERTURA_VERSION))
+
+.PHONY: scan-vuln
+scan-vuln: govulncheck ## Scan Go dependencies for known vulnerabilities.
+	"$(GOVULNCHECK)" ./...
+
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
+# Installed with `go install` like every other tool here rather than upstream's
+# install.sh. That script was fetched from `master` — an unpinned reference that
+# can change with no commit here — and its checksum check greps the tarball name
+# unanchored against checksums.txt. Since v2.13.x ships a
+# `<tarball>.tar.gz.sbom.json` asset, that grep matches two lines, so the
+# comparison sees two hashes and fails on a tarball that downloaded correctly.
+# `go install` pins the version and verifies it through the Go checksum database.
 $(GOLANGCI_LINT): $(LOCALBIN)
-	@test -s $(GOLANGCI_LINT) || \
-		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
+	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

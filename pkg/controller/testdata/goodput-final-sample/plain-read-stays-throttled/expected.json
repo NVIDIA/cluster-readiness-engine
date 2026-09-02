@@ -1,4 +1,7 @@
 {
-  "throttleCleared": false,
+  "currentStepInMemory": 0,
+  "applicationStopTimeCappedAt": "",
+  "apiStatusUntouched": true,
+  "throttleUntouched": true,
   "askedForRequeue": true
 }

@@ -1,0 +1,11 @@
+# The odd node sorts first, but the majority architecture wins (issue #77):
+# the two H100 nodes are certified and the single A100 node is excluded. Before
+# the majority rule, the first name-sorted node's architecture won, so this
+# cluster certified only node-a and left the H100 majority untested.
+nodes:
+  - name: node-a
+    product: NVIDIA-A100-PCIE-40GB
+  - name: node-b
+    product: NVIDIA-H100-80GB-HBM3
+  - name: node-c
+    product: NVIDIA-H100-80GB-HBM3

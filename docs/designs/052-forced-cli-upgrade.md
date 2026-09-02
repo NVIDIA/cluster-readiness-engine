@@ -4,7 +4,7 @@
 
 ## Context
 
-Version sprawl across customer deployments causes bug reports against outdated ncrectl versions. Customers run old binaries for weeks after new releases, leading to wasted debugging time on already-fixed issues. The CLI needs a mechanism to force users onto the latest version.
+Version sprawl across customer deployments causes bug reports against outdated nvcrectl versions. Customers run old binaries for weeks after new releases, leading to wasted debugging time on already-fixed issues. The CLI needs a mechanism to force users onto the latest version.
 
 The check must only apply to release-pipeline builds (clean semver like `1.20.0`), not development builds (`1.20.0-4-gHASH-dirty` or `dev`). When the GitHub API is unreachable (air-gapped clusters), the CLI should warn and proceed rather than blocking.
 
@@ -27,7 +27,7 @@ A version string is a release build if `parseSemanticVersion` succeeds AND the o
 | Dev build (`1.20.0-dirty`) | Skip check, proceed normally |
 | Release build, up to date | Proceed normally |
 | Release build, outdated | Print upgrade message, exit 1 |
-| Release build, GitLab unreachable | Print warning, proceed |
+| Release build, GitHub unreachable | Print warning, proceed |
 | `upgrade` command | Skip check (it IS the upgrade) |
 | `--version` / `--help` | Skip check |
 
@@ -35,7 +35,7 @@ A version string is a release build if `parseSemanticVersion` succeeds AND the o
 
 **`pkg/upgrade/upgrade.go`**: Add `isReleaseBuild(v string) bool` and `enforceUpgrade(v string, out io.Writer) error`. The `enforceUpgrade` function uses a dedicated HTTP client with 5-second timeout to avoid blocking on slow networks. Reuses existing `fetchLatestVersion()`, `parseSemanticVersion()`, and `isNewer()`.
 
-**`cmd/ncrectl/main.go`**: Add `PersistentPreRunE` to the root command that calls `enforceUpgrade` for release builds, skipping for `upgrade`, `version`, `help`, and `completion` commands.
+**`cmd/nvcrectl/main.go`**: Add `PersistentPreRunE` to the root command that calls `enforceUpgrade` for release builds, skipping for `upgrade`, `version`, `help`, and `completion` commands.
 
 ## Rationale
 
@@ -57,7 +57,7 @@ A version string is a release build if `parseSemanticVersion` succeeds AND the o
 ## References
 
 - `pkg/upgrade/upgrade.go` — existing upgrade infrastructure
-- `cmd/ncrectl/main.go` — root command setup
+- `cmd/nvcrectl/main.go` — root command setup
 - `.github/workflows/release.yml` — release pipeline (semantic-release + publish)
 
 ## Change Log

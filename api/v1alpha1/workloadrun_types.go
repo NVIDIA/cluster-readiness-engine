@@ -257,7 +257,7 @@ type WorkloadRunSpec struct {
 	Orchestration *WorkloadOrchestration `json:"orchestration,omitempty"`
 
 	// thresholds defines performance pass/fail criteria as CEL expressions.
-	// Keys are metric names (e.g., "busBandwidthGBps", "avgTFLOPSPerGPU").
+	// Keys are metric names (e.g., "busBandwidthGBps", "avgTFLOPsPerGPU").
 	// Values are CEL expressions using a `value` variable (e.g., "value >= 900").
 	// +optional
 	Thresholds map[string]string `json:"thresholds,omitempty"`
@@ -350,8 +350,13 @@ type WorkloadRun struct {
 	// +optional
 	metav1.ObjectMeta `json:"metadata,omitzero"`
 
-	// spec defines the desired state of WorkloadRun
+	// spec defines the desired state of WorkloadRun.
+	// The entire spec is immutable after creation: once status.workflowRef is
+	// set the controller only mirrors the existing Workflow and never rebuilds
+	// it, so accepting edits would silently ignore them. To run with different
+	// inputs, delete the WorkloadRun and create a new one.
 	// +required
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="spec is immutable after creation"
 	Spec WorkloadRunSpec `json:"spec"`
 
 	// status defines the observed state of WorkloadRun

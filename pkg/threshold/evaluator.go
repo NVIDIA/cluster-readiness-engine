@@ -8,6 +8,8 @@ package threshold
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 
 	"github.com/google/cel-go/cel"
@@ -46,7 +48,17 @@ func knownKeys() map[string]bool {
 	return registryKeys
 }
 
-// ValidateKeys returns any keys in thresholds that are not in the Registry.
+// Keys returns all known threshold keys in Registry order.
+func Keys() []string {
+	keys := make([]string, 0, len(Registry))
+	for _, d := range Registry {
+		keys = append(keys, d.Key)
+	}
+	return keys
+}
+
+// ValidateKeys returns any keys in thresholds that are not in the Registry,
+// sorted for deterministic messages.
 func ValidateKeys(thresholds map[string]string) []string {
 	known := knownKeys()
 	var unknown []string
@@ -55,7 +67,21 @@ func ValidateKeys(thresholds map[string]string) []string {
 			unknown = append(unknown, k)
 		}
 	}
+	sort.Strings(unknown)
 	return unknown
+}
+
+// ValidateKeysError returns an error when thresholds contains keys that are
+// not in the Registry. The error names each offending key and lists the valid
+// keys, so a typo is diagnosed instead of silently disabling validation.
+// Returns nil when every key is known.
+func ValidateKeysError(thresholds map[string]string) error {
+	unknown := ValidateKeys(thresholds)
+	if len(unknown) == 0 {
+		return nil
+	}
+	return fmt.Errorf("unknown threshold key(s) [%s]; valid keys: [%s]",
+		strings.Join(unknown, ", "), strings.Join(Keys(), ", "))
 }
 
 // ValidateExpressions compiles all CEL expressions and returns errors
@@ -66,36 +92,41 @@ type Violation struct {
 	Key        string
 	Expression string
 	Measured   float64
-	Reason     string // "ThresholdViolated", "UnknownThresholdKey", "InvalidThresholdExpression"
+	Reason     string // "ThresholdViolated", "InvalidThresholdExpression"
 	Message    string
 }
 
 // EvaluateAll checks all thresholds against measured values.
-// Returns a list of violations (empty if all thresholds pass).
-func EvaluateAll(thresholds map[string]string, measured map[string]float64) []Violation {
+// Returns a list of violations (empty if all thresholds pass), sorted by key.
+// Returns an error when thresholds contains a key that is not in the Registry:
+// an unknown key can never be measured, so evaluating around it would silently
+// skip validation. The error names the offending keys and lists the valid ones.
+func EvaluateAll(thresholds map[string]string, measured map[string]float64) ([]Violation, error) {
 	if len(thresholds) == 0 {
-		return nil
+		return nil, nil
 	}
 
+	// Reject unknown keys first: a typo in one key must fail loudly rather
+	// than disable threshold validation.
+	if err := ValidateKeysError(thresholds); err != nil {
+		return nil, err
+	}
+
+	keys := make([]string, 0, len(thresholds))
+	for key := range thresholds {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	// Evaluate each threshold in sorted key order for deterministic output.
 	var violations []Violation
-
-	// Validate keys first.
-	for _, key := range ValidateKeys(thresholds) {
-		violations = append(violations, Violation{
-			Key:     key,
-			Reason:  "UnknownThresholdKey",
-			Message: fmt.Sprintf("Unknown threshold key %q", key),
-		})
-	}
-	if len(violations) > 0 {
-		return violations
-	}
-
-	// Evaluate each threshold.
-	for key, expr := range thresholds {
+	for _, key := range keys {
+		expr := thresholds[key]
 		value, ok := measured[key]
 		if !ok {
-			continue // no measurement available — skip silently
+			// No measurement available — the caller's missing-key handling
+			// (requeue then MeasurementTimeout) is responsible for this case.
+			continue
 		}
 		pass, err := Evaluate(value, expr)
 		if err != nil {
@@ -118,7 +149,7 @@ func EvaluateAll(thresholds map[string]string, measured map[string]float64) []Vi
 			})
 		}
 	}
-	return violations
+	return violations, nil
 }
 
 // Evaluate compiles and evaluates a CEL expression with the measured value.

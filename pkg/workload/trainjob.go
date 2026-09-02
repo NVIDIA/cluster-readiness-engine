@@ -14,12 +14,12 @@ import (
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
 const (
-	// RuntimePatchManager is the manager key for CRE controller-owned RuntimePatches.
-	RuntimePatchManager = "cre.nvidia.com/controller"
+	// RuntimePatchManager is the manager key for NVCRE controller-owned RuntimePatches.
+	RuntimePatchManager = "nvcre.nvidia.com/controller"
 
 	LauncherJobName = "launcher"
 	NodeJobName     = "node"
@@ -42,26 +42,22 @@ func (a *TrainJobAdapter) NewObject() client.Object {
 	return &trainerv1alpha1.TrainJob{}
 }
 
-func (a *TrainJobAdapter) Build(name, namespace string, spec *crev1alpha1.WorkloadSpec) (client.Object, error) {
+func (a *TrainJobAdapter) Build(name, namespace string, spec *nvcrev1alpha1.WorkloadSpec) (client.Object, error) {
 	if spec.TrainJob == nil {
 		return nil, fmt.Errorf("WorkloadSpec.TrainJob is nil")
 	}
 
 	trainJob := &trainerv1alpha1.TrainJob{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "trainer.kubeflow.org/v1alpha1",
-			Kind:       "TrainJob",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Spec: *spec.TrainJob,
+		APIVersion: "trainer.kubeflow.org/v1alpha1",
+		Kind:       "TrainJob",
+		Name:       name,
+		Namespace:  namespace,
+		Spec:       *spec.TrainJob,
 	}
 	return trainJob, nil
 }
 
-func (a *TrainJobAdapter) InjectPodLabel(spec *crev1alpha1.WorkloadSpec, key, value string) {
+func (a *TrainJobAdapter) InjectPodLabel(spec *nvcrev1alpha1.WorkloadSpec, key, value string) {
 	if spec.TrainJob == nil {
 		return
 	}
@@ -80,7 +76,7 @@ func (a *TrainJobAdapter) InjectPodLabel(spec *crev1alpha1.WorkloadSpec, key, va
 	podTemplate.Metadata.Labels[key] = value
 }
 
-func (a *TrainJobAdapter) SetNodeSelector(spec *crev1alpha1.WorkloadSpec, selector map[string]string) {
+func (a *TrainJobAdapter) SetNodeSelector(spec *nvcrev1alpha1.WorkloadSpec, selector map[string]string) {
 	if spec.TrainJob == nil {
 		return
 	}
@@ -95,7 +91,7 @@ func (a *TrainJobAdapter) SetNodeSelector(spec *crev1alpha1.WorkloadSpec, select
 	maps.Copy(podSpec.NodeSelector, selector)
 }
 
-func (a *TrainJobAdapter) SetNodeAffinity(spec *crev1alpha1.WorkloadSpec, affinity *corev1.NodeAffinity) {
+func (a *TrainJobAdapter) SetNodeAffinity(spec *nvcrev1alpha1.WorkloadSpec, affinity *corev1.NodeAffinity) {
 	if spec.TrainJob == nil {
 		return
 	}
@@ -111,7 +107,7 @@ func (a *TrainJobAdapter) SetNodeAffinity(spec *crev1alpha1.WorkloadSpec, affini
 	}
 }
 
-func (a *TrainJobAdapter) SetTolerations(spec *crev1alpha1.WorkloadSpec, tolerations []corev1.Toleration) {
+func (a *TrainJobAdapter) SetTolerations(spec *nvcrev1alpha1.WorkloadSpec, tolerations []corev1.Toleration) {
 	if spec.TrainJob == nil {
 		return
 	}
@@ -125,7 +121,7 @@ func (a *TrainJobAdapter) SetTolerations(spec *crev1alpha1.WorkloadSpec, tolerat
 	}
 }
 
-func (a *TrainJobAdapter) NodesRequired(spec *crev1alpha1.WorkloadSpec) (int, error) {
+func (a *TrainJobAdapter) NodesRequired(spec *nvcrev1alpha1.WorkloadSpec) (int, error) {
 	if spec.TrainJob == nil {
 		return 0, fmt.Errorf("WorkloadSpec.TrainJob is nil")
 	}
@@ -135,7 +131,7 @@ func (a *TrainJobAdapter) NodesRequired(spec *crev1alpha1.WorkloadSpec) (int, er
 	return int(*spec.TrainJob.Trainer.NumNodes), nil
 }
 
-func (a *TrainJobAdapter) SetNumNodes(spec *crev1alpha1.WorkloadSpec, numNodes int) {
+func (a *TrainJobAdapter) SetNumNodes(spec *nvcrev1alpha1.WorkloadSpec, numNodes int) {
 	if spec.TrainJob == nil || spec.TrainJob.Trainer == nil {
 		return
 	}
@@ -169,6 +165,25 @@ func (a *TrainJobAdapter) GetStatus(obj client.Object) (*WorkloadStatus, error) 
 		}
 	}
 
+	// A suspended TrainJob has no pods and typically no conditions — it is
+	// queued, not running. Kueue's webhook creates TrainJobs with
+	// spec.suspend=true and flips it only once quota is admitted, so falling
+	// through to Running here would start stall/timeout clocks against
+	// hardware that never ran anything. Terminal conditions are checked first
+	// so a finished TrainJob that was suspended afterwards still reports its
+	// true outcome.
+	if trainJob.Spec.Suspend != nil && *trainJob.Spec.Suspend {
+		message := "TrainJob is suspended (spec.suspend=true), waiting for it to be resumed"
+		if trainJob.Spec.ManagedBy != nil && *trainJob.Spec.ManagedBy != "" {
+			message += "; managed by " + *trainJob.Spec.ManagedBy
+		}
+		return &WorkloadStatus{
+			Phase:   WorkloadPending,
+			Reason:  trainerv1alpha1.TrainJobSuspendedReason,
+			Message: message,
+		}, nil
+	}
+
 	return &WorkloadStatus{Phase: WorkloadRunning}, nil
 }
 
@@ -194,7 +209,7 @@ func workerTargetJob(patches []trainerv1alpha1.RuntimePatch) string {
 // HasLauncherTarget reports whether the workload spec contains an MPI launcher
 // target in its runtimePatches. Used by the workflow controller to decide
 // whether to apply global tolerations (only MPI workloads need them).
-func HasLauncherTarget(spec *crev1alpha1.WorkloadSpec) bool {
+func HasLauncherTarget(spec *nvcrev1alpha1.WorkloadSpec) bool {
 	if spec.TrainJob == nil {
 		return false
 	}
@@ -304,6 +319,23 @@ func ensurePodSpecPatch(spec *trainerv1alpha1.TrainJobSpec, replicatedJobName st
 		podTemplate.Spec = &trainerv1alpha1.PodSpecPatch{}
 	}
 	return podTemplate.Spec
+}
+
+// EnsureLauncherTarget registers the worker and launcher replicated jobs in
+// the controller-owned RuntimePatch. SetNodeAffinity and SetTolerations derive
+// their targets from existing runtimePatches (allTargetJobs), and the Workflow
+// controller's blanket MPI toleration is gated on HasLauncherTarget — so an
+// MPI TrainJob without a launcher entry gets its launcher pod scheduled with
+// no node pinning and no tolerations. Catalog MPI entries satisfy this
+// contract with an explicit bare `- name: launcher` runtimePatch entry; MPI
+// WorkloadRuns build their TrainJob programmatically and must register the
+// launcher here. The bare entries are a no-op for the trainer's patch merge.
+func EnsureLauncherTarget(trainJobSpec *trainerv1alpha1.TrainJobSpec) {
+	if trainJobSpec == nil {
+		return
+	}
+	getOrCreateReplicatedJobPatch(trainJobSpec, NodeJobName)
+	getOrCreateReplicatedJobPatch(trainJobSpec, LauncherJobName)
 }
 
 // SetImagePullSecrets applies imagePullSecrets to the worker replicated job via RuntimePatches.

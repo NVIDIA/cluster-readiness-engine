@@ -4,11 +4,10 @@
 # Keep review comments rare and high value. Style, naming, and wording are
 # handled by golangci-lint and by human review.
 tone_instructions: >-
-  Report only defects that change behavior: bugs, data loss, race conditions,
-  security problems, broken error handling, and breaking API or CRD changes.
-  Report a test only when the test itself is wrong. Do not comment on style,
-  naming, formatting, comment wording, documentation phrasing, or missing
-  test coverage. Say nothing when you find no defect.
+  Report only behavior-changing defects: bugs, data loss, races, security
+  issues, broken error handling, breaking API/CRD changes. Flag tests only
+  when the test is wrong. Never comment on style, naming, wording, or
+  coverage. Silent if no defect.
 
 reviews:
   profile: chill

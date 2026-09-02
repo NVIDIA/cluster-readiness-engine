@@ -36,8 +36,6 @@ The diagnose algorithm runs in seven stages: `intra-screening`, `intra-screening
 
 When the fault lies at a network domain boundary (e.g. two nodes connected via a spine switch), standard bisection may not isolate it. Cross-boundary probing extends the algorithm to test node pairs that span domain boundaries.
 
-_Configuration reference coming soon._
-
 ## Reading the result
 
 After isolation the `Certification` status records the isolated node(s) in the ConfigMap referenced by `status.categoryStatuses[].failedNodesRef`. See [Health Monitoring & Failed Node Attribution](../concepts/health-monitoring-remediation.md) for how to read and act on that data.

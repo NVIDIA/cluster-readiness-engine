@@ -1,0 +1,144 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Mixed failure: one group fails on hardware, another on threshold validation.
+# The Workflow must end Failed with the hardware reason (hardware takes
+# precedence) while still carrying the supplementary ValidationFailed
+# condition so the threshold miss is not lost (issue #67 review follow-up).
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-workflow-hw-and-validation-fail
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 2
+    nodesPerJob: 1
+    totalGroups: 2
+    currentIteration: 1
+    groups:
+      - name: group-0
+        nodes:
+          - gpu-node-01
+        phase: Running
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: test-workflow-hw-and-validation-fail-job-0
+          namespace: default
+      - name: group-1
+        nodes:
+          - gpu-node-02
+        phase: Running
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: test-workflow-hw-and-validation-fail-job-1
+          namespace: default
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-workflow-hw-and-validation-fail-job-0
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: test-workflow-hw-and-validation-fail
+    nvcre.nvidia.com/group: group-0
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: WorkloadCompleted
+      message: "Workload has completed"
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Failed
+      status: "True"
+      reason: WorkloadFailed
+      message: "Workload failed due to hardware failure"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: HardwareFailed
+      status: "True"
+      reason: NodeHealthCheckFailed
+      message: "Hardware failure detected on nodes: node-gpu-01"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+  failedNodes:
+    - name: node-gpu-01
+      reason: HardwareFailureDetected
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-workflow-hw-and-validation-fail-job-1
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: test-workflow-hw-and-validation-fail
+    nvcre.nvidia.com/group: group-1
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "True"
+      reason: WorkloadCompleted
+      message: "Workload has completed"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: ValidationFailed
+      status: "True"
+      reason: ThresholdViolation
+      message: 'Threshold "busBandwidthGBps" violated: measured 188.6700, expression: value >= 900'
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+  failedNodes:
+    - name: node-gpu-02
+      reason: ThresholdViolation
+      message: 'Threshold "busBandwidthGBps" violated: measured 188.6700, expression: value >= 900'

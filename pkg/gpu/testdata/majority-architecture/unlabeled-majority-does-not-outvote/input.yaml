@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Two unlabeled nodes outnumber the single labeled node and even sort first,
+# but the majority is computed among labeled architectures only, so the lone
+# h100 label still decides. Unlabeled usually means the feature-discovery
+# labeler has not reached the node yet, not a third architecture.
+nodes:
+  - name: node-a
+    product: ""
+  - name: node-b
+    product: ""
+  - name: node-c
+    product: NVIDIA-H100-80GB-HBM3

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// workflow_render implements the "ncrectl workflow render" subcommand.
+// workflow_render implements the "nvcrectl workflow render" subcommand.
 package render
 
 import (
@@ -13,7 +13,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/kubeconfig"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -25,13 +25,17 @@ import (
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/workload"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
 
 //go:embed nodes/*.yaml
 var embeddedNodes embed.FS
+
+// nvcreAPIVersion is the apiVersion string used for rendered nvcre.nvidia.com
+// resources (Certification, Workflow, Job).
+const nvcreAPIVersion = "nvcre.nvidia.com/v1alpha1"
 
 // NewWorkflowCommand returns the "workflow" parent cobra command with
 // the "render" subcommand attached. This was previously newWorkflowCommand
@@ -78,7 +82,7 @@ anything.`,
 			if len(args) == 0 {
 				return fmt.Errorf(
 					"requires a workflow YAML file as argument\n\n" +
-						"Usage: ncrectl workflow render [flags] <workflow.yaml>",
+						"Usage: nvcrectl workflow render [flags] <workflow.yaml>",
 				)
 			}
 			if err := validateFlags(dryRun, nodesFile, platform, gpuArch); err != nil {
@@ -111,19 +115,19 @@ type DryRunResult struct {
 
 // renderMetadata captures detection and override results from resolving a Workflow.
 type renderMetadata struct {
-	DetectedPlatform        string                        `json:"detectedPlatform"`
-	DetectedGPUArchitecture string                        `json:"detectedGPUArchitecture"`
-	AppliedOverrides        []crev1alpha1.AppliedOverride `json:"appliedOverrides"`
+	DetectedPlatform        string                          `json:"detectedPlatform"`
+	DetectedGPUArchitecture string                          `json:"detectedGPUArchitecture"`
+	AppliedOverrides        []nvcrev1alpha1.AppliedOverride `json:"appliedOverrides"`
 }
 
 // readWorkflow parses a Workflow YAML file from disk.
-func readWorkflow(path string) (*crev1alpha1.Workflow, error) {
+func readWorkflow(path string) (*nvcrev1alpha1.Workflow, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- path is a user-provided CLI argument
 
 	if err != nil {
 		return nil, fmt.Errorf("read workflow: %w", err)
 	}
-	var workflow crev1alpha1.Workflow
+	var workflow nvcrev1alpha1.Workflow
 	if err := yaml.Unmarshal(data, &workflow); err != nil {
 		return nil, fmt.Errorf("parse workflow: %w", err)
 	}
@@ -132,8 +136,8 @@ func readWorkflow(path string) (*crev1alpha1.Workflow, error) {
 
 // ResolveWorkflow applies overrides to a Workflow in-place and returns
 // detection metadata. The workflow's spec is mutated directly.
-func ResolveWorkflow(workflow *crev1alpha1.Workflow, nodes []corev1.Node) (*renderMetadata, error) {
-	orch := &crev1alpha1.OrchestrationStatus{
+func ResolveWorkflow(workflow *nvcrev1alpha1.Workflow, nodes []corev1.Node) (*renderMetadata, error) {
+	orch := &nvcrev1alpha1.OrchestrationStatus{
 		DetectedPlatform:        controller.DetectPlatform(nodes),
 		DetectedGPUArchitecture: controller.DetectGPUArchitecture(nodes),
 	}
@@ -156,7 +160,7 @@ func ResolveWorkflow(workflow *crev1alpha1.Workflow, nodes []corev1.Node) (*rend
 }
 
 // render resolves overrides and returns the full Workflow with metadata.
-func render(workflowFile, platform, gpuArch, nodesFile string) (*crev1alpha1.Workflow, *renderMetadata, error) {
+func render(workflowFile, platform, gpuArch, nodesFile string) (*nvcrev1alpha1.Workflow, *renderMetadata, error) {
 	workflow, err := readWorkflow(workflowFile)
 	if err != nil {
 		return nil, nil, err
@@ -168,7 +172,7 @@ func render(workflowFile, platform, gpuArch, nodesFile string) (*crev1alpha1.Wor
 	}
 
 	workflow.TypeMeta = metav1.TypeMeta{
-		APIVersion: "cre.nvidia.com/v1alpha1",
+		APIVersion: nvcreAPIVersion,
 		Kind:       "Workflow",
 	}
 
@@ -197,7 +201,7 @@ func validateFlags(dryRun bool, nodesFile, platform, gpuArch string) error {
 func run(workflowFile, platform, gpuArch, nodesFile, outputFormat string,
 	configFlags *kubeconfig.ConfigFlags, dryRun bool) error {
 
-	var workflow *crev1alpha1.Workflow
+	var workflow *nvcrev1alpha1.Workflow
 	var meta *renderMetadata
 	var dryRunResults []DryRunResult
 	var err error
@@ -237,22 +241,22 @@ func run(workflowFile, platform, gpuArch, nodesFile, outputFormat string,
 }
 
 // SetRenderAnnotations stores detection metadata as annotations on the Workflow.
-func SetRenderAnnotations(workflow *crev1alpha1.Workflow, meta *renderMetadata) {
+func SetRenderAnnotations(workflow *nvcrev1alpha1.Workflow, meta *renderMetadata) {
 	if workflow.Annotations == nil {
 		workflow.Annotations = map[string]string{}
 	}
-	workflow.Annotations["ncrectl.nvidia.com/detected-platform"] = meta.DetectedPlatform
-	workflow.Annotations["ncrectl.nvidia.com/detected-gpu-architecture"] = meta.DetectedGPUArchitecture
+	workflow.Annotations["nvcrectl.nvidia.com/detected-platform"] = meta.DetectedPlatform
+	workflow.Annotations["nvcrectl.nvidia.com/detected-gpu-architecture"] = meta.DetectedGPUArchitecture
 	if len(meta.AppliedOverrides) > 0 {
 		overridesJSON, _ := json.Marshal(meta.AppliedOverrides)
-		workflow.Annotations["ncrectl.nvidia.com/applied-overrides"] = string(overridesJSON)
+		workflow.Annotations["nvcrectl.nvidia.com/applied-overrides"] = string(overridesJSON)
 	}
 }
 
 // renderDryRun connects to a cluster, discovers real nodes, applies overrides,
 // and validates the resolved resources via server-side dry-run.
 func renderDryRun(workflowFile string, configFlags *kubeconfig.ConfigFlags) (
-	*crev1alpha1.Workflow, *renderMetadata, []DryRunResult, error) {
+	*nvcrev1alpha1.Workflow, *renderMetadata, []DryRunResult, error) {
 
 	workflow, err := readWorkflow(workflowFile)
 	if err != nil {
@@ -271,7 +275,7 @@ func renderDryRun(workflowFile string, configFlags *kubeconfig.ConfigFlags) (
 	}
 
 	workflow.TypeMeta = metav1.TypeMeta{
-		APIVersion: "cre.nvidia.com/v1alpha1",
+		APIVersion: nvcreAPIVersion,
 		Kind:       "Workflow",
 	}
 
@@ -298,7 +302,7 @@ func NewK8sClient(cf *kubeconfig.ConfigFlags) (client.Client, error) {
 
 	s := runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(s)
-	_ = crev1alpha1.AddToScheme(s)
+	_ = nvcrev1alpha1.AddToScheme(s)
 	_ = trainerv1alpha1.AddToScheme(s)
 
 	return client.New(restConfig, client.Options{Scheme: s})
@@ -314,7 +318,7 @@ func NewK8sWatchClient(cf *kubeconfig.ConfigFlags) (client.WithWatch, error) {
 
 	s := runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(s)
-	_ = crev1alpha1.AddToScheme(s)
+	_ = nvcrev1alpha1.AddToScheme(s)
 	_ = trainerv1alpha1.AddToScheme(s)
 
 	return client.NewWithWatch(restConfig, client.Options{Scheme: s})
@@ -328,7 +332,7 @@ func NewK8sWatchClient(cf *kubeconfig.ConfigFlags) (client.WithWatch, error) {
 // dependency that would be created at runtime (e.g. a TrainingRuntime referenced
 // by a TrainJob). Such failures are reported as warnings rather than errors.
 func DryRunCreate(ctx context.Context, c client.Client, namespace string,
-	spec *crev1alpha1.WorkflowSpec, nodes []corev1.Node) ([]DryRunResult, error) {
+	spec *nvcrev1alpha1.WorkflowSpec, nodes []corev1.Node) ([]DryRunResult, error) {
 
 	var results []DryRunResult
 
@@ -373,8 +377,8 @@ func DryRunCreate(ctx context.Context, c client.Client, namespace string,
 
 	// Set default node health monitor if nil.
 	if specCopy.NodeHealthMonitor == nil {
-		specCopy.NodeHealthMonitor = &crev1alpha1.NodeHealthMonitor{
-			CEL: &crev1alpha1.CELNodeHealthCheck{
+		specCopy.NodeHealthMonitor = &nvcrev1alpha1.NodeHealthMonitor{
+			CEL: &nvcrev1alpha1.CELNodeHealthCheck{
 				Expression: `node.spec.unschedulable == true`,
 			},
 		}
@@ -409,16 +413,12 @@ func DryRunCreate(ctx context.Context, c client.Client, namespace string,
 	}
 
 	// --- 2. Validate Job ---
-	job := &crev1alpha1.Job{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "cre.nvidia.com/v1alpha1",
-			Kind:       "Job",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "dry-run-job",
-			Namespace: namespace,
-		},
-		Spec: *specCopy,
+	job := &nvcrev1alpha1.Job{
+		APIVersion: nvcreAPIVersion,
+		Kind:       "Job",
+		Name:       "dry-run-job",
+		Namespace:  namespace,
+		Spec:       *specCopy,
 	}
 
 	jobResult := DryRunResult{Resource: "Job/dry-run-job", Valid: true}

@@ -7,14 +7,14 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"sigs.k8s.io/yaml"
 )
 
 func TestBisect(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "bisect",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input BisectInput

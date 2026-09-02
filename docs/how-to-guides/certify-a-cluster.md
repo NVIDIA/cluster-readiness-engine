@@ -1,6 +1,6 @@
 ---
 title: Certify a Cluster
-description: Platform-specific guides for running a full cluster certification on AWS, GCP, and Azure.
+description: Platform-specific guides for running a full cluster certification on AWS.
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 ---
@@ -8,7 +8,7 @@ description: Platform-specific guides for running a full cluster certification o
 
 ## Before you begin
 
-- [Install ncrectl and set up the controller](../getting-started/install.md)
+- [Install nvcrectl and set up the controller](../getting-started/install.md)
 - Confirm your kubeconfig points at the target cluster
 
 ## AWS
@@ -16,7 +16,7 @@ description: Platform-specific guides for running a full cluster certification o
 ### GB200 (EFA interconnect)
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: gb200-cert
@@ -33,7 +33,7 @@ spec:
 ```
 
 ```bash
-ncrectl certification run --cert-file gb200-cert.yaml --wait
+nvcrectl certification run --cert-file gb200-cert.yaml --wait
 ```
 
 The controller auto-detects AWS + GB200 and applies EFA-specific resources (`hugepages-2Mi`, `vpc.amazonaws.com/efa: 4`, EFA hostPath volume) automatically.
@@ -54,31 +54,23 @@ spec:
 
 H100 on AWS uses `vpc.amazonaws.com/efa: 32`. No hugepages or ComputeDomain.
 
-## GCP
-
-_Content coming soon._
-
-## Azure
-
-_Content coming soon._
-
 ## Monitoring progress
 
 ```bash
 # Watch overall status
-kubectl get certifications.cre.nvidia.com -w
+kubectl get certifications.nvcre.nvidia.com -w
 
 # Watch individual workflows
-kubectl get workflows.cre.nvidia.com -w
+kubectl get workflows.nvcre.nvidia.com -w
 
 # Tail controller logs
-kubectl logs -n cluster-readiness-engine deploy/cluster-readiness-engine-controller -f
+kubectl logs -n nvcre deploy/nvcre-manager -f
 ```
 
 ## Reviewing results
 
 ```bash
-ncrectl certification report <name>
+nvcrectl certification report <name>
 ```
 
 - **Passed** — all categories met their thresholds. Cluster is ready.

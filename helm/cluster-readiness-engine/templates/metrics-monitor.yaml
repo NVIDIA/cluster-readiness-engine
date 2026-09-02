@@ -6,10 +6,10 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   labels:
-    {{- include "cre.labels" . | nindent 4 }}
+    {{- include "nvcre.labels" . | nindent 4 }}
     control-plane: manager
     release: prometheus
-  name: {{ include "cre.resourceName" (dict "suffix" "metrics-monitor" "context" $) }}
+  name: {{ include "nvcre.resourceName" (dict "suffix" "metrics-monitor" "context" $) }}
   namespace: {{ .Release.Namespace }}
 spec:
   endpoints:
@@ -21,7 +21,7 @@ spec:
       insecureSkipVerify: true
   selector:
     matchLabels:
-      {{- include "cre.selectorLabels" . | nindent 6 }}
+      {{- include "nvcre.selectorLabels" . | nindent 6 }}
       control-plane: manager
 
 {{- end }}

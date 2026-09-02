@@ -1,0 +1,6 @@
+# Retry budget exists but is already spent: same terminal completion as
+# having no budget, with the retry count preserved.
+retryFailedGroups: 1
+groupRetries: 1
+jobFailedReason: WorkloadFailed
+pods: []

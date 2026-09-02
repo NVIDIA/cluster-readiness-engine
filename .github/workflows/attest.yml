@@ -1,0 +1,610 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Reusable workflow that signs and attests a release artifact.
+#
+# This is intended to become the only place in the repository that invokes
+# `cosign sign`, `cosign attest`, or `cosign attest-blob`. It is NOT yet: at the
+# time this workflow landed, publish.yml still signs the container image inline.
+# #266, #267 and #268 route the image, chart and binaries through here; #274
+# adds the test that keeps it true afterwards. Concentrating signing does two
+# things (ADR-074 decision 4):
+#
+#  1. It gives every released artifact ONE certificate identity to pin. cosign
+#     uses the OIDC `job_workflow_ref` as the Fulcio SAN, so signing from a
+#     single reusable workflow means consumers pin exactly:
+#
+#       https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/<TAG>
+#
+#     Signing inline in each caller would instead produce one identity per
+#     calling workflow and per ref, which is what makes the current
+#     SECURITY.md verification command accept a main-branch build as a release.
+#
+#  2. It isolates the signing token from caller-defined build steps.
+#
+# This is SLSA Build **L2**, not L3, and nothing here may claim otherwise. L3
+# requires the BUILD to run inside the protected reusable workflow; the builds
+# stay in the callers (`docker buildx` in publish.yml, the Go cross-compile and
+# `helm package` in release.yml) and this workflow signs a digest it is handed.
+# A caller that produced the wrong artifact would get a faithful signature over
+# the wrong digest. Reaching L3 means moving artifact generation in here, which
+# is a separate decision.
+#
+# Because the build happens in the caller, `runDetails.builder.id` in the
+# provenance names the CALLER's workflow, not this one. Naming the attestor as
+# the builder would make the predicate false on its face.
+
+name: Attest (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      subject_kind:
+        description: 'What is being attested: image | oci-artifact | blob'
+        required: true
+        type: string
+      subject_name:
+        description: >-
+          For image/oci-artifact, the registry reference with no tag or digest
+          (e.g. ghcr.io/nvidia/cluster-readiness-engine/manager). For blob, the
+          file name inside the downloaded artifact bundle.
+        required: true
+        type: string
+      expected_digest:
+        description: >-
+          The caller's authoritative digest of the subject, in the form
+          sha256:<64 lowercase hex> (what `crane digest` and the docker
+          build-push action's `digest` output both return). This workflow
+          resolves the subject independently -- from subject_tag for registry
+          subjects, by re-hashing the bytes for a blob -- and fails when the two
+          differ, so a caller cannot have a digest signed that is not the one
+          its tag actually points at.
+        required: true
+        type: string
+      platform:
+        description: >-
+          For a per-platform subject (e.g. the linux/amd64 SBOM of a
+          multi-platform image), the platform to resolve, as os/arch. Leave
+          empty to resolve the multi-platform index itself. Without this a
+          per-platform expected_digest can never match, because resolving the
+          tag returns the index digest.
+        required: false
+        type: string
+        default: ''
+      subject_tag:
+        description: >-
+          The tag the caller just pushed for this subject (e.g. v1.2.3 or
+          main-abc1234). Required for image and oci-artifact. This workflow
+          resolves that tag to a digest itself and compares the result against
+          expected_digest, which is what makes the comparison meaningful:
+          resolving by digest would only ever return the digest asked for.
+        required: false
+        type: string
+        default: ''
+      artifact_name:
+        description: >-
+          upload-artifact name holding the blob and any predicate. Required when
+          subject_kind is blob, AND required whenever predicate_name is set --
+          including for image and oci-artifact subjects, since the predicate
+          file is read out of this artifact.
+        required: false
+        type: string
+        default: ''
+      predicate_name:
+        description: 'File name of an additional predicate to attest (e.g. an SBOM), inside artifact_name.'
+        required: false
+        type: string
+        default: ''
+      predicate_type:
+        description: >-
+          cosign --type value for predicate_name. One of cyclonedx, spdxjson, or
+          openvex. Required when predicate_name is set.
+        required: false
+        type: string
+        default: ''
+      emit_provenance:
+        description: >-
+          Emit the SLSA provenance attestation. Default true. Set false when the
+          subject already carries provenance at another digest -- ADR-074 puts
+          provenance on the multi-platform index only, so the per-platform calls
+          that attach SBOMs must not attach a second provenance statement to a
+          child manifest.
+        required: false
+        type: boolean
+        default: true
+      allow_untagged:
+        description: >-
+          Permit a run from a non-tag ref. For dispatch-driven testing only; such
+          runs are visibly non-production and must never be relied on as release
+          attestations.
+        required: false
+        type: boolean
+        default: false
+      cosign_version:
+        description: 'Pinned cosign version. Governs the emitted bundle format.'
+        required: false
+        type: string
+        default: 'v3.1.3'
+      crane_version:
+        description: 'Pinned crane version, used to resolve registry digests.'
+        required: false
+        type: string
+        default: 'v0.20.6'
+    outputs:
+      resolved_digest:
+        description: 'The digest this workflow independently resolved and signed.'
+        value: ${{ jobs.attest.outputs.resolved_digest }}
+
+permissions: {}
+
+jobs:
+  # Input validation runs with no permissions at all, before anything is
+  # fetched, downloaded, or signed. Every value a caller supplies is checked
+  # against an explicit pattern here so that a malformed or hostile input fails
+  # in a job that holds no token rather than in the job that holds the signing
+  # identity.
+  validate:
+    name: Validate Attestation Inputs
+    # `workflow_call` on a public repository is callable by ANY repository. In a
+    # called reusable workflow `github.repository` is the CALLER's repository, so
+    # this gate is what stops an outside repo from invoking this workflow at one
+    # of our release tags and obtaining a Fulcio certificate whose SAN is our
+    # attest.yml path -- the exact identity SECURITY.md tells users to trust.
+    # Every other workflow in this repository already carries this guard.
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      subject_kind: ${{ steps.check.outputs.subject_kind }}
+      subject_name: ${{ steps.check.outputs.subject_name }}
+      subject_tag: ${{ steps.check.outputs.subject_tag }}
+      platform: ${{ steps.check.outputs.platform }}
+      expected_digest: ${{ steps.check.outputs.expected_digest }}
+      artifact_name: ${{ steps.check.outputs.artifact_name }}
+      predicate_name: ${{ steps.check.outputs.predicate_name }}
+      predicate_type: ${{ steps.check.outputs.predicate_type }}
+      cosign_version: ${{ steps.check.outputs.cosign_version }}
+      crane_version: ${{ steps.check.outputs.crane_version }}
+    steps:
+      - name: Validate inputs
+        id: check
+        env:
+          # Every value crosses into the shell through the environment, never
+          # through `${{ }}` interpolation inside the script body, so a value
+          # containing shell metacharacters is data and not code.
+          IN_SUBJECT_KIND: ${{ inputs.subject_kind }}
+          IN_SUBJECT_NAME: ${{ inputs.subject_name }}
+          IN_SUBJECT_TAG: ${{ inputs.subject_tag }}
+          IN_PLATFORM: ${{ inputs.platform }}
+          IN_EXPECTED_DIGEST: ${{ inputs.expected_digest }}
+          IN_ARTIFACT_NAME: ${{ inputs.artifact_name }}
+          IN_PREDICATE_NAME: ${{ inputs.predicate_name }}
+          IN_PREDICATE_TYPE: ${{ inputs.predicate_type }}
+          IN_COSIGN_VERSION: ${{ inputs.cosign_version }}
+          IN_CRANE_VERSION: ${{ inputs.crane_version }}
+          IN_ALLOW_UNTAGGED: ${{ inputs.allow_untagged }}
+          IN_EMIT_PROVENANCE: ${{ inputs.emit_provenance }}
+          CALLER_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+
+          fail() { echo "::error::$1"; exit 1; }
+
+          # A newline lets a value forge extra lines in GITHUB_OUTPUT or in a
+          # log, so reject it everywhere before any other check.
+          for name in IN_SUBJECT_KIND IN_SUBJECT_NAME IN_SUBJECT_TAG IN_EXPECTED_DIGEST \
+                      IN_PLATFORM IN_ARTIFACT_NAME IN_PREDICATE_NAME \
+                      IN_PREDICATE_TYPE IN_COSIGN_VERSION IN_CRANE_VERSION; do
+            value="${!name}"
+            case "${value}" in
+              *$'\n'*|*$'\r'*) fail "${name} contains a newline or carriage return" ;;
+            esac
+          done
+
+          case "${IN_SUBJECT_KIND}" in
+            image|oci-artifact|blob) ;;
+            *) fail "subject_kind must be image, oci-artifact, or blob" ;;
+          esac
+
+          [[ "${IN_EXPECTED_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]] \
+            || fail "expected_digest must match sha256:<64 lowercase hex>"
+
+          [[ "${IN_COSIGN_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || fail "cosign_version must be vMAJOR.MINOR.PATCH"
+          [[ "${IN_CRANE_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || fail "crane_version must be vMAJOR.MINOR.PATCH"
+
+          case "${IN_SUBJECT_KIND}" in
+            image|oci-artifact)
+              # Registry reference with no tag and no digest: the digest is
+              # supplied separately and verified, so accepting one here would
+              # allow two different digests in one call.
+              [[ "${IN_SUBJECT_NAME}" =~ ^[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9._-]+)+$ ]] \
+                || fail "subject_name must be a registry reference without a tag or digest"
+              # The tag is what makes the digest check real. Resolving
+              # name@expected_digest would query the registry BY the value under
+              # test: content addressing guarantees it returns that same digest
+              # or fails, so the comparison could never catch a caller that
+              # named a real-but-wrong digest. Resolving the tag instead gives
+              # an answer the caller did not supply.
+              [[ -n "${IN_SUBJECT_TAG}" ]] \
+                || fail "subject_tag is required for image and oci-artifact subjects"
+              [[ "${IN_SUBJECT_TAG}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]] \
+                || fail "subject_tag is not a valid OCI tag"
+              ;;
+            blob)
+              [[ "${IN_SUBJECT_NAME}" =~ ^[A-Za-z0-9._-]+$ ]] \
+                || fail "subject_name must be a plain file name for a blob subject"
+              [[ -n "${IN_ARTIFACT_NAME}" ]] \
+                || fail "artifact_name is required when subject_kind is blob"
+              ;;
+          esac
+
+          if [[ -n "${IN_PLATFORM}" ]]; then
+            [[ "${IN_PLATFORM}" =~ ^[a-z0-9]+/[a-z0-9]+$ ]] \
+              || fail "platform must be os/arch, e.g. linux/amd64"
+            [[ "${IN_SUBJECT_KIND}" != "blob" ]] \
+              || fail "platform is meaningless for a blob subject"
+          fi
+
+          if [[ -n "${IN_ARTIFACT_NAME}" ]]; then
+            [[ "${IN_ARTIFACT_NAME}" =~ ^[A-Za-z0-9._-]+$ ]] \
+              || fail "artifact_name must match [A-Za-z0-9._-]+"
+          fi
+
+          # A predicate without a type would be signed as cosign's `custom`
+          # default, which is not what any documented verification command asks
+          # for, so require the pair.
+          if [[ -n "${IN_PREDICATE_NAME}" ]]; then
+            [[ "${IN_PREDICATE_NAME}" =~ ^[A-Za-z0-9._-]+$ ]] \
+              || fail "predicate_name must match [A-Za-z0-9._-]+"
+            [[ -n "${IN_PREDICATE_TYPE}" ]] \
+              || fail "predicate_type is required when predicate_name is set"
+            [[ -n "${IN_ARTIFACT_NAME}" ]] \
+              || fail "artifact_name is required when predicate_name is set"
+          fi
+          # Guard against a call that would sign nothing and attest nothing.
+          if [[ "${IN_EMIT_PROVENANCE}" != "true" && -z "${IN_PREDICATE_NAME}" && "${IN_SUBJECT_KIND}" == "blob" ]]; then
+            fail "emit_provenance=false with no predicate_name leaves a blob call with nothing to attest"
+          fi
+
+          if [[ -n "${IN_PREDICATE_TYPE}" ]]; then
+            case "${IN_PREDICATE_TYPE}" in
+              cyclonedx|spdxjson|openvex) ;;
+              *) fail "predicate_type must be one of cyclonedx, spdxjson, openvex" ;;
+            esac
+          fi
+
+          # Release attestations come from tags. A non-tag run is permitted only
+          # when the caller says so explicitly, so a test run cannot quietly
+          # produce something shaped like a release attestation.
+          if [[ "${CALLER_REF}" != refs/tags/v* ]]; then
+            if [[ "${IN_ALLOW_UNTAGGED}" != "true" ]]; then
+              fail "attest.yml refuses to run on ${CALLER_REF}; pass allow_untagged: true for a non-production test run"
+            fi
+            echo "::warning::NON-PRODUCTION ATTESTATION: caller ref is ${CALLER_REF}, not a release tag. The resulting signature must not be treated as a release attestation."
+          fi
+
+          {
+            echo "subject_kind=${IN_SUBJECT_KIND}"
+            echo "subject_name=${IN_SUBJECT_NAME}"
+            echo "subject_tag=${IN_SUBJECT_TAG}"
+            echo "platform=${IN_PLATFORM}"
+            echo "expected_digest=${IN_EXPECTED_DIGEST}"
+            echo "artifact_name=${IN_ARTIFACT_NAME}"
+            echo "predicate_name=${IN_PREDICATE_NAME}"
+            echo "predicate_type=${IN_PREDICATE_TYPE}"
+            echo "cosign_version=${IN_COSIGN_VERSION}"
+            echo "crane_version=${IN_CRANE_VERSION}"
+          } >> "$GITHUB_OUTPUT"
+
+  attest:
+    name: Sign and Attest
+    # Repeated deliberately rather than relied upon through `needs`: a skipped
+    # dependency must never be the only thing standing between an outside caller
+    # and the signing identity.
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    runs-on: ubuntu-latest
+    needs: [validate]
+    # Must exceed the worst-case retry budget below, or the runner kills the job
+    # before retry() can report which cosign call exhausted its attempts --
+    # losing the diagnostic in exactly the flaky-Rekor case the retries exist
+    # for. Worst case is 3 retry() calls (sign, provenance, predicate) at
+    # 3x120s + 15s backoff each = 1125s, plus checkout, tool install, artifact
+    # download and digest resolution.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    outputs:
+      resolved_digest: ${{ steps.resolve.outputs.resolved_digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: ${{ needs.validate.outputs.cosign_version }}
+
+      - name: Record cosign version
+        run: cosign version
+
+      - name: Log in to GHCR
+        if: needs.validate.outputs.subject_kind != 'blob'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # crane is installed from the upstream google/go-containerregistry release
+      # and checked against that release's own checksums.txt, rather than via a
+      # third-party setup action. This job holds the signing token, so every
+      # binary that runs in it should come from the project that publishes it
+      # and be verified on arrival.
+      - name: Install crane
+        if: needs.validate.outputs.subject_kind != 'blob'
+        env:
+          CRANE_VERSION: ${{ needs.validate.outputs.crane_version }}
+        run: |
+          set -euo pipefail
+          base="https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}"
+          tarball="go-containerregistry_Linux_x86_64.tar.gz"
+          tmp="$(mktemp -d)"
+          curl -fsSL -o "${tmp}/${tarball}" "${base}/${tarball}"
+          curl -fsSL -o "${tmp}/checksums.txt" "${base}/checksums.txt"
+          # --ignore-missing so the single downloaded tarball is checked against
+          # the multi-platform manifest; grep first so an absent entry fails
+          # loudly instead of --ignore-missing turning it into a silent pass.
+          grep -q "  ${tarball}\$" "${tmp}/checksums.txt" \
+            || { echo "::error::${tarball} is not listed in checksums.txt"; exit 1; }
+          (cd "${tmp}" && sha256sum --check --ignore-missing checksums.txt)
+          tar -xzf "${tmp}/${tarball}" -C "${tmp}" crane
+          install -m 0755 "${tmp}/crane" /usr/local/bin/crane
+          crane version
+
+      - name: Download artifact bundle
+        if: needs.validate.outputs.artifact_name != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ needs.validate.outputs.artifact_name }}
+          path: subject
+
+      # The digest is resolved from a source the caller did not supply -- the tag
+      # for a registry subject, the artifact bytes for a blob -- and the two must
+      # agree. Resolving `name@expected_digest` instead would query the registry
+      # by the value under test and could only ever echo it back, so the
+      # comparison would be dead code.
+      #
+      # What this catches: a caller that names a real-but-wrong digest, e.g. a
+      # stale digest from an earlier build still present in the registry. What
+      # it cannot catch: a caller that pushed the wrong bytes under the right
+      # tag. Nothing at this layer can, because the tag is the caller's claim
+      # about what it built.
+      - name: Resolve digest independently and compare
+        id: resolve
+        env:
+          SUBJECT_KIND: ${{ needs.validate.outputs.subject_kind }}
+          SUBJECT_NAME: ${{ needs.validate.outputs.subject_name }}
+          SUBJECT_TAG: ${{ needs.validate.outputs.subject_tag }}
+          PLATFORM: ${{ needs.validate.outputs.platform }}
+          EXPECTED_DIGEST: ${{ needs.validate.outputs.expected_digest }}
+        run: |
+          set -euo pipefail
+
+          # Same bounded retry as the cosign calls below. A registry blip here
+          # is the same class of transient failure, and failing the job on one
+          # blip before anything has been signed is a pure availability loss.
+          crane_digest() {
+            local n out
+            for n in 1 2 3; do
+              if out="$(timeout --foreground 120s crane digest "$@")"; then
+                printf '%s' "${out}"
+                return 0
+              fi
+              echo "::warning::crane digest attempt ${n} failed" >&2
+              if [[ "${n}" -lt 3 ]]; then sleep $((n * 5)); fi
+            done
+            return 1
+          }
+
+          case "${SUBJECT_KIND}" in
+            image|oci-artifact)
+              if [[ -n "${PLATFORM}" ]]; then
+                # Resolve the tag to its index first, then descend to the child
+                # manifest for this platform. `crane digest --platform` errors
+                # out when the platform is absent, so a release that lost an
+                # architecture fails here instead of signing the wrong subject.
+                index="$(crane_digest "${SUBJECT_NAME}:${SUBJECT_TAG}")"
+                resolved="$(crane_digest --platform "${PLATFORM}" "${SUBJECT_NAME}@${index}")"
+                if [[ "${resolved}" == "${index}" ]]; then
+                  echo "::error::${PLATFORM} resolved to the index digest; ${SUBJECT_NAME}:${SUBJECT_TAG} is not a multi-platform index"
+                  exit 1
+                fi
+              else
+                resolved="$(crane_digest "${SUBJECT_NAME}:${SUBJECT_TAG}")"
+              fi
+              ;;
+            blob)
+              path="subject/${SUBJECT_NAME}"
+              [[ -f "${path}" ]] || { echo "::error::blob ${path} not found in the downloaded artifact"; exit 1; }
+              resolved="sha256:$(sha256sum "${path}" | cut -d' ' -f1)"
+              ;;
+          esac
+
+          if [[ ! "${resolved}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::resolved digest is malformed: ${resolved}"
+            exit 1
+          fi
+          if [[ "${resolved}" != "${EXPECTED_DIGEST}" ]]; then
+            echo "::error::digest mismatch: caller said ${EXPECTED_DIGEST}, resolved ${resolved}"
+            exit 1
+          fi
+          echo "resolved_digest=${resolved}" >> "$GITHUB_OUTPUT"
+          echo "verified digest ${resolved}"
+
+      # SLSA Build Provenance v1. builder.id names the CALLER's workflow because
+      # that is what built the artifact; this workflow only signs. See the
+      # header comment and ADR-074 decision 4.
+      - name: Generate SLSA provenance predicate
+        env:
+          # GITHUB_WORKFLOW_REF is the ref of the workflow that STARTED the run
+          # -- the caller -- and is set by GitHub, not passed in. Taking
+          # builder.id from an input let a caller name any workflow it liked and
+          # get provenance asserting that workflow built the subject.
+          CALLER_WORKFLOW_REF: ${{ github.workflow_ref }}
+          SUBJECT_KIND: ${{ needs.validate.outputs.subject_kind }}
+        run: |
+          set -euo pipefail
+
+          # <owner>/<repo>/.github/workflows/<file>@<ref>  ->  full https URL,
+          # ref stripped. Fail closed rather than emit a predicate whose builder
+          # cannot be identified.
+          case "${CALLER_WORKFLOW_REF}" in
+            */.github/workflows/*@*) ;;
+            *) echo "::error::unexpected GITHUB_WORKFLOW_REF: ${CALLER_WORKFLOW_REF}"; exit 1 ;;
+          esac
+          builder_id="${GITHUB_SERVER_URL}/${CALLER_WORKFLOW_REF%@*}"
+          if [[ "${builder_id}" == *"/.github/workflows/attest.yml" ]]; then
+            echo "::error::builder resolved to attest.yml; the attestor cannot be the builder"
+            exit 1
+          fi
+          echo "builder.id = ${builder_id}"
+
+          jq -n \
+            --arg repo "${GITHUB_REPOSITORY}" \
+            --arg ref "${GITHUB_REF}" \
+            --arg sha "${GITHUB_SHA}" \
+            --arg server "${GITHUB_SERVER_URL}" \
+            --arg run_id "${GITHUB_RUN_ID}" \
+            --arg builder "${builder_id}" \
+            --arg kind "${SUBJECT_KIND}" \
+            '{
+              buildDefinition: {
+                buildType: "https://github.com/NVIDIA/cluster-readiness-engine/build/v1",
+                externalParameters: {
+                  repository: $repo,
+                  ref: $ref,
+                  subjectKind: $kind
+                },
+                resolvedDependencies: [{
+                  uri: ("git+" + $server + "/" + $repo + "@" + $ref),
+                  digest: { gitCommit: $sha }
+                }]
+              },
+              runDetails: {
+                builder: { id: $builder },
+                metadata: {
+                  invocationId: ($server + "/" + $repo + "/actions/runs/" + $run_id)
+                }
+              }
+            }' > provenance.json
+          jq . provenance.json
+
+      # cosign has no native retry and Rekor is a real network dependency with
+      # real transient failures. Three attempts with 5s then 10s backoff; no
+      # sleep after the final attempt, which would only delay the exit.
+      #
+      # These retries are NOT idempotent, deliberately. Keyless cosign mints a
+      # fresh Fulcio certificate per invocation, so an attempt killed by the
+      # timeout *after* its registry push and Rekor entry landed will, on the
+      # next attempt, publish a second valid signature for the same digest.
+      # Re-running the job after a partial failure does the same. Extra entries
+      # are harmless to `cosign verify` (multiple valid signatures verify), so
+      # this is accepted rather than guarded: the alternative is a
+      # check-then-sign race that is itself unsound. Any consumer that walks
+      # attestations -- notably the daily re-verification job in #273 -- must
+      # therefore tolerate more than one attestation per digest and must not
+      # treat a duplicate as tampering.
+      - name: Sign and attest
+        env:
+          SUBJECT_KIND: ${{ needs.validate.outputs.subject_kind }}
+          SUBJECT_NAME: ${{ needs.validate.outputs.subject_name }}
+          DIGEST: ${{ steps.resolve.outputs.resolved_digest }}
+          PREDICATE_NAME: ${{ needs.validate.outputs.predicate_name }}
+          PREDICATE_TYPE: ${{ needs.validate.outputs.predicate_type }}
+          EMIT_PROVENANCE: ${{ inputs.emit_provenance }}
+        run: |
+          set -euo pipefail
+
+          # The exit status is reported on every attempt: 124 means `timeout`
+          # killed a hung call (a Rekor or registry stall, likely transient),
+          # anything else is cosign failing on its own (bad credentials, a
+          # malformed predicate) and will fail identically all three times.
+          # Without it both look the same in the log and triage starts blind.
+          retry() {
+            local n rc
+            for n in 1 2 3; do
+              rc=0
+              timeout --foreground 120s "$@" || rc=$?
+              if [[ "${rc}" -eq 0 ]]; then
+                return 0
+              fi
+              echo "::warning::cosign attempt ${n} failed (exit ${rc}$([[ "${rc}" -eq 124 ]] && echo ', timed out'))"
+              if [[ "${n}" -lt 3 ]]; then
+                sleep $((n * 5))
+              fi
+            done
+            echo "::error::cosign failed after 3 attempts (last exit ${rc}): $*"
+            return 1
+          }
+
+          case "${SUBJECT_KIND}" in
+            image|oci-artifact)
+              ref="${SUBJECT_NAME}@${DIGEST}"
+              retry cosign sign --yes "${ref}"
+              if [[ "${EMIT_PROVENANCE}" == "true" ]]; then
+                retry cosign attest --yes \
+                  --predicate provenance.json \
+                  --type slsaprovenance1 \
+                  "${ref}"
+              else
+                echo "provenance suppressed for this subject by emit_provenance=false"
+              fi
+              if [[ -n "${PREDICATE_NAME}" ]]; then
+                retry cosign attest --yes \
+                  --predicate "subject/${PREDICATE_NAME}" \
+                  --type "${PREDICATE_TYPE}" \
+                  "${ref}"
+              fi
+              ;;
+            blob)
+              path="subject/${SUBJECT_NAME}"
+              mkdir -p bundles
+              if [[ "${EMIT_PROVENANCE}" == "true" ]]; then
+                retry cosign attest-blob --yes \
+                  --predicate provenance.json \
+                  --type slsaprovenance1 \
+                  --bundle "bundles/${SUBJECT_NAME}.sigstore.json" \
+                  "${path}"
+              fi
+              if [[ -n "${PREDICATE_NAME}" ]]; then
+                # The positional argument is the SUBJECT the predicate is bound
+                # to, so it must be the binary. Passing the predicate file here
+                # would produce a bundle attesting the SBOM to itself, which
+                # verifies happily and proves nothing about the artifact.
+                retry cosign attest-blob --yes \
+                  --predicate "subject/${PREDICATE_NAME}" \
+                  --type "${PREDICATE_TYPE}" \
+                  --bundle "bundles/${SUBJECT_NAME}.${PREDICATE_TYPE}.sigstore.json" \
+                  "${path}"
+              fi
+              ;;
+          esac
+
+      # Bundles are the detached half of the contract: they ship as loose
+      # release assets so a user can curl an artifact and its bundle and verify
+      # with cosign alone.
+      - name: Upload signature bundles
+        if: needs.validate.outputs.subject_kind == 'blob'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ needs.validate.outputs.artifact_name }}-bundles
+          path: bundles/
+          retention-days: 7
+          if-no-files-found: error

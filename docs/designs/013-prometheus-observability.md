@@ -2,7 +2,7 @@
 
 ## Context
 
-The cluster-readiness-engine manages long-running certification campaigns. Operators need visibility into what's happening: how many nodes are being tested, which jobs are failing, what's the goodput trend, how long are reconciliations taking. This information must be available without reading CRD status fields via kubectl.
+The nvcre manages long-running certification campaigns. Operators need visibility into what's happening: how many nodes are being tested, which jobs are failing, what's the goodput trend, how long are reconciliations taking. This information must be available without reading CRD status fields via kubectl.
 
 Options considered:
 1. Status fields only (kubectl-based monitoring)

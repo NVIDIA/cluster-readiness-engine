@@ -10,13 +10,19 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
 // WorkloadPhase represents the normalized phase of a workload.
 type WorkloadPhase string
 
 const (
+	// WorkloadPending means the workload resource exists but has not started
+	// running — for example a TrainJob suspended by an admission controller
+	// such as Kueue while it waits for quota. Controllers must not count
+	// pending time against job timeouts or stall detection, and must not
+	// attribute node failures while a workload is pending.
+	WorkloadPending   WorkloadPhase = "Pending"
 	WorkloadRunning   WorkloadPhase = "Running"
 	WorkloadSucceeded WorkloadPhase = "Succeeded"
 	WorkloadFailed    WorkloadPhase = "Failed"
@@ -39,39 +45,39 @@ type Adapter interface {
 
 	// Build creates a fully typed workload object from the WorkloadSpec.
 	// The name and namespace are set on the returned object.
-	Build(name, namespace string, spec *crev1alpha1.WorkloadSpec) (client.Object, error)
+	Build(name, namespace string, spec *nvcrev1alpha1.WorkloadSpec) (client.Object, error)
 
 	// InjectPodLabel ensures the given label reaches pod templates.
 	// Mutates spec in-place — call on a DeepCopy before Build.
-	InjectPodLabel(spec *crev1alpha1.WorkloadSpec, key, value string)
+	InjectPodLabel(spec *nvcrev1alpha1.WorkloadSpec, key, value string)
 
 	// SetNodeSelector sets nodeSelector on the workload's pod templates.
 	// Mutates spec in-place — call on a DeepCopy before Build.
-	SetNodeSelector(spec *crev1alpha1.WorkloadSpec, selector map[string]string)
+	SetNodeSelector(spec *nvcrev1alpha1.WorkloadSpec, selector map[string]string)
 
 	// SetNodeAffinity sets node affinity on the workload's pod templates.
 	// Mutates spec in-place — call on a DeepCopy before Build.
-	SetNodeAffinity(spec *crev1alpha1.WorkloadSpec, affinity *corev1.NodeAffinity)
+	SetNodeAffinity(spec *nvcrev1alpha1.WorkloadSpec, affinity *corev1.NodeAffinity)
 
 	// SetTolerations appends tolerations to the workload's pod templates.
 	// Mutates spec in-place — call on a DeepCopy before Build.
-	SetTolerations(spec *crev1alpha1.WorkloadSpec, tolerations []corev1.Toleration)
+	SetTolerations(spec *nvcrev1alpha1.WorkloadSpec, tolerations []corev1.Toleration)
 
 	// NodesRequired returns the number of nodes required by the workload spec.
 	// This is auto-detected from the replica count in the workload definition.
-	NodesRequired(spec *crev1alpha1.WorkloadSpec) (int, error)
+	NodesRequired(spec *nvcrev1alpha1.WorkloadSpec) (int, error)
 
 	// SetNumNodes overrides the number of nodes/replicas in the workload spec.
 	// Used by bisection to match the workload's node count to the group size,
 	// which changes each round. Mutates spec in-place.
-	SetNumNodes(spec *crev1alpha1.WorkloadSpec, numNodes int)
+	SetNumNodes(spec *nvcrev1alpha1.WorkloadSpec, numNodes int)
 
 	// GetStatus reads typed status conditions and returns a normalized WorkloadStatus.
 	GetStatus(obj client.Object) (*WorkloadStatus, error)
 }
 
 // ForSpec returns the appropriate Adapter for the given WorkloadSpec.
-func ForSpec(spec *crev1alpha1.WorkloadSpec) (Adapter, error) {
+func ForSpec(spec *nvcrev1alpha1.WorkloadSpec) (Adapter, error) {
 	switch {
 	case spec.TrainJob != nil:
 		return &TrainJobAdapter{}, nil

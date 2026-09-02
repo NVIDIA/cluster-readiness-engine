@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/yaml"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
 type workerResourcesInput struct {
@@ -29,7 +29,7 @@ type workerResourcesInput struct {
 func TestWorkerResources(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "worker-resources",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in workerResourcesInput

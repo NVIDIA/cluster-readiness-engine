@@ -23,7 +23,7 @@ jobs:
   lint:
     name: Lint
     runs-on: linux-amd64-cpu16
-    if: github.repository == 'dsx-ai-factory/cluster-readiness-engine'
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -39,7 +39,7 @@ jobs:
   build:
     name: Build
     runs-on: linux-amd64-cpu16
-    if: github.repository == 'dsx-ai-factory/cluster-readiness-engine'
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -52,8 +52,8 @@ jobs:
       - name: Build manager binary
         run: make build
 
-      - name: Build ncrectl binary
-        run: make build-ncrectl
+      - name: Build nvcrectl binary
+        run: make build-nvcrectl
 
       # The same scan that gates publication in release.yml. Running it here on
       # every pull request exercises the mechanism continuously, instead of
@@ -80,7 +80,7 @@ jobs:
   test:
     name: Test
     runs-on: linux-amd64-cpu16
-    if: github.repository == 'dsx-ai-factory/cluster-readiness-engine'
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -90,11 +90,15 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Install test tools
-        run: |
-          go install gotest.tools/gotestsum@latest
-          go install github.com/boumenot/gocover-cobertura@latest
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.19.2
 
+      # gotestsum and gocover-cobertura are installed by `make test-ci` at the
+      # versions pinned in the Makefile, so CI and a local run report against
+      # the same tools. They were previously installed here from an unpinned
+      # floating version, which let the reporting toolchain resolve differently
+      # on every run.
       - name: Run tests
         run: make test-ci
 

@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Categories run as parallel Workflows, so the max budget wins:
+# nccl-all-reduce = 1h x 1.5 = 1h30m; dcgm-level4 = 2h x 1.5 = 3h => 3h.
+explicitTimeout: false
+flagTimeout: 30m
+certification:
+  apiVersion: nvcre.nvidia.com/v1alpha1
+  kind: Certification
+  metadata:
+    name: multi
+  spec:
+    target:
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-GB200
+    categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: diagnostics
+      variant: dcgm-level4

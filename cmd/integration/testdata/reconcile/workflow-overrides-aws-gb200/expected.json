@@ -1,21 +1,21 @@
 {
   "Job/test-aws-gb200-overrides-job": {
     "kind": "Job",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-aws-gb200-overrides-job",
       "namespace": "default",
       "labels": {
-        "app.kubernetes.io/managed-by": "cluster-readiness-engine",
-        "cre.nvidia.com/group": "group-0",
-        "cre.nvidia.com/workflow": "test-aws-gb200-overrides"
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/group": "group-0",
+        "nvcre.nvidia.com/workflow": "test-aws-gb200-overrides"
       },
       "annotations": {
-        "cre.nvidia.com/group-nodes": "aws-gb200-node-01"
+        "nvcre.nvidia.com/group-nodes": "aws-gb200-node-01"
       },
       "ownerReferences": [
         {
-          "apiVersion": "cre.nvidia.com/v1alpha1",
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
           "kind": "Workflow",
           "name": "test-aws-gb200-overrides",
           "uid": "",
@@ -24,7 +24,7 @@
         }
       ],
       "finalizers": [
-        "cre.nvidia.com/finalizer"
+        "nvcre.nvidia.com/finalizer"
       ]
     },
     "spec": {
@@ -54,7 +54,7 @@
           },
           "runtimePatches": [
             {
-              "manager": "cre.nvidia.com/controller",
+              "manager": "nvcre.nvidia.com/controller",
               "trainingRuntimeSpec": {
                 "template": {
                   "spec": {
@@ -137,17 +137,18 @@
         "kind": "TrainJob",
         "name": "test-aws-gb200-overrides-job-workload",
         "namespace": "default"
-      }
+      },
+      "workloadStartTime": "1970-01-01T00:00:00Z"
     }
   },
   "Workflow/test-aws-gb200-overrides": {
     "kind": "Workflow",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-aws-gb200-overrides",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/workflow-finalizer"
+        "nvcre.nvidia.com/workflow-finalizer"
       ]
     },
     "spec": {
@@ -334,7 +335,7 @@
             ],
             "phase": "Running",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "test-aws-gb200-overrides-job",
               "namespace": "default"

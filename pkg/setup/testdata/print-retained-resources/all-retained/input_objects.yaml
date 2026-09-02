@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nvcre
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubeflow-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nvcrectl-pull-secret
+  namespace: nvcre
+type: kubernetes.io/dockerconfigjson

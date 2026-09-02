@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/test/uat/util"
+	"github.com/NVIDIA/cluster-readiness-engine/test/uat/util"
 )
 
 // TestAWSGB300NCCL tests the full certification lifecycle for AWS GB300 NCCL all-reduce.
@@ -42,7 +42,7 @@ func TestAWSGB300NCCL(t *testing.T) {
 				util.CleanupYAML(context.Background(), c, nodesDir+"/nodes.yaml", "")
 			})
 
-			util.RunNcrectl(ctx, t,
+			util.RunNvcrectl(ctx, t,
 				"--category", "communication/nccl-all-reduce",
 				"--name", certName,
 				"--namespace", "default",

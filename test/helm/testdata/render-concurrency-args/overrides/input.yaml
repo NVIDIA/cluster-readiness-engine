@@ -1,0 +1,3 @@
+set:
+  - manager.maxConcurrentReconciles=20
+  - manager.measurementMaxConcurrentReconciles=7

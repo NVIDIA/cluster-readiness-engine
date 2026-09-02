@@ -1,6 +1,6 @@
 # The whole point of the fix: a run that excluded a node still reports PASSED,
 # so the exclusion has to travel from the Workflow status into the report.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: cert-plain
@@ -27,13 +27,13 @@ status:
         name: cert-plain-communication-nccl-all-reduce
         namespace: default
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: cert-plain-communication-nccl-all-reduce
   namespace: default
   labels:
-    cre.nvidia.com/certification: cert-plain
+    nvcre.nvidia.com/certification: cert-plain
 spec:
   jobTemplate:
     spec:

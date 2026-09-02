@@ -10,8 +10,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	gzip "github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller/compress"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	gzip "github.com/NVIDIA/cluster-readiness-engine/pkg/controller/compress"
 )
 
 const (
@@ -26,7 +26,7 @@ const (
 
 // DecodeFailedNodesFromConfigMap parses the failed-nodes entry (a JSON array of
 // {name, reason, message} objects) from a node-results ConfigMap's binaryData.
-func DecodeFailedNodesFromConfigMap(cm *corev1.ConfigMap) ([]crev1alpha1.FailedNode, error) {
+func DecodeFailedNodesFromConfigMap(cm *corev1.ConfigMap) ([]nvcrev1alpha1.FailedNode, error) {
 	if cm == nil {
 		return nil, nil
 	}
@@ -46,9 +46,9 @@ func DecodeFailedNodesFromConfigMap(cm *corev1.ConfigMap) ([]crev1alpha1.FailedN
 
 // FailedNodesToJSON encodes FailedNode entries as a JSON array of
 // {name, reason, message} objects.
-func FailedNodesToJSON(nodes []crev1alpha1.FailedNode) ([]byte, error) {
+func FailedNodesToJSON(nodes []nvcrev1alpha1.FailedNode) ([]byte, error) {
 	if nodes == nil {
-		nodes = []crev1alpha1.FailedNode{}
+		nodes = []nvcrev1alpha1.FailedNode{}
 	}
 	b, err := json.Marshal(nodes)
 	if err != nil {
@@ -59,11 +59,11 @@ func FailedNodesToJSON(nodes []crev1alpha1.FailedNode) ([]byte, error) {
 
 // FailedNodesFromJSON parses the JSON array produced by FailedNodesToJSON back into
 // FailedNode entries.
-func FailedNodesFromJSON(b []byte) ([]crev1alpha1.FailedNode, error) {
+func FailedNodesFromJSON(b []byte) ([]nvcrev1alpha1.FailedNode, error) {
 	if len(b) == 0 {
 		return nil, nil
 	}
-	var out []crev1alpha1.FailedNode
+	var out []nvcrev1alpha1.FailedNode
 	if err := json.Unmarshal(b, &out); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal failed nodes from JSON: %w", err)
 	}

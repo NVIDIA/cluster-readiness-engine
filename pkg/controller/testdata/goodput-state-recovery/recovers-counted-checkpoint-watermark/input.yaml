@@ -1,0 +1,13 @@
+# Issue #177 review finding: a restarted controller recovered
+# LastCheckpointStep but left LastCountedCheckpointStep at zero, so a
+# restart-replay of a window still showing checkpoint 150 re-added its save
+# duration to checkpointSaveTimeSec. Recovery must set the counted watermark
+# to the persisted checkpoint step.
+status:
+  startTime: "2026-01-22T10:00:05Z"
+  currentStep: 180
+  highestStep: 180
+  lastCheckpointStep: 150
+  checkpointSaveTimeSec: "12.000000"
+  lastNonWarmupStep: 180
+  warmupBaseStep: 10

@@ -1,0 +1,1 @@
+Certification "missing-cert" no longer exists after timeout; partial report unavailable.

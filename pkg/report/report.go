@@ -21,10 +21,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/noderesults"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/numstr"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/numstr"
 )
 
 const (
@@ -32,6 +32,15 @@ const (
 	statusFailed     = "Failed"
 	statusRunning    = "Running"
 	statusInProgress = "InProgress"
+)
+
+// Diagnose stage names, as returned by inferDiagnoseStage.
+const (
+	diagnoseStageScreening      = "screening"
+	diagnoseStageScreeningNoNVL = "screening-no-nvl"
+	diagnoseStageBisection      = "bisection"
+	diagnoseStageConfirmation   = "confirmation"
+	diagnoseStageInterScreening = "inter-screening"
 )
 
 // ---------------------------------------------------------------------------
@@ -100,20 +109,20 @@ type IterationReport struct {
 
 // DiagnoseReport holds results from the adaptive fault isolation algorithm.
 type DiagnoseReport struct {
-	Stage                string                                       `json:"stage"`
-	Rounds               int                                          `json:"rounds"`
-	HealthyCount         int                                          `json:"healthyCount"`
-	SuspectCount         int                                          `json:"suspectCount"`
-	ConfirmedFaulty      []string                                     `json:"confirmedFaulty,omitempty"`
-	InfrastructureFaults []crev1alpha1.InfrastructureFault            `json:"infrastructureFaults,omitempty"`
-	ScreeningResults     map[string]crev1alpha1.DomainScreeningResult `json:"-"` // not serialized, used for rendering
-	MaxBW                string                                       `json:"maxBW,omitempty"`
-	MaxBWDomain          string                                       `json:"maxBWDomain,omitempty"`
-	MaxBWNodeList        []string                                     `json:"maxBWNodes,omitempty"`
-	MinBW                string                                       `json:"minBW,omitempty"`
-	MinBWDomain          string                                       `json:"minBWDomain,omitempty"`
-	MinBWNodeList        []string                                     `json:"minBWNodes,omitempty"`
-	Tests                []DiagnoseTestRow                            `json:"tests,omitempty"`
+	Stage                string                                         `json:"stage"`
+	Rounds               int                                            `json:"rounds"`
+	HealthyCount         int                                            `json:"healthyCount"`
+	SuspectCount         int                                            `json:"suspectCount"`
+	ConfirmedFaulty      []string                                       `json:"confirmedFaulty,omitempty"`
+	InfrastructureFaults []nvcrev1alpha1.InfrastructureFault            `json:"infrastructureFaults,omitempty"`
+	ScreeningResults     map[string]nvcrev1alpha1.DomainScreeningResult `json:"-"` // not serialized, used for rendering
+	MaxBW                string                                         `json:"maxBW,omitempty"`
+	MaxBWDomain          string                                         `json:"maxBWDomain,omitempty"`
+	MaxBWNodeList        []string                                       `json:"maxBWNodes,omitempty"`
+	MinBW                string                                         `json:"minBW,omitempty"`
+	MinBWDomain          string                                         `json:"minBWDomain,omitempty"`
+	MinBWNodeList        []string                                       `json:"minBWNodes,omitempty"`
+	Tests                []DiagnoseTestRow                              `json:"tests,omitempty"`
 }
 
 // DiagnoseTestRow holds one test result from the diagnose algorithm.
@@ -176,7 +185,7 @@ type GroupBandwidthRow struct {
 // the referenced ConfigMap and decoding the failed-nodes entry.
 func FailedNodesFromRef(
 	ctx context.Context, c client.Client, namespace string, ref *corev1.TypedLocalObjectReference,
-) []crev1alpha1.FailedNode {
+) []nvcrev1alpha1.FailedNode {
 	if ref == nil || ref.Name == "" {
 		return nil
 	}
@@ -193,7 +202,7 @@ func FailedNodesFromRef(
 
 // CertFailedNodes returns the deduped union of failed node names across all
 // categories, resolved from each category's nodeResultsRef ConfigMap.
-func CertFailedNodes(ctx context.Context, c client.Client, cert *crev1alpha1.Certification) []string {
+func CertFailedNodes(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certification) []string {
 	seen := make(map[string]struct{})
 	var union []string
 	for _, cat := range cert.Status.CategoryStatuses {
@@ -212,12 +221,34 @@ func CertFailedNodes(ctx context.Context, c client.Client, cert *crev1alpha1.Cer
 	return union
 }
 
+// CategoryMNNVL returns the MNNVL label for the category at index i of the
+// Certification's status: "Enabled", "Disabled", or "" when unknown.
+// Per-category spec options take precedence over the global spec value.
+func CategoryMNNVL(cert *nvcrev1alpha1.Certification, i int) string {
+	if i >= len(cert.Spec.Categories) {
+		return ""
+	}
+	var mnnvl *bool
+	if specOpts := cert.Spec.Categories[i].Options; specOpts != nil && specOpts.EnableMNNVL != nil {
+		mnnvl = specOpts.EnableMNNVL
+	} else if cert.Spec.EnableMNNVL != nil {
+		mnnvl = cert.Spec.EnableMNNVL
+	}
+	if mnnvl == nil {
+		return ""
+	}
+	if *mnnvl {
+		return "Enabled"
+	}
+	return "Disabled"
+}
+
 // Build fetches Workflow and measurement data for a Certification (completed or running).
-func Build(ctx context.Context, c client.Client, cert *crev1alpha1.Certification) *CertReport {
+func Build(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certification) *CertReport {
 	result := "RUNNING"
-	if controller.CondIsTrue(cert.Status.Conditions, crev1alpha1.CertificationFailed) {
+	if controller.CondIsTrue(cert.Status.Conditions, nvcrev1alpha1.CertificationFailed) {
 		result = "FAILED"
-	} else if controller.CondIsTrue(cert.Status.Conditions, crev1alpha1.CertificationSucceeded) {
+	} else if controller.CondIsTrue(cert.Status.Conditions, nvcrev1alpha1.CertificationSucceeded) {
 		result = "PASSED"
 	}
 	report := &CertReport{
@@ -239,24 +270,10 @@ func Build(ctx context.Context, c client.Client, cert *crev1alpha1.Certification
 		}
 
 		// Populate MNNVL: check per-category options first, fall back to global.
-		if i < len(cert.Spec.Categories) {
-			var mnnvl *bool
-			if specOpts := cert.Spec.Categories[i].Options; specOpts != nil && specOpts.EnableMNNVL != nil {
-				mnnvl = specOpts.EnableMNNVL
-			} else if cert.Spec.EnableMNNVL != nil {
-				mnnvl = cert.Spec.EnableMNNVL
-			}
-			if mnnvl != nil {
-				if *mnnvl {
-					cat.MNNVL = "Enabled"
-				} else {
-					cat.MNNVL = "Disabled"
-				}
-			}
-		}
+		cat.MNNVL = CategoryMNNVL(cert, i)
 
 		if cs.WorkflowRef != nil {
-			wf := &crev1alpha1.Workflow{}
+			wf := &nvcrev1alpha1.Workflow{}
 			ns := cs.WorkflowRef.Namespace
 			if ns == "" {
 				ns = cert.Namespace
@@ -277,7 +294,7 @@ func Build(ctx context.Context, c client.Client, cert *crev1alpha1.Certification
 		if cs.WorkflowRef == nil {
 			continue
 		}
-		wf := &crev1alpha1.Workflow{}
+		wf := &nvcrev1alpha1.Workflow{}
 		ns := cs.WorkflowRef.Namespace
 		if ns == "" {
 			ns = cert.Namespace
@@ -308,12 +325,12 @@ func Build(ctx context.Context, c client.Client, cert *crev1alpha1.Certification
 	return report
 }
 
-// batchJobFailureReason extracts the batch/v1 Job name from the CRE
+// batchJobFailureReason extracts the batch/v1 Job name from the NVCRE
 // Job's failure message and returns its failure reason.
-func batchJobFailureReason(ctx context.Context, c client.Client, excalMsg, namespace string) string {
+func batchJobFailureReason(ctx context.Context, c client.Client, jobMsg, namespace string) string {
 	// Parse "first failed job: <name>" from the message.
 	const prefix = "first failed job: "
-	_, after, ok := strings.Cut(excalMsg, prefix)
+	_, after, ok := strings.Cut(jobMsg, prefix)
 	if !ok {
 		return ""
 	}
@@ -345,17 +362,16 @@ func batchJobFailureReason(ctx context.Context, c client.Client, excalMsg, names
 
 func failureReasonFromConditions(conditions []metav1.Condition) string {
 	for _, cond := range conditions {
-		if cond.Type == crev1alpha1.WorkflowFailed && cond.Status == metav1.ConditionTrue {
+		if cond.Type == nvcrev1alpha1.WorkflowFailed && cond.Status == metav1.ConditionTrue {
 			return cond.Message
 		}
 	}
 	return ""
 }
 
-// buildFailedGroups collects failed orchestration groups with their root cause.
 // buildIterationReports creates per-iteration timing from iteration history
 // and the current iteration. Returns reports and total runtime string.
-func buildIterationReports(orch *crev1alpha1.OrchestrationStatus) ([]IterationReport, string) {
+func buildIterationReports(orch *nvcrev1alpha1.OrchestrationStatus) ([]IterationReport, string) {
 	if orch == nil {
 		return nil, ""
 	}
@@ -394,11 +410,11 @@ func buildIterationReports(orch *crev1alpha1.OrchestrationStatus) ([]IterationRe
 }
 
 // iterGroupDuration computes duration and status from completed iteration groups.
-func iterGroupDuration(groups []crev1alpha1.GroupIterationResult, now int64) (string, int64) {
+func iterGroupDuration(groups []nvcrev1alpha1.GroupIterationResult, now int64) (string, int64) {
 	status := statusSucceeded
 	var earliest, latest int64
 	for _, g := range groups {
-		if g.Phase == crev1alpha1.GroupFailed {
+		if g.Phase == nvcrev1alpha1.GroupFailed {
 			status = statusFailed
 		}
 		if g.StartTime != nil {
@@ -424,15 +440,15 @@ func iterGroupDuration(groups []crev1alpha1.GroupIterationResult, now int64) (st
 }
 
 // currentGroupDuration computes duration and status from the current iteration's groups.
-func currentGroupDuration(groups []crev1alpha1.GroupStatus, now int64) (string, int64) {
+func currentGroupDuration(groups []nvcrev1alpha1.GroupStatus, now int64) (string, int64) {
 	status := statusSucceeded
 	allTerminal := true
 	var earliest, latest int64
 	for _, g := range groups {
-		if g.Phase == crev1alpha1.GroupFailed {
+		if g.Phase == nvcrev1alpha1.GroupFailed {
 			status = statusFailed
 		}
-		if g.Phase != crev1alpha1.GroupSucceeded && g.Phase != crev1alpha1.GroupFailed {
+		if g.Phase != nvcrev1alpha1.GroupSucceeded && g.Phase != nvcrev1alpha1.GroupFailed {
 			allTerminal = false
 		}
 		if g.StartTime != nil {
@@ -474,14 +490,82 @@ func fmtSecs(secs int64) string {
 	return fmt.Sprintf("%dh %dm", secs/3600, (secs%3600)/60)
 }
 
-func buildFailedGroups(ctx context.Context, c client.Client, wf *crev1alpha1.Workflow) []FailedGroupReport {
+// jobFailureReason returns the failure cause recorded on a NVCRE Job's
+// conditions, scanned in priority order: Failed (execution failure, enriched
+// with the batch/v1 Job's reason when resolvable) → HardwareFailed →
+// ValidationFailed. A threshold violation leaves the Job with Succeeded=True
+// and ValidationFailed=True — no Failed condition — so scanning only Failed
+// would drop the threshold detail from the report (#176). The order also
+// protects existing output: an execution failure with a stale ValidationFailed
+// from a prior attempt still reports the execution cause.
+func jobFailureReason(ctx context.Context, c client.Client, job *nvcrev1alpha1.Job, namespace string) string {
+	for _, condType := range []string{
+		nvcrev1alpha1.JobFailed,
+		nvcrev1alpha1.JobHardwareFailed,
+		nvcrev1alpha1.JobValidationFailed,
+	} {
+		for _, cond := range job.Status.Conditions {
+			if cond.Type != condType || cond.Status != metav1.ConditionTrue {
+				continue
+			}
+			if condType == nvcrev1alpha1.JobFailed {
+				if reason := batchJobFailureReason(ctx, c, cond.Message, namespace); reason != "" {
+					return reason
+				}
+			}
+			return cond.Message
+		}
+	}
+	return ""
+}
+
+// failedNodeReason resolves a failed group's cause from the failed-nodes
+// ConfigMap entries when the group's Job CR is unreachable (deleted by a
+// group retry, or the group lives only in iteration history). It returns the
+// message of the first entry whose name is in the group's node list,
+// preferring ThresholdViolation entries; the merged list is sorted by name
+// then reason, so selection is deterministic.
+func failedNodeReason(failedNodes []nvcrev1alpha1.FailedNode, groupNodes []string) string {
+	if len(failedNodes) == 0 || len(groupNodes) == 0 {
+		return ""
+	}
+	inGroup := make(map[string]struct{}, len(groupNodes))
+	for _, n := range groupNodes {
+		inGroup[n] = struct{}{}
+	}
+	fallback := ""
+	for _, fn := range failedNodes {
+		if fn.Message == "" {
+			continue
+		}
+		if _, ok := inGroup[fn.Name]; !ok {
+			continue
+		}
+		if fn.Reason == nvcrev1alpha1.NodeFailureThresholdViolation {
+			return fn.Message
+		}
+		if fallback == "" {
+			fallback = fn.Message
+		}
+	}
+	return fallback
+}
+
+// buildFailedGroups collects failed orchestration groups with their root
+// cause. The reason comes from the group's Job conditions when the Job still
+// exists (see jobFailureReason), falling back to the failed-nodes ConfigMap
+// entries (see failedNodeReason) when it does not.
+func buildFailedGroups(
+	ctx context.Context, c client.Client, wf *nvcrev1alpha1.Workflow,
+	failedNodes []nvcrev1alpha1.FailedNode,
+) []FailedGroupReport {
 	orch := wf.Status.Orchestration
 	if orch == nil || c == nil {
 		return nil
 	}
 	var result []FailedGroupReport
 	for _, g := range orch.Groups {
-		if g.Phase != crev1alpha1.GroupFailed || g.JobRef == nil {
+		if g.Phase != nvcrev1alpha1.GroupFailed || g.JobRef == nil {
 			continue
 		}
 		fg := FailedGroupReport{
@@ -489,18 +573,12 @@ func buildFailedGroups(ctx context.Context, c client.Client, wf *crev1alpha1.Wor
 			NodeCount: len(g.Nodes),
 			Nodes:     g.Nodes,
 		}
-		excalJob := &crev1alpha1.Job{}
-		if err := c.Get(ctx, client.ObjectKey{Name: g.JobRef.Name, Namespace: wf.Namespace}, excalJob); err == nil {
-			for _, cond := range excalJob.Status.Conditions {
-				if cond.Type == crev1alpha1.JobFailed && cond.Status == metav1.ConditionTrue {
-					if reason := batchJobFailureReason(ctx, c, cond.Message, wf.Namespace); reason != "" {
-						fg.Reason = reason
-					} else {
-						fg.Reason = cond.Message
-					}
-					break
-				}
-			}
+		nvcreJob := &nvcrev1alpha1.Job{}
+		if err := c.Get(ctx, client.ObjectKey{Name: g.JobRef.Name, Namespace: wf.Namespace}, nvcreJob); err == nil {
+			fg.Reason = jobFailureReason(ctx, c, nvcreJob, wf.Namespace)
+		}
+		if fg.Reason == "" {
+			fg.Reason = failedNodeReason(failedNodes, g.Nodes)
 		}
 		result = append(result, fg)
 	}
@@ -509,7 +587,7 @@ func buildFailedGroups(ctx context.Context, c client.Client, wf *crev1alpha1.Wor
 
 // PopulateCategoryFromWorkflow fills in category metrics from a Workflow and its children.
 func PopulateCategoryFromWorkflow(
-	ctx context.Context, c client.Client, cat *CategoryReport, wf *crev1alpha1.Workflow,
+	ctx context.Context, c client.Client, cat *CategoryReport, wf *nvcrev1alpha1.Workflow,
 ) {
 	orch := wf.Status.Orchestration
 	if orch != nil {
@@ -522,16 +600,16 @@ func PopulateCategoryFromWorkflow(
 	if wf.Spec.Orchestration.Topology != nil {
 		cat.Cliques = buildCliqueReport(wf, failedNodes)
 	}
-	cat.FailedGroups = buildFailedGroups(ctx, c, wf)
+	cat.FailedGroups = buildFailedGroups(ctx, c, wf, failedNodes)
 	cat.Iterations, cat.Runtime = buildIterationReports(orch)
 	if orch != nil && orch.Diagnose != nil {
 		diag := orch.Diagnose
 		stage := diag.Stage
 		// If the workflow is terminal, show "complete" regardless of the stored stage
 		// (older controller versions may not have set it on failure paths).
-		if controller.CondIsTrue(wf.Status.Conditions, crev1alpha1.WorkflowSucceeded) ||
-			controller.CondIsTrue(wf.Status.Conditions, crev1alpha1.WorkflowFailed) {
-			stage = crev1alpha1.DiagnoseStageComplete
+		if controller.CondIsTrue(wf.Status.Conditions, nvcrev1alpha1.WorkflowSucceeded) ||
+			controller.CondIsTrue(wf.Status.Conditions, nvcrev1alpha1.WorkflowFailed) {
+			stage = nvcrev1alpha1.DiagnoseStageComplete
 		}
 		cat.Diagnose = &DiagnoseReport{
 			Stage:        stage,
@@ -550,9 +628,9 @@ func PopulateCategoryFromWorkflow(
 	workflowJobs := collectWorkflowJobs(ctx, c, wf, orch)
 
 	// Find GoodputMeasurements owned by this Workflow's Jobs.
-	var goodputList crev1alpha1.GoodputMeasurementList
+	var goodputList nvcrev1alpha1.GoodputMeasurementList
 	if err := c.List(ctx, &goodputList, client.InNamespace(wf.Namespace)); err == nil {
-		var filtered []crev1alpha1.GoodputMeasurement
+		var filtered []nvcrev1alpha1.GoodputMeasurement
 		for _, gm := range goodputList.Items {
 			if workflowJobs[gm.Spec.JobRef.Name] {
 				filtered = append(filtered, gm)
@@ -564,10 +642,10 @@ func PopulateCategoryFromWorkflow(
 	}
 
 	// Find BandwidthMeasurements owned by this Workflow's Jobs.
-	var bwList crev1alpha1.BandwidthMeasurementList
+	var bwList nvcrev1alpha1.BandwidthMeasurementList
 	if err := c.List(ctx, &bwList, client.InNamespace(wf.Namespace)); err == nil {
 		// Collect filtered BandwidthMeasurements.
-		var filtered []crev1alpha1.BandwidthMeasurement
+		var filtered []nvcrev1alpha1.BandwidthMeasurement
 		for _, bm := range bwList.Items {
 			if workflowJobs[bm.Spec.JobRef.Name] {
 				filtered = append(filtered, bm)
@@ -591,7 +669,7 @@ func PopulateCategoryFromWorkflow(
 		// Show aggregate bandwidth for non-diagnose modes.
 		// Diagnose shows per-stage bandwidth in the diagnosis section.
 		if cat.Diagnose == nil {
-			var peak *crev1alpha1.BandwidthResult
+			var peak *nvcrev1alpha1.BandwidthResult
 			for i := range filtered {
 				r := peakBandwidthResult(filtered[i].Status.Results)
 				if r == nil {
@@ -616,8 +694,8 @@ func PopulateCategoryFromWorkflow(
 // buildGroupBandwidthRows maps BandwidthMeasurements to groups and returns
 // per-group peak bandwidth rows for multi-group Workflows.
 func buildGroupBandwidthRows(
-	orch *crev1alpha1.OrchestrationStatus,
-	measurements []crev1alpha1.BandwidthMeasurement,
+	orch *nvcrev1alpha1.OrchestrationStatus,
+	measurements []nvcrev1alpha1.BandwidthMeasurement,
 	minBusBandwidthGBps string,
 ) []GroupBandwidthRow {
 	// Map job name → group info.
@@ -636,7 +714,7 @@ func buildGroupBandwidthRows(
 				nodes:     g.Nodes,
 				domains:   g.Domains,
 				nodeCount: len(g.Nodes),
-				failed:    g.Phase == crev1alpha1.GroupFailed,
+				failed:    g.Phase == nvcrev1alpha1.GroupFailed,
 			}
 		}
 	}
@@ -689,7 +767,7 @@ func buildGroupBandwidthRows(
 		seen[r.GroupName] = true
 	}
 	for _, g := range orch.Groups {
-		if g.Phase != crev1alpha1.GroupFailed {
+		if g.Phase != nvcrev1alpha1.GroupFailed {
 			continue
 		}
 		var label string
@@ -714,7 +792,7 @@ func buildGroupBandwidthRows(
 // buildDomainReports groups GoodputMeasurements by topology domain.
 // If no domains exist, returns a single entry with averages across all measurements.
 func buildDomainReports(
-	orch *crev1alpha1.OrchestrationStatus, measurements []crev1alpha1.GoodputMeasurement,
+	orch *nvcrev1alpha1.OrchestrationStatus, measurements []nvcrev1alpha1.GoodputMeasurement,
 ) []DomainReport {
 	// Map job names to their group's domain info.
 	type groupInfo struct {
@@ -784,7 +862,7 @@ func buildDomainReports(
 // groups and failed nodes. For single-domain groups (intra-rack), node counts
 // are exact. For multi-domain groups, DomainNodeCounts provides per-domain
 // totals recorded at partition time.
-func buildCliqueReport(wf *crev1alpha1.Workflow, failedNodes []crev1alpha1.FailedNode) []CliqueReport {
+func buildCliqueReport(wf *nvcrev1alpha1.Workflow, failedNodes []nvcrev1alpha1.FailedNode) []CliqueReport {
 	orch := wf.Status.Orchestration
 	if orch == nil {
 		return nil
@@ -798,7 +876,7 @@ func buildCliqueReport(wf *crev1alpha1.Workflow, failedNodes []crev1alpha1.Faile
 	// Collect domains from groups with Failed phase.
 	failedDomains := make(map[string]bool)
 	for _, g := range orch.Groups {
-		if g.Phase == crev1alpha1.GroupFailed {
+		if g.Phase == nvcrev1alpha1.GroupFailed {
 			for _, d := range g.Domains {
 				failedDomains[d] = true
 			}
@@ -884,9 +962,9 @@ func buildCliqueReport(wf *crev1alpha1.Workflow, failedNodes []crev1alpha1.Faile
 // Returns "" when no explicit test scale was set (e.g., training workloads).
 // annotationRequestedTestScale carries the testScale the operator asked for, set
 // by the Certification controller when it creates the Workflow.
-const annotationRequestedTestScale = "cre.nvidia.com/requested-test-scale"
+const annotationRequestedTestScale = "nvcre.nvidia.com/requested-test-scale"
 
-func detectTestScale(wf *crev1alpha1.Workflow) string {
+func detectTestScale(wf *nvcrev1alpha1.Workflow) string {
 	// What the operator asked for, when the Certification recorded it. The
 	// fallback below infers the scale from what was applied, which is not the
 	// same thing: an entry whose template ignores testScale still partitions one
@@ -898,15 +976,15 @@ func detectTestScale(wf *crev1alpha1.Workflow) string {
 	}
 	o := wf.Spec.Orchestration
 	if o.Topology != nil && o.Topology.StrictDomain {
-		return crev1alpha1.TestScaleIntraRack
+		return nvcrev1alpha1.TestScaleIntraRack
 	}
 	if o.Diagnose != nil {
-		return crev1alpha1.TestScaleDiagnose
+		return nvcrev1alpha1.TestScaleDiagnose
 	}
 	if wf.Status.Orchestration != nil && wf.Status.Orchestration.NodesPerJob == 1 {
-		return crev1alpha1.TestScaleIntraNode
+		return nvcrev1alpha1.TestScaleIntraNode
 	}
-	return crev1alpha1.TestScaleFullScale
+	return nvcrev1alpha1.TestScaleFullScale
 }
 
 // ---------------------------------------------------------------------------
@@ -1289,13 +1367,13 @@ func appendNodeLines(
 // For other modes, reads JobRefs from the current groups.
 func collectWorkflowJobs(
 	ctx context.Context, c client.Client,
-	wf *crev1alpha1.Workflow, orch *crev1alpha1.OrchestrationStatus,
+	wf *nvcrev1alpha1.Workflow, orch *nvcrev1alpha1.OrchestrationStatus,
 ) map[string]bool {
 	jobs := map[string]bool{}
 	if orch != nil && orch.Diagnose != nil {
-		var jobList crev1alpha1.JobList
+		var jobList nvcrev1alpha1.JobList
 		if err := c.List(ctx, &jobList, client.InNamespace(wf.Namespace),
-			client.MatchingLabels{"cre.nvidia.com/workflow": wf.Name}); err == nil {
+			client.MatchingLabels{"nvcre.nvidia.com/workflow": wf.Name}); err == nil {
 			for _, j := range jobList.Items {
 				jobs[j.Name] = true
 			}
@@ -1314,8 +1392,8 @@ func collectWorkflowJobs(
 // Workflow and correlating with BandwidthMeasurements.
 func buildDiagnoseTests(
 	ctx context.Context, c client.Client,
-	wf *crev1alpha1.Workflow,
-	measurements []crev1alpha1.BandwidthMeasurement,
+	wf *nvcrev1alpha1.Workflow,
+	measurements []nvcrev1alpha1.BandwidthMeasurement,
 ) []DiagnoseTestRow {
 	// Build bandwidth map: job name → peak BusBW (at the largest message size).
 	bwByJob := map[string]string{}
@@ -1326,22 +1404,22 @@ func buildDiagnoseTests(
 	}
 
 	// List all Jobs for this Workflow.
-	var jobList crev1alpha1.JobList
+	var jobList nvcrev1alpha1.JobList
 	if err := c.List(ctx, &jobList, client.InNamespace(wf.Namespace),
-		client.MatchingLabels{"cre.nvidia.com/workflow": wf.Name}); err != nil {
+		client.MatchingLabels{"nvcre.nvidia.com/workflow": wf.Name}); err != nil {
 		return nil
 	}
 
 	var rows []DiagnoseTestRow
 	for _, j := range jobList.Items {
-		groupName := j.GetLabels()["cre.nvidia.com/group"]
+		groupName := j.GetLabels()["nvcre.nvidia.com/group"]
 		stage := inferDiagnoseStage(groupName)
-		passed := controller.CondIsTrue(j.Status.Conditions, crev1alpha1.JobSucceeded)
+		passed := controller.CondIsTrue(j.Status.Conditions, nvcrev1alpha1.JobSucceeded)
 		nodes := getJobNodes(&j)
 
 		// Only set domain for screening tests — other stages list individual nodes.
 		var domain string
-		if stage == "screening" {
+		if stage == diagnoseStageScreening {
 			domain = lookupScreeningDomain(wf, nodes)
 		}
 
@@ -1363,25 +1441,25 @@ func buildDiagnoseTests(
 // inferDiagnoseStage infers the stage from the group name.
 func inferDiagnoseStage(groupName string) string {
 	if strings.Contains(groupName, "screen-no-nvl") {
-		return "screening-no-nvl"
+		return diagnoseStageScreeningNoNVL
 	}
 	if strings.Contains(groupName, "screen") {
-		return "screening"
+		return diagnoseStageScreening
 	}
 	if strings.Contains(groupName, "bisect") {
-		return "bisection"
+		return diagnoseStageBisection
 	}
 	if strings.Contains(groupName, "confirm") {
-		return "confirmation"
+		return diagnoseStageConfirmation
 	}
 	if strings.Contains(groupName, "inter-domain") {
-		return "inter-screening"
+		return diagnoseStageInterScreening
 	}
 	return "unknown"
 }
 
 // lookupScreeningDomain finds the topology domain for a screening test's nodes.
-func lookupScreeningDomain(wf *crev1alpha1.Workflow, nodes []string) string {
+func lookupScreeningDomain(wf *nvcrev1alpha1.Workflow, nodes []string) string {
 	if len(nodes) == 0 || wf.Status.Orchestration == nil || wf.Status.Orchestration.Diagnose == nil {
 		return ""
 	}
@@ -1394,8 +1472,8 @@ func lookupScreeningDomain(wf *crev1alpha1.Workflow, nodes []string) string {
 }
 
 // getJobNodes reads the group-nodes annotation set by the workflow controller.
-func getJobNodes(job *crev1alpha1.Job) []string {
-	ann := job.GetAnnotations()["cre.nvidia.com/group-nodes"]
+func getJobNodes(job *nvcrev1alpha1.Job) []string {
+	ann := job.GetAnnotations()["nvcre.nvidia.com/group-nodes"]
 	if ann == "" {
 		return nil
 	}
@@ -1404,7 +1482,7 @@ func getJobNodes(job *crev1alpha1.Job) []string {
 
 // groupFaultyByDomain groups faulty nodes by their screening domain.
 // Returns sorted domain→nodes pairs. Nodes without a domain go under "unknown".
-func groupFaultyByDomain(faulty []string, screening map[string]crev1alpha1.DomainScreeningResult) []struct {
+func groupFaultyByDomain(faulty []string, screening map[string]nvcrev1alpha1.DomainScreeningResult) []struct {
 	domain string
 	nodes  []string
 } {
@@ -1449,13 +1527,13 @@ func groupFaultyByDomain(faulty []string, screening map[string]crev1alpha1.Domai
 func printDiagnoseResults(w io.Writer, d *DiagnoseReport) {
 	_, _ = fmt.Fprintf(w, "│%s│\n", pad(boxWidth-2))
 	stageNames := map[string]string{
-		"intra-screening":        "intra-rack screening",
-		"intra-screening-no-nvl": "intra-rack screening (no NVL)",
-		"inter-screening":        "inter-rack screening",
-		"bisection":              "bisection",
-		"confirmation":           "confirmation",
-		"cross-boundary":         "cross-boundary probing",
-		"complete":               "complete",
+		"intra-screening":           "intra-rack screening",
+		"intra-screening-no-nvl":    "intra-rack screening (no NVL)",
+		diagnoseStageInterScreening: "inter-rack screening",
+		diagnoseStageBisection:      diagnoseStageBisection,
+		diagnoseStageConfirmation:   diagnoseStageConfirmation,
+		"cross-boundary":            "cross-boundary probing",
+		"complete":                  "complete",
 	}
 	stage := d.Stage
 	if name, ok := stageNames[stage]; ok {
@@ -1521,13 +1599,16 @@ func printDiagnoseResults(w io.Writer, d *DiagnoseReport) {
 		printBoxLine(w, "Test Results:")
 
 		stageDisplay := map[string]string{
-			"screening":        "intra-rack screening",
-			"screening-no-nvl": "intra-rack screening (no NVL)",
-			"inter-screening":  "inter-rack screening",
-			"bisection":        "bisection",
-			"confirmation":     "confirmation",
+			diagnoseStageScreening:      "intra-rack screening",
+			diagnoseStageScreeningNoNVL: "intra-rack screening (no NVL)",
+			diagnoseStageInterScreening: "inter-rack screening",
+			diagnoseStageBisection:      diagnoseStageBisection,
+			diagnoseStageConfirmation:   diagnoseStageConfirmation,
 		}
-		stages := []string{"screening", "screening-no-nvl", "inter-screening", "bisection", "confirmation"}
+		stages := []string{
+			diagnoseStageScreening, diagnoseStageScreeningNoNVL, diagnoseStageInterScreening,
+			diagnoseStageBisection, diagnoseStageConfirmation,
+		}
 		for _, stage := range stages {
 
 			var stageTests []DiagnoseTestRow
@@ -1707,8 +1788,8 @@ func fmtAvg(vals []float64, fn fmtFunc) string {
 // indexing the last entry: BandwidthMeasurement appends new sizes in the
 // order they are first observed in the data points, which is not guaranteed
 // to be ascending.
-func peakBandwidthResult(results []crev1alpha1.BandwidthResult) *crev1alpha1.BandwidthResult {
-	var peak *crev1alpha1.BandwidthResult
+func peakBandwidthResult(results []nvcrev1alpha1.BandwidthResult) *nvcrev1alpha1.BandwidthResult {
+	var peak *nvcrev1alpha1.BandwidthResult
 	for i := range results {
 		if peak == nil || results[i].SizeBytes > peak.SizeBytes {
 			peak = &results[i]

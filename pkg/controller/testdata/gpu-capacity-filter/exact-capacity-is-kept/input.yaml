@@ -1,0 +1,8 @@
+# The boundary: a node with exactly the requested count is sufficient. Only
+# strictly-fewer is a shortfall.
+nodes:
+  - name: node001
+    allocatableGPUs: 2
+  - name: node002
+    allocatableGPUs: 3
+gpusPerNode: 2

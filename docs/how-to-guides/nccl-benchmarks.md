@@ -24,7 +24,7 @@ The controller measures bus bandwidth for each collective and compares against p
 ## Via WorkloadRun (ad hoc)
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: WorkloadRun
 metadata:
   name: nccl-all-reduce
@@ -34,7 +34,7 @@ spec:
     mpi:
       binary: /usr/local/bin/all_reduce_perf_mpi
       args: ["-b", "8", "-e", "32G", "-f", "2", "-n", "100"]
-      mpirunPath: /usr/local/bin/mpirun
+      mpirunPath: /usr/local/mpi/bin/mpirun
   numNodes: 4
   bandwidthMeasurement:
     logProfileRef: nccl-bandwidth
@@ -44,5 +44,3 @@ spec:
 ## Interpreting results
 
 The report shows measured bus bandwidth (GB/s) versus the expected threshold for the detected GPU architecture. Results below threshold indicate a network problem — degraded links, misconfigured EFA/RoCE, or a faulty NIC.
-
-_Threshold table by architecture coming soon._

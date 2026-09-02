@@ -8,15 +8,11 @@ description: CRD reference for the Workflow resource.
 
 `Workflow` manages a single certification category run. It is created by the `Certification` controller — one per category — and is not typically created directly by users.
 
-## Spec fields
-
-_Generated from CRD schema — coming soon._
-
 ## Status fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `conditions` | []Condition | Exclusive set: `InProgress`, `Succeeded`, `Failed`. Independent (additive): `ValidationFailed` (aggregates Job validation failures; can be True alongside other states) |
+| `conditions` | []Condition | Exclusive set: `InProgress`, `Succeeded`, `Failed`. Independent (additive): `ValidationFailed` — aggregates Job validation failures; set True alongside `Failed` whenever any Job failed performance threshold validation, even when hardware failures determine the `Failed` reason. When the threshold miss is the only cause, `Failed` carries reason `JobValidationFailed` |
 | `namespace` | string | Resolved namespace where Jobs and dependencies are created |
 | `succeededNodesRef` | TypedLocalObjectReference | ConfigMap reference for the succeeded-nodes list |
 | `failedNodesRef` | TypedLocalObjectReference | ConfigMap reference for the failed-nodes list |

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: test-workflow-workload-fail
@@ -37,20 +37,20 @@ status:
           - gpu-node-01
         phase: Running
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: test-workflow-workload-fail-job
           namespace: default
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-workflow-workload-fail-job
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
-    cre.nvidia.com/workflow: test-workflow-workload-fail
-    cre.nvidia.com/group: group-0
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: test-workflow-workload-fail
+    nvcre.nvidia.com/group: group-0
 spec:
   workload:
     trainJob:

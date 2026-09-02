@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Wait for the Workflow to be processing groups, then for the terminal-failure
+# path to delete the TrainJob. The TrainJob delete happens immediately before
+# the pod-drain check in the same reconcile, so once it is gone the drain
+# decision has been made: with the worker pod still Running, the job-scoped
+# dependency must be retained (ConfigMap still exists, dependencyRefs intact)
+# and the group must still be Running.
+waitFor:
+  kind: Workflow
+  name: test-wf-drain-hold
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+waitForDeletion:
+  - kind: TrainJob
+    name: test-wf-drain-hold-group-0-iter-1-workload
+    namespace: default
+collect:
+  - kind: Workflow
+    name: test-wf-drain-hold
+    namespace: default
+  - kind: ConfigMap
+    name: test-drain-hold-dep
+    namespace: default

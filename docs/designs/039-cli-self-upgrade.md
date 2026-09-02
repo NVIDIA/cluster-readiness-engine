@@ -2,35 +2,35 @@
 
 ## Context
 
-When a new version of ncrectl is released, operators must manually download and replace the binary. There is no built-in mechanism to check for updates or perform in-place upgrades. This leads to version drift across teams and missed improvements.
+When a new version of nvcrectl is released, operators must manually download and replace the binary. There is no built-in mechanism to check for updates or perform in-place upgrades. This leads to version drift across teams and missed improvements.
 
-the ncrectl installer solves this with a self-update mechanism that queries GitLab for newer releases and downloads them in-place. We adopt the same pattern for ncrectl, adapted to use the Package Registry (where ncrectl binaries are published) instead of GitLab Releases.
+A prior internal NVIDIA CLI solved this with a self-update mechanism that queries its release host for newer releases and downloads them in-place. We adopt the same pattern for nvcrectl, adapted to GitHub Releases (where nvcrectl binaries are published).
 
 ### Requirements
 
-1. **Version check**: Compare the running version against the latest GitLab tag.
+1. **Version check**: Compare the running version against the latest release tag.
 2. **Release notes**: Show what changed in the new version.
 3. **Interactive prompt**: Ask before replacing the binary.
 4. **Check-only mode**: `--check` flag to just report without installing.
-5. **No authentication**: Public repo, no GITLAB_TOKEN required.
+5. **No authentication**: Public repo, no token required.
 6. **Sudo fallback**: Handle system directories gracefully.
 
 ## Decision
 
-Add a top-level `ncrectl upgrade` command that:
+Add a top-level `nvcrectl upgrade` command that:
 
 1. Fetches the latest version tag from GitHub API.
 2. Compares against the running version using semantic versioning.
 3. Shows release notes from the GitHub release notes.
 4. Prompts for confirmation (y/N).
-5. Downloads the correct binary from the Package Registry.
+5. Downloads the correct binary from the GitHub release assets.
 6. Replaces the running binary with `os.Rename` (sudo fallback on permission error).
 
 ### GitHub API Endpoints
 
 - **Latest tag**: `GET https://api.github.com/repos/NVIDIA/cluster-readiness-engine/releases/latest` (first entry)
 - **Release notes**: `GET https://api.github.com/repos/NVIDIA/cluster-readiness-engine/releases/tags/{tag}` (description field)
-- **Binary download**: `GET https://github.com/NVIDIA/cluster-readiness-engine/releases/download/{version}/ncrectl-{os}-{arch}`
+- **Binary download**: `GET https://github.com/NVIDIA/cluster-readiness-engine/releases/download/{version}/nvcrectl-{os}-{arch}`
 
 ### Version Comparison
 
@@ -45,18 +45,18 @@ Functions:
 - `runUpgrade()` — orchestrates the full flow
 - `fetchLatestVersion()` — GitHub Releases API
 - `fetchReleaseNotes()` — GitHub Releases API
-- `downloadBinary()` — Package Registry download to temp dir
+- `downloadBinary()` — GitHub release asset download to temp dir
 - `installBinary()` — rename with sudo fallback
 - `parseSemanticVersion()` — parse version string
 - `isNewer()` — compare two versions
-- `generateBinaryName()` — `ncrectl-{runtime.GOOS}-{runtime.GOARCH}`
+- `generateBinaryName()` — `nvcrectl-{runtime.GOOS}-{runtime.GOARCH}`
 
 Registered as top-level command in `root.go` (not under `setup` — upgrades are a different concern from cluster setup).
 
 ## Rationale
 
-- **Top-level command**: `ncrectl upgrade` is more discoverable than `ncrectl setup upgrade`. Upgrading the CLI is not cluster setup.
-- **y/N prompt (not Terraform-style)**: Self-upgrade is lower risk than cluster changes. Simple y/N is sufficient, matching the ncrectl installer's pattern.
+- **Top-level command**: `nvcrectl upgrade` is more discoverable than `nvcrectl setup upgrade`. Upgrading the CLI is not cluster setup.
+- **y/N prompt (not Terraform-style)**: Self-upgrade is lower risk than cluster changes. Simple y/N is sufficient, matching the nvcrectl installer's pattern.
 - **No checksum**: Kept simple for initial implementation. The HTTPS transport provides integrity.
 - **Package Registry**: Matches the existing CI publishing pipeline. No changes to release process needed.
 

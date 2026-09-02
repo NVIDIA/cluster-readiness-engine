@@ -1,0 +1,55 @@
+{
+  "PersistentVolume/user-keep-pv": {
+    "kind": "PersistentVolume",
+    "apiVersion": "v1",
+    "metadata": {
+      "name": "user-keep-pv",
+      "finalizers": [
+        "kubernetes.io/pv-protection"
+      ]
+    },
+    "spec": {
+      "capacity": {
+        "storage": "1Gi"
+      },
+      "hostPath": {
+        "path": "/tmp/user-keep",
+        "type": ""
+      },
+      "accessModes": [
+        "ReadWriteOnce"
+      ],
+      "persistentVolumeReclaimPolicy": "Retain",
+      "volumeMode": "Filesystem"
+    },
+    "status": {
+      "phase": "Pending"
+    }
+  },
+  "PersistentVolumeClaim/user-keep": {
+    "kind": "PersistentVolumeClaim",
+    "apiVersion": "v1",
+    "metadata": {
+      "name": "user-keep",
+      "namespace": "default",
+      "finalizers": [
+        "kubernetes.io/pvc-protection"
+      ]
+    },
+    "spec": {
+      "accessModes": [
+        "ReadWriteOnce"
+      ],
+      "resources": {
+        "requests": {
+          "storage": "1Gi"
+        }
+      },
+      "volumeName": "user-keep-pv",
+      "volumeMode": "Filesystem"
+    },
+    "status": {
+      "phase": "Pending"
+    }
+  }
+}

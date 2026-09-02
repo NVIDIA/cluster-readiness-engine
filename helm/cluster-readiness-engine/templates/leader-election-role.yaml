@@ -7,8 +7,8 @@ kind: Role
 metadata:
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "cre.labels" . | nindent 4 }}
-  name: cre-leader-election-role
+    {{- include "nvcre.labels" . | nindent 4 }}
+  name: nvcre-leader-election-role
 rules:
 - apiGroups:
   - ""

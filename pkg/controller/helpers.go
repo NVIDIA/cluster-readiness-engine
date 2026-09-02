@@ -52,6 +52,19 @@ const (
 	ReasonWorkflowDeleted          = "WorkflowDeleted"
 	ReasonWorkflowSucceeded        = "WorkflowSucceeded"
 	ReasonThresholdViolation       = "ThresholdViolation"
+
+	// ReasonWorkflowNameCollision marks a Certification whose generated child
+	// Workflow name is already taken by a Workflow this Certification does not
+	// own. The foreign object is neither adopted nor recorded for cleanup.
+	ReasonWorkflowNameCollision = "WorkflowNameCollision"
+
+	// ReasonWorkflowCreationError indicates a child Workflow could not be
+	// created. Emitted as a Warning event at the failed Create call by the
+	// Certification and WorkloadRun reconcilers, which both create Workflows,
+	// so the API server's rejection is visible on the parent object rather
+	// than only in the controller log. Mirrors ReasonJobCreationError
+	// (Workflow tier) and ReasonWorkloadCreationError (Job tier).
+	ReasonWorkflowCreationError = "WorkflowCreationError"
 )
 
 // Workflow tier reasons (Workflow → Job).
@@ -64,6 +77,10 @@ const (
 	ReasonJobCreationError    = "JobCreationError"
 	ReasonJobValidationFailed = "JobValidationFailed"
 
+	// ReasonJobTimedOut marks a Job's Failed condition set by the Workflow when
+	// the Job exceeded timeoutPerJob. Timed-out jobs are never retried.
+	ReasonJobTimedOut = "JobTimedOut"
+
 	ReasonGroupsPartitioned  = "GroupsPartitioned"
 	ReasonIterationCompleted = "IterationCompleted"
 	ReasonIterationsFailed   = "IterationsFailed"
@@ -71,11 +88,25 @@ const (
 	ReasonDependencyCreationError = "DependencyCreationError"
 	ReasonNodeDiscoveryError      = "NodeDiscoveryError"
 	ReasonPartitionError          = "PartitionError"
+
+	// ReasonJobNameCollision marks a Workflow whose generated Job name is
+	// already taken by a Job this Workflow does not control. The foreign
+	// object is neither adopted nor recorded for cleanup.
+	ReasonJobNameCollision = "JobNameCollision"
+	// ReasonDependencyNameCollision marks a Workflow whose dependency resource
+	// name is already taken by an object this Workflow did not create. The
+	// foreign object is neither adopted nor recorded for cleanup.
+	ReasonDependencyNameCollision = "DependencyNameCollision"
 )
 
 // Job tier reasons (Job → Workload).
 const (
-	ReasonWorkloadCreated       = "WorkloadCreated"
+	ReasonWorkloadCreated = "WorkloadCreated"
+	// ReasonWorkloadPending indicates the workload exists but has not started
+	// running — e.g. a TrainJob suspended by Kueue while it waits for quota.
+	// The Job stays InProgress; pending time is not counted against
+	// timeoutPerJob or stall detection.
+	ReasonWorkloadPending       = "WorkloadPending"
 	ReasonWorkloadRunning       = "WorkloadRunning"
 	ReasonWorkloadCompleted     = "WorkloadCompleted"
 	ReasonWorkloadFailed        = "WorkloadFailed"
@@ -98,6 +129,21 @@ const (
 	FrameworkMPI   = "mpi"
 	FrameworkExec  = "exec"
 )
+
+// --- Shared name-collision error ---
+
+// nameCollisionError reports that a child object the controller tried to
+// create already exists but is not owned by the expected parent. Reconcilers
+// detect it with errors.As, set their tier's Failed condition using Reason,
+// and stop without recording the foreign object for cleanup.
+type nameCollisionError struct {
+	// Reason is the tier-specific condition reason (ReasonWorkflowNameCollision,
+	// ReasonJobNameCollision, or ReasonDependencyNameCollision).
+	Reason  string
+	Message string
+}
+
+func (e *nameCollisionError) Error() string { return e.Message }
 
 // --- Shared condition helpers ---
 

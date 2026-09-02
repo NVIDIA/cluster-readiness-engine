@@ -19,7 +19,7 @@ const (
 
 // GoodputMeasurementSpec defines the desired state of GoodputMeasurement
 type GoodputMeasurementSpec struct {
-	// jobRef is the reference to the CRE Job for which goodput should be calculated.
+	// jobRef is the reference to the NVCRE Job for which goodput should be calculated.
 	// +optional
 	JobRef corev1.TypedLocalObjectReference `json:"jobRef,omitempty"`
 

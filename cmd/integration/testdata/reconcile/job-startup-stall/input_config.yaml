@@ -1,6 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+# The startup-stall budget is measured from when the workload was first
+# observed running (issue #213): the GM's ancient applicationStartTime is
+# clamped forward to that moment, so the Job runs — and persists
+# workloadStartTime, kept in the Failed status the golden pins — for the
+# 10s budget plus the 2x sample-interval buffer (~12s) before the stall
+# fires. The 30s default waitFor timeout leaves ample margin.
 waitFor:
   kind: Job
   name: test-startup-stall

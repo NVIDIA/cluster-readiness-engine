@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# H100 with spec.enableMNNVL unset: the architecture default is off, so the
+# launcher forwards 0 — proving the fix does not blanket-enable MNNVL.
+gpuProduct: NVIDIA-H100-80GB-HBM3

@@ -24,7 +24,7 @@ status:
       message: "All workers completed"
       lastTransitionTime: "2026-01-22T10:00:00Z"
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-goodput-threshold-fail
@@ -52,16 +52,31 @@ status:
     name: test-goodput-threshold-fail-workload
     namespace: default
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+# The measurement is already frozen (Complete=True): since ADR-072, threshold
+# evaluation skips goodput keys until the GoodputMeasurement controller's
+# terminal write lands, so a provisional result must not drive pass/fail.
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: GoodputMeasurement
 metadata:
   name: test-goodput-threshold-fail-goodput
   namespace: default
 spec:
   jobRef:
-    apiGroup: cre.nvidia.com
+    apiGroup: nvcre.nvidia.com
     kind: Job
     name: test-goodput-threshold-fail
   logProfileRef: nemo-training
 status:
   result: "0.8800"
+  completionTime: "2026-01-22T10:00:00Z"
+  conditions:
+    - type: Complete
+      status: "True"
+      reason: JobSucceeded
+      message: "Referenced Job completed successfully"
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Measuring
+      status: "False"
+      reason: JobSucceeded
+      message: "Measurement completed"
+      lastTransitionTime: "2026-01-22T10:00:00Z"

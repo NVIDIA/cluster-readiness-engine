@@ -1,0 +1,95 @@
+{
+  "Workflow/test-no-gpu-capacity": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-no-gpu-capacity",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 1,
+                "resourcesPerNode": {
+                  "limits": {
+                    "nvidia.com/gpu": "8"
+                  },
+                  "requests": {
+                    "nvidia.com/gpu": "8"
+                  }
+                }
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "PartitionError",
+          "message": "No node can supply the 8 nvidia.com/gpu the workload requests per node; best available is 2"
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 0,
+        "nodesPerJob": 0,
+        "totalGroups": 0,
+        "detectedPlatform": "onprem",
+        "detectedGPUArchitecture": "h100",
+        "excludedNodes": [
+          "gpu-node-01",
+          "gpu-node-02"
+        ],
+        "exclusionReason": "2 node(s) matched the target but have insufficient GPU capacity, the workload requests 8 nvidia.com/gpu per node: gpu-node-01 has 1, gpu-node-02 has 2"
+      }
+    }
+  }
+}

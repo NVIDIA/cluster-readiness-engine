@@ -1,0 +1,15 @@
+# A dependency created by a controller version that predates the workflow-uid
+# annotation: only the tracking label is present. It must NOT be adopted on
+# AlreadyExists (label is not UID-strong), but cleanup may still delete it so
+# in-flight workflows keep working across an upgrade.
+workflow:
+  name: my-workflow
+  uid: 11111111-1111-1111-1111-111111111111
+object:
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: my-dep
+    namespace: default
+    labels:
+      nvcre.nvidia.com/workflow: my-workflow

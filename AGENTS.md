@@ -55,8 +55,8 @@ make test-uat-run                # Run as needed
 
 Run a single UAT test:
 ```bash
-kind get kubeconfig --name cre-test-uat > /tmp/kind-uat.kubeconfig
-KUBECONFIG=/tmp/kind-uat.kubeconfig NCRECTL=bin/ncrectl \
+kind get kubeconfig --name nvcre-test-uat > /tmp/kind-uat.kubeconfig
+KUBECONFIG=/tmp/kind-uat.kubeconfig NVCRECTL=bin/nvcrectl \
   go test -tags=uat ./test/uat/ -v -timeout 900s -count=1 -run TestAWSGB200NCCL
 ```
 
@@ -79,7 +79,7 @@ Follows the Deployment → ReplicaSet → Pod composition pattern:
 - **BandwidthMeasurement** watches a Job, parses NCCL log output, and computes per-bus bandwidth metrics.
 - **LogProfile** (cluster-scoped) defines regex patterns with named capture groups for parsing training framework logs.
 
-There is no Remediation controller. ADR-061 removed it. CRE does not taint, cordon, or patch nodes; it records failed nodes with a reason (`HardwareFailureDetected`, `ThresholdViolation`, or `WorkloadFailed`) in the Certification status.
+There is no Remediation controller. ADR-061 removed it. NVCRE does not taint, cordon, or patch nodes; it records failed nodes with a reason (`HardwareFailureDetected`, `ThresholdViolation`, or `WorkloadFailed`) in the Certification status.
 
 ### Key Packages
 
@@ -109,10 +109,16 @@ Integration tests use envtest with golden file comparison in `cmd/integration/te
 
 Unit tests in most packages use `testutil.TestCaseParser` (in `pkg/testutil/`) with testdata directories and golden files — the same pattern as integration tests but at the package level. See `/cre-test` skill for the full testing guide including which packages use which pattern, golden file rules, and the integration test input format.
 
+Release-path workflows are tested in `test/releasepolicy/`. `attest.yml`'s input validation is shell embedded in YAML — nothing type-checks it, and a weakened guard would not break a build, it would just stop rejecting things. The tests extract that step from the workflow and execute it against a table of accept and reject cases, so the test cannot drift from the validation it covers:
+
+```bash
+go test ./test/releasepolicy/ -run TestAttestValidationRejects -v
+```
+
 ## Critical Pitfalls
 
 - **After modifying `*_types.go`**: Must run `make manifests generate` before anything else compiles (stale deepcopy). `make manifests` writes CRDs directly to `helm/cluster-readiness-engine/crds/` and RBAC to `helm/cluster-readiness-engine/templates/`.
-- **Blank imports required**: `pkg/catalog` must be blank-imported in `cmd/ncrectl/main.go` and test suites to trigger `init()` registration.
+- **Blank imports required**: `pkg/catalog` must be blank-imported in `cmd/nvcrectl/main.go` and test suites to trigger `init()` registration.
 - **envtest has no GC controller**: Cascade deletion via OwnerReference won't work in tests. Controllers must explicitly delete child resources in `handleDeletion()`.
 - **`runtime.RawExtension` with `json:",inline"`**: Loses sibling fields during marshal/unmarshal. Requires custom `MarshalJSON`/`UnmarshalJSON` on the parent struct (see `api/v1alpha1/dependency_json.go`).
 - **Test timeout is 10s**: If requeue interval > 10s, status update tests will time out.
@@ -151,7 +157,7 @@ After implementation, update **all** affected artifacts — do not stop partway:
 - **Tests**: Add/update integration test cases in `cmd/integration/testdata/reconcile/` with golden files
 - **Golden files**: Run `TESTUTIL_UPDATE_EXPECTED=true make test-integration` to regenerate. **NEVER blindly overwrite golden files when tests are failing** — investigate and fix the code or test inputs first. Only regenerate golden files when the new output is intentionally correct. For new tests that require golden file generation, thoroughly review the generated `expected.json` before considering the test complete. **NEVER silently regenerate golden files during implementation** — always stop and ask the user for explicit permission before regenerating any golden file, explaining what changed and why. **Always diagnose first**: before updating any integration golden file, read the existing expected.json, understand what fields are changing and why, and confirm the change is an expected consequence of the code changes — never jump straight to regeneration.
 - **Documentation**: Update `docs/` files if API or behavior changed
-- **Site**: Update `site/content/docs/` pages if user-facing behavior changed
+- **Site**: The public docs site is built with Fern from `docs/` (site config in `fern/docs.yml`, nav in `docs/index.yml`). Update the relevant `docs/` pages if user-facing behavior changed, and add new pages to `docs/index.yml` so they appear in the published nav
 - **Samples**: Update `config/samples/` if new fields or resources were added
 
 ### 5. Run Verification Until Green
@@ -180,14 +186,14 @@ If you are uncertain about:
 
 Never assume. A question costs seconds; a wrong implementation costs a rewrite.
 
-## Testing Catalog Config Changes with ncrectl
+## Testing Catalog Config Changes with nvcrectl
 
-When modifying catalog entries (`pkg/catalog/entries/`), use `ncrectl certification render` to verify the rendered Workflow manifests are correct before committing.
+When modifying catalog entries (`pkg/catalog/entries/`), use `nvcrectl certification render` to verify the rendered Workflow manifests are correct before committing.
 
-### Build ncrectl
+### Build nvcrectl
 
 ```bash
-go build -ldflags "-s -w" -o bin/ncrectl ./cmd/ncrectl/
+go build -ldflags "-s -w" -o bin/nvcrectl ./cmd/nvcrectl/
 ```
 
 ### Create Test Certification YAMLs
@@ -196,7 +202,7 @@ Create a temp cert file per GPU architecture. Change `nvidia.com/gpu.product`, `
 
 ```yaml
 # /tmp/cert-gb300.yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: gpu-cluster-cert
@@ -207,7 +213,7 @@ spec:
   nodesPerJob: 8
   enableMNNVL: true   # true for GB200/GB300 (multi-node NVLink), false for H100 and others
   imagePullSecrets:
-    - name: ncrectl-pull-secret
+    - name: nvcrectl-pull-secret
   categories:
     - domain: training
       variant: nemotron5-8b
@@ -219,16 +225,16 @@ spec:
 
 ```bash
 # Render only (works without a cluster, or when cluster arch doesn't match the cert)
-./bin/ncrectl certification render --platform aws /tmp/cert-gb300.yaml
+./bin/nvcrectl certification render --platform aws /tmp/cert-gb300.yaml
 
 # Render + dry-run (validates resources against the live cluster API server;
 # kubeconfig context MUST point to a cluster matching the cert's target architecture)
-./bin/ncrectl certification render --platform aws /tmp/cert-gb300.yaml --dry-run
+./bin/nvcrectl certification render --platform aws /tmp/cert-gb300.yaml --dry-run
 ```
 
 ### What to Verify in Output
 
-1. **Override tracking** — Check `ncrectl.nvidia.com/applied-overrides` annotation to confirm the right overrides matched, and `detected-gpu-architecture`/`detected-platform` are correct.
+1. **Override tracking** — Check `nvcrectl.nvidia.com/applied-overrides` annotation to confirm the right overrides matched, and `detected-gpu-architecture`/`detected-platform` are correct.
 
 2. **Architecture-specific env vars** — `FI_EFA_USE_DEVICE_RDMA` should ONLY appear for GB200 and H100 on AWS (EFA interconnect), NOT for GB300 (RoCE).
 
@@ -243,15 +249,15 @@ spec:
 
    ```bash
    # Should return NOTHING for GB300 (RoCE)
-   ./bin/ncrectl certification render --platform aws /tmp/cert-gb300.yaml 2>&1 \
+   ./bin/nvcrectl certification render --platform aws /tmp/cert-gb300.yaml 2>&1 \
      | grep -E "FI_EFA|hugepages|vpc.amazonaws.com/efa"
 
    # Should show all three for GB200 (EFA)
-   ./bin/ncrectl certification render --platform aws /tmp/cert-gb200.yaml 2>&1 \
+   ./bin/nvcrectl certification render --platform aws /tmp/cert-gb200.yaml 2>&1 \
      | grep -E "FI_EFA|hugepages|vpc.amazonaws.com/efa"
 
    # And GB300 should show RoCE instead
-   ./bin/ncrectl certification render --platform aws /tmp/cert-gb300.yaml 2>&1 | grep -c roce
+   ./bin/nvcrectl certification render --platform aws /tmp/cert-gb300.yaml 2>&1 | grep -c roce
    ```
 
    Rendered counts for `communication/nccl-all-reduce` on AWS, for reference:

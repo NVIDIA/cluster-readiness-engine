@@ -1,0 +1,35 @@
+{
+  "PersistentVolume/user-ghost-pv": {
+    "kind": "PersistentVolume",
+    "apiVersion": "v1",
+    "metadata": {
+      "name": "user-ghost-pv",
+      "finalizers": [
+        "kubernetes.io/pv-protection"
+      ]
+    },
+    "spec": {
+      "capacity": {
+        "storage": "1Gi"
+      },
+      "hostPath": {
+        "path": "/tmp/user-ghost",
+        "type": ""
+      },
+      "accessModes": [
+        "ReadWriteOnce"
+      ],
+      "claimRef": {
+        "kind": "PersistentVolumeClaim",
+        "namespace": "default",
+        "name": "ghost-pvc",
+        "apiVersion": "v1"
+      },
+      "persistentVolumeReclaimPolicy": "Retain",
+      "volumeMode": "Filesystem"
+    },
+    "status": {
+      "phase": "Pending"
+    }
+  }
+}

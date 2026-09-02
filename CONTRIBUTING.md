@@ -1,4 +1,4 @@
-# Contributing to CRE
+# Contributing to NVCRE
 
 Thank you for your interest in contributing! We welcome contributions from the community.
 
@@ -39,7 +39,7 @@ When reporting issues:
 
 1. Use the issue templates — they ask for what we need
 2. Provide clear reproduction steps
-3. Include environment details (CRE version, Kubernetes version, GPU architecture, platform)
+3. Include environment details (NVCRE version, Kubernetes version, GPU architecture, platform)
 4. Add relevant logs or error messages, with secrets removed
 5. Search existing issues first to avoid duplicates
 
@@ -57,6 +57,8 @@ When reporting issues:
 - Include tests for new functionality
 - Ensure all CI checks pass
 - Be responsive to feedback and code review
+
+**CI on fork pull requests**: CI does not run directly on fork branches. After a maintainer vets your PR, the copy-pr-bot service copies it to a `pull-request/<number>` branch in this repository, and the required checks run there (a trustee triggers this by commenting `/ok to test` on the PR). If your PR shows no checks yet, nothing is wrong; wait for a maintainer to trigger them.
 
 ## Commit Message Format
 
@@ -83,7 +85,7 @@ Allowed types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`, `ci`,
 ## Development Setup
 
 **Prerequisites**:
-- Go 1.26+
+- Go 1.27+
 - Docker (for container builds)
 - Make (for build targets)
 
@@ -91,7 +93,7 @@ Allowed types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`, `ci`,
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/dsx-ai-factory/cluster-readiness-engine.git
+   git clone https://github.com/NVIDIA/cluster-readiness-engine.git
    cd cluster-readiness-engine
    ```
 
@@ -114,7 +116,7 @@ Allowed types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`, `ci`,
 5. Build the binaries:
    ```bash
    make build          # controller manager -> bin/manager
-   make build-ncrectl  # CLI -> bin/ncrectl
+   make build-nvcrectl  # CLI -> bin/nvcrectl
    ```
 
 **Running a single test**:
@@ -125,7 +127,7 @@ go test ./pkg/workload/ -run TestAdapterForSpec -v
 **Running a single integration test**:
 ```bash
 KUBEBUILDER_ASSETS="$(bin/setup-envtest use -p path)" \
-  go test ./cmd/integration/ -v -timeout 300s -count=1 -run TestReconcile/job-checkpoint-restart
+  go test ./cmd/integration/ -v -timeout 300s -count=1 -run TestIntegration/reconcile/job-checkpoint-restart
 ```
 
 ## Replicate CI Locally
@@ -156,6 +158,26 @@ make tilt-uat         # leave running in another terminal; hot-reloads
 make test-uat-run     # re-run as needed
 make cleanup-test-uat # when finished
 ```
+
+By default, Kind uses the Kubernetes node image bundled with the developer's
+installed Kind version. To exercise a specific Kubernetes version, select its
+node image when creating the cluster (Kind v0.32 or newer is required for the
+Kubernetes 1.36 image):
+
+```bash
+make setup-test-uat \
+  KIND_NODE_IMAGE=kindest/node:v1.34.8
+```
+
+or:
+
+```bash
+make setup-test-uat \
+  KIND_NODE_IMAGE=kindest/node:v1.36.1
+```
+
+The image is used only when creating a new cluster. If `nvcre-test-uat` already
+exists, delete it with `make cleanup-test-uat` before changing versions.
 
 Notes:
 

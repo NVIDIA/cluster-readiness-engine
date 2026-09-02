@@ -17,8 +17,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
 type conditionOut struct {
@@ -35,7 +35,7 @@ type conditionOut struct {
 func TestUnresolvedLogProfile(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "unresolved-log-profile",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -50,7 +50,7 @@ func TestUnresolvedLogProfile(t *testing.T) {
 		}
 
 		scheme := runtime.NewScheme()
-		if err := crev1alpha1.AddToScheme(scheme); err != nil {
+		if err := nvcrev1alpha1.AddToScheme(scheme); err != nil {
 			return err
 		}
 
@@ -58,21 +58,21 @@ func TestUnresolvedLogProfile(t *testing.T) {
 		// found and simply parse nothing, which is different from the profile being
 		// missing, and reaches a different branch now that the final sample runs
 		// before the terminal handling.
-		profile := &crev1alpha1.LogProfile{
-			ObjectMeta: metav1.ObjectMeta{Name: "megatron-training"},
-			Spec: crev1alpha1.LogProfileSpec{
-				Timestamp: crev1alpha1.TimestampSpec{Layout: "2006-01-02 15:04:05.999999"},
-				Patterns: crev1alpha1.LogPatternSet{
-					TrainingStep: &crev1alpha1.EventPattern{
+		profile := &nvcrev1alpha1.LogProfile{
+			Name: "megatron-training",
+			Spec: nvcrev1alpha1.LogProfileSpec{
+				Timestamp: nvcrev1alpha1.TimestampSpec{Layout: "2006-01-02 15:04:05.999999"},
+				Patterns: nvcrev1alpha1.LogPatternSet{
+					TrainingStep: &nvcrev1alpha1.EventPattern{
 						Regex: `iteration\s+(?P<iteration>\d+)`,
 					},
 				},
 			},
 		}
 
-		job := &crev1alpha1.Job{
-			ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"},
-			Status: crev1alpha1.JobStatus{Conditions: []metav1.Condition{{
+		job := &nvcrev1alpha1.Job{
+			Name: "j", Namespace: "ns",
+			Status: nvcrev1alpha1.JobStatus{Conditions: []metav1.Condition{{
 				Type: in.JobCondition, Status: metav1.ConditionTrue,
 				Reason: "Test", LastTransitionTime: metav1.Now(),
 			}}},
@@ -85,19 +85,17 @@ func TestUnresolvedLogProfile(t *testing.T) {
 
 		switch in.Measurement {
 		case "bandwidth":
-			m := &crev1alpha1.BandwidthMeasurement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "m", Namespace: "ns",
-					Finalizers: []string{bandwidthMeasurementFinalizer},
-				},
-				Spec: crev1alpha1.BandwidthMeasurementSpec{
+			m := &nvcrev1alpha1.BandwidthMeasurement{
+				Name: "m", Namespace: "ns",
+				Finalizers: []string{bandwidthMeasurementFinalizer},
+				Spec: nvcrev1alpha1.BandwidthMeasurementSpec{
 					JobRef:        corev1.TypedLocalObjectReference{Name: "j"},
 					LogProfileRef: in.LogProfileRef,
 				},
 			}
 			for i := 0; i < in.ExistingResults; i++ {
 				m.Status.Results = append(m.Status.Results,
-					crev1alpha1.BandwidthResult{SizeBytes: 1024, AlgBW: "10", BusBW: "20"})
+					nvcrev1alpha1.BandwidthResult{SizeBytes: 1024, AlgBW: "10", BusBW: "20"})
 			}
 			c := fake.NewClientBuilder().WithScheme(scheme).
 				WithObjects(job, m).WithStatusSubresource(job, m).Build()
@@ -105,18 +103,16 @@ func TestUnresolvedLogProfile(t *testing.T) {
 			if _, err := r.Reconcile(context.Background(), req); err != nil {
 				return err
 			}
-			got := &crev1alpha1.BandwidthMeasurement{}
+			got := &nvcrev1alpha1.BandwidthMeasurement{}
 			if err := c.Get(context.Background(), key, got); err != nil {
 				return err
 			}
 			conds, results = got.Status.Conditions, len(got.Status.Results)
 		default:
-			m := &crev1alpha1.GoodputMeasurement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "m", Namespace: "ns",
-					Finalizers: []string{goodputMeasurementFinalizer},
-				},
-				Spec: crev1alpha1.GoodputMeasurementSpec{
+			m := &nvcrev1alpha1.GoodputMeasurement{
+				Name: "m", Namespace: "ns",
+				Finalizers: []string{goodputMeasurementFinalizer},
+				Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 					JobRef:        corev1.TypedLocalObjectReference{Name: "j"},
 					LogProfileRef: in.LogProfileRef,
 				},
@@ -131,7 +127,7 @@ func TestUnresolvedLogProfile(t *testing.T) {
 			if _, err := r.Reconcile(context.Background(), req); err != nil {
 				return err
 			}
-			got := &crev1alpha1.GoodputMeasurement{}
+			got := &nvcrev1alpha1.GoodputMeasurement{}
 			if err := c.Get(context.Background(), key, got); err != nil {
 				return err
 			}

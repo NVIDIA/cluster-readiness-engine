@@ -1,0 +1,5 @@
+Warning: could not retrieve WorkloadRun "unknown-run" after timeout; partial report unavailable: API server unavailable
+
+Unable to determine whether the WorkloadRun is still running in namespace test-ns.
+Check its status:
+  kubectl get workloadrun unknown-run -n test-ns

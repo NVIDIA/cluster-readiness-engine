@@ -5,22 +5,22 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    {{- include "cre.labels" . | nindent 4 }}
+    {{- include "nvcre.labels" . | nindent 4 }}
     control-plane: manager
-  name: {{ include "cre.resourceName" (dict "suffix" "manager" "context" $) }}
+  name: {{ include "nvcre.resourceName" (dict "suffix" "manager" "context" $) }}
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: {{ .Values.manager.replicas }}
   selector:
     matchLabels:
-      {{- include "cre.selectorLabels" . | nindent 6 }}
+      {{- include "nvcre.selectorLabels" . | nindent 6 }}
       control-plane: manager
   template:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: manager
       labels:
-        {{- include "cre.labels" . | nindent 8 }}
+        {{- include "nvcre.labels" . | nindent 8 }}
         control-plane: manager
     spec:
       {{- with .Values.manager.affinity }}
@@ -32,6 +32,8 @@ spec:
         - --metrics-bind-address=:{{ .Values.metrics.port }}
         - --leader-elect
         - --health-probe-bind-address=:8081
+        - --max-concurrent-reconciles={{ required "manager.maxConcurrentReconciles is required" .Values.manager.maxConcurrentReconciles }}
+        - --measurement-max-concurrent-reconciles={{ required "manager.measurementMaxConcurrentReconciles is required" .Values.manager.measurementMaxConcurrentReconciles }}
         command:
         - /manager
         image: {{ .Values.manager.image.repository }}:{{ .Values.manager.image.tag | default .Chart.AppVersion }}
@@ -66,7 +68,7 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
-      serviceAccountName: {{ include "cre.serviceAccountName" . }}
+      serviceAccountName: {{ include "nvcre.serviceAccountName" . }}
       terminationGracePeriodSeconds: {{ .Values.manager.terminationGracePeriodSeconds }}
       {{- with .Values.manager.tolerations }}
       tolerations:

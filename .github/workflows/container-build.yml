@@ -27,15 +27,14 @@ jobs:
   docker-build:
     name: Docker Build
     runs-on: linux-amd64-cpu32
-    if: github.repository == 'dsx-ai-factory/cluster-readiness-engine'
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Use the pre-populated buildkitd config on NVIDIA GHA runners, which
       # routes image pulls through a per-environment Docker mirror cache.
-      # See https://docs.gha-runners.nvidia.com/platform/best-practices/#use-docker-cache-for-buildkit
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
         with:
           buildkitd-config: /etc/buildkit/buildkitd.toml
 
@@ -55,4 +54,4 @@ jobs:
       - name: Build container image (no push)
         run: make docker-buildx BUILDX_PUSH=
         env:
-          IMG: ghcr.io/${{ github.repository }}/manager:${{ steps.tag.outputs.value }}
+          IMG: ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}

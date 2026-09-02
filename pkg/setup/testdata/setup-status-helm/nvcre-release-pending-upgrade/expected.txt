@@ -1,0 +1,47 @@
+{
+  "installed": false,
+  "components": {
+    "nvcreCRDs": true,
+    "nvcreController": true,
+    "kubeflowTrainer": true,
+    "logProfiles": true,
+    "gpuOperator": true,
+    "dcgm": false
+  },
+  "kubeflowTrainerVersion": {
+    "supported": "v2.2.1",
+    "detected": "2.2.1",
+    "source": "helm release"
+  },
+  "helmReleases": [
+    {
+      "name": "nvcre",
+      "namespace": "nvcre",
+      "state": "pending-upgrade"
+    },
+    {
+      "name": "kubeflow-trainer",
+      "namespace": "kubeflow-system",
+      "state": "deployed"
+    }
+  ]
+}
+
+Component                       Status
+─────────────────────────       ──────────
+NVCRE CRDs                      ✓ installed
+NVCRE Controller                ✓ installed
+Kubeflow Trainer                ✓ installed (v2.2.1)
+Log Profiles                    ✓ installed
+GPU Operator                    ✓ installed
+DCGM (optional)                 ✗ not found
+Helm release nvcre              ✗ pending-upgrade
+Helm release kubeflow-trainer   ✓ deployed
+
+Status: not ready — a managed Helm release is unhealthy
+  Helm release nvcre (namespace: nvcre) is pending-upgrade — run 'nvcrectl setup init' to repair it
+
+Note: service gpu-operator/nvidia-dcgm is missing. Only the diagnostics/dcgm-level4
+      category needs it. Your cluster administrator can add it with:
+      kubectl patch clusterpolicy cluster-policy --type=merge \
+        -p '{"spec":{"dcgm":{"enabled":true}}}'

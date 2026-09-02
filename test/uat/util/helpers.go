@@ -34,7 +34,7 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
 // Polling configuration.
@@ -47,7 +47,7 @@ var (
 func Scheme() *runtime.Scheme {
 	s := runtime.NewScheme()
 	_ = clientgoscheme.AddToScheme(s)
-	_ = crev1alpha1.AddToScheme(s)
+	_ = nvcrev1alpha1.AddToScheme(s)
 	_ = trainerv1alpha1.AddToScheme(s)
 	_ = batchv1.AddToScheme(s)
 	return s
@@ -140,9 +140,9 @@ func WaitForCertification(
 	key types.NamespacedName,
 	conditionType string,
 	timeout time.Duration,
-) *crev1alpha1.Certification {
+) *nvcrev1alpha1.Certification {
 	t.Helper()
-	cert := &crev1alpha1.Certification{}
+	cert := &nvcrev1alpha1.Certification{}
 	require.Eventually(t, func() bool {
 		if err := c.Get(ctx, key, cert); err != nil {
 			return false
@@ -198,28 +198,28 @@ func WaitForPods(
 	return pods
 }
 
-// ── ncrectl integration ──
+// ── nvcrectl integration ──
 
-// RunNcrectl runs `ncrectl certification run` with the given args.
-func RunNcrectl(ctx context.Context, t *testing.T, args ...string) {
+// RunNvcrectl runs `nvcrectl certification run` with the given args.
+func RunNvcrectl(ctx context.Context, t *testing.T, args ...string) {
 	t.Helper()
 
-	ncrectl := os.Getenv("NCRECTL")
-	if ncrectl == "" {
-		ncrectl = filepath.Join(ProjectDir(t), "bin", "ncrectl")
+	nvcrectl := os.Getenv("NVCRECTL")
+	if nvcrectl == "" {
+		nvcrectl = filepath.Join(ProjectDir(t), "bin", "nvcrectl")
 	}
 
 	fullArgs := append([]string{"certification", "run"}, args...)
-	cmd := exec.CommandContext(ctx, ncrectl, fullArgs...)
+	cmd := exec.CommandContext(ctx, nvcrectl, fullArgs...)
 	cmd.Dir = ProjectDir(t)
-	t.Logf("running: %s %s", ncrectl, strings.Join(fullArgs, " "))
+	t.Logf("running: %s %s", nvcrectl, strings.Join(fullArgs, " "))
 
 	output, err := cmd.CombinedOutput()
-	t.Logf("ncrectl output:\n%s", string(output))
-	require.NoError(t, err, "ncrectl certification run failed")
+	t.Logf("nvcrectl output:\n%s", string(output))
+	require.NoError(t, err, "nvcrectl certification run failed")
 }
 
-// ProjectDir returns the CRE project root.
+// ProjectDir returns the NVCRE project root.
 func ProjectDir(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()
@@ -280,7 +280,7 @@ func CompareCertification(
 ) {
 	t.Helper()
 
-	cert := &crev1alpha1.Certification{}
+	cert := &nvcrev1alpha1.Certification{}
 	require.NoError(t, c.Get(ctx, key, cert))
 	StripCertVolatile(cert)
 
@@ -420,7 +420,7 @@ func stripLabel(pod *corev1.Pod, key string) {
 }
 
 // StripCertVolatile removes timestamps and UIDs from a Certification.
-func StripCertVolatile(cert *crev1alpha1.Certification) {
+func StripCertVolatile(cert *nvcrev1alpha1.Certification) {
 	cert.ResourceVersion = ""
 	cert.UID = ""
 	cert.Generation = 0
@@ -449,13 +449,13 @@ func StripCertVolatile(cert *crev1alpha1.Certification) {
 
 // DeleteCertification deletes a Certification and ignores not-found errors.
 func DeleteCertification(ctx context.Context, c client.Client, name, namespace string) {
-	cert := &crev1alpha1.Certification{}
+	cert := &nvcrev1alpha1.Certification{}
 	cert.Name = name
 	cert.Namespace = namespace
 	_ = client.IgnoreNotFound(c.Delete(ctx, cert))
 }
 
-// RestartController restarts the CRE controller by deleting its pods.
+// RestartController restarts the NVCRE controller by deleting its pods.
 // The Deployment recreates them with a fresh informer cache.
 // Waits for the new pod to be Ready.
 func RestartController(ctx context.Context, t *testing.T, c client.Client) {
@@ -464,7 +464,7 @@ func RestartController(ctx context.Context, t *testing.T, c client.Client) {
 	// Delete all controller pods.
 	podList := &corev1.PodList{}
 	require.NoError(t, c.List(ctx, podList,
-		client.InNamespace("cluster-readiness-engine"),
+		client.InNamespace("nvcre"),
 		client.MatchingLabels{"control-plane": "manager"}))
 	for i := range podList.Items {
 		_ = c.Delete(ctx, &podList.Items[i])
@@ -474,7 +474,7 @@ func RestartController(ctx context.Context, t *testing.T, c client.Client) {
 	require.Eventually(t, func() bool {
 		list := &corev1.PodList{}
 		if err := c.List(ctx, list,
-			client.InNamespace("cluster-readiness-engine"),
+			client.InNamespace("nvcre"),
 			client.MatchingLabels{"control-plane": "manager"}); err != nil {
 			return false
 		}
@@ -511,13 +511,13 @@ func CertificationKey(name, namespace string) types.NamespacedName {
 
 // ── WorkloadRun helpers ──
 
-// RunNcrectlWorkloadRun runs `ncrectl workloadrun run` with a YAML file.
-func RunNcrectlWorkloadRun(ctx context.Context, t *testing.T, yamlFile string) {
+// RunNvcrectlWorkloadRun runs `nvcrectl workloadrun run` with a YAML file.
+func RunNvcrectlWorkloadRun(ctx context.Context, t *testing.T, yamlFile string) {
 	t.Helper()
 
-	ncrectl := os.Getenv("NCRECTL")
-	if ncrectl == "" {
-		ncrectl = filepath.Join(ProjectDir(t), "bin", "ncrectl")
+	nvcrectl := os.Getenv("NVCRECTL")
+	if nvcrectl == "" {
+		nvcrectl = filepath.Join(ProjectDir(t), "bin", "nvcrectl")
 	}
 
 	// Resolve relative paths against test/uat/ (where tests run from).
@@ -525,13 +525,13 @@ func RunNcrectlWorkloadRun(ctx context.Context, t *testing.T, yamlFile string) {
 		yamlFile = filepath.Join(ProjectDir(t), "test", "uat", yamlFile)
 	}
 	fullArgs := []string{"workloadrun", "run", yamlFile}
-	cmd := exec.CommandContext(ctx, ncrectl, fullArgs...)
+	cmd := exec.CommandContext(ctx, nvcrectl, fullArgs...)
 	cmd.Dir = ProjectDir(t)
-	t.Logf("running: %s %s", ncrectl, strings.Join(fullArgs, " "))
+	t.Logf("running: %s %s", nvcrectl, strings.Join(fullArgs, " "))
 
 	output, err := cmd.CombinedOutput()
-	t.Logf("ncrectl output:\n%s", string(output))
-	require.NoError(t, err, "ncrectl workloadrun run failed")
+	t.Logf("nvcrectl output:\n%s", string(output))
+	require.NoError(t, err, "nvcrectl workloadrun run failed")
 }
 
 // WaitForWorkloadRun polls until the WorkloadRun has the given condition True.
@@ -542,9 +542,9 @@ func WaitForWorkloadRun(
 	key types.NamespacedName,
 	conditionType string,
 	timeout time.Duration,
-) *crev1alpha1.WorkloadRun {
+) *nvcrev1alpha1.WorkloadRun {
 	t.Helper()
-	run := &crev1alpha1.WorkloadRun{}
+	run := &nvcrev1alpha1.WorkloadRun{}
 	require.Eventually(t, func() bool {
 		if err := c.Get(ctx, key, run); err != nil {
 			return false
@@ -558,7 +558,7 @@ func WaitForWorkloadRun(
 
 // DeleteWorkloadRun deletes a WorkloadRun and ignores not-found errors.
 func DeleteWorkloadRun(ctx context.Context, c client.Client, name, namespace string) {
-	run := &crev1alpha1.WorkloadRun{}
+	run := &nvcrev1alpha1.WorkloadRun{}
 	run.Name = name
 	run.Namespace = namespace
 	_ = client.IgnoreNotFound(c.Delete(ctx, run))

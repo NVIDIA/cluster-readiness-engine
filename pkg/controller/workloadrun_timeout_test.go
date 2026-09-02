@@ -12,8 +12,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
 // isJobTimedOut returns false when Execution.TimeoutPerJob is nil, so a
@@ -22,10 +22,10 @@ import (
 func TestWorkloadRunTimeout(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "workloadrun-timeout",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
-		var spec crev1alpha1.WorkloadRunSpec
+		var spec nvcrev1alpha1.WorkloadRunSpec
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &spec); err != nil {
 			return err
 		}
@@ -51,14 +51,16 @@ func TestWorkloadRunTimeout(t *testing.T) {
 // A single-value assertion: the bound only matters if isJobTimedOut reads it.
 func TestIsJobTimedOutUsesTheResolvedTimeout(t *testing.T) {
 	r := &WorkflowReconciler{}
-	orch := buildWROrchestration(&crev1alpha1.WorkloadRunSpec{
-		Orchestration: &crev1alpha1.WorkloadOrchestration{TimeoutPerJob: "1s"},
+	orch := buildWROrchestration(&nvcrev1alpha1.WorkloadRunSpec{
+		Orchestration: &nvcrev1alpha1.WorkloadOrchestration{TimeoutPerJob: "1s"},
 	})
-	wf := &crev1alpha1.Workflow{Spec: crev1alpha1.WorkflowSpec{Orchestration: *orch}}
+	wf := &nvcrev1alpha1.Workflow{Spec: nvcrev1alpha1.WorkflowSpec{Orchestration: *orch}}
 
 	started := metav1.NewTime(time.Now().Add(-2 * time.Second))
-	require.True(t, r.isJobTimedOut(wf, &crev1alpha1.GroupStatus{StartTime: &started}))
+	jobStarted := &nvcrev1alpha1.Job{Status: nvcrev1alpha1.JobStatus{WorkloadStartTime: &started}}
+	require.True(t, r.isJobTimedOut(wf, &nvcrev1alpha1.GroupStatus{}, jobStarted))
 
 	fresh := metav1.NewTime(time.Now())
-	require.False(t, r.isJobTimedOut(wf, &crev1alpha1.GroupStatus{StartTime: &fresh}))
+	jobFresh := &nvcrev1alpha1.Job{Status: nvcrev1alpha1.JobStatus{WorkloadStartTime: &fresh}}
+	require.False(t, r.isJobTimedOut(wf, &nvcrev1alpha1.GroupStatus{}, jobFresh))
 }

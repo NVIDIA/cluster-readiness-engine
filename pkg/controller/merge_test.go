@@ -7,16 +7,16 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"sigs.k8s.io/yaml"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/noderesults"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
 )
 
 func TestMergeFailedNodes(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "merge-failed-nodes",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {

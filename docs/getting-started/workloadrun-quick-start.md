@@ -12,12 +12,12 @@ description: Run a distributed training or NCCL workload without writing a full 
 
 ## Before you begin
 
-[Install ncrectl and set up the cluster](./install.md) before continuing.
+[Install nvcrectl and set up the cluster](./install.md) before continuing.
 
 ## Define a WorkloadRun
 
 ```yaml
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: WorkloadRun
 metadata:
   name: nccl-all-reduce
@@ -27,7 +27,7 @@ spec:
     mpi:
       binary: /usr/local/bin/all_reduce_perf_mpi
       args: ["-b", "8", "-e", "32G", "-f", "2", "-n", "100"]
-      mpirunPath: /usr/local/bin/mpirun
+      mpirunPath: /usr/local/mpi/bin/mpirun
   numNodes: 4
   bandwidthMeasurement:
     logProfileRef: nccl-bandwidth
@@ -37,7 +37,7 @@ spec:
 ## Run it
 
 ```bash
-ncrectl workloadrun run \
+nvcrectl workloadrun run \
   --workload-registry nvcr.io \
   --workload-registry-username '$oauthtoken' \
   --workload-registry-password "$NGC_API_KEY" \
@@ -45,12 +45,12 @@ ncrectl workloadrun run \
   nccl-all-reduce.yaml
 ```
 
-ncrectl auto-detects the platform and GPU architecture from the cluster's node labels, applies the appropriate overrides, and streams log output until the workload completes.
+nvcrectl auto-detects the platform and GPU architecture from the cluster's node labels, applies the appropriate overrides, and streams log output until the workload completes.
 
 ## View results
 
 ```bash
-ncrectl workloadrun report nccl-all-reduce
+nvcrectl workloadrun report nccl-all-reduce
 ```
 
 For workloads with `bandwidthMeasurement` configured, the report includes per-bus bandwidth results parsed from the NCCL output.

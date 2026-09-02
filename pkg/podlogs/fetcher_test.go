@@ -20,7 +20,7 @@ import (
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/yaml"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
 type openStreamInput struct {
@@ -42,7 +42,7 @@ type openStreamResult struct {
 func TestOpenStream(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "open-stream",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in openStreamInput

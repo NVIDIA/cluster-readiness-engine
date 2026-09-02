@@ -1,0 +1,8 @@
+{
+  "totalNodes": 2,
+  "capableNodes": [
+    "node001",
+    "node002"
+  ],
+  "nodesPerJob": 2
+}

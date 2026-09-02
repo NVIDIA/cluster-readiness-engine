@@ -11,7 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/yaml"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
 // TestNodeHealthChangePredicate verifies that nodeHealthChangePredicate triggers
@@ -21,7 +21,7 @@ import (
 func TestNodeHealthChangePredicate(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "node-health-predicate",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var oldNode, newNode corev1.Node

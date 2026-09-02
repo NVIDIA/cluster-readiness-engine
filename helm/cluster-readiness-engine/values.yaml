@@ -1,14 +1,19 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# CRE Helm chart values.
+# NVCRE Helm chart values.
 
-nameOverride: cluster-readiness-engine
+nameOverride: nvcre
 
 manager:
   replicas: 1
+  # Maximum number of objects reconciled concurrently by each core controller
+  # (Job, Workflow, Certification, and WorkloadRun).
+  maxConcurrentReconciles: 10
+  # Measurement controllers fetch and parse Pod logs, so their default is lower.
+  measurementMaxConcurrentReconciles: 5
   image:
-    repository: ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager
+    repository: ghcr.io/nvidia/cluster-readiness-engine/manager
     tag: ""
     pullPolicy: IfNotPresent
   imagePullSecrets: []

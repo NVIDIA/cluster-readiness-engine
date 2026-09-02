@@ -37,7 +37,7 @@ metadata:
     kubernetes.io/hostname: topo-node-04
     topology.kubernetes.io/zone: zone-b
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: test-topo-metrics
@@ -78,7 +78,7 @@ status:
           - zone-a
         phase: Running
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: test-topo-metrics-job-0
           namespace: default
@@ -90,21 +90,21 @@ status:
           - zone-b
         phase: Running
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: test-topo-metrics-job-1
           namespace: default
 ---
 # group-0 Job: Succeeded
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-topo-metrics-job-0
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
-    cre.nvidia.com/workflow: test-topo-metrics
-    cre.nvidia.com/group: group-0
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: test-topo-metrics
+    nvcre.nvidia.com/group: group-0
 spec:
   workload:
     trainJob:
@@ -134,15 +134,15 @@ status:
       lastTransitionTime: "2026-01-22T10:00:00Z"
 ---
 # group-1 Job: Failed
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-topo-metrics-job-1
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
-    cre.nvidia.com/workflow: test-topo-metrics
-    cre.nvidia.com/group: group-1
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: test-topo-metrics
+    nvcre.nvidia.com/group: group-1
 spec:
   workload:
     trainJob:

@@ -12,7 +12,7 @@ import (
 	promtest "github.com/prometheus/client_golang/prometheus/testutil"
 	"sigs.k8s.io/yaml"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
 // TestCleanupJobMetricsRemovesEveryJobScopedSeries pins the cardinality
@@ -25,7 +25,7 @@ import (
 func TestCleanupJobMetricsRemovesEveryJobScopedSeries(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "cleanup-job-metrics-cardinality",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -49,15 +49,15 @@ func TestCleanupJobMetricsRemovesEveryJobScopedSeries(t *testing.T) {
 			collect prometheus.Collector
 			record  func()
 		}{
-			{"cre_job_status", jobStatusGauge, func() { recordJobStatus(ns, job, wf, "in_progress") }},
-			{"cre_job_failed_nodes", failedNodesGauge, func() { recordHardwareFailure(ns, job, wf, []string{"node-a"}) }},
-			{"cre_hardware_failures_detected_total", hardwareFailuresDetectedTotal, func() { recordHardwareFailure(ns, job, wf, []string{"node-a"}) }},
-			{"cre_hardware_failed_jobs_total", hardwareFailedJobsTotal, func() { recordFirstHardwareFailure(ns, job, wf) }},
-			{"cre_nodes_evaluated_total", nodesEvaluatedTotal, func() { recordNodesEvaluated(ns, job, wf, 8) }},
-			{"cre_workload_created_total", workloadCreatedTotal, func() { recordWorkloadCreated(ns, job, wf) }},
-			{"cre_reconcile_total", reconcileTotal, func() { recordReconcile(ns, job, wf, "success") }},
-			{"cre_reconcile_duration_seconds", reconcileDuration, func() { observeReconcileDuration(ns, job, wf, 0.25) }},
-			{"cre_node_health_check_duration_seconds", nodeHealthCheckDuration, func() { observeNodeHealthCheckDuration(ns, job, wf, 0.1) }},
+			{"nvcre_job_status", jobStatusGauge, func() { recordJobStatus(ns, job, wf, "in_progress") }},
+			{"nvcre_job_failed_nodes", failedNodesGauge, func() { recordHardwareFailure(ns, job, wf, []string{testNodeA}) }},
+			{"nvcre_hardware_failures_detected_total", hardwareFailuresDetectedTotal, func() { recordHardwareFailure(ns, job, wf, []string{testNodeA}) }},
+			{"nvcre_hardware_failed_jobs_total", hardwareFailedJobsTotal, func() { recordFirstHardwareFailure(ns, job, wf) }},
+			{"nvcre_nodes_evaluated_total", nodesEvaluatedTotal, func() { recordNodesEvaluated(ns, job, wf, 8) }},
+			{"nvcre_workload_created_total", workloadCreatedTotal, func() { recordWorkloadCreated(ns, job, wf) }},
+			{"nvcre_reconcile_total", reconcileTotal, func() { recordReconcile(ns, job, wf, "success") }},
+			{"nvcre_reconcile_duration_seconds", reconcileDuration, func() { observeReconcileDuration(ns, job, wf, 0.25) }},
+			{"nvcre_node_health_check_duration_seconds", nodeHealthCheckDuration, func() { observeNodeHealthCheckDuration(ns, job, wf, 0.1) }},
 		}
 
 		// The golden file pins the exact set of job-scoped metric names this test

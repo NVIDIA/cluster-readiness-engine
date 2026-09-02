@@ -1,0 +1,78 @@
+[
+  {
+    "name": "enable-http2",
+    "default": "false"
+  },
+  {
+    "name": "health-probe-bind-address",
+    "default": ":8081"
+  },
+  {
+    "name": "kubeconfig",
+    "default": ""
+  },
+  {
+    "name": "leader-elect",
+    "default": "false"
+  },
+  {
+    "name": "max-concurrent-reconciles",
+    "default": "10"
+  },
+  {
+    "name": "measurement-max-concurrent-reconciles",
+    "default": "5"
+  },
+  {
+    "name": "metrics-bind-address",
+    "default": "0"
+  },
+  {
+    "name": "metrics-cert-key",
+    "default": "tls.key"
+  },
+  {
+    "name": "metrics-cert-name",
+    "default": "tls.crt"
+  },
+  {
+    "name": "metrics-cert-path",
+    "default": ""
+  },
+  {
+    "name": "metrics-secure",
+    "default": "true"
+  },
+  {
+    "name": "webhook-cert-key",
+    "default": "tls.key"
+  },
+  {
+    "name": "webhook-cert-name",
+    "default": "tls.crt"
+  },
+  {
+    "name": "webhook-cert-path",
+    "default": ""
+  },
+  {
+    "name": "zap-devel",
+    "default": "true"
+  },
+  {
+    "name": "zap-encoder",
+    "default": ""
+  },
+  {
+    "name": "zap-log-level",
+    "default": ""
+  },
+  {
+    "name": "zap-stacktrace-level",
+    "default": ""
+  },
+  {
+    "name": "zap-time-encoding",
+    "default": ""
+  }
+]

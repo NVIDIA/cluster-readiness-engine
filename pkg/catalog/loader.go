@@ -16,7 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
 // Default values for template variables when not specified by the user.
@@ -27,11 +27,18 @@ const (
 	DefaultSaveRetainInterval = 1000
 	DefaultSaveTopK           = 1
 	DefaultStorageSize        = "10Ti"
-	DefaultTestScale          = crev1alpha1.TestScaleFullScale
+	DefaultTestScale          = nvcrev1alpha1.TestScaleFullScale
 	DefaultMaxBytes           = "16G"
 	DefaultNumIterations      = 100
 	DefaultNumCycles          = 10
 	DefaultMinGroupSize       = 2
+
+	// Training container resource defaults (DGX-class sizing). Overridable
+	// per value via CategoryOptions.resources (issue #83).
+	DefaultTrainingCPULimit      = "128"
+	DefaultTrainingMemoryLimit   = "800Gi"
+	DefaultTrainingCPURequest    = "64"
+	DefaultTrainingMemoryRequest = "500Gi"
 
 	// Diagnose mode uses fewer iterations for faster fault detection.
 	DiagnoseNumIterations = 5
@@ -87,6 +94,22 @@ type TemplateData struct {
 	// MlnxPerNode is the Mellanox NIC count per node for IB/RoCE platforms.
 	// 0 means omit nvidia.com/mlnxnics. Templates use: {{ .MlnxPerNode }}
 	MlnxPerNode int32
+
+	// TrainingCPULimit is the CPU limit for training containers
+	// (always non-empty after defaults). Templates use: {{ .TrainingCPULimit }}
+	TrainingCPULimit string
+
+	// TrainingMemoryLimit is the memory limit for training containers
+	// (always non-empty after defaults). Templates use: {{ .TrainingMemoryLimit }}
+	TrainingMemoryLimit string
+
+	// TrainingCPURequest is the CPU request for training containers
+	// (always non-empty after defaults). Templates use: {{ .TrainingCPURequest }}
+	TrainingCPURequest string
+
+	// TrainingMemoryRequest is the memory request for training containers
+	// (always non-empty after defaults). Templates use: {{ .TrainingMemoryRequest }}
+	TrainingMemoryRequest string
 
 	// EnableMNNVL controls the NCCL_MNNVL_ENABLE env var.
 	// Templates use: {{ if .EnableMNNVL }}1{{ else }}0{{ end }}
@@ -323,7 +346,9 @@ func loadAndRegisterEntries() error {
 		meta := discoverEntryMeta(dir, variant)
 
 		Register(domain, variant, Entry{
-			MinGPUs: meta.MinGPUs,
+			MinGPUs:       meta.MinGPUs,
+			TimeoutPerJob: meta.TimeoutPerJob,
+			Iterations:    defaultIterations(buf.Bytes()),
 			MaxValidNodes: func(availableNodes, gpusPerNode int32, gpuArch string) int32 {
 				for n := availableNodes; n >= 1; n-- {
 					totalGPUs := n * gpusPerNode
@@ -345,9 +370,9 @@ func loadAndRegisterEntries() error {
 				}
 				return 0
 			},
-			Build: func(target crev1alpha1.TargetSpec, config BuildConfig) (crev1alpha1.WorkflowSpec, error) {
+			Build: func(target nvcrev1alpha1.TargetSpec, config BuildConfig) (nvcrev1alpha1.WorkflowSpec, error) {
 				if config.GPUArchitecture == "" {
-					return crev1alpha1.WorkflowSpec{}, fmt.Errorf(
+					return nvcrev1alpha1.WorkflowSpec{}, fmt.Errorf(
 						"%s/%s: GPUArchitecture is required but was not provided",
 						domain, variant)
 				}
@@ -356,19 +381,19 @@ func loadAndRegisterEntries() error {
 
 				// Validate GPU count against entry constraints.
 				if err := validateParallelism(domain, variant, meta, configArch, config.NodesPerJob, config.GpusPerNode); err != nil {
-					return crev1alpha1.WorkflowSpec{}, err
+					return nvcrev1alpha1.WorkflowSpec{}, err
 				}
 
 				td := buildTemplateData(config, configArch, variant, meta)
 
 				var rendered bytes.Buffer
 				if err := tmpl.Execute(&rendered, td); err != nil {
-					return crev1alpha1.WorkflowSpec{}, fmt.Errorf("executing template %s/%s: %w", domain, variant, err)
+					return nvcrev1alpha1.WorkflowSpec{}, fmt.Errorf("executing template %s/%s: %w", domain, variant, err)
 				}
 
-				var spec crev1alpha1.WorkflowSpec
+				var spec nvcrev1alpha1.WorkflowSpec
 				if err := yaml.Unmarshal(rendered.Bytes(), &spec); err != nil {
-					return crev1alpha1.WorkflowSpec{}, fmt.Errorf("parsing rendered %s/%s: %w", domain, variant, err)
+					return nvcrev1alpha1.WorkflowSpec{}, fmt.Errorf("parsing rendered %s/%s: %w", domain, variant, err)
 				}
 
 				spec.Orchestration.Target = &target
@@ -447,21 +472,21 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 	// Job. Partitioning reads the workload's numNodes, so this is the knob that
 	// makes the setting do anything; without it the template rendered the full
 	// node count and the scale was a no-op.
-	if td.TestScale == crev1alpha1.TestScaleIntraNode {
+	if td.TestScale == nvcrev1alpha1.TestScaleIntraNode {
 		td.NodesPerJob = 1
 	}
 	if td.MaxBytes == "" {
 		td.MaxBytes = DefaultMaxBytes
 	}
 	if td.NumIterations == 0 {
-		if td.TestScale == crev1alpha1.TestScaleDiagnose {
+		if td.TestScale == nvcrev1alpha1.TestScaleDiagnose {
 			td.NumIterations = DiagnoseNumIterations
 		} else {
 			td.NumIterations = DefaultNumIterations
 		}
 	}
 	if td.NumCycles == 0 {
-		if td.TestScale == crev1alpha1.TestScaleDiagnose {
+		if td.TestScale == nvcrev1alpha1.TestScaleDiagnose {
 			td.NumCycles = DiagnoseNumCycles
 		} else {
 			td.NumCycles = DefaultNumCycles
@@ -470,13 +495,9 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 	if td.MinGroupSize == 0 {
 		td.MinGroupSize = DefaultMinGroupSize
 	}
-	if td.TimeoutPerJob == "" {
-		if td.TestScale == crev1alpha1.TestScaleDiagnose {
-			td.TimeoutPerJob = DiagnoseTimeoutPerJob
-		} else {
-			td.TimeoutPerJob = DefaultTimeoutPerJob
-		}
-	}
+	td.TrainingCPULimit, td.TrainingMemoryLimit,
+		td.TrainingCPURequest, td.TrainingMemoryRequest = resolveTrainingResources(config.Resources)
+	td.TimeoutPerJob = resolveTimeoutPerJob(td.TimeoutPerJob, meta.TimeoutPerJob, td.TestScale)
 	tp, pp, ep := meta.getParallel(configArch)
 	if tp > 0 {
 		td.TP = tp
@@ -488,6 +509,73 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 		td.EP = ep
 	}
 	return td
+}
+
+// defaultIterations extracts orchestration.iterations from an entry template
+// rendered with empty data. The iteration count is a static literal in every
+// entry (no template variables), so the empty render carries it faithfully.
+// Best effort: any parse failure falls back to 1, the catalog-wide value.
+func defaultIterations(emptyRender []byte) int {
+	var spec nvcrev1alpha1.WorkflowSpec
+	if err := yaml.Unmarshal(emptyRender, &spec); err != nil {
+		return 1
+	}
+	if spec.Orchestration.Iterations < 1 {
+		return 1
+	}
+	return spec.Orchestration.Iterations
+}
+
+// resolveTrainingResources resolves the CPU/memory values that training
+// entries template into their container resources. Each value falls back to
+// its DGX-class default independently, so a user who overrides only the
+// memory keeps the default CPU sizing (and vice versa). When a request and
+// its matching limit are both set, the Certification CRD's CEL rules reject
+// an inverted pair at admission (see CategoryResources). A partial override
+// that inverts against a default (e.g. a request raised above the default
+// limit) still fails loudly at pod admission rather than silently here.
+func resolveTrainingResources(res *nvcrev1alpha1.CategoryResources) (cpuLimit, memLimit, cpuRequest, memRequest string) {
+	cpuLimit = DefaultTrainingCPULimit
+	memLimit = DefaultTrainingMemoryLimit
+	cpuRequest = DefaultTrainingCPURequest
+	memRequest = DefaultTrainingMemoryRequest
+	if res == nil {
+		return cpuLimit, memLimit, cpuRequest, memRequest
+	}
+	if res.Limits != nil {
+		if res.Limits.CPU != nil {
+			cpuLimit = res.Limits.CPU.String()
+		}
+		if res.Limits.Memory != nil {
+			memLimit = res.Limits.Memory.String()
+		}
+	}
+	if res.Requests != nil {
+		if res.Requests.CPU != nil {
+			cpuRequest = res.Requests.CPU.String()
+		}
+		if res.Requests.Memory != nil {
+			memRequest = res.Requests.Memory.String()
+		}
+	}
+	return cpuLimit, memLimit, cpuRequest, memRequest
+}
+
+// resolveTimeoutPerJob resolves the effective timeoutPerJob for an entry.
+// Precedence: explicit user value > entry meta.yaml default > test-scale
+// global default. Used by buildTemplateData at render time and by
+// Entry.EffectiveTimeoutPerJob for offline derivation (nvcrectl --wait).
+func resolveTimeoutPerJob(userTimeout, entryDefault, testScale string) string {
+	if userTimeout != "" {
+		return userTimeout
+	}
+	if entryDefault != "" {
+		return entryDefault
+	}
+	if testScale == nvcrev1alpha1.TestScaleDiagnose {
+		return DiagnoseTimeoutPerJob
+	}
+	return DefaultTimeoutPerJob
 }
 
 // makeIncludeFile returns a template function that reads files relative to the
@@ -568,6 +656,12 @@ func makeLibTemplate(funcs template.FuncMap) func(string, any) (string, error) {
 type entryMeta struct {
 	MinGPUs     int32                   `yaml:"minGPUs"`
 	Parallelism map[string]archParallel `yaml:"parallelism"`
+
+	// TimeoutPerJob is the entry's default job timeout (e.g., "2h"). It wins
+	// over the global defaults (DefaultTimeoutPerJob / DiagnoseTimeoutPerJob)
+	// in every test scale — an entry that declares its runtime knows it better
+	// than the scale heuristic — but an explicit user timeoutPerJob still wins.
+	TimeoutPerJob string `yaml:"timeoutPerJob"`
 }
 
 // archParallel defines the parallelism config for a GPU architecture.

@@ -29,10 +29,10 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/catalog"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/controller"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/podlogs"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -44,10 +44,33 @@ var (
 	setupLog = ctrl.Log.WithName("setup")
 )
 
+const (
+	defaultMaxConcurrentReconciles            = 10
+	defaultMeasurementMaxConcurrentReconciles = 5
+)
+
+type controllerConcurrencyOptions struct {
+	maxConcurrentReconciles            int
+	measurementMaxConcurrentReconciles int
+}
+
+func (o controllerConcurrencyOptions) validate() error {
+	if o.maxConcurrentReconciles <= 0 {
+		return fmt.Errorf("--max-concurrent-reconciles must be greater than 0, got %d", o.maxConcurrentReconciles)
+	}
+	if o.measurementMaxConcurrentReconciles <= 0 {
+		return fmt.Errorf(
+			"--measurement-max-concurrent-reconciles must be greater than 0, got %d",
+			o.measurementMaxConcurrentReconciles,
+		)
+	}
+	return nil
+}
+
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(crev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(nvcrev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(trainerv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
@@ -67,16 +90,24 @@ func newRootCommand() *cobra.Command {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	concurrency := controllerConcurrencyOptions{
+		maxConcurrentReconciles:            defaultMaxConcurrentReconciles,
+		measurementMaxConcurrentReconciles: defaultMeasurementMaxConcurrentReconciles,
+	}
 
 	// Bridge zap flags (registered on standard flag.CommandLine) into cobra
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
 
 	cmd := &cobra.Command{
-		Use:     "cluster-readiness-engine",
-		Short:   "CRE controller manager",
+		Use:     "nvcre",
+		Short:   "NVCRE controller manager",
 		Version: version,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := concurrency.validate(); err != nil {
+				return err
+			}
+
 			ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 			// Fail fast if the embedded gpu-defaults catalog is missing or
@@ -176,47 +207,57 @@ func newRootCommand() *cobra.Command {
 			}
 
 			if err := (&controller.JobReconciler{
-				Client:    mgr.GetClient(),
-				Scheme:    mgr.GetScheme(),
-				Clientset: clientset,
-				Recorder:  mgr.GetEventRecorder("job-controller"),
+				Client:                  mgr.GetClient(),
+				Scheme:                  mgr.GetScheme(),
+				Clientset:               clientset,
+				Recorder:                mgr.GetEventRecorder("job-controller"),
+				MaxConcurrentReconciles: concurrency.maxConcurrentReconciles,
 			}).SetupWithManager(mgr); err != nil {
 				return fmt.Errorf("unable to create controller Job: %w", err)
 			}
 			if err := (&controller.WorkflowReconciler{
-				Client:    mgr.GetClient(),
-				Scheme:    mgr.GetScheme(),
-				Clientset: clientset,
-				Recorder:  mgr.GetEventRecorder("workflow-controller"),
+				Client:                  mgr.GetClient(),
+				Scheme:                  mgr.GetScheme(),
+				Clientset:               clientset,
+				Recorder:                mgr.GetEventRecorder("workflow-controller"),
+				MaxConcurrentReconciles: concurrency.maxConcurrentReconciles,
 			}).SetupWithManager(mgr); err != nil {
 				return fmt.Errorf("unable to create controller Workflow: %w", err)
 			}
 			if err := (&controller.CertificationReconciler{
-				Client: mgr.GetClient(),
-				Scheme: mgr.GetScheme(),
+				Client:                  mgr.GetClient(),
+				Scheme:                  mgr.GetScheme(),
+				Recorder:                mgr.GetEventRecorder("certification-controller"),
+				MaxConcurrentReconciles: concurrency.maxConcurrentReconciles,
 			}).SetupWithManager(mgr); err != nil {
 				return fmt.Errorf("unable to create controller Certification: %w", err)
 			}
 			if err := (&controller.GoodputMeasurementReconciler{
-				Client:     mgr.GetClient(),
-				Scheme:     mgr.GetScheme(),
-				Clientset:  clientset,
-				LogFetcher: podlogs.NewKubernetesLogFetcher(clientset),
+				Client:                  mgr.GetClient(),
+				Scheme:                  mgr.GetScheme(),
+				Clientset:               clientset,
+				Recorder:                mgr.GetEventRecorder("goodputmeasurement-controller"),
+				LogFetcher:              podlogs.NewKubernetesLogFetcher(clientset),
+				MaxConcurrentReconciles: concurrency.measurementMaxConcurrentReconciles,
 			}).SetupWithManager(mgr); err != nil {
 				return fmt.Errorf("unable to create controller GoodputMeasurement: %w", err)
 			}
 			if err := (&controller.BandwidthMeasurementReconciler{
-				Client:     mgr.GetClient(),
-				APIReader:  mgr.GetAPIReader(),
-				Scheme:     mgr.GetScheme(),
-				Clientset:  clientset,
-				LogFetcher: podlogs.NewKubernetesLogFetcher(clientset),
+				Client:                  mgr.GetClient(),
+				APIReader:               mgr.GetAPIReader(),
+				Scheme:                  mgr.GetScheme(),
+				Clientset:               clientset,
+				Recorder:                mgr.GetEventRecorder("bandwidthmeasurement-controller"),
+				LogFetcher:              podlogs.NewKubernetesLogFetcher(clientset),
+				MaxConcurrentReconciles: concurrency.measurementMaxConcurrentReconciles,
 			}).SetupWithManager(mgr); err != nil {
 				return fmt.Errorf("unable to create controller BandwidthMeasurement: %w", err)
 			}
 			if err := (&controller.WorkloadRunReconciler{
-				Client: mgr.GetClient(),
-				Scheme: mgr.GetScheme(),
+				Client:                  mgr.GetClient(),
+				Scheme:                  mgr.GetScheme(),
+				Recorder:                mgr.GetEventRecorder("workloadrun-controller"),
+				MaxConcurrentReconciles: concurrency.maxConcurrentReconciles,
 			}).SetupWithManager(mgr); err != nil {
 				return fmt.Errorf("unable to create controller WorkloadRun: %w", err)
 			}
@@ -241,6 +282,12 @@ func newRootCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	cmd.Flags().IntVar(&concurrency.maxConcurrentReconciles, "max-concurrent-reconciles",
+		defaultMaxConcurrentReconciles,
+		"Maximum number of concurrent reconciles for Job, Workflow, Certification, and WorkloadRun controllers.")
+	cmd.Flags().IntVar(&concurrency.measurementMaxConcurrentReconciles, "measurement-max-concurrent-reconciles",
+		defaultMeasurementMaxConcurrentReconciles,
+		"Maximum number of concurrent reconciles for GoodputMeasurement and BandwidthMeasurement controllers.")
 	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	cmd.Flags().StringVar(&webhookCertPath, "webhook-cert-path", "",

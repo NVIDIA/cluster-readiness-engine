@@ -51,7 +51,7 @@ jobTemplate:
     workload:
       trainJob:
         runtimePatches:
-        - manager: cre.nvidia.com/catalog
+        - manager: nvcre.nvidia.com/catalog
           trainingRuntimeSpec:
             template:
               spec:
@@ -121,6 +121,10 @@ validation:
 {{- end }}
 {{- end }}
 overrides:
+# NOTE: there is intentionally no Forge+L40 override here (unlike nccl-loopback):
+# L40 has no NVLink/NVSwitch hardware (see the L40 comments in
+# training/nemotron5-8b.yaml and the Forge block in nccl-all-reduce.yaml),
+# so an NVSwitch loopback test is not applicable on that platform.
 # --- AWS + H100 (EFA) ---
 - when:
     platform:
@@ -287,6 +291,42 @@ overrides:
     value:
       name: NCCL_MAX_BYTES
       value: {{ .MaxBytes }}
+# --- OCI + GB300 (RoCE) ---
+# Mirrors nccl-loopback's OCI+GB300 block. Must come AFTER the GB200/GB300
+# ComputeDomain block (which sets the base env via jobTemplate) so that
+# jobTemplatePatch appends to that env array rather than operating on an
+# empty one.
+# Appends OCI GID index vars needed for RoCEv2 connectivity.
+# NCCL_NVLS_ENABLE, NCCL_CUMEM_ENABLE, and NCCL_MNNVL_ENABLE are already set
+# by the GB200/GB300 base override (gb200-env.yaml). Unlike nccl-loopback,
+# NCCL_SHM_DISABLE/NCCL_P2P_DISABLE are intentionally NOT set: this variant
+# exercises the NVLink/NVSwitch fabric. The nvswitch base command/args
+# (all_reduce_perf_mpi with the -n/-N iteration knobs) are left untouched.
+- when:
+    platform:
+      equals: oci
+    gpuArchitecture:
+      equals: gb300
+  dependencies:
+{{ lib "deps/oci-mlnxnics-comm.yaml" . | indent 2 }}
+  jobTemplatePatch:
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: UCX_IB_GID_INDEX
+      value: "3"
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: NCCL_IB_GID_INDEX
+      value: "3"
+{{- if not .EnableMNNVL }}
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: NCCL_DMABUF_ENABLE
+      value: "0"
+{{- end }}
 # --- Mistral + GB300 (InfiniBand) ---
 - when:
     platform:

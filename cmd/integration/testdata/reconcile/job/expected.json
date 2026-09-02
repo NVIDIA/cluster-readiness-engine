@@ -1,15 +1,15 @@
 {
   "Job/test-job": {
     "kind": "Job",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-job",
       "namespace": "default",
       "labels": {
-        "cre.nvidia.com/workflow": "test-workflow"
+        "nvcre.nvidia.com/workflow": "test-workflow"
       },
       "finalizers": [
-        "cre.nvidia.com/finalizer"
+        "nvcre.nvidia.com/finalizer"
       ]
     },
     "spec": {
@@ -65,12 +65,13 @@
         "kind": "TrainJob",
         "name": "test-job-workload",
         "namespace": "default"
-      }
+      },
+      "workloadStartTime": "1970-01-01T00:00:00Z"
     }
   },
   "jobMetrics": {
-    "cre_job_status{status=failed}": 0,
-    "cre_job_status{status=in_progress}": 1,
-    "cre_job_status{status=succeeded}": 0
+    "nvcre_job_status{status=failed}": 0,
+    "nvcre_job_status{status=in_progress}": 1,
+    "nvcre_job_status{status=succeeded}": 0
   }
 }

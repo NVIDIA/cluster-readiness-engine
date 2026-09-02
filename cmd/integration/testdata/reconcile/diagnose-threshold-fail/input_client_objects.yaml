@@ -38,7 +38,7 @@ metadata:
     kubernetes.io/hostname: node-b2
 ---
 # Workflow in diagnose mode with intra-screening complete (groups Running).
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
   name: test-diag-threshold
@@ -87,7 +87,7 @@ status:
         domains: [clique-a]
         phase: Running
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: test-diag-threshold-screen-0-iter-1
           namespace: default
@@ -96,21 +96,21 @@ status:
         domains: [clique-b]
         phase: Running
         jobRef:
-          apiVersion: cre.nvidia.com/v1alpha1
+          apiVersion: nvcre.nvidia.com/v1alpha1
           kind: Job
           name: test-diag-threshold-screen-1-iter-1
           namespace: default
 ---
 # Job for screen-0: Succeeded with good bandwidth.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-diag-threshold-screen-0-iter-1
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
-    cre.nvidia.com/workflow: test-diag-threshold
-    cre.nvidia.com/group: screen-0
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: test-diag-threshold
+    nvcre.nvidia.com/group: screen-0
 spec:
   workload:
     trainJob:
@@ -135,15 +135,15 @@ status:
       lastTransitionTime: "2026-01-22T10:00:00Z"
 ---
 # Job for screen-1: Succeeded but with LOW bandwidth.
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
   name: test-diag-threshold-screen-1-iter-1
   namespace: default
   labels:
-    app.kubernetes.io/managed-by: cluster-readiness-engine
-    cre.nvidia.com/workflow: test-diag-threshold
-    cre.nvidia.com/group: screen-1
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: test-diag-threshold
+    nvcre.nvidia.com/group: screen-1
 spec:
   workload:
     trainJob:
@@ -168,14 +168,14 @@ status:
       lastTransitionTime: "2026-01-22T10:00:00Z"
 ---
 # BandwidthMeasurement for screen-0: good bandwidth (500 GB/s).
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: BandwidthMeasurement
 metadata:
   name: test-diag-threshold-screen-0-bw
   namespace: default
 spec:
   jobRef:
-    apiGroup: cre.nvidia.com
+    apiGroup: nvcre.nvidia.com
     kind: Job
     name: test-diag-threshold-screen-0-iter-1
   logProfileRef: nccl-bandwidth
@@ -188,14 +188,14 @@ status:
       samples: 5
 ---
 # BandwidthMeasurement for screen-1: LOW bandwidth (24 GB/s, below 400 threshold).
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: BandwidthMeasurement
 metadata:
   name: test-diag-threshold-screen-1-bw
   namespace: default
 spec:
   jobRef:
-    apiGroup: cre.nvidia.com
+    apiGroup: nvcre.nvidia.com
     kind: Job
     name: test-diag-threshold-screen-1-iter-1
   logProfileRef: nccl-bandwidth

@@ -1,0 +1,38 @@
+{
+  "PersistentVolume/owned-checkpoint-pv": {
+    "kind": "PersistentVolume",
+    "apiVersion": "v1",
+    "metadata": {
+      "name": "owned-checkpoint-pv",
+      "annotations": {
+        "nvcre.nvidia.com/workflow-uid": "workflow-uid"
+      },
+      "finalizers": [
+        "kubernetes.io/pv-protection"
+      ]
+    },
+    "spec": {
+      "capacity": {
+        "storage": "1Gi"
+      },
+      "hostPath": {
+        "path": "/tmp/owned-checkpoint",
+        "type": ""
+      },
+      "accessModes": [
+        "ReadWriteOnce"
+      ],
+      "claimRef": {
+        "kind": "PersistentVolumeClaim",
+        "namespace": "default",
+        "name": "owned-checkpoint-pvc",
+        "apiVersion": "v1"
+      },
+      "persistentVolumeReclaimPolicy": "Delete",
+      "volumeMode": "Filesystem"
+    },
+    "status": {
+      "phase": "Pending"
+    }
+  }
+}

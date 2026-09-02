@@ -7,16 +7,16 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"sigs.k8s.io/yaml"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/goodput"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/goodput"
 )
 
 func TestComputeAvgTFLOPS(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "compute-avg-tflops",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -42,7 +42,7 @@ func TestComputeAvgTFLOPS(t *testing.T) {
 func TestComputeWarmupTime(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "compute-warmup-time",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -69,7 +69,7 @@ func TestComputeWarmupTime(t *testing.T) {
 func TestComputeNonWarmupTime(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "compute-non-warmup-time",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {

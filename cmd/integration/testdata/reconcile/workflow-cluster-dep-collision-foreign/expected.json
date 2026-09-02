@@ -1,0 +1,20 @@
+{
+  "LogProfile/user-logprofile-keep": {
+    "kind": "LogProfile",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "user-logprofile-keep"
+    },
+    "spec": {
+      "timestamp": {
+        "layout": "2006-01-02T15:04:05.999999999Z"
+      },
+      "patterns": {
+        "applicationStart": {
+          "regex": "Application initialized",
+          "example": "[user I 2026-01-22 10:20:00] Application initialized"
+        }
+      }
+    }
+  }
+}

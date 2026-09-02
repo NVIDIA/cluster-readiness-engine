@@ -28,7 +28,7 @@ metadata:
 spec:
   providerID: "gce://my-project/us-central1-a/gcp-h100-node-02"
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: ns-test

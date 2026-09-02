@@ -1,12 +1,12 @@
 {
   "Workflow/test-diagnose": {
     "kind": "Workflow",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-diagnose",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/workflow-finalizer"
+        "nvcre.nvidia.com/workflow-finalizer"
       ]
     },
     "spec": {
@@ -97,7 +97,7 @@
             ],
             "phase": "Running",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "test-diagnose-screen-0-iter-1",
               "namespace": "default"
@@ -114,7 +114,7 @@
             ],
             "phase": "Running",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "test-diagnose-screen-1-iter-1",
               "namespace": "default"
@@ -131,7 +131,7 @@
             ],
             "phase": "Running",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "test-diagnose-screen-2-iter-1",
               "namespace": "default"

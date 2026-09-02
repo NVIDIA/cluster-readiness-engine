@@ -1,17 +1,17 @@
 ---
-title: ncrectl cluster
+title: nvcrectl cluster
 description: Inspect GPU nodes, platform detection, and network topology.
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 ---
 
 
-## ncrectl cluster info
+## nvcrectl cluster info
 
 Discovers GPU nodes in the cluster and reports the detected platform, GPU architecture, per-node GPU count, and network topology (rack/T1 leaf switch grouping).
 
 ```bash
-ncrectl cluster info [flags]
+nvcrectl cluster info [flags]
 ```
 
 The topology key is auto-detected per cloud platform:
@@ -35,10 +35,10 @@ Use `--topology-key` to override for other environments.
 
 ```bash
 # Table output (default)
-ncrectl cluster info
+nvcrectl cluster info
 
 # JSON output for scripting
-ncrectl cluster info -o json
+nvcrectl cluster info -o json
 ```
 
 ### Sample output

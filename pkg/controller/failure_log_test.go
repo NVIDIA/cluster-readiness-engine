@@ -12,16 +12,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/nodemonitor"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
 // The stored tail was 30 lines, right for a workload whose last line is the
@@ -31,7 +30,7 @@ import (
 func TestFailureLogTail(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "failure-log-tail",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -64,7 +63,7 @@ func TestFailureLogTail(t *testing.T) {
 func TestFailureLogCapture(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "failure-log-capture",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -78,7 +77,7 @@ func TestFailureLogCapture(t *testing.T) {
 		}
 
 		scheme := runtime.NewScheme()
-		if err := crev1alpha1.AddToScheme(scheme); err != nil {
+		if err := nvcrev1alpha1.AddToScheme(scheme); err != nil {
 			return err
 		}
 		if err := corev1.AddToScheme(scheme); err != nil {
@@ -88,10 +87,8 @@ func TestFailureLogCapture(t *testing.T) {
 		objs := make([]client.Object, 0, len(in.Pods))
 		for _, sp := range in.Pods {
 			pod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: sp.Name, Namespace: "ns",
-					Labels: map[string]string{"cre.nvidia.com/job": "j"},
-				},
+				Name: sp.Name, Namespace: "ns",
+				Labels: map[string]string{"nvcre.nvidia.com/job": "j"},
 			}
 			if sp.Running {
 				pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
@@ -102,14 +99,14 @@ func TestFailureLogCapture(t *testing.T) {
 			objs = append(objs, pod)
 		}
 
-		job := &crev1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"}}
+		job := &nvcrev1alpha1.Job{Name: "j", Namespace: "ns"}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).
-			WithIndex(&corev1.Pod{}, nodemonitor.PodCREJobIndexField, func(obj client.Object) []string {
+			WithIndex(&corev1.Pod{}, nodemonitor.PodNVCREJobIndexField, func(obj client.Object) []string {
 				pod, ok := obj.(*corev1.Pod)
 				if !ok {
 					return nil
 				}
-				if jn, found := pod.Labels[nodemonitor.CREJobLabel]; found {
+				if jn, found := pod.Labels[nodemonitor.NVCREJobLabel]; found {
 					return []string{jn}
 				}
 				return nil

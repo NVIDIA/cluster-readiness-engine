@@ -4,13 +4,13 @@
 
 ## Context
 
-Customers have custom taints on their nodes (e.g., maintenance windows, security policies, compliance requirements) that prevent CRE and Kubeflow Trainer controller pods from scheduling. The controllers currently tolerate only a specific `dedicated=system-workload` taint, causing them to remain in Pending state on clusters with arbitrary taints.
+Customers have custom taints on their nodes (e.g., maintenance windows, security policies, compliance requirements) that prevent NVCRE and Kubeflow Trainer controller pods from scheduling. The controllers currently tolerate only a specific `dedicated=system-workload` taint, causing them to remain in Pending state on clusters with arbitrary taints.
 
 Controller pods do not consume GPU resources and should run on infrastructure (non-GPU) nodes. Workload pods (TrainJob) already tolerate all taints via `operator: Exists` injected unconditionally by the Workflow controller (`workflow_controller.go:640-642`).
 
 ## Decision
 
-Apply two scheduling rules to all controller Deployments (CRE, Kubeflow Trainer, JobSet):
+Apply two scheduling rules to all controller Deployments (NVCRE, Kubeflow Trainer, JobSet):
 
 1. **Tolerate all taints** — `operator: Exists` (no key specified) so controllers schedule on any node regardless of taints.
 2. **Require non-GPU nodes** — `requiredDuringSchedulingIgnoredDuringExecution` node affinity with `DoesNotExist` on `nvidia.com/gpu.present`, ensuring controllers never consume GPU node capacity.
@@ -31,8 +31,8 @@ affinity:
 
 Three deployment manifests are updated:
 
-1. **`config/manager/manager.yaml`** — CRE controller (kustomize path)
-2. **`pkg/setup/embedded/controller.yaml`** — CRE controller (ncrectl embedded path)
+1. **`config/manager/manager.yaml`** — NVCRE controller (kustomize path)
+2. **`pkg/setup/embedded/controller.yaml`** — NVCRE controller (nvcrectl embedded path)
 3. **`pkg/setup/embedded/trainer.yaml`** — Kubeflow Trainer and JobSet controllers
 
 Changes per manifest:

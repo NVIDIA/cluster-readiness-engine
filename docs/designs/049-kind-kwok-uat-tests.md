@@ -4,7 +4,7 @@
 
 ## Context
 
-CRE has 78+ envtest-based integration tests with golden file comparison (ADR-014). These tests are fast (~2-3s startup) and thorough for controller logic. However, they have a critical gap: **workloads (TrainJob) are pre-created in test inputs, never verified as created by the Job controller**. The code path at `pkg/controller/job_controller.go:264-333` (`createWorkloadFromSpec()`) — which calls `adapter.Build()`, sets labels, sets OwnerReference, then `r.Create()` — is untested in integration. This has caused 2 regressions in the past sprint.
+NVCRE has 78+ envtest-based integration tests with golden file comparison (ADR-014). These tests are fast (~2-3s startup) and thorough for controller logic. However, they have a critical gap: **workloads (TrainJob) are pre-created in test inputs, never verified as created by the Job controller**. The code path at `pkg/controller/job_controller.go:264-333` (`createWorkloadFromSpec()`) — which calls `adapter.Build()`, sets labels, sets OwnerReference, then `r.Create()` — is untested in integration. This has caused 2 regressions in the past sprint.
 
 envtest lacks:
 
@@ -16,14 +16,14 @@ The existing `test/e2e/` directory has 2 Ginkgo smoke tests (controller pod runn
 
 ## Decision
 
-Add automated UAT tests in `test/uat/` using **Kind** (real cluster with GC and scheduler), **KWOK** (simulated GPU nodes with pod lifecycle), **Tilt** (infrastructure orchestration via `ncrectl`), **Kubeflow Trainer v2 + JobSet** (real controllers that create actual Pods from TrainJobs), and **`sigs.k8s.io/e2e-framework`** (programmatic Go tests).
+Add automated UAT tests in `test/uat/` using **Kind** (real cluster with GC and scheduler), **KWOK** (simulated GPU nodes with pod lifecycle), **Tilt** (infrastructure orchestration via `nvcrectl`), **Kubeflow Trainer v2 + JobSet** (real controllers that create actual Pods from TrainJobs), and **`sigs.k8s.io/e2e-framework`** (programmatic Go tests).
 
 Key design choices:
 
-1. **Tilt orchestrates all infrastructure** — builds the controller image, loads it into Kind, builds ncrectl, installs KWOK + Prometheus CRDs, then runs `ncrectl setup init --image <local> --auto-approve` to install Trainer+JobSet, CRDs, controller, and LogProfiles.
+1. **Tilt orchestrates all infrastructure** — builds the controller image, loads it into Kind, builds nvcrectl, installs KWOK + Prometheus CRDs, then runs `nvcrectl setup init --image <local> --auto-approve` to install Trainer+JobSet, CRDs, controller, and LogProfiles.
 2. **KWOK simulates GPU nodes** with `nvidia.com/gpu.product` labels and `spec.providerID` for platform detection. Nodes are defined in YAML and created per test — easy to update without code changes.
 3. **KWOK auto-completes pods after 30s** via a custom Stage CRD that overrides the default `pod-complete` stage. No manual status updates needed.
-4. **`ncrectl certification run --namespace default`** creates Certifications in tests — dogfoods the CLI for the full creation flow.
+4. **`nvcrectl certification run --namespace default`** creates Certifications in tests — dogfoods the CLI for the full creation flow.
 5. **YAML golden file comparison** — pod specs are compared against `expected_pods.yaml` and certification state against `expected_certification.yaml`. Volatile fields (timestamps, UIDs) are stripped. No `TESTUTIL_UPDATE_EXPECTED` — golden files are hand-authored and reviewed.
 6. **Two-stage assessment** — Stage 1 captures pods while Certification is InProgress (before KWOK completes them). Stage 2 waits for Certification Succeeded and compares final state.
 7. **CSP/HW directory hierarchy** — each test is colocated with its data at `test/uat/<csp>/<hw>/<workload>/`.
@@ -34,8 +34,8 @@ Key design choices:
 ### Full lifecycle under test
 
 ```
-ncrectl certification run --category communication/nccl-all-reduce --namespace default
-  └─ CRE: Certification → Workflow → Job → TrainJob (createWorkloadFromSpec)
+nvcrectl certification run --category communication/nccl-all-reduce --namespace default
+  └─ NVCRE: Certification → Workflow → Job → TrainJob (createWorkloadFromSpec)
       └─ Trainer: TrainJob → Secret + ConfigMap + JobSet
           └─ JobSet controller: JobSet → batch/v1 Jobs (launcher + node)
               └─ K8s Job controller: Jobs → Pods
@@ -55,7 +55,7 @@ test/uat/
         kwok-stage-pod-complete.yaml          # KWOK Stage: pods complete after 30s
 
     util/
-        helpers.go                            # Shared: wait, compare, ncrectl, YAML apply
+        helpers.go                            # Shared: wait, compare, nvcrectl, YAML apply
 
     aws/h100/nccl/
         nccl_test.go                          # TestMain + TestAWSH100NCCL
@@ -78,15 +78,15 @@ Adding a new CSP/HW combination is one directory:
 
 ### Tiltfile
 
-Tilt uses `local_resource` for all steps (no `k8s_yaml` — ncrectl manages K8s deployments):
+Tilt uses `local_resource` for all steps (no `k8s_yaml` — nvcrectl manages K8s deployments):
 
 ```python
 # 1. Build controller image + load into Kind
 local_resource('build-image',
     cmd='cd ../.. && make docker-build IMG=... && kind load docker-image ...')
 
-# 2. Build ncrectl binary
-local_resource('build-ncrectl', cmd='cd ../.. && make build-ncrectl')
+# 2. Build nvcrectl binary
+local_resource('build-nvcrectl', cmd='cd ../.. && make build-nvcrectl')
 
 # 3. Install KWOK (via kubectl apply -f <release-url>)
 local_resource('kwok-install', cmd='kubectl apply -f .../kwok.yaml && ...')
@@ -95,10 +95,10 @@ local_resource('kwok-stage-override', cmd='kubectl apply -f tilt/kwok-stage-pod-
 # 4. Install Prometheus Operator CRDs (for ServiceMonitor in embedded controller.yaml)
 local_resource('prometheus-crds', cmd='kubectl apply --server-side -f .../stripped-down-crds.yaml')
 
-# 5. ncrectl setup init (installs Trainer+JobSet, CRDs, controller, LogProfiles)
-local_resource('ncrectl-setup',
-    cmd='../../bin/ncrectl setup init --image <img> --auto-approve',
-    resource_deps=['build-image', 'build-ncrectl', 'kwok-stage-override', 'prometheus-crds'])
+# 5. nvcrectl setup init (installs Trainer+JobSet, CRDs, controller, LogProfiles)
+local_resource('nvcrectl-setup',
+    cmd='../../bin/nvcrectl setup init --image <controller-image> --auto-approve',
+    resource_deps=['build-image', 'build-nvcrectl', 'kwok-stage-override', 'prometheus-crds'])
 ```
 
 ### Test structure
@@ -110,7 +110,7 @@ func TestAWSH100NCCL(t *testing.T) {
     feature := features.New("aws/h100/nccl-all-reduce").
         Setup(func(...) {
             // 1. Create KWOK nodes from testdata/nodes.yaml
-            // 2. Run ncrectl certification run --namespace default
+            // 2. Run nvcrectl certification run --namespace default
         }).
         Assess("Pods match expected spec", func(...) {
             // Wait for InProgress, capture pods, compare against expected_pods.yaml
@@ -139,7 +139,7 @@ make cleanup-test-uat   # Delete Kind cluster
 ## Rationale
 
 - **Tests the untested gap.** The full chain from Certification to Pod creation is exercised with real controllers and a real API server. The `createWorkloadFromSpec()` code path is now covered.
-- **Dogfoods ncrectl.** The Tiltfile uses `ncrectl setup init` and tests use `ncrectl certification run` — the same commands users run. This catches CLI bugs alongside controller bugs.
+- **Dogfoods nvcrectl.** The Tiltfile uses `nvcrectl setup init` and tests use `nvcrectl certification run` — the same commands users run. This catches CLI bugs alongside controller bugs.
 - **Real GC validates OwnerReference cascade.** Kind's GC controller processes OwnerReference-based deletion, catching bugs that envtest cannot surface.
 - **KWOK enables GPU simulation at zero cost.** Fake H100 nodes with 8 GPUs each require zero hardware. KWOK's Stage CRDs drive pod lifecycle naturally — no manual status updates.
 - **YAML golden files catch regressions.** Pod specs and certification state are compared as YAML against hand-authored expected files. Unintended changes in image, args, volumes, or env break the test immediately.
@@ -155,7 +155,7 @@ make cleanup-test-uat   # Delete Kind cluster
 - Real pod specs verified against YAML golden files
 - Real GC tests OwnerReference cascade deletion
 - Controller binary + RBAC tested in production-like conditions
-- ncrectl install and run paths exercised in CI
+- nvcrectl install and run paths exercised in CI
 - Adding a new CSP/HW test is one directory with YAML + one Go file
 - Two-stage assessment ensures pods are captured before potential cleanup
 
@@ -170,7 +170,7 @@ make cleanup-test-uat   # Delete Kind cluster
 
 ### Kyverno Chainsaw (declarative YAML tests)
 
-**Rejected** because: No golden file support (partial match only). Cannot verify full Pod specs. Tests must be Go for ncrectl integration.
+**Rejected** because: No golden file support (partial match only). Cannot verify full Pod specs. Tests must be Go for nvcrectl integration.
 
 ### Mock Trainer controller in envtest
 
@@ -195,11 +195,11 @@ make cleanup-test-uat   # Delete Kind cluster
 ## Notes
 
 - KWOK nodes must NOT have the `kwok.x-k8s.io/node` taint — only the annotation. KWOK identifies managed nodes by annotation, but pods must schedule freely on these nodes.
-- Kubeflow Trainer v2.1.0 requires the JobSet controller v0.10.1. The `ncrectl setup init` command installs both from the Trainer kustomize overlay.
-- The KWOK `pod-complete` Stage selects pods with `ownerReferences[].kind == Job`. This matches the batch/v1 Jobs created by the JobSet controller. The 30s delay gives CRE's health monitoring time to observe Running pods.
-- `ncrectl certification run --namespace default` is used to avoid namespace creation issues. Tests run in the `default` namespace.
+- Kubeflow Trainer v2.1.0 requires the JobSet controller v0.10.1. The `nvcrectl setup init` command installs both from the Trainer kustomize overlay.
+- The KWOK `pod-complete` Stage selects pods with `ownerReferences[].kind == Job`. This matches the batch/v1 Jobs created by the JobSet controller. The 30s delay gives NVCRE's health monitoring time to observe Running pods.
+- `nvcrectl certification run --namespace default` is used to avoid namespace creation issues. Tests run in the `default` namespace.
 - `spec.providerID: "aws://us-east-1a/i-..."` triggers AWS platform detection in `workflow_detect.go:49`, which activates the EFA override in the NCCL catalog entry.
-- Tilt `deps` for build resources are narrowly scoped (`cmd/manager/main.go`, `cmd/ncrectl/main.go`) to avoid rebuild loops between `build-image` and `build-ncrectl` — both depend on `internal/` which `make build-ncrectl` regenerates via `embed-ncrectl`.
+- Tilt `deps` for build resources are narrowly scoped (`cmd/manager/main.go`, `cmd/nvcrectl/main.go`) to avoid rebuild loops between `build-image` and `build-nvcrectl` — both depend on `internal/` which `make build-nvcrectl` regenerates via `embed-nvcrectl`.
 - `make setup-test-uat` waits for Kind nodes to be Ready before Tilt starts deploying.
 
 ## References
@@ -221,4 +221,4 @@ make cleanup-test-uat   # Delete Kind cluster
 | Date       | Author | Description                                                    |
 |------------|--------|----------------------------------------------------------------|
 | 2026-02-24 | —      | Initial draft                                                  |
-| 2026-02-24 | —      | Revised: YAML golden files, colocated test dirs, two-stage assess, ncrectl --namespace default, Prometheus CRDs in Tilt, no TESTUTIL_UPDATE_EXPECTED |
+| 2026-02-24 | —      | Revised: YAML golden files, colocated test dirs, two-stage assess, nvcrectl --namespace default, Prometheus CRDs in Tilt, no TESTUTIL_UPDATE_EXPECTED |

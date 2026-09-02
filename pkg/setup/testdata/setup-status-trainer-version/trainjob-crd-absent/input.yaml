@@ -1,0 +1,3 @@
+# No TrainJob CRD at all: the component reads not found and no version
+# information is reported.
+trainJobCRDAbsent: true

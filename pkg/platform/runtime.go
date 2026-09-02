@@ -8,10 +8,9 @@ import (
 	"fmt"
 	"strconv"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // gpuResourceName is the extended resource a container must request to be given
@@ -19,14 +18,39 @@ import (
 // many GPUs the node has.
 const gpuResourceName = corev1.ResourceName("nvidia.com/gpu")
 
+// Repeated map keys and literal values used when building the unstructured
+// TrainingRuntime manifests below.
+const (
+	keyName         = "name"
+	keyImage        = "image"
+	keyEnv          = "env"
+	keyEmptyDir     = "emptyDir"
+	keyContainers   = "containers"
+	keyVolumes      = "volumes"
+	keyMetadata     = "metadata"
+	keyLabels       = "labels"
+	keySpec         = "spec"
+	keyTemplate     = "template"
+	keyVolumeMounts = "volumeMounts"
+	keyMountPath    = "mountPath"
+
+	volumeNameDSHM    = "dshm"
+	volumeNameSSHKeys = "ssh-keys"
+	labelKeyApp       = "app"
+	mpiSSHMountPath   = "/tmp/mpi-ssh-raw"
+	nodeJobName       = "node"
+	mpiSSHAuthName    = "mpi-ssh-auth"
+	keyReadOnly       = "readOnly"
+)
+
 // defaultWorkerResources returns the worker resources block when the user did
 // not provide spec.resources.
 //
 // This used to add memory: 800Gi as well, copied from the training catalog
-// entries, which set their own. CRE cannot know what an arbitrary WorkloadRun
+// entries, which set their own. NVCRE cannot know what an arbitrary WorkloadRun
 // needs, and 800Gi is satisfiable only on a DGX-sized node, so omitting
 // spec.resources left the pod Pending forever anywhere else. The GPU count is
-// the part CRE does know, so it is the only part it fills in.
+// the part NVCRE does know, so it is the only part it fills in.
 func defaultWorkerResources(gpusPerNode int32) map[string]any {
 	gpuStr := strconv.Itoa(int(gpusPerNode))
 	return map[string]any{
@@ -123,12 +147,12 @@ func applyGangScheduler(cfg RuntimeConfig, podSpec, podLabels map[string]any) {
 
 // BuildTorchRuntime creates a TrainingRuntime dependency for PyTorch distributed
 // training. Generates a runtime with torch mlPolicy and a single "node" replicatedJob.
-func BuildTorchRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
+func BuildTorchRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	// Build container spec
 	container := map[string]any{
-		"name":  "node",
-		"image": cfg.Image,
-		"env":   cfg.Env,
+		keyName:  nodeJobName,
+		keyImage: cfg.Image,
+		keyEnv:   cfg.Env,
 	}
 
 	if cfg.Resources != nil {
@@ -139,15 +163,15 @@ func BuildTorchRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
 
 	// Volume mounts: shared memory + user-provided.
 	mounts := make([]corev1.VolumeMount, 0, 1+len(cfg.VolumeMounts))
-	mounts = append(mounts, corev1.VolumeMount{Name: "dshm", MountPath: "/dev/shm"})
+	mounts = append(mounts, corev1.VolumeMount{Name: volumeNameDSHM, MountPath: "/dev/shm"})
 	mounts = append(mounts, cfg.VolumeMounts...)
-	container["volumeMounts"] = mounts
+	container[keyVolumeMounts] = mounts
 
 	// Volumes: shared memory + user-provided.
 	volumes := make([]any, 0, 1+len(cfg.Volumes))
 	volumes = append(volumes, map[string]any{
-		"name":     "dshm",
-		"emptyDir": map[string]any{"medium": "Memory"},
+		keyName:     volumeNameDSHM,
+		keyEmptyDir: map[string]any{"medium": "Memory"},
 	})
 	for _, v := range cfg.Volumes {
 		volumes = append(volumes, v)
@@ -161,8 +185,8 @@ func BuildTorchRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
 				"type": "RuntimeDefault",
 			},
 		},
-		"containers": []any{container},
-		"volumes":    volumes,
+		keyContainers: []any{container},
+		keyVolumes:    volumes,
 	}
 
 	// Add init containers if provided
@@ -172,39 +196,39 @@ func BuildTorchRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
 
 	podLabels := map[string]any{
 		"trainer.kubeflow.org/trainjob-ancestor-step": "trainer",
-		"app": cfg.EntryName,
+		labelKeyApp: cfg.EntryName,
 	}
 	applyGangScheduler(cfg, podSpec, podLabels)
 
 	rt := map[string]any{
 		"apiVersion": "trainer.kubeflow.org/v1alpha1",
 		"kind":       "TrainingRuntime",
-		"metadata": map[string]any{
-			"name": fmt.Sprintf("%s-runtime", cfg.EntryName),
-			"labels": map[string]any{
+		keyMetadata: map[string]any{
+			keyName: fmt.Sprintf("%s-runtime", cfg.EntryName),
+			keyLabels: map[string]any{
 				"trainer.kubeflow.org/framework": "torch",
-				"app":                            cfg.EntryName,
+				labelKeyApp:                      cfg.EntryName,
 			},
 		},
-		"spec": map[string]any{
+		keySpec: map[string]any{
 			"mlPolicy": map[string]any{
 				"numNodes": cfg.NodesPerJob,
 				"torch": map[string]any{
 					"numProcPerNode": cfg.GpusPerNode,
 				},
 			},
-			"template": map[string]any{
-				"spec": map[string]any{
+			keyTemplate: map[string]any{
+				keySpec: map[string]any{
 					"replicatedJobs": []any{
 						map[string]any{
-							"name": "node",
-							"template": map[string]any{
-								"metadata": map[string]any{
-									"labels": podLabels,
+							keyName: nodeJobName,
+							keyTemplate: map[string]any{
+								keyMetadata: map[string]any{
+									keyLabels: podLabels,
 								},
-								"spec": map[string]any{
-									"template": map[string]any{
-										"spec": podSpec,
+								keySpec: map[string]any{
+									keyTemplate: map[string]any{
+										keySpec: podSpec,
 									},
 								},
 							},
@@ -216,21 +240,31 @@ func BuildTorchRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
 	}
 
 	data, _ := json.Marshal(rt)
-	return crev1alpha1.DependencySpec{
-		RawExtension: runtime.RawExtension{Raw: data},
+	return nvcrev1alpha1.DependencySpec{
+		Raw: data,
 	}
 }
 
 // BuildMPIRuntime creates TrainingRuntime dependencies for MPI-based workloads.
 // Generates:
 // - A runtime with MPI mlPolicy and launcher+node replicatedJobs
-// - Worker nodes with sshd, IPC_LOCK, readiness probe
-// - Launcher with mpirun and SSH key setup
-func BuildMPIRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
+// - Worker nodes with sshd, IPC_LOCK, readiness probe, and cfg.Env
+// - Launcher with mpirun, SSH key setup, and cfg.Env
+//
+// cfg.Env goes on both containers as container-level env, the same way
+// BuildTorchRuntime emits it (issue #68: it used to be dropped here, so
+// spec.env behaved differently between the two frameworks). On the launcher
+// the variables reach mpirun directly; on the worker they reach the sshd
+// process, but sshd gives each SSH session a fresh environment, so ranks
+// launched through it may not inherit them. A variable that must reach the
+// ranks should be passed as "-x NAME=value" in mpiArgs, which forwards it
+// through mpirun itself.
+func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	// Worker (node) container: runs sshd
 	workerContainer := map[string]any{
-		"name":    "node",
-		"image":   cfg.Image,
+		keyName:   nodeJobName,
+		keyImage:  cfg.Image,
+		keyEnv:    cfg.Env,
 		"command": []string{"sh", "-c"},
 		"args": []string{
 			"set -x && " +
@@ -256,9 +290,9 @@ func BuildMPIRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
 				"add": []string{"IPC_LOCK"},
 			},
 		},
-		"volumeMounts": []map[string]any{
-			{"name": "mpi-ssh-auth", "mountPath": "/tmp/mpi-ssh-raw", "readOnly": true},
-			{"name": "dshm", "mountPath": "/dev/shm"},
+		keyVolumeMounts: []map[string]any{
+			{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
+			{keyName: volumeNameDSHM, keyMountPath: "/dev/shm"},
 		},
 	}
 
@@ -270,8 +304,8 @@ func BuildMPIRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
 
 	// Launcher init container: fix SSH permissions
 	launcherInitContainer := map[string]any{
-		"name":    "fix-ssh-permissions",
-		"image":   cfg.Image,
+		keyName:   "fix-ssh-permissions",
+		keyImage:  cfg.Image,
 		"command": []string{"sh", "-c"},
 		"args": []string{
 			"set -x && " +
@@ -279,35 +313,36 @@ func BuildMPIRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
 				"chmod 600 /root/.ssh/id_rsa && " +
 				"chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys",
 		},
-		"volumeMounts": []map[string]any{
-			{"name": "mpi-ssh-auth", "mountPath": "/tmp/mpi-ssh-raw", "readOnly": true},
-			{"name": "ssh-keys", "mountPath": "/root/.ssh"},
+		keyVolumeMounts: []map[string]any{
+			{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
+			{keyName: volumeNameSSHKeys, keyMountPath: "/root/.ssh"},
 		},
 	}
 
 	// Launcher container
 	launcherContainer := map[string]any{
-		"name":  "node",
-		"image": cfg.Image,
+		keyName:  nodeJobName,
+		keyImage: cfg.Image,
+		keyEnv:   cfg.Env,
 		"resources": map[string]any{
 			"limits": map[string]any{
 				"cpu":    "2",
 				"memory": "1Gi",
 			},
 		},
-		"volumeMounts": []map[string]any{
-			{"name": "mpi-ssh-auth", "mountPath": "/tmp/mpi-ssh-raw", "readOnly": true},
-			{"name": "ssh-keys", "mountPath": "/root/.ssh"},
+		keyVolumeMounts: []map[string]any{
+			{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
+			{keyName: volumeNameSSHKeys, keyMountPath: "/root/.ssh"},
 		},
 	}
 
 	workerPodSpec := map[string]any{
-		"containers":    []any{workerContainer},
+		keyContainers:   []any{workerContainer},
 		"restartPolicy": "OnFailure",
-		"volumes": []any{
+		keyVolumes: []any{
 			map[string]any{
-				"name": "dshm",
-				"emptyDir": map[string]any{
+				keyName: volumeNameDSHM,
+				keyEmptyDir: map[string]any{
 					"medium": "Memory",
 				},
 			},
@@ -317,27 +352,27 @@ func BuildMPIRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
 	applyGangScheduler(cfg, workerPodSpec, workerPodLabels)
 
 	workerReplicatedJob := map[string]any{
-		"name": "node",
-		"template": map[string]any{
-			"spec": map[string]any{
-				"template": map[string]any{
-					"spec": workerPodSpec,
+		keyName: nodeJobName,
+		keyTemplate: map[string]any{
+			keySpec: map[string]any{
+				keyTemplate: map[string]any{
+					keySpec: workerPodSpec,
 				},
 			},
 		},
 	}
 	if len(workerPodLabels) > 0 {
-		workerReplicatedJob["template"].(map[string]any)["metadata"] = map[string]any{
-			"labels": workerPodLabels,
+		workerReplicatedJob[keyTemplate].(map[string]any)[keyMetadata] = map[string]any{
+			keyLabels: workerPodLabels,
 		}
 	}
 
 	launcherPodSpec := map[string]any{
 		"initContainers": []any{launcherInitContainer},
-		"containers":     []any{launcherContainer},
+		keyContainers:    []any{launcherContainer},
 		"restartPolicy":  "OnFailure",
-		"volumes": []any{
-			map[string]any{"name": "ssh-keys", "emptyDir": map[string]any{}},
+		keyVolumes: []any{
+			map[string]any{keyName: volumeNameSSHKeys, keyEmptyDir: map[string]any{}},
 		},
 	}
 	launcherPodLabels := map[string]any{
@@ -348,24 +383,24 @@ func BuildMPIRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
 	rt := map[string]any{
 		"apiVersion": "trainer.kubeflow.org/v1alpha1",
 		"kind":       "TrainingRuntime",
-		"metadata": map[string]any{
-			"name": fmt.Sprintf("%s-runtime", cfg.EntryName),
-			"labels": map[string]any{
+		keyMetadata: map[string]any{
+			keyName: fmt.Sprintf("%s-runtime", cfg.EntryName),
+			keyLabels: map[string]any{
 				"trainer.kubeflow.org/framework": "mpi",
-				"app":                            cfg.EntryName,
+				labelKeyApp:                      cfg.EntryName,
 			},
 		},
-		"spec": map[string]any{
+		keySpec: map[string]any{
 			"mlPolicy": map[string]any{
 				"numNodes": 1, // MPI launcher runs on 1 node; workers scale via replicatedJobs
 				"mpi": map[string]any{
 					"mpiImplementation": "OpenMPI",
 					"numProcPerNode":    cfg.GpusPerNode,
-					"sshAuthMountPath":  "/tmp/mpi-ssh-raw",
+					"sshAuthMountPath":  mpiSSHMountPath,
 				},
 			},
-			"template": map[string]any{
-				"spec": map[string]any{
+			keyTemplate: map[string]any{
+				keySpec: map[string]any{
 					"network": map[string]any{
 						"publishNotReadyAddresses": true,
 					},
@@ -373,20 +408,20 @@ func BuildMPIRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
 						workerReplicatedJob,
 						// Launcher replicatedJob
 						map[string]any{
-							"name": "launcher",
+							keyName: "launcher",
 							"dependsOn": []any{
 								map[string]any{
-									"name":   "node",
+									keyName:  nodeJobName,
 									"status": "Ready",
 								},
 							},
-							"template": map[string]any{
-								"metadata": map[string]any{
-									"labels": launcherPodLabels,
+							keyTemplate: map[string]any{
+								keyMetadata: map[string]any{
+									keyLabels: launcherPodLabels,
 								},
-								"spec": map[string]any{
-									"template": map[string]any{
-										"spec": launcherPodSpec,
+								keySpec: map[string]any{
+									keyTemplate: map[string]any{
+										keySpec: launcherPodSpec,
 									},
 								},
 							},
@@ -402,14 +437,14 @@ func BuildMPIRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
 	}
 
 	data, _ := json.Marshal(rt)
-	return crev1alpha1.DependencySpec{
-		RawExtension: runtime.RawExtension{Raw: data},
+	return nvcrev1alpha1.DependencySpec{
+		Raw: data,
 	}
 }
 
 // BuildExecRuntime creates a TrainingRuntime dependency for arbitrary command execution.
 // Uses a simple single-replicatedJob layout with torch mlPolicy.
-func BuildExecRuntime(cfg RuntimeConfig) crev1alpha1.DependencySpec {
+func BuildExecRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	// Exec uses the same runtime shape as torch (simple single-replicatedJob)
 	// since the command is injected via the JobTemplate trainer field.
 	return BuildTorchRuntime(cfg)

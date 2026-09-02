@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Wait for the Workflow to fail with DependencyNameCollision (the foreign
+# cluster-scoped LogProfile holds the dependency's name), then delete the
+# Workflow and verify the finalizer leaves the user's LogProfile untouched
+# (it keeps the user's spec, gains no NVCRE labels or annotations).
+waitFor:
+  kind: Workflow
+  name: wf-cluster-dep-collision
+  namespace: default
+  condition: Failed
+  reason: DependencyNameCollision
+deleteAfterWait:
+  - kind: Workflow
+    name: wf-cluster-dep-collision
+    namespace: default
+waitForDeletion:
+  - kind: Workflow
+    name: wf-cluster-dep-collision
+    namespace: default
+collect:
+  - kind: LogProfile
+    name: user-logprofile-keep

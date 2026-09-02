@@ -3,7 +3,7 @@
 
 apiVersion: v2
 name: cluster-readiness-engine
-description: CRE GPU cluster burn-in certification controller
+description: NVCRE GPU cluster burn-in certification controller
 type: application
 version: 0.0.0
 appVersion: "dev"

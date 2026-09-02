@@ -1,12 +1,12 @@
 {
   "Workflow/nemotron-6-8b-burnin": {
     "kind": "Workflow",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "nemotron-6-8b-burnin",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/workflow-finalizer"
+        "nvcre.nvidia.com/workflow-finalizer"
       ]
     },
     "spec": {
@@ -20,7 +20,7 @@
                 "kind": "TrainingRuntime"
               },
               "trainer": {
-                "image": "nvcr.io/nv-ngc-devops/nemo_megatron_perf_optimization:mcore-moe-pytorch25.06",
+                "image": "nvcr.io/nvidia/nemo:25.07",
                 "command": [
                   "/bin/bash",
                   "-c"
@@ -175,7 +175,7 @@
                                     "value": "1"
                                   }
                                 ],
-                                "image": "nvcr.io/nv-ngc-devops/nemo_megatron_perf_optimization:mcore-moe-pytorch25.06",
+                                "image": "nvcr.io/nvidia/nemo:25.07",
                                 "name": "node",
                                 "resources": {
                                   "limits": {
@@ -301,7 +301,7 @@
             ],
             "phase": "Running",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "nemotron-6-8b-burnin-job",
               "namespace": "default"

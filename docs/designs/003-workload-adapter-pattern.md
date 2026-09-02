@@ -38,7 +38,7 @@ The Job controller calls `Owns()` on all supported GVKs for event-driven reconci
 
 - **Compile-time safety.** The previous `runtime.RawExtension` approach meant malformed workload specs were only caught at runtime. Strongly-typed fields catch errors at CRD validation time.
 - **Normalized status.** Each framework reports status differently. The adapter layer gives the Job controller a single `WorkloadPhase` to react to, regardless of the underlying framework.
-- **Pod label injection.** The controller auto-injects `cre.nvidia.com/job` labels into pod templates via the adapter, eliminating the need for users to manually configure pod labels for health monitoring.
+- **Pod label injection.** The controller auto-injects `nvcre.nvidia.com/job` labels into pod templates via the adapter, eliminating the need for users to manually configure pod labels for health monitoring.
 - **Adding a framework requires zero controller changes.** Implement the interface, register in `ForSpec()`, add `Owns()` in `main.go`. The Job controller's reconciliation logic works unchanged.
 
 ## Consequences

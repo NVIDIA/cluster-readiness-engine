@@ -1,0 +1,132 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Workflow 1 of 2 for Fern doc previews.
+#
+# Collects the fern/ and docs/ sources plus PR metadata from the PR branch and
+# uploads them as an artifact. Both directories are needed because
+# fern/docs.yml references ../docs/index.yml; omitting docs/ causes
+# `fern generate --docs` to fail in the companion workflow. No secrets are
+# used here. Like the other CI workflows, it runs on push to the
+# pull-request/<number> branches that copy-pr-bot creates once a trustee
+# vets the PR, not on a direct pull_request trigger.
+#
+# The companion workflow (fern-docs-preview-comment.yml) picks up the artifact,
+# builds the preview with DOCS_FERN_TOKEN, and posts the PR comment.
+
+name: "Preview Fern Docs: Build"
+
+on:
+  push:
+    branches:
+      - "pull-request/[0-9]+"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changed-files:
+    runs-on: linux-amd64-cpu8
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    outputs:
+      docs: ${{ steps.changes.outputs.docs }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check for docs changes
+        id: changes
+        run: |
+          if [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
+            echo "docs=true" >> $GITHUB_OUTPUT
+          elif git diff --name-only "${{ github.event.before }}" HEAD 2>/dev/null | grep -qE '^(docs/|fern/)'; then
+            echo "docs=true" >> $GITHUB_OUTPUT
+          else
+            echo "docs=false" >> $GITHUB_OUTPUT
+          fi
+
+  collect:
+    needs: changed-files
+    if: github.repository == 'NVIDIA/cluster-readiness-engine' && needs.changed-files.outputs.docs == 'true'
+    runs-on: linux-amd64-cpu8
+    timeout-minutes: 10
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Save PR metadata
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          mkdir -p preview-metadata
+          echo "${BRANCH_NAME#pull-request/}" > preview-metadata/pr_number
+          echo "$BRANCH_NAME" > preview-metadata/head_ref
+          git diff --name-only "origin/main...HEAD" -- '*.md' > preview-metadata/changed_md_files 2>/dev/null || true
+
+      - name: Checkout frozen version content
+        run: |
+          set -eo pipefail
+          for version_file in fern/versions/v*.yml; do
+            [ -f "$version_file" ] || continue
+            version=$(basename "$version_file" .yml)
+            if git show-ref --verify --quiet "refs/tags/${version}"; then
+              mkdir -p "fern/versions/${version}-content"
+              git archive "refs/tags/${version}" -- docs/ | tar -x --strip-components=1 -C "fern/versions/${version}-content"
+              # Escape {, }, < for MDX — but only outside fenced code blocks and inline code spans
+              find "fern/versions/${version}-content" -name '*.md' -print0 | while IFS= read -r -d '' f; do
+                awk '
+                  /^````*/ || /^~~~~*/ { fence = !fence; print; next }
+                  fence { print; next }
+                  {
+                    n = split($0, p, "`")
+                    out = ""
+                    for (i = 1; i <= n; i++) {
+                      if (i % 2 == 1) {
+                        gsub(/{/, "\\{", p[i])
+                        gsub(/}/, "\\}", p[i])
+                        gsub(/</, "\\&lt;", p[i])
+                      }
+                      out = out p[i]
+                      if (i < n) out = out "`"
+                    }
+                    print out
+                  }
+                ' "$f" > "${f}.tmp" && mv "${f}.tmp" "$f"
+              done
+              echo "Extracted docs from $version"
+            else
+              echo "::error::Tag $version not found — cannot load frozen docs content"
+              exit 1
+            fi
+          done
+
+      - name: Upload fern sources and metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fern-preview
+          path: |
+            fern/
+            docs/
+            preview-metadata/
+          retention-days: 1

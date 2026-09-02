@@ -8,7 +8,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NAMESPACE="kube-system"
 SERVICE_NAME="dra-stub"
-KIND_CLUSTER="${KIND_CLUSTER_UAT:-cre-test-uat}"
+KIND_CLUSTER="${KIND_CLUSTER_UAT:-nvcre-test-uat}"
 IMAGE="dra-stub:local"
 
 # ─── 1. Create DeviceClass stubs ───
@@ -68,6 +68,9 @@ rules:
 - apiGroups: ["resource.k8s.io"]
   resources: ["resourceclaims/status"]
   verbs: ["update", "patch"]
+- apiGroups: ["resource.k8s.io"]
+  resources: ["resourceclaims/binding"]
+  verbs: ["patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -104,6 +107,9 @@ spec:
         app: ${SERVICE_NAME}
     spec:
       serviceAccountName: ${SERVICE_NAME}
+      # The stub must run on a real Kind node, not a simulated KWOK node.
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
       containers:
       - name: dra-stub
         image: ${IMAGE}

@@ -1,12 +1,12 @@
 {
   "Workflow/test-workflow-validation-fail": {
     "kind": "Workflow",
-    "apiVersion": "cre.nvidia.com/v1alpha1",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
       "name": "test-workflow-validation-fail",
       "namespace": "default",
       "finalizers": [
-        "cre.nvidia.com/workflow-finalizer"
+        "nvcre.nvidia.com/workflow-finalizer"
       ]
     },
     "spec": {
@@ -68,6 +68,14 @@
           "lastTransitionTime": null,
           "reason": "JobValidationFailed",
           "message": "1 groups failed across 1 iterations"
+        },
+        {
+          "type": "ValidationFailed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobValidationFailed",
+          "message": "One or more Jobs failed performance threshold validation"
         }
       ],
       "failedNodesRef": {
@@ -89,7 +97,7 @@
             ],
             "phase": "Failed",
             "jobRef": {
-              "apiVersion": "cre.nvidia.com/v1alpha1",
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
               "name": "test-workflow-validation-fail-job",
               "namespace": "default"

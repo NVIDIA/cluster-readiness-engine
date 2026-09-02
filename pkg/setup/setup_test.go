@@ -15,8 +15,8 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	sigsyaml "sigs.k8s.io/yaml"
 
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/kubeconfig"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/testutil"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,7 +33,7 @@ func newTestConfigFlags(kubeconfigPath, kubeContext string) *kubeconfig.ConfigFl
 func TestPromptForConfirmation(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "prompt-for-confirmation",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		input := tc.Inputs["input.txt"]
@@ -120,7 +120,7 @@ users:
 func TestParseSkipPhases(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "parse-skip-phases",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -142,13 +142,13 @@ func TestParseSkipPhases(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Tests for ncrectl setup init/reset helpers
+// Tests for nvcrectl setup init/reset helpers
 // ---------------------------------------------------------------------------
 
 func TestParseImage(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "parse-image",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -175,7 +175,7 @@ func TestParseImage(t *testing.T) {
 func TestDefaultImage(t *testing.T) {
 	img := defaultImage("dev")
 	assert.Equal(t, defaultImageRegistry+"/"+defaultImageRepository+":"+"dev", img)
-	assert.Contains(t, img, "ghcr.io/dsx-ai-factory/cluster-readiness-engine/manager:")
+	assert.Contains(t, img, "ghcr.io/nvidia/cluster-readiness-engine/manager:")
 }
 
 // ---------------------------------------------------------------------------
@@ -185,7 +185,7 @@ func TestDefaultImage(t *testing.T) {
 func TestSplitYAMLDocuments(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "split-yaml-documents",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		docs := splitYAMLDocuments([]byte(tc.Inputs["input.yaml"]))
@@ -230,7 +230,7 @@ func TestDecodeUnstructured(t *testing.T) {
 
 func TestNsLabel(t *testing.T) {
 	assert.Equal(t, "", nsLabel(""))
-	assert.Equal(t, "(namespace: cluster-readiness-engine)", nsLabel("cluster-readiness-engine"))
+	assert.Equal(t, "(namespace: nvcre)", nsLabel("nvcre"))
 }
 
 // nsLabel returns a formatted namespace label or empty string for cluster-scoped resources.

@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# On-demand smoke test for the reusable signing workflow.
+#
+# attest.yml is `workflow_call`-only, so it cannot be dispatched directly and
+# cannot be exercised from a pull request branch at all: GitHub only surfaces a
+# `workflow_dispatch` entry point that exists on the default branch. This
+# workflow is that entry point.
+#
+# The input validation is covered by Go tests (test/releasepolicy) which run on
+# every PR and need no network. What those cannot cover is the part that only
+# exists inside GitHub:
+#
+#   * the `github.repository` caller gate actually lets THIS repository through.
+#     This is the failure mode worth the most: a job whose `if` is false is
+#     SKIPPED, and a skipped job does not fail its caller. A subtly wrong gate
+#     would leave every future caller green while nothing was signed.
+#   * `runDetails.builder.id` is derived correctly from GITHUB_WORKFLOW_REF,
+#     which is only populated in a real run.
+#   * crane resolves a tag to a digest, and cosign reaches Fulcio and Rekor.
+#
+# Run it against an image tag that already exists in the registry, e.g. one of
+# the `main-<sha>` tags publish.yml pushes.
+#
+# A green run proves the `image` path only. `subject_kind` is fixed to `image`
+# here, so the `oci-artifact` and `blob` branches and the optional
+# predicate-attestation branch are NOT exercised by this workflow; those arrive
+# with the chart and binary callers. The Go tests in test/releasepolicy cover
+# the input validation for every subject kind, but validation only -- no
+# signing branch.
+#
+# The run signs under a NON-RELEASE identity: the caller ref is a branch, so the
+# Fulcio SAN carries `@refs/heads/...` and attest.yml logs a loud non-production
+# warning. It cannot be mistaken for, or verified as, a release attestation.
+
+name: Attest Self-Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'An existing tag of the manager image to sign, e.g. main-abc1234. Must already be in the registry.'
+        required: true
+        type: string
+      expected_digest:
+        description: >-
+          The digest that tag resolves to, as sha256:<64 hex>. Obtain it with
+          `crane digest ghcr.io/nvidia/cluster-readiness-engine/manager:<image_tag>`,
+          or read it from the GHCR package page. Supplying a deliberately
+          different (but well-formed) digest is a valid negative test: the run
+          must then fail at the digest comparison, and the report job will say
+          so rather than reporting a skip.
+        required: true
+        type: string
+      platform:
+        description: 'Optional os/arch to exercise per-platform resolution, e.g. linux/amd64.'
+        required: false
+        type: string
+        default: ''
+
+permissions: {}
+
+concurrency:
+  group: attest-selftest
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Sign a non-release image through attest.yml
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: image
+      subject_name: ghcr.io/nvidia/cluster-readiness-engine/manager
+      subject_tag: ${{ inputs.image_tag }}
+      platform: ${{ inputs.platform }}
+      expected_digest: ${{ inputs.expected_digest }}
+      # Required: this runs from a branch, not a release tag. attest.yml refuses
+      # to run otherwise, and that refusal is itself one of the guards.
+      allow_untagged: true
+
+  # Reports what actually happened to the called workflow, because the three
+  # outcomes mean different things and only one of them is a pass.
+  report:
+    name: Report outcome
+    needs: [smoke]
+    if: always() && github.repository == 'NVIDIA/cluster-readiness-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Interpret result
+        env:
+          RESULT: ${{ needs.smoke.result }}
+        run: |
+          set -euo pipefail
+          echo "attest.yml result: ${RESULT}"
+          case "${RESULT}" in
+            success)
+              echo "PASS: attest.yml ran and signed. The caller gate admits this repository, builder.id derived, crane and cosign reached their services."
+              ;;
+            skipped)
+              echo "::error::attest.yml was SKIPPED, not run. The github.repository caller gate is not matching this repository, so every future caller would go green while signing nothing."
+              exit 1
+              ;;
+            failure)
+              echo "::error::attest.yml ran but failed. If this run supplied a deliberately mismatched digest that is the expected negative result; otherwise read the job log."
+              exit 1
+              ;;
+            *)
+              echo "::error::unexpected result: ${RESULT}"
+              exit 1
+              ;;
+          esac

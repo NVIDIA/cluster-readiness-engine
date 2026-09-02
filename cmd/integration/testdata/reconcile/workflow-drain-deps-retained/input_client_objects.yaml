@@ -1,0 +1,159 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Pod-drain barrier, pods-present half (issue #121): a Workflow with a
+# job-scoped ConfigMap dependency, a running group, a failed TrainJob, and a
+# still-running workload pod carrying the nvcre.nvidia.com/job label. The Job
+# controller propagates the TrainJob failure to the Job; the Workflow's
+# terminal-failure path then deletes the workload but must NOT clean up the
+# job-scoped dependency (which stands in for the DRA-backed ComputeDomain)
+# while the pod is still present — deleting it would revoke the pod's DRA
+# allocation and kill its processes with CUDA error 719. The group stays
+# Running and the dependency ref is retained until the pod is gone.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-wf-drain-hold
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  dependencyRefs:
+    - apiVersion: v1
+      kind: ConfigMap
+      name: test-drain-hold-dep
+      namespace: default
+      scope: job
+      groupName: group-0
+      iteration: 1
+  orchestration:
+    totalNodes: 1
+    nodesPerJob: 1
+    totalGroups: 1
+    currentIteration: 1
+    completedIterations: 0
+    groups:
+      - name: group-0
+        nodes:
+          - gpu-node-01
+        phase: Running
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: test-wf-drain-hold-group-0-iter-1
+          namespace: default
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-wf-drain-hold-group-0-iter-1
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: test-wf-drain-hold
+    nvcre.nvidia.com/group: group-0
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "True"
+      reason: WorkloadRunning
+      message: "Workload is running"
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+    - type: Succeeded
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+    - type: Failed
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-wf-drain-hold-group-0-iter-1-workload
+    namespace: default
+---
+# Failed TrainJob workload. The Job controller sets the Job's Failed condition
+# from this at test runtime, so the drain grace period anchor
+# (lastTransitionTime) is fresh and the barrier is actually exercised.
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-wf-drain-hold-group-0-iter-1-workload
+  namespace: default
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - python
+      - train.py
+    numNodes: 1
+  suspend: false
+  managedBy: trainer.kubeflow.org/trainjob-controller
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: TrainJobFailed
+      message: "Training job failed"
+      lastTransitionTime: "2026-01-01T00:00:00Z"
+---
+# A workload pod that is still running. envtest has no kubelet, so it stays
+# in Running phase for the whole test — the drain barrier must hold.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-wf-drain-hold-worker-0
+  namespace: default
+  labels:
+    nvcre.nvidia.com/job: test-wf-drain-hold-group-0-iter-1
+spec:
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Running
+---
+# Job-scoped ConfigMap dependency (stands in for the DRA-backed ComputeDomain).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-drain-hold-dep
+  namespace: default
+  labels:
+    nvcre.nvidia.com/workflow: test-wf-drain-hold
+data:
+  config.yaml: |
+    test: drain-hold-data

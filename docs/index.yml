@@ -11,6 +11,8 @@ navigation:
     contents:
       - page: Install
         path: getting-started/install.md
+      - page: Your First Certification
+        path: getting-started/first-certification.md
       - page: Quick Start
         path: getting-started/quick-start.md
       - page: WorkloadRun Quick Start
@@ -37,6 +39,10 @@ navigation:
         path: how-to-guides/certify-a-cluster.md
       - page: Run a WorkloadRun
         path: how-to-guides/run-workloadrun.md
+      - page: Run Nemotron 5 Training
+        path: how-to-guides/workloadrun-nemotron5.md
+      - page: Run DeepSeek-V3 Training
+        path: how-to-guides/workloadrun-deepseek-v3.md
       - page: Run NCCL Benchmarks
         path: how-to-guides/nccl-benchmarks.md
       - page: Adaptive Fault Isolation
@@ -79,3 +85,18 @@ navigation:
         path: api-reference/bandwidth-measurement.md
       - page: LogProfile
         path: api-reference/logprofile.md
+      - page: Validation Results
+        path: api-reference/validation-results.md
+
+  - section: Operations
+    contents:
+      - page: Deployment
+        path: operations/deployment.md
+      - page: Monitoring
+        path: operations/monitoring.md
+      - page: Prometheus Metrics
+        path: operations/metrics.md
+      - page: Troubleshooting
+        path: operations/troubleshooting.md
+      - page: FAQ
+        path: operations/faq.md

@@ -1,0 +1,11 @@
+# A user's pre-existing object with a colliding name: no owner references,
+# no annotation, no tracking label. Never adopted, never deleted.
+workflow:
+  name: my-workflow
+  uid: 11111111-1111-1111-1111-111111111111
+object:
+  apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    name: user-data
+    namespace: default

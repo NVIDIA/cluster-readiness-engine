@@ -1,0 +1,11 @@
+{
+  "violations": [
+    {
+      "Key": "busBandwidthGBps",
+      "Expression": "value + 1.0",
+      "Measured": 100,
+      "Reason": "InvalidThresholdExpression",
+      "Message": "Threshold \"busBandwidthGBps\": compile threshold expression \"value + 1.0\": expression must return bool, got double"
+    }
+  ]
+}

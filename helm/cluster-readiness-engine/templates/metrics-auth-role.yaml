@@ -5,8 +5,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   labels:
-    {{- include "cre.labels" . | nindent 4 }}
-  name: cre-metrics-auth-role
+    {{- include "nvcre.labels" . | nindent 4 }}
+  name: nvcre-metrics-auth-role
 rules:
 - apiGroups:
   - authentication.k8s.io

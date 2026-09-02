@@ -12,8 +12,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	crev1alpha1 "github.com/dsx-ai-factory/cluster-readiness-engine/api/v1alpha1"
-	"github.com/dsx-ai-factory/cluster-readiness-engine/pkg/gpu"
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/gpu"
 )
 
 // categoryKey uniquely identifies a certification category.
@@ -46,6 +46,12 @@ type BuildConfig struct {
 	// (Azure, OCI, TogetherAI). 0 means the templates omit nvidia.com/mlnxnics.
 	// Resolved from gpu-defaults.yaml + platform overrides + user override.
 	MlnxPerNode int32
+
+	// Resources overrides the CPU and memory of training containers.
+	// Nil (or nil sub-fields) means the training entries keep their
+	// DGX-class defaults (limits: cpu 128 / memory 800Gi; requests:
+	// cpu 64 / memory 500Gi). Non-training entries ignore it.
+	Resources *nvcrev1alpha1.CategoryResources
 
 	// EnableMNNVL controls the NCCL_MNNVL_ENABLE env var in training entries.
 	// When true, entries set NCCL_MNNVL_ENABLE=1.
@@ -132,12 +138,23 @@ type Entry struct {
 	// and deployment-specific configuration. Returns an error if the
 	// configuration is invalid (e.g., nodesPerJob not a power of 2,
 	// or fewer GPUs than required).
-	Build func(target crev1alpha1.TargetSpec, config BuildConfig) (crev1alpha1.WorkflowSpec, error)
+	Build func(target nvcrev1alpha1.TargetSpec, config BuildConfig) (nvcrev1alpha1.WorkflowSpec, error)
 
 	// MinGPUs is the minimum number of GPUs (nodesPerJob × gpusPerNode)
 	// required by this entry. 0 means no minimum. Build returns an error
 	// if the requested GPU count is below this threshold.
 	MinGPUs int32
+
+	// TimeoutPerJob is the entry's default job timeout from its meta.yaml
+	// (e.g., "2h" for dcgm-level4). Empty means the global default applies
+	// (DefaultTimeoutPerJob, or DiagnoseTimeoutPerJob for diagnose scale).
+	// Exposed so callers (e.g., the nvcrectl --wait timeout derivation) can
+	// compute a category's job budget without a full Build.
+	TimeoutPerJob string
+
+	// Iterations is the entry's default orchestration iteration count,
+	// parsed from the entry template. Always >= 1.
+	Iterations int
 
 	// MaxValidNodes returns the largest node count <= availableNodes that
 	// satisfies the entry's constraints (minGPUs, TP×PP divisibility).
@@ -189,6 +206,14 @@ func Lookup(domain, variant string) *Entry {
 		return nil
 	}
 	return &entry
+}
+
+// EffectiveTimeoutPerJob returns the timeoutPerJob string that Build would
+// render for this entry: an explicit user override wins, then the entry's
+// meta.yaml default, then the test-scale-dependent global default. Shares
+// resolveTimeoutPerJob with buildTemplateData so the two cannot diverge.
+func (e *Entry) EffectiveTimeoutPerJob(userTimeout, testScale string) string {
+	return resolveTimeoutPerJob(userTimeout, e.TimeoutPerJob, testScale)
 }
 
 // ConfigArch returns the GPU architecture used for config file lookups.

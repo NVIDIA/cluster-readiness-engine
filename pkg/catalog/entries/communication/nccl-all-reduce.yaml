@@ -125,7 +125,7 @@ jobTemplate:
     workload:
       trainJob:
         runtimePatches:
-        - manager: cre.nvidia.com/catalog
+        - manager: nvcre.nvidia.com/catalog
           trainingRuntimeSpec:
             template:
               spec:
@@ -242,15 +242,15 @@ overrides:
 {{ lib "nccl/gcp-h100-fastrak-env.yaml" . | toMpiArgs | indent 12 }}
             - /usr/local/bin/all_reduce_perf_mpi
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
-# --- Azure (InfiniBand); excludes A100, GB200, GB300 ---
-# GB200/GB300 are excluded because they require RoCE deps, not IB. A100 has its
-# own override below. notIn keeps this block forward-compatible with future Azure
-# IB architectures.
+# --- Azure (InfiniBand); excludes A100 (see Azure + A100 override below) ---
+# Azure GB200/GB300 are InfiniBand-connected like H100 and take the same IB
+# deps here, matching nccl-all-gather and nccl-alltoall. The later GB200/GB300
+# block appends ComputeDomain deps and replaces trainer.args on top of this.
 - when:
     platform:
       equals: azure
     gpuArchitecture:
-      notIn: [a100, gb200, gb300]
+      notIn: [a100]
   dependencies:
 {{ lib "deps/azure-ib-with-topo-comm.yaml" . | indent 2 }}
   jobTemplate:
@@ -301,6 +301,7 @@ overrides:
             - /usr/local/bin/all_reduce_perf_mpi
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
 # --- nscale (OpenStack + RoCE) ---
+# nscale coverage is intentionally limited to the field-validated NCCL collectives (all-reduce, all-gather, alltoall); loopback and training entries have no nscale block.
 - when:
     platform:
       equals: nscale

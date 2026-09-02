@@ -19,15 +19,21 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 jobs:
   helm-publish:
     name: Publish Helm Chart
     runs-on: linux-amd64-cpu16
-    if: github.repository == 'dsx-ai-factory/cluster-readiness-engine'
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.tag.outputs.value }}
+      chart_name: ${{ steps.tag.outputs.chart_name }}
+      chart_digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -43,20 +49,155 @@ jobs:
           version: v3.19.2
 
       - name: Log in to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      - name: Package and push Helm chart
-        run: make helm-push
         env:
-          # Derive the OCI registry from the repository so a future org
-          # transfer cannot leave this workflow pushing to a stale path.
-          HELM_OCI_REGISTRY: oci://ghcr.io/${{ github.repository_owner }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: printf '%s' "${GHCR_TOKEN}" | helm registry login ghcr.io -u "${GHCR_USER}" --password-stdin
+
+      # A dispatch that names a tag but runs from a branch would publish a
+      # release-versioned chart whose signature carries a `refs/heads/...`
+      # identity -- a release nothing can verify as one. Dispatch at the tag:
+      # `gh workflow run Release --ref v1.2.3 -f tag=v1.2.3`.
+      - name: Resolve tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+          # Reject CR/LF before the value is echoed anywhere. A workflow command
+          # must start at the beginning of a line, so a dispatch input carrying
+          # a newline could forge one -- `::add-mask::`, or `::stop-commands::`
+          # to silence the rest of the log -- through any message that quotes
+          # it. Fixed message here: naming the value would be the very thing
+          # this rejects.
+          case "${INPUT_TAG}" in
+            *$'\n'*|*$'\r'*)
+              echo "::error::the dispatch tag input contains a newline or carriage return"
+              exit 1
+              ;;
+          esac
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if [[ "${GITHUB_REF}" != "refs/tags/${INPUT_TAG}" ]]; then
+              echo "::error::dispatched with tag=${INPUT_TAG} but running from ${GITHUB_REF}. Re-dispatch with --ref ${INPUT_TAG} so the chart signature carries the release identity."
+              exit 1
+            fi
+            value="${INPUT_TAG}"
+          else
+            value="${GITHUB_REF_NAME}"
+          fi
+          # Git permits `"`, `$( )`, backticks and `|` in a tag name, so an
+          # unvalidated tag reaching a `run:` block is shell injection on a
+          # runner that holds packages:write. `check-clean-version` cannot help:
+          # it runs inside make, long after the shell has parsed the command.
+          # Validate here, at the single point the value enters the workflow.
+          if [[ ! "${value}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::refusing to release from a tag that is not vMAJOR.MINOR.PATCH[-prerelease]: ${value}"
+            exit 1
+          fi
+          echo "value=${value}" >> "$GITHUB_OUTPUT"
+          # GHCR requires lowercase; `helm push <chart>.tgz oci://ghcr.io/nvidia`
+          # lands the chart at <registry>/<chart-name>.
+          echo "chart_name=ghcr.io/nvidia/cluster-readiness-engine" >> "$GITHUB_OUTPUT"
+
+      # VERSION is passed explicitly instead of trusting `git describe` on
+      # the runner's checkout: a shallow or tag-less checkout makes
+      # `git describe --tags --always` fall back to a bare commit SHA or a
+      # `-N-gSHA` suffix, which would become the chart version (issue #195).
+      # helm-push depends on check-clean-version, which rejects anything
+      # that is not a clean vX.Y.Z[-prerelease] tag.
+      - name: Package and push Helm chart
+        id: push
+        run: |
+          set -euo pipefail
+          make helm-push VERSION="${CHART_TAG}" CHART_DIGEST_FILE=chart-digest.txt
+          digest="$(cat chart-digest.txt)"
+          [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo "::error::chart digest is malformed: ${digest}"; exit 1; }
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Helm chart published"
+            echo
+            echo '```'
+            echo "oci://${CHART_NAME}:${CHART_TAG}"
+            echo "${digest}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          # GHCR requires lowercase paths but the repo slug is uppercase
+          # 'NVIDIA', so the value is hardcoded. Keep in sync with
+          # RELEASE.md and pkg/setup/helm.go.
+          HELM_OCI_REGISTRY: oci://ghcr.io/nvidia
+          # Through the environment rather than `${{ }}` inside the script, so a
+          # value is data and not code -- the rule attest.yml states and the tag
+          # step above already follows.
+          CHART_NAME: ${{ steps.tag.outputs.chart_name }}
+          CHART_TAG: ${{ steps.tag.outputs.value }}
+
+  # The chart is the highest-leverage artifact in the release: it carries the
+  # CRDs and the manager ClusterRole, so a tampered chart grants itself whatever
+  # RBAC it likes. Signed by digest, never by the tag the release notes quote.
+  #
+  # `oci-artifact` rather than `image`: a Helm chart is a plain OCI artifact
+  # (config `application/vnd.cncf.helm.config.v1+json`), and cosign is
+  # digest-addressed and media-type agnostic, so signing works identically. Note
+  # this signature does NOT satisfy `helm install --verify`, which checks a PGP
+  # `.prov` file and is unrelated to Sigstore; verification is a client-side
+  # `cosign verify` before install.
+  attest-chart:
+    name: Attest Helm chart
+    needs: [helm-publish]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: oci-artifact
+      subject_name: ${{ needs.helm-publish.outputs.chart_name }}
+      subject_tag: ${{ needs.helm-publish.outputs.tag }}
+      expected_digest: ${{ needs.helm-publish.outputs.chart_digest }}
+
+  # A skipped job does not fail its caller, so without this a broken gate inside
+  # attest.yml would publish an unsigned chart under a green release.
+  chart-attested:
+    name: Confirm the chart was signed
+    needs: [helm-publish, attest-chart]
+    if: always() && github.repository == 'NVIDIA/cluster-readiness-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require the chart attestation to have succeeded
+        env:
+          PUBLISH: ${{ needs.helm-publish.result }}
+          ATTEST: ${{ needs.attest-chart.result }}
+        run: |
+          set -euo pipefail
+          echo "helm-publish=${PUBLISH} attest-chart=${ATTEST}"
+          if [[ "${PUBLISH}" != "success" ]]; then
+            echo "::error::the chart publish job did not succeed (${PUBLISH}); no chart was published."
+            exit 1
+          fi
+          case "${ATTEST}" in
+            success) echo "chart signed and attested" ;;
+            skipped)
+              echo "::error::the chart attestation was SKIPPED. The chart is published and unsigned; a skipped job does not fail its caller, so this would otherwise have passed silently."
+              exit 1
+              ;;
+            *)
+              echo "::error::the chart attestation did not succeed (${ATTEST}). The chart is published; treat it as unsigned until this is resolved."
+              exit 1
+              ;;
+          esac
 
   build-cli:
     name: Build CLI Binaries
     runs-on: linux-amd64-cpu16
-    if: github.repository == 'dsx-ai-factory/cluster-readiness-engine'
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -67,23 +208,86 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Cross-compile ncrectl
-        run: make build-ncrectl-cross
+      - name: Resolve tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          # Reject CR/LF before the value reaches any message. A workflow
+          # command must start at the beginning of a line, so a dispatch input
+          # carrying a newline could forge one through the validation error
+          # below, which quotes the value. Fixed message here on purpose.
+          case "${INPUT_TAG}" in
+            *$'\n'*|*$'\r'*)
+              echo "::error::the dispatch tag input contains a newline or carriage return"
+              exit 1
+              ;;
+          esac
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            value="${INPUT_TAG}"
+          else
+            value="${GITHUB_REF_NAME}"
+          fi
+          # Git permits `"`, `$( )`, backticks and `|` in a tag name, so an
+          # unvalidated tag reaching a `run:` block is shell injection on a
+          # runner that holds packages:write. `check-clean-version` cannot help:
+          # it runs inside make, long after the shell has parsed the command.
+          # Validate here, at the single point the value enters the workflow.
+          if [[ ! "${value}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::refusing to release from a tag that is not vMAJOR.MINOR.PATCH[-prerelease]: ${value}"
+            exit 1
+          fi
+          echo "value=${value}" >> "$GITHUB_OUTPUT"
+
+      # Stamp the binaries with the tag explicitly instead of trusting
+      # `git describe` on the runner's checkout: a shallow or tag-less
+      # checkout makes `git describe --tags --always` fall back to a bare
+      # commit SHA or a `-N-gSHA` suffix, and that string would ship inside
+      # the released binary (issue #195). check-clean-version rejects
+      # anything that is not a clean vX.Y.Z[-prerelease] tag, so a malformed
+      # workflow_dispatch input fails here instead of mislabeling binaries.
+      - name: Cross-compile nvcrectl
+        env:
+          TAG: ${{ steps.tag.outputs.value }}
+        run: |
+          set -euo pipefail
+          make check-clean-version VERSION="${TAG}"
+          make build-nvcrectl-cross VERSION="${TAG}"
+
+      # The runner is linux/amd64, so that binary runs natively. Require the
+      # self-reported version to equal the tag exactly — a `-N-gSHA`/`-dirty`
+      # suffix or a broken ldflags -> main.version plumbing fails the release
+      # here, before any artifact is published (issue #195).
+      - name: Verify stamped version matches the tag
+        env:
+          TAG: ${{ steps.tag.outputs.value }}
+        run: |
+          tag="${TAG}"
+          got="$(./bin/nvcrectl-linux-amd64 --version | awk '{print $NF}')"
+          echo "tag=${tag} binary-reported=${got}"
+          if [[ "${got}" != "${tag}" ]]; then
+            echo "ERROR: binary reports version ${got}, expected ${tag}" >&2
+            exit 1
+          fi
 
       - name: Upload CLI binaries
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ncrectl-binaries
-          path: bin/ncrectl-*
+          name: nvcrectl-binaries
+          path: bin/nvcrectl-*
           retention-days: 7
 
   create-github-release:
     name: Create GitHub Release
     runs-on: linux-amd64-cpu16
-    if: github.repository == 'dsx-ai-factory/cluster-readiness-engine'
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 10
     needs:
       - helm-publish
+      - chart-attested
       - build-cli
     permissions:
       contents: write
@@ -95,23 +299,48 @@ jobs:
       - name: Download CLI binaries
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: ncrectl-binaries
+          name: nvcrectl-binaries
           path: dist/
 
       - name: Resolve tag
         id: tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "value=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+
+          # Reject CR/LF before the value reaches any message. A workflow
+          # command must start at the beginning of a line, so a dispatch input
+          # carrying a newline could forge one through the validation error
+          # below, which quotes the value. Fixed message here on purpose.
+          case "${INPUT_TAG}" in
+            *$'\n'*|*$'\r'*)
+              echo "::error::the dispatch tag input contains a newline or carriage return"
+              exit 1
+              ;;
+          esac
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            value="${INPUT_TAG}"
           else
-            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            value="${GITHUB_REF_NAME}"
           fi
+          # Git permits `"`, `$( )`, backticks and `|` in a tag name, so an
+          # unvalidated tag reaching a `run:` block is shell injection on a
+          # runner that holds packages:write. `check-clean-version` cannot help:
+          # it runs inside make, long after the shell has parsed the command.
+          # Validate here, at the single point the value enters the workflow.
+          if [[ ! "${value}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::refusing to release from a tag that is not vMAJOR.MINOR.PATCH[-prerelease]: ${value}"
+            exit 1
+          fi
+          echo "value=${value}" >> "$GITHUB_OUTPUT"
 
       - name: Generate checksums
         run: |
           cp installer dist/
           cd dist
-          sha256sum installer ncrectl-* > checksums.txt
+          sha256sum installer nvcrectl-* > checksums.txt
           cat checksums.txt
 
       # Gate. This runs after the artifacts exist and before the release is
@@ -143,59 +372,64 @@ jobs:
           tag_name: ${{ steps.tag.outputs.value }}
           name: Release ${{ steps.tag.outputs.value }}
           body: |
-            CRE ${{ steps.tag.outputs.value }}
+            NVCRE ${{ steps.tag.outputs.value }}
 
-            The Cluster Readiness Engine (CRE) is a Kubernetes controller that
-            certifies GPU clusters before production use. It runs real training
-            and communication workloads across topology-aware node groups,
-            measures goodput and bandwidth, detects hardware failures, and
-            quarantines bad nodes. See the
-            [README](https://github.com/${{ github.repository }}/blob/${{ steps.tag.outputs.value }}/README.md)
-            for the full feature list.
+            The NVIDIA Cluster Readiness Engine (NVCRE) is a Kubernetes controller that certifies GPU clusters before production use. It runs real training and communication workloads across topology-aware node groups, measures goodput and bandwidth, detects hardware failures, and reports every failed node with a reason. See the [README](https://github.com/${{ github.repository }}/blob/${{ steps.tag.outputs.value }}/README.md) for the full feature list.
 
-            ## Install ncrectl
+            ## Install nvcrectl
+
+            Install this release:
 
             ```bash
-            # Requires gh CLI authenticated, or GITHUB_TOKEN set.
-            curl -sSL https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.value }}/installer | bash -s -- -v ${{ steps.tag.outputs.value }}
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.value }}/installer | bash -s -- -v ${{ steps.tag.outputs.value }}
             ```
 
-            The version is named explicitly because `releases/latest` resolves only to
-            the newest **stable** release, and every release so far is a pre-release.
-            Once `v0.1.0` is tagged, this shorter form installs the newest stable one:
+            Or install the newest stable release (`releases/latest` resolves only to stable releases, never pre-releases):
 
             ```bash
-            curl -sSL https://github.com/${{ github.repository }}/releases/latest/download/installer | bash
+            curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/installer | bash
             ```
 
             ## Helm Chart
 
+            This release's chart is published at digest `${{ needs.helm-publish.outputs.chart_digest }}`. The signature covers that digest; the version tag is mutable, so verify and install the **same digest** rather than verifying a digest and installing a tag.
+
             ```bash
-            helm install cluster-readiness-engine \
-              oci://ghcr.io/${{ github.repository }} \
-              --version ${{ steps.tag.outputs.value }} \
-              --namespace cluster-readiness-engine \
-              --create-namespace
+            CHART=ghcr.io/nvidia/cluster-readiness-engine
+            DIGEST=${{ needs.helm-publish.outputs.chart_digest }}
+
+            # 1. Verify the chart. Requires cosign; the package is public, so no login is needed.
+            cosign verify \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ steps.tag.outputs.value }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "${CHART}@${DIGEST}"
+
+            # 2. Pull that exact digest, then install the file you just verified.
+            helm pull "oci://${CHART}@${DIGEST}"
+            helm install nvcre ./cluster-readiness-engine@${DIGEST/:/-}.tgz \
+              --namespace nvcre --create-namespace
             ```
 
-            The controller image for this release is
-            `ghcr.io/${{ github.repository }}/manager:${{ steps.tag.outputs.value }}`.
+            Installing with `--version ${{ steps.tag.outputs.value }}` instead resolves the tag at install time, which is not provably the digest you verified.
 
-            ## ncrectl CLI
+            `helm install --verify` does **not** check this signature. That flag looks for a PGP `.prov` file, a mechanism unrelated to Sigstore, and we publish no `.prov` files.
+
+            The controller image for this release is `ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}` — a different artifact from the chart, verified separately.
+
+            ## nvcrectl CLI
 
             Download the binary for your platform from the assets below and place it on your `$PATH`.
 
             | Platform | Binary |
             |---|---|
-            | Linux amd64 | `ncrectl-linux-amd64` |
-            | Linux arm64 | `ncrectl-linux-arm64` |
-            | macOS amd64 | `ncrectl-darwin-amd64` |
-            | macOS arm64 (Apple Silicon) | `ncrectl-darwin-arm64` |
+            | Linux amd64 | `nvcrectl-linux-amd64` |
+            | Linux arm64 | `nvcrectl-linux-arm64` |
+            | macOS amd64 | `nvcrectl-darwin-amd64` |
+            | macOS arm64 (Apple Silicon) | `nvcrectl-darwin-arm64` |
 
             ## Verify your download
 
-            Every asset is listed in `checksums.txt` with its SHA-256 digest.
-            After you download an asset, verify it:
+            Every binary asset (the installer and the `nvcrectl-*` binaries) is listed in `checksums.txt` with its SHA-256 digest. After you download an asset, verify it:
 
             ```bash
             sha256sum --check --ignore-missing checksums.txt
@@ -203,9 +437,7 @@ jobs:
 
             ## Third-Party Notices
 
-            Third-party Go module licenses are listed in
-            [`THIRD_PARTY_NOTICES.md`](https://github.com/${{ github.repository }}/blob/${{ steps.tag.outputs.value }}/THIRD_PARTY_NOTICES.md)
-            and attached as a release asset.
+            Third-party Go module licenses are listed in [`THIRD_PARTY_NOTICES.md`](https://github.com/${{ github.repository }}/blob/${{ steps.tag.outputs.value }}/THIRD_PARTY_NOTICES.md) and attached as a release asset.
 
             ## Support
 
@@ -213,10 +445,52 @@ jobs:
             - Report bugs with the [issue templates](https://github.com/${{ github.repository }}/issues/new/choose).
             - Report security issues per [SECURITY.md](https://github.com/${{ github.repository }}/blob/main/SECURITY.md), never through GitHub issues.
           files: |
-            dist/ncrectl-*
+            dist/nvcrectl-*
             dist/installer
             dist/checksums.txt
             THIRD_PARTY_NOTICES.md
           draft: false
           prerelease: ${{ contains(steps.tag.outputs.value, '-') }}
           generate_release_notes: true
+
+      # Post-publish gate (issues #194, #195): download the just-published
+      # assets over the same channel users take and verify them. On a public
+      # repository that is the unauthenticated browser URL
+      # (releases/download/<tag>/<asset>); v0.1.0-rc.7 users piped the 404
+      # "Not Found" page that URL serves on non-public repositories into
+      # bash (issue #194), and only an unauthenticated download can catch
+      # that. While the repository is not public the gate falls back to the
+      # authenticated channel so a release cut before a visibility flip
+      # still verifies instead of failing on the 404.
+      - name: Verify published release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.value }}
+        run: |
+          tag="${TAG}"
+          rm -rf verify-release && mkdir verify-release
+          visibility="$(gh api "repos/${GITHUB_REPOSITORY}" --jq .visibility)"
+          echo "repository visibility: ${visibility}"
+          if [[ "${visibility}" == "public" ]]; then
+            base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}"
+            for asset in installer checksums.txt nvcrectl-linux-amd64; do
+              curl -fsSL -o "verify-release/${asset}" "${base}/${asset}"
+            done
+          else
+            echo "NOTICE: repository is not public; verifying over the" \
+              "authenticated channel. The public download URLs in the" \
+              "release notes will not work until the repository is public."
+            gh release download "${tag}" --repo "${GITHUB_REPOSITORY}" \
+              --pattern installer --pattern checksums.txt --pattern nvcrectl-linux-amd64 \
+              --dir verify-release
+          fi
+          # The installer must be a shell script, not an HTML/text error page.
+          [[ "$(head -c 2 verify-release/installer)" == '#!' ]]
+          bash -n verify-release/installer
+          # Every downloaded asset must match its published checksum.
+          (cd verify-release && sha256sum --check --ignore-missing checksums.txt)
+          # The published binary must self-report exactly the released tag.
+          chmod +x verify-release/nvcrectl-linux-amd64
+          got="$(./verify-release/nvcrectl-linux-amd64 --version | awk '{print $NF}')"
+          echo "tag=${tag} binary-reported=${got}"
+          [[ "${got}" == "${tag}" ]]

@@ -41,7 +41,7 @@ metadata:
     nvidia.com/gpu.clique: "clique-0"
     kubernetes.io/hostname: gpu-node-04
 ---
-apiVersion: cre.nvidia.com/v1alpha1
+apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
   name: test-certification

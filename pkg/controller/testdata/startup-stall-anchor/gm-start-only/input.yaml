@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Before the app start marker arrives, the GM start time anchors the budget.
+gmStatus:
+  startTime: "2026-01-01T00:00:00Z"
+jobStatus: {}

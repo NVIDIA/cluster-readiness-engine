@@ -4,20 +4,20 @@
 
 Operators today must manually author Certification YAML files to run burn-in tests. This requires knowing the exact category domain/variant strings, the correct nodeSelector format, and the CRD schema. After applying, there is no way to wait for completion from the CLI — operators must poll with `kubectl get` or watch events.
 
-`kubectl run` provides a well-known pattern for programmatically creating resources from CLI flags. We adopt the same approach for certifications: `ncrectl certification run` constructs a Certification object from flags and applies it to the cluster, with an optional `--wait` for completion.
+`kubectl run` provides a well-known pattern for programmatically creating resources from CLI flags. We adopt the same approach for certifications: `nvcrectl certification run` constructs a Certification object from flags and applies it to the cluster, with an optional `--wait` for completion.
 
 ### Requirements
 
 1. **Category selection**: Specify one or more categories via `--category domain/variant` (repeatable flag).
 2. **Validation**: Fail fast if a category doesn't exist in the catalog.
-3. **Auto-naming**: Generate a unique name by default (`ncrectl-<timestamp>`), with `--name` override.
+3. **Auto-naming**: Generate a unique name by default (`nvcrectl-<timestamp>`), with `--name` override.
 4. **Default target**: `nvidia.com/gpu.present=true` as the node selector.
 5. **Wait mode**: `--wait` polls the Certification status and prints progress updates.
 6. **No new dependencies**: Use existing `newK8sClient()` and standard `time.Ticker` for polling.
 
 ## Decision
 
-Add `ncrectl certification run` that programmatically builds and creates a Certification resource in the cluster. The `--wait` flag polls every 5 seconds, prints category status changes, and exits on terminal condition (Succeeded/Failed).
+Add `nvcrectl certification run` that programmatically builds and creates a Certification resource in the cluster. The `--wait` flag polls every 5 seconds, prints category status changes, and exits on terminal condition (Succeeded/Failed).
 
 ### Category Validation
 
@@ -37,7 +37,7 @@ Terminal conditions checked via `meta.IsStatusConditionTrue()`:
 - **Auto-generated name**: Reduces friction for ad-hoc runs. Timestamp ensures uniqueness.
 - **`nvidia.com/gpu.present=true` default**: The most common selector — targets all GPU nodes.
 - **Polling over watch**: Simpler implementation. 5-second polling is acceptable for certifications that run for minutes to hours. Avoids client-go watch complexity and reconnection handling.
-- **No `--dry-run`**: The existing `ncrectl certification render` already serves this purpose.
+- **No `--dry-run`**: The existing `nvcrectl certification render` already serves this purpose.
 
 ## Consequences
 
