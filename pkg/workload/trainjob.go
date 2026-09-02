@@ -48,15 +48,11 @@ func (a *TrainJobAdapter) Build(name, namespace string, spec *nvcrev1alpha1.Work
 	}
 
 	trainJob := &trainerv1alpha1.TrainJob{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "trainer.kubeflow.org/v1alpha1",
-			Kind:       "TrainJob",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-		},
-		Spec: *spec.TrainJob,
+		APIVersion: "trainer.kubeflow.org/v1alpha1",
+		Kind:       "TrainJob",
+		Name:       name,
+		Namespace:  namespace,
+		Spec:       *spec.TrainJob,
 	}
 	return trainJob, nil
 }

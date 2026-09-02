@@ -9,7 +9,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
@@ -29,7 +28,7 @@ import (
 func TestFilterNodesByGPUCapacity(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "gpu-capacity-filter",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -48,7 +47,7 @@ func TestFilterNodesByGPUCapacity(t *testing.T) {
 
 		given := make([]corev1.Node, 0, len(input.Nodes))
 		for _, n := range input.Nodes {
-			node := corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: n.Name}}
+			node := corev1.Node{Name: n.Name}
 			if n.AllocatableGPUs != nil {
 				node.Status.Allocatable = corev1.ResourceList{
 					"nvidia.com/gpu": *resource.NewQuantity(*n.AllocatableGPUs, resource.DecimalSI),

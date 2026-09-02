@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
@@ -20,7 +19,7 @@ import (
 func TestGPUArchExclusion(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "gpu-arch-exclusion",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -35,9 +34,9 @@ func TestGPUArchExclusion(t *testing.T) {
 
 		nodes := make([]corev1.Node, 0, len(input.Nodes))
 		for _, n := range input.Nodes {
-			node := corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: n.Name}}
+			node := corev1.Node{Name: n.Name}
 			if n.Product != "" {
-				node.Labels = map[string]string{"nvidia.com/gpu.product": n.Product}
+				node.Labels = map[string]string{testGPUProductLabel: n.Product}
 			}
 			nodes = append(nodes, node)
 		}

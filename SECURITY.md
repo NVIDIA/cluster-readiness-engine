@@ -65,7 +65,25 @@ We credit reporters of confirmed vulnerabilities in the release notes of the fix
 ## Supply Chain
 
 - NVCRE is licensed under Apache-2.0. Dependencies are reviewed for license compatibility with Apache-2.0; attributions are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-- Container images are signed with Sigstore cosign (keyless OIDC) and ship with CycloneDX SBOMs attested via `cosign attest`. To verify: `cosign verify ghcr.io/nvidia/cluster-readiness-engine/manager:<tag> --certificate-identity-regexp='https://github.com/NVIDIA/cluster-readiness-engine' --certificate-oidc-issuer='https://token.actions.githubusercontent.com'`. CLI binaries include SHA256 checksums in each release.
+- Container images are signed with Sigstore cosign (keyless OIDC). A released image carries a signature and a SLSA Build Provenance v1 statement on its multi-platform **index** digest, and a signature plus a CycloneDX SBOM on each **per-platform** manifest digest. An SBOM describes one root filesystem, so it is bound to the platform it actually describes rather than to the index.
+
+  All release attestations are produced by one reusable workflow, so verification pins one exact identity:
+
+  ```bash
+  TAG=v1.2.3   # the release you are verifying
+  IMAGE=ghcr.io/nvidia/cluster-readiness-engine/manager
+
+  cosign verify \
+    --certificate-identity "https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}" \
+    --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+    "${IMAGE}:${TAG}"
+  ```
+
+  Use `--certificate-identity`, not `--certificate-identity-regexp`. An identity that names no workflow and no ref also accepts images built from branches, which are not releases and are labelled non-production when they are signed.
+
+  Retrieve the provenance with `cosign verify-attestation --type slsaprovenance1` against the index digest, and a platform's SBOM with `--type cyclonedx` against that platform's manifest digest (`crane digest --platform linux/amd64 "${IMAGE}:${TAG}"`).
+
+- CLI binaries include SHA256 checksums in each release.
 
 ## Product Security Resources
 

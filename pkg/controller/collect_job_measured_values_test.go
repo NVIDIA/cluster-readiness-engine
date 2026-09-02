@@ -26,7 +26,7 @@ import (
 func TestCollectJobMeasuredValues(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "collect-job-measured-values",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -48,8 +48,8 @@ func TestCollectJobMeasuredValues(t *testing.T) {
 
 		jobRef := corev1.TypedLocalObjectReference{Name: "j"}
 		gm := &nvcrev1alpha1.GoodputMeasurement{
-			ObjectMeta: metav1.ObjectMeta{Name: "j-goodput", Namespace: "ns"},
-			Spec:       nvcrev1alpha1.GoodputMeasurementSpec{JobRef: jobRef},
+			Name: "j-goodput", Namespace: "ns",
+			Spec: nvcrev1alpha1.GoodputMeasurementSpec{JobRef: jobRef},
 			Status: nvcrev1alpha1.GoodputMeasurementStatus{
 				Result:          in.Result,
 				AvgTFLOPSPerGPU: in.AvgTFLOPSPerGPU,
@@ -60,20 +60,20 @@ func TestCollectJobMeasuredValues(t *testing.T) {
 			gm.Status.Conditions = []metav1.Condition{{
 				Type:               nvcrev1alpha1.GoodputMeasurementComplete,
 				Status:             metav1.ConditionTrue,
-				Reason:             "JobSucceeded",
+				Reason:             reasonBandwidthJobSucceeded,
 				LastTransitionTime: metav1.Now(),
 			}}
 		}
 		bm := &nvcrev1alpha1.BandwidthMeasurement{
-			ObjectMeta: metav1.ObjectMeta{Name: "j-bandwidth", Namespace: "ns"},
-			Spec:       nvcrev1alpha1.BandwidthMeasurementSpec{JobRef: jobRef},
+			Name: "j-bandwidth", Namespace: "ns",
+			Spec: nvcrev1alpha1.BandwidthMeasurementSpec{JobRef: jobRef},
 			Status: nvcrev1alpha1.BandwidthMeasurementStatus{
 				Results: []nvcrev1alpha1.BandwidthResult{{
 					SizeBytes: 1 << 30, BusBW: in.BusBW, AlgBW: in.AlgBW, Samples: 1,
 				}},
 			},
 		}
-		job := &nvcrev1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"}}
+		job := &nvcrev1alpha1.Job{Name: "j", Namespace: "ns"}
 
 		gmIndex := func(obj client.Object) []string {
 			return []string{obj.(*nvcrev1alpha1.GoodputMeasurement).Spec.JobRef.Name}

@@ -159,7 +159,7 @@ func persistedOrchestrationOutput(c client.Client, writes int) (string, error) {
 func TestHandleIterationCompleteSurvivesConflict(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "iteration-complete-conflict",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -192,7 +192,7 @@ func TestHandleIterationCompleteSurvivesConflict(t *testing.T) {
 		}
 
 		wf := &nvcrev1alpha1.Workflow{
-			ObjectMeta: metav1.ObjectMeta{Name: "wf", Namespace: "ns", Generation: 1, UID: "01234567-89ab"},
+			Name: "wf", Namespace: "ns", Generation: 1, UID: "01234567-89ab",
 			Spec: nvcrev1alpha1.WorkflowSpec{
 				Orchestration: nvcrev1alpha1.OrchestrationSpec{Iterations: in.Iterations},
 			},
@@ -233,7 +233,7 @@ func TestHandleIterationCompleteSurvivesConflict(t *testing.T) {
 func TestDiagnoseSetGroupsSurvivesConflict(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "diagnose-set-groups-conflict",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -256,7 +256,7 @@ func TestDiagnoseSetGroupsSurvivesConflict(t *testing.T) {
 		}
 
 		wf := &nvcrev1alpha1.Workflow{
-			ObjectMeta: metav1.ObjectMeta{Name: "wf", Namespace: "ns", Generation: 1, UID: "01234567-89ab"},
+			Name: "wf", Namespace: "ns", Generation: 1, UID: "01234567-89ab",
 			Spec: nvcrev1alpha1.WorkflowSpec{
 				Orchestration: nvcrev1alpha1.OrchestrationSpec{
 					Diagnose: &nvcrev1alpha1.DiagnoseSpec{},
@@ -269,7 +269,7 @@ func TestDiagnoseSetGroupsSurvivesConflict(t *testing.T) {
 					CurrentIteration:    in.CompletedIterations,
 					CompletedIterations: in.CompletedIterations,
 					Groups: []nvcrev1alpha1.GroupStatus{{
-						Name: "previous-round", Nodes: []string{"node-a", "node-b"},
+						Name: "previous-round", Nodes: []string{testNodeA, "node-b"},
 						Phase: nvcrev1alpha1.GroupSucceeded,
 					}},
 					Diagnose: &nvcrev1alpha1.DiagnoseStatus{Stage: in.Stage, Round: in.Round},

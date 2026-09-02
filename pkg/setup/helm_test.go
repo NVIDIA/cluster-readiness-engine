@@ -31,7 +31,7 @@ func TestResolveHelmChartVersion(t *testing.T) {
 	t.Run("dev build requires override", func(t *testing.T) {
 		_, err := resolveHelmChartVersion("1.20.0-4-gabcdef-dirty", "")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "--version")
+		assert.Contains(t, err.Error(), helmFlagVersion)
 	})
 
 	t.Run("pre-release tag needs no override", func(t *testing.T) {

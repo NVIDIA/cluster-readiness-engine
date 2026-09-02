@@ -18,7 +18,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -37,10 +36,10 @@ func newSetupScheme(t *testing.T) *runtime.Scheme {
 	// LogProfile has no typed Go package here, so register the list kind the
 	// check function asks for.
 	s.AddKnownTypeWithName(
-		schema.GroupVersionKind{Group: nvcreAPIGroup, Version: "v1alpha1", Kind: "LogProfile"},
+		schema.GroupVersionKind{Group: nvcreAPIGroup, Version: testAPIVersionV1Alpha1, Kind: "LogProfile"},
 		&unstructured.Unstructured{})
 	s.AddKnownTypeWithName(
-		schema.GroupVersionKind{Group: nvcreAPIGroup, Version: "v1alpha1", Kind: "LogProfileList"},
+		schema.GroupVersionKind{Group: nvcreAPIGroup, Version: testAPIVersionV1Alpha1, Kind: "LogProfileList"},
 		&unstructured.UnstructuredList{})
 	return s
 }
@@ -50,10 +49,8 @@ func TestCheckDCGM(t *testing.T) {
 		c := fake.NewClientBuilder().
 			WithScheme(newSetupScheme(t)).
 			WithObjects(&corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      dcgmServiceName,
-					Namespace: dcgmServiceNamespace,
-				},
+				Name:      dcgmServiceName,
+				Namespace: dcgmServiceNamespace,
 			}).
 			Build()
 		assert.NoError(t, checkDCGM(context.Background(), c))
@@ -68,10 +65,8 @@ func TestCheckDCGM(t *testing.T) {
 		c := fake.NewClientBuilder().
 			WithScheme(newSetupScheme(t)).
 			WithObjects(&corev1.Service{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      dcgmServiceName,
-					Namespace: "default",
-				},
+				Name:      dcgmServiceName,
+				Namespace: "default",
 			}).
 			Build()
 		assert.True(t, apierrors.IsNotFound(checkDCGM(context.Background(), c)))
@@ -131,14 +126,12 @@ func baseClusterObjects() []client.Object {
 		crd("certifications."+nvcreAPIGroup, nvcreAPIGroup, "Certification"),
 		logProfile("megatron-training"),
 		&appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{Name: "cre-controller", Namespace: nvcreNamespace},
-			Status:     appsv1.DeploymentStatus{AvailableReplicas: 1},
+			Name: "cre-controller", Namespace: nvcreNamespace,
+			Status: appsv1.DeploymentStatus{AvailableReplicas: 1},
 		},
 		&corev1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   "gpu-node-0",
-				Labels: map[string]string{"nvidia.com/gpu.present": "true"},
-			},
+			Name:   "gpu-node-0",
+			Labels: map[string]string{"nvidia.com/gpu.present": "true"},
 		},
 	}
 }
@@ -168,7 +161,7 @@ func TestCollectSetupStatusDCGMIsOptional(t *testing.T) {
 
 	t.Run("ready with dcgm", func(t *testing.T) {
 		withDCGM := append(objs, &corev1.Service{
-			ObjectMeta: metav1.ObjectMeta{Name: dcgmServiceName, Namespace: dcgmServiceNamespace},
+			Name: dcgmServiceName, Namespace: dcgmServiceNamespace,
 		})
 		c := fake.NewClientBuilder().WithScheme(newSetupScheme(t)).WithObjects(withDCGM...).Build()
 		s := collectSetupStatus(context.Background(), c, allDeployedHelmQuery, trainerNotInHelm)
@@ -191,7 +184,7 @@ func trainerNotInHelm() (string, string) { return helmStateNotInstalled, "" }
 func TestSetupStatusHelmReleases(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "setup-status-helm",
-		ExpectedSuffix: ".txt",
+		ExpectedSuffix: testutil.SuffixTXT,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -247,7 +240,7 @@ func TestSetupStatusHelmReleases(t *testing.T) {
 func TestSetupStatusTrainerVersion(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "setup-status-trainer-version",
-		ExpectedSuffix: ".txt",
+		ExpectedSuffix: testutil.SuffixTXT,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -294,10 +287,8 @@ func TestSetupStatusTrainerVersion(t *testing.T) {
 			containers = append(containers,
 				corev1.Container{Name: trainerContainerName, Image: in.DeploymentImage})
 			objs = append(objs, &appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      trainerDeploymentName,
-					Namespace: trainerNamespace,
-				},
+				Name:      trainerDeploymentName,
+				Namespace: trainerNamespace,
 				Spec: appsv1.DeploymentSpec{
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{Containers: containers},

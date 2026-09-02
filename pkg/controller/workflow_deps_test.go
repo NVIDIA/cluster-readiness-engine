@@ -9,9 +9,7 @@ import (
 	"testing"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/yaml"
 
@@ -21,7 +19,7 @@ import (
 func TestClassifyDependencies(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "classify-dependencies",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -37,7 +35,7 @@ func TestClassifyDependencies(t *testing.T) {
 		var deps []nvcrev1alpha1.DependencySpec
 		for _, d := range input.Deps {
 			deps = append(deps, nvcrev1alpha1.DependencySpec{
-				RawExtension: runtime.RawExtension{Raw: []byte(d.Raw)},
+				Raw: []byte(d.Raw),
 			})
 		}
 
@@ -72,7 +70,7 @@ func TestClassifyDependencies(t *testing.T) {
 func TestOrderDependencies(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "order-dependencies",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -87,7 +85,7 @@ func TestOrderDependencies(t *testing.T) {
 		var deps []nvcrev1alpha1.DependencySpec
 		for _, d := range input.Deps {
 			deps = append(deps, nvcrev1alpha1.DependencySpec{
-				RawExtension: runtime.RawExtension{Raw: []byte(d.Raw)},
+				Raw: []byte(d.Raw),
 			})
 		}
 
@@ -114,7 +112,7 @@ func TestOrderDependencies(t *testing.T) {
 func TestDetectCrossRefs(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "detect-cross-refs",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -129,7 +127,7 @@ func TestDetectCrossRefs(t *testing.T) {
 		var deps []nvcrev1alpha1.DependencySpec
 		for _, d := range input.Deps {
 			deps = append(deps, nvcrev1alpha1.DependencySpec{
-				RawExtension: runtime.RawExtension{Raw: []byte(d.Raw)},
+				Raw: []byte(d.Raw),
 			})
 		}
 
@@ -157,7 +155,7 @@ func TestDetectCrossRefs(t *testing.T) {
 func TestDepJobSuffix(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "dep-job-suffix",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -190,7 +188,7 @@ func TestDepJobSuffix(t *testing.T) {
 func TestBuildReplacementMap(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "build-replacement-map",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -207,7 +205,7 @@ func TestBuildReplacementMap(t *testing.T) {
 		var deps []nvcrev1alpha1.DependencySpec
 		for _, d := range input.Deps {
 			dep := nvcrev1alpha1.DependencySpec{
-				RawExtension: runtime.RawExtension{Raw: []byte(d.Raw)},
+				Raw: []byte(d.Raw),
 			}
 			deps = append(deps, dep)
 		}
@@ -241,7 +239,7 @@ func TestBuildReplacementMap(t *testing.T) {
 func TestSuffixDependencyObject(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "suffix-dependency-object",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -269,7 +267,7 @@ func TestSuffixDependencyObject(t *testing.T) {
 func TestSuffixJobSpec(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "suffix-job-spec",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -302,7 +300,7 @@ func TestSuffixJobSpec(t *testing.T) {
 func TestIsResourceName(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "is-resource-name",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -328,7 +326,7 @@ func TestIsResourceName(t *testing.T) {
 func TestExtractMetadataName(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "extract-metadata-name",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -354,7 +352,7 @@ func TestExtractMetadataName(t *testing.T) {
 func TestReverseDependencyRefs(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "reverse-dependency-refs",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -384,7 +382,7 @@ func TestReverseDependencyRefs(t *testing.T) {
 func TestDependencyOwnership(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "dependency-ownership",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -399,10 +397,8 @@ func TestDependencyOwnership(t *testing.T) {
 		}
 
 		workflow := &nvcrev1alpha1.Workflow{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: input.Workflow.Name,
-				UID:  types.UID(input.Workflow.UID),
-			},
+			Name: input.Workflow.Name,
+			UID:  types.UID(input.Workflow.UID),
 		}
 		obj := &unstructured.Unstructured{Object: input.Object}
 
@@ -424,7 +420,7 @@ func TestDependencyOwnership(t *testing.T) {
 func TestCollectAllStrings(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "collect-all-strings",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {

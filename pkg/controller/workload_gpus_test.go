@@ -25,7 +25,7 @@ import (
 func TestWorkloadGPUsPerNode(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "workload-gpus-per-node",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var spec nvcrev1alpha1.WorkflowSpec

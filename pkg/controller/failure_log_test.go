@@ -12,7 +12,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -31,7 +30,7 @@ import (
 func TestFailureLogTail(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "failure-log-tail",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -64,7 +63,7 @@ func TestFailureLogTail(t *testing.T) {
 func TestFailureLogCapture(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "failure-log-capture",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -88,10 +87,8 @@ func TestFailureLogCapture(t *testing.T) {
 		objs := make([]client.Object, 0, len(in.Pods))
 		for _, sp := range in.Pods {
 			pod := &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: sp.Name, Namespace: "ns",
-					Labels: map[string]string{"nvcre.nvidia.com/job": "j"},
-				},
+				Name: sp.Name, Namespace: "ns",
+				Labels: map[string]string{"nvcre.nvidia.com/job": "j"},
 			}
 			if sp.Running {
 				pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
@@ -102,7 +99,7 @@ func TestFailureLogCapture(t *testing.T) {
 			objs = append(objs, pod)
 		}
 
-		job := &nvcrev1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"}}
+		job := &nvcrev1alpha1.Job{Name: "j", Namespace: "ns"}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).
 			WithIndex(&corev1.Pod{}, nodemonitor.PodNVCREJobIndexField, func(obj client.Object) []string {
 				pod, ok := obj.(*corev1.Pod)

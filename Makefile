@@ -343,7 +343,7 @@ ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
   [ -n "$$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api replace has no tag)" >&2; exit 1; }; \
   printf '%s\n' "$$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
 
-GOLANGCI_LINT_VERSION ?= v2.11.4
+GOLANGCI_LINT_VERSION ?= v2.13.2
 
 .PHONY: controller-gen
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
@@ -389,9 +389,15 @@ scan-vuln: govulncheck ## Scan Go dependencies for known vulnerabilities.
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
+# Installed with `go install` like every other tool here rather than upstream's
+# install.sh. That script was fetched from `master` — an unpinned reference that
+# can change with no commit here — and its checksum check greps the tarball name
+# unanchored against checksums.txt. Since v2.13.x ships a
+# `<tarball>.tar.gz.sbom.json` asset, that grep matches two lines, so the
+# comparison sees two hashes and fails on a tarball that downloaded correctly.
+# `go install` pins the version and verifies it through the Go checksum database.
 $(GOLANGCI_LINT): $(LOCALBIN)
-	@test -s $(GOLANGCI_LINT) || \
-		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
+	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

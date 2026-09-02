@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -31,7 +30,7 @@ import (
 func TestWorkloadRunMPILauncherMNNVL(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "workloadrun-mpi-launcher-mnnvl",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -51,18 +50,16 @@ func TestWorkloadRunMPILauncherMNNVL(t *testing.T) {
 		}
 
 		node := &corev1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "node-0",
-				Labels: map[string]string{
-					GPUNodeLabel:             "true",
-					"nvidia.com/gpu.product": in.GPUProduct,
-				},
+			Name: "node-0",
+			Labels: map[string]string{
+				GPUNodeLabel:        present,
+				testGPUProductLabel: in.GPUProduct,
 			},
 		}
 		c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(node).Build()
 
 		run := &nvcrev1alpha1.WorkloadRun{
-			ObjectMeta: metav1.ObjectMeta{Name: "mnnvl-run", Namespace: "default"},
+			Name: "mnnvl-run", Namespace: testNS,
 			Spec: nvcrev1alpha1.WorkloadRunSpec{
 				Image:       "nvcr.io/nvidia/pytorch:24.01-py3",
 				NumNodes:    2,

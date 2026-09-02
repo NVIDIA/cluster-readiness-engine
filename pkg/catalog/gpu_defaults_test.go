@@ -19,7 +19,7 @@ type gpuDefaultsInput struct {
 func TestGPUDefaults(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "gpu-defaults",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input gpuDefaultsInput

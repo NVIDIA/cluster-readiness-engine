@@ -86,7 +86,7 @@ on:
           upload-artifact name holding the blob and any predicate. Required when
           subject_kind is blob, AND required whenever predicate_name is set --
           including for image and oci-artifact subjects, since the predicate
-          file is read out of this artifact.'
+          file is read out of this artifact.
         required: false
         type: string
         default: ''
@@ -98,10 +98,20 @@ on:
       predicate_type:
         description: >-
           cosign --type value for predicate_name. One of cyclonedx, spdxjson, or
-          openvex. Required when predicate_name is set.'
+          openvex. Required when predicate_name is set.
         required: false
         type: string
         default: ''
+      emit_provenance:
+        description: >-
+          Emit the SLSA provenance attestation. Default true. Set false when the
+          subject already carries provenance at another digest -- ADR-074 puts
+          provenance on the multi-platform index only, so the per-platform calls
+          that attach SBOMs must not attach a second provenance statement to a
+          child manifest.
+        required: false
+        type: boolean
+        default: true
       allow_untagged:
         description: >-
           Permit a run from a non-tag ref. For dispatch-driven testing only; such
@@ -174,6 +184,7 @@ jobs:
           IN_COSIGN_VERSION: ${{ inputs.cosign_version }}
           IN_CRANE_VERSION: ${{ inputs.crane_version }}
           IN_ALLOW_UNTAGGED: ${{ inputs.allow_untagged }}
+          IN_EMIT_PROVENANCE: ${{ inputs.emit_provenance }}
           CALLER_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
@@ -253,6 +264,11 @@ jobs:
             [[ -n "${IN_ARTIFACT_NAME}" ]] \
               || fail "artifact_name is required when predicate_name is set"
           fi
+          # Guard against a call that would sign nothing and attest nothing.
+          if [[ "${IN_EMIT_PROVENANCE}" != "true" && -z "${IN_PREDICATE_NAME}" && "${IN_SUBJECT_KIND}" == "blob" ]]; then
+            fail "emit_provenance=false with no predicate_name leaves a blob call with nothing to attest"
+          fi
+
           if [[ -n "${IN_PREDICATE_TYPE}" ]]; then
             case "${IN_PREDICATE_TYPE}" in
               cyclonedx|spdxjson|openvex) ;;
@@ -512,6 +528,7 @@ jobs:
           DIGEST: ${{ steps.resolve.outputs.resolved_digest }}
           PREDICATE_NAME: ${{ needs.validate.outputs.predicate_name }}
           PREDICATE_TYPE: ${{ needs.validate.outputs.predicate_type }}
+          EMIT_PROVENANCE: ${{ inputs.emit_provenance }}
         run: |
           set -euo pipefail
 
@@ -541,10 +558,14 @@ jobs:
             image|oci-artifact)
               ref="${SUBJECT_NAME}@${DIGEST}"
               retry cosign sign --yes "${ref}"
-              retry cosign attest --yes \
-                --predicate provenance.json \
-                --type slsaprovenance1 \
-                "${ref}"
+              if [[ "${EMIT_PROVENANCE}" == "true" ]]; then
+                retry cosign attest --yes \
+                  --predicate provenance.json \
+                  --type slsaprovenance1 \
+                  "${ref}"
+              else
+                echo "provenance suppressed for this subject by emit_provenance=false"
+              fi
               if [[ -n "${PREDICATE_NAME}" ]]; then
                 retry cosign attest --yes \
                   --predicate "subject/${PREDICATE_NAME}" \
@@ -555,11 +576,13 @@ jobs:
             blob)
               path="subject/${SUBJECT_NAME}"
               mkdir -p bundles
-              retry cosign attest-blob --yes \
-                --predicate provenance.json \
-                --type slsaprovenance1 \
-                --bundle "bundles/${SUBJECT_NAME}.sigstore.json" \
-                "${path}"
+              if [[ "${EMIT_PROVENANCE}" == "true" ]]; then
+                retry cosign attest-blob --yes \
+                  --predicate provenance.json \
+                  --type slsaprovenance1 \
+                  --bundle "bundles/${SUBJECT_NAME}.sigstore.json" \
+                  "${path}"
+              fi
               if [[ -n "${PREDICATE_NAME}" ]]; then
                 # The positional argument is the SUBJECT the predicate is bound
                 # to, so it must be the binary. Passing the predicate file here

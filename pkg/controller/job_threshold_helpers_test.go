@@ -11,14 +11,18 @@ import (
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
+// testMetricBusBandwidth is the bus bandwidth metric/threshold key used
+// throughout this file's fixtures.
+const testMetricBusBandwidth = "busBandwidthGBps"
+
 func TestMissingJobThresholdKeys(t *testing.T) {
 	t.Parallel()
 
 	missing := missingJobThresholdKeys(
-		map[string]string{"busBandwidthGBps": "value >= 900", "goodputRatio": "value >= 0.9"},
-		map[string]float64{"busBandwidthGBps": 1000},
+		map[string]string{testMetricBusBandwidth: "value >= 900", testMetricGoodputRatio: "value >= 0.9"},
+		map[string]float64{testMetricBusBandwidth: 1000},
 	)
-	if len(missing) != 1 || missing[0] != "goodputRatio" {
+	if len(missing) != 1 || missing[0] != testMetricGoodputRatio {
 		t.Fatalf("missing = %v, want [goodputRatio]", missing)
 	}
 }
@@ -27,9 +31,9 @@ func TestIsJobAwaitingThresholdEvaluation(t *testing.T) {
 	t.Parallel()
 
 	job := &nvcrev1alpha1.Job{
-		ObjectMeta: metav1.ObjectMeta{Name: "job", Namespace: "default"},
+		Name: "job", Namespace: testNS,
 		Spec: nvcrev1alpha1.JobSpec{
-			Thresholds: map[string]string{"busBandwidthGBps": "value >= 900"},
+			Thresholds: map[string]string{testMetricBusBandwidth: "value >= 900"},
 		},
 		Status: nvcrev1alpha1.JobStatus{
 			Conditions: []metav1.Condition{{

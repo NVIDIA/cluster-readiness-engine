@@ -21,7 +21,7 @@ import (
 func TestNodeHealthChangePredicate(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "node-health-predicate",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var oldNode, newNode corev1.Node

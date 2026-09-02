@@ -28,7 +28,7 @@ const crdFieldManager = "nvcrectl-setup"
 // stderr (registry warnings and errors) is surfaced separately on failure so
 // it can never corrupt the YAML stream.
 func fetchChartCRDs(helmPath, chartVersion string, out io.Writer) ([]byte, error) {
-	args := []string{"show", "crds", helmChartOCI, "--version", chartVersion}
+	args := []string{"show", "crds", helmChartOCI, helmFlagVersion, chartVersion}
 
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command(helmPath, args...) // #nosec G204 -- helmPath and args come from this CLI, not from untrusted input

@@ -14,7 +14,7 @@ import (
 func TestBisect(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "bisect",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input BisectInput

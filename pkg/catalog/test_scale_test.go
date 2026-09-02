@@ -24,7 +24,7 @@ import (
 func TestTestScaleNodeCount(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "test-scale-node-count",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {

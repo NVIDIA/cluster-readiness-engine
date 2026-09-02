@@ -36,6 +36,10 @@ var (
 	}
 )
 
+// mapKeyName is the "name" map key shared by the unstructured object
+// builders below.
+const mapKeyName = "name"
+
 func main() {
 	cfg, err := rest.InClusterConfig()
 	if err != nil {
@@ -85,7 +89,7 @@ func reconcileComputeDomains(ctx context.Context, client dynamic.Interface) {
 			"apiVersion": "resource.k8s.io/v1",
 			"kind":       "ResourceClaimTemplate",
 			"metadata": map[string]any{
-				"name":      templateName,
+				mapKeyName:  templateName,
 				"namespace": ns,
 				"labels": map[string]any{
 					"app.kubernetes.io/created-by": "dra-stub",
@@ -94,7 +98,7 @@ func reconcileComputeDomains(ctx context.Context, client dynamic.Interface) {
 					map[string]any{
 						"apiVersion": cd.GetAPIVersion(),
 						"kind":       cd.GetKind(),
-						"name":       cd.GetName(),
+						mapKeyName:   cd.GetName(),
 						"uid":        string(cd.GetUID()),
 					},
 				},
@@ -104,7 +108,7 @@ func reconcileComputeDomains(ctx context.Context, client dynamic.Interface) {
 					"devices": map[string]any{
 						"requests": []any{
 							map[string]any{
-								"name": "gpu-channel",
+								mapKeyName: "gpu-channel",
 								"exactly": map[string]any{
 									"deviceClassName": "gpu.nvidia.com",
 								},

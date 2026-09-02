@@ -42,7 +42,7 @@ type openStreamResult struct {
 func TestOpenStream(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "open-stream",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in openStreamInput

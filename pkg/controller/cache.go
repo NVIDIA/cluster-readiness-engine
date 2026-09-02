@@ -15,6 +15,9 @@ import (
 // partitioned into a group — so it also defines the Node cache boundary.
 const GPUNodeLabel = "nvidia.com/gpu.present"
 
+// present is the label value indicating a node has the GPUNodeLabel set.
+const present = "true"
+
 // CacheOptions returns the informer cache configuration for the manager.
 //
 // Without it, controller-runtime caches every object of every watched kind,
@@ -44,7 +47,7 @@ func CacheOptions() cache.Options {
 		DefaultTransform: cache.TransformStripManagedFields(),
 		ByObject: map[client.Object]cache.ByObject{
 			&corev1.Node{}: {
-				Label: labels.SelectorFromSet(labels.Set{GPUNodeLabel: "true"}),
+				Label: labels.SelectorFromSet(labels.Set{GPUNodeLabel: present}),
 			},
 		},
 	}
