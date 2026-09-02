@@ -29,7 +29,13 @@ The three certification-scoped tools accept `name` and `namespace` (default `def
 
 ### Authentication
 
-All cluster access uses the kubeconfig of whoever launches the server, resolved with the standard client-go rules: the `--kubeconfig`/`--context` flags, then the `KUBECONFIG` environment variable, then `~/.kube/config`. The server holds no credentials of its own, never reads in-cluster service account tokens, and can therefore never exceed the permissions of the user who runs it.
+All cluster access uses the kubeconfig of whoever launches the server, resolved with the standard client-go rules: the `--kubeconfig`/`--context` flags, then the `KUBECONFIG` environment variable, then `~/.kube/config`. The server holds no credentials of its own and adds no privilege of its own — it is exactly as authorized as the identity client-go resolves.
+
+<Warning>
+Client-go's loading rules end in an in-cluster fallback. Run `nvcrectl mcp serve` inside a pod with no kubeconfig and it authenticates as that pod's ServiceAccount, which may be broader than the operator running the agent. When you deploy the server in-cluster, bind its ServiceAccount to a role that grants no more than the reads below.
+</Warning>
+
+The tools need `get`/`list` on `certifications` and `workflows` in the target namespace, and `get` on the `configmaps` holding failed-node results. A caller missing the ConfigMap read still gets a successful response with an empty `failedNodes` list rather than an error, so grant the ConfigMap read explicitly — otherwise an agent can read "no nodes failed" from what is really "not allowed to look".
 
 ### Client configuration
 

@@ -63,7 +63,8 @@
   ],
   "name": "cert-mcp",
   "namespace": "default",
-  "result": "FAILED"
+  "result": "FAILED",
+  "totalNodes": 3
 }
 ### get_certification_status
 {
@@ -84,7 +85,8 @@
   ],
   "name": "cert-pass",
   "namespace": "default",
-  "result": "PASSED"
+  "result": "PASSED",
+  "totalNodes": 2
 }
 ### get_certification_report
 {

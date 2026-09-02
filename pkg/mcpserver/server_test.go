@@ -7,6 +7,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -23,7 +26,7 @@ import (
 // connect builds a server on top of a fake client and drives a full MCP
 // session against it over in-memory transports, so the tests exercise the
 // same protocol surface an agent sees (initialize, tools/list, tools/call).
-func connect(t *testing.T, store *Store) *mcp.ClientSession {
+func connect(t testing.TB, store *Store) *mcp.ClientSession {
 	t.Helper()
 	server := New(store, "test")
 	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.1"}, nil)
@@ -44,7 +47,7 @@ func connect(t *testing.T, store *Store) *mcp.ClientSession {
 
 // fakeStore builds a Store backed by a controller-runtime fake client holding
 // the test case's input objects, mirroring the pkg/report golden tests.
-func fakeStore(t *testing.T, tc *testutil.TestCase) *Store {
+func fakeStore(t testing.TB, tc *testutil.TestCase) *Store {
 	t.Helper()
 	scheme := runtime.NewScheme()
 	if err := clientgoscheme.AddToScheme(scheme); err != nil {
@@ -66,7 +69,7 @@ func fakeStore(t *testing.T, tc *testutil.TestCase) *Store {
 
 // callTool invokes the named tool with args and returns the parsed JSON of
 // its text content.
-func callTool(t *testing.T, session *mcp.ClientSession, name string, args any) string {
+func callTool(t testing.TB, session *mcp.ClientSession, name string, args any) string {
 	t.Helper()
 	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      name,
@@ -98,6 +101,86 @@ func callTool(t *testing.T, session *mcp.ClientSession, name string, args any) s
 	return string(pretty)
 }
 
+// TestStatusAgreesWithReport pins the invariant the golden files structurally
+// cannot: get_certification_status and get_certification_report describe the
+// same Certification, so they must never disagree about it. Recording each
+// tool's output in a golden separately lets a divergence sit unnoticed in two
+// blocks sixty lines apart, which is how the status tool came to report PASSED
+// for a run the report called INCOMPLETE.
+func TestStatusAgreesWithReport(t *testing.T) {
+	dirs, err := os.ReadDir(filepath.Join("testdata", "mcp-tools"))
+	if err != nil {
+		t.Fatalf("read testdata: %v", err)
+	}
+	for _, d := range dirs {
+		if !d.IsDir() {
+			continue
+		}
+		t.Run(d.Name(), func(t *testing.T) {
+			raw, err := os.ReadFile(filepath.Join("testdata", "mcp-tools", d.Name(), "input_client_objects.yaml"))
+			if err != nil {
+				t.Fatalf("read fixture objects: %v", err)
+			}
+			store := fakeStore(t, &testutil.TestCase{
+				T:      t,
+				Inputs: map[string]string{"input_client_objects.yaml": string(raw)},
+			})
+			session := connect(t, store)
+
+			certs := &nvcrev1alpha1.CertificationList{}
+			if err := store.Client.List(context.Background(), certs); err != nil {
+				t.Fatalf("list certifications: %v", err)
+			}
+			if len(certs.Items) == 0 {
+				t.Fatal("fixture has no Certification to compare")
+			}
+
+			for i := range certs.Items {
+				cert := &certs.Items[i]
+				args := map[string]any{"name": cert.Name, "namespace": cert.Namespace}
+
+				var status certView
+				var rep struct {
+					Report certView `json:"report"`
+				}
+				unmarshalTool(t, callTool(t, session, "get_certification_status", args), &status)
+				unmarshalTool(t, callTool(t, session, "get_certification_report", args), &rep)
+
+				if status.Result != rep.Report.Result {
+					t.Errorf("%s: result mismatch: status=%q report=%q", cert.Name, status.Result, rep.Report.Result)
+				}
+				if !reflect.DeepEqual(status.Categories, rep.Report.Categories) {
+					t.Errorf("%s: categories mismatch: status=%v report=%v",
+						cert.Name, status.Categories, rep.Report.Categories)
+				}
+				if !reflect.DeepEqual(status.FailedNodes, rep.Report.FailedNodes) {
+					t.Errorf("%s: failedNodes mismatch: status=%v report=%v",
+						cert.Name, status.FailedNodes, rep.Report.FailedNodes)
+				}
+			}
+		})
+	}
+}
+
+// certView is the subset of both tools' output that must agree.
+type certView struct {
+	Result     string `json:"result"`
+	Categories []struct {
+		Domain  string `json:"domain"`
+		Variant string `json:"variant"`
+		Status  string `json:"status"`
+	} `json:"categories"`
+	FailedNodes []string `json:"failedNodes"`
+}
+
+// unmarshalTool decodes a tool's JSON text into v.
+func unmarshalTool(t testing.TB, payload string, v any) {
+	t.Helper()
+	if err := json.Unmarshal([]byte(payload), v); err != nil {
+		t.Fatalf("decode tool output: %v", err)
+	}
+}
+
 // TestMCPTools exercises every tool against the golden files under
 // testdata/mcp-tools. Each case directory holds the input cluster objects
 // (input_client_objects.yaml) and the tool calls to run in input_calls.json;
@@ -108,8 +191,12 @@ func TestMCPTools(t *testing.T) {
 		ExpectedSuffix: ".txt",
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
-		store := fakeStore(t, tc)
-		session := connect(t, store)
+		// tc.T is the subtest's *testing.T. Using the outer t here would make
+		// any Fatal inside a case abort the parent, which surfaces as
+		// "subtest may have called FailNow on a parent test" and skips the
+		// golden comparison entirely.
+		store := fakeStore(tc.T, tc)
+		session := connect(tc.T, store)
 
 		var calls []struct {
 			Tool      string         `json:"tool"`
@@ -122,7 +209,7 @@ func TestMCPTools(t *testing.T) {
 		var out strings.Builder
 		for _, c := range calls {
 			fmt.Fprintf(&out, "### %s\n", c.Tool)
-			fmt.Fprintf(&out, "%s\n", callTool(t, session, c.Tool, c.Arguments))
+			fmt.Fprintf(&out, "%s\n", callTool(tc.T, session, c.Tool, c.Arguments))
 		}
 		tc.Actual = out.String()
 		return nil
