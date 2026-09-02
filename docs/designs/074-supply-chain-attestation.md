@@ -126,7 +126,9 @@ Note that ghcr.io does not implement the OCI 1.1 `/v2/<name>/referrers/<digest>`
 
 ### Toolchain pinning
 
-Every tool that contributes to a signature is pinned: `anchore/sbom-action` by commit SHA, `cosign-release` to an explicit version, and `govulncheck` to a version rather than `@latest`. `--new-bundle-format=true` is passed explicitly on every `cosign sign` and `cosign attest` call rather than inherited from a cosign default, because the on-registry layout is a property of our published contract and must change only by commit.
+Every tool that contributes to a signature is pinned: `anchore/sbom-action` by commit SHA, `cosign-release` to an explicit version, and `govulncheck` to a version rather than `@latest`.
+
+Bundle format is pinned for both attestation shapes, by different mechanisms. For registry attestations, `--new-bundle-format=true` is passed explicitly on every `cosign sign` and `cosign attest` call rather than inherited from a cosign default, because the on-registry layout is part of our published contract and must change only by commit. `cosign attest-blob` has no such flag — the detached shape is governed by the pinned cosign version together with `--bundle`, so for detached bundles the version pin *is* the format pin, which is a further reason it must be explicit rather than an installer default. Verification closes the loop on both: the release gate and the daily job reject a legacy-format bundle rather than falling back to reading it, so a cosign downgrade that silently changes the emitted shape fails the release instead of quietly publishing a format our documented commands do not describe.
 
 Every `cosign` invocation is wrapped in a bounded retry (three attempts, 5s and 10s backoff, no sleep after the final failure) with a per-call timeout. Rekor is a real network dependency with real transient failures, and the cosign CLI exposes no native retry flag.
 
@@ -165,6 +167,10 @@ The contract lives in YAML, and the failure mode is silent: a signing step delet
 - `installer` **fails closed** when it cannot verify a signature. An earlier draft of this record had it fall back to checksum-only with a printed notice, which contradicts this record's own Context: `checksums.txt` is served from the same origin as the artifact and is itself unsigned, so an adversary who can replace the binary can replace its checksum line in the same write. A silent downgrade to that check is not a weaker guarantee, it is no guarantee, and the printed notice puts the decision in front of a user who is watching a pipe scroll past.
 
   The bare-machine path is preserved two ways. `installer` bootstraps `cosign` when it is absent and the platform allows it, verifying the downloaded cosign against a pinned digest embedded in the installer. Where that is not possible, installation stops with instructions, and an explicit `--skip-verify` flag — never a default, never inferred from a missing binary — lets an operator proceed knowingly. Verification is skipped only when someone typed the words asking to skip it.
+
+- **`installer`'s own bytes cannot be authenticated by `installer`.** The `curl … | bash` path executes the script before anything has checked it, so an adversary who can replace that asset can equally delete the verification logic inside it, pinned digest and all. The bullet above hardens what the installer *installs*; it does not and cannot harden the installer. Treating it as if it did would be the same category of error as the `checksums.txt` fallback it replaced.
+
+  The trust anchor therefore has to sit outside the script. `installer` is in the artifact contract and ships with its own `.sigstore.json`, so the **documented primary path is: download, verify the bundle with a cosign the operator already trusts, then execute.** `curl … | bash` remains available as a convenience and the docs state plainly what it does and does not get you — integrity against a network attacker via TLS, nothing against a compromised release asset. Presenting an unauthenticated pipe as a verified install would recreate, at the outermost layer, precisely the false-assurance problem this record exists to remove.
 
 ## Alternatives Considered
 
