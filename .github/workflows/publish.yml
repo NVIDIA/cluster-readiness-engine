@@ -80,6 +80,19 @@ jobs:
         env:
           INPUT_TAG: ${{ inputs.tag }}
         run: |
+          # Reject CR/LF before the value is echoed anywhere. A workflow command
+          # must start at the beginning of a line, so a dispatch input carrying
+          # a newline could forge one -- `::add-mask::`, or `::stop-commands::`
+          # to silence the rest of the log -- through any message that quotes
+          # it. Fixed message here: naming the value would be the very thing
+          # this rejects.
+          case "${INPUT_TAG}" in
+            *$'\n'*|*$'\r'*)
+              echo "::error::the dispatch tag input contains a newline or carriage return"
+              exit 1
+              ;;
+          esac
+
           if [[ -n "${INPUT_TAG}" ]]; then
             if [[ "${GITHUB_REF}" != "refs/tags/${INPUT_TAG}" ]]; then
               echo "::error::dispatched with tag=${INPUT_TAG} but running from ${GITHUB_REF}. Re-dispatch with --ref ${INPUT_TAG} so the signature carries the release identity."
