@@ -1,0 +1,10 @@
+[
+  {
+    "tool": "get_certification_status",
+    "arguments": {"name": "cert-excluded"}
+  },
+  {
+    "tool": "get_certification_report",
+    "arguments": {"name": "cert-excluded"}
+  }
+]

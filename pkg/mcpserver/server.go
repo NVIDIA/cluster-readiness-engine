@@ -6,13 +6,9 @@
 //
 // The server answers "did this certification pass, and which nodes failed?"
 // from the same typed data sources the nvcrectl report command reads —
-// catalog.List, report.Build, and the failed-nodes ConfigMaps — so an agent
-// never has to scrape CLI output.
-//
-// Authentication flows strictly through the caller's kubeconfig (standard
-// client-go loading rules: --kubeconfig/--context flags, KUBECONFIG env, then
-// ~/.kube/config). The server can therefore never exceed the permissions of
-// whoever runs it, and holds no credentials of its own.
+// catalog.List, report.Build, and the failed-nodes ConfigMaps. Every
+// certification verdict is projected from report.Build rather than re-derived
+// from the CR, so a tool can never disagree with the report the CLI prints.
 //
 // The tool set is read-only by design (issue #242): no tool creates, mutates,
 // or deletes a resource, and nothing triggers a run — runs consume real GPU
@@ -31,7 +27,6 @@ import (
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/report"
 )
 
@@ -113,21 +108,21 @@ func listCategoriesTool() *mcp.Tool {
 func getCertStatusTool() *mcp.Tool {
 	return &mcp.Tool{
 		Name:        "get_certification_status",
-		Description: "Get the status of one Certification: overall result (PASSED/FAILED/RUNNING), conditions, per-category state, and failed node names.",
+		Description: "Get the status of one Certification: overall result (PASSED/INCOMPLETE/FAILED/RUNNING), conditions, per-category state, any nodes excluded from the run, and the unique names of failed nodes. INCOMPLETE means the run passed but left some targeted nodes untested.",
 	}
 }
 
 func getCertReportTool() *mcp.Tool {
 	return &mcp.Tool{
 		Name:        "get_certification_report",
-		Description: "Fetch the full certification report: categories with metrics, bandwidth, cliques, diagnose results, and per-node results.",
+		Description: "Fetch the full certification report: categories with metrics, bandwidth, cliques and diagnose results. This is the same JSON 'nvcrectl certification report --results-file' writes.",
 	}
 }
 
 func listFailedNodesTool() *mcp.Tool {
 	return &mcp.Tool{
 		Name:        "list_failed_nodes",
-		Description: "List the failed nodes for a Certification with per-node failure reason and message.",
+		Description: "List failure detail for a Certification: one row per distinct (node, reason, message). A node that failed in several categories appears once per distinct reason, so this is not a node count — use get_certification_status.failedNodes for unique node names.",
 	}
 }
 
@@ -155,13 +150,22 @@ func getCertStatusHandler(store *Store) mcp.ToolHandlerFor[certRef, any] {
 			return nil, nil, err
 		}
 
+		// Project the summary from the same report the CLI prints rather than
+		// re-deriving it from the CR. Re-deriving drifted: it missed the
+		// PASSED -> INCOMPLETE downgrade for excluded nodes, and reported the
+		// raw InProgress category status where the report says Running.
+		rep := report.Build(ctx, store.Client, cert)
+
 		out := &getCertStatusOutput{
-			Name:        cert.Name,
-			Namespace:   cert.Namespace,
-			Result:      certResult(cert),
-			Conditions:  []conditionInfo{},
-			Categories:  []categoryState{},
-			FailedNodes: report.CertFailedNodes(ctx, store.Client, cert),
+			Name:            cert.Name,
+			Namespace:       cert.Namespace,
+			Result:          rep.Result,
+			TotalNodes:      rep.TotalNodes,
+			ExcludedNodes:   rep.ExcludedNodes,
+			ExclusionReason: rep.ExclusionReason,
+			Conditions:      []conditionInfo{},
+			Categories:      []categoryState{},
+			FailedNodes:     rep.FailedNodes,
 		}
 		for _, c := range cert.Status.Conditions {
 			out.Conditions = append(out.Conditions, conditionInfo{
@@ -171,11 +175,11 @@ func getCertStatusHandler(store *Store) mcp.ToolHandlerFor[certRef, any] {
 				Message: c.Message,
 			})
 		}
-		for _, cs := range cert.Status.CategoryStatuses {
+		for _, c := range rep.Categories {
 			out.Categories = append(out.Categories, categoryState{
-				Domain:  cs.Domain,
-				Variant: cs.Variant,
-				Status:  cs.Status,
+				Domain:  c.Domain,
+				Variant: c.Variant,
+				Status:  c.Status,
 			})
 		}
 		return textResult(out)
@@ -219,7 +223,7 @@ func listFailedNodesHandler(store *Store) mcp.ToolHandlerFor[certRef, any] {
 				})
 			}
 		}
-		// Deterministic order: node name, then reason, then message.
+		// Deterministic order for the goldens.
 		sort.Slice(details, func(i, j int) bool {
 			a, b := details[i], details[j]
 			if a.Name != b.Name {
@@ -244,8 +248,7 @@ func listFailedNodesHandler(store *Store) mcp.ToolHandlerFor[certRef, any] {
 
 // certRef is the shared input of the three certification-scoped tools.
 type certRef struct {
-	Name string `json:"name" jsonschema:"name of the Certification resource"`
-	// Namespace defaults to "default" when omitted.
+	Name      string `json:"name" jsonschema:"name of the Certification resource"`
 	Namespace string `json:"namespace,omitempty" jsonschema:"namespace of the Certification (default: default)"`
 }
 
@@ -261,14 +264,24 @@ type categorySummary struct {
 }
 
 // getCertStatusOutput summarizes a Certification's overall and per-category
-// state without pulling measurement data.
+// state without pulling measurement data. Every field except Conditions is
+// projected from report.Build, so it agrees with get_certification_report.
 type getCertStatusOutput struct {
-	Name        string          `json:"name"`
-	Namespace   string          `json:"namespace"`
-	Result      string          `json:"result"` // "PASSED", "FAILED", or "RUNNING"
-	Conditions  []conditionInfo `json:"conditions,omitempty"`
-	Categories  []categoryState `json:"categories,omitempty"`
-	FailedNodes []string        `json:"failedNodes,omitempty"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Result    string `json:"result"` // "PASSED", "INCOMPLETE", "FAILED", or "RUNNING"
+	// ExcludedNodes lists nodes that matched the target but were left
+	// untested; a run reports INCOMPLETE rather than PASSED when it has any.
+	// Surfaced here so the cheaper tool cannot hide them from an agent.
+	TotalNodes      int             `json:"totalNodes,omitempty"`
+	ExcludedNodes   []string        `json:"excludedNodes,omitempty"`
+	ExclusionReason string          `json:"exclusionReason,omitempty"`
+	Conditions      []conditionInfo `json:"conditions,omitempty"`
+	Categories      []categoryState `json:"categories,omitempty"`
+	// FailedNodes is the unique node names that failed, deduplicated across
+	// categories. Use this for a node count; list_failed_nodes returns one
+	// row per distinct failure reason and so can repeat a name.
+	FailedNodes []string `json:"failedNodes,omitempty"`
 }
 
 type conditionInfo struct {
@@ -319,17 +332,4 @@ func (s *Store) certification(ctx context.Context, ref certRef) (*nvcrev1alpha1.
 		return nil, fmt.Errorf("get certification %q: %w", ref.Name, err)
 	}
 	return cert, nil
-}
-
-// certResult maps Certification conditions to the report's result strings,
-// matching report.Build.
-func certResult(cert *nvcrev1alpha1.Certification) string {
-	switch {
-	case controller.CondIsTrue(cert.Status.Conditions, nvcrev1alpha1.CertificationFailed):
-		return "FAILED"
-	case controller.CondIsTrue(cert.Status.Conditions, nvcrev1alpha1.CertificationSucceeded):
-		return "PASSED"
-	default:
-		return "RUNNING"
-	}
 }

@@ -23,10 +23,11 @@ func NewCommand(version string) *cobra.Command {
 }
 
 // newServeCommand serves the MCP server over stdio. The flags mirror every
-// other cluster-connecting subcommand: authentication resolves strictly
-// through the caller's kubeconfig (explicit flags, KUBECONFIG env, then
-// ~/.kube/config) — the server never reads in-cluster service account tokens,
-// so it cannot exceed the permissions of whoever runs it.
+// other cluster-connecting subcommand, and so do the credentials: client-go's
+// standard loading rules (explicit flags, KUBECONFIG env, then ~/.kube/config,
+// falling back to the in-cluster ServiceAccount when the process runs in a pod
+// with no kubeconfig). The server holds no credentials of its own and adds no
+// privilege — it is exactly as authorized as the identity it resolves.
 func newServeCommand(version string) *cobra.Command {
 	configFlags := kubeconfig.NewConfigFlags(true)
 	configFlags.Namespace = nil // the namespace is a per-tool argument
@@ -43,9 +44,10 @@ Four read-only tools are available:
   - list_failed_nodes        failed nodes with per-node reason and message
 
 The server is strictly read-only: no tool creates, mutates, or deletes a
-resource, and nothing triggers a run. Authentication flows through the
-kubeconfig of whoever launches the server, so an agent can never exceed that
-user's permissions.
+resource, and nothing triggers a run. It holds no credentials of its own and
+grants no privilege of its own — it acts as whatever identity client-go
+resolves, which is the launching user's kubeconfig, or the pod ServiceAccount
+if it is run in-cluster without one.
 
 Most MCP clients spawn this command themselves, e.g.:
 
