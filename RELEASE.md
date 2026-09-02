@@ -73,16 +73,34 @@ in the `releases/download/<tag>/installer` URL and pass `-v <tag>` to the instal
 
 ## What a release publishes
 
-Pushing a `v*` tag runs three jobs in `.github/workflows/release.yml`:
+Pushing a `v*` tag runs `.github/workflows/release.yml`, which owns every release artifact:
 
 | Job | Publishes |
 |---|---|
+| Build release image | `ghcr.io/nvidia/cluster-readiness-engine/manager:<tag>`, multi-platform |
+| Attest image (index, amd64 SBOM, arm64 SBOM) | signature, SLSA provenance, per-platform CycloneDX SBOMs |
 | Publish Helm Chart | `oci://ghcr.io/nvidia/cluster-readiness-engine` |
+| Attest Helm chart | signature and provenance on the chart digest |
 | Build CLI Binaries | cross-compiled `nvcrectl` for linux and macOS, amd64 and arm64 |
+| Attest binaries | a Sigstore bundle per binary, per SBOM, and for the installer |
 | Create GitHub Release | the GitHub Release, its notes, and the assets below |
 
-The container image is published separately by `.github/workflows/publish.yml` as
-`ghcr.io/nvidia/cluster-readiness-engine/manager:<tag>`.
+The release builds the container image itself. `.github/workflows/publish.yml` no longer
+runs on tags — it now builds only `main-<sha>` development images, and is pinned to
+`refs/heads/main` so it cannot be dispatched against a release tag. Previously both
+workflows fired on a tag push and raced, and the release notes named an image the release
+had never resolved.
+
+Each artifact is published only after the one it depends on is signed: the chart is not
+pushed until the image it references exists and is attested, and the GitHub Release is not
+created until all three families are attested.
+
+**Re-running part of a release.** There is no longer a workflow that rebuilds only the
+image for an existing tag. Re-run the whole release with
+`gh workflow run Release --ref vX.Y.Z -f tag=vX.Y.Z` — dispatching at the tag is required,
+because signatures take their identity from the ref the run was dispatched from. That
+re-executes the chart, binary and release steps as well, which is a wider blast radius
+than the old image-only rebuild.
 
 Release assets:
 
