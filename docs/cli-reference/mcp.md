@@ -21,11 +21,15 @@ The server is strictly read-only: no tool creates, mutates, or deletes a resourc
 | Tool | Description |
 |------|-------------|
 | `list_categories` | List the certification catalog: every registered `domain/variant` category a Certification can run |
-| `get_certification_status` | Overall result (`PASSED`/`FAILED`/`RUNNING`), conditions, per-category state, and failed node names for one Certification |
-| `get_certification_report` | The full report that `nvcrectl certification report` prints — categories with metrics, bandwidth, cliques, diagnose results, and per-node results |
+| `get_certification_status` | Overall result (`PASSED`/`INCOMPLETE`/`FAILED`/`RUNNING`), conditions, per-category state, any nodes excluded from the run, and the unique names of failed nodes for one Certification |
+| `get_certification_report` | The full report that `nvcrectl certification report` prints — categories with metrics, bandwidth, cliques, and diagnose results |
 | `list_failed_nodes` | Failed nodes for one Certification with per-node failure reason and message |
 
 The three certification-scoped tools accept `name` and `namespace` (default `default`).
+
+`INCOMPLETE` means the run passed but left some targeted nodes untested — the Workflow excluded them, and `excludedNodes`/`exclusionReason` say which and why. Treat it as "not certified": nothing was observed about those nodes either way. Both `get_certification_status` and `get_certification_report` report it, because both derive the verdict from the same builder.
+
+`get_certification_status.failedNodes` is the unique node names, deduplicated across categories. `list_failed_nodes` returns one row per distinct failure reason instead, so a node that failed in several categories appears more than once — use the former for a count.
 
 ### Authentication
 
