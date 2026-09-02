@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Publishes the Fern documentation site on GitHub Release or manual dispatch.
+# Publishes the Fern documentation site on release tag push or manual dispatch.
 #
 # All versions serve frozen content extracted from their git tag — there is no
 # "live docs" entry. The newest version is stamped "Latest · vX.Y.Z" at publish
@@ -40,8 +40,6 @@ on:
   push:
     tags:
       - "v[0-9]*.[0-9]*.[0-9]*"
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -96,14 +94,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_TAG: ${{ inputs.tag }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
         run: |
           set -eo pipefail
-          if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
-            TAG="${RELEASE_TAG}"
-            IS_PRERELEASE="${RELEASE_PRERELEASE}"
-          elif [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
             TAG="${GITHUB_REF#refs/tags/}"
           elif [ -n "${INPUT_TAG}" ]; then
             TAG="${INPUT_TAG}"
@@ -122,9 +115,7 @@ jobs:
             echo "::error::Tag '${TAG}' does not exist in this repository"
             exit 1
           fi
-          # Pre-release detection: use the Release event flag when available,
-          # fall back to hyphen check for tag-push and dispatch triggers.
-          if [ "${IS_PRERELEASE}" = "true" ] || [[ "$TAG" == *-* ]]; then
+          if [[ "$TAG" == *-* ]]; then
             IS_RELEASE=false
           else
             IS_RELEASE=true
