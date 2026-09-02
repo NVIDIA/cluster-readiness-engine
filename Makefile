@@ -299,8 +299,9 @@ helm-package: helm-lint ## Package the cluster-readiness-engine Helm chart.
 
 .PHONY: helm-push
 # The digest is what gets signed, so print it rather than leaving the operator
-# to look it up. `helm push` reports it on stderr, and CHART_DIGEST_FILE lets
-# CI capture the value without re-parsing the log.
+# to look it up. Both streams are captured because helm's output stream for the
+# digest line is not a documented contract, and CHART_DIGEST_FILE lets CI take
+# the value without re-parsing a log.
 helm-push: check-clean-version helm-package ## Push the Helm chart to the OCI registry and print its digest.
 	@set -eu; \
 	log="$$(mktemp)"; \

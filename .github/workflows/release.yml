@@ -93,7 +93,7 @@ jobs:
             echo "### Helm chart published"
             echo
             echo '```'
-            echo "oci://${{ steps.tag.outputs.chart_name }}:${{ steps.tag.outputs.value }}"
+            echo "oci://${CHART_NAME}:${CHART_TAG}"
             echo "${digest}"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
@@ -102,6 +102,11 @@ jobs:
           # 'NVIDIA', so the value is hardcoded. Keep in sync with
           # RELEASE.md and pkg/setup/helm.go.
           HELM_OCI_REGISTRY: oci://ghcr.io/nvidia
+          # Through the environment rather than `${{ }}` inside the script, so a
+          # value is data and not code -- the rule attest.yml states and the tag
+          # step above already follows.
+          CHART_NAME: ${{ steps.tag.outputs.chart_name }}
+          CHART_TAG: ${{ steps.tag.outputs.value }}
 
   # The chart is the highest-leverage artifact in the release: it carries the
   # CRDs and the manager ClusterRole, so a tampered chart grants itself whatever
@@ -306,26 +311,29 @@ jobs:
 
             ## Helm Chart
 
-            ```bash
-            helm install nvcre \
-              oci://ghcr.io/nvidia/cluster-readiness-engine \
-              --version ${{ steps.tag.outputs.value }} \
-              --namespace nvcre \
-              --create-namespace
-            ```
-
-            The controller image for this release is `ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}`.
-
-            The chart above is published at digest `${{ needs.helm-publish.outputs.chart_digest }}`. That digest is what the release signature covers; the version tag is mutable. Verify before installing:
+            This release's chart is published at digest `${{ needs.helm-publish.outputs.chart_digest }}`. The signature covers that digest; the version tag is mutable, so verify and install the **same digest** rather than verifying a digest and installing a tag.
 
             ```bash
+            CHART=ghcr.io/nvidia/cluster-readiness-engine
+            DIGEST=${{ needs.helm-publish.outputs.chart_digest }}
+
+            # 1. Verify the chart. Requires cosign; the package is public, so no login is needed.
             cosign verify \
               --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ steps.tag.outputs.value }}" \
               --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-              ghcr.io/nvidia/cluster-readiness-engine@${{ needs.helm-publish.outputs.chart_digest }}
+              "${CHART}@${DIGEST}"
+
+            # 2. Pull that exact digest, then install the file you just verified.
+            helm pull "oci://${CHART}@${DIGEST}"
+            helm install nvcre ./cluster-readiness-engine@${DIGEST/:/-}.tgz \
+              --namespace nvcre --create-namespace
             ```
 
-            `helm install --verify` does **not** check this signature — that flag looks for a PGP `.prov` file, which is a different mechanism.
+            Installing with `--version ${{ steps.tag.outputs.value }}` instead resolves the tag at install time, which is not provably the digest you verified.
+
+            `helm install --verify` does **not** check this signature. That flag looks for a PGP `.prov` file, a mechanism unrelated to Sigstore, and we publish no `.prov` files.
+
+            The controller image for this release is `ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}` — a different artifact from the chart, verified separately.
 
             ## nvcrectl CLI
 
