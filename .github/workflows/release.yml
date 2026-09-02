@@ -530,6 +530,15 @@ jobs:
             [[ -s "${f}" ]] || { echo "::error::asset ${f} is missing"; missing=1; }
             [[ -s "${f}.sigstore.json" ]] || { echo "::error::${f} has no signature bundle"; missing=1; }
           done
+          # The bundle binding each SBOM to its binary. Currently redundant --
+          # attest.yml fails the leg if that second attest-blob call fails -- but
+          # a future refactor that decoupled the two calls would otherwise ship a
+          # binary and an SBOM with nothing tying them together.
+          for b in nvcrectl-linux-amd64 nvcrectl-linux-arm64 \
+                   nvcrectl-darwin-amd64 nvcrectl-darwin-arm64; do
+            [[ -s "${b}.cyclonedx.sigstore.json" ]] \
+              || { echo "::error::${b} has no bundle binding its SBOM to it"; missing=1; }
+          done
           [[ "${missing}" -eq 0 ]] || exit 1
           ls -la
 
@@ -671,7 +680,23 @@ jobs:
               "${ASSET}"
             ```
 
-            Each `nvcrectl-*` binary also ships a CycloneDX SBOM, `<binary>.cyclonedx.json`, with its own bundle.
+            Each `nvcrectl-*` binary also ships a CycloneDX SBOM, `<binary>.cyclonedx.json`. There are **two** bundles involving it, one segment apart in name, and they prove different things:
+
+            | Bundle | Proves |
+            |---|---|
+            | `<binary>.cyclonedx.json.sigstore.json` | the SBOM **file** is the one we published and was not altered |
+            | `<binary>.cyclonedx.sigstore.json` | the SBOM **describes that binary** — it is bound to the binary as its subject |
+
+            The second is the one to check before feeding an SBOM to a scanner. Note the subject is the *binary*, not the SBOM:
+
+            ```bash
+            cosign verify-blob-attestation \
+              --bundle "${ASSET}.cyclonedx.sigstore.json" \
+              --type cyclonedx \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ steps.tag.outputs.value }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "${ASSET}"
+            ```
 
             `checksums.txt` is still published and still works, but it is not the verification story: it is served from the same origin as the assets and is itself unsigned, so it detects corruption rather than tampering.
 
