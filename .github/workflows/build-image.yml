@@ -1,0 +1,260 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Reusable workflow that builds and pushes the controller image and produces its
+# per-platform SBOMs.
+#
+# It exists so the RELEASE is authoritative about what it advertises. Previously
+# publish.yml and release.yml both fired on a tag push and raced: release.yml
+# created a GitHub Release naming an image tag it had never resolved, could not
+# confirm existed, and had no digest for -- so it could not have verified a
+# signature even in principle. Now release.yml calls this workflow and receives
+# the digests directly, and publish.yml builds only the main-branch dev images.
+#
+# It does NOT sign anything. Signing belongs to attest.yml, which every caller
+# invokes with the digests this workflow returns (ADR-074 decision 4).
+
+name: Build Image (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        description: >-
+          Tag to publish the image under. The caller is responsible for
+          validating it; this workflow re-checks the shape because the value
+          reaches a shell.
+        required: true
+        type: string
+    outputs:
+      image_name:
+        description: 'Registry path of the image, without tag or digest.'
+        value: ${{ jobs.build.outputs.image_name }}
+      index_digest:
+        description: 'Digest of the multi-platform index.'
+        value: ${{ jobs.build.outputs.index_digest }}
+      amd64_digest:
+        description: 'Digest of the linux/amd64 child manifest.'
+        value: ${{ jobs.build.outputs.amd64_digest }}
+      arm64_digest:
+        description: 'Digest of the linux/arm64 child manifest.'
+        value: ${{ jobs.build.outputs.arm64_digest }}
+      sbom_artifact:
+        description: 'Name of the uploaded artifact holding the per-platform SBOMs.'
+        value: image-sboms
+
+permissions: {}
+
+env:
+  IMAGE_NAME: ghcr.io/nvidia/cluster-readiness-engine/manager
+
+jobs:
+  build:
+    name: Build and Push Container
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    runs-on: linux-amd64-cpu32
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_name: ${{ env.IMAGE_NAME }}
+      index_digest: ${{ steps.push.outputs.digest }}
+      amd64_digest: ${{ steps.platforms.outputs.amd64 }}
+      arm64_digest: ${{ steps.platforms.outputs.arm64 }}
+    steps:
+      # Re-validated here even though callers validate: this value reaches a
+      # shell in a job holding packages:write, and a reusable workflow must not
+      # rely on every future caller having done the check.
+      - name: Validate image tag
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          case "${IMAGE_TAG}" in
+            *$'\n'*|*$'\r'*)
+              echo "::error::image_tag contains a newline or carriage return"
+              exit 1
+              ;;
+          esac
+          if [[ ! "${IMAGE_TAG}" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?|main-[0-9a-f]{7})$ ]]; then
+            echo "::error::image_tag is neither vMAJOR.MINOR.PATCH[-prerelease] nor main-<sha>: ${IMAGE_TAG}"
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Use the pre-populated buildkitd config on NVIDIA GHA runners, which
+      # routes image pulls through a per-environment Docker mirror cache.
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        with:
+          buildkitd-config: /etc/buildkit/buildkitd.toml
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: push
+        run: |
+          set -euo pipefail
+          make docker-buildx
+          # Capture the image digest for signing
+          DIGEST=$(docker buildx imagetools inspect \
+            "${IMAGE_NAME}:${IMAGE_TAG}" \
+            --format '{{.Manifest.Digest}}')
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+        env:
+          # GHCR paths must be lowercase and github.repository expands to
+          # uppercase 'NVIDIA/...', so the path is hardcoded. Keep in sync with
+          # the Makefile, helm values.yaml, and pkg/setup/setup.go.
+          IMG: ${{ env.IMAGE_NAME }}:${{ inputs.image_tag }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+
+      # An SBOM describes exactly one root filesystem, and this image is a
+      # multi-platform index. Attaching one SBOM to the index digest -- what this
+      # workflow used to do -- publishes one architecture's package list as if it
+      # described both, so an operator scanning the arm64 image reads amd64 data.
+      #
+      # Resolution uses `docker buildx imagetools`, which is already present for
+      # the push above. attest.yml re-resolves independently with crane before it
+      # signs, so the two paths do not share a tool or a failure mode.
+      - name: Resolve per-platform manifest digests
+        id: platforms
+        env:
+          REF: ${{ env.IMAGE_NAME }}@${{ steps.push.outputs.digest }}
+          INDEX_DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          manifest="$(docker buildx imagetools inspect "${REF}" --raw)"
+          amd64_digest=""
+          arm64_digest=""
+
+          for arch in amd64 arm64; do
+            digest="$(jq -r --arg a "${arch}" '
+              [ .manifests[]?
+                | select(.platform.os == "linux" and .platform.architecture == $a)
+                | select((.annotations["vnd.docker.reference.type"] // "") != "attestation-manifest")
+                | .digest ] | first // empty' <<<"${manifest}")"
+
+            if [[ -z "${digest}" ]]; then
+              echo "::error::linux/${arch} is absent from the index; the release lost an architecture"
+              exit 1
+            fi
+            if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::linux/${arch} digest is malformed: ${digest}"
+              exit 1
+            fi
+            # Equal to the index means this reference is a plain manifest, not an
+            # index, so the "per-platform" SBOM would describe the wrong subject.
+            if [[ "${digest}" == "${INDEX_DIGEST}" ]]; then
+              echo "::error::linux/${arch} resolved to the index digest; ${REF} is not a multi-platform index"
+              exit 1
+            fi
+            echo "${arch}=${digest}" >> "$GITHUB_OUTPUT"
+            echo "linux/${arch} -> ${digest}"
+            case "${arch}" in
+              amd64) amd64_digest="${digest}" ;;
+              arm64) arm64_digest="${digest}" ;;
+            esac
+          done
+
+          # Identical digests mean the index carries one manifest advertised
+          # under both architectures, so one SBOM would be published twice under
+          # two names -- the same defect this job removes, in a new disguise.
+          if [[ "${amd64_digest}" == "${arm64_digest}" ]]; then
+            echo "::error::amd64 and arm64 resolved to the same digest; the image is not multi-platform"
+            exit 1
+          fi
+
+      # syft writes to the path it is given and will not create the directory.
+      - name: Create SBOM output directory
+        run: mkdir -p sboms
+
+      # SYFT_PLATFORM plus a per-platform digest is what makes these two
+      # documents actually differ. Format stays CycloneDX (ADR-074 decision 5);
+      # this changes the SBOM's subject, not its format.
+      - name: Generate linux/amd64 SBOM
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        env:
+          SYFT_PLATFORM: linux/amd64
+        with:
+          image: ${{ env.IMAGE_NAME }}@${{ steps.platforms.outputs.amd64 }}
+          format: cyclonedx-json
+          output-file: sboms/sbom-linux-amd64.cyclonedx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Generate linux/arm64 SBOM
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        env:
+          SYFT_PLATFORM: linux/arm64
+        with:
+          image: ${{ env.IMAGE_NAME }}@${{ steps.platforms.outputs.arm64 }}
+          format: cyclonedx-json
+          output-file: sboms/sbom-linux-arm64.cyclonedx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      # Each SBOM is generated against a per-platform MANIFEST digest, not the
+      # tag, so syft can only see that platform's root filesystem; the
+      # distinctness checks above already reject the case where both digests are
+      # the same. What is not covered upstream is a wiring mistake between these
+      # two near-identical steps -- the amd64 SBOM generated against the arm64
+      # digest, or one digest used twice -- so that is what this checks.
+      #
+      # Deliberately NOT a comparison of the two package sets. The image is a
+      # static Go binary on distroless: both platforms legitimately resolve the
+      # same Go module list, so requiring the sets to differ would fail correct
+      # releases. Comparing whole-document bytes is worse still -- a CycloneDX
+      # document carries a random serialNumber and a timestamp, so two documents
+      # are never byte-identical and such a check can never fire.
+      - name: Verify each SBOM describes its own platform
+        env:
+          AMD64: ${{ steps.platforms.outputs.amd64 }}
+          ARM64: ${{ steps.platforms.outputs.arm64 }}
+        run: |
+          set -euo pipefail
+          amd64_file=sboms/sbom-linux-amd64.cyclonedx.json
+          arm64_file=sboms/sbom-linux-arm64.cyclonedx.json
+
+          for f in "${amd64_file}" "${arm64_file}"; do
+            [[ -s "${f}" ]] || { echo "::error::${f} is missing or empty"; exit 1; }
+            jq -e . "${f}" >/dev/null || { echo "::error::${f} is not valid JSON"; exit 1; }
+          done
+
+          # A document referencing the other platform's digest was generated
+          # against the wrong subject. Where syft records no digest at all,
+          # neither branch fires and the check stays silent rather than failing
+          # on an assumption about syft's output shape.
+          if grep -q "${ARM64#sha256:}" "${amd64_file}"; then
+            echo "::error::the amd64 SBOM references the arm64 manifest digest; the two generation steps are wired to the wrong subjects"
+            exit 1
+          fi
+          if grep -q "${AMD64#sha256:}" "${arm64_file}"; then
+            echo "::error::the arm64 SBOM references the amd64 manifest digest; the two generation steps are wired to the wrong subjects"
+            exit 1
+          fi
+
+          for pair in "amd64:${amd64_file}" "arm64:${arm64_file}"; do
+            arch="${pair%%:*}"; file="${pair#*:}"
+            count="$(jq '[.components[]?] | length' "${file}")"
+            if [[ "${count}" -eq 0 ]]; then
+              echo "::error::the ${arch} SBOM lists no components; syft produced an empty inventory"
+              exit 1
+            fi
+            echo "${arch} components: ${count}"
+          done
+
+      - name: Upload SBOMs for attestation
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: image-sboms
+          path: sboms/
+          retention-days: 7
+          if-no-files-found: error
