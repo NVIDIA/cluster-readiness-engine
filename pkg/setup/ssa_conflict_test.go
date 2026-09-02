@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	corev1ac "k8s.io/client-go/applyconfigurations/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -47,7 +46,7 @@ func TestClassifierMatchesRealSSAConflict(t *testing.T) {
 	c := suite.Client
 
 	require.NoError(t, c.Create(ctx,
-		&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: trainerNamespace}}))
+		&corev1.Namespace{Name: trainerNamespace}))
 
 	const secretName = "kubeflow-trainer-webhook-cert"
 	webhookSecret := func(crt, key string) *corev1ac.SecretApplyConfiguration {
@@ -83,7 +82,7 @@ func TestClassifierMatchesRealSSAConflict(t *testing.T) {
 
 	p := testutil.TestCaseParser{
 		Subdir:         "ssa-conflict",
-		ExpectedSuffix: ".txt",
+		ExpectedSuffix: testutil.SuffixTXT,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		paths := regexp.MustCompile(`\.data\.[^\s,:]+`).FindAllString(conflictErr.Error(), -1)

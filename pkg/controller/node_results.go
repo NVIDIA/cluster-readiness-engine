@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -140,10 +139,8 @@ func recordNodeResults[T any](
 
 	cmName := nodeResultsCMName(target.namePrefix, string(workflow.UID))
 	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cmName,
-			Namespace: workflow.Namespace,
-		},
+		Name:      cmName,
+		Namespace: workflow.Namespace,
 	}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, cm, func() error {
 		if err := controllerutil.SetControllerReference(workflow, cm, r.Scheme); err != nil {
@@ -163,7 +160,7 @@ func recordNodeResults[T any](
 		return fmt.Errorf("failed to write node-results ConfigMap %s: %w", cmName, err)
 	}
 
-	target.setRef(workflow, &corev1.TypedLocalObjectReference{Kind: "ConfigMap", Name: cmName})
+	target.setRef(workflow, &corev1.TypedLocalObjectReference{Kind: kindConfigMap, Name: cmName})
 	return nil
 }
 

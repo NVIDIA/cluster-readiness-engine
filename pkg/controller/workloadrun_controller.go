@@ -88,13 +88,11 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	workflowSpec := r.buildWorkflowSpec(ctx, &run)
 
 	workflow := &nvcrev1alpha1.Workflow{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      run.Name,
-			Namespace: run.Namespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/managed-by":  "nvcre",
-				"nvcre.nvidia.com/workload-run": run.Name,
-			},
+		Name:      run.Name,
+		Namespace: run.Namespace,
+		Labels: map[string]string{
+			"app.kubernetes.io/managed-by":  managedByValue,
+			"nvcre.nvidia.com/workload-run": run.Name,
 		},
 		Spec: *workflowSpec,
 	}
@@ -288,11 +286,9 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 		}
 		volumes = append(volumes, corev1.Volume{
 			Name: "config-volume",
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{Name: configMapName},
-					DefaultMode:          func() *int32 { m := int32(0755); return &m }(),
-				},
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				Name:        configMapName,
+				DefaultMode: func() *int32 { m := int32(0755); return &m }(),
 			},
 		})
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
@@ -523,7 +519,7 @@ func (r *WorkloadRunReconciler) buildJobTemplate(run *nvcrev1alpha1.WorkloadRun,
 func buildWRConfigMapDep(name string, data map[string]string) nvcrev1alpha1.DependencySpec {
 	cm := map[string]any{
 		"apiVersion": "v1",
-		"kind":       "ConfigMap",
+		"kind":       kindConfigMap,
 		"metadata": map[string]any{
 			"name":   fmt.Sprintf("%s-config", name),
 			"labels": map[string]any{"app": name},
@@ -531,7 +527,7 @@ func buildWRConfigMapDep(name string, data map[string]string) nvcrev1alpha1.Depe
 		"data": data,
 	}
 	raw, _ := json.Marshal(cm)
-	return nvcrev1alpha1.DependencySpec{RawExtension: kruntime.RawExtension{Raw: raw}}
+	return nvcrev1alpha1.DependencySpec{Raw: raw}
 }
 
 // buildWRPVCDep creates a PVC dependency for checkpoint storage.
@@ -552,7 +548,7 @@ func buildWRPVCDep(name string, checkpoint *nvcrev1alpha1.WorkloadRunCheckpoint)
 		pvc["spec"].(map[string]any)["storageClassName"] = *checkpoint.StorageClassName
 	}
 	raw, _ := json.Marshal(pvc)
-	return nvcrev1alpha1.DependencySpec{RawExtension: kruntime.RawExtension{Raw: raw}}
+	return nvcrev1alpha1.DependencySpec{Raw: raw}
 }
 
 // resolveWRTimeout turns a user-supplied timeoutPerJob into a duration, falling

@@ -35,7 +35,7 @@ type conditionOut struct {
 func TestUnresolvedLogProfile(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "unresolved-log-profile",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -59,7 +59,7 @@ func TestUnresolvedLogProfile(t *testing.T) {
 		// missing, and reaches a different branch now that the final sample runs
 		// before the terminal handling.
 		profile := &nvcrev1alpha1.LogProfile{
-			ObjectMeta: metav1.ObjectMeta{Name: "megatron-training"},
+			Name: "megatron-training",
 			Spec: nvcrev1alpha1.LogProfileSpec{
 				Timestamp: nvcrev1alpha1.TimestampSpec{Layout: "2006-01-02 15:04:05.999999"},
 				Patterns: nvcrev1alpha1.LogPatternSet{
@@ -71,7 +71,7 @@ func TestUnresolvedLogProfile(t *testing.T) {
 		}
 
 		job := &nvcrev1alpha1.Job{
-			ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"},
+			Name: "j", Namespace: "ns",
 			Status: nvcrev1alpha1.JobStatus{Conditions: []metav1.Condition{{
 				Type: in.JobCondition, Status: metav1.ConditionTrue,
 				Reason: "Test", LastTransitionTime: metav1.Now(),
@@ -86,10 +86,8 @@ func TestUnresolvedLogProfile(t *testing.T) {
 		switch in.Measurement {
 		case "bandwidth":
 			m := &nvcrev1alpha1.BandwidthMeasurement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "m", Namespace: "ns",
-					Finalizers: []string{bandwidthMeasurementFinalizer},
-				},
+				Name: "m", Namespace: "ns",
+				Finalizers: []string{bandwidthMeasurementFinalizer},
 				Spec: nvcrev1alpha1.BandwidthMeasurementSpec{
 					JobRef:        corev1.TypedLocalObjectReference{Name: "j"},
 					LogProfileRef: in.LogProfileRef,
@@ -112,10 +110,8 @@ func TestUnresolvedLogProfile(t *testing.T) {
 			conds, results = got.Status.Conditions, len(got.Status.Results)
 		default:
 			m := &nvcrev1alpha1.GoodputMeasurement{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "m", Namespace: "ns",
-					Finalizers: []string{goodputMeasurementFinalizer},
-				},
+				Name: "m", Namespace: "ns",
+				Finalizers: []string{goodputMeasurementFinalizer},
 				Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 					JobRef:        corev1.TypedLocalObjectReference{Name: "j"},
 					LogProfileRef: in.LogProfileRef,

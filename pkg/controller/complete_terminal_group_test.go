@@ -40,7 +40,7 @@ import (
 func TestCompleteTerminalGroup(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "complete-terminal-group",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -61,10 +61,10 @@ func TestCompleteTerminalGroup(t *testing.T) {
 		now := metav1.Now()
 
 		job := &nvcrev1alpha1.Job{
-			ObjectMeta: metav1.ObjectMeta{Name: "wf-group-0-iter-1", Namespace: ns},
+			Name: "wf-group-0-iter-1", Namespace: ns,
 			Status: nvcrev1alpha1.JobStatus{
 				WorkloadRef: &nvcrev1alpha1.WorkloadReference{
-					APIVersion: "v1", Kind: "ConfigMap", Name: "workload-cm", Namespace: ns,
+					APIVersion: "v1", Kind: kindConfigMap, Name: "workload-cm", Namespace: ns,
 				},
 			},
 		}
@@ -86,7 +86,7 @@ func TestCompleteTerminalGroup(t *testing.T) {
 		}
 
 		workflow := &nvcrev1alpha1.Workflow{
-			ObjectMeta: metav1.ObjectMeta{Name: "wf", Namespace: ns},
+			Name: "wf", Namespace: ns,
 			Spec: nvcrev1alpha1.WorkflowSpec{
 				Orchestration: nvcrev1alpha1.OrchestrationSpec{
 					Execution: nvcrev1alpha1.ExecutionSpec{RetryFailedGroups: input.RetryFailedGroups},
@@ -94,18 +94,18 @@ func TestCompleteTerminalGroup(t *testing.T) {
 			},
 			Status: nvcrev1alpha1.WorkflowStatus{
 				DependencyRefs: []nvcrev1alpha1.DependencyResourceRef{{
-					APIVersion: "v1", Kind: "ConfigMap", Name: "dep-cm", Namespace: ns,
-					Scope: "job", GroupName: "group-0", Iteration: 1,
+					APIVersion: "v1", Kind: kindConfigMap, Name: "dep-cm", Namespace: ns,
+					Scope: labelJob, GroupName: "group-0", Iteration: 1,
 				}},
 				Orchestration: &nvcrev1alpha1.OrchestrationStatus{
 					TotalNodes: 1, NodesPerJob: 1, TotalGroups: 1, CurrentIteration: 1,
 					Groups: []nvcrev1alpha1.GroupStatus{{
 						Name:    "group-0",
-						Nodes:   []string{"node-a"},
+						Nodes:   []string{testNodeA},
 						Phase:   nvcrev1alpha1.GroupRunning,
 						Retries: input.GroupRetries,
 						JobRef: &nvcrev1alpha1.WorkloadReference{
-							APIVersion: nvcrev1alpha1.GroupVersion.String(), Kind: "Job",
+							APIVersion: nvcrev1alpha1.GroupVersion.String(), Kind: kindJob,
 							Name: job.Name, Namespace: ns,
 						},
 						StartTime: &now,
@@ -124,15 +124,13 @@ func TestCompleteTerminalGroup(t *testing.T) {
 
 		objs := []client.Object{
 			job.DeepCopy(),
-			&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "dep-cm", Namespace: ns}},
-			&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "workload-cm", Namespace: ns}},
+			&corev1.ConfigMap{Name: "dep-cm", Namespace: ns},
+			&corev1.ConfigMap{Name: "workload-cm", Namespace: ns},
 		}
 		for _, sp := range input.Pods {
 			objs = append(objs, &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: sp.Name, Namespace: ns,
-					Labels: map[string]string{nodemonitor.NVCREJobLabel: job.Name},
-				},
+				Name: sp.Name, Namespace: ns,
+				Labels: map[string]string{nodemonitor.NVCREJobLabel: job.Name},
 				Status: corev1.PodStatus{Phase: corev1.PodPhase(sp.Phase)},
 			})
 		}

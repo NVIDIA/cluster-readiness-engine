@@ -29,7 +29,7 @@ import (
 func TestWaitingForNodes(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "waiting-for-nodes",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -49,15 +49,13 @@ func TestWaitingForNodes(t *testing.T) {
 		}
 
 		cert := &nvcrev1alpha1.Certification{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "c", Namespace: "ns",
-				CreationTimestamp: metav1.Now(),
-				Finalizers:        []string{certificationFinalizer},
-			},
+			Name: "c", Namespace: "ns",
+			CreationTimestamp: metav1.Now(),
+			Finalizers:        []string{certificationFinalizer},
 			Spec: nvcrev1alpha1.CertificationSpec{
 				Target: nvcrev1alpha1.TargetSpec{NodeSelector: in.NodeSelector},
 				Categories: []nvcrev1alpha1.CertificateCategory{
-					{Domain: "communication", Variant: "nccl-all-reduce"},
+					{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce},
 				},
 			},
 		}
@@ -65,12 +63,12 @@ func TestWaitingForNodes(t *testing.T) {
 		builder := fake.NewClientBuilder().WithScheme(scheme).
 			WithObjects(cert).WithStatusSubresource(cert)
 		for _, n := range in.Nodes {
-			builder = builder.WithObjects(&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: n}})
+			builder = builder.WithObjects(&corev1.Node{Name: n})
 		}
 		c := builder.Build()
 
 		r := &CertificationReconciler{Client: c, Scheme: scheme}
-		_, _ = r.Reconcile(context.Background(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "c", Namespace: "ns"}})
+		_, _ = r.Reconcile(context.Background(), ctrl.Request{Name: "c", Namespace: "ns"})
 
 		got := &nvcrev1alpha1.Certification{}
 		if err := c.Get(context.Background(), types.NamespacedName{Name: "c", Namespace: "ns"}, got); err != nil {

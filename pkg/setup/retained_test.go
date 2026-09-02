@@ -32,7 +32,7 @@ type retainedTestConfig struct {
 func TestPrintRetainedResources(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "print-retained-resources",
-		ExpectedSuffix: ".txt",
+		ExpectedSuffix: testutil.SuffixTXT,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg retainedTestConfig

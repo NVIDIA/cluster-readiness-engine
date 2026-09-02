@@ -21,14 +21,18 @@ import (
 	sigsyaml "sigs.k8s.io/yaml"
 )
 
+// testAPIVersionV1Alpha1 is the "v1alpha1" version string shared by the
+// NVCRE and Trainer GroupVersionKinds registered for tests in this package.
+const testAPIVersionV1Alpha1 = "v1alpha1"
+
 // registerTrainerKinds registers the Trainer-family kinds the recovery gate
 // lists, so the fake client can serve them as unstructured objects — the
 // same registration shape newSetupScheme uses for LogProfile.
 func registerTrainerKinds(s *runtime.Scheme) {
 	kinds := []schema.GroupVersionKind{
-		{Group: trainerAPIGroup, Version: "v1alpha1", Kind: "TrainJob"},
-		{Group: trainerAPIGroup, Version: "v1alpha1", Kind: "TrainingRuntime"},
-		{Group: trainerAPIGroup, Version: "v1alpha1", Kind: "ClusterTrainingRuntime"},
+		{Group: trainerAPIGroup, Version: testAPIVersionV1Alpha1, Kind: "TrainJob"},
+		{Group: trainerAPIGroup, Version: testAPIVersionV1Alpha1, Kind: "TrainingRuntime"},
+		{Group: trainerAPIGroup, Version: testAPIVersionV1Alpha1, Kind: "ClusterTrainingRuntime"},
 		{Group: jobsetAPIGroup, Version: "v1alpha2", Kind: "JobSet"},
 	}
 	for _, gvk := range kinds {
@@ -70,7 +74,7 @@ type initRecoveryInput struct {
 func TestInstallDepsPhaseRecovery(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "init-recovery",
-		ExpectedSuffix: ".txt",
+		ExpectedSuffix: testutil.SuffixTXT,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in initRecoveryInput

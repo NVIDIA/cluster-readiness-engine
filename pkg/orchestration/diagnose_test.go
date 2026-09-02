@@ -14,7 +14,7 @@ import (
 func TestScreenGroups(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "screen-groups",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -56,7 +56,7 @@ func TestScreenGroups(t *testing.T) {
 func TestBuildConfirmationGroups(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "confirmation-groups",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {

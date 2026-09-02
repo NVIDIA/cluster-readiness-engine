@@ -18,7 +18,7 @@ import (
 func TestDetectPlatform(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "detect-platform",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -44,7 +44,7 @@ func TestDetectPlatform(t *testing.T) {
 func TestDetectPlatformConsistent(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "detect-platform-consistent",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -76,7 +76,7 @@ func TestDetectPlatformConsistent(t *testing.T) {
 func TestDetectGPUArchConsistent(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "detect-gpu-arch-consistent",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -108,7 +108,7 @@ func TestDetectGPUArchConsistent(t *testing.T) {
 func TestDetectGPUArchitecture(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "detect-gpu-architecture",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -134,7 +134,7 @@ func TestDetectGPUArchitecture(t *testing.T) {
 func TestMatchesWhen(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "matches-when",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -177,7 +177,7 @@ func TestMatchesWhen(t *testing.T) {
 func TestApplyOverrides(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "apply-overrides",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -217,7 +217,7 @@ func TestApplyOverrides(t *testing.T) {
 func TestDetectWorkloadKind(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "detect-workload-kind",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -243,7 +243,7 @@ func TestDetectWorkloadKind(t *testing.T) {
 func TestMatchesIntSpec(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "matches-int-spec",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -270,7 +270,7 @@ func TestMatchesIntSpec(t *testing.T) {
 func TestSummarizeWhen(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "summarize-when",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -296,7 +296,7 @@ func TestSummarizeWhen(t *testing.T) {
 func TestApplyOverridesWithTracking(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "apply-overrides-tracking",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -331,7 +331,7 @@ func TestApplyOverridesWithTracking(t *testing.T) {
 func TestCountDomains(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "count-domains",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {

@@ -34,6 +34,15 @@ const (
 	statusInProgress = "InProgress"
 )
 
+// Diagnose stage names, as returned by inferDiagnoseStage.
+const (
+	diagnoseStageScreening      = "screening"
+	diagnoseStageScreeningNoNVL = "screening-no-nvl"
+	diagnoseStageBisection      = "bisection"
+	diagnoseStageConfirmation   = "confirmation"
+	diagnoseStageInterScreening = "inter-screening"
+)
+
 // ---------------------------------------------------------------------------
 // Report data model
 // ---------------------------------------------------------------------------
@@ -1410,7 +1419,7 @@ func buildDiagnoseTests(
 
 		// Only set domain for screening tests — other stages list individual nodes.
 		var domain string
-		if stage == "screening" {
+		if stage == diagnoseStageScreening {
 			domain = lookupScreeningDomain(wf, nodes)
 		}
 
@@ -1432,19 +1441,19 @@ func buildDiagnoseTests(
 // inferDiagnoseStage infers the stage from the group name.
 func inferDiagnoseStage(groupName string) string {
 	if strings.Contains(groupName, "screen-no-nvl") {
-		return "screening-no-nvl"
+		return diagnoseStageScreeningNoNVL
 	}
 	if strings.Contains(groupName, "screen") {
-		return "screening"
+		return diagnoseStageScreening
 	}
 	if strings.Contains(groupName, "bisect") {
-		return "bisection"
+		return diagnoseStageBisection
 	}
 	if strings.Contains(groupName, "confirm") {
-		return "confirmation"
+		return diagnoseStageConfirmation
 	}
 	if strings.Contains(groupName, "inter-domain") {
-		return "inter-screening"
+		return diagnoseStageInterScreening
 	}
 	return "unknown"
 }
@@ -1518,13 +1527,13 @@ func groupFaultyByDomain(faulty []string, screening map[string]nvcrev1alpha1.Dom
 func printDiagnoseResults(w io.Writer, d *DiagnoseReport) {
 	_, _ = fmt.Fprintf(w, "│%s│\n", pad(boxWidth-2))
 	stageNames := map[string]string{
-		"intra-screening":        "intra-rack screening",
-		"intra-screening-no-nvl": "intra-rack screening (no NVL)",
-		"inter-screening":        "inter-rack screening",
-		"bisection":              "bisection",
-		"confirmation":           "confirmation",
-		"cross-boundary":         "cross-boundary probing",
-		"complete":               "complete",
+		"intra-screening":           "intra-rack screening",
+		"intra-screening-no-nvl":    "intra-rack screening (no NVL)",
+		diagnoseStageInterScreening: "inter-rack screening",
+		diagnoseStageBisection:      diagnoseStageBisection,
+		diagnoseStageConfirmation:   diagnoseStageConfirmation,
+		"cross-boundary":            "cross-boundary probing",
+		"complete":                  "complete",
 	}
 	stage := d.Stage
 	if name, ok := stageNames[stage]; ok {
@@ -1590,13 +1599,16 @@ func printDiagnoseResults(w io.Writer, d *DiagnoseReport) {
 		printBoxLine(w, "Test Results:")
 
 		stageDisplay := map[string]string{
-			"screening":        "intra-rack screening",
-			"screening-no-nvl": "intra-rack screening (no NVL)",
-			"inter-screening":  "inter-rack screening",
-			"bisection":        "bisection",
-			"confirmation":     "confirmation",
+			diagnoseStageScreening:      "intra-rack screening",
+			diagnoseStageScreeningNoNVL: "intra-rack screening (no NVL)",
+			diagnoseStageInterScreening: "inter-rack screening",
+			diagnoseStageBisection:      diagnoseStageBisection,
+			diagnoseStageConfirmation:   diagnoseStageConfirmation,
 		}
-		stages := []string{"screening", "screening-no-nvl", "inter-screening", "bisection", "confirmation"}
+		stages := []string{
+			diagnoseStageScreening, diagnoseStageScreeningNoNVL, diagnoseStageInterScreening,
+			diagnoseStageBisection, diagnoseStageConfirmation,
+		}
 		for _, stage := range stages {
 
 			var stageTests []DiagnoseTestRow

@@ -17,7 +17,7 @@ import (
 func TestApplyWorkflowValidationFailed(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "apply-workflow-validation-failed",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {

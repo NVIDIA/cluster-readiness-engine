@@ -21,7 +21,7 @@ import (
 func TestWorkloadRunWatchLine(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "watch-line",
-		ExpectedSuffix: ".txt",
+		ExpectedSuffix: testutil.SuffixTXT,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		// json tags, not yaml: sigs.k8s.io/yaml converts YAML to JSON and

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -23,7 +22,7 @@ import (
 func TestRenderOrchestrationOptions(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "render-orchestration-options",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var opts nvcrev1alpha1.CategoryOptions
@@ -39,13 +38,13 @@ func TestRenderOrchestrationOptions(t *testing.T) {
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &sel); err != nil {
 			return err
 		}
-		cat := nvcrev1alpha1.CertificateCategory{Domain: "communication", Variant: "nccl-all-reduce"}
+		cat := nvcrev1alpha1.CertificateCategory{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce}
 		if sel.Category != nil {
 			cat = nvcrev1alpha1.CertificateCategory{Domain: sel.Category.Domain, Variant: sel.Category.Variant}
 		}
 
 		cert := &nvcrev1alpha1.Certification{
-			ObjectMeta: metav1.ObjectMeta{Name: "render-test"},
+			Name: "render-test",
 			Spec: nvcrev1alpha1.CertificationSpec{
 				Target: nvcrev1alpha1.TargetSpec{
 					NodeSelector: map[string]string{

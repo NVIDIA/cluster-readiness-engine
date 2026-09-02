@@ -19,7 +19,7 @@ import (
 func TestNotEnoughNodesMessage(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "not-enough-nodes-message",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {

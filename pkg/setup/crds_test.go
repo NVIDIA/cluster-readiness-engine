@@ -52,7 +52,7 @@ func TestApplyChartCRDs(t *testing.T) {
 
 	p := testutil.TestCaseParser{
 		Subdir:         "apply-chart-crds",
-		ExpectedSuffix: ".txt",
+		ExpectedSuffix: testutil.SuffixTXT,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {

@@ -26,7 +26,7 @@ import (
 func TestApplyPlatformMPIArgs(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "apply-platform-mpi-args",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {

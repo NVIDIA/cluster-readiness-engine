@@ -186,7 +186,7 @@ var (
 		goodputLabels,
 	)
 
-	topologyNodeLabels = []string{labelNamespace, labelWorkflow, "topology_key", "domain", "node"}
+	topologyNodeLabels = []string{labelNamespace, labelWorkflow, "topology_key", "domain", labelNode}
 
 	// topologyValidatedNodesGauge tracks nodes that passed burn-in validation,
 	// one time series per node with value 1.
