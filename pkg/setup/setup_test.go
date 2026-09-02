@@ -33,7 +33,7 @@ func newTestConfigFlags(kubeconfigPath, kubeContext string) *kubeconfig.ConfigFl
 func TestPromptForConfirmation(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "prompt-for-confirmation",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		input := tc.Inputs["input.txt"]
@@ -120,7 +120,7 @@ users:
 func TestParseSkipPhases(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "parse-skip-phases",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -148,7 +148,7 @@ func TestParseSkipPhases(t *testing.T) {
 func TestParseImage(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "parse-image",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -185,7 +185,7 @@ func TestDefaultImage(t *testing.T) {
 func TestSplitYAMLDocuments(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "split-yaml-documents",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		docs := splitYAMLDocuments([]byte(tc.Inputs["input.yaml"]))

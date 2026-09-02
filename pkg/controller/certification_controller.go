@@ -72,6 +72,7 @@ const (
 	annotationRequestedTestScale = "nvcre.nvidia.com/requested-test-scale"
 
 	labelManagedBy = "app.kubernetes.io/managed-by"
+	managedByValue = "nvcre"
 )
 
 // CertificationReconciler reconciles a Certification object
@@ -186,8 +187,7 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 		}
 		// A foreign Workflow holds the generated name: terminal, no retry, and
 		// the collision is never recorded so cleanup cannot touch the object.
-		var collision *nameCollisionError
-		if errors.As(err, &collision) {
+		if collision, ok := errors.AsType[*nameCollisionError](err); ok {
 			log.Error(err, "Workflow name collision", "domain", firstCategory.Domain, "variant", firstCategory.Variant)
 			if statusErr := r.setCertificationFailed(ctx, certification, collision.Reason, err.Error()); statusErr != nil {
 				log.Error(statusErr, "Failed to update Certification status after Workflow name collision")
@@ -265,8 +265,7 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 		}
 		// A foreign Workflow holds the generated name: terminal, no retry, and
 		// the collision is never recorded so cleanup cannot touch the object.
-		var collision *nameCollisionError
-		if errors.As(err, &collision) {
+		if collision, ok := errors.AsType[*nameCollisionError](err); ok {
 			log.Error(err, "Workflow name collision", "domain", category.Domain, "variant", category.Variant)
 			if statusErr := r.setCertificationFailed(ctx, certification, collision.Reason, err.Error()); statusErr != nil {
 				log.Error(statusErr, "Failed to update Certification status after Workflow name collision")
@@ -511,15 +510,13 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	// --- 5. Create Workflow ---
 	workflowName := r.getWorkflowName(certification, category)
 	workflow := &nvcrev1alpha1.Workflow{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      workflowName,
-			Namespace: certification.Namespace,
-			Labels: map[string]string{
-				labelManagedBy:       "nvcre",
-				labelCertification:   certification.Name,
-				labelCategoryDomain:  category.Domain,
-				labelCategoryVariant: category.Variant,
-			},
+		Name:      workflowName,
+		Namespace: certification.Namespace,
+		Labels: map[string]string{
+			labelManagedBy:       managedByValue,
+			labelCertification:   certification.Name,
+			labelCategoryDomain:  category.Domain,
+			labelCategoryVariant: category.Variant,
 		},
 		Spec: workflowSpec,
 	}

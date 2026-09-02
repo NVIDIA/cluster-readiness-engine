@@ -9,7 +9,6 @@ import (
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -18,7 +17,7 @@ import (
 func TestBuildTolerations(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "build-tolerations",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -42,7 +41,7 @@ func TestBuildTolerations(t *testing.T) {
 func TestNodeMatchesTaints(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "node-match-taints",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -69,7 +68,7 @@ func TestNodeMatchesTaints(t *testing.T) {
 func TestCanLaunchOverflow(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "can-launch-overflow",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -96,7 +95,7 @@ func TestCanLaunchOverflow(t *testing.T) {
 func TestHasNodeOverlap(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "has-node-overlap",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -123,7 +122,7 @@ func TestHasNodeOverlap(t *testing.T) {
 func TestCountRunningGroups(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "count-running-groups",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -150,7 +149,7 @@ func TestCountRunningGroups(t *testing.T) {
 func TestAllGroupsTerminal(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "all-groups-terminal",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -178,7 +177,7 @@ func TestAllGroupsTerminal(t *testing.T) {
 func TestHasRunningGroups(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "has-running-groups",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -206,7 +205,7 @@ func TestHasRunningGroups(t *testing.T) {
 func TestGetGroupJobName(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "get-group-job-name",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -221,7 +220,7 @@ func TestGetGroupJobName(t *testing.T) {
 		}
 
 		workflow := &nvcrev1alpha1.Workflow{
-			ObjectMeta: metav1.ObjectMeta{Name: input.WorkflowName},
+			Name: input.WorkflowName,
 			Spec: nvcrev1alpha1.WorkflowSpec{
 				Orchestration: nvcrev1alpha1.OrchestrationSpec{
 					Iterations: input.Iterations,
@@ -251,7 +250,7 @@ func TestGetGroupJobName(t *testing.T) {
 func TestEffectiveIterations(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "effective-iterations",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -278,7 +277,7 @@ func TestEffectiveIterations(t *testing.T) {
 func TestHasMultipleIterations(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "has-multiple-iterations",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {

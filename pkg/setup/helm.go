@@ -26,6 +26,12 @@ const (
 	trainerReleaseName  = "kubeflow-trainer"
 	trainerHelmChartOCI = "oci://ghcr.io/kubeflow/charts/kubeflow-trainer"
 	trainerNamespace    = "kubeflow-system"
+
+	helmFlagNamespace = "--namespace"
+	helmFlagVersion   = "--version"
+	helmFlagSet       = "--set"
+	helmFlagWait      = "--wait"
+	helmFlagTimeout   = "--timeout"
 )
 
 // gitDescribeSuffix matches the trailing commit count and hash that git
@@ -149,16 +155,16 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 	imageName, imageTag := parseImage(p.image)
 	args := []string{
 		"upgrade", "--install", helmReleaseName, helmChartOCI,
-		"--namespace", nvcreNamespace,
+		helmFlagNamespace, nvcreNamespace,
 		"--create-namespace",
-		"--version", chartVersion,
-		"--set", "manager.image.repository=" + imageName,
-		"--set", "manager.image.tag=" + imageTag,
-		"--wait",
-		"--timeout", helmInstallTimeout.String(),
+		helmFlagVersion, chartVersion,
+		helmFlagSet, "manager.image.repository=" + imageName,
+		helmFlagSet, "manager.image.tag=" + imageTag,
+		helmFlagWait,
+		helmFlagTimeout, helmInstallTimeout.String(),
 	}
 	if p.pullSecretName != "" {
-		args = append(args, "--set", "manager.imagePullSecrets[0].name="+p.pullSecretName)
+		args = append(args, helmFlagSet, "manager.imagePullSecrets[0].name="+p.pullSecretName)
 	}
 	args = appendKubeconfigArgs(args, p.kubeconfig, p.kubeContext)
 
@@ -183,10 +189,10 @@ func uninstallHelmRelease(p helmUninstallParams) error {
 
 	args := []string{
 		"uninstall", helmReleaseName,
-		"--namespace", nvcreNamespace,
+		helmFlagNamespace, nvcreNamespace,
 		"--ignore-not-found",
-		"--wait",
-		"--timeout", helmInstallTimeout.String(),
+		helmFlagWait,
+		helmFlagTimeout, helmInstallTimeout.String(),
 	}
 	args = appendKubeconfigArgs(args, p.kubeconfig, p.kubeContext)
 
@@ -210,13 +216,13 @@ func installTrainerHelmRelease(kubeconfig, kubeContext string, out io.Writer) (s
 		trainerReleaseName, trainerNamespace)
 	args := []string{
 		"upgrade", "--install", trainerReleaseName, trainerHelmChartOCI,
-		"--namespace", trainerNamespace,
+		helmFlagNamespace, trainerNamespace,
 		"--create-namespace",
-		"--version", strings.TrimPrefix(kubeflowTrainerVersion, "v"),
-		"--set", "manager.tolerations[0].operator=Exists",
-		"--set", "jobset.controller.tolerations[0].operator=Exists",
-		"--wait",
-		"--timeout", helmInstallTimeout.String(),
+		helmFlagVersion, strings.TrimPrefix(kubeflowTrainerVersion, "v"),
+		helmFlagSet, "manager.tolerations[0].operator=Exists",
+		helmFlagSet, "jobset.controller.tolerations[0].operator=Exists",
+		helmFlagWait,
+		helmFlagTimeout, helmInstallTimeout.String(),
 	}
 	args = appendKubeconfigArgs(args, kubeconfig, kubeContext)
 	return runHelmCapture(helmPath, args, out)
@@ -231,10 +237,10 @@ func uninstallTrainerHelmRelease(kubeconfig, kubeContext string, out io.Writer) 
 
 	args := []string{
 		"uninstall", trainerReleaseName,
-		"--namespace", trainerNamespace,
+		helmFlagNamespace, trainerNamespace,
 		"--ignore-not-found",
-		"--wait",
-		"--timeout", helmInstallTimeout.String(),
+		helmFlagWait,
+		helmFlagTimeout, helmInstallTimeout.String(),
 	}
 	args = appendKubeconfigArgs(args, kubeconfig, kubeContext)
 	_, _ = fmt.Fprintf(out, "[deps] Removing Helm release %q from namespace %s...\n", trainerReleaseName, trainerNamespace)
@@ -288,7 +294,7 @@ func helmReleaseState(helmPath, release, namespace, kubeconfig, kubeContext stri
 // report an empty version; callers that need it fall back to
 // helmReleaseMetadataVersion.
 func helmReleaseStateAndVersion(helmPath, release, namespace, kubeconfig, kubeContext string) (string, string) {
-	args := []string{"status", release, "--namespace", namespace, "-o", "json"}
+	args := []string{"status", release, helmFlagNamespace, namespace, "-o", "json"}
 	args = appendKubeconfigArgs(args, kubeconfig, kubeContext)
 
 	var stdout, stderr bytes.Buffer
@@ -322,7 +328,7 @@ func helmReleaseStateAndVersion(helmPath, release, namespace, kubeconfig, kubeCo
 // returns the installed chart version, or "" when it cannot be determined.
 // Used only when `helm status` stripped the chart metadata from its payload.
 func helmReleaseMetadataVersion(helmPath, release, namespace, kubeconfig, kubeContext string) string {
-	args := []string{"get", "metadata", release, "--namespace", namespace, "-o", "json"}
+	args := []string{"get", "metadata", release, helmFlagNamespace, namespace, "-o", "json"}
 	args = appendKubeconfigArgs(args, kubeconfig, kubeContext)
 
 	var stdout bytes.Buffer

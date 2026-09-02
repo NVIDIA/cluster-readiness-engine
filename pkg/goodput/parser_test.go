@@ -16,6 +16,10 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
+// testFieldStep is the "step" key shared by the checkpoint/restore map
+// builders below.
+const testFieldStep = "step"
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Golden-file tests using testutil
 // ──────────────────────────────────────────────────────────────────────────────
@@ -23,7 +27,7 @@ import (
 func TestParseLogs(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "parse-logs",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var profile v1alpha1.LogProfile
@@ -54,7 +58,7 @@ func TestParseLogs(t *testing.T) {
 func TestExtractK8sTimestamp(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "extract-k8s-timestamp",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		line := strings.TrimSpace(tc.Inputs["input.txt"])
@@ -75,7 +79,7 @@ func TestExtractK8sTimestamp(t *testing.T) {
 func TestNormalizeUnit(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "normalize-unit",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -137,7 +141,7 @@ func toTestOutput(r *ParseResult) map[string]any {
 	}
 	if r.CheckpointRestore != nil {
 		m := map[string]any{
-			"step": r.CheckpointRestore.Step,
+			testFieldStep: r.CheckpointRestore.Step,
 		}
 		if r.CheckpointRestore.Path != "" {
 			m["path"] = r.CheckpointRestore.Path
@@ -152,7 +156,7 @@ func toTestOutput(r *ParseResult) map[string]any {
 	}
 	if r.PendingSave != nil {
 		ps := map[string]any{
-			"step": r.PendingSave.Step,
+			testFieldStep: r.PendingSave.Step,
 		}
 		if !r.PendingSave.Timestamp.IsZero() {
 			ps["timestamp"] = r.PendingSave.Timestamp.UTC().Format(time.RFC3339Nano)
@@ -194,7 +198,7 @@ func stepToMap(s *TrainingStepInfo) map[string]any {
 
 func checkpointToMap(c *CheckpointInfo) map[string]any {
 	m := map[string]any{
-		"step": c.Step,
+		testFieldStep: c.Step,
 	}
 	if !c.Timestamp.IsZero() {
 		m["timestamp"] = c.Timestamp.UTC().Format(time.RFC3339Nano)

@@ -14,6 +14,10 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 )
 
+// testGPUArchGB300 is the gpuArchitecture value used throughout this file's
+// AWS GB300 override-matching fixtures.
+const testGPUArchGB300 = "gb300"
+
 // TestAWSGB300EFAStripInvariant asserts that every NCCL-using catalog entry,
 // after applying its overrides for the (platform=aws, gpuArchitecture=gb300)
 // context, produces a trainer container that does NOT leave the AWS EFA stack
@@ -35,22 +39,22 @@ import (
 func TestAWSGB300EFAStripInvariant(t *testing.T) {
 	// Sweep configurations large enough to satisfy each entry's MinGPUs.
 	configs := []catalog.BuildConfig{
-		{NodesPerJob: 1, GpusPerNode: 4, GPUArchitecture: "gb300"},
-		{NodesPerJob: 4, GpusPerNode: 4, GPUArchitecture: "gb300"},
-		{NodesPerJob: 8, GpusPerNode: 4, GPUArchitecture: "gb300"},
-		{NodesPerJob: 32, GpusPerNode: 4, GPUArchitecture: "gb300"},
-		{NodesPerJob: 128, GpusPerNode: 4, GPUArchitecture: "gb300"},
+		{NodesPerJob: 1, GpusPerNode: 4, GPUArchitecture: testGPUArchGB300},
+		{NodesPerJob: 4, GpusPerNode: 4, GPUArchitecture: testGPUArchGB300},
+		{NodesPerJob: 8, GpusPerNode: 4, GPUArchitecture: testGPUArchGB300},
+		{NodesPerJob: 32, GpusPerNode: 4, GPUArchitecture: testGPUArchGB300},
+		{NodesPerJob: 128, GpusPerNode: 4, GPUArchitecture: testGPUArchGB300},
 	}
 
 	target := nvcrev1alpha1.TargetSpec{
 		NodeSelector: map[string]string{
-			"nvidia.com/gpu.product": "NVIDIA-GB300",
+			testGPUProductLabel: "NVIDIA-GB300",
 		},
 	}
 
 	octx := OverrideContext{
 		Platform:        "aws",
-		GPUArchitecture: "gb300",
+		GPUArchitecture: testGPUArchGB300,
 		WorkloadKind:    "trainJob",
 	}
 
@@ -166,7 +170,7 @@ func entryUsesNCCL(spec nvcrev1alpha1.WorkflowSpec) bool {
 		if err := json.Unmarshal(dep.Raw, &obj); err != nil {
 			continue
 		}
-		if obj["kind"] != "ConfigMap" {
+		if obj["kind"] != kindConfigMap {
 			continue
 		}
 		data, _ := obj["data"].(map[string]any)
@@ -192,8 +196,8 @@ func hasAWSGB300When(w nvcrev1alpha1.WhenSpec) bool {
 		return false
 	}
 	platformMatches := w.Platform.Equals == "aws" || containsString(w.Platform.In, "aws")
-	archMatches := w.GPUArchitecture.Equals == "gb300" ||
-		containsString(w.GPUArchitecture.In, "gb300")
+	archMatches := w.GPUArchitecture.Equals == testGPUArchGB300 ||
+		containsString(w.GPUArchitecture.In, testGPUArchGB300)
 	return platformMatches && archMatches
 }
 

@@ -30,7 +30,7 @@ import (
 func TestBuildWorkflowSpec(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "build-workflow-spec",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		// The tags below are json, not yaml. sigs.k8s.io/yaml converts the YAML
@@ -213,7 +213,7 @@ func runtimeLauncherEnv(s *nvcrev1alpha1.WorkflowSpec) []string {
 func TestValidateExecFramework(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "validate-exec-framework",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var spec nvcrev1alpha1.WorkloadRunSpec

@@ -43,6 +43,9 @@ const (
 	workflowFinalizer              = "nvcre.nvidia.com/workflow-finalizer"
 	defaultWorkflowRequeueInterval = 15 * time.Second
 
+	// mnnvlEnableEnvVar is the env var name used to toggle multi-node NVLink.
+	mnnvlEnableEnvVar = "NCCL_MNNVL_ENABLE"
+
 	// Workflow tier reason constants are in helpers.go.
 )
 
@@ -660,7 +663,7 @@ func discoverTargetNodes(ctx context.Context, reader client.Reader, target *nvcr
 	var cordoned []string
 	for _, n := range nodes {
 		if n.Spec.Unschedulable {
-			if n.Labels["nvidia.com/gpu.present"] == "true" {
+			if n.Labels[GPUNodeLabel] == present {
 				cordoned = append(cordoned, n.Name)
 			}
 			continue
@@ -672,7 +675,7 @@ func discoverTargetNodes(ctx context.Context, reader client.Reader, target *nvcr
 	// Filter to GPU-equipped nodes only
 	var gpuFiltered []corev1.Node
 	for _, n := range nodes {
-		if n.Labels["nvidia.com/gpu.present"] == "true" {
+		if n.Labels[GPUNodeLabel] == present {
 			gpuFiltered = append(gpuFiltered, n)
 		}
 	}
@@ -935,8 +938,7 @@ func (r *WorkflowReconciler) launchPendingGroups(ctx context.Context, workflow *
 			// A name collision with a foreign Job or dependency is terminal:
 			// retrying cannot succeed while the foreign object holds the name,
 			// and adopting or deleting it is never safe.
-			var collision *nameCollisionError
-			if errors.As(err, &collision) {
+			if collision, ok := errors.AsType[*nameCollisionError](err); ok {
 				logf.FromContext(ctx).Error(err, "Name collision while launching group", "group", g.Name)
 				// Persist refs for dependency copies created before the collision
 				// so the finalizer can clean them up (conflict-safe via the extra
@@ -1007,11 +1009,9 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 	}
 
 	job := &nvcrev1alpha1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobName,
-			Namespace: workflow.Namespace,
-		},
-		Spec: *patchedSpec,
+		Name:      jobName,
+		Namespace: workflow.Namespace,
+		Spec:      *patchedSpec,
 	}
 
 	// Pin to this group's specific nodes via NodeAffinity
@@ -1069,7 +1069,7 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 	// Merge labels from template metadata
 	labels := make(map[string]string)
 	maps.Copy(labels, workflow.Spec.JobTemplate.Labels)
-	labels["app.kubernetes.io/managed-by"] = "nvcre"
+	labels["app.kubernetes.io/managed-by"] = managedByValue
 	labels["nvcre.nvidia.com/workflow"] = workflow.Name
 	labels["nvcre.nvidia.com/group"] = group.Name
 	job.SetLabels(labels)
@@ -1150,7 +1150,7 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 	group.Phase = nvcrev1alpha1.GroupRunning
 	group.JobRef = &nvcrev1alpha1.WorkloadReference{
 		APIVersion: "nvcre.nvidia.com/v1alpha1",
-		Kind:       "Job",
+		Kind:       kindJob,
 		Name:       jobName,
 		Namespace:  workflow.Namespace,
 	}
@@ -2507,7 +2507,7 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 	podList := &corev1.PodList{}
 	if err := r.List(ctx, podList,
 		client.InNamespace(job.Namespace),
-		client.MatchingLabels{"nvcre.nvidia.com/job": job.Name},
+		client.MatchingLabels{labelJobKey: job.Name},
 	); err != nil {
 		log.V(1).Info("Failed to list pods for timeout log capture", "error", err)
 		return
@@ -2538,7 +2538,7 @@ func (r *WorkflowReconciler) captureTimeoutLog(ctx context.Context, job *nvcrev1
 	// Find the main container name (prefer "node", fall back to first)
 	containerName := ""
 	for _, c := range targetPod.Spec.Containers {
-		if containerName == "" || c.Name == "node" {
+		if containerName == "" || c.Name == labelNode {
 			containerName = c.Name
 		}
 	}
@@ -2947,7 +2947,7 @@ func overrideMNNVL(spec *nvcrev1alpha1.WorkloadSpec, value string) {
 
 	// Check Env vars.
 	for i, e := range trainer.Env {
-		if e.Name == "NCCL_MNNVL_ENABLE" {
+		if e.Name == mnnvlEnableEnvVar {
 			trainer.Env[i].Value = value
 			return
 		}
@@ -2955,7 +2955,7 @@ func overrideMNNVL(spec *nvcrev1alpha1.WorkloadSpec, value string) {
 
 	// Not found — add as env var.
 	trainer.Env = append(trainer.Env, corev1.EnvVar{
-		Name: "NCCL_MNNVL_ENABLE", Value: value,
+		Name: mnnvlEnableEnvVar, Value: value,
 	})
 }
 
@@ -2976,7 +2976,7 @@ func isMNNVLEnabledInJobTemplate(tmpl *nvcrev1alpha1.JobTemplateSpec) bool {
 		}
 	}
 	for _, e := range trainer.Env {
-		if e.Name == "NCCL_MNNVL_ENABLE" {
+		if e.Name == mnnvlEnableEnvVar {
 			return e.Value != "0"
 		}
 	}
