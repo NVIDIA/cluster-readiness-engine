@@ -81,3 +81,4 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 071 | [Threshold Violation Reason Propagation into Report Surfaces](071-threshold-reason-propagation.md) |
 | 072 | [Freeze GoodputMeasurement Status at Job Terminal State](072-goodput-terminal-freeze.md) |
 | 073 | [Convergent `setup init` Retry After a Partial Kubeflow Trainer Install](073-setup-retry-convergence.md) |
+| 074 | [Supply Chain Artifact and Verification Contract](074-supply-chain-attestation.md) |
