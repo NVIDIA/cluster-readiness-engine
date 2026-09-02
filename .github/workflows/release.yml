@@ -1165,21 +1165,6 @@ jobs:
           gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false
           echo "release ${TAG} verified and published"
 
-      # Publication is not the last step, so a failure after it would leave the
-      # release visible with the run red -- the exact state the draft exists to
-      # prevent. Retract it instead.
-      - name: Retract the release if anything after publication failed
-        if: failure()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          state="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft || echo unknown)"
-          if [[ "${state}" == "false" ]]; then
-            gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=true
-            echo "::error::verification failed after publication; release ${TAG} has been returned to draft"
-          fi
-
       # The channel a user actually takes. Everything above ran authenticated
       # because a draft is not reachable otherwise; this confirms the assets are
       # served, and correctly, over the anonymous path.
@@ -1220,3 +1205,21 @@ jobs:
             nvcrectl-linux-amd64
 
           echo "public channel serves verifiable installer and binary"
+
+      # Last step in the job, deliberately. Steps run in declaration order, so
+      # an `if: failure()` step only catches failures from steps ABOVE it -- one
+      # placed before the public re-check would already have been evaluated and
+      # skipped by the time that check failed, and would never retract anything.
+      # Anything that fails after publication must leave the release withheld
+      # rather than visible with the run red.
+      - name: Retract the release if anything after publication failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          state="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft || echo unknown)"
+          if [[ "${state}" == "false" ]]; then
+            gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=true
+            echo "::error::verification failed after publication; release ${TAG} has been returned to draft"
+          fi

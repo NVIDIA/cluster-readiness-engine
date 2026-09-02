@@ -195,3 +195,56 @@ func TestNoUnboundVariablesInRunBlocks(t *testing.T) {
 		}
 	}
 }
+
+// TestFailureHandlersRunLast catches a cleanup step that cannot see the failure
+// it exists to clean up after.
+//
+// Steps run in declaration order, and `if: failure()` is evaluated in that
+// order too. A retract-on-failure step placed before the last verification step
+// has already been evaluated -- and skipped, because nothing had failed yet --
+// by the time that verification fails. It never fires, and the release stays
+// published with the run red: the exact state the draft exists to prevent.
+//
+// A failure handler is therefore only meaningful if every step after it is
+// itself conditional; an unconditional step below it is a failure it cannot
+// catch.
+func TestFailureHandlersRunLast(t *testing.T) {
+	for _, path := range workflowFiles(t) {
+		base := filepath.Base(path)
+		if !onReleasePath(base) {
+			continue
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+
+		var doc struct {
+			Jobs map[string]struct {
+				Steps []struct {
+					Name string `json:"name"`
+					If   string `json:"if"`
+				} `json:"steps"`
+			} `json:"jobs"`
+		}
+		if err := yaml.Unmarshal(raw, &doc); err != nil {
+			t.Fatalf("parse %s: %v", path, err)
+		}
+
+		for jobName, job := range doc.Jobs {
+			for i, s := range job.Steps {
+				if !strings.Contains(s.If, "failure()") {
+					continue
+				}
+				for _, later := range job.Steps[i+1:] {
+					if later.If == "" {
+						t.Errorf("%s: job %q step %q handles failure() but step %q runs after it "+
+							"unconditionally; a failure there is evaluated too late for this handler "+
+							"to fire, so it can never clean up after it",
+							base, jobName, s.Name, later.Name)
+					}
+				}
+			}
+		}
+	}
+}
