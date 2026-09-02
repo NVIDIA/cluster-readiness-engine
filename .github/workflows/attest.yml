@@ -351,19 +351,24 @@ jobs:
         if: needs.validate.outputs.subject_kind != 'blob'
         env:
           CRANE_VERSION: ${{ needs.validate.outputs.crane_version }}
+          # Pinned here, under review, rather than checked against a checksums
+          # file fetched from the same release: that would only prove the two
+          # upstream files agree with each other, and an attacker able to
+          # replace one can replace both. Bump together with crane_version's
+          # default; a mismatch fails the download rather than signing with an
+          # unverified binary.
+          CRANE_SHA256: c1d593d01551f2c9a3df5ca0a0be4385a839bd9b86d4a76e18d7b17d16559127
         run: |
           set -euo pipefail
+          if [[ "${CRANE_VERSION}" != "v0.20.6" ]]; then
+            echo "::error::crane_version is ${CRANE_VERSION} but only the pinned digest for v0.20.6 is known; update CRANE_SHA256 together with the default"
+            exit 1
+          fi
           base="https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}"
           tarball="go-containerregistry_Linux_x86_64.tar.gz"
           tmp="$(mktemp -d)"
           curl -fsSL -o "${tmp}/${tarball}" "${base}/${tarball}"
-          curl -fsSL -o "${tmp}/checksums.txt" "${base}/checksums.txt"
-          # --ignore-missing so the single downloaded tarball is checked against
-          # the multi-platform manifest; grep first so an absent entry fails
-          # loudly instead of --ignore-missing turning it into a silent pass.
-          grep -q "  ${tarball}\$" "${tmp}/checksums.txt" \
-            || { echo "::error::${tarball} is not listed in checksums.txt"; exit 1; }
-          (cd "${tmp}" && sha256sum --check --ignore-missing checksums.txt)
+          echo "${CRANE_SHA256}  ${tmp}/${tarball}" | sha256sum --check --strict -
           tar -xzf "${tmp}/${tarball}" -C "${tmp}" crane
           install -m 0755 "${tmp}/crane" /usr/local/bin/crane
           crane version
@@ -600,11 +605,15 @@ jobs:
       # Bundles are the detached half of the contract: they ship as loose
       # release assets so a user can curl an artifact and its bundle and verify
       # with cosign alone.
+      # Named after the SUBJECT, not the input artifact. Several callers can
+      # sign different blobs out of one uploaded artifact -- the release does
+      # exactly that -- and naming the output after the input would make every
+      # one of those parallel calls try to upload the same artifact name.
       - name: Upload signature bundles
         if: needs.validate.outputs.subject_kind == 'blob'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ needs.validate.outputs.artifact_name }}-bundles
+          name: bundles-${{ needs.validate.outputs.subject_name }}
           path: bundles/
           retention-days: 7
           if-no-files-found: error
