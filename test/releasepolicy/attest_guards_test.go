@@ -31,6 +31,39 @@ const validDigest = "sha256:1111111111111111111111111111111111111111111111111111
 
 const managerImage = "ghcr.io/nvidia/cluster-readiness-engine/manager"
 
+// The environment names the validate step reads. They are the workflow_call
+// input surface, so the whole set is named here rather than spelled out in
+// every case table.
+const (
+	inSubjectKind    = "IN_SUBJECT_KIND"
+	inSubjectName    = "IN_SUBJECT_NAME"
+	inSubjectTag     = "IN_SUBJECT_TAG"
+	inPlatform       = "IN_PLATFORM"
+	inExpectedDigest = "IN_EXPECTED_DIGEST"
+	inArtifactName   = "IN_ARTIFACT_NAME"
+	inPredicateName  = "IN_PREDICATE_NAME"
+	inPredicateType  = "IN_PREDICATE_TYPE"
+	inCosignVersion  = "IN_COSIGN_VERSION"
+	inCraneVersion   = "IN_CRANE_VERSION"
+	inAllowUntagged  = "IN_ALLOW_UNTAGGED"
+	callerRef        = "CALLER_REF"
+)
+
+// Fixture values for the blob subject, which most of the artifact and
+// predicate cases build on.
+const (
+	kindBlob               = "blob"
+	blobSubject            = "nvcrectl-linux-amd64"
+	blobArtifact           = "cli-binaries"
+	predicateTypeCycloneDX = "cyclonedx"
+)
+
+// Rejection messages asserted by more than one case.
+const (
+	errDigestMustMatch = "expected_digest must match"
+	errInvalidTag      = "subject_tag is not a valid OCI tag"
+)
+
 // workflow is the subset of the workflow schema these tests read.
 type workflow struct {
 	Jobs map[string]struct {
@@ -79,18 +112,18 @@ type inputs map[string]string
 
 func defaultInputs() inputs {
 	return inputs{
-		"IN_SUBJECT_KIND":    "image",
-		"IN_SUBJECT_NAME":    managerImage,
-		"IN_SUBJECT_TAG":     "v1.2.3",
-		"IN_PLATFORM":        "",
-		"IN_EXPECTED_DIGEST": validDigest,
-		"IN_ARTIFACT_NAME":   "",
-		"IN_PREDICATE_NAME":  "",
-		"IN_PREDICATE_TYPE":  "",
-		"IN_COSIGN_VERSION":  "v3.1.3",
-		"IN_CRANE_VERSION":   "v0.20.6",
-		"IN_ALLOW_UNTAGGED":  "false",
-		"CALLER_REF":         "refs/tags/v1.2.3",
+		inSubjectKind:    "image",
+		inSubjectName:    managerImage,
+		inSubjectTag:     "v1.2.3",
+		inPlatform:       "",
+		inExpectedDigest: validDigest,
+		inArtifactName:   "",
+		inPredicateName:  "",
+		inPredicateType:  "",
+		inCosignVersion:  "v3.1.3",
+		inCraneVersion:   "v0.20.6",
+		inAllowUntagged:  "false",
+		callerRef:        "refs/tags/v1.2.3",
 	}
 }
 
@@ -136,32 +169,32 @@ func TestAttestValidationAccepts(t *testing.T) {
 	cases := map[string]inputs{
 		"tagged image": {},
 		"per-platform image": {
-			"IN_PLATFORM": "linux/amd64",
+			inPlatform: "linux/amd64",
 		},
 		"oci artifact (helm chart)": {
-			"IN_SUBJECT_KIND": "oci-artifact",
-			"IN_SUBJECT_NAME": "ghcr.io/nvidia/cluster-readiness-engine",
+			inSubjectKind: "oci-artifact",
+			inSubjectName: "ghcr.io/nvidia/cluster-readiness-engine",
 		},
 		"blob": {
-			"IN_SUBJECT_KIND":  "blob",
-			"IN_SUBJECT_NAME":  "nvcrectl-linux-amd64",
-			"IN_SUBJECT_TAG":   "",
-			"IN_ARTIFACT_NAME": "cli-binaries",
+			inSubjectKind:  kindBlob,
+			inSubjectName:  blobSubject,
+			inSubjectTag:   "",
+			inArtifactName: blobArtifact,
 		},
 		"blob with sbom predicate": {
-			"IN_SUBJECT_KIND":   "blob",
-			"IN_SUBJECT_NAME":   "nvcrectl-linux-amd64",
-			"IN_SUBJECT_TAG":    "",
-			"IN_ARTIFACT_NAME":  "cli-binaries",
-			"IN_PREDICATE_NAME": "sbom.cyclonedx.json",
-			"IN_PREDICATE_TYPE": "cyclonedx",
+			inSubjectKind:   kindBlob,
+			inSubjectName:   blobSubject,
+			inSubjectTag:    "",
+			inArtifactName:  blobArtifact,
+			inPredicateName: "sbom.cyclonedx.json",
+			inPredicateType: predicateTypeCycloneDX,
 		},
 		// The non-production escape hatch, which exists so the guards can be
 		// exercised by dispatch at all. It must still work.
 		"untagged ref with allow_untagged": {
-			"CALLER_REF":        "refs/heads/main",
-			"IN_SUBJECT_TAG":    "main-abc1234",
-			"IN_ALLOW_UNTAGGED": "true",
+			callerRef:       "refs/heads/main",
+			inSubjectTag:    "main-abc1234",
+			inAllowUntagged: "true",
 		},
 	}
 
@@ -189,48 +222,48 @@ func TestAttestValidationRejects(t *testing.T) {
 		// Release attestations come from tags. Without this, a branch build
 		// signs under an identity users are told to trust.
 		"non-tag ref without allow_untagged": {
-			inputs{"CALLER_REF": "refs/heads/main"},
+			inputs{callerRef: "refs/heads/main"},
 			"refuses to run on refs/heads/main",
 		},
 		"digest with non-hex characters": {
-			inputs{"IN_EXPECTED_DIGEST": "sha256:zzzz"},
-			"expected_digest must match",
+			inputs{inExpectedDigest: "sha256:zzzz"},
+			errDigestMustMatch,
 		},
 		// Uppercase hex is a different string to cosign and to the registry, so
 		// accepting it would let two spellings of one digest diverge.
 		"digest with uppercase hex": {
-			inputs{"IN_EXPECTED_DIGEST": "sha256:AAAA111111111111111111111111111111111111111111111111111111111111"},
-			"expected_digest must match",
+			inputs{inExpectedDigest: "sha256:AAAA111111111111111111111111111111111111111111111111111111111111"},
+			errDigestMustMatch,
 		},
 		"digest missing the sha256 prefix": {
-			inputs{"IN_EXPECTED_DIGEST": strings.TrimPrefix(validDigest, "sha256:")},
-			"expected_digest must match",
+			inputs{inExpectedDigest: strings.TrimPrefix(validDigest, "sha256:")},
+			errDigestMustMatch,
 		},
 		// A newline lets a value forge extra lines in GITHUB_OUTPUT.
 		"newline in subject_name": {
-			inputs{"IN_SUBJECT_NAME": managerImage + "\nevil=1"},
+			inputs{inSubjectName: managerImage + "\nevil=1"},
 			"newline or carriage return",
 		},
 		"carriage return in subject_tag": {
-			inputs{"IN_SUBJECT_TAG": "v1.2.3\rx"},
+			inputs{inSubjectTag: "v1.2.3\rx"},
 			"newline or carriage return",
 		},
 		"unknown subject_kind": {
-			inputs{"IN_SUBJECT_KIND": "sbom"},
+			inputs{inSubjectKind: "sbom"},
 			"subject_kind must be",
 		},
 		// Without a tag there is nothing to resolve the digest from except the
 		// digest itself, which is the tautology this guard exists to prevent.
 		"image without subject_tag": {
-			inputs{"IN_SUBJECT_TAG": ""},
+			inputs{inSubjectTag: ""},
 			"subject_tag is required",
 		},
 		"subject_name carrying a digest": {
-			inputs{"IN_SUBJECT_NAME": managerImage + "@" + validDigest},
+			inputs{inSubjectName: managerImage + "@" + validDigest},
 			"without a tag or digest",
 		},
 		"subject_name carrying a tag": {
-			inputs{"IN_SUBJECT_NAME": managerImage + ":v1.2.3"},
+			inputs{inSubjectName: managerImage + ":v1.2.3"},
 			"without a tag or digest",
 		},
 		// artifact_name and predicate_name each had a traversal case; this one
@@ -238,51 +271,51 @@ func TestAttestValidationRejects(t *testing.T) {
 		// in the job that holds the signing token.
 		"path traversal in blob subject_name": {
 			inputs{
-				"IN_SUBJECT_KIND":  "blob",
-				"IN_SUBJECT_NAME":  "../../etc/passwd",
-				"IN_SUBJECT_TAG":   "",
-				"IN_ARTIFACT_NAME": "cli-binaries",
+				inSubjectKind:  kindBlob,
+				inSubjectName:  "../../etc/passwd",
+				inSubjectTag:   "",
+				inArtifactName: blobArtifact,
 			},
 			"must be a plain file name for a blob subject",
 		},
 		"blob subject_name with a path separator": {
 			inputs{
-				"IN_SUBJECT_KIND":  "blob",
-				"IN_SUBJECT_NAME":  "nested/nvcrectl-linux-amd64",
-				"IN_SUBJECT_TAG":   "",
-				"IN_ARTIFACT_NAME": "cli-binaries",
+				inSubjectKind:  kindBlob,
+				inSubjectName:  "nested/nvcrectl-linux-amd64",
+				inSubjectTag:   "",
+				inArtifactName: blobArtifact,
 			},
 			"must be a plain file name for a blob subject",
 		},
 		// Distinct from "subject_tag is required": an empty tag trips the
 		// emptiness guard and never reaches the format guard.
 		"malformed subject_tag": {
-			inputs{"IN_SUBJECT_TAG": "v1/2.3"},
-			"subject_tag is not a valid OCI tag",
+			inputs{inSubjectTag: "v1/2.3"},
+			errInvalidTag,
 		},
 		"subject_tag starting with a dash": {
-			inputs{"IN_SUBJECT_TAG": "-v1.2.3"},
-			"subject_tag is not a valid OCI tag",
+			inputs{inSubjectTag: "-v1.2.3"},
+			errInvalidTag,
 		},
 		"over-long subject_tag": {
-			inputs{"IN_SUBJECT_TAG": strings.Repeat("v", 129)},
-			"subject_tag is not a valid OCI tag",
+			inputs{inSubjectTag: strings.Repeat("v", 129)},
+			errInvalidTag,
 		},
 		// artifact_name is required whenever predicate_name is set, including
 		// for image subjects where it is otherwise optional. Only the blob
 		// requirement was covered.
 		"image predicate without artifact_name": {
 			inputs{
-				"IN_PREDICATE_NAME": "sbom.cyclonedx.json",
-				"IN_PREDICATE_TYPE": "cyclonedx",
+				inPredicateName: "sbom.cyclonedx.json",
+				inPredicateType: predicateTypeCycloneDX,
 			},
 			"artifact_name is required when predicate_name is set",
 		},
 		"blob without artifact_name": {
 			inputs{
-				"IN_SUBJECT_KIND": "blob",
-				"IN_SUBJECT_NAME": "nvcrectl-linux-amd64",
-				"IN_SUBJECT_TAG":  "",
+				inSubjectKind: kindBlob,
+				inSubjectName: blobSubject,
+				inSubjectTag:  "",
 			},
 			"artifact_name is required when subject_kind is blob",
 		},
@@ -290,67 +323,67 @@ func TestAttestValidationRejects(t *testing.T) {
 		// which no documented verification command asks for.
 		"predicate without predicate_type": {
 			inputs{
-				"IN_SUBJECT_KIND":   "blob",
-				"IN_SUBJECT_NAME":   "nvcrectl-linux-amd64",
-				"IN_SUBJECT_TAG":    "",
-				"IN_ARTIFACT_NAME":  "cli-binaries",
-				"IN_PREDICATE_NAME": "sbom.json",
+				inSubjectKind:   kindBlob,
+				inSubjectName:   blobSubject,
+				inSubjectTag:    "",
+				inArtifactName:  blobArtifact,
+				inPredicateName: "sbom.json",
 			},
 			"predicate_type is required",
 		},
 		"predicate_type outside the allowed set": {
 			inputs{
-				"IN_SUBJECT_KIND":   "blob",
-				"IN_SUBJECT_NAME":   "nvcrectl-linux-amd64",
-				"IN_SUBJECT_TAG":    "",
-				"IN_ARTIFACT_NAME":  "cli-binaries",
-				"IN_PREDICATE_NAME": "sbom.json",
-				"IN_PREDICATE_TYPE": "custom",
+				inSubjectKind:   kindBlob,
+				inSubjectName:   blobSubject,
+				inSubjectTag:    "",
+				inArtifactName:  blobArtifact,
+				inPredicateName: "sbom.json",
+				inPredicateType: "custom",
 			},
 			"predicate_type must be one of",
 		},
 		"path traversal in predicate_name": {
 			inputs{
-				"IN_SUBJECT_KIND":   "blob",
-				"IN_SUBJECT_NAME":   "nvcrectl-linux-amd64",
-				"IN_SUBJECT_TAG":    "",
-				"IN_ARTIFACT_NAME":  "cli-binaries",
-				"IN_PREDICATE_NAME": "../../etc/passwd",
-				"IN_PREDICATE_TYPE": "cyclonedx",
+				inSubjectKind:   kindBlob,
+				inSubjectName:   blobSubject,
+				inSubjectTag:    "",
+				inArtifactName:  blobArtifact,
+				inPredicateName: "../../etc/passwd",
+				inPredicateType: predicateTypeCycloneDX,
 			},
 			"predicate_name must match",
 		},
 		"path traversal in artifact_name": {
 			inputs{
-				"IN_SUBJECT_KIND":  "blob",
-				"IN_SUBJECT_NAME":  "nvcrectl-linux-amd64",
-				"IN_SUBJECT_TAG":   "",
-				"IN_ARTIFACT_NAME": "../secrets",
+				inSubjectKind:  kindBlob,
+				inSubjectName:  blobSubject,
+				inSubjectTag:   "",
+				inArtifactName: "../secrets",
 			},
 			"artifact_name must match",
 		},
 		"platform on a blob subject": {
 			inputs{
-				"IN_SUBJECT_KIND":  "blob",
-				"IN_SUBJECT_NAME":  "nvcrectl-linux-amd64",
-				"IN_SUBJECT_TAG":   "",
-				"IN_ARTIFACT_NAME": "cli-binaries",
-				"IN_PLATFORM":      "linux/amd64",
+				inSubjectKind:  kindBlob,
+				inSubjectName:  blobSubject,
+				inSubjectTag:   "",
+				inArtifactName: blobArtifact,
+				inPlatform:     "linux/amd64",
 			},
 			"platform is meaningless",
 		},
 		"platform without an os/arch pair": {
-			inputs{"IN_PLATFORM": "amd64"},
+			inputs{inPlatform: "amd64"},
 			"platform must be os/arch",
 		},
 		// The version pin is what fixes the emitted bundle format, so a
 		// floating value would let the on-registry layout drift.
 		"floating cosign version": {
-			inputs{"IN_COSIGN_VERSION": "latest"},
+			inputs{inCosignVersion: "latest"},
 			"cosign_version must be",
 		},
 		"floating crane version": {
-			inputs{"IN_CRANE_VERSION": "main"},
+			inputs{inCraneVersion: "main"},
 			"crane_version must be",
 		},
 	}
