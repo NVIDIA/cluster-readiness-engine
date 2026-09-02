@@ -1,0 +1,232 @@
+# End-to-end fixture for the four read-only MCP tools: a failed
+# Certification with two categories — one with a failed-nodes ConfigMap
+# (hardware + threshold failures) and one succeeded — plus an succeeded-only
+# second certification for the pass path.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: cert-mcp
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: training
+      variant: nemotron5-8b
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: WorkflowsFailed
+      message: 1 of 2 certification categories failed
+      lastTransitionTime: "2026-08-07T01:00:00Z"
+  categoryStatuses:
+    - domain: communication
+      variant: nccl-all-reduce
+      status: Failed
+      workflowRef:
+        name: cert-mcp-communication-nccl-all-reduce
+        namespace: default
+      failedNodesRef:
+        kind: ConfigMap
+        name: cert-mcp-communication-nccl-all-reduce-node-results
+    - domain: training
+      variant: nemotron5-8b
+      status: Succeeded
+      workflowRef:
+        name: cert-mcp-training-nemotron5-8b
+        namespace: default
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: cert-mcp-communication-nccl-all-reduce
+  namespace: default
+  labels:
+    nvcre.nvidia.com/certification: cert-mcp
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: rt
+          trainer:
+            image: img:latest
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 3
+    nodesPerJob: 3
+    totalGroups: 1
+    currentIteration: 1
+    detectedPlatform: onprem
+    detectedGPUArchitecture: h100
+    groups:
+      - name: group-0
+        nodes:
+          - node001
+          - node002
+          - node003
+        phase: Failed
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: cert-mcp-communication-nccl-all-reduce-job-group-0
+          namespace: default
+        startTime: "2026-08-07T00:00:00Z"
+        completionTime: "2026-08-07T00:10:00Z"
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: GroupsFailed
+      message: 1 groups failed across 1 iterations
+      lastTransitionTime: "2026-08-07T00:10:00Z"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cert-mcp-communication-nccl-all-reduce-node-results
+  namespace: default
+  labels:
+    nvcre.nvidia.com/workflow: cert-mcp-communication-nccl-all-reduce
+binaryData:
+  failed-nodes.json.gz: H4sIAAAAAAAA/1zOu07rQBDG8VeZM00ay9nkhMZSmnBLQYloMMXg+ciuZO9Ge3FAKO+OYhCy6Eaa/yf9nj/ZywBu2AeFMSuuOEJS8NzwXqKeJOJOXF8ibpDRZShXPCAlOWDW0Nt3RPpTNXR9+0B4P0ak5IKnhR+dOqm7MCwPx1JbSJ8t/dvSfro+FjRI7iyULhbqgleXXfB8rv4o13Plo41INvT65EIv02AO/H1Ty68l7cTryWm2LdM4DS7UAZJKhNJmta6vDN3vlqma4RsapS+gthjzH1vaGMPnl68AAAD//67xLaI9AQAA
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: cert-mcp-training-nemotron5-8b
+  namespace: default
+  labels:
+    nvcre.nvidia.com/certification: cert-mcp
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: rt
+          trainer:
+            image: img:latest
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 2
+    nodesPerJob: 2
+    totalGroups: 1
+    currentIteration: 1
+    detectedPlatform: onprem
+    detectedGPUArchitecture: h100
+    groups:
+      - name: group-0
+        nodes:
+          - node001
+          - node002
+        phase: Succeeded
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: cert-mcp-training-nemotron5-8b-job-group-0
+          namespace: default
+        startTime: "2026-08-07T00:00:00Z"
+        completionTime: "2026-08-07T00:20:00Z"
+  conditions:
+    - type: Succeeded
+      status: "True"
+      reason: AllGroupsSucceeded
+      message: 1 groups succeeded across 1 iterations
+      lastTransitionTime: "2026-08-07T00:20:00Z"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: cert-pass
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+status:
+  conditions:
+    - type: Succeeded
+      status: "True"
+      reason: CategoriesSucceeded
+      message: 1 of 1 certification categories succeeded
+      lastTransitionTime: "2026-08-07T01:00:00Z"
+  categoryStatuses:
+    - domain: training
+      variant: nemotron5-8b
+      status: Succeeded
+      workflowRef:
+        name: cert-pass-training-nemotron5-8b
+        namespace: default
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: cert-pass-training-nemotron5-8b
+  namespace: default
+  labels:
+    nvcre.nvidia.com/certification: cert-pass
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: rt
+          trainer:
+            image: img:latest
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 2
+    nodesPerJob: 2
+    totalGroups: 1
+    currentIteration: 1
+    detectedPlatform: onprem
+    detectedGPUArchitecture: h100
+    groups:
+      - name: group-0
+        nodes:
+          - node001
+          - node002
+        phase: Succeeded
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: cert-pass-training-nemotron5-8b-job-group-0
+          namespace: default
+        startTime: "2026-08-07T00:00:00Z"
+        completionTime: "2026-08-07T00:20:00Z"
+  conditions:
+    - type: Succeeded
+      status: "True"
+      reason: AllGroupsSucceeded
+      message: 1 groups succeeded across 1 iterations
+      lastTransitionTime: "2026-08-07T00:20:00Z"

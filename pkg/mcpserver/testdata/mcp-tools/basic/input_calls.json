@@ -1,0 +1,26 @@
+[
+  {
+    "tool": "list_categories",
+    "arguments": {}
+  },
+  {
+    "tool": "get_certification_status",
+    "arguments": {"name": "cert-mcp"}
+  },
+  {
+    "tool": "get_certification_status",
+    "arguments": {"name": "cert-pass"}
+  },
+  {
+    "tool": "get_certification_report",
+    "arguments": {"name": "cert-mcp"}
+  },
+  {
+    "tool": "list_failed_nodes",
+    "arguments": {"name": "cert-mcp"}
+  },
+  {
+    "tool": "list_failed_nodes",
+    "arguments": {"name": "cert-pass"}
+  }
+]
