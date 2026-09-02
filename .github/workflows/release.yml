@@ -49,7 +49,10 @@ jobs:
           version: v3.19.2
 
       - name: Log in to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: printf '%s' "${GHCR_TOKEN}" | helm registry login ghcr.io -u "${GHCR_USER}" --password-stdin
 
       # A dispatch that names a tag but runs from a branch would publish a
       # release-versioned chart whose signature carries a `refs/heads/...`
@@ -66,10 +69,20 @@ jobs:
               echo "::error::dispatched with tag=${INPUT_TAG} but running from ${GITHUB_REF}. Re-dispatch with --ref ${INPUT_TAG} so the chart signature carries the release identity."
               exit 1
             fi
-            echo "value=${INPUT_TAG}" >> "$GITHUB_OUTPUT"
+            value="${INPUT_TAG}"
           else
-            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            value="${GITHUB_REF_NAME}"
           fi
+          # Git permits `"`, `$( )`, backticks and `|` in a tag name, so an
+          # unvalidated tag reaching a `run:` block is shell injection on a
+          # runner that holds packages:write. `check-clean-version` cannot help:
+          # it runs inside make, long after the shell has parsed the command.
+          # Validate here, at the single point the value enters the workflow.
+          if [[ ! "${value}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::refusing to release from a tag that is not vMAJOR.MINOR.PATCH[-prerelease]: ${value}"
+            exit 1
+          fi
+          echo "value=${value}" >> "$GITHUB_OUTPUT"
           # GHCR requires lowercase; `helm push <chart>.tgz oci://ghcr.io/nvidia`
           # lands the chart at <registry>/<chart-name>.
           echo "chart_name=ghcr.io/nvidia/cluster-readiness-engine" >> "$GITHUB_OUTPUT"
@@ -84,7 +97,7 @@ jobs:
         id: push
         run: |
           set -euo pipefail
-          make helm-push VERSION="${{ steps.tag.outputs.value }}" CHART_DIGEST_FILE=chart-digest.txt
+          make helm-push VERSION="${CHART_TAG}" CHART_DIGEST_FILE=chart-digest.txt
           digest="$(cat chart-digest.txt)"
           [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]] || {
             echo "::error::chart digest is malformed: ${digest}"; exit 1; }
@@ -184,12 +197,25 @@ jobs:
 
       - name: Resolve tag
         id: tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "value=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            value="${INPUT_TAG}"
           else
-            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            value="${GITHUB_REF_NAME}"
           fi
+          # Git permits `"`, `$( )`, backticks and `|` in a tag name, so an
+          # unvalidated tag reaching a `run:` block is shell injection on a
+          # runner that holds packages:write. `check-clean-version` cannot help:
+          # it runs inside make, long after the shell has parsed the command.
+          # Validate here, at the single point the value enters the workflow.
+          if [[ ! "${value}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::refusing to release from a tag that is not vMAJOR.MINOR.PATCH[-prerelease]: ${value}"
+            exit 1
+          fi
+          echo "value=${value}" >> "$GITHUB_OUTPUT"
 
       # Stamp the binaries with the tag explicitly instead of trusting
       # `git describe` on the runner's checkout: a shallow or tag-less
@@ -199,17 +225,22 @@ jobs:
       # anything that is not a clean vX.Y.Z[-prerelease] tag, so a malformed
       # workflow_dispatch input fails here instead of mislabeling binaries.
       - name: Cross-compile nvcrectl
+        env:
+          TAG: ${{ steps.tag.outputs.value }}
         run: |
-          make check-clean-version VERSION="${{ steps.tag.outputs.value }}"
-          make build-nvcrectl-cross VERSION="${{ steps.tag.outputs.value }}"
+          set -euo pipefail
+          make check-clean-version VERSION="${TAG}"
+          make build-nvcrectl-cross VERSION="${TAG}"
 
       # The runner is linux/amd64, so that binary runs natively. Require the
       # self-reported version to equal the tag exactly — a `-N-gSHA`/`-dirty`
       # suffix or a broken ldflags -> main.version plumbing fails the release
       # here, before any artifact is published (issue #195).
       - name: Verify stamped version matches the tag
+        env:
+          TAG: ${{ steps.tag.outputs.value }}
         run: |
-          tag="${{ steps.tag.outputs.value }}"
+          tag="${TAG}"
           got="$(./bin/nvcrectl-linux-amd64 --version | awk '{print $NF}')"
           echo "tag=${tag} binary-reported=${got}"
           if [[ "${got}" != "${tag}" ]]; then
@@ -248,12 +279,25 @@ jobs:
 
       - name: Resolve tag
         id: tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "value=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            value="${INPUT_TAG}"
           else
-            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            value="${GITHUB_REF_NAME}"
           fi
+          # Git permits `"`, `$( )`, backticks and `|` in a tag name, so an
+          # unvalidated tag reaching a `run:` block is shell injection on a
+          # runner that holds packages:write. `check-clean-version` cannot help:
+          # it runs inside make, long after the shell has parsed the command.
+          # Validate here, at the single point the value enters the workflow.
+          if [[ ! "${value}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::refusing to release from a tag that is not vMAJOR.MINOR.PATCH[-prerelease]: ${value}"
+            exit 1
+          fi
+          echo "value=${value}" >> "$GITHUB_OUTPUT"
 
       - name: Generate checksums
         run: |
@@ -384,8 +428,9 @@ jobs:
       - name: Verify published release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.value }}
         run: |
-          tag="${{ steps.tag.outputs.value }}"
+          tag="${TAG}"
           rm -rf verify-release && mkdir verify-release
           visibility="$(gh api "repos/${GITHUB_REPOSITORY}" --jq .visibility)"
           echo "repository visibility: ${visibility}"
