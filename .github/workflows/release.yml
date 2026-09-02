@@ -199,7 +199,6 @@ jobs:
     permissions:
       contents: read
     outputs:
-      tag: ${{ steps.tag.outputs.value }}
       digests: ${{ steps.digests.outputs.map }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -377,6 +376,13 @@ jobs:
       id-token: write
     strategy:
       fail-fast: false
+      # Nine legs, and the four binary legs sign twice, so an unbounded fan-out
+      # is ~13 near-simultaneous calls to public-good Fulcio and Rekor from one
+      # caller. attest.yml retries on a fixed 5s/10s backoff with no jitter, so
+      # legs that fail together retry together. The gate requires every leg, so
+      # one correlated blip fails the whole release. Three at a time keeps the
+      # burst small without meaningfully lengthening the run.
+      max-parallel: 3
       matrix:
         include:
           - subject: nvcrectl-linux-amd64
@@ -574,17 +580,39 @@ jobs:
 
             ## Install nvcrectl
 
-            Install this release:
+            The installer is signed. Download it with its bundle, verify, then run — piping it into a shell executes it before anything has checked it.
+
+            ```bash
+            REL=https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.value }}
+
+            curl -fsSLO "${REL}/installer"
+            curl -fsSLO "${REL}/installer.sigstore.json"
+
+            cosign verify-blob-attestation \
+              --bundle installer.sigstore.json \
+              --type https://slsa.dev/provenance/v1 \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ steps.tag.outputs.value }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              installer
+
+            bash installer -v ${{ steps.tag.outputs.value }}
+            ```
+
+            <details>
+            <summary>Without cosign</summary>
 
             ```bash
             curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.value }}/installer | bash -s -- -v ${{ steps.tag.outputs.value }}
             ```
 
-            Or install the newest stable release (`releases/latest` resolves only to stable releases, never pre-releases):
+            This runs the installer before anything verifies it. TLS proves you reached GitHub; it proves nothing about the asset if the release itself was tampered with. Use it only where installing cosign first is genuinely impractical.
 
             ```bash
+            # newest stable release; `releases/latest` never resolves to a pre-release
             curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/installer | bash
             ```
+
+            </details>
 
             ## Helm Chart
 
@@ -628,7 +656,12 @@ jobs:
             Every asset ships with a Sigstore bundle, `<asset>.sigstore.json`, carrying a SLSA Build Provenance v1 statement. Verify the artifact itself, not a checksum served from the same place as the artifact:
 
             ```bash
+            REL=https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.value }}
             ASSET=nvcrectl-linux-amd64   # or installer, or any published asset
+
+            # The bundle is a separate asset; fetch both.
+            curl -fsSLO "${REL}/${ASSET}"
+            curl -fsSLO "${REL}/${ASSET}.sigstore.json"
 
             cosign verify-blob-attestation \
               --bundle "${ASSET}.sigstore.json" \
@@ -645,8 +678,6 @@ jobs:
             ```bash
             sha256sum --check --ignore-missing checksums.txt
             ```
-
-            Piping the installer straight into a shell runs it before anything has checked it. Download, verify, then run.
 
             ## Third-Party Notices
 
