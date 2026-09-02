@@ -80,25 +80,49 @@ jobs:
         env:
           INPUT_TAG: ${{ inputs.tag }}
         run: |
+          # Reject CR/LF before the value is echoed anywhere. A workflow command
+          # must start at the beginning of a line, so a dispatch input carrying
+          # a newline could forge one -- `::add-mask::`, or `::stop-commands::`
+          # to silence the rest of the log -- through any message that quotes
+          # it. Fixed message here: naming the value would be the very thing
+          # this rejects.
+          case "${INPUT_TAG}" in
+            *$'\n'*|*$'\r'*)
+              echo "::error::the dispatch tag input contains a newline or carriage return"
+              exit 1
+              ;;
+          esac
+
           if [[ -n "${INPUT_TAG}" ]]; then
             if [[ "${GITHUB_REF}" != "refs/tags/${INPUT_TAG}" ]]; then
               echo "::error::dispatched with tag=${INPUT_TAG} but running from ${GITHUB_REF}. Re-dispatch with --ref ${INPUT_TAG} so the signature carries the release identity."
               exit 1
             fi
-            echo "value=${INPUT_TAG}" >> "$GITHUB_OUTPUT"
+            value="${INPUT_TAG}"
           elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            value="${GITHUB_REF_NAME}"
           else
-            echo "value=main-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+            value="main-${GITHUB_SHA::7}"
           fi
+
+          # Git permits `"`, `$( )`, backticks and `|` in a tag name, and this
+          # value reaches a `run:` block on a runner holding packages:write.
+          # Constrain it at the single point it enters the workflow: a release
+          # tag, or the main-<sha> form this workflow generates itself.
+          if [[ ! "${value}" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?|main-[0-9a-f]{7})$ ]]; then
+            echo "::error::refusing to publish under a tag that is neither vMAJOR.MINOR.PATCH[-prerelease] nor main-<sha>: ${value}"
+            exit 1
+          fi
+          echo "value=${value}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         id: push
         run: |
+          set -euo pipefail
           make docker-buildx
           # Capture the image digest for signing
           DIGEST=$(docker buildx imagetools inspect \
-            "${IMAGE_NAME}:${{ steps.tag.outputs.value }}" \
+            "${IMAGE_NAME}:${IMAGE_TAG}" \
             --format '{{.Manifest.Digest}}')
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
         env:
@@ -106,6 +130,7 @@ jobs:
           # uppercase 'NVIDIA/...', so the path is hardcoded. Keep in sync with
           # the Makefile, helm values.yaml, and pkg/setup/setup.go.
           IMG: ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}
+          IMAGE_TAG: ${{ steps.tag.outputs.value }}
 
       # An SBOM describes exactly one root filesystem, and this image is a
       # multi-platform index. Attaching one SBOM to the index digest -- what this
