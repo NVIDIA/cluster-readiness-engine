@@ -46,6 +46,7 @@ const (
 	inCosignVersion  = "IN_COSIGN_VERSION"
 	inCraneVersion   = "IN_CRANE_VERSION"
 	inAllowUntagged  = "IN_ALLOW_UNTAGGED"
+	inEmitProvenance = "IN_EMIT_PROVENANCE"
 	callerRef        = "CALLER_REF"
 )
 
@@ -56,6 +57,14 @@ const (
 	blobSubject            = "nvcrectl-linux-amd64"
 	blobArtifact           = "cli-binaries"
 	predicateTypeCycloneDX = "cyclonedx"
+)
+
+// The workflow's boolean inputs reach the validate step as strings, and
+// platformAMD64 is the os/arch pair the per-platform cases use.
+const (
+	boolTrue      = "true"
+	boolFalse     = "false"
+	platformAMD64 = "linux/amd64"
 )
 
 // Rejection messages asserted by more than one case.
@@ -122,7 +131,8 @@ func defaultInputs() inputs {
 		inPredicateType:  "",
 		inCosignVersion:  "v3.1.3",
 		inCraneVersion:   "v0.20.6",
-		inAllowUntagged:  "false",
+		inAllowUntagged:  boolFalse,
+		inEmitProvenance: boolTrue,
 		callerRef:        "refs/tags/v1.2.3",
 	}
 }
@@ -169,7 +179,7 @@ func TestAttestValidationAccepts(t *testing.T) {
 	cases := map[string]inputs{
 		"tagged image": {},
 		"per-platform image": {
-			inPlatform: "linux/amd64",
+			inPlatform: platformAMD64,
 		},
 		"oci artifact (helm chart)": {
 			inSubjectKind: "oci-artifact",
@@ -189,12 +199,22 @@ func TestAttestValidationAccepts(t *testing.T) {
 			inPredicateName: "sbom.cyclonedx.json",
 			inPredicateType: predicateTypeCycloneDX,
 		},
+		// Per-platform SBOM calls suppress provenance: ADR-074 puts provenance
+		// on the index digest only, so a child manifest must not carry a
+		// second, competing provenance statement.
+		"image predicate with provenance suppressed": {
+			inPlatform:       platformAMD64,
+			inArtifactName:   "sboms",
+			inPredicateName:  "sbom-linux-amd64.cyclonedx.json",
+			inPredicateType:  predicateTypeCycloneDX,
+			inEmitProvenance: boolFalse,
+		},
 		// The non-production escape hatch, which exists so the guards can be
 		// exercised by dispatch at all. It must still work.
 		"untagged ref with allow_untagged": {
 			callerRef:       "refs/heads/main",
 			inSubjectTag:    "main-abc1234",
-			inAllowUntagged: "true",
+			inAllowUntagged: boolTrue,
 		},
 	}
 
@@ -269,6 +289,18 @@ func TestAttestValidationRejects(t *testing.T) {
 		// artifact_name and predicate_name each had a traversal case; this one
 		// did not, and subject_name reaches `path="subject/${SUBJECT_NAME}"`
 		// in the job that holds the signing token.
+		// Suppressing provenance on a blob with no predicate would sign and
+		// attest nothing at all, producing a green run with no artifact.
+		"blob with provenance suppressed and no predicate": {
+			inputs{
+				inSubjectKind:    kindBlob,
+				inSubjectName:    blobSubject,
+				inSubjectTag:     "",
+				inArtifactName:   blobArtifact,
+				inEmitProvenance: boolFalse,
+			},
+			"leaves a blob call with nothing to attest",
+		},
 		"path traversal in blob subject_name": {
 			inputs{
 				inSubjectKind:  kindBlob,
@@ -368,7 +400,7 @@ func TestAttestValidationRejects(t *testing.T) {
 				inSubjectName:  blobSubject,
 				inSubjectTag:   "",
 				inArtifactName: blobArtifact,
-				inPlatform:     "linux/amd64",
+				inPlatform:     platformAMD64,
 			},
 			"platform is meaningless",
 		},
