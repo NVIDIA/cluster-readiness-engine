@@ -166,9 +166,17 @@ jobs:
           [[ "${failed}" -eq 0 ]] || exit 1
           echo "release image fully attested"
 
+  # Waits for the image to exist AND be signed. The chart's values.yaml pins
+  # `manager:<tag>`, and `helm push` is not something the workflow can take
+  # back: publishing the chart first would put a chart referencing a tag that
+  # does not exist yet -- or, if the build then failed, never will -- into the
+  # OCI registry that Flux, Argo CD Image Updater and Renovate actually watch.
+  # A cluster reconciling in that window gets ImagePullBackOff and no GitHub
+  # Release to explain why. Gating create-github-release is not enough, because
+  # GitOps automation does not wait for the GitHub Release.
   helm-publish:
     name: Publish Helm Chart
-    needs: [release-tag]
+    needs: [release-tag, image-attested]
     runs-on: linux-amd64-cpu16
     if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 15
