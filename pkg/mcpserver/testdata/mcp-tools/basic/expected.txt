@@ -1,0 +1,158 @@
+### list_categories
+{
+  "categories": [
+    {
+      "domain": "communication",
+      "variant": "nccl-all-gather"
+    },
+    {
+      "domain": "communication",
+      "variant": "nccl-all-reduce"
+    },
+    {
+      "domain": "communication",
+      "variant": "nccl-alltoall"
+    },
+    {
+      "domain": "communication",
+      "variant": "nccl-loopback"
+    },
+    {
+      "domain": "communication",
+      "variant": "nccl-loopback-nvswitch"
+    },
+    {
+      "domain": "diagnostics",
+      "variant": "dcgm-level4"
+    },
+    {
+      "domain": "training",
+      "variant": "nemotron5-56b"
+    },
+    {
+      "domain": "training",
+      "variant": "nemotron5-8b"
+    }
+  ]
+}
+### get_certification_status
+{
+  "categories": [
+    {
+      "domain": "communication",
+      "status": "Failed",
+      "variant": "nccl-all-reduce"
+    },
+    {
+      "domain": "training",
+      "status": "Succeeded",
+      "variant": "nemotron5-8b"
+    }
+  ],
+  "conditions": [
+    {
+      "message": "1 of 2 certification categories failed",
+      "reason": "WorkflowsFailed",
+      "status": "True",
+      "type": "Failed"
+    }
+  ],
+  "failedNodes": [
+    "node001",
+    "node002"
+  ],
+  "name": "cert-mcp",
+  "namespace": "default",
+  "result": "FAILED"
+}
+### get_certification_status
+{
+  "categories": [
+    {
+      "domain": "training",
+      "status": "Succeeded",
+      "variant": "nemotron5-8b"
+    }
+  ],
+  "conditions": [
+    {
+      "message": "1 of 1 certification categories succeeded",
+      "reason": "CategoriesSucceeded",
+      "status": "True",
+      "type": "Succeeded"
+    }
+  ],
+  "name": "cert-pass",
+  "namespace": "default",
+  "result": "PASSED"
+}
+### get_certification_report
+{
+  "report": {
+    "categories": [
+      {
+        "domain": "communication",
+        "failedGroups": [
+          {
+            "name": "group-0",
+            "nodeCount": 3,
+            "nodes": [
+              "node001",
+              "node002",
+              "node003"
+            ],
+            "reason": ""
+          }
+        ],
+        "failureReason": "1 groups failed across 1 iterations",
+        "jobs": 1,
+        "nodesPerJob": 3,
+        "runtime": "10m 0s",
+        "status": "Failed",
+        "testScale": "full-scale",
+        "variant": "nccl-all-reduce"
+      },
+      {
+        "domain": "training",
+        "jobs": 1,
+        "nodesPerJob": 2,
+        "runtime": "20m 0s",
+        "status": "Succeeded",
+        "testScale": "full-scale",
+        "variant": "nemotron5-8b"
+      }
+    ],
+    "failedNodes": [
+      "node001",
+      "node002"
+    ],
+    "gpu": "h100",
+    "name": "cert-mcp",
+    "platform": "onprem",
+    "result": "FAILED",
+    "totalNodes": 3
+  }
+}
+### list_failed_nodes
+{
+  "failedNodes": [
+    {
+      "message": "Hardware failure detected: CEL expression 'nvidia.com/gpu.health != Healthy' matched node condition",
+      "name": "node001",
+      "reason": "HardwareFailureDetected"
+    },
+    {
+      "message": "Threshold \"busBandwidth\" violated: measured 412.50 GB/s, expression: value \u003e= 400",
+      "name": "node002",
+      "reason": "ThresholdViolation"
+    }
+  ],
+  "name": "cert-mcp",
+  "namespace": "default"
+}
+### list_failed_nodes
+{
+  "failedNodes": [],
+  "name": "cert-pass",
+  "namespace": "default"
+}
