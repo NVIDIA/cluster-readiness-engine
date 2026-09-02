@@ -17,7 +17,7 @@ title: NVIDIA Cluster Readiness Engine
 global-theme: nvidia
 
 logo:
-  href: /nvcre
+  href: /cluster-readiness-engine
   right-text: NVIDIA Cluster Readiness Engine
 
 navbar-links:
