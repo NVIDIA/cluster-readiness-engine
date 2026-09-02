@@ -11,12 +11,19 @@ import (
 	"strings"
 	"testing"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
 	v1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
+
+// testTimestampLayout is the Kubernetes log timestamp layout shared by the
+// fixtures below.
+const testTimestampLayout = "2006-01-02T15:04:05.999999999Z"
+
+// testBusBWRegex is the NCCL bandwidth table row regex shared by the
+// fixtures below.
+const testBusBWRegex = `^\s*(?P<size>\d+)\s+\d+\s+\w+\s+\w+\s+-?\d+\s+[\d.]+\s+(?P<algBW>[\d.]+)\s+(?P<busBW>[\d.]+)`
 
 // The lines below cover an NCCL INFO line, a two-line table header, data
 // lines with a K8s timestamp prefix (both "Z" and offset-free variants), and
@@ -25,7 +32,7 @@ import (
 func TestParseBandwidthLogs(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "parse-bandwidth-logs",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -37,7 +44,7 @@ func TestParseBandwidthLogs(t *testing.T) {
 		}
 
 		profile := &v1alpha1.LogProfile{
-			ObjectMeta: metav1.ObjectMeta{Name: "nccl-all-reduce"},
+			Name: "nccl-all-reduce",
 			Spec: v1alpha1.LogProfileSpec{
 				Timestamp: v1alpha1.TimestampSpec{Layout: in.TimestampLayout},
 				Patterns: v1alpha1.LogPatternSet{
@@ -84,12 +91,12 @@ func TestParseBandwidthLogs(t *testing.T) {
 // A100 run on a node in PDT.
 func TestParseBandwidthLogsNonUTCNode(t *testing.T) {
 	profile := &v1alpha1.LogProfile{
-		ObjectMeta: metav1.ObjectMeta{Name: "nccl-loopback"},
+		Name: "nccl-loopback",
 		Spec: v1alpha1.LogProfileSpec{
-			Timestamp: v1alpha1.TimestampSpec{Layout: "2006-01-02T15:04:05.999999999Z"},
+			Timestamp: v1alpha1.TimestampSpec{Layout: testTimestampLayout},
 			Patterns: v1alpha1.LogPatternSet{
 				BandwidthResult: &v1alpha1.EventPattern{
-					Regex: `^\s*(?P<size>\d+)\s+\d+\s+\w+\s+\w+\s+-?\d+\s+[\d.]+\s+(?P<algBW>[\d.]+)\s+(?P<busBW>[\d.]+)`,
+					Regex: testBusBWRegex,
 				},
 			},
 		},
@@ -131,12 +138,12 @@ func TestParseRealA100LoopbackLog(t *testing.T) {
 	}
 
 	profile := &v1alpha1.LogProfile{
-		ObjectMeta: metav1.ObjectMeta{Name: "nccl-loopback"},
+		Name: "nccl-loopback",
 		Spec: v1alpha1.LogProfileSpec{
-			Timestamp: v1alpha1.TimestampSpec{Layout: "2006-01-02T15:04:05.999999999Z"},
+			Timestamp: v1alpha1.TimestampSpec{Layout: testTimestampLayout},
 			Patterns: v1alpha1.LogPatternSet{
 				BandwidthResult: &v1alpha1.EventPattern{
-					Regex: `^\s*(?P<size>\d+)\s+\d+\s+\w+\s+\w+\s+-?\d+\s+[\d.]+\s+(?P<algBW>[\d.]+)\s+(?P<busBW>[\d.]+)`,
+					Regex: testBusBWRegex,
 				},
 			},
 		},
@@ -183,12 +190,12 @@ func TestParseRealA100AllReduce2NodeLog(t *testing.T) {
 	}
 
 	profile := &v1alpha1.LogProfile{
-		ObjectMeta: metav1.ObjectMeta{Name: "nccl-bandwidth"},
+		Name: "nccl-bandwidth",
 		Spec: v1alpha1.LogProfileSpec{
-			Timestamp: v1alpha1.TimestampSpec{Layout: "2006-01-02T15:04:05.999999999Z"},
+			Timestamp: v1alpha1.TimestampSpec{Layout: testTimestampLayout},
 			Patterns: v1alpha1.LogPatternSet{
 				BandwidthResult: &v1alpha1.EventPattern{
-					Regex: `^\s*(?P<size>\d+)\s+\d+\s+\w+\s+\w+\s+-?\d+\s+[\d.]+\s+(?P<algBW>[\d.]+)\s+(?P<busBW>[\d.]+)`,
+					Regex: testBusBWRegex,
 				},
 			},
 		},
@@ -222,7 +229,7 @@ func TestParseRealA100AllReduce2NodeLog(t *testing.T) {
 
 func TestNewParserMissingPattern(t *testing.T) {
 	profile := &v1alpha1.LogProfile{
-		ObjectMeta: metav1.ObjectMeta{Name: "empty"},
+		Name: "empty",
 		Spec: v1alpha1.LogProfileSpec{
 			Timestamp: v1alpha1.TimestampSpec{Layout: "2006-01-02T15:04:05Z"},
 			Patterns:  v1alpha1.LogPatternSet{},
@@ -238,7 +245,7 @@ func TestNewParserMissingPattern(t *testing.T) {
 func TestStripK8sTimestamp(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "strip-k8s-timestamp",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {

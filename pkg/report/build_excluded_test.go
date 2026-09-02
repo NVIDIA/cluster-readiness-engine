@@ -24,7 +24,7 @@ import (
 func TestBuildExcludedReport(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "build-excluded-report",
-		ExpectedSuffix: ".txt",
+		ExpectedSuffix: testutil.SuffixTXT,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		scheme := runtime.NewScheme()

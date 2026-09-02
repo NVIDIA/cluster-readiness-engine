@@ -30,7 +30,7 @@ import (
 func TestGoodputSetComplete(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "goodput-set-complete",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -63,7 +63,7 @@ func TestGoodputSetComplete(t *testing.T) {
 		frozenAt := metav1.NewTime(time.Date(2026, 1, 22, 10, 5, 0, 0, time.UTC))
 
 		m := &nvcrev1alpha1.GoodputMeasurement{
-			ObjectMeta: metav1.ObjectMeta{Name: "m", Namespace: "ns"},
+			Name: "m", Namespace: "ns",
 			Status: nvcrev1alpha1.GoodputMeasurementStatus{
 				Result:          "0.900000",
 				TrainingTimeSec: "295.000000",
@@ -74,7 +74,7 @@ func TestGoodputSetComplete(t *testing.T) {
 			meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
 				Type:    nvcrev1alpha1.GoodputMeasurementComplete,
 				Status:  metav1.ConditionTrue,
-				Reason:  "JobSucceeded",
+				Reason:  reasonBandwidthJobSucceeded,
 				Message: "Referenced Job completed successfully",
 			})
 		}
@@ -98,7 +98,7 @@ func TestGoodputSetComplete(t *testing.T) {
 			meta.SetStatusCondition(&live.Status.Conditions, metav1.Condition{
 				Type:    nvcrev1alpha1.GoodputMeasurementComplete,
 				Status:  metav1.ConditionTrue,
-				Reason:  "JobSucceeded",
+				Reason:  reasonBandwidthJobSucceeded,
 				Message: "Referenced Job completed successfully",
 			})
 			if err := c.Status().Update(ctx, live); err != nil {

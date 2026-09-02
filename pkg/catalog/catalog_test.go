@@ -36,7 +36,7 @@ type lookupInput struct {
 func TestLookup(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "lookup",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input lookupInput

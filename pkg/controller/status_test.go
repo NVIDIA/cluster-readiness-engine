@@ -49,7 +49,7 @@ func TestUpdateStatusWithRetryRecoversFromConflict(t *testing.T) {
 			ctx := context.Background()
 
 			wf := &nvcrev1alpha1.Workflow{
-				ObjectMeta: metav1.ObjectMeta{Name: "wf", Namespace: "default"},
+				Name: "wf", Namespace: testNS,
 			}
 
 			remaining := tt.conflicts
@@ -77,7 +77,7 @@ func TestUpdateStatusWithRetryRecoversFromConflict(t *testing.T) {
 				Build()
 
 			obj := &nvcrev1alpha1.Workflow{}
-			require.NoError(t, c.Get(ctx, types.NamespacedName{Name: "wf", Namespace: "default"}, obj))
+			require.NoError(t, c.Get(ctx, types.NamespacedName{Name: "wf", Namespace: testNS}, obj))
 
 			mutations := 0
 			err := updateStatusWithRetry(ctx, c, obj, func(w *nvcrev1alpha1.Workflow) bool {
@@ -101,7 +101,7 @@ func TestUpdateStatusWithRetryRecoversFromConflict(t *testing.T) {
 
 			// The condition must actually be persisted, not merely applied in memory.
 			stored := &nvcrev1alpha1.Workflow{}
-			require.NoError(t, c.Get(ctx, types.NamespacedName{Name: "wf", Namespace: "default"}, stored))
+			require.NoError(t, c.Get(ctx, types.NamespacedName{Name: "wf", Namespace: testNS}, stored))
 			require.True(t, CondIsTrue(stored.Status.Conditions, nvcrev1alpha1.WorkflowInProgress))
 		})
 	}
@@ -114,7 +114,7 @@ func TestUpdateStatusWithRetrySkipsWriteWhenUnchanged(t *testing.T) {
 	ctx := context.Background()
 
 	wf := &nvcrev1alpha1.Workflow{
-		ObjectMeta: metav1.ObjectMeta{Name: "wf", Namespace: "default"},
+		Name: "wf", Namespace: testNS,
 	}
 
 	writes := 0
@@ -134,7 +134,7 @@ func TestUpdateStatusWithRetrySkipsWriteWhenUnchanged(t *testing.T) {
 		Build()
 
 	obj := &nvcrev1alpha1.Workflow{}
-	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: "wf", Namespace: "default"}, obj))
+	require.NoError(t, c.Get(ctx, types.NamespacedName{Name: "wf", Namespace: testNS}, obj))
 
 	require.NoError(t, updateStatusWithRetry(ctx, c, obj, func(*nvcrev1alpha1.Workflow) bool {
 		return false

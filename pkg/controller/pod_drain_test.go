@@ -43,7 +43,7 @@ func (f failingPodLister) List(_ context.Context, _ client.ObjectList, _ ...clie
 func TestShouldWaitForPodDrain(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "pod-drain",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -67,7 +67,7 @@ func TestShouldWaitForPodDrain(t *testing.T) {
 
 		now := time.Now()
 		anchors := map[string]metav1.Time{}
-		job := &nvcrev1alpha1.Job{ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"}}
+		job := &nvcrev1alpha1.Job{Name: "j", Namespace: "ns"}
 		addCondition := func(condType string, ageSeconds int) {
 			if ageSeconds == 0 {
 				return
@@ -105,10 +105,8 @@ func TestShouldWaitForPodDrain(t *testing.T) {
 				jobLabel = "some-other-job"
 			}
 			objs = append(objs, &corev1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: sp.Name, Namespace: job.Namespace,
-					Labels: map[string]string{nodemonitor.NVCREJobLabel: jobLabel},
-				},
+				Name: sp.Name, Namespace: job.Namespace,
+				Labels: map[string]string{nodemonitor.NVCREJobLabel: jobLabel},
 				Status: corev1.PodStatus{Phase: corev1.PodPhase(sp.Phase)},
 			})
 		}

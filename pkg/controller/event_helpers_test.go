@@ -6,8 +6,6 @@ package controller
 import (
 	"testing"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
@@ -24,7 +22,7 @@ func TestCertificationWarnfNilRecorder(t *testing.T) {
 
 	r := &CertificationReconciler{} // Recorder deliberately unset
 	cert := &nvcrev1alpha1.Certification{
-		ObjectMeta: metav1.ObjectMeta{Name: "cert", Namespace: "default"},
+		Name: "cert", Namespace: testNS,
 	}
 
 	r.warnf(cert, ReasonWorkflowCreationError,
@@ -38,7 +36,7 @@ func TestGoodputMeasurementWarnfNilRecorder(t *testing.T) {
 
 	r := &GoodputMeasurementReconciler{} // Recorder deliberately unset
 	gm := &nvcrev1alpha1.GoodputMeasurement{
-		ObjectMeta: metav1.ObjectMeta{Name: "gm", Namespace: "default"},
+		Name: "gm", Namespace: testNS,
 	}
 
 	r.warnf(gm, reasonGoodputLogProfileMissing,
@@ -52,7 +50,7 @@ func TestBandwidthMeasurementWarnfNilRecorder(t *testing.T) {
 
 	r := &BandwidthMeasurementReconciler{} // Recorder deliberately unset
 	bm := &nvcrev1alpha1.BandwidthMeasurement{
-		ObjectMeta: metav1.ObjectMeta{Name: "bm", Namespace: "default"},
+		Name: "bm", Namespace: testNS,
 	}
 
 	r.warnf(bm, reasonBandwidthLogProfileMissing,
@@ -66,7 +64,7 @@ func TestWorkloadRunWarnfNilRecorder(t *testing.T) {
 
 	r := &WorkloadRunReconciler{} // Recorder deliberately unset
 	run := &nvcrev1alpha1.WorkloadRun{
-		ObjectMeta: metav1.ObjectMeta{Name: "run", Namespace: "default"},
+		Name: "run", Namespace: "default",
 	}
 
 	r.warnf(run, ReasonWorkflowCreationError,

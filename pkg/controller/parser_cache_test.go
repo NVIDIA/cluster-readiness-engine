@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -20,10 +19,8 @@ import (
 // trainingStep regex.
 func logProfile(name, resourceVersion, regex string) *nvcrev1alpha1.LogProfile {
 	return &nvcrev1alpha1.LogProfile{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            name,
-			ResourceVersion: resourceVersion,
-		},
+		Name:            name,
+		ResourceVersion: resourceVersion,
 		Spec: nvcrev1alpha1.LogProfileSpec{
 			Timestamp: nvcrev1alpha1.TimestampSpec{Layout: "2006-01-02 15:04:05"},
 			Patterns: nvcrev1alpha1.LogPatternSet{

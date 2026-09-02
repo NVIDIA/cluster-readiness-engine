@@ -20,7 +20,7 @@ import (
 func TestNodesPerJobForScale(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "workloadrun-scale",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var spec nvcrev1alpha1.WorkloadRunSpec

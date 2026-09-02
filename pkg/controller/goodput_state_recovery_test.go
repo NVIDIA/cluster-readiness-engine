@@ -22,7 +22,7 @@ import (
 func TestGoodputStateRecovery(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "goodput-state-recovery",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {

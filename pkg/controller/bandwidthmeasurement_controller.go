@@ -220,7 +220,7 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 	}
 
 	// Determine which pod to read logs from.
-	replicatedJobName := "node"
+	replicatedJobName := labelNode
 	if profile.Spec.WorkerStrategy != nil && profile.Spec.WorkerStrategy.ReplicatedJobName != "" {
 		replicatedJobName = profile.Spec.WorkerStrategy.ReplicatedJobName
 	}

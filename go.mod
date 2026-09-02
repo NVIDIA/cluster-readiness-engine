@@ -1,6 +1,6 @@
 module github.com/NVIDIA/cluster-readiness-engine
 
-go 1.26.6
+go 1.27.0
 
 require (
 	github.com/evanphx/json-patch/v5 v5.9.11

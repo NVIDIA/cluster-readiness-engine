@@ -30,7 +30,7 @@ type resourcesInput struct {
 func TestTrainingResources(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "resources",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input resourcesInput

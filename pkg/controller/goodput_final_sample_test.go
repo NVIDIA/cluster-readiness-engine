@@ -47,7 +47,7 @@ func (s *stubLogFetcher) FetchLogs(_ context.Context, _, _ string, opts podlogs.
 func TestGoodputFinalSample(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "goodput-final-sample",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -79,7 +79,7 @@ func TestGoodputFinalSample(t *testing.T) {
 		anchor := time.Date(2026, 1, 22, 10, 5, 0, 0, time.UTC)
 
 		profile := &nvcrev1alpha1.LogProfile{
-			ObjectMeta: metav1.ObjectMeta{Name: "lp"},
+			Name: "lp",
 			Spec: nvcrev1alpha1.LogProfileSpec{
 				Timestamp: nvcrev1alpha1.TimestampSpec{Layout: "2006-01-02T15:04:05.999999999Z"},
 				Patterns: nvcrev1alpha1.LogPatternSet{
@@ -91,7 +91,7 @@ func TestGoodputFinalSample(t *testing.T) {
 			},
 		}
 		m := &nvcrev1alpha1.GoodputMeasurement{
-			ObjectMeta: metav1.ObjectMeta{Name: "m", Namespace: "ns"},
+			Name: "m", Namespace: "ns",
 			Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 				JobRef:        corev1.TypedLocalObjectReference{Name: "j"},
 				LogProfileRef: in.LogProfileRef,
@@ -110,7 +110,7 @@ func TestGoodputFinalSample(t *testing.T) {
 		}
 		initialStatus := m.Status.DeepCopy()
 		job := &nvcrev1alpha1.Job{
-			ObjectMeta: metav1.ObjectMeta{Name: "j", Namespace: "ns"},
+			Name: "j", Namespace: "ns",
 			Status: nvcrev1alpha1.JobStatus{
 				WorkloadRef: &nvcrev1alpha1.WorkloadReference{Kind: "TrainJob", Name: "w"},
 				Conditions: []metav1.Condition{{
@@ -122,13 +122,11 @@ func TestGoodputFinalSample(t *testing.T) {
 			},
 		}
 		pod := &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "w-node-0",
-				Namespace: "ns",
-				Labels: map[string]string{
-					"jobset.sigs.k8s.io/jobset-name":           "w",
-					"batch.kubernetes.io/job-completion-index": "0",
-				},
+			Name:      "w-node-0",
+			Namespace: "ns",
+			Labels: map[string]string{
+				"jobset.sigs.k8s.io/jobset-name":           "w",
+				"batch.kubernetes.io/job-completion-index": "0",
 			},
 			Status: corev1.PodStatus{Phase: corev1.PodRunning},
 		}

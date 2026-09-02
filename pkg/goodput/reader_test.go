@@ -28,7 +28,7 @@ func (f *fakeLogFetcher) FetchLogs(_ context.Context, _, podName string, _ podlo
 func TestReadMultiWorkerLogs(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "read-multi-worker-logs",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var profile v1alpha1.LogProfile
