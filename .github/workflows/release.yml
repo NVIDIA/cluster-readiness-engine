@@ -259,17 +259,19 @@ jobs:
         id: syft
         env:
           SYFT_VERSION: v1.51.1
+          # Pinned here, in this repository, under review. Checking the download
+          # against a checksums file fetched from the same release would only
+          # prove the two upstream files agree with each other -- an attacker
+          # who can replace one can replace both. This digest is an anchor they
+          # cannot reach without a commit here.
+          SYFT_SHA256: 8fcb33017a0dc1058298c923c436d19dfa68ae93968e0b423248542e3afb9fc3
         run: |
           set -euo pipefail
           base="https://github.com/anchore/syft/releases/download/${SYFT_VERSION}"
           tarball="syft_${SYFT_VERSION#v}_linux_amd64.tar.gz"
-          checksums="syft_${SYFT_VERSION#v}_checksums.txt"
           tmp="$(mktemp -d)"
           curl -fsSL -o "${tmp}/${tarball}" "${base}/${tarball}"
-          curl -fsSL -o "${tmp}/${checksums}" "${base}/${checksums}"
-          grep -q "  ${tarball}\$" "${tmp}/${checksums}" \
-            || { echo "::error::${tarball} is not listed in ${checksums}"; exit 1; }
-          (cd "${tmp}" && sha256sum --check --ignore-missing "${checksums}")
+          echo "${SYFT_SHA256}  ${tmp}/${tarball}" | sha256sum --check --strict -
           tar -xzf "${tmp}/${tarball}" -C "${tmp}" syft
           install -m 0755 "${tmp}/syft" "${RUNNER_TEMP}/syft"
           "${RUNNER_TEMP}/syft" version
@@ -308,6 +310,9 @@ jobs:
           mkdir -p release-assets
           cp bin/nvcrectl-* release-assets/
           cp installer release-assets/
+          # Published as a release asset, so it is covered by the same contract
+          # as everything else: a bundle and a checksum entry.
+          cp THIRD_PARTY_NOTICES.md release-assets/
           ls -la release-assets/
 
       # syft reads the Go build info embedded in each binary, so the SBOM lists
@@ -344,6 +349,7 @@ jobs:
           # empty digest and attest.yml would reject it late instead of here.
           for want in nvcrectl-linux-amd64 nvcrectl-linux-arm64 \
                       nvcrectl-darwin-amd64 nvcrectl-darwin-arm64 installer \
+                      THIRD_PARTY_NOTICES.md \
                       nvcrectl-linux-amd64.cyclonedx.json nvcrectl-linux-arm64.cyclonedx.json \
                       nvcrectl-darwin-amd64.cyclonedx.json nvcrectl-darwin-arm64.cyclonedx.json; do
             jq -e --arg k "${want}" 'has($k)' <<<"${map}" >/dev/null \
@@ -395,6 +401,8 @@ jobs:
             predicate: nvcrectl-darwin-arm64.cyclonedx.json
           # No SBOM: a shell script has nothing to inventory.
           - subject: installer
+            predicate: ''
+          - subject: THIRD_PARTY_NOTICES.md
             predicate: ''
           # The SBOMs signed as artifacts in their own right.
           - subject: nvcrectl-linux-amd64.cyclonedx.json
@@ -525,6 +533,7 @@ jobs:
           missing=0
           for f in nvcrectl-linux-amd64 nvcrectl-linux-arm64 \
                    nvcrectl-darwin-amd64 nvcrectl-darwin-arm64 installer \
+                   THIRD_PARTY_NOTICES.md \
                    nvcrectl-linux-amd64.cyclonedx.json nvcrectl-linux-arm64.cyclonedx.json \
                    nvcrectl-darwin-amd64.cyclonedx.json nvcrectl-darwin-arm64.cyclonedx.json; do
             [[ -s "${f}" ]] || { echo "::error::asset ${f} is missing"; missing=1; }
@@ -687,7 +696,7 @@ jobs:
             | `<binary>.cyclonedx.json.sigstore.json` | the SBOM **file** is the one we published and was not altered |
             | `<binary>.cyclonedx.sigstore.json` | the SBOM **describes that binary** — it is bound to the binary as its subject |
 
-            The second is the one to check before feeding an SBOM to a scanner. Note the subject is the *binary*, not the SBOM:
+            Before feeding an SBOM to a scanner, check **both**. The binding proves an SBOM describes the binary; it says nothing about the bytes of the file on your disk, which is a separate download.
 
             ```bash
             cosign verify-blob-attestation \
@@ -696,7 +705,17 @@ jobs:
               --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ steps.tag.outputs.value }}" \
               --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
               "${ASSET}"
+
+            # 2. the SBOM file you downloaded is the one that was published
+            cosign verify-blob-attestation \
+              --bundle "${ASSET}.cyclonedx.json.sigstore.json" \
+              --type https://slsa.dev/provenance/v1 \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ steps.tag.outputs.value }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "${ASSET}.cyclonedx.json"
             ```
+
+            Only the first would let a tampered local `.cyclonedx.json` reach your scanner: the binding attestation carries its own copy of the SBOM and never looks at your file.
 
             `checksums.txt` is still published and still works, but it is not the verification story: it is served from the same origin as the assets and is itself unsigned, so it detects corruption rather than tampering.
 
@@ -717,8 +736,9 @@ jobs:
             dist/nvcrectl-*
             dist/installer
             dist/installer.sigstore.json
+            dist/THIRD_PARTY_NOTICES.md
+            dist/THIRD_PARTY_NOTICES.md.sigstore.json
             dist/checksums.txt
-            THIRD_PARTY_NOTICES.md
           draft: false
           prerelease: ${{ contains(steps.tag.outputs.value, '-') }}
           generate_release_notes: true
