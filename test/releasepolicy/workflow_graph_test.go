@@ -166,13 +166,6 @@ func TestJobOutputReferencesResolve(t *testing.T) {
 // `|`, so an interpolated value is executed rather than read. Values must cross
 // into a shell through `env:`.
 func TestNoExpressionInterpolationInRunBlocks(t *testing.T) {
-	releasePath := map[string]bool{
-		"release.yml":     true,
-		"publish.yml":     true,
-		"attest.yml":      true,
-		"build-image.yml": true,
-	}
-
 	paths, err := filepath.Glob(filepath.Join(workflowDir, "*.yml"))
 	if err != nil {
 		t.Fatalf("glob workflows: %v", err)
@@ -189,7 +182,9 @@ func TestNoExpressionInterpolationInRunBlocks(t *testing.T) {
 
 	for _, p := range paths {
 		base := filepath.Base(p)
-		if !releasePath[base] {
+		// attest-selftest.yml has no run blocks worth scanning here, but the
+		// interpolation rule applies to every file that reaches the signer.
+		if !onReleasePath(base) {
 			continue
 		}
 		raw, err := os.ReadFile(p)
@@ -253,9 +248,7 @@ func workflowCallOutputs(raw []byte, t *testing.T) map[string]any {
 // can diverge, so it would pass on an artifact whose registry attestation is
 // gone while a consumer using cosign gets nothing.
 func TestVerificationUsesExactIdentity(t *testing.T) {
-	releasePath := []string{"release.yml", "publish.yml", "attest.yml", "build-image.yml", "attest-selftest.yml"}
-
-	for _, base := range releasePath {
+	for _, base := range releasePathWorkflows {
 		raw, err := os.ReadFile(filepath.Join(workflowDir, base))
 		if err != nil {
 			t.Fatalf("read %s: %v", base, err)

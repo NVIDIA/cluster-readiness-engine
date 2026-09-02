@@ -653,6 +653,29 @@ jobs:
             --max-filesize=512M --max-scansize=2048M \
             /scan
 
+      # action-gh-release honours `draft:` only when it CREATES the release. For
+      # a tag that already has one it passes `draft: existingRelease.draft` and
+      # ignores the input, so re-running against an already-published tag would
+      # upload freshly built, unverified assets straight into a live release --
+      # where they are public immediately and the gate has nothing left to
+      # withhold. This must therefore run BEFORE the upload, not after it.
+      - name: Require any existing release to be a draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-tag.outputs.value }}
+        run: |
+          set -euo pipefail
+          state="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" \
+            --json isDraft --jq .isDraft 2>/dev/null || echo absent)"
+          case "${state}" in
+            absent) echo "no release exists for ${TAG} yet" ;;
+            true)   echo "release ${TAG} exists and is a draft" ;;
+            *)
+              echo "::error::release ${TAG} is already published; refusing to upload assets the gate has not verified. Cut the next patch version instead (see RELEASE.md)."
+              exit 1
+              ;;
+          esac
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
@@ -841,20 +864,18 @@ jobs:
   # wrong permissions, an expired OIDC token, a renamed cosign flag -- and the
   # release would still have gone out green.
   #
-      # `draft: true` above is honoured only when the action CREATES the
-      # release. For a tag that already has one, action-gh-release passes
-      # `draft: existingRelease.draft` and ignores the input, so a re-run
-      # against an already-published tag uploads freshly built, unverified
-      # assets straight into a live release and the gate below has nothing
-      # left to withhold. Fail before that is observable rather than after.
-      - name: Require the release to be a draft
+      # The pre-upload guard proves no published release existed; this proves
+      # the action actually created a draft, which is a separate claim and the
+      # one the gate's control depends on.
+      - name: Confirm the release is a draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-tag.outputs.value }}
         run: |
           set -euo pipefail
           state="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
           if [[ "${state}" != "true" ]]; then
-            echo "::error::release ${TAG} is already published; refusing to publish assets that the gate has not verified. Cut the next patch version instead (see RELEASE.md)."
+            echo "::error::release ${TAG} is not a draft after creation; the gate cannot withhold it"
             exit 1
           fi
           echo "release ${TAG} is a draft; the gate controls when it becomes visible"
@@ -999,6 +1020,17 @@ jobs:
         run: |
           set -euo pipefail
           failed=0
+
+          # Defined per step: each `run:` block is its own shell, so a helper
+          # defined in an earlier step is not in scope here.
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n + 1))
+              [[ "${n}" -ge 3 ]] && return 1
+              sleep $((n * 5))
+            done
+          }
 
           # if/else rather than `cmd && echo ok || err`: in that form the error
           # branch also runs when the echo fails, which in a gate is a false
