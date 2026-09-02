@@ -36,6 +36,15 @@ updates:
 
   # No cooldown here: GitHub Actions is not one of the ecosystems that supports
   # it. Actions are pinned to commit SHAs, which Dependabot raises.
+  #
+  # NOT covered by any ecosystem below: tool versions pinned outside a manifest
+  # Dependabot parses -- the *_VERSION variables in the Makefile (controller-gen,
+  # addlicense, golangci-lint, govulncheck, gotestsum, gocover-cobertura) and
+  # COSIGN_VERSION in publish.yml. Dependabot reads neither Makefiles nor
+  # workflow `env:` values, so those pins are bumped by hand and must be checked
+  # during release prep. Moving the Go tools into a `tools.go` build-tagged file
+  # would place them in go.mod and bring them under the gomod ecosystem; that
+  # adds direct dependencies and is deliberately left as a separate decision.
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -94,11 +94,11 @@ jobs:
         with:
           version: v3.19.2
 
-      - name: Install test tools
-        run: |
-          go install gotest.tools/gotestsum@latest
-          go install github.com/boumenot/gocover-cobertura@latest
-
+      # gotestsum and gocover-cobertura are installed by `make test-ci` at the
+      # versions pinned in the Makefile, so CI and a local run report against
+      # the same tools. They were previously installed here from an unpinned
+      # floating version, which let the reporting toolchain resolve differently
+      # on every run.
       - name: Run tests
         run: make test-ci
 

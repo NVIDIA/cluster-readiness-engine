@@ -23,6 +23,19 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
+# Single source for the signing toolchain version used by this workflow.
+# Go tool versions live in the Makefile (the repository's existing pin
+# convention); cosign is installed by an action, so it is pinned here.
+# ADR-074 moves signing into a reusable attest.yml, at which point this
+# value moves with it and stays a single source.
+#
+# This pin is load-bearing, not cosmetic: cosign-installer v4.1.2 defaults to
+# cosign v3.0.6, so without it the signing CLI -- and with it the emitted
+# bundle format and the Rekor backend entries land in -- is chosen by the
+# action rather than by a commit here.
+env:
+  COSIGN_VERSION: v3.1.3
+
 jobs:
   publish:
     name: Build and Push Container
@@ -82,16 +95,40 @@ jobs:
           # the Makefile, helm values.yaml, and pkg/setup/setup.go.
           IMG: ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}
 
+      # cosign-release is pinned explicitly. Without it the installer's own
+      # default picks the cosign version, and that version determines the
+      # attestation bundle format and which Rekor backend entries land in --
+      # both properties of the contract we publish to users in SECURITY.md, so
+      # neither may change without a commit here. See ADR-074.
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
 
+      - name: Record cosign version
+        run: cosign version
+
+      # Attestations publish through the OCI referrers API (ghcr.io answers 404
+      # on /referrers, so this lands via the spec's `sha256-<hex>` tag fallback)
+      # rather than a legacy `.sig`/`.att` tag. That is the Sigstore bundle
+      # format, and what pins it here is COSIGN_VERSION above -- not a CLI flag.
+      #
+      # `--new-bundle-format` is deliberately NOT passed. It already defaults to
+      # true in both v3.0.6 (the cosign-installer v4.1.2 default) and the pinned
+      # v3.1.3, and v3.1.3 marks it deprecated ("this will be the only supported
+      # format in future versions"), so setting it explicitly changes no
+      # behaviour, prints a deprecation warning on every release run, and would
+      # break the release outright once cosign removes the flag. ADR-074 backs
+      # the format guarantee where it belongs: the version pin, plus a
+      # verification gate that rejects a legacy-format bundle instead of
+      # silently reading it.
       - name: Sign container image
         run: |
           cosign sign --yes \
             ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}@${{ steps.push.outputs.digest }}
 
       - name: Generate SBOM
-        uses: anchore/sbom-action@v0.24.2
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           image: ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}@${{ steps.push.outputs.digest }}
           format: cyclonedx-json

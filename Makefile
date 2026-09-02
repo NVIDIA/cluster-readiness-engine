@@ -88,17 +88,17 @@ test: setup-envtest ## Run unit and integration tests.
 	go test ./cmd/integration/ -v -timeout 300s -count=1
 
 .PHONY: test-ci
-test-ci:setup-envtest ## Run tests with JUnit XML and coverage reports for CI.
+test-ci: setup-envtest gotestsum gocover-cobertura ## Run tests with JUnit XML and coverage reports for CI.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
-	gotestsum --junitfile unit-report.xml -- \
+	"$(GOTESTSUM)" --junitfile unit-report.xml -- \
 		-coverprofile=cover-unit.out -covermode=atomic \
 		$$(go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v /cmd/integration)
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
-	gotestsum --junitfile integration-report.xml -- \
+	"$(GOTESTSUM)" --junitfile integration-report.xml -- \
 		-coverprofile=cover-integration.out -covermode=atomic \
 		./cmd/integration/ -timeout 300s -count=1
 	go tool cover -func=cover-unit.out
-	gocover-cobertura < cover-unit.out > coverage.xml
+	"$(GOCOVER_COBERTURA)" < cover-unit.out > coverage.xml
 
 .PHONY: test-integration
 test-integration: fmt vet setup-envtest ## Run integration tests.
@@ -314,10 +314,24 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 ADDLICENSE ?= $(LOCALBIN)/addlicense
+GOVULNCHECK ?= $(LOCALBIN)/govulncheck
+GOTESTSUM ?= $(LOCALBIN)/gotestsum
+GOCOVER_COBERTURA ?= $(LOCALBIN)/gocover-cobertura
 
 ## Tool Versions
 CONTROLLER_TOOLS_VERSION ?= v0.20.0
 ADDLICENSE_VERSION ?= v1.2.0
+# Pinned rather than installed with @latest so a CI run is reproducible and a
+# local run resolves the same tool. An @latest scanner also means a new release
+# can turn a green pipeline red with no commit here to explain it.
+#
+# `?=` matches the convention used by the pins above, which means an exported
+# environment variable of the same name silently wins over the value here. That
+# is intentional for local overrides, but it does mean "local matches CI" holds
+# only in a shell that does not already export these names.
+GOVULNCHECK_VERSION ?= v1.7.0
+GOTESTSUM_VERSION ?= v1.13.0
+GOCOVER_COBERTURA_VERSION ?= v1.5.0
 
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
@@ -353,6 +367,25 @@ $(ENVTEST): $(LOCALBIN)
 addlicense: $(ADDLICENSE) ## Download addlicense locally if necessary.
 $(ADDLICENSE): $(LOCALBIN)
 	$(call go-install-tool,$(ADDLICENSE),github.com/google/addlicense,$(ADDLICENSE_VERSION))
+
+.PHONY: govulncheck
+govulncheck: $(GOVULNCHECK) ## Download govulncheck locally if necessary.
+$(GOVULNCHECK): $(LOCALBIN)
+	$(call go-install-tool,$(GOVULNCHECK),golang.org/x/vuln/cmd/govulncheck,$(GOVULNCHECK_VERSION))
+
+.PHONY: gotestsum
+gotestsum: $(GOTESTSUM) ## Download gotestsum locally if necessary.
+$(GOTESTSUM): $(LOCALBIN)
+	$(call go-install-tool,$(GOTESTSUM),gotest.tools/gotestsum,$(GOTESTSUM_VERSION))
+
+.PHONY: gocover-cobertura
+gocover-cobertura: $(GOCOVER_COBERTURA) ## Download gocover-cobertura locally if necessary.
+$(GOCOVER_COBERTURA): $(LOCALBIN)
+	$(call go-install-tool,$(GOCOVER_COBERTURA),github.com/boumenot/gocover-cobertura,$(GOCOVER_COBERTURA_VERSION))
+
+.PHONY: scan-vuln
+scan-vuln: govulncheck ## Scan Go dependencies for known vulnerabilities.
+	"$(GOVULNCHECK)" ./...
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
