@@ -198,6 +198,8 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+    outputs:
+      digests: ${{ steps.digests.outputs.map }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -249,6 +251,32 @@ jobs:
       # the released binary (issue #195). check-clean-version rejects
       # anything that is not a clean vX.Y.Z[-prerelease] tag, so a malformed
       # workflow_dispatch input fails here instead of mislabeling binaries.
+      # Installed from the upstream anchore/syft release and checked against
+      # that release's own checksums, rather than through a setup action. Same
+      # reasoning as crane in attest.yml: fewer third parties in the release
+      # path, and the binary is verified on arrival.
+      - name: Install syft
+        id: syft
+        env:
+          SYFT_VERSION: v1.51.1
+          # Pinned here, in this repository, under review. Checking the download
+          # against a checksums file fetched from the same release would only
+          # prove the two upstream files agree with each other -- an attacker
+          # who can replace one can replace both. This digest is an anchor they
+          # cannot reach without a commit here.
+          SYFT_SHA256: 8fcb33017a0dc1058298c923c436d19dfa68ae93968e0b423248542e3afb9fc3
+        run: |
+          set -euo pipefail
+          base="https://github.com/anchore/syft/releases/download/${SYFT_VERSION}"
+          tarball="syft_${SYFT_VERSION#v}_linux_amd64.tar.gz"
+          tmp="$(mktemp -d)"
+          curl -fsSL -o "${tmp}/${tarball}" "${base}/${tarball}"
+          echo "${SYFT_SHA256}  ${tmp}/${tarball}" | sha256sum --check --strict -
+          tar -xzf "${tmp}/${tarball}" -C "${tmp}" syft
+          install -m 0755 "${tmp}/syft" "${RUNNER_TEMP}/syft"
+          "${RUNNER_TEMP}/syft" version
+          echo "path=${RUNNER_TEMP}/syft" >> "$GITHUB_OUTPUT"
+
       - name: Cross-compile nvcrectl
         env:
           TAG: ${{ steps.tag.outputs.value }}
@@ -273,12 +301,160 @@ jobs:
             exit 1
           fi
 
-      - name: Upload CLI binaries
+      # Everything that will be signed is staged into one directory and uploaded
+      # once. The signing jobs each download this artifact and sign one member
+      # of it, so the bytes they sign are the bytes published -- not a rebuild.
+      - name: Stage release artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          cp bin/nvcrectl-* release-assets/
+          cp installer release-assets/
+          # Published as a release asset, so it is covered by the same contract
+          # as everything else: a bundle and a checksum entry.
+          cp THIRD_PARTY_NOTICES.md release-assets/
+          ls -la release-assets/
+
+      # syft reads the Go build info embedded in each binary, so the SBOM lists
+      # the module set that binary was actually built from. `installer` is a
+      # shell script and gets no SBOM -- there is nothing to inventory.
+      - name: Generate per-binary SBOMs
+        run: |
+          set -euo pipefail
+          for f in release-assets/nvcrectl-*; do
+            [[ "${f}" == *.cyclonedx.json ]] && continue
+            name="$(basename "${f}")"
+            "${SYFT}" scan "file:${f}" -o cyclonedx-json="release-assets/${name}.cyclonedx.json" -q
+            count="$(jq '[.components[]?] | length' "release-assets/${name}.cyclonedx.json")"
+            if [[ "${count}" -eq 0 ]]; then
+              echo "::error::the SBOM for ${name} lists no components; syft inventoried nothing"
+              exit 1
+            fi
+            echo "${name}: ${count} components"
+          done
+        env:
+          SYFT: ${{ steps.syft.outputs.path }}
+
+      # The caller measures every asset here and attest.yml re-measures the one
+      # it is signing, failing on mismatch. Handing over a digest the signer
+      # does not recompute would make that comparison meaningless.
+      - name: Compute asset digests
+        id: digests
+        run: |
+          set -euo pipefail
+          map="$(cd release-assets && sha256sum -- * \
+            | jq -Rn '[inputs | split("  ") | {(.[1]): ("sha256:" + .[0])}] | add' -c)"
+          echo "${map}" | jq .
+          # Every matrix subject must be present, or a leg would be handed an
+          # empty digest and attest.yml would reject it late instead of here.
+          for want in nvcrectl-linux-amd64 nvcrectl-linux-arm64 \
+                      nvcrectl-darwin-amd64 nvcrectl-darwin-arm64 installer \
+                      THIRD_PARTY_NOTICES.md \
+                      nvcrectl-linux-amd64.cyclonedx.json nvcrectl-linux-arm64.cyclonedx.json \
+                      nvcrectl-darwin-amd64.cyclonedx.json nvcrectl-darwin-arm64.cyclonedx.json; do
+            jq -e --arg k "${want}" 'has($k)' <<<"${map}" >/dev/null \
+              || { echo "::error::${want} is missing from the digest map"; exit 1; }
+          done
+          echo "map=${map}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: nvcrectl-binaries
-          path: bin/nvcrectl-*
+          name: release-assets
+          path: release-assets/
           retention-days: 7
+
+  # Nine published assets each need a verifying bundle: the four binaries, the
+  # installer, and the four SBOMs. attest.yml signs one subject per call, so
+  # this is a matrix over subjects rather than nine near-identical jobs.
+  #
+  # The binaries carry their SBOM as a predicate, which binds the SBOM to the
+  # binary. The SBOM files are ALSO signed in their own right, because a user
+  # downloads the .cyclonedx.json as a loose asset and it is the document a
+  # security team feeds to a scanner -- an unsigned SBOM beside a signed binary
+  # is the one unsigned link left.
+  attest-binaries:
+    name: Attest ${{ matrix.subject }}
+    needs: [build-cli]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      # Nine legs, and the four binary legs sign twice, so an unbounded fan-out
+      # is ~13 near-simultaneous calls to public-good Fulcio and Rekor from one
+      # caller. attest.yml retries on a fixed 5s/10s backoff with no jitter, so
+      # legs that fail together retry together. The gate requires every leg, so
+      # one correlated blip fails the whole release. Three at a time keeps the
+      # burst small without meaningfully lengthening the run.
+      max-parallel: 3
+      matrix:
+        include:
+          - subject: nvcrectl-linux-amd64
+            predicate: nvcrectl-linux-amd64.cyclonedx.json
+          - subject: nvcrectl-linux-arm64
+            predicate: nvcrectl-linux-arm64.cyclonedx.json
+          - subject: nvcrectl-darwin-amd64
+            predicate: nvcrectl-darwin-amd64.cyclonedx.json
+          - subject: nvcrectl-darwin-arm64
+            predicate: nvcrectl-darwin-arm64.cyclonedx.json
+          # No SBOM: a shell script has nothing to inventory.
+          - subject: installer
+            predicate: ''
+          - subject: THIRD_PARTY_NOTICES.md
+            predicate: ''
+          # The SBOMs signed as artifacts in their own right.
+          - subject: nvcrectl-linux-amd64.cyclonedx.json
+            predicate: ''
+          - subject: nvcrectl-linux-arm64.cyclonedx.json
+            predicate: ''
+          - subject: nvcrectl-darwin-amd64.cyclonedx.json
+            predicate: ''
+          - subject: nvcrectl-darwin-arm64.cyclonedx.json
+            predicate: ''
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: blob
+      subject_name: ${{ matrix.subject }}
+      expected_digest: ${{ fromJSON(needs.build-cli.outputs.digests)[matrix.subject] }}
+      artifact_name: release-assets
+      predicate_name: ${{ matrix.predicate }}
+      predicate_type: ${{ matrix.predicate != '' && 'cyclonedx' || '' }}
+
+  # Without this, a skipped attest-binaries matrix would skip
+  # create-github-release too -- safe, but silent: the run goes green with no
+  # release and no stated reason. This turns that into a named failure.
+  binaries-attested:
+    name: Confirm the binaries were signed
+    needs: [build-cli, attest-binaries]
+    if: always() && github.repository == 'NVIDIA/cluster-readiness-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require every binary attestation to have succeeded
+        env:
+          BUILD: ${{ needs.build-cli.result }}
+          ATTEST: ${{ needs.attest-binaries.result }}
+        run: |
+          set -euo pipefail
+          echo "build-cli=${BUILD} attest-binaries=${ATTEST}"
+          if [[ "${BUILD}" != "success" ]]; then
+            echo "::error::the CLI build did not succeed (${BUILD}); nothing was produced to sign."
+            exit 1
+          fi
+          case "${ATTEST}" in
+            success) echo "all binary and SBOM attestations succeeded" ;;
+            skipped)
+              echo "::error::binary attestation was SKIPPED. A skipped job does not fail its caller, so the release would simply not appear with no reason given."
+              exit 1
+              ;;
+            *)
+              echo "::error::binary attestation did not succeed (${ATTEST}). No release will be published; the assets are unsigned."
+              exit 1
+              ;;
+          esac
 
   create-github-release:
     name: Create GitHub Release
@@ -289,6 +465,7 @@ jobs:
       - helm-publish
       - chart-attested
       - build-cli
+      - binaries-attested
     permissions:
       contents: write
     steps:
@@ -299,7 +476,7 @@ jobs:
       - name: Download CLI binaries
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: nvcrectl-binaries
+          name: release-assets
           path: dist/
 
       - name: Resolve tag
@@ -336,11 +513,54 @@ jobs:
           fi
           echo "value=${value}" >> "$GITHUB_OUTPUT"
 
+      # Every bundle the matrix produced, flattened next to the assets it
+      # signs. Loose files, not an archive: a user should be able to curl one
+      # binary and one bundle and verify with a single command.
+      - name: Download signature bundles
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: bundles-*
+          merge-multiple: true
+          path: dist/
+
+      # A bundle per published asset, or the release ships something users are
+      # told to verify and cannot. `installer` is copied by the build job now,
+      # so the whole set arrives in one artifact.
+      - name: Require a bundle for every asset
+        run: |
+          set -euo pipefail
+          cd dist
+          missing=0
+          for f in nvcrectl-linux-amd64 nvcrectl-linux-arm64 \
+                   nvcrectl-darwin-amd64 nvcrectl-darwin-arm64 installer \
+                   THIRD_PARTY_NOTICES.md \
+                   nvcrectl-linux-amd64.cyclonedx.json nvcrectl-linux-arm64.cyclonedx.json \
+                   nvcrectl-darwin-amd64.cyclonedx.json nvcrectl-darwin-arm64.cyclonedx.json; do
+            [[ -s "${f}" ]] || { echo "::error::asset ${f} is missing"; missing=1; }
+            [[ -s "${f}.sigstore.json" ]] || { echo "::error::${f} has no signature bundle"; missing=1; }
+          done
+          # The bundle binding each SBOM to its binary. Currently redundant --
+          # attest.yml fails the leg if that second attest-blob call fails -- but
+          # a future refactor that decoupled the two calls would otherwise ship a
+          # binary and an SBOM with nothing tying them together.
+          for b in nvcrectl-linux-amd64 nvcrectl-linux-arm64 \
+                   nvcrectl-darwin-amd64 nvcrectl-darwin-arm64; do
+            [[ -s "${b}.cyclonedx.sigstore.json" ]] \
+              || { echo "::error::${b} has no bundle binding its SBOM to it"; missing=1; }
+          done
+          [[ "${missing}" -eq 0 ]] || exit 1
+          ls -la
+
+      # checksums.txt stays -- it is cheap and costs nothing -- but it now
+      # covers every published asset rather than only the binaries. It is not
+      # the verification story: it is served from the same origin as the
+      # artifacts and is itself unsigned, which is why the bundles exist.
       - name: Generate checksums
         run: |
-          cp installer dist/
+          set -euo pipefail
           cd dist
-          sha256sum installer nvcrectl-* > checksums.txt
+          sha256sum -- * > checksums.txt.tmp
+          mv checksums.txt.tmp checksums.txt
           cat checksums.txt
 
       # Gate. This runs after the artifacts exist and before the release is
@@ -378,17 +598,39 @@ jobs:
 
             ## Install nvcrectl
 
-            Install this release:
+            The installer is signed. Download it with its bundle, verify, then run — piping it into a shell executes it before anything has checked it.
+
+            ```bash
+            REL=https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.value }}
+
+            curl -fsSLO "${REL}/installer"
+            curl -fsSLO "${REL}/installer.sigstore.json"
+
+            cosign verify-blob-attestation \
+              --bundle installer.sigstore.json \
+              --type https://slsa.dev/provenance/v1 \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ steps.tag.outputs.value }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              installer
+
+            bash installer -v ${{ steps.tag.outputs.value }}
+            ```
+
+            <details>
+            <summary>Without cosign</summary>
 
             ```bash
             curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.value }}/installer | bash -s -- -v ${{ steps.tag.outputs.value }}
             ```
 
-            Or install the newest stable release (`releases/latest` resolves only to stable releases, never pre-releases):
+            This runs the installer before anything verifies it. TLS proves you reached GitHub; it proves nothing about the asset if the release itself was tampered with. Use it only where installing cosign first is genuinely impractical.
 
             ```bash
+            # newest stable release; `releases/latest` never resolves to a pre-release
             curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/installer | bash
             ```
+
+            </details>
 
             ## Helm Chart
 
@@ -429,7 +671,53 @@ jobs:
 
             ## Verify your download
 
-            Every binary asset (the installer and the `nvcrectl-*` binaries) is listed in `checksums.txt` with its SHA-256 digest. After you download an asset, verify it:
+            Every asset ships with a Sigstore bundle, `<asset>.sigstore.json`, carrying a SLSA Build Provenance v1 statement. Verify the artifact itself, not a checksum served from the same place as the artifact:
+
+            ```bash
+            REL=https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.value }}
+            ASSET=nvcrectl-linux-amd64   # or installer, or any published asset
+
+            # The bundle is a separate asset; fetch both.
+            curl -fsSLO "${REL}/${ASSET}"
+            curl -fsSLO "${REL}/${ASSET}.sigstore.json"
+
+            cosign verify-blob-attestation \
+              --bundle "${ASSET}.sigstore.json" \
+              --type https://slsa.dev/provenance/v1 \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ steps.tag.outputs.value }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "${ASSET}"
+            ```
+
+            Each `nvcrectl-*` binary also ships a CycloneDX SBOM, `<binary>.cyclonedx.json`. There are **two** bundles involving it, one segment apart in name, and they prove different things:
+
+            | Bundle | Proves |
+            |---|---|
+            | `<binary>.cyclonedx.json.sigstore.json` | the SBOM **file** is the one we published and was not altered |
+            | `<binary>.cyclonedx.sigstore.json` | the SBOM **describes that binary** — it is bound to the binary as its subject |
+
+            Before feeding an SBOM to a scanner, check **both**. The binding proves an SBOM describes the binary; it says nothing about the bytes of the file on your disk, which is a separate download.
+
+            ```bash
+            cosign verify-blob-attestation \
+              --bundle "${ASSET}.cyclonedx.sigstore.json" \
+              --type cyclonedx \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ steps.tag.outputs.value }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "${ASSET}"
+
+            # 2. the SBOM file you downloaded is the one that was published
+            cosign verify-blob-attestation \
+              --bundle "${ASSET}.cyclonedx.json.sigstore.json" \
+              --type https://slsa.dev/provenance/v1 \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ steps.tag.outputs.value }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "${ASSET}.cyclonedx.json"
+            ```
+
+            Only the first would let a tampered local `.cyclonedx.json` reach your scanner: the binding attestation carries its own copy of the SBOM and never looks at your file.
+
+            `checksums.txt` is still published and still works, but it is not the verification story: it is served from the same origin as the assets and is itself unsigned, so it detects corruption rather than tampering.
 
             ```bash
             sha256sum --check --ignore-missing checksums.txt
@@ -447,8 +735,10 @@ jobs:
           files: |
             dist/nvcrectl-*
             dist/installer
+            dist/installer.sigstore.json
+            dist/THIRD_PARTY_NOTICES.md
+            dist/THIRD_PARTY_NOTICES.md.sigstore.json
             dist/checksums.txt
-            THIRD_PARTY_NOTICES.md
           draft: false
           prerelease: ${{ contains(steps.tag.outputs.value, '-') }}
           generate_release_notes: true
