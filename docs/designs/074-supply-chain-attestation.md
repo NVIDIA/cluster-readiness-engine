@@ -30,12 +30,12 @@ Every artifact a user can pull or download from a tagged release carries a signa
 
 | Artifact | Signature | SBOM | Provenance | Attestation subject |
 |---|---|---|---|---|
-| `manager` image, per platform | cosign | SPDX-JSON, one per platform | — | per-platform manifest digest |
+| `manager` image, per platform | cosign | CycloneDX-JSON, one per platform | — | per-platform manifest digest |
 | `manager` image, index | cosign | — | SLSA Build Provenance v1 | index digest |
 | Helm chart (OCI) | cosign | — | SLSA Build Provenance v1 | chart OCI digest |
-| `nvcrectl-{linux,darwin}-{amd64,arm64}` | cosign `attest-blob` bundle | SPDX-JSON, one per binary | SLSA Build Provenance v1 | file digest |
+| `nvcrectl-{linux,darwin}-{amd64,arm64}` | cosign `attest-blob` bundle | CycloneDX-JSON, one per binary | SLSA Build Provenance v1 | file digest |
 | `installer` | cosign `attest-blob` bundle | — | SLSA Build Provenance v1 | file digest |
-| every `*.spdx.json` release asset | cosign `attest-blob` bundle | — | — | file digest |
+| every `*.cyclonedx.json` release asset | cosign `attest-blob` bundle | — | — | file digest |
 
 The last row is not redundancy. The SBOM is the document a security team feeds to a scanner to decide whether they are exposed, which makes it worth tampering with on its own. An unsigned SBOM beside a signed binary is the one unsigned link in the chain.
 
@@ -68,13 +68,17 @@ This buys two things at once. It raises build provenance from SLSA Build **L2** 
 
 `attest.yml` validates every input before use: digests must match `^sha256:[0-9a-f]{64}$`, no input may contain a newline or carriage return, and the caller's authoritative `expected_digest` is compared against an independently resolved digest with a mismatch failing the job. It refuses to run on a non-tag ref unless an explicit `allow_untagged` input is set, so a test run cannot quietly produce something that looks like a release attestation.
 
-### 5. SPDX-JSON replaces CycloneDX
+### 5. SBOM format stays CycloneDX-JSON
 
-Image SBOMs move from CycloneDX ([`publish.yml:97`](../../.github/workflows/publish.yml#L97)) to SPDX-JSON, and binary SBOMs are SPDX-JSON from the start.
+Image SBOMs keep the CycloneDX-JSON format already emitted at [`publish.yml:97`](../../.github/workflows/publish.yml#L97), and binary SBOMs use the same format. The predicate type stays `cyclonedx`.
 
-`spdxjson` is a first-class cosign predicate type, SPDX is the ISO standard (ISO/IEC 5962:2021), and it is what the other NVIDIA release pipeline in this org emits — which means verification instructions, tooling, and reviewer familiarity are shared rather than duplicated. Grype, Trivy, and Syft consume both formats, so the practical cost to a scanning consumer is zero.
+Both CycloneDX and SPDX are first-class cosign predicate types, both are formally standardized (CycloneDX as ECMA-424, SPDX as ISO/IEC 5962:2021), and Grype, Trivy, and Syft consume either. On the merits that matter to a consumer, the two are interchangeable, so the deciding factors are switching cost and fit with where this repository is going — and both point the same way.
 
-The cost is real for anyone parsing the predicate body directly, and it is paid once. The repository is at `v0.1.0-rc`; the same change after 1.0 would be a breaking change to a documented interface. The first release carrying SPDX calls it out in the release notes.
+CycloneDX carries vulnerability data natively: a `vulnerabilities` array, and VEX statements that can be embedded in or linked from the same document. SPDX has no equivalent, so VEX has to travel as a separate OpenVEX file. Weekly vulnerability scanning is part of this epic and OpenVEX is the intended long-term suppression mechanism (see Notes), so the format that can eventually carry both in one document is the better foundation.
+
+Changing format would also be a breaking change for anyone parsing the predicate body today, in exchange for no capability the consumer tooling does not already have.
+
+Format is one flag on `cosign attest`. Nothing else in this contract depends on it — the subject policy, the identity contract, the reusable workflow, and both verification gates are format-independent.
 
 ### 6. Verify before publishing, and keep verifying
 
@@ -93,9 +97,9 @@ publish.yml (tag)  ──┐
                      ├──> attest.yml (workflow_call, SLSA L3 builder)
 release.yml (tag)  ──┘         │
                                ├─ image index      -> provenance
-                               ├─ image amd64/arm64 -> SPDX SBOM (each)
+                               ├─ image amd64/arm64 -> CycloneDX SBOM (each)
                                ├─ chart OCI digest  -> signature + provenance
-                               └─ binaries, installer, *.spdx.json -> attest-blob bundles
+                               └─ binaries, installer, *.cyclonedx.json -> attest-blob bundles
 ```
 
 `release.yml` becomes authoritative for digests. It either consumes the image publish as a dependency or resolves and asserts the published digest before creating the release, and it carries the index digest, both platform digests, and the chart digest into the release notes so the notes reference immutable artifacts.
@@ -140,7 +144,6 @@ The contract lives in YAML, and the failure mode is silent: a signing step delet
 
 - The release path gains a hard dependency on Sigstore availability. Retries and timeouts bound the damage, but a sustained Fulcio or Rekor outage will block a release. This is accepted: a release that cannot be attested should not ship.
 - More moving parts in CI, and a reusable-workflow indirection that is one more hop to read when debugging a release.
-- The SPDX switch is a breaking change for any consumer parsing the CycloneDX predicate today.
 - The daily re-verification job will occasionally file operational issues during upstream incidents. That is the deliberate direction of the demote-only rule.
 - Pinned tool versions need deliberate bumps; Renovate/Dependabot coverage must include them or they rot.
 
@@ -159,13 +162,15 @@ The contract lives in YAML, and the failure mode is silent: a signing step delet
 
 4. **An `nvcrectl verify` subcommand.** A single command wrapping the whole contract would be a better user experience than several cosign invocations. Rejected: it is verification surface we would have to keep correct, and a bug in it fails open by definition — a verifier that wrongly reports success is worse than no verifier. `cosign` and `gh` are maintained by the projects that define these formats. Reconsider only if the documented commands prove too error-prone in practice, and then as a thin wrapper that shells out rather than a reimplementation.
 
-5. **Diff-based vulnerability and verification reporting** (report only what changed since the last run). Less noise per run. Rejected for the assurance jobs: a finding that stops being reported because it is no longer new is a finding nobody fixed. Full-set reporting every run, with explicit expiry-dated suppressions as the only way to silence something.
+5. **Switch the SBOM format to SPDX-JSON.** An earlier draft of this record decided to switch, on the grounds that `spdxjson` is a first-class cosign predicate type, that SPDX is the ISO standard, and that it matches the other NVIDIA release pipeline in this org. Two of those three do not survive scrutiny: `cyclonedx` is in the same cosign predicate-type enum, so that argument favors neither format, and CycloneDX is standardized as ECMA-424, so "the ISO standard" framed a tie as an advantage. What remained was cross-repository consistency, which is worth one flag value and no more, weighed against a breaking change for anyone parsing the predicate today and the loss of CycloneDX's native VEX carriage. Rejected. Revisit only if a consumer requires SPDX specifically — for example a procurement process that names the ISO standard — in which case emitting both is cheaper than switching.
+
+6. **Diff-based vulnerability and verification reporting** (report only what changed since the last run). Less noise per run. Rejected for the assurance jobs: a finding that stops being reported because it is no longer new is a finding nobody fixed. Full-set reporting every run, with explicit expiry-dated suppressions as the only way to silence something.
 
 ## Notes
 
 - `CLAUDE.md` and `AGENTS.md` describe the design record range as ADR-000 through ADR-069. The actual range is ADR-000 through ADR-073, which is why this record is 074 rather than the 070 named in the epic. Both files should be corrected in a separate change.
 - ADRs are indexed in [`docs/designs/README.md`](README.md), not in the Fern navigation — `docs/index.yml` has no designs section. New records go in that README table.
-- OpenVEX vulnerability triage is deliberately out of scope. It is the right long-term answer for suppressing findings that do not apply, but it needs a triage process to exist first. Expiry-dated `.grype.yaml` ignore rules start that process; revisit publishing them as a signed OpenVEX attestation once the ruleset has been exercised.
+- Vulnerability triage is deliberately out of scope for this record. Structured suppression is the right long-term answer for findings that do not apply, but it needs a triage process to exist first. Expiry-dated `.grype.yaml` ignore rules start that process. Once the ruleset has been exercised, there are two ways to publish it, and decision 5 keeps both open: a separate signed OpenVEX attestation, or CycloneDX's own VEX carriage inside the SBOM predicate we already sign. Prefer the latter if it holds up — it is one fewer artifact to attest, distribute, and keep in sync with the SBOM it qualifies.
 
 ## References
 
@@ -173,6 +178,7 @@ The contract lives in YAML, and the failure mode is silent: a signing step delet
 - [SLSA v1.0 Build Levels](https://slsa.dev/spec/v1.0/levels)
 - [Using artifact attestations and reusable workflows to achieve SLSA v1 Build Level 3](https://docs.github.com/actions/security-guides/using-artifact-attestations-and-reusable-workflows-to-achieve-slsa-v1-build-level-3)
 - [Sigstore cosign](https://docs.sigstore.dev/cosign/overview/)
-- [SPDX ISO/IEC 5962:2021](https://spdx.dev/use/spec-versions/)
+- [CycloneDX ECMA-424](https://ecma-international.org/publications-and-standards/standards/ecma-424/)
+- [CycloneDX VEX](https://cyclonedx.org/capabilities/vex/)
 - [OCI Distribution Specification — Referrers API and tag fallback](https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-referrers)
 - ADR-064: Helm Chart Distribution — the chart publishing path this record adds signing to
