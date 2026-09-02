@@ -64,7 +64,13 @@ This contract is published to users and enforced by us. Both the release-time ga
 
 `attest.yml` is `workflow_call`-only and is the sole place in the repository that invokes `cosign sign`, `cosign attest`, `cosign attest-blob`, or `actions/attest-build-provenance`.
 
-This buys two things at once. It raises build provenance from SLSA Build **L2** to **L3**: when generation happens in a top-level workflow, the builder identity is a workflow that anyone able to modify the calling workflow can modify, whereas a reusable workflow is a build service the caller cannot tamper with. And it is what makes decision 3 possible — cosign uses the OIDC `job_workflow_ref` as the certificate SAN, so signing from one reusable workflow collapses every artifact onto one identity path where only the ref varies. Signing inline in each caller would give the chart, the image, and the binaries three different identities, and a `main` build a fourth that looks just as legitimate.
+The reason is decision 3. cosign uses the OIDC `job_workflow_ref` as the certificate SAN, so signing from one reusable workflow collapses every artifact onto one identity path where only the ref varies. Signing inline in each caller would give the chart, the image, and the binaries three different identities, and a `main` build a fourth that looks just as legitimate. It also isolates the signing step: caller-defined build steps run in a different job from the one holding the signing token.
+
+**This design targets SLSA Build L2, not L3.** The distinction matters and is easy to overclaim. L3 requires the *build* to be isolated from user-defined steps, and GitHub's mechanism for that is moving the build itself into the reusable workflow. Here the builds stay in the callers — `docker buildx` in `publish.yml`, the Go cross-compile and `helm package` in `release.yml` — and `attest.yml` receives a digest and signs it. A caller that produced the wrong artifact would get a faithful signature over the wrong digest. Isolating the signer is worth having, but it is not the isolation L3 asks for.
+
+Two consequences follow. First, no artifact or document may claim L3 — not the ADR, not the release notes, not `SECURITY.md`. Second, the provenance predicate's `runDetails.builder.id` must name the workflow that actually performed the build, not `attest.yml`. Naming the attestor as the builder would make the predicate false on its face, which is worse than claiming the wrong level.
+
+Reaching L3 later means moving image, chart, and binary generation into the protected reusable workflow. That is a larger restructure than this record covers — it rewrites the build path rather than adding to it — and it should be its own decision once this contract is in place and stable. Recorded as deferred, not rejected.
 
 `attest.yml` validates every input before use: digests must match `^sha256:[0-9a-f]{64}$`, no input may contain a newline or carriage return, and the caller's authoritative `expected_digest` is compared against an independently resolved digest with a mismatch failing the job. It refuses to run on a non-tag ref unless an explicit `allow_untagged` input is set, so a test run cannot quietly produce something that looks like a release attestation.
 
@@ -86,6 +92,8 @@ Producing attestations without verifying them means the first party to discover 
 
 A **release-time gate** runs after publication and before the release leaves draft, verifying every row of the artifact contract over the same channel a user takes — unauthenticated download for public assets, with the authenticated fallback already implemented at [`release.yml:280-294`](../../.github/workflows/release.yml#L280-L294) while the repository is private. It checks presence against a **static expected-asset list** held in the workflow, not against the release's own inventory: expectations derived from the artifact under test would make deleting one asset produce a clean run over the survivors.
 
+Verifying the signature is not enough on its own. A valid signature under the pinned identity proves who signed and on which ref, but says nothing about what the predicate *contains* — so the gate must also read the provenance body and assert that `externalParameters.repository` is this repository, that `externalParameters.ref` is `refs/tags/<TAG>`, and that `resolvedDependencies[].digest.gitCommit` is the commit the released tag actually points at. Without that last check, an artifact built from a different commit under a tag that was later moved still verifies: the certificate names the right tag, and nothing compares the tag's current target against what the predicate recorded. Identity answers "who signed this"; the predicate body answers "what was built", and the release must confirm both agree.
+
 A **daily re-verification job** re-runs the same suite against the latest release, because the release-time gate proves correctness at publication and says nothing about ten minutes later. Assets can be deleted or replaced, and registry tags can be moved, without any commit to this repository. That job must distinguish tampering from a Sigstore outage: it probes both the TUF CDN and Fulcio for liveness before classifying anything, and classification is **demote-only**, so an ambiguous case is reported as operational rather than suppressed — the failure mode is a real finding filed under the wrong severity, never a real finding that goes unfiled.
 
 ## Implementation
@@ -94,7 +102,7 @@ A **daily re-verification job** re-runs the same suite against the latest releas
 
 ```
 publish.yml (tag)  ──┐
-                     ├──> attest.yml (workflow_call, SLSA L3 builder)
+                     ├──> attest.yml (workflow_call, isolated signer)
 release.yml (tag)  ──┘         │
                                ├─ image index      -> provenance
                                ├─ image amd64/arm64 -> CycloneDX SBOM (each)
@@ -125,7 +133,7 @@ The contract lives in YAML, and the failure mode is silent: a signing step delet
 ## Rationale
 
 - **Exact identity over regexp** is the single highest-value decision here. Every other gap is a missing artifact, which is visibly missing. A too-permissive verification command is an artifact that appears present and correct while asserting less than the reader believes.
-- **Reusable workflow** is the only change that improves the security property (L2 → L3) and simplifies the consumer contract at the same time. Those usually trade against each other.
+- **Reusable workflow** improves the security property (signing isolated from caller-defined build steps) and simplifies the consumer contract at the same time. Those usually trade against each other. It does not by itself reach Build L3 — see decision 4.
 - **Per-platform SBOM subjects** follow from what an SBOM is. Getting this wrong is not a policy choice, it is a category error, and it is already shipping.
 - **Verify what we produce** costs one job and converts a class of silent failure into a red release. Attestations nobody checks are decoration.
 - **Signing the SBOMs** closes the gap that remains after everything else is signed, at the cost of a few more bundles.
@@ -136,7 +144,7 @@ The contract lives in YAML, and the failure mode is silent: a signing step delet
 
 - Every released artifact answers "who built this, from what source, containing what," with one command and one pinned identity.
 - The multi-platform SBOM defect is fixed, and the fail-closed digest checks prevent it from recurring silently.
-- Provenance is SLSA Build L3, which is a meaningful threshold for consumers with procurement requirements.
+- Provenance is SLSA Build L2 with a single pinnable builder identity, which is a real improvement over no provenance at all. L3 remains available as a follow-on and is not foreclosed by anything here.
 - Admission controllers can enforce the same contract the documentation publishes, so install-time and runtime checks cannot drift.
 - Post-publication tampering has a bounded detection window instead of depending on a user noticing.
 
@@ -150,13 +158,15 @@ The contract lives in YAML, and the failure mode is silent: a signing step delet
 ### Neutral
 
 - `checksums.txt` stays. It is cheap, `installer` already consumes it, and it works with no tooling installed.
-- `installer` verifies signatures when cosign is on `$PATH` and falls back to checksum-only with a printed notice otherwise. Making cosign a hard dependency would break `curl … | bash` on a bare machine, which is the path most users take.
+- `installer` **fails closed** when it cannot verify a signature. An earlier draft of this record had it fall back to checksum-only with a printed notice, which contradicts this record's own Context: `checksums.txt` is served from the same origin as the artifact and is itself unsigned, so an adversary who can replace the binary can replace its checksum line in the same write. A silent downgrade to that check is not a weaker guarantee, it is no guarantee, and the printed notice puts the decision in front of a user who is watching a pipe scroll past.
+
+  The bare-machine path is preserved two ways. `installer` bootstraps `cosign` when it is absent and the platform allows it, verifying the downloaded cosign against a pinned digest embedded in the installer. Where that is not possible, installation stops with instructions, and an explicit `--skip-verify` flag — never a default, never inferred from a missing binary — lets an operator proceed knowingly. Verification is skipped only when someone typed the words asking to skip it.
 
 ## Alternatives Considered
 
 1. **Migrate the release to GoReleaser.** GoReleaser has first-class SBOM, signing, and archive support, and would replace hand-rolled cross-compilation with configuration. Rejected for now: [`release.yml`](../../.github/workflows/release.yml) carries specific guards earned from issues #194 and #195 — explicit tag passing instead of `git describe`, a self-reported version check against the tag, and an unauthenticated post-publish download gate. A GoReleaser migration rewrites all of that at the same time as introducing attestation, and a failure would be hard to attribute to one or the other. The two changes are separable and should stay separate. Revisit once the contract in this ADR is stable.
 
-2. **Keep signing inline in each workflow.** Simpler to read, no `workflow_call` indirection. Rejected: it caps provenance at SLSA Build L2 and produces a different certificate identity per calling workflow and per ref — which is the root of the `main`-build-looks-like-a-release problem in `SECURITY.md`. Consumers would have to pin several identities or fall back to a regexp, which is the failure this ADR exists to remove.
+2. **Keep signing inline in each workflow.** Simpler to read, no `workflow_call` indirection. Rejected: it produces a different certificate identity per calling workflow and per ref — the root of the `main`-build-looks-like-a-release problem in `SECURITY.md`. Consumers would have to pin several identities or fall back to a regexp, which is the failure this ADR exists to remove. It also leaves the signing token in the same job as caller-defined build steps.
 
 3. **Private Sigstore or KMS-backed signing.** Full control over the trust root, no dependency on public-good Sigstore availability, and works in environments that cannot reach `fulcio.sigstore.dev`. Rejected: it requires key custody, rotation, and a distribution story for the trust root before a single artifact is signed, and it makes verification harder for the public consumers who are the primary audience. Keyless public-good Sigstore has no key material to protect and needs no infrastructure from us. Revisit if a consumer requires an air-gapped trust root that a cached public root cannot satisfy.
 
