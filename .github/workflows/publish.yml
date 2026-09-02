@@ -136,7 +136,15 @@ jobs:
   attested:
     name: Confirm the image was signed
     needs: [build, attest-index, attest-amd64-sbom, attest-arm64-sbom]
-    if: always() && github.repository == 'NVIDIA/cluster-readiness-engine'
+    # Carries the same ref guard as the jobs it watches. Without it a
+    # workflow_dispatch from a non-main ref skips everything upstream -- which is
+    # correct, that is what the guard is for -- and then this job still runs on
+    # `always()` and reports "no image was published", turning a deliberate
+    # no-op into a red run that looks like a broken release.
+    if: >-
+      always()
+      && github.repository == 'NVIDIA/cluster-readiness-engine'
+      && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
