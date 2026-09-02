@@ -109,6 +109,12 @@ Integration tests use envtest with golden file comparison in `cmd/integration/te
 
 Unit tests in most packages use `testutil.TestCaseParser` (in `pkg/testutil/`) with testdata directories and golden files — the same pattern as integration tests but at the package level. See `/cre-test` skill for the full testing guide including which packages use which pattern, golden file rules, and the integration test input format.
 
+Release-path workflows are tested in `test/releasepolicy/`. `attest.yml`'s input validation is shell embedded in YAML — nothing type-checks it, and a weakened guard would not break a build, it would just stop rejecting things. The tests extract that step from the workflow and execute it against a table of accept and reject cases, so the test cannot drift from the validation it covers:
+
+```bash
+go test ./test/releasepolicy/ -run TestAttestValidationRejects -v
+```
+
 ## Critical Pitfalls
 
 - **After modifying `*_types.go`**: Must run `make manifests generate` before anything else compiles (stale deepcopy). `make manifests` writes CRDs directly to `helm/cluster-readiness-engine/crds/` and RBAC to `helm/cluster-readiness-engine/templates/`.

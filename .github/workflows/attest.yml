@@ -86,7 +86,7 @@ on:
           upload-artifact name holding the blob and any predicate. Required when
           subject_kind is blob, AND required whenever predicate_name is set --
           including for image and oci-artifact subjects, since the predicate
-          file is read out of this artifact.'
+          file is read out of this artifact.
         required: false
         type: string
         default: ''
@@ -98,7 +98,7 @@ on:
       predicate_type:
         description: >-
           cosign --type value for predicate_name. One of cyclonedx, spdxjson, or
-          openvex. Required when predicate_name is set.'
+          openvex. Required when predicate_name is set.
         required: false
         type: string
         default: ''
