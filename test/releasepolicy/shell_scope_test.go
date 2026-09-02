@@ -128,19 +128,45 @@ var retryCall = regexp.MustCompile(`(?m)(^|\||&|;|\$\()\s*retry\s+\S`)
 // cross-step scope, so nothing else catches this.
 func TestRetryHelperIsInScope(t *testing.T) {
 	for _, s := range runSteps(t) {
-		if !retryCall.MatchString(s.run) {
+		call := retryCall.FindStringIndex(s.run)
+		if call == nil {
 			continue
 		}
-		if !strings.Contains(s.run, "retry()") {
-			t.Errorf("%s: job %q step %q calls `retry` but does not define it; "+
-				"each run block is its own shell, so a helper from an earlier step is not in scope",
+		// A definition inside a comment defines nothing, and one that appears
+		// after the first call is not in scope at that call.
+		def := -1
+		for _, m := range retryDefine.FindAllStringIndex(s.run, -1) {
+			if !inComment(s.run, m[0]) {
+				def = m[0]
+				break
+			}
+		}
+		if def == -1 || def > call[0] {
+			t.Errorf("%s: job %q step %q calls `retry` with no definition in scope before the call; "+
+				"each run block is its own shell, so a helper from an earlier step does not carry over",
 				s.workflow, s.job, s.name)
 		}
 	}
 }
 
-// varRef matches a ${NAME} expansion of an upper-case shell variable.
+// retryDefine matches a real function definition, not a mention of one.
+var retryDefine = regexp.MustCompile(`(?m)^\s*retry\s*\(\)\s*\{`)
+
+// inComment reports whether the offset falls on a line whose first
+// non-whitespace character is `#`.
+func inComment(body string, offset int) bool {
+	start := strings.LastIndexByte(body[:offset], '\n') + 1
+	return strings.HasPrefix(strings.TrimSpace(body[start:offset]), "#")
+}
+
+// varRef matches ${NAME}; bareVarRef matches the unbraced $NAME form, which
+// aborts under nounset exactly the same way.
 var varRef = regexp.MustCompile(`\$\{([A-Z][A-Z0-9_]*)\}`)
+var bareVarRef = regexp.MustCompile(`\$([A-Z][A-Z0-9_]*)`)
+
+// nounset matches the spellings that turn an unset name into an abort:
+// `set -u`, `set -eu`, `set -euo pipefail`, `set -o nounset`.
+var nounset = regexp.MustCompile(`set\s+(-[a-zA-Z]*u|-o\s+nounset)`)
 
 // assigned matches the forms that bring a name into scope within one script.
 var assigned = regexp.MustCompile(`(?m)^\s*(?:export\s+|local\s+|declare\s+)?([A-Z][A-Z0-9_]*)=`)
@@ -169,7 +195,7 @@ var runnerProvided = map[string]bool{
 // creating the release, skipping the gate entirely.
 func TestNoUnboundVariablesInRunBlocks(t *testing.T) {
 	for _, s := range runSteps(t) {
-		if !strings.Contains(s.run, "set -u") && !strings.Contains(s.run, "set -euo") {
+		if !nounset.MatchString(s.run) {
 			continue
 		}
 
@@ -181,7 +207,9 @@ func TestNoUnboundVariablesInRunBlocks(t *testing.T) {
 			inScope[m[1]] = true
 		}
 
-		for _, m := range varRef.FindAllStringSubmatch(s.run, -1) {
+		refs := varRef.FindAllStringSubmatch(s.run, -1)
+		refs = append(refs, bareVarRef.FindAllStringSubmatch(s.run, -1)...)
+		for _, m := range refs {
 			name := m[1]
 			switch {
 			case s.env[name], inScope[name], runnerProvided[name]:
@@ -189,7 +217,7 @@ func TestNoUnboundVariablesInRunBlocks(t *testing.T) {
 			case strings.HasPrefix(name, "GITHUB_"):
 				continue
 			}
-			t.Errorf("%s: job %q step %q reads ${%s} under `set -u`, but nothing puts it in scope; "+
+			t.Errorf("%s: job %q step %q reads variable %s under `set -u`, but nothing puts it in scope; "+
 				"add it to the step's env: or assign it in the script, or the step aborts rather than "+
 				"reading an empty value", s.workflow, s.job, s.name, name)
 		}
@@ -236,13 +264,15 @@ func TestFailureHandlersRunLast(t *testing.T) {
 				if !strings.Contains(s.If, "failure()") {
 					continue
 				}
+				// Any later step at all is a problem, not only an unconditional
+				// one: `if: always()` runs after a prior failure, so a later
+				// always() step that fails is equally beyond this handler's
+				// reach. The only safe position is last.
 				for _, later := range job.Steps[i+1:] {
-					if later.If == "" {
-						t.Errorf("%s: job %q step %q handles failure() but step %q runs after it "+
-							"unconditionally; a failure there is evaluated too late for this handler "+
-							"to fire, so it can never clean up after it",
-							base, jobName, s.Name, later.Name)
-					}
+					t.Errorf("%s: job %q step %q handles failure() but step %q runs after it; "+
+						"if:failure() is evaluated in declaration order, so a failure below this "+
+						"step comes too late for it to fire. A failure handler must be last.",
+						base, jobName, s.Name, later.Name)
 				}
 			}
 		}

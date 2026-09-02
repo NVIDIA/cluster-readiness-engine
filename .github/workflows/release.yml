@@ -665,13 +665,35 @@ jobs:
           TAG: ${{ needs.release-tag.outputs.value }}
         run: |
           set -euo pipefail
-          state="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" \
-            --json isDraft --jq .isDraft 2>/dev/null || echo absent)"
+
+          # Only a confirmed "not found" means no release exists. An API,
+          # auth or permission failure must not read as absent: that would let
+          # an already-published release take the upload, which is the one
+          # outcome this guard exists to stop. Everything else fails closed.
+          state=""
+          for attempt in 1 2 3; do
+            if out="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" \
+                 --json isDraft --jq .isDraft 2>&1)"; then
+              state="${out}"
+              break
+            fi
+            if grep -qiE "release not found|could not find|HTTP 404" <<<"${out}"; then
+              state="absent"
+              break
+            fi
+            echo "attempt ${attempt}: could not read release state: ${out}"
+            sleep $((attempt * 5))
+          done
+
           case "${state}" in
             absent) echo "no release exists for ${TAG} yet" ;;
             true)   echo "release ${TAG} exists and is a draft" ;;
-            *)
+            false)
               echo "::error::release ${TAG} is already published; refusing to upload assets the gate has not verified. Cut the next patch version instead (see RELEASE.md)."
+              exit 1
+              ;;
+            *)
+              echo "::error::could not determine the release state for ${TAG} after 3 attempts; refusing to upload rather than assume no release exists."
               exit 1
               ;;
           esac
@@ -1217,9 +1239,35 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
-          state="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft || echo unknown)"
-          if [[ "${state}" == "false" ]]; then
-            gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=true
-            echo "::error::verification failed after publication; release ${TAG} has been returned to draft"
+          set -uo pipefail
+
+          # An unreadable state must not read as "nothing to do". Leaving a
+          # release public after its verification failed is the worst available
+          # outcome, so an unknown state is treated as published and the
+          # retraction is attempted anyway. `gh release edit --draft=true` is
+          # idempotent, so doing it to an already-draft release costs nothing.
+          state="unknown"
+          for attempt in 1 2 3; do
+            if out="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" \
+                 --json isDraft --jq .isDraft 2>&1)"; then
+              state="${out}"
+              break
+            fi
+            echo "attempt ${attempt}: could not read release state: ${out}"
+            sleep $((attempt * 5))
+          done
+
+          if [[ "${state}" == "true" ]]; then
+            echo "release ${TAG} is already a draft; nothing to retract"
+            exit 0
           fi
+
+          for attempt in 1 2 3; do
+            if gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=true; then
+              echo "::error::verification failed after publication; release ${TAG} has been returned to draft"
+              exit 0
+            fi
+            sleep $((attempt * 5))
+          done
+          echo "::error::verification failed AND release ${TAG} could not be returned to draft. It may still be public. Retract it manually before doing anything else."
+          exit 1
