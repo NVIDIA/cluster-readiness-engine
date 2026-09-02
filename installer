@@ -156,7 +156,11 @@ if [[ -n "${VERSION}" ]]; then
 elif [[ "${GH_AVAILABLE}" == "true" ]]; then
   msg "Fetching latest version..."
   if [[ "${PRERELEASE}" == "true" ]]; then
-    VERSION=$(gh release list --repo "${GH_REPO}" --limit 1 --json tagName -q '.[0].tagName')
+    # --exclude-drafts is load-bearing: `gh release list` includes drafts, and a
+    # release is a draft while the release workflow is still verifying it (and
+    # stays one if that verification fails). Without this, anyone with repo
+    # access installs the build the release gate has not cleared, or refused.
+    VERSION=$(gh release list --repo "${GH_REPO}" --exclude-drafts --limit 1 --json tagName -q '.[0].tagName')
   else
     VERSION=$(gh release view --repo "${GH_REPO}" --json tagName -q '.tagName' || true)
   fi
