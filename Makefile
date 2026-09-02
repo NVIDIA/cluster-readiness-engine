@@ -324,6 +324,11 @@ ADDLICENSE_VERSION ?= v1.2.0
 # Pinned rather than installed with @latest so a CI run is reproducible and a
 # local run resolves the same tool. An @latest scanner also means a new release
 # can turn a green pipeline red with no commit here to explain it.
+#
+# `?=` matches the convention used by the pins above, which means an exported
+# environment variable of the same name silently wins over the value here. That
+# is intentional for local overrides, but it does mean "local matches CI" holds
+# only in a shell that does not already export these names.
 GOVULNCHECK_VERSION ?= v1.7.0
 GOTESTSUM_VERSION ?= v1.13.0
 GOCOVER_COBERTURA_VERSION ?= v1.5.0

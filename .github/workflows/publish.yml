@@ -28,6 +28,11 @@ concurrency:
 # convention); cosign is installed by an action, so it is pinned here.
 # ADR-074 moves signing into a reusable attest.yml, at which point this
 # value moves with it and stays a single source.
+#
+# This pin is load-bearing, not cosmetic: cosign-installer v4.1.2 defaults to
+# cosign v3.0.6, so without it the signing CLI -- and with it the emitted
+# bundle format and the Rekor backend entries land in -- is chosen by the
+# action rather than by a commit here.
 env:
   COSIGN_VERSION: v3.1.3
 
@@ -103,16 +108,23 @@ jobs:
       - name: Record cosign version
         run: cosign version
 
-      # --new-bundle-format is passed explicitly rather than inherited from a
-      # cosign default: it is what publishes through the OCI referrers API
-      # (ghcr.io answers 404 on /referrers, so this lands via the spec's
-      # `sha256-<hex>` tag fallback) instead of a legacy `.sig`/`.att` tag. The
-      # on-registry layout is part of the published contract, so it must be our
-      # decision and not move with an installer default.
+      # Attestations publish through the OCI referrers API (ghcr.io answers 404
+      # on /referrers, so this lands via the spec's `sha256-<hex>` tag fallback)
+      # rather than a legacy `.sig`/`.att` tag. That is the Sigstore bundle
+      # format, and what pins it here is COSIGN_VERSION above -- not a CLI flag.
+      #
+      # `--new-bundle-format` is deliberately NOT passed. It already defaults to
+      # true in both v3.0.6 (the cosign-installer v4.1.2 default) and the pinned
+      # v3.1.3, and v3.1.3 marks it deprecated ("this will be the only supported
+      # format in future versions"), so setting it explicitly changes no
+      # behaviour, prints a deprecation warning on every release run, and would
+      # break the release outright once cosign removes the flag. ADR-074 backs
+      # the format guarantee where it belongs: the version pin, plus a
+      # verification gate that rejects a legacy-format bundle instead of
+      # silently reading it.
       - name: Sign container image
         run: |
           cosign sign --yes \
-            --new-bundle-format=true \
             ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}@${{ steps.push.outputs.digest }}
 
       - name: Generate SBOM
@@ -125,7 +137,6 @@ jobs:
       - name: Attest SBOM
         run: |
           cosign attest --yes \
-            --new-bundle-format=true \
             --predicate sbom.cyclonedx.json \
             --type cyclonedx \
             ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}@${{ steps.push.outputs.digest }}
