@@ -3,8 +3,11 @@
 
 # Reusable workflow that signs and attests a release artifact.
 #
-# This is the ONLY place in the repository that invokes `cosign sign`,
-# `cosign attest`, or `cosign attest-blob`. Concentrating signing here does two
+# This is intended to become the only place in the repository that invokes
+# `cosign sign`, `cosign attest`, or `cosign attest-blob`. It is NOT yet: at the
+# time this workflow landed, publish.yml still signs the container image inline.
+# #266, #267 and #268 route the image, chart and binaries through here; #274
+# adds the test that keeps it true afterwards. Concentrating signing does two
 # things (ADR-074 decision 4):
 #
 #  1. It gives every released artifact ONE certificate identity to pin. cosign
@@ -49,11 +52,25 @@ on:
         type: string
       expected_digest:
         description: >-
-          The caller's authoritative sha256 digest of the subject. This workflow
-          resolves the digest independently and fails if the two differ, so a
-          caller cannot have something signed that it did not measure.
+          The caller's authoritative digest of the subject, in the form
+          sha256:<64 lowercase hex> (what `crane digest` and the docker
+          build-push action's `digest` output both return). This workflow
+          resolves the subject independently -- from subject_tag for registry
+          subjects, by re-hashing the bytes for a blob -- and fails when the two
+          differ, so a caller cannot have a digest signed that is not the one
+          its tag actually points at.
         required: true
         type: string
+      subject_tag:
+        description: >-
+          The tag the caller just pushed for this subject (e.g. v1.2.3 or
+          main-abc1234). Required for image and oci-artifact. This workflow
+          resolves that tag to a digest itself and compares the result against
+          expected_digest, which is what makes the comparison meaningful:
+          resolving by digest would only ever return the digest asked for.
+        required: false
+        type: string
+        default: ''
       builder_workflow:
         description: >-
           Repo-relative path of the workflow that actually built the artifact
@@ -61,7 +78,11 @@ on:
         required: true
         type: string
       artifact_name:
-        description: 'upload-artifact name holding the blob and any predicate. Required when subject_kind is blob.'
+        description: >-
+          upload-artifact name holding the blob and any predicate. Required when
+          subject_kind is blob, AND required whenever predicate_name is set --
+          including for image and oci-artifact subjects, since the predicate
+          file is read out of this artifact.'
         required: false
         type: string
         default: ''
@@ -71,7 +92,9 @@ on:
         type: string
         default: ''
       predicate_type:
-        description: 'cosign --type value for predicate_name (e.g. cyclonedx). Required when predicate_name is set.'
+        description: >-
+          cosign --type value for predicate_name. One of cyclonedx, spdxjson, or
+          openvex. Required when predicate_name is set.'
         required: false
         type: string
         default: ''
@@ -114,6 +137,7 @@ jobs:
     outputs:
       subject_kind: ${{ steps.check.outputs.subject_kind }}
       subject_name: ${{ steps.check.outputs.subject_name }}
+      subject_tag: ${{ steps.check.outputs.subject_tag }}
       expected_digest: ${{ steps.check.outputs.expected_digest }}
       builder_workflow: ${{ steps.check.outputs.builder_workflow }}
       artifact_name: ${{ steps.check.outputs.artifact_name }}
@@ -130,6 +154,7 @@ jobs:
           # containing shell metacharacters is data and not code.
           IN_SUBJECT_KIND: ${{ inputs.subject_kind }}
           IN_SUBJECT_NAME: ${{ inputs.subject_name }}
+          IN_SUBJECT_TAG: ${{ inputs.subject_tag }}
           IN_EXPECTED_DIGEST: ${{ inputs.expected_digest }}
           IN_BUILDER_WORKFLOW: ${{ inputs.builder_workflow }}
           IN_ARTIFACT_NAME: ${{ inputs.artifact_name }}
@@ -146,7 +171,7 @@ jobs:
 
           # A newline lets a value forge extra lines in GITHUB_OUTPUT or in a
           # log, so reject it everywhere before any other check.
-          for name in IN_SUBJECT_KIND IN_SUBJECT_NAME IN_EXPECTED_DIGEST \
+          for name in IN_SUBJECT_KIND IN_SUBJECT_NAME IN_SUBJECT_TAG IN_EXPECTED_DIGEST \
                       IN_BUILDER_WORKFLOW IN_ARTIFACT_NAME IN_PREDICATE_NAME \
                       IN_PREDICATE_TYPE IN_COSIGN_VERSION IN_CRANE_VERSION; do
             value="${!name}"
@@ -183,6 +208,16 @@ jobs:
               # allow two different digests in one call.
               [[ "${IN_SUBJECT_NAME}" =~ ^[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9._-]+)+$ ]] \
                 || fail "subject_name must be a registry reference without a tag or digest"
+              # The tag is what makes the digest check real. Resolving
+              # name@expected_digest would query the registry BY the value under
+              # test: content addressing guarantees it returns that same digest
+              # or fails, so the comparison could never catch a caller that
+              # named a real-but-wrong digest. Resolving the tag instead gives
+              # an answer the caller did not supply.
+              [[ -n "${IN_SUBJECT_TAG}" ]] \
+                || fail "subject_tag is required for image and oci-artifact subjects"
+              [[ "${IN_SUBJECT_TAG}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]] \
+                || fail "subject_tag is not a valid OCI tag"
               ;;
             blob)
               [[ "${IN_SUBJECT_NAME}" =~ ^[A-Za-z0-9._-]+$ ]] \
@@ -228,6 +263,7 @@ jobs:
           {
             echo "subject_kind=${IN_SUBJECT_KIND}"
             echo "subject_name=${IN_SUBJECT_NAME}"
+            echo "subject_tag=${IN_SUBJECT_TAG}"
             echo "expected_digest=${IN_EXPECTED_DIGEST}"
             echo "builder_workflow=${IN_BUILDER_WORKFLOW}"
             echo "artifact_name=${IN_ARTIFACT_NAME}"
@@ -241,7 +277,13 @@ jobs:
     name: Sign and Attest
     runs-on: ubuntu-latest
     needs: [validate]
-    timeout-minutes: 20
+    # Must exceed the worst-case retry budget below, or the runner kills the job
+    # before retry() can report which cosign call exhausted its attempts --
+    # losing the diagnostic in exactly the flaky-Rekor case the retries exist
+    # for. Worst case is 3 retry() calls (sign, provenance, predicate) at
+    # 3x120s + 15s backoff each = 1125s, plus checkout, tool install, artifact
+    # download and digest resolution.
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -303,20 +345,46 @@ jobs:
           name: ${{ needs.validate.outputs.artifact_name }}
           path: subject
 
-      # The digest is resolved here rather than trusted from the caller, and the
-      # two must agree. Without this a caller could measure one artifact and ask
-      # for a different one to be signed under the release identity.
+      # The digest is resolved from a source the caller did not supply -- the tag
+      # for a registry subject, the artifact bytes for a blob -- and the two must
+      # agree. Resolving `name@expected_digest` instead would query the registry
+      # by the value under test and could only ever echo it back, so the
+      # comparison would be dead code.
+      #
+      # What this catches: a caller that names a real-but-wrong digest, e.g. a
+      # stale digest from an earlier build still present in the registry. What
+      # it cannot catch: a caller that pushed the wrong bytes under the right
+      # tag. Nothing at this layer can, because the tag is the caller's claim
+      # about what it built.
       - name: Resolve digest independently and compare
         id: resolve
         env:
           SUBJECT_KIND: ${{ needs.validate.outputs.subject_kind }}
           SUBJECT_NAME: ${{ needs.validate.outputs.subject_name }}
+          SUBJECT_TAG: ${{ needs.validate.outputs.subject_tag }}
           EXPECTED_DIGEST: ${{ needs.validate.outputs.expected_digest }}
         run: |
           set -euo pipefail
+
+          # Same bounded retry as the cosign calls below. A registry blip here
+          # is the same class of transient failure, and failing the job on one
+          # blip before anything has been signed is a pure availability loss.
+          crane_digest() {
+            local n out
+            for n in 1 2 3; do
+              if out="$(timeout --foreground 120s crane digest "$1")"; then
+                printf '%s' "${out}"
+                return 0
+              fi
+              echo "::warning::crane digest attempt ${n} failed" >&2
+              if [[ "${n}" -lt 3 ]]; then sleep $((n * 5)); fi
+            done
+            return 1
+          }
+
           case "${SUBJECT_KIND}" in
             image|oci-artifact)
-              resolved="$(timeout --foreground 120s crane digest "${SUBJECT_NAME}@${EXPECTED_DIGEST}")"
+              resolved="$(crane_digest "${SUBJECT_NAME}:${SUBJECT_TAG}")"
               ;;
             blob)
               path="subject/${SUBJECT_NAME}"
@@ -378,6 +446,18 @@ jobs:
       # cosign has no native retry and Rekor is a real network dependency with
       # real transient failures. Three attempts with 5s then 10s backoff; no
       # sleep after the final attempt, which would only delay the exit.
+      #
+      # These retries are NOT idempotent, deliberately. Keyless cosign mints a
+      # fresh Fulcio certificate per invocation, so an attempt killed by the
+      # timeout *after* its registry push and Rekor entry landed will, on the
+      # next attempt, publish a second valid signature for the same digest.
+      # Re-running the job after a partial failure does the same. Extra entries
+      # are harmless to `cosign verify` (multiple valid signatures verify), so
+      # this is accepted rather than guarded: the alternative is a
+      # check-then-sign race that is itself unsound. Any consumer that walks
+      # attestations -- notably the daily re-verification job in #273 -- must
+      # therefore tolerate more than one attestation per digest and must not
+      # treat a duplicate as tampering.
       - name: Sign and attest
         env:
           SUBJECT_KIND: ${{ needs.validate.outputs.subject_kind }}
@@ -388,18 +468,25 @@ jobs:
         run: |
           set -euo pipefail
 
+          # The exit status is reported on every attempt: 124 means `timeout`
+          # killed a hung call (a Rekor or registry stall, likely transient),
+          # anything else is cosign failing on its own (bad credentials, a
+          # malformed predicate) and will fail identically all three times.
+          # Without it both look the same in the log and triage starts blind.
           retry() {
-            local n
+            local n rc
             for n in 1 2 3; do
-              if timeout --foreground 300s "$@"; then
+              rc=0
+              timeout --foreground 120s "$@" || rc=$?
+              if [[ "${rc}" -eq 0 ]]; then
                 return 0
               fi
-              echo "::warning::cosign attempt ${n} failed"
+              echo "::warning::cosign attempt ${n} failed (exit ${rc}$([[ "${rc}" -eq 124 ]] && echo ', timed out'))"
               if [[ "${n}" -lt 3 ]]; then
                 sleep $((n * 5))
               fi
             done
-            echo "::error::cosign failed after 3 attempts: $*"
+            echo "::error::cosign failed after 3 attempts (last exit ${rc}): $*"
             return 1
           }
 
