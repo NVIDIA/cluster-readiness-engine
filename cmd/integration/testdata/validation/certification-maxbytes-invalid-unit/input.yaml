@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The pattern still rejects values outside the NCCL perf test's -e syntax,
+# so the shell-injection guard from #94 remains in force after the quoting fix.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-maxbytes-invalid-unit
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        maxBytes: "1GB"
