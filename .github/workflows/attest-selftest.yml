@@ -21,8 +21,14 @@
 #   * crane resolves a tag to a digest, and cosign reaches Fulcio and Rekor.
 #
 # Run it against an image tag that already exists in the registry, e.g. one of
-# the `main-<sha>` tags publish.yml pushes. A green run means the whole signing
-# path works end to end.
+# the `main-<sha>` tags publish.yml pushes.
+#
+# A green run proves the `image` path only. `subject_kind` is fixed to `image`
+# here, so the `oci-artifact` and `blob` branches and the optional
+# predicate-attestation branch are NOT exercised by this workflow; those arrive
+# with the chart and binary callers. The Go tests in test/releasepolicy cover
+# the input validation for every subject kind, but validation only -- no
+# signing branch.
 #
 # The run signs under a NON-RELEASE identity: the caller ref is a branch, so the
 # Fulcio SAN carries `@refs/heads/...` and attest.yml logs a loud non-production
@@ -38,7 +44,13 @@ on:
         required: true
         type: string
       expected_digest:
-        description: 'The digest that tag resolves to, as sha256:<64 hex>. A deliberate mismatch is a valid negative test: the run must fail at the digest comparison.'
+        description: >-
+          The digest that tag resolves to, as sha256:<64 hex>. Obtain it with
+          `crane digest ghcr.io/nvidia/cluster-readiness-engine/manager:<image_tag>`,
+          or read it from the GHCR package page. Supplying a deliberately
+          different (but well-formed) digest is a valid negative test: the run
+          must then fail at the digest comparison, and the report job will say
+          so rather than reporting a skip.
         required: true
         type: string
       platform:

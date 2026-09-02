@@ -103,6 +103,13 @@ func (in inputs) with(overrides inputs) inputs {
 
 // runValidate executes the validation body and reports its exit status and
 // combined output.
+//
+// `bash` is resolved through PATH rather than pinned, so this runs against
+// whatever the developer or runner provides. The extracted script sticks to
+// constructs available since bash 2.0 -- indirect expansion, ANSI-C quoting,
+// and unquoted `[[ =~ ]]` patterns -- and the whole table has been confirmed to
+// pass under both macOS's bash 3.2 and bash 5.3, so a machine with either
+// exercises the same guards.
 func runValidate(t *testing.T, script string, in inputs) (bool, string) {
 	t.Helper()
 
@@ -226,13 +233,58 @@ func TestAttestValidationRejects(t *testing.T) {
 			inputs{"IN_SUBJECT_NAME": managerImage + ":v1.2.3"},
 			"without a tag or digest",
 		},
+		// artifact_name and predicate_name each had a traversal case; this one
+		// did not, and subject_name reaches `path="subject/${SUBJECT_NAME}"`
+		// in the job that holds the signing token.
+		"path traversal in blob subject_name": {
+			inputs{
+				"IN_SUBJECT_KIND":  "blob",
+				"IN_SUBJECT_NAME":  "../../etc/passwd",
+				"IN_SUBJECT_TAG":   "",
+				"IN_ARTIFACT_NAME": "cli-binaries",
+			},
+			"must be a plain file name for a blob subject",
+		},
+		"blob subject_name with a path separator": {
+			inputs{
+				"IN_SUBJECT_KIND":  "blob",
+				"IN_SUBJECT_NAME":  "nested/nvcrectl-linux-amd64",
+				"IN_SUBJECT_TAG":   "",
+				"IN_ARTIFACT_NAME": "cli-binaries",
+			},
+			"must be a plain file name for a blob subject",
+		},
+		// Distinct from "subject_tag is required": an empty tag trips the
+		// emptiness guard and never reaches the format guard.
+		"malformed subject_tag": {
+			inputs{"IN_SUBJECT_TAG": "v1/2.3"},
+			"subject_tag is not a valid OCI tag",
+		},
+		"subject_tag starting with a dash": {
+			inputs{"IN_SUBJECT_TAG": "-v1.2.3"},
+			"subject_tag is not a valid OCI tag",
+		},
+		"over-long subject_tag": {
+			inputs{"IN_SUBJECT_TAG": strings.Repeat("v", 129)},
+			"subject_tag is not a valid OCI tag",
+		},
+		// artifact_name is required whenever predicate_name is set, including
+		// for image subjects where it is otherwise optional. Only the blob
+		// requirement was covered.
+		"image predicate without artifact_name": {
+			inputs{
+				"IN_PREDICATE_NAME": "sbom.cyclonedx.json",
+				"IN_PREDICATE_TYPE": "cyclonedx",
+			},
+			"artifact_name is required when predicate_name is set",
+		},
 		"blob without artifact_name": {
 			inputs{
 				"IN_SUBJECT_KIND": "blob",
 				"IN_SUBJECT_NAME": "nvcrectl-linux-amd64",
 				"IN_SUBJECT_TAG":  "",
 			},
-			"artifact_name is required",
+			"artifact_name is required when subject_kind is blob",
 		},
 		// An untyped predicate would be signed as cosign's `custom` default,
 		// which no documented verification command asks for.
