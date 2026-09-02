@@ -9,7 +9,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -29,7 +28,7 @@ import (
 func TestResolveNodesPerJobAfterCapacityFilter(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "resolve-nodes-per-job-after-capacity-filter",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -46,10 +45,9 @@ func TestResolveNodesPerJobAfterCapacityFilter(t *testing.T) {
 
 		nodes := make([]corev1.Node, 0, len(input.Nodes))
 		for _, n := range input.Nodes {
-			node := corev1.Node{ObjectMeta: metav1.ObjectMeta{
+			node := corev1.Node{
 				Name:   n.Name,
-				Labels: map[string]string{"nvidia.com/gpu.product": "NVIDIA-H100-80GB-HBM3"},
-			}}
+				Labels: map[string]string{testGPUProductLabel: testGPUProductH100}}
 			if n.AllocatableGPUs != nil {
 				node.Status.Allocatable = corev1.ResourceList{
 					"nvidia.com/gpu": *resource.NewQuantity(*n.AllocatableGPUs, resource.DecimalSI),
@@ -59,7 +57,7 @@ func TestResolveNodesPerJobAfterCapacityFilter(t *testing.T) {
 		}
 
 		opts := nvcrev1alpha1.CategoryOptions{NodesPerJob: input.NodesPerJob}
-		cat := nvcrev1alpha1.CertificateCategory{Domain: "communication", Variant: "nccl-all-reduce"}
+		cat := nvcrev1alpha1.CertificateCategory{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce}
 
 		// The steps the Certification controller performs, in order: arch
 		// detection first (gpusPerNode derives from it), then the capacity

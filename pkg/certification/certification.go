@@ -70,6 +70,10 @@ func newListCategoriesCommand() *cobra.Command {
 
 const outputJSON = "json"
 
+// nvcreAPIVersion is the apiVersion string used for rendered nvcre.nvidia.com
+// resources (Certification, etc.).
+const nvcreAPIVersion = "nvcre.nvidia.com/v1alpha1"
+
 func runListCategories(format string) error {
 	categories := catalog.List()
 
@@ -344,18 +348,14 @@ func renderCertification(cert *nvcrev1alpha1.Certification, platformName string)
 		)
 
 		workflow := nvcrev1alpha1.Workflow{
-			TypeMeta: metav1.TypeMeta{
-				APIVersion: "nvcre.nvidia.com/v1alpha1",
-				Kind:       "Workflow",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name: workflowName,
-				Labels: map[string]string{
-					"app.kubernetes.io/managed-by":      "nvcre",
-					"nvcre.nvidia.com/certification":    cert.Name,
-					"nvcre.nvidia.com/category-domain":  cat.Domain,
-					"nvcre.nvidia.com/category-variant": cat.Variant,
-				},
+			APIVersion: nvcreAPIVersion,
+			Kind:       "Workflow",
+			Name:       workflowName,
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by":      "nvcre",
+				"nvcre.nvidia.com/certification":    cert.Name,
+				"nvcre.nvidia.com/category-domain":  cat.Domain,
+				"nvcre.nvidia.com/category-variant": cat.Variant,
 			},
 			Spec: workflowSpec,
 		}
@@ -424,7 +424,7 @@ func platformToProviderID(platformName string) string {
 // detection needs to map the node back to the requested platform.
 func syntheticRenderNode(platformName string, nodeSelector map[string]string) corev1.Node {
 	node := corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{Labels: nodeSelector},
+		Labels: nodeSelector,
 	}
 	if platformName == "" {
 		return node
@@ -730,17 +730,13 @@ func buildConfigFromFlags(
 	_, _ = fmt.Fprintf(out, "Discovered GPU nodes with product: %s\n", gpuProduct)
 
 	cert := &nvcrev1alpha1.Certification{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "nvcre.nvidia.com/v1alpha1",
-			Kind:       "Certification",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "nvcre",
-				"app.kubernetes.io/created-by": "nvcrectl",
-			},
+		APIVersion: nvcreAPIVersion,
+		Kind:       "Certification",
+		Name:       name,
+		Namespace:  namespace,
+		Labels: map[string]string{
+			"app.kubernetes.io/managed-by": "nvcre",
+			"app.kubernetes.io/created-by": "nvcrectl",
 		},
 		Spec: nvcrev1alpha1.CertificationSpec{
 			Target: nvcrev1alpha1.TargetSpec{
@@ -897,7 +893,7 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 			// terminated".
 			if createdNamespace != "" {
 				_, _ = fmt.Fprintf(out, "[cleanup] Deleting namespace %s...\n", createdNamespace)
-				ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: createdNamespace}}
+				ns := &corev1.Namespace{Name: createdNamespace}
 				if err := wc.Delete(cleanupCtx, ns); err != nil && !apierrors.IsNotFound(err) {
 					_, _ = fmt.Fprintf(out, "[cleanup] Warning: failed to delete namespace %s: %v\n", createdNamespace, err)
 					warnings = true
@@ -968,9 +964,8 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 		// belonging to a concurrent run). Attempt delete unconditionally — if
 		// namespace deletion will cascade later, the delete will be a no-op NotFound.
 		if wasCreatedByUs {
-			pullSec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
-				Name: setup.WorkloadPullSecretName(cfg.cert.Name), Namespace: cfg.namespace,
-			}}
+			pullSec := &corev1.Secret{
+				Name: setup.WorkloadPullSecretName(cfg.cert.Name), Namespace: cfg.namespace}
 			_ = wc.Delete(ctx, pullSec)
 		}
 		return fmt.Errorf("create certification: %w", err)
@@ -988,7 +983,7 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 				setup.WorkloadPullSecretName(cfg.cert.Name), getErr)
 		} else {
 			sec.OwnerReferences = append(sec.OwnerReferences, metav1.OwnerReference{
-				APIVersion: "nvcre.nvidia.com/v1alpha1",
+				APIVersion: nvcreAPIVersion,
 				Kind:       "Certification",
 				Name:       cfg.cert.Name,
 				UID:        cfg.cert.UID,

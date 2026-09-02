@@ -29,7 +29,7 @@ type workerResourcesInput struct {
 func TestWorkerResources(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "worker-resources",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in workerResourcesInput

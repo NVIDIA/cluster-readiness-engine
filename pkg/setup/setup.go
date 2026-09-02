@@ -20,7 +20,6 @@ import (
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -1232,11 +1231,9 @@ func EnsureNamespace(ctx context.Context, c client.Client, name string, out io.W
 			return false, fmt.Errorf("check namespace %s: %w", name, err)
 		}
 		ns = &corev1.Namespace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: name,
-				Labels: map[string]string{
-					"app.kubernetes.io/managed-by": "nvcrectl",
-				},
+			Name: name,
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by": "nvcrectl",
 			},
 		}
 		_, _ = fmt.Fprintf(out, "[namespace] Creating namespace %s...\n", name)
@@ -1308,12 +1305,10 @@ func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, secr
 	dockerConfig := string(dockerConfigBytes)
 
 	secret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      secretName,
-			Namespace: namespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "nvcrectl",
-			},
+		Name:      secretName,
+		Namespace: namespace,
+		Labels: map[string]string{
+			"app.kubernetes.io/managed-by": "nvcrectl",
 		},
 		Type: corev1.SecretTypeDockerConfigJson,
 		Data: map[string][]byte{

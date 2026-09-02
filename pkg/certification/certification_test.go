@@ -35,6 +35,15 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
 )
 
+const (
+	testDomainCommunication   = "communication"
+	testVariantNCCLAllReduce  = "nccl-all-reduce"
+	testCategoryNCCLAllReduce = testDomainCommunication + "/" + testVariantNCCLAllReduce
+	testCategoryFlag          = "--category"
+	testCertTimeoutCert       = "timeout-cert"
+	testCertNamespace         = "test-ns"
+)
+
 func newCertificationFakeClient(t testing.TB, objects ...client.Object) client.WithWatch {
 	t.Helper()
 	scheme := runtime.NewScheme()
@@ -92,7 +101,7 @@ func normalizeCertificationReportOutput(output string) string {
 func TestCatalogListCategories(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "list-categories",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		categories := catalog.List()
@@ -109,7 +118,7 @@ func TestCatalogListCategories(t *testing.T) {
 func TestCertificationRender(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "certification-render",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		certPath := filepath.Join(t.TempDir(), "certification.yaml")
@@ -161,7 +170,7 @@ func TestCertificationRender(t *testing.T) {
 func TestCategoryWatchLabels(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "category-watch-labels",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cert nvcrev1alpha1.Certification
@@ -181,7 +190,7 @@ func TestCategoryWatchLabels(t *testing.T) {
 func TestCertificationRenderErrors(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "certification-render-errors",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg struct {
@@ -230,16 +239,16 @@ func TestCertificationRenderErrors(t *testing.T) {
 
 func TestParseCategories(t *testing.T) {
 	t.Run("valid single", func(t *testing.T) {
-		cats, err := parseCategories([]string{"communication/nccl-all-reduce"})
+		cats, err := parseCategories([]string{testCategoryNCCLAllReduce})
 		require.NoError(t, err)
 		require.Len(t, cats, 1)
-		assert.Equal(t, "communication", cats[0].Domain)
-		assert.Equal(t, "nccl-all-reduce", cats[0].Variant)
+		assert.Equal(t, testDomainCommunication, cats[0].Domain)
+		assert.Equal(t, testVariantNCCLAllReduce, cats[0].Variant)
 	})
 
 	t.Run("valid multiple", func(t *testing.T) {
 		cats, err := parseCategories([]string{
-			"communication/nccl-all-reduce",
+			testCategoryNCCLAllReduce,
 			"training/nemotron5-8b",
 		})
 		require.NoError(t, err)
@@ -247,7 +256,7 @@ func TestParseCategories(t *testing.T) {
 	})
 
 	t.Run("invalid format no slash", func(t *testing.T) {
-		_, err := parseCategories([]string{"nccl-all-reduce"})
+		_, err := parseCategories([]string{testVariantNCCLAllReduce})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "expected domain/variant")
 	})
@@ -277,7 +286,7 @@ func TestGenerateCertName(t *testing.T) {
 func TestCertificationNamespace(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "certification-namespace",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg struct {
@@ -350,7 +359,7 @@ func TestGenerateCertNameAndNamespaceAreIndependent(t *testing.T) {
 func TestPlatformToProviderID(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "platform-to-provider-id",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg struct {
@@ -391,7 +400,7 @@ func TestPlatformToProviderID(t *testing.T) {
 func TestRenderPlatformFlag(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "render-platform-flag",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg struct {
@@ -489,10 +498,10 @@ spec:
 		cert, err := readCertification(path)
 		require.NoError(t, err)
 		assert.Equal(t, "test-cert", cert.Name)
-		assert.Equal(t, "test-ns", cert.Namespace)
+		assert.Equal(t, testCertNamespace, cert.Namespace)
 		require.Len(t, cert.Spec.Categories, 1)
-		assert.Equal(t, "communication", cert.Spec.Categories[0].Domain)
-		assert.Equal(t, "nccl-all-reduce", cert.Spec.Categories[0].Variant)
+		assert.Equal(t, testDomainCommunication, cert.Spec.Categories[0].Domain)
+		assert.Equal(t, testVariantNCCLAllReduce, cert.Spec.Categories[0].Variant)
 	})
 
 	t.Run("nonexistent file", func(t *testing.T) {
@@ -515,7 +524,7 @@ func TestWatchCertificationImmediateTimeout(t *testing.T) {
 	wc := newCertificationFakeClient(t)
 	var out bytes.Buffer
 
-	cert, err := watchCertification(context.Background(), wc, "timeout-cert", "test-ns", 0, &out)
+	cert, err := watchCertification(context.Background(), wc, testCertTimeoutCert, testCertNamespace, 0, &out)
 
 	assert.Nil(t, cert)
 	require.Error(t, err)
@@ -554,7 +563,7 @@ func TestProcessWatchEventsContextDoneDuringActiveWatch(t *testing.T) {
 func TestFinishCertificationWaitTimeout(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "finish-certification-wait-timeout",
-		ExpectedSuffix: ".txt",
+		ExpectedSuffix: testutil.SuffixTXT,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -567,19 +576,19 @@ func TestFinishCertificationWaitTimeout(t *testing.T) {
 			return err
 		}
 		if input.Name == "" {
-			input.Name = "timeout-cert"
+			input.Name = testCertTimeoutCert
 		}
 
 		cert := &nvcrev1alpha1.Certification{
-			ObjectMeta: metav1.ObjectMeta{Name: input.Name, Namespace: "test-ns"},
+			Name: input.Name, Namespace: testCertNamespace,
 			Spec: nvcrev1alpha1.CertificationSpec{
 				Categories: []nvcrev1alpha1.CertificateCategory{{
-					Domain: "communication", Variant: "nccl-all-reduce",
+					Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce,
 				}},
 			},
 			Status: nvcrev1alpha1.CertificationStatus{
 				CategoryStatuses: []nvcrev1alpha1.CertificationCategoryStatus{{
-					Domain: "communication", Variant: "nccl-all-reduce", Status: "InProgress",
+					Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: "InProgress",
 				}},
 			},
 		}
@@ -632,7 +641,7 @@ func TestFinishCertificationWaitTimeout(t *testing.T) {
 
 func TestFinishCertificationWaitBoundsPostTimeoutReads(t *testing.T) {
 	cert := &nvcrev1alpha1.Certification{
-		ObjectMeta: metav1.ObjectMeta{Name: "timeout-cert", Namespace: "test-ns"},
+		Name: testCertTimeoutCert, Namespace: testCertNamespace,
 	}
 	wc := &certificationDeadlineClient{WithWatch: newCertificationFakeClient(t, cert)}
 	var out bytes.Buffer
@@ -647,13 +656,13 @@ func TestFinishCertificationWaitBoundsPostTimeoutReads(t *testing.T) {
 }
 
 func TestExecuteCertificationRunReportsBeforeCleanup(t *testing.T) {
-	namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "test-ns"}}
+	namespace := &corev1.Namespace{Name: testCertNamespace}
 	wc := newCertificationFakeClient(t, namespace)
 	cert := &nvcrev1alpha1.Certification{
-		ObjectMeta: metav1.ObjectMeta{Name: "timeout-cert", Namespace: namespace.Name},
+		Name: testCertTimeoutCert, Namespace: namespace.Name,
 		Spec: nvcrev1alpha1.CertificationSpec{
 			Categories: []nvcrev1alpha1.CertificateCategory{{
-				Domain: "communication", Variant: "nccl-all-reduce",
+				Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce,
 			}},
 		},
 	}
@@ -685,7 +694,7 @@ func TestExecuteCertificationRunReportsBeforeCleanup(t *testing.T) {
 func TestFinishCertificationWaitTerminalAtTimeout(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "finish-certification-wait-terminal-at-timeout",
-		ExpectedSuffix: ".txt",
+		ExpectedSuffix: testutil.SuffixTXT,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -696,7 +705,7 @@ func TestFinishCertificationWaitTerminalAtTimeout(t *testing.T) {
 		}
 
 		cert := &nvcrev1alpha1.Certification{
-			ObjectMeta: metav1.ObjectMeta{Name: "timeout-cert", Namespace: "test-ns"},
+			Name: testCertTimeoutCert, Namespace: testCertNamespace,
 			Status: nvcrev1alpha1.CertificationStatus{Conditions: []metav1.Condition{{
 				Type: input.ConditionType, Status: metav1.ConditionTrue,
 			}}},
@@ -716,7 +725,7 @@ func TestFinishCertificationWaitTerminalAtTimeout(t *testing.T) {
 
 func TestFinishCertificationWaitDoesNotMaskOtherWatchErrors(t *testing.T) {
 	cert := &nvcrev1alpha1.Certification{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-cert", Namespace: "test-ns"},
+		Name: "test-cert", Namespace: testCertNamespace,
 	}
 	wc := newCertificationFakeClient(t, cert)
 	resultsFile := filepath.Join(t.TempDir(), "results.json")
@@ -742,7 +751,7 @@ func TestParseCategoriesEdgeCases(t *testing.T) {
 	})
 
 	t.Run("triple slash", func(t *testing.T) {
-		// SplitN with n=2 means "communication" and "a/b"
+		// SplitN with n=2 means testDomainCommunication and "a/b"
 		_, err := parseCategories([]string{"communication/a/b"})
 		require.Error(t, err)
 		// "a/b" is not a valid variant in the catalog
@@ -763,7 +772,7 @@ func TestParseCategoriesEdgeCases(t *testing.T) {
 func TestNewRunCommandFlagDefaults(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "new-run-command-flag-defaults",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		cmd := newRunCommand("dev")
@@ -804,7 +813,7 @@ func TestNewRunCommandValidation(t *testing.T) {
 		cmd := newRunCommand("dev")
 		cmd.SetArgs([]string{
 			"--cert-file", "cert.yaml",
-			"--category", "communication/nccl-all-reduce",
+			testCategoryFlag, testCategoryNCCLAllReduce,
 		})
 		err := cmd.Execute()
 		require.Error(t, err)
@@ -854,7 +863,7 @@ func TestNewRunCommandCategoryRunOptsWiring(t *testing.T) {
 			}
 			return nil
 		}
-		cmd.SetArgs([]string{"--category", "communication/nccl-all-reduce"})
+		cmd.SetArgs([]string{testCategoryFlag, testCategoryNCCLAllReduce})
 		require.NoError(t, cmd.Execute())
 		assert.Nil(t, capturedOpts.enableCheckpoint, "omitted --enable-checkpoint should be nil")
 		assert.Nil(t, capturedOpts.enableMNNVL, "omitted --enable-mnnvl should be nil")
@@ -875,7 +884,7 @@ func TestNewRunCommandCategoryRunOptsWiring(t *testing.T) {
 			return nil
 		}
 		cmd.SetArgs([]string{
-			"--category", "communication/nccl-all-reduce",
+			testCategoryFlag, testCategoryNCCLAllReduce,
 			"--enable-checkpoint",
 			"--enable-mnnvl",
 		})
@@ -897,7 +906,7 @@ func TestNewRunCommandCategoryRunOptsWiring(t *testing.T) {
 			return nil
 		}
 		cmd.SetArgs([]string{
-			"--category", "communication/nccl-all-reduce",
+			testCategoryFlag, testCategoryNCCLAllReduce,
 			"--enable-mnnvl=false",
 		})
 		require.NoError(t, cmd.Execute())

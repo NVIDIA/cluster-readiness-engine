@@ -34,7 +34,7 @@ func TestHelmTemplateRendersConcurrencyArgs(t *testing.T) {
 
 	p := testutil.TestCaseParser{
 		Subdir:         "render-concurrency-args",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {

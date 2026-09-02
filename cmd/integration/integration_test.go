@@ -195,10 +195,8 @@ func generateTestNodes(t *testing.T, c client.Client, spec *generateNodesSpec) {
 		labels["kubernetes.io/hostname"] = name
 		maps.Copy(labels, spec.Labels)
 		node := &corev1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:   name,
-				Labels: labels,
-			},
+			Name:   name,
+			Labels: labels,
 			Spec: corev1.NodeSpec{
 				ProviderID: spec.ProviderID,
 			},

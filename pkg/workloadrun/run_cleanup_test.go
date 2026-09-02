@@ -110,7 +110,7 @@ func TestExecuteWorkloadRunRunCleanup(t *testing.T) {
 
 	p := testutil.TestCaseParser{
 		Subdir:         "run-cleanup",
-		ExpectedSuffix: ".txt",
+		ExpectedSuffix: testutil.SuffixTXT,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -133,17 +133,16 @@ func TestExecuteWorkloadRunRunCleanup(t *testing.T) {
 			return err
 		}
 
-		node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+		node := &corev1.Node{
 			Name: "gpu-node-0",
 			Labels: map[string]string{
 				"nvidia.com/gpu.present": "true",
 				"nvidia.com/gpu.product": "NVIDIA-H100-80GB-HBM3",
-			},
-		}}
+			}}
 		objects := []client.Object{node}
 		if input.NamespaceExists {
 			objects = append(objects, &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{Name: run.Namespace},
+				Name: run.Namespace,
 			})
 		}
 		if input.RunPreexists {

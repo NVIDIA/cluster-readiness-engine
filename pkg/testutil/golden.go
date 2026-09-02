@@ -22,6 +22,13 @@ import (
 
 const updateEnvVar = "TESTUTIL_UPDATE_EXPECTED"
 
+const (
+	// SuffixJSON is the default golden-file suffix for JSON expected output.
+	SuffixJSON = ".json"
+	// SuffixTXT is the golden-file suffix for plain-text expected output.
+	SuffixTXT = ".txt"
+)
+
 // TestCase is one golden-file test scenario (a testdata subdirectory).
 type TestCase struct {
 	T    testing.TB
@@ -102,7 +109,7 @@ func (p *TestCaseParser) TestDir(t *testing.T, fn func(tc *TestCase) error) {
 	update := os.Getenv(updateEnvVar) == "true"
 	suffix := p.ExpectedSuffix
 	if suffix == "" {
-		suffix = ".json"
+		suffix = SuffixJSON
 	}
 	expectedFile := "expected" + suffix
 

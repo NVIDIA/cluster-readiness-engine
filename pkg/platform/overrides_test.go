@@ -69,7 +69,7 @@ func TestEveryLibFragmentParsesThroughPlatform(t *testing.T) {
 func TestBuildOverridesRendersForEveryPlatform(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "build-overrides",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg OverrideConfig
@@ -107,7 +107,7 @@ func TestBuildOverridesRendersForEveryPlatform(t *testing.T) {
 func TestBuildOverridesMPIArgs(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "override-mpi-args",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg OverrideConfig
