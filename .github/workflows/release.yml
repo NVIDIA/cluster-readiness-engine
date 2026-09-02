@@ -30,6 +30,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      tag: ${{ steps.tag.outputs.value }}
+      chart_name: ${{ steps.tag.outputs.chart_name }}
+      chart_digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,14 +51,28 @@ jobs:
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
 
+      # A dispatch that names a tag but runs from a branch would publish a
+      # release-versioned chart whose signature carries a `refs/heads/...`
+      # identity -- a release nothing can verify as one. Dispatch at the tag:
+      # `gh workflow run Release --ref v1.2.3 -f tag=v1.2.3`.
       - name: Resolve tag
         id: tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "value=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if [[ "${GITHUB_REF}" != "refs/tags/${INPUT_TAG}" ]]; then
+              echo "::error::dispatched with tag=${INPUT_TAG} but running from ${GITHUB_REF}. Re-dispatch with --ref ${INPUT_TAG} so the chart signature carries the release identity."
+              exit 1
+            fi
+            echo "value=${INPUT_TAG}" >> "$GITHUB_OUTPUT"
           else
             echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
+          # GHCR requires lowercase; `helm push <chart>.tgz oci://ghcr.io/nvidia`
+          # lands the chart at <registry>/<chart-name>.
+          echo "chart_name=ghcr.io/nvidia/cluster-readiness-engine" >> "$GITHUB_OUTPUT"
 
       # VERSION is passed explicitly instead of trusting `git describe` on
       # the runner's checkout: a shallow or tag-less checkout makes
@@ -63,12 +81,84 @@ jobs:
       # helm-push depends on check-clean-version, which rejects anything
       # that is not a clean vX.Y.Z[-prerelease] tag.
       - name: Package and push Helm chart
-        run: make helm-push VERSION="${{ steps.tag.outputs.value }}"
+        id: push
+        run: |
+          set -euo pipefail
+          make helm-push VERSION="${{ steps.tag.outputs.value }}" CHART_DIGEST_FILE=chart-digest.txt
+          digest="$(cat chart-digest.txt)"
+          [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo "::error::chart digest is malformed: ${digest}"; exit 1; }
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Helm chart published"
+            echo
+            echo '```'
+            echo "oci://${{ steps.tag.outputs.chart_name }}:${{ steps.tag.outputs.value }}"
+            echo "${digest}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
         env:
           # GHCR requires lowercase paths but the repo slug is uppercase
           # 'NVIDIA', so the value is hardcoded. Keep in sync with
           # RELEASE.md and pkg/setup/helm.go.
           HELM_OCI_REGISTRY: oci://ghcr.io/nvidia
+
+  # The chart is the highest-leverage artifact in the release: it carries the
+  # CRDs and the manager ClusterRole, so a tampered chart grants itself whatever
+  # RBAC it likes. Signed by digest, never by the tag the release notes quote.
+  #
+  # `oci-artifact` rather than `image`: a Helm chart is a plain OCI artifact
+  # (config `application/vnd.cncf.helm.config.v1+json`), and cosign is
+  # digest-addressed and media-type agnostic, so signing works identically. Note
+  # this signature does NOT satisfy `helm install --verify`, which checks a PGP
+  # `.prov` file and is unrelated to Sigstore; verification is a client-side
+  # `cosign verify` before install.
+  attest-chart:
+    name: Attest Helm chart
+    needs: [helm-publish]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: oci-artifact
+      subject_name: ${{ needs.helm-publish.outputs.chart_name }}
+      subject_tag: ${{ needs.helm-publish.outputs.tag }}
+      expected_digest: ${{ needs.helm-publish.outputs.chart_digest }}
+
+  # A skipped job does not fail its caller, so without this a broken gate inside
+  # attest.yml would publish an unsigned chart under a green release.
+  chart-attested:
+    name: Confirm the chart was signed
+    needs: [helm-publish, attest-chart]
+    if: always() && github.repository == 'NVIDIA/cluster-readiness-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require the chart attestation to have succeeded
+        env:
+          PUBLISH: ${{ needs.helm-publish.result }}
+          ATTEST: ${{ needs.attest-chart.result }}
+        run: |
+          set -euo pipefail
+          echo "helm-publish=${PUBLISH} attest-chart=${ATTEST}"
+          if [[ "${PUBLISH}" != "success" ]]; then
+            echo "::error::the chart publish job did not succeed (${PUBLISH}); no chart was published."
+            exit 1
+          fi
+          case "${ATTEST}" in
+            success) echo "chart signed and attested" ;;
+            skipped)
+              echo "::error::the chart attestation was SKIPPED. The chart is published and unsigned; a skipped job does not fail its caller, so this would otherwise have passed silently."
+              exit 1
+              ;;
+            *)
+              echo "::error::the chart attestation did not succeed (${ATTEST}). The chart is published; treat it as unsigned until this is resolved."
+              exit 1
+              ;;
+          esac
 
   build-cli:
     name: Build CLI Binaries
@@ -136,6 +226,7 @@ jobs:
     timeout-minutes: 10
     needs:
       - helm-publish
+      - chart-attested
       - build-cli
     permissions:
       contents: write
@@ -224,6 +315,17 @@ jobs:
             ```
 
             The controller image for this release is `ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}`.
+
+            The chart above is published at digest `${{ needs.helm-publish.outputs.chart_digest }}`. That digest is what the release signature covers; the version tag is mutable. Verify before installing:
+
+            ```bash
+            cosign verify \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ steps.tag.outputs.value }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              ghcr.io/nvidia/cluster-readiness-engine@${{ needs.helm-publish.outputs.chart_digest }}
+            ```
+
+            `helm install --verify` does **not** check this signature — that flag looks for a PGP `.prov` file, which is a different mechanism.
 
             ## nvcrectl CLI
 
