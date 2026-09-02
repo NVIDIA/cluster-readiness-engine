@@ -25,7 +25,7 @@ import (
 func TestCleanupJobMetricsRemovesEveryJobScopedSeries(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "cleanup-job-metrics-cardinality",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -50,8 +50,8 @@ func TestCleanupJobMetricsRemovesEveryJobScopedSeries(t *testing.T) {
 			record  func()
 		}{
 			{"nvcre_job_status", jobStatusGauge, func() { recordJobStatus(ns, job, wf, "in_progress") }},
-			{"nvcre_job_failed_nodes", failedNodesGauge, func() { recordHardwareFailure(ns, job, wf, []string{"node-a"}) }},
-			{"nvcre_hardware_failures_detected_total", hardwareFailuresDetectedTotal, func() { recordHardwareFailure(ns, job, wf, []string{"node-a"}) }},
+			{"nvcre_job_failed_nodes", failedNodesGauge, func() { recordHardwareFailure(ns, job, wf, []string{testNodeA}) }},
+			{"nvcre_hardware_failures_detected_total", hardwareFailuresDetectedTotal, func() { recordHardwareFailure(ns, job, wf, []string{testNodeA}) }},
 			{"nvcre_hardware_failed_jobs_total", hardwareFailedJobsTotal, func() { recordFirstHardwareFailure(ns, job, wf) }},
 			{"nvcre_nodes_evaluated_total", nodesEvaluatedTotal, func() { recordNodesEvaluated(ns, job, wf, 8) }},
 			{"nvcre_workload_created_total", workloadCreatedTotal, func() { recordWorkloadCreated(ns, job, wf) }},

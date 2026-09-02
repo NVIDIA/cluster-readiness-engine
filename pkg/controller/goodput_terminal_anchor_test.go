@@ -22,7 +22,7 @@ import (
 func TestTerminalAnchor(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "goodput-terminal-anchor",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {

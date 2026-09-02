@@ -24,7 +24,7 @@ import (
 func TestForSpec(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "for-spec",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var spec nvcrev1alpha1.WorkloadSpec
@@ -52,7 +52,7 @@ func TestForSpec(t *testing.T) {
 func TestTrainJobBuild(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "trainjob-build",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -89,7 +89,7 @@ func TestTrainJobBuild(t *testing.T) {
 func TestTrainJobInjectPodLabel(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "trainjob-inject-label",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -115,7 +115,7 @@ func TestTrainJobInjectPodLabel(t *testing.T) {
 func TestTrainJobSetNodeSelector(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "trainjob-set-node-selector",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -140,7 +140,7 @@ func TestTrainJobSetNodeSelector(t *testing.T) {
 func TestTrainJobSetNodeAffinity(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "trainjob-set-node-affinity",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -165,7 +165,7 @@ func TestTrainJobSetNodeAffinity(t *testing.T) {
 func TestTrainJobGetStatus(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "trainjob-get-status",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var meta struct {
@@ -198,7 +198,7 @@ func TestTrainJobGetStatus(t *testing.T) {
 func TestTrainJobNodesRequired(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "trainjob-nodes-required",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -226,7 +226,7 @@ func TestTrainJobNodesRequired(t *testing.T) {
 func TestTrainJobSetTolerations(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "trainjob-set-tolerations",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -256,7 +256,7 @@ func TestTrainJobSetTolerations(t *testing.T) {
 func TestEnsureLauncherTarget(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "ensure-launcher-target",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -291,7 +291,7 @@ func TestEnsureLauncherTarget(t *testing.T) {
 func TestHasLauncherTarget(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "has-launcher-target",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {

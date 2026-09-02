@@ -17,7 +17,7 @@ import (
 func TestApplySucceededNodesRef(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "apply-succeeded-nodes-ref",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		return runApplyNodesRefCase(tc, func(ref *corev1.TypedLocalObjectReference, w *nvcrev1alpha1.Workflow) (bool, *corev1.TypedLocalObjectReference) {
@@ -31,7 +31,7 @@ func TestApplySucceededNodesRef(t *testing.T) {
 func TestApplyFailedNodesRef(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "apply-failed-nodes-ref",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		return runApplyNodesRefCase(tc, func(ref *corev1.TypedLocalObjectReference, w *nvcrev1alpha1.Workflow) (bool, *corev1.TypedLocalObjectReference) {

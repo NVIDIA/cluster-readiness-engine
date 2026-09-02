@@ -6,8 +6,6 @@ package controller
 import (
 	"testing"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
@@ -20,7 +18,7 @@ func TestJobWarnfNilRecorder(t *testing.T) {
 
 	r := &JobReconciler{} // Recorder deliberately unset
 	job := &nvcrev1alpha1.Job{
-		ObjectMeta: metav1.ObjectMeta{Name: "job", Namespace: "default"},
+		Name: "job", Namespace: testNS,
 	}
 
 	r.warnf(job, ReasonMeasurementCreationError,

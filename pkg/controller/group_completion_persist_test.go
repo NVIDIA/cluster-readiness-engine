@@ -28,7 +28,7 @@ import (
 func TestGroupCompletionPersists(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "group-completion-persist",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -50,7 +50,7 @@ func TestGroupCompletionPersists(t *testing.T) {
 		for i := 0; i < in.Groups; i++ {
 			name := []string{"g0", "g1", "g2"}[i]
 			job := &nvcrev1alpha1.Job{
-				ObjectMeta: metav1.ObjectMeta{Name: name + "-job", Namespace: "ns"},
+				Name: name + "-job", Namespace: "ns",
 				Status: nvcrev1alpha1.JobStatus{Conditions: []metav1.Condition{{
 					Type: in.JobCondition, Status: metav1.ConditionTrue,
 					Reason: "WorkloadCompleted", LastTransitionTime: metav1.Now(),
@@ -66,7 +66,7 @@ func TestGroupCompletionPersists(t *testing.T) {
 		}
 
 		wf := &nvcrev1alpha1.Workflow{
-			ObjectMeta: metav1.ObjectMeta{Name: "wf", Namespace: "ns", Generation: 1},
+			Name: "wf", Namespace: "ns", Generation: 1,
 			Spec: nvcrev1alpha1.WorkflowSpec{
 				Orchestration: nvcrev1alpha1.OrchestrationSpec{Iterations: 1},
 			},

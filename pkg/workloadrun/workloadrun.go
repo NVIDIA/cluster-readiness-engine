@@ -22,7 +22,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	kruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	sigyaml "sigs.k8s.io/yaml"
@@ -47,6 +46,10 @@ const (
 	outputJSON   = "json"
 	defaultNS    = "default"
 	statusFailed = "Failed"
+
+	// nvcreAPIVersion is the apiVersion string used for rendered nvcre.nvidia.com
+	// resources (Job, WorkloadRun, etc.).
+	nvcreAPIVersion = "nvcre.nvidia.com/v1alpha1"
 )
 
 // resolveWRTimeout turns a user-supplied timeoutPerJob into a duration, falling
@@ -191,20 +194,16 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 
 	// Build output Workflow.
 	workflow := &nvcrev1alpha1.Workflow{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "nvcre.nvidia.com/v1alpha1",
-			Kind:       "Workflow",
+		APIVersion: nvcreAPIVersion,
+		Kind:       "Workflow",
+		Name:       run.Name,
+		Namespace:  run.Namespace,
+		Labels: map[string]string{
+			"app.kubernetes.io/managed-by":  "nvcre",
+			"nvcre.nvidia.com/workload-run": run.Name,
 		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      run.Name,
-			Namespace: run.Namespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/managed-by":  "nvcre",
-				"nvcre.nvidia.com/workload-run": run.Name,
-			},
-			Annotations: map[string]string{
-				"nvcrectl.nvidia.com/detected-gpu-architecture": gpuArch,
-			},
+		Annotations: map[string]string{
+			"nvcrectl.nvidia.com/detected-gpu-architecture": gpuArch,
 		},
 		Spec: *workflowSpec,
 	}
@@ -247,11 +246,9 @@ func BuildWorkflowSpec(
 		defaultMode := int32(0755)
 		volumes = append(volumes, corev1.Volume{
 			Name: "config-volume",
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{Name: configMapName},
-					DefaultMode:          &defaultMode,
-				},
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				Name:        configMapName,
+				DefaultMode: &defaultMode,
 			},
 		})
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
@@ -500,7 +497,7 @@ func buildWRCLIConfigMapDep(name string, data map[string]string) nvcrev1alpha1.D
 	}
 	raw, _ := json.Marshal(cm)
 	return nvcrev1alpha1.DependencySpec{
-		RawExtension: kruntime.RawExtension{Raw: raw},
+		Raw: raw,
 	}
 }
 
@@ -575,21 +572,17 @@ func runWorkloadRunRenderDryRun(
 	workflowSpec.Overrides = nil
 
 	workflow := &nvcrev1alpha1.Workflow{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "nvcre.nvidia.com/v1alpha1",
-			Kind:       "Workflow",
+		APIVersion: nvcreAPIVersion,
+		Kind:       "Workflow",
+		Name:       run.Name,
+		Namespace:  run.Namespace,
+		Labels: map[string]string{
+			"app.kubernetes.io/managed-by":  "nvcre",
+			"nvcre.nvidia.com/workload-run": run.Name,
 		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      run.Name,
-			Namespace: run.Namespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/managed-by":  "nvcre",
-				"nvcre.nvidia.com/workload-run": run.Name,
-			},
-			Annotations: map[string]string{
-				"nvcrectl.nvidia.com/detected-gpu-architecture": gpuArch,
-				"nvcrectl.nvidia.com/detected-platform":         detectedPlatform,
-			},
+		Annotations: map[string]string{
+			"nvcrectl.nvidia.com/detected-gpu-architecture": gpuArch,
+			"nvcrectl.nvidia.com/detected-platform":         detectedPlatform,
 		},
 		Spec: *workflowSpec,
 	}
@@ -861,9 +854,8 @@ func executeWorkloadRunRun(cfg *wrRunConfig) error {
 		// Only delete the secret on rollback if we actually created it —
 		// if we updated a pre-existing secret, deleting it would break a concurrent run.
 		if wasCreatedByUs {
-			pullSec := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
-				Name: setup.WorkloadPullSecretName(run.Name), Namespace: run.Namespace,
-			}}
+			pullSec := &corev1.Secret{
+				Name: setup.WorkloadPullSecretName(run.Name), Namespace: run.Namespace}
 			_ = wc.Delete(ctx, pullSec)
 		}
 		return fmt.Errorf("create WorkloadRun: %w", err)
@@ -1032,7 +1024,7 @@ func runWorkloadRunCleanup(wc client.Client, cfg *wrRunConfig, runCreated bool, 
 	// so the next run doesn't fail with "namespace is being terminated".
 	if createdNamespace != "" {
 		_, _ = fmt.Fprintf(out, "[cleanup] Deleting namespace %s...\n", createdNamespace)
-		ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: createdNamespace}}
+		ns := &corev1.Namespace{Name: createdNamespace}
 		if err := wc.Delete(cleanupCtx, ns); err != nil && !apierrors.IsNotFound(err) {
 			_, _ = fmt.Fprintf(out, "[cleanup] Warning: failed to delete namespace %s: %v\n", createdNamespace, err)
 			warnings = true
@@ -1068,7 +1060,7 @@ func setPullSecretOwnerReference(ctx context.Context, wc client.Client, run *nvc
 		return
 	}
 	sec.OwnerReferences = append(sec.OwnerReferences, metav1.OwnerReference{
-		APIVersion: "nvcre.nvidia.com/v1alpha1",
+		APIVersion: nvcreAPIVersion,
 		Kind:       "WorkloadRun",
 		Name:       run.Name,
 		UID:        run.UID,
@@ -1265,10 +1257,8 @@ func loadSyntheticNodes(platformName, gpuArch string) []corev1.Node {
 		labels["kubernetes.io/hostname"] = "synthetic-forge-node"
 	}
 	node := corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "synthetic-node-0",
-			Labels: labels,
-		},
+		Name:   "synthetic-node-0",
+		Labels: labels,
 		Spec: corev1.NodeSpec{
 			ProviderID: render.SyntheticProviderID(platformName),
 		},
@@ -1609,10 +1599,8 @@ func newWorkloadRunCancelCommand() *cobra.Command {
 			var lastErr error
 			for _, name := range args {
 				run := &nvcrev1alpha1.WorkloadRun{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      name,
-						Namespace: namespace,
-					},
+					Name:      name,
+					Namespace: namespace,
 				}
 				if err := c.Delete(ctx, run); err != nil {
 					if apierrors.IsNotFound(err) {

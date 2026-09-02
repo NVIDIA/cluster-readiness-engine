@@ -85,7 +85,7 @@ Allowed types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`, `ci`,
 ## Development Setup
 
 **Prerequisites**:
-- Go 1.26+
+- Go 1.27+
 - Docker (for container builds)
 - Make (for build targets)
 

@@ -33,6 +33,10 @@ import (
 //go:embed nodes/*.yaml
 var embeddedNodes embed.FS
 
+// nvcreAPIVersion is the apiVersion string used for rendered nvcre.nvidia.com
+// resources (Certification, Workflow, Job).
+const nvcreAPIVersion = "nvcre.nvidia.com/v1alpha1"
+
 // NewWorkflowCommand returns the "workflow" parent cobra command with
 // the "render" subcommand attached. This was previously newWorkflowCommand
 // in root.go.
@@ -168,7 +172,7 @@ func render(workflowFile, platform, gpuArch, nodesFile string) (*nvcrev1alpha1.W
 	}
 
 	workflow.TypeMeta = metav1.TypeMeta{
-		APIVersion: "nvcre.nvidia.com/v1alpha1",
+		APIVersion: nvcreAPIVersion,
 		Kind:       "Workflow",
 	}
 
@@ -271,7 +275,7 @@ func renderDryRun(workflowFile string, configFlags *kubeconfig.ConfigFlags) (
 	}
 
 	workflow.TypeMeta = metav1.TypeMeta{
-		APIVersion: "nvcre.nvidia.com/v1alpha1",
+		APIVersion: nvcreAPIVersion,
 		Kind:       "Workflow",
 	}
 
@@ -410,15 +414,11 @@ func DryRunCreate(ctx context.Context, c client.Client, namespace string,
 
 	// --- 2. Validate Job ---
 	job := &nvcrev1alpha1.Job{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "nvcre.nvidia.com/v1alpha1",
-			Kind:       "Job",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "dry-run-job",
-			Namespace: namespace,
-		},
-		Spec: *specCopy,
+		APIVersion: nvcreAPIVersion,
+		Kind:       "Job",
+		Name:       "dry-run-job",
+		Namespace:  namespace,
+		Spec:       *specCopy,
 	}
 
 	jobResult := DryRunResult{Resource: "Job/dry-run-job", Valid: true}

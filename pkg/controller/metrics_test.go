@@ -16,7 +16,7 @@ import (
 func TestRecordGoodputMetrics(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "record-goodput-metrics",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input goodputMetricValues
@@ -33,16 +33,16 @@ func TestRecordGoodputMetrics(t *testing.T) {
 		defer cleanupGoodputMetrics(ns, meas, job, wf)
 
 		result := map[string]float64{
-			"avgStepTime":        promtest.ToFloat64(goodputAvgStepTimeGauge.WithLabelValues(labels...)),
-			"avgTFLOPS":          promtest.ToFloat64(goodputAvgTFLOPSGauge.WithLabelValues(labels...)),
-			"checkpointSaveTime": promtest.ToFloat64(goodputCheckpointSaveTimeGauge.WithLabelValues(labels...)),
-			"goodputRatio":       promtest.ToFloat64(goodputRatioGauge.WithLabelValues(labels...)),
-			"lostWorkTime":       promtest.ToFloat64(goodputLostWorkTimeGauge.WithLabelValues(labels...)),
-			"nonWarmupTime":      promtest.ToFloat64(goodputNonWarmupTimeGauge.WithLabelValues(labels...)),
-			"rescheduleTime":     promtest.ToFloat64(goodputRescheduleTimeGauge.WithLabelValues(labels...)),
-			"resumeTime":         promtest.ToFloat64(goodputResumeTimeGauge.WithLabelValues(labels...)),
-			"trainingTime":       promtest.ToFloat64(goodputTrainingTimeGauge.WithLabelValues(labels...)),
-			"warmupTime":         promtest.ToFloat64(goodputWarmupTimeGauge.WithLabelValues(labels...)),
+			"avgStepTime":          promtest.ToFloat64(goodputAvgStepTimeGauge.WithLabelValues(labels...)),
+			"avgTFLOPS":            promtest.ToFloat64(goodputAvgTFLOPSGauge.WithLabelValues(labels...)),
+			"checkpointSaveTime":   promtest.ToFloat64(goodputCheckpointSaveTimeGauge.WithLabelValues(labels...)),
+			testMetricGoodputRatio: promtest.ToFloat64(goodputRatioGauge.WithLabelValues(labels...)),
+			"lostWorkTime":         promtest.ToFloat64(goodputLostWorkTimeGauge.WithLabelValues(labels...)),
+			"nonWarmupTime":        promtest.ToFloat64(goodputNonWarmupTimeGauge.WithLabelValues(labels...)),
+			"rescheduleTime":       promtest.ToFloat64(goodputRescheduleTimeGauge.WithLabelValues(labels...)),
+			"resumeTime":           promtest.ToFloat64(goodputResumeTimeGauge.WithLabelValues(labels...)),
+			"trainingTime":         promtest.ToFloat64(goodputTrainingTimeGauge.WithLabelValues(labels...)),
+			"warmupTime":           promtest.ToFloat64(goodputWarmupTimeGauge.WithLabelValues(labels...)),
 		}
 
 		data, err := json.MarshalIndent(result, "", "  ")
@@ -57,7 +57,7 @@ func TestRecordGoodputMetrics(t *testing.T) {
 func TestRecordGoodputMetricsSetsAllGauges(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "record-goodput-all-gauges",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input goodputMetricValues
@@ -73,16 +73,16 @@ func TestRecordGoodputMetricsSetsAllGauges(t *testing.T) {
 		defer cleanupGoodputMetrics(ns, meas, job, wf)
 
 		gaugeValues := map[string]float64{
-			"avgStepTime":        promtest.ToFloat64(goodputAvgStepTimeGauge.WithLabelValues(labels...)),
-			"avgTFLOPS":          promtest.ToFloat64(goodputAvgTFLOPSGauge.WithLabelValues(labels...)),
-			"checkpointSaveTime": promtest.ToFloat64(goodputCheckpointSaveTimeGauge.WithLabelValues(labels...)),
-			"goodputRatio":       promtest.ToFloat64(goodputRatioGauge.WithLabelValues(labels...)),
-			"lostWorkTime":       promtest.ToFloat64(goodputLostWorkTimeGauge.WithLabelValues(labels...)),
-			"nonWarmupTime":      promtest.ToFloat64(goodputNonWarmupTimeGauge.WithLabelValues(labels...)),
-			"rescheduleTime":     promtest.ToFloat64(goodputRescheduleTimeGauge.WithLabelValues(labels...)),
-			"resumeTime":         promtest.ToFloat64(goodputResumeTimeGauge.WithLabelValues(labels...)),
-			"trainingTime":       promtest.ToFloat64(goodputTrainingTimeGauge.WithLabelValues(labels...)),
-			"warmupTime":         promtest.ToFloat64(goodputWarmupTimeGauge.WithLabelValues(labels...)),
+			"avgStepTime":          promtest.ToFloat64(goodputAvgStepTimeGauge.WithLabelValues(labels...)),
+			"avgTFLOPS":            promtest.ToFloat64(goodputAvgTFLOPSGauge.WithLabelValues(labels...)),
+			"checkpointSaveTime":   promtest.ToFloat64(goodputCheckpointSaveTimeGauge.WithLabelValues(labels...)),
+			testMetricGoodputRatio: promtest.ToFloat64(goodputRatioGauge.WithLabelValues(labels...)),
+			"lostWorkTime":         promtest.ToFloat64(goodputLostWorkTimeGauge.WithLabelValues(labels...)),
+			"nonWarmupTime":        promtest.ToFloat64(goodputNonWarmupTimeGauge.WithLabelValues(labels...)),
+			"rescheduleTime":       promtest.ToFloat64(goodputRescheduleTimeGauge.WithLabelValues(labels...)),
+			"resumeTime":           promtest.ToFloat64(goodputResumeTimeGauge.WithLabelValues(labels...)),
+			"trainingTime":         promtest.ToFloat64(goodputTrainingTimeGauge.WithLabelValues(labels...)),
+			"warmupTime":           promtest.ToFloat64(goodputWarmupTimeGauge.WithLabelValues(labels...)),
 		}
 
 		// Check that all gauges are non-zero; build sorted result
@@ -111,7 +111,7 @@ func TestRecordGoodputMetricsSetsAllGauges(t *testing.T) {
 func TestCleanupGoodputMetrics(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "cleanup-goodput-metrics",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input goodputMetricValues
@@ -141,7 +141,7 @@ func TestCleanupGoodputMetrics(t *testing.T) {
 func TestRecordJobStatus(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "record-job-status",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -177,7 +177,7 @@ func TestRecordJobStatus(t *testing.T) {
 func TestCleanupJobMetrics(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "cleanup-job-metrics",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -209,7 +209,7 @@ func TestCleanupJobMetrics(t *testing.T) {
 func TestRecordTopologyValidatedNodes(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "record-topology-validated-nodes",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -257,7 +257,7 @@ func TestRecordTopologyValidatedNodes(t *testing.T) {
 func TestCleanupTopologyMetrics(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "cleanup-topology-metrics",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {

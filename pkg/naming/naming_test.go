@@ -16,7 +16,7 @@ import (
 func TestTruncate(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "truncate",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -86,7 +86,7 @@ func TestTruncateTrailingHyphen(t *testing.T) {
 func TestTruncateEndToEndChain(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "truncate-end-to-end-chain",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {

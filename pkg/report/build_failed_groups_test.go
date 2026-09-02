@@ -27,7 +27,7 @@ import (
 func TestBuildFailedGroups(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "build-failed-groups",
-		ExpectedSuffix: ".txt",
+		ExpectedSuffix: testutil.SuffixTXT,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		scheme := runtime.NewScheme()

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -18,6 +17,14 @@ import (
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	gzip "github.com/NVIDIA/cluster-readiness-engine/pkg/controller/compress"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
+)
+
+// Node names and a failure message reused across this file's fixtures.
+const (
+	testGPU01      = "gpu-01"
+	testGPU02      = "gpu-02"
+	testGPU03      = "gpu-03"
+	testReasonBoom = "boom"
 )
 
 func decodeOrFail(t *testing.T, b []byte) []string {
@@ -46,7 +53,7 @@ func newNodeResultsScheme(t *testing.T) *runtime.Scheme {
 
 func testWorkflow(name string) *nvcrev1alpha1.Workflow {
 	return &nvcrev1alpha1.Workflow{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default", UID: types.UID(name + "-uid")},
+		Name: name, Namespace: testNS, UID: types.UID(name + "-uid"),
 	}
 }
 
@@ -56,7 +63,7 @@ func getCMByRef(t *testing.T, c client.Client, ref *corev1.TypedLocalObjectRefer
 		t.Fatalf("expected a non-nil node-results ref")
 	}
 	cm := &corev1.ConfigMap{}
-	if err := c.Get(context.Background(), types.NamespacedName{Name: ref.Name, Namespace: "default"}, cm); err != nil {
+	if err := c.Get(context.Background(), types.NamespacedName{Name: ref.Name, Namespace: testNS}, cm); err != nil {
 		t.Fatalf("get ConfigMap %s: %v", ref.Name, err)
 	}
 	return cm
@@ -93,18 +100,18 @@ func TestMergeSucceededNodesCSV(t *testing.T) {
 	}{
 		"empty existing": {
 			existingNodes: nil,
-			newNodes:      []string{"gpu-02", "gpu-01"},
-			want:          []string{"gpu-01", "gpu-02"},
+			newNodes:      []string{testGPU02, testGPU01},
+			want:          []string{testGPU01, testGPU02},
 		},
 		"union and sort": {
-			existingNodes: []string{"gpu-03", "gpu-01"},
-			newNodes:      []string{"gpu-02", "gpu-04"},
-			want:          []string{"gpu-01", "gpu-02", "gpu-03", "gpu-04"},
+			existingNodes: []string{testGPU03, testGPU01},
+			newNodes:      []string{testGPU02, "gpu-04"},
+			want:          []string{testGPU01, testGPU02, testGPU03, "gpu-04"},
 		},
 		"dedupe across existing and new": {
-			existingNodes: []string{"gpu-01", "gpu-02"},
-			newNodes:      []string{"gpu-02", "gpu-03"},
-			want:          []string{"gpu-01", "gpu-02", "gpu-03"},
+			existingNodes: []string{testGPU01, testGPU02},
+			newNodes:      []string{testGPU02, testGPU03},
+			want:          []string{testGPU01, testGPU02, testGPU03},
 		},
 	}
 
@@ -150,28 +157,28 @@ func TestMergeFailedNodesJSON(t *testing.T) {
 		want     []nvcrev1alpha1.FailedNode
 	}{
 		"empty existing": {
-			incoming: []nvcrev1alpha1.FailedNode{{Name: "gpu-02", Reason: nvcrev1alpha1.NodeFailureWorkloadFailed, Message: "boom"}},
-			want:     []nvcrev1alpha1.FailedNode{{Name: "gpu-02", Reason: nvcrev1alpha1.NodeFailureWorkloadFailed, Message: "boom"}},
+			incoming: []nvcrev1alpha1.FailedNode{{Name: testGPU02, Reason: nvcrev1alpha1.NodeFailureWorkloadFailed, Message: testReasonBoom}},
+			want:     []nvcrev1alpha1.FailedNode{{Name: testGPU02, Reason: nvcrev1alpha1.NodeFailureWorkloadFailed, Message: testReasonBoom}},
 		},
 		"union sort and dedupe by name+reason": {
-			existing: []nvcrev1alpha1.FailedNode{{Name: "gpu-03", Reason: nvcrev1alpha1.NodeFailureWorkloadFailed}},
+			existing: []nvcrev1alpha1.FailedNode{{Name: testGPU03, Reason: nvcrev1alpha1.NodeFailureWorkloadFailed}},
 			incoming: []nvcrev1alpha1.FailedNode{
-				{Name: "gpu-01", Reason: nvcrev1alpha1.NodeFailureHardwareDetected},
-				{Name: "gpu-03", Reason: nvcrev1alpha1.NodeFailureWorkloadFailed},
+				{Name: testGPU01, Reason: nvcrev1alpha1.NodeFailureHardwareDetected},
+				{Name: testGPU03, Reason: nvcrev1alpha1.NodeFailureWorkloadFailed},
 			},
 			want: []nvcrev1alpha1.FailedNode{
-				{Name: "gpu-01", Reason: nvcrev1alpha1.NodeFailureHardwareDetected},
-				{Name: "gpu-03", Reason: nvcrev1alpha1.NodeFailureWorkloadFailed},
+				{Name: testGPU01, Reason: nvcrev1alpha1.NodeFailureHardwareDetected},
+				{Name: testGPU03, Reason: nvcrev1alpha1.NodeFailureWorkloadFailed},
 			},
 		},
 		"same node two reasons kept": {
 			incoming: []nvcrev1alpha1.FailedNode{
-				{Name: "gpu-01", Reason: nvcrev1alpha1.NodeFailureThresholdViolation},
-				{Name: "gpu-01", Reason: nvcrev1alpha1.NodeFailureHardwareDetected},
+				{Name: testGPU01, Reason: nvcrev1alpha1.NodeFailureThresholdViolation},
+				{Name: testGPU01, Reason: nvcrev1alpha1.NodeFailureHardwareDetected},
 			},
 			want: []nvcrev1alpha1.FailedNode{
-				{Name: "gpu-01", Reason: nvcrev1alpha1.NodeFailureHardwareDetected},
-				{Name: "gpu-01", Reason: nvcrev1alpha1.NodeFailureThresholdViolation},
+				{Name: testGPU01, Reason: nvcrev1alpha1.NodeFailureHardwareDetected},
+				{Name: testGPU01, Reason: nvcrev1alpha1.NodeFailureThresholdViolation},
 			},
 		},
 		"message with comma and quote preserved": {
@@ -221,7 +228,7 @@ func TestRecordSucceededNodes(t *testing.T) {
 	wf := testWorkflow("test-cert-training-hello")
 	ctx := context.Background()
 
-	if err := r.recordSucceededNodes(ctx, wf, []string{"gpu-02", "gpu-01"}); err != nil {
+	if err := r.recordSucceededNodes(ctx, wf, []string{testGPU02, testGPU01}); err != nil {
 		t.Fatalf("recordSucceededNodes (1): %v", err)
 	}
 	wantName := nodeResultsCMName(succeededNodesPrefix, string(wf.UID))
@@ -231,7 +238,7 @@ func TestRecordSucceededNodes(t *testing.T) {
 	if got := strings.Join(readSucceededNodes(t, c, wf), ","); got != "gpu-01,gpu-02" {
 		t.Fatalf("after first write got %q", got)
 	}
-	if err := r.recordSucceededNodes(ctx, wf, []string{"gpu-02", "gpu-03"}); err != nil {
+	if err := r.recordSucceededNodes(ctx, wf, []string{testGPU02, testGPU03}); err != nil {
 		t.Fatalf("recordSucceededNodes (2): %v", err)
 	}
 	if wf.Status.SucceededNodesRef.Name != wantName {
@@ -250,7 +257,7 @@ func TestRecordFailedNodes(t *testing.T) {
 	ctx := context.Background()
 
 	if err := r.recordFailedNodes(ctx, wf, []nvcrev1alpha1.FailedNode{
-		{Name: "gpu-02", Reason: nvcrev1alpha1.NodeFailureWorkloadFailed, Message: "boom"},
+		{Name: testGPU02, Reason: nvcrev1alpha1.NodeFailureWorkloadFailed, Message: testReasonBoom},
 	}); err != nil {
 		t.Fatalf("recordFailedNodes (1): %v", err)
 	}
@@ -259,13 +266,13 @@ func TestRecordFailedNodes(t *testing.T) {
 		t.Fatalf("FailedNodesRef = %+v, want name %q", wf.Status.FailedNodesRef, wantFailedName)
 	}
 	got := readFailedNodes(t, c, wf)
-	if len(got) != 1 || got[0].Name != "gpu-02" || got[0].Message != "boom" {
+	if len(got) != 1 || got[0].Name != testGPU02 || got[0].Message != testReasonBoom {
 		t.Fatalf("after first write got %+v", got)
 	}
 
 	if err := r.recordFailedNodes(ctx, wf, []nvcrev1alpha1.FailedNode{
-		{Name: "gpu-02", Reason: nvcrev1alpha1.NodeFailureWorkloadFailed, Message: "boom"},
-		{Name: "gpu-01", Reason: nvcrev1alpha1.NodeFailureHardwareDetected},
+		{Name: testGPU02, Reason: nvcrev1alpha1.NodeFailureWorkloadFailed, Message: testReasonBoom},
+		{Name: testGPU01, Reason: nvcrev1alpha1.NodeFailureHardwareDetected},
 	}); err != nil {
 		t.Fatalf("recordFailedNodes (2): %v", err)
 	}
@@ -273,7 +280,7 @@ func TestRecordFailedNodes(t *testing.T) {
 		t.Fatalf("second write changed ConfigMap name to %q (want %q)", wf.Status.FailedNodesRef.Name, wantFailedName)
 	}
 	got = readFailedNodes(t, c, wf)
-	if len(got) != 2 || got[0].Name != "gpu-01" || got[1].Name != "gpu-02" {
+	if len(got) != 2 || got[0].Name != testGPU01 || got[1].Name != testGPU02 {
 		t.Fatalf("after second write got %+v", got)
 	}
 }

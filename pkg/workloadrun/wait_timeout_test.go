@@ -24,6 +24,12 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
+// Name/namespace literals reused across this file's fixtures.
+const (
+	testWorkloadRunTimeoutRun = "timeout-run"
+	testWorkloadRunNamespace  = "test-ns"
+)
+
 // newWorkloadRunFakeClient is defined in run_cleanup_test.go and shared by
 // the tests in this file.
 
@@ -77,7 +83,7 @@ func TestWatchWorkloadRunImmediateTimeout(t *testing.T) {
 	wc := newWorkloadRunFakeClient(t)
 	var out bytes.Buffer
 
-	run, err := watchWorkloadRun(context.Background(), wc, "timeout-run", "test-ns", 0, &out)
+	run, err := watchWorkloadRun(context.Background(), wc, testWorkloadRunTimeoutRun, testWorkloadRunNamespace, 0, &out)
 
 	assert.Nil(t, run)
 	require.Error(t, err)
@@ -93,7 +99,7 @@ func TestWatchWorkloadRunImmediateTimeout(t *testing.T) {
 func TestFinishWorkloadRunWaitTimeout(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "finish-workloadrun-wait-timeout",
-		ExpectedSuffix: ".txt",
+		ExpectedSuffix: testutil.SuffixTXT,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		// json tags, not yaml: sigs.k8s.io/yaml converts YAML to JSON and
@@ -107,11 +113,11 @@ func TestFinishWorkloadRunWaitTimeout(t *testing.T) {
 			return err
 		}
 		if input.Name == "" {
-			input.Name = "timeout-run"
+			input.Name = testWorkloadRunTimeoutRun
 		}
 
 		run := &nvcrev1alpha1.WorkloadRun{
-			ObjectMeta: metav1.ObjectMeta{Name: input.Name, Namespace: "test-ns"},
+			Name: input.Name, Namespace: testWorkloadRunNamespace,
 			Status: nvcrev1alpha1.WorkloadRunStatus{
 				Conditions: []metav1.Condition{{
 					Type:   nvcrev1alpha1.WorkloadRunInProgress,
@@ -122,7 +128,7 @@ func TestFinishWorkloadRunWaitTimeout(t *testing.T) {
 			},
 		}
 		wf := &nvcrev1alpha1.Workflow{
-			ObjectMeta: metav1.ObjectMeta{Name: input.Name + "-wf", Namespace: "test-ns"},
+			Name: input.Name + "-wf", Namespace: testWorkloadRunNamespace,
 			Status: nvcrev1alpha1.WorkflowStatus{
 				Conditions: []metav1.Condition{{
 					Type:   nvcrev1alpha1.WorkflowInProgress,
@@ -180,7 +186,7 @@ func TestFinishWorkloadRunWaitTimeout(t *testing.T) {
 
 func TestFinishWorkloadRunWaitBoundsPostTimeoutReads(t *testing.T) {
 	run := &nvcrev1alpha1.WorkloadRun{
-		ObjectMeta: metav1.ObjectMeta{Name: "timeout-run", Namespace: "test-ns"},
+		Name: testWorkloadRunTimeoutRun, Namespace: testWorkloadRunNamespace,
 	}
 	wc := &workloadRunDeadlineClient{WithWatch: newWorkloadRunFakeClient(t, run)}
 	var out bytes.Buffer
@@ -204,7 +210,7 @@ func TestFinishWorkloadRunWaitBoundsPostTimeoutReads(t *testing.T) {
 func TestFinishWorkloadRunWaitTerminalAtTimeout(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "finish-workloadrun-wait-terminal-at-timeout",
-		ExpectedSuffix: ".txt",
+		ExpectedSuffix: testutil.SuffixTXT,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
@@ -215,7 +221,7 @@ func TestFinishWorkloadRunWaitTerminalAtTimeout(t *testing.T) {
 		}
 
 		run := &nvcrev1alpha1.WorkloadRun{
-			ObjectMeta: metav1.ObjectMeta{Name: "timeout-run", Namespace: "test-ns"},
+			Name: testWorkloadRunTimeoutRun, Namespace: testWorkloadRunNamespace,
 			Status: nvcrev1alpha1.WorkloadRunStatus{Conditions: []metav1.Condition{{
 				Type: input.ConditionType, Status: metav1.ConditionTrue,
 			}}},
@@ -238,7 +244,7 @@ func TestFinishWorkloadRunWaitTerminalAtTimeout(t *testing.T) {
 
 func TestFinishWorkloadRunWaitDoesNotMaskOtherWatchErrors(t *testing.T) {
 	run := &nvcrev1alpha1.WorkloadRun{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-run", Namespace: "test-ns"},
+		Name: "test-run", Namespace: testWorkloadRunNamespace,
 	}
 	wc := newWorkloadRunFakeClient(t, run)
 	resultsFile := filepath.Join(t.TempDir(), "results.json")

@@ -21,7 +21,7 @@ import (
 func TestParse(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "parse",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
@@ -51,7 +51,7 @@ func TestParse(t *testing.T) {
 func TestFormatParseRoundTrip(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "format-parse-round-trip",
-		ExpectedSuffix: ".json",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
