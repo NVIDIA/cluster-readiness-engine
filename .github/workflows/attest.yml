@@ -61,6 +61,16 @@ on:
           its tag actually points at.
         required: true
         type: string
+      platform:
+        description: >-
+          For a per-platform subject (e.g. the linux/amd64 SBOM of a
+          multi-platform image), the platform to resolve, as os/arch. Leave
+          empty to resolve the multi-platform index itself. Without this a
+          per-platform expected_digest can never match, because resolving the
+          tag returns the index digest.
+        required: false
+        type: string
+        default: ''
       subject_tag:
         description: >-
           The tag the caller just pushed for this subject (e.g. v1.2.3 or
@@ -71,12 +81,6 @@ on:
         required: false
         type: string
         default: ''
-      builder_workflow:
-        description: >-
-          Repo-relative path of the workflow that actually built the artifact
-          (e.g. .github/workflows/publish.yml). Becomes runDetails.builder.id.
-        required: true
-        type: string
       artifact_name:
         description: >-
           upload-artifact name holding the blob and any predicate. Required when
@@ -131,6 +135,13 @@ jobs:
   # identity.
   validate:
     name: Validate Attestation Inputs
+    # `workflow_call` on a public repository is callable by ANY repository. In a
+    # called reusable workflow `github.repository` is the CALLER's repository, so
+    # this gate is what stops an outside repo from invoking this workflow at one
+    # of our release tags and obtaining a Fulcio certificate whose SAN is our
+    # attest.yml path -- the exact identity SECURITY.md tells users to trust.
+    # Every other workflow in this repository already carries this guard.
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
@@ -138,8 +149,8 @@ jobs:
       subject_kind: ${{ steps.check.outputs.subject_kind }}
       subject_name: ${{ steps.check.outputs.subject_name }}
       subject_tag: ${{ steps.check.outputs.subject_tag }}
+      platform: ${{ steps.check.outputs.platform }}
       expected_digest: ${{ steps.check.outputs.expected_digest }}
-      builder_workflow: ${{ steps.check.outputs.builder_workflow }}
       artifact_name: ${{ steps.check.outputs.artifact_name }}
       predicate_name: ${{ steps.check.outputs.predicate_name }}
       predicate_type: ${{ steps.check.outputs.predicate_type }}
@@ -155,8 +166,8 @@ jobs:
           IN_SUBJECT_KIND: ${{ inputs.subject_kind }}
           IN_SUBJECT_NAME: ${{ inputs.subject_name }}
           IN_SUBJECT_TAG: ${{ inputs.subject_tag }}
+          IN_PLATFORM: ${{ inputs.platform }}
           IN_EXPECTED_DIGEST: ${{ inputs.expected_digest }}
-          IN_BUILDER_WORKFLOW: ${{ inputs.builder_workflow }}
           IN_ARTIFACT_NAME: ${{ inputs.artifact_name }}
           IN_PREDICATE_NAME: ${{ inputs.predicate_name }}
           IN_PREDICATE_TYPE: ${{ inputs.predicate_type }}
@@ -172,7 +183,7 @@ jobs:
           # A newline lets a value forge extra lines in GITHUB_OUTPUT or in a
           # log, so reject it everywhere before any other check.
           for name in IN_SUBJECT_KIND IN_SUBJECT_NAME IN_SUBJECT_TAG IN_EXPECTED_DIGEST \
-                      IN_BUILDER_WORKFLOW IN_ARTIFACT_NAME IN_PREDICATE_NAME \
+                      IN_PLATFORM IN_ARTIFACT_NAME IN_PREDICATE_NAME \
                       IN_PREDICATE_TYPE IN_COSIGN_VERSION IN_CRANE_VERSION; do
             value="${!name}"
             case "${value}" in
@@ -187,14 +198,6 @@ jobs:
 
           [[ "${IN_EXPECTED_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]] \
             || fail "expected_digest must match sha256:<64 lowercase hex>"
-
-          [[ "${IN_BUILDER_WORKFLOW}" =~ ^\.github/workflows/[A-Za-z0-9._-]+\.ya?ml$ ]] \
-            || fail "builder_workflow must be a .github/workflows/<name>.yml path"
-
-          # builder.id must name a workflow that builds. Pointing it at this
-          # workflow would assert that the attestor produced the artifact.
-          [[ "${IN_BUILDER_WORKFLOW}" != ".github/workflows/attest.yml" ]] \
-            || fail "builder_workflow must not be attest.yml; it names the workflow that built the artifact"
 
           [[ "${IN_COSIGN_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
             || fail "cosign_version must be vMAJOR.MINOR.PATCH"
@@ -226,6 +229,13 @@ jobs:
                 || fail "artifact_name is required when subject_kind is blob"
               ;;
           esac
+
+          if [[ -n "${IN_PLATFORM}" ]]; then
+            [[ "${IN_PLATFORM}" =~ ^[a-z0-9]+/[a-z0-9]+$ ]] \
+              || fail "platform must be os/arch, e.g. linux/amd64"
+            [[ "${IN_SUBJECT_KIND}" != "blob" ]] \
+              || fail "platform is meaningless for a blob subject"
+          fi
 
           if [[ -n "${IN_ARTIFACT_NAME}" ]]; then
             [[ "${IN_ARTIFACT_NAME}" =~ ^[A-Za-z0-9._-]+$ ]] \
@@ -264,8 +274,8 @@ jobs:
             echo "subject_kind=${IN_SUBJECT_KIND}"
             echo "subject_name=${IN_SUBJECT_NAME}"
             echo "subject_tag=${IN_SUBJECT_TAG}"
+            echo "platform=${IN_PLATFORM}"
             echo "expected_digest=${IN_EXPECTED_DIGEST}"
-            echo "builder_workflow=${IN_BUILDER_WORKFLOW}"
             echo "artifact_name=${IN_ARTIFACT_NAME}"
             echo "predicate_name=${IN_PREDICATE_NAME}"
             echo "predicate_type=${IN_PREDICATE_TYPE}"
@@ -275,6 +285,10 @@ jobs:
 
   attest:
     name: Sign and Attest
+    # Repeated deliberately rather than relied upon through `needs`: a skipped
+    # dependency must never be the only thing standing between an outside caller
+    # and the signing identity.
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
     runs-on: ubuntu-latest
     needs: [validate]
     # Must exceed the worst-case retry budget below, or the runner kills the job
@@ -362,6 +376,7 @@ jobs:
           SUBJECT_KIND: ${{ needs.validate.outputs.subject_kind }}
           SUBJECT_NAME: ${{ needs.validate.outputs.subject_name }}
           SUBJECT_TAG: ${{ needs.validate.outputs.subject_tag }}
+          PLATFORM: ${{ needs.validate.outputs.platform }}
           EXPECTED_DIGEST: ${{ needs.validate.outputs.expected_digest }}
         run: |
           set -euo pipefail
@@ -372,7 +387,7 @@ jobs:
           crane_digest() {
             local n out
             for n in 1 2 3; do
-              if out="$(timeout --foreground 120s crane digest "$1")"; then
+              if out="$(timeout --foreground 120s crane digest "$@")"; then
                 printf '%s' "${out}"
                 return 0
               fi
@@ -384,7 +399,20 @@ jobs:
 
           case "${SUBJECT_KIND}" in
             image|oci-artifact)
-              resolved="$(crane_digest "${SUBJECT_NAME}:${SUBJECT_TAG}")"
+              if [[ -n "${PLATFORM}" ]]; then
+                # Resolve the tag to its index first, then descend to the child
+                # manifest for this platform. `crane digest --platform` errors
+                # out when the platform is absent, so a release that lost an
+                # architecture fails here instead of signing the wrong subject.
+                index="$(crane_digest "${SUBJECT_NAME}:${SUBJECT_TAG}")"
+                resolved="$(crane_digest --platform "${PLATFORM}" "${SUBJECT_NAME}@${index}")"
+                if [[ "${resolved}" == "${index}" ]]; then
+                  echo "::error::${PLATFORM} resolved to the index digest; ${SUBJECT_NAME}:${SUBJECT_TAG} is not a multi-platform index"
+                  exit 1
+                fi
+              else
+                resolved="$(crane_digest "${SUBJECT_NAME}:${SUBJECT_TAG}")"
+              fi
               ;;
             blob)
               path="subject/${SUBJECT_NAME}"
@@ -409,17 +437,36 @@ jobs:
       # header comment and ADR-074 decision 4.
       - name: Generate SLSA provenance predicate
         env:
-          BUILDER_WORKFLOW: ${{ needs.validate.outputs.builder_workflow }}
+          # GITHUB_WORKFLOW_REF is the ref of the workflow that STARTED the run
+          # -- the caller -- and is set by GitHub, not passed in. Taking
+          # builder.id from an input let a caller name any workflow it liked and
+          # get provenance asserting that workflow built the subject.
+          CALLER_WORKFLOW_REF: ${{ github.workflow_ref }}
           SUBJECT_KIND: ${{ needs.validate.outputs.subject_kind }}
         run: |
           set -euo pipefail
+
+          # <owner>/<repo>/.github/workflows/<file>@<ref>  ->  full https URL,
+          # ref stripped. Fail closed rather than emit a predicate whose builder
+          # cannot be identified.
+          case "${CALLER_WORKFLOW_REF}" in
+            */.github/workflows/*@*) ;;
+            *) echo "::error::unexpected GITHUB_WORKFLOW_REF: ${CALLER_WORKFLOW_REF}"; exit 1 ;;
+          esac
+          builder_id="${GITHUB_SERVER_URL}/${CALLER_WORKFLOW_REF%@*}"
+          if [[ "${builder_id}" == *"/.github/workflows/attest.yml" ]]; then
+            echo "::error::builder resolved to attest.yml; the attestor cannot be the builder"
+            exit 1
+          fi
+          echo "builder.id = ${builder_id}"
+
           jq -n \
             --arg repo "${GITHUB_REPOSITORY}" \
             --arg ref "${GITHUB_REF}" \
             --arg sha "${GITHUB_SHA}" \
             --arg server "${GITHUB_SERVER_URL}" \
             --arg run_id "${GITHUB_RUN_ID}" \
-            --arg builder "${BUILDER_WORKFLOW}" \
+            --arg builder "${builder_id}" \
             --arg kind "${SUBJECT_KIND}" \
             '{
               buildDefinition: {
@@ -435,7 +482,7 @@ jobs:
                 }]
               },
               runDetails: {
-                builder: { id: ($server + "/" + $repo + "/" + $builder) },
+                builder: { id: $builder },
                 metadata: {
                   invocationId: ($server + "/" + $repo + "/actions/runs/" + $run_id)
                 }
@@ -514,11 +561,15 @@ jobs:
                 --bundle "bundles/${SUBJECT_NAME}.sigstore.json" \
                 "${path}"
               if [[ -n "${PREDICATE_NAME}" ]]; then
+                # The positional argument is the SUBJECT the predicate is bound
+                # to, so it must be the binary. Passing the predicate file here
+                # would produce a bundle attesting the SBOM to itself, which
+                # verifies happily and proves nothing about the artifact.
                 retry cosign attest-blob --yes \
                   --predicate "subject/${PREDICATE_NAME}" \
                   --type "${PREDICATE_TYPE}" \
-                  --bundle "bundles/${PREDICATE_NAME}.sigstore.json" \
-                  "subject/${PREDICATE_NAME}"
+                  --bundle "bundles/${SUBJECT_NAME}.${PREDICATE_TYPE}.sigstore.json" \
+                  "${path}"
               fi
               ;;
           esac
