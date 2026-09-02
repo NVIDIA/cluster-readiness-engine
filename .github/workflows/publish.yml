@@ -30,7 +30,17 @@ jobs:
   tag:
     name: Compute image tag
     runs-on: ubuntu-latest
-    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    # The ref guard is load-bearing, not hygiene. workflow_dispatch accepts a
+    # TAG as its ref, and this workflow always tags the image `main-<sha>`
+    # regardless. Dispatched from `refs/tags/v1.2.3`, the OIDC claims would be
+    # genuinely release-shaped, so attest.yml's tag check would pass on its own
+    # and Fulcio would mint `attest.yml@refs/tags/v1.2.3` -- the exact identity
+    # SECURITY.md tells users proves an official release -- for a dev image at a
+    # digest no release ever advertised. allow_untagged cannot prevent this: it
+    # only relaxes a check, it does not influence the certificate.
+    if: >-
+      github.repository == 'NVIDIA/cluster-readiness-engine'
+      && github.ref == 'refs/heads/main'
     timeout-minutes: 5
     permissions: {}
     outputs:

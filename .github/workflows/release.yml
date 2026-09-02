@@ -254,7 +254,7 @@ jobs:
   # `cosign verify` before install.
   attest-chart:
     name: Attest Helm chart
-    needs: [helm-publish]
+    needs: [release-tag, helm-publish]
     permissions:
       contents: read
       packages: write
@@ -263,7 +263,7 @@ jobs:
     with:
       subject_kind: oci-artifact
       subject_name: ${{ needs.helm-publish.outputs.chart_name }}
-      subject_tag: ${{ needs.helm-publish.outputs.tag }}
+      subject_tag: ${{ needs.release-tag.outputs.value }}
       expected_digest: ${{ needs.helm-publish.outputs.chart_digest }}
 
   # A skipped job does not fail its caller, so without this a broken gate inside
@@ -597,10 +597,6 @@ jobs:
           [[ "${missing}" -eq 0 ]] || exit 1
           ls -la
 
-      # checksums.txt stays -- it is cheap and costs nothing -- but it now
-      # covers every published asset rather than only the binaries. It is not
-      # the verification story: it is served from the same origin as the
-      # artifacts and is itself unsigned, which is why the bundles exist.
       # The notes now state digests as fact. If any is missing or malformed the
       # release would advertise a broken or empty reference, so fail here rather
       # than publish one.
@@ -622,6 +618,10 @@ jobs:
             echo "${name} -> ${value}"
           done
 
+      # checksums.txt stays -- it is cheap -- but it now covers every published
+      # asset rather than only the binaries. It is not the verification story:
+      # it is served from the same origin as the artifacts and is itself
+      # unsigned, which is why the bundles exist.
       - name: Generate checksums
         run: |
           set -euo pipefail
@@ -723,7 +723,7 @@ jobs:
 
             `helm install --verify` does **not** check this signature. That flag looks for a PGP `.prov` file, a mechanism unrelated to Sigstore, and we publish no `.prov` files.
 
-            ### Controller image
+            ## Controller image
 
             A different artifact from the chart, verified separately. The release built and signed these exact digests:
 
