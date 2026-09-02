@@ -90,6 +90,7 @@ func defaultInputs() inputs {
 		"IN_COSIGN_VERSION":  "v3.1.3",
 		"IN_CRANE_VERSION":   "v0.20.6",
 		"IN_ALLOW_UNTAGGED":  "false",
+		"IN_EMIT_PROVENANCE": "true",
 		"CALLER_REF":         "refs/tags/v1.2.3",
 	}
 }
@@ -155,6 +156,16 @@ func TestAttestValidationAccepts(t *testing.T) {
 			"IN_ARTIFACT_NAME":  "cli-binaries",
 			"IN_PREDICATE_NAME": "sbom.cyclonedx.json",
 			"IN_PREDICATE_TYPE": "cyclonedx",
+		},
+		// Per-platform SBOM calls suppress provenance: ADR-074 puts provenance
+		// on the index digest only, so a child manifest must not carry a
+		// second, competing provenance statement.
+		"image predicate with provenance suppressed": {
+			"IN_PLATFORM":        "linux/amd64",
+			"IN_ARTIFACT_NAME":   "sboms",
+			"IN_PREDICATE_NAME":  "sbom-linux-amd64.cyclonedx.json",
+			"IN_PREDICATE_TYPE":  "cyclonedx",
+			"IN_EMIT_PROVENANCE": "false",
 		},
 		// The non-production escape hatch, which exists so the guards can be
 		// exercised by dispatch at all. It must still work.
@@ -236,6 +247,18 @@ func TestAttestValidationRejects(t *testing.T) {
 		// artifact_name and predicate_name each had a traversal case; this one
 		// did not, and subject_name reaches `path="subject/${SUBJECT_NAME}"`
 		// in the job that holds the signing token.
+		// Suppressing provenance on a blob with no predicate would sign and
+		// attest nothing at all, producing a green run with no artifact.
+		"blob with provenance suppressed and no predicate": {
+			inputs{
+				"IN_SUBJECT_KIND":    "blob",
+				"IN_SUBJECT_NAME":    "nvcrectl-linux-amd64",
+				"IN_SUBJECT_TAG":     "",
+				"IN_ARTIFACT_NAME":   "cli-binaries",
+				"IN_EMIT_PROVENANCE": "false",
+			},
+			"leaves a blob call with nothing to attest",
+		},
 		"path traversal in blob subject_name": {
 			inputs{
 				"IN_SUBJECT_KIND":  "blob",
