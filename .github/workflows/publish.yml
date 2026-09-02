@@ -192,21 +192,55 @@ jobs:
           upload-artifact: false
           upload-release-assets: false
 
-      # Two identical SBOMs mean SYFT_PLATFORM did not take effect and both
-      # documents describe the same root filesystem -- the defect this job
-      # exists to fix, silently reintroduced.
-      - name: Verify the two SBOMs differ
+      # Each SBOM is generated against a per-platform MANIFEST digest, not the
+      # tag, so syft can only see that platform's root filesystem; the
+      # distinctness checks above already reject the case where both digests are
+      # the same. What is not covered upstream is a wiring mistake between these
+      # two near-identical steps -- the amd64 SBOM generated against the arm64
+      # digest, or one digest used twice -- so that is what this checks.
+      #
+      # Deliberately NOT a comparison of the two package sets. The image is a
+      # static Go binary on distroless: both platforms legitimately resolve the
+      # same Go module list, so requiring the sets to differ would fail correct
+      # releases. Comparing whole-document bytes is worse still -- a CycloneDX
+      # document carries a random serialNumber and a timestamp, so two documents
+      # are never byte-identical and such a check can never fire.
+      - name: Verify each SBOM describes its own platform
+        env:
+          AMD64: ${{ steps.platforms.outputs.amd64 }}
+          ARM64: ${{ steps.platforms.outputs.arm64 }}
         run: |
           set -euo pipefail
-          for f in sboms/sbom-linux-amd64.cyclonedx.json sboms/sbom-linux-arm64.cyclonedx.json; do
+          amd64_file=sboms/sbom-linux-amd64.cyclonedx.json
+          arm64_file=sboms/sbom-linux-arm64.cyclonedx.json
+
+          for f in "${amd64_file}" "${arm64_file}"; do
             [[ -s "${f}" ]] || { echo "::error::${f} is missing or empty"; exit 1; }
+            jq -e . "${f}" >/dev/null || { echo "::error::${f} is not valid JSON"; exit 1; }
           done
-          if cmp -s sboms/sbom-linux-amd64.cyclonedx.json sboms/sbom-linux-arm64.cyclonedx.json; then
-            echo "::error::the amd64 and arm64 SBOMs are byte-identical; SYFT_PLATFORM did not take effect"
+
+          # A document referencing the other platform's digest was generated
+          # against the wrong subject. Where syft records no digest at all,
+          # neither branch fires and the check stays silent rather than failing
+          # on an assumption about syft's output shape.
+          if grep -q "${ARM64#sha256:}" "${amd64_file}"; then
+            echo "::error::the amd64 SBOM references the arm64 manifest digest; the two generation steps are wired to the wrong subjects"
             exit 1
           fi
-          echo "amd64 components: $(jq '[.components[]?] | length' sboms/sbom-linux-amd64.cyclonedx.json)"
-          echo "arm64 components: $(jq '[.components[]?] | length' sboms/sbom-linux-arm64.cyclonedx.json)"
+          if grep -q "${AMD64#sha256:}" "${arm64_file}"; then
+            echo "::error::the arm64 SBOM references the amd64 manifest digest; the two generation steps are wired to the wrong subjects"
+            exit 1
+          fi
+
+          for pair in "amd64:${amd64_file}" "arm64:${arm64_file}"; do
+            arch="${pair%%:*}"; file="${pair#*:}"
+            count="$(jq '[.components[]?] | length' "${file}")"
+            if [[ "${count}" -eq 0 ]]; then
+              echo "::error::the ${arch} SBOM lists no components; syft produced an empty inventory"
+              exit 1
+            fi
+            echo "${arch} components: ${count}"
+          done
 
       - name: Upload SBOMs for attestation
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
