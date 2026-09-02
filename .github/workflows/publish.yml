@@ -23,6 +23,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
+# Single source for the signing toolchain version used by this workflow.
+# Go tool versions live in the Makefile (the repository's existing pin
+# convention); cosign is installed by an action, so it is pinned here.
+# ADR-074 moves signing into a reusable attest.yml, at which point this
+# value moves with it and stays a single source.
+env:
+  COSIGN_VERSION: v3.1.3
+
 jobs:
   publish:
     name: Build and Push Container
@@ -82,16 +90,33 @@ jobs:
           # the Makefile, helm values.yaml, and pkg/setup/setup.go.
           IMG: ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}
 
+      # cosign-release is pinned explicitly. Without it the installer's own
+      # default picks the cosign version, and that version determines the
+      # attestation bundle format and which Rekor backend entries land in --
+      # both properties of the contract we publish to users in SECURITY.md, so
+      # neither may change without a commit here. See ADR-074.
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
 
+      - name: Record cosign version
+        run: cosign version
+
+      # --new-bundle-format is passed explicitly rather than inherited from a
+      # cosign default: it is what publishes through the OCI referrers API
+      # (ghcr.io answers 404 on /referrers, so this lands via the spec's
+      # `sha256-<hex>` tag fallback) instead of a legacy `.sig`/`.att` tag. The
+      # on-registry layout is part of the published contract, so it must be our
+      # decision and not move with an installer default.
       - name: Sign container image
         run: |
           cosign sign --yes \
+            --new-bundle-format=true \
             ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}@${{ steps.push.outputs.digest }}
 
       - name: Generate SBOM
-        uses: anchore/sbom-action@v0.24.2
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           image: ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}@${{ steps.push.outputs.digest }}
           format: cyclonedx-json
@@ -100,6 +125,7 @@ jobs:
       - name: Attest SBOM
         run: |
           cosign attest --yes \
+            --new-bundle-format=true \
             --predicate sbom.cyclonedx.json \
             --type cyclonedx \
             ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}@${{ steps.push.outputs.digest }}
