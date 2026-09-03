@@ -166,13 +166,6 @@ func TestJobOutputReferencesResolve(t *testing.T) {
 // `|`, so an interpolated value is executed rather than read. Values must cross
 // into a shell through `env:`.
 func TestNoExpressionInterpolationInRunBlocks(t *testing.T) {
-	releasePath := map[string]bool{
-		"release.yml":     true,
-		"publish.yml":     true,
-		"attest.yml":      true,
-		"build-image.yml": true,
-	}
-
 	paths, err := filepath.Glob(filepath.Join(workflowDir, "*.yml"))
 	if err != nil {
 		t.Fatalf("glob workflows: %v", err)
@@ -189,7 +182,9 @@ func TestNoExpressionInterpolationInRunBlocks(t *testing.T) {
 
 	for _, p := range paths {
 		base := filepath.Base(p)
-		if !releasePath[base] {
+		// attest-selftest.yml has no run blocks worth scanning here, but the
+		// interpolation rule applies to every file that reaches the signer.
+		if !onReleasePath(base) {
 			continue
 		}
 		raw, err := os.ReadFile(p)
@@ -237,6 +232,51 @@ func workflowCallOutputs(raw []byte, t *testing.T) map[string]any {
 	return nil
 }
 
+// TestVerificationUsesExactIdentity pins two habits that would each weaken
+// verification silently.
+//
+// `--certificate-identity-regexp` is how the pre-epic SECURITY.md command
+// accepted a main-branch build as a release: a pattern naming no workflow and no
+// ref answers a weaker question than it appears to, and the weakening is
+// invisible to whoever copies it. The command we publish is as much a part of
+// the release path as the workflow that signs, so the published instructions are
+// covered too — see TestPublishedVerifyCommandsAreExact.
+//
+// A bare `gh attestation verify` reads GitHub's Attestations API rather than the
+// registry. `cosign attest` writes only to the registry, so the bare form would
+// verify a copy that does not exist here — and where both copies do exist they
+// can diverge, so it would pass on an artifact whose registry attestation is
+// gone while a consumer using cosign gets nothing.
+func TestVerificationUsesExactIdentity(t *testing.T) {
+	for _, base := range releasePathWorkflows {
+		raw, err := os.ReadFile(filepath.Join(workflowDir, base))
+		if err != nil {
+			t.Fatalf("read %s: %v", base, err)
+		}
+		body := string(raw)
+
+		for i, line := range strings.Split(body, "\n") {
+			trimmed := strings.TrimSpace(line)
+			// Comments may name these forms in order to warn against them.
+			if strings.HasPrefix(trimmed, "#") {
+				continue
+			}
+			if strings.Contains(line, "certificate-identity-regexp") {
+				t.Errorf("%s:%d uses --certificate-identity-regexp; use the exact "+
+					"--certificate-identity, which names the workflow and the ref", base, i+1)
+			}
+			// Scoped to the line, not the file. Searching `body` would let one
+			// compliant usage anywhere -- including inside a comment -- disarm
+			// the check for every other occurrence in that file, so the test
+			// would go green on exactly the silent weakening it exists to catch.
+			if strings.Contains(line, "gh attestation verify") && !strings.Contains(line, "--bundle-from-oci") {
+				t.Errorf("%s:%d uses a bare `gh attestation verify`; add --bundle-from-oci so it "+
+					"reads the registry copy rather than the GitHub Attestations API", base, i+1)
+			}
+		}
+	}
+}
+
 func sortedKeys(m map[string]string) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
@@ -244,4 +284,44 @@ func sortedKeys(m map[string]string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// TestPublishedVerifyCommandsAreExact covers the surface the original defect
+// actually shipped on: the instructions users copy.
+//
+// ADR-074 records that the pre-epic SECURITY.md command told users to pass
+// `--certificate-identity-regexp`, which accepts a `main` build as a release.
+// Fixing the workflows does not fix that; the published command is its own
+// contract, and a weakened one converts an unverified install into a falsely
+// verified one.
+//
+// Prose is allowed to name the flag — SECURITY.md warns against it by name, and
+// a test that forbade the warning would be worse than no test. Only fenced
+// command blocks are checked.
+func TestPublishedVerifyCommandsAreExact(t *testing.T) {
+	docs := []string{"../../SECURITY.md", "../../README.md", "../../RELEASE.md"}
+
+	for _, path := range docs {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			t.Fatalf("read %s: %v", path, err)
+		}
+
+		inFence := false
+		for i, line := range strings.Split(string(raw), "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), "```") {
+				inFence = !inFence
+				continue
+			}
+			if inFence && strings.Contains(line, "certificate-identity-regexp") {
+				t.Errorf("%s:%d publishes a command using --certificate-identity-regexp; "+
+					"an identity naming no workflow and no ref also accepts a branch build, "+
+					"so a user following it accepts a development image as a release",
+					filepath.Base(path), i+1)
+			}
+		}
+	}
 }
