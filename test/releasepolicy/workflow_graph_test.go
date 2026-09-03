@@ -4,6 +4,7 @@
 package releasepolicy
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -300,6 +301,21 @@ func sortedKeys(m map[string]string) []string {
 // command blocks are checked.
 func TestPublishedVerifyCommandsAreExact(t *testing.T) {
 	docs := []string{"../../SECURITY.md", "../../README.md", "../../RELEASE.md"}
+
+	// Everything under docs/ too. The published verification page lives there,
+	// and a regexp identity in a docs page is worth exactly as much to a user as
+	// one in SECURITY.md -- both are commands we tell them to run.
+	if err := filepath.WalkDir("../../docs", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && strings.HasSuffix(path, ".md") {
+			docs = append(docs, path)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk docs: %v", err)
+	}
 
 	for _, path := range docs {
 		raw, err := os.ReadFile(path)

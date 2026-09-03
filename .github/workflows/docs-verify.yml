@@ -1,0 +1,105 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Runs the commands published in docs/operations/verifying-artifacts.md against
+# a real release.
+#
+# Documentation that tells people how to verify a supply chain is itself a
+# supply-chain artifact: a command that silently stops working leaves readers
+# either unable to check what they installed, or -- worse -- running something
+# that reports success without checking what they think it checks. Static tests
+# in test/docspolicy prove the blocks parse and pin an exact identity. Only
+# executing them proves they still work.
+#
+# The published TAG is substituted for the newest release, so this fails when
+# the docs drift from what the pipeline actually produces, not only when the
+# docs change.
+
+name: Docs Verify
+
+on:
+  pull_request:
+    paths:
+      - 'docs/operations/verifying-artifacts.md'
+      - '.github/workflows/docs-verify.yml'
+  schedule:
+    # Weekly. The commands depend on Rekor, GHCR and the release assets, none of
+    # which this repository controls.
+    - cron: '0 7 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  run-published-commands:
+    name: Run the published verification commands
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+
+      - name: Install crane
+        uses: imjasonh/setup-crane@31b88efe9de28ae0ffa220711af4b60be9b87d81 # v0.4
+
+      - name: Resolve the newest release
+        id: rel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="$(gh release list --repo "${GITHUB_REPOSITORY}" --exclude-drafts \
+                   --limit 1 --json tagName --jq '.[0].tagName')"
+          [[ -n "${tag}" ]] || { echo "::error::no published release to verify against"; exit 1; }
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "verifying the documented commands against ${tag}"
+
+      # Blocks run in one shell, in order, so variables carry between them
+      # exactly as they do for a reader working down the page.
+      - name: Extract and run every published command
+        env:
+          TAG: ${{ steps.rel.outputs.tag }}
+        run: |
+          set -euo pipefail
+          python3 - "${TAG}" <<'PY'
+          import re, sys
+          tag = sys.argv[1]
+          src = open("docs/operations/verifying-artifacts.md").read()
+          blocks = re.findall(r"```bash\n(.*?)```", src, re.S)
+          if not blocks:
+              raise SystemExit("no bash blocks found in the verification page")
+          out = ["set -euo pipefail"]
+          for i, b in enumerate(blocks, 1):
+              # Point every block at the release under test rather than the tag
+              # the page happens to be pinned to.
+              b = re.sub(r"(?m)^TAG=\S+$", f"TAG={tag}", b)
+              # Installing is covered by the installer's own tests; doing it here
+              # would write to /usr/local/bin for no extra signal.
+              b = b.replace('bash installer -v "${TAG}"', 'echo "[skipped: install]"')
+              out.append(f'echo "::group::block {i}"')
+              out.append(b)
+              out.append('echo "::endgroup::"')
+          open("/tmp/published-commands.sh", "w").write("\n".join(out))
+          print(f"extracted {len(blocks)} blocks, pinned to {tag}")
+          PY
+          bash /tmp/published-commands.sh
+
+      - name: Confirm the extracted artifacts are real
+        run: |
+          set -euo pipefail
+          # A command can exit 0 and produce nothing. The page tells readers to
+          # extract an SBOM; check it actually arrived.
+          [[ -s sbom-linux-amd64.json ]] || {
+            echo "::error::the documented SBOM extraction produced no file"; exit 1; }
+          count="$(jq -r '.components | length' sbom-linux-amd64.json)"
+          [[ "${count}" -gt 0 ]] || {
+            echo "::error::the extracted SBOM has no components"; exit 1; }
+          echo "extracted SBOM carries ${count} components"

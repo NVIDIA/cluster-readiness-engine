@@ -302,7 +302,7 @@ Use this checklist before going live. Each item addresses a specific risk surfac
 | **RBAC audit** | Required | Run `kubectl get clusterrole nvcre-manager-role -o yaml` and verify the permissions match your security requirements. |
 | **TLS for metrics** | Recommended | The default ServiceMonitor uses `insecureSkipVerify: true`. Configure cert-manager to issue a serving certificate for the controller's metrics endpoint. |
 | **Controller node affinity** | Recommended | Schedule the controller on infrastructure nodes, not GPU nodes, using the `manager.affinity` chart value to avoid consuming GPU resources. |
-| **Image provenance** | Recommended | Pin container images by digest rather than tag. Scan images with your vulnerability tooling before deployment. |
+| **Image provenance** | Recommended | Verify the image signature and its SLSA provenance against the exact signing identity before deploying, then pin by the digest you verified rather than by tag. The provenance names the commit, ref and workflow that built it. See [Verifying release artifacts](./verifying-artifacts.md). Scan images with your vulnerability tooling before deployment. |
 | **Pod Security Standards** | Verify | The controller runs as non-root with `seccompProfile: RuntimeDefault`, a read-only root filesystem, and all capabilities dropped. Verify with `kubectl get pod -n nvcre -o yaml`. |
 | **CRD backup** | Recommended | Include the NVCRE CRDs in your cluster backup strategy. Certification resources contain node health state that may be needed for audit. |
 
