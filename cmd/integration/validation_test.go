@@ -30,10 +30,13 @@ type validationCause struct {
 	Message string `json:"message"`
 }
 
-// TestCertificationValidation exercises the CEL validation rules on the
-// Certification CRD schema against a real API server: a resources override
-// whose request exceeds its matching limit is rejected at admission, while
-// partial and correctly ordered overrides are accepted (issue #83).
+// TestCertificationValidation exercises the schema validation rules on the
+// Certification CRD (CEL rules and OpenAPI patterns) against a real API
+// server. The resources cases check that an override whose request exceeds
+// its matching limit is rejected at admission while partial and correctly
+// ordered overrides are accepted (issue #83). The maxBytes cases check that
+// documented values pass the pattern and invalid units are rejected (issue
+// #283).
 func TestCertificationValidation(t *testing.T) {
 	suite := &testutil.IntegrationTestSuite{}
 	suite.Environment.CRDDirectoryPaths = []string{"../../helm/cluster-readiness-engine/crds"}
