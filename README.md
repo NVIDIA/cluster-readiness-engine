@@ -77,7 +77,7 @@ The installer places `nvcrectl` on your `$PATH` and creates a `kubectl-nvcre` sy
 It verifies the binary it downloads against that release's Sigstore bundle before installing
 it, using `cosign` if you have it and fetching a digest-pinned copy if you do not. If it
 cannot verify, it stops rather than installing — pass `--skip-verify` to override that
-deliberately. Releases before `v0.2.0` carry no bundles.
+deliberately. Releases before `v0.2.0-rc.1` carry no bundles.
 
 Piping to `bash` gets you TLS integrity in transit and nothing more: the script runs before
 anything has checked the script itself. To verify what you are about to run, download it and

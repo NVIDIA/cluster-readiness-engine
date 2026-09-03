@@ -134,14 +134,27 @@ Only then is the release published, after which the assets are re-fetched anonym
 and re-verified over the channel a user actually takes. If anything fails after
 publication, the release is returned to draft.
 
-To verify manually:
+To verify manually, check the signature — not the checksum:
 
 ```bash
-VERSION=v0.1.0
-curl -fsSLO "https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${VERSION}/checksums.txt"
-curl -fsSLO "https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${VERSION}/nvcrectl-linux-amd64"
-sha256sum --check --ignore-missing checksums.txt
+VERSION=v0.2.0-rc.1
+BASE="https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${VERSION}"
+curl -fsSLO "${BASE}/nvcrectl-linux-amd64"
+curl -fsSLO "${BASE}/nvcrectl-linux-amd64.sigstore.json"
+
+cosign verify-blob-attestation \
+  --bundle nvcrectl-linux-amd64.sigstore.json \
+  --type https://slsa.dev/provenance/v1 \
+  --certificate-identity "https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${VERSION}" \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  nvcrectl-linux-amd64
 ```
+
+`checksums.txt` is still published and `installer` still checks it, but do not mistake it
+for this. It is served from the same origin as the binary and is itself unsigned, so
+whoever can replace one can replace the other in the same write: it detects corruption,
+not tampering. See [SECURITY.md](SECURITY.md#supply-chain) for the image, chart and
+installer equivalents.
 
 Releases up to and including `v0.1.0-rc.7` predate the checksum step and carry no
 `checksums.txt`.
@@ -186,6 +199,16 @@ fails when the tag already has a *published* release. That is deliberate: the ac
 that creates the release honours `draft:` only on creation, so re-running against a
 published tag would upload freshly built, unverified assets into a live release. Cut the
 next patch version instead.
+
+**`installer` refused: "Signature verification failed".** It checks the binary against
+that release's Sigstore bundle and will not install one it cannot verify. Read the cosign
+output printed above the error — it distinguishes a genuine identity or signature mismatch
+from verification that could not complete, such as Rekor being unreachable. A mismatch on
+a release you cut is worth investigating before anything else.
+
+**`installer` refused: "Could not download &lt;asset&gt;.sigstore.json".** That release
+carries no bundles; anything before `v0.2.0-rc.1` predates them. Install a newer release,
+or pass `--skip-verify` if you accept installing something nothing has vouched for.
 
 **The Helm push failed on `check-clean-version`.** The tag was not clean. Delete the tag
 if nothing published, commit your work, and tag again.

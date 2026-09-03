@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -18,9 +19,18 @@ import (
 // Extracted from the real script rather than copied. This covers the decision --
 // when to verify, when to refuse, when to proceed -- and deliberately not
 // `fetchReleaseAsset` or `resolveCosign`, which are stubbed below because they
-// need the network. Those two are exercised end-to-end against a real release
-// instead; what is pinned here is that no path reaches an install without
-// either a verified signature or someone having typed --skip-verify.
+// need the network.
+//
+// Those two have **no automated coverage**. They were exercised by hand against
+// v0.2.0-rc.1 when this landed, which is not the same thing and will not catch a
+// regression: a change to the asset-name escaping, to `gh release download
+// --pattern`, or to the bootstrap digest check would ship without failing a
+// test. Adding that coverage needs either a local asset server or a live
+// release, and is worth doing.
+//
+// What is pinned here is narrower and still worth having: no path reaches an
+// install without either a verified signature or someone having typed
+// --skip-verify.
 func verifyBlock(t *testing.T) string {
 	t.Helper()
 
@@ -70,13 +80,16 @@ SIGSTORE_IDENTITY_PREFIX="https://github.com/${GH_REPO}/.github/workflows/attest
 
 fetchReleaseAsset() { return %d; }
 resolveCosign()     { [ %d -eq 0 ] && echo "stub-cosign" ; return %d; }
-stub-cosign()       { return %d; }
 
-# The block calls cosign through "${COSIGN_BIN}", so route that to the stub.
-stub_cosign_wrapper() { return %d; }
+# The block invokes cosign through "${COSIGN_BIN}", which resolveCosign sets to
+# this function. It records its arguments so the cases can assert on the flags:
+# a stub that ignores them lets --certificate-identity be swapped for
+# --certificate-identity-regexp, or --type dropped, without any test noticing.
+stub-cosign() { printf '%%s\n' "$*" > "${TEMP_DIR}/cosign-args"; return %d; }
 
 %s
 
+[ -f "${TEMP_DIR}/cosign-args" ] && echo "COSIGN_ARGS: $(cat "${TEMP_DIR}/cosign-args")"
 echo "PROCEEDED"
 `
 
@@ -98,7 +111,7 @@ func runVerify(t *testing.T, block string, c verifyCase) (string, bool) {
 		skip = "true"
 	}
 	script := fmt.Sprintf(verifyHarness, skip,
-		c.fetchRC, c.cosignRC, c.cosignRC, c.verifyRC, c.verifyRC, block)
+		c.fetchRC, c.cosignRC, c.cosignRC, c.verifyRC, block)
 
 	path := filepath.Join(t.TempDir(), "verify.sh")
 	if err := os.WriteFile(path, []byte(script), 0o600); err != nil {
@@ -187,30 +200,174 @@ func TestInstallerVerifiesOrRefuses(t *testing.T) {
 			if got := strings.Contains(out, "VERIFIED"); got != c.wantVerify {
 				t.Errorf("verified-path ran = %v, want %v\noutput: %s", got, c.wantVerify, out)
 			}
+			if !c.wantVerify {
+				return
+			}
+			// The flags are the verification. An exact identity that becomes a
+			// regexp, or a missing --type, still "passes" a stub that ignores
+			// its arguments -- and both are real weakenings.
+			identity := "--certificate-identity https://github.com/NVIDIA/cluster-readiness-engine" +
+				"/.github/workflows/attest.yml@refs/tags/v0.2.0-rc.1"
+			for _, want := range []string{
+				identity,
+				"--type https://slsa.dev/provenance/v1",
+				"--certificate-oidc-issuer https://token.actions.githubusercontent.com",
+			} {
+				if !strings.Contains(out, want) {
+					t.Errorf("cosign was not called with %q\noutput: %s", want, out)
+				}
+			}
+			if strings.Contains(out, "--certificate-identity-regexp") {
+				t.Error("cosign was called with --certificate-identity-regexp; " +
+					"an identity naming no workflow and no ref also accepts a branch build")
+			}
 		})
 	}
 }
 
-// TestInstallerSkipVerifyIsExplicit pins that skipping is spelled out rather
-// than inferred. The flag is long on purpose: a single letter is the kind of
-// thing that gets copied out of an unrelated command line.
-func TestInstallerSkipVerifyIsExplicit(t *testing.T) {
+// argParseBlock returns the installer's argument pre-parsing plus the getopts
+// loop -- the code that connects `--skip-verify` on the command line to the
+// SKIP_VERIFY variable the verification block reads.
+func argParseBlock(t *testing.T) string {
+	t.Helper()
+
 	raw, err := os.ReadFile(installerPath)
 	if err != nil {
 		t.Fatalf("read installer: %v", err)
 	}
-	body := string(raw)
+	lines := strings.Split(string(raw), "\n")
 
-	if !strings.Contains(body, "--skip-verify") {
-		t.Error("installer has no --skip-verify flag; verification must be skippable only on request")
+	start, getopts := -1, -1
+	for i, l := range lines {
+		if start == -1 && strings.HasPrefix(l, "ARGS=()") {
+			start = i
+		}
+		if start != -1 && strings.HasPrefix(l, "while getopts") {
+			getopts = i
+			break
+		}
 	}
-	if strings.Contains(body, `SKIP_VERIFY=true`+"\n") && !strings.Contains(body, `--skip-verify) SKIP_VERIFY=true`) {
-		t.Error("SKIP_VERIFY is set somewhere other than the --skip-verify flag; " +
-			"it must never be inferred from a missing tool or a failed download")
+	if start == -1 || getopts == -1 {
+		t.Fatal("could not find the argument parsing in installer")
 	}
-	// getopts handles short flags only. A single-letter form would mean the
-	// long flag is decorative.
-	if strings.Contains(body, `getopts "d:pv:s"`) || strings.Contains(body, `getopts "d:psv:"`) {
-		t.Error("skip-verify has a short-flag form; it must be long-only")
+	for i := getopts; i < len(lines); i++ {
+		if lines[i] == "done" {
+			return strings.Join(lines[start:i+1], "\n")
+		}
+	}
+	t.Fatal("could not find the end of the getopts loop")
+	return ""
+}
+
+// TestInstallerSkipVerifyFlagIsWired runs the real argument parsing.
+//
+// Without this, deleting the `--skip-verify)` case arm passes every other test
+// in this file: the verification block is exercised by setting SKIP_VERIFY
+// directly, so the flag can quietly become a no-op while remaining documented
+// in usage text and error messages. A flag that is advertised and does nothing
+// is worse than an absent one.
+func TestInstallerSkipVerifyFlagIsWired(t *testing.T) {
+	block := argParseBlock(t)
+
+	cases := []struct {
+		name string
+		args string
+		want string // "SKIP_VERIFY=<v> VERSION=<v> PRERELEASE=<v> DIR=<v>"
+	}{
+		{
+			name: "no arguments", args: ``,
+			want: "SKIP_VERIFY=false VERSION= PRERELEASE=false DIR=/usr/local/bin",
+		},
+		{
+			name: "skip-verify alone", args: `--skip-verify`,
+			want: "SKIP_VERIFY=true VERSION= PRERELEASE=false DIR=/usr/local/bin",
+		},
+		{
+			name: "short flags still parse", args: `-v v1.2.3 -d /opt/bin -p`,
+			want: "SKIP_VERIFY=false VERSION=v1.2.3 PRERELEASE=true DIR=/opt/bin",
+		},
+		{
+			name: "skip-verify alongside short flags", args: `--skip-verify -v v1.2.3`,
+			want: "SKIP_VERIFY=true VERSION=v1.2.3 PRERELEASE=false DIR=/usr/local/bin",
+		},
+		{
+			name: "skip-verify after short flags", args: `-v v1.2.3 --skip-verify`,
+			want: "SKIP_VERIFY=true VERSION=v1.2.3 PRERELEASE=false DIR=/usr/local/bin",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			script := fmt.Sprintf(`
+set -uo pipefail
+usage() { echo "USAGE"; exit 2; }
+INSTALL_DIR="/usr/local/bin"
+PRERELEASE=false
+VERSION=""
+SKIP_VERIFY=false
+set -- %s
+
+%s
+
+echo "SKIP_VERIFY=${SKIP_VERIFY} VERSION=${VERSION} PRERELEASE=${PRERELEASE} DIR=${INSTALL_DIR}"
+`, c.args, block)
+
+			path := filepath.Join(t.TempDir(), "args.sh")
+			if err := os.WriteFile(path, []byte(script), 0o600); err != nil {
+				t.Fatalf("write harness: %v", err)
+			}
+			out, err := exec.Command("bash", path).CombinedOutput()
+			if err != nil {
+				t.Fatalf("argument parsing failed: %v\n%s", err, out)
+			}
+			if got := strings.TrimSpace(string(out)); got != c.want {
+				t.Errorf("argument parsing produced the wrong state\n got: %s\nwant: %s", got, c.want)
+			}
+		})
+	}
+}
+
+// TestInstallerSkipVerifyIsNeverInferred pins that SKIP_VERIFY is only ever set
+// by the flag.
+//
+// The whole point of the long flag is that verification is skipped when someone
+// asks, and never because a tool was missing or a download failed. An earlier
+// version of this test tried to express that with substring matching and could
+// not fail: it looked for `SKIP_VERIFY=true` followed by a newline, but the real
+// line ends `SKIP_VERIFY=true ;;`, so the check was dead. Assert on every
+// assignment instead, which is a property rather than a spelling.
+func TestInstallerSkipVerifyIsNeverInferred(t *testing.T) {
+	raw, err := os.ReadFile(installerPath)
+	if err != nil {
+		t.Fatalf("read installer: %v", err)
+	}
+
+	assign := regexp.MustCompile(`SKIP_VERIFY=`)
+	for i, line := range strings.Split(string(raw), "\n") {
+		if !assign.MatchString(line) {
+			continue
+		}
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, "#"):
+		case trimmed == "SKIP_VERIFY=false":
+		case strings.HasPrefix(trimmed, `--skip-verify) SKIP_VERIFY=true`):
+		case strings.Contains(trimmed, `"${SKIP_VERIFY}"`):
+		default:
+			t.Errorf("installer:%d assigns SKIP_VERIFY outside the --skip-verify flag: %q\n"+
+				"skipping verification must never be inferred from a missing tool or a failed download",
+				i+1, trimmed)
+		}
+	}
+
+	// getopts takes short flags only, so a short spelling would mean the long
+	// flag is decorative. Parse the real optstring rather than matching a few
+	// guessed spellings of it.
+	m := regexp.MustCompile(`getopts\s+"([^"]*)"`).FindSubmatch(raw)
+	if m == nil {
+		t.Fatal("could not find the getopts optstring in installer")
+	}
+	if strings.Contains(string(m[1]), "s") {
+		t.Errorf("getopts optstring %q accepts a short -s flag; skip-verify must be long-only", m[1])
 	}
 }

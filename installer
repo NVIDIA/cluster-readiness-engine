@@ -509,10 +509,16 @@ fetchReleaseAsset() {
     [[ -n "${url}" ]] || return 1
     curl -fsSL -H "Authorization: token ${GH_TOKEN}" \
       -H "Accept: application/octet-stream" -o "${dest}" "${url}" 2>/dev/null || return 1
+    [[ -s "${dest}" ]] || return 1
     return 0
   fi
 
+  # All three branches report success only for a file that actually arrived. An
+  # empty 200 body would otherwise reach cosign and be reported as a signature
+  # failure, which sends the reader looking for tampering rather than for the
+  # download problem they actually have.
   curl -fsSL -o "${dest}" "${GH_RELEASE_URL}/${VERSION}/${name}" 2>/dev/null || return 1
+  [[ -s "${dest}" ]] || return 1
 }
 
 # resolveCosign prints a usable cosign path on stdout. Progress and diagnostics
@@ -535,7 +541,15 @@ resolveCosign() {
     return 1
   fi
 
-  chmod +x "${dest}"
+  chmod +x "${dest}" || return 1
+
+  # chmod succeeds on a noexec mount -- the kernel blocks exec(), not chmod() --
+  # and TEMP_DIR lives wherever mktemp resolves, which is /tmp on hosts that
+  # commonly mount it noexec. Prove it runs here, so an unrunnable cosign is
+  # reported as a local problem instead of surfacing later as a failed
+  # signature, which reads as tampering.
+  "${dest}" version >/dev/null 2>&1 || return 1
+
   echo "${dest}"
 }
 
@@ -546,20 +560,26 @@ else
 
   BUNDLE="${BINARY_NAME}.sigstore.json"
   if ! fetchReleaseAsset "${BUNDLE}" "${TEMP_DIR}/${BUNDLE}"; then
-    err "Could not download ${BUNDLE} for ${VERSION}, so the download cannot be verified. Releases before v0.2.0 carry no bundles — install one of those with --skip-verify if you accept that, or pick a newer release."
+    err "Could not download ${BUNDLE} for ${VERSION}, so the download cannot be verified. Releases before v0.2.0-rc.1 carry no bundles — install one of those with --skip-verify if you accept that, or pick a newer release."
   fi
 
   if ! COSIGN_BIN="$(resolveCosign)"; then
-    err "cosign is required to verify the download and could not be obtained for ${OS}-${ARCH}. Install cosign (https://docs.sigstore.dev/cosign/installation/) and re-run, or re-run with --skip-verify to install without verification."
+    err "cosign is required to verify the download and could not be obtained or run for ${OS}-${ARCH} (a noexec temp directory will also land here). Install cosign (https://docs.sigstore.dev/cosign/installation/) and re-run, or re-run with --skip-verify to install without verification."
   fi
 
+  # cosign's own output is kept and printed on failure. Every failure otherwise
+  # reads identically -- bad signature, expired certificate, Rekor being
+  # unreachable, a malformed bundle -- and an outage that looks like tampering
+  # is how people learn to ignore this check.
+  VERIFY_LOG="${TEMP_DIR}/cosign-verify.log"
   if ! "${COSIGN_BIN}" verify-blob-attestation \
       --bundle "${TEMP_DIR}/${BUNDLE}" \
       --type "https://slsa.dev/provenance/v1" \
       --certificate-identity "${SIGSTORE_IDENTITY_PREFIX}/${VERSION}" \
       --certificate-oidc-issuer "${SIGSTORE_ISSUER}" \
-      "${TEMP_DIR}/${BINARY_NAME}" >/dev/null 2>&1; then
-    err "Signature verification failed for ${BINARY_NAME} ${VERSION}. This binary is not what ${GH_REPO} published for that tag — not installing it."
+      "${TEMP_DIR}/${BINARY_NAME}" >"${VERIFY_LOG}" 2>&1; then
+    sed 's/^/    /' "${VERIFY_LOG}" >&2 || true
+    err "Signature verification failed for ${BINARY_NAME} ${VERSION}. Either this is not what ${GH_REPO} published for that tag, or verification could not complete — the cosign output above says which. Not installing it."
   fi
 
   ok "Signature verified."
