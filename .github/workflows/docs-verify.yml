@@ -75,6 +75,17 @@ jobs:
           tag="$(gh release list --repo "${GITHUB_REPOSITORY}" --exclude-drafts \
                    --limit 1 --json tagName --jq '.[0].tagName')"
           [[ -n "${tag}" ]] || { echo "::error::no published release to verify against"; exit 1; }
+
+          # This tag is interpolated into a generated shell script below, and
+          # git accepts $( ), backticks, ; and & inside a tag name -- so
+          # `TAG=v1.0$(id)` would execute. release.yml refuses to release from
+          # anything that is not vMAJOR.MINOR.PATCH[-prerelease], but a release
+          # created through the API or the UI never passes through that check,
+          # and this workflow reads whatever exists.
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::refusing to use tag '${tag}': not vMAJOR.MINOR.PATCH[-prerelease]"
+            exit 1
+          fi
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
           echo "verifying the documented commands against ${tag}"
 
@@ -96,7 +107,7 @@ jobs:
           for i, b in enumerate(blocks, 1):
               # Point every block at the release under test rather than the tag
               # the page happens to be pinned to.
-              b, n = re.subn(r"(?m)^TAG=\S+$", f"TAG={tag}", b)
+              b, n = re.subn(r"(?m)^TAG=\S+$", lambda _: f"TAG={tag}", b)
               if "TAG=" in blocks[i - 1] and n == 0:
                   raise SystemExit(
                       f"block {i} sets TAG but the substitution did not fire; "

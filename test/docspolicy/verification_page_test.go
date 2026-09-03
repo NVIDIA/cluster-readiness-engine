@@ -78,22 +78,68 @@ func TestVerificationPagePinsAnExactIdentity(t *testing.T) {
 			"an identity naming no workflow and no ref also accepts a branch build")
 	}
 
+	// Per command, not across the page. A global substring check passes as soon
+	// as one command somewhere pins the identity, so a page could grow a second
+	// `cosign verify` with no constraints at all and still look compliant --
+	// and that unconstrained command is the one a reader would copy.
+	cmds := cosignVerifyCommands(joined)
+	if len(cmds) == 0 {
+		t.Fatal("the verification page publishes no cosign verify commands")
+	}
+
 	// The whole identity, repository included. Checking only the
 	// `/.github/workflows/attest.yml@refs/tags/` suffix would accept a page
 	// that pinned some other repository's workflow -- an identity under which
 	// cosign would happily verify an artifact NVIDIA never built. The suffix is
 	// the part that looks security-relevant; the origin is the part that is.
-	wantIdentity := "https://github.com/NVIDIA/cluster-readiness-engine" +
+	const wantIdentity = "https://github.com/NVIDIA/cluster-readiness-engine" +
 		"/.github/workflows/attest.yml@refs/tags/"
-	if !strings.Contains(joined, wantIdentity) {
-		t.Errorf("no published command pins the identity %q; "+
-			"it must name this repository, the signing workflow and the tag", wantIdentity)
+
+	for _, c := range cmds {
+		flat := strings.Join(strings.Fields(c), " ")
+		if !strings.Contains(flat, "--certificate-identity") {
+			t.Errorf("published command pins no --certificate-identity: %s", flat)
+			continue
+		}
+		// The identity may be inlined or passed via ${ID}; accept the variable
+		// only because the block that sets it is checked below.
+		if !strings.Contains(flat, wantIdentity) && !strings.Contains(flat, "${ID}") {
+			t.Errorf("published command does not pin this repository's identity: %s", flat)
+		}
+		if !strings.Contains(flat, "--certificate-oidc-issuer") {
+			t.Errorf("published command pins no --certificate-oidc-issuer, so any "+
+				"issuer that can mint a matching SAN is accepted: %s", flat)
+		}
 	}
 
-	if !strings.Contains(joined, "https://token.actions.githubusercontent.com") {
-		t.Error("no published command pins --certificate-oidc-issuer; " +
-			"without it any issuer that can mint a matching SAN is accepted")
+	// Whatever ${ID} and ${ISSUER} are set to must themselves be right.
+	if !strings.Contains(joined, wantIdentity) {
+		t.Errorf("no block defines the identity %q", wantIdentity)
 	}
+	if !strings.Contains(joined, "https://token.actions.githubusercontent.com") {
+		t.Error("no block defines the Sigstore OIDC issuer")
+	}
+}
+
+// cosignVerifyCommands returns each `cosign verify*` invocation, joined across
+// its backslash continuations.
+func cosignVerifyCommands(text string) []string {
+	var out []string
+	lines := strings.Split(text, "\n")
+	for i := 0; i < len(lines); i++ {
+		t := strings.TrimSpace(lines[i])
+		// Skip the retry-wrapper form and comments; match a real invocation.
+		if !strings.HasPrefix(t, "cosign verify") {
+			continue
+		}
+		cmd := t
+		for strings.HasSuffix(strings.TrimSpace(cmd), "\\") && i+1 < len(lines) {
+			i++
+			cmd = strings.TrimSuffix(strings.TrimSpace(cmd), "\\") + " " + strings.TrimSpace(lines[i])
+		}
+		out = append(out, cmd)
+	}
+	return out
 }
 
 // TestVerificationPageIsInTheNav keeps the page reachable.
