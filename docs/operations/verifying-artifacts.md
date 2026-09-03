@@ -42,6 +42,10 @@ The trust anchor is the `cosign` you already have, not anything inside the scrip
 is the point: `installer` verifies what it *installs*, but it cannot verify itself, and
 neither can any other single-file installer.
 
+Run the two commands back to back. Verifying a file and then executing it leaves a window
+in which something with write access could swap it — small, and it requires a compromise
+that is already worse than this, but it is a window and not a proof.
+
 From `v0.2.0-rc.1` onward the installer checks the binary it downloads against that
 release's bundle and refuses to install if it cannot. `--skip-verify` overrides that and
 is never inferred from a missing tool.
@@ -136,6 +140,10 @@ STATEMENT="$(cosign verify-attestation --type slsaprovenance1 \
   --certificate-oidc-issuer "${ISSUER}" \
   "${IMAGE}:${TAG}" 2>/dev/null | jq -r '.payload' | head -1 | base64 -d)"
 
+# An empty STATEMENT means verification failed, not that there is nothing to say.
+# Without this the jq below prints nothing and exits 0.
+[[ -n "${STATEMENT}" ]] || { echo "provenance verification failed" >&2; exit 1; }
+
 jq -r '{
   repository: .predicate.buildDefinition.externalParameters.repository,
   ref:        .predicate.buildDefinition.externalParameters.ref,
@@ -157,10 +165,13 @@ Confirm the commit is the one the tag points at:
 git ls-remote https://github.com/NVIDIA/cluster-readiness-engine "refs/tags/${TAG}"
 ```
 
-`head -1` above is deliberate. A retried signing attempt can leave more than one valid
-attestation on a digest, which is expected and is not tampering — but it means `.payload`
-can return several lines, and feeding all of them to `base64 -d` produces nonsense. Take
-one, or loop and require every statement to agree.
+`head -1` above is deliberate, and it is also why the `git ls-remote` check is **not
+optional**. A retried signing attempt can leave more than one valid attestation on a
+digest — expected, and not tampering — so `.payload` can return several lines, and feeding
+all of them to `base64 -d` produces nonsense. Taking the first is what makes the command
+runnable; comparing the commit it reports against the tag is what makes taking the first
+safe. Do both, or loop over every line and require each statement to agree before
+trusting any of them.
 
 ## Verifying the Helm chart before installing it
 
@@ -183,12 +194,33 @@ cosign verify-attestation --type slsaprovenance1 \
 helm pull "oci://${CHART}@${DIGEST}"
 ```
 
-Pulling by digest is what closes the loop. Content addressing means you receive those
-exact bytes or an error, so there is no window between verifying and installing.
+Pulling by digest is what makes the download match what you verified: content addressing
+means you receive those exact bytes or an error.
+
+Then install **the file you pulled**, not the tag:
+
+```bash
+IMAGE_DIGEST="$(crane digest "${IMAGE}:${TAG}")"
+
+helm install nvcre ./cluster-readiness-engine*.tgz \
+  --namespace nvcre --create-namespace \
+  --set manager.image.digest="${IMAGE_DIGEST}"
+```
+
+Two things there are doing work.
+
+Installing from the local `.tgz` rather than `oci://…/cluster-readiness-engine --version
+<tag>` matters because the second form re-resolves the tag at install time, which throws
+away everything you just checked.
+
+`manager.image.digest` matters for the same reason one level down. The chart otherwise
+deploys `manager:<tag>`, and a tag can be repointed after you verified it. Setting the
+digest pins the image to the bytes whose signature you checked. Leave it unset and you
+get the tag, which is fine for a development cluster and not what you did this work for.
 
 ## Verifying a downloaded binary and its SBOM
 
-Each `nvcrectl-*` binary ships **two** bundles whose names differ by one segment, and
+Each `nvcrectl-*` binary ships **three** bundles whose names differ by one segment, and
 they prove different things:
 
 | Bundle | Verify against | Proves |
@@ -206,6 +238,7 @@ curl -fsSLO "${BASE}/${ASSET}"
 curl -fsSLO "${BASE}/${ASSET}.sigstore.json"
 curl -fsSLO "${BASE}/${ASSET}.cyclonedx.json"
 curl -fsSLO "${BASE}/${ASSET}.cyclonedx.sigstore.json"
+curl -fsSLO "${BASE}/${ASSET}.cyclonedx.json.sigstore.json"
 
 # 1. the binary is from this release
 cosign verify-blob-attestation \
@@ -222,11 +255,26 @@ cosign verify-blob-attestation \
   --certificate-identity "${ID}" \
   --certificate-oidc-issuer "${ISSUER}" \
   "${ASSET}"
+
+# 3. the SBOM FILE on your disk has not been altered -- subject is the FILE
+cosign verify-blob-attestation \
+  --bundle "${ASSET}.cyclonedx.json.sigstore.json" \
+  --type https://slsa.dev/provenance/v1 \
+  --certificate-identity "${ID}" \
+  --certificate-oidc-issuer "${ISSUER}" \
+  "${ASSET}.cyclonedx.json"
 ```
+
+Step 3 is the one that is easy to skip and the one that protects the file you are about
+to read. Steps 1 and 2 both take the **binary** as their subject, so neither of them looks
+at `${ASSET}.cyclonedx.json` at all: replace that file with a doctored SBOM and both still
+report `Verified OK`. Only step 3 fails, with `provided artifact digests do not match
+digests in statement`.
 
 ### Reading the SBOM
 
-The SBOM is published as a plain asset, so no extraction is needed for binaries:
+Read it only after step 3 above. The SBOM is published as a plain asset, so no extraction
+is needed for binaries:
 
 ```bash
 jq -r '.metadata.component.name, (.components | length)' "${ASSET}.cyclonedx.json"
@@ -254,21 +302,63 @@ deferred `mv` is what makes the failure visible.
 
 ## Air-gapped verification
 
-`cosign verify` needs the Sigstore trust root and, by default, fetches it. On a machine
-with no egress, fetch it once somewhere with network:
+`cosign verify` needs the Sigstore trust root. Copying `~/.sigstore` across is **not
+enough**: cosign v3.1.3 attempts a TUF refresh on every verification and fails with
+`tuf refresh failed: ... connection refused` rather than falling back to that cache. It
+fails closed, which is the right direction, but it does not verify.
+
+Export the trust root as a file instead, on a machine with network:
 
 ```bash
 cosign initialize
-tar -czf sigstore-root.tgz -C "${HOME}" .sigstore
+cp ~/.sigstore/root/tuf-repo-cdn.sigstore.dev/targets/trusted_root.json .
 ```
 
-Move `sigstore-root.tgz` and the artifacts across, then unpack it into `$HOME` on the
-target. Verification is otherwise unchanged and needs no network, because the bundle
-carries the signature, the certificate and the inclusion proof.
+Move `trusted_root.json` across with the artifacts, and pass it explicitly. That path
+takes no network at all:
+
+```bash
+cosign verify-blob-attestation \
+  --trusted-root ./trusted_root.json \
+  --bundle "${ASSET}.sigstore.json" \
+  --type https://slsa.dev/provenance/v1 \
+  --certificate-identity "${ID}" \
+  --certificate-oidc-issuer "${ISSUER}" \
+  "${ASSET}"
+```
+
+`--trusted-root` works on every `cosign verify*` command. The bundle already carries the
+signature, the certificate and the inclusion proof, so with the trust root on disk there
+is nothing left to fetch.
+
+Refresh `trusted_root.json` periodically. It pins the Sigstore keys, and a stale copy
+will eventually reject signatures made with newer ones.
 
 Blob bundles are the easy case: an asset and its `.sigstore.json` are two files, and
 `cosign verify-blob-attestation` reads both from disk. Registry attestations need the
 registry, so mirror the image and chart with `crane copy` before disconnecting.
+
+Mirroring the bytes is half the job. The cluster still has to pull from the mirror, so
+point the chart at it — see [Air-gapped and disconnected
+environments](./deployment.md#air-gapped-and-disconnected-environments) for the
+`manager.image.repository` override. Verifying artifacts and then deploying a reference
+the cluster cannot reach leaves you with a correct signature and a pod that never starts.
+
+## Enforcing this automatically
+
+Everything above is something a person runs. Tools that sync from the registry — Flux
+`OCIRepository`, Argo CD, Argo CD Image Updater — do not wait for the GitHub Release, so
+the release gate does not protect them; they see the image and chart as soon as those are
+pushed. They are the consumers who most need the identity contract enforced
+declaratively rather than typed.
+
+Flux supports this natively with [`spec.verify`](https://fluxcd.io/flux/components/source/ocirepositories/#verification)
+using the `cosign` provider, matching the same OIDC issuer and identity used above.
+Whether that path works end to end against a real Flux version is still being confirmed
+(issue #267), so this page does not yet publish a manifest for it — an untested
+verification config is exactly the kind of false assurance the rest of this page exists to
+avoid. Admission-policy samples for Kyverno and the Sigstore policy-controller are tracked
+in issue #272.
 
 ## Troubleshooting
 

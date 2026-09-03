@@ -84,6 +84,15 @@ jobs:
               # Installing is covered by the installer's own tests; doing it here
               # would write to /usr/local/bin for no extra signal.
               b = b.replace('bash installer -v "${TAG}"', 'echo "[skipped: install]"')
+              # helm install needs a cluster. The rest of the chart flow --
+              # verify, verify-attestation, pull by digest -- still runs, and
+              # the chart's own digest handling is covered by test/helm.
+              # Anchored to the command, not to a trailing blank line: when the
+              # install is the last thing in a block there is no blank line to
+              # match, the substitution silently misses, and CI runs a real
+              # helm install against whatever kubeconfig it has.
+              b = re.sub(r"(?m)^helm install nvcre(?:.*\\\n)*.*$",
+                         'echo "[skipped: needs a cluster]"', b)
               out.append(f'echo "::group::block {i}"')
               out.append(b)
               out.append('echo "::endgroup::"')
