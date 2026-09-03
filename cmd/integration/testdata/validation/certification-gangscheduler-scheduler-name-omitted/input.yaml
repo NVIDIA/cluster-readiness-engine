@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# gangScheduler present but schedulerName left out entirely: still rejected, so
+# a queue can never be configured without naming the scheduler that reads it.
+# SchedulerName is a plain string without omitempty, so the typed client this
+# test uses serialises the omission as schedulerName: "". The API server
+# therefore reports the MinLength violation rather than the required-field one.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-gang-name-omitted
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  gangScheduler:
+    queue: high-priority
+  categories:
+    - domain: training
+      variant: nemotron5-8b

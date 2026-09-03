@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.gangScheduler.queue",
+      "message": "Invalid value: \"-bad-\": spec.gangScheduler.queue in body should match '^$|^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'"
+    }
+  ]
+}

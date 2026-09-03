@@ -1,0 +1,39 @@
+# Only TrainingRuntime dependencies are rewritten. A ConfigMap and a
+# PersistentVolumeClaim in the same list must come back byte identical, even
+# though the ConfigMap happens to contain the string schedulerName in its data.
+gangScheduler:
+  schedulerName: kai-scheduler
+  queue: high-priority
+dependencies:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: nccl-config
+    data:
+      notes: schedulerName is just text here
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: checkpoints
+    spec:
+      accessModes:
+        - ReadWriteMany
+      resources:
+        requests:
+          storage: 100Gi
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: torch-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: node
+                          image: nvcr.io/nvidia/nemo:25.07

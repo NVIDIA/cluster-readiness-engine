@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Same shape as certification-gcp-h100, plus spec.gangScheduler. The
+# nemotron5-8b catalog entry hardcodes schedulerName: default-scheduler on its
+# only replicatedJob, so this case pins that the Certification field replaces it
+# end to end rather than being ignored.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: gang-n5
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 2
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: high-priority
+  categories:
+    - domain: training
+      variant: nemotron5-8b

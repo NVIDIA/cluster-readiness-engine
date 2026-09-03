@@ -1,0 +1,108 @@
+[
+  {
+    "index": 0,
+    "kind": "",
+    "rawUnchanged": true,
+    "replicatedJobs": [
+      {
+        "name": "node",
+        "schedulerName": "",
+        "templateLabels": null
+      }
+    ],
+    "resource": {
+      "metadata": {
+        "name": "no-kind"
+      },
+      "spec": {
+        "template": {
+          "spec": {
+            "replicatedJobs": [
+              {
+                "name": "node"
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "index": 1,
+    "kind": "TrainingRuntime",
+    "rawUnchanged": true,
+    "replicatedJobs": [],
+    "resource": {
+      "apiVersion": "trainer.kubeflow.org/v1alpha1",
+      "kind": "TrainingRuntime",
+      "metadata": {
+        "name": "jobs-not-a-list"
+      },
+      "spec": {
+        "template": {
+          "spec": {
+            "replicatedJobs": "not-a-list"
+          }
+        }
+      }
+    }
+  },
+  {
+    "index": 2,
+    "kind": "TrainingRuntime",
+    "rawUnchanged": false,
+    "replicatedJobs": [
+      {
+        "name": "(not an object)",
+        "schedulerName": "",
+        "templateLabels": null
+      },
+      {
+        "name": "node",
+        "schedulerName": "kai-scheduler",
+        "templateLabels": {
+          "kai.scheduler/queue": "high-priority"
+        }
+      }
+    ],
+    "resource": {
+      "apiVersion": "trainer.kubeflow.org/v1alpha1",
+      "kind": "TrainingRuntime",
+      "metadata": {
+        "name": "jobs-with-a-bare-string"
+      },
+      "spec": {
+        "template": {
+          "spec": {
+            "replicatedJobs": [
+              "just-a-string",
+              {
+                "name": "node",
+                "template": {
+                  "metadata": {
+                    "labels": {
+                      "kai.scheduler/queue": "high-priority"
+                    }
+                  },
+                  "spec": {
+                    "template": {
+                      "spec": {
+                        "containers": [
+                          {
+                            "image": "nvcr.io/nvidia/nemo:25.07",
+                            "name": "node"
+                          }
+                        ],
+                        "schedulerName": "kai-scheduler"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+]

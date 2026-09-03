@@ -1,0 +1,50 @@
+[
+  {
+    "workflow": "gang-cert-communication-n-dd05f",
+    "dependencyKinds": [
+      "TrainingRuntime",
+      "ComputeDomain"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "schedulerName": "kai-scheduler",
+        "queueLabel": "default-queue",
+        "templateLabels": [
+          "kai.scheduler/queue=default-queue"
+        ]
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "schedulerName": "kai-scheduler",
+        "queueLabel": "default-queue",
+        "templateLabels": [
+          "kai.scheduler/queue=default-queue",
+          "trainer.kubeflow.org/trainjob-ancestor-step=trainer"
+        ]
+      }
+    ]
+  },
+  {
+    "workflow": "gang-cert-training-nemotron5-8b",
+    "dependencyKinds": [
+      "TrainingRuntime",
+      "ConfigMap",
+      "ComputeDomain"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nemotron5-8b-runtime",
+        "replicatedJob": "node",
+        "schedulerName": "kai-scheduler",
+        "queueLabel": "default-queue",
+        "templateLabels": [
+          "kai.scheduler/queue=default-queue",
+          "trainer.kubeflow.org/trainjob-ancestor-step=trainer"
+        ]
+      }
+    ]
+  }
+]

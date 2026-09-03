@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An MPI category on AWS. The runtime renders two replicatedJobs, and only the
+# launcher carries template.metadata, so this case covers both the branch that
+# creates the metadata and the branch that adds to metadata already there.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: gang-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 2
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: high-priority
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

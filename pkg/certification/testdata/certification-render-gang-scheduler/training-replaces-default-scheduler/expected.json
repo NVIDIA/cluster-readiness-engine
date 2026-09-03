@@ -1,0 +1,22 @@
+[
+  {
+    "workflow": "gang-cert-training-nemotron5-8b",
+    "dependencyKinds": [
+      "TrainingRuntime",
+      "ConfigMap",
+      "ComputeDomain"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nemotron5-8b-runtime",
+        "replicatedJob": "node",
+        "schedulerName": "kai-scheduler",
+        "queueLabel": "high-priority",
+        "templateLabels": [
+          "kai.scheduler/queue=high-priority",
+          "trainer.kubeflow.org/trainjob-ancestor-step=trainer"
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,21 @@
+# A Certification that never set spec.gangScheduler. The runtime keeps the
+# schedulerName the catalog entry hardcodes and gains no queue label, and the
+# raw bytes must come back untouched.
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nemotron5-8b-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      schedulerName: default-scheduler
+                      containers:
+                        - name: node
+                          image: nvcr.io/nvidia/nemo:25.07

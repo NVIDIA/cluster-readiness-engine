@@ -1,0 +1,93 @@
+[
+  {
+    "index": 0,
+    "kind": "ConfigMap",
+    "rawUnchanged": true,
+    "replicatedJobs": [],
+    "resource": {
+      "apiVersion": "v1",
+      "data": {
+        "notes": "schedulerName is just text here"
+      },
+      "kind": "ConfigMap",
+      "metadata": {
+        "name": "nccl-config"
+      }
+    }
+  },
+  {
+    "index": 1,
+    "kind": "PersistentVolumeClaim",
+    "rawUnchanged": true,
+    "replicatedJobs": [],
+    "resource": {
+      "apiVersion": "v1",
+      "kind": "PersistentVolumeClaim",
+      "metadata": {
+        "name": "checkpoints"
+      },
+      "spec": {
+        "accessModes": [
+          "ReadWriteMany"
+        ],
+        "resources": {
+          "requests": {
+            "storage": "100Gi"
+          }
+        }
+      }
+    }
+  },
+  {
+    "index": 2,
+    "kind": "TrainingRuntime",
+    "rawUnchanged": false,
+    "replicatedJobs": [
+      {
+        "name": "node",
+        "schedulerName": "kai-scheduler",
+        "templateLabels": {
+          "kai.scheduler/queue": "high-priority"
+        }
+      }
+    ],
+    "resource": {
+      "apiVersion": "trainer.kubeflow.org/v1alpha1",
+      "kind": "TrainingRuntime",
+      "metadata": {
+        "name": "torch-runtime"
+      },
+      "spec": {
+        "template": {
+          "spec": {
+            "replicatedJobs": [
+              {
+                "name": "node",
+                "template": {
+                  "metadata": {
+                    "labels": {
+                      "kai.scheduler/queue": "high-priority"
+                    }
+                  },
+                  "spec": {
+                    "template": {
+                      "spec": {
+                        "containers": [
+                          {
+                            "image": "nvcr.io/nvidia/nemo:25.07",
+                            "name": "node"
+                          }
+                        ],
+                        "schedulerName": "kai-scheduler"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+]
