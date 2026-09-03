@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"sigs.k8s.io/yaml"
 )
 
 // verificationPage is the page that tells users how to check what we shipped.
@@ -76,12 +78,16 @@ func TestVerificationPagePinsAnExactIdentity(t *testing.T) {
 			"an identity naming no workflow and no ref also accepts a branch build")
 	}
 
-	// The identity must name attest.yml and a tag ref. Anything looser is the
-	// defect above wearing a different spelling.
-	wantIdentity := "/.github/workflows/attest.yml@refs/tags/"
+	// The whole identity, repository included. Checking only the
+	// `/.github/workflows/attest.yml@refs/tags/` suffix would accept a page
+	// that pinned some other repository's workflow -- an identity under which
+	// cosign would happily verify an artifact NVIDIA never built. The suffix is
+	// the part that looks security-relevant; the origin is the part that is.
+	wantIdentity := "https://github.com/NVIDIA/cluster-readiness-engine" +
+		"/.github/workflows/attest.yml@refs/tags/"
 	if !strings.Contains(joined, wantIdentity) {
-		t.Errorf("no published command pins an identity containing %q; "+
-			"the identity must name the signing workflow and the tag", wantIdentity)
+		t.Errorf("no published command pins the identity %q; "+
+			"it must name this repository, the signing workflow and the tag", wantIdentity)
 	}
 
 	if !strings.Contains(joined, "https://token.actions.githubusercontent.com") {
@@ -100,8 +106,40 @@ func TestVerificationPageIsInTheNav(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read docs/index.yml: %v", err)
 	}
-	if !strings.Contains(string(raw), "operations/verifying-artifacts.md") {
-		t.Error("docs/index.yml does not list operations/verifying-artifacts.md, " +
-			"so the page does not appear in the published navigation")
+
+	// Parsed, not string-matched. A commented-out entry still contains the
+	// path, so containment would report a page as navigable while the site
+	// renders without it -- which is the exact state this test exists to catch.
+	var nav any
+	if err := yaml.Unmarshal(raw, &nav); err != nil {
+		t.Fatalf("parse docs/index.yml: %v", err)
 	}
+	if !navHasPath(nav, "operations/verifying-artifacts.md") {
+		t.Error("docs/index.yml has no navigation entry with " +
+			"path: operations/verifying-artifacts.md, so the page does not appear " +
+			"in the published navigation")
+	}
+}
+
+// navHasPath reports whether the parsed navigation contains an entry whose
+// `path` is want, at any depth.
+func navHasPath(node any, want string) bool {
+	switch v := node.(type) {
+	case map[string]any:
+		if p, ok := v["path"].(string); ok && p == want {
+			return true
+		}
+		for _, child := range v {
+			if navHasPath(child, want) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range v {
+			if navHasPath(child, want) {
+				return true
+			}
+		}
+	}
+	return false
 }
