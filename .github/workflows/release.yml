@@ -653,6 +653,51 @@ jobs:
             --max-filesize=512M --max-scansize=2048M \
             /scan
 
+      # action-gh-release honours `draft:` only when it CREATES the release. For
+      # a tag that already has one it passes `draft: existingRelease.draft` and
+      # ignores the input, so re-running against an already-published tag would
+      # upload freshly built, unverified assets straight into a live release --
+      # where they are public immediately and the gate has nothing left to
+      # withhold. This must therefore run BEFORE the upload, not after it.
+      - name: Require any existing release to be a draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-tag.outputs.value }}
+        run: |
+          set -euo pipefail
+
+          # Only a confirmed "not found" means no release exists. An API,
+          # auth or permission failure must not read as absent: that would let
+          # an already-published release take the upload, which is the one
+          # outcome this guard exists to stop. Everything else fails closed.
+          state=""
+          for attempt in 1 2 3; do
+            if out="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" \
+                 --json isDraft --jq .isDraft 2>&1)"; then
+              state="${out}"
+              break
+            fi
+            if grep -qiE "release not found|could not find|HTTP 404" <<<"${out}"; then
+              state="absent"
+              break
+            fi
+            echo "attempt ${attempt}: could not read release state: ${out}"
+            sleep $((attempt * 5))
+          done
+
+          case "${state}" in
+            absent) echo "no release exists for ${TAG} yet" ;;
+            true)   echo "release ${TAG} exists and is a draft" ;;
+            false)
+              echo "::error::release ${TAG} is already published; refusing to upload assets the gate has not verified. Cut the next patch version instead (see RELEASE.md)."
+              exit 1
+              ;;
+            *)
+              echo "::error::could not determine the release state for ${TAG} after 3 attempts; refusing to upload rather than assume no release exists."
+              exit 1
+              ;;
+          esac
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
@@ -826,48 +871,461 @@ jobs:
             dist/THIRD_PARTY_NOTICES.md
             dist/THIRD_PARTY_NOTICES.md.sigstore.json
             dist/checksums.txt
-          draft: false
+          # Created as a draft. The gate below verifies every published
+          # artifact and only then flips it public, so a release whose signing
+          # silently no-opped never becomes visible. Registry artifacts (image,
+          # chart) are necessarily already pushed by this point; the gate
+          # verifies those too and fails the run if they do not hold.
+          draft: true
           prerelease: ${{ contains(needs.release-tag.outputs.value, '-') }}
           generate_release_notes: true
 
-      # Post-publish gate (issues #194, #195): download the just-published
-      # assets over the same channel users take and verify them. On a public
-      # repository that is the unauthenticated browser URL
-      # (releases/download/<tag>/<asset>); v0.1.0-rc.7 users piped the 404
-      # "Not Found" page that URL serves on non-public repositories into
-      # bash (issue #194), and only an unauthenticated download can catch
-      # that. While the repository is not public the gate falls back to the
-      # authenticated channel so a release cut before a visibility flip
-      # still verifies instead of failing on the 404.
-      - name: Verify published release assets
+  # Verifies everything the release advertises, then makes it public. Producing
+  # attestations without checking them means the first party to discover they
+  # are broken is a user: every signing step in this pipeline could no-op --
+  # wrong permissions, an expired OIDC token, a renamed cosign flag -- and the
+  # release would still have gone out green.
+  #
+      # The pre-upload guard proves no published release existed; this proves
+      # the action actually created a draft, which is a separate claim and the
+      # one the gate's control depends on.
+      - name: Confirm the release is a draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.release-tag.outputs.value }}
         run: |
-          tag="${TAG}"
-          rm -rf verify-release && mkdir verify-release
-          visibility="$(gh api "repos/${GITHUB_REPOSITORY}" --jq .visibility)"
-          echo "repository visibility: ${visibility}"
-          if [[ "${visibility}" == "public" ]]; then
-            base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}"
-            for asset in installer checksums.txt nvcrectl-linux-amd64; do
-              curl -fsSL -o "verify-release/${asset}" "${base}/${asset}"
-            done
-          else
-            echo "NOTICE: repository is not public; verifying over the" \
-              "authenticated channel. The public download URLs in the" \
-              "release notes will not work until the repository is public."
-            gh release download "${tag}" --repo "${GITHUB_REPOSITORY}" \
-              --pattern installer --pattern checksums.txt --pattern nvcrectl-linux-amd64 \
-              --dir verify-release
+          set -euo pipefail
+          state="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
+          if [[ "${state}" != "true" ]]; then
+            echo "::error::release ${TAG} is not a draft after creation; the gate cannot withhold it"
+            exit 1
           fi
-          # The installer must be a shell script, not an HTML/text error page.
-          [[ "$(head -c 2 verify-release/installer)" == '#!' ]]
-          bash -n verify-release/installer
-          # Every downloaded asset must match its published checksum.
-          (cd verify-release && sha256sum --check --ignore-missing checksums.txt)
-          # The published binary must self-report exactly the released tag.
-          chmod +x verify-release/nvcrectl-linux-amd64
-          got="$(./verify-release/nvcrectl-linux-amd64 --version | awk '{print $NF}')"
-          echo "tag=${tag} binary-reported=${got}"
-          [[ "${got}" == "${tag}" ]]
+          echo "release ${TAG} is a draft; the gate controls when it becomes visible"
+
+  # The release is a draft until this passes.
+  verify-release:
+    name: Verify the published release
+    needs: [release-tag, build-image, helm-publish, create-github-release]
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: read
+      id-token: none
+    env:
+      COSIGN_VERSION: v3.1.3
+      TAG: ${{ needs.release-tag.outputs.value }}
+      IMAGE: ${{ needs.build-image.outputs.image_name }}
+      INDEX: ${{ needs.build-image.outputs.index_digest }}
+      AMD64: ${{ needs.build-image.outputs.amd64_digest }}
+      ARM64: ${{ needs.build-image.outputs.arm64_digest }}
+      CHART_NAME: ${{ needs.helm-publish.outputs.chart_name }}
+      CHART_DIGEST: ${{ needs.helm-publish.outputs.chart_digest }}
+      OIDC_ISSUER: https://token.actions.githubusercontent.com
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+
+      # The identity every check below pins. Exact, never a regexp: a pattern
+      # naming no workflow and no ref also accepts a branch build, which is how
+      # the pre-epic verification command accepted a main image as a release.
+      - name: Build the identity to pin
+        id: identity
+        run: |
+          set -euo pipefail
+          value="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/attest.yml@refs/tags/${TAG}"
+          echo "value=${value}" >> "$GITHUB_OUTPUT"
+          echo "pinning ${value}"
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Every network call in this job is retried. `gh` retries release
+          # asset *uploads* and its attestation calls, but not `release
+          # download`, `release view/edit` or `api`, so a single 502 would fail
+          # the gate on a release that is fine. Defined per step because each
+          # `run:` block is its own shell.
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n + 1))
+              [[ "${n}" -ge 3 ]] && return 1
+              sleep $((n * 5))
+            done
+          }
+
+          mkdir -p verify && cd verify
+          # Drafts are not reachable unauthenticated, so the gate downloads over
+          # the authenticated channel. The public channel is re-checked after
+          # the release is made visible.
+          retry gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" --dir . --clobber
+          ls -la
+
+      # The expected set below is static and reviewed on change. Deriving it
+      # from the release's own inventory would mean deleting an asset makes the
+      # check verify the survivors and report clean.
+      - name: Verify every release asset and its bundle
+        id: assets
+        env:
+          IDENTITY: ${{ steps.identity.outputs.value }}
+        run: |
+          set -euo pipefail
+          cd verify
+          failed=0
+
+          # cosign has no native retry and Rekor/GHCR are real network
+          # dependencies. attest.yml retries its signing calls for the same
+          # reason; a single blip must not fail a correct release.
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n + 1))
+              [[ "${n}" -ge 3 ]] && return 1
+              sleep $((n * 5))
+            done
+          }
+
+          BINARIES="nvcrectl-linux-amd64 nvcrectl-linux-arm64 nvcrectl-darwin-amd64 nvcrectl-darwin-arm64"
+          ASSETS="${BINARIES} installer THIRD_PARTY_NOTICES.md"
+          for b in ${BINARIES}; do ASSETS="${ASSETS} ${b}.cyclonedx.json"; done
+
+          for a in ${ASSETS}; do
+            if [[ ! -s "${a}" ]]; then
+              echo "::error::asset ${a} is missing from the release"; failed=1; continue
+            fi
+            if [[ ! -s "${a}.sigstore.json" ]]; then
+              echo "::error::asset ${a} has no signature bundle"; failed=1; continue
+            fi
+            if retry cosign verify-blob-attestation \
+                 --bundle "${a}.sigstore.json" \
+                 --type https://slsa.dev/provenance/v1 \
+                 --certificate-identity "${IDENTITY}" \
+                 --certificate-oidc-issuer "${OIDC_ISSUER}" \
+                 "${a}" >>"../verify.log" 2>&1; then
+              echo "ok   ${a}"
+            else
+              echo "::error::${a} does not verify against ${IDENTITY} after 3 attempts"; failed=1
+            fi
+          done
+
+          # The bundle binding each SBOM to its binary. Distinct from the SBOM
+          # file's own provenance above: this one proves the document describes
+          # that binary rather than merely being unaltered.
+          for b in ${BINARIES}; do
+            bundle="${b}.cyclonedx.sigstore.json"
+            if [[ ! -s "${bundle}" ]]; then
+              echo "::error::${b} has no bundle binding its SBOM to it"; failed=1; continue
+            fi
+            if retry cosign verify-blob-attestation \
+                 --bundle "${bundle}" --type cyclonedx \
+                 --certificate-identity "${IDENTITY}" \
+                 --certificate-oidc-issuer "${OIDC_ISSUER}" \
+                 "${b}" >>"../verify.log" 2>&1; then
+              echo "ok   ${b} <- its SBOM"
+            else
+              echo "::error::${b}'s SBOM binding does not verify after 3 attempts"; failed=1
+            fi
+          done
+
+          # checksums.txt intentionally carries no bundle, so it is absent from
+          # the loop above. The step this gate replaced did check it, and the
+          # release notes still hand users this exact command, so it is checked
+          # here rather than silently dropped.
+          if [[ ! -s checksums.txt ]]; then
+            echo "::error::checksums.txt is missing from the release"; failed=1
+          elif sha256sum --check --ignore-missing checksums.txt >>"../verify.log" 2>&1; then
+            echo "ok   checksums.txt"
+          else
+            echo "::error::checksums.txt does not describe the published assets"; failed=1
+          fi
+
+          [[ "${failed}" -eq 0 ]] || exit 1
+
+      - name: Verify the container image
+        env:
+          IDENTITY: ${{ steps.identity.outputs.value }}
+        run: |
+          set -euo pipefail
+          failed=0
+
+          # Defined per step: each `run:` block is its own shell, so a helper
+          # defined in an earlier step is not in scope here.
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n + 1))
+              [[ "${n}" -ge 3 ]] && return 1
+              sleep $((n * 5))
+            done
+          }
+
+          # if/else rather than `cmd && echo ok || err`: in that form the error
+          # branch also runs when the echo fails, which in a gate is a false
+          # pass one broken pipe away.
+          verify() {
+            local what="$1"; shift
+            if retry cosign "$@" --certificate-identity "${IDENTITY}" \
+                 --certificate-oidc-issuer "${OIDC_ISSUER}" >>verify.log 2>&1; then
+              echo "ok   ${what}"
+            else
+              echo "::error::${what} does not verify after 3 attempts"
+              failed=1
+            fi
+          }
+
+          # Everything else here is digest-addressed, but the chart pins
+          # manager:<tag> (values.yaml leaves tag empty and the deployment
+          # falls back to .Chart.AppVersion), so the reference users actually
+          # deploy is resolved at install time. Bind the tag to the digest that
+          # was verified, or a repointed tag passes a fully green gate.
+          resolved="$(retry cosign verify --certificate-identity "${IDENTITY}" \
+            --certificate-oidc-issuer "${OIDC_ISSUER}" \
+            --output json "${IMAGE}:${TAG}" 2>>verify.log \
+            | jq -r '.[].critical.image."docker-manifest-digest"' | sort -u)" || resolved=""
+          if [[ "${resolved}" != "${INDEX}" ]]; then
+            echo "::error::${IMAGE}:${TAG} resolves to '${resolved}', not the verified index ${INDEX}"
+            failed=1
+          else
+            echo "ok   tag ${TAG} resolves to the verified index"
+          fi
+
+          verify "index signature"  verify "${IMAGE}@${INDEX}"
+          verify "index provenance" verify-attestation --type slsaprovenance1 "${IMAGE}@${INDEX}"
+          for pair in "amd64:${AMD64}" "arm64:${ARM64}"; do
+            verify "${pair%%:*} SBOM" verify-attestation --type cyclonedx "${IMAGE}@${pair#*:}"
+          done
+
+          [[ "${failed}" -eq 0 ]] || exit 1
+
+      # A signature says who signed and on which ref. Only the predicate says
+      # what was built -- a tag repointed after the build still satisfies an
+      # identity-only check.
+      # attest.yml records that a retry can leave more than one valid
+      # attestation on a digest, and that a consumer "must tolerate more than
+      # one attestation per digest and must not treat a duplicate as
+      # tampering". cosign prints one DSSE envelope per verified attestation,
+      # so the payloads are read one per line and every statement must agree.
+      # Concatenating them instead yields a multi-line value that matches
+      # nothing, failing a correct release with an error that reads like
+      # tampering.
+      - name: Verify the provenance predicate
+        env:
+          IDENTITY: ${{ steps.identity.outputs.value }}
+        run: |
+          set -euo pipefail
+
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n + 1))
+              [[ "${n}" -ge 3 ]] && return 1
+              sleep $((n * 5))
+            done
+          }
+
+          payloads="$(retry cosign verify-attestation --type slsaprovenance1 \
+            --certificate-identity "${IDENTITY}" \
+            --certificate-oidc-issuer "${OIDC_ISSUER}" \
+            "${IMAGE}@${INDEX}" 2>>verify.log | jq -r .payload)" || true
+          if [[ -z "${payloads}" ]]; then
+            echo "::error::could not read the provenance predicate; see the verification log artifact"
+            exit 1
+          fi
+
+          seen=0
+          failed=0
+          while IFS= read -r encoded; do
+            [[ -n "${encoded}" ]] || continue
+            seen=$((seen + 1))
+            statement="$(base64 -d <<<"${encoded}")"
+
+            got_repo="$(jq -r '.predicate.buildDefinition.externalParameters.repository' <<<"${statement}")"
+            got_ref="$(jq -r '.predicate.buildDefinition.externalParameters.ref' <<<"${statement}")"
+            got_commit="$(jq -r '.predicate.buildDefinition.resolvedDependencies[0].digest.gitCommit' <<<"${statement}")"
+
+            [[ "${got_repo}" == "${GITHUB_REPOSITORY}" ]] \
+              || { echo "::error::attestation ${seen} names repository ${got_repo}, expected ${GITHUB_REPOSITORY}"; failed=1; }
+            [[ "${got_ref}" == "refs/tags/${TAG}" ]] \
+              || { echo "::error::attestation ${seen} names ref ${got_ref}, expected refs/tags/${TAG}"; failed=1; }
+            [[ "${got_commit}" == "${GITHUB_SHA}" ]] \
+              || { echo "::error::attestation ${seen} names commit ${got_commit}, but ${TAG} is ${GITHUB_SHA}"; failed=1; }
+
+            echo "ok   attestation ${seen}: repository=${got_repo} ref=${got_ref} commit=${got_commit}"
+          done <<<"${payloads}"
+
+          if [[ "${seen}" -eq 0 ]]; then
+            echo "::error::no provenance statement was returned for ${IMAGE}@${INDEX}"
+            exit 1
+          fi
+          echo "${seen} provenance attestation(s) checked"
+          [[ "${failed}" -eq 0 ]] || exit 1
+
+      - name: Verify the Helm chart
+        env:
+          IDENTITY: ${{ steps.identity.outputs.value }}
+        run: |
+          set -euo pipefail
+          failed=0
+
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n + 1))
+              [[ "${n}" -ge 3 ]] && return 1
+              sleep $((n * 5))
+            done
+          }
+
+          if retry cosign verify --certificate-identity "${IDENTITY}" \
+               --certificate-oidc-issuer "${OIDC_ISSUER}" \
+               "${CHART_NAME}@${CHART_DIGEST}" >>verify.log 2>&1; then
+            echo "ok   chart signature"
+          else
+            echo "::error::chart signature does not verify after 3 attempts"; failed=1
+          fi
+          if retry cosign verify-attestation --type slsaprovenance1 \
+               --certificate-identity "${IDENTITY}" \
+               --certificate-oidc-issuer "${OIDC_ISSUER}" \
+               "${CHART_NAME}@${CHART_DIGEST}" >>verify.log 2>&1; then
+            echo "ok   chart provenance"
+          else
+            echo "::error::chart provenance does not verify after 3 attempts"; failed=1
+          fi
+          [[ "${failed}" -eq 0 ]] || exit 1
+
+      - name: Upload verification log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-verification-log
+          path: verify.log
+          retention-days: 30
+          if-no-files-found: warn
+
+      # Only now does the release become visible.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n + 1))
+              [[ "${n}" -ge 3 ]] && return 1
+              sleep $((n * 5))
+            done
+          }
+
+          retry gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false
+          echo "release ${TAG} verified and published"
+
+      # The channel a user actually takes. Everything above ran authenticated
+      # because a draft is not reachable otherwise; this confirms the assets are
+      # served, and correctly, over the anonymous path.
+      - name: Re-check over the public channel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IDENTITY: ${{ steps.identity.outputs.value }}
+        run: |
+          set -euo pipefail
+
+          # This step runs after the release is public, so every failure here
+          # retracts it. A transient one must not: a release that passed every
+          # signature, SBOM, digest and provenance check would be pulled back to
+          # draft with an error that reads like tampering.
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n + 1))
+              [[ "${n}" -ge 3 ]] && return 1
+              sleep $((n * 5))
+            done
+          }
+
+          visibility="$(retry gh api "repos/${GITHUB_REPOSITORY}" --jq .visibility)"
+          if [[ "${visibility}" != "public" ]]; then
+            echo "NOTICE: repository is ${visibility}; skipping the anonymous re-check."
+            exit 0
+          fi
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          rm -rf public && mkdir public && cd public
+          for a in installer installer.sigstore.json nvcrectl-linux-amd64 nvcrectl-linux-amd64.sigstore.json; do
+            curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 -o "${a}" "${base}/${a}"
+          done
+          [[ "$(head -c 2 installer)" == '#!' ]] || { echo "::error::installer is not a shell script"; exit 1; }
+          bash -n installer
+          retry cosign verify-blob-attestation \
+            --bundle installer.sigstore.json \
+            --type https://slsa.dev/provenance/v1 \
+            --certificate-identity "${IDENTITY}" \
+            --certificate-oidc-issuer "${OIDC_ISSUER}" \
+            installer
+
+          # The binary was downloaded over this channel too; verifying it is
+          # the point of downloading it. Checking only the installer would let
+          # the step report the channel good while the asset most users take
+          # was never checked on it.
+          retry cosign verify-blob-attestation \
+            --bundle nvcrectl-linux-amd64.sigstore.json \
+            --type https://slsa.dev/provenance/v1 \
+            --certificate-identity "${IDENTITY}" \
+            --certificate-oidc-issuer "${OIDC_ISSUER}" \
+            nvcrectl-linux-amd64
+
+          echo "public channel serves verifiable installer and binary"
+
+      # Last step in the job, deliberately. Steps run in declaration order, so
+      # an `if: failure()` step only catches failures from steps ABOVE it -- one
+      # placed before the public re-check would already have been evaluated and
+      # skipped by the time that check failed, and would never retract anything.
+      # Anything that fails after publication must leave the release withheld
+      # rather than visible with the run red.
+      - name: Retract the release if anything after publication failed
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+
+          # An unreadable state must not read as "nothing to do". Leaving a
+          # release public after its verification failed is the worst available
+          # outcome, so an unknown state is treated as published and the
+          # retraction is attempted anyway. `gh release edit --draft=true` is
+          # idempotent, so doing it to an already-draft release costs nothing.
+          state="unknown"
+          for attempt in 1 2 3; do
+            if out="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" \
+                 --json isDraft --jq .isDraft 2>&1)"; then
+              state="${out}"
+              break
+            fi
+            echo "attempt ${attempt}: could not read release state: ${out}"
+            sleep $((attempt * 5))
+          done
+
+          if [[ "${state}" == "true" ]]; then
+            echo "release ${TAG} is already a draft; nothing to retract"
+            exit 0
+          fi
+
+          for attempt in 1 2 3; do
+            if gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=true; then
+              echo "::error::verification failed after publication; release ${TAG} has been returned to draft"
+              exit 0
+            fi
+            sleep $((attempt * 5))
+          done
+          echo "::error::verification failed AND release ${TAG} could not be returned to draft. It may still be public. Retract it manually before doing anything else."
+          exit 1

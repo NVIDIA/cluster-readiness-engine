@@ -83,7 +83,25 @@ We credit reporters of confirmed vulnerabilities in the release notes of the fix
 
   Retrieve the provenance with `cosign verify-attestation --type slsaprovenance1` against the index digest, and a platform's SBOM with `--type cyclonedx` against that platform's manifest digest (`crane digest --platform linux/amd64 "${IMAGE}:${TAG}"`).
 
-- CLI binaries include SHA256 checksums in each release.
+- CLI binaries, the installer and the SBOMs are each signed, and every release asset ships with a detached Sigstore bundle (`<asset>.sigstore.json`) verified under the same identity as the image:
+
+  ```bash
+  TAG=v1.2.3
+  BASE="https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${TAG}"
+  curl -fsSLO "${BASE}/nvcrectl-linux-amd64"
+  curl -fsSLO "${BASE}/nvcrectl-linux-amd64.sigstore.json"
+
+  cosign verify-blob-attestation \
+    --bundle nvcrectl-linux-amd64.sigstore.json \
+    --type https://slsa.dev/provenance/v1 \
+    --certificate-identity "https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}" \
+    --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+    nvcrectl-linux-amd64
+  ```
+
+  Each binary additionally carries `<binary>.cyclonedx.sigstore.json`, which binds its SBOM to that binary — verify it with `--type cyclonedx` against the **binary**, not against the SBOM file.
+
+  `checksums.txt` is also published, but it is served from the same origin as the assets and is itself unsigned, so it detects corruption rather than tampering. Verify the bundle, not the checksum.
 
 ## Product Security Resources
 
