@@ -174,12 +174,18 @@ var retryDefine = regexp.MustCompile(`(?m)^\s*retry\s*\(\)\s*\{`)
 // retry helper and which subcommand it runs.
 var cosignCall = regexp.MustCompile(`(?m)` + commandPosition + `\s*(retry\s+)?cosign\s+(\S+)`)
 
-// cosignLocal are the subcommands that reach no network, so a retry would buy
-// nothing. Everything else -- including an indirect `cosign "$@"` -- talks to
-// Rekor or the registry and must be retried.
+// cosignLocal are the subcommands that cannot reach a network under any flag,
+// so a retry would buy nothing. Everything else -- including an indirect
+// `cosign "$@"` -- can talk to Rekor, a registry or a KMS and must be retried.
+//
+// Kept to what is provably local rather than what merely looks local. An
+// earlier version also exempted `public-key`, which takes `--key` and will
+// fetch from a KMS provider, and `generate`, whose neighbours in the CLI do the
+// same. Nothing in this repository runs either; exempting them bought no
+// coverage and gave away the property the list exists to protect. A subcommand
+// earns a place here by being unable to make a request, not by being unused.
 var cosignLocal = map[string]bool{
 	"version": true, "--version": true, "help": true, "--help": true,
-	"generate": true, "public-key": true, "env": true,
 }
 
 // TestCosignCallsAreRetried pins the coverage half of the defect class

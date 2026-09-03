@@ -209,26 +209,61 @@ fi
 # failed, so installing one means installing the build the gate has not cleared,
 # or has refused.
 #
-# Anonymous callers never reach this: GET /releases omits drafts for them and
-# /releases/latest is non-draft by definition. The exposure is push-access
-# accounts and in-repo CI, which is where a lot of installs happen.
-IS_DRAFT=""
+# Anonymous callers cannot reach a draft at all: GET /releases omits drafts for
+# them and /releases/latest is non-draft by definition. The exposure is
+# push-access accounts and in-repo CI, which is where a lot of installs happen.
+#
+# The lookup fails closed. "I could not read the state" is not "it is published"
+# — treating it as such is the whole reason this guard would be worth adding and
+# then not worth having. `skipped` is the one benign unknown: with no gh and no
+# token there is no draft to install, so there is nothing to determine.
+IS_DRAFT="unknown"
 if [[ "${GH_AVAILABLE}" == "true" ]]; then
-  IS_DRAFT=$(gh release view "${VERSION}" --repo "${GH_REPO}" --json isDraft -q '.isDraft' 2>/dev/null || true)
+  for attempt in 1 2 3; do
+    if OUT=$(gh release view "${VERSION}" --repo "${GH_REPO}" --json isDraft -q '.isDraft' 2>&1); then
+      IS_DRAFT="${OUT}"
+      break
+    fi
+    # A confirmed "no such release" is an answer, not an outage: there is no
+    # draft to refuse, and the download below reports the missing release with
+    # a message that actually says so.
+    if echo "${OUT}" | grep -qiE 'release not found|could not find|HTTP 404'; then
+      IS_DRAFT="absent"
+      break
+    fi
+    sleep $((attempt * 2))
+  done
 elif [[ -n "${GH_TOKEN}" ]]; then
   # A single release object, so no key-ordering assumption is needed. This also
   # primes RELEASE_JSON for the asset lookup below.
-  if [[ -z "${RELEASE_JSON:-}" ]]; then
-    RELEASE_JSON=$(curl -sSf "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
-      -H "Accept: application/vnd.github.v3+json" "${GH_API_URL}/releases/tags/${VERSION}" || true)
-  fi
-  if echo "${RELEASE_JSON}" | grep -q '"draft" *: *true'; then
-    IS_DRAFT=true
-  fi
+  for attempt in 1 2 3; do
+    if [[ -z "${RELEASE_JSON:-}" ]]; then
+      RELEASE_JSON=$(curl -sSf "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
+        -H "Accept: application/vnd.github.v3+json" "${GH_API_URL}/releases/tags/${VERSION}" || true)
+    fi
+    if [[ -n "${RELEASE_JSON:-}" ]]; then
+      if echo "${RELEASE_JSON}" | grep -q '"draft" *: *true'; then
+        IS_DRAFT=true
+      else
+        IS_DRAFT=false
+      fi
+      break
+    fi
+    sleep $((attempt * 2))
+  done
+else
+  IS_DRAFT="skipped"
 fi
-if [[ "${IS_DRAFT}" == "true" ]]; then
-  err "Release ${VERSION} is a draft: the release workflow has not finished verifying it, or refused it. Drafts are visible only to accounts with push access. Pin a published release with -v <tag>."
-fi
+
+case "${IS_DRAFT}" in
+  true)
+    err "Release ${VERSION} is a draft: the release workflow has not finished verifying it, or refused it. Drafts are visible only to accounts with push access. Pin a published release with -v <tag>."
+    ;;
+  false | absent | skipped) ;;
+  *)
+    err "Could not determine whether release ${VERSION} is a draft after 3 attempts. Refusing to install rather than risk installing a build the release gate has not cleared. Retry, or check GitHub API availability."
+    ;;
+esac
 
 # Decide whether this is a fresh install or an upgrade and print intent.
 if [[ -n "${CURRENT_VERSION}" ]]; then
