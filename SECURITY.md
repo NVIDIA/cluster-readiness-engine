@@ -103,7 +103,7 @@ We credit reporters of confirmed vulnerabilities in the release notes of the fix
 
   `checksums.txt` is also published, but it is served from the same origin as the assets and is itself unsigned, so it detects corruption rather than tampering. Verify the bundle, not the checksum.
 
-- **`installer` verifies what it installs, and cannot verify itself.** From `v0.2.0` the installer checks the binary it downloads against that release's `.sigstore.json` under the identity above, using `cosign` if present and otherwise fetching a copy pinned by digest inside the script. If it cannot verify, it stops. `--skip-verify` overrides that, and is never inferred from a missing tool or a failed download — verification is skipped only when someone asks for it by name.
+- **`installer` verifies what it installs, and cannot verify itself.** From the first release cut after this behaviour landed — later than `v0.2.0-rc.1`, whose installer checks only `checksums.txt` — the installer checks the binary it downloads against that release's `.sigstore.json` under the identity above, using `cosign` if present and otherwise fetching a copy pinned by digest inside the script. If it cannot verify, it stops. `--skip-verify` overrides that, and is never inferred from a missing tool or a failed download — verification is skipped only when someone asks for it by name.
 
   That hardens what the installer *installs*. It does nothing for the installer itself: under `curl … | bash` the script executes before anything has checked it, and whoever could replace that asset could delete the verification logic and its pinned digest in the same write. The pipe buys TLS integrity in transit and nothing against a compromised release asset.
 
