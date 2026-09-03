@@ -22,8 +22,161 @@ permissions:
   contents: read
 
 jobs:
+  # The release builds the image itself rather than racing publish.yml for it.
+  # Previously both fired on a tag push: this workflow created a GitHub Release
+  # naming an image tag it had never resolved, could not confirm existed, and had
+  # no digest for -- so the notes asserted something the release had not checked,
+  # and #270's verification gate would have had nothing to verify against.
+  release-tag:
+    name: Resolve release tag
+    runs-on: ubuntu-latest
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      value: ${{ steps.tag.outputs.value }}
+    steps:
+      - name: Resolve tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          case "${INPUT_TAG}" in
+            *$'\n'*|*$'\r'*)
+              echo "::error::the dispatch tag input contains a newline or carriage return"
+              exit 1
+              ;;
+          esac
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if [[ "${GITHUB_REF}" != "refs/tags/${INPUT_TAG}" ]]; then
+              echo "::error::dispatched with tag=${INPUT_TAG} but running from ${GITHUB_REF}. Re-dispatch with --ref ${INPUT_TAG} so signatures carry the release identity."
+              exit 1
+            fi
+            value="${INPUT_TAG}"
+          else
+            value="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "${value}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::refusing to release from a tag that is not vMAJOR.MINOR.PATCH[-prerelease]: ${value}"
+            exit 1
+          fi
+          echo "value=${value}" >> "$GITHUB_OUTPUT"
+
+  build-image:
+    name: Build release image
+    needs: [release-tag]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-image.yml
+    with:
+      image_tag: ${{ needs.release-tag.outputs.value }}
+
+  attest-image-index:
+    name: Attest image index (signature + provenance)
+    needs: [release-tag, build-image]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: image
+      subject_name: ${{ needs.build-image.outputs.image_name }}
+      subject_tag: ${{ needs.release-tag.outputs.value }}
+      expected_digest: ${{ needs.build-image.outputs.index_digest }}
+
+  attest-image-amd64-sbom:
+    name: Attest image linux/amd64 SBOM
+    needs: [release-tag, build-image]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: image
+      subject_name: ${{ needs.build-image.outputs.image_name }}
+      subject_tag: ${{ needs.release-tag.outputs.value }}
+      platform: linux/amd64
+      expected_digest: ${{ needs.build-image.outputs.amd64_digest }}
+      artifact_name: ${{ needs.build-image.outputs.sbom_artifact }}
+      predicate_name: sbom-linux-amd64.cyclonedx.json
+      predicate_type: cyclonedx
+      emit_provenance: false
+
+  attest-image-arm64-sbom:
+    name: Attest image linux/arm64 SBOM
+    needs: [release-tag, build-image]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: image
+      subject_name: ${{ needs.build-image.outputs.image_name }}
+      subject_tag: ${{ needs.release-tag.outputs.value }}
+      platform: linux/arm64
+      expected_digest: ${{ needs.build-image.outputs.arm64_digest }}
+      artifact_name: ${{ needs.build-image.outputs.sbom_artifact }}
+      predicate_name: sbom-linux-arm64.cyclonedx.json
+      predicate_type: cyclonedx
+      emit_provenance: false
+
+  image-attested:
+    name: Confirm the release image was signed
+    needs: [build-image, attest-image-index, attest-image-amd64-sbom, attest-image-arm64-sbom]
+    if: always() && github.repository == 'NVIDIA/cluster-readiness-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require every image attestation to have succeeded
+        env:
+          BUILD: ${{ needs.build-image.result }}
+          INDEX: ${{ needs.attest-image-index.result }}
+          AMD64: ${{ needs.attest-image-amd64-sbom.result }}
+          ARM64: ${{ needs.attest-image-arm64-sbom.result }}
+        run: |
+          set -euo pipefail
+          echo "build=${BUILD} index=${INDEX} amd64=${AMD64} arm64=${ARM64}"
+          if [[ "${BUILD}" != "success" ]]; then
+            echo "::error::the release image build did not succeed (${BUILD}); no image was published."
+            exit 1
+          fi
+          failed=0
+          for pair in "index:${INDEX}" "amd64-sbom:${AMD64}" "arm64-sbom:${ARM64}"; do
+            name="${pair%%:*}"; result="${pair#*:}"
+            case "${result}" in
+              success) ;;
+              skipped)
+                echo "::error::${name} attestation was SKIPPED. The release image is published and unsigned; a skipped job does not fail its caller."
+                failed=1
+                ;;
+              *)
+                echo "::error::${name} attestation did not succeed (${result}). Treat the published image as unsigned."
+                failed=1
+                ;;
+            esac
+          done
+          [[ "${failed}" -eq 0 ]] || exit 1
+          echo "release image fully attested"
+
+  # Waits for the image to exist AND be signed. The chart's values.yaml pins
+  # `manager:<tag>`, and `helm push` is not something the workflow can take
+  # back: publishing the chart first would put a chart referencing a tag that
+  # does not exist yet -- or, if the build then failed, never will -- into the
+  # OCI registry that Flux, Argo CD Image Updater and Renovate actually watch.
+  # A cluster reconciling in that window gets ImagePullBackOff and no GitHub
+  # Release to explain why. Gating create-github-release is not enough, because
+  # GitOps automation does not wait for the GitHub Release.
   helm-publish:
     name: Publish Helm Chart
+    needs: [release-tag, image-attested]
     runs-on: linux-amd64-cpu16
     if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 15
@@ -31,8 +184,9 @@ jobs:
       contents: read
       packages: write
     outputs:
-      tag: ${{ steps.tag.outputs.value }}
-      chart_name: ${{ steps.tag.outputs.chart_name }}
+      # GHCR requires lowercase; `helm push <chart>.tgz oci://ghcr.io/nvidia`
+      # lands the chart at <registry>/<chart-name>.
+      chart_name: ghcr.io/nvidia/cluster-readiness-engine
       chart_digest: ${{ steps.push.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,52 +207,6 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_USER: ${{ github.actor }}
         run: printf '%s' "${GHCR_TOKEN}" | helm registry login ghcr.io -u "${GHCR_USER}" --password-stdin
-
-      # A dispatch that names a tag but runs from a branch would publish a
-      # release-versioned chart whose signature carries a `refs/heads/...`
-      # identity -- a release nothing can verify as one. Dispatch at the tag:
-      # `gh workflow run Release --ref v1.2.3 -f tag=v1.2.3`.
-      - name: Resolve tag
-        id: tag
-        env:
-          INPUT_TAG: ${{ github.event.inputs.tag }}
-        run: |
-          set -euo pipefail
-          # Reject CR/LF before the value is echoed anywhere. A workflow command
-          # must start at the beginning of a line, so a dispatch input carrying
-          # a newline could forge one -- `::add-mask::`, or `::stop-commands::`
-          # to silence the rest of the log -- through any message that quotes
-          # it. Fixed message here: naming the value would be the very thing
-          # this rejects.
-          case "${INPUT_TAG}" in
-            *$'\n'*|*$'\r'*)
-              echo "::error::the dispatch tag input contains a newline or carriage return"
-              exit 1
-              ;;
-          esac
-
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            if [[ "${GITHUB_REF}" != "refs/tags/${INPUT_TAG}" ]]; then
-              echo "::error::dispatched with tag=${INPUT_TAG} but running from ${GITHUB_REF}. Re-dispatch with --ref ${INPUT_TAG} so the chart signature carries the release identity."
-              exit 1
-            fi
-            value="${INPUT_TAG}"
-          else
-            value="${GITHUB_REF_NAME}"
-          fi
-          # Git permits `"`, `$( )`, backticks and `|` in a tag name, so an
-          # unvalidated tag reaching a `run:` block is shell injection on a
-          # runner that holds packages:write. `check-clean-version` cannot help:
-          # it runs inside make, long after the shell has parsed the command.
-          # Validate here, at the single point the value enters the workflow.
-          if [[ ! "${value}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::refusing to release from a tag that is not vMAJOR.MINOR.PATCH[-prerelease]: ${value}"
-            exit 1
-          fi
-          echo "value=${value}" >> "$GITHUB_OUTPUT"
-          # GHCR requires lowercase; `helm push <chart>.tgz oci://ghcr.io/nvidia`
-          # lands the chart at <registry>/<chart-name>.
-          echo "chart_name=ghcr.io/nvidia/cluster-readiness-engine" >> "$GITHUB_OUTPUT"
 
       # VERSION is passed explicitly instead of trusting `git describe` on
       # the runner's checkout: a shallow or tag-less checkout makes
@@ -131,8 +239,8 @@ jobs:
           # Through the environment rather than `${{ }}` inside the script, so a
           # value is data and not code -- the rule attest.yml states and the tag
           # step above already follows.
-          CHART_NAME: ${{ steps.tag.outputs.chart_name }}
-          CHART_TAG: ${{ steps.tag.outputs.value }}
+          CHART_NAME: ghcr.io/nvidia/cluster-readiness-engine
+          CHART_TAG: ${{ needs.release-tag.outputs.value }}
 
   # The chart is the highest-leverage artifact in the release: it carries the
   # CRDs and the manager ClusterRole, so a tampered chart grants itself whatever
@@ -146,7 +254,7 @@ jobs:
   # `cosign verify` before install.
   attest-chart:
     name: Attest Helm chart
-    needs: [helm-publish]
+    needs: [release-tag, helm-publish]
     permissions:
       contents: read
       packages: write
@@ -155,7 +263,7 @@ jobs:
     with:
       subject_kind: oci-artifact
       subject_name: ${{ needs.helm-publish.outputs.chart_name }}
-      subject_tag: ${{ needs.helm-publish.outputs.tag }}
+      subject_tag: ${{ needs.release-tag.outputs.value }}
       expected_digest: ${{ needs.helm-publish.outputs.chart_digest }}
 
   # A skipped job does not fail its caller, so without this a broken gate inside
@@ -193,11 +301,14 @@ jobs:
 
   build-cli:
     name: Build CLI Binaries
+    needs: [release-tag]
     runs-on: linux-amd64-cpu16
     if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 15
     permissions:
       contents: read
+    outputs:
+      digests: ${{ steps.digests.outputs.map }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -208,39 +319,6 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Resolve tag
-        id: tag
-        env:
-          INPUT_TAG: ${{ github.event.inputs.tag }}
-        run: |
-          set -euo pipefail
-
-          # Reject CR/LF before the value reaches any message. A workflow
-          # command must start at the beginning of a line, so a dispatch input
-          # carrying a newline could forge one through the validation error
-          # below, which quotes the value. Fixed message here on purpose.
-          case "${INPUT_TAG}" in
-            *$'\n'*|*$'\r'*)
-              echo "::error::the dispatch tag input contains a newline or carriage return"
-              exit 1
-              ;;
-          esac
-
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            value="${INPUT_TAG}"
-          else
-            value="${GITHUB_REF_NAME}"
-          fi
-          # Git permits `"`, `$( )`, backticks and `|` in a tag name, so an
-          # unvalidated tag reaching a `run:` block is shell injection on a
-          # runner that holds packages:write. `check-clean-version` cannot help:
-          # it runs inside make, long after the shell has parsed the command.
-          # Validate here, at the single point the value enters the workflow.
-          if [[ ! "${value}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::refusing to release from a tag that is not vMAJOR.MINOR.PATCH[-prerelease]: ${value}"
-            exit 1
-          fi
-          echo "value=${value}" >> "$GITHUB_OUTPUT"
 
       # Stamp the binaries with the tag explicitly instead of trusting
       # `git describe` on the runner's checkout: a shallow or tag-less
@@ -249,9 +327,35 @@ jobs:
       # the released binary (issue #195). check-clean-version rejects
       # anything that is not a clean vX.Y.Z[-prerelease] tag, so a malformed
       # workflow_dispatch input fails here instead of mislabeling binaries.
+      # Installed from the upstream anchore/syft release and checked against
+      # that release's own checksums, rather than through a setup action. Same
+      # reasoning as crane in attest.yml: fewer third parties in the release
+      # path, and the binary is verified on arrival.
+      - name: Install syft
+        id: syft
+        env:
+          SYFT_VERSION: v1.51.1
+          # Pinned here, in this repository, under review. Checking the download
+          # against a checksums file fetched from the same release would only
+          # prove the two upstream files agree with each other -- an attacker
+          # who can replace one can replace both. This digest is an anchor they
+          # cannot reach without a commit here.
+          SYFT_SHA256: 8fcb33017a0dc1058298c923c436d19dfa68ae93968e0b423248542e3afb9fc3
+        run: |
+          set -euo pipefail
+          base="https://github.com/anchore/syft/releases/download/${SYFT_VERSION}"
+          tarball="syft_${SYFT_VERSION#v}_linux_amd64.tar.gz"
+          tmp="$(mktemp -d)"
+          curl -fsSL -o "${tmp}/${tarball}" "${base}/${tarball}"
+          echo "${SYFT_SHA256}  ${tmp}/${tarball}" | sha256sum --check --strict -
+          tar -xzf "${tmp}/${tarball}" -C "${tmp}" syft
+          install -m 0755 "${tmp}/syft" "${RUNNER_TEMP}/syft"
+          "${RUNNER_TEMP}/syft" version
+          echo "path=${RUNNER_TEMP}/syft" >> "$GITHUB_OUTPUT"
+
       - name: Cross-compile nvcrectl
         env:
-          TAG: ${{ steps.tag.outputs.value }}
+          TAG: ${{ needs.release-tag.outputs.value }}
         run: |
           set -euo pipefail
           make check-clean-version VERSION="${TAG}"
@@ -263,7 +367,7 @@ jobs:
       # here, before any artifact is published (issue #195).
       - name: Verify stamped version matches the tag
         env:
-          TAG: ${{ steps.tag.outputs.value }}
+          TAG: ${{ needs.release-tag.outputs.value }}
         run: |
           tag="${TAG}"
           got="$(./bin/nvcrectl-linux-amd64 --version | awk '{print $NF}')"
@@ -273,12 +377,160 @@ jobs:
             exit 1
           fi
 
-      - name: Upload CLI binaries
+      # Everything that will be signed is staged into one directory and uploaded
+      # once. The signing jobs each download this artifact and sign one member
+      # of it, so the bytes they sign are the bytes published -- not a rebuild.
+      - name: Stage release artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          cp bin/nvcrectl-* release-assets/
+          cp installer release-assets/
+          # Published as a release asset, so it is covered by the same contract
+          # as everything else: a bundle and a checksum entry.
+          cp THIRD_PARTY_NOTICES.md release-assets/
+          ls -la release-assets/
+
+      # syft reads the Go build info embedded in each binary, so the SBOM lists
+      # the module set that binary was actually built from. `installer` is a
+      # shell script and gets no SBOM -- there is nothing to inventory.
+      - name: Generate per-binary SBOMs
+        run: |
+          set -euo pipefail
+          for f in release-assets/nvcrectl-*; do
+            [[ "${f}" == *.cyclonedx.json ]] && continue
+            name="$(basename "${f}")"
+            "${SYFT}" scan "file:${f}" -o cyclonedx-json="release-assets/${name}.cyclonedx.json" -q
+            count="$(jq '[.components[]?] | length' "release-assets/${name}.cyclonedx.json")"
+            if [[ "${count}" -eq 0 ]]; then
+              echo "::error::the SBOM for ${name} lists no components; syft inventoried nothing"
+              exit 1
+            fi
+            echo "${name}: ${count} components"
+          done
+        env:
+          SYFT: ${{ steps.syft.outputs.path }}
+
+      # The caller measures every asset here and attest.yml re-measures the one
+      # it is signing, failing on mismatch. Handing over a digest the signer
+      # does not recompute would make that comparison meaningless.
+      - name: Compute asset digests
+        id: digests
+        run: |
+          set -euo pipefail
+          map="$(cd release-assets && sha256sum -- * \
+            | jq -Rn '[inputs | split("  ") | {(.[1]): ("sha256:" + .[0])}] | add' -c)"
+          echo "${map}" | jq .
+          # Every matrix subject must be present, or a leg would be handed an
+          # empty digest and attest.yml would reject it late instead of here.
+          for want in nvcrectl-linux-amd64 nvcrectl-linux-arm64 \
+                      nvcrectl-darwin-amd64 nvcrectl-darwin-arm64 installer \
+                      THIRD_PARTY_NOTICES.md \
+                      nvcrectl-linux-amd64.cyclonedx.json nvcrectl-linux-arm64.cyclonedx.json \
+                      nvcrectl-darwin-amd64.cyclonedx.json nvcrectl-darwin-arm64.cyclonedx.json; do
+            jq -e --arg k "${want}" 'has($k)' <<<"${map}" >/dev/null \
+              || { echo "::error::${want} is missing from the digest map"; exit 1; }
+          done
+          echo "map=${map}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: nvcrectl-binaries
-          path: bin/nvcrectl-*
+          name: release-assets
+          path: release-assets/
           retention-days: 7
+
+  # Nine published assets each need a verifying bundle: the four binaries, the
+  # installer, and the four SBOMs. attest.yml signs one subject per call, so
+  # this is a matrix over subjects rather than nine near-identical jobs.
+  #
+  # The binaries carry their SBOM as a predicate, which binds the SBOM to the
+  # binary. The SBOM files are ALSO signed in their own right, because a user
+  # downloads the .cyclonedx.json as a loose asset and it is the document a
+  # security team feeds to a scanner -- an unsigned SBOM beside a signed binary
+  # is the one unsigned link left.
+  attest-binaries:
+    name: Attest ${{ matrix.subject }}
+    needs: [build-cli]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      # Nine legs, and the four binary legs sign twice, so an unbounded fan-out
+      # is ~13 near-simultaneous calls to public-good Fulcio and Rekor from one
+      # caller. attest.yml retries on a fixed 5s/10s backoff with no jitter, so
+      # legs that fail together retry together. The gate requires every leg, so
+      # one correlated blip fails the whole release. Three at a time keeps the
+      # burst small without meaningfully lengthening the run.
+      max-parallel: 3
+      matrix:
+        include:
+          - subject: nvcrectl-linux-amd64
+            predicate: nvcrectl-linux-amd64.cyclonedx.json
+          - subject: nvcrectl-linux-arm64
+            predicate: nvcrectl-linux-arm64.cyclonedx.json
+          - subject: nvcrectl-darwin-amd64
+            predicate: nvcrectl-darwin-amd64.cyclonedx.json
+          - subject: nvcrectl-darwin-arm64
+            predicate: nvcrectl-darwin-arm64.cyclonedx.json
+          # No SBOM: a shell script has nothing to inventory.
+          - subject: installer
+            predicate: ''
+          - subject: THIRD_PARTY_NOTICES.md
+            predicate: ''
+          # The SBOMs signed as artifacts in their own right.
+          - subject: nvcrectl-linux-amd64.cyclonedx.json
+            predicate: ''
+          - subject: nvcrectl-linux-arm64.cyclonedx.json
+            predicate: ''
+          - subject: nvcrectl-darwin-amd64.cyclonedx.json
+            predicate: ''
+          - subject: nvcrectl-darwin-arm64.cyclonedx.json
+            predicate: ''
+    uses: ./.github/workflows/attest.yml
+    with:
+      subject_kind: blob
+      subject_name: ${{ matrix.subject }}
+      expected_digest: ${{ fromJSON(needs.build-cli.outputs.digests)[matrix.subject] }}
+      artifact_name: release-assets
+      predicate_name: ${{ matrix.predicate }}
+      predicate_type: ${{ matrix.predicate != '' && 'cyclonedx' || '' }}
+
+  # Without this, a skipped attest-binaries matrix would skip
+  # create-github-release too -- safe, but silent: the run goes green with no
+  # release and no stated reason. This turns that into a named failure.
+  binaries-attested:
+    name: Confirm the binaries were signed
+    needs: [build-cli, attest-binaries]
+    if: always() && github.repository == 'NVIDIA/cluster-readiness-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require every binary attestation to have succeeded
+        env:
+          BUILD: ${{ needs.build-cli.result }}
+          ATTEST: ${{ needs.attest-binaries.result }}
+        run: |
+          set -euo pipefail
+          echo "build-cli=${BUILD} attest-binaries=${ATTEST}"
+          if [[ "${BUILD}" != "success" ]]; then
+            echo "::error::the CLI build did not succeed (${BUILD}); nothing was produced to sign."
+            exit 1
+          fi
+          case "${ATTEST}" in
+            success) echo "all binary and SBOM attestations succeeded" ;;
+            skipped)
+              echo "::error::binary attestation was SKIPPED. A skipped job does not fail its caller, so the release would simply not appear with no reason given."
+              exit 1
+              ;;
+            *)
+              echo "::error::binary attestation did not succeed (${ATTEST}). No release will be published; the assets are unsigned."
+              exit 1
+              ;;
+          esac
 
   create-github-release:
     name: Create GitHub Release
@@ -286,9 +538,13 @@ jobs:
     if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 10
     needs:
+      - release-tag
+      - build-image
+      - image-attested
       - helm-publish
       - chart-attested
       - build-cli
+      - binaries-attested
     permissions:
       contents: write
     steps:
@@ -299,48 +555,79 @@ jobs:
       - name: Download CLI binaries
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: nvcrectl-binaries
+          name: release-assets
           path: dist/
 
-      - name: Resolve tag
-        id: tag
-        env:
-          INPUT_TAG: ${{ github.event.inputs.tag }}
+
+      # Every bundle the matrix produced, flattened next to the assets it
+      # signs. Loose files, not an archive: a user should be able to curl one
+      # binary and one bundle and verify with a single command.
+      - name: Download signature bundles
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: bundles-*
+          merge-multiple: true
+          path: dist/
+
+      # A bundle per published asset, or the release ships something users are
+      # told to verify and cannot. `installer` is copied by the build job now,
+      # so the whole set arrives in one artifact.
+      - name: Require a bundle for every asset
         run: |
           set -euo pipefail
+          cd dist
+          missing=0
+          for f in nvcrectl-linux-amd64 nvcrectl-linux-arm64 \
+                   nvcrectl-darwin-amd64 nvcrectl-darwin-arm64 installer \
+                   THIRD_PARTY_NOTICES.md \
+                   nvcrectl-linux-amd64.cyclonedx.json nvcrectl-linux-arm64.cyclonedx.json \
+                   nvcrectl-darwin-amd64.cyclonedx.json nvcrectl-darwin-arm64.cyclonedx.json; do
+            [[ -s "${f}" ]] || { echo "::error::asset ${f} is missing"; missing=1; }
+            [[ -s "${f}.sigstore.json" ]] || { echo "::error::${f} has no signature bundle"; missing=1; }
+          done
+          # The bundle binding each SBOM to its binary. Currently redundant --
+          # attest.yml fails the leg if that second attest-blob call fails -- but
+          # a future refactor that decoupled the two calls would otherwise ship a
+          # binary and an SBOM with nothing tying them together.
+          for b in nvcrectl-linux-amd64 nvcrectl-linux-arm64 \
+                   nvcrectl-darwin-amd64 nvcrectl-darwin-arm64; do
+            [[ -s "${b}.cyclonedx.sigstore.json" ]] \
+              || { echo "::error::${b} has no bundle binding its SBOM to it"; missing=1; }
+          done
+          [[ "${missing}" -eq 0 ]] || exit 1
+          ls -la
 
-          # Reject CR/LF before the value reaches any message. A workflow
-          # command must start at the beginning of a line, so a dispatch input
-          # carrying a newline could forge one through the validation error
-          # below, which quotes the value. Fixed message here on purpose.
-          case "${INPUT_TAG}" in
-            *$'\n'*|*$'\r'*)
-              echo "::error::the dispatch tag input contains a newline or carriage return"
+      # The notes now state digests as fact. If any is missing or malformed the
+      # release would advertise a broken or empty reference, so fail here rather
+      # than publish one.
+      - name: Require every advertised digest
+        env:
+          INDEX: ${{ needs.build-image.outputs.index_digest }}
+          AMD64: ${{ needs.build-image.outputs.amd64_digest }}
+          ARM64: ${{ needs.build-image.outputs.arm64_digest }}
+          CHART: ${{ needs.helm-publish.outputs.chart_digest }}
+        run: |
+          set -euo pipefail
+          for pair in "image index:${INDEX}" "image amd64:${AMD64}" \
+                      "image arm64:${ARM64}" "helm chart:${CHART}"; do
+            name="${pair%%:*}"; value="${pair#*:}"
+            if [[ ! "${value}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::the ${name} digest is missing or malformed: '${value}'"
               exit 1
-              ;;
-          esac
+            fi
+            echo "${name} -> ${value}"
+          done
 
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            value="${INPUT_TAG}"
-          else
-            value="${GITHUB_REF_NAME}"
-          fi
-          # Git permits `"`, `$( )`, backticks and `|` in a tag name, so an
-          # unvalidated tag reaching a `run:` block is shell injection on a
-          # runner that holds packages:write. `check-clean-version` cannot help:
-          # it runs inside make, long after the shell has parsed the command.
-          # Validate here, at the single point the value enters the workflow.
-          if [[ ! "${value}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::refusing to release from a tag that is not vMAJOR.MINOR.PATCH[-prerelease]: ${value}"
-            exit 1
-          fi
-          echo "value=${value}" >> "$GITHUB_OUTPUT"
-
+      # checksums.txt stays -- it is cheap -- but it now covers every published
+      # asset rather than only the binaries. It is not the verification story:
+      # it is served from the same origin as the artifacts and is itself
+      # unsigned, which is why the bundles exist.
       - name: Generate checksums
         run: |
-          cp installer dist/
+          set -euo pipefail
           cd dist
-          sha256sum installer nvcrectl-* > checksums.txt
+          sha256sum -- * > checksums.txt.tmp
+          mv checksums.txt.tmp checksums.txt
           cat checksums.txt
 
       # Gate. This runs after the artifacts exist and before the release is
@@ -369,26 +656,48 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
-          tag_name: ${{ steps.tag.outputs.value }}
-          name: Release ${{ steps.tag.outputs.value }}
+          tag_name: ${{ needs.release-tag.outputs.value }}
+          name: Release ${{ needs.release-tag.outputs.value }}
           body: |
-            NVCRE ${{ steps.tag.outputs.value }}
+            NVCRE ${{ needs.release-tag.outputs.value }}
 
-            The NVIDIA Cluster Readiness Engine (NVCRE) is a Kubernetes controller that certifies GPU clusters before production use. It runs real training and communication workloads across topology-aware node groups, measures goodput and bandwidth, detects hardware failures, and reports every failed node with a reason. See the [README](https://github.com/${{ github.repository }}/blob/${{ steps.tag.outputs.value }}/README.md) for the full feature list.
+            The NVIDIA Cluster Readiness Engine (NVCRE) is a Kubernetes controller that certifies GPU clusters before production use. It runs real training and communication workloads across topology-aware node groups, measures goodput and bandwidth, detects hardware failures, and reports every failed node with a reason. See the [README](https://github.com/${{ github.repository }}/blob/${{ needs.release-tag.outputs.value }}/README.md) for the full feature list.
 
             ## Install nvcrectl
 
-            Install this release:
+            The installer is signed. Download it with its bundle, verify, then run — piping it into a shell executes it before anything has checked it.
 
             ```bash
-            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.value }}/installer | bash -s -- -v ${{ steps.tag.outputs.value }}
+            REL=https://github.com/${{ github.repository }}/releases/download/${{ needs.release-tag.outputs.value }}
+
+            curl -fsSLO "${REL}/installer"
+            curl -fsSLO "${REL}/installer.sigstore.json"
+
+            cosign verify-blob-attestation \
+              --bundle installer.sigstore.json \
+              --type https://slsa.dev/provenance/v1 \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ needs.release-tag.outputs.value }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              installer
+
+            bash installer -v ${{ needs.release-tag.outputs.value }}
             ```
 
-            Or install the newest stable release (`releases/latest` resolves only to stable releases, never pre-releases):
+            <details>
+            <summary>Without cosign</summary>
 
             ```bash
+            curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ needs.release-tag.outputs.value }}/installer | bash -s -- -v ${{ needs.release-tag.outputs.value }}
+            ```
+
+            This runs the installer before anything verifies it. TLS proves you reached GitHub; it proves nothing about the asset if the release itself was tampered with. Use it only where installing cosign first is genuinely impractical.
+
+            ```bash
+            # newest stable release; `releases/latest` never resolves to a pre-release
             curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/installer | bash
             ```
+
+            </details>
 
             ## Helm Chart
 
@@ -400,7 +709,7 @@ jobs:
 
             # 1. Verify the chart. Requires cosign; the package is public, so no login is needed.
             cosign verify \
-              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ steps.tag.outputs.value }}" \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ needs.release-tag.outputs.value }}" \
               --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
               "${CHART}@${DIGEST}"
 
@@ -410,11 +719,31 @@ jobs:
               --namespace nvcre --create-namespace
             ```
 
-            Installing with `--version ${{ steps.tag.outputs.value }}` instead resolves the tag at install time, which is not provably the digest you verified.
+            Installing with `--version ${{ needs.release-tag.outputs.value }}` instead resolves the tag at install time, which is not provably the digest you verified.
 
             `helm install --verify` does **not** check this signature. That flag looks for a PGP `.prov` file, a mechanism unrelated to Sigstore, and we publish no `.prov` files.
 
-            The controller image for this release is `ghcr.io/nvidia/cluster-readiness-engine/manager:${{ steps.tag.outputs.value }}` — a different artifact from the chart, verified separately.
+            ## Controller image
+
+            A different artifact from the chart, verified separately. The release built and signed these exact digests:
+
+            | Subject | Digest |
+            |---|---|
+            | index (multi-platform) | `${{ needs.build-image.outputs.index_digest }}` |
+            | `linux/amd64` | `${{ needs.build-image.outputs.amd64_digest }}` |
+            | `linux/arm64` | `${{ needs.build-image.outputs.arm64_digest }}` |
+
+            The index carries the signature and the SLSA provenance; each platform digest carries a signature and its own CycloneDX SBOM. Pin the index digest rather than the tag:
+
+            ```bash
+            IMAGE=${{ needs.build-image.outputs.image_name }}
+            INDEX=${{ needs.build-image.outputs.index_digest }}
+
+            cosign verify \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ needs.release-tag.outputs.value }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "${IMAGE}@${INDEX}"
+            ```
 
             ## nvcrectl CLI
 
@@ -429,7 +758,53 @@ jobs:
 
             ## Verify your download
 
-            Every binary asset (the installer and the `nvcrectl-*` binaries) is listed in `checksums.txt` with its SHA-256 digest. After you download an asset, verify it:
+            Every asset ships with a Sigstore bundle, `<asset>.sigstore.json`, carrying a SLSA Build Provenance v1 statement. Verify the artifact itself, not a checksum served from the same place as the artifact:
+
+            ```bash
+            REL=https://github.com/${{ github.repository }}/releases/download/${{ needs.release-tag.outputs.value }}
+            ASSET=nvcrectl-linux-amd64   # or installer, or any published asset
+
+            # The bundle is a separate asset; fetch both.
+            curl -fsSLO "${REL}/${ASSET}"
+            curl -fsSLO "${REL}/${ASSET}.sigstore.json"
+
+            cosign verify-blob-attestation \
+              --bundle "${ASSET}.sigstore.json" \
+              --type https://slsa.dev/provenance/v1 \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ needs.release-tag.outputs.value }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "${ASSET}"
+            ```
+
+            Each `nvcrectl-*` binary also ships a CycloneDX SBOM, `<binary>.cyclonedx.json`. There are **two** bundles involving it, one segment apart in name, and they prove different things:
+
+            | Bundle | Proves |
+            |---|---|
+            | `<binary>.cyclonedx.json.sigstore.json` | the SBOM **file** is the one we published and was not altered |
+            | `<binary>.cyclonedx.sigstore.json` | the SBOM **describes that binary** — it is bound to the binary as its subject |
+
+            Before feeding an SBOM to a scanner, check **both**. The binding proves an SBOM describes the binary; it says nothing about the bytes of the file on your disk, which is a separate download.
+
+            ```bash
+            cosign verify-blob-attestation \
+              --bundle "${ASSET}.cyclonedx.sigstore.json" \
+              --type cyclonedx \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ needs.release-tag.outputs.value }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "${ASSET}"
+
+            # 2. the SBOM file you downloaded is the one that was published
+            cosign verify-blob-attestation \
+              --bundle "${ASSET}.cyclonedx.json.sigstore.json" \
+              --type https://slsa.dev/provenance/v1 \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/attest.yml@refs/tags/${{ needs.release-tag.outputs.value }}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "${ASSET}.cyclonedx.json"
+            ```
+
+            Only the first would let a tampered local `.cyclonedx.json` reach your scanner: the binding attestation carries its own copy of the SBOM and never looks at your file.
+
+            `checksums.txt` is still published and still works, but it is not the verification story: it is served from the same origin as the assets and is itself unsigned, so it detects corruption rather than tampering.
 
             ```bash
             sha256sum --check --ignore-missing checksums.txt
@@ -437,7 +812,7 @@ jobs:
 
             ## Third-Party Notices
 
-            Third-party Go module licenses are listed in [`THIRD_PARTY_NOTICES.md`](https://github.com/${{ github.repository }}/blob/${{ steps.tag.outputs.value }}/THIRD_PARTY_NOTICES.md) and attached as a release asset.
+            Third-party Go module licenses are listed in [`THIRD_PARTY_NOTICES.md`](https://github.com/${{ github.repository }}/blob/${{ needs.release-tag.outputs.value }}/THIRD_PARTY_NOTICES.md) and attached as a release asset.
 
             ## Support
 
@@ -447,10 +822,12 @@ jobs:
           files: |
             dist/nvcrectl-*
             dist/installer
+            dist/installer.sigstore.json
+            dist/THIRD_PARTY_NOTICES.md
+            dist/THIRD_PARTY_NOTICES.md.sigstore.json
             dist/checksums.txt
-            THIRD_PARTY_NOTICES.md
           draft: false
-          prerelease: ${{ contains(steps.tag.outputs.value, '-') }}
+          prerelease: ${{ contains(needs.release-tag.outputs.value, '-') }}
           generate_release_notes: true
 
       # Post-publish gate (issues #194, #195): download the just-published
@@ -465,7 +842,7 @@ jobs:
       - name: Verify published release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.tag.outputs.value }}
+          TAG: ${{ needs.release-tag.outputs.value }}
         run: |
           tag="${TAG}"
           rm -rf verify-release && mkdir verify-release

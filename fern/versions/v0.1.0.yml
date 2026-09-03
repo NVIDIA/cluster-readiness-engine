@@ -1,0 +1,102 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+navigation:
+  - section: Overview
+    contents:
+      - page: Introduction
+        path: v0.1.0-content/README.md
+
+  - section: Getting Started
+    contents:
+      - page: Install
+        path: v0.1.0-content/getting-started/install.md
+      - page: Your First Certification
+        path: v0.1.0-content/getting-started/first-certification.md
+      - page: Quick Start
+        path: v0.1.0-content/getting-started/quick-start.md
+      - page: WorkloadRun Quick Start
+        path: v0.1.0-content/getting-started/workloadrun-quick-start.md
+
+  - section: Concepts
+    contents:
+      - page: Architecture
+        path: v0.1.0-content/concepts/architecture.md
+      - page: Catalog
+        path: v0.1.0-content/concepts/catalog.md
+      - page: Workload Types
+        path: v0.1.0-content/concepts/workload-types.md
+      - page: Health Monitoring & Failed Node Attribution
+        path: v0.1.0-content/concepts/health-monitoring-remediation.md
+      - page: Goodput & Bandwidth Measurement
+        path: v0.1.0-content/concepts/goodput-bandwidth.md
+      - page: Platform Detection & Overrides
+        path: v0.1.0-content/concepts/platform-detection.md
+
+  - section: How-to Guides
+    contents:
+      - page: Certify a Cluster
+        path: v0.1.0-content/how-to-guides/certify-a-cluster.md
+      - page: Run a WorkloadRun
+        path: v0.1.0-content/how-to-guides/run-workloadrun.md
+      - page: Run Nemotron 5 Training
+        path: v0.1.0-content/how-to-guides/workloadrun-nemotron5.md
+      - page: Run DeepSeek-V3 Training
+        path: v0.1.0-content/how-to-guides/workloadrun-deepseek-v3.md
+      - page: Run NCCL Benchmarks
+        path: v0.1.0-content/how-to-guides/nccl-benchmarks.md
+      - page: Adaptive Fault Isolation
+        path: v0.1.0-content/how-to-guides/adaptive-fault-isolation.md
+      - page: Custom Catalog Entries
+        path: v0.1.0-content/how-to-guides/custom-catalog-entries.md
+      - page: Interpret Results
+        path: v0.1.0-content/how-to-guides/interpret-results.md
+
+  - section: CLI Reference
+    contents:
+      - page: Overview
+        path: v0.1.0-content/cli-reference/overview.md
+      - page: setup
+        path: v0.1.0-content/cli-reference/setup.md
+      - page: certification
+        path: v0.1.0-content/cli-reference/certification.md
+      - page: workloadrun
+        path: v0.1.0-content/cli-reference/workloadrun.md
+      - page: cluster
+        path: v0.1.0-content/cli-reference/cluster.md
+      - page: workflow
+        path: v0.1.0-content/cli-reference/workflow.md
+
+  - section: API Reference
+    contents:
+      - page: Overview
+        path: v0.1.0-content/api-reference/index.md
+      - page: Certification
+        path: v0.1.0-content/api-reference/certification.md
+      - page: Workflow
+        path: v0.1.0-content/api-reference/workflow.md
+      - page: Job
+        path: v0.1.0-content/api-reference/job.md
+      - page: WorkloadRun
+        path: v0.1.0-content/api-reference/workloadrun.md
+      - page: GoodputMeasurement
+        path: v0.1.0-content/api-reference/goodput-measurement.md
+      - page: BandwidthMeasurement
+        path: v0.1.0-content/api-reference/bandwidth-measurement.md
+      - page: LogProfile
+        path: v0.1.0-content/api-reference/logprofile.md
+      - page: Validation Results
+        path: v0.1.0-content/api-reference/validation-results.md
+
+  - section: Operations
+    contents:
+      - page: Deployment
+        path: v0.1.0-content/operations/deployment.md
+      - page: Monitoring
+        path: v0.1.0-content/operations/monitoring.md
+      - page: Prometheus Metrics
+        path: v0.1.0-content/operations/metrics.md
+      - page: Troubleshooting
+        path: v0.1.0-content/operations/troubleshooting.md
+      - page: FAQ
+        path: v0.1.0-content/operations/faq.md
