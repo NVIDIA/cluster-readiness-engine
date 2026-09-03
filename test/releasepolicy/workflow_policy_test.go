@@ -15,26 +15,13 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// makefilePath and attestWorkflowName are local to this file; releaseWorkflow
+// and workflowFiles are already defined elsewhere in this package (see
+// predicate_parse_test.go and shell_scope_test.go) and are reused as-is.
 const (
 	makefilePath       = "../../Makefile"
-	releaseWorkflow    = "../../.github/workflows/release.yml"
 	attestWorkflowName = "attest.yml"
 )
-
-// workflowFiles lists every workflow definition under .github/workflows.
-func workflowFiles(t *testing.T) []string {
-	t.Helper()
-
-	paths, err := filepath.Glob(filepath.Join(workflowDir, "*.yml"))
-	if err != nil {
-		t.Fatalf("glob workflows: %v", err)
-	}
-	if len(paths) == 0 {
-		t.Fatalf("no workflows found under %s", workflowDir)
-	}
-	sort.Strings(paths)
-	return paths
-}
 
 // cosignSignCmds are the signing invocations that may exist only inside
 // attest.yml. A second home for any of them widens the published identity
