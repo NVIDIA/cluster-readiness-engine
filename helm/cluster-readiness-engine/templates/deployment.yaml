@@ -36,7 +36,17 @@ spec:
         - --measurement-max-concurrent-reconciles={{ required "manager.measurementMaxConcurrentReconciles is required" .Values.manager.measurementMaxConcurrentReconciles }}
         command:
         - /manager
+        {{- /*
+          A digest wins over a tag. Verification is digest-addressed, so an
+          operator who checked a signature and then deployed by tag deployed
+          something the tag happened to resolve to at pull time, not the bytes
+          they verified.
+        */ -}}
+        {{- if .Values.manager.image.digest }}
+        image: {{ .Values.manager.image.repository }}@{{ .Values.manager.image.digest }}
+        {{- else }}
         image: {{ .Values.manager.image.repository }}:{{ .Values.manager.image.tag | default .Chart.AppVersion }}
+        {{- end }}
         livenessProbe:
           httpGet:
             path: /healthz

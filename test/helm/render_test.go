@@ -149,3 +149,89 @@ func managerArgs(rendered []byte) ([]string, error) {
 	}
 	return nil, fmt.Errorf("rendered chart has no manager Deployment container")
 }
+
+// managerImage returns the manager container's image reference.
+func managerImage(rendered []byte) (string, error) {
+	dec := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(rendered), 4096)
+	for {
+		var obj unstructured.Unstructured
+		err := dec.Decode(&obj)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", fmt.Errorf("decode helm template output: %w", err)
+		}
+		if obj.GetKind() != "Deployment" {
+			continue
+		}
+		var dep appsv1.Deployment
+		if err := kruntime.DefaultUnstructuredConverter.FromUnstructured(obj.Object, &dep); err != nil {
+			return "", fmt.Errorf("convert manager Deployment: %w", err)
+		}
+		for i := range dep.Spec.Template.Spec.Containers {
+			if dep.Spec.Template.Spec.Containers[i].Name == "manager" {
+				return dep.Spec.Template.Spec.Containers[i].Image, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("rendered chart has no manager Deployment container")
+}
+
+// TestHelmTemplatePinsImageByDigest covers the only image reference that names
+// what an operator actually verified.
+//
+// Verification is digest-addressed. Deploying by tag afterwards deploys
+// whatever the tag resolves to at pull time, which is not necessarily what was
+// checked -- a tag can be repointed after the signature was verified. The
+// documented guidance in docs/operations/deployment.md tells operators to pin
+// by the digest they verified, and before this the chart offered no way to do
+// it: `image:` was a hardcoded `repository:tag` join, and no value could
+// produce `repository@sha256:...`.
+func TestHelmTemplatePinsImageByDigest(t *testing.T) {
+	requireHelm(t)
+	dir := chartDir(t)
+	requireChartInputs(t, dir)
+
+	const digest = "sha256:735ad1e142a378b0919510bd1fc113cd53ab754bc79b7f0980d647d50a914523"
+
+	cases := []struct {
+		name string
+		set  []string
+		want string
+	}{
+		{
+			name: "digest pins the exact bytes",
+			set:  []string{"manager.image.digest=" + digest},
+			want: "ghcr.io/nvidia/cluster-readiness-engine/manager@" + digest,
+		},
+		{
+			// A digest is more specific than a tag, so it must win rather than
+			// producing repository:tag@digest or silently ignoring one of them.
+			name: "digest wins over an explicit tag",
+			set:  []string{"manager.image.digest=" + digest, "manager.image.tag=v9.9.9"},
+			want: "ghcr.io/nvidia/cluster-readiness-engine/manager@" + digest,
+		},
+		{
+			name: "tag is still used when no digest is set",
+			set:  []string{"manager.image.tag=v9.9.9"},
+			want: "ghcr.io/nvidia/cluster-readiness-engine/manager:v9.9.9",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rendered, err := helmTemplate(dir, tc.set)
+			if err != nil {
+				t.Fatalf("helm template: %v", err)
+			}
+			got, err := managerImage(rendered)
+			if err != nil {
+				t.Fatalf("read manager image: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("manager image = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

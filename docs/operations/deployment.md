@@ -76,6 +76,7 @@ Key chart values:
 | `manager.replicas` | `1` | Controller Deployment replicas |
 | `manager.image.repository` | `ghcr.io/nvidia/cluster-readiness-engine/manager` | Controller image |
 | `manager.image.tag` | `""` (uses chart `appVersion`) | Controller image tag |
+| `manager.image.digest` | `""` | Pin the controller image by digest. Wins over `tag`; the only form that names the exact bytes you verified |
 | `manager.imagePullSecrets` | `[]` | Pull secrets for the controller image |
 | `manager.resources` | `10m/500m` CPU, `1Gi/1Gi` memory | Controller resource requests/limits |
 | `manager.affinity` | `{}` | Controller pod affinity |
@@ -302,7 +303,7 @@ Use this checklist before going live. Each item addresses a specific risk surfac
 | **RBAC audit** | Required | Run `kubectl get clusterrole nvcre-manager-role -o yaml` and verify the permissions match your security requirements. |
 | **TLS for metrics** | Recommended | The default ServiceMonitor uses `insecureSkipVerify: true`. Configure cert-manager to issue a serving certificate for the controller's metrics endpoint. |
 | **Controller node affinity** | Recommended | Schedule the controller on infrastructure nodes, not GPU nodes, using the `manager.affinity` chart value to avoid consuming GPU resources. |
-| **Image provenance** | Recommended | Pin container images by digest rather than tag. Scan images with your vulnerability tooling before deployment. |
+| **Image provenance** | Recommended | Verify the image signature and its SLSA provenance against the exact signing identity before deploying, then pin what you verified with `--set manager.image.digest=sha256:...` rather than deploying by tag — a tag can be repointed after you check it. The provenance names the commit, ref and workflow that built it. See [Verifying release artifacts](./verifying-artifacts.md). Scan images with your vulnerability tooling before deployment. |
 | **Pod Security Standards** | Verify | The controller runs as non-root with `seccompProfile: RuntimeDefault`, a read-only root filesystem, and all capabilities dropped. Verify with `kubectl get pod -n nvcre -o yaml`. |
 | **CRD backup** | Recommended | Include the NVCRE CRDs in your cluster backup strategy. Certification resources contain node health state that may be needed for audit. |
 

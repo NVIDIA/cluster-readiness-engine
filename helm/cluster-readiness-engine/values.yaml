@@ -15,6 +15,11 @@ manager:
   image:
     repository: ghcr.io/nvidia/cluster-readiness-engine/manager
     tag: ""
+    # Pin by digest instead of tag. When set, this wins over `tag` and the image
+    # is referenced as repository@digest -- the only form that names the exact
+    # bytes you verified, since a tag can be repointed after verification.
+    # Example: sha256:735ad1e142a378b0919510bd1fc113cd53ab754bc79b7f0980d647d50a914523
+    digest: ""
     pullPolicy: IfNotPresent
   imagePullSecrets: []
   resources:
