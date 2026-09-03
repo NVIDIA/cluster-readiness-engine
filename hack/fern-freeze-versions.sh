@@ -10,12 +10,15 @@
 # the release tag, so it is derived, not authored: it is rebuilt here rather
 # than committed, and fern/.gitignore keeps it out of the tree.
 #
-# Both the docs publish workflow and the PR-time docs checks run this, which is
-# the point of it being a script. When only the publish workflow built the
-# content, `fern docs md check` on a pull request followed docs.yml into a
-# directory that does not exist in a plain checkout and failed on every PR that
-# touched docs/ or fern/ -- while the publish path, which built the content
-# first, was fine. A check that cannot see what it validates is not a check.
+# All three consumers run this -- the docs publish workflow, the PR-time docs
+# checks, and the PR preview build -- which is the point of it being a script
+# rather than three copies. When only the publish workflow built the content,
+# `fern docs md check` on a pull request followed docs.yml into a directory that
+# does not exist in a plain checkout and failed on every PR that touched docs/
+# or fern/, while the publish path, which built the content first, was fine. A
+# check that cannot see what it validates is not a check.
+#
+# Run it locally with `make fern-freeze-versions` before `fern check`.
 #
 # Requires: git with tags fetched (actions/checkout needs fetch-depth: 0).
 
