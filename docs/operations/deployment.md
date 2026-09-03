@@ -235,7 +235,7 @@ readinessProbe:
    helm show crds oci://ghcr.io/nvidia/cluster-readiness-engine --version <new-version> \
      | kubectl apply --server-side --force-conflicts -f -
    ```
-3. Upgrade the Helm release (log in to `ghcr.io` first, as above):
+3. Upgrade the Helm release:
    ```bash
    helm upgrade nvcre \
      oci://ghcr.io/nvidia/cluster-readiness-engine \

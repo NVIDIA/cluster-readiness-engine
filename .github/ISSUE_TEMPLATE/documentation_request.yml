@@ -70,6 +70,6 @@ body:
       placeholder: |
         - README.md
         - docs/designs/
-        - https://docs.nvidia.com/nvcre
+        - https://docs.nvidia.com/cluster-readiness-engine
     validations:
       required: false
