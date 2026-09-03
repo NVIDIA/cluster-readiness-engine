@@ -47,8 +47,24 @@ jobs:
         with:
           cosign-release: v3.1.3
 
+      # Same pattern as attest.yml: download from the project that publishes it
+      # and check a digest pinned here. A setup action would have installed
+      # whatever crane is newest at run time, unverified, which is the opposite
+      # of what this workflow is checking.
       - name: Install crane
-        uses: imjasonh/setup-crane@31b88efe9de28ae0ffa220711af4b60be9b87d81 # v0.4
+        env:
+          CRANE_VERSION: v0.20.6
+          CRANE_SHA256: c1d593d01551f2c9a3df5ca0a0be4385a839bd9b86d4a76e18d7b17d16559127
+        run: |
+          set -euo pipefail
+          base="https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}"
+          tarball="go-containerregistry_Linux_x86_64.tar.gz"
+          tmp="$(mktemp -d)"
+          curl -fsSL -o "${tmp}/${tarball}" "${base}/${tarball}"
+          echo "${CRANE_SHA256}  ${tmp}/${tarball}" | sha256sum --check --strict -
+          tar -xzf "${tmp}/${tarball}" -C "${tmp}" crane
+          install -m 0755 "${tmp}/crane" /usr/local/bin/crane
+          crane version
 
       - name: Resolve the newest release
         id: rel
@@ -80,10 +96,18 @@ jobs:
           for i, b in enumerate(blocks, 1):
               # Point every block at the release under test rather than the tag
               # the page happens to be pinned to.
-              b = re.sub(r"(?m)^TAG=\S+$", f"TAG={tag}", b)
+              b, n = re.subn(r"(?m)^TAG=\S+$", f"TAG={tag}", b)
+              if "TAG=" in blocks[i - 1] and n == 0:
+                  raise SystemExit(
+                      f"block {i} sets TAG but the substitution did not fire; "
+                      "the workflow would silently verify the pinned tag instead "
+                      "of the release under test")
               # Installing is covered by the installer's own tests; doing it here
               # would write to /usr/local/bin for no extra signal.
-              b = b.replace('bash installer -v "${TAG}"', 'echo "[skipped: install]"')
+              if 'bash installer' in b:
+                  b, n = re.subn(r'(?m)^bash installer .*$', 'echo "[skipped: install]"', b)
+                  if n == 0:
+                      raise SystemExit(f"block {i} runs the installer but the skip did not fire")
               # helm install needs a cluster. The rest of the chart flow --
               # verify, verify-attestation, pull by digest -- still runs, and
               # the chart's own digest handling is covered by test/helm.
@@ -91,8 +115,11 @@ jobs:
               # install is the last thing in a block there is no blank line to
               # match, the substitution silently misses, and CI runs a real
               # helm install against whatever kubeconfig it has.
-              b = re.sub(r"(?m)^helm install nvcre(?:.*\\\n)*.*$",
-                         'echo "[skipped: needs a cluster]"', b)
+              if "helm install" in b:
+                  b, n = re.subn(r"(?m)^helm install nvcre(?:.*\\\n)*.*$",
+                                 'echo "[skipped: needs a cluster]"', b)
+                  if n == 0:
+                      raise SystemExit(f"block {i} runs helm install but the skip did not fire")
               out.append(f'echo "::group::block {i}"')
               out.append(b)
               out.append('echo "::endgroup::"')

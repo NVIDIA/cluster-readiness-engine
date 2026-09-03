@@ -17,6 +17,11 @@ Start here. The README shows `curl … | bash` because it is short, and it is ho
 what it gives you: TLS integrity in transit, and nothing at all about whether the script
 on the other end is the one we published. The script runs before anything has checked it.
 
+Set `TAG` to the release you actually have. These commands verify the artifact `TAG`
+names and nothing else — pointed at a different release they will happily report success
+while telling you nothing about the file on your disk. `releases/latest` resolves to the
+newest *stable* release, so it is not `v0.2.0-rc.1`.
+
 To know what you are about to run, check it first:
 
 ```bash
@@ -46,16 +51,18 @@ Run the two commands back to back. Verifying a file and then executing it leaves
 in which something with write access could swap it — small, and it requires a compromise
 that is already worse than this, but it is a window and not a proof.
 
-From `v0.2.0-rc.1` onward the installer checks the binary it downloads against that
-release's bundle and refuses to install if it cannot. `--skip-verify` overrides that and
-is never inferred from a missing tool.
+The installer also verifies the binary *it* downloads, refusing to install one whose
+bundle it cannot check, with `--skip-verify` as the only override. That landed after
+`v0.2.0-rc.1` was cut, so the installer published with the release pinned above does not
+yet do it — it checks only `checksums.txt`. Verify `installer` yourself, as above, until
+a release carries the newer one.
 
 ## Prerequisites
 
 | Tool | Used for | Version this page was checked with |
 |---|---|---|
 | [`cosign`](https://docs.sigstore.dev/cosign/installation/) | every verification below | `v3.1.3` |
-| [`crane`](https://github.com/google/go-containerregistry/tree/main/cmd/crane) | resolving per-platform image digests | `v0.21.1` |
+| [`crane`](https://github.com/google/go-containerregistry/tree/main/cmd/crane) | resolving per-platform image digests | `v0.20.6` (the version the release pipeline pins) |
 | `jq` | reading provenance and SBOM predicates | any |
 | `helm` | pulling the chart by digest | `v3.x` |
 
@@ -162,8 +169,14 @@ jq -r '{
 Confirm the commit is the one the tag points at:
 
 ```bash
-git ls-remote https://github.com/NVIDIA/cluster-readiness-engine "refs/tags/${TAG}"
+git ls-remote --exit-code https://github.com/NVIDIA/cluster-readiness-engine "refs/tags/${TAG}^{}"
 ```
+
+The `^{}` is required and easy to miss. Release tags here are signed, so
+`refs/tags/<TAG>` resolves to the *tag object*, not the commit — comparing that against
+the provenance would mismatch on every correct release. `^{}` peels it to the commit the
+provenance actually names. `--exit-code` makes a tag that does not exist fail rather than
+print nothing and succeed.
 
 `head -1` above is deliberate, and it is also why the `git ls-remote` check is **not
 optional**. A retried signing attempt can leave more than one valid attestation on a
@@ -290,15 +303,19 @@ cosign verify-attestation --type cyclonedx \
   --certificate-identity "${ID}" \
   --certificate-oidc-issuer "${ISSUER}" \
   "${IMAGE}@${AMD64}" 2>/dev/null \
-  | jq -r '.payload' | head -1 | base64 -d | jq '.predicate' > "${tmp}" \
-  && mv "${tmp}" sbom-linux-amd64.json
+  | jq -r '.payload' | head -1 | base64 -d | jq '.predicate' > "${tmp}"
+mv "${tmp}" sbom-linux-amd64.json
 jq -r '.components | length' sbom-linux-amd64.json
 ```
 
 Do not write straight to the final path. `>` truncates the target before the pipeline
 runs and `jq` exits 0 on empty input, so a failed verification leaves a zero-length file
-and a zero exit status — a broken result that reads as success. `set -o pipefail` plus a
-deferred `mv` is what makes the failure visible.
+and a zero exit status — a broken result that reads as success.
+
+The `mv` is a separate statement on purpose. Chaining it with `&&` would put the pipeline
+on the left of an `&&`, where `set -e` does not apply, so the failure would not abort
+there either. Written as two statements, `set -euo pipefail` aborts on the pipeline
+itself.
 
 ## Air-gapped verification
 
@@ -366,12 +383,15 @@ in issue #272.
 prints the SAN it expected and the SAN it found; compare them. The usual cause is a `TAG`
 that does not match the artifact, since the identity embeds the tag.
 
-**`no matching attestations`** — right identity, wrong subject or predicate type. Check
-you are using the index digest for provenance and a per-platform digest for an SBOM, and
-that `--type` matches (`slsaprovenance1` for provenance, `cyclonedx` for an SBOM).
+**`none of the attestations matched the predicate type: <type>, found: <types>`** — right
+identity and subject, wrong `--type`. Provenance is `slsaprovenance1` on the index digest;
+an SBOM is `cyclonedx` on a per-platform digest. The message lists what the subject
+actually carries, which tells you which of the two you got wrong.
 
-**`Error: fetching signatures: reading layout ...`** on a release before `v0.2.0-rc.1` —
-those releases carry no bundles. Nothing was signed; there is nothing to verify.
+**`reading <file>: no such file or directory`** — the bundle is not on disk. Usually the
+`curl` for it failed: releases before `v0.2.0-rc.1` carry no bundles at all, so
+`curl -fsSLO .../installer.sigstore.json` returns `curl: (56) ... error 404` and cosign
+never runs. Nothing was signed there; there is nothing to verify.
 
 **`exec: "docker-credential-osxkeychain"`** from `helm pull` — a local Docker credential
 helper is declared in `~/.docker/config.json` but not installed. It has nothing to do

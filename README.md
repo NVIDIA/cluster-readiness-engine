@@ -74,10 +74,12 @@ curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/
 
 The installer places `nvcrectl` on your `$PATH` and creates a `kubectl-nvcre` symlink so the CLI is also available as `kubectl nvcre`.
 
-It verifies the binary it downloads against that release's Sigstore bundle before installing
-it, using `cosign` if you have it and fetching a digest-pinned copy if you do not. If it
-cannot verify, it stops rather than installing — pass `--skip-verify` to override that
-deliberately. Releases before `v0.2.0-rc.1` carry no bundles.
+From the first release cut after this landed, the installer verifies the binary it
+downloads against that release's Sigstore bundle before installing it, using `cosign` if
+you have it and fetching a digest-pinned copy if you do not. If it cannot verify, it stops
+— pass `--skip-verify` to override that deliberately. Releases up to and including
+`v0.2.0-rc.1` ship an installer that checks only `checksums.txt`, and releases before
+`v0.2.0-rc.1` carry no bundles at all.
 
 Piping to `bash` gets you TLS integrity in transit and nothing more: the script runs before
 anything has checked the script itself. To verify what you are about to run, download it and
