@@ -25,6 +25,32 @@ GH_RELEASE_URL="https://github.com/${GH_REPO}/releases/download"
 BIN_NAME="nvcrectl"
 INSTALL_DIR="/usr/local/bin"
 
+# Signature verification. Every release asset ships a detached Sigstore bundle,
+# signed by one reusable workflow, so there is exactly one identity to pin. It
+# names the workflow AND the tag: an identity that names neither also accepts a
+# branch build, which is how an unreleased image could pass for a release.
+SIGSTORE_ISSUER="https://token.actions.githubusercontent.com"
+SIGSTORE_IDENTITY_PREFIX="https://github.com/${GH_REPO}/.github/workflows/attest.yml@refs/tags"
+
+# cosign is bootstrapped when absent, and the download is checked against a
+# digest pinned here. Pinning the version alone would leave the bytes to
+# whatever that tag currently serves, which is the same trust gap this script
+# exists to close -- verifying a release with an unverified verifier proves
+# nothing. Refresh both together; the digests are cosign's own
+# cosign_checksums.txt for the release.
+COSIGN_VERSION="v3.1.3"
+COSIGN_BASE_URL="https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}"
+
+cosignDigest() {
+  case "$1" in
+    linux-amd64)  echo "4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71" ;;
+    linux-arm64)  echo "c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a" ;;
+    darwin-amd64) echo "2347488e5d5b25336644024dfeca5601b190e91197a71a917bda44744aff106c" ;;
+    darwin-arm64) echo "5cf948c2f4dfe59687bdd0b8523709067383e03982cc543475c8a7dc70e92a76" ;;
+    *) return 1 ;;
+  esac
+}
+
 # Colors
 COLOR_RED='\033[0;31m'
 COLOR_GREEN='\033[0;32m'
@@ -38,14 +64,31 @@ usage() {
   cat <<EOF
 Install / upgrade ${BIN_NAME}
 
-Usage: $0 [-d install_dir] [-p] [-v version]
+Usage: $0 [-d install_dir] [-p] [-v version] [--skip-verify]
 
 Options:
-  -d DIR    Installation directory (default: /usr/local/bin)
-  -p        Include pre-release versions
-  -v TAG    Install this exact release tag (e.g. v0.1.0)
+  -d DIR         Installation directory (default: /usr/local/bin)
+  -p             Include pre-release versions
+  -v TAG         Install this exact release tag (e.g. v0.1.0)
+  --skip-verify  Install without verifying the release signature.
+                 Not a fallback: verification is skipped only when you ask.
+
+The download is verified against its Sigstore bundle. cosign is used if present
+and downloaded against a pinned digest if not. If neither is possible the
+install stops rather than continuing unverified.
 EOF
   exit 1
+}
+
+# sha256Of prints the SHA-256 of a file, using whichever tool this OS ships.
+sha256Of() {
+  if command -v sha256sum &>/dev/null; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum &>/dev/null; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    return 1
+  fi
 }
 
 err() {
@@ -86,6 +129,20 @@ getArch() {
 
 PRERELEASE=false
 VERSION=""
+SKIP_VERIFY=false
+
+# getopts handles short flags only, so --skip-verify is removed from the
+# argument list first. It is spelled long deliberately: turning off signature
+# verification should be something someone typed out, not a letter picked up
+# from a copied command line.
+ARGS=()
+for arg in "$@"; do
+  case "${arg}" in
+    --skip-verify) SKIP_VERIFY=true ;;
+    *) ARGS+=("${arg}") ;;
+  esac
+done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
 
 while getopts "d:pv:" opt; do
   case ${opt} in
@@ -417,6 +474,96 @@ if ! (cd "${TEMP_DIR}" && "${SHA256_CHECK[@]}" checksums.txt); then
 fi
 
 ok "Checksum verified."
+
+# ---------------------------------------------------------------------------
+# Verify the signature
+# ---------------------------------------------------------------------------
+# The checksum above is served from the same origin as the binary and is itself
+# unsigned, so whoever can replace the binary can replace its checksum line in
+# the same write. It catches corruption, not tampering. The signature is the
+# check that means anything, so this fails closed: an unverifiable download is
+# not installed.
+#
+# What this cannot do is authenticate `installer` itself. Under `curl | bash`
+# the script has already executed before anything checked it, and an adversary
+# who can replace this asset can delete these lines and the pinned digest with
+# it. The trust anchor has to sit outside the script -- see SECURITY.md for the
+# download-verify-run path.
+
+fetchReleaseAsset() {
+  local name="$1" dest="$2"
+
+  if [[ "${GH_AVAILABLE}" == "true" ]]; then
+    gh release download "${VERSION}" --repo "${GH_REPO}" \
+      --pattern "${name}" --dir "$(dirname "${dest}")" 2>/dev/null || return 1
+    [[ -s "${dest}" ]] || return 1
+    return 0
+  fi
+
+  if [[ -n "${GH_TOKEN}" ]]; then
+    local url
+    url=$(echo "${RELEASE_JSON:-}" | tr -d '\n' | tr '{' '\n' \
+      | grep "\"name\" *: *\"${name//./\\.}\"" \
+      | grep -o '"url" *: *"https://api\.github\.com[^"]*releases/assets/[0-9]*"' \
+      | head -1 | sed 's/.*"\(https[^"]*\)".*/\1/' || true)
+    [[ -n "${url}" ]] || return 1
+    curl -fsSL -H "Authorization: token ${GH_TOKEN}" \
+      -H "Accept: application/octet-stream" -o "${dest}" "${url}" 2>/dev/null || return 1
+    return 0
+  fi
+
+  curl -fsSL -o "${dest}" "${GH_RELEASE_URL}/${VERSION}/${name}" 2>/dev/null || return 1
+}
+
+# resolveCosign prints a usable cosign path on stdout. Progress and diagnostics
+# go to stderr so they cannot be captured as the path.
+resolveCosign() {
+  if command -v cosign &>/dev/null; then
+    command -v cosign
+    return 0
+  fi
+
+  local key="${OS}-${ARCH}" want got dest="${TEMP_DIR}/cosign"
+  want="$(cosignDigest "${key}")" || return 1
+
+  msg "cosign not found; fetching pinned ${COSIGN_VERSION} for ${key}..." >&2
+  curl -fsSL -o "${dest}" "${COSIGN_BASE_URL}/cosign-${key}" 2>/dev/null || return 1
+
+  got="$(sha256Of "${dest}")" || return 1
+  if [[ "${got}" != "${want}" ]]; then
+    echo "downloaded cosign digest ${got} does not match the pinned ${want}" >&2
+    return 1
+  fi
+
+  chmod +x "${dest}"
+  echo "${dest}"
+}
+
+if [[ "${SKIP_VERIFY}" == "true" ]]; then
+  printf "${COLOR_RED}!${COLOR_RESET} Signature verification skipped (--skip-verify). Nothing has proven this binary came from %s.\n" "${GH_REPO}"
+else
+  msg "Verifying signature..."
+
+  BUNDLE="${BINARY_NAME}.sigstore.json"
+  if ! fetchReleaseAsset "${BUNDLE}" "${TEMP_DIR}/${BUNDLE}"; then
+    err "Could not download ${BUNDLE} for ${VERSION}, so the download cannot be verified. Releases before v0.2.0 carry no bundles — install one of those with --skip-verify if you accept that, or pick a newer release."
+  fi
+
+  if ! COSIGN_BIN="$(resolveCosign)"; then
+    err "cosign is required to verify the download and could not be obtained for ${OS}-${ARCH}. Install cosign (https://docs.sigstore.dev/cosign/installation/) and re-run, or re-run with --skip-verify to install without verification."
+  fi
+
+  if ! "${COSIGN_BIN}" verify-blob-attestation \
+      --bundle "${TEMP_DIR}/${BUNDLE}" \
+      --type "https://slsa.dev/provenance/v1" \
+      --certificate-identity "${SIGSTORE_IDENTITY_PREFIX}/${VERSION}" \
+      --certificate-oidc-issuer "${SIGSTORE_ISSUER}" \
+      "${TEMP_DIR}/${BINARY_NAME}" >/dev/null 2>&1; then
+    err "Signature verification failed for ${BINARY_NAME} ${VERSION}. This binary is not what ${GH_REPO} published for that tag — not installing it."
+  fi
+
+  ok "Signature verified."
+fi
 
 # ---------------------------------------------------------------------------
 # Install / upgrade binary + kubectl plugin symlink
