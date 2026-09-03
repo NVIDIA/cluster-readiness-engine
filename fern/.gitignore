@@ -1,2 +1,8 @@
 .fern/
 node_modules/
+
+# Frozen per-version documentation, rebuilt from the release tag by
+# hack/fern-freeze-versions.sh. Derived content: committing it would duplicate
+# every docs page once per registered version and let the copy drift from the
+# tag it claims to be.
+versions/*-content/

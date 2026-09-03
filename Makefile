@@ -188,6 +188,10 @@ verify-license-headers: addlicense ## Verify Go sources carry the SPDX license h
 verify-doc-links: ## Verify relative markdown links in README.md and docs/ resolve to files in the tree.
 	hack/verify-doc-links.sh
 
+.PHONY: fern-freeze-versions
+fern-freeze-versions: ## Rebuild the frozen per-version docs content that fern/docs.yml points at.
+	hack/fern-freeze-versions.sh
+
 .PHONY: verify
 verify: verify-codegen verify-mod verify-license-headers verify-doc-links ## Run all verification checks.
 
