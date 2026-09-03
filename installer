@@ -217,40 +217,78 @@ fi
 # — treating it as such is the whole reason this guard would be worth adding and
 # then not worth having. `skipped` is the one benign unknown: with no gh and no
 # token there is no draft to install, so there is nothing to determine.
+#
+# Only a positively identified answer counts. Neither branch infers "published"
+# from the absence of evidence for "draft": `gh` output that is not literally
+# `true` or `false` is not an answer, and an HTTP body without a readable
+# `draft` field is not an answer either. A TLS-interception page, a WAF block or
+# a CDN glitch can all return 200 with a body that contains no `"draft": true`,
+# and reading that as "not a draft" would be the same fail-open in a new place.
 IS_DRAFT="unknown"
 if [[ "${GH_AVAILABLE}" == "true" ]]; then
+  GH_ERR=$(mktemp)
   for attempt in 1 2 3; do
-    if OUT=$(gh release view "${VERSION}" --repo "${GH_REPO}" --json isDraft -q '.isDraft' 2>&1); then
-      IS_DRAFT="${OUT}"
-      break
-    fi
+    # stderr goes to a file, never into the captured value. `gh` prints an
+    # upgrade notice to stderr once every 24h, and merging the two streams put
+    # that notice inside IS_DRAFT on a perfectly successful call — which then
+    # matched no case arm and refused a published release. Ephemeral CI runners
+    # do not persist gh's state, so they see that notice constantly.
+    if OUT=$(gh release view "${VERSION}" --repo "${GH_REPO}" --json isDraft -q '.isDraft' 2>"${GH_ERR}"); then
+      case "${OUT}" in
+        true | false)
+          IS_DRAFT="${OUT}"
+          break
+          ;;
+      esac
     # A confirmed "no such release" is an answer, not an outage: there is no
     # draft to refuse, and the download below reports the missing release with
     # a message that actually says so.
-    if echo "${OUT}" | grep -qiE 'release not found|could not find|HTTP 404'; then
+    elif grep -qiE 'release not found|could not find|HTTP 404' "${GH_ERR}"; then
       IS_DRAFT="absent"
       break
     fi
-    sleep $((attempt * 2))
+    if [[ "${attempt}" -lt 3 ]]; then sleep $((attempt * 2)); fi
   done
+  rm -f "${GH_ERR}"
 elif [[ -n "${GH_TOKEN}" ]]; then
   # A single release object, so no key-ordering assumption is needed. This also
   # primes RELEASE_JSON for the asset lookup below.
+  BODY=$(mktemp)
   for attempt in 1 2 3; do
-    if [[ -z "${RELEASE_JSON:-}" ]]; then
-      RELEASE_JSON=$(curl -sSf "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
-        -H "Accept: application/vnd.github.v3+json" "${GH_API_URL}/releases/tags/${VERSION}" || true)
-    fi
     if [[ -n "${RELEASE_JSON:-}" ]]; then
-      if echo "${RELEASE_JSON}" | grep -q '"draft" *: *true'; then
-        IS_DRAFT=true
-      else
-        IS_DRAFT=false
-      fi
+      HTTP_CODE=200
+    else
+      # -f is deliberately absent: it discards the body and collapses every
+      # HTTP error into one exit code, which is what made a 404 on a mistyped
+      # -v tag indistinguishable from an outage.
+      HTTP_CODE=$(curl -sS -o "${BODY}" -w '%{http_code}' \
+        "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
+        -H "Accept: application/vnd.github.v3+json" \
+        "${GH_API_URL}/releases/tags/${VERSION}" 2>/dev/null || echo "000")
+    fi
+
+    if [[ "${HTTP_CODE}" == "404" ]]; then
+      IS_DRAFT="absent"
       break
     fi
-    sleep $((attempt * 2))
+    if [[ "${HTTP_CODE}" == "200" ]]; then
+      if [[ -z "${RELEASE_JSON:-}" ]]; then
+        RELEASE_JSON=$(cat "${BODY}")
+      fi
+      if echo "${RELEASE_JSON}" | grep -q '"draft" *: *true'; then
+        IS_DRAFT=true
+        break
+      elif echo "${RELEASE_JSON}" | grep -q '"draft" *: *false'; then
+        IS_DRAFT=false
+        break
+      fi
+      # 200 with no readable draft field: not a release object, so not an
+      # answer. Drop it rather than let the asset lookup below inherit it.
+      RELEASE_JSON=""
+    fi
+    if [[ "${attempt}" -lt 3 ]]; then sleep $((attempt * 2)); fi
   done
+  rm -f "${BODY}"
 else
   IS_DRAFT="skipped"
 fi

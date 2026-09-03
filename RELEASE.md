@@ -167,6 +167,13 @@ still working — or after it had refused a build — would install exactly what
 exists to withhold. Draft assets are reachable only with push access, so this never
 affected anonymous users; it affected the accounts closest to the release.
 
+The installer also refuses when it cannot *tell* — `Could not determine whether release
+<tag> is a draft after 3 attempts`. An unreadable state is not a published one, so it
+stops rather than guess. That is a GitHub API problem, not a bad release: retry, or check
+GitHub status. Anonymous installs never hit it, because no draft is reachable without
+push access and so there is nothing to determine. `test/releasepolicy` covers every
+branch of that decision, including the two ways it previously got it wrong.
+
 Note what the draft does **not** hold back. The image and the chart are pushed to GHCR
 before the gate runs and cannot be unpublished, and GitOps automation watching the
 registry — Flux `OCIRepository`, Argo CD Image Updater, Renovate — does not wait for the
