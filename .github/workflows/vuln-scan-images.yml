@@ -1,0 +1,299 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Weekly vulnerability scan of the container images this project publishes.
+#
+# govulncheck covers Go module advisories in the source tree and codeql covers
+# the Go code. Neither sees the image: not the base layer, not an OS package,
+# not anything the Dockerfile adds. release.yml runs ClamAV over the release
+# binaries, which is malware detection, not vulnerability detection.
+#
+# The gap is time. Scanning at build time answers "was this clean when we
+# shipped it". A CVE published against a base-image package the day after a
+# release affects every operator running that release, and nothing here would
+# otherwise notice. This answers "is it clean now".
+#
+# It does not build anything. Both targets already exist in the registry, so
+# they are scanned by digest where they are.
+
+name: Vulnerability Scan (images)
+
+on:
+  schedule:
+    # Monday 08:00 UTC. Offset from codeql (06:00), govulncheck (06:30) and
+    # docs-verify (07:00) so a Monday morning does not land four scheduled
+    # jobs on the same runners at once.
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+    inputs:
+      notify_slack:
+        description: 'Post the summary to Slack even on a manual run'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/nvidia/cluster-readiness-engine/manager
+  CRANE_VERSION: v0.20.6
+  CRANE_SHA256: c1d593d01551f2c9a3df5ca0a0be4385a839bd9b86d4a76e18d7b17d16559127
+
+jobs:
+  # Resolves what to scan. Two targets, each a multi-platform index, each
+  # expanded to its per-platform manifests.
+  resolve:
+    name: Resolve scan targets
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      targets: ${{ steps.targets.outputs.value }}
+    steps:
+      # Same pattern as attest.yml: from the project that publishes it, checked
+      # on arrival, rather than a setup action that installs whatever is newest.
+      - name: Install crane
+        run: |
+          set -euo pipefail
+          base="https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}"
+          tarball="go-containerregistry_Linux_x86_64.tar.gz"
+          tmp="$(mktemp -d)"
+          curl -fsSL -o "${tmp}/${tarball}" "${base}/${tarball}"
+          echo "${CRANE_SHA256}  ${tmp}/${tarball}" | sha256sum --check --strict -
+          tar -xzf "${tmp}/${tarball}" -C "${tmp}" crane
+          install -m 0755 "${tmp}/crane" /usr/local/bin/crane
+
+      - name: Resolve per-platform digests
+        id: targets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # The newest published release: what operators are actually running.
+          release_tag="$(gh release list --repo "${GITHUB_REPOSITORY}" --exclude-drafts \
+                          --limit 1 --json tagName --jq '.[0].tagName')"
+          [[ -n "${release_tag}" ]] || { echo "::error::no published release to scan"; exit 1; }
+
+          # The newest PUBLISHED main image: what the next release will look
+          # like. Deliberately not the tip of main -- publish.yml builds on push
+          # and the tip frequently has no image yet, so computing the tag from
+          # HEAD skips this target most of the time. A scan that silently covers
+          # half of what it claims is worse than one that covers less loudly, so
+          # walk back until an image is found and fail if none is.
+          main_sha=""
+          while read -r sha; do
+            if crane digest "${IMAGE}:main-${sha}" >/dev/null 2>&1; then
+              main_sha="${sha}"; break
+            fi
+          done < <(gh api "repos/${GITHUB_REPOSITORY}/commits?sha=main&per_page=15" --jq '.[].sha[0:7]')
+          if [[ -z "${main_sha}" ]]; then
+            echo "::error::no main-<sha> image found in the last 15 commits on main; publish.yml may be failing"
+            exit 1
+          fi
+          echo "newest published main image: main-${main_sha}"
+
+          targets='[]'
+          for pair in "release:${release_tag}" "main:main-${main_sha}"; do
+            name="${pair%%:*}"; tag="${pair#*:}"
+
+            if ! index="$(crane digest "${IMAGE}:${tag}" 2>/dev/null)"; then
+              echo "::warning::${IMAGE}:${tag} does not resolve; skipping the ${name} target"
+              continue
+            fi
+
+            amd64=""; arm64=""
+            for arch in amd64 arm64; do
+              digest="$(crane digest --platform "linux/${arch}" "${IMAGE}:${tag}" 2>/dev/null || true)"
+              if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+                echo "::error::${name}: linux/${arch} digest is missing or malformed: '${digest}'"
+                exit 1
+              fi
+              # Equal to the index means this is a plain manifest, not an index,
+              # so a "per-platform" scan would silently cover one architecture.
+              if [[ "${digest}" == "${index}" ]]; then
+                echo "::error::${name}: linux/${arch} resolved to the index digest; ${tag} is not multi-platform"
+                exit 1
+              fi
+              case "${arch}" in amd64) amd64="${digest}" ;; arm64) arm64="${digest}" ;; esac
+            done
+
+            # Identical platform digests mean the index lost an architecture and
+            # advertises one manifest twice.
+            if [[ "${amd64}" == "${arm64}" ]]; then
+              echo "::error::${name}: linux/amd64 and linux/arm64 resolved to the same digest ${amd64}"
+              exit 1
+            fi
+
+            for arch in amd64 arm64; do
+              case "${arch}" in amd64) d="${amd64}" ;; arm64) d="${arm64}" ;; esac
+              targets="$(jq -c --arg n "${name}" --arg t "${tag}" --arg a "${arch}" --arg d "${d}" \
+                '. + [{name: ($n + "-" + $a), tag: $t, arch: $a, ref: ($n + "-" + $a), digest: $d}]' <<<"${targets}")"
+            done
+            echo "${name} (${tag}) -> amd64 ${amd64} / arm64 ${arm64}"
+          done
+
+          [[ "$(jq 'length' <<<"${targets}")" -gt 0 ]] || {
+            echo "::error::no scannable targets resolved"; exit 1; }
+          echo "value=${targets}" >> "$GITHUB_OUTPUT"
+
+  scan:
+    name: Scan ${{ matrix.target.name }}
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.resolve.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # fail-build is false on purpose. This workflow reports; it does not gate.
+      # A red scheduled job caused by an upstream base-image CVE we cannot fix
+      # is how people learn to ignore red jobs.
+      - name: Scan
+        id: scan
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: ${{ env.IMAGE }}@${{ matrix.target.digest }}
+          severity-cutoff: high
+          only-fixed: true
+          fail-build: false
+          output-format: json
+
+      - name: Stage the report
+        env:
+          SARIF: ${{ steps.scan.outputs.json }}
+          NAME: ${{ matrix.target.name }}
+          DIGEST: ${{ matrix.target.digest }}
+          TAG: ${{ matrix.target.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          # Carry the subject alongside the findings; the raw grype document
+          # does not record which reference we asked it to scan.
+          jq --arg name "${NAME}" --arg digest "${DIGEST}" --arg tag "${TAG}" \
+            '{target: $name, tag: $tag, digest: $digest, matches: (.matches // [])}' \
+            "${SARIF}" > "reports/${NAME}.json"
+          jq -r '"\(.target): \(.matches | length) fixable high+ findings"' "reports/${NAME}.json"
+
+      - name: Upload the raw report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vuln-report-${{ matrix.target.name }}
+          path: reports/${{ matrix.target.name }}.json
+          retention-days: 30
+
+  report:
+    name: Summarise and notify
+    needs: [resolve, scan]
+    if: always() && needs.resolve.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: vuln-report-*
+          merge-multiple: true
+          path: reports
+
+      # The full set every run, carried-over findings included. Diffing against
+      # the previous run would stop reporting anything that had merely been seen
+      # before, and a finding that disappears because it is no longer new is a
+      # finding nobody fixed.
+      - name: Assemble the summary
+        id: summary
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(reports/*.json)
+          [[ ${#files[@]} -gt 0 ]] || { echo "::error::no scan reports were produced"; exit 1; }
+
+          jq -s '
+            [ .[] | . as $r
+              | ($r.matches // [])
+              | map({
+                  target: $r.target, digest: $r.digest,
+                  severity: (.vulnerability.severity // "Unknown"),
+                  id: (.vulnerability.id // "?"),
+                  package: ((.artifact.name // "?") + "@" + (.artifact.version // "?")),
+                  fix: ((.vulnerability.fix.versions // []) | join(", ")),
+                  aliases: ((.relatedVulnerabilities // []) | map(.id) | join(", "))
+                })
+            ] | flatten' "${files[@]}" > all.json
+
+          crit=$(jq '[.[] | select(.severity == "Critical")] | length' all.json)
+          high=$(jq '[.[] | select(.severity == "High")] | length' all.json)
+          echo "critical=${crit}" >> "$GITHUB_OUTPUT"
+          echo "high=${high}" >> "$GITHUB_OUTPUT"
+
+          # Every scanned target is listed, including the clean ones. Without
+          # this a target that failed to scan is indistinguishable from one with
+          # no findings -- both simply absent -- which is the quiet way a scan
+          # stops covering something.
+          jq -s -r '.[] | "  \(.target)  \(.tag)  \(.digest)  \(.matches | length) finding(s)"' \
+            reports/*.json > scanned.txt
+
+          {
+            echo "Image vulnerability scan — ${crit} critical, ${high} high (fixable)"
+            echo
+            echo "Scanned:"
+            cat scanned.txt
+            echo
+            if [[ "${crit}" -eq 0 && "${high}" -eq 0 ]]; then
+              echo "No fixable high or critical findings."
+            else
+              jq -r 'group_by(.target)[] |
+                "  \(.[0].target)  (\(.[0].digest[0:19])…)",
+                (.[] | "    [\(.severity)] \(.id)  \(.package)  fix: \(if .fix == "" then "none" else .fix end)\(if .aliases == "" then "" else "  aka \(.aliases)" end)"),
+                ""' all.json
+            fi
+          } > summary.txt
+
+          # Always echoed, so a manual run is useful with no Slack involved.
+          cat summary.txt
+          {
+            echo '### Image vulnerability scan'
+            echo '```'
+            cat summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Only when there is something to act on. A weekly "0 findings" message
+      # trains people to skim past it, and then past the one that matters.
+      - name: Notify Slack
+        if: >-
+          (github.event_name == 'schedule' || inputs.notify_slack) &&
+          (steps.summary.outputs.critical != '0' || steps.summary.outputs.high != '0')
+        env:
+          WEBHOOK: ${{ secrets.SLACK_WEBHOOK_PATH }}
+          CRIT: ${{ steps.summary.outputs.critical }}
+          HIGH: ${{ steps.summary.outputs.high }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${WEBHOOK}" ]]; then
+            echo "::notice::SLACK_WEBHOOK_PATH is not set; skipping the notification. The summary above is complete."
+            exit 0
+          fi
+          # The secret is named PATH, so it may hold either a bare
+          # services/T.../B.../xxx path or a full URL. Accept both rather than
+          # fail on a reasonable reading of the name.
+          url="${WEBHOOK}"
+          [[ "${url}" == https://* ]] || url="https://hooks.slack.com/${WEBHOOK#/}"
+
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          text="$(printf '*NVCRE image vulnerability scan* — %s critical, %s high (fixable)\n\n```%s```\n<%s|Full run>' \
+                   "${CRIT}" "${HIGH}" "$(cat summary.txt)" "${run_url}")"
+
+          # shellcheck disable=SC2016  # $t is a jq variable, not a shell one
+          jq -n --arg t "${text}" '{text: $t}' > payload.json
+          code="$(curl -sS -o resp.txt -w '%{http_code}' -X POST -H 'Content-type: application/json' \
+                    --data @payload.json "${url}" || echo 000)"
+          if [[ "${code}" != "200" ]]; then
+            echo "::error::Slack returned ${code}: $(cat resp.txt)"
+            exit 1
+          fi
+          echo "posted to Slack"
