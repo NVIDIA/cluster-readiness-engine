@@ -622,6 +622,38 @@ jobs:
       # asset rather than only the binaries. It is not the verification story:
       # it is served from the same origin as the artifacts and is itself
       # unsigned, which is why the bundles exist.
+      # ===================================================================
+      # TEMPORARY -- #270 gate rejection test. DO NOT MERGE THIS BRANCH.
+      #
+      # Simulates the threat the whole epic is about: an artifact modified
+      # after it was signed. One byte appended to a binary whose Sigstore
+      # bundle already exists and still attests the ORIGINAL bytes.
+      #
+      # What this deliberately does NOT break:
+      #   - `Require a bundle for every asset` still passes; the bundle is
+      #     present, it simply no longer describes this file.
+      #   - `Generate checksums` below runs `sha256sum -- *` over dist/, so
+      #     checksums.txt records the TAMPERED digest and is self-consistent.
+      #     The gate's `ok checksums.txt` will therefore PASS.
+      #
+      # So the only check that can catch this is cosign. If the gate is real,
+      # it fails on the signature and the release is never published. If the
+      # gate is theatre, this ships.
+      #
+      # #270's second acceptance criterion is "a deliberately broken artifact
+      # is withheld -- the gate must be shown to reject, not only to pass",
+      # and no green release run can supply it.
+      # ===================================================================
+      - name: Tamper with a signed binary
+        run: |
+          set -euo pipefail
+          before="$(sha256sum dist/nvcrectl-linux-amd64 | awk '{print $1}')"
+          printf '\0' >> dist/nvcrectl-linux-amd64
+          after="$(sha256sum dist/nvcrectl-linux-amd64 | awk '{print $1}')"
+          echo "::warning::TAMPER TEST -- nvcrectl-linux-amd64 modified after signing"
+          echo "  before: ${before}"
+          echo "  after:  ${after}"
+
       - name: Generate checksums
         run: |
           set -euo pipefail
