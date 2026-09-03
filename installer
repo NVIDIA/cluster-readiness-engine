@@ -25,6 +25,32 @@ GH_RELEASE_URL="https://github.com/${GH_REPO}/releases/download"
 BIN_NAME="nvcrectl"
 INSTALL_DIR="/usr/local/bin"
 
+# Signature verification. Every release asset ships a detached Sigstore bundle,
+# signed by one reusable workflow, so there is exactly one identity to pin. It
+# names the workflow AND the tag: an identity that names neither also accepts a
+# branch build, which is how an unreleased image could pass for a release.
+SIGSTORE_ISSUER="https://token.actions.githubusercontent.com"
+SIGSTORE_IDENTITY_PREFIX="https://github.com/${GH_REPO}/.github/workflows/attest.yml@refs/tags"
+
+# cosign is bootstrapped when absent, and the download is checked against a
+# digest pinned here. Pinning the version alone would leave the bytes to
+# whatever that tag currently serves, which is the same trust gap this script
+# exists to close -- verifying a release with an unverified verifier proves
+# nothing. Refresh both together; the digests are cosign's own
+# cosign_checksums.txt for the release.
+COSIGN_VERSION="v3.1.3"
+COSIGN_BASE_URL="https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}"
+
+cosignDigest() {
+  case "$1" in
+    linux-amd64)  echo "4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71" ;;
+    linux-arm64)  echo "c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a" ;;
+    darwin-amd64) echo "2347488e5d5b25336644024dfeca5601b190e91197a71a917bda44744aff106c" ;;
+    darwin-arm64) echo "5cf948c2f4dfe59687bdd0b8523709067383e03982cc543475c8a7dc70e92a76" ;;
+    *) return 1 ;;
+  esac
+}
+
 # Colors
 COLOR_RED='\033[0;31m'
 COLOR_GREEN='\033[0;32m'
@@ -38,14 +64,31 @@ usage() {
   cat <<EOF
 Install / upgrade ${BIN_NAME}
 
-Usage: $0 [-d install_dir] [-p] [-v version]
+Usage: $0 [-d install_dir] [-p] [-v version] [--skip-verify]
 
 Options:
-  -d DIR    Installation directory (default: /usr/local/bin)
-  -p        Include pre-release versions
-  -v TAG    Install this exact release tag (e.g. v0.1.0)
+  -d DIR         Installation directory (default: /usr/local/bin)
+  -p             Include pre-release versions
+  -v TAG         Install this exact release tag (e.g. v0.1.0)
+  --skip-verify  Install without verifying the release signature.
+                 Not a fallback: verification is skipped only when you ask.
+
+The download is verified against its Sigstore bundle. cosign is used if present
+and downloaded against a pinned digest if not. If neither is possible the
+install stops rather than continuing unverified.
 EOF
   exit 1
+}
+
+# sha256Of prints the SHA-256 of a file, using whichever tool this OS ships.
+sha256Of() {
+  if command -v sha256sum &>/dev/null; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum &>/dev/null; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    return 1
+  fi
 }
 
 err() {
@@ -86,6 +129,20 @@ getArch() {
 
 PRERELEASE=false
 VERSION=""
+SKIP_VERIFY=false
+
+# getopts handles short flags only, so --skip-verify is removed from the
+# argument list first. It is spelled long deliberately: turning off signature
+# verification should be something someone typed out, not a letter picked up
+# from a copied command line.
+ARGS=()
+for arg in "$@"; do
+  case "${arg}" in
+    --skip-verify) SKIP_VERIFY=true ;;
+    *) ARGS+=("${arg}") ;;
+  esac
+done
+set -- "${ARGS[@]+"${ARGS[@]}"}"
 
 while getopts "d:pv:" opt; do
   case ${opt} in
@@ -156,7 +213,11 @@ if [[ -n "${VERSION}" ]]; then
 elif [[ "${GH_AVAILABLE}" == "true" ]]; then
   msg "Fetching latest version..."
   if [[ "${PRERELEASE}" == "true" ]]; then
-    VERSION=$(gh release list --repo "${GH_REPO}" --limit 1 --json tagName -q '.[0].tagName')
+    # --exclude-drafts is load-bearing: `gh release list` includes drafts, and a
+    # release is a draft while the release workflow is still verifying it (and
+    # stays one if that verification fails). Without this, anyone with repo
+    # access installs the build the release gate has not cleared, or refused.
+    VERSION=$(gh release list --repo "${GH_REPO}" --exclude-drafts --limit 1 --json tagName -q '.[0].tagName')
   else
     VERSION=$(gh release view --repo "${GH_REPO}" --json tagName -q '.tagName' || true)
   fi
@@ -164,10 +225,25 @@ else
   msg "Fetching latest version..."
   # curl + token fallback
   if [[ "${PRERELEASE}" == "true" ]]; then
-    ENDPOINT="${GH_API_URL}/releases?per_page=1"
+    # This is the `gh release list --exclude-drafts` above, done with curl. The
+    # REST list endpoint returns draft releases to any caller with push access,
+    # so the newest entry can be the release the gate is still verifying, or has
+    # refused. Ask for several and walk past the drafts.
+    #
+    # `tag_name` precedes `draft` inside a release object, so the first
+    # "draft": false after a tag_name belongs to that tag. The draft guard below
+    # re-checks the resolved tag on its own, so a wrong answer here is caught
+    # rather than installed.
+    ENDPOINT="${GH_API_URL}/releases?per_page=10"
     RELEASE_JSON=$(curl -sSf "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
       -H "Accept: application/vnd.github.v3+json" "${ENDPOINT}" || true)
-    VERSION=$(echo "${RELEASE_JSON}" | grep -o '"tag_name" *: *"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)
+    VERSION=$(echo "${RELEASE_JSON}" | tr ',' '\n' | awk -F'"' '
+      /"tag_name"[[:space:]]*:/ { tag = $4 }
+      /"draft"[[:space:]]*:[[:space:]]*false/ { if (tag != "") { print tag; exit } }
+    ' || true)
+    # RELEASE_JSON now holds a list, not the selected release; the asset lookup
+    # further down must not read assets out of it.
+    RELEASE_JSON=""
   else
     RELEASE_JSON=$(curl -sSf "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
       -H "Accept: application/vnd.github.v3+json" "${GH_API_URL}/releases/latest" || true)
@@ -178,6 +254,111 @@ fi
 if [[ -z "${VERSION}" ]]; then
   err "Failed to determine latest version from GitHub releases. If every release is a pre-release, re-run with -p, or pin a version with -v <tag>."
 fi
+
+# ---------------------------------------------------------------------------
+# Refuse a draft release
+# ---------------------------------------------------------------------------
+# Resolution above walks past drafts, but -v names a tag directly and both
+# `gh release download` and GET /releases/tags/<tag> resolve a draft for a caller
+# with push access — gh races a published lookup against an explicit draft
+# lookup, so a pinned tag finds the draft too. A release is a draft while the
+# release workflow is still verifying it, and stays one if that verification
+# failed, so installing one means installing the build the gate has not cleared,
+# or has refused.
+#
+# Anonymous callers cannot reach a draft at all: GET /releases omits drafts for
+# them and /releases/latest is non-draft by definition. The exposure is
+# push-access accounts and in-repo CI, which is where a lot of installs happen.
+#
+# The lookup fails closed. "I could not read the state" is not "it is published"
+# — treating it as such is the whole reason this guard would be worth adding and
+# then not worth having. `skipped` is the one benign unknown: with no gh and no
+# token there is no draft to install, so there is nothing to determine.
+#
+# Only a positively identified answer counts. Neither branch infers "published"
+# from the absence of evidence for "draft": `gh` output that is not literally
+# `true` or `false` is not an answer, and an HTTP body without a readable
+# `draft` field is not an answer either. A TLS-interception page, a WAF block or
+# a CDN glitch can all return 200 with a body that contains no `"draft": true`,
+# and reading that as "not a draft" would be the same fail-open in a new place.
+IS_DRAFT="unknown"
+if [[ "${GH_AVAILABLE}" == "true" ]]; then
+  GH_ERR=$(mktemp)
+  for attempt in 1 2 3; do
+    # stderr goes to a file, never into the captured value. `gh` prints an
+    # upgrade notice to stderr once every 24h, and merging the two streams put
+    # that notice inside IS_DRAFT on a perfectly successful call — which then
+    # matched no case arm and refused a published release. Ephemeral CI runners
+    # do not persist gh's state, so they see that notice constantly.
+    if OUT=$(gh release view "${VERSION}" --repo "${GH_REPO}" --json isDraft -q '.isDraft' 2>"${GH_ERR}"); then
+      case "${OUT}" in
+        true | false)
+          IS_DRAFT="${OUT}"
+          break
+          ;;
+      esac
+    # A confirmed "no such release" is an answer, not an outage: there is no
+    # draft to refuse, and the download below reports the missing release with
+    # a message that actually says so.
+    elif grep -qiE 'release not found|could not find|HTTP 404' "${GH_ERR}"; then
+      IS_DRAFT="absent"
+      break
+    fi
+    if [[ "${attempt}" -lt 3 ]]; then sleep $((attempt * 2)); fi
+  done
+  rm -f "${GH_ERR}"
+elif [[ -n "${GH_TOKEN}" ]]; then
+  # A single release object, so no key-ordering assumption is needed. This also
+  # primes RELEASE_JSON for the asset lookup below.
+  BODY=$(mktemp)
+  for attempt in 1 2 3; do
+    if [[ -n "${RELEASE_JSON:-}" ]]; then
+      HTTP_CODE=200
+    else
+      # -f is deliberately absent: it discards the body and collapses every
+      # HTTP error into one exit code, which is what made a 404 on a mistyped
+      # -v tag indistinguishable from an outage.
+      HTTP_CODE=$(curl -sS -o "${BODY}" -w '%{http_code}' \
+        "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
+        -H "Accept: application/vnd.github.v3+json" \
+        "${GH_API_URL}/releases/tags/${VERSION}" 2>/dev/null || echo "000")
+    fi
+
+    if [[ "${HTTP_CODE}" == "404" ]]; then
+      IS_DRAFT="absent"
+      break
+    fi
+    if [[ "${HTTP_CODE}" == "200" ]]; then
+      if [[ -z "${RELEASE_JSON:-}" ]]; then
+        RELEASE_JSON=$(cat "${BODY}")
+      fi
+      if echo "${RELEASE_JSON}" | grep -q '"draft" *: *true'; then
+        IS_DRAFT=true
+        break
+      elif echo "${RELEASE_JSON}" | grep -q '"draft" *: *false'; then
+        IS_DRAFT=false
+        break
+      fi
+      # 200 with no readable draft field: not a release object, so not an
+      # answer. Drop it rather than let the asset lookup below inherit it.
+      RELEASE_JSON=""
+    fi
+    if [[ "${attempt}" -lt 3 ]]; then sleep $((attempt * 2)); fi
+  done
+  rm -f "${BODY}"
+else
+  IS_DRAFT="skipped"
+fi
+
+case "${IS_DRAFT}" in
+  true)
+    err "Release ${VERSION} is a draft: the release workflow has not finished verifying it, or refused it. Drafts are visible only to accounts with push access. Pin a published release with -v <tag>."
+    ;;
+  false | absent | skipped) ;;
+  *)
+    err "Could not determine whether release ${VERSION} is a draft after 3 attempts. Refusing to install rather than risk installing a build the release gate has not cleared. Retry, or check GitHub API availability."
+    ;;
+esac
 
 # Decide whether this is a fresh install or an upgrade and print intent.
 if [[ -n "${CURRENT_VERSION}" ]]; then
@@ -293,6 +474,116 @@ if ! (cd "${TEMP_DIR}" && "${SHA256_CHECK[@]}" checksums.txt); then
 fi
 
 ok "Checksum verified."
+
+# ---------------------------------------------------------------------------
+# Verify the signature
+# ---------------------------------------------------------------------------
+# The checksum above is served from the same origin as the binary and is itself
+# unsigned, so whoever can replace the binary can replace its checksum line in
+# the same write. It catches corruption, not tampering. The signature is the
+# check that means anything, so this fails closed: an unverifiable download is
+# not installed.
+#
+# What this cannot do is authenticate `installer` itself. Under `curl | bash`
+# the script has already executed before anything checked it, and an adversary
+# who can replace this asset can delete these lines and the pinned digest with
+# it. The trust anchor has to sit outside the script -- see SECURITY.md for the
+# download-verify-run path.
+
+fetchReleaseAsset() {
+  local name="$1" dest="$2"
+
+  if [[ "${GH_AVAILABLE}" == "true" ]]; then
+    gh release download "${VERSION}" --repo "${GH_REPO}" \
+      --pattern "${name}" --dir "$(dirname "${dest}")" 2>/dev/null || return 1
+    [[ -s "${dest}" ]] || return 1
+    return 0
+  fi
+
+  if [[ -n "${GH_TOKEN}" ]]; then
+    local url
+    url=$(echo "${RELEASE_JSON:-}" | tr -d '\n' | tr '{' '\n' \
+      | grep "\"name\" *: *\"${name//./\\.}\"" \
+      | grep -o '"url" *: *"https://api\.github\.com[^"]*releases/assets/[0-9]*"' \
+      | head -1 | sed 's/.*"\(https[^"]*\)".*/\1/' || true)
+    [[ -n "${url}" ]] || return 1
+    curl -fsSL -H "Authorization: token ${GH_TOKEN}" \
+      -H "Accept: application/octet-stream" -o "${dest}" "${url}" 2>/dev/null || return 1
+    [[ -s "${dest}" ]] || return 1
+    return 0
+  fi
+
+  # All three branches report success only for a file that actually arrived. An
+  # empty 200 body would otherwise reach cosign and be reported as a signature
+  # failure, which sends the reader looking for tampering rather than for the
+  # download problem they actually have.
+  curl -fsSL -o "${dest}" "${GH_RELEASE_URL}/${VERSION}/${name}" 2>/dev/null || return 1
+  [[ -s "${dest}" ]] || return 1
+}
+
+# resolveCosign prints a usable cosign path on stdout. Progress and diagnostics
+# go to stderr so they cannot be captured as the path.
+resolveCosign() {
+  if command -v cosign &>/dev/null; then
+    command -v cosign
+    return 0
+  fi
+
+  local key="${OS}-${ARCH}" want got dest="${TEMP_DIR}/cosign"
+  want="$(cosignDigest "${key}")" || return 1
+
+  msg "cosign not found; fetching pinned ${COSIGN_VERSION} for ${key}..." >&2
+  curl -fsSL -o "${dest}" "${COSIGN_BASE_URL}/cosign-${key}" 2>/dev/null || return 1
+
+  got="$(sha256Of "${dest}")" || return 1
+  if [[ "${got}" != "${want}" ]]; then
+    echo "downloaded cosign digest ${got} does not match the pinned ${want}" >&2
+    return 1
+  fi
+
+  chmod +x "${dest}" || return 1
+
+  # chmod succeeds on a noexec mount -- the kernel blocks exec(), not chmod() --
+  # and TEMP_DIR lives wherever mktemp resolves, which is /tmp on hosts that
+  # commonly mount it noexec. Prove it runs here, so an unrunnable cosign is
+  # reported as a local problem instead of surfacing later as a failed
+  # signature, which reads as tampering.
+  "${dest}" version >/dev/null 2>&1 || return 1
+
+  echo "${dest}"
+}
+
+if [[ "${SKIP_VERIFY}" == "true" ]]; then
+  printf "${COLOR_RED}!${COLOR_RESET} Signature verification skipped (--skip-verify). Nothing has proven this binary came from %s.\n" "${GH_REPO}"
+else
+  msg "Verifying signature..."
+
+  BUNDLE="${BINARY_NAME}.sigstore.json"
+  if ! fetchReleaseAsset "${BUNDLE}" "${TEMP_DIR}/${BUNDLE}"; then
+    err "Could not download ${BUNDLE} for ${VERSION}, so the download cannot be verified. Releases before v0.2.0-rc.1 carry no bundles — install one of those with --skip-verify if you accept that, or pick a newer release."
+  fi
+
+  if ! COSIGN_BIN="$(resolveCosign)"; then
+    err "cosign is required to verify the download and could not be obtained or run for ${OS}-${ARCH} (a noexec temp directory will also land here). Install cosign (https://docs.sigstore.dev/cosign/installation/) and re-run, or re-run with --skip-verify to install without verification."
+  fi
+
+  # cosign's own output is kept and printed on failure. Every failure otherwise
+  # reads identically -- bad signature, expired certificate, Rekor being
+  # unreachable, a malformed bundle -- and an outage that looks like tampering
+  # is how people learn to ignore this check.
+  VERIFY_LOG="${TEMP_DIR}/cosign-verify.log"
+  if ! "${COSIGN_BIN}" verify-blob-attestation \
+      --bundle "${TEMP_DIR}/${BUNDLE}" \
+      --type "https://slsa.dev/provenance/v1" \
+      --certificate-identity "${SIGSTORE_IDENTITY_PREFIX}/${VERSION}" \
+      --certificate-oidc-issuer "${SIGSTORE_ISSUER}" \
+      "${TEMP_DIR}/${BINARY_NAME}" >"${VERIFY_LOG}" 2>&1; then
+    sed 's/^/    /' "${VERIFY_LOG}" >&2 || true
+    err "Signature verification failed for ${BINARY_NAME} ${VERSION}. Either this is not what ${GH_REPO} published for that tag, or verification could not complete — the cosign output above says which. Not installing it."
+  fi
+
+  ok "Signature verified."
+fi
 
 # ---------------------------------------------------------------------------
 # Install / upgrade binary + kubectl plugin symlink

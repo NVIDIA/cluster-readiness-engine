@@ -83,7 +83,47 @@ We credit reporters of confirmed vulnerabilities in the release notes of the fix
 
   Retrieve the provenance with `cosign verify-attestation --type slsaprovenance1` against the index digest, and a platform's SBOM with `--type cyclonedx` against that platform's manifest digest (`crane digest --platform linux/amd64 "${IMAGE}:${TAG}"`).
 
-- CLI binaries include SHA256 checksums in each release.
+- CLI binaries, the installer and the SBOMs are each signed, and every release asset ships with a detached Sigstore bundle (`<asset>.sigstore.json`) verified under the same identity as the image:
+
+  ```bash
+  TAG=v1.2.3
+  BASE="https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${TAG}"
+  curl -fsSLO "${BASE}/nvcrectl-linux-amd64"
+  curl -fsSLO "${BASE}/nvcrectl-linux-amd64.sigstore.json"
+
+  cosign verify-blob-attestation \
+    --bundle nvcrectl-linux-amd64.sigstore.json \
+    --type https://slsa.dev/provenance/v1 \
+    --certificate-identity "https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}" \
+    --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+    nvcrectl-linux-amd64
+  ```
+
+  Each binary additionally carries `<binary>.cyclonedx.sigstore.json`, which binds its SBOM to that binary — verify it with `--type cyclonedx` against the **binary**, not against the SBOM file.
+
+  `checksums.txt` is also published, but it is served from the same origin as the assets and is itself unsigned, so it detects corruption rather than tampering. Verify the bundle, not the checksum.
+
+- **`installer` verifies what it installs, and cannot verify itself.** From `v0.2.0` the installer checks the binary it downloads against that release's `.sigstore.json` under the identity above, using `cosign` if present and otherwise fetching a copy pinned by digest inside the script. If it cannot verify, it stops. `--skip-verify` overrides that, and is never inferred from a missing tool or a failed download — verification is skipped only when someone asks for it by name.
+
+  That hardens what the installer *installs*. It does nothing for the installer itself: under `curl … | bash` the script executes before anything has checked it, and whoever could replace that asset could delete the verification logic and its pinned digest in the same write. The pipe buys TLS integrity in transit and nothing against a compromised release asset.
+
+  The verified path puts the trust anchor outside the script:
+
+  ```bash
+  TAG=v1.2.3
+  BASE="https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${TAG}"
+  curl -fsSLO "${BASE}/installer"
+  curl -fsSLO "${BASE}/installer.sigstore.json"
+
+  cosign verify-blob-attestation \
+    --bundle installer.sigstore.json \
+    --type https://slsa.dev/provenance/v1 \
+    --certificate-identity "https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}" \
+    --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+    installer
+
+  bash installer -v "${TAG}"
+  ```
 
 ## Product Security Resources
 

@@ -46,11 +46,15 @@ people do not tag at the same time.
    If you work from a fork, push the tag to the remote that points at
    `NVIDIA/cluster-readiness-engine`, which is usually `upstream`.
 
-   Sign the tag (`-s`). Pushing the tag is the release trigger; there is no button to
-   press afterwards.
-4. Watch the `Release` workflow. If it fails, the release is incomplete — see
-   Troubleshooting.
+   Sign the tag (`-s`). Pushing the tag is the release trigger.
+4. Watch the `Release` workflow. The GitHub Release is created as a **draft** and is
+   made visible only by the `Verify release` job, after it has verified every published
+   artifact. If that job fails, the release stays a draft — see Troubleshooting.
 5. Check the published release, then announce it.
+
+Do not publish a draft release by hand. A draft left behind by a failed `Verify release`
+is a release the pipeline determined it could not verify; publishing it from the UI is
+the one action that bypasses the gate entirely. Re-run the job instead.
 
 Tags must be clean. `make check-clean-version` refuses to publish a Helm chart when the
 version contains `-dirty`, a `-N-gSHA` suffix, or is `dev`, which is what you get from
@@ -83,7 +87,8 @@ Pushing a `v*` tag runs `.github/workflows/release.yml`, which owns every releas
 | Attest Helm chart | signature and provenance on the chart digest |
 | Build CLI Binaries | cross-compiled `nvcrectl` for linux and macOS, amd64 and arm64 |
 | Attest binaries | a Sigstore bundle per binary, per SBOM, and for the installer |
-| Create GitHub Release | the GitHub Release, its notes, and the assets below |
+| Create GitHub Release | the GitHub Release as a **draft**, its notes, and the assets below |
+| Verify release | verifies every published artifact, then makes the release visible |
 
 The release builds the container image itself. `.github/workflows/publish.yml` no longer
 runs on tags — it now builds only `main-<sha>` development images, and is pinned to
@@ -111,21 +116,45 @@ Release assets:
 
 ## Verifying a release
 
-The release workflow verifies its own output: the Build CLI Binaries job stamps the
-binaries with the tag explicitly and fails if `nvcrectl --version` does not report the
-tag exactly, and the Create GitHub Release job re-downloads the published `installer`,
-`checksums.txt`, and `nvcrectl-linux-amd64` assets, checks the installer is a runnable
-shell script (not an error page), verifies checksums, and re-checks the binary's
-self-reported version.
+The release workflow verifies its own output before anyone can see it. The Build CLI
+Binaries job stamps the binaries with the tag and fails if `nvcrectl --version` does not
+report it exactly. The release is then created as a draft, and the `Verify release` job
+holds it there until it has checked, against the exact signing identity
+`…/attest.yml@refs/tags/<tag>`:
 
-To verify manually:
+- every release asset against its Sigstore bundle, and each binary against the bundle
+  binding its SBOM to it
+- `checksums.txt` against the downloaded assets
+- the image index signature and provenance, and both per-platform SBOMs
+- that `manager:<tag>` still resolves to the index digest that was verified
+- the provenance predicate itself — repository, ref and commit — not just the signature
+- the chart's signature and provenance
+
+Only then is the release published, after which the assets are re-fetched anonymously
+and re-verified over the channel a user actually takes. If anything fails after
+publication, the release is returned to draft.
+
+To verify manually, check the signature — not the checksum:
 
 ```bash
-VERSION=v0.1.0
-curl -fsSLO "https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${VERSION}/checksums.txt"
-curl -fsSLO "https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${VERSION}/nvcrectl-linux-amd64"
-sha256sum --check --ignore-missing checksums.txt
+VERSION=v0.2.0-rc.1
+BASE="https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${VERSION}"
+curl -fsSLO "${BASE}/nvcrectl-linux-amd64"
+curl -fsSLO "${BASE}/nvcrectl-linux-amd64.sigstore.json"
+
+cosign verify-blob-attestation \
+  --bundle nvcrectl-linux-amd64.sigstore.json \
+  --type https://slsa.dev/provenance/v1 \
+  --certificate-identity "https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${VERSION}" \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  nvcrectl-linux-amd64
 ```
+
+`checksums.txt` is still published and `installer` still checks it, but do not mistake it
+for this. It is served from the same origin as the binary and is itself unsigned, so
+whoever can replace one can replace the other in the same write: it detects corruption,
+not tampering. See [SECURITY.md](SECURITY.md#supply-chain) for the image, chart and
+installer equivalents.
 
 Releases up to and including `v0.1.0-rc.7` predate the checksum step and carry no
 `checksums.txt`.
@@ -137,6 +166,49 @@ half-published: the chart pushed but no GitHub Release, or the reverse. Read the
 fix the cause, and re-run the failed jobs from the Actions tab. Do not delete and re-push
 a tag that has already published artifacts — consumers may have it. Cut the next patch
 version instead.
+
+**`Verify release` failed and the release is stuck as a draft.** This is the designed
+failure mode, not a broken run: the release is withheld precisely because something did
+not verify. Read `release-verification-log` on the run, which records every cosign
+invocation, and fix the cause. Then re-run the failed jobs. Do not publish the draft from
+the UI.
+
+The draft is also invisible to `installer`, deliberately. It resolves the newest
+*published* release on every path, and refuses outright when `-v <tag>` names a draft.
+Without that, a maintainer or an in-repo CI job running the installer while the gate was
+still working — or after it had refused a build — would install exactly what the draft
+exists to withhold. Draft assets are reachable only with push access, so this never
+affected anonymous users; it affected the accounts closest to the release.
+
+The installer also refuses when it cannot *tell* — `Could not determine whether release
+<tag> is a draft after 3 attempts`. An unreadable state is not a published one, so it
+stops rather than guess. That is a GitHub API problem, not a bad release: retry, or check
+GitHub status. Anonymous installs never hit it, because no draft is reachable without
+push access and so there is nothing to determine. `test/releasepolicy` covers every
+branch of that decision, including the two ways it previously got it wrong.
+
+Note what the draft does **not** hold back. The image and the chart are pushed to GHCR
+before the gate runs and cannot be unpublished, and GitOps automation watching the
+registry — Flux `OCIRepository`, Argo CD Image Updater, Renovate — does not wait for the
+GitHub Release. If the gate failed on the image or the chart rather than on a release
+asset, treat those registry tags as suspect and say so in the follow-up release, because
+`<tag>` remains the newest version in the registry until the next one ships.
+
+**A release already exists for this tag.** The `Require the release to be a draft` step
+fails when the tag already has a *published* release. That is deliberate: the action
+that creates the release honours `draft:` only on creation, so re-running against a
+published tag would upload freshly built, unverified assets into a live release. Cut the
+next patch version instead.
+
+**`installer` refused: "Signature verification failed".** It checks the binary against
+that release's Sigstore bundle and will not install one it cannot verify. Read the cosign
+output printed above the error — it distinguishes a genuine identity or signature mismatch
+from verification that could not complete, such as Rekor being unreachable. A mismatch on
+a release you cut is worth investigating before anything else.
+
+**`installer` refused: "Could not download &lt;asset&gt;.sigstore.json".** That release
+carries no bundles; anything before `v0.2.0-rc.1` predates them. Install a newer release,
+or pass `--skip-verify` if you accept installing something nothing has vouched for.
 
 **The Helm push failed on `check-clean-version`.** The tag was not clean. Delete the tag
 if nothing published, commit your work, and tag again.
