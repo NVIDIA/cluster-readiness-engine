@@ -442,12 +442,13 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 # build a binary too old to lint/build this tree (e.g. golangci-lint on go1.26
 # refusing go 1.27.0 in go.mod).
 define go-install-tool
-@[ -f "$(1)-$(3)" ] && [ "$$(readlink -- "$(1)" 2>/dev/null)" = "$(1)-$(3)" ] || { \
+@[ -n "$(3)" ] || { echo "Error: empty version for $(2); is it a tool in tools/go.mod?" >&2; exit 1; }; \
+[ -f "$(1)-$(3)" ] && [ "$$(readlink -- "$(1)" 2>/dev/null)" = "$(1)-$(3)" ] || { \
 set -e; \
 package=$(2)@$(3) ;\
 echo "Downloading $${package}" ;\
 rm -f "$(1)" ;\
-GOBIN="$(LOCALBIN)" go install $${package} ;\
+GOTOOLCHAIN="$$(go env GOVERSION)" GOBIN="$(LOCALBIN)" go install $${package} ;\
 mv "$(LOCALBIN)/$$(basename "$(1)")" "$(1)-$(3)" ;\
 } ;\
 ln -sf "$$(realpath "$(1)-$(3)")" "$(1)"
