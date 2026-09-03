@@ -168,10 +168,25 @@ else
   msg "Fetching latest version..."
   # curl + token fallback
   if [[ "${PRERELEASE}" == "true" ]]; then
-    ENDPOINT="${GH_API_URL}/releases?per_page=1"
+    # This is the `gh release list --exclude-drafts` above, done with curl. The
+    # REST list endpoint returns draft releases to any caller with push access,
+    # so the newest entry can be the release the gate is still verifying, or has
+    # refused. Ask for several and walk past the drafts.
+    #
+    # `tag_name` precedes `draft` inside a release object, so the first
+    # "draft": false after a tag_name belongs to that tag. The draft guard below
+    # re-checks the resolved tag on its own, so a wrong answer here is caught
+    # rather than installed.
+    ENDPOINT="${GH_API_URL}/releases?per_page=10"
     RELEASE_JSON=$(curl -sSf "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
       -H "Accept: application/vnd.github.v3+json" "${ENDPOINT}" || true)
-    VERSION=$(echo "${RELEASE_JSON}" | grep -o '"tag_name" *: *"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || true)
+    VERSION=$(echo "${RELEASE_JSON}" | tr ',' '\n' | awk -F'"' '
+      /"tag_name"[[:space:]]*:/ { tag = $4 }
+      /"draft"[[:space:]]*:[[:space:]]*false/ { if (tag != "") { print tag; exit } }
+    ' || true)
+    # RELEASE_JSON now holds a list, not the selected release; the asset lookup
+    # further down must not read assets out of it.
+    RELEASE_JSON=""
   else
     RELEASE_JSON=$(curl -sSf "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
       -H "Accept: application/vnd.github.v3+json" "${GH_API_URL}/releases/latest" || true)
@@ -181,6 +196,38 @@ fi
 
 if [[ -z "${VERSION}" ]]; then
   err "Failed to determine latest version from GitHub releases. If every release is a pre-release, re-run with -p, or pin a version with -v <tag>."
+fi
+
+# ---------------------------------------------------------------------------
+# Refuse a draft release
+# ---------------------------------------------------------------------------
+# Resolution above walks past drafts, but -v names a tag directly and both
+# `gh release download` and GET /releases/tags/<tag> resolve a draft for a caller
+# with push access — gh races a published lookup against an explicit draft
+# lookup, so a pinned tag finds the draft too. A release is a draft while the
+# release workflow is still verifying it, and stays one if that verification
+# failed, so installing one means installing the build the gate has not cleared,
+# or has refused.
+#
+# Anonymous callers never reach this: GET /releases omits drafts for them and
+# /releases/latest is non-draft by definition. The exposure is push-access
+# accounts and in-repo CI, which is where a lot of installs happen.
+IS_DRAFT=""
+if [[ "${GH_AVAILABLE}" == "true" ]]; then
+  IS_DRAFT=$(gh release view "${VERSION}" --repo "${GH_REPO}" --json isDraft -q '.isDraft' 2>/dev/null || true)
+elif [[ -n "${GH_TOKEN}" ]]; then
+  # A single release object, so no key-ordering assumption is needed. This also
+  # primes RELEASE_JSON for the asset lookup below.
+  if [[ -z "${RELEASE_JSON:-}" ]]; then
+    RELEASE_JSON=$(curl -sSf "${AUTH_HEADERS[@]+"${AUTH_HEADERS[@]}"}" \
+      -H "Accept: application/vnd.github.v3+json" "${GH_API_URL}/releases/tags/${VERSION}" || true)
+  fi
+  if echo "${RELEASE_JSON}" | grep -q '"draft" *: *true'; then
+    IS_DRAFT=true
+  fi
+fi
+if [[ "${IS_DRAFT}" == "true" ]]; then
+  err "Release ${VERSION} is a draft: the release workflow has not finished verifying it, or refused it. Drafts are visible only to accounts with push access. Pin a published release with -v <tag>."
 fi
 
 # Decide whether this is a fresh install or an upgrade and print intent.

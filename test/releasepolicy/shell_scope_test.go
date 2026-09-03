@@ -111,8 +111,32 @@ func runSteps(t *testing.T) []runStep {
 	return out
 }
 
+// commandPosition matches the places a bare word can start a command: the
+// beginning of a line, after a list or pipeline operator, inside a substitution,
+// after `!`, or after a keyword that introduces one. Anchoring on it is what
+// keeps `curl --retry 5` and `--retry-delay` out of the match -- a flag is
+// preceded by `-`, which is not a command position.
+//
+// The first version of this pattern accepted only line start, `|`, `&`, `;` and
+// `$(`. Every call in `Verify every release asset and its bundle` reads
+// `if retry cosign ...`, which matched none of them, so the one step this test
+// was written about was skipped entirely: deleting its `retry()` definition
+// still passed.
+const commandPosition = "(?:^|[|&;(){\x60]|!|\\b(?:if|then|else|elif|do|while|until|time)\\b)"
+
 // retryCall matches an invocation of the retry helper, not curl's --retry flag.
-var retryCall = regexp.MustCompile(`(?m)(^|\||&|;|\$\()\s*retry\s+\S`)
+var retryCall = regexp.MustCompile(`(?m)` + commandPosition + `\s*retry\s+\S`)
+
+// firstRealMatch returns the offset of the first match that is not inside a
+// comment, or -1. A comment naming a command runs nothing.
+func firstRealMatch(re *regexp.Regexp, body string) int {
+	for _, m := range re.FindAllStringIndex(body, -1) {
+		if !inComment(body, m[0]) {
+			return m[0]
+		}
+	}
+	return -1
+}
 
 // TestRetryHelperIsInScope catches a defect that shipped in this gate's first
 // draft and would have failed every release.
@@ -128,20 +152,14 @@ var retryCall = regexp.MustCompile(`(?m)(^|\||&|;|\$\()\s*retry\s+\S`)
 // cross-step scope, so nothing else catches this.
 func TestRetryHelperIsInScope(t *testing.T) {
 	for _, s := range runSteps(t) {
-		call := retryCall.FindStringIndex(s.run)
-		if call == nil {
+		call := firstRealMatch(retryCall, s.run)
+		if call < 0 {
 			continue
 		}
 		// A definition inside a comment defines nothing, and one that appears
 		// after the first call is not in scope at that call.
-		def := -1
-		for _, m := range retryDefine.FindAllStringIndex(s.run, -1) {
-			if !inComment(s.run, m[0]) {
-				def = m[0]
-				break
-			}
-		}
-		if def == -1 || def > call[0] {
+		def := firstRealMatch(retryDefine, s.run)
+		if def == -1 || def > call {
 			t.Errorf("%s: job %q step %q calls `retry` with no definition in scope before the call; "+
 				"each run block is its own shell, so a helper from an earlier step does not carry over",
 				s.workflow, s.job, s.name)
@@ -151,6 +169,57 @@ func TestRetryHelperIsInScope(t *testing.T) {
 
 // retryDefine matches a real function definition, not a mention of one.
 var retryDefine = regexp.MustCompile(`(?m)^\s*retry\s*\(\)\s*\{`)
+
+// cosignCall matches a cosign invocation, capturing whether it went through the
+// retry helper and which subcommand it runs.
+var cosignCall = regexp.MustCompile(`(?m)` + commandPosition + `\s*(retry\s+)?cosign\s+(\S+)`)
+
+// cosignLocal are the subcommands that reach no network, so a retry would buy
+// nothing. Everything else -- including an indirect `cosign "$@"` -- talks to
+// Rekor or the registry and must be retried.
+var cosignLocal = map[string]bool{
+	"version": true, "--version": true, "help": true, "--help": true,
+	"generate": true, "public-key": true, "env": true,
+}
+
+// TestCosignCallsAreRetried pins the coverage half of the defect class
+// TestRetryHelperIsInScope pins the scope half of. A helper that is in scope
+// still protects nothing if a call is written without it.
+//
+// Every cosign call reaches Rekor and GHCR, so a bare one fails on a single
+// 502. Inside the release gate that is worse than a wasted run: the calls after
+// `gh release edit --draft=false` execute with the release already public, so a
+// transient failure fires the retraction handler and pulls back a release that
+// passed every signature, SBOM, digest and provenance check -- reporting a
+// network blip as though the artifacts had been tampered with. That is how a
+// gate earns a reputation for crying wolf and starts getting overridden.
+//
+// The gate shipped five unretried calls: the provenance predicate, both chart
+// checks, and both public-channel checks.
+func TestCosignCallsAreRetried(t *testing.T) {
+	for _, s := range runSteps(t) {
+		for _, m := range cosignCall.FindAllStringSubmatchIndex(s.run, -1) {
+			// m[2] is the start of the optional `retry ` group; -1 means the
+			// call is bare. m[4]:m[5] is the subcommand.
+			if m[2] >= 0 || inComment(s.run, m[0]) || cosignLocal[s.run[m[4]:m[5]]] {
+				continue
+			}
+			t.Errorf("%s: job %q step %q invokes cosign without the retry helper: %q. "+
+				"cosign talks to Rekor and GHCR on every call, so an unretried one reports a "+
+				"transient outage as a verification failure",
+				s.workflow, s.job, s.name, snippet(s.run, m[0]))
+		}
+	}
+}
+
+// snippet returns a one-line excerpt starting at offset, for error messages.
+func snippet(body string, offset int) string {
+	end := strings.IndexByte(body[offset:], '\n')
+	if end < 0 {
+		end = len(body) - offset
+	}
+	return strings.TrimSpace(body[offset : offset+end])
+}
 
 // inComment reports whether the offset falls on a line whose first
 // non-whitespace character is `#`.

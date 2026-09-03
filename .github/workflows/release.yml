@@ -949,11 +949,26 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+
+          # Every network call in this job is retried. `gh` retries release
+          # asset *uploads* and its attestation calls, but not `release
+          # download`, `release view/edit` or `api`, so a single 502 would fail
+          # the gate on a release that is fine. Defined per step because each
+          # `run:` block is its own shell.
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n + 1))
+              [[ "${n}" -ge 3 ]] && return 1
+              sleep $((n * 5))
+            done
+          }
+
           mkdir -p verify && cd verify
           # Drafts are not reachable unauthenticated, so the gate downloads over
           # the authenticated channel. The public channel is re-checked after
           # the release is made visible.
-          gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" --dir . --clobber
+          retry gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" --dir . --clobber
           ls -la
 
       # The expected set below is static and reviewed on change. Deriving it
@@ -999,7 +1014,7 @@ jobs:
                  "${a}" >>"../verify.log" 2>&1; then
               echo "ok   ${a}"
             else
-              echo "::error::${a} does not verify against ${IDENTITY}"; failed=1
+              echo "::error::${a} does not verify against ${IDENTITY} after 3 attempts"; failed=1
             fi
           done
 
@@ -1018,7 +1033,7 @@ jobs:
                  "${b}" >>"../verify.log" 2>&1; then
               echo "ok   ${b} <- its SBOM"
             else
-              echo "::error::${b}'s SBOM binding does not verify"; failed=1
+              echo "::error::${b}'s SBOM binding does not verify after 3 attempts"; failed=1
             fi
           done
 
@@ -1063,7 +1078,7 @@ jobs:
                  --certificate-oidc-issuer "${OIDC_ISSUER}" >>verify.log 2>&1; then
               echo "ok   ${what}"
             else
-              echo "::error::${what} does not verify"
+              echo "::error::${what} does not verify after 3 attempts"
               failed=1
             fi
           }
@@ -1109,7 +1124,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          payloads="$(cosign verify-attestation --type slsaprovenance1 \
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n + 1))
+              [[ "${n}" -ge 3 ]] && return 1
+              sleep $((n * 5))
+            done
+          }
+
+          payloads="$(retry cosign verify-attestation --type slsaprovenance1 \
             --certificate-identity "${IDENTITY}" \
             --certificate-oidc-issuer "${OIDC_ISSUER}" \
             "${IMAGE}@${INDEX}" 2>>verify.log | jq -r .payload)" || true
@@ -1152,20 +1176,30 @@ jobs:
         run: |
           set -euo pipefail
           failed=0
-          if cosign verify --certificate-identity "${IDENTITY}" \
+
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n + 1))
+              [[ "${n}" -ge 3 ]] && return 1
+              sleep $((n * 5))
+            done
+          }
+
+          if retry cosign verify --certificate-identity "${IDENTITY}" \
                --certificate-oidc-issuer "${OIDC_ISSUER}" \
                "${CHART_NAME}@${CHART_DIGEST}" >>verify.log 2>&1; then
             echo "ok   chart signature"
           else
-            echo "::error::chart signature does not verify"; failed=1
+            echo "::error::chart signature does not verify after 3 attempts"; failed=1
           fi
-          if cosign verify-attestation --type slsaprovenance1 \
+          if retry cosign verify-attestation --type slsaprovenance1 \
                --certificate-identity "${IDENTITY}" \
                --certificate-oidc-issuer "${OIDC_ISSUER}" \
                "${CHART_NAME}@${CHART_DIGEST}" >>verify.log 2>&1; then
             echo "ok   chart provenance"
           else
-            echo "::error::chart provenance does not verify"; failed=1
+            echo "::error::chart provenance does not verify after 3 attempts"; failed=1
           fi
           [[ "${failed}" -eq 0 ]] || exit 1
 
@@ -1184,7 +1218,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false
+
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n + 1))
+              [[ "${n}" -ge 3 ]] && return 1
+              sleep $((n * 5))
+            done
+          }
+
+          retry gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false
           echo "release ${TAG} verified and published"
 
       # The channel a user actually takes. Everything above ran authenticated
@@ -1196,7 +1240,21 @@ jobs:
           IDENTITY: ${{ steps.identity.outputs.value }}
         run: |
           set -euo pipefail
-          visibility="$(gh api "repos/${GITHUB_REPOSITORY}" --jq .visibility)"
+
+          # This step runs after the release is public, so every failure here
+          # retracts it. A transient one must not: a release that passed every
+          # signature, SBOM, digest and provenance check would be pulled back to
+          # draft with an error that reads like tampering.
+          retry() {
+            local n=0
+            until "$@"; do
+              n=$((n + 1))
+              [[ "${n}" -ge 3 ]] && return 1
+              sleep $((n * 5))
+            done
+          }
+
+          visibility="$(retry gh api "repos/${GITHUB_REPOSITORY}" --jq .visibility)"
           if [[ "${visibility}" != "public" ]]; then
             echo "NOTICE: repository is ${visibility}; skipping the anonymous re-check."
             exit 0
@@ -1208,7 +1266,7 @@ jobs:
           done
           [[ "$(head -c 2 installer)" == '#!' ]] || { echo "::error::installer is not a shell script"; exit 1; }
           bash -n installer
-          cosign verify-blob-attestation \
+          retry cosign verify-blob-attestation \
             --bundle installer.sigstore.json \
             --type https://slsa.dev/provenance/v1 \
             --certificate-identity "${IDENTITY}" \
@@ -1219,7 +1277,7 @@ jobs:
           # the point of downloading it. Checking only the installer would let
           # the step report the channel good while the asset most users take
           # was never checked on it.
-          cosign verify-blob-attestation \
+          retry cosign verify-blob-attestation \
             --bundle nvcrectl-linux-amd64.sigstore.json \
             --type https://slsa.dev/provenance/v1 \
             --certificate-identity "${IDENTITY}" \

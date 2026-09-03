@@ -160,6 +160,13 @@ not verify. Read `release-verification-log` on the run, which records every cosi
 invocation, and fix the cause. Then re-run the failed jobs. Do not publish the draft from
 the UI.
 
+The draft is also invisible to `installer`, deliberately. It resolves the newest
+*published* release on every path, and refuses outright when `-v <tag>` names a draft.
+Without that, a maintainer or an in-repo CI job running the installer while the gate was
+still working — or after it had refused a build — would install exactly what the draft
+exists to withhold. Draft assets are reachable only with push access, so this never
+affected anonymous users; it affected the accounts closest to the release.
+
 Note what the draft does **not** hold back. The image and the chart are pushed to GHCR
 before the gate runs and cannot be unpublished, and GitOps automation watching the
 registry — Flux `OCIRepository`, Argo CD Image Updater, Renovate — does not wait for the
