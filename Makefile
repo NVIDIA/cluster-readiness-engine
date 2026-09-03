@@ -188,6 +188,10 @@ verify-license-headers: addlicense ## Verify Go sources carry the SPDX license h
 verify-doc-links: ## Verify relative markdown links in README.md and docs/ resolve to files in the tree.
 	hack/verify-doc-links.sh
 
+.PHONY: fern-freeze-versions
+fern-freeze-versions: ## Rebuild the frozen per-version docs content that fern/docs.yml points at.
+	hack/fern-freeze-versions.sh
+
 .PHONY: verify
 verify: verify-codegen verify-mod verify-license-headers verify-doc-links ## Run all verification checks.
 
@@ -282,6 +286,9 @@ HELM_PACKAGE_VERSION ?= $(VERSION)
 # OCI registry base for Helm chart publishing.
 # helm push pushes to $(HELM_OCI_REGISTRY)/<chart-name>:<version>.
 HELM_OCI_REGISTRY ?= oci://ghcr.io/nvidia
+# When set, helm-push writes the pushed chart's digest here. CI reads it to hand
+# the digest to the signing workflow without scraping the log.
+CHART_DIGEST_FILE ?=
 
 .PHONY: helm-lint
 helm-lint: ## Lint the cluster-readiness-engine Helm chart.
@@ -295,10 +302,28 @@ helm-package: helm-lint ## Package the cluster-readiness-engine Helm chart.
 		--app-version "$(VERSION)"
 
 .PHONY: helm-push
-helm-push: check-clean-version helm-package ## Push the Helm chart to the OCI registry.
-	"$(HELM)" push \
+# The digest is what gets signed, so print it rather than leaving the operator
+# to look it up. Both streams are captured because helm's output stream for the
+# digest line is not a documented contract, and CHART_DIGEST_FILE lets CI take
+# the value without re-parsing a log.
+helm-push: check-clean-version helm-package ## Push the Helm chart to the OCI registry and print its digest.
+	@set -eu; \
+	log="$$(mktemp)"; \
+	trap 'rm -f "$$log"' EXIT; \
+	if ! "$(HELM)" push \
 		cluster-readiness-engine-$(HELM_PACKAGE_VERSION).tgz \
-		$(HELM_OCI_REGISTRY)
+		$(HELM_OCI_REGISTRY) >"$$log" 2>&1; then \
+		cat "$$log" >&2; \
+		exit 1; \
+	fi; \
+	cat "$$log"; \
+	digest="$$(sed -n 's/.*[Dd]igest: \(sha256:[0-9a-f]\{64\}\).*/\1/p' "$$log" | tail -1)"; \
+	if [ -z "$$digest" ]; then \
+		echo "ERROR: helm push reported no sha256 digest; refusing to continue because the digest is what gets signed" >&2; \
+		exit 1; \
+	fi; \
+	echo "chart digest: $$digest"; \
+	if [ -n "$(CHART_DIGEST_FILE)" ]; then printf '%s' "$$digest" > "$(CHART_DIGEST_FILE)"; fi
 
 ##@ Dependencies
 

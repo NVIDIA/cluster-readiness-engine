@@ -52,15 +52,45 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Merge base with main, not `github.event.before` -- see the same step in
+      # fern-docs-ci.yml. A push that merges main reports no docs change even
+      # when the branch's own commits changed docs, so a PR that edited docs in
+      # an earlier push then merged main silently loses its preview.
       - name: Check for docs changes
         id: changes
         run: |
-          if [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
-            echo "docs=true" >> $GITHUB_OUTPUT
-          elif git diff --name-only "${{ github.event.before }}" HEAD 2>/dev/null | grep -qE '^(docs/|fern/)'; then
-            echo "docs=true" >> $GITHUB_OUTPUT
+          set -uo pipefail
+
+          if ! git fetch --no-tags origin main; then
+            echo "could not fetch main; building the preview rather than guessing"
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          base="$(git merge-base FETCH_HEAD HEAD || true)"
+          if [ -z "${base}" ]; then
+            echo "no merge base with main; building the preview rather than guessing"
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "comparing against merge base ${base}"
+
+          # A failed diff is not "nothing changed".
+          if ! changed="$(git diff --name-only "${base}" HEAD)"; then
+            echo "could not diff against ${base}; building the preview rather than guessing"
+            echo "docs=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Here-string rather than a pipe -- see the same step in
+          # fern-docs-ci.yml. `grep -q` exiting early SIGPIPEs `git diff`, and
+          # under `pipefail` that turns a successful match into a failed
+          # pipeline, so a real docs change reads as docs=false.
+          if grep -qE '^(docs/|fern/)' <<<"${changed}"; then
+            echo "docs=true" >> "$GITHUB_OUTPUT"
           else
-            echo "docs=false" >> $GITHUB_OUTPUT
+            echo "docs=false" >> "$GITHUB_OUTPUT"
           fi
 
   collect:
@@ -84,42 +114,12 @@ jobs:
           echo "$BRANCH_NAME" > preview-metadata/head_ref
           git diff --name-only "origin/main...HEAD" -- '*.md' > preview-metadata/changed_md_files 2>/dev/null || true
 
-      - name: Checkout frozen version content
-        run: |
-          set -eo pipefail
-          for version_file in fern/versions/v*.yml; do
-            [ -f "$version_file" ] || continue
-            version=$(basename "$version_file" .yml)
-            if git show-ref --verify --quiet "refs/tags/${version}"; then
-              mkdir -p "fern/versions/${version}-content"
-              git archive "refs/tags/${version}" -- docs/ | tar -x --strip-components=1 -C "fern/versions/${version}-content"
-              # Escape {, }, < for MDX — but only outside fenced code blocks and inline code spans
-              find "fern/versions/${version}-content" -name '*.md' -print0 | while IFS= read -r -d '' f; do
-                awk '
-                  /^````*/ || /^~~~~*/ { fence = !fence; print; next }
-                  fence { print; next }
-                  {
-                    n = split($0, p, "`")
-                    out = ""
-                    for (i = 1; i <= n; i++) {
-                      if (i % 2 == 1) {
-                        gsub(/{/, "\\{", p[i])
-                        gsub(/}/, "\\}", p[i])
-                        gsub(/</, "\\&lt;", p[i])
-                      }
-                      out = out p[i]
-                      if (i < n) out = out "`"
-                    }
-                    print out
-                  }
-                ' "$f" > "${f}.tmp" && mv "${f}.tmp" "$f"
-              done
-              echo "Extracted docs from $version"
-            else
-              echo "::error::Tag $version not found — cannot load frozen docs content"
-              exit 1
-            fi
-          done
+      # Same script the docs CI and publish workflows run. This step used to
+      # be a third inline copy of the extraction, so a fix to the escaping or
+      # the staleness handling reached the checks and the published site but
+      # not the preview a reviewer actually looks at.
+      - name: Freeze registered version content
+        run: ./hack/fern-freeze-versions.sh
 
       - name: Upload fern sources and metadata
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
