@@ -31,9 +31,13 @@ holds the ordering edge, which produces no output reference and so is invisible 
 the workflow-graph checks. And because a YAML assertion can only prove *this*
 repository's side of the contract — an unrecognised `with:` key is a GitHub
 annotation, never a failure, and dependabot moves the action pin weekly — the
-`report` job additionally requires every declared statement to appear as an applied
-`vex`-namespace ignore rule on at least one target. That fails closed if the input
-stops being forwarded, if the PURL is wrong, or if a statement has rotted.
+`report` job additionally requires every declared `(advisory, package)` pair — one
+per statement per subcomponent — to appear as an applied `vex`-namespace ignore
+rule on at least one target. Pairs rather than advisory IDs, because two
+statements can scope the same advisory to different packages and an ID-level
+comparison would let either one satisfy both. That fails closed if the input stops
+being forwarded, if the product or subcomponent PURL is wrong, or if a statement
+has rotted.
 
 The `validate-suppressions` job runs the policy tests **before** the scan fans
 out, so a statement that has gone stale fails the run rather than being applied
@@ -148,7 +152,7 @@ Or extract it directly:
 
 ```bash
 jq -r '.matches[] | select(.vulnerability.severity == "High" or .vulnerability.severity == "Critical")
-       | "\(.artifact.name) \(.vulnerability.id) (\(.relatedVulnerabilities|map(.id)|join(",")))"' /tmp/scan.json
+       | "\(.artifact.name) \(.vulnerability.id) (\(.relatedVulnerabilities|map(.id)|join(",")))"' /tmp/scan-*.json
 ```
 
 ### 3. Justifications must use the OpenVEX v0.2.0 enum
@@ -254,16 +258,25 @@ for tag in "${TAG}" "${MAIN_TAG}"; do
     jq '[.matches[] | select(.vulnerability.severity == "High" or .vulnerability.severity == "Critical")
          | {id: .vulnerability.id, pkg: .artifact.name}]' "/tmp/scan-${tag}-${arch}.json"
 
-    # 5. Confirm it landed via the vex namespace, not some other rule.
+    # 5. Confirm it landed via the vex namespace, not some other rule -- and on
+    #    the package the statement scoped itself to. `pkg` is what makes this
+    #    comparable to a declared subcomponent; without it the check is by
+    #    advisory alone, which any statement for that advisory would satisfy.
     jq '[.ignoredMatches[]? | select((.appliedIgnoreRules//[]) | any(.namespace=="vex"))
-         | {id: .vulnerability.id, rules: .appliedIgnoreRules}]' "/tmp/scan-${tag}-${arch}.json"
+         | {id: .vulnerability.id, pkg: .artifact.purl, rules: .appliedIgnoreRules}]' \
+      "/tmp/scan-${tag}-${arch}.json"
   done
 done
 ```
 
-A statement is correct **only** when step 4 returns `[]` for its ID and step 5
-lists it with `namespace = "vex"` — on every target it applies to. A statement
-that applies on one is not evidence about the others.
+A statement is correct **only** when step 4 returns `[]` for its advisory and step
+5 lists the `(advisory, package)` pair it declared — the advisory ID together with
+the subcomponent PURL — with `namespace = "vex"`, on every target it applies to.
+
+The pair, not the advisory alone. This is the same identity the `report` job
+enforces, and for the same reason: two statements can scope one advisory to
+different packages, so confirming by ID would let either one satisfy both. A
+statement that applies on one target is not evidence about the others.
 
 Caveat: a local grype DB fresher than the last CI run can surface advisories CI has
 not seen. Treat those as incoming findings, not discrepancies.
@@ -308,25 +321,41 @@ Statements rot: dependencies get upgraded past fixes, advisories get withdrawn,
 packages leave the image. A stale statement applies to nothing, silently. Because
 VEX has no expiry to catch this, the audit is the only control.
 
-This can be run against a CI run rather than a local scan: the `vuln-report-*`
+This can be run against a CI run rather than a local scan. The `vuln-report-*`
 artifacts carry a `<target>.raw` file, which is the unfiltered grype document
-including `.ignoredMatches[]`.
+including `.ignoredMatches[]` — download them and stage them where the commands
+below expect to find them:
 
 ```bash
-# Applied: IDs actually suppressed via the vex namespace
-jq -r '[.ignoredMatches[]? | select((.appliedIgnoreRules//[]) | any(.namespace=="vex"))
-        | .vulnerability.id] | unique[]' /tmp/scan-*.json | sort -u > /tmp/applied.txt
+gh run download <run-id> --repo NVIDIA/cluster-readiness-engine --pattern 'vuln-report-*' --dir /tmp/vex
+for f in /tmp/vex/*.raw; do cp "$f" "/tmp/scan-$(basename "${f%.raw}").json"; done
+```
 
-# Declared: every statement in the document
-jq -r '.statements[].vulnerability.name' .openvex.json | sort > /tmp/declared.txt
+Compare `(advisory, package)` pairs, not advisory IDs alone — the same identity the
+`report` job uses. Comparing IDs would report a statement as applied whenever
+*any* statement for that advisory applied, so a statement scoped to a package the
+advisory never matched reads as healthy. That is the failure this audit exists to
+find.
+
+```bash
+# Applied: (advisory, package) pairs actually suppressed via the vex namespace.
+# grype reports the package as .artifact.purl, which is what a subcomponent names.
+jq -r '[.ignoredMatches[]? | select((.appliedIgnoreRules//[]) | any(.namespace=="vex"))
+        | .vulnerability.id + " " + (.artifact.purl // .artifact.name)] | unique[]' \
+  /tmp/scan-*.json | sort -u > /tmp/applied.txt
+
+# Declared: one pair per statement per subcomponent.
+jq -r '[.statements[] | .vulnerability.name as $v | .products[]? | .subcomponents[]?
+        | $v + " " + (.identifiers.purl // .["@id"])] | unique[]' .openvex.json \
+  | sort > /tmp/declared.txt
 
 comm -23 /tmp/declared.txt /tmp/applied.txt   # stale candidates
 ```
 
 Classify each candidate before deleting:
 
-1. **Gone entirely** (`grep <id> /tmp/scan.json` → no hits, aliases included): the
-   finding no longer exists. **Delete.**
+1. **Gone entirely** (`grep <id> /tmp/scan-*.json` → no hits on any target,
+   aliases included): the finding no longer exists. **Delete.**
 2. **Present but ignored as `wont-fix`** (in `.ignoredMatches[]` with an empty
    namespace): `--only-fixed` already hides it, so the statement never applies.
    **Delete.** Do not keep it "just in case" — if a fix ships later, the finding
