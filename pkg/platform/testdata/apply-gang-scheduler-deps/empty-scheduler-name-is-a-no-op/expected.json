@@ -1,0 +1,47 @@
+[
+  {
+    "index": 0,
+    "kind": "TrainingRuntime",
+    "rawUnchanged": true,
+    "replicatedJobs": [
+      {
+        "name": "node",
+        "schedulerName": "default-scheduler",
+        "templateLabels": null
+      }
+    ],
+    "resource": {
+      "apiVersion": "trainer.kubeflow.org/v1alpha1",
+      "kind": "TrainingRuntime",
+      "metadata": {
+        "name": "nemotron5-8b-runtime"
+      },
+      "spec": {
+        "template": {
+          "spec": {
+            "replicatedJobs": [
+              {
+                "name": "node",
+                "template": {
+                  "spec": {
+                    "template": {
+                      "spec": {
+                        "containers": [
+                          {
+                            "image": "nvcr.io/nvidia/nemo:25.07",
+                            "name": "node"
+                          }
+                        ],
+                        "schedulerName": "default-scheduler"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+]

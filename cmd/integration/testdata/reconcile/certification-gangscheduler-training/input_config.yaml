@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+generateNodes:
+  count: 2
+  providerID: "gce://my-project/us-central1-a/instance-1"
+  labels:
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+waitFor:
+  kind: Workflow
+  name: gang-n5-training-nemotron5-8b
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: gang-n5
+    namespace: default
+  - kind: Workflow
+    name: gang-n5-training-nemotron5-8b
+    namespace: default
+  - kind: Job
+    name: gang-n5-training-nemotron5-8b-job
+    namespace: default

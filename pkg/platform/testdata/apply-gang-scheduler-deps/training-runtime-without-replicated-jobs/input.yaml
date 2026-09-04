@@ -1,0 +1,26 @@
+# A TrainingRuntime with nothing to rewrite: no spec at all, no template, and
+# an empty replicatedJobs list. None of these may error or panic, and the first
+# two are skipped before the manifest is re-marshalled.
+gangScheduler:
+  schedulerName: kai-scheduler
+  queue: high-priority
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: no-spec-runtime
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: no-template-runtime
+    spec:
+      mlPolicy:
+        numNodes: 2
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: empty-jobs-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs: []

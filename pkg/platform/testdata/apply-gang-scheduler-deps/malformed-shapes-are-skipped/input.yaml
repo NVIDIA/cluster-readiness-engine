@@ -1,0 +1,41 @@
+# Shapes that are not what a TrainingRuntime is supposed to look like. An
+# object with no kind, a replicatedJobs that is a string rather than a list, and
+# a list holding a bare string are all skipped instead of panicking. The last
+# dependency mixes a bare string with a real replicatedJob to show the good one
+# is still rewritten.
+gangScheduler:
+  schedulerName: kai-scheduler
+  queue: high-priority
+dependencies:
+  - metadata:
+      name: no-kind
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: jobs-not-a-list
+    spec:
+      template:
+        spec:
+          replicatedJobs: not-a-list
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: jobs-with-a-bare-string
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - just-a-string
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: node
+                          image: nvcr.io/nvidia/nemo:25.07

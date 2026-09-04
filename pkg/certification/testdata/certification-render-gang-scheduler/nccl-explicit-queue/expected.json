@@ -1,0 +1,30 @@
+[
+  {
+    "workflow": "gang-cert-communication-n-dd05f",
+    "dependencyKinds": [
+      "TrainingRuntime",
+      "ComputeDomain"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "schedulerName": "kai-scheduler",
+        "queueLabel": "high-priority",
+        "templateLabels": [
+          "kai.scheduler/queue=high-priority"
+        ]
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "schedulerName": "kai-scheduler",
+        "queueLabel": "high-priority",
+        "templateLabels": [
+          "kai.scheduler/queue=high-priority",
+          "trainer.kubeflow.org/trainjob-ancestor-step=trainer"
+        ]
+      }
+    ]
+  }
+]

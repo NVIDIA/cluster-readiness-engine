@@ -1,0 +1,26 @@
+# A cert file that sets spec.gangScheduler but leaves schedulerName empty, which
+# the CRD rejects but nvcrectl never sees because it renders straight from a
+# file. Without a guard this would pin every pod template to an empty scheduler
+# and still attach the queue label, so the manifest would look configured while
+# running on the default scheduler. Treated as "no gang scheduling asked for",
+# the same way applyGangScheduler treats an empty GangSchedulerName.
+gangScheduler:
+  queue: high-priority
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nemotron5-8b-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      schedulerName: default-scheduler
+                      containers:
+                        - name: node
+                          image: nvcr.io/nvidia/nemo:25.07

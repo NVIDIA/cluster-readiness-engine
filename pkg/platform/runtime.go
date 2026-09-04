@@ -125,14 +125,6 @@ type RuntimeConfig struct {
 	GangSchedulerQueue string
 }
 
-// gangSchedulerQueue returns the effective queue name, defaulting to "default-queue".
-func gangSchedulerQueue(cfg RuntimeConfig) string {
-	if cfg.GangSchedulerQueue != "" {
-		return cfg.GangSchedulerQueue
-	}
-	return "default-queue"
-}
-
 // applyGangScheduler injects schedulerName into the pod spec and the queue label
 // into the pod template metadata labels when a gang scheduler is configured.
 // podSpec is the pod spec map (sets schedulerName).
@@ -141,8 +133,8 @@ func applyGangScheduler(cfg RuntimeConfig, podSpec, podLabels map[string]any) {
 	if cfg.GangSchedulerName == "" {
 		return
 	}
-	podSpec["schedulerName"] = cfg.GangSchedulerName
-	podLabels["kai.scheduler/queue"] = gangSchedulerQueue(cfg)
+	podSpec[keySchedulerName] = cfg.GangSchedulerName
+	podLabels[labelKeyGangQueue] = gangSchedulerQueue(cfg.GangSchedulerQueue)
 }
 
 // BuildTorchRuntime creates a TrainingRuntime dependency for PyTorch distributed

@@ -36,7 +36,10 @@ type validationCause struct {
 // its matching limit is rejected at admission while partial and correctly
 // ordered overrides are accepted (issue #83). The maxBytes cases check that
 // documented values pass the pattern and invalid units are rejected (issue
-// #283).
+// #283). The gangScheduler cases check that the field stays optional, that a
+// scheduler name is mandatory once the field is set, and that the queue is
+// held to the Kubernetes label value rules before it is copied into the
+// kai.scheduler/queue label (issue #300).
 func TestCertificationValidation(t *testing.T) {
 	suite := &testutil.IntegrationTestSuite{}
 	suite.Environment.CRDDirectoryPaths = []string{"../../helm/cluster-readiness-engine/crds"}

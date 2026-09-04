@@ -1,0 +1,25 @@
+# The torch shape most catalog entries emit: one replicatedJob named node, with
+# no template.metadata at all. The helper has to create metadata and labels
+# before it can write the queue label.
+gangScheduler:
+  schedulerName: kai-scheduler
+  queue: high-priority
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: torch-runtime
+    spec:
+      mlPolicy:
+        numNodes: 2
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: node
+                          image: nvcr.io/nvidia/nemo:25.07

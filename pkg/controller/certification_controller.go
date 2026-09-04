@@ -26,6 +26,7 @@ import (
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
 )
 
 // waitingForNodesMessage explains a wait that is otherwise invisible: which
@@ -409,7 +410,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	}
 
 	// Best-effort platform + GPU detection for overlay context.
-	platform := DetectPlatform(nodes)
+	detectedPlatform := DetectPlatform(nodes)
 	// Size the job against the nodes that will actually run it. The Workflow
 	// filters a heterogeneous target down to one GPU architecture before it
 	// partitions, so a nodesPerJob derived from the whole target can ask for more
@@ -431,7 +432,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	// --- 2. Resolve options + nodesPerJob ---
 	opts := ResolveOptions(&certification.Spec.CategoryOptions, category.Options)
 
-	nd := catalog.GPUDefaults(gpuArch, platform)
+	nd := catalog.GPUDefaults(gpuArch, detectedPlatform)
 	gpusPerNode := nd.GpusPerNode
 	mlnxPerNode := nd.MlnxPerNode
 	if opts.GpusPerNode != nil {
@@ -491,7 +492,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 
 	// --- 4. Apply overlays (best-effort, prune applied) ---
 	orch := &nvcrev1alpha1.OrchestrationStatus{
-		DetectedPlatform:        platform,
+		DetectedPlatform:        detectedPlatform,
 		DetectedGPUArchitecture: gpuArch,
 	}
 	octx := BuildOverrideContext(&workflowSpec, orch, nodes)
@@ -501,6 +502,14 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	}
 	pruneAppliedOverrides(&workflowSpec, applied)
 	pruneUnmatchableOverrides(&workflowSpec, octx)
+
+	// Gang scheduling is applied last so it wins over anything the catalog entry
+	// or a platform override put in schedulerName.
+	if err := platform.ApplyGangSchedulerToDependencies(
+		workflowSpec.Dependencies, certification.Spec.GangScheduler); err != nil {
+		return "", fmt.Errorf("applying gang scheduler for %s/%s: %w", category.Domain, category.Variant, err)
+	}
+
 	if len(applied) > 0 || len(workflowSpec.Overrides) > 0 {
 		log.Info("Resolved overlays",
 			"domain", category.Domain, "variant", category.Variant,

@@ -59,14 +59,14 @@ func baseRuntimeConfig() RuntimeConfig {
 
 func TestGangSchedulerQueue_Default(t *testing.T) {
 	cfg := RuntimeConfig{}
-	if got := gangSchedulerQueue(cfg); got != testDefaultQueue {
+	if got := gangSchedulerQueue(cfg.GangSchedulerQueue); got != testDefaultQueue {
 		t.Errorf("got %q, want %q", got, testDefaultQueue)
 	}
 }
 
 func TestGangSchedulerQueue_Custom(t *testing.T) {
 	cfg := RuntimeConfig{GangSchedulerQueue: "my-queue"}
-	if got := gangSchedulerQueue(cfg); got != "my-queue" {
+	if got := gangSchedulerQueue(cfg.GangSchedulerQueue); got != "my-queue" {
 		t.Errorf("got %q, want %q", got, "my-queue")
 	}
 }
