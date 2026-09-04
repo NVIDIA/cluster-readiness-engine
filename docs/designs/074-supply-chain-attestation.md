@@ -66,11 +66,19 @@ This contract is published to users and enforced by us. Both the release-time ga
 
 The reason is decision 3. cosign uses the OIDC `job_workflow_ref` as the certificate SAN, so signing from one reusable workflow collapses every artifact onto one identity path where only the ref varies. Signing inline in each caller would give the chart, the image, and the binaries three different identities, and a `main` build a fourth that looks just as legitimate. It also isolates the signing step: caller-defined build steps run in a different job from the one holding the signing token.
 
-**This design targets SLSA Build L2, not L3.** The distinction matters and is easy to overclaim. L3 requires the *build* to be isolated from user-defined steps, and GitHub's mechanism for that is moving the build itself into the reusable workflow. Here the builds stay in the callers — `docker buildx` in `publish.yml`, the Go cross-compile and `helm package` in `release.yml` — and `attest.yml` receives a digest and signs it. A caller that produced the wrong artifact would get a faithful signature over the wrong digest. Isolating the signer is worth having, but it is not the isolation L3 asks for.
+**This design targets SLSA Build L2 for every artifact we publish today — binaries and images alike.** Claims are per-artifact, not project-wide: nothing here may state a single Build Level for "the release" as a whole.
 
-Two consequences follow. First, no artifact or document may claim L3 — not the ADR, not the release notes, not `SECURITY.md`. Second, the provenance predicate's `runDetails.builder.id` must name the workflow that actually performed the build, not `attest.yml`. Naming the attestor as the builder would make the predicate false on its face, which is worse than claiming the wrong level.
+The original L2 framing was imprecise in a way that made L3 look further away than it is. SLSA v1.0 Build L3 requires that **provenance is unforgeable by the build process**. That is not the same thing as builder isolation. On the unforgeability requirement, `attest.yml` already does most of the work:
 
-Reaching L3 later means moving image, chart, and binary generation into the protected reusable workflow. That is a larger restructure than this record covers — it rewrites the build path rather than adding to it — and it should be its own decision once this contract is in place and stable. Recorded as deferred, not rejected.
+- It is a genuine reusable workflow (`on: workflow_call`), invoked as `uses: ./.github/workflows/attest.yml` from the callers. It is not an inlined job, so the Fulcio certificate names **`attest.yml`**, not the caller.
+- Every value that shapes the provenance predicate comes from trusted context **inside** that workflow — `GITHUB_REPOSITORY`, `GITHUB_REF`, `GITHUB_SHA`, `GITHUB_SERVER_URL`, `GITHUB_RUN_ID`, and the caller workflow ref GitHub itself sets — and not from a caller-supplied `inputs.*` field. A caller cannot dictate what the predicate says about origin.
+- A guard refuses to proceed if `builder_id` resolves to `attest.yml`, on the grounds that the attestor cannot be the builder. Naming the attestor as the builder would make the predicate false on its face, which is worse than claiming the wrong level.
+
+So the build steps in `release.yml` / `publish.yml` cannot forge or tamper with the provenance today. What is genuinely absent is **builder isolation**: the builds stay in the callers — `docker buildx` in `publish.yml` / `build-image.yml`, the Go cross-compile and `helm package` in `release.yml` — and `attest.yml` receives a digest and signs it. `runDetails.builder.id` truthfully names the caller. A compromised caller would produce a bad artifact that `attest.yml` would then honestly attest. That honesty is deliberate, and any change here must not trade a true predicate for a higher number.
+
+Two consequences follow. First, no artifact or document may claim L3 — not the ADR, not the release notes, not `SECURITY.md` — until a recorded decision moves a specific artifact across that line. Second, the same-repo reusable-workflow caveat must be stated whenever this boundary is discussed: `uses: ./…` isolates attestation from the caller's *build steps*, not from *write access*. Caller and attestor live in one repository, so the practical strength of the boundary rests on branch protection over `.github/workflows/attest.yml`. Claiming L3 without saying so would imply stronger isolation than exists.
+
+A concrete path to per-artifact L3 for images exists and is recorded as deferred, not rejected: `build-image.yml` is already a reusable workflow that builds the image; if provenance were minted there, build and attestation would share one protected boundary and `builder.id` would be both honest and L3-qualifying. That would be an image-only change — `nvcrectl` binaries are still built and attested from the release job and would stay at L2 — which is why every published claim must stay per-artifact. Until that decision is taken, both binaries and images remain Build L2 under the corrected reasoning above.
 
 `attest.yml` validates every input before use: digests must match `^sha256:[0-9a-f]{64}$`, no input may contain a newline or carriage return, and the caller's authoritative `expected_digest` is compared against an independently resolved digest with a mismatch failing the job. It refuses to run on a non-tag ref unless an explicit `allow_untagged` input is set, so a test run cannot quietly produce something that looks like a release attestation.
 
@@ -147,7 +155,7 @@ The contract lives in YAML, and the failure mode is silent: a signing step delet
 ## Rationale
 
 - **Exact identity over regexp** is the single highest-value decision here. Every other gap is a missing artifact, which is visibly missing. A too-permissive verification command is an artifact that appears present and correct while asserting less than the reader believes.
-- **Reusable workflow** improves the security property (signing isolated from caller-defined build steps) and simplifies the consumer contract at the same time. Those usually trade against each other. It does not by itself reach Build L3 — see decision 4.
+- **Reusable workflow** makes provenance unforgeable by the build process (Fulcio names `attest.yml`; the predicate is minted from trusted context) and collapses every artifact onto one pinnable identity. That is the corrected L2 claim in decision 4. It does **not** by itself provide builder isolation, and a same-repo `uses: ./…` boundary additionally depends on branch protection over `attest.yml` — see decision 4.
 - **Per-platform SBOM subjects** follow from what an SBOM is. Getting this wrong is not a policy choice, it is a category error, and it is already shipping.
 - **Verify what we produce** costs one job and converts a class of silent failure into a red release. Attestations nobody checks are decoration.
 - **Signing the SBOMs** closes the gap that remains after everything else is signed, at the cost of a few more bundles.
@@ -158,7 +166,7 @@ The contract lives in YAML, and the failure mode is silent: a signing step delet
 
 - Every released artifact answers "who built this, from what source, containing what," with one command and one pinned identity.
 - The multi-platform SBOM defect is fixed, and the fail-closed digest checks prevent it from recurring silently.
-- Provenance is SLSA Build L2 with a single pinnable builder identity, which is a real improvement over no provenance at all. L3 remains available as a follow-on and is not foreclosed by anything here.
+- Provenance is SLSA Build L2 **per artifact** (binaries and images today), with a single pinnable attestor identity (`attest.yml`). The level is only checkable when verification pins that workflow. L3 remains available as a follow-on — per artifact, with the same-repo caveat stated — and is not foreclosed by anything here.
 - Admission controllers can enforce the same contract the documentation publishes, so install-time and runtime checks cannot drift.
 - Post-publication tampering has a bounded detection window instead of depending on a user noticing.
 
