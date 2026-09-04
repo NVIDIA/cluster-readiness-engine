@@ -25,15 +25,38 @@ var expiryComment = regexp.MustCompile(`(?m)^\s*#\s*expires:\s*(\d{4}-\d{2}-\d{2
 // justificationComment matches the prose that says why a rule applies.
 var justificationComment = regexp.MustCompile(`(?m)^\s*#\s*justification:\s*(\S.*)$`)
 
+// maxExpiryHorizon bounds how far ahead a suppression may be dated.
+//
+// Rejecting only past dates leaves `# expires: 2099-01-01`, which satisfies
+// every other rule here while producing exactly the outcome .grype.yaml says
+// the expiry exists to prevent: a finding that never comes back. An expiry
+// nobody will live to see is the same as no expiry, so the horizon is what
+// makes the field mean anything.
+const maxExpiryHorizon = 180 * 24 * time.Hour
+
+// ruleStart matches the line that begins one ignore rule. Comment lines cannot
+// match, so the documented example block in .grype.yaml is not counted.
+var ruleStart = regexp.MustCompile(`^\s*-\s+\S`)
+
+// commentLine matches any comment, used to walk the contiguous block above a
+// rule.
+var commentLine = regexp.MustCompile(`^\s*#`)
+
 // checkGrypeConfig returns one message per problem found, empty if the config
 // is triageable.
 //
 // Split out from the test that reads the real file so the rules can be run
 // against configs that are deliberately wrong. With `ignore: []` -- the
-// committed state, and the state this file will be in most of the time -- every
-// assertion below is vacuously true: zero rules match zero comments and neither
-// loop executes. A test that only ever sees that input passes with both regexes
+// committed state, and the state this file will be in most of the time -- a
+// count-based check is vacuously true: zero rules match zero comments and no
+// loop executes. A test that only ever sees that input passes with every regex
 // broken, which is indistinguishable from a test that works.
+//
+// Comments are associated with the rule they sit above rather than counted
+// against the file total. .grype.yaml tells contributors that "every rule must
+// carry four things"; counting cannot enforce that, and accepts a file whose
+// justifications and expiries sit anywhere so long as the totals agree -- which
+// makes re-triage a guess about which justification belongs to which CVE.
 //
 // `now` is a parameter rather than time.Now() so expiry can be tested at all.
 func checkGrypeConfig(raw []byte, now time.Time) []string {
@@ -54,51 +77,90 @@ func checkGrypeConfig(raw []byte, now time.Time) []string {
 		return []string{fmt.Sprintf("parse: %v", err)}
 	}
 
-	body := string(raw)
-	expiries := expiryComment.FindAllStringSubmatch(body, -1)
-	justifications := justificationComment.FindAllStringSubmatch(body, -1)
-
-	// One of each per rule. Counting rather than associating keeps this simple,
-	// and a mismatch is exactly the case worth failing on: a rule added without
-	// its comment block, or a comment block left behind by a deleted rule.
-	if len(expiries) != len(doc.Ignore) {
-		report("%d ignore rules but %d `# expires:` comments; "+
-			"every suppression needs a date after which it stops applying",
-			len(doc.Ignore), len(expiries))
-	}
-	if len(justifications) != len(doc.Ignore) {
-		report("%d ignore rules but %d `# justification:` comments; "+
-			"a suppression without a stated reason cannot be re-triaged by anyone else",
-			len(doc.Ignore), len(justifications))
+	blocks := ruleCommentBlocks(string(raw))
+	if len(blocks) != len(doc.Ignore) {
+		report("found %d ignore rules but %d rule lines; the file's shape is not "+
+			"what this check can reason about", len(doc.Ignore), len(blocks))
+		return problems
 	}
 
 	for i, rule := range doc.Ignore {
+		label := fmt.Sprintf("ignore rule %d (%s)", i+1, rule.Vulnerability)
+
 		if strings.TrimSpace(rule.Vulnerability) == "" {
 			report("ignore rule %d names no vulnerability", i+1)
 		}
 		// A rule with no package suppresses the id everywhere, including in a
 		// package that really is affected.
 		if strings.TrimSpace(rule.Package.Name) == "" {
-			report("ignore rule %d (%s) names no package; "+
-				"suppressing an id globally hides it in packages that are affected",
-				i+1, rule.Vulnerability)
+			report("%s names no package; "+
+				"suppressing an id globally hides it in packages that are affected", label)
 		}
-	}
 
-	for _, m := range expiries {
-		expiry, err := time.Parse("2006-01-02", m[1])
+		b := blocks[i]
+		if b.justification == "" {
+			report("%s has no `# justification:` in the comment block directly above it; "+
+				"a suppression without a stated reason cannot be re-triaged by anyone else", label)
+		}
+		if b.expires == "" {
+			report("%s has no `# expires:` in the comment block directly above it; "+
+				"every suppression needs a date after which it stops applying", label)
+			continue
+		}
+
+		expiry, err := time.Parse("2006-01-02", b.expires)
 		if err != nil {
-			report("`# expires: %s` is not a YYYY-MM-DD date", m[1])
+			report("%s: `# expires: %s` is not a YYYY-MM-DD date", label, b.expires)
 			continue
 		}
 		if now.After(expiry) {
-			report("a suppression expired on %s. Re-triage it: confirm whether the "+
-				"finding still applies, then either fix it, or renew the rule with a new "+
-				"date and an updated justification. Do not simply extend the date.", m[1])
+			report("%s expired on %s. Re-triage it: confirm whether the finding still "+
+				"applies, then either fix it, or renew the rule with a new date and an "+
+				"updated justification. Do not simply extend the date.", label, b.expires)
+		}
+		if expiry.After(now.Add(maxExpiryHorizon)) {
+			report("%s expires on %s, more than %d days out. A suppression dated that far "+
+				"ahead never comes back for re-triage, which is what an expiry is for.",
+				label, b.expires, int(maxExpiryHorizon.Hours()/24))
 		}
 	}
 
 	return problems
+}
+
+// ruleBlock is the justification and expiry found in the contiguous comment
+// block immediately above one ignore rule.
+type ruleBlock struct {
+	justification string
+	expires       string
+}
+
+// ruleCommentBlocks returns one entry per ignore rule, in file order, carrying
+// whatever the contiguous comment block directly above that rule declared.
+//
+// "Directly above" is the whole point: a block separated from its rule by
+// another rule, or parked above the `ignore:` key, documents nothing a reader
+// can act on.
+func ruleCommentBlocks(body string) []ruleBlock {
+	lines := strings.Split(body, "\n")
+	var out []ruleBlock
+
+	for i, line := range lines {
+		if !ruleStart.MatchString(line) {
+			continue
+		}
+		var b ruleBlock
+		for j := i - 1; j >= 0 && commentLine.MatchString(lines[j]); j-- {
+			if m := justificationComment.FindStringSubmatch(lines[j]); m != nil && b.justification == "" {
+				b.justification = strings.TrimSpace(m[1])
+			}
+			if m := expiryComment.FindStringSubmatch(lines[j]); m != nil && b.expires == "" {
+				b.expires = m[1]
+			}
+		}
+		out = append(out, b)
+	}
+	return out
 }
 
 // TestGrypeIgnoreRulesAreTriageable is what keeps the weekly scan worth reading.
@@ -133,7 +195,9 @@ func TestGrypeConfigCheckRejects(t *testing.T) {
 	// Fixed so an expiry case cannot start or stop failing with the calendar.
 	now := time.Date(2026, 9, 4, 0, 0, 0, 0, time.UTC)
 
-	const justified = "# justification: not reachable in this image\n# expires: 2099-01-01\n"
+	// A well-formed block, directly above its rule, well inside the horizon.
+	const ok = "ignore:\n  # justification: not reachable in this image\n" +
+		"  # expires: 2026-12-31\n  - vulnerability: CVE-2026-1\n    package:\n      name: libfoo\n"
 
 	for _, tc := range []struct {
 		name string
@@ -142,43 +206,67 @@ func TestGrypeConfigCheckRejects(t *testing.T) {
 	}{
 		{
 			name: "rule with no expires comment",
-			body: "# justification: not reachable\nignore:\n  - vulnerability: CVE-2026-1\n    package:\n      name: libfoo\n",
-			want: "`# expires:` comments",
+			body: "ignore:\n  # justification: not reachable\n" +
+				"  - vulnerability: CVE-2026-1\n    package:\n      name: libfoo\n",
+			want: "no `# expires:`",
 		},
 		{
 			name: "rule with no justification comment",
-			body: "# expires: 2099-01-01\nignore:\n  - vulnerability: CVE-2026-1\n    package:\n      name: libfoo\n",
-			want: "`# justification:` comments",
+			body: "ignore:\n  # expires: 2026-12-31\n" +
+				"  - vulnerability: CVE-2026-1\n    package:\n      name: libfoo\n",
+			want: "no `# justification:`",
 		},
 		{
 			name: "expired rule",
-			body: "# justification: not reachable\n# expires: 2026-09-03\n" +
-				"ignore:\n  - vulnerability: CVE-2026-1\n    package:\n      name: libfoo\n",
+			body: "ignore:\n  # justification: not reachable\n  # expires: 2026-09-03\n" +
+				"  - vulnerability: CVE-2026-1\n    package:\n      name: libfoo\n",
 			want: "expired on 2026-09-03",
 		},
 		{
+			// The rule this file exists to prevent. Every other assertion is
+			// satisfied; only the horizon catches it.
+			name: "expiry so far out the finding never returns",
+			body: "ignore:\n  # justification: not reachable\n  # expires: 2099-01-01\n" +
+				"  - vulnerability: CVE-2026-1\n    package:\n      name: libfoo\n",
+			want: "more than 180 days out",
+		},
+		{
 			name: "rule naming no package suppresses the id everywhere",
-			body: justified + "ignore:\n  - vulnerability: CVE-2026-1\n",
+			body: "ignore:\n  # justification: not reachable\n  # expires: 2026-12-31\n" +
+				"  - vulnerability: CVE-2026-1\n",
 			want: "names no package",
 		},
 		{
 			name: "rule naming no vulnerability",
-			body: justified + "ignore:\n  - package:\n      name: libfoo\n",
+			body: "ignore:\n  # justification: not reachable\n  # expires: 2026-12-31\n" +
+				"  - package:\n      name: libfoo\n",
 			want: "names no vulnerability",
 		},
 		{
-			// The regex matches the shape, so the counts agree and only the
-			// parse catches it. A month of 13 is the case a shape-only check
-			// would wave through.
+			// The regex matches the shape, so only the parse catches it. A month
+			// of 13 is the case a shape-only check would wave through.
 			name: "expiry that has the shape of a date but is not one",
-			body: "# justification: not reachable\n# expires: 2026-13-99\n" +
-				"ignore:\n  - vulnerability: CVE-2026-1\n    package:\n      name: libfoo\n",
+			body: "ignore:\n  # justification: not reachable\n  # expires: 2026-13-99\n" +
+				"  - vulnerability: CVE-2026-1\n    package:\n      name: libfoo\n",
 			want: "is not a YYYY-MM-DD date",
 		},
 		{
-			name: "comment block left behind by a deleted rule",
-			body: justified + "ignore: []\n",
-			want: "`# expires:` comments",
+			// Both blocks parked above the `ignore:` key rather than above the
+			// rules they justify. Totals agree, so a counting check accepts this
+			// -- and nobody can tell which justification belongs to which CVE.
+			name: "comment blocks not attached to the rules they describe",
+			body: "# justification: not reachable\n# expires: 2026-12-31\n" +
+				"# justification: fixed upstream\n# expires: 2026-11-30\n" +
+				"ignore:\n  - vulnerability: CVE-2026-1\n    package:\n      name: libfoo\n" +
+				"  - vulnerability: CVE-2026-2\n    package:\n      name: libbar\n",
+			want: "no `# justification:` in the comment block directly above it",
+		},
+		{
+			// The second rule borrows nothing: the block above it belongs to the
+			// first rule, and there is no contiguous comment run of its own.
+			name: "second rule with no block of its own",
+			body: ok + "  - vulnerability: CVE-2026-2\n    package:\n      name: libbar\n",
+			want: "no `# justification:`",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -270,17 +358,28 @@ func TestGrypeConfigCheckAccepts(t *testing.T) {
 		},
 		{
 			name: "one fully triageable rule",
-			body: "# justification: the vulnerable code path is not compiled in\n" +
-				"# expires: 2026-12-31\n" +
-				"ignore:\n  - vulnerability: CVE-2026-1\n    package:\n      name: libfoo\n",
+			body: "ignore:\n" +
+				"  # justification: the vulnerable code path is not compiled in\n" +
+				"  # expires: 2026-12-31\n" +
+				"  - vulnerability: CVE-2026-1\n    package:\n      name: libfoo\n",
 		},
 		{
+			// Each block sits directly above the rule it describes, which is the
+			// layout .grype.yaml documents and the only one a re-triager can
+			// read. The earlier version of this case put both blocks above the
+			// `ignore:` key and still called itself "each with their own block".
 			name: "two rules each with their own block",
-			body: "# justification: not reachable\n# expires: 2026-12-31\n" +
-				"# justification: fixed upstream, waiting on a base image bump\n# expires: 2026-11-30\n" +
-				"ignore:\n" +
+			body: "ignore:\n" +
+				"  # justification: not reachable\n  # expires: 2026-12-31\n" +
 				"  - vulnerability: CVE-2026-1\n    package:\n      name: libfoo\n" +
+				"  # justification: fixed upstream, waiting on a base image bump\n" +
+				"  # expires: 2026-11-30\n" +
 				"  - vulnerability: GHSA-aaaa-bbbb-cccc\n    package:\n      name: libbar\n",
+		},
+		{
+			name: "expiry exactly at the horizon",
+			body: "ignore:\n  # justification: not reachable\n  # expires: 2027-03-03\n" +
+				"  - vulnerability: CVE-2026-1\n    package:\n      name: libfoo\n",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

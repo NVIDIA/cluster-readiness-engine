@@ -40,6 +40,33 @@ env:
   CRANE_SHA256: c1d593d01551f2c9a3df5ca0a0be4385a839bd9b86d4a76e18d7b17d16559127
 
 jobs:
+  # An expired suppression must fail the run that would otherwise apply it.
+  #
+  # grype has no notion of the `# expires:` comment, so it applies every rule in
+  # .grype.yaml unconditionally. The only thing that enforces expiry is a Go
+  # test, and until this job existed that test ran solely on push and pull
+  # request -- so a rule whose date passed during a release freeze or a quiet
+  # week would be applied by the Monday scan, suppress a real finding, and
+  # report clean, with nothing red anywhere because the build that would have
+  # gone red was not running. The expiry was coupled to commit cadence rather
+  # than to the scan it protects.
+  #
+  # The same test is run, not a copy of it, so the two cannot drift.
+  validate-suppressions:
+    name: Validate .grype.yaml suppressions
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Every suppression is still in date
+        run: go test ./test/releasepolicy/ -run TestGrypeIgnoreRulesAreTriageable -count=1 -v
+
   # Resolves what to scan. Two targets, each a multi-platform index, each
   # expanded to its per-platform manifests.
   resolve:
@@ -70,10 +97,49 @@ jobs:
         run: |
           set -euo pipefail
 
-          # The newest published release: what operators are actually running.
+          # Same bounded retry, and for the same reason, as attest.yml's
+          # crane_digest(). This step makes up to 21 anonymous GHCR calls in a
+          # burst, and a rate limit or 5xx on any of them must not be able to
+          # decide what gets scanned. Each `run:` is its own shell, so the
+          # helper is defined where it is used rather than shared.
+          crane_err="$(mktemp)"
+          crane_digest() {
+            local n out
+            for n in 1 2 3; do
+              if out="$(timeout --foreground 120s crane digest "$@" 2>"${crane_err}")"; then
+                printf '%s' "${out}"
+                return 0
+              fi
+              echo "::warning::crane digest attempt ${n} failed: $(cat "${crane_err}")" >&2
+              if [[ "${n}" -lt 3 ]]; then sleep $((n * 5)); fi
+            done
+            return 1
+          }
+
+          # A missing manifest is a real answer; anything else is the registry
+          # failing to answer. Collapsing the two lets a 5xx read as "no image
+          # here", which is how the walk-back below would silently select a
+          # stale commit -- or exhaust and blame publish.yml for a GHCR outage.
+          crane_missing() {
+            local err
+            if err="$(timeout --foreground 120s crane digest "$@" 2>&1 >/dev/null)"; then
+              return 1
+            fi
+            if grep -qiE 'MANIFEST_UNKNOWN|NAME_UNKNOWN|not found|404' <<<"${err}"; then
+              return 0
+            fi
+            echo "::error::registry error resolving $*: ${err}"
+            exit 1
+          }
+
+          # --exclude-pre-releases, deliberately. RELEASE.md states that
+          # `releases/latest` resolves to the newest stable release and never a
+          # pre-release, so that is what operators are running. Without this the
+          # scan swaps in the RC for the whole release-candidate window and the
+          # GA image -- the one actually deployed -- goes unscanned.
           release_tag="$(gh release list --repo "${GITHUB_REPOSITORY}" --exclude-drafts \
-                          --limit 1 --json tagName --jq '.[0].tagName')"
-          [[ -n "${release_tag}" ]] || { echo "::error::no published release to scan"; exit 1; }
+                          --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName')"
+          [[ -n "${release_tag}" ]] || { echo "::error::no published stable release to scan"; exit 1; }
 
           # The newest PUBLISHED main image: what the next release will look
           # like. Deliberately not the tip of main -- publish.yml builds on push
@@ -83,7 +149,7 @@ jobs:
           # walk back until an image is found and fail if none is.
           main_sha=""
           while read -r sha; do
-            if crane digest "${IMAGE}:main-${sha}" >/dev/null 2>&1; then
+            if ! crane_missing "${IMAGE}:main-${sha}"; then
               main_sha="${sha}"; break
             fi
           done < <(gh api "repos/${GITHUB_REPOSITORY}/commits?sha=main&per_page=15" --jq '.[].sha[0:7]')
@@ -93,18 +159,36 @@ jobs:
           fi
           echo "newest published main image: main-${main_sha}"
 
+          # Counted before the registry is consulted, so the expectation cannot
+          # be shaped by what the registry happened to answer.
+          #
+          # Belt and braces, and honestly labelled as such: every failure branch
+          # in the loop below is terminal, so nothing can currently reach the end
+          # with a short list, and no test constrains this assertion (removing it
+          # leaves the suite green). It is here to fail loudly if a later edit
+          # reintroduces a non-terminal path -- which is exactly what the
+          # original `continue` was.
+          expected=0
           targets='[]'
           for pair in "release:${release_tag}" "main:main-${main_sha}"; do
             name="${pair%%:*}"; tag="${pair#*:}"
+            expected=$((expected + 2))
 
-            if ! index="$(crane digest "${IMAGE}:${tag}" 2>/dev/null)"; then
-              echo "::warning::${IMAGE}:${tag} does not resolve; skipping the ${name} target"
-              continue
+            # Terminal, not skippable. Every sibling check in this loop exits 1;
+            # this one used to warn and continue, which let the release target --
+            # the primary subject -- vanish from a green run.
+            if ! index="$(crane_digest "${IMAGE}:${tag}")"; then
+              echo "::error::${IMAGE}:${tag} does not resolve; refusing to scan a subset"
+              exit 1
             fi
 
             amd64=""; arm64=""
             for arch in amd64 arm64; do
-              digest="$(crane digest --platform "linux/${arch}" "${IMAGE}:${tag}" 2>/dev/null || true)"
+              # From the pinned index, not the tag. Re-resolving the tag per
+              # platform allows a republish between calls to pair an amd64
+              # manifest from one index with an arm64 from another, and makes
+              # the index-equality check below compare against a stale value.
+              digest="$(crane_digest --platform "linux/${arch}" "${IMAGE}@${index}" || true)"
               if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
                 echo "::error::${name}: linux/${arch} digest is missing or malformed: '${digest}'"
                 exit 1
@@ -128,18 +212,21 @@ jobs:
             for arch in amd64 arm64; do
               case "${arch}" in amd64) d="${amd64}" ;; arm64) d="${arm64}" ;; esac
               targets="$(jq -c --arg n "${name}" --arg t "${tag}" --arg a "${arch}" --arg d "${d}" \
-                '. + [{name: ($n + "-" + $a), tag: $t, arch: $a, ref: ($n + "-" + $a), digest: $d}]' <<<"${targets}")"
+                '. + [{name: ($n + "-" + $a), tag: $t, arch: $a, digest: $d}]' <<<"${targets}")"
             done
             echo "${name} (${tag}) -> amd64 ${amd64} / arm64 ${arm64}"
           done
 
-          [[ "$(jq 'length' <<<"${targets}")" -gt 0 ]] || {
-            echo "::error::no scannable targets resolved"; exit 1; }
+          resolved="$(jq 'length' <<<"${targets}")"
+          if [[ "${resolved}" -ne "${expected}" ]]; then
+            echo "::error::resolved ${resolved} targets but set out to scan ${expected}"
+            exit 1
+          fi
           echo "value=${targets}" >> "$GITHUB_OUTPUT"
 
   scan:
     name: Scan ${{ matrix.target.name }}
-    needs: resolve
+    needs: [validate-suppressions, resolve]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -174,18 +261,38 @@ jobs:
 
       - name: Stage the report
         env:
-          SARIF: ${{ steps.scan.outputs.json }}
+          # Named for what it is. scan-action returns a path, and the output key
+          # tracks output-format above. Calling it SARIF invited switching the
+          # format to sarif, which has no top-level .matches -- and with a `//
+          # []` default that would have read as "every image is clean" on a
+          # green run rather than failing.
+          REPORT: ${{ steps.scan.outputs.json }}
           NAME: ${{ matrix.target.name }}
           DIGEST: ${{ matrix.target.digest }}
           TAG: ${{ matrix.target.tag }}
         run: |
           set -euo pipefail
           mkdir -p reports
-          # Carry the subject alongside the findings; the raw grype document
-          # does not record which reference we asked it to scan.
+
+          # Assert the shape rather than defaulting it. An absent .matches means
+          # the document is not what this step parses, and a report of zero
+          # findings is the one wrong answer that looks like good news.
+          jq -e 'has("matches")' "${REPORT}" >/dev/null || {
+            echo "::error::${REPORT} has no .matches key; grype output format changed"; exit 1; }
+
+          # severity-cutoff is passed to grype as --fail-on, which sets the exit
+          # code and does not filter the document; only --only-fixed filters. So
+          # the raw report carries every fixable match at every severity, and
+          # counting it as "high+" overstates by whatever Low and Medium the base
+          # image happens to carry. Filter here, once, so every downstream count
+          # and listing means what its label says -- including the Slack body,
+          # where sub-high rows would otherwise pad the message and could push a
+          # Critical past the truncation limit.
           jq --arg name "${NAME}" --arg digest "${DIGEST}" --arg tag "${TAG}" \
-            '{target: $name, tag: $tag, digest: $digest, matches: (.matches // [])}' \
-            "${SARIF}" > "reports/${NAME}.json"
+            '{target: $name, tag: $tag, digest: $digest,
+              matches: [.matches[] | select(.vulnerability.severity == "Critical"
+                                         or .vulnerability.severity == "High")]}' \
+            "${REPORT}" > "reports/${NAME}.json"
           jq -r '"\(.target): \(.matches | length) fixable high+ findings"' "reports/${NAME}.json"
 
       - name: Upload the raw report
@@ -215,8 +322,12 @@ jobs:
       # the ones that did not. Three green targets and a missing fourth reads
       # exactly like four clean ones.
       #
-      # resolve/ is the only place that knows what was supposed to be scanned, so
-      # the expected set is taken from there rather than from the artifacts.
+      # The expected set comes from resolve rather than from the artifacts. That
+      # is only sound because resolve now fails when it cannot resolve every
+      # target it set out to scan -- when it was allowed to warn and drop one,
+      # the dropped target was missing from this expectation too, so this check
+      # verified the survivors and reported clean. Deriving an expectation from
+      # the thing under test is the defect, wherever it is done.
       - name: Confirm every resolved target produced a report
         env:
           TARGETS: ${{ needs.resolve.outputs.targets }}
@@ -340,10 +451,66 @@ jobs:
 
           # shellcheck disable=SC2016  # $t is a jq variable, not a shell one
           jq -n --arg t "${text}" '{text: $t}' > payload.json
+          # Retried and time-bounded. This step runs only on a week that found
+          # something, so a single 429 or 5xx would discard the alert precisely
+          # when it matters, and the next attempt is seven days later.
           code="$(curl -sS -o resp.txt -w '%{http_code}' -X POST -H 'Content-type: application/json' \
+                    --retry 3 --retry-delay 5 --retry-all-errors --max-time 30 \
                     --data @payload.json "${url}" || echo 000)"
           if [[ "${code}" != "200" ]]; then
             echo "::error::Slack returned ${code}: $(cat resp.txt)"
             exit 1
           fi
           echo "posted to Slack"
+
+  # A run that did not finish must reach the same people as a run that found
+  # something.
+  #
+  # Every other path here is Slack-silent on failure: if resolve fails the
+  # report job is skipped by its own `needs.resolve.result == 'success'` gate,
+  # and if a scan job fails the completeness step exits before Notify Slack is
+  # reached. The only state that reached the channel was a fully successful run
+  # with findings -- so a scan that had been failing every Monday for a month
+  # was indistinguishable, to the people the webhook exists to serve, from a
+  # clean month. The failures this workflow is built around were loud only
+  # inside the Actions tab.
+  notify-failure:
+    name: Report a run that did not complete
+    needs: [validate-suppressions, resolve, scan, report]
+    if: >-
+      always() && github.repository == 'NVIDIA/cluster-readiness-engine' &&
+      (github.event_name == 'schedule' || inputs.notify_slack) &&
+      (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Notify Slack that the scan did not complete
+        env:
+          WEBHOOK: ${{ secrets.SLACK_WEBHOOK_PATH }}
+          VALIDATE: ${{ needs.validate-suppressions.result }}
+          RESOLVE: ${{ needs.resolve.result }}
+          SCAN: ${{ needs.scan.result }}
+          REPORT: ${{ needs.report.result }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${WEBHOOK}" ]]; then
+            echo "::notice::SLACK_WEBHOOK_PATH is not set; skipping the failure notification."
+            exit 0
+          fi
+          url="${WEBHOOK}"
+          [[ "${url}" == https://* ]] || url="https://hooks.slack.com/${WEBHOOK#/}"
+
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          text="$(printf '*NVCRE image vulnerability scan did not complete* — this week the images were not fully scanned.\n\nsuppressions: %s\nresolve: %s\nscan: %s\nreport: %s\n\n<%s|Full run>' \
+                   "${VALIDATE}" "${RESOLVE}" "${SCAN}" "${REPORT}" "${run_url}")"
+
+          # shellcheck disable=SC2016  # $t is a jq variable, not a shell one
+          jq -n --arg t "${text}" '{text: $t}' > payload.json
+          code="$(curl -sS -o resp.txt -w '%{http_code}' -X POST -H 'Content-type: application/json' \
+                    --retry 3 --retry-delay 5 --retry-all-errors --max-time 30 \
+                    --data @payload.json "${url}" || echo 000)"
+          if [[ "${code}" != "200" ]]; then
+            echo "::error::Slack returned ${code}: $(cat resp.txt)"
+            exit 1
+          fi
+          echo "posted the failure notice to Slack"
