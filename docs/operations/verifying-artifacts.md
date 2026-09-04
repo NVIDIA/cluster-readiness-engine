@@ -89,6 +89,30 @@ built on it reports success for an artifact that was never released. The exact f
 the workflow **and** the tag, so a signature from `v0.1.0` cannot pass as `v0.2.0`, and a
 branch build cannot pass as either.
 
+## Build Level, and why the pin matters
+
+Provenance is **SLSA Build L2 per artifact** today — the `manager` image index, the Helm
+chart, each `nvcrectl` binary, and `installer` alike. The project does not publish a
+single project-wide level, and it does not claim L3: builder isolation is still missing
+(the build runs in the caller; `attest.yml` attests a digest it is handed). What L2 here
+does claim is that provenance is unforgeable by that build process — Fulcio names
+`attest.yml`, the predicate's origin fields come from trusted `GITHUB_*` context inside
+that workflow, and a guard refuses to list `attest.yml` as the builder.
+
+The same-repo reusable-workflow form (`uses: ./.github/workflows/attest.yml`) isolates
+attestation from the caller's build steps, not from write access to the repository. The
+practical strength of that boundary rests on branch protection over `attest.yml`.
+
+**Pinning the identity above is the check that makes the level observable.** Drop the
+`--certificate-identity` flag (or replace it with a loose regexp) and verification can
+still go green while proving less than Build L2: you no longer know the attestation was
+minted inside the reusable workflow. The published commands keep the exact pin, and
+`TestVerificationUsesExactIdentity` / `TestPublishedVerifyCommandsAreExact` fail the
+build if a release-path workflow or a fenced doc command drifts to the regexp form. The
+boundary itself is gated by `TestAttestIsSoleSigner`,
+`TestAttestPredicateUsesOnlyTrustedContext`, and
+`TestAttestBuilderIdGuardRejectsAttestorAsBuilder`.
+
 ## Verifying the container image
 
 The image is a multi-platform index. Two different things are attested, to two different
