@@ -1,49 +1,26 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Suppressions for the weekly image vulnerability scan
+# Grype configuration for the weekly image vulnerability scan
 # (.github/workflows/vuln-scan-images.yml).
 #
-# Without a suppression path, one unfixable CVE re-alerts every week forever and
-# the channel gets muted -- at which point the scan has negative value, because
-# it looks like coverage and nobody reads it. Without an EXPIRY, a suppression
-# outlives the reason for it and the finding never comes back.
+# SUPPRESSIONS DO NOT LIVE HERE. They live in .openvex.json, which the scan
+# passes to grype as `--vex`, and `ignore:` below must stay empty.
 #
-# Every rule must carry four things, and TestGrypeIgnoreRulesAreTriageable
-# fails the build if any is missing:
+# One place, deliberately. Two suppression mechanisms means the impact analysis
+# for a CVE can live in either file, so answering "why is this not reported?"
+# means checking both -- and the two enforce different rules, so a suppression
+# silently gets weaker discipline by being written in the wrong one.
+# TestGrypeConfigCarriesNoSuppressions fails the build if a rule is added here.
 #
-#   vulnerability   the CVE or GHSA id
-#   package.name    the affected package -- never suppress an id globally
-#   justification   why it does not apply HERE, in prose, in the comment block
-#   expires         YYYY-MM-DD, after which the rule stops applying
+# What .openvex.json requires of a statement, and what enforces it, is in
+# .claude/skills/managing-openvex.md and TestOpenVEXStatementsAreTriageable.
+# The short version: name the CVE or GHSA exactly as grype emits it (usually the
+# GHSA, not the CVE), target `pkg:oci/manager`, pick a justification from the
+# OpenVEX v0.2.0 enum, write a substantive impact statement, and re-affirm it
+# within 180 days or the build goes red.
 #
-# The justification and expires comments must sit in the contiguous comment
-# block DIRECTLY ABOVE the rule they describe. A block parked above the
-# `ignore:` key, or separated from its rule by another rule, documents nothing
-# anyone can re-triage: there is no way to tell which justification belongs to
-# which id.
-#
-# An expiry may not be more than 180 days out. A date nobody will live to see is
-# the same as no date, and the whole mechanism is the coming-back.
-#
-# An expired rule is not an error in grype -- grype does not know about the
-# field. The test fails instead, which is the point: the finding re-surfaces as
-# a red build that someone has to look at, rather than staying silently muted.
-# The weekly scan runs that same test before it scans, so a rule cannot expire
-# during a quiet week and still be applied.
-#
-# Format:
-#
-#   ignore:
-#     # justification: <why this does not apply to NVCRE>
-#     # expires: 2026-12-31
-#     - vulnerability: CVE-2026-12345
-#       package:
-#         name: some-package
-#
-# Deliberately not OpenVEX yet. OpenVEX needs a triage process to exist first,
-# and this file is where that process starts. Revisit publishing these as a
-# signed OpenVEX attestation once the ruleset has been exercised for a few
-# cycles and we know what the real justifications look like.
+# The scan runs those checks before it scans, so a statement cannot go stale
+# during a quiet week and keep suppressing a finding with nothing to show for it.
 
 ignore: []

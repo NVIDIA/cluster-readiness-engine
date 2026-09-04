@@ -40,20 +40,20 @@ env:
   CRANE_SHA256: c1d593d01551f2c9a3df5ca0a0be4385a839bd9b86d4a76e18d7b17d16559127
 
 jobs:
-  # An expired suppression must fail the run that would otherwise apply it.
+  # A stale suppression must fail the run that would otherwise apply it.
   #
-  # grype has no notion of the `# expires:` comment, so it applies every rule in
-  # .grype.yaml unconditionally. The only thing that enforces expiry is a Go
-  # test, and until this job existed that test ran solely on push and pull
-  # request -- so a rule whose date passed during a release freeze or a quiet
-  # week would be applied by the Monday scan, suppress a real finding, and
-  # report clean, with nothing red anywhere because the build that would have
-  # gone red was not running. The expiry was coupled to commit cadence rather
-  # than to the scan it protects.
+  # OpenVEX has no expiry concept, so grype applies every statement in
+  # .openvex.json unconditionally and forever. The only thing that brings a
+  # statement back for re-triage is a Go test, and a test that ran solely on push
+  # and pull request would leave a gap: a statement passing its re-affirmation
+  # date during a release freeze or a quiet week would be applied by the Monday
+  # scan, suppress a real finding, and report clean -- with nothing red anywhere,
+  # because the build that would have gone red was not running. That couples the
+  # discipline to commit cadence rather than to the scan it protects.
   #
-  # The same test is run, not a copy of it, so the two cannot drift.
+  # The same tests are run, not copies of them, so the two cannot drift.
   validate-suppressions:
-    name: Validate .grype.yaml suppressions
+    name: Validate .openvex.json suppressions
     if: github.repository == 'NVIDIA/cluster-readiness-engine'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -64,8 +64,10 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Every suppression is still in date
-        run: go test ./test/releasepolicy/ -run TestGrypeIgnoreRulesAreTriageable -count=1 -v
+      - name: Every suppression is well formed, targeted, and still affirmed
+        run: |
+          go test ./test/releasepolicy/ -count=1 -v \
+            -run 'TestOpenVEX|TestGrypeConfigCarriesNoSuppressions|TestVulnScanPassesTheVexDocument'
 
   # Resolves what to scan. Two targets, each a multi-platform index, each
   # expanded to its per-platform manifests.
@@ -236,8 +238,9 @@ jobs:
     steps:
       # Load-bearing, and not for the reason it looks like. The scan targets a
       # registry digest and needs nothing from the source tree -- except
-      # .grype.yaml. scan-action passes no --config and no cwd, so grype runs in
-      # GITHUB_WORKSPACE and picks up ./.grype.yaml by its default config search.
+      # .openvex.json and .grype.yaml. scan-action passes no --config and no cwd,
+      # so grype runs in GITHUB_WORKSPACE, resolves the relative --vex path from
+      # there, and picks up ./.grype.yaml by its default config search.
       # Delete this step as "we scan by digest, we don't need the repo" and every
       # suppression stops applying, with nothing failing to say so: the scan just
       # reports more, which reads like a worse week rather than a broken config.
@@ -254,6 +257,15 @@ jobs:
         uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
         with:
           image: ${{ env.IMAGE }}@${{ matrix.target.digest }}
+          # The single home for suppressions and their impact analysis. Forwarded
+          # to grype as `--vex`. Drop this input and every statement silently
+          # stops applying -- the scan simply reports more, which reads as a bad
+          # week rather than a broken config. TestVulnScanPassesTheVexDocument
+          # holds it.
+          #
+          # Deliberately NOT paired with a `config:` input: setting that disables
+          # grype's auto-detection of .grype.yaml.
+          vex: .openvex.json
           severity-cutoff: high
           only-fixed: true
           fail-build: false

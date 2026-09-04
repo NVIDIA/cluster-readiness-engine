@@ -8,39 +8,32 @@ description: Use when adding, updating, or removing CVE/GHSA suppressions in `.o
 `.openvex.json` carries per-CVE reachability evidence used to suppress findings in
 the `ghcr.io/nvidia/cluster-readiness-engine/manager` image.
 
-## Status: the file and the wiring do not exist yet
+## How it is wired
 
-Read this before following any recipe below.
+`.github/workflows/vuln-scan-images.yml` passes `vex: .openvex.json` to
+`anchore/scan-action`, which forwards it to grype as `--vex`. Grype resolves that
+relative path from `GITHUB_WORKSPACE`, which is why the scan job checks the
+repository out even though it scans a registry digest.
 
-- `.openvex.json` is **not in the repo**.
-- `.github/workflows/vuln-scan-images.yml` does **not** pass a `vex:` input, so no
-  VEX document is consulted today.
-- There is no OpenVEX attestation in the release path. ADR-074's artifact contract
-  has no OpenVEX row, and `attest.yml` does not produce one.
-- Epic #262 lists OpenVEX triage as a **non-goal for now**, and `.grype.yaml` says
-  "Deliberately not OpenVEX yet" — the stated gate is that the `.grype.yaml`
-  ruleset gets exercised for a few cycles first.
+Three things hold that wiring, because each failure mode is silent:
 
-Adopting VEX therefore means updating those texts in the same change, or the repo
-contradicts itself.
+| Guard | What it prevents |
+|---|---|
+| `TestVulnScanPassesTheVexDocument` | dropping the `vex:` input — grype stops reading the file and every statement stops applying at once |
+| `TestVulnScanChecksOutBeforeScanning` | removing the checkout as "we scan by digest" — same outcome |
+| `TestGrypeConfigCarriesNoSuppressions` | a second suppression home appearing in `.grype.yaml` |
 
-The mechanism is available whenever you want it: `anchore/scan-action` at the SHA
-this repo pins (`27805bf3b4e84b4a5c980df22ed233c00390a439`, v7.4.2) supports a
-`vex:` input and forwards it to grype as `--vex`. Wiring it is two lines in the
-scan step:
+The same test also asserts `config:` stays **unset** on the scan step: setting it
+disables grype's auto-detection of `.grype.yaml`.
 
-```yaml
-        with:
-          image: ${{ env.IMAGE }}@${{ matrix.target.digest }}
-          vex: .openvex.json        # <- add
-          severity-cutoff: high
-          only-fixed: true
-```
+The `validate-suppressions` job runs the policy tests **before** the scan fans
+out, so a statement that has gone stale fails the run rather than being applied
+by it.
 
-The checkout step in that job is already load-bearing for `.grype.yaml`
-(`TestVulnScanChecksOutBeforeScanning` holds it); `.openvex.json` would ride the
-same checkout. Note the action's `config:` input **disables** `.grype.yaml`
-auto-detection — do not set it.
+Not wired, and out of scope here: there is no OpenVEX *attestation* in the release
+path. ADR-074's artifact contract has no OpenVEX row and `attest.yml` does not
+produce one. This document is consumed at scan time only; it is not published or
+signed. Adding that is a separate change to the release path.
 
 ## Remediate before you suppress
 
@@ -60,24 +53,25 @@ a statement there would have hidden a trivially fixable exposure.
 
 Only reach for `.openvex.json` when the upgrade path is genuinely blocked.
 
-## Relationship to `.grype.yaml` — read this before choosing a mechanism
+## One place, and why `.grype.yaml` is not the other one
 
-The two are not interchangeable, and the difference is the reason to be careful.
+Grype will happily apply `.grype.yaml` ignore rules and `.openvex.json` statements
+in the same run. This repo deliberately uses only the second.
 
-| | `.grype.yaml` ignore | OpenVEX statement |
-|---|---|---|
-| Expiry | **Required**, max 180 days, enforced | No concept of expiry |
-| Enforcement | `TestGrypeIgnoreRulesAreTriageable`, run in CI **and** by the weekly scan before it scans | None |
-| Rots silently | No — a lapsed rule fails the build | **Yes** |
-| Published | No | Intended for attestation, read by downstream consumers |
+Two suppression homes means the impact analysis for a CVE can be in either file,
+so answering "why is this not reported?" means checking both. Worse, they enforce
+different things — a `.grype.yaml` rule gets no product-PURL check, no
+justification enum and no impact statement — so a suppression would silently get
+weaker discipline by being written in the easier place. `.grype.yaml` is three
+lines of YAML; a VEX statement makes you show your work. That asymmetry decides
+which one people reach for, so the weaker option is removed rather than
+discouraged: `TestGrypeConfigCarriesNoSuppressions` fails the build if `ignore:`
+is non-empty.
 
-`.grype.yaml` suppressions are time-boxed and come back for re-triage on their own.
-VEX statements do not. Moving a suppression from `.grype.yaml` to `.openvex.json`
-**loses** that guarantee, which is why the stale audit below is mandatory rather
-than advisory — it is the compensating control for the missing expiry.
-
-Prefer `.grype.yaml` for anything temporary ("waiting on a base image bump").
-Prefer `.openvex.json` for durable reachability claims you are willing to publish.
+The one thing lost in consolidating is expiry — `.grype.yaml` rules could carry a
+deadline, and OpenVEX has no such field. That is replaced by the re-affirmation
+rule in invariant 5 and by the stale audit, which is why both are mandatory rather
+than advisory.
 
 ## Non-negotiable invariants
 
@@ -159,6 +153,30 @@ at least one of:
   not use.
 
 Boilerplate ("not exploitable", "low risk") will be rejected in review.
+`TestOpenVEXStatementsAreTriageable` enforces a minimum length, which makes the
+thin version fail rather than merely be frowned upon — but length is a proxy, and
+a long statement with no evidence in it is still a bad statement.
+
+### 5. Every statement must be re-affirmed within 180 days
+
+OpenVEX has no expiry field. A statement is true when written and then stays in
+the file forever — including after the dependency is upgraded past the fix, the
+advisory is withdrawn, or the package leaves the image. At that point it either
+suppresses nothing and nobody notices, or it keeps suppressing something whose
+reachability has changed.
+
+So each statement carries a `timestamp`, and re-affirming one means refreshing
+`last_updated` (which wins when both are present). Past 180 days the build goes
+red until a human looks at it:
+
+```json
+"timestamp": "2026-09-04T00:00:00Z",
+"last_updated": "2027-02-01T00:00:00Z"
+```
+
+Refreshing the date without re-verifying the claim defeats the entire mechanism.
+Re-affirm by re-running the reproduction below and confirming the finding is still
+present and still unreachable — if it is simply gone, delete the statement.
 
 ## Local reproduction (canonical)
 
@@ -279,8 +297,10 @@ Bump the document `version` and refresh `timestamp` in the same edit.
 ## Quick reference
 
 - Workflow: `.github/workflows/vuln-scan-images.yml`
-- Grype config (time-boxed ignores, enforced): `.grype.yaml`
-- Suppression policy tests: `test/releasepolicy/grype_suppressions_test.go`
+- Suppressions and impact analysis (the only place): `.openvex.json`
+- Grype config, no suppressions: `.grype.yaml`
+- Statement policy tests: `test/releasepolicy/openvex_test.go`
+- Wiring and one-place guards: `test/releasepolicy/grype_suppressions_test.go`
 - Resolve-step tests: `test/releasepolicy/vuln_scan_resolve_test.go`
 - Image: `ghcr.io/nvidia/cluster-readiness-engine/manager`
 - Product PURL: `pkg:oci/manager`

@@ -129,7 +129,11 @@ We credit reporters of confirmed vulnerabilities in the release notes of the fix
 
   The scan reports, it does not gate — an unfixable upstream base-image CVE must not turn releases red. Findings feed the timelines in [Vulnerability Fix Timelines](#vulnerability-fix-timelines) above.
 
-  Suppressions live in [`.grype.yaml`](.grype.yaml). Every rule must name a CVE **and** a package, carry a prose justification, and expire within 180 days, with the justification and expiry in the comment block directly above the rule. `TestGrypeIgnoreRulesAreTriageable` enforces all of that and fails the build once a rule lapses — including in the weekly run itself, so a rule cannot expire during a quiet week and go on suppressing a finding. Renew a lapsed rule only after re-confirming it still applies; do not simply extend the date.
+  Suppressions and the impact analysis behind them live in one place: [`.openvex.json`](.openvex.json), an [OpenVEX](https://openvex.dev) v0.2.0 document the scan passes to grype as `--vex`. `.grype.yaml` carries scanner configuration only, and a test fails the build if an ignore rule is added there instead.
+
+  Every statement must name the advisory exactly as grype reports it, target the image, choose a justification from the OpenVEX v0.2.0 enum, and carry a substantive impact statement — these are published and read by downstream consumers. OpenVEX has no notion of expiry, so a statement must additionally be re-affirmed within 180 days or the build goes red; the weekly scan runs that check *before* it scans, so a statement cannot lapse during a quiet week and go on suppressing a finding. Re-affirm only after re-confirming the claim still holds; do not simply refresh the date.
+
+  VEX is for findings that cannot be remediated by upgrading. If a fixed version is reachable, the answer is a dependency bump and a release, not a statement. See [`.claude/skills/managing-openvex.md`](.claude/skills/managing-openvex.md) for the full triage procedure.
 
 ## Product Security Resources
 
