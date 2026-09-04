@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"strings"
 	"testing"
 	"time"
+
+	"sigs.k8s.io/yaml"
 )
 
 // openVEXDoc is the single home for vulnerability suppressions and the impact
@@ -41,6 +44,19 @@ const imageProductPURL = "pkg:oci/manager"
 // whose reachability changed. Requiring re-affirmation is what brings the claim
 // back for a human to look at.
 const maxStatementAge = 180 * 24 * time.Hour
+
+// clockSkew is how far ahead of now a stamp may legitimately sit.
+//
+// The age check has to be bounded on BOTH sides. Rejecting only the past leaves
+// `last_updated: 2099-01-01`, which satisfies every other rule here while
+// producing exactly what the re-affirmation rule exists to prevent: a statement
+// that never comes back. now.Sub(when) is negative for a future date, so a
+// one-sided check can never fire on it -- and a distant future date reads as
+// "recently affirmed" in review, so it is a softer target than an expired one.
+//
+// The tolerance exists only for timezone and runner-clock differences on a date
+// written as midnight UTC; it is far too small to hide a defeated clock.
+const clockSkew = 48 * time.Hour
 
 // minImpactStatement is the shortest impact statement treated as substantive.
 //
@@ -87,6 +103,17 @@ type vexStatement struct {
 		Identifiers struct {
 			PURL string `json:"purl"`
 		} `json:"identifiers"`
+		// Subcomponents scope a statement to one package inside the image.
+		// go-vex's Product.Matches returns true for ANY subcomponent identifier
+		// when this list is empty, so a statement without it suppresses its
+		// advisory across the whole image -- including in a package whose
+		// reachability nobody analysed.
+		Subcomponents []struct {
+			ID          string `json:"@id"`
+			Identifiers struct {
+				PURL string `json:"purl"`
+			} `json:"identifiers"`
+		} `json:"subcomponents"`
 	} `json:"products"`
 	Status          string `json:"status"`
 	Justification   string `json:"justification"`
@@ -137,15 +164,26 @@ func checkOpenVEX(raw []byte, now time.Time) []string {
 
 		// Invariant 1. The silent one.
 		targeted := false
+		scoped := false
 		for _, p := range s.Products {
-			if p.Identifiers.PURL == imageProductPURL || p.ID == imageProductPURL {
-				targeted = true
+			if p.Identifiers.PURL != imageProductPURL && p.ID != imageProductPURL {
+				continue
+			}
+			targeted = true
+			if len(p.Subcomponents) > 0 {
+				scoped = true
 			}
 		}
 		if !targeted {
 			report("%s does not target %s, so grype will apply nothing and the "+
 				"finding keeps being reported with no warning anywhere",
 				label, imageProductPURL)
+		} else if !scoped {
+			report("%s names no subcomponents, so it suppresses %s across the whole "+
+				"image rather than in the package that was analysed. An advisory can "+
+				"match more than one package -- the impact statement would describe one "+
+				"and silence all of them. Add the affected package as a subcomponent.",
+				label, name)
 		}
 
 		if !vexStatuses[s.Status] {
@@ -153,6 +191,19 @@ func checkOpenVEX(raw []byte, now time.Time) []string {
 		}
 
 		switch s.Status {
+		case "fixed":
+			// grype's VEX ignore list is {not_affected, fixed}, so this suppresses
+			// exactly like not_affected -- while OpenVEX forbids a `fixed`
+			// statement from carrying a justification, impact_statement or
+			// action_statement. It is therefore a suppression that cannot, by
+			// spec, record why. That makes it the cheapest way to hide a finding
+			// in this repository, which is the opposite of the point.
+			report("%s uses status \"fixed\", which grype suppresses exactly like "+
+				"not_affected but which OpenVEX forbids carrying any justification or "+
+				"impact statement -- so it would hide a finding with no reviewable claim "+
+				"on record. If the fix genuinely shipped, the scan reads published "+
+				"digests and stops reporting it without help; if the scanner is wrong, "+
+				"say so with not_affected and vulnerable_code_not_present.", label)
 		case "not_affected":
 			if !vexJustifications[s.Justification] {
 				report("%s has justification %q, which is not in the OpenVEX v0.2.0 enum",
@@ -184,6 +235,13 @@ func checkOpenVEX(raw []byte, now time.Time) []string {
 			report("%s has an unparseable timestamp %q; use RFC3339", label, stamp)
 			continue
 		}
+		if when.After(now.Add(clockSkew)) {
+			report("%s is dated %s, in the future. now.Sub(when) is negative for a "+
+				"forward-dated stamp, so the age check below can never fire on it and "+
+				"the statement would never return for re-triage -- which is the whole "+
+				"of what re-affirmation replaces.", label, when.Format("2006-01-02"))
+			continue
+		}
 		if now.Sub(when) > maxStatementAge {
 			report("%s was last affirmed on %s, more than %d days ago. Re-check whether "+
 				"it still applies: if the dependency moved past the fix or the advisory "+
@@ -211,13 +269,59 @@ func TestOpenVEXStatementsAreTriageable(t *testing.T) {
 	}
 }
 
+// TestOpenVEXProductMatchesTheScannedImage binds the constant above to the image
+// the workflow actually scans.
+//
+// imageProductPURL is derived from the basename of `env.IMAGE`, but nothing
+// otherwise relates the two. Rename the published repository -- for 1.0, for a
+// namespace move, or because a second controller image replaces this one -- and
+// grype derives a different product PURL, so every statement matches nothing and
+// all suppressions stop applying at once.
+//
+// The guard would invert rather than fire: TestOpenVEXStatementsAreTriageable
+// would keep passing while enforcing the stale value, and would then REJECT a
+// statement someone corrected to the new basename.
+func TestOpenVEXProductMatchesTheScannedImage(t *testing.T) {
+	raw, err := os.ReadFile(vulnScanWorkflow)
+	if err != nil {
+		t.Fatalf("read %s: %v", vulnScanWorkflow, err)
+	}
+	var doc struct {
+		Env map[string]string `json:"env"`
+	}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("parse %s: %v", vulnScanWorkflow, err)
+	}
+
+	image := doc.Env["IMAGE"]
+	if image == "" {
+		t.Fatalf("%s declares no env.IMAGE; this test can no longer confirm that %s "+
+			"matches what is scanned", vulnScanWorkflow, imageProductPURL)
+	}
+
+	// Grype derives the OCI product PURL from the registry repository basename.
+	want := "pkg:oci/" + path.Base(image)
+	if imageProductPURL != want {
+		t.Errorf("the scan targets %s, for which grype derives %q, but statements are "+
+			"required to name %q. Every statement in %s currently matches nothing.",
+			image, want, imageProductPURL, openVEXDoc)
+	}
+}
+
 // vexDoc builds a document around one statement body.
 func vexDoc(statement string) string {
 	return `{"@context":"https://openvex.dev/ns/v0.2.0","@id":"x","author":"a",` +
 		`"timestamp":"2026-09-01T00:00:00Z","version":1,"statements":[` + statement + `]}`
 }
 
-const goodProducts = `"products":[{"@id":"pkg:oci/manager","identifiers":{"purl":"pkg:oci/manager"}}]`
+// goodProducts targets the image and scopes the claim to one package inside it.
+const goodProducts = `"products":[{"@id":"pkg:oci/manager","identifiers":{"purl":"pkg:oci/manager"},` +
+	`"subcomponents":[{"@id":"pkg:golang/google.golang.org/grpc@v1.83.0",` +
+	`"identifiers":{"purl":"pkg:golang/google.golang.org/grpc@v1.83.0"}}]}]`
+
+// unscopedProducts targets the image but analyses nothing in particular, so it
+// silences the advisory in every package the image carries.
+const unscopedProducts = `"products":[{"@id":"pkg:oci/manager","identifiers":{"purl":"pkg:oci/manager"}}]`
 
 const goodImpact = `"impact_statement":"The vulnerable Decompress path is reached only from ` +
 	`the archive/zip reader, which this controller never constructs; grep -rn for the symbol ` +
@@ -293,6 +397,40 @@ func TestOpenVEXCheckRejects(t *testing.T) {
 			want: "no action_statement",
 		},
 		{
+			// grype suppresses `fixed` exactly like `not_affected`, and OpenVEX
+			// forbids evidence fields on it -- a suppression that cannot record
+			// why. Previously accepted by this suite, which sanctioned it.
+			name: "fixed status suppresses with no reviewable claim",
+			body: vexDoc(`{"vulnerability":{"name":"GHSA-x"},` + goodProducts +
+				`,"status":"fixed","timestamp":"2026-09-01T00:00:00Z"}`),
+			want: `status "fixed"`,
+		},
+		{
+			// The one-sided age check can never fire on a forward-dated stamp,
+			// so this defeats re-affirmation permanently.
+			name: "statement dated far in the future never returns for re-triage",
+			body: vexDoc(`{"vulnerability":{"name":"GHSA-x"},` + goodProducts +
+				`,"status":"not_affected","justification":"vulnerable_code_not_in_execute_path",` +
+				goodImpact + `,"timestamp":"2026-09-01T00:00:00Z",` +
+				`"last_updated":"2099-01-01T00:00:00Z"}`),
+			want: "in the future",
+		},
+		{
+			// The likelier form: an off-by-one-year typo when refreshing a date.
+			name: "re-affirmation date mistyped a year ahead",
+			body: vexDoc(`{"vulnerability":{"name":"GHSA-x"},` + goodProducts +
+				`,"status":"not_affected","justification":"vulnerable_code_not_in_execute_path",` +
+				goodImpact + `,"last_updated":"2027-09-04T00:00:00Z"}`),
+			want: "in the future",
+		},
+		{
+			name: "statement that suppresses the advisory image-wide",
+			body: vexDoc(`{"vulnerability":{"name":"GHSA-x"},` + unscopedProducts +
+				`,"status":"not_affected","justification":"vulnerable_code_not_in_execute_path",` +
+				goodImpact + `,"timestamp":"2026-09-01T00:00:00Z"}`),
+			want: "names no subcomponents",
+		},
+		{
 			name: "wrong openvex context version",
 			body: `{"@context":"https://openvex.dev/ns/v0.1.0","@id":"x","author":"a",` +
 				`"timestamp":"2026-09-01T00:00:00Z","version":1,"statements":[]}`,
@@ -343,9 +481,25 @@ func TestOpenVEXCheckAccepts(t *testing.T) {
 				`"last_updated":"2026-08-01T00:00:00Z"}`),
 		},
 		{
-			name: "fixed status needs no justification",
+			// Neither status suppresses anything in grype, so neither needs the
+			// evidence a not_affected statement does.
+			name: "under_investigation needs no justification",
 			body: vexDoc(`{"vulnerability":{"name":"GHSA-x"},` + goodProducts +
-				`,"status":"fixed","timestamp":"2026-09-01T00:00:00Z"}`),
+				`,"status":"under_investigation","timestamp":"2026-09-01T00:00:00Z"}`),
+		},
+		{
+			name: "affected with an action statement",
+			body: vexDoc(`{"vulnerability":{"name":"GHSA-x"},` + goodProducts +
+				`,"status":"affected","action_statement":"Upgrade to 1.83.1 in the next release.",` +
+				`"timestamp":"2026-09-01T00:00:00Z"}`),
+		},
+		{
+			// Inside the clock-skew tolerance, which exists for a date written as
+			// midnight UTC from a machine ahead of it.
+			name: "stamp a few hours ahead of now",
+			body: vexDoc(`{"vulnerability":{"name":"GHSA-x"},` + goodProducts +
+				`,"status":"not_affected","justification":"vulnerable_code_not_in_execute_path",` +
+				goodImpact + `,"timestamp":"2026-09-04T12:00:00Z"}`),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

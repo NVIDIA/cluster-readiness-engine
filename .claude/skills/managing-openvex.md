@@ -23,8 +23,17 @@ Three things hold that wiring, because each failure mode is silent:
 | `TestVulnScanChecksOutBeforeScanning` | removing the checkout as "we scan by digest" — same outcome |
 | `TestGrypeConfigCarriesNoSuppressions` | a second suppression home appearing in `.grype.yaml` |
 
-The same test also asserts `config:` stays **unset** on the scan step: setting it
-disables grype's auto-detection of `.grype.yaml`.
+`TestVulnScanPassesTheVexDocument` also asserts `config:` stays **unset** on the
+scan step: setting it disables grype's auto-detection of `.grype.yaml`.
+
+Two further guards close the gap those cannot reach. `TestScanWaitsForSuppressionValidation`
+holds the ordering edge, which produces no output reference and so is invisible to
+the workflow-graph checks. And because a YAML assertion can only prove *this*
+repository's side of the contract — an unrecognised `with:` key is a GitHub
+annotation, never a failure, and dependabot moves the action pin weekly — the
+`report` job additionally requires every declared statement to appear as an applied
+`vex`-namespace ignore rule on at least one target. That fails closed if the input
+stops being forwarded, if the PURL is wrong, or if a statement has rotted.
 
 The `validate-suppressions` job runs the policy tests **before** the scan fans
 out, so a statement that has gone stale fails the run rather than being applied
@@ -68,10 +77,12 @@ which one people reach for, so the weaker option is removed rather than
 discouraged: `TestGrypeConfigCarriesNoSuppressions` fails the build if `ignore:`
 is non-empty.
 
-The one thing lost in consolidating is expiry — `.grype.yaml` rules could carry a
-deadline, and OpenVEX has no such field. That is replaced by the re-affirmation
-rule in invariant 5 and by the stale audit, which is why both are mandatory rather
-than advisory.
+Consolidating gave up two properties the `.grype.yaml` rules had, and both are
+restored rather than accepted. **Expiry** became the re-affirmation rule
+(invariant 5), since OpenVEX has no expiry field. **Per-package scope** became the
+subcomponent requirement (invariant 1) — a VEX product with no subcomponents
+matches every package in the image, so without it a statement analysing one
+package silences the advisory in all of them.
 
 ## Non-negotiable invariants
 
@@ -92,17 +103,32 @@ the exact version this repo's pinned scan-action installs:
 | `pkg:oci/cluster-readiness-engine/manager` | no match |
 | `pkg:oci/nvidia/cluster-readiness-engine/manager` | no match |
 
-So a statement targets:
+One product entry is enough — the scan only ever reads registry digests, so there
+is no second local-build PURL to cover. But the entry must also name the affected
+package under `subcomponents`:
 
 ```json
 "products": [
-  { "@id": "pkg:oci/manager", "identifiers": { "purl": "pkg:oci/manager" } }
+  {
+    "@id": "pkg:oci/manager",
+    "identifiers": { "purl": "pkg:oci/manager" },
+    "subcomponents": [
+      { "@id": "pkg:golang/google.golang.org/grpc@v1.83.0",
+        "identifiers": { "purl": "pkg:golang/google.golang.org/grpc@v1.83.0" } }
+    ]
+  }
 ]
 ```
 
-One entry is enough. The scan only ever reads registry digests, so there is no
-second local-build PURL to cover. If you ever scan a locally built image, derive
-its PURL by repeating the probe in "Local reproduction" — do not guess from labels.
+**Without `subcomponents` the statement suppresses the advisory across the whole
+image.** go-vex's `Product.Matches` returns true for any component when the list
+is empty, so a single advisory that hits two packages — a Go stdlib or
+`golang.org/x/*` issue reaching both the vendored copy in the manager binary and
+one carried by the base layer — is silenced in both, while the impact statement
+analysed one. `checkOpenVEX` rejects a statement that omits it.
+
+If you ever scan a locally built image, derive its PURL by repeating the probe in
+"Local reproduction" — do not guess from labels.
 
 ### 2. `vulnerability.name` must be grype's primary ID
 
@@ -140,8 +166,9 @@ Allowed values for `not_affected`:
 
 ### 4. `impact_statement` must cite concrete evidence
 
-These are published to a public registry and read by auditors and customers. Cite
-at least one of:
+This is the whole record of why a finding is silenced, and it is what anyone
+auditing our triage reads. It is public in this repository, though not currently
+attested or published to a registry. Cite at least one of:
 
 - A specific `grep` against this repo's source that returns zero hits, pattern shown.
 - A specific import path or package that proves the vulnerable API is unused —
@@ -166,13 +193,19 @@ suppresses nothing and nobody notices, or it keeps suppressing something whose
 reachability has changed.
 
 So each statement carries a `timestamp`, and re-affirming one means refreshing
-`last_updated` (which wins when both are present). Past 180 days the build goes
-red until a human looks at it:
+`last_updated` (which wins when both are present) to **the day you re-verified
+it**. Past 180 days the build goes red until a human looks at it:
 
 ```json
-"timestamp": "2026-09-04T00:00:00Z",
-"last_updated": "2027-02-01T00:00:00Z"
+"timestamp": "2026-03-01T00:00:00Z",
+"last_updated": "2026-09-04T00:00:00Z"
 ```
+
+A date in the **future** is rejected outright. `now.Sub(when)` is negative for a
+forward-dated stamp, so the age check could never fire on it and the statement
+would be exempt permanently — which is why the check is bounded on both sides.
+The likely way to hit this is not evasion but an off-by-one-year typo while
+refreshing.
 
 Refreshing the date without re-verifying the claim defeats the entire mechanism.
 Re-affirm by re-running the reproduction below and confirming the finding is still
@@ -186,12 +219,22 @@ finding move from `.matches[]` to `.ignoredMatches[]`.
 Unlike a repo that builds images to scan, this workflow scans **already published
 digests**, so there is no build step — scan the exact bytes CI scans.
 
+All **four** scanned targets must be checked, not just the release. The enforced
+PURL carries no version or digest, so a statement written against the release
+applies to `main-<sha>` as well — and `main` is where the code has moved, so that
+is precisely where reachability may differ.
+
 ```bash
-# 1. Resolve the same digests the workflow resolves.
+# 1. Resolve the same digests the workflow resolves -- both targets.
 IMAGE=ghcr.io/nvidia/cluster-readiness-engine/manager
 TAG=$(gh release list --repo NVIDIA/cluster-readiness-engine \
         --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName')
-DIGEST=$(crane digest --platform linux/amd64 "${IMAGE}@$(crane digest "${IMAGE}:${TAG}")")
+
+# The newest published main image, found the way the resolve job finds it:
+# walk back until a main-<sha> tag exists, because the tip often has no image yet.
+for sha in $(gh api "repos/NVIDIA/cluster-readiness-engine/commits?sha=main&per_page=15" --jq '.[].sha[0:7]'); do
+  crane digest "${IMAGE}:main-${sha}" >/dev/null 2>&1 && MAIN_TAG="main-${sha}" && break
+done
 
 # 2. Use the grype the workflow uses. The version lives in GrypeVersion.js at the
 #    scan-action SHA pinned in vuln-scan-images.yml -- re-read it, do not trust
@@ -199,22 +242,28 @@ DIGEST=$(crane digest --platform linux/amd64 "${IMAGE}@$(crane digest "${IMAGE}:
 #    At pin 27805bf3b4e84b4a5c980df22ed233c00390a439 that is v0.118.0.
 
 # 3. Run from the repo root so .grype.yaml is auto-detected, as it is in CI.
-grype "${IMAGE}@${DIGEST}" --only-fixed --vex .openvex.json -o json --file /tmp/scan.json
+for tag in "${TAG}" "${MAIN_TAG}"; do
+  index=$(crane digest "${IMAGE}:${tag}")
+  for arch in amd64 arm64; do
+    digest=$(crane digest --platform "linux/${arch}" "${IMAGE}@${index}")
+    echo "### ${tag} ${arch}"
+    grype "${IMAGE}@${digest}" --only-fixed --vex .openvex.json -o json \
+      --file "/tmp/scan-${tag}-${arch}.json"
 
-# 4. Must be empty for the ID you targeted.
-jq '[.matches[] | select(.vulnerability.severity == "High" or .vulnerability.severity == "Critical")
-     | {id: .vulnerability.id, pkg: .artifact.name}]' /tmp/scan.json
+    # 4. Must be empty for the ID you targeted.
+    jq '[.matches[] | select(.vulnerability.severity == "High" or .vulnerability.severity == "Critical")
+         | {id: .vulnerability.id, pkg: .artifact.name}]' "/tmp/scan-${tag}-${arch}.json"
 
-# 5. Confirm it landed via the vex namespace, not some other rule.
-jq '[.ignoredMatches[]? | select((.appliedIgnoreRules//[]) | any(.namespace=="vex"))
-     | {id: .vulnerability.id, rules: .appliedIgnoreRules}]' /tmp/scan.json
+    # 5. Confirm it landed via the vex namespace, not some other rule.
+    jq '[.ignoredMatches[]? | select((.appliedIgnoreRules//[]) | any(.namespace=="vex"))
+         | {id: .vulnerability.id, rules: .appliedIgnoreRules}]' "/tmp/scan-${tag}-${arch}.json"
+  done
+done
 ```
 
 A statement is correct **only** when step 4 returns `[]` for its ID and step 5
-lists it with `namespace = "vex"`.
-
-Repeat for `linux/arm64` — the workflow scans both platforms, and a statement that
-applies to one is not evidence about the other.
+lists it with `namespace = "vex"` — on every target it applies to. A statement
+that applies on one is not evidence about the others.
 
 Caveat: a local grype DB fresher than the last CI run can surface advisories CI has
 not seen. Treat those as incoming findings, not discrepancies.
@@ -234,8 +283,14 @@ For each ID:
 2. **If the upgrade is blocked**, prove non-reachability. Identify the vulnerable
    function upstream, then show this repo does not reach it — transitively, not
    just directly.
-3. **Author the statement** using invariants 1–4.
-4. **Reproduce locally** on both platforms.
+3. **Author the statement** using invariants 1–5. Invariant 5 is not optional
+   polish: a statement carrying no `timestamp` fails `checkOpenVEX` outright, and
+   the stale audit's "refresh `timestamp`" step refreshes the *document*
+   timestamp, not the statement's.
+4. **Reproduce locally** against every target the scan applies it to — the stable
+   release and the newest `main-<sha>`, each on both platforms. The enforced PURL
+   carries no version or digest, so a statement written against the release also
+   applies to `main`, where reachability may differ because the code moved.
 5. **Run the stale audit** below. Every edit includes it.
 6. **Dispatch and confirm CI agrees:**
    ```bash
@@ -253,10 +308,14 @@ Statements rot: dependencies get upgraded past fixes, advisories get withdrawn,
 packages leave the image. A stale statement applies to nothing, silently. Because
 VEX has no expiry to catch this, the audit is the only control.
 
+This can be run against a CI run rather than a local scan: the `vuln-report-*`
+artifacts carry a `<target>.raw` file, which is the unfiltered grype document
+including `.ignoredMatches[]`.
+
 ```bash
 # Applied: IDs actually suppressed via the vex namespace
 jq -r '[.ignoredMatches[]? | select((.appliedIgnoreRules//[]) | any(.namespace=="vex"))
-        | .vulnerability.id] | unique[]' /tmp/scan.json | sort > /tmp/applied.txt
+        | .vulnerability.id] | unique[]' /tmp/scan-*.json | sort -u > /tmp/applied.txt
 
 # Declared: every statement in the document
 jq -r '.statements[].vulnerability.name' .openvex.json | sort > /tmp/declared.txt
@@ -287,12 +346,23 @@ Bump the document `version` and refresh `timestamp` in the same edit.
 - **Using the CVE when grype emits the GHSA as primary.** Not interchangeable.
 - **Using the full image path in the PURL.** It is the basename, `pkg:oci/manager`.
   Verified above; the other two forms silently match nothing.
-- **Moving a temporary suppression out of `.grype.yaml` into VEX.** You lose the
-  enforced expiry and it never comes back for re-triage.
+- **Writing an `ignore:` rule in `.grype.yaml` instead of a statement here.** Three
+  lines, and it skips every check above — which is exactly why
+  `TestGrypeConfigCarriesNoSuppressions` refuses it.
+- **Using `status: "fixed"` to silence something.** Grype suppresses it exactly
+  like `not_affected`, but OpenVEX forbids a `fixed` statement from carrying a
+  justification or impact statement, so it hides a finding with no reviewable
+  claim on record. Rejected by `checkOpenVEX`.
+- **Dating `last_updated` in the future.** The age check cannot fire on a forward
+  dated stamp, so it would exempt the statement permanently. Also rejected.
+- **A statement with no subcomponents.** It silences the advisory image-wide while
+  the impact statement describes one package.
 - **Adding a statement without local reproduction.** A statement that fails to
   apply is invisible. There is no warning — the only signal is the CVE reappearing.
-- **Boilerplate impact statements.** They are published.
-- **Forgetting `version` / `timestamp`.** Downstream consumers use them to detect drift.
+- **Boilerplate impact statements.** They are the entire record of why a finding
+  is silenced.
+- **Forgetting `version` / `timestamp`.** They are how a reader tells which triage
+  round a statement belongs to.
 
 ## Quick reference
 

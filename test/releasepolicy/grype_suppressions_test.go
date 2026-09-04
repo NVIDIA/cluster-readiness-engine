@@ -5,6 +5,8 @@ package releasepolicy
 
 import (
 	"os"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -28,24 +30,87 @@ const vulnScanWorkflow = "../../.github/workflows/vuln-scan-images.yml"
 // no product-PURL check, no justification enum, no impact statement, and nothing
 // bringing it back for re-triage. The weaker mechanism would be the easier one
 // to reach for, because it is three lines of YAML.
+// grypeConfigAllowedKeys is what .grype.yaml may contain.
+//
+// An allowlist rather than a ban on `ignore:`, because `ignore:` is not the only
+// grype key that removes findings -- `exclude:` drops path globs from the scan
+// entirely, so packages under them never produce a match at all, which is a
+// broader and less visible suppression than any ignore rule. Checking one key by
+// name would leave that open while the file claims to carry no suppressions.
+//
+// Fail-closed also means a key added by a future grype version has to be
+// considered here before it can be used.
+var grypeConfigAllowedKeys = map[string]bool{"ignore": true}
+
 func TestGrypeConfigCarriesNoSuppressions(t *testing.T) {
 	raw, err := os.ReadFile(grypeConfig)
 	if err != nil {
 		t.Fatalf("read %s: %v", grypeConfig, err)
 	}
 
-	var doc struct {
-		Ignore []map[string]any `json:"ignore"`
-	}
+	var doc map[string]any
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
 		t.Fatalf("parse %s: %v", grypeConfig, err)
 	}
 
-	if len(doc.Ignore) > 0 {
+	for k := range doc {
+		if !grypeConfigAllowedKeys[k] {
+			t.Errorf("%s sets %q. Only %v may be set here, because other grype keys "+
+				"remove findings too -- `exclude:` drops whole paths from the scan. If "+
+				"this key is genuinely not a suppression, add it to the allowlist "+
+				"deliberately.", grypeConfig, k, keysOf(grypeConfigAllowedKeys))
+		}
+	}
+
+	if ignore, ok := doc["ignore"].([]any); ok && len(ignore) > 0 {
 		t.Errorf("%s carries %d ignore rule(s); suppressions belong in %s, where the "+
-			"product PURL, justification, impact statement and re-affirmation date are "+
-			"enforced. Move them and leave `ignore: []` here.",
-			grypeConfig, len(doc.Ignore), openVEXDoc)
+			"product PURL, subcomponent scope, justification, impact statement and "+
+			"re-affirmation date are enforced. Move them and leave `ignore: []` here.",
+			grypeConfig, len(ignore), openVEXDoc)
+	}
+}
+
+func keysOf(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// TestScanWaitsForSuppressionValidation holds the ordering edge that makes the
+// re-affirmation check gate the scan.
+//
+// `validate-suppressions` produces no output the scan consumes, so the edge is
+// ordering-only -- which means it generates no `needs.<job>.outputs.<field>`
+// reference and TestJobOutputReferencesResolve cannot see it. Removing it as
+// "these don't depend on each other, run them in parallel" leaves the scan
+// applying a statement that lapsed, on a green run, which is the exact scenario
+// the job's own header says it exists to prevent.
+func TestScanWaitsForSuppressionValidation(t *testing.T) {
+	raw, err := os.ReadFile(vulnScanWorkflow)
+	if err != nil {
+		t.Fatalf("read %s: %v", vulnScanWorkflow, err)
+	}
+	var doc struct {
+		Jobs map[string]struct {
+			Needs stringOrSlice `json:"needs"`
+		} `json:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("parse %s: %v", vulnScanWorkflow, err)
+	}
+
+	scan, ok := doc.Jobs["scan"]
+	if !ok {
+		t.Fatalf("%s has no \"scan\" job; this test no longer covers what it claims",
+			vulnScanWorkflow)
+	}
+	if !slices.Contains(scan.Needs, "validate-suppressions") {
+		t.Errorf("%s: job \"scan\" does not declare validate-suppressions in needs "+
+			"(declares %v), so a lapsed or malformed statement is applied by the scan "+
+			"instead of failing it", vulnScanWorkflow, []string(scan.Needs))
 	}
 }
 

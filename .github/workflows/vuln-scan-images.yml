@@ -64,10 +64,14 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # Deliberately no `-run` filter. `go test -run` exits 0 when the pattern
+      # matches nothing, so selecting the gate by name means renaming a test, or
+      # moving it to another package, silently reduces this job to running
+      # nothing at all -- green, having checked none of what it is named for.
+      # The package is entirely static and shell-driven, so running all of it
+      # costs a minute and removes the failure mode instead of documenting it.
       - name: Every suppression is well formed, targeted, and still affirmed
-        run: |
-          go test ./test/releasepolicy/ -count=1 -v \
-            -run 'TestOpenVEX|TestGrypeConfigCarriesNoSuppressions|TestVulnScanPassesTheVexDocument'
+        run: go test ./test/releasepolicy/ -count=1
 
   # Resolves what to scan. Two targets, each a multi-platform index, each
   # expanded to its per-platform manifests.
@@ -307,11 +311,26 @@ jobs:
             "${REPORT}" > "reports/${NAME}.json"
           jq -r '"\(.target): \(.matches | length) fixable high+ findings"' "reports/${NAME}.json"
 
-      - name: Upload the raw report
+      # The filtered report drops .ignoredMatches[], which is the only record of
+      # which VEX statements applied. Without the unfiltered document, a working
+      # suppression and one that matches nothing both render as "0 finding(s)",
+      # and the stale audit in the skill can never be run from a CI run.
+      # Extension is `.raw`, not `.raw.json`, on purpose: the summary steps glob
+      # `reports/*.json`, and a raw grype document picked up by that glob would
+      # be parsed as a staged report.
+      - name: Stage the unfiltered scan output
+        env:
+          REPORT: ${{ steps.scan.outputs.json }}
+          NAME: ${{ matrix.target.name }}
+        run: cp "${REPORT}" "reports/${NAME}.raw"
+
+      - name: Upload the reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vuln-report-${{ matrix.target.name }}
-          path: reports/${{ matrix.target.name }}.json
+          path: |
+            reports/${{ matrix.target.name }}.json
+            reports/${{ matrix.target.name }}.raw
           retention-days: 30
 
   report:
@@ -355,6 +374,47 @@ jobs:
           [[ "${missing}" -eq 0 ]] || {
             echo "::error::refusing to summarise a partial scan"; exit 1; }
           echo "all $(jq 'length' <<<"${TARGETS}") resolved targets reported"
+
+      # Prove the suppressions actually ran, rather than trusting the wiring.
+      #
+      # Everything about VEX here rests on anchore/scan-action still forwarding
+      # its `vex:` input to grype as `--vex`. An unrecognised `with:` key is a
+      # GitHub annotation, never a failure, and dependabot bumps that action
+      # weekly -- so a rename or removal upstream would silently stop grype from
+      # ever reading .openvex.json. The YAML guard cannot see that: it asserts
+      # this repository's side of the contract, not the action's.
+      #
+      # So assert the observable instead. Every statement we declare must appear
+      # as an applied ignore rule in the `vex` namespace on at least one scanned
+      # target. That fails closed on all of it at once -- the input silently
+      # dropped, the product PURL wrong, the advisory ID not matching grype's
+      # primary, or the statement gone stale -- and it is a no-op while the
+      # document is empty.
+      - name: Confirm every declared suppression actually applied
+        run: |
+          set -euo pipefail
+          declared="$(jq -r '[.statements[].vulnerability.name] | unique[]' .openvex.json)"
+          if [[ -z "${declared}" ]]; then
+            echo "no statements declared; nothing to confirm"
+            exit 0
+          fi
+
+          applied="$(jq -r -s '[.[] | .ignoredMatches[]?
+                       | select((.appliedIgnoreRules // []) | any(.namespace == "vex"))
+                       | .vulnerability.id] | unique[]' reports/*.raw)"
+          echo "applied via vex: ${applied:-<none>}"
+
+          missing=0
+          while read -r id; do
+            [[ -n "${id}" ]] || continue
+            if ! grep -qxF "${id}" <<<"${applied}"; then
+              echo "::error::${id} is declared in .openvex.json but was applied on no scanned target"
+              missing=1
+            fi
+          done <<<"${declared}"
+          [[ "${missing}" -eq 0 ]] || {
+            echo "::error::a declared suppression matched nothing. Either grype never read the document (check that the scan step still passes vex:), the product PURL or advisory ID is wrong, or the finding is gone and the statement should be deleted."
+            exit 1; }
 
       # The full set every run, carried-over findings included. Diffing against
       # the previous run would stop reporting anything that had merely been seen
