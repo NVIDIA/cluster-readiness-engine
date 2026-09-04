@@ -74,7 +74,8 @@ func TestAttestIsSoleSigner(t *testing.T) {
 		for jobName, job := range doc.Jobs {
 			for _, step := range job.Steps {
 				if attestProvenanceAction.MatchString(step.Uses) {
-					t.Errorf("%s: job %q step %q uses %s; provenance must be emitted by attest.yml via cosign, not actions/attest-build-provenance",
+					t.Errorf("%s: job %q step %q uses %s; provenance must be emitted by attest.yml "+
+						"via cosign, not actions/attest-build-provenance",
 						base, jobName, step.Name, step.Uses)
 				}
 				if base == attestWorkflowName {
@@ -103,7 +104,8 @@ func assertAttestIsWorkflowCallOnly(t *testing.T) {
 	}
 	for name := range triggers {
 		if name != "workflow_call" {
-			t.Errorf("%s is triggered by %q; only workflow_call is allowed so the signing identity cannot be reached from a branch or dispatch",
+			t.Errorf("%s is triggered by %q; only workflow_call is allowed so the signing "+
+				"identity cannot be reached from a branch or dispatch",
 				attestWorkflowName, name)
 		}
 	}
@@ -121,7 +123,7 @@ func workflowTriggers(raw []byte, t *testing.T) map[string]any {
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
 		t.Fatalf("parse workflow triggers: %v", err)
 	}
-	for _, key := range []string{"on", "true"} {
+	for _, key := range []string{"on", boolTrue} {
 		switch v := doc[key].(type) {
 		case map[string]any:
 			return v
@@ -181,7 +183,8 @@ func TestIDTokenWriteOnlyOnSigningJobs(t *testing.T) {
 			}
 
 			if hasToken && token == "write" {
-				t.Errorf("%s: non-signing job %q requests id-token: write; only jobs that sign or call attest.yml may mint an OIDC token",
+				t.Errorf("%s: non-signing job %q requests id-token: write; only jobs that sign "+
+					"or call attest.yml may mint an OIDC token",
 					base, jobName)
 			}
 		}
@@ -318,7 +321,8 @@ func TestExpectedAssetListsMatchNVCRECTLPlatforms(t *testing.T) {
 	for _, list := range lists {
 		gotSet := uniqueSorted(list.got)
 		if !slices.Equal(gotSet, wantSet) {
-			t.Errorf("%s binaries = %v, want %v (from NVCRECTL_PLATFORMS); adding a platform requires updating every hardcoded asset list",
+			t.Errorf("%s binaries = %v, want %v (from NVCRECTL_PLATFORMS); adding a platform "+
+				"requires updating every hardcoded asset list",
 				list.name, gotSet, wantSet)
 		}
 	}
@@ -344,7 +348,7 @@ func nvcrectlBinariesFromMakefile(t *testing.T) []string {
 	}
 
 	var out []string
-	for _, p := range strings.Split(strings.TrimSpace(string(m[1])), ",") {
+	for p := range strings.SplitSeq(strings.TrimSpace(string(m[1])), ",") {
 		p = strings.TrimSpace(p)
 		if p == "" {
 			continue
@@ -363,8 +367,10 @@ func attestBinariesMatrixSubjects(text string, t *testing.T) []string {
 
 	// Limit to the attest-binaries job so image/chart matrices cannot pollute.
 	job := jobBody(text, "attest-binaries", t)
-	var out []string
-	for _, m := range regexp.MustCompile(`(?m)^\s*-\s*subject:\s*(nvcrectl-[a-z0-9]+-[a-z0-9]+)\s*$`).FindAllStringSubmatch(job, -1) {
+	matches := regexp.MustCompile(`(?m)^\s*-\s*subject:\s*(nvcrectl-[a-z0-9]+-[a-z0-9]+)\s*$`).
+		FindAllStringSubmatch(job, -1)
+	out := make([]string, 0, len(matches))
+	for _, m := range matches {
 		out = append(out, m[1])
 	}
 	if len(out) == 0 {
@@ -401,7 +407,7 @@ func releaseGateBinaries(text string, t *testing.T) []string {
 		t.Fatal("release.yml post-publish gate has no BINARIES=\"...\" expected-asset list (ADR-074 / #270)")
 	}
 	var out []string
-	for _, tok := range strings.Fields(m[1]) {
+	for tok := range strings.FieldsSeq(m[1]) {
 		if regexp.MustCompile(`^nvcrectl-[a-z0-9]+-[a-z0-9]+$`).MatchString(tok) {
 			out = append(out, tok)
 		}
