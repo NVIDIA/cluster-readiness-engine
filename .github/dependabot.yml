@@ -34,17 +34,53 @@ updates:
           - "k8s.io/*"
           - "sigs.k8s.io/*"
 
+  # The nested tools module (tools/go.mod) carries the `tool` directives for the
+  # Go CLIs the Makefile installs: controller-gen, addlicense, golangci-lint,
+  # govulncheck, gotestsum, gocover-cobertura. It lives in its own module so
+  # those tools' dependency trees stay out of the root module graph -- this
+  # module is importable (consumers use api/v1alpha1 for the CRD types) and
+  # would otherwise inherit ~200 extra requires that MVS considers when
+  # resolving shared dependencies. Same schedule and cooldown as the root
+  # module above.
+  - package-ecosystem: gomod
+    directory: /tools
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      # One group: everything here is a tool pin or its transitive tree, so a
+      # single reviewable PR per week is the useful granularity. A stale
+      # scanner pin (govulncheck especially) is the thing worth noticing, and
+      # it is not worth splitting from the rest.
+      go-tools:
+        patterns:
+          - "*"
+
   # No cooldown here: GitHub Actions is not one of the ecosystems that supports
   # it. Actions are pinned to commit SHAs, which Dependabot raises.
   #
-  # NOT covered by any ecosystem below: tool versions pinned outside a manifest
-  # Dependabot parses -- the *_VERSION variables in the Makefile (controller-gen,
-  # addlicense, golangci-lint, govulncheck, gotestsum, gocover-cobertura) and
-  # COSIGN_VERSION in publish.yml. Dependabot reads neither Makefiles nor
-  # workflow `env:` values, so those pins are bumped by hand and must be checked
-  # during release prep. Moving the Go tools into a `tools.go` build-tagged file
-  # would place them in go.mod and bring them under the gomod ecosystem; that
-  # adds direct dependencies and is deliberately left as a separate decision.
+  # The Makefile's Go tool pins are covered: they are `tool` directives in
+  # tools/go.mod, raised by the /tools gomod entry above. The Makefile reads
+  # those versions with gomodver instead of hard-coding them.
+  #
+  # Still manual, because Dependabot cannot parse these surfaces (and several
+  # need a companion digest or a release-format review a blind bump would
+  # skip). Check during release prep:
+  #   - cosign_version / crane_version defaults on attest.yml workflow_call
+  #     inputs. Dependabot does not update workflow_call input defaults; cosign
+  #     governs the attestation bundle format, and crane's download is
+  #     digest-pinned for one version only.
+  #   - SYFT_VERSION + SYFT_SHA256 in release.yml: version and digest must move
+  #     together, and there is no atomic pair update for that.
+  #   - YQ_VERSION in publish-fern-docs.yml, KIND_VERSION / TILT_VERSION in
+  #     .github/actions/install-uat-tools, KWOK_VERSION in the Makefile --
+  #     GitHub-release binaries outside any module graph.
   - package-ecosystem: github-actions
     directory: /
     schedule:
