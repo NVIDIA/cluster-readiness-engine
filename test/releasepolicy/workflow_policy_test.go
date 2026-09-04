@@ -4,6 +4,7 @@
 package releasepolicy
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -51,20 +52,36 @@ var nvcrectlBinaryName = regexp.MustCompile(`\bnvcrectl-([a-z0-9]+)-([a-z0-9]+)\
 func TestAttestIsSoleSigner(t *testing.T) {
 	assertAttestIsWorkflowCallOnly(t)
 
-	for _, path := range workflowFiles(t) {
+	paths := append([]string{}, workflowFiles(t)...)
+	paths = append(paths, compositeActionFiles(t)...)
+
+	for _, path := range paths {
 		base := filepath.Base(path)
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("read %s: %v", path, err)
 		}
 
+		if isCompositeActionPath(path) {
+			var doc struct {
+				Runs struct {
+					Using string       `json:"using"`
+					Steps []policyStep `json:"steps"`
+				} `json:"runs"`
+			}
+			if err := yaml.Unmarshal(raw, &doc); err != nil {
+				t.Fatalf("parse %s: %v", path, err)
+			}
+			if doc.Runs.Using != "" && doc.Runs.Using != "composite" {
+				continue
+			}
+			assertStepsForbidForeignSigners(t, relGithub(path), false /* allowCosign */, doc.Runs.Steps)
+			continue
+		}
+
 		var doc struct {
 			Jobs map[string]struct {
-				Steps []struct {
-					Name string `json:"name"`
-					Run  string `json:"run"`
-					Uses string `json:"uses"`
-				} `json:"steps"`
+				Steps []policyStep `json:"steps"`
 			} `json:"jobs"`
 		}
 		if err := yaml.Unmarshal(raw, &doc); err != nil {
@@ -72,22 +89,54 @@ func TestAttestIsSoleSigner(t *testing.T) {
 		}
 
 		for jobName, job := range doc.Jobs {
-			for _, step := range job.Steps {
-				if attestProvenanceAction.MatchString(step.Uses) {
-					t.Errorf("%s: job %q step %q uses %s; provenance must be emitted by attest.yml "+
-						"via cosign, not actions/attest-build-provenance",
-						base, jobName, step.Name, step.Uses)
-				}
-				if base == attestWorkflowName {
-					continue
-				}
-				if m := cosignSignCmds.FindStringSubmatch(step.Run); m != nil {
-					t.Errorf("%s: job %q step %q invokes `cosign %s`; attest.yml must be the sole signer",
-						base, jobName, step.Name, m[1])
-				}
-			}
+			where := fmt.Sprintf("%s: job %q", base, jobName)
+			assertStepsForbidForeignSigners(t, where, base == attestWorkflowName, job.Steps)
 		}
 	}
+}
+
+// policyStep is the subset of a workflow/composite step the signer checks
+// reason about.
+type policyStep struct {
+	Name string `json:"name"`
+	Run  string `json:"run"`
+	Uses string `json:"uses"`
+}
+
+func assertStepsForbidForeignSigners(t *testing.T, where string, allowCosign bool, steps []policyStep) {
+	t.Helper()
+
+	for _, step := range steps {
+		if attestProvenanceAction.MatchString(step.Uses) {
+			t.Errorf("%s step %q uses %s; provenance must be emitted by attest.yml "+
+				"via cosign, not actions/attest-build-provenance",
+				where, step.Name, step.Uses)
+		}
+		if allowCosign {
+			continue
+		}
+		if m := cosignSignCmds.FindStringSubmatch(step.Run); m != nil {
+			t.Errorf("%s step %q invokes `cosign %s`; attest.yml must be the sole signer",
+				where, step.Name, m[1])
+		}
+	}
+}
+
+// compositeActionFiles returns every local composite action.yml. Same glob as
+// TestActionsAreSHAPinned so a new action cannot escape one check while
+// remaining visible to the other.
+func compositeActionFiles(t *testing.T) []string {
+	t.Helper()
+
+	paths, err := filepath.Glob("../../.github/actions/*/action.yml")
+	if err != nil {
+		t.Fatalf("glob composite actions: %v", err)
+	}
+	return paths
+}
+
+func isCompositeActionPath(path string) bool {
+	return strings.Contains(filepath.ToSlash(path), "/.github/actions/")
 }
 
 func assertAttestIsWorkflowCallOnly(t *testing.T) {
@@ -157,13 +206,11 @@ func TestIDTokenWriteOnlyOnSigningJobs(t *testing.T) {
 		}
 
 		var doc struct {
-			Jobs map[string]struct {
-				Uses        string            `json:"uses"`
-				Permissions map[string]string `json:"permissions"`
-				Steps       []struct {
-					Run  string `json:"run"`
-					Uses string `json:"uses"`
-				} `json:"steps"`
+			Permissions ghPermissions `json:"permissions"`
+			Jobs        map[string]struct {
+				Uses        string        `json:"uses"`
+				Permissions ghPermissions `json:"permissions"`
+				Steps       []policyStep  `json:"steps"`
 			} `json:"jobs"`
 		}
 		if err := yaml.Unmarshal(raw, &doc); err != nil {
@@ -172,18 +219,24 @@ func TestIDTokenWriteOnlyOnSigningJobs(t *testing.T) {
 
 		for jobName, job := range doc.Jobs {
 			signs := jobSigns(job.Uses, job.Steps)
-			token, hasToken := job.Permissions["id-token"]
+			// Job-level permissions fully replace workflow-level when present
+			// (including permissions: {}); otherwise the job inherits.
+			effective := doc.Permissions
+			if job.Permissions.set {
+				effective = job.Permissions
+			}
 
 			if signs {
-				if !hasToken || token != "write" {
-					t.Errorf("%s: signing job %q must request id-token: write (got %q, present=%v)",
-						base, jobName, token, hasToken)
+				if !effective.idTokenWrite {
+					t.Errorf("%s: signing job %q must have effective id-token: write "+
+						"(workflow-level or job-level)",
+						base, jobName)
 				}
 				continue
 			}
 
-			if hasToken && token == "write" {
-				t.Errorf("%s: non-signing job %q requests id-token: write; only jobs that sign "+
+			if effective.idTokenWrite {
+				t.Errorf("%s: non-signing job %q has effective id-token: write; only jobs that sign "+
 					"or call attest.yml may mint an OIDC token",
 					base, jobName)
 			}
@@ -191,10 +244,32 @@ func TestIDTokenWriteOnlyOnSigningJobs(t *testing.T) {
 	}
 }
 
-func jobSigns(uses string, steps []struct {
-	Run  string `json:"run"`
-	Uses string `json:"uses"`
-}) bool {
+// ghPermissions accepts the map form and the scalar read-all/write-all forms.
+// write-all grants id-token write; read-all does not. set is true when the
+// permissions key was present, so callers can distinguish omit from {}.
+type ghPermissions struct {
+	set          bool
+	idTokenWrite bool
+}
+
+func (p *ghPermissions) UnmarshalJSON(b []byte) error {
+	p.set = true
+
+	var scalar string
+	if err := yaml.Unmarshal(b, &scalar); err == nil {
+		p.idTokenWrite = scalar == "write-all"
+		return nil
+	}
+
+	var m map[string]string
+	if err := yaml.Unmarshal(b, &m); err != nil {
+		return err
+	}
+	p.idTokenWrite = m["id-token"] == "write"
+	return nil
+}
+
+func jobSigns(uses string, steps []policyStep) bool {
 	if isAttestWorkflowCall(uses) {
 		return true
 	}
@@ -224,11 +299,7 @@ func isAttestWorkflowCall(uses string) bool {
 // on — including the release path.
 func TestActionsAreSHAPinned(t *testing.T) {
 	paths := append([]string{}, workflowFiles(t)...)
-	actionFiles, err := filepath.Glob("../../.github/actions/*/action.yml")
-	if err != nil {
-		t.Fatalf("glob composite actions: %v", err)
-	}
-	paths = append(paths, actionFiles...)
+	paths = append(paths, compositeActionFiles(t)...)
 
 	for _, path := range paths {
 		raw, err := os.ReadFile(path)
