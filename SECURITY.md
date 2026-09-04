@@ -125,6 +125,12 @@ We credit reporters of confirmed vulnerabilities in the release notes of the fix
   bash installer -v "${TAG}"
   ```
 
+- **The published images are re-scanned weekly, after release.** Signing and SBOMs answer "was this what we built"; they say nothing about a CVE published after we shipped. `.github/workflows/vuln-scan-images.yml` runs every Monday at 08:00 UTC against the newest **stable** release and the newest published `main` image, both per platform, by digest. Fixable High and Critical findings are posted to Slack; a run that does not complete is posted too, so a broken scan cannot look like a clean week.
+
+  The scan reports, it does not gate — an unfixable upstream base-image CVE must not turn releases red. Findings feed the timelines in [Vulnerability Fix Timelines](#vulnerability-fix-timelines) above.
+
+  Suppressions live in [`.grype.yaml`](.grype.yaml). Every rule must name a CVE **and** a package, carry a prose justification, and expire within 180 days, with the justification and expiry in the comment block directly above the rule. `TestGrypeIgnoreRulesAreTriageable` enforces all of that and fails the build once a rule lapses — including in the weekly run itself, so a rule cannot expire during a quiet week and go on suppressing a finding. Renew a lapsed rule only after re-confirming it still applies; do not simply extend the date.
+
 ## Product Security Resources
 
 For all security-related concerns: https://www.nvidia.com/en-us/security
