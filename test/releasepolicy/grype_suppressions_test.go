@@ -170,6 +170,85 @@ func TestVulnScanPassesTheVexDocument(t *testing.T) {
 	}
 }
 
+// repoFiles are the workspace-relative paths this workflow reads.
+var repoFiles = []string{".openvex.json", ".grype.yaml"}
+
+// TestWorkflowJobsCheckOutBeforeReadingRepoFiles generalises the checkout guard
+// to every job, not just the one that scans.
+//
+// The narrower version covered only the step running anchore/scan-action, so
+// when a later step in a DIFFERENT job started reading .openvex.json from the
+// workspace, nothing noticed that job had no checkout. jq exits non-zero on the
+// missing file and `set -euo pipefail` fails the step before any no-op guard
+// inside it runs -- so the job failed on every run, including with an empty
+// document, taking the summary and the findings alert with it.
+//
+// Referencing a repository path from a job that never checked the repository out
+// is the general shape; this checks for it wherever it appears.
+func TestWorkflowJobsCheckOutBeforeReadingRepoFiles(t *testing.T) {
+	raw, err := os.ReadFile(vulnScanWorkflow)
+	if err != nil {
+		t.Fatalf("read %s: %v", vulnScanWorkflow, err)
+	}
+	var doc struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string            `json:"name"`
+				Uses string            `json:"uses"`
+				Run  string            `json:"run"`
+				With map[string]string `json:"with"`
+			} `json:"steps"`
+		} `json:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("parse %s: %v", vulnScanWorkflow, err)
+	}
+
+	checked := 0
+	for jobName, j := range doc.Jobs {
+		checkedOut := false
+		for _, s := range j.Steps {
+			if strings.HasPrefix(s.Uses, "actions/checkout@") {
+				checkedOut = true
+				continue
+			}
+
+			// Comments inside a run body are not references; strip them so a
+			// step that only mentions a path in prose is not flagged.
+			var body strings.Builder
+			for line := range strings.SplitSeq(s.Run, "\n") {
+				if !strings.HasPrefix(strings.TrimSpace(line), "#") {
+					body.WriteString(line)
+					body.WriteString("\n")
+				}
+			}
+			for _, v := range s.With {
+				body.WriteString(v)
+				body.WriteString("\n")
+			}
+
+			for _, f := range repoFiles {
+				if !strings.Contains(body.String(), f) {
+					continue
+				}
+				checked++
+				if !checkedOut {
+					t.Errorf("%s: job %q step %q reads %s from the workspace but the job "+
+						"has no preceding actions/checkout; the step fails on every run",
+						vulnScanWorkflow, jobName, s.Name, f)
+				}
+			}
+		}
+	}
+
+	// Guards the guard: if the paths are renamed, the loop above matches nothing
+	// and passes without having checked anything.
+	if checked == 0 {
+		t.Fatalf("%s: no step references any of %v; this test no longer covers what it "+
+			"claims and needs updating", vulnScanWorkflow, repoFiles)
+	}
+}
+
 // TestVulnScanChecksOutBeforeScanning holds the only thing that makes
 // .openvex.json and .grype.yaml reachable at all.
 //

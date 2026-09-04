@@ -163,27 +163,34 @@ func checkOpenVEX(raw []byte, now time.Time) []string {
 		}
 
 		// Invariant 1. The silent one.
+		//
+		// EVERY matching product must be scoped, not merely one of them. grype
+		// applies each product entry independently, so one unscoped entry
+		// suppresses the advisory image-wide no matter how carefully its
+		// siblings are scoped -- and a check that accepted "at least one scoped"
+		// would pass on exactly that document.
 		targeted := false
-		scoped := false
+		unscoped := false
 		for _, p := range s.Products {
 			if p.Identifiers.PURL != imageProductPURL && p.ID != imageProductPURL {
 				continue
 			}
 			targeted = true
-			if len(p.Subcomponents) > 0 {
-				scoped = true
+			if len(p.Subcomponents) == 0 {
+				unscoped = true
 			}
 		}
 		if !targeted {
 			report("%s does not target %s, so grype will apply nothing and the "+
 				"finding keeps being reported with no warning anywhere",
 				label, imageProductPURL)
-		} else if !scoped {
-			report("%s names no subcomponents, so it suppresses %s across the whole "+
-				"image rather than in the package that was analysed. An advisory can "+
-				"match more than one package -- the impact statement would describe one "+
-				"and silence all of them. Add the affected package as a subcomponent.",
-				label, name)
+		} else if unscoped {
+			report("%s has a %s product entry with no subcomponents, so it suppresses "+
+				"%s across the whole image rather than in the package that was analysed. "+
+				"An advisory can match more than one package -- the impact statement "+
+				"would describe one and silence all of them. Name the affected package "+
+				"as a subcomponent on every product entry.",
+				label, imageProductPURL, name)
 		}
 
 		if !vexStatuses[s.Status] {
@@ -428,7 +435,20 @@ func TestOpenVEXCheckRejects(t *testing.T) {
 			body: vexDoc(`{"vulnerability":{"name":"GHSA-x"},` + unscopedProducts +
 				`,"status":"not_affected","justification":"vulnerable_code_not_in_execute_path",` +
 				goodImpact + `,"timestamp":"2026-09-01T00:00:00Z"}`),
-			want: "names no subcomponents",
+			want: "no subcomponents",
+		},
+		{
+			// One scoped entry does not redeem an unscoped sibling: grype applies
+			// each product independently, so the unscoped one still covers the
+			// whole image. A check accepting "at least one scoped" passes here.
+			name: "statement mixing a scoped and an unscoped product entry",
+			body: vexDoc(`{"vulnerability":{"name":"GHSA-x"},"products":[` +
+				`{"@id":"pkg:oci/manager","identifiers":{"purl":"pkg:oci/manager"},` +
+				`"subcomponents":[{"@id":"pkg:golang/x@v1","identifiers":{"purl":"pkg:golang/x@v1"}}]},` +
+				`{"@id":"pkg:oci/manager","identifiers":{"purl":"pkg:oci/manager"}}],` +
+				`"status":"not_affected","justification":"vulnerable_code_not_in_execute_path",` +
+				goodImpact + `,"timestamp":"2026-09-01T00:00:00Z"}`),
+			want: "no subcomponents",
 		},
 		{
 			name: "wrong openvex context version",
