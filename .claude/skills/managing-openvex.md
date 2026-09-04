@@ -327,8 +327,17 @@ including `.ignoredMatches[]` — download them and stage them where the command
 below expect to find them:
 
 ```bash
+# Clear both first. `gh run download` extracts each matched artifact into its own
+# subdirectory, so a flat glob finds nothing -- and if a previous local scan left
+# /tmp/scan-*.json behind, the audit below would silently read that instead and
+# report on a run you are not looking at.
+rm -rf /tmp/vex /tmp/scan-*.json
+
 gh run download <run-id> --repo NVIDIA/cluster-readiness-engine --pattern 'vuln-report-*' --dir /tmp/vex
-for f in /tmp/vex/*.raw; do cp "$f" "/tmp/scan-$(basename "${f%.raw}").json"; done
+
+# Recursive: the files land at /tmp/vex/vuln-report-<target>/<target>.raw
+find /tmp/vex -name '*.raw' -exec sh -c 'cp "$1" "/tmp/scan-$(basename "${1%.raw}").json"' _ {} \;
+ls /tmp/scan-*.json   # expect one per scanned target
 ```
 
 Compare `(advisory, package)` pairs, not advisory IDs alone — the same identity the
