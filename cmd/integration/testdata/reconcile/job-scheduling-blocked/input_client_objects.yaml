@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: gpu-node-01
+---
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-scheduling-blocked-job
+  namespace: default
+spec:
+  schedulingStallGraceSeconds: 1
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+status:
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-scheduling-blocked-job-workload
+    namespace: default
+---
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-scheduling-blocked-job-workload
+  namespace: default
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - python
+      - train.py
+    numNodes: 1
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-scheduling-blocked-job-workload-node-0-0
+  namespace: default
+  labels:
+    nvcre.nvidia.com/job: test-scheduling-blocked-job
+spec:
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Pending
+  conditions:
+    - type: PodScheduled
+      status: "False"
+      reason: Unschedulable
+      lastTransitionTime: "2026-02-16T10:00:00Z"
+---
+apiVersion: v1
+kind: Event
+metadata:
+  name: test-scheduling-blocked-job-workload-node-0-0.1
+  namespace: default
+involvedObject:
+  kind: Pod
+  name: test-scheduling-blocked-job-workload-node-0-0
+  namespace: default
+reason: FailedScheduling
+message: "0/3 nodes are available: 1 Insufficient nvidia.com/gpu, 2 node(s) didn't match Pod's node affinity/selector"
+type: Warning
+lastTimestamp: "2026-02-16T10:00:05Z"

@@ -73,6 +73,16 @@ A workload held by an admission controller — for example a TrainJob that Kueue
 
 Without this distinction, a workload waiting for quota would eventually be treated as stalled or timed out and every node in the group would be recorded as `WorkloadFailed` — a false result on healthy hardware.
 
+### Scheduling-blocked workloads
+
+A workload whose pods cannot be placed — for example a job pinned to one node whose GPUs are held by another tenant — reports `InProgress` with reason `WorkloadSchedulingBlocked`, and the condition message relays the scheduler's own diagnosis (for example `0/3 nodes are available: 1 Insufficient nvidia.com/gpu, 2 node(s) didn't match Pod's node affinity/selector`).
+
+- Detection requires the scheduler to have explicitly rejected the pod (`PodScheduled=False/Unschedulable`) and the state to persist past a grace window (default 5 minutes, overridable with `spec.schedulingStallGraceSeconds`).
+- Like queued workloads, blocked time does not count against `timeoutPerJob` or stall detection: `status.workloadStartTime` stays unset while the block persists, and `status.schedulingBlockedSince` records when the episode began.
+- The condition clears automatically if the pod schedules. No terminal state is ever set by the detector — `timeoutPerJob` remains the bound.
+
+See [ADR-075](../designs/075-scheduling-stall-visibility.md).
+
 Different nodes in the same category can fail with different reasons. A node that fails in multiple categories appears in each category's failed-nodes ConfigMap, potentially with a different reason each time.
 
 ### Reading failed nodes
