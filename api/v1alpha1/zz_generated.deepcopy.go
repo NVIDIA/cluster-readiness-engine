@@ -1280,6 +1280,11 @@ func (in *JobSpec) DeepCopyInto(out *JobSpec) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.SchedulingStallGraceSeconds != nil {
+		in, out := &in.SchedulingStallGraceSeconds, &out.SchedulingStallGraceSeconds
+		*out = new(int32)
+		**out = **in
+	}
 	if in.GoodputMeasurement != nil {
 		in, out := &in.GoodputMeasurement, &out.GoodputMeasurement
 		*out = new(GoodputMeasurementConfig)
@@ -1336,6 +1341,10 @@ func (in *JobStatus) DeepCopyInto(out *JobStatus) {
 	}
 	if in.WorkloadStartTime != nil {
 		in, out := &in.WorkloadStartTime, &out.WorkloadStartTime
+		*out = (*in).DeepCopy()
+	}
+	if in.SchedulingBlockedSince != nil {
+		in, out := &in.SchedulingBlockedSince, &out.SchedulingBlockedSince
 		*out = (*in).DeepCopy()
 	}
 	if in.FailureLog != nil {

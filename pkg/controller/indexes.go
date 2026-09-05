@@ -30,6 +30,11 @@ const (
 	// measurementJobRefIndexField indexes GoodputMeasurements and
 	// BandwidthMeasurements by the Job they measure.
 	measurementJobRefIndexField = "spec.jobRef.name"
+
+	// eventInvolvedNameIndexField indexes Events by involvedObject.name, so
+	// the scheduling-stall detector (ADR-075) can look up a pod's
+	// FailedScheduling events as a keyed read instead of a full list.
+	eventInvolvedNameIndexField = "involvedObject.name"
 )
 
 // RegisterFieldIndexes registers every field index the controllers rely on.
@@ -62,6 +67,17 @@ func RegisterFieldIndexes(ctx context.Context, indexer client.FieldIndexer) erro
 			return nil
 		}); err != nil {
 		return fmt.Errorf("registering Pod NVCRE job label index: %w", err)
+	}
+
+	if err := indexer.IndexField(ctx, &corev1.Event{}, eventInvolvedNameIndexField,
+		func(obj client.Object) []string {
+			ev, ok := obj.(*corev1.Event)
+			if !ok || ev.InvolvedObject.Name == "" {
+				return nil
+			}
+			return []string{ev.InvolvedObject.Name}
+		}); err != nil {
+		return fmt.Errorf("registering Event involvedObject.name index: %w", err)
 	}
 
 	if err := indexer.IndexField(ctx, &corev1.PersistentVolume{}, pvClaimRefIndexField,
