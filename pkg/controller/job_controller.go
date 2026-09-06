@@ -509,29 +509,30 @@ func (r *JobReconciler) updateStatusFromWorkload(ctx context.Context, job *nvcre
 		// inside the persisting status write below, so a Job declared stalled
 		// on this reconcile never carries a workloadStartTime it did not
 		// record while running.
-		// Scheduling-stall check (ADR-075) runs before the clock-start write:
-		// if pods cannot be placed, WorkloadStartTime must stay unset so
-		// timeoutPerJob and the stall budget never charge a workload that has
-		// not started. Blocked time is clock-neutral, like WorkloadPending.
-		if blocked, msg := r.checkSchedulingBlocked(ctx, job); blocked {
+		// Scheduling-stall check (ADR-075, amended). Blocked time must not
+		// count against timeoutPerJob, so when blocked persists past the grace
+		// window the caller clears WorkloadStartTime — pausing the clock —
+		// and restores it on the next genuinely-running observation via the
+		// first-observe logic below. checkSchedulingBlocked owns the
+		// schedulingBlockedSince marker (set on first blocked observation,
+		// cleared when a pod schedules); the caller never writes it.
+		blocked, blockMsg := r.checkSchedulingBlocked(ctx, job)
+		if blocked {
 			log.V(1).Info("Workload pods are unschedulable", "kind", ref.Kind, "name", ref.Name)
-			if err := r.setJobInProgress(ctx, job, ReasonWorkloadSchedulingBlocked, msg); err != nil {
+			if err := r.setJobInProgress(ctx, job, ReasonWorkloadSchedulingBlocked, blockMsg,
+				func(j *nvcrev1alpha1.Job) bool {
+					if j.Status.WorkloadStartTime == nil {
+						return false
+					}
+					j.Status.WorkloadStartTime = nil
+					return true
+				}); err != nil {
 				return ctrl.Result{}, fmt.Errorf("failed to update Job status: %w", err)
 			}
 			return ctrl.Result{RequeueAfter: r.getWorkloadRequeueInterval()}, nil
 		}
-		// checkSchedulingBlocked owns both the set and the clear of
-		// Job.status.schedulingBlockedSince — it is the only writer, so a
-		// transient detector miss cannot wipe the marker and reset the grace
-		// clock. Two outcomes here:
-		//   - marker set, within grace → hold clock-neutral, requeue. The
-		//     fall-through to the clock-start write below is deliberately
-		//     skipped: WorkloadStartTime stays unset while pods cannot
-		//     schedule.
-		//   - no marker → never blocked, or the detector cleared it because a
-		//     pod has since scheduled → proceed to the normal running path.
 		if job.Status.SchedulingBlockedSince != nil {
-			log.V(1).Info("Workload scheduling blocked within grace window", "kind", ref.Kind, "name", ref.Name)
+			// Within the grace window: requeue, keep the clock as-is.
 			return ctrl.Result{RequeueAfter: r.getWorkloadRequeueInterval()}, nil
 		}
 
@@ -720,12 +721,11 @@ func (r *JobReconciler) checkStallTimeout(ctx context.Context, job *nvcrev1alpha
 // Does NOT update Job status. Never writes terminal state: a scheduling stall
 // is frequently transient, and timeoutPerJob remains the ultimate bound.
 func (r *JobReconciler) checkSchedulingBlocked(ctx context.Context, job *nvcrev1alpha1.Job) (bool, string) {
-	// A workload that has recorded a start time already ran; scheduling-blocked
-	// only applies before first start (restarts clear WorkloadStartTime, so a
-	// replacement workload's blocked episode is still detectable).
-	if job.Status.WorkloadStartTime != nil {
-		return false, ""
-	}
+	// Detection runs on every reconcile of a non-terminal workload, including
+	// after the clock started: the common failure is workload created (clock
+	// started on reconcile 1) and the pod rejected by the scheduler on
+	// reconcile 2. When blocked persists, the caller clears WorkloadStartTime
+	// (pausing the clock) and the first-observe logic restores it on recovery.
 	// The condition message follows the caller's "Workload <kind>/<name> is
 	// running" format. WorkloadRef is always set once the workload exists;
 	// fall back to the Job identity if it somehow is not.
