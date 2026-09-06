@@ -20,13 +20,15 @@ import (
 )
 
 // Tests for checkSchedulingBlocked (ADR-075): the detector must fire
-// WorkloadSchedulingBlocked only when a running-path workload's pods carry
-// PodScheduled=False/Unschedulable past the grace window, must relay the
-// scheduler's FailedScheduling message, must never fire once
-// WorkloadStartTime is set (the workload already ran), and must clear the
-// persisted blocked-since marker on recovery.
+// WorkloadSchedulingBlocked when a running-path workload's pods carry
+// PodScheduled=False/Unschedulable past the grace window — including after
+// WorkloadStartTime is set (clock-pause amendment) — must relay the
+// scheduler's FailedScheduling message, and must clear the persisted
+// blocked-since marker when any pod schedules.
 
 const schedulingTestNS = "sched-test"
+
+const testUnschedulableMsg = "unschedulable"
 
 func schedulingTestScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
@@ -174,7 +176,7 @@ func TestCheckSchedulingBlocked(t *testing.T) {
 			job:         schedulingJob("job-d", &oldBlockedSince, &grace),
 			pods:        []*corev1.Pod{unschedulablePod("p1", "job-d")},
 			wantBlocked: true,
-			wantMsgPart: "unschedulable",
+			wantMsgPart: testUnschedulableMsg,
 		},
 		{
 			name: "unschedulable pod with FailedScheduling event relays scheduler message",
@@ -187,7 +189,7 @@ func TestCheckSchedulingBlocked(t *testing.T) {
 			wantMsgPart: "0/3 nodes are available: 1 Insufficient nvidia.com/gpu.",
 		},
 		{
-			name: "WorkloadStartTime set — never blocked even with unschedulable pods",
+			name: "WorkloadStartTime set — blocked still fires (clock-pause amendment)",
 			job: func() *nvcrev1alpha1.Job {
 				j := schedulingJob("job-f", &oldBlockedSince, &grace)
 				now := metav1.Now()
@@ -195,7 +197,8 @@ func TestCheckSchedulingBlocked(t *testing.T) {
 				return j
 			}(),
 			pods:        []*corev1.Pod{unschedulablePod("p1", "job-f")},
-			wantBlocked: false,
+			wantBlocked: true,
+			wantMsgPart: testUnschedulableMsg,
 		},
 		{
 			name: "mixed: one running pod, one unschedulable — blocked",
@@ -205,7 +208,7 @@ func TestCheckSchedulingBlocked(t *testing.T) {
 				unschedulablePod("p2", "job-g"),
 			},
 			wantBlocked: true,
-			wantMsgPart: "unschedulable",
+			wantMsgPart: testUnschedulableMsg,
 		},
 		{
 			name: "unscheduled but PodScheduled=True — not blocked",

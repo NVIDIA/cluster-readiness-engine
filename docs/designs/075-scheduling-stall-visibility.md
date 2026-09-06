@@ -216,3 +216,36 @@ behavior.
 - [ADR-068: group-nodes compressed ConfigMap](068-group-nodes-compressed-configmap.md) — ConfigMap capture precedent
 - Issue #213 — pending time exclusion from timeout/stall clocks
 - `pkg/workload/trainjob.go:187` — the fall-through this ADR augments
+
+
+## Amendment: clock-pause semantics (post-live-testing)
+
+Live testing on a 3-node on-prem cluster exposed a race in the original
+guard: the `WorkloadStartTime != nil` early-return prevented detection in
+the common case where the clock started on reconcile 1 (workload created,
+clock started) and the scheduler rejected the pod on reconcile 2. The
+detector's guard skipped detection precisely when the clock was already
+ticking against a pod that had never run.
+
+**Amended decision (point 4 revised):** detection runs on every reconcile
+of a non-terminal workload, including after the clock started. When blocked
+persists past the grace window, the caller **clears `WorkloadStartTime`**
+(pauses the clock) in the same status write that sets the
+`WorkloadSchedulingBlocked` condition; the first-observe logic restores the
+timestamp on the next genuinely-running observation. This keeps timeout
+accounting honest in both directions: a workload that never ran is never
+charged, and a workload that ran and then became unschedulable is not
+charged for the blocked period either.
+
+The `schedulingBlockedSince` marker semantics are unchanged: set on first
+blocked observation, cleared when any pod schedules; the caller never
+writes it.
+
+**Unit test updated:** the "WorkloadStartTime set — never blocked" case
+becomes "WorkloadStartTime set — blocked still fires (clock-pause
+amendment)".
+
+**Deployment note:** the 3-node on-prem cluster validated the amendment
+live: the pinned-job test produced the `WorkloadSchedulingBlocked`
+condition with the scheduler's relayed message within the grace window
+after this amendment.
