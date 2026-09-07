@@ -11,7 +11,7 @@ NVCRE is for platform and infrastructure teams that bring up, validate, or resel
 ## Features
 
 - A certification catalog with NCCL communication tests and multi-node training workloads
-- Platform detection (AWS, GCP, Azure, OCI, nscale, TogetherAI, Mistral, Forge, on-prem) and GPU architecture detection (GB200, GB300, H100, A100, L40S, L40)
+- Platform detection (AWS, GCP, Azure, OCI, nscale, TogetherAI, Mistral, Forge, on-prem) and GPU architecture detection (GB200, GB300, H100, H200, B200, A100, L40S, L40)
 - Goodput measurement parsed from training logs with configurable LogProfile patterns
 - Per-bus bandwidth measurement parsed from NCCL logs
 - Node health monitoring with CEL expressions while workloads run

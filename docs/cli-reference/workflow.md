@@ -19,7 +19,7 @@ nvcrectl workflow render [flags] <workflow.yaml>
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--platform` | auto | Target platform (`aws`, `gcp`, `azure`, `oci`, `mistral`, `forge`) |
-| `--gpu-arch` | auto | Target GPU architecture (`h100`, `gb200`, `gb300`) |
+| `--gpu-arch` | auto | Target GPU architecture with built-in mock-node templates (`h100`, `gb200`, `gb300`); other architectures are supported via `--nodes-file` or `--dry-run` (auto-detected from the cluster) |
 | `--nodes-file` | — | Path to a YAML file of `corev1.Node` objects for offline rendering (mutually exclusive with `--platform`/`--gpu-arch`) |
 | `--output` | `yaml` | Output format: `yaml` or `json` |
 | `--dry-run` | `false` | Validate against the live API server without creating resources |
