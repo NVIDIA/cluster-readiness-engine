@@ -205,6 +205,10 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 				return fmt.Errorf("resolve workflow %s: %w", workflows[i].Name, err)
 			}
 			render.SetRenderAnnotations(&workflows[i], meta)
+			if err := platform.ApplyGangSchedulerToDependencies(
+				workflows[i].Spec.Dependencies, cert.Spec.GangScheduler); err != nil {
+				return fmt.Errorf("apply gang scheduler for %s: %w", workflows[i].Name, err)
+			}
 
 			results, dryRunErr := render.DryRunCreate(ctx, dryRunClient, namespace, &workflows[i].Spec, nodes)
 			if dryRunErr != nil {
@@ -215,16 +219,8 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 				results: results,
 			})
 		}
-	} else {
-		// Apply overrides using a synthetic node derived from the Certification's
-		// nodeSelector. This enables GPU-architecture-specific overrides (images,
-		// env vars) to be applied even without connecting to a real cluster.
-		syntheticNodes := []corev1.Node{syntheticRenderNode(platformFlag, cert.Spec.Target.NodeSelector)}
-		for i := range workflows {
-			if _, err := render.ResolveWorkflow(&workflows[i], syntheticNodes); err != nil {
-				return fmt.Errorf("resolve overrides for %s: %w", workflows[i].Name, err)
-			}
-		}
+	} else if err := resolveWorkflowsOffline(cert, workflows, platformFlag); err != nil {
+		return err
 	}
 
 	switch outputFormat {
@@ -251,6 +247,31 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 		render.PrintDryRunSummary("Dry-run validation: "+wr.name, wr.results)
 	}
 
+	return nil
+}
+
+// resolveWorkflowsOffline applies overrides using a synthetic node derived from
+// the Certification's nodeSelector, then opts the resolved dependencies into the
+// Certification's gang scheduler. The synthetic node lets
+// GPU-architecture-specific overrides (images, env vars) apply even without
+// connecting to a real cluster.
+//
+// Gang scheduling is applied after render.ResolveWorkflow, matching the
+// certification controller. Overrides resolve first, so an override that sets
+// schedulerName cannot undo the scheduler the user asked for.
+func resolveWorkflowsOffline(
+	cert *nvcrev1alpha1.Certification, workflows []nvcrev1alpha1.Workflow, platformFlag string,
+) error {
+	syntheticNodes := []corev1.Node{syntheticRenderNode(platformFlag, cert.Spec.Target.NodeSelector)}
+	for i := range workflows {
+		if _, err := render.ResolveWorkflow(&workflows[i], syntheticNodes); err != nil {
+			return fmt.Errorf("resolve overrides for %s: %w", workflows[i].Name, err)
+		}
+		if err := platform.ApplyGangSchedulerToDependencies(
+			workflows[i].Spec.Dependencies, cert.Spec.GangScheduler); err != nil {
+			return fmt.Errorf("apply gang scheduler for %s: %w", workflows[i].Name, err)
+		}
+	}
 	return nil
 }
 

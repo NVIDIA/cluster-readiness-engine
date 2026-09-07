@@ -1,0 +1,15 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "\u003cnil\u003e",
+      "message": "Invalid value: null: some validation rules were not checked because the object was invalid; correct the existing errors to complete validation"
+    },
+    {
+      "type": "FieldValueTooLong",
+      "field": "spec.gangScheduler.queue",
+      "message": "Too long: may not be more than 63 bytes"
+    }
+  ]
+}

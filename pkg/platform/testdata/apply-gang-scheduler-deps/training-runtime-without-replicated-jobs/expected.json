@@ -1,0 +1,53 @@
+[
+  {
+    "index": 0,
+    "kind": "TrainingRuntime",
+    "rawUnchanged": true,
+    "replicatedJobs": [],
+    "resource": {
+      "apiVersion": "trainer.kubeflow.org/v1alpha1",
+      "kind": "TrainingRuntime",
+      "metadata": {
+        "name": "no-spec-runtime"
+      }
+    }
+  },
+  {
+    "index": 1,
+    "kind": "TrainingRuntime",
+    "rawUnchanged": true,
+    "replicatedJobs": [],
+    "resource": {
+      "apiVersion": "trainer.kubeflow.org/v1alpha1",
+      "kind": "TrainingRuntime",
+      "metadata": {
+        "name": "no-template-runtime"
+      },
+      "spec": {
+        "mlPolicy": {
+          "numNodes": 2
+        }
+      }
+    }
+  },
+  {
+    "index": 2,
+    "kind": "TrainingRuntime",
+    "rawUnchanged": true,
+    "replicatedJobs": [],
+    "resource": {
+      "apiVersion": "trainer.kubeflow.org/v1alpha1",
+      "kind": "TrainingRuntime",
+      "metadata": {
+        "name": "empty-jobs-runtime"
+      },
+      "spec": {
+        "template": {
+          "spec": {
+            "replicatedJobs": []
+          }
+        }
+      }
+    }
+  }
+]

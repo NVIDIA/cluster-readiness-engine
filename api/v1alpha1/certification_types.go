@@ -335,6 +335,15 @@ type CertificationSpec struct {
 	// +kubebuilder:validation:MaxItems=64
 	Categories []CertificateCategory `json:"categories,omitempty"`
 
+	// gangScheduler opts every category's workload pods into a gang-aware
+	// scheduler such as KAI Scheduler. When set, schedulerName is injected into
+	// every pod template of every category's resolved TrainingRuntime and the
+	// queue label is applied, so the scheduler holds all pods until the full
+	// gang can be placed. Applied after catalog and platform overrides resolve,
+	// so it also replaces the scheduler a catalog entry hardcodes.
+	// +optional
+	GangScheduler *GangSchedulerSpec `json:"gangScheduler,omitempty"`
+
 	// Global defaults for all categories. Per-category options override these.
 	CategoryOptions `json:",inline"`
 }

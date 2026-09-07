@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The queue becomes the kai.scheduler/queue label value, so it must be a valid
+# label value. Leading and trailing hyphens are not, and are rejected here
+# instead of failing later when the pod template is applied.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-gang-queue-pattern
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: "-bad-"
+  categories:
+    - domain: training
+      variant: nemotron5-8b

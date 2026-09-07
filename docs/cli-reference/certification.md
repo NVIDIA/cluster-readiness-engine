@@ -79,6 +79,8 @@ nvcrectl certification render [flags] <cert-file>
 | `--dry-run` | `false` | Validate against the live API server without creating resources |
 | `--output` | `yaml` | Output format: `yaml` or `json` |
 
+A Certification that sets `spec.gangScheduler` has that applied to the rendered output too: the scheduler name and the `kai.scheduler/queue` label appear in the rendered manifests, so what you inspect matches what the controller creates. There is no flag for it; the field is set in the Certification YAML.
+
 ## nvcrectl certification report
 
 Fetches a completed Certification from the cluster and generates a pass/fail report. Multiple names can be provided to combine them into a single report.

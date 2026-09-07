@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Grype configuration for the weekly image vulnerability scan
+# (.github/workflows/vuln-scan-images.yml).
+#
+# SUPPRESSIONS DO NOT LIVE HERE. They live in .openvex.json, which the scan
+# passes to grype as `--vex`, and `ignore:` below must stay empty.
+#
+# One place, deliberately. Two suppression mechanisms means the impact analysis
+# for a CVE can live in either file, so answering "why is this not reported?"
+# means checking both -- and the two enforce different rules, so a suppression
+# silently gets weaker discipline by being written in the wrong one.
+# TestGrypeConfigCarriesNoSuppressions fails the build if a rule is added here.
+#
+# What .openvex.json requires of a statement, and what enforces it, is in
+# .claude/skills/managing-openvex.md and TestOpenVEXStatementsAreTriageable.
+# The short version: name the CVE or GHSA exactly as grype emits it (usually the
+# GHSA, not the CVE), target `pkg:oci/manager`, pick a justification from the
+# OpenVEX v0.2.0 enum, write a substantive impact statement, and re-affirm it
+# within 180 days or the build goes red.
+#
+# The scan runs those checks before it scans, so a statement cannot go stale
+# during a quiet week and keep suppressing a finding with nothing to show for it.
+
+ignore: []

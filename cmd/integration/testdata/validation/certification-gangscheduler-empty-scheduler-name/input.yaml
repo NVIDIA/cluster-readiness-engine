@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# schedulerName has MinLength=1, so an explicit empty string is rejected at
+# admission rather than silently injecting an empty schedulerName into pods.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-gang-empty-name
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  gangScheduler:
+    schedulerName: ""
+    queue: high-priority
+  categories:
+    - domain: training
+      variant: nemotron5-8b

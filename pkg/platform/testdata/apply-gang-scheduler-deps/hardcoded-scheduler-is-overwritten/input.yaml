@@ -1,0 +1,24 @@
+# training/nemotron5-8b and nemotron5-56b hardcode schedulerName:
+# default-scheduler. Filling the field in only when absent would silently do
+# nothing for exactly those entries, so the helper overwrites it.
+gangScheduler:
+  schedulerName: kai-scheduler
+  queue: high-priority
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nemotron5-8b-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      schedulerName: default-scheduler
+                      containers:
+                        - name: node
+                          image: nvcr.io/nvidia/nemo:25.07

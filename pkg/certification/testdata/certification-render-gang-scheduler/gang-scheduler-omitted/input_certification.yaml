@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The no-op path. Same two categories as queue-omitted-defaults, with no
+# gangScheduler, so the two golden files read side by side show exactly what the
+# field changes and nothing else.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: gang-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 2
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 50

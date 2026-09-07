@@ -125,6 +125,16 @@ We credit reporters of confirmed vulnerabilities in the release notes of the fix
   bash installer -v "${TAG}"
   ```
 
+- **The published images are re-scanned weekly, after release.** Signing and SBOMs answer "was this what we built"; they say nothing about a CVE published after we shipped. `.github/workflows/vuln-scan-images.yml` runs every Monday at 08:00 UTC against the newest **stable** release and the newest published `main` image, both per platform, by digest. Fixable High and Critical findings are posted to Slack; a run that does not complete is posted too, so a broken scan cannot look like a clean week.
+
+  The scan reports, it does not gate — an unfixable upstream base-image CVE must not turn releases red. Findings feed the timelines in [Vulnerability Fix Timelines](#vulnerability-fix-timelines) above.
+
+  Suppressions and the impact analysis behind them live in one place: [`.openvex.json`](.openvex.json), an [OpenVEX](https://openvex.dev) v0.2.0 document the scan passes to grype as `--vex`. `.grype.yaml` carries scanner configuration only, and a test fails the build if an ignore rule is added there instead.
+
+  Every statement must name the advisory exactly as grype reports it, target the image, name the affected package as a subcomponent so it cannot silence the advisory in a package nobody analysed, choose a justification from the OpenVEX v0.2.0 enum, and carry a substantive impact statement. The document is public in this repository and is what anyone auditing our triage reads; it is not currently attested or published to a registry. OpenVEX has no notion of expiry, so a statement must additionally be re-affirmed within 180 days — and may not be dated in the future — or the build goes red. The weekly scan runs that check *before* it scans, so a statement cannot lapse during a quiet week and go on suppressing a finding, and it separately fails the run if a declared statement matched nothing. Re-affirm only after re-confirming the claim still holds; do not simply refresh the date.
+
+  VEX is for findings that cannot be remediated by upgrading. If a fixed version is reachable, the answer is a dependency bump and a release, not a statement. See [`.claude/skills/managing-openvex.md`](.claude/skills/managing-openvex.md) for the full triage procedure.
+
 ## Product Security Resources
 
 For all security-related concerns: https://www.nvidia.com/en-us/security

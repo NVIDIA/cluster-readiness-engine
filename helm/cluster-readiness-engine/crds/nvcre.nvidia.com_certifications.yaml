@@ -389,6 +389,33 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
+              gangScheduler:
+                description: |-
+                  gangScheduler opts every category's workload pods into a gang-aware
+                  scheduler such as KAI Scheduler. When set, schedulerName is injected into
+                  every pod template of every category's resolved TrainingRuntime and the
+                  queue label is applied, so the scheduler holds all pods until the full
+                  gang can be placed. Applied after catalog and platform overrides resolve,
+                  so it also replaces the scheduler a catalog entry hardcodes.
+                properties:
+                  queue:
+                    description: |-
+                      queue is the scheduler queue to submit the workload to.
+                      Defaults to "default-queue" if not specified.
+                      When non-empty, must be a valid Kubernetes label value: at most 63 characters,
+                      beginning and ending with an alphanumeric character, and containing only
+                      alphanumerics, hyphens, underscores, or dots.
+                    maxLength: 63
+                    pattern: ^$|^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                    type: string
+                  schedulerName:
+                    description: schedulerName is the name of the gang-aware scheduler
+                      to use (e.g. "kai-scheduler").
+                    minLength: 1
+                    type: string
+                required:
+                - schedulerName
+                type: object
               gpusPerNode:
                 description: |-
                   gpusPerNode optionally overrides the number of GPUs per node used by catalog

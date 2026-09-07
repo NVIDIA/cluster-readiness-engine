@@ -482,6 +482,11 @@ func (in *CertificationSpec) DeepCopyInto(out *CertificationSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.GangScheduler != nil {
+		in, out := &in.GangScheduler, &out.GangScheduler
+		*out = new(GangSchedulerSpec)
+		**out = **in
+	}
 	in.CategoryOptions.DeepCopyInto(&out.CategoryOptions)
 }
 

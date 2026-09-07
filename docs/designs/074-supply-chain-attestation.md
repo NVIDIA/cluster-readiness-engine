@@ -200,6 +200,8 @@ The contract lives in YAML, and the failure mode is silent: a signing step delet
 - ADRs are indexed in [`docs/designs/README.md`](README.md), not in the Fern navigation — `docs/index.yml` has no designs section. New records go in that README table.
 - Vulnerability triage is deliberately out of scope for this record. Structured suppression is the right long-term answer for findings that do not apply, but it needs a triage process to exist first. Expiry-dated `.grype.yaml` ignore rules start that process. Once the ruleset has been exercised, there are two ways to publish it, and decision 5 keeps both open: a separate signed OpenVEX attestation, or CycloneDX's own VEX carriage inside the SBOM predicate we already sign. Prefer the latter if it holds up — it is one fewer artifact to attest, distribute, and keep in sync with the SBOM it qualifies.
 
+  **Superseded 2026-09-04.** The expiry-dated `.grype.yaml` ignore rules described above no longer exist. Suppressions moved to `.openvex.json`, consumed by the weekly scan as grype's `--vex`, with `.grype.yaml` restricted to scanner configuration and enforced empty of suppressions. OpenVEX carries no expiry field, so the deadline became a re-affirmation rule — a statement stale beyond 180 days fails the build, and the weekly scan runs that check before it scans. The choice in decision 5 is still open: this consumes VEX at scan time and publishes nothing, so the artifact contract above still has no OpenVEX row. See [`.claude/skills/managing-openvex.md`](../../.claude/skills/managing-openvex.md).
+
 ## References
 
 - Epic and subtask breakdown: issue #262

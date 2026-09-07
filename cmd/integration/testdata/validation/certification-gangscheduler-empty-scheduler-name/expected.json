@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.gangScheduler.schedulerName",
+      "message": "Invalid value: \"\": spec.gangScheduler.schedulerName in body should be at least 1 chars long"
+    }
+  ]
+}
