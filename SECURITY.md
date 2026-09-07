@@ -133,7 +133,7 @@ We credit reporters of confirmed vulnerabilities in the release notes of the fix
 
   Every statement must name the advisory exactly as grype reports it, target the image, name the affected package as a subcomponent so it cannot silence the advisory in a package nobody analysed, choose a justification from the OpenVEX v0.2.0 enum, and carry a substantive impact statement. The document is public in this repository and is what anyone auditing our triage reads; it is not currently attested or published to a registry. OpenVEX has no notion of expiry, so a statement must additionally be re-affirmed within 180 days — and may not be dated in the future — or the build goes red. The weekly scan runs that check *before* it scans, so a statement cannot lapse during a quiet week and go on suppressing a finding, and it separately fails the run if a declared statement matched nothing. Re-affirm only after re-confirming the claim still holds; do not simply refresh the date.
 
-  VEX is for findings that cannot be remediated by upgrading. If a fixed version is reachable, the answer is a dependency bump and a release, not a statement. See [`.claude/skills/managing-openvex.md`](.claude/skills/managing-openvex.md) for the full triage procedure.
+  VEX is for findings that cannot be remediated by upgrading. If a fixed version is reachable, the answer is a dependency bump and a release, not a statement. See [`.claude/skills/managing-openvex/SKILL.md`](.claude/skills/managing-openvex/SKILL.md) for the full triage procedure.
 
 ## Product Security Resources
 
