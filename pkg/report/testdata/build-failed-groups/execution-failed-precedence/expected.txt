@@ -23,6 +23,13 @@
 │         BackoffLimitExceeded — 2 of 2 pods failed              │
 │           - node001                                            │
 │           - node002                                            │
+│         Failure Log (one captured pod):                        │
+│           Pod: cert-exec-node-batch-pod                        │
+│           Node: node001                                        │
+│           Exit: 137 (OOMKilled)                                │
+│           Tail:                                                │
+│             trainer initialized                                │
+│             CUDA out of memory                                 │
 └────────────────────────────────────────────────────────────────┘
 
 ┌────────────────────────────────────────────────────────────────┐
@@ -57,7 +64,14 @@
             "node001",
             "node002"
           ],
-          "reason": "BackoffLimitExceeded — 2 of 2 pods failed"
+          "reason": "BackoffLimitExceeded — 2 of 2 pods failed",
+          "failureLog": {
+            "podName": "cert-exec-node-batch-pod",
+            "nodeName": "node001",
+            "exitCode": 137,
+            "reason": "OOMKilled",
+            "tail": "trainer initialized\nCUDA out of memory"
+          }
         }
       ]
     }

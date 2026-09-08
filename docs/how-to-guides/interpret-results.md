@@ -19,7 +19,8 @@ nvcrectl workloadrun report <name>
 |---------|---------|
 | Summary | Overall pass/fail, node count, run duration |
 | Category results | Per-domain/variant measured vs. expected values with pass/fail |
-| Node results | Per-node breakdown — which passed, which failed, and the failure reason |
+| Failed groups | Group nodes, failure reason, and the failed workload pod's captured log excerpt when available |
+| Node results | Per-node breakdown — which passed and which failed |
 
 ## Status values
 
@@ -59,6 +60,23 @@ Or use the CLI for a formatted report:
 ```bash
 nvcrectl certification report <name>
 ```
+
+For execution failures, the failed-group section also shows the captured pod,
+node, exit code, termination reason, and workload log tail. Machine-readable
+reports include the same data under
+`categories[].failedGroups[].failureLog`. The field is absent if the failed Job
+was deleted before the report was generated.
+
+The log represents one selected pod, not aggregated logs from every failed pod.
+For execution failures, capture prefers a pod with an `OOMKilled` container.
+When no nonzero exit code was captured, both the human report and JSON omit it
+and retain the explanatory reason instead.
+
+The human report shows the end of the excerpt: at most 4 KiB of input and 20
+rendered log lines per failed group, with the line limit applied after wrapping.
+An explicit truncation notice points to the full captured excerpt in the JSON
+report or `Job.status.failureLog` (up to 32 KiB). These limits do not shorten the
+JSON tail.
 
 NVCRE records which nodes failed and why — it does not taint or cordon them. To quarantine a failed node:
 

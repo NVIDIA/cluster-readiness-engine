@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -402,6 +403,132 @@ func TestPrintReportFailed(t *testing.T) {
 	assert.Contains(t, output, "- node-1")
 	assert.Contains(t, output, "- node-2")
 	assert.Contains(t, output, "0/1 passed")
+}
+
+// TestPrintFailureLog covers captured diagnostics and timeout-only reasons.
+func TestPrintFailureLog(t *testing.T) {
+	t.Run("renders and sanitizes captured log", func(t *testing.T) {
+		fl := &FailureLogReport{
+			PodName:  "failed-pod",
+			NodeName: "node-1",
+			ExitCode: 137,
+			Reason:   "OOMKilled",
+			Tail:     "first\tline\r\n\x1b[31m" + strings.Repeat("x", 80),
+		}
+
+		var buf bytes.Buffer
+		printFailureLog(&buf, fl)
+		output := buf.String()
+
+		assert.Contains(t, output, "Failure Log (one captured pod):")
+		assert.Contains(t, output, "Pod: failed-pod")
+		assert.Contains(t, output, "Node: node-1")
+		assert.Contains(t, output, "Exit: 137 (OOMKilled)")
+		assert.Contains(t, output, "first    line")
+		assert.Contains(t, output, `\x1b[31m`)
+		assert.NotContains(t, output, "\x1b[31m")
+		for line := range strings.SplitSeq(strings.TrimSuffix(output, "\n"), "\n") {
+			assert.LessOrEqual(t, displayWidth(line), boxWidth)
+		}
+	})
+
+	t.Run("shows timeout reason without a false exit code", func(t *testing.T) {
+		fl := &FailureLogReport{
+			PodName:  "timed-out-pod",
+			NodeName: "node-1",
+			Reason:   "Timeout",
+			Tail:     "workload was still running",
+		}
+
+		var buf bytes.Buffer
+		printFailureLog(&buf, fl)
+		output := buf.String()
+
+		assert.Contains(t, output, "Pod: timed-out-pod")
+		assert.Contains(t, output, "Node: node-1")
+		assert.Contains(t, output, "Reason: Timeout")
+		assert.NotContains(t, output, "Exit: 0")
+	})
+}
+
+// TestPrintWrappedBoxText pins wrapping and padding independently of displayWidth.
+func TestPrintWrappedBoxText(t *testing.T) {
+	p := testutil.TestCaseParser{Subdir: "print-wrapped-box-text", ExpectedSuffix: testutil.SuffixTXT}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			Text string `yaml:"text"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+		var buf bytes.Buffer
+		printWrappedBoxText(&buf, "           ", input.Text)
+		tc.Actual = buf.String()
+		return nil
+	})
+}
+
+// TestFailureLogCaptureShapes pins explanatory captures in human and JSON output.
+func TestFailureLogCaptureShapes(t *testing.T) {
+	p := testutil.TestCaseParser{Subdir: "failure-log-capture-shapes", ExpectedSuffix: testutil.SuffixTXT}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var fl FailureLogReport
+		if err := json.Unmarshal([]byte(tc.Inputs["input.json"]), &fl); err != nil {
+			return err
+		}
+		var buf bytes.Buffer
+		printFailureLog(&buf, &fl)
+		encoded, err := json.Marshal(fl)
+		if err != nil {
+			return err
+		}
+		tc.Actual = buf.String() + string(encoded) + "\n"
+		return nil
+	})
+}
+
+// TestFailureLogExcerptLimits checks boundary budgets and preservation of JSON.
+func TestFailureLogExcerptLimits(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		tail      string
+		truncated bool
+	}{
+		{"exact-lines", strings.Repeat("line\n", 19) + "END\n", false},
+		{"too-many-lines", "DROP\n" + strings.Repeat("line\n", 19) + "END\n", true},
+		{"long-line", strings.Repeat("x", 1100) + "END", true},
+		{"exact-bytes", "e" + strings.Repeat("\u0301", 2046) + "END", false},
+		{"too-many-bytes", "e" + strings.Repeat("\u0301", 2047) + "END", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			lines, truncated := failureLogExcerpt(tc.tail)
+			assert.Equal(t, tc.truncated, truncated)
+			assert.LessOrEqual(t, len(lines), 20)
+			joined := strings.Join(lines, "")
+			assert.True(t, utf8.ValidString(joined))
+			assert.LessOrEqual(t, len(joined), 4096)
+			assert.True(t, strings.HasSuffix(joined, "END"))
+			assert.NotContains(t, joined, "DROP")
+			fl := FailureLogReport{Tail: tc.tail}
+			var buf bytes.Buffer
+			printFailureLog(&buf, &fl)
+			assert.Equal(t, truncated, strings.Contains(buf.String(), "Tail (truncated;"))
+			assert.Equal(t, truncated, strings.Contains(buf.String(), "Full captured excerpt: JSON report or"))
+			encoded, err := json.Marshal(fl)
+			require.NoError(t, err)
+			var decoded FailureLogReport
+			require.NoError(t, json.Unmarshal(encoded, &decoded))
+			assert.Equal(t, tc.tail, decoded.Tail)
+		})
+	}
+}
+
+// TestSanitizeTerminalTextC1 checks every C1 code point, including CSI and OSC.
+func TestSanitizeTerminalTextC1(t *testing.T) {
+	for r := rune(0x80); r <= 0x9f; r++ {
+		assert.Equal(t, fmt.Sprintf("\\x%02x", r), sanitizeTerminalText(string(r)))
+	}
+	assert.Equal(t, "界e\u0301", sanitizeTerminalText("界e\u0301"))
 }
 
 func TestPrintCategoryCardTraining(t *testing.T) {
