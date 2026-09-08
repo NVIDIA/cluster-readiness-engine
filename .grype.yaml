@@ -14,7 +14,7 @@
 # TestGrypeConfigCarriesNoSuppressions fails the build if a rule is added here.
 #
 # What .openvex.json requires of a statement, and what enforces it, is in
-# .claude/skills/managing-openvex.md and TestOpenVEXStatementsAreTriageable.
+# .claude/skills/managing-openvex/SKILL.md and TestOpenVEXStatementsAreTriageable.
 # The short version: name the CVE or GHSA exactly as grype emits it (usually the
 # GHSA, not the CVE), target `pkg:oci/manager`, pick a justification from the
 # OpenVEX v0.2.0 enum, write a substantive impact statement, and re-affirm it
