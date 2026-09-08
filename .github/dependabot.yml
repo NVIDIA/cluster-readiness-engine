@@ -22,6 +22,46 @@ updates:
       semver-major-days: 14
       semver-minor-days: 7
       semver-patch-days: 3
+    # TEMPORARY: hold the Kubernetes libraries at 0.36.x until
+    # github.com/kubeflow/trainer/v2 ships a 1.37-compatible release.
+    #
+    # Kubernetes 1.37 removed the unused corev1.PodStatusResult type
+    # (kubernetes/kubernetes#136271, listed under API Change in
+    # CHANGELOG-1.37; it had no REST endpoint and had been unused since
+    # 2015). Trainer still references it from its generated openapi, and we
+    # import that package in api/v1alpha1/job_types.go, so bumping these
+    # modules fails the build with "undefined: corev1.PodStatusResult" and
+    # takes every CI job down with it. See the failure on #312.
+    #
+    # Nothing in our dependency graph actually wants 0.37; only Dependabot
+    # proposes it. Trainer master is still on k8s v0.36.4 and the bump is
+    # open in kubeflow/trainer#4005, itself blocked on kubeflow/trainer#4006.
+    # Watch #4005: when it lands and a release follows, bump trainer and
+    # delete this block in the same PR.
+    #
+    # Scoped to minor and major so 0.36.x patch updates keep flowing. Only
+    # the modules that move with the Kubernetes minor are listed. k8s.io/klog
+    # (v2.x), k8s.io/kube-openapi and k8s.io/utils (pseudo-versions), and the
+    # independently versioned sigs.k8s.io modules are deliberately excluded
+    # so they are not frozen by accident. controller-runtime is included
+    # because 0.25.0 requires k8s.io/api v0.37.0.
+    ignore:
+      - dependency-name: "k8s.io/api"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "k8s.io/apiextensions-apiserver"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "k8s.io/apimachinery"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "k8s.io/apiserver"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "k8s.io/client-go"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "k8s.io/component-base"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "k8s.io/streaming"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "sigs.k8s.io/controller-runtime"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
     groups:
       kubernetes:
         patterns:
