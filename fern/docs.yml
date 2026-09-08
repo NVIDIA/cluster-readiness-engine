@@ -23,6 +23,10 @@ products:
     slug: /
     path: ../docs/index.yml
     versions:
+      - display-name: v0.2.0
+        path: versions/v0.2.0.yml
+        slug: v0.2.0
+        availability: stable
       - display-name: v0.1.0
         path: versions/v0.1.0.yml
         slug: v0.1.0
