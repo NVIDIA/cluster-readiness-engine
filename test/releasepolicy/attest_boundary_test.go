@@ -4,7 +4,6 @@
 package releasepolicy
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,163 +13,23 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-// cosignSignCmds are the signing invocations that may exist only inside
-// attest.yml. A second home for any of them widens the published identity
-// contract: consumers pin one workflow path, so a signer elsewhere is accepted
-// under a different SAN with no change to the pin.
-//
-// Also covers the "not inlined as a job" half of ADR-074 D2: moving these
-// invocations into release.yml / publish.yml as ordinary job steps would still
-// compile and still green every other test, but Fulcio would stop naming
-// attest.yml and identity-pinned verification would quietly fail for consumers.
-var cosignSignCmds = regexp.MustCompile(`(?m)(?:^|[\s;|&])(?:retry\s+)?cosign\s+(sign|attest|attest-blob)\b`)
-
-var attestProvenanceAction = regexp.MustCompile(`(^|/)actions/attest-build-provenance(@|$)`)
-
 // Local attest.yml call shape used by publish.yml / release.yml / selftest.
+// Complements isAttestWorkflowCall in workflow_policy_test.go: that helper
+// accepts any path whose base is attest.yml; this one insists on the ./ form
+// that keeps the call a same-repo workflow_call boundary.
 var localAttestUses = regexp.MustCompile(`^\./\.github/workflows/attest\.yml(@.+)?$`)
 
-const attestWorkflowName = "attest.yml"
-
-// TestAttestIsSoleSigner keeps the published certificate identity contract true.
-//
-// Consumers pin
-//
-//	.../attest.yml@refs/tags/<TAG>
-//
-// so any second workflow that invokes cosign sign/attest/attest-blob (or
-// actions/attest-build-provenance) silently widens what that pin accepts.
-// attest.yml itself must stay workflow_call-only: any other trigger makes the
-// signing identity reachable from a branch push or a dispatch, and inlining
-// its steps into a caller would demote the reusable-workflow boundary while
-// every other test stayed green.
-func TestAttestIsSoleSigner(t *testing.T) {
-	assertAttestIsWorkflowCallOnly(t)
+// TestAttestIsInvokedAsReusableWorkflow pins the half of ADR-074 D2 that
+// TestAttestIsSoleSigner (workflow_policy_test.go) does not cover: every
+// release-path caller must reach attest.yml through `uses: ./…`, not by
+// inlining its jobs. Without this, a refactor could copy the attest steps into
+// release.yml, keep workflow_call on an unused attest.yml, and demote the
+// Fulcio identity while TestAttestIsSoleSigner still saw cosign only inside
+// attest.yml — until the copy started signing too.
+func TestAttestIsInvokedAsReusableWorkflow(t *testing.T) {
 	assertAttestIsInvokedAsReusableWorkflow(t)
-
-	paths := append([]string{}, workflowFiles(t)...)
-	paths = append(paths, compositeActionFiles(t)...)
-
-	for _, path := range paths {
-		base := filepath.Base(path)
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read %s: %v", path, err)
-		}
-
-		if isCompositeActionPath(path) {
-			var doc struct {
-				Runs struct {
-					Using string       `json:"using"`
-					Steps []policyStep `json:"steps"`
-				} `json:"runs"`
-			}
-			if err := yaml.Unmarshal(raw, &doc); err != nil {
-				t.Fatalf("parse %s: %v", path, err)
-			}
-			if doc.Runs.Using != "" && doc.Runs.Using != "composite" {
-				continue
-			}
-			assertStepsForbidForeignSigners(t, relGithub(path), false /* allowCosign */, doc.Runs.Steps)
-			continue
-		}
-
-		var doc struct {
-			Jobs map[string]struct {
-				Steps []policyStep `json:"steps"`
-			} `json:"jobs"`
-		}
-		if err := yaml.Unmarshal(raw, &doc); err != nil {
-			t.Fatalf("parse %s: %v", path, err)
-		}
-
-		for jobName, job := range doc.Jobs {
-			where := fmt.Sprintf("%s: job %q", base, jobName)
-			assertStepsForbidForeignSigners(t, where, base == attestWorkflowName, job.Steps)
-		}
-	}
 }
 
-// policyStep is the subset of a workflow/composite step the signer checks
-// reason about.
-type policyStep struct {
-	Name string `json:"name"`
-	Run  string `json:"run"`
-	Uses string `json:"uses"`
-}
-
-func assertStepsForbidForeignSigners(t *testing.T, where string, allowCosign bool, steps []policyStep) {
-	t.Helper()
-
-	for _, step := range steps {
-		if attestProvenanceAction.MatchString(step.Uses) {
-			t.Errorf("%s step %q uses %s; provenance must be emitted by attest.yml "+
-				"via cosign, not actions/attest-build-provenance",
-				where, step.Name, step.Uses)
-		}
-		if allowCosign {
-			continue
-		}
-		if m := cosignSignCmds.FindStringSubmatch(step.Run); m != nil {
-			t.Errorf("%s step %q invokes `cosign %s`; attest.yml must be the sole signer",
-				where, step.Name, m[1])
-		}
-	}
-}
-
-// compositeActionFiles returns every local composite action.yml.
-func compositeActionFiles(t *testing.T) []string {
-	t.Helper()
-
-	paths, err := filepath.Glob("../../.github/actions/*/action.yml")
-	if err != nil {
-		t.Fatalf("glob composite actions: %v", err)
-	}
-	return paths
-}
-
-func isCompositeActionPath(path string) bool {
-	return strings.Contains(filepath.ToSlash(path), "/.github/actions/")
-}
-
-func relGithub(path string) string {
-	slash := filepath.ToSlash(path)
-	if i := strings.Index(slash, ".github/"); i >= 0 {
-		return slash[i:]
-	}
-	return filepath.Base(path)
-}
-
-func assertAttestIsWorkflowCallOnly(t *testing.T) {
-	t.Helper()
-
-	raw, err := os.ReadFile(filepath.Join(workflowDir, attestWorkflowName))
-	if err != nil {
-		t.Fatalf("read %s: %v", attestWorkflowName, err)
-	}
-
-	triggers := workflowTriggers(raw, t)
-	if len(triggers) == 0 {
-		t.Fatalf("%s declares no triggers; it must be workflow_call-only", attestWorkflowName)
-	}
-	for name := range triggers {
-		if name != "workflow_call" {
-			t.Errorf("%s is triggered by %q; only workflow_call is allowed so the signing "+
-				"identity cannot be reached from a branch or dispatch",
-				attestWorkflowName, name)
-		}
-	}
-	if _, ok := triggers["workflow_call"]; !ok {
-		t.Errorf("%s is missing workflow_call", attestWorkflowName)
-	}
-}
-
-// assertAttestIsInvokedAsReusableWorkflow checks that every release-path caller
-// reaches attest.yml through `uses: ./…`, not by inlining its jobs. Without
-// this, a refactor could copy the attest steps into release.yml, keep
-// workflow_call on an unused attest.yml, and demote the Fulcio identity while
-// TestAttestIsSoleSigner still saw cosign only inside attest.yml — until the
-// copy started signing too.
 func assertAttestIsInvokedAsReusableWorkflow(t *testing.T) {
 	t.Helper()
 
@@ -205,34 +64,6 @@ func assertAttestIsInvokedAsReusableWorkflow(t *testing.T) {
 		t.Fatalf("no release-path workflow calls ./.github/workflows/attest.yml; " +
 			"attestation must stay behind a reusable-workflow boundary")
 	}
-}
-
-// workflowTriggers returns the `on:` block, tolerating YAML 1.1 turning a bare
-// `on:` key into the boolean true (the same hazard workflowCallOutputs faces).
-func workflowTriggers(raw []byte, t *testing.T) map[string]any {
-	t.Helper()
-
-	var doc map[string]any
-	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		t.Fatalf("parse workflow triggers: %v", err)
-	}
-	for _, key := range []string{"on", boolTrue} {
-		switch v := doc[key].(type) {
-		case map[string]any:
-			return v
-		case string:
-			return map[string]any{v: nil}
-		case []any:
-			out := map[string]any{}
-			for _, item := range v {
-				if s, ok := item.(string); ok {
-					out[s] = nil
-				}
-			}
-			return out
-		}
-	}
-	return nil
 }
 
 // TestAttestPredicateUsesOnlyTrustedContext pins the half of ADR-074 D2 that
