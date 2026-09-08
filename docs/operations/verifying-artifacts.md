@@ -110,6 +110,7 @@ minted inside the reusable workflow. The published commands keep the exact pin, 
 `TestVerificationUsesExactIdentity` / `TestPublishedVerifyCommandsAreExact` fail the
 build if a release-path workflow or a fenced doc command drifts to the regexp form. The
 boundary itself is gated by `TestAttestIsSoleSigner`,
+`TestAttestIsInvokedAsReusableWorkflow`,
 `TestAttestPredicateUsesOnlyTrustedContext`, and
 `TestAttestBuilderIdGuardRejectsAttestorAsBuilder`.
 
