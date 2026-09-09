@@ -36,13 +36,13 @@ nvcrectl setup init
 1. **deps** — Kubeflow Trainer (required for `TrainJob` workloads)
 2. **helm** — the NVCRE Helm chart: CRDs, controller Deployment, RBAC, metrics Service/ServiceMonitor, and built-in LogProfiles. The CRDs are server-side-applied from the chart before the Helm release is installed or upgraded, on every run — Helm alone would only install them once and never update them.
 
-The Helm chart is pulled from GHCR at the CLI's own version, so a tagged release needs no version flag. **Dev builds (built from `main`) require `--version`** to name the chart version explicitly:
+By default the Helm chart is pulled from GHCR at the CLI's own version, so a tagged release needs no version flag. **Dev builds (built from `main`) require `--version`** to name the chart version explicitly:
 
 ```bash
 nvcrectl setup init --version <chart-version>
 ```
 
-The image and chart are public on GHCR, so no token is needed. For clusters that pull from a private mirror or fork, `--image-pull-secret <github-token>` creates the `nvcrectl-pull-secret` image pull secret in the `nvcre` namespace and authenticates the Helm chart pull. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, and `--auto-approve` to skip the confirmation prompt in CI.
+The image and chart are public on GHCR, so no token is needed. For clusters that pull from a private mirror or fork, `--image-pull-secret <github-token>` creates the `nvcrectl-pull-secret` image pull secret in the `nvcre` namespace and authenticates the Helm chart pull. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, and `--auto-approve` to skip the confirmation prompt in CI. On clusters that cannot reach GHCR at all, `--chart-ref` and `--trainer-chart-ref` point both chart pulls at a mirror registry; see [Restricted egress and air-gapped installs](#restricted-egress-and-air-gapped-installs).
 
 Check the installation at any time:
 
@@ -82,6 +82,23 @@ Key chart values:
 | `manager.affinity` | `{}` | Controller pod affinity |
 | `metrics.port` | `8443` | Controller metrics port |
 | `metrics.serviceMonitor.enabled` | `true` | Install a `ServiceMonitor` (requires the Prometheus Operator CRDs; set to `false` on clusters without them) |
+
+### Restricted egress and air-gapped installs
+
+By default the install path reaches GHCR for three artifacts: the NVCRE Helm chart (`oci://ghcr.io/nvidia/cluster-readiness-engine`), the Kubeflow Trainer Helm chart (`oci://ghcr.io/kubeflow/charts/kubeflow-trainer`), and the controller image (`ghcr.io/nvidia/cluster-readiness-engine/manager`). On clusters that cannot reach GHCR, either point `setup init` at a mirror or bypass it entirely.
+
+**Mirror the artifacts.** Copy both charts and the image set to a registry the cluster can reach: the controller image, the images referenced by the Kubeflow Trainer chart, and the workload images used by the certification categories you plan to run. Then override every reference on `setup init`:
+
+```bash
+nvcrectl setup init \
+  --chart-ref oci://registry.example.com/mirror/cluster-readiness-engine \
+  --trainer-chart-ref oci://registry.example.com/mirror/kubeflow-trainer \
+  --image registry.example.com/mirror/manager:<version>
+```
+
+`--chart-ref` is used both for the release install and for the CRD extraction (`helm show crds`), so the `helm` phase needs no GHCR access. The chart versions do not change: the mirror must host the NVCRE chart at the CLI version (or `--version`) and the Kubeflow Trainer chart at the pinned version (`2.2.1` for this release). If the mirror requires authentication for the chart pulls, run `helm registry login <mirror>` before `setup init`; `--image-pull-secret` authenticates against `ghcr.io` only.
+
+**Bypass `setup init`.** Install the in-repo chart (`helm/cluster-readiness-engine` in the source tree) directly with `helm install`, setting `manager.image.repository` and `manager.image.tag` to your mirrored image, and install Kubeflow Trainer manually. Nothing is pulled from a chart registry, but you take on installing the Kubeflow Trainer version this release supports and re-applying the CRDs on upgrades yourself.
 
 ## Resource requirements
 

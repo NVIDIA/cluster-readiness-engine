@@ -22,13 +22,13 @@ import (
 // when reconciling the chart CRDs.
 const crdFieldManager = "nvcrectl-setup"
 
-// fetchChartCRDs runs `helm show crds` against the same OCI chart source and
+// fetchChartCRDs runs `helm show crds` against the same chart source and
 // version installHelmRelease deploys, and returns the chart's crds/ directory
 // as one multi-document YAML stream. Only stdout is treated as manifest data;
 // stderr (registry warnings and errors) is surfaced separately on failure so
 // it can never corrupt the YAML stream.
-func fetchChartCRDs(helmPath, chartVersion string, out io.Writer) ([]byte, error) {
-	args := []string{"show", "crds", helmChartOCI, helmFlagVersion, chartVersion}
+func fetchChartCRDs(helmPath, chartRef, chartVersion string, out io.Writer) ([]byte, error) {
+	args := chartCRDsArgs(chartRef, chartVersion)
 
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command(helmPath, args...) // #nosec G204 -- helmPath and args come from this CLI, not from untrusted input
@@ -40,6 +40,16 @@ func fetchChartCRDs(helmPath, chartVersion string, out io.Writer) ([]byte, error
 		return nil, fmt.Errorf("helm show crds: %w", err)
 	}
 	return stdout.Bytes(), nil
+}
+
+// chartCRDsArgs returns the `helm show crds` argument list for the NVCRE
+// chart. An empty chartRef means the published GHCR chart, matching
+// nvcreHelmUpgradeArgs so the CRDs always come from the chart being installed.
+func chartCRDsArgs(chartRef, chartVersion string) []string {
+	if chartRef == "" {
+		chartRef = helmChartOCI
+	}
+	return []string{"show", "crds", chartRef, helmFlagVersion, chartVersion}
 }
 
 // applyChartCRDs server-side-applies every CustomResourceDefinition document

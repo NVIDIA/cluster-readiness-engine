@@ -4,11 +4,49 @@
 package setup
 
 import (
+	"encoding/json"
 	"testing"
 
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sigsyaml "sigs.k8s.io/yaml"
 )
+
+func TestHelmChartArgs(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "helm-chart-args",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			ChartRef        string `yaml:"chartRef"`
+			TrainerChartRef string `yaml:"trainerChartRef"`
+			ChartVersion    string `yaml:"chartVersion"`
+			ImageName       string `yaml:"imageName"`
+			ImageTag        string `yaml:"imageTag"`
+			PullSecretName  string `yaml:"pullSecretName"`
+		}
+		if err := sigsyaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
+
+		b, err := json.MarshalIndent(struct {
+			NVCREUpgradeArgs   []string `json:"nvcreUpgradeArgs"`
+			NVCREShowCRDsArgs  []string `json:"nvcreShowCRDsArgs"`
+			TrainerUpgradeArgs []string `json:"trainerUpgradeArgs"`
+		}{
+			nvcreHelmUpgradeArgs(in.ChartRef, in.ChartVersion, in.ImageName, in.ImageTag, in.PullSecretName),
+			chartCRDsArgs(in.ChartRef, in.ChartVersion),
+			trainerHelmUpgradeArgs(in.TrainerChartRef),
+		}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
+}
 
 func TestHelmChartVersion(t *testing.T) {
 	assert.Equal(t, "v1.20.0", helmChartVersion("v1.20.0"))

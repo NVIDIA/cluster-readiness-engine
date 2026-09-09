@@ -1,0 +1,47 @@
+{
+  "nvcreUpgradeArgs": [
+    "upgrade",
+    "--install",
+    "nvcre",
+    "oci://registry.example.com/mirror/cluster-readiness-engine",
+    "--namespace",
+    "nvcre",
+    "--create-namespace",
+    "--version",
+    "0.2.0",
+    "--set",
+    "manager.image.repository=registry.example.com/mirror/manager",
+    "--set",
+    "manager.image.tag=v0.2.0",
+    "--wait",
+    "--timeout",
+    "5m0s",
+    "--set",
+    "manager.imagePullSecrets[0].name=nvcrectl-pull-secret"
+  ],
+  "nvcreShowCRDsArgs": [
+    "show",
+    "crds",
+    "oci://registry.example.com/mirror/cluster-readiness-engine",
+    "--version",
+    "0.2.0"
+  ],
+  "trainerUpgradeArgs": [
+    "upgrade",
+    "--install",
+    "kubeflow-trainer",
+    "oci://registry.example.com/mirror/kubeflow-trainer",
+    "--namespace",
+    "kubeflow-system",
+    "--create-namespace",
+    "--version",
+    "2.2.1",
+    "--set",
+    "manager.tolerations[0].operator=Exists",
+    "--set",
+    "jobset.controller.tolerations[0].operator=Exists",
+    "--wait",
+    "--timeout",
+    "5m0s"
+  ]
+}

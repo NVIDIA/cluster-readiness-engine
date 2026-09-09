@@ -111,8 +111,10 @@ type helmInstallParams struct {
 	versionOverride string
 	registryToken   string
 	image           string
-	pullSecretName  string
-	out             io.Writer
+	// chartRef is the NVCRE chart location; empty means helmChartOCI.
+	chartRef       string
+	pullSecretName string
+	out            io.Writer
 }
 
 // installHelmRelease installs or upgrades NVCRE via the helm CLI, after
@@ -144,7 +146,7 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 	// source on every run; server-side apply is idempotent, so first-install
 	// behavior is unchanged.
 	_, _ = fmt.Fprintf(p.out, "[helm] Applying NVCRE CRDs from chart version %s...\n", chartVersion)
-	crds, err := fetchChartCRDs(helmPath, chartVersion, p.out)
+	crds, err := fetchChartCRDs(helmPath, p.chartRef, chartVersion, p.out)
 	if err != nil {
 		return "", err
 	}
@@ -153,8 +155,23 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 	}
 
 	imageName, imageTag := parseImage(p.image)
+	args := nvcreHelmUpgradeArgs(p.chartRef, chartVersion, imageName, imageTag, p.pullSecretName)
+	args = appendKubeconfigArgs(args, p.kubeconfig, p.kubeContext)
+
+	_, _ = fmt.Fprintf(p.out,
+		"[helm] Installing NVCRE Helm release %q in namespace %s...\n",
+		helmReleaseName, nvcreNamespace)
+	return runHelmCapture(helmPath, args, p.out)
+}
+
+// nvcreHelmUpgradeArgs returns the `helm upgrade --install` argument list for
+// the NVCRE release. An empty chartRef means the published GHCR chart.
+func nvcreHelmUpgradeArgs(chartRef, chartVersion, imageName, imageTag, pullSecretName string) []string {
+	if chartRef == "" {
+		chartRef = helmChartOCI
+	}
 	args := []string{
-		"upgrade", "--install", helmReleaseName, helmChartOCI,
+		"upgrade", "--install", helmReleaseName, chartRef,
 		helmFlagNamespace, nvcreNamespace,
 		"--create-namespace",
 		helmFlagVersion, chartVersion,
@@ -163,15 +180,10 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 		helmFlagWait,
 		helmFlagTimeout, helmInstallTimeout.String(),
 	}
-	if p.pullSecretName != "" {
-		args = append(args, helmFlagSet, "manager.imagePullSecrets[0].name="+p.pullSecretName)
+	if pullSecretName != "" {
+		args = append(args, helmFlagSet, "manager.imagePullSecrets[0].name="+pullSecretName)
 	}
-	args = appendKubeconfigArgs(args, p.kubeconfig, p.kubeContext)
-
-	_, _ = fmt.Fprintf(p.out,
-		"[helm] Installing NVCRE Helm release %q in namespace %s...\n",
-		helmReleaseName, nvcreNamespace)
-	return runHelmCapture(helmPath, args, p.out)
+	return args
 }
 
 type helmUninstallParams struct {
@@ -205,8 +217,9 @@ func uninstallHelmRelease(p helmUninstallParams) error {
 // installTrainerHelmRelease installs Kubeflow Trainer via the helm CLI and
 // returns the captured helm transcript so the [deps] phase can classify a
 // failure (ADR-073). The helm CLI resolves OCI sub-chart dependencies
-// (including JobSet) automatically.
-func installTrainerHelmRelease(kubeconfig, kubeContext string, out io.Writer) (string, error) {
+// (including JobSet) automatically. chartRef overrides the chart location;
+// empty means the published GHCR chart.
+func installTrainerHelmRelease(kubeconfig, kubeContext, chartRef string, out io.Writer) (string, error) {
 	helmPath, err := ensureHelm()
 	if err != nil {
 		return "", err
@@ -214,8 +227,19 @@ func installTrainerHelmRelease(kubeconfig, kubeContext string, out io.Writer) (s
 
 	_, _ = fmt.Fprintf(out, "[deps] Installing Kubeflow Trainer Helm release %q in namespace %s...\n",
 		trainerReleaseName, trainerNamespace)
-	args := []string{
-		"upgrade", "--install", trainerReleaseName, trainerHelmChartOCI,
+	args := appendKubeconfigArgs(trainerHelmUpgradeArgs(chartRef), kubeconfig, kubeContext)
+	return runHelmCapture(helmPath, args, out)
+}
+
+// trainerHelmUpgradeArgs returns the `helm upgrade --install` argument list
+// for the Kubeflow Trainer release. An empty chartRef means the published
+// GHCR chart.
+func trainerHelmUpgradeArgs(chartRef string) []string {
+	if chartRef == "" {
+		chartRef = trainerHelmChartOCI
+	}
+	return []string{
+		"upgrade", "--install", trainerReleaseName, chartRef,
 		helmFlagNamespace, trainerNamespace,
 		"--create-namespace",
 		helmFlagVersion, strings.TrimPrefix(kubeflowTrainerVersion, "v"),
@@ -224,8 +248,6 @@ func installTrainerHelmRelease(kubeconfig, kubeContext string, out io.Writer) (s
 		helmFlagWait,
 		helmFlagTimeout, helmInstallTimeout.String(),
 	}
-	args = appendKubeconfigArgs(args, kubeconfig, kubeContext)
-	return runHelmCapture(helmPath, args, out)
 }
 
 // uninstallTrainerHelmRelease removes the Kubeflow Trainer Helm release.

@@ -944,7 +944,7 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 	if cfg.doSetup {
 		_, _ = fmt.Fprintln(out, "[setup] Installing dependencies...")
 		initErr := setup.RunInit(cfg.version, cfg.controllerImage, cfg.controllerPullSecret, "", true,
-			cfg.configFlags, "", nil, out)
+			cfg.configFlags, "", "", "", nil, out)
 		if initErr != nil {
 			return fmt.Errorf("[setup] %w", initErr)
 		}

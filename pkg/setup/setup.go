@@ -75,6 +75,7 @@ func NewCommand(version string) *cobra.Command {
 
 func newInitCommand(version string) *cobra.Command {
 	var image, skipPhases, imagePullSecret string
+	var chartRef, trainerChartRef string
 	var autoApprove bool
 	var versionOverride string
 
@@ -88,10 +89,12 @@ func newInitCommand(version string) *cobra.Command {
 
 Phases:
   [deps]  Kubeflow Trainer ` + kubeflowTrainerVersion + `
-  [helm]  NVCRE Helm chart (oci://ghcr.io/nvidia/cluster-readiness-engine)
+  [helm]  NVCRE Helm chart (` + helmChartOCI + `)
 
 The Helm chart is pulled from GHCR at the CLI version. Dev builds require --version.
 Pass --image-pull-secret to authenticate against a private GHCR registry.
+Pass --chart-ref and --trainer-chart-ref to pull the charts from a mirror
+registry instead of GHCR (for restricted-egress clusters).
 
 Use --skip-phases=deps to skip Kubeflow Trainer installation.
 Use --auto-approve to skip the confirmation prompt (for CI/automation).
@@ -107,7 +110,8 @@ schemas (Helm alone only installs CRDs on the first install).`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return RunInit(version, image, imagePullSecret, skipPhases, autoApprove,
-				configFlags, versionOverride, os.Stdin, os.Stderr)
+				configFlags, versionOverride, chartRef, trainerChartRef,
+				os.Stdin, os.Stderr)
 		},
 	}
 
@@ -118,6 +122,10 @@ schemas (Helm alone only installs CRDs on the first install).`,
 			defaultImageRegistry+"/"+defaultImageRepository+":<version>)")
 	cmd.Flags().StringVar(&imagePullSecret, "image-pull-secret", "",
 		"GitHub token — creates ghcr.io pull secret and authenticates Helm chart pull")
+	cmd.Flags().StringVar(&chartRef, "chart-ref", helmChartOCI,
+		"Override NVCRE Helm chart location (e.g., a mirror registry)")
+	cmd.Flags().StringVar(&trainerChartRef, "trainer-chart-ref", trainerHelmChartOCI,
+		"Override Kubeflow Trainer Helm chart location (e.g., a mirror registry)")
 	cmd.Flags().BoolVar(&autoApprove, "auto-approve", false,
 		"Skip interactive confirmation prompt (for CI/automation)")
 	cmd.Flags().StringVar(&versionOverride, "version", "",
@@ -127,15 +135,24 @@ schemas (Helm alone only installs CRDs on the first install).`,
 	return cmd
 }
 
-// runInit executes the init phases sequentially.
+// RunInit executes the init phases sequentially. chartRef and trainerChartRef
+// override the chart locations the NVCRE and Kubeflow Trainer releases are
+// installed from; empty means the published GHCR charts.
 func RunInit(
 	version string,
 	image, imagePullSecret, skipPhases string, autoApprove bool,
 	configFlags *kubeconfig.ConfigFlags, versionOverride string,
+	chartRef, trainerChartRef string,
 	in io.Reader, out io.Writer,
 ) error {
 	skip := parseSkipPhases(skipPhases)
 	kubeconfigPath, kubeContext := *configFlags.KubeConfig, *configFlags.Context
+	if chartRef == "" {
+		chartRef = helmChartOCI
+	}
+	if trainerChartRef == "" {
+		trainerChartRef = trainerHelmChartOCI
+	}
 
 	// [preflight]
 	_, _ = fmt.Fprintln(out, "[preflight] Checking prerequisites...")
@@ -167,8 +184,8 @@ func RunInit(
 		_, _ = fmt.Fprintf(out, "  Server:   %s\n", serverURL)
 		_, _ = fmt.Fprintf(out, "\n  Phases:\n")
 		printPhaseList(out, skip, []phaseInfo{
-			{phaseDeps, fmt.Sprintf("Kubeflow Trainer %s", kubeflowTrainerVersion)},
-			{"helm", fmt.Sprintf("NVCRE Helm chart (%s)", image)},
+			{phaseDeps, fmt.Sprintf("Kubeflow Trainer %s (%s)", kubeflowTrainerVersion, trainerChartRef)},
+			{"helm", fmt.Sprintf("NVCRE Helm chart (%s), image %s", chartRef, image)},
 		})
 		_, _ = fmt.Fprintf(out,
 			"\nDo you want to proceed? Only 'yes' will be accepted to confirm.\n")
@@ -187,7 +204,7 @@ func RunInit(
 		skip:        skip,
 		in:          in,
 		autoApprove: autoApprove,
-		trainer:     newTrainerHelm(kubeconfigPath, kubeContext),
+		trainer:     newTrainerHelm(kubeconfigPath, kubeContext, trainerChartRef),
 		out:         out,
 	}
 
@@ -207,6 +224,7 @@ func RunInit(
 		versionOverride: versionOverride,
 		registryToken:   imagePullSecret,
 		image:           image,
+		chartRef:        chartRef,
 		pullSecretName:  pullSecret,
 		out:             out,
 	}); err != nil {
@@ -260,12 +278,13 @@ type trainerHelm struct {
 	uninstall func(out io.Writer) error
 }
 
-// newTrainerHelm returns the CLI-backed trainerHelm implementation.
-func newTrainerHelm(kubeconfigPath, kubeContext string) trainerHelm {
+// newTrainerHelm returns the CLI-backed trainerHelm implementation. chartRef
+// is the Kubeflow Trainer chart location; empty means the published GHCR chart.
+func newTrainerHelm(kubeconfigPath, kubeContext, chartRef string) trainerHelm {
 	return trainerHelm{
 		state: newTrainerStateQuery(kubeconfigPath, kubeContext),
 		install: func(out io.Writer) (string, error) {
-			return installTrainerHelmRelease(kubeconfigPath, kubeContext, out)
+			return installTrainerHelmRelease(kubeconfigPath, kubeContext, chartRef, out)
 		},
 		uninstall: func(out io.Writer) error {
 			return uninstallTrainerHelmRelease(kubeconfigPath, kubeContext, out)
