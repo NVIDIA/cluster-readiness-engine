@@ -243,6 +243,12 @@ func BuildTorchRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 // - Worker nodes with sshd, IPC_LOCK, readiness probe, and cfg.Env
 // - Launcher with mpirun, SSH key setup, and cfg.Env
 //
+// The worker's openssh-server install is guarded by `test -x /usr/sbin/sshd`,
+// so images that already ship sshd start without any package-manager egress
+// (issue #319: air-gapped and restricted-egress clusters). The guard tests
+// the exact path the chain execs (/usr/sbin/sshd); a PATH lookup could
+// disagree with it in either direction.
+//
 // cfg.Env goes on both containers as container-level env, the same way
 // BuildTorchRuntime emits it (issue #68: it used to be dropped here, so
 // spec.env behaved differently between the two frameworks). On the launcher
@@ -260,8 +266,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 		"command": []string{"sh", "-c"},
 		"args": []string{
 			"set -x && " +
-				"apt-get update && " +
-				"apt-get install -y --no-install-recommends openssh-server && " +
+				"test -x /usr/sbin/sshd || (apt-get update && apt-get install -y --no-install-recommends openssh-server) && " +
 				"mkdir -p /var/run/sshd && " +
 				"chmod 0755 /var/run/sshd && " +
 				"mkdir -p /root/.ssh && " +

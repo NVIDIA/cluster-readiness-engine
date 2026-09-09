@@ -32,6 +32,19 @@ A **gray failure** is when hardware is degraded but no health monitor fires. The
 
 Failed nodes are recorded in the Certification status with a reason (`HardwareFailureDetected`, `ThresholdViolation`, or `WorkloadFailed`). NVCRE never modifies nodes — it does not taint, cordon, or patch them. Node quarantine and repair are handled by your platform's own tooling. After repairing or replacing the failed hardware, re-run the Certification to verify the fix.
 
+### Can MPI workloads run in air-gapped or restricted-egress clusters?
+
+Yes, if the workload image already ships `sshd`. Multi-node MPI workloads (the multi-node NCCL catalog entries and WorkloadRun's `framework.mpi`) start each worker container with a bootstrap command that installs `openssh-server` via `apt-get` only when `/usr/sbin/sshd` is not already present in the image (`test -x /usr/sbin/sshd || (apt-get update && apt-get install ...)`). The loopback NCCL entries run single-node and have no sshd bootstrap. Building a workload image with `openssh-server` preinstalled makes the install a no-op, so the workers start without any package-manager egress:
+
+```dockerfile
+FROM <workload base image>
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends openssh-server && \
+    rm -rf /var/lib/apt/lists/*
+```
+
+For WorkloadRun, point `spec.image` at the prebaked image. Images without `sshd` still install it at pod start, which requires egress to the image's package repositories. On AWS GB300 the platform override replaces the worker command entirely with one that assumes `sshd` is preinstalled in the nccl-tests image, so no bootstrap runs there.
+
 ## Development
 
 ### Why do I need to run `make manifests generate` after editing types?
