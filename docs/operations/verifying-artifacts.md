@@ -374,8 +374,110 @@ using the `cosign` provider, matching the same OIDC issuer and identity used abo
 Whether that path works end to end against a real Flux version is still being confirmed
 (issue #267), so this page does not yet publish a manifest for it — an untested
 verification config is exactly the kind of false assurance the rest of this page exists to
-avoid. Admission-policy samples for Kyverno and the Sigstore policy-controller are tracked
-in issue #272.
+avoid.
+
+### Admission-policy samples
+
+Samples under [`config/samples/policy/`](https://github.com/NVIDIA/cluster-readiness-engine/tree/main/config/samples/policy)
+pin the same issuer and `attest.yml@refs/tags/<TAG>` identity as the commands above, and
+they expect the **new-bundle / OCI referrer** layout ADR-074 publishes (not a legacy
+`sha256-<digest>.sig` tag).
+
+| Verifier | Reads our format? | Sample |
+|---|---|---|
+| `cosign verify` / `verify-attestation` (v3.1.3) | Yes | this page |
+| Kyverno `ImageValidatingPolicy` (v1.19+) | Yes — referrer / bundle path | `config/samples/policy/kyverno-verify-images.yaml` |
+| Kyverno `ClusterPolicy` / `verifyImages` | **No** — looks for legacy `.sig` tags | do not use |
+| Sigstore policy-controller with `signatureFormat: bundle` | Yes — attestations in bundle form | `config/samples/policy/policy-controller-verify-images.yaml` |
+| Sigstore policy-controller at chart default (legacy format) | **No** against current release digests | set `signatureFormat: bundle` |
+| Flux `OCIRepository` `spec.verify.provider: cosign` | Unconfirmed (issue #267) | — |
+
+Both samples require a signature **and** SLSA Build Provenance v1 on the image **index**
+digest, matching the two `cosign` commands in [Verifying the container image](#verifying-the-container-image).
+A per-platform child manifest is signed and carries a CycloneDX SBOM but **not**
+provenance (`emit_provenance: false` on those legs); pin the index digest in Helm with
+`manager.image.digest`, as above.
+
+#### Apply runbook
+
+1. **Edit the pinned tag** in the sample so `subject:` names the release you run. Nothing
+   in CI rewrites that string when a new tag ships. Applying a pin that does not match the
+   image already in the cluster will deny the next upgrade, `rollout restart`, node drain,
+   or crash-loop replacement until you edit the policy.
+2. **Label the namespace** that runs the controller (default `nvcre`) so enforcement is
+   opt-in, not cluster-wide:
+
+   ```bash
+   # Kyverno sample (matchConstraints.namespaceSelector)
+   kubectl label namespace nvcre \
+     kubernetes.nvcre.nvidia.com/image-admission=enforce
+
+   # policy-controller sample (chart-default opt-in)
+   kubectl label namespace nvcre policy.sigstore.dev/include=true
+   ```
+
+3. Apply the sample that matches the admission controller you already run:
+
+   ```bash
+   kubectl apply -f config/samples/policy/kyverno-verify-images.yaml
+   # or
+   kubectl apply -f config/samples/policy/policy-controller-verify-images.yaml
+   ```
+
+#### Why the samples look the way they do
+
+These constraints are load-bearing; a first attempt that skipped them was parked (issue
+#272) because it would break an operator's cluster.
+
+| Concern | What the samples do |
+|---|---|
+| Namespace scoping | Kyverno: `matchConstraints.namespaceSelector` on an opt-in label. policy-controller: namespace must carry `policy.sigstore.dev/include=true`. |
+| `failurePolicy` / enforce mode | Fail-closed on purpose, but only after the namespace opt-in above. Image globs are evaluated *inside* the controller and cannot narrow which requests hit a Fail webhook. |
+| Provenance | Both require a verified `https://slsa.dev/provenance/v1` attestation, not signature-only. |
+| Identity matching | Live field is exact `subject:` for one release tag. A regexp belongs under `subjectRegExp:` — putting `refs/tags/.+` under `subject:` matches no SAN and denies everything. Image globs name `.../manager`, `.../manager:*`, and `.../manager@*` (or `@sha256:*`); they deliberately avoid a `manager*` prefix wildcard. |
+| Bundle format | policy-controller sets `signatureFormat: bundle` and checks the `cosign/sign/v1` + `slsa.dev/provenance/v1` attestations that referrers expose. |
+
+#### Kind reproduction (operator / maintainer)
+
+This environment may not have Docker or Kind. On a machine that does, the intended check
+is server-side dry-run so the admission webhook actually runs:
+
+```bash
+TAG=v0.2.0
+IMAGE=ghcr.io/nvidia/cluster-readiness-engine/manager
+DIGEST="$(crane digest "${IMAGE}:${TAG}")"
+ID="https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}"
+
+# Cluster with Kyverno >= v1.19 (or policy-controller >= v0.15.0 + signatureFormat: bundle)
+kubectl create namespace nvcre --dry-run=client -o yaml | kubectl apply -f -
+kubectl label namespace nvcre \
+  kubernetes.nvcre.nvidia.com/image-admission=enforce \
+  policy.sigstore.dev/include=true --overwrite
+
+# Edit the sample's subject pin to ${TAG}, then:
+kubectl apply -f config/samples/policy/kyverno-verify-images.yaml
+
+# Admitted: signed release index by digest
+kubectl run nvcre-admit --image="${IMAGE}@${DIGEST}" -n nvcre \
+  --dry-run=server --restart=Never -o name
+
+# Denied: signed under publish.yml@refs/heads/main (development image)
+kubectl run nvcre-deny-main --image="${IMAGE}:main" -n nvcre \
+  --dry-run=server --restart=Never -o name
+
+# Denied: unsigned tag under our repository (not a real release digest)
+kubectl run nvcre-deny-unsigned --image="${IMAGE}:not-a-release" -n nvcre \
+  --dry-run=server --restart=Never -o name
+
+# Untouched: image outside the glob, even in the labeled namespace
+kubectl run nvcre-other --image="busybox:1.36" -n nvcre \
+  --dry-run=server --restart=Never -o name
+```
+
+CI does **not** reproduce live admission: it needs a cluster and registry access. Structural
+tests under `test/docspolicy` pin the kind, fail-closed policy, issuer, identity prefix,
+namespace selector, provenance attestation, narrow globs, and `signatureFormat: bundle`
+so the samples cannot silently rot into the parked shape.
 
 ## Troubleshooting
 
