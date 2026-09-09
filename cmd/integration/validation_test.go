@@ -39,7 +39,10 @@ type validationCause struct {
 // #283). The gangScheduler cases check that the field stays optional, that a
 // scheduler name is mandatory once the field is set, and that the queue is
 // held to the Kubernetes label value rules before it is copied into the
-// kai.scheduler/queue label (issue #300).
+// queue label (issue #300). The queueLabelKey cases check that the key is held
+// to the Kubernetes label key rules: the qualified-name pattern rejects a bad
+// name segment, and the CEL rule rejects a prefix over 253 characters, which
+// the pattern alone cannot count (ADR-076).
 func TestCertificationValidation(t *testing.T) {
 	suite := &testutil.IntegrationTestSuite{}
 	suite.Environment.CRDDirectoryPaths = []string{"../../helm/cluster-readiness-engine/crds"}

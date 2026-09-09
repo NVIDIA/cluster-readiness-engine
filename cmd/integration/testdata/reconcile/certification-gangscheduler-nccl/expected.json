@@ -263,6 +263,11 @@
                       },
                       "spec": {
                         "template": {
+                          "metadata": {
+                            "labels": {
+                              "kai.scheduler/queue": "high-priority"
+                            }
+                          },
                           "spec": {
                             "containers": [
                               {
@@ -352,6 +357,11 @@
                       },
                       "spec": {
                         "template": {
+                          "metadata": {
+                            "labels": {
+                              "kai.scheduler/queue": "high-priority"
+                            }
+                          },
                           "spec": {
                             "containers": [
                               {

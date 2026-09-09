@@ -273,6 +273,7 @@ func BuildWorkflowSpec(
 	if spec.GangScheduler != nil {
 		rtCfg.GangSchedulerName = spec.GangScheduler.SchedulerName
 		rtCfg.GangSchedulerQueue = spec.GangScheduler.Queue
+		rtCfg.GangSchedulerQueueLabelKey = spec.GangScheduler.QueueLabelKey
 	}
 
 	var runtimeDep nvcrev1alpha1.DependencySpec

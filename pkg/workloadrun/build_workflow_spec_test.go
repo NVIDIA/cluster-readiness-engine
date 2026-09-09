@@ -5,6 +5,7 @@ package workloadrun
 
 import (
 	"encoding/json"
+	"sort"
 	"testing"
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
@@ -100,9 +101,16 @@ type projection struct {
 	// pkg/platform when GangScheduler is set. Omitted when empty so that cases
 	// without gang scheduling do not need to carry a blank field.
 	GangSchedulerName string `json:"gangSchedulerName,omitempty"`
-	// GangSchedulerQueue is the kai.scheduler/queue label injected into pod
-	// template metadata by pkg/platform. Omitted when empty.
-	GangSchedulerQueue string `json:"gangSchedulerQueue,omitempty"`
+	// GangSchedulerJobLabels and GangSchedulerPodLabels hold sorted "key=value"
+	// pairs from the worker replicatedJob's Job template metadata and pod
+	// template metadata. pkg/platform stamps the queue label at both levels
+	// (ADR-076) under gangScheduler.queueLabelKey, kai.scheduler/queue when
+	// unset, so recording whole label maps shows which key the queue landed
+	// under. They are recorded only when a gang scheduler is configured and
+	// omitted otherwise, so cases without gang scheduling do not churn when
+	// the runtime's fixed labels change.
+	GangSchedulerJobLabels []string `json:"gangSchedulerJobLabels,omitempty"`
+	GangSchedulerPodLabels []string `json:"gangSchedulerPodLabels,omitempty"`
 }
 
 func project(s *nvcrev1alpha1.WorkflowSpec) projection {
@@ -120,7 +128,7 @@ func project(s *nvcrev1alpha1.WorkflowSpec) projection {
 	for i := range s.Dependencies {
 		out.DependencyKinds = append(out.DependencyKinds, dependencyKind(&s.Dependencies[i]))
 	}
-	out.WorkerEnv, out.WorkerVolumeMounts, out.RuntimeVolumes, out.GangSchedulerName, out.GangSchedulerQueue = runtimeWorker(s)
+	out.WorkerEnv, out.WorkerVolumeMounts, out.RuntimeVolumes, out.GangSchedulerName, out.GangSchedulerJobLabels, out.GangSchedulerPodLabels = runtimeWorker(s)
 	out.LauncherEnv = runtimeLauncherEnv(s)
 	return out
 }
@@ -137,17 +145,18 @@ func dependencyKind(d *nvcrev1alpha1.DependencySpec) string {
 }
 
 // runtimeWorker reads the "node" replicatedJob out of the runtime dependency
-// and returns its env vars, volume mounts, pod volumes, schedulerName, and
-// gang-scheduler queue label. It follows one named path rather than searching
-// the document, because a search would also find containers the workload does
-// not run in (e.g. an MPI launcher).
-func runtimeWorker(s *nvcrev1alpha1.WorkflowSpec) (env, mounts, volumes []string, schedulerName, queueLabel string) {
+// and returns its env vars, volume mounts, pod volumes, schedulerName, and the
+// gang-scheduler labels on the Job template and pod template metadata. It
+// follows one named path rather than searching the document, because a search
+// would also find containers the workload does not run in (e.g. an MPI
+// launcher).
+func runtimeWorker(s *nvcrev1alpha1.WorkflowSpec) (env, mounts, volumes []string, schedulerName string, jobLabels, podLabels []string) {
 	if len(s.Dependencies) == 0 || len(s.Dependencies[0].Raw) == 0 {
-		return nil, nil, nil, "", ""
+		return nil, nil, nil, "", nil, nil
 	}
 	var rt trainerv1alpha1.TrainingRuntime
 	if err := json.Unmarshal(s.Dependencies[0].Raw, &rt); err != nil {
-		return nil, nil, nil, "", ""
+		return nil, nil, nil, "", nil, nil
 	}
 	// Pick the job by name. An MPI runtime holds two jobs, "node" and
 	// "launcher", and only "node" runs the worker processes.
@@ -156,7 +165,10 @@ func runtimeWorker(s *nvcrev1alpha1.WorkflowSpec) (env, mounts, volumes []string
 			continue
 		}
 		schedulerName = rj.Template.Spec.Template.Spec.SchedulerName
-		queueLabel = rj.Template.Labels["kai.scheduler/queue"]
+		if schedulerName != "" {
+			jobLabels = sortedLabelPairs(rj.Template.Labels)
+			podLabels = sortedLabelPairs(rj.Template.Spec.Template.Labels)
+		}
 		pod := rj.Template.Spec.Template.Spec
 		for _, v := range pod.Volumes {
 			volumes = append(volumes, v.Name)
@@ -172,9 +184,20 @@ func runtimeWorker(s *nvcrev1alpha1.WorkflowSpec) (env, mounts, volumes []string
 				mounts = append(mounts, m.Name+" at "+m.MountPath)
 			}
 		}
-		return env, mounts, volumes, schedulerName, queueLabel
+		return env, mounts, volumes, schedulerName, jobLabels, podLabels
 	}
-	return nil, nil, nil, "", ""
+	return nil, nil, nil, "", nil, nil
+}
+
+// sortedLabelPairs renders a label map as sorted "key=value" strings, so the
+// golden file is stable across map iteration order.
+func sortedLabelPairs(labels map[string]string) []string {
+	out := make([]string, 0, len(labels))
+	for k, v := range labels {
+		out = append(out, k+"="+v)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // runtimeLauncherEnv reads the env vars of the "node" container inside the

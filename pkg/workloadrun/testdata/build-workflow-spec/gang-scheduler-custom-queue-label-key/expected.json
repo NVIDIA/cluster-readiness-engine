@@ -35,13 +35,13 @@
     "dshm"
   ],
   "overrideCount": 15,
-  "gangSchedulerName": "kai-scheduler",
+  "gangSchedulerName": "runai-scheduler",
   "gangSchedulerJobLabels": [
-    "app=wr-gang",
-    "kai.scheduler/queue=high-priority",
+    "app=wr-runai",
+    "runai/queue=team-a",
     "trainer.kubeflow.org/trainjob-ancestor-step=trainer"
   ],
   "gangSchedulerPodLabels": [
-    "kai.scheduler/queue=high-priority"
+    "runai/queue=team-a"
   ]
 }

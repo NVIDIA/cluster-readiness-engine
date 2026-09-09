@@ -123,18 +123,28 @@ type RuntimeConfig struct {
 	// GangSchedulerQueue is the queue label value for the gang scheduler.
 	// Defaults to "default-queue" when GangSchedulerName is set and Queue is empty.
 	GangSchedulerQueue string
+	// GangSchedulerQueueLabelKey is the label key the queue value is written
+	// under. Defaults to "kai.scheduler/queue" when GangSchedulerName is set
+	// and the key is empty.
+	GangSchedulerQueueLabelKey string
 }
 
-// applyGangScheduler injects schedulerName into the pod spec and the queue label
-// into the pod template metadata labels when a gang scheduler is configured.
+// applyGangScheduler injects schedulerName into the pod spec and the queue
+// label into both label maps when a gang scheduler is configured.
 // podSpec is the pod spec map (sets schedulerName).
-// podLabels is the pod template metadata labels map (sets kai.scheduler/queue).
-func applyGangScheduler(cfg RuntimeConfig, podSpec, podLabels map[string]any) {
+// jobLabels is the Job template metadata labels map and podLabels the pod
+// template metadata labels map; the queue label is written to both under
+// cfg.GangSchedulerQueueLabelKey ("kai.scheduler/queue" when empty), so the
+// pods carry the label without relying on Trainer/JobSet label propagation.
+func applyGangScheduler(cfg RuntimeConfig, podSpec, jobLabels, podLabels map[string]any) {
 	if cfg.GangSchedulerName == "" {
 		return
 	}
 	podSpec[keySchedulerName] = cfg.GangSchedulerName
-	podLabels[labelKeyGangQueue] = gangSchedulerQueue(cfg.GangSchedulerQueue)
+	queueKey := gangSchedulerQueueLabelKey(cfg.GangSchedulerQueueLabelKey)
+	queue := gangSchedulerQueue(cfg.GangSchedulerQueue)
+	jobLabels[queueKey] = queue
+	podLabels[queueKey] = queue
 }
 
 // BuildTorchRuntime creates a TrainingRuntime dependency for PyTorch distributed
@@ -186,11 +196,24 @@ func BuildTorchRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 		podSpec["initContainers"] = cfg.InitContainers
 	}
 
-	podLabels := map[string]any{
+	jobLabels := map[string]any{
 		"trainer.kubeflow.org/trainjob-ancestor-step": "trainer",
 		labelKeyApp: cfg.EntryName,
 	}
-	applyGangScheduler(cfg, podSpec, podLabels)
+	podLabels := map[string]any{}
+	applyGangScheduler(cfg, podSpec, jobLabels, podLabels)
+
+	// Pod template: replicatedJobs[].template.spec.template. Its metadata only
+	// exists when gang scheduling put the queue label there, so a runtime
+	// without a gang scheduler renders byte-identically to before.
+	podTemplate := map[string]any{
+		keySpec: podSpec,
+	}
+	if len(podLabels) > 0 {
+		podTemplate[keyMetadata] = map[string]any{
+			keyLabels: podLabels,
+		}
+	}
 
 	rt := map[string]any{
 		"apiVersion": "trainer.kubeflow.org/v1alpha1",
@@ -216,12 +239,10 @@ func BuildTorchRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 							keyName: nodeJobName,
 							keyTemplate: map[string]any{
 								keyMetadata: map[string]any{
-									keyLabels: podLabels,
+									keyLabels: jobLabels,
 								},
 								keySpec: map[string]any{
-									keyTemplate: map[string]any{
-										keySpec: podSpec,
-									},
+									keyTemplate: podTemplate,
 								},
 							},
 						},
@@ -340,22 +361,32 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 			},
 		},
 	}
+	workerJobLabels := map[string]any{}
 	workerPodLabels := map[string]any{}
-	applyGangScheduler(cfg, workerPodSpec, workerPodLabels)
+	applyGangScheduler(cfg, workerPodSpec, workerJobLabels, workerPodLabels)
+
+	// Worker pod template: metadata only exists when gang scheduling put the
+	// queue label there, mirroring the Job template metadata below.
+	workerPodTemplate := map[string]any{
+		keySpec: workerPodSpec,
+	}
+	if len(workerPodLabels) > 0 {
+		workerPodTemplate[keyMetadata] = map[string]any{
+			keyLabels: workerPodLabels,
+		}
+	}
 
 	workerReplicatedJob := map[string]any{
 		keyName: nodeJobName,
 		keyTemplate: map[string]any{
 			keySpec: map[string]any{
-				keyTemplate: map[string]any{
-					keySpec: workerPodSpec,
-				},
+				keyTemplate: workerPodTemplate,
 			},
 		},
 	}
-	if len(workerPodLabels) > 0 {
+	if len(workerJobLabels) > 0 {
 		workerReplicatedJob[keyTemplate].(map[string]any)[keyMetadata] = map[string]any{
-			keyLabels: workerPodLabels,
+			keyLabels: workerJobLabels,
 		}
 	}
 
@@ -367,10 +398,22 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 			map[string]any{keyName: volumeNameSSHKeys, keyEmptyDir: map[string]any{}},
 		},
 	}
-	launcherPodLabels := map[string]any{
+	launcherJobLabels := map[string]any{
 		"trainer.kubeflow.org/trainjob-ancestor-step": "trainer",
 	}
-	applyGangScheduler(cfg, launcherPodSpec, launcherPodLabels)
+	launcherPodLabels := map[string]any{}
+	applyGangScheduler(cfg, launcherPodSpec, launcherJobLabels, launcherPodLabels)
+
+	// Launcher pod template: metadata only exists when gang scheduling put the
+	// queue label there, mirroring the worker above.
+	launcherPodTemplate := map[string]any{
+		keySpec: launcherPodSpec,
+	}
+	if len(launcherPodLabels) > 0 {
+		launcherPodTemplate[keyMetadata] = map[string]any{
+			keyLabels: launcherPodLabels,
+		}
+	}
 
 	rt := map[string]any{
 		"apiVersion": "trainer.kubeflow.org/v1alpha1",
@@ -409,12 +452,10 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 							},
 							keyTemplate: map[string]any{
 								keyMetadata: map[string]any{
-									keyLabels: launcherPodLabels,
+									keyLabels: launcherJobLabels,
 								},
 								keySpec: map[string]any{
-									keyTemplate: map[string]any{
-										keySpec: launcherPodSpec,
-									},
+									keyTemplate: launcherPodTemplate,
 								},
 							},
 						},

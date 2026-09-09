@@ -11,7 +11,8 @@
         "replicatedJob": "node",
         "schedulerName": "",
         "queueLabel": "",
-        "templateLabels": []
+        "templateLabels": [],
+        "podTemplateLabels": []
       },
       {
         "dependency": "nccl-all-reduce-runtime",
@@ -20,7 +21,8 @@
         "queueLabel": "",
         "templateLabels": [
           "trainer.kubeflow.org/trainjob-ancestor-step=trainer"
-        ]
+        ],
+        "podTemplateLabels": []
       }
     ]
   },
@@ -39,7 +41,8 @@
         "queueLabel": "",
         "templateLabels": [
           "trainer.kubeflow.org/trainjob-ancestor-step=trainer"
-        ]
+        ],
+        "podTemplateLabels": []
       }
     ]
   }

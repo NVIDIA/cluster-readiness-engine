@@ -2,20 +2,24 @@
   {
     "index": 0,
     "kind": "TrainingRuntime",
-    "rawUnchanged": true,
+    "rawUnchanged": false,
     "replicatedJobs": [
       {
         "name": "node",
-        "schedulerName": "default-scheduler",
-        "templateLabels": null,
-        "podTemplateLabels": null
+        "schedulerName": "kai-scheduler",
+        "templateLabels": {
+          "kai.scheduler/queue": "team-a"
+        },
+        "podTemplateLabels": {
+          "kai.scheduler/queue": "team-a"
+        }
       }
     ],
     "resource": {
       "apiVersion": "trainer.kubeflow.org/v1alpha1",
       "kind": "TrainingRuntime",
       "metadata": {
-        "name": "nemotron5-8b-runtime"
+        "name": "torch-runtime"
       },
       "spec": {
         "template": {
@@ -24,8 +28,18 @@
               {
                 "name": "node",
                 "template": {
+                  "metadata": {
+                    "labels": {
+                      "kai.scheduler/queue": "team-a"
+                    }
+                  },
                   "spec": {
                     "template": {
+                      "metadata": {
+                        "labels": {
+                          "kai.scheduler/queue": "team-a"
+                        }
+                      },
                       "spec": {
                         "containers": [
                           {
@@ -33,7 +47,7 @@
                             "name": "node"
                           }
                         ],
-                        "schedulerName": "default-scheduler"
+                        "schedulerName": "kai-scheduler"
                       }
                     }
                   }

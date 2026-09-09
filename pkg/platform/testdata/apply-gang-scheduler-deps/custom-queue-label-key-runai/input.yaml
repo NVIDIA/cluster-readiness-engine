@@ -1,0 +1,42 @@
+# queueLabelKey replaces kai.scheduler/queue as the key the queue value is
+# written under, at both the Job template and the pod template metadata. This
+# is the Run:ai combination from ADR-076: the Run:ai platform reads the
+# runai/queue label and ignores kai.scheduler/queue. The MPI two-job shape pins
+# that node and launcher both get the custom key.
+gangScheduler:
+  schedulerName: runai-scheduler
+  queueLabelKey: runai/queue
+  queue: team-a
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nccl-all-reduce-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      restartPolicy: OnFailure
+                      containers:
+                        - name: node
+                          image: nvcr.io/nvidia/pytorch:25.01
+            - name: launcher
+              dependsOn:
+                - name: node
+                  status: Ready
+              template:
+                metadata:
+                  labels:
+                    trainer.kubeflow.org/trainjob-ancestor-step: trainer
+                spec:
+                  template:
+                    spec:
+                      restartPolicy: OnFailure
+                      containers:
+                        - name: node
+                          image: nvcr.io/nvidia/pytorch:25.01

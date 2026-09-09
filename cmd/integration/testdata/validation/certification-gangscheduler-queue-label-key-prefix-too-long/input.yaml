@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The label key prefix is bounded at 253 characters. A 254-character prefix
+# fits the pattern (which cannot count across the variable dot-separated
+# segments) and the 317 total-length bound, so the CEL rule is the only guard
+# that can reject it: rejected.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-gang-queue-label-key-prefix
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  gangScheduler:
+    schedulerName: runai-scheduler
+    queueLabelKey: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/queue"
+    queue: team-a
+  categories:
+    - domain: training
+      variant: nemotron5-8b

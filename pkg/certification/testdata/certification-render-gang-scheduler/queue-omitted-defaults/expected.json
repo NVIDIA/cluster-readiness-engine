@@ -13,6 +13,9 @@
         "queueLabel": "default-queue",
         "templateLabels": [
           "kai.scheduler/queue=default-queue"
+        ],
+        "podTemplateLabels": [
+          "kai.scheduler/queue=default-queue"
         ]
       },
       {
@@ -23,6 +26,9 @@
         "templateLabels": [
           "kai.scheduler/queue=default-queue",
           "trainer.kubeflow.org/trainjob-ancestor-step=trainer"
+        ],
+        "podTemplateLabels": [
+          "kai.scheduler/queue=default-queue"
         ]
       }
     ]
@@ -43,6 +49,9 @@
         "templateLabels": [
           "kai.scheduler/queue=default-queue",
           "trainer.kubeflow.org/trainjob-ancestor-step=trainer"
+        ],
+        "podTemplateLabels": [
+          "kai.scheduler/queue=default-queue"
         ]
       }
     ]

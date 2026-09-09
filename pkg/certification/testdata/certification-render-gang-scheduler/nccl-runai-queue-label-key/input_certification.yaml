@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Run:ai combination from ADR-076: schedulerName runai-scheduler with
+# queueLabelKey runai/queue. The queue value must land under runai/queue at
+# both the Job template and the pod template metadata, and kai.scheduler/queue
+# must not appear anywhere, because the Run:ai platform ignores it.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: gang-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 2
+  gangScheduler:
+    schedulerName: runai-scheduler
+    queueLabelKey: runai/queue
+    queue: team-a
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

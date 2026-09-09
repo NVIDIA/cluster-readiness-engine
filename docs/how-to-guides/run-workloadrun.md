@@ -104,12 +104,23 @@ spec:
     queue: high-priority           # optional; defaults to "default-queue"
 ```
 
-`schedulerName` is required. `queue` is optional and defaults to `default-queue`; when set, it must be a valid Kubernetes label value (at most 63 characters, beginning and ending with an alphanumeric character, containing only alphanumerics, hyphens, underscores, or dots).
+On a cluster running the NVIDIA Run:ai platform, name its scheduler and its queue label key instead, and make `queue` name an existing Run:ai queue:
+
+```yaml
+  gangScheduler:
+    schedulerName: runai-scheduler
+    queueLabelKey: runai/queue
+    queue: team-a   # must name an existing Run:ai queue
+```
+
+Run the WorkloadRun in a namespace associated with a Run:ai project (the platform's scheduling components act on project namespaces), and make sure the named queue exists: Run:ai validates the queue rather than falling back to a default.
+
+`schedulerName` is required. `queue` is optional and defaults to `default-queue`; when set, it must be a valid Kubernetes label value (at most 63 characters, beginning and ending with an alphanumeric character, containing only alphanumerics, hyphens, underscores, or dots). `queueLabelKey` is optional and defaults to `kai.scheduler/queue`; when set, it must be a valid Kubernetes label key.
 
 When `gangScheduler` is set, NVCRE modifies every pod template generated for the workload — for MPI frameworks that includes both the launcher and the worker pods:
 
 - The configured scheduler name is injected as `schedulerName` in each pod spec, so the pods bypass the default scheduler.
-- The queue is applied as the `kai.scheduler/queue` label on the pod template metadata, so a gang-aware scheduler can hold all pods in the gang until they can be placed together.
+- The queue is applied as a label (`queueLabelKey`, `kai.scheduler/queue` when unset) on both the Job template metadata and the pod template metadata, so a gang-aware scheduler can hold all pods in the gang until they can be placed together and the pods carry the label themselves.
 
 See [API Reference: WorkloadRun](../api-reference/workloadrun.md) for validation details.
 

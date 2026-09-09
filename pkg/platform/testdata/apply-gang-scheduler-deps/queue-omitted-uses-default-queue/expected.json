@@ -10,6 +10,9 @@
         "templateLabels": {
           "app": "torch-runtime",
           "kai.scheduler/queue": "default-queue"
+        },
+        "podTemplateLabels": {
+          "kai.scheduler/queue": "default-queue"
         }
       }
     ],
@@ -34,6 +37,11 @@
                   },
                   "spec": {
                     "template": {
+                      "metadata": {
+                        "labels": {
+                          "kai.scheduler/queue": "default-queue"
+                        }
+                      },
                       "spec": {
                         "containers": [
                           {

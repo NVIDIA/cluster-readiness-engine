@@ -37,8 +37,14 @@ type gangReplicatedJob struct {
 	// TemplateLabels is every label on that same metadata, sorted. It is here so
 	// a case can tell "queue label added" apart from "labels replaced by the
 	// queue label", which is what would happen if the helper assigned a fresh
-	// map over an existing one.
+	// map over an existing one. With a custom queueLabelKey the queue lands
+	// here under that key, so the list also shows which key was used.
 	TemplateLabels []string `json:"templateLabels"`
+	// PodTemplateLabels is every label on
+	// replicatedJobs[].template.spec.template.metadata, sorted. The queue label
+	// is stamped there too (ADR-076) so the pods carry it without relying on
+	// Trainer/JobSet label propagation; nothing else may land at that level.
+	PodTemplateLabels []string `json:"podTemplateLabels"`
 }
 
 // gangWorkflow is the per-Workflow projection written to the golden file.
@@ -145,11 +151,12 @@ func projectGangScheduling(wf *nvcrev1alpha1.Workflow) (gangWorkflow, error) {
 		}
 		for _, rj := range rt.Spec.Template.Spec.ReplicatedJobs {
 			out.ReplicatedJobs = append(out.ReplicatedJobs, gangReplicatedJob{
-				Dependency:     rt.Name,
-				ReplicatedJob:  rj.Name,
-				SchedulerName:  rj.Template.Spec.Template.Spec.SchedulerName,
-				QueueLabel:     rj.Template.Labels[gangQueueLabelKey],
-				TemplateLabels: sortedLabels(rj.Template.Labels),
+				Dependency:        rt.Name,
+				ReplicatedJob:     rj.Name,
+				SchedulerName:     rj.Template.Spec.Template.Spec.SchedulerName,
+				QueueLabel:        rj.Template.Labels[gangQueueLabelKey],
+				TemplateLabels:    sortedLabels(rj.Template.Labels),
+				PodTemplateLabels: sortedLabels(rj.Template.Spec.Template.Labels),
 			})
 		}
 	}
