@@ -121,7 +121,7 @@ schemas (Helm alone only installs CRDs on the first install).`,
 		"Override controller image (default: "+
 			defaultImageRegistry+"/"+defaultImageRepository+":<version>)")
 	cmd.Flags().StringVar(&imagePullSecret, "image-pull-secret", "",
-		"GitHub token — creates ghcr.io pull secret and authenticates Helm chart pull")
+		"GitHub token — creates ghcr.io pull secret and authenticates chart pulls from GHCR (mirrors need helm registry login)")
 	cmd.Flags().StringVar(&chartRef, "chart-ref", helmChartOCI,
 		"Override NVCRE Helm chart location (e.g., a mirror registry)")
 	cmd.Flags().StringVar(&trainerChartRef, "trainer-chart-ref", trainerHelmChartOCI,

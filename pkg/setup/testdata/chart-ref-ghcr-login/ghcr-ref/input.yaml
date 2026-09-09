@@ -1,0 +1,3 @@
+# An explicit GHCR chart ref (the default --chart-ref value) keeps the
+# GHCR login.
+chartRef: "oci://ghcr.io/nvidia/cluster-readiness-engine"

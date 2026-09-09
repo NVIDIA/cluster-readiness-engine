@@ -133,7 +133,14 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 		return "", err
 	}
 
-	if p.registryToken != "" {
+	// Log in to GHCR only when the chart being pulled is actually hosted
+	// there. With --chart-ref pointing at a non-GHCR mirror (restricted
+	// egress, issue #321) a GHCR login would fail on a cluster that cannot
+	// reach GHCR and abort the install even though the chart lives on the
+	// reachable mirror. For mirror-hosted charts the operator runs
+	// `helm registry login <mirror>` beforehand and Helm uses its own
+	// stored credentials.
+	if p.registryToken != "" && chartNeedsGHCRLogin(p.chartRef) {
 		if err := helmRegistryLogin(helmPath, defaultImageRegistry, p.registryToken, p.out); err != nil {
 			return "", err
 		}
@@ -472,6 +479,26 @@ func printGHCR403Hint(out io.Writer, output string) {
 		_, _ = fmt.Fprintln(out, "      read:packages scope. Re-run setup init --image-pull-secret with a fresh")
 		_, _ = fmt.Fprintln(out, "      token to recreate the pull secret.")
 	}
+}
+
+// chartRefRegistryHost returns the registry host of an OCI chart ref: the
+// oci:// scheme is stripped and the segment before the first slash is the
+// host. An empty ref means the published NVCRE chart, so it resolves to
+// helmChartOCI first.
+func chartRefRegistryHost(ref string) string {
+	if ref == "" {
+		ref = helmChartOCI
+	}
+	host, _, _ := strings.Cut(strings.TrimPrefix(ref, "oci://"), "/")
+	return host
+}
+
+// chartNeedsGHCRLogin reports whether the chart at ref is pulled from GHCR,
+// the only registry a --image-pull-secret token authenticates against. For a
+// chart hosted anywhere else the token login is skipped entirely, so a
+// cluster with no GHCR access can still install from a mirror (issue #321).
+func chartNeedsGHCRLogin(ref string) bool {
+	return chartRefRegistryHost(ref) == defaultImageRegistry
 }
 
 // helmRegistryLogin logs in to an OCI registry.

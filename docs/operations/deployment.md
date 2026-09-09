@@ -42,7 +42,7 @@ By default the Helm chart is pulled from GHCR at the CLI's own version, so a tag
 nvcrectl setup init --version <chart-version>
 ```
 
-The image and chart are public on GHCR, so no token is needed. For clusters that pull from a private mirror or fork, `--image-pull-secret <github-token>` creates the `nvcrectl-pull-secret` image pull secret in the `nvcre` namespace and authenticates the Helm chart pull. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, and `--auto-approve` to skip the confirmation prompt in CI. On clusters that cannot reach GHCR at all, `--chart-ref` and `--trainer-chart-ref` point both chart pulls at a mirror registry; see [Restricted egress and air-gapped installs](#restricted-egress-and-air-gapped-installs).
+The image and chart are public on GHCR, so no token is needed. For a private fork on GHCR, `--image-pull-secret <github-token>` creates the `nvcrectl-pull-secret` image pull secret in the `nvcre` namespace and authenticates chart pulls from GHCR. For a chart hosted on a private non-GHCR mirror, run `helm registry login <mirror>` before `setup init` instead. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, and `--auto-approve` to skip the confirmation prompt in CI. On clusters that cannot reach GHCR at all, `--chart-ref` and `--trainer-chart-ref` point both chart pulls at a mirror registry; see [Restricted egress and air-gapped installs](#restricted-egress-and-air-gapped-installs).
 
 Check the installation at any time:
 
@@ -96,7 +96,7 @@ nvcrectl setup init \
   --image registry.example.com/mirror/manager:<version>
 ```
 
-`--chart-ref` is used both for the release install and for the CRD extraction (`helm show crds`), so the `helm` phase needs no GHCR access. The chart versions do not change: the mirror must host the NVCRE chart at the CLI version (or `--version`) and the Kubeflow Trainer chart at the pinned version (`2.2.1` for this release). If the mirror requires authentication for the chart pulls, run `helm registry login <mirror>` before `setup init`; `--image-pull-secret` authenticates against `ghcr.io` only.
+`--chart-ref` is used both for the release install and for the CRD extraction (`helm show crds`), so the `helm` phase needs no GHCR access. When the chart ref points at a non-GHCR registry, `setup init` does not attempt a GHCR registry login at all, even with `--image-pull-secret` set, so the install cannot fail on unreachable GHCR. The chart versions do not change: the mirror must host the NVCRE chart at the CLI version (or `--version`) and the Kubeflow Trainer chart at the pinned version (`2.2.1` for this release). If the mirror requires authentication for the chart pulls, run `helm registry login <mirror>` before `setup init`; Helm then uses its stored credentials for the pulls. `--image-pull-secret` authenticates against `ghcr.io` only; it still creates the `nvcrectl-pull-secret` Kubernetes secret (scoped to `ghcr.io`) regardless of the chart location.
 
 **Bypass `setup init`.** Install the in-repo chart (`helm/cluster-readiness-engine` in the source tree) directly with `helm install`, setting `manager.image.repository` and `manager.image.tag` to your mirrored image, and install Kubeflow Trainer manually. Nothing is pulled from a chart registry, but you take on installing the Kubeflow Trainer version this release supports and re-applying the CRDs on upgrades yourself.
 

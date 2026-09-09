@@ -48,6 +48,34 @@ func TestHelmChartArgs(t *testing.T) {
 	})
 }
 
+func TestChartRefGHCRLogin(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "chart-ref-ghcr-login",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			ChartRef string `yaml:"chartRef"`
+		}
+		if err := sigsyaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
+
+		b, err := json.MarshalIndent(struct {
+			RegistryHost string `json:"registryHost"`
+			GHCRLogin    bool   `json:"ghcrLogin"`
+		}{
+			chartRefRegistryHost(in.ChartRef),
+			chartNeedsGHCRLogin(in.ChartRef),
+		}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
+}
+
 func TestHelmChartVersion(t *testing.T) {
 	assert.Equal(t, "v1.20.0", helmChartVersion("v1.20.0"))
 	assert.Equal(t, "1.20.0", helmChartVersion("1.20.0"))

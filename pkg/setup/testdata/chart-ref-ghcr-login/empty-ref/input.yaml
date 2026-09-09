@@ -1,0 +1,3 @@
+# An empty chart ref means the published NVCRE chart on GHCR, so the
+# --image-pull-secret token is used for helm registry login.
+chartRef: ""

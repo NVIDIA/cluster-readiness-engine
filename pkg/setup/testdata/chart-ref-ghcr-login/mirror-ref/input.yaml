@@ -1,0 +1,4 @@
+# A chart on a non-GHCR mirror (restricted egress, issue #321) skips the
+# GHCR login entirely: the operator runs `helm registry login <mirror>`
+# beforehand and Helm uses its stored credentials.
+chartRef: "oci://registry.example.com/mirror/cluster-readiness-engine"
