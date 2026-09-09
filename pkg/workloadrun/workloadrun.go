@@ -562,6 +562,24 @@ func runWorkloadRunRenderDryRun(
 		return err
 	}
 
+	// NIC resource auto-detection (ADR-075), mirroring the WorkloadRun
+	// controller: the field always wins; when it is unset on an on-prem
+	// GB200/GB300 target, the single candidate (rdma/* or
+	// nvidia.com/mlnxnics) allocatable on every discovered node is used. On
+	// zero or multiple candidates nothing is injected and the note below
+	// matches the controllers' NICResourceDetection event. The offline render
+	// (no --dry-run) has no cluster and stays field-only.
+	if name, candidates, ran := controller.ResolveNICResourceName(
+		run.Spec.NicResourceName, detectedPlatform, gpuArch, nodes); ran {
+		if name == "" {
+			_, _ = fmt.Fprintln(os.Stderr, controller.NICDetectionMessage(candidates))
+		} else {
+			_, _ = fmt.Fprintf(os.Stderr,
+				"Auto-detected NIC resource %q (allocatable on every target node)\n", name)
+			run.Spec.NicResourceName = &name
+		}
+	}
+
 	// Bake platform mpirun args into the spec before the job template is
 	// built, exactly as the controller does at reconcile time.
 	applyPlatformMPIArgs(run, detectedPlatform, gpuArch,

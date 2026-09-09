@@ -1,0 +1,12 @@
+# Detection only runs where the on-prem GB200/GB300 override applies: an AWS
+# target never detects (and never emits the event), even with a clean single
+# candidate on every node.
+platform: aws
+gpuArchitecture: gb300
+nodes:
+  - name: node-01
+    allocatable:
+      rdma/ib: "1"
+  - name: node-02
+    allocatable:
+      rdma/ib: "1"

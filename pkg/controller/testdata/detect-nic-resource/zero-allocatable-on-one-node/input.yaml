@@ -1,0 +1,12 @@
+# node-02 advertises the resource at zero: allocatable must be > 0 on every
+# node, so the candidate is disqualified (a request node-02 cannot satisfy
+# would leave its pods permanently Pending).
+platform: onprem
+gpuArchitecture: gb300
+nodes:
+  - name: node-01
+    allocatable:
+      rdma/ib: "1"
+  - name: node-02
+    allocatable:
+      rdma/ib: "0"

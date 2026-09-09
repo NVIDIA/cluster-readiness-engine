@@ -261,10 +261,16 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 		mlnxPerNode = *spec.MlnxPerNode
 	}
 	// The NIC resource name has no architecture default: it depends on the
-	// RDMA device plugin the site runs, so it is only ever user-supplied.
-	nicResourceName := ""
-	if spec.NicResourceName != nil {
-		nicResourceName = *spec.NicResourceName
+	// RDMA device plugin the site runs. The field always wins; when it is
+	// unset on the on-prem GB200/GB300 target the override matches, detection
+	// fills the gap from node allocatable, but only when exactly one
+	// candidate (rdma/* or nvidia.com/mlnxnics) is allocatable on every
+	// discovered target node. Zero or multiple candidates means nothing is
+	// injected and a Normal event says why; detection never guesses (ADR-075).
+	nicResourceName, nicCandidates, nicDetectionRan := resolveNICResourceName(
+		spec.NicResourceName, detectedPlatform, gpuArch, nodes)
+	if nicDetectionRan && nicResourceName == "" {
+		r.normalf(run, ReasonNICResourceDetection, "%s", nicDetectionMessage(nicCandidates))
 	}
 	if spec.EnableMNNVL != nil {
 		enableMNNVL = *spec.EnableMNNVL
@@ -636,15 +642,24 @@ func condReason(conditions []metav1.Condition, condType string) string {
 	return ""
 }
 
-// warnf emits a Warning event if the Recorder is configured. Every
-// WorkloadRun-tier event is a warning; the Workflow reconciler's eventf takes
-// an explicit type because it emits Normal events too.
+// warnf emits a Warning event if the Recorder is configured.
 //
 // Safe to call when Recorder is nil (e.g. in unit tests, or any embedding that
 // constructs WorkloadRunReconciler directly).
 func (r *WorkloadRunReconciler) warnf(obj kruntime.Object, reason, messageFmt string, args ...any) {
 	if r.Recorder != nil {
 		r.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, reason, reason, messageFmt, args...)
+	}
+}
+
+// normalf emits a Normal event if the Recorder is configured. Used for
+// advisory outcomes that are not failures, like NIC resource auto-detection
+// declining to pick a candidate (ReasonNICResourceDetection).
+//
+// Safe to call when Recorder is nil, like warnf.
+func (r *WorkloadRunReconciler) normalf(obj kruntime.Object, reason, messageFmt string, args ...any) {
+	if r.Recorder != nil {
+		r.Recorder.Eventf(obj, nil, corev1.EventTypeNormal, reason, reason, messageFmt, args...)
 	}
 }
 

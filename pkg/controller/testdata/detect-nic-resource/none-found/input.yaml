@@ -1,0 +1,10 @@
+# No candidate resource anywhere: nothing to pick, message says none found.
+platform: onprem
+gpuArchitecture: gb300
+nodes:
+  - name: node-01
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: node-02
+    allocatable:
+      nvidia.com/gpu: "4"

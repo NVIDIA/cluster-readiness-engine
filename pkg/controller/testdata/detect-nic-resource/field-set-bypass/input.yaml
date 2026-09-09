@@ -1,0 +1,14 @@
+# The field always wins: with nicResourceName set, detection never runs even
+# though the nodes advertise two would-be candidates.
+field: rdma/custom
+platform: onprem
+gpuArchitecture: gb300
+nodes:
+  - name: node-01
+    allocatable:
+      rdma/ib: "1"
+      nvidia.com/mlnxnics: "8"
+  - name: node-02
+    allocatable:
+      rdma/ib: "1"
+      nvidia.com/mlnxnics: "8"

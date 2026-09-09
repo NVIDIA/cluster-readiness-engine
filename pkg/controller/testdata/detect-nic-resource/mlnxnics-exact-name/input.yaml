@@ -1,0 +1,10 @@
+# nvidia.com/mlnxnics is the one exact-name candidate outside rdma/.
+platform: onprem
+gpuArchitecture: gb300
+nodes:
+  - name: node-01
+    allocatable:
+      nvidia.com/mlnxnics: "8"
+  - name: node-02
+    allocatable:
+      nvidia.com/mlnxnics: "8"

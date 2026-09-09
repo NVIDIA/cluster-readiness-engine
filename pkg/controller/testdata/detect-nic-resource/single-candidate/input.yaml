@@ -1,0 +1,12 @@
+# One rdma/ candidate allocatable on every node: detection picks it.
+platform: onprem
+gpuArchitecture: gb300
+nodes:
+  - name: node-01
+    allocatable:
+      nvidia.com/gpu: "4"
+      rdma/ib: "1"
+  - name: node-02
+    allocatable:
+      nvidia.com/gpu: "4"
+      rdma/ib: "1"

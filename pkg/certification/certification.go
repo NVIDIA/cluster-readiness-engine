@@ -174,6 +174,19 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 			}
 			cert.Spec.Target.NodeSelector["nvidia.com/gpu.product"] = gpuProduct
 		}
+
+		// Discover the target nodes up front: NIC resource auto-detection
+		// (ADR-075) must run before templates render (renderCertification
+		// bakes the name into the TrainingRuntime dependency), and the
+		// per-workflow resolve below reuses the same list. The offline path
+		// (no --dry-run) has no cluster and stays field-only.
+		ctx := context.Background()
+		var nodesErr error
+		dryRunNodes, nodesErr = controller.DiscoverTargetNodes(ctx, dryRunClient, &cert.Spec.Target)
+		if nodesErr != nil {
+			return fmt.Errorf("discover nodes: %w", nodesErr)
+		}
+		applyNICDetection(cert, dryRunNodes)
 	}
 
 	workflows, err := renderCertification(cert, platformFlag)
@@ -273,6 +286,46 @@ func resolveWorkflowsOffline(
 		}
 	}
 	return nil
+}
+
+// applyNICDetection fills spec.categoryOptions.nicResourceName from node
+// allocatable for the dry-run render path, mirroring the certification
+// controller: the field always wins (a per-category nicResourceName still
+// overrides the injected global via controller.ResolveOptions), detection
+// runs only for on-prem GB200/GB300 targets, and only a single qualifying
+// candidate (rdma/* or nvidia.com/mlnxnics, allocatable on every target
+// node) is used. On zero or multiple candidates it prints the note the
+// controllers emit as a NICResourceDetection event and injects nothing.
+//
+// Known divergence from the controller: the controller detects against the
+// arch-filtered node set (archNodes in createWorkflowForCategory), while
+// this path detects against every discovered target node and resolves the
+// platform/architecture gate from that whole list (majority architecture).
+// The two agree on a homogeneous fleet. On a mixed fleet the gate can close
+// here while it opens in the controller, and the every-node rule over the
+// larger set can only shrink the candidate list, so this preview may refuse
+// where a reconcile would pick, or pick where a reconcile would refuse;
+// when both pick, they pick the same name. Set nicResourceName to make a
+// mixed fleet deterministic.
+func applyNICDetection(cert *nvcrev1alpha1.Certification, nodes []corev1.Node) {
+	if len(nodes) == 0 {
+		return
+	}
+	name, candidates, ran := controller.ResolveNICResourceName(
+		cert.Spec.CategoryOptions.NicResourceName,
+		controller.DetectPlatform(nodes),
+		controller.DetectGPUArchitecture(nodes),
+		nodes,
+	)
+	if !ran {
+		return
+	}
+	if name == "" {
+		_, _ = fmt.Fprintln(os.Stderr, controller.NICDetectionMessage(candidates))
+		return
+	}
+	_, _ = fmt.Fprintf(os.Stderr, "Auto-detected NIC resource %q (allocatable on every target node)\n", name)
+	cert.Spec.CategoryOptions.NicResourceName = &name
 }
 
 // renderCertification builds all Workflows that the controller would create

@@ -1,0 +1,15 @@
+# Any rdma/-prefixed name is a candidate (rdma/shared_ib here), but outside
+# that domain only the exact name nvidia.com/mlnxnics counts: the lookalike
+# nvidia.com/mlnx_sriov is not in the candidate set, so detection still sees
+# exactly one candidate.
+platform: onprem
+gpuArchitecture: gb200
+nodes:
+  - name: node-01
+    allocatable:
+      rdma/shared_ib: "63"
+      nvidia.com/mlnx_sriov: "8"
+  - name: node-02
+    allocatable:
+      rdma/shared_ib: "63"
+      nvidia.com/mlnx_sriov: "8"
