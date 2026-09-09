@@ -523,6 +523,25 @@ func TestFailureLogExcerptLimits(t *testing.T) {
 	}
 }
 
+// TestFailureLogBidiControls checks visible escapes without changing JSON data.
+func TestFailureLogBidiControls(t *testing.T) {
+	for _, r := range []rune{0x061c, 0x200e, 0x200f, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068, 0x2069} {
+		assert.Equal(t, fmt.Sprintf("\\u%04x", r), sanitizeTerminalText(string(r)))
+	}
+	// Preserve joiners and normal RTL letters; only direction controls escape.
+	assert.Equal(t, "مرحبا\u200c\u200d", sanitizeTerminalText("مرحبا\u200c\u200d"))
+	fl := FailureLogReport{Tail: "before\u202eafter\u2069"}
+	var buf bytes.Buffer
+	printFailureLog(&buf, &fl)
+	assert.Contains(t, buf.String(), `before\u202eafter\u2069`)
+	assert.NotContains(t, buf.String(), "\u202e")
+	encoded, err := json.Marshal(fl)
+	require.NoError(t, err)
+	var decoded FailureLogReport
+	require.NoError(t, json.Unmarshal(encoded, &decoded))
+	assert.Equal(t, fl.Tail, decoded.Tail)
+}
+
 // TestSanitizeTerminalTextC1 checks every C1 code point, including CSI and OSC.
 func TestSanitizeTerminalTextC1(t *testing.T) {
 	for r := rune(0x80); r <= 0x9f; r++ {

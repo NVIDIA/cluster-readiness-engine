@@ -1227,7 +1227,7 @@ func wrappedBoxTextLines(prefix, value string) []string {
 	return result
 }
 
-// sanitizeTerminalText expands tabs and escapes C0, DEL, and C1 controls.
+// sanitizeTerminalText expands tabs and escapes C0, DEL, C1, and bidi controls.
 // Newlines are handled by the caller before sanitizing each individual line.
 func sanitizeTerminalText(s string) string {
 	var b strings.Builder
@@ -1237,6 +1237,8 @@ func sanitizeTerminalText(s string) string {
 			b.WriteString("    ")
 		case r < ' ' || (r >= 0x7f && r <= 0x9f):
 			_, _ = fmt.Fprintf(&b, "\\x%02x", r)
+		case unicode.Is(unicode.Bidi_Control, r):
+			_, _ = fmt.Fprintf(&b, "\\u%04x", r)
 		default:
 			b.WriteRune(r)
 		}

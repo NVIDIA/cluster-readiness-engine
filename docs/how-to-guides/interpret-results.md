@@ -78,6 +78,9 @@ An explicit truncation notice points to the full captured excerpt in the JSON
 report or `Job.status.failureLog` (up to 32 KiB). These limits do not shorten the
 JSON tail.
 
+Human output displays terminal controls and Unicode bidirectional controls as
+visible escape sequences. The JSON tail preserves the original captured text.
+
 NVCRE records which nodes failed and why — it does not taint or cordon them. To quarantine a failed node:
 
 ```bash
