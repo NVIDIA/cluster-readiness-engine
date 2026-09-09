@@ -154,6 +154,13 @@ func RunInit(
 		trainerChartRef = trainerHelmChartOCI
 	}
 
+	// A half-mirrored chart-ref configuration still pulls one chart from
+	// GHCR (issue #321); warn but continue, because a reachable GHCR makes
+	// it a valid setup.
+	if warning := asymmetricChartRefsWarning(chartRef, trainerChartRef, skip[phaseDeps]); warning != "" {
+		_, _ = fmt.Fprintln(out, warning)
+	}
+
 	// [preflight]
 	_, _ = fmt.Fprintln(out, "[preflight] Checking prerequisites...")
 

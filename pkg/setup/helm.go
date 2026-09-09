@@ -503,6 +503,42 @@ func chartNeedsGHCRLogin(ref string) bool {
 	return chartRefRegistryHost(ref) == defaultImageRegistry
 }
 
+// asymmetricChartRefsWarning returns a warning when exactly one of the two
+// effective chart refs resolves to GHCR while the other points at a mirror,
+// and the GHCR-bound pull will actually run: the NVCRE chart is pulled on
+// every init, while the Kubeflow Trainer chart is only pulled when the [deps]
+// phase is not skipped. A half-mirrored configuration like this is usually a
+// partial restricted-egress setup (issue #321) that still reaches out to
+// ghcr.io at install time. An empty string means the refs are consistent or
+// the GHCR-bound pull is skipped.
+func asymmetricChartRefsWarning(chartRef, trainerChartRef string, depsSkipped bool) string {
+	nvcreHost := chartRefRegistryHost(chartRef)
+	trainerHost := chartRefRegistryHost(trainerChartRef)
+	nvcreOnGHCR := nvcreHost == defaultImageRegistry
+	trainerOnGHCR := trainerHost == defaultImageRegistry
+
+	switch {
+	case nvcreOnGHCR == trainerOnGHCR:
+		// Both on GHCR (the defaults) or both mirrored: consistent.
+		return ""
+	case trainerOnGHCR && depsSkipped:
+		// The Trainer chart is the only GHCR-bound pull left and the [deps]
+		// phase that would pull it is skipped, so nothing reaches GHCR.
+		return ""
+	case trainerOnGHCR:
+		return fmt.Sprintf(
+			"[preflight] Warning: --chart-ref points at %s but --trainer-chart-ref still points at %s, "+
+				"so the [deps] phase pulls the Kubeflow Trainer chart from %s. "+
+				"Mirror both charts or pass --skip-phases=deps.",
+			nvcreHost, defaultImageRegistry, defaultImageRegistry)
+	default: // nvcreOnGHCR
+		return fmt.Sprintf(
+			"[preflight] Warning: --trainer-chart-ref points at %s but --chart-ref still points at %s, "+
+				"so the [helm] phase pulls the NVCRE chart from %s. Mirror both charts.",
+			trainerHost, defaultImageRegistry, defaultImageRegistry)
+	}
+}
+
 // helmRegistryLogin logs in to an OCI registry.
 // The password is supplied via stdin (--password-stdin) rather than as a CLI
 // argument so it does not appear in the process list.

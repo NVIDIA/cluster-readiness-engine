@@ -1,0 +1,6 @@
+# Only the NVCRE chart is mirrored, but the [deps] phase is skipped: the
+# GHCR-hosted Kubeflow Trainer chart is never pulled, so nothing reaches
+# GHCR and no warning is printed.
+chartRef: "oci://registry.example.com/mirror/cluster-readiness-engine"
+trainerChartRef: "oci://ghcr.io/kubeflow/charts/kubeflow-trainer"
+skipDeps: true

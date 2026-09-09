@@ -1,0 +1,6 @@
+# Only the NVCRE chart is mirrored: with the [deps] phase running, the
+# Kubeflow Trainer chart is still pulled from GHCR, so init warns and
+# suggests mirroring both charts or skipping the [deps] phase.
+chartRef: "oci://registry.example.com/mirror/cluster-readiness-engine"
+trainerChartRef: "oci://ghcr.io/kubeflow/charts/kubeflow-trainer"
+skipDeps: false

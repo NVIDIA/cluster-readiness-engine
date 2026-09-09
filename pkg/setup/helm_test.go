@@ -76,6 +76,34 @@ func TestChartRefGHCRLogin(t *testing.T) {
 	})
 }
 
+func TestAsymmetricChartRefsWarning(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "asymmetric-chart-refs-warning",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			ChartRef        string `yaml:"chartRef"`
+			TrainerChartRef string `yaml:"trainerChartRef"`
+			SkipDeps        bool   `yaml:"skipDeps"`
+		}
+		if err := sigsyaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
+
+		b, err := json.MarshalIndent(struct {
+			Warning string `json:"warning"`
+		}{
+			asymmetricChartRefsWarning(in.ChartRef, in.TrainerChartRef, in.SkipDeps),
+		}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
+}
+
 func TestHelmChartVersion(t *testing.T) {
 	assert.Equal(t, "v1.20.0", helmChartVersion("v1.20.0"))
 	assert.Equal(t, "1.20.0", helmChartVersion("1.20.0"))
