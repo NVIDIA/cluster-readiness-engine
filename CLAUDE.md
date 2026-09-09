@@ -107,7 +107,13 @@ There is no Remediation controller. ADR-061 removed it. NVCRE does not taint, co
 
 Integration tests use envtest with golden file comparison in `cmd/integration/testdata/reconcile/`. Each test case is a directory with `input_client_objects.yaml`, `input_config.yaml`, and `expected.json`. `PodLogFetcher` interface enables deterministic goodput tests via `input_logs_*.txt` files.
 
-Unit tests in most packages use `testutil.TestCaseParser` (in `pkg/testutil/`) with testdata directories and golden files — the same pattern as integration tests but at the package level. See `/cre-test` skill for the full testing guide including which packages use which pattern, golden file rules, and the integration test input format.
+Unit tests in these packages MUST use `testutil.TestCaseParser` (in `pkg/testutil/`) with testdata directories and golden files, the same pattern as integration tests but at the package level. Go table tests are not accepted in them:
+
+`pkg/catalog/`, `pkg/controller/`, `pkg/report/`, `pkg/render/`, `pkg/goodput/`, `pkg/orchestration/`, `pkg/workload/`, `pkg/nodemonitor/cel/`, `pkg/certification/`, `pkg/platform/`
+
+Table tests are fine for genuinely trivial helpers elsewhere (`pkg/gpu/`, `pkg/naming/`, `pkg/nccl/`, `pkg/threshold/`, `pkg/numstr/`, `pkg/noderesults/`, `pkg/setup/`), and for nil-safety pins, concurrency guards, and single-value assertions in any package. When in doubt, use `testutil.TestCaseParser`.
+
+The full testing guide is in `.claude/skills/cre-test/SKILL.md`: golden file rules, the integration test input format, and the canonical example. Read that file directly. It is plain Markdown and needs no particular tool.
 
 Release-path workflows are tested in `test/releasepolicy/`. `attest.yml`'s input validation is shell embedded in YAML — nothing type-checks it, and a weakened guard would not break a build, it would just stop rejecting things. The tests extract that step from the workflow and execute it against a table of accept and reject cases, so the test cannot drift from the validation it covers:
 

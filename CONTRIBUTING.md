@@ -130,6 +130,22 @@ KUBEBUILDER_ASSETS="$(bin/setup-envtest use -p path)" \
   go test ./cmd/integration/ -v -timeout 300s -count=1 -run TestIntegration/reconcile/job-checkpoint-restart
 ```
 
+## Writing Tests
+
+Most packages do not use Go table tests. They snapshot structured output to golden files under `testdata/` through `testutil.TestCaseParser`, so a failure prints a readable diff and expectations update with one command instead of hand-edited inline structs.
+
+This is required in `pkg/catalog/`, `pkg/controller/`, `pkg/report/`, `pkg/render/`, `pkg/goodput/`, `pkg/orchestration/`, `pkg/workload/`, `pkg/nodemonitor/cel/`, `pkg/certification/` and `pkg/platform/`. If you are adding a test to one of those, follow the cases already in that package's `testdata/` directory. `pkg/catalog/gpu_defaults_test.go` is the shortest example.
+
+Table tests are fine elsewhere for trivial helpers, and anywhere for nil-safety pins, concurrency guards and single-value assertions.
+
+Regenerate golden files only when you have confirmed the new output is correct, never to make a red test go green:
+
+```bash
+TESTUTIL_UPDATE_EXPECTED=true make test-integration
+```
+
+The full guide, including the integration test input format, is in `.claude/skills/cre-test/SKILL.md`. It is plain Markdown and needs no particular tool to read.
+
 ## Replicate CI Locally
 
 Five checks are required before a pull request can merge: Lint, Build, Test, Verify, and UAT.
