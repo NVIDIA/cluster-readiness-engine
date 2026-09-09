@@ -99,6 +99,14 @@ spec:
         image: img:latest
         numNodes: 2
 status:
+  failureLog:
+    podName: cert-exec-node-batch-pod
+    nodeName: node001
+    exitCode: 137
+    reason: OOMKilled
+    tail: |-
+      trainer initialized
+      CUDA out of memory
   conditions:
     - type: Failed
       status: "True"

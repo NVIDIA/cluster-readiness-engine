@@ -633,8 +633,15 @@ Each entry in `categories`:
 | `mnnvl` | string | `Enabled`, `Disabled`, or omitted when unknown |
 | `bandwidth` | []object | NCCL results per message size: `size`, `algBW`, `busBW`, `samples` |
 | `domains` | []object | Training results per topology domain: `name`, `nodeCount`, `goodput`, `tflops`, `stepTime` |
-| `failedGroups` | []object | Failed orchestration groups: `name`, `nodeCount`, `nodes`, `reason` |
+| `failedGroups` | []object | Failed orchestration groups: `name`, `nodeCount`, `nodes`, `reason`, and `failureLog` when the Job captured one |
 | `iterations` | []object | Per-iteration results: `number`, `status`, `duration` |
+
+Each `failedGroups[].failureLog` contains `podName`, `nodeName`, and optional
+`exitCode`, `reason`, and `tail`. `exitCode` is omitted when no nonzero container
+exit code was captured (including timeout, `PodNotFound`, and
+`NoTerminatedContainer` captures). The JSON tail is the same bounded workload-log excerpt stored
+in `Job.status.failureLog`. The field is omitted when no captured log is
+available, such as when the failed Job no longer exists.
 
 ## See also
 

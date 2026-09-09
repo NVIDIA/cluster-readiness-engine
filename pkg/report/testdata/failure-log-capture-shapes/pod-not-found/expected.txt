@@ -1,0 +1,7 @@
+│         Failure Log:                                           │
+│           Reason: PodNotFound                                  │
+│           Tail:                                                │
+│             no pods for this Job were found when the failure wa│
+│             s recorded; the pod was most likely deleted before │
+│             its logs could be read                             │
+{"podName":"","nodeName":"","reason":"PodNotFound","tail":"no pods for this Job were found when the failure was recorded; the pod was most likely deleted before its logs could be read"}
