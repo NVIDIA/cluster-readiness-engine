@@ -51,6 +51,12 @@ people do not tag at the same time.
    made visible only by the `Verify release` job, after it has verified every published
    artifact. If that job fails, the release stays a draft — see Troubleshooting.
 5. Check the published release, then announce it.
+6. If you maintain the admission-policy samples, bump the pinned `subject:` tag in
+   `config/samples/policy/kyverno-verify-images.yaml` and
+   `config/samples/policy/policy-controller-verify-images.yaml` to the new release
+   (or open a follow-up PR). Nothing in CI rewrites those strings; a stale pin is a
+   policy that will deny the next upgrade for anyone who applied the sample as-is.
+   See [Verifying release artifacts](docs/operations/verifying-artifacts.md#admission-policy-samples).
 
 Do not publish a draft release by hand. A draft left behind by a failed `Verify release`
 is a release the pipeline determined it could not verify; publishing it from the UI is
