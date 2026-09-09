@@ -130,7 +130,11 @@ pdb:
   minAvailable: 1
 ```
 
-By default, the chart gives controller replicas a preferred pod anti-affinity rule for `kubernetes.io/hostname`. The scheduler spreads replicas across nodes when possible but may co-locate them when necessary. A non-empty `manager.affinity` replaces that complete default; it is not merged with the preferred rule. For a hard HA guarantee, include both infrastructure-node placement and required pod anti-affinity in the override. The example below assumes infrastructure nodes carry the `node-role.kubernetes.io/infra` label; replace that key with the label used by your cluster. Also replace `nvcre` in the instance label if your Helm release has a different name:
+By default, the chart gives controller replicas a preferred pod anti-affinity rule for `kubernetes.io/hostname`. The scheduler spreads replicas across nodes when possible but may co-locate them when necessary. A non-empty `manager.affinity` replaces that complete default; it is not merged with the preferred rule.
+
+**Upgrade note:** Earlier chart versions rendered no affinity when `manager.affinity` was empty. Upgrading from those versions with empty `manager.affinity` adds preferred hostname anti-affinity and triggers a controller Deployment rollout, even if `pdb.enabled` is false. With multiple replicas, the scheduler prefers placing them on different nodes, but still permits co-location and scheduling on a single-node cluster.
+
+For a hard HA guarantee, include both infrastructure-node placement and required pod anti-affinity in the override. The example below assumes infrastructure nodes carry the `node-role.kubernetes.io/infra` label; replace that key with the label used by your cluster. Set `app.kubernetes.io/instance` to your Helm release name and `app.kubernetes.io/name` to the chart's rendered name label (`nvcre` by default; adjust it if you change `nameOverride`). Both should match the controller Deployment's selector:
 
 ```yaml
 manager:
@@ -146,6 +150,7 @@ manager:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
+              app.kubernetes.io/name: nvcre
               app.kubernetes.io/instance: nvcre
               control-plane: manager
           topologyKey: kubernetes.io/hostname
@@ -156,6 +161,8 @@ The default preferred rule does not guarantee separation, so both replicas may s
 This placement requires at least two eligible infrastructure nodes. The PDB can still allow eviction of the leader; it preserves a ready replica, not uninterrupted reconciliation or process memory. It does not protect against node failure, direct pod deletion, or Deployment rolling updates.
 
 With **one replica and `minAvailable: 1`, the PDB blocks node drains even when no Certification is running**. Before maintenance, either scale to two and wait for a ready replica on another node, or arrange a maintenance window, temporarily disable the PDB (or set `minAvailable: 0`), and restore protection after the replacement is ready. Completing a Certification does not automatically relax the budget. The PDB is disabled by default to preserve existing maintenance behavior.
+
+More generally, voluntary eviction of a healthy controller pod is blocked while the current ready replica count is at or below the required minimum. For example, two replicas with `minAvailable: 2` or `minAvailable: "100%"` leave no room for voluntary eviction. Percentage minimums are calculated from the desired replica count and rounded up to a whole number of pods.
 
 ## RBAC requirements
 
