@@ -6,6 +6,7 @@ package docspolicy
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -30,6 +31,7 @@ const (
 	wantProvenanceType = "https://slsa.dev/provenance/v1"
 	wantSignType       = "https://sigstore.dev/cosign/sign/v1"
 	wantNSLabel        = "kubernetes.nvcre.nvidia.com/image-admission"
+	wantEnforceMode    = "enforce"
 )
 
 func TestPolicySamplePinsTheReleaseIdentity(t *testing.T) {
@@ -85,7 +87,7 @@ func TestPolicySamplePinsTheReleaseIdentity(t *testing.T) {
 		}
 
 		spec := asMap(t, doc["spec"], "spec")
-		if got := asString(spec["mode"]); got != "enforce" {
+		if got := asString(spec["mode"]); got != wantEnforceMode {
 			t.Errorf("mode = %q, want enforce", got)
 		}
 
@@ -154,11 +156,11 @@ func mustLoadYAML(t *testing.T, path string) map[string]any {
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
 	}
-	// Samples may be multi-doc; take the first non-empty document.
-	for _, part := range strings.Split(string(raw), "\n---\n") {
+	// Samples may be multi-doc; take the first document with a kind.
+	for part := range strings.SplitSeq(string(raw), "\n---\n") {
 		part = strings.TrimSpace(part)
-		if part == "" || strings.HasPrefix(part, "#") && !strings.Contains(part, "\nkind:") {
-			// Still try to unmarshal; comments before kind are fine.
+		if part == "" {
+			continue
 		}
 		var doc map[string]any
 		if err := yaml.Unmarshal([]byte(part), &doc); err != nil {
@@ -197,7 +199,7 @@ func asString(v any) string {
 
 func namespaceSelectorPinsOptIn(ns map[string]any) bool {
 	if labels, ok := ns["matchLabels"].(map[string]any); ok {
-		if asString(labels[wantNSLabel]) == "enforce" {
+		if asString(labels[wantNSLabel]) == wantEnforceMode {
 			return true
 		}
 	}
@@ -210,10 +212,8 @@ func namespaceSelectorPinsOptIn(ns map[string]any) bool {
 		if asString(m["operator"]) != "In" {
 			continue
 		}
-		for _, v := range asStringSlice(m["values"]) {
-			if v == "enforce" {
-				return true
-			}
+		if slices.Contains(asStringSlice(m["values"]), wantEnforceMode) {
+			return true
 		}
 	}
 	return false
