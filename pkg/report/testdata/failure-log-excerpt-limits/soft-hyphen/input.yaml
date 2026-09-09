@@ -1,0 +1,4 @@
+prefix: "ERR "
+repeat: "\u00ad"
+count: 3000
+suffix: "END"

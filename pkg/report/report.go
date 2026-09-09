@@ -14,8 +14,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
+	"golang.org/x/text/width"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -162,10 +164,20 @@ type CliqueReport struct {
 
 // FailedGroupReport holds details about a failed orchestration group.
 type FailedGroupReport struct {
-	Name      string   `json:"name"`
-	NodeCount int      `json:"nodeCount"`
-	Nodes     []string `json:"nodes,omitempty"`
-	Reason    string   `json:"reason"` // e.g., "BackoffLimitExceeded (72 pods failed)"
+	Name       string            `json:"name"`
+	NodeCount  int               `json:"nodeCount"`
+	Nodes      []string          `json:"nodes,omitempty"`
+	Reason     string            `json:"reason"` // e.g., "BackoffLimitExceeded (72 pods failed)"
+	FailureLog *FailureLogReport `json:"failureLog,omitempty"`
+}
+
+// FailureLogReport holds the diagnostic log captured from a failed workload pod.
+type FailureLogReport struct {
+	PodName  string `json:"podName"`
+	NodeName string `json:"nodeName"`
+	ExitCode int32  `json:"exitCode,omitempty"`
+	Reason   string `json:"reason,omitempty"`
+	Tail     string `json:"tail,omitempty"`
 }
 
 // GroupBandwidthRow holds bandwidth for a single group in multi-group Workflows.
@@ -576,6 +588,15 @@ func buildFailedGroups(
 		nvcreJob := &nvcrev1alpha1.Job{}
 		if err := c.Get(ctx, client.ObjectKey{Name: g.JobRef.Name, Namespace: wf.Namespace}, nvcreJob); err == nil {
 			fg.Reason = jobFailureReason(ctx, c, nvcreJob, wf.Namespace)
+			if fl := nvcreJob.Status.FailureLog; fl != nil {
+				fg.FailureLog = &FailureLogReport{
+					PodName:  fl.PodName,
+					NodeName: fl.NodeName,
+					ExitCode: fl.ExitCode,
+					Reason:   fl.Reason,
+					Tail:     fl.Tail,
+				}
+			}
 		}
 		if fg.Reason == "" {
 			fg.Reason = failedNodeReason(failedNodes, g.Nodes)
@@ -1100,7 +1121,137 @@ func printFailedGroups(w io.Writer, groups []FailedGroupReport) {
 		for _, node := range fg.Nodes {
 			printBoxLine(w, fmt.Sprintf("         - %s", node))
 		}
+		printFailureLog(w, fg.FailureLog)
 	}
+}
+
+// printFailureLog renders the captured log below its failed group. Log lines
+// are wrapped to the report width, and terminal control characters are escaped
+// so untrusted workload output cannot corrupt the surrounding report.
+func printFailureLog(w io.Writer, fl *FailureLogReport) {
+	if fl == nil {
+		return
+	}
+	if fl.PodName != "" {
+		printBoxLine(w, "       Failure Log (one captured pod):")
+	} else {
+		printBoxLine(w, "       Failure Log:")
+	}
+	if fl.PodName != "" {
+		printWrappedBoxText(w, "         Pod: ", fl.PodName)
+	}
+	if fl.NodeName != "" {
+		printWrappedBoxText(w, "         Node: ", fl.NodeName)
+	}
+	if fl.ExitCode != 0 {
+		exit := fmt.Sprintf("%d", fl.ExitCode)
+		if fl.Reason != "" {
+			exit += " (" + fl.Reason + ")"
+		}
+		printWrappedBoxText(w, "         Exit: ", exit)
+	} else if fl.Reason != "" {
+		printWrappedBoxText(w, "         Reason: ", fl.Reason)
+	}
+	if fl.Tail != "" {
+		lines, truncated := failureLogExcerpt(fl.Tail)
+		if truncated {
+			printBoxLine(w, fmt.Sprintf("         Tail (truncated; last %d rendered lines):", len(lines)))
+		} else {
+			printBoxLine(w, "         Tail:")
+		}
+		for _, line := range lines {
+			printBoxLine(w, failureLogTailIndent+line)
+		}
+		if truncated {
+			printWrappedBoxText(w, "         ", "Full captured excerpt: JSON report or")
+			printWrappedBoxText(w, "         ", "Job.status.failureLog")
+		}
+	}
+}
+
+const (
+	failureLogHumanMaxBytes = 4 * 1024
+	failureLogHumanMaxLines = 20
+	failureLogTailIndent    = "           "
+	wrappedTextMaxLineBytes = 256
+)
+
+// failureLogExcerpt keeps the end of the captured tail for human output.
+// The byte cap applies before sanitizing; the line cap applies after wrapping.
+func failureLogExcerpt(tail string) ([]string, bool) {
+	tail = strings.TrimSuffix(strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(tail), "\n")
+	truncated := len(tail) > failureLogHumanMaxBytes
+	if truncated {
+		start := len(tail) - failureLogHumanMaxBytes
+		for start < len(tail) && !utf8.RuneStart(tail[start]) {
+			start++
+		}
+		tail = tail[start:]
+	}
+	lines := wrappedBoxTextLines(failureLogTailIndent, tail)
+	if len(lines) > failureLogHumanMaxLines {
+		lines = lines[len(lines)-failureLogHumanMaxLines:]
+		truncated = true
+	}
+	return lines, truncated
+}
+
+// printWrappedBoxText prints text inside the report card, preserving explicit
+// newlines and wrapping every resulting line to the available terminal width.
+func printWrappedBoxText(w io.Writer, prefix, value string) {
+	continuation := pad(displayWidth(prefix))
+	for i, line := range wrappedBoxTextLines(prefix, value) {
+		indent := continuation
+		if i == 0 {
+			indent = prefix
+		}
+		printBoxLine(w, indent+line)
+	}
+}
+
+// wrappedBoxTextLines sanitizes and wraps text using the same width as padding.
+// A byte backstop bounds lines even when their runes consume no display cells.
+func wrappedBoxTextLines(prefix, value string) []string {
+	var result []string
+	availableCells := max(boxWidth-4-displayWidth(prefix), 1)
+	lines := strings.SplitSeq(strings.ReplaceAll(value, "\r\n", "\n"), "\n")
+	for line := range lines {
+		line = sanitizeTerminalText(line)
+		if line == "" {
+			result = append(result, "")
+			continue
+		}
+		start, cells := 0, 0
+		for i, r := range line {
+			runeCells := runeDisplayWidth(r)
+			if (cells+runeCells > availableCells || i-start+utf8.RuneLen(r) > wrappedTextMaxLineBytes) && i > start {
+				result = append(result, line[start:i])
+				start, cells = i, 0
+			}
+			cells += runeCells
+		}
+		result = append(result, line[start:])
+	}
+	return result
+}
+
+// sanitizeTerminalText expands tabs and escapes C0, DEL, C1, and bidi controls.
+// Newlines are handled by the caller before sanitizing each individual line.
+func sanitizeTerminalText(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r == '\t':
+			b.WriteString("    ")
+		case r < ' ' || (r >= 0x7f && r <= 0x9f):
+			_, _ = fmt.Fprintf(&b, "\\x%02x", r)
+		case unicode.Is(unicode.Bidi_Control, r):
+			_, _ = fmt.Fprintf(&b, "\\u%04x", r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func printCategoryCard(w io.Writer, cat *CategoryReport) {
@@ -1727,7 +1878,25 @@ func pad(n int) string {
 // For ASCII this equals len(s); for multi-byte runes like ✓, ✗, … each
 // occupies one column but len() counts 3 bytes.
 func displayWidth(s string) int {
-	return utf8.RuneCountInString(s)
+	cells := 0
+	for _, r := range s {
+		cells += runeDisplayWidth(r)
+	}
+	return cells
+}
+
+// runeDisplayWidth treats combining marks and format characters as zero cells,
+// wide/fullwidth characters as two, and ambiguous-width characters as one.
+func runeDisplayWidth(r rune) int {
+	if unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Me, r) || unicode.Is(unicode.Cf, r) || unicode.IsControl(r) {
+		return 0
+	}
+	switch width.LookupRune(r).Kind() {
+	case width.EastAsianWide, width.EastAsianFullwidth:
+		return 2
+	default:
+		return 1
+	}
 }
 
 func countDigits(n int) int {
