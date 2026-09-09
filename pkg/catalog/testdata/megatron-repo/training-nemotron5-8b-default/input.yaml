@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No megatronRepo override: the init container must clone from the NVIDIA
+# GitHub default, byte-identical to the pre-#320 rendering.
+category: training
+subcategory: nemotron5-8b
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+nodesPerJob: 1
+gpusPerNode: 4

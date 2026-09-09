@@ -303,6 +303,15 @@ type CategoryOptions struct {
 	// +optional
 	// +kubebuilder:validation:Pattern=`^([0-9]+(h|m|s|ms))+$`
 	MeasurementTimeout string `json:"measurementTimeout,omitempty"`
+
+	// megatronRepo is the Git repository URL for the Megatron-LM source used by
+	// training categories; defaults to https://github.com/NVIDIA/Megatron-LM.git.
+	// Point at an internal mirror for air-gapped or restricted-egress clusters.
+	// Must include a URL scheme (e.g., https:// or ssh://); scp-style
+	// git@host:path syntax is rejected.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^[A-Za-z][A-Za-z0-9+.-]*://[A-Za-z0-9._~:/@%+-]+$`
+	MegatronRepo string `json:"megatronRepo,omitempty"`
 }
 
 type CertificateCategory struct {

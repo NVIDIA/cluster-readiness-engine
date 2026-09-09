@@ -32,6 +32,7 @@ const (
 	DefaultNumIterations      = 100
 	DefaultNumCycles          = 10
 	DefaultMinGroupSize       = 2
+	DefaultMegatronRepo       = "https://github.com/NVIDIA/Megatron-LM.git"
 
 	// Training container resource defaults (DGX-class sizing). Overridable
 	// per value via CategoryOptions.resources (issue #83).
@@ -193,6 +194,11 @@ type TemplateData struct {
 	// Thresholds maps metric names to CEL expressions.
 	// Templates use: {{- range $k, $v := .Thresholds }}
 	Thresholds map[string]string
+
+	// MegatronRepo is the Git repository URL for the Megatron-LM source cloned
+	// by training entries (always non-empty after defaults).
+	// Templates use: {{ .MegatronRepo }}
+	MegatronRepo string
 
 	// TP is tensor-model-parallel size from meta.yaml for the resolved architecture.
 	// Templates use: {{ .TP }}
@@ -442,6 +448,7 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 		TimeoutPerJob:      config.TimeoutPerJob,
 		MeasurementTimeout: config.MeasurementTimeout,
 		Thresholds:         config.Thresholds,
+		MegatronRepo:       config.MegatronRepo,
 	}
 	if td.MaxSteps == 0 {
 		td.MaxSteps = DefaultMaxSteps
@@ -494,6 +501,9 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 	}
 	if td.MinGroupSize == 0 {
 		td.MinGroupSize = DefaultMinGroupSize
+	}
+	if td.MegatronRepo == "" {
+		td.MegatronRepo = DefaultMegatronRepo
 	}
 	td.TrainingCPULimit, td.TrainingMemoryLimit,
 		td.TrainingCPURequest, td.TrainingMemoryRequest = resolveTrainingResources(config.Resources)

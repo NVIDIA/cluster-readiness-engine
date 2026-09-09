@@ -201,6 +201,21 @@ The controller runs without external network access at runtime. All catalog entr
 
 No internet access, external telemetry endpoints, or license servers are required at runtime.
 
+### Training categories: Megatron-LM source
+
+The `training/nemotron5-8b` and `training/nemotron5-56b` categories run a `megatron-clone` init container that clones the Megatron-LM source at pod start, by default from `https://github.com/NVIDIA/Megatron-LM.git` (branch `core_v0.15.2`). That is workload-pod egress, so image mirroring alone does not cover it. Two ways to run these categories without GitHub access:
+
+1. **Point the clone at an internal mirror.** Set `megatronRepo` on the Certification, either globally in `spec` or per category under `categories[].options`, to a Git mirror of Megatron-LM. The branch pin is unchanged, so the mirror must serve the `core_v0.15.2` branch. The URL must include a scheme such as `https://` or `ssh://`; scp-style `git@host:path` syntax is rejected by CRD validation.
+
+   ```yaml
+   spec:
+     megatronRepo: https://git.example.com/mirrors/Megatron-LM.git
+   ```
+
+2. **Pre-seed the workspace PVC.** Set `enableCheckpoint: true` (plus `storageClassName` if the cluster has no default StorageClass). The category then mounts a PersistentVolumeClaim named `<variant>-pvc` (for example `nemotron5-8b-pvc`) at `/mnt/workspace` instead of a memory-backed `emptyDir`. Pre-populate that volume with a Megatron-LM checkout at `megatron-lm/` before creating the Certification: the init container skips the clone whenever `/mnt/workspace/megatron-lm/.git` exists. Without `enableCheckpoint` the workspace is an `emptyDir`, so the clone runs on every pod start.
+
+The rest of the training path makes no other network calls: the training script builds the local checkout with `pip install -e . --no-deps --no-build-isolation` rather than installing from PyPI, and trains on mock data with a null tokenizer, so no dataset or tokenizer downloads occur.
+
 ## Health checks
 
 The controller exposes two probe endpoints on port `8081`, and the chart configures both probes on the Deployment:

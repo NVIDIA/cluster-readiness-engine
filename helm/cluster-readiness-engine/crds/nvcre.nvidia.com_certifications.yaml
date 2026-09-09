@@ -151,6 +151,15 @@ spec:
                             When not set, defaults to "5m".
                           pattern: ^([0-9]+(h|m|s|ms))+$
                           type: string
+                        megatronRepo:
+                          description: |-
+                            megatronRepo is the Git repository URL for the Megatron-LM source used by
+                            training categories; defaults to https://github.com/NVIDIA/Megatron-LM.git.
+                            Point at an internal mirror for air-gapped or restricted-egress clusters.
+                            Must include a URL scheme (e.g., https:// or ssh://); scp-style
+                            git@host:path syntax is rejected.
+                          pattern: ^[A-Za-z][A-Za-z0-9+.-]*://[A-Za-z0-9._~:/@%+-]+$
+                          type: string
                         minGroupSize:
                           description: |-
                             minGroupSize sets the smallest group size at which diagnose's internal
@@ -482,6 +491,15 @@ spec:
                   Accepts Go duration strings (e.g., "5m", "10m", "30m").
                   When not set, defaults to "5m".
                 pattern: ^([0-9]+(h|m|s|ms))+$
+                type: string
+              megatronRepo:
+                description: |-
+                  megatronRepo is the Git repository URL for the Megatron-LM source used by
+                  training categories; defaults to https://github.com/NVIDIA/Megatron-LM.git.
+                  Point at an internal mirror for air-gapped or restricted-egress clusters.
+                  Must include a URL scheme (e.g., https:// or ssh://); scp-style
+                  git@host:path syntax is rejected.
+                pattern: ^[A-Za-z][A-Za-z0-9+.-]*://[A-Za-z0-9._~:/@%+-]+$
                 type: string
               minGroupSize:
                 description: |-

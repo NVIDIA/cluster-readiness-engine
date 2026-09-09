@@ -130,6 +130,10 @@ type BuildConfig struct {
 	// MaxRestarts overrides the checkpoint maxRestarts for training workloads.
 	// 0 means use catalog default. Only used when EnableCheckpoint is true.
 	MaxRestarts int32
+
+	// MegatronRepo is the Git repository URL for the Megatron-LM source cloned
+	// by training entries. Empty means use default (DefaultMegatronRepo).
+	MegatronRepo string
 }
 
 // Entry holds a builder that produces a WorkflowSpec for a given target.

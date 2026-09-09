@@ -102,7 +102,7 @@ dependencies:
                     - |
                       set -ex
                       if [ ! -d "/mnt/workspace/megatron-lm/.git" ]; then
-                        git clone --depth 1 -b core_v0.15.2 https://github.com/NVIDIA/Megatron-LM.git /mnt/workspace/megatron-lm
+                        git clone --depth 1 -b core_v0.15.2 {{ .MegatronRepo }} /mnt/workspace/megatron-lm
                       fi
                       echo "Megatron-LM cloned successfully"
                     volumeMounts:
