@@ -42,10 +42,12 @@ spec:
           requests:
             cpu: "4"
             memory: 32Gi
-        # Optional: clone this category's source checkout from an internal
-        # mirror instead of its default upstream (air-gapped or
-        # restricted-egress clusters). For the nemotron5 entries the source
-        # is Megatron-LM.
+        # Optional: when the category falls back to cloning its source
+        # checkout (nothing pre-seeded in the workspace and nothing shipped
+        # in the image at /opt/megatron-lm), clone from an internal mirror
+        # instead of the default upstream. For the nemotron5 entries the
+        # source is Megatron-LM; for air-gapped clusters, prefer baking the
+        # source into the workload image so no clone runs at all.
         # sourceRepo: https://git.example.com/mirrors/Megatron-LM.git
 ```
 
@@ -58,7 +60,7 @@ _Fields documented so far:_
 | `gangScheduler` | GangSchedulerSpec | Optional. Opts every category's workload pods into a gang-aware scheduler such as KAI Scheduler. When set, the scheduler name is injected as `schedulerName` into every pod template of every category's resolved `TrainingRuntime` dependency (for MPI-based categories, both the launcher and the worker pods) and the queue is applied as the `kai.scheduler/queue` label on each replicated job's template metadata, so the scheduler holds all pods until the entire gang can be placed. Applied after the catalog and platform overrides resolve, so it also replaces a scheduler name a catalog entry hardcodes |
 | `gangScheduler.schedulerName` | string | Required; minimum length 1. Name of the gang-aware scheduler to use (e.g., `kai-scheduler`). Injected as `schedulerName` in each workload pod spec |
 | `gangScheduler.queue` | string | Optional. Scheduler queue to submit the workloads to; defaults to `default-queue` when unset. When non-empty, must be a valid Kubernetes label value: at most 63 characters, beginning and ending with an alphanumeric character, and containing only alphanumerics, hyphens, underscores, or dots (pattern `^$\|^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`) |
-| `sourceRepo` | string | Optional. Git repository for the source checkout a category clones at pod start. Each catalog entry defines what its source is and its default upstream; the `training/nemotron5-8b` and `training/nemotron5-56b` entries are the current consumers, and their entry-defined default is Megatron-LM (`https://github.com/NVIDIA/Megatron-LM.git`, branch `core_v0.15.2`). Point at an internal mirror for air-gapped or restricted-egress clusters (the mirror must serve the entry's pinned branch); entries that clone no source ignore it. The URL must use a remote scheme (`https://`, `http://`, `ssh://`, or `git://`); scp-style `git@host:path` syntax, `file://` URLs, and URLs containing whitespace or shell metacharacters are rejected (max length 2048, pattern `^(https?\|ssh\|git)://[A-Za-z0-9._~:/@%+-]+$`). `file://` is rejected on purpose: the contract is a remote git mirror, and local source belongs on the pre-seeded checkpoint PVC path instead. Settable globally on `spec` or per category under `categories[].options`; the per-category value wins |
+| `sourceRepo` | string | Optional. Git repository a category clones its source checkout from when the clone actually runs. Categories with a source checkout resolve it at pod start in three steps: an existing `/mnt/workspace/megatron-lm` workspace is used unchanged, then source shipped in the workload image at `/opt/megatron-lm` is copied in, and only otherwise does the init container clone. For air-gapped or restricted-egress clusters the primary recommendation is therefore baking the source into the workload image; `sourceRepo` is for sites that run an internal Git mirror. Each catalog entry defines what its source is and its default upstream; the `training/nemotron5-8b` and `training/nemotron5-56b` entries are the current consumers, and their entry-defined default is Megatron-LM (`https://github.com/NVIDIA/Megatron-LM.git`, branch `core_v0.15.2`). The mirror must serve the entry's pinned branch; entries that clone no source ignore the field. The URL must use a remote scheme (`https://`, `http://`, `ssh://`, or `git://`); scp-style `git@host:path` syntax, `file://` URLs, and URLs containing whitespace or shell metacharacters are rejected (max length 2048, pattern `^(https?\|ssh\|git)://[A-Za-z0-9._~:/@%+-]+$`). `file://` is rejected on purpose: the contract is a remote git mirror, and local source belongs in the image or on the pre-seeded checkpoint PVC instead. Settable globally on `spec` or per category under `categories[].options`; the per-category value wins. See [Training categories: Megatron-LM source](../operations/deployment.md#training-categories-megatron-lm-source) |
 
 Like the rest of `spec`, `gangScheduler` is immutable after the Certification is created.
 

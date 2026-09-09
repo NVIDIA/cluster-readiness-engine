@@ -101,10 +101,22 @@ dependencies:
                     args:
                     - |
                       set -ex
-                      if [ ! -d "/mnt/workspace/megatron-lm/.git" ]; then
-                        git clone --depth 1 -b core_v0.15.2 "{{ if .SourceRepo }}{{ .SourceRepo }}{{ else }}https://github.com/NVIDIA/Megatron-LM.git{{ end }}" /mnt/workspace/megatron-lm
+                      src=/mnt/workspace/megatron-lm
+                      tmp=/mnt/workspace/.megatron-lm.tmp
+                      rm -rf "$tmp"
+                      if [ -d "$src" ]; then
+                        echo "Using pre-seeded workspace at $src"
+                      elif [ -d /opt/megatron-lm ]; then
+                        mkdir -p "$tmp"
+                        cp -a /opt/megatron-lm/. "$tmp"
+                        mv "$tmp" "$src"
+                        echo "Copied Megatron-LM from image at /opt/megatron-lm"
+                      else
+                        repo="{{ if .SourceRepo }}{{ .SourceRepo }}{{ else }}https://github.com/NVIDIA/Megatron-LM.git{{ end }}"
+                        git clone --depth 1 -b core_v0.15.2 "$repo" "$tmp"
+                        mv "$tmp" "$src"
+                        echo "Cloned Megatron-LM from $repo"
                       fi
-                      echo "Megatron-LM cloned successfully"
                     volumeMounts:
                     - name: workspace
                       mountPath: /mnt/workspace
