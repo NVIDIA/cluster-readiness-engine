@@ -1,0 +1,4 @@
+prefix: "DROP\n"
+repeat: "line\n"
+count: 19
+suffix: "END\n"

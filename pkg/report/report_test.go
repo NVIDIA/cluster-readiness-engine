@@ -456,13 +456,18 @@ func TestPrintWrappedBoxText(t *testing.T) {
 	p := testutil.TestCaseParser{Subdir: "print-wrapped-box-text", ExpectedSuffix: testutil.SuffixTXT}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Text string `yaml:"text"`
+			Text   string `yaml:"text"`
+			Prefix string `yaml:"prefix"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
 		}
 		var buf bytes.Buffer
-		printWrappedBoxText(&buf, "           ", input.Text)
+		prefix := input.Prefix
+		if prefix == "" {
+			prefix = failureLogTailIndent
+		}
+		printWrappedBoxText(&buf, prefix, input.Text)
 		tc.Actual = buf.String()
 		return nil
 	})
@@ -489,38 +494,46 @@ func TestFailureLogCaptureShapes(t *testing.T) {
 
 // TestFailureLogExcerptLimits checks boundary budgets and preservation of JSON.
 func TestFailureLogExcerptLimits(t *testing.T) {
-	for _, tc := range []struct {
-		name      string
-		tail      string
-		truncated bool
-	}{
-		{"exact-lines", strings.Repeat("line\n", 19) + "END\n", false},
-		{"too-many-lines", "DROP\n" + strings.Repeat("line\n", 19) + "END\n", true},
-		{"long-line", strings.Repeat("x", 1100) + "END", true},
-		{"exact-bytes", "e" + strings.Repeat("\u0301", 2046) + "END", false},
-		{"too-many-bytes", "e" + strings.Repeat("\u0301", 2047) + "END", true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			lines, truncated := failureLogExcerpt(tc.tail)
-			assert.Equal(t, tc.truncated, truncated)
-			assert.LessOrEqual(t, len(lines), 20)
-			joined := strings.Join(lines, "")
-			assert.True(t, utf8.ValidString(joined))
-			assert.LessOrEqual(t, len(joined), 4096)
-			assert.True(t, strings.HasSuffix(joined, "END"))
-			assert.NotContains(t, joined, "DROP")
-			fl := FailureLogReport{Tail: tc.tail}
-			var buf bytes.Buffer
-			printFailureLog(&buf, &fl)
-			assert.Equal(t, truncated, strings.Contains(buf.String(), "Tail (truncated;"))
-			assert.Equal(t, truncated, strings.Contains(buf.String(), "Full captured excerpt: JSON report or"))
-			encoded, err := json.Marshal(fl)
-			require.NoError(t, err)
-			var decoded FailureLogReport
-			require.NoError(t, json.Unmarshal(encoded, &decoded))
-			assert.Equal(t, tc.tail, decoded.Tail)
-		})
-	}
+	p := testutil.TestCaseParser{Subdir: "failure-log-excerpt-limits", ExpectedSuffix: testutil.SuffixJSON}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			Prefix string `yaml:"prefix"`
+			Repeat string `yaml:"repeat"`
+			Count  int    `yaml:"count"`
+			Suffix string `yaml:"suffix"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+		tail := input.Prefix + strings.Repeat(input.Repeat, input.Count) + input.Suffix
+		lines, truncated := failureLogExcerpt(tail)
+		assert.LessOrEqual(t, len(lines), failureLogHumanMaxLines)
+		for _, line := range lines {
+			assert.True(t, utf8.ValidString(line))
+			assert.LessOrEqual(t, len(line), wrappedTextMaxLineBytes)
+		}
+		assert.True(t, strings.HasSuffix(strings.Join(lines, ""), "END"))
+		fl := FailureLogReport{Tail: tail}
+		var buf bytes.Buffer
+		printFailureLog(&buf, &fl)
+		assert.Equal(t, truncated, strings.Contains(buf.String(), "Tail (truncated;"))
+		assert.Equal(t, truncated, strings.Contains(buf.String(), "Full captured excerpt: JSON report or"))
+		encoded, err := json.Marshal(fl)
+		require.NoError(t, err)
+		var decoded FailureLogReport
+		require.NoError(t, json.Unmarshal(encoded, &decoded))
+		assert.Equal(t, tail, decoded.Tail)
+		lengths := make([]int, len(lines))
+		for i, line := range lines {
+			lengths[i] = len(line)
+		}
+		actual, err := json.MarshalIndent(struct {
+			Truncated bool  `json:"truncated"`
+			LineBytes []int `json:"lineBytes"`
+		}{truncated, lengths}, "", "  ")
+		tc.Actual = string(actual) + "\n"
+		return err
+	})
 }
 
 // TestFailureLogBidiControls checks visible escapes without changing JSON data.

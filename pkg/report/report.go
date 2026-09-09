@@ -1160,7 +1160,7 @@ func printFailureLog(w io.Writer, fl *FailureLogReport) {
 			printBoxLine(w, "         Tail:")
 		}
 		for _, line := range lines {
-			printBoxLine(w, "           "+line)
+			printBoxLine(w, failureLogTailIndent+line)
 		}
 		if truncated {
 			printWrappedBoxText(w, "         ", "Full captured excerpt: JSON report or")
@@ -1172,12 +1172,14 @@ func printFailureLog(w io.Writer, fl *FailureLogReport) {
 const (
 	failureLogHumanMaxBytes = 4 * 1024
 	failureLogHumanMaxLines = 20
+	failureLogTailIndent    = "           "
+	wrappedTextMaxLineBytes = 256
 )
 
 // failureLogExcerpt keeps the end of the captured tail for human output.
 // The byte cap applies before sanitizing; the line cap applies after wrapping.
 func failureLogExcerpt(tail string) ([]string, bool) {
-	tail = strings.TrimSuffix(strings.ReplaceAll(tail, "\r\n", "\n"), "\n")
+	tail = strings.TrimSuffix(strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(tail), "\n")
 	truncated := len(tail) > failureLogHumanMaxBytes
 	if truncated {
 		start := len(tail) - failureLogHumanMaxBytes
@@ -1186,7 +1188,7 @@ func failureLogExcerpt(tail string) ([]string, bool) {
 		}
 		tail = tail[start:]
 	}
-	lines := wrappedBoxTextLines("           ", tail)
+	lines := wrappedBoxTextLines(failureLogTailIndent, tail)
 	if len(lines) > failureLogHumanMaxLines {
 		lines = lines[len(lines)-failureLogHumanMaxLines:]
 		truncated = true
@@ -1197,12 +1199,18 @@ func failureLogExcerpt(tail string) ([]string, bool) {
 // printWrappedBoxText prints text inside the report card, preserving explicit
 // newlines and wrapping every resulting line to the available terminal width.
 func printWrappedBoxText(w io.Writer, prefix, value string) {
-	for _, line := range wrappedBoxTextLines(prefix, value) {
-		printBoxLine(w, prefix+line)
+	continuation := pad(displayWidth(prefix))
+	for i, line := range wrappedBoxTextLines(prefix, value) {
+		indent := continuation
+		if i == 0 {
+			indent = prefix
+		}
+		printBoxLine(w, indent+line)
 	}
 }
 
 // wrappedBoxTextLines sanitizes and wraps text using the same width as padding.
+// A byte backstop bounds lines even when their runes consume no display cells.
 func wrappedBoxTextLines(prefix, value string) []string {
 	var result []string
 	availableCells := max(boxWidth-4-displayWidth(prefix), 1)
@@ -1216,7 +1224,7 @@ func wrappedBoxTextLines(prefix, value string) []string {
 		start, cells := 0, 0
 		for i, r := range line {
 			runeCells := runeDisplayWidth(r)
-			if cells+runeCells > availableCells && i > start {
+			if (cells+runeCells > availableCells || i-start+utf8.RuneLen(r) > wrappedTextMaxLineBytes) && i > start {
 				result = append(result, line[start:i])
 				start, cells = i, 0
 			}

@@ -74,12 +74,15 @@ and retain the explanatory reason instead.
 
 The human report shows the end of the excerpt: at most 4 KiB of input and 20
 rendered log lines per failed group, with the line limit applied after wrapping.
+Each wrapped log line is also bounded to 256 bytes of sanitized text, so
+zero-width characters cannot produce arbitrarily long physical lines.
 An explicit truncation notice points to the full captured excerpt in the JSON
 report or `Job.status.failureLog` (up to 32 KiB). These limits do not shorten the
 JSON tail.
 
 Human output displays terminal controls and Unicode bidirectional controls as
-visible escape sequences. The JSON tail preserves the original captured text.
+visible escape sequences. CRLF and bare carriage returns become newlines in
+human log excerpts. The JSON tail preserves the original captured text.
 
 NVCRE records which nodes failed and why — it does not taint or cordon them. To quarantine a failed node:
 
