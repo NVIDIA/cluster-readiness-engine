@@ -93,7 +93,7 @@ anything.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&platform, "platform", "", "Target platform (aws, gcp, azure, oci, mistral, forge)")
+	cmd.Flags().StringVar(&platform, "platform", "", "Target platform (aws, gcp, azure, oci, mistral, onprem, forge)")
 	cmd.Flags().StringVar(&gpuArch, "gpu-arch", "", "Target GPU architecture (h100, h200, b200, gb200, gb300, a100, l40s, l40; mock templates: h100, gb200, gb300)")
 	cmd.Flags().StringVar(&nodesFile, "nodes-file", "",
 		"Custom nodes YAML file (mutually exclusive with --platform/--gpu-arch)")

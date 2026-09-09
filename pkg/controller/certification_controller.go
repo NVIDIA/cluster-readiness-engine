@@ -441,6 +441,12 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	if opts.MlnxPerNode != nil {
 		mlnxPerNode = *opts.MlnxPerNode
 	}
+	// The NIC resource name has no architecture default: it depends on the
+	// RDMA device plugin the site runs, so it is only ever user-supplied.
+	nicResourceName := ""
+	if opts.NicResourceName != nil {
+		nicResourceName = *opts.NicResourceName
+	}
 
 	capableNodes, err := dropUnderCapacityNodes(archNodes, category, gpusPerNode)
 	if err != nil {
@@ -464,6 +470,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		NodesPerJob:        nodesPerJob,
 		GpusPerNode:        gpusPerNode,
 		MlnxPerNode:        mlnxPerNode,
+		NicResourceName:    nicResourceName,
 		Resources:          opts.Resources,
 		EnableMNNVL:        enableMNNVL,
 		EnableCheckpoint:   derefBool(opts.EnableCheckpoint),
@@ -613,6 +620,9 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	}
 	if override.MlnxPerNode != nil {
 		resolved.MlnxPerNode = override.MlnxPerNode
+	}
+	if override.NicResourceName != nil {
+		resolved.NicResourceName = override.NicResourceName
 	}
 	if override.Resources != nil {
 		resolved.Resources = override.Resources

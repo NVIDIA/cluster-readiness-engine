@@ -68,6 +68,14 @@ func resolveWRTimeout(v string) *metav1.Duration {
 	return &metav1.Duration{Duration: d}
 }
 
+// derefString returns the pointed-to string, or "" for nil.
+func derefString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 // NewCommand returns the "workloadrun" cobra command.
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -325,12 +333,13 @@ func BuildWorkflowSpec(
 
 	// Build platform overrides.
 	overrideCfg := platform.OverrideConfig{
-		EntryName:     run.Name,
-		NodesPerJob:   controller.NodesPerJobForScale(spec.Orchestration, spec.NumNodes),
-		GpusPerNode:   gpusPerNode,
-		MlnxPerNode:   mlnxPerNode,
-		EnableMNNVL:   enableMNNVL,
-		FrameworkType: frameworkType,
+		EntryName:       run.Name,
+		NodesPerJob:     controller.NodesPerJobForScale(spec.Orchestration, spec.NumNodes),
+		GpusPerNode:     gpusPerNode,
+		MlnxPerNode:     mlnxPerNode,
+		NicResourceName: derefString(spec.NicResourceName),
+		EnableMNNVL:     enableMNNVL,
+		FrameworkType:   frameworkType,
 	}
 	wrOverrides := platform.BuildOverrides(overrideCfg)
 	overrides := make([]nvcrev1alpha1.OverrideSpec, 0, len(wrOverrides)+len(spec.Overrides))
@@ -373,12 +382,13 @@ func applyPlatformMPIArgs(
 		return
 	}
 	wrOverrides := platform.BuildOverrides(platform.OverrideConfig{
-		EntryName:     run.Name,
-		NodesPerJob:   controller.NodesPerJobForScale(run.Spec.Orchestration, run.Spec.NumNodes),
-		GpusPerNode:   gpusPerNode,
-		MlnxPerNode:   mlnxPerNode,
-		EnableMNNVL:   enableMNNVL,
-		FrameworkType: frameworkType,
+		EntryName:       run.Name,
+		NodesPerJob:     controller.NodesPerJobForScale(run.Spec.Orchestration, run.Spec.NumNodes),
+		GpusPerNode:     gpusPerNode,
+		MlnxPerNode:     mlnxPerNode,
+		NicResourceName: derefString(run.Spec.NicResourceName),
+		EnableMNNVL:     enableMNNVL,
+		FrameworkType:   frameworkType,
 	})
 	octx := controller.OverrideContext{
 		Platform:        platformName,

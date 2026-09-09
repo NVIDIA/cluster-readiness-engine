@@ -531,3 +531,27 @@ overrides:
             - -d
             - uint8
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- On-prem + GB200/GB300 (generic NVL72 bare metal; ADR-075) ---
+# Appended last so its trainer.args replacement wins over the GB200/GB300
+# ComputeDomain block above. Portable IB tuning without HCA pinning (NCCL
+# auto-detects HCAs) plus arm64/GPU taint tolerations; the NIC resource is
+# injected only when nicResourceName is set (count from mlnxPerNode).
+- when:
+    platform:
+      equals: onprem
+    gpuArchitecture:
+      in: [gb200, gb300]
+  dependencies:
+{{ lib "deps/onprem-gb200-gb300-runtime-patch-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/onprem-ib-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/alltoall_perf_mpi
+            - -d
+            - uint8
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}

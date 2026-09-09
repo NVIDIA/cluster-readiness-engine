@@ -260,6 +260,12 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 	if spec.MlnxPerNode != nil {
 		mlnxPerNode = *spec.MlnxPerNode
 	}
+	// The NIC resource name has no architecture default: it depends on the
+	// RDMA device plugin the site runs, so it is only ever user-supplied.
+	nicResourceName := ""
+	if spec.NicResourceName != nil {
+		nicResourceName = *spec.NicResourceName
+	}
 	if spec.EnableMNNVL != nil {
 		enableMNNVL = *spec.EnableMNNVL
 	}
@@ -348,12 +354,13 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 
 	// Build platform overrides.
 	overrideCfg := platform.OverrideConfig{
-		EntryName:     run.Name,
-		NodesPerJob:   nodesPerJob,
-		GpusPerNode:   gpusPerNode,
-		MlnxPerNode:   mlnxPerNode,
-		EnableMNNVL:   enableMNNVL,
-		FrameworkType: frameworkType,
+		EntryName:       run.Name,
+		NodesPerJob:     nodesPerJob,
+		GpusPerNode:     gpusPerNode,
+		MlnxPerNode:     mlnxPerNode,
+		NicResourceName: nicResourceName,
+		EnableMNNVL:     enableMNNVL,
+		FrameworkType:   frameworkType,
 	}
 	wrOverrides := platform.BuildOverrides(overrideCfg)
 	octx := OverrideContext{

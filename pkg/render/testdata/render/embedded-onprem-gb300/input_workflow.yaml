@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Exercises the onprem-gb300 mock node fixture (empty providerID resolves to
+# the onprem platform, ADR-075). The first override mirrors the shape of the
+# catalog's on-prem blocks (platform equals onprem, gpuArchitecture in
+# gb200/gb300) and must match; the aws control override must not.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-workflow
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            numNodes: 2
+            numProcPerNode: 4
+            image: nvcr.io/nvidia/pytorch:24.12-py3
+            command: ["/bin/bash", "-c"]
+            args: ["torchrun --nnodes 2"]
+  orchestration:
+    execution: {}
+  overrides:
+    - when:
+        platform: { equals: "onprem" }
+        gpuArchitecture: { in: ["gb200", "gb300"] }
+      jobTemplate:
+        spec:
+          workload:
+            trainJob:
+              trainer:
+                env:
+                  - name: NCCL_IB_PCI_RELAXED_ORDERING
+                    value: "1"
+    - when:
+        platform: { equals: "aws" }
+      jobTemplate:
+        spec:
+          workload:
+            trainJob:
+              trainer:
+                env:
+                  - name: FI_EFA_USE_DEVICE_RDMA
+                    value: "1"

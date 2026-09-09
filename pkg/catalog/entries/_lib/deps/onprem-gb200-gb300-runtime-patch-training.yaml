@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# TrainingRuntime patch for generic on-prem GB200/GB300 training entries and
+# WorkloadRuns (ADR-075). Carries the portable IB env (torchrun and exec
+# workloads inherit the container env directly), tolerates the arm64 and GPU
+# taints common on NVL72 deployments, and injects the NIC resource block only
+# when nicResourceName is configured; the resource name depends on the RDMA
+# device plugin the site runs, so there is no safe default. The per-container
+# count comes from mlnxPerNode.
+
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+{{- if .NicResourceName }}
+                    resources:
+                      limits:
+                        {{ .NicResourceName }}: "{{ .MlnxPerNode }}"
+                      requests:
+                        {{ .NicResourceName }}: "{{ .MlnxPerNode }}"
+{{- end }}
+                    env:
+{{ lib "nccl/onprem-ib-env.yaml" . | indent 20 }}
+                  tolerations:
+                  - key: kubernetes.io/arch
+                    operator: Equal
+                    value: arm64
+                    effect: NoSchedule
+                  - key: nvidia.com/gpu
+                    operator: Equal
+                    value: present
+                    effect: NoSchedule

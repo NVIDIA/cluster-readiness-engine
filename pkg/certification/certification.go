@@ -311,6 +311,12 @@ func renderCertification(cert *nvcrev1alpha1.Certification, platformName string)
 		if opts.MlnxPerNode != nil {
 			mlnxPerNode = *opts.MlnxPerNode
 		}
+		// The NIC resource name has no architecture default: it depends on the
+		// RDMA device plugin the site runs, so it is only ever user-supplied.
+		nicResourceName := ""
+		if opts.NicResourceName != nil {
+			nicResourceName = *opts.NicResourceName
+		}
 
 		enableMNNVL := controller.DefaultEnableMNNVL(gpuArch)
 		if opts.EnableMNNVL != nil {
@@ -333,6 +339,7 @@ func renderCertification(cert *nvcrev1alpha1.Certification, platformName string)
 			NodesPerJob:        nodesPerJob,
 			GpusPerNode:        gpusPerNode,
 			MlnxPerNode:        mlnxPerNode,
+			NicResourceName:    nicResourceName,
 			Resources:          opts.Resources,
 			EnableMNNVL:        enableMNNVL,
 			EnableCheckpoint:   derefBoolPtr(opts.EnableCheckpoint),

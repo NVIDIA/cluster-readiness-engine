@@ -4,6 +4,7 @@
     "NodesPerJob": 1,
     "GpusPerNode": 1,
     "MlnxPerNode": 0,
+    "NicResourceName": "",
     "EnableMNNVL": false,
     "FrameworkType": "exec"
   },

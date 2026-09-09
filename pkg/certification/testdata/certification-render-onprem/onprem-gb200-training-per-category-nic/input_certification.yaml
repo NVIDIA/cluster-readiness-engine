@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Per-category options exercise the per-category resolution path (options
+# override the unset globals), and the training entry pins the deps-only shape
+# of the override (env rides the runtime container, not trainer.args).
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: onprem-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 2
+  enableMNNVL: true
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        nicResourceName: nvidia.com/mlnxnics
+        mlnxPerNode: 4

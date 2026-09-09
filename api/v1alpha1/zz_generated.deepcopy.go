@@ -228,6 +228,11 @@ func (in *CategoryOptions) DeepCopyInto(out *CategoryOptions) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.NicResourceName != nil {
+		in, out := &in.NicResourceName, &out.NicResourceName
+		*out = new(string)
+		**out = **in
+	}
 	if in.Resources != nil {
 		in, out := &in.Resources, &out.Resources
 		*out = new(CategoryResources)
@@ -2379,6 +2384,11 @@ func (in *WorkloadRunSpec) DeepCopyInto(out *WorkloadRunSpec) {
 	if in.MlnxPerNode != nil {
 		in, out := &in.MlnxPerNode, &out.MlnxPerNode
 		*out = new(int32)
+		**out = **in
+	}
+	if in.NicResourceName != nil {
+		in, out := &in.NicResourceName, &out.NicResourceName
+		*out = new(string)
 		**out = **in
 	}
 	if in.ImagePullSecrets != nil {

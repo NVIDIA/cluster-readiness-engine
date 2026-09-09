@@ -168,6 +168,19 @@ spec:
                           format: int32
                           minimum: 0
                           type: integer
+                        nicResourceName:
+                          description: |-
+                            nicResourceName sets the Kubernetes extended resource name of the RDMA
+                            NIC devices requested on workload containers for on-prem GB200/GB300
+                            targets (e.g., "rdma/ib", "nvidia.com/mlnxnics"); the name depends on
+                            the RDMA device plugin the site runs, so there is no safe default. The
+                            per-container count comes from mlnxPerNode. When unset, no NIC resource
+                            is requested and scheduling is unchanged. Sites running a shared-device
+                            plugin (one pooled resource per pod) should set mlnxPerNode to 1
+                            alongside this field.
+                          maxLength: 253
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]*[a-zA-Z0-9])?$
+                          type: string
                         nodesPerJob:
                           description: |-
                             nodesPerJob is the number of nodes per job for multi-node workloads.
@@ -500,6 +513,19 @@ spec:
                 format: int32
                 minimum: 0
                 type: integer
+              nicResourceName:
+                description: |-
+                  nicResourceName sets the Kubernetes extended resource name of the RDMA
+                  NIC devices requested on workload containers for on-prem GB200/GB300
+                  targets (e.g., "rdma/ib", "nvidia.com/mlnxnics"); the name depends on
+                  the RDMA device plugin the site runs, so there is no safe default. The
+                  per-container count comes from mlnxPerNode. When unset, no NIC resource
+                  is requested and scheduling is unchanged. Sites running a shared-device
+                  plugin (one pooled resource per pod) should set mlnxPerNode to 1
+                  alongside this field.
+                maxLength: 253
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]*[a-zA-Z0-9])?$
+                type: string
               nodesPerJob:
                 description: |-
                   nodesPerJob is the number of nodes per job for multi-node workloads.

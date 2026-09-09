@@ -342,3 +342,23 @@ overrides:
           trainer:
             env:
 {{ lib "nccl/mistral-ib-env.yaml" . | indent 12 }}
+# --- On-prem + GB200/GB300 (generic NVL72 bare metal; ADR-075) ---
+# Appended last so its trainer.env replacement wins over the GB200/GB300
+# ComputeDomain block above. onprem-ib-env carries the base GB200/GB300 vars.
+# Unlike nccl-loopback, NCCL_SHM_DISABLE/NCCL_P2P_DISABLE are intentionally
+# NOT set: this variant exercises the NVLink/NVSwitch fabric. The NIC resource
+# is injected only when nicResourceName is set (count from mlnxPerNode).
+- when:
+    platform:
+      equals: onprem
+    gpuArchitecture:
+      in: [gb200, gb300]
+  dependencies:
+{{ lib "deps/onprem-gb200-gb300-runtime-patch-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/onprem-ib-env.yaml" . | indent 12 }}

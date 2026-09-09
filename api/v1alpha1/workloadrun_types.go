@@ -214,6 +214,17 @@ type WorkloadRunSpec struct {
 	// +kubebuilder:validation:Minimum=0
 	MlnxPerNode *int32 `json:"mlnxPerNode,omitempty"`
 
+	// nicResourceName sets the Kubernetes extended resource name of the RDMA
+	// NIC devices requested on workload containers for on-prem GB200/GB300
+	// targets (e.g., "rdma/ib", "nvidia.com/mlnxnics"); the name depends on
+	// the RDMA device plugin the site runs, so there is no safe default. The
+	// per-container count comes from mlnxPerNode. When unset, no NIC resource
+	// is requested and scheduling is unchanged.
+	// +optional
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]*[a-zA-Z0-9])?$`
+	NicResourceName *string `json:"nicResourceName,omitempty"`
+
 	// imagePullSecrets references secrets for pulling the container image.
 	// +optional
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`

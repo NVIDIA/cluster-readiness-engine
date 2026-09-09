@@ -71,5 +71,43 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | GB300 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
 | H100 | AWS | EFA | `vpc.amazonaws.com/efa: 32`, no hugepages |
 | H100 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap |
+| GB200/GB300 | On-prem | InfiniBand | arm64/GPU taint tolerations, portable IB NCCL env (no HCA pinning), optional NIC resource via `nicResourceName`, ComputeDomain |
 
 The live controller tracks which overrides matched in `status.orchestration.appliedOverrides`. When using `nvcrectl workflow render`, the same information is also written to the `nvcrectl.nvidia.com/applied-overrides` annotation on the rendered manifest.
+
+## On-prem clusters
+
+`onprem` is the detection fallback: a node with an empty `spec.providerID` (and no Forge hostname or NKE site-name label) resolves to the `onprem` platform. Nodes provisioned by bare-metal stacks such as BCM typically carry no providerID, so they land here without any configuration.
+
+For GB200/GB300 targets, the on-prem override contributes:
+
+- **Tolerations** for the `kubernetes.io/arch=arm64:NoSchedule` and `nvidia.com/gpu=present:NoSchedule` taints common on NVL72 deployments. Without them, workload pods never schedule on tainted arm64 nodes.
+- **A portable InfiniBand NCCL environment** without HCA pinning: NCCL auto-detects HCAs when `NCCL_IB_HCA` is unset, so the same override works across sites with different HCA layouts.
+- **An optional NIC resource request**, injected only when `nicResourceName` is set. Resource names vary by RDMA device plugin (`rdma/ib`, `nvidia.com/mlnxnics`, and others are all in the wild), so there is no safe default; the per-container count comes from `mlnxPerNode`. GB200/GB300 default `mlnxPerNode` to 8; sites running a shared-device plugin (one pooled resource per pod) should set `mlnxPerNode: 1` alongside `nicResourceName`.
+
+```yaml
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: onprem-gb300-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300
+  nodesPerJob: 18
+  enableMNNVL: true
+  # Extended resource name advertised by the site's RDMA device plugin.
+  # Omit if the cluster runs no RDMA device plugin; pods then schedule
+  # without an explicit NIC allocation.
+  nicResourceName: rdma/ib
+  mlnxPerNode: 1   # shared-device plugin: one pooled resource per pod
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+```
+
+<Warning>
+**Metal3 detection trap.** Nodes with a `metal3://` providerID resolve to the `mistral` platform, not `onprem`. An on-prem site provisioned by Cluster API + Metal3 therefore silently picks up the Mistral site-specific override, which pins HCA names (`NCCL_IB_HCA`, `UCX_NET_DEVICES`) and the `rdma/ib` resource name. To preview what a generic on-prem render looks like regardless of providerID, pass the platform explicitly: `nvcrectl certification render --platform onprem <cert.yaml>`.
+</Warning>
+
+Diagnostics (`dcgm-level4`) needs no on-prem override: it already tolerates all taints and runs intra-node, so it schedules on tainted arm64 nodes unchanged.
