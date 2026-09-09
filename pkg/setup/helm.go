@@ -223,8 +223,10 @@ func uninstallHelmRelease(p helmUninstallParams) error {
 
 // installTrainerHelmRelease installs Kubeflow Trainer via the helm CLI and
 // returns the captured helm transcript so the [deps] phase can classify a
-// failure (ADR-073). The helm CLI resolves OCI sub-chart dependencies
-// (including JobSet) automatically. chartRef overrides the chart location;
+// failure (ADR-073). The published chart package vendors its JobSet chart
+// dependency (charts/jobset/ inside the archive), so the install needs no
+// additional registry access; helm resolves remote dependencies only for
+// unpackaged source charts. chartRef overrides the chart location;
 // empty means the published GHCR chart.
 func installTrainerHelmRelease(kubeconfig, kubeContext, chartRef string, out io.Writer) (string, error) {
 	helmPath, err := ensureHelm()

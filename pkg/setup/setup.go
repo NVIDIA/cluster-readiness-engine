@@ -91,7 +91,7 @@ Phases:
   [deps]  Kubeflow Trainer ` + kubeflowTrainerVersion + `
   [helm]  NVCRE Helm chart (` + helmChartOCI + `)
 
-The Helm chart is pulled from GHCR at the CLI version. Dev builds require --version.
+By default the Helm chart is pulled from GHCR at the CLI version. Dev builds require --version.
 Pass --image-pull-secret to authenticate against a private GHCR registry.
 Pass --chart-ref and --trainer-chart-ref to pull the charts from a mirror
 registry instead of GHCR (for restricted-egress clusters).
