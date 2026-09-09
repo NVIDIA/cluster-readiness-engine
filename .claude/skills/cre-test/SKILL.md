@@ -76,12 +76,15 @@ KUBEBUILDER_ASSETS="$(bin/setup-envtest use -p path)" \
 3. Confirm the change is an expected consequence of the code change
 4. Get explicit user permission
 
-Then regenerate:
+Then regenerate. Unit golden files live beside their package and are regenerated
+by that package's own test command; `make test-integration` only rewrites the
+integration goldens under `cmd/integration/testdata/`:
 ```bash
-TESTUTIL_UPDATE_EXPECTED=true make test-integration
+TESTUTIL_UPDATE_EXPECTED=true go test ./pkg/report/   # unit goldens
+TESTUTIL_UPDATE_EXPECTED=true make test-integration   # integration goldens
 ```
 
-Or for a specific case:
+Or for a specific integration case:
 ```bash
 TESTUTIL_UPDATE_EXPECTED=true KUBEBUILDER_ASSETS="$(bin/setup-envtest use -p path)" \
   go test ./cmd/integration/ -v -timeout 300s -count=1 \

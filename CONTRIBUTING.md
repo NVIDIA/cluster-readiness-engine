@@ -132,17 +132,19 @@ KUBEBUILDER_ASSETS="$(bin/setup-envtest use -p path)" \
 
 ## Writing Tests
 
-Most packages do not use Go table tests. They snapshot structured output to golden files under `testdata/` through `testutil.TestCaseParser`, so a failure prints a readable diff and expectations update with one command instead of hand-edited inline structs.
+Most packages do not use Go table tests. Of the 24 packages that have tests, only `test/releasepolicy/` uses one. The rest snapshot structured output to golden files under `testdata/` through `testutil.TestCaseParser`, so a failure prints the full expected and actual output rather than a struct field mismatch, and expectations update with one command instead of hand-edited inline structs.
 
-This is required in `pkg/catalog/`, `pkg/controller/`, `pkg/report/`, `pkg/render/`, `pkg/goodput/`, `pkg/orchestration/`, `pkg/workload/`, `pkg/nodemonitor/cel/`, `pkg/certification/` and `pkg/platform/`. If you are adding a test to one of those, follow the cases already in that package's `testdata/` directory. `pkg/catalog/gpu_defaults_test.go` is the shortest example.
+This is required in `pkg/catalog/`, `pkg/controller/`, `pkg/report/`, `pkg/render/`, `pkg/goodput/`, `pkg/orchestration/`, `pkg/workload/`, `pkg/nodemonitor/cel/`, `pkg/certification/` and `pkg/platform/`. If you are adding a test to one of those, follow the cases already in that package's `testdata/` directory. `pkg/catalog/gpu_defaults_test.go` is the canonical reference.
 
 Table tests are fine elsewhere for trivial helpers, and anywhere for nil-safety pins, concurrency guards and single-value assertions.
 
-Regenerate golden files only when you have confirmed the new output is correct, never to make a red test go green:
+Regenerate golden files only when you have confirmed the new output is correct, never to make a red test go green. Unit golden files live beside the package, so regenerate them with that package's own test command:
 
 ```bash
-TESTUTIL_UPDATE_EXPECTED=true make test-integration
+TESTUTIL_UPDATE_EXPECTED=true go test ./pkg/report/
 ```
+
+`make test-integration` regenerates only the integration golden files under `cmd/integration/testdata/`. It does not touch unit golden files.
 
 The full guide, including the integration test input format, is in `.claude/skills/cre-test/SKILL.md`. It is plain Markdown and needs no particular tool to read.
 

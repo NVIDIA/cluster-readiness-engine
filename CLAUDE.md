@@ -26,9 +26,10 @@ KUBEBUILDER_ASSETS="$(bin/setup-envtest use -p path)" \
   go test ./cmd/integration/ -v -timeout 300s -count=1 -run TestIntegration/reconcile/job-checkpoint-restart
 ```
 
-Update golden files after intentional changes:
+Update golden files after intentional changes. Unit and integration golden files regenerate separately:
 ```bash
-TESTUTIL_UPDATE_EXPECTED=true make test-integration
+TESTUTIL_UPDATE_EXPECTED=true go test ./pkg/report/   # unit goldens, per package
+TESTUTIL_UPDATE_EXPECTED=true make test-integration   # cmd/integration/testdata/ only
 ```
 
 ### UAT Tests (Kind + KWOK)
