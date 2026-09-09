@@ -20,6 +20,7 @@
     "node004"
   ],
   "exclusionReason": "cordoned",
+  "failedNodes": [],
   "name": "cert-excluded",
   "namespace": "default",
   "result": "INCOMPLETE",
@@ -44,7 +45,7 @@
       "node004"
     ],
     "exclusionReason": "cordoned",
-    "failedNodes": null,
+    "failedNodes": [],
     "gpu": "h100",
     "name": "cert-excluded",
     "platform": "onprem",

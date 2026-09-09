@@ -57,6 +57,7 @@
       "type": "Failed"
     }
   ],
+  "excludedNodes": [],
   "failedNodes": [
     "node001",
     "node002"
@@ -83,6 +84,8 @@
       "type": "Succeeded"
     }
   ],
+  "excludedNodes": [],
+  "failedNodes": [],
   "name": "cert-pass",
   "namespace": "default",
   "result": "PASSED",

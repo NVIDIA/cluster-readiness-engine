@@ -162,6 +162,30 @@ func TestStatusAgreesWithReport(t *testing.T) {
 	}
 }
 
+// TestEmptyCollectionsSerializeAsArrays asserts the serialized bytes, not the
+// decoded value. A missing key, an explicit null, and [] all decode to a nil
+// slice, so TestStatusAgreesWithReport cannot see the difference — but an
+// agent can, and only [] unambiguously means zero. The tool description points
+// callers at failedNodes for a node count, so a key that vanishes on a passing
+// certification is the misreading this feature exists to prevent.
+func TestEmptyCollectionsSerializeAsArrays(t *testing.T) {
+	out := (&getCertStatusOutput{Name: "c", Namespace: "default", Result: "PASSED"}).normalize()
+	raw, err := json.Marshal(out)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got := string(raw)
+
+	for _, field := range []string{"failedNodes", "excludedNodes", "conditions", "categories"} {
+		if !strings.Contains(got, `"`+field+`":[]`) {
+			t.Errorf("%s must serialize as [] when empty, got: %s", field, got)
+		}
+	}
+	if strings.Contains(got, "null") {
+		t.Errorf("no field may serialize as null: %s", got)
+	}
+}
+
 // certView is the subset of both tools' output that must agree.
 type certView struct {
 	Result     string `json:"result"`

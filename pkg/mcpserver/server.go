@@ -62,8 +62,10 @@ func New(store *Store, version string) *mcp.Server {
 		Title:   "NVIDIA Cluster Readiness Engine",
 		Version: version,
 	}, &mcp.ServerOptions{
-		Instructions: "Read-only access to NVCRE certification state. " +
-			"Authentication uses the kubeconfig of whoever launched the server.",
+		Instructions: "Read-only access to NVCRE certification state. The server " +
+			"holds no credentials of its own and adds no privilege: it acts as " +
+			"whatever identity client-go resolves, which is the launching user's " +
+			"kubeconfig, or the pod ServiceAccount when run in-cluster without one.",
 	})
 
 	// Generic mcp.AddTool derives the input/output JSON schemas from the
@@ -182,7 +184,7 @@ func getCertStatusHandler(store *Store) mcp.ToolHandlerFor[certRef, any] {
 				Status:  c.Status,
 			})
 		}
-		return textResult(out)
+		return textResult(out.normalize())
 	}
 }
 
@@ -266,22 +268,26 @@ type categorySummary struct {
 // getCertStatusOutput summarizes a Certification's overall and per-category
 // state without pulling measurement data. Every field except Conditions is
 // projected from report.Build, so it agrees with get_certification_report.
+// Every collection here is emitted even when empty. An absent key reads as
+// "unknown" to an agent, not "zero" — and this struct's failedNodes is the
+// field the tool description points at for a node count, so a vanishing key
+// is the one misreading this feature exists to prevent.
 type getCertStatusOutput struct {
-	Name      string `json:"name"`
-	Namespace string `json:"namespace"`
-	Result    string `json:"result"` // "PASSED", "INCOMPLETE", "FAILED", or "RUNNING"
+	Name       string `json:"name"`
+	Namespace  string `json:"namespace"`
+	Result     string `json:"result"` // "PASSED", "INCOMPLETE", "FAILED", or "RUNNING"
+	TotalNodes int    `json:"totalNodes,omitempty"`
 	// ExcludedNodes lists nodes that matched the target but were left
 	// untested; a run reports INCOMPLETE rather than PASSED when it has any.
 	// Surfaced here so the cheaper tool cannot hide them from an agent.
-	TotalNodes      int             `json:"totalNodes,omitempty"`
-	ExcludedNodes   []string        `json:"excludedNodes,omitempty"`
+	ExcludedNodes   []string        `json:"excludedNodes"`
 	ExclusionReason string          `json:"exclusionReason,omitempty"`
-	Conditions      []conditionInfo `json:"conditions,omitempty"`
-	Categories      []categoryState `json:"categories,omitempty"`
+	Conditions      []conditionInfo `json:"conditions"`
+	Categories      []categoryState `json:"categories"`
 	// FailedNodes is the unique node names that failed, deduplicated across
 	// categories. Use this for a node count; list_failed_nodes returns one
 	// row per distinct failure reason and so can repeat a name.
-	FailedNodes []string `json:"failedNodes,omitempty"`
+	FailedNodes []string `json:"failedNodes"`
 }
 
 type conditionInfo struct {
@@ -314,6 +320,30 @@ type failedNodeDetail struct {
 	Name    string `json:"name"`
 	Reason  string `json:"reason"`
 	Message string `json:"message,omitempty"`
+}
+
+// normalize fills every nil collection so the value serializes with [] rather
+// than null. Kept on the type rather than in the handler so the guarantee
+// survives a second construction site.
+func (o *getCertStatusOutput) normalize() *getCertStatusOutput {
+	o.ExcludedNodes = orEmpty(o.ExcludedNodes)
+	o.FailedNodes = orEmpty(o.FailedNodes)
+	if o.Conditions == nil {
+		o.Conditions = []conditionInfo{}
+	}
+	if o.Categories == nil {
+		o.Categories = []categoryState{}
+	}
+	return o
+}
+
+// orEmpty returns s, or an empty slice when s is nil, so the field serializes
+// as [] rather than null.
+func orEmpty(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
 }
 
 // certification fetches the named Certification, mirroring the nvcrectl

@@ -62,6 +62,6 @@
       ]
     }
   ],
-  "failedNodes": null,
+  "failedNodes": [],
   "result": "FAILED"
 }

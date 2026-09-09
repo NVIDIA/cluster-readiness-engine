@@ -216,7 +216,9 @@ func FailedNodesFromRef(
 // categories, resolved from each category's nodeResultsRef ConfigMap.
 func CertFailedNodes(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certification) []string {
 	seen := make(map[string]struct{})
-	var union []string
+	// Non-nil so an empty result serializes as [] rather than null: null reads
+	// as "unknown" to a consumer, where the truth is "no nodes failed".
+	union := []string{}
 	for _, cat := range cert.Status.CategoryStatuses {
 		for _, n := range FailedNodesFromRef(ctx, c, cert.Namespace, cat.FailedNodesRef) {
 			if n.Name == "" {

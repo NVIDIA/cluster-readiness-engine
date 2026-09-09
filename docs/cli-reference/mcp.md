@@ -39,7 +39,18 @@ All cluster access uses the kubeconfig of whoever launches the server, resolved 
 Client-go's loading rules end in an in-cluster fallback. Run `nvcrectl mcp serve` inside a pod with no kubeconfig and it authenticates as that pod's ServiceAccount, which may be broader than the operator running the agent. When you deploy the server in-cluster, bind its ServiceAccount to a role that grants no more than the reads below.
 </Warning>
 
-The tools need `get`/`list` on `certifications` and `workflows` in the target namespace, and `get` on the `configmaps` holding failed-node results. A caller missing the ConfigMap read still gets a successful response with an empty `failedNodes` list rather than an error, so grant the ConfigMap read explicitly — otherwise an agent can read "no nodes failed" from what is really "not allowed to look".
+In the target namespace the tools need:
+
+| Verb | Resources |
+|------|-----------|
+| `get` | `certifications`, `workflows`, `jobs` (`nvcre.nvidia.com`), `jobs` (`batch`), `configmaps` |
+| `list` | `goodputmeasurements`, `bandwidthmeasurements`, `jobs` (`nvcre.nvidia.com`) |
+
+`certifications` is always fetched by name, so `get` is enough; it does not need `list`.
+
+<Warning>
+`report.Build` treats every one of these reads as best-effort: a read it is not permitted to make is skipped, not reported. Bind all of them, or `get_certification_report` returns a successful response with metrics, bandwidth, and diagnose data silently absent, and `get_certification_status` reports an empty `failedNodes` for what is really "not allowed to look". The missing data is not one obvious field, so a partial binding is hard to notice from the output alone.
+</Warning>
 
 ### Client configuration
 
