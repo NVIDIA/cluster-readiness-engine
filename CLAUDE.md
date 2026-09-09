@@ -108,11 +108,11 @@ There is no Remediation controller. ADR-061 removed it. NVCRE does not taint, co
 
 Integration tests use envtest with golden file comparison in `cmd/integration/testdata/reconcile/`. Each test case is a directory with `input_client_objects.yaml`, `input_config.yaml`, and `expected.json`. `PodLogFetcher` interface enables deterministic goodput tests via `input_logs_*.txt` files.
 
-Unit tests in these packages MUST use `testutil.TestCaseParser` (in `pkg/testutil/`) with testdata directories and golden files, the same pattern as integration tests but at the package level. Go table tests are not accepted in them:
+Structured output in these packages MUST go through `testutil.TestCaseParser` (in `pkg/testutil/`) with testdata directories and golden files, the same pattern as integration tests but at the package level. A hand-maintained table of structured output is not accepted in them:
 
-`pkg/catalog/`, `pkg/controller/`, `pkg/report/`, `pkg/render/`, `pkg/goodput/`, `pkg/orchestration/`, `pkg/workload/`, `pkg/nodemonitor/cel/`, `pkg/certification/`, `pkg/platform/`
+`pkg/catalog/`, `pkg/certification/`, `pkg/cluster/`, `pkg/controller/`, `pkg/goodput/`, `pkg/nodemonitor/cel/`, `pkg/orchestration/`, `pkg/platform/`, `pkg/podlogs/`, `pkg/render/`, `pkg/report/`, `pkg/workload/`, `pkg/workloadrun/`, `cmd/manager/`, `test/helm/`
 
-Table tests are fine for genuinely trivial helpers elsewhere (`pkg/gpu/`, `pkg/naming/`, `pkg/nccl/`, `pkg/threshold/`, `pkg/numstr/`, `pkg/noderesults/`, `pkg/setup/`), and for nil-safety pins, concurrency guards, and single-value assertions in any package. When in doubt, use `testutil.TestCaseParser`.
+Table tests remain fine in any package for nil-safety pins, concurrency guards, and single-value assertions, and for trivial helpers in `pkg/gpu/`, `pkg/naming/`, `pkg/nccl/`, `pkg/threshold/`, `pkg/numstr/`, `pkg/noderesults/`, `pkg/setup/`. Those exceptions are live inside required packages: `pkg/controller/status_test.go` and `pkg/controller/parser_cache_test.go` pin retry-budget and cache-identity behavior with tables. `test/releasepolicy/` and `test/docspolicy/` are table-driven by design. When in doubt, match the cases already in the package's `testdata/`.
 
 The full testing guide is in `.claude/skills/cre-test/SKILL.md`: golden file rules, the integration test input format, and the canonical example. Read that file directly. It is plain Markdown and needs no particular tool.
 

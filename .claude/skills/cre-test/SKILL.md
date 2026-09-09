@@ -14,12 +14,13 @@ description: Use when writing, running, or debugging tests in this repo. Covers 
 
 ## Test Pattern Decision
 
-**Always use `testutil.TestCaseParser`** (defined in `pkg/testutil/`) for tests in these packages — they already follow the pattern:
-- `pkg/catalog/`, `pkg/controller/`, `pkg/report/`, `pkg/render/`, `pkg/goodput/`, `pkg/orchestration/`, `pkg/workload/`, `pkg/nodemonitor/cel/`, `pkg/certification/`, `pkg/platform/`
+**Always use `testutil.TestCaseParser`** (defined in `pkg/testutil/`) for structured output in these packages, which already follow the pattern:
+- `pkg/catalog/`, `pkg/certification/`, `pkg/cluster/`, `pkg/controller/`, `pkg/goodput/`, `pkg/nodemonitor/cel/`, `pkg/orchestration/`, `pkg/platform/`, `pkg/podlogs/`, `pkg/render/`, `pkg/report/`, `pkg/workload/`, `pkg/workloadrun/`, `cmd/manager/`, `test/helm/`
 
 **Plain table-driven tests are acceptable only for genuinely trivial helpers** with no structured output worth snapshotting:
 - `pkg/gpu/`, `pkg/naming/`, `pkg/nccl/`, `pkg/threshold/`, `pkg/numstr/`, `pkg/noderesults/`, `pkg/setup/`
-- Nil-safety pins, concurrency guards, and single-value assertions anywhere
+- Nil-safety pins, concurrency guards, and single-value assertions anywhere, including inside the packages above. `pkg/controller/status_test.go` (retry budget) and `pkg/controller/parser_cache_test.go` (cache identity) are the live examples.
+- `test/releasepolicy/` and `test/docspolicy/` are table-driven by design, running shell extracted from workflow YAML against accept and reject cases.
 
 When in doubt: use `testutil.TestCaseParser`. It makes failures readable and lets you update expectations in one command instead of editing inline structs.
 

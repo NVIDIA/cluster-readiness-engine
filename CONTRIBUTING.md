@@ -132,11 +132,13 @@ KUBEBUILDER_ASSETS="$(bin/setup-envtest use -p path)" \
 
 ## Writing Tests
 
-Most packages do not use Go table tests. Of the 24 packages that have tests, only `test/releasepolicy/` uses one. The rest snapshot structured output to golden files under `testdata/` through `testutil.TestCaseParser`, so a failure prints the full expected and actual output rather than a struct field mismatch, and expectations update with one command instead of hand-edited inline structs.
+Structured output is snapshotted to golden files under `testdata/` through `testutil.TestCaseParser` rather than asserted against hand-written table cases. A failure then prints the full expected and actual output instead of a struct field mismatch, and expectations update with one command instead of hand-edited inline structs.
 
-This is required in `pkg/catalog/`, `pkg/controller/`, `pkg/report/`, `pkg/render/`, `pkg/goodput/`, `pkg/orchestration/`, `pkg/workload/`, `pkg/nodemonitor/cel/`, `pkg/certification/` and `pkg/platform/`. If you are adding a test to one of those, follow the cases already in that package's `testdata/` directory. `pkg/catalog/gpu_defaults_test.go` is the canonical reference.
+This is required in `pkg/catalog/`, `pkg/certification/`, `pkg/cluster/`, `pkg/controller/`, `pkg/goodput/`, `pkg/nodemonitor/cel/`, `pkg/orchestration/`, `pkg/platform/`, `pkg/podlogs/`, `pkg/render/`, `pkg/report/`, `pkg/workload/`, `pkg/workloadrun/`, `cmd/manager/` and `test/helm/`. If you are adding a test to one of those, follow the cases already in that package's `testdata/` directory. `pkg/catalog/gpu_defaults_test.go` is the canonical reference.
 
-Table tests are fine elsewhere for trivial helpers, and anywhere for nil-safety pins, concurrency guards and single-value assertions.
+Table tests stay fine anywhere for nil-safety pins, concurrency guards and single-value assertions, and for trivial helpers in `pkg/gpu/`, `pkg/naming/`, `pkg/nccl/`, `pkg/threshold/`, `pkg/numstr/`, `pkg/noderesults/` and `pkg/setup/`. Those exceptions are in active use: `pkg/controller/status_test.go` pins retry-budget behavior with a table and `test/helm/render_test.go` pins an image digest the same way, both inside required packages. What the rule rules out is a hand-maintained table of structured output where a golden file would do. `test/releasepolicy/` and `test/docspolicy/` are table-driven by design, since they run shell extracted from workflow YAML against accept and reject cases.
+
+To add a new case, create `testdata/<subdir>/<case>/` with its input files, run the package's tests once with `TESTUTIL_UPDATE_EXPECTED=true` so `expected.*` is written, then read the generated file before committing it.
 
 Regenerate golden files only when you have confirmed the new output is correct, never to make a red test go green. Unit golden files live beside the package, so regenerate them with that package's own test command:
 
@@ -144,7 +146,7 @@ Regenerate golden files only when you have confirmed the new output is correct, 
 TESTUTIL_UPDATE_EXPECTED=true go test ./pkg/report/
 ```
 
-`make test-integration` regenerates only the integration golden files under `cmd/integration/testdata/`. It does not touch unit golden files.
+Substitute the package you are editing for `./pkg/report/`. `make test-integration` regenerates only the integration golden files under `cmd/integration/testdata/`; it does not touch unit golden files. Comparison trims leading and trailing whitespace on both sides, so a trailing newline in a golden file is fine.
 
 The full guide, including the integration test input format, is in `.claude/skills/cre-test/SKILL.md`. It is plain Markdown and needs no particular tool to read.
 
