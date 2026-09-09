@@ -79,7 +79,9 @@ Key chart values:
 | `manager.image.digest` | `""` | Pin the controller image by digest. Wins over `tag`; the only form that names the exact bytes you verified |
 | `manager.imagePullSecrets` | `[]` | Pull secrets for the controller image |
 | `manager.resources` | `10m/500m` CPU, `1Gi/1Gi` memory | Controller resource requests/limits |
-| `manager.affinity` | `{}` | Controller pod affinity |
+| `manager.affinity` | `{}` | Replace the complete controller affinity; when empty, the chart prefers spreading replicas across nodes |
+| `pdb.enabled` | `false` | Create a controller PodDisruptionBudget |
+| `pdb.minAvailable` | `1` | Minimum ready controller pods during voluntary eviction; integer or percentage |
 | `metrics.port` | `8443` | Controller metrics port |
 | `metrics.serviceMonitor.enabled` | `true` | Install a `ServiceMonitor` (requires the Prometheus Operator CRDs; set to `false` on clusters without them) |
 
@@ -114,7 +116,46 @@ manager:
   replicas: 2
 ```
 
-Only one replica holds the leader lease at a time. Standby replicas take over automatically if the leader fails. No additional configuration is required.
+Only one replica holds the leader lease at a time. Standby replicas take over automatically if the leader fails, with a temporary reconciliation gap while leadership is acquired. Existing workloads continue independently if their nodes remain healthy.
+
+### Node maintenance and disruption protection
+
+To retain a ready controller replica during voluntary evictions such as `kubectl drain`, enable the optional PodDisruptionBudget (PDB). `nvcrectl setup init` currently has no PDB configuration flags, so manage these values through a direct Helm install or upgrade, or through your GitOps values.
+
+```yaml
+manager:
+  replicas: 2
+pdb:
+  enabled: true
+  minAvailable: 1
+```
+
+By default, the chart gives controller replicas a preferred pod anti-affinity rule for `kubernetes.io/hostname`. The scheduler spreads replicas across nodes when possible but may co-locate them when necessary. A non-empty `manager.affinity` replaces that complete default; it is not merged with the preferred rule. For a hard HA guarantee, include both infrastructure-node placement and required pod anti-affinity in the override. The example below assumes infrastructure nodes carry the `node-role.kubernetes.io/infra` label; replace that key with the label used by your cluster. Also replace `nvcre` in the instance label if your Helm release has a different name:
+
+```yaml
+manager:
+  replicas: 2
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/infra
+                operator: Exists
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/instance: nvcre
+              control-plane: manager
+          topologyKey: kubernetes.io/hostname
+```
+
+The default preferred rule does not guarantee separation, so both replicas may still share a node. During a drain, one pod can be evicted, but the PDB then waits for the Deployment to schedule and ready a replacement elsewhere before allowing the other eviction. If no replacement can become Ready, the drain remains blocked. Co-location also leaves both replicas exposed to an involuntary failure of that node, which a PDB cannot prevent.
+
+This placement requires at least two eligible infrastructure nodes. The PDB can still allow eviction of the leader; it preserves a ready replica, not uninterrupted reconciliation or process memory. It does not protect against node failure, direct pod deletion, or Deployment rolling updates.
+
+With **one replica and `minAvailable: 1`, the PDB blocks node drains even when no Certification is running**. Before maintenance, either scale to two and wait for a ready replica on another node, or arrange a maintenance window, temporarily disable the PDB (or set `minAvailable: 0`), and restore protection after the replacement is ready. Completing a Certification does not automatically relax the budget. The PDB is disabled by default to preserve existing maintenance behavior.
 
 ## RBAC requirements
 
@@ -302,7 +343,7 @@ Use this checklist before going live. Each item addresses a specific risk surfac
 | **Network policy** | Required | Restrict egress to the Kubernetes API server and DNS only. No NetworkPolicy ships with the chart — add one for your environment. |
 | **RBAC audit** | Required | Run `kubectl get clusterrole nvcre-manager-role -o yaml` and verify the permissions match your security requirements. |
 | **TLS for metrics** | Recommended | The default ServiceMonitor uses `insecureSkipVerify: true`. Configure cert-manager to issue a serving certificate for the controller's metrics endpoint. |
-| **Controller node affinity** | Recommended | Schedule the controller on infrastructure nodes, not GPU nodes, using the `manager.affinity` chart value to avoid consuming GPU resources. |
+| **Controller node affinity** | Recommended | Schedule the controller on infrastructure nodes, not GPU nodes, using `manager.affinity`. This value replaces the chart's complete default affinity, so include pod anti-affinity in the override when running multiple replicas. |
 | **Image provenance** | Recommended | Verify the image signature and its SLSA provenance against the exact signing identity before deploying, then pin what you verified with `--set manager.image.digest=sha256:...` rather than deploying by tag — a tag can be repointed after you check it. The provenance names the commit, ref and workflow that built it. See [Verifying release artifacts](./verifying-artifacts.md). Scan images with your vulnerability tooling before deployment. |
 | **Pod Security Standards** | Verify | The controller runs as non-root with `seccompProfile: RuntimeDefault`, a read-only root filesystem, and all capabilities dropped. Verify with `kubectl get pod -n nvcre -o yaml`. |
 | **CRD backup** | Recommended | Include the NVCRE CRDs in your cluster backup strategy. Certification resources contain node health state that may be needed for audit. |
