@@ -34,7 +34,9 @@ Failed nodes are recorded in the Certification status with a reason (`HardwareFa
 
 ### Can MPI workloads run in air-gapped or restricted-egress clusters?
 
-Yes, if the workload image already ships `sshd`. Multi-node MPI workloads (the multi-node NCCL catalog entries and WorkloadRun's `framework.mpi`) start each worker container with a bootstrap command that installs `openssh-server` via `apt-get` only when `/usr/sbin/sshd` is not already present in the image (`test -x /usr/sbin/sshd || (apt-get update && apt-get install ...)`). The loopback NCCL entries run single-node and have no sshd bootstrap. Building a workload image with `openssh-server` preinstalled makes the install a no-op, so the workers start without any package-manager egress:
+Only when the workload image already contains `/usr/sbin/sshd`. Multi-node MPI workloads (the multi-node NCCL catalog entries and WorkloadRun's `framework.mpi`) start each worker container with a bootstrap command that installs `openssh-server` via `apt-get` unless `/usr/sbin/sshd` is already present (`test -x /usr/sbin/sshd || (apt-get update && apt-get install ...)`). When the image ships `sshd`, the install is a no-op and the workers start with zero package-manager egress. The loopback NCCL entries run single-node and have no sshd bootstrap.
+
+**WorkloadRun**: point `spec.image` at a prebaked image:
 
 ```dockerfile
 FROM <workload base image>
@@ -43,7 +45,12 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 ```
 
-For WorkloadRun, point `spec.image` at the prebaked image. Images without `sshd` still install it at pod start, which requires egress to the image's package repositories. On AWS GB300 the platform override replaces the worker command entirely with one that assumes `sshd` is preinstalled in the nccl-tests image, so no bootstrap runs there.
+**Certification**: there is no image override on the Certification path today; the catalog and platform overrides choose the worker image. Certification works air-gapped when the platform's catalog already lands on an image that ships `sshd`:
+
+- **AWS H100 and GB200**: the EFA overrides swap the workers to the nccl-tests image, which ships `sshd`, so the guarded install no-ops.
+- **AWS GB300**: the platform override replaces the worker command entirely with one that starts the preinstalled `sshd`, so no install runs.
+
+On other platforms the stock worker image is `nvcr.io/nvidia/pytorch`, which does not ship `sshd`, so an air-gapped Certification still fails at the install step. The escape hatches are a [custom catalog entry](../how-to-guides/custom-catalog-entries.md) that points at a prebaked image, or a registry rewrite that serves a prebaked tag at the catalog's image reference. A published prebaked workload image is a possible follow-up tracked in issue #319.
 
 ## Development
 
