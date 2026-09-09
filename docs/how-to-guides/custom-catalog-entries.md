@@ -120,7 +120,7 @@ orchestration:
 After adding the file, rebuild `nvcrectl` so the new entry is embedded, then verify it appears in the catalog and renders correctly:
 
 ```bash
-go build -ldflags "-s -w" -o bin/nvcrectl ./cmd/nvcrectl/
+make build-nvcrectl
 
 bin/nvcrectl certification list-categories
 
@@ -129,7 +129,7 @@ bin/nvcrectl certification render \
   /tmp/my-cert.yaml
 ```
 
-Check the rendered Workflow for correct resource requests, env vars, and override annotations. To run the new category on a cluster, build and deploy a controller image that includes the entry as well.
+Check the rendered Workflow for correct resource requests, env vars, and override annotations. To run the new category on a cluster, the controller must embed the entry too: `make build` produces the `bin/manager` binary and `make docker-build` builds the controller image to deploy.
 
 ## Runtime alternatives
 
@@ -137,6 +137,6 @@ A catalog entry is the most curated option, but it is compile-time only. If you 
 
 1. **Catalog entry** (this guide). Curated and certification-integrated: the category participates in `Certification` runs and appears in `nvcrectl certification list-categories`. Compile-time: changes require building and deploying a new image.
 2. **`WorkloadRun`**. A runtime custom test with a supported UX. You choose a framework (`torch`, `mpi`, or `exec`), optionally mount config files via `spec.config`, and get automatic platform and GPU adaptation. It supports CEL pass/fail `thresholds`, goodput and bandwidth measurements, per-node pass/fail results referenced from status (`succeededNodesRef` / `failedNodesRef`), and your own `spec.overrides` appended to the auto-generated platform overrides. No rebuild needed. See [How-to: Run a WorkloadRun](./run-workloadrun.md).
-3. **Hand-authored `Workflow` CR**. Full control over `jobTemplate`, `dependencies`, `orchestration`, and `overrides` at runtime. The controller still detects the platform and GPU architecture and applies matching overrides at reconcile time. This path is kubectl-only and self-maintained: nothing curates the spec for you, and you own keeping it working across NVCRE upgrades.
+3. **Hand-authored `Workflow` CR**. Full control over `jobTemplate`, `dependencies`, `orchestration`, and `overrides` at runtime. The controller still detects the platform and GPU architecture and applies matching overrides at reconcile time. This path is kubectl-only and self-maintained: there is no curated guide for it, nothing curates the spec for you, and you own keeping it working across NVCRE upgrades. The [Workflow API reference](../api-reference/workflow.md) documents the spec fields.
 
 Delivering curated catalog updates independently of operator upgrades is tracked in [issue #244](https://github.com/NVIDIA/cluster-readiness-engine/issues/244).
