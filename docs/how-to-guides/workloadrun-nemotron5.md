@@ -224,7 +224,7 @@ Key fields:
 - **`resources`** — optional. When omitted, NVCRE auto-sets only `nvidia.com/gpu: <gpusPerNode>` (both limits and requests); it does not guess memory or CPU. Set the block explicitly, as here, if you need CPU pinning or memory sizing.
 - **`TP` in `train.sh`** — tensor parallelism: 4 for GB200/GB300, 8 for H100.
 - **No `target` needed** — NVCRE auto-discovers all GPU nodes. See [Run a WorkloadRun](./run-workloadrun.md) to target specific nodes.
-- **`megatron-clone` init container**: clones Megatron-LM from GitHub at pod start. WorkloadRun specs are user-authored, so the Certification `megatronRepo` option does not apply here; on air-gapped or restricted-egress clusters, edit the clone URL in the init container to point at an internal mirror. See [Training categories: Megatron-LM source](../operations/deployment.md#training-categories-megatron-lm-source).
+- **`megatron-clone` init container**: clones Megatron-LM from GitHub at pod start. WorkloadRun specs are user-authored, so the Certification `sourceRepo` option does not apply here; on air-gapped or restricted-egress clusters, edit the clone URL in the init container to point at an internal mirror. See [Training categories: Megatron-LM source](../operations/deployment.md#training-categories-megatron-lm-source).
 - **`goodputMeasurement`** — parses training logs with the built-in `megatron-training` LogProfile to compute goodput, TFLOPs/GPU, and step time for the report.
 
 NVCRE auto-handles NCCL environment variables, ComputeDomain and DRA setup, EFA/RoCE networking, and topology-aware orchestration based on the detected platform and GPU architecture.

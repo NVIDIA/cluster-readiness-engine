@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# No megatronRepo override: the init container must clone from the NVIDIA
-# GitHub default, byte-identical to the pre-#320 rendering.
+# No sourceRepo override: the init container must clone from the entry's own
+# canonical upstream, https://github.com/NVIDIA/Megatron-LM.git.
 category: training
 subcategory: nemotron5-8b
 target:

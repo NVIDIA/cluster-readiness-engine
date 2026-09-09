@@ -1,3 +1,0 @@
-[
-  "set -ex\nif [ ! -d \"/mnt/workspace/megatron-lm/.git\" ]; then\n  git clone --depth 1 -b core_v0.15.2 https://github.com/NVIDIA/Megatron-LM.git /mnt/workspace/megatron-lm\nfi\necho \"Megatron-LM cloned successfully\"\n"
-]

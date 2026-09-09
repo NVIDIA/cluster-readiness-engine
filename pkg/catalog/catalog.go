@@ -131,9 +131,10 @@ type BuildConfig struct {
 	// 0 means use catalog default. Only used when EnableCheckpoint is true.
 	MaxRestarts int32
 
-	// MegatronRepo is the Git repository URL for the Megatron-LM source cloned
-	// by training entries. Empty means use default (DefaultMegatronRepo).
-	MegatronRepo string
+	// SourceRepo is the Git repository URL for the source checkout cloned by
+	// entries that fetch source at pod start. Empty means each entry uses its
+	// own default upstream; entries that clone no source ignore it.
+	SourceRepo string
 }
 
 // Entry holds a builder that produces a WorkflowSpec for a given target.

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# megatronRepo points at an internal mirror (issue #320): the init container
+# sourceRepo points at an internal mirror (issue #320): the init container
 # must clone from it, with the core_v0.15.2 branch pin unchanged.
 category: training
 subcategory: nemotron5-8b
@@ -10,4 +10,4 @@ target:
     nvidia.com/gpu.product: NVIDIA-GB200-NVL72
 nodesPerJob: 1
 gpusPerNode: 4
-megatronRepo: https://git.internal.example.com/mirrors/Megatron-LM.git
+sourceRepo: https://git.internal.example.com/mirrors/Megatron-LM.git

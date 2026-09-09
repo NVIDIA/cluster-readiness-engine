@@ -14,26 +14,26 @@ import (
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
-type megatronRepoInput struct {
-	Category     string                   `json:"category"`
-	Subcategory  string                   `json:"subcategory"`
-	Target       nvcrev1alpha1.TargetSpec `json:"target"`
-	NodesPerJob  int32                    `json:"nodesPerJob"`
-	GpusPerNode  int32                    `json:"gpusPerNode"`
-	MegatronRepo string                   `json:"megatronRepo"`
+type sourceRepoInput struct {
+	Category    string                   `json:"category"`
+	Subcategory string                   `json:"subcategory"`
+	Target      nvcrev1alpha1.TargetSpec `json:"target"`
+	NodesPerJob int32                    `json:"nodesPerJob"`
+	GpusPerNode int32                    `json:"gpusPerNode"`
+	SourceRepo  string                   `json:"sourceRepo"`
 }
 
-// TestMegatronRepo verifies the clone URL that training entries render into
-// their megatron-clone init container: the NVIDIA GitHub default when
-// CategoryOptions.megatronRepo is unset, and the user's mirror URL when it
-// is set (issue #320).
-func TestMegatronRepo(t *testing.T) {
+// TestSourceRepo verifies the clone URL that entries with a source checkout
+// render into their clone init container: the entry's own canonical upstream
+// when CategoryOptions.sourceRepo is unset, and the user's mirror URL when it
+// is set (issue #320). Both nemotron5 entries default to Megatron-LM.
+func TestSourceRepo(t *testing.T) {
 	p := &testutil.TestCaseParser{
-		Subdir:         "megatron-repo",
+		Subdir:         "source-repo",
 		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
-		var input megatronRepoInput
+		var input sourceRepoInput
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
 		}
@@ -45,12 +45,12 @@ func TestMegatronRepo(t *testing.T) {
 			NodesPerJob:     input.NodesPerJob,
 			GpusPerNode:     input.GpusPerNode,
 			GPUArchitecture: GPUArchFromNodeSelector(input.Target.NodeSelector),
-			MegatronRepo:    input.MegatronRepo,
+			SourceRepo:      input.SourceRepo,
 		})
 		if buildErr != nil {
 			return buildErr
 		}
-		args, err := megatronCloneArgs(spec)
+		args, err := sourceCloneArgs(spec)
 		if err != nil {
 			return err
 		}
@@ -63,9 +63,11 @@ func TestMegatronRepo(t *testing.T) {
 	})
 }
 
-// megatronCloneArgs extracts the "megatron-clone" init container's args from
-// the TrainingRuntime dependency of a built WorkflowSpec.
-func megatronCloneArgs(spec nvcrev1alpha1.WorkflowSpec) ([]string, error) {
+// sourceCloneArgs extracts the "megatron-clone" init container's args from
+// the TrainingRuntime dependency of a built WorkflowSpec. The container name
+// is entry-owned; both nemotron5 entries name their source-clone step
+// "megatron-clone" because Megatron-LM is their entry-defined source.
+func sourceCloneArgs(spec nvcrev1alpha1.WorkflowSpec) ([]string, error) {
 	for _, dep := range spec.Dependencies {
 		var obj map[string]any
 		if err := json.Unmarshal(dep.Raw, &obj); err != nil {
