@@ -34,7 +34,6 @@ func assertAttestIsInvokedAsReusableWorkflow(t *testing.T) {
 	t.Helper()
 
 	callers := []string{wfRelease, wfPublish, wfAttestSmoke}
-	found := 0
 	for _, base := range callers {
 		raw, err := os.ReadFile(filepath.Join(workflowDir, base))
 		if err != nil {
@@ -48,21 +47,22 @@ func assertAttestIsInvokedAsReusableWorkflow(t *testing.T) {
 		if err := yaml.Unmarshal(raw, &doc); err != nil {
 			t.Fatalf("parse %s: %v", base, err)
 		}
+		foundInWorkflow := 0
 		for jobName, job := range doc.Jobs {
 			if !localAttestUses.MatchString(strings.TrimSpace(job.Uses)) {
 				continue
 			}
-			found++
+			foundInWorkflow++
 			if !strings.HasPrefix(job.Uses, "./") {
 				t.Errorf("%s: job %q calls attest.yml as %q; same-repo reusable "+
 					"calls must use the ./ form so the call is a workflow_call boundary",
 					base, jobName, job.Uses)
 			}
 		}
-	}
-	if found == 0 {
-		t.Fatalf("no release-path workflow calls ./.github/workflows/attest.yml; " +
-			"attestation must stay behind a reusable-workflow boundary")
+		if foundInWorkflow == 0 {
+			t.Errorf("%s does not call ./.github/workflows/attest.yml; "+
+				"attestation must stay behind a reusable-workflow boundary", base)
+		}
 	}
 }
 
