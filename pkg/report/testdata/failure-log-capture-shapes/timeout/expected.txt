@@ -1,0 +1,7 @@
+│         Failure Log (one captured pod):                        │
+│           Pod: timed-out-pod                                   │
+│           Node: node-1                                         │
+│           Reason: Timeout                                      │
+│           Tail:                                                │
+│             workload was still running                         │
+{"podName":"timed-out-pod","nodeName":"node-1","reason":"Timeout","tail":"workload was still running"}

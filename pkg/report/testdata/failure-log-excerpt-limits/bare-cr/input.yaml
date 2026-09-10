@@ -1,0 +1,4 @@
+prefix: "first\rsecond\r\n"
+repeat: ""
+count: 0
+suffix: "END"
