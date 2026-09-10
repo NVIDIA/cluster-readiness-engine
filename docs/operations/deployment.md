@@ -96,9 +96,29 @@ nvcrectl setup init \
   --image registry.example.com/mirror/manager:<version>
 ```
 
-`--chart-ref` is used both for the release install and for the CRD extraction (`helm show crds`), so the `helm` phase needs no GHCR access. When the chart ref points at a non-GHCR registry, `setup init` does not attempt a GHCR registry login at all, even with `--image-pull-secret` set, so the install cannot fail on unreachable GHCR. If only one of `--chart-ref` and `--trainer-chart-ref` points at a mirror while the other still resolves to `ghcr.io` (and the GHCR-bound pull is not skipped, e.g. via `--skip-phases=deps`), `setup init` prints a non-fatal warning naming the chart that would still be pulled from GHCR. The chart versions do not change: the mirror must host the NVCRE chart at the CLI version (or `--version`) and the Kubeflow Trainer chart at the pinned version (`2.2.1` for this release). If the mirror requires authentication for the chart pulls, run `helm registry login <mirror>` before `setup init`; Helm then uses its stored credentials for the pulls. `--image-pull-secret` authenticates against `ghcr.io` only; it still creates the `nvcrectl-pull-secret` Kubernetes secret (scoped to `ghcr.io`) regardless of the chart location. For a controller image mirrored off GHCR, omit `--image-pull-secret` and create a cluster-side pull secret for the mirror registry instead.
+`--chart-ref` is used both for the release install and for the CRD extraction (`helm show crds`), so the `helm` phase needs no GHCR access. When the chart ref points at a non-GHCR registry, `setup init` does not attempt a GHCR registry login at all, even with `--image-pull-secret` set, so the install cannot fail on unreachable GHCR. If only one of `--chart-ref` and `--trainer-chart-ref` points at a mirror while the other still resolves to `ghcr.io` (and the GHCR-bound pull is not skipped, e.g. via `--skip-phases=deps`), `setup init` prints a non-fatal warning naming the chart that would still be pulled from GHCR. The chart versions do not change: the mirror must host the NVCRE chart at the CLI version (or `--version`) and the Kubeflow Trainer chart at the pinned version (`2.2.1` for this release). If the mirror requires authentication for the chart pulls, run `helm registry login <mirror>` before `setup init`; Helm then uses its stored credentials for the pulls. `--image-pull-secret` authenticates against `ghcr.io` only; it still creates the `nvcrectl-pull-secret` Kubernetes secret (scoped to `ghcr.io`) regardless of the chart location.
 
-**Bypass `setup init`.** Install the in-repo chart (`helm/cluster-readiness-engine` in the source tree) directly with `helm install`, setting `manager.image.repository` and `manager.image.tag` to your mirrored image, and install Kubeflow Trainer manually. Nothing is pulled from a chart registry, but you take on installing the Kubeflow Trainer version this release supports and re-applying the CRDs on upgrades yourself.
+For a controller image mirrored off GHCR, omit `--image-pull-secret`: both its token and the secret it creates are scoped to `ghcr.io`, so they cannot authenticate pulls from the mirror. Authenticate the mirror pull one of two ways instead:
+
+- **Node-level registry credentials.** Configure the mirror credentials in the nodes' container runtime (containerd registry configuration or a kubelet credential provider). Nothing is bound to the controller pod, so `setup init` works exactly as shown above.
+- **A pull secret bound through the chart.** Create the secret in the `nvcre` namespace and bind it through the chart's `manager.imagePullSecrets` value. `setup init` has no flag to bind a custom-named pull secret today (the only secret it wires into `manager.imagePullSecrets` is the `ghcr.io`-scoped `nvcrectl-pull-secret`), so this path means installing the chart directly with Helm, from the mirrored chart ref or from the in-repo chart described below:
+
+  ```bash
+  kubectl create namespace nvcre
+  kubectl create secret docker-registry mirror-pull-secret --namespace nvcre \
+    --docker-server registry.example.com \
+    --docker-username <user> --docker-password <password>
+
+  helm upgrade --install nvcre oci://registry.example.com/mirror/cluster-readiness-engine \
+    --version <version> --namespace nvcre \
+    --set manager.image.repository=registry.example.com/mirror/manager \
+    --set manager.image.tag=<version> \
+    --set 'manager.imagePullSecrets[0].name=mirror-pull-secret'
+  ```
+
+  Installing the chart with Helm directly carries the same caveats as bypassing `setup init` below: install Kubeflow Trainer yourself, and re-apply the CRDs on upgrades.
+
+**Bypass `setup init`.** Install the in-repo chart (`helm/cluster-readiness-engine` in the source tree) directly with `helm install`, setting `manager.image.repository` and `manager.image.tag` to your mirrored image (and `manager.imagePullSecrets` when the mirror needs credentials), and install Kubeflow Trainer manually. Nothing is pulled from a chart registry, but you take on installing the Kubeflow Trainer version this release supports and re-applying the CRDs on upgrades yourself.
 
 ## Resource requirements
 

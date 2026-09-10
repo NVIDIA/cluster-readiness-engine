@@ -227,11 +227,27 @@ func uninstallHelmRelease(p helmUninstallParams) error {
 // dependency (charts/jobset/ inside the archive), so the install needs no
 // additional registry access; helm resolves remote dependencies only for
 // unpackaged source charts. chartRef overrides the chart location;
-// empty means the published GHCR chart.
-func installTrainerHelmRelease(kubeconfig, kubeContext, chartRef string, out io.Writer) (string, error) {
+// empty means the published GHCR chart. registryToken authenticates the
+// chart pull for a GHCR-hosted chart (e.g. --trainer-chart-ref pointing at a
+// private fork); empty means no token was passed.
+func installTrainerHelmRelease(kubeconfig, kubeContext, chartRef, registryToken string, out io.Writer) (string, error) {
 	helmPath, err := ensureHelm()
 	if err != nil {
 		return "", err
+	}
+
+	// Same gating as installHelmRelease: log in to GHCR only when the chart
+	// being pulled is actually hosted there, so a mirror ref (restricted
+	// egress, issue #321) never triggers a GHCR login; for mirror-hosted
+	// charts the operator runs `helm registry login <mirror>` beforehand and
+	// Helm uses its own stored credentials. The login wraps every install
+	// invocation, including the reinstall inside the ADR-073 recovery arm,
+	// because recovery calls back into this function.
+	if registryToken != "" && chartNeedsGHCRLogin(chartRef) {
+		if err := helmRegistryLogin(helmPath, defaultImageRegistry, registryToken, out); err != nil {
+			return "", err
+		}
+		defer helmRegistryLogout(helmPath, defaultImageRegistry, out)
 	}
 
 	_, _ = fmt.Fprintf(out, "[deps] Installing Kubeflow Trainer Helm release %q in namespace %s...\n",

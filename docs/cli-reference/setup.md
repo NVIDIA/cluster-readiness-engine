@@ -63,6 +63,8 @@ Automatic recovery deletes the `kubeflow-system` namespace, including anything y
 
 The chart versions are unaffected by the `-ref` flags: the NVCRE chart is still pulled at the CLI version (or `--version`), and Kubeflow Trainer at the pinned version, so a mirror must host those chart versions.
 
+For a controller image on a private non-GHCR mirror, `--image-pull-secret` does not help: its token and the secret it creates are scoped to `ghcr.io`, and `setup init` has no flag to bind a custom-named pull secret to the controller pod. Either configure node-level registry credentials for the mirror (containerd/kubelet), or install the chart directly with Helm and bind the secret via `--set 'manager.imagePullSecrets[0].name=<secret-name>'`; see [Restricted egress and air-gapped installs](../operations/deployment.md#restricted-egress-and-air-gapped-installs).
+
 ### Example
 
 ```bash

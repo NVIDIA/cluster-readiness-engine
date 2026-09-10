@@ -1,4 +1,4 @@
-# The published Kubeflow Trainer chart ref is also GHCR-hosted. The trainer
-# install path performs no registry login at all, but the helper must still
-# classify its ref correctly.
+# The published Kubeflow Trainer chart ref is also GHCR-hosted, so with an
+# --image-pull-secret token the [deps] phase logs in to GHCR before pulling
+# it (private trainer forks authenticate the same way as the NVCRE chart).
 chartRef: "oci://ghcr.io/kubeflow/charts/kubeflow-trainer"

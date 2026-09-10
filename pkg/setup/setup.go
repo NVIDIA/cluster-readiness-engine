@@ -211,7 +211,7 @@ func RunInit(
 		skip:        skip,
 		in:          in,
 		autoApprove: autoApprove,
-		trainer:     newTrainerHelm(kubeconfigPath, kubeContext, trainerChartRef),
+		trainer:     newTrainerHelm(kubeconfigPath, kubeContext, trainerChartRef, imagePullSecret),
 		out:         out,
 	}
 
@@ -286,12 +286,14 @@ type trainerHelm struct {
 }
 
 // newTrainerHelm returns the CLI-backed trainerHelm implementation. chartRef
-// is the Kubeflow Trainer chart location; empty means the published GHCR chart.
-func newTrainerHelm(kubeconfigPath, kubeContext, chartRef string) trainerHelm {
+// is the Kubeflow Trainer chart location; empty means the published GHCR
+// chart. registryToken authenticates the chart pull when chartRef is
+// GHCR-hosted; for a mirror-hosted chart it is ignored (issue #321).
+func newTrainerHelm(kubeconfigPath, kubeContext, chartRef, registryToken string) trainerHelm {
 	return trainerHelm{
 		state: newTrainerStateQuery(kubeconfigPath, kubeContext),
 		install: func(out io.Writer) (string, error) {
-			return installTrainerHelmRelease(kubeconfigPath, kubeContext, chartRef, out)
+			return installTrainerHelmRelease(kubeconfigPath, kubeContext, chartRef, registryToken, out)
 		},
 		uninstall: func(out io.Writer) error {
 			return uninstallTrainerHelmRelease(kubeconfigPath, kubeContext, out)
