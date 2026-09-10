@@ -3,7 +3,8 @@
 
 # NIC resource auto-detection, ambiguous variant (ADR-075): the certification
 # sets no nicResourceName and every target node advertises TWO candidates
-# (rdma/ib and nvidia.com/mlnxnics, both allocatable > 0 everywhere).
+# (rdma/ib and nvidia.com/mlnxnics, both allocatable at the requested
+# mlnxPerNode count of 1 everywhere).
 # Detection refuses to guess: the rendered TrainingRuntime carries no NIC
 # resource request (today's field-unset behavior) and the controller emits a
 # Normal NICResourceDetection event naming both candidates (events are not

@@ -1,8 +1,9 @@
-# node-02 advertises the resource at zero: allocatable must be > 0 on every
-# node, so the candidate is disqualified (a request node-02 cannot satisfy
-# would leave its pods permanently Pending).
+# node-02 advertises the resource at zero: allocatable must cover the
+# requested count on every node, so the candidate is disqualified (a request
+# node-02 cannot satisfy would leave its pods permanently Pending).
 platform: onprem
 gpuArchitecture: gb300
+mlnxPerNode: 1
 nodes:
   - name: node-01
     allocatable:

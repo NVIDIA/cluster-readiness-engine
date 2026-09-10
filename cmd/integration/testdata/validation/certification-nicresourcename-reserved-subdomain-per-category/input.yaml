@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Subdomains of the reserved domains are rejected too, and the CEL rule
+# applies at the per-category level, not only on the embedded spec-level
+# field.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-nicname-subdomain
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        nicResourceName: sub.k8s.io/gpu

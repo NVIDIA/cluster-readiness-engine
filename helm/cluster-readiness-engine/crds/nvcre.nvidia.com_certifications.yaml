@@ -177,10 +177,19 @@ spec:
                             per-container count comes from mlnxPerNode. When unset, no NIC resource
                             is requested and scheduling is unchanged. Sites running a shared-device
                             plugin (one pooled resource per pod) should set mlnxPerNode to 1
-                            alongside this field.
+                            alongside this field. The value must be a fully qualified extended
+                            resource name: a DNS-subdomain domain, a slash, and a name segment of
+                            at most 63 characters; the reserved kubernetes.io and k8s.io domains
+                            (including their subdomains) are rejected, matching what Kubernetes
+                            accepts as an extended resource.
                           maxLength: 253
-                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]*[a-zA-Z0-9])?$
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]{0,61}[a-zA-Z0-9])?$
                           type: string
+                          x-kubernetes-validations:
+                          - message: nicResourceName must not use the reserved kubernetes.io
+                              or k8s.io domains
+                            rule: '!self.contains(''kubernetes.io/'') && !self.startsWith(''k8s.io/'')
+                              && !self.contains(''.k8s.io/'')'
                         nodesPerJob:
                           description: |-
                             nodesPerJob is the number of nodes per job for multi-node workloads.
@@ -522,10 +531,19 @@ spec:
                   per-container count comes from mlnxPerNode. When unset, no NIC resource
                   is requested and scheduling is unchanged. Sites running a shared-device
                   plugin (one pooled resource per pod) should set mlnxPerNode to 1
-                  alongside this field.
+                  alongside this field. The value must be a fully qualified extended
+                  resource name: a DNS-subdomain domain, a slash, and a name segment of
+                  at most 63 characters; the reserved kubernetes.io and k8s.io domains
+                  (including their subdomains) are rejected, matching what Kubernetes
+                  accepts as an extended resource.
                 maxLength: 253
-                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]*[a-zA-Z0-9])?$
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]{0,61}[a-zA-Z0-9])?$
                 type: string
+                x-kubernetes-validations:
+                - message: nicResourceName must not use the reserved kubernetes.io
+                    or k8s.io domains
+                  rule: '!self.contains(''kubernetes.io/'') && !self.startsWith(''k8s.io/'')
+                    && !self.contains(''.k8s.io/'')'
               nodesPerJob:
                 description: |-
                   nodesPerJob is the number of nodes per job for multi-node workloads.

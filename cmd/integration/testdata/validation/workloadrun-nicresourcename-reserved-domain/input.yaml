@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The WorkloadRun CRD carries the same nicResourceName validation as the
+# Certification CRD: the reserved kubernetes.io domain is rejected by the
+# CEL rule.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: val-wr-nicname-reserved
+  namespace: default
+spec:
+  image: nvcr.io/nvidia/pytorch:latest
+  numNodes: 2
+  nicResourceName: kubernetes.io/gpu
+  framework:
+    exec:
+      command: ["echo"]
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300

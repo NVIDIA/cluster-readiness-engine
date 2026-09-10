@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A qualified name's segment after the slash is capped at 63 characters (the
+# pattern bounds it with {0,61} between the mandatory first and last
+# characters); this suffix is 64 characters and is rejected by the pattern.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-nicname-suffix-len
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300
+  nicResourceName: rdma/abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbc
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

@@ -4,6 +4,7 @@
 # exactly one candidate.
 platform: onprem
 gpuArchitecture: gb200
+mlnxPerNode: 8
 nodes:
   - name: node-01
     allocatable:

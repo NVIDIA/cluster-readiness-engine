@@ -171,10 +171,15 @@ type CategoryOptions struct {
 	// per-container count comes from mlnxPerNode. When unset, no NIC resource
 	// is requested and scheduling is unchanged. Sites running a shared-device
 	// plugin (one pooled resource per pod) should set mlnxPerNode to 1
-	// alongside this field.
+	// alongside this field. The value must be a fully qualified extended
+	// resource name: a DNS-subdomain domain, a slash, and a name segment of
+	// at most 63 characters; the reserved kubernetes.io and k8s.io domains
+	// (including their subdomains) are rejected, matching what Kubernetes
+	// accepts as an extended resource.
 	// +optional
 	// +kubebuilder:validation:MaxLength=253
-	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]*[a-zA-Z0-9])?$`
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]{0,61}[a-zA-Z0-9])?$`
+	// +kubebuilder:validation:XValidation:rule="!self.contains('kubernetes.io/') && !self.startsWith('k8s.io/') && !self.contains('.k8s.io/')",message="nicResourceName must not use the reserved kubernetes.io or k8s.io domains"
 	NicResourceName *string `json:"nicResourceName,omitempty"`
 
 	// resources overrides the CPU and memory resources of training workload

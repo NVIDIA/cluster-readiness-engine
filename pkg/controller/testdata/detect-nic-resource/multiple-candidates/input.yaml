@@ -1,6 +1,8 @@
-# Two candidates each allocatable on every node: ambiguous, refuse to guess.
+# Two candidates each allocatable at the requested count on every node:
+# ambiguous, refuse to guess.
 platform: onprem
 gpuArchitecture: gb200
+mlnxPerNode: 1
 nodes:
   - name: node-01
     allocatable:

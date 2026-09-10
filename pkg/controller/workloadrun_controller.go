@@ -264,13 +264,16 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 	// RDMA device plugin the site runs. The field always wins; when it is
 	// unset on the on-prem GB200/GB300 target the override matches, detection
 	// fills the gap from node allocatable, but only when exactly one
-	// candidate (rdma/* or nvidia.com/mlnxnics) is allocatable on every
-	// discovered target node. Zero or multiple candidates means nothing is
-	// injected and a Normal event says why; detection never guesses (ADR-075).
-	nicResourceName, nicCandidates, nicDetectionRan := resolveNICResourceName(
-		spec.NicResourceName, detectedPlatform, gpuArch, nodes)
-	if nicDetectionRan && nicResourceName == "" {
-		r.normalf(run, ReasonNICResourceDetection, "%s", nicDetectionMessage(nicCandidates))
+	// candidate (rdma/* or nvidia.com/mlnxnics) is allocatable at the
+	// resolved mlnxPerNode count — the amount the templates will request per
+	// container — on every discovered target node. Zero or multiple
+	// candidates means nothing is injected and a Normal event says why;
+	// detection never guesses (ADR-075).
+	nicDetected := resolveNICResourceName(
+		spec.NicResourceName, detectedPlatform, gpuArch, nodes, mlnxPerNode)
+	nicResourceName := nicDetected.Name
+	if nicDetected.Ran && nicResourceName == "" {
+		r.normalf(run, ReasonNICResourceDetection, "%s", nicDetectionMessage(nicDetected))
 	}
 	if spec.EnableMNNVL != nil {
 		enableMNNVL = *spec.EnableMNNVL

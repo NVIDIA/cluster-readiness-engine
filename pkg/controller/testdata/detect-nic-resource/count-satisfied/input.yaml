@@ -1,5 +1,5 @@
-# No candidate resource anywhere: nothing to pick, message says none found
-# (as opposed to candidates present but below the requested count).
+# One rdma/ candidate allocatable at exactly the requested count (the gb200/
+# gb300 default of 8) on every node: detection picks it.
 platform: onprem
 gpuArchitecture: gb300
 mlnxPerNode: 8
@@ -7,6 +7,8 @@ nodes:
   - name: node-01
     allocatable:
       nvidia.com/gpu: "4"
+      rdma/ib: "8"
   - name: node-02
     allocatable:
       nvidia.com/gpu: "4"
+      rdma/ib: "8"

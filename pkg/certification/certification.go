@@ -186,7 +186,7 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 		if nodesErr != nil {
 			return fmt.Errorf("discover nodes: %w", nodesErr)
 		}
-		applyNICDetection(cert, dryRunNodes)
+		applyNICDetection(cert, dryRunNodes, platformFlag)
 	}
 
 	workflows, err := renderCertification(cert, platformFlag)
@@ -213,7 +213,9 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 		}
 
 		for i := range workflows {
-			meta, err := render.ResolveWorkflow(&workflows[i], nodes)
+			// --platform wins over node-based detection for override matching
+			// and the recorded annotations, matching the workloadrun dry-run.
+			meta, err := render.ResolveWorkflowForPlatform(&workflows[i], nodes, platformFlag)
 			if err != nil {
 				return fmt.Errorf("resolve workflow %s: %w", workflows[i].Name, err)
 			}
@@ -293,11 +295,17 @@ func resolveWorkflowsOffline(
 // controller: the field always wins (a per-category nicResourceName still
 // overrides the injected global via controller.ResolveOptions), detection
 // runs only for on-prem GB200/GB300 targets, and only a single qualifying
-// candidate (rdma/* or nvidia.com/mlnxnics, allocatable on every target
-// node) is used. On zero or multiple candidates it prints the note the
-// controllers emit as a NICResourceDetection event and injects nothing.
+// candidate (rdma/* or nvidia.com/mlnxnics, allocatable at the resolved
+// mlnxPerNode count on every target node) is used. On zero or multiple
+// candidates it prints the note the controllers emit as a
+// NICResourceDetection event and injects nothing.
 //
-// Known divergence from the controller: the controller detects against the
+// platformFlag (--platform) wins over node-based detection for the gate and
+// for the mlnxPerNode catalog default, matching how renderCertification uses
+// the flag for template defaults and how the workloadrun dry-run derives its
+// effective platform.
+//
+// Known divergences from the controller: the controller detects against the
 // arch-filtered node set (archNodes in createWorkflowForCategory), while
 // this path detects against every discovered target node and resolves the
 // platform/architecture gate from that whole list (majority architecture).
@@ -306,26 +314,40 @@ func resolveWorkflowsOffline(
 // larger set can only shrink the candidate list, so this preview may refuse
 // where a reconcile would pick, or pick where a reconcile would refuse;
 // when both pick, they pick the same name. Set nicResourceName to make a
-// mixed fleet deterministic.
-func applyNICDetection(cert *nvcrev1alpha1.Certification, nodes []corev1.Node) {
+// mixed fleet deterministic. Likewise, detection here is spec-level, so the
+// count is the spec-level mlnxPerNode (field or catalog default); the
+// controller re-resolves per category, so a per-category mlnxPerNode can
+// make a reconcile pick where this preview refused, or vice versa.
+func applyNICDetection(cert *nvcrev1alpha1.Certification, nodes []corev1.Node, platformFlag string) {
 	if len(nodes) == 0 {
 		return
 	}
-	name, candidates, ran := controller.ResolveNICResourceName(
-		cert.Spec.CategoryOptions.NicResourceName,
-		controller.DetectPlatform(nodes),
-		controller.DetectGPUArchitecture(nodes),
-		nodes,
-	)
+	platformName := controller.DetectPlatform(nodes)
+	if platformFlag != "" {
+		platformName = platformFlag
+	}
+	gpuArch := controller.DetectGPUArchitecture(nodes)
+	// Resolve the spec-level mlnxPerNode the way renderCertification resolves
+	// it per category: the field wins, else the catalog default for the
+	// architecture and effective platform. Detection qualifies candidates
+	// against this count because it is what the templates request per
+	// container.
+	mlnxPerNode := catalog.GPUDefaults(gpuArch, platformName).MlnxPerNode
+	if cert.Spec.MlnxPerNode != nil {
+		mlnxPerNode = *cert.Spec.MlnxPerNode
+	}
+	name, refusalMessage, ran := controller.ResolveNICResourceName(
+		cert.Spec.NicResourceName, platformName, gpuArch, nodes, mlnxPerNode)
 	if !ran {
 		return
 	}
 	if name == "" {
-		_, _ = fmt.Fprintln(os.Stderr, controller.NICDetectionMessage(candidates))
+		_, _ = fmt.Fprintln(os.Stderr, refusalMessage)
 		return
 	}
-	_, _ = fmt.Fprintf(os.Stderr, "Auto-detected NIC resource %q (allocatable on every target node)\n", name)
-	cert.Spec.CategoryOptions.NicResourceName = &name
+	_, _ = fmt.Fprintf(os.Stderr,
+		"Auto-detected NIC resource %q (allocatable at the requested count on every target node)\n", name)
+	cert.Spec.NicResourceName = &name
 }
 
 // renderCertification builds all Workflows that the controller would create

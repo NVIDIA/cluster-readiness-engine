@@ -445,15 +445,18 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	// RDMA device plugin the site runs. The field always wins; when it is
 	// unset on the on-prem GB200/GB300 target the override matches, detection
 	// fills the gap from node allocatable, but only when exactly one
-	// candidate (rdma/* or nvidia.com/mlnxnics) is allocatable on every node
-	// the job is sized against (the same arch-filtered set nodesPerJob
-	// resolution uses). Zero or multiple candidates means nothing is injected
-	// and a Normal event says why; detection never guesses (ADR-075).
-	nicResourceName, nicCandidates, nicDetectionRan := resolveNICResourceName(
-		opts.NicResourceName, detectedPlatform, gpuArch, archNodes)
-	if nicDetectionRan && nicResourceName == "" {
+	// candidate (rdma/* or nvidia.com/mlnxnics) is allocatable at the
+	// resolved mlnxPerNode count — the amount the templates will request per
+	// container — on every node the job is sized against (the same
+	// arch-filtered set nodesPerJob resolution uses). Zero or multiple
+	// candidates means nothing is injected and a Normal event says why;
+	// detection never guesses (ADR-075).
+	nicDetected := resolveNICResourceName(
+		opts.NicResourceName, detectedPlatform, gpuArch, archNodes, mlnxPerNode)
+	nicResourceName := nicDetected.Name
+	if nicDetected.Ran && nicResourceName == "" {
 		r.normalf(certification, ReasonNICResourceDetection,
-			"%s/%s: %s", category.Domain, category.Variant, nicDetectionMessage(nicCandidates))
+			"%s/%s: %s", category.Domain, category.Variant, nicDetectionMessage(nicDetected))
 	}
 
 	capableNodes, err := dropUnderCapacityNodes(archNodes, category, gpusPerNode)

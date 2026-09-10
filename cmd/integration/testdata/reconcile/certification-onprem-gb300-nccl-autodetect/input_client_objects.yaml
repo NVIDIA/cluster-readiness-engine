@@ -3,8 +3,9 @@
 
 # NIC resource auto-detection (ADR-075): the certification sets no
 # nicResourceName, and every target node advertises exactly one candidate
-# (rdma/ib, allocatable > 0), so the controller detects it and the rendered
-# TrainingRuntime carries the rdma/ib request without the field.
+# (rdma/ib, allocatable at the requested mlnxPerNode count of 1), so the
+# controller detects it and the rendered TrainingRuntime carries the rdma/ib
+# request without the field.
 apiVersion: v1
 kind: Node
 metadata:
