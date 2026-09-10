@@ -1,6 +1,6 @@
 # ADR-073: Convergent `setup init` Retry After a Partial Kubeflow Trainer Install
 
-> **Status:** Accepted
+> **Status:** Accepted. [ADR-078](078-jobset-ownership.md) proposes changes to JobSet CRD deletion and JobSet-instance recovery gating; these changes are not yet accepted.
 
 ## Context
 
@@ -100,6 +100,7 @@ So the reporting gap is closed by #188, but `setup init` itself still retries in
 ## References
 
 - Issue #180 — `setup init` retry certificate field-ownership conflicts (field evidence and manual recovery).
+- [ADR-078](078-jobset-ownership.md) — proposes preserving JobSet CRDs and refining this record's JobSet recovery safety gate. Decision 2 (attempt-then-classify for webhook SSA) is unchanged.
 - Issue #179 / PR #188 — `setup status` Helm release health (`helmStateFunc` plumbing this ADR reuses).
 - ADR-064: Helm chart distribution.
 - ADR-065: nvcrectl Helm install — the decision to drive Helm via CLI subprocess rather than SDK, which shapes the attempt-then-classify design.
