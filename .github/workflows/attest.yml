@@ -120,11 +120,15 @@ on:
         required: false
         type: boolean
         default: false
+      # Deliberately manual pin: Dependabot cannot raise workflow_call input
+      # defaults, and a cosign bump changes the attestation bundle format
+      # (ADR-074). See .github/dependabot.yml for the full manual-pin list.
       cosign_version:
         description: 'Pinned cosign version. Governs the emitted bundle format.'
         required: false
         type: string
         default: 'v3.1.3'
+      # Deliberately manual: download SHA below is known only for this version.
       crane_version:
         description: 'Pinned crane version, used to resolve registry digests.'
         required: false
