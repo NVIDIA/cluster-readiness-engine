@@ -330,6 +330,22 @@ spec:
                           format: int32
                           minimum: 1
                           type: integer
+                        sourceRepo:
+                          description: |-
+                            sourceRepo is the Git repository for the source checkout this category
+                            clones at pod start. Each catalog entry defines what its source is and
+                            its default upstream; point this at an internal mirror for air-gapped
+                            or restricted-egress clusters. Entries that clone no source ignore it.
+                            The URL must use an authenticated remote scheme (https:// or ssh://).
+                            http:// and git:// are intentionally rejected: the cloned source is
+                            executed by the workload, and those transports are unauthenticated.
+                            scp-style git@host:path syntax and file:// are intentionally rejected:
+                            the contract is a remote git mirror. Non-TLS mirrors and local source
+                            belong on the pre-seeded checkpoint PVC path or in the workload image
+                            instead.
+                          maxLength: 2048
+                          pattern: ^(https|ssh)://[A-Za-z0-9._~:/@%+-]+$
+                          type: string
                         storageClassName:
                           description: |-
                             storageClassName is the StorageClass to use for PersistentVolumeClaim
@@ -676,6 +692,22 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
+              sourceRepo:
+                description: |-
+                  sourceRepo is the Git repository for the source checkout this category
+                  clones at pod start. Each catalog entry defines what its source is and
+                  its default upstream; point this at an internal mirror for air-gapped
+                  or restricted-egress clusters. Entries that clone no source ignore it.
+                  The URL must use an authenticated remote scheme (https:// or ssh://).
+                  http:// and git:// are intentionally rejected: the cloned source is
+                  executed by the workload, and those transports are unauthenticated.
+                  scp-style git@host:path syntax and file:// are intentionally rejected:
+                  the contract is a remote git mirror. Non-TLS mirrors and local source
+                  belong on the pre-seeded checkpoint PVC path or in the workload image
+                  instead.
+                maxLength: 2048
+                pattern: ^(https|ssh)://[A-Za-z0-9._~:/@%+-]+$
+                type: string
               storageClassName:
                 description: |-
                   storageClassName is the StorageClass to use for PersistentVolumeClaim

@@ -383,6 +383,7 @@ func renderCertification(cert *nvcrev1alpha1.Certification, platformName string)
 			MaxRestarts:        derefInt32Ptr(opts.MaxRestarts),
 			TimeoutPerJob:      opts.TimeoutPerJob,
 			MeasurementTimeout: opts.MeasurementTimeout,
+			SourceRepo:         opts.SourceRepo,
 		})
 		if buildErr != nil {
 			return nil, fmt.Errorf("building workflow for %s/%s: %w", cat.Domain, cat.Variant, buildErr)

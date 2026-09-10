@@ -201,6 +201,29 @@ The controller runs without external network access at runtime. All catalog entr
 
 No internet access, external telemetry endpoints, or license servers are required at runtime.
 
+### Training categories: Megatron-LM source
+
+The `training/nemotron5-8b` and `training/nemotron5-56b` categories run a `megatron-clone` init container that resolves the entry's source checkout at pod start, in this order: if the workspace already holds the source at `/mnt/workspace/megatron-lm`, it is used unchanged; otherwise, if the workload image ships the source at `/opt/megatron-lm`, it is copied into the workspace; otherwise the init container clones over the network. Both entries define Megatron-LM as their source, with `https://github.com/NVIDIA/Megatron-LM.git` (branch `core_v0.15.2`) as their entry-defined default upstream. The clone step is workload-pod egress, so image mirroring alone does not cover it unless the image itself carries the source. Three ways to run these categories without GitHub access, in order of preference:
+
+1. **Bake the source into the workload image.** `/opt/megatron-lm` is the documented in-image location the entries look for. Extend the training image with the pinned checkout:
+
+   ```dockerfile
+   RUN git clone --depth 1 -b core_v0.15.2 https://github.com/NVIDIA/Megatron-LM.git /opt/megatron-lm
+   ```
+
+   That exact line keeps the branch pin identical to the one the init container would clone and leaves `.git` present for anything that expects a git checkout. The init container copies the tree into the workspace on every fresh pod start, so the source travels with the image and is covered by the ordinary workload-image pre-loading described at the top of this section; no git egress happens at runtime. The entries have no image knob, so serve the extended image under the same `nvcr.io/nvidia/pytorch:25.08-py3` reference they use: pre-load it on the nodes or publish it through your registry mirror under that name.
+
+2. **Pre-seed the workspace PVC.** Set `enableCheckpoint: true` (plus `storageClassName` if the cluster has no default StorageClass). The category then mounts a PersistentVolumeClaim named `<variant>-pvc` (for example `nemotron5-8b-pvc`) at `/mnt/workspace` instead of a memory-backed `emptyDir`. Pre-populate that volume with the Megatron-LM source at `megatron-lm/` before creating the Certification: the init container uses the workspace unchanged whenever `/mnt/workspace/megatron-lm` exists (a plain source export works; `.git` is not required). Without `enableCheckpoint` the workspace is an `emptyDir`, so this option does not apply and the source is resolved from the image or the network on every pod start.
+
+3. **Point the clone at an internal Git mirror.** For sites that run one, set `sourceRepo` on the Certification, either globally in `spec` or per category under `categories[].options`, to a Git mirror of the entry's source. Each catalog entry defines what its source is and its default upstream; for these two entries the source is Megatron-LM. The branch pin is unchanged, so the mirror must serve the `core_v0.15.2` branch. The URL must use an authenticated remote scheme (`https://` or `ssh://`); `http://` and `git://` URLs (unauthenticated transports the workload would execute code from), scp-style `git@host:path` syntax, and `file://` URLs are rejected by CRD validation (non-TLS mirrors and local source belong in the image or on the pre-seeded PVC above). The clone only runs when neither the workspace nor the image provides the source.
+
+   ```yaml
+   spec:
+     sourceRepo: https://git.example.com/mirrors/Megatron-LM.git
+   ```
+
+The rest of the training path makes no other network calls: the training script builds the local checkout with `pip install -e . --no-deps --no-build-isolation` rather than installing from PyPI, and trains on mock data with a null tokenizer, so no dataset or tokenizer downloads occur.
+
 ## Health checks
 
 The controller exposes two probe endpoints on port `8081`, and the chart configures both probes on the Deployment:

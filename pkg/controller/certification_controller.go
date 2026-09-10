@@ -485,6 +485,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		MaxRestarts:        derefInt32(opts.MaxRestarts),
 		TimeoutPerJob:      opts.TimeoutPerJob,
 		MeasurementTimeout: opts.MeasurementTimeout,
+		SourceRepo:         opts.SourceRepo,
 	})
 	if buildErr != nil {
 		return "", fmt.Errorf("building workflow for %s/%s: %w", category.Domain, category.Variant, buildErr)
@@ -682,6 +683,9 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	}
 	if override.MeasurementTimeout != "" {
 		resolved.MeasurementTimeout = override.MeasurementTimeout
+	}
+	if override.SourceRepo != "" {
+		resolved.SourceRepo = override.SourceRepo
 	}
 	return resolved
 }
