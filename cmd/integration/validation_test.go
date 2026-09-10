@@ -41,8 +41,10 @@ type validationCause struct {
 // held to the Kubernetes label value rules before it is copied into the
 // queue label (issue #300). The queueLabelKey cases check that the key is held
 // to the Kubernetes label key rules: the qualified-name pattern rejects a bad
-// name segment, and the CEL rule rejects a prefix over 253 characters, which
-// the pattern alone cannot count (ADR-076).
+// name segment, the CEL rule rejects a prefix over 253 characters, which the
+// pattern alone cannot count, and an explicit empty string is accepted, since
+// the code resolves it to the default key the same way an empty queue resolves
+// to default-queue (ADR-076).
 func TestCertificationValidation(t *testing.T) {
 	suite := &testutil.IntegrationTestSuite{}
 	suite.Environment.CRDDirectoryPaths = []string{"../../helm/cluster-readiness-engine/crds"}

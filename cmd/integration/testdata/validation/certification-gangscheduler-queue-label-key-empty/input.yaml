@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An explicit empty queueLabelKey is the same as omitting the field: the code
+# resolves it to "kai.scheduler/queue", exactly as queue resolves an empty
+# value to "default-queue". The pattern's ^$ alternative admits it and the CEL
+# prefix rule passes vacuously (an empty string contains no "/"): accepted.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-gang-queue-label-key-empty
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queueLabelKey: ""
+    queue: team-a
+  categories:
+    - domain: training
+      variant: nemotron5-8b

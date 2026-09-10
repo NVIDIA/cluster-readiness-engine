@@ -87,9 +87,9 @@ On a cluster running the NVIDIA Run:ai platform, name its scheduler and its queu
     queue: team-a   # must name an existing Run:ai queue
 ```
 
-Run the certification in a namespace associated with a Run:ai project (the platform's scheduling components act on project namespaces), and make sure the named queue exists: Run:ai validates the queue rather than falling back to a default.
+Run the certification in a namespace associated with a Run:ai project (the platform's scheduling components act on project namespaces), and make sure the named queue exists: Run:ai validates the queue rather than falling back to a default. When the workload manifest cannot set `schedulerName`, Run:ai's `runai/enforce-scheduler-name` namespace annotation enforces the scheduler namespace-wide, but it does not translate the queue label key, so `queueLabelKey` is still needed.
 
-`schedulerName` is required. `queue` is optional and defaults to `default-queue`; when set, it must be a valid Kubernetes label value (at most 63 characters, beginning and ending with an alphanumeric character, containing only alphanumerics, hyphens, underscores, or dots). `queueLabelKey` is optional and defaults to `kai.scheduler/queue`; when set, it must be a valid Kubernetes label key.
+`schedulerName` is required. `queue` is optional and defaults to `default-queue`; on Run:ai that default is not a real queue, so always set `queue` explicitly to an existing Run:ai queue. When non-empty, `queue` must be a valid Kubernetes label value (at most 63 characters, beginning and ending with an alphanumeric character, containing only alphanumerics, hyphens, underscores, or dots). `queueLabelKey` is optional and defaults to `kai.scheduler/queue`; when non-empty, it must be a valid Kubernetes label key.
 
 The setting is certification-wide: it applies to **every** category in `spec.categories`, not to one of them. For each category, NVCRE rewrites every pod template in the resolved `TrainingRuntime`. For the MPI-based communication categories that is both the launcher and the worker pods:
 

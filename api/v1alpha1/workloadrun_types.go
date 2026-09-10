@@ -306,14 +306,14 @@ type GangSchedulerSpec struct {
 	// Defaults to "kai.scheduler/queue" if not specified. Set it to
 	// "runai/queue" (with schedulerName "runai-scheduler") on clusters running
 	// the NVIDIA Run:ai platform.
-	// When set, must be a valid Kubernetes label key (qualified name): an
+	// When non-empty, must be a valid Kubernetes label key (qualified name): an
 	// optional DNS-subdomain prefix of at most 253 characters followed by "/",
 	// then a name of at most 63 characters beginning and ending with an
 	// alphanumeric character and containing only alphanumerics, hyphens,
 	// underscores, or dots.
 	// +optional
 	// +kubebuilder:validation:MaxLength=317
-	// +kubebuilder:validation:Pattern=`^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[a-zA-Z0-9]([-a-zA-Z0-9_.]{0,61}[a-zA-Z0-9])?$`
+	// +kubebuilder:validation:Pattern=`^$|^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[a-zA-Z0-9]([-a-zA-Z0-9_.]{0,61}[a-zA-Z0-9])?$`
 	// +kubebuilder:validation:XValidation:rule="self.contains('/') ? self.split('/')[0].size() <= 253 : true",message="queueLabelKey prefix must be at most 253 characters"
 	QueueLabelKey string `json:"queueLabelKey,omitempty"`
 }
