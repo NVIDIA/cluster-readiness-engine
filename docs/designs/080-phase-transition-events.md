@@ -124,11 +124,13 @@ Both facts drive the scope decision below.
    no flip and emits nothing. Detection is not done from the caller's stale
    copy.
 
-3. **Emit after the write succeeds, never on a failed write.** The event is
+3. **Emit transition events after the write succeeds, never on a failed write.** The event is
    emitted by the tier wrapper after `setExclusiveStatusCondition` returns
    `nil`, using the transition it reports. A write that exhausts conflict
-   retries or fails for any other reason emits no event: an event must never
-   claim a phase the object does not have.
+   retries or fails for any other reason emits no transition event: an event
+   must never claim a phase the object does not have. This does not prohibit
+   action-failure Warnings that describe an observed error rather than a
+   persisted phase; decision 5 preserves those diagnostics on failed writes.
 
    This makes events **best-effort notification with transition-based
    duplicate suppression**, not an exactly-once record. A controller crash in
@@ -206,7 +208,8 @@ Both facts drive the scope decision below.
    hand-placed Warning immediately followed by a Failed transition with the
    same reason is not two rows but one `Event` with `count: 2`, which the
    single-failure cases in this design forbid. Where that happens, the transition owns the
-   notification and the hand-placed emission is removed. Three sites match
+   notification on success, and the unconditional pre-write emission becomes
+   a fallback on status-write failure. Three sites match
    today:
 
    - WorkloadRun `BuildFailed`: `warnf` followed by
@@ -215,6 +218,24 @@ Both facts drive the scope decision below.
      `setWorkflowFailed("HeterogeneousPlatform")`.
    - Workflow `OverrideError`: `eventf(Warning)` followed by
      `setWorkflowFailed("OverrideError")`.
+
+   At each of these three sites, first attempt the Failed status write. If it
+   succeeds, only the transition hook emits; no fallback is emitted. If the
+   status operation returns an error, emit one action Warning for that failed
+   operation, after any internal retries have finished, using a distinct
+   reason: `BuildFailedStatusUpdateFailed`,
+   `HeterogeneousPlatformStatusUpdateFailed`, or
+   `OverrideErrorStatusUpdateFailed`, respectively. Its message includes the
+   original build/platform/override error and the status-update error, and
+   states that recording the Failed condition was unsuccessful. It must not
+   assert that the resource entered Failed. Preserve existing error returns
+   and logging. The fallback uses the same object and nil-safe recorder.
+
+   A later successful reconcile can emit the normal Failed-transition Warning
+   with the original reason; the distinct fallback reason prevents those two
+   facts from being aggregated together. Repeated failed status operations
+   may repeat the fallback, just as retained action-failure Warnings may
+   repeat. Fallbacks are outside the transition count and volume guarantees.
 
    Where the reasons differ, both stay, because they describe two facts:
    Certification `WorkflowCreationError` (the Create that was rejected)
@@ -328,11 +349,15 @@ Both facts drive the scope decision below.
     before `meta.SetStatusCondition`, and after `Status().Update` returns
     `nil` emit `Warning / JobTimedOut` regarding the Job when it was not.
     Leave the write itself, including its effect on `InProgress`, unchanged.
-  - Remove the hand-placed `eventf(Warning)` at the `HeterogeneousPlatform`
-    and `OverrideError` sites; the Failed transition now emits them.
+  - Replace the unconditional `eventf(Warning)` at the `HeterogeneousPlatform`
+    and `OverrideError` sites with decision 5's fallback in the status-error
+    branch. Add their distinct fallback reason constants. Successful writes
+    notify through the Failed-transition hook only.
 - `pkg/controller/workloadrun_controller.go`
-  - Remove the hand-placed `warnf(BuildFailed)`; the Failed transition now
-    emits it with the same reason and message.
+  - Replace the unconditional `warnf(BuildFailed)` with decision 5's fallback
+    when the build guard's status update fails, using the new
+    `BuildFailedStatusUpdateFailed` reason constant. On success, the Failed
+    transition emits with the original reason and message.
   - At each call site that runs `setWorkloadRunCondition` then
     `Status().Update`, capture the previously-true execution type before the
     mutation and emit after a successful update when it differs. Prefer one
@@ -368,11 +393,18 @@ Both facts drive the scope decision below.
   reconciles produces one recorded event; a reason-then-message change within
   the phase produces zero further events; and a flip to a new phase produces
   exactly one more.
-- Failed-write tests using the existing `interceptor.Funcs{SubResourceUpdate}`
+- Failed-write tests of the transition hooks using the existing `interceptor.Funcs{SubResourceUpdate}`
   pattern in `status_test.go`: a status update that returns a non-conflict
   error emits nothing; a conflict sequence that exhausts `retry.DefaultRetry`
   emits nothing; a conflict followed by success emits exactly once. These pin
-  the "no event on failed write" rule from decision 3.
+  the "no transition event on failed write" rule from decision 3.
+- Recorder-level tests for each of decision 5's three fallback sites:
+  successful status persistence emits one transition and no fallback; a
+  non-conflict status error emits one fallback and no transition; Workflow
+  conflict exhaustion emits one fallback after retries, not one per attempt.
+  A failed reconcile followed by successful persistence emits the fallback
+  and then one transition under distinct reasons. Assert that fallback
+  messages contain both errors and do not claim a persisted Failed phase.
 - Nil-recorder pins for any new or generalized event helper, mirroring
   `TestJobWarnfNilRecorder`.
 - A recorder-level case applying multiple overrides asserts one retained
@@ -410,8 +442,9 @@ Both facts drive the scope decision below.
     Warning and the outcome Warning appear with their distinct reasons;
   - the three same-reason sites from decision 5 (WorkloadRun `BuildFailed`,
     Workflow `HeterogeneousPlatform`, Workflow `OverrideError`), each
-    asserting a single row with `count: 1` after the hand-placed emission is
-    removed. A `count: 2` here is the regression these tests exist to catch.
+    asserting a single transition row with `count: 1` and no fallback after
+    successful status persistence. A `count: 2` here is the regression these
+    tests exist to catch.
 - Existing goldens must show zero diffs, since event collection is opt-in
   through the `events` list.
   Any diff in a case that did not opt in is a defect, not a regeneration
@@ -435,8 +468,10 @@ maintainer approval.
   set; comparing which member is `True` before and after is the only signal
   that means "phase changed". Reading it inside the callback is what makes the
   conflict-retry path correct without a second read.
-- **Emit-after-write is the safety invariant.** Events are observational; an
-  event that precedes or survives a failed write lies about the object.
+- **Emit-after-write is the transition safety invariant.** A transition event
+  must describe a persisted phase. An action fallback instead describes the
+  observed failure and unsuccessful status update, preserving diagnostics
+  without claiming that the phase changed.
 - **Failed as Warning matches how operators filter.** `kubectl get events
   --field-selector type=Warning` is the standard first cut. Burying a terminal
   failure under Normal would make the events feature miss the case #150 was
@@ -465,7 +500,7 @@ maintainer approval.
   InProgress, and any additional actual phase flips add emissions. The
   timeout hook supplies the Job's failure event, not an extra event on top
   of it. This estimate excludes retained action and informational events,
-  which can repeat, and is not an estimate of API writes or aggregated Event
+  including status-error fallbacks, which can repeat, and is not an estimate of API writes or aggregated Event
   objects. Events expire according to the API server's TTL.
 - `kubectl describe` on a Job, Workflow, Certification, or WorkloadRun now
   shows its lifecycle in the Events section. Measurement objects continue to
@@ -476,8 +511,9 @@ maintainer approval.
   needs to read the reason.
 - Where an action Warning precedes a Failed transition with a different
   reason, two Warning events result. This is documented, not deduplicated.
-  Where the reasons were identical, the hand-placed emission is removed at
-  three sites and the transition emits instead. At WorkloadRun `BuildFailed`
+  Where the reasons were identical, the unconditional emission is replaced at
+  three sites: the transition emits on success, and a distinct action
+  fallback emits if status persistence fails. On success, at WorkloadRun `BuildFailed`
   and Workflow `HeterogeneousPlatform` the message is unchanged. At Workflow
   `OverrideError` the message changes from `Override failed: …` to the
   condition's `Failed to apply overrides: …`; the reason is the same, and the
@@ -550,9 +586,12 @@ reason and object (and at two of them the message as well). The recorder
 correlates on reason, not message, so each pair collapses into one `Event`
 with `count: 2`, which would fail the single-failure case's expected `count: 1`
 and would show operators an inflated count for a single failure. Ownership
-moves to the transition. The reason an operator filters on is unchanged at
-all three sites; the message text changes only at `OverrideError`, to the
-wording the condition already carries.
+moves to the transition on successful status persistence, while a distinct
+fallback Warning preserves the observed error on failed persistence. On
+success the reason an operator filters on is unchanged at all three sites;
+the message text changes only at `OverrideError`, to the wording the
+condition already carries. Removing these action diagnostics entirely would
+lose visibility when the status write fails.
 
 ### Route the Workflow timeout write through the shared exclusive helper
 
