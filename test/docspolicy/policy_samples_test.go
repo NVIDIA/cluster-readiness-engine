@@ -47,6 +47,11 @@ func TestPolicySamplePinsTheReleaseIdentity(t *testing.T) {
 		if got := asString(spec["failurePolicy"]); got != "Fail" {
 			t.Errorf("failurePolicy = %q, want Fail (fail closed)", got)
 		}
+		// failurePolicy is webhook-failure behaviour; enforcement is validationActions.
+		actions := asStringSlice(spec["validationActions"])
+		if len(actions) != 1 || actions[0] != "Deny" {
+			t.Errorf("validationActions = %v, want [Deny] (Audit would stop denying)", actions)
+		}
 
 		match := asMap(t, spec["matchConstraints"], "spec.matchConstraints")
 		ns := asMap(t, match["namespaceSelector"], "spec.matchConstraints.namespaceSelector")
@@ -77,6 +82,16 @@ func TestPolicySamplePinsTheReleaseIdentity(t *testing.T) {
 		if !strings.Contains(joined, "slsaProvenance") {
 			t.Error("validations must reference attestations.slsaProvenance")
 		}
+		for _, key := range []string{"initContainers", "ephemeralContainers"} {
+			if !strings.Contains(joined, key) {
+				t.Errorf("validations must include images.%s (containers alone is incomplete)", key)
+			}
+		}
+		// Ephemeral coverage also needs the subresource in matchConstraints.
+		rules := asSlice(t, match["resourceRules"], "spec.matchConstraints.resourceRules")
+		if !resourceRulesInclude(rules, "pods/ephemeralcontainers") {
+			t.Error("matchConstraints.resourceRules must include pods/ephemeralcontainers")
+		}
 	})
 
 	t.Run("policy-controller", func(t *testing.T) {
@@ -102,25 +117,29 @@ func TestPolicySamplePinsTheReleaseIdentity(t *testing.T) {
 		assertNarrowManagerGlobs(t, globs)
 
 		authorities := asSlice(t, spec["authorities"], "spec.authorities")
-		if len(authorities) == 0 {
-			t.Fatal("spec.authorities is empty")
+		// policy-controller admits if *any* authority verifies. A second looser
+		// authority would neuter the pin while index-0 checks still pass.
+		if len(authorities) != 1 {
+			t.Fatalf("spec.authorities has %d entries, want exactly 1", len(authorities))
 		}
-		auth := asMap(t, authorities[0], "authorities[0]")
-		if got := asString(auth["signatureFormat"]); got != "bundle" {
-			t.Errorf("signatureFormat = %q, want bundle — chart-default legacy format "+
-				"cannot see NVCRE referrer signatures", got)
-		}
+		for i, raw := range authorities {
+			auth := asMap(t, raw, "authorities[]")
+			if got := asString(auth["signatureFormat"]); got != "bundle" {
+				t.Errorf("authorities[%d].signatureFormat = %q, want bundle — chart-default legacy format "+
+					"cannot see NVCRE referrer signatures", i, got)
+			}
 
-		keyless := asMap(t, auth["keyless"], "authorities[0].keyless")
-		ids := asSlice(t, keyless["identities"], "keyless.identities")
-		assertExactReleaseIdentity(t, ids)
+			keyless := asMap(t, auth["keyless"], "authorities[].keyless")
+			ids := asSlice(t, keyless["identities"], "keyless.identities")
+			assertExactReleaseIdentity(t, ids)
 
-		atts := asSlice(t, auth["attestations"], "authorities[0].attestations")
-		if !attestationPredicatePresent(atts, wantSignType) {
-			t.Errorf("attestations must include %s (bundle-format signature)", wantSignType)
-		}
-		if !attestationPredicatePresent(atts, wantProvenanceType) {
-			t.Errorf("attestations must include %s", wantProvenanceType)
+			atts := asSlice(t, auth["attestations"], "authorities[].attestations")
+			if !attestationPredicatePresent(atts, wantSignType) {
+				t.Errorf("authorities[%d] attestations must include %s (bundle-format signature)", i, wantSignType)
+			}
+			if !attestationPredicatePresent(atts, wantProvenanceType) {
+				t.Errorf("authorities[%d] attestations must include %s", i, wantProvenanceType)
+			}
 		}
 	})
 }
@@ -282,39 +301,54 @@ func assertExactReleaseIdentity(t *testing.T, identities []any) {
 	if len(identities) == 0 {
 		t.Fatal("no keyless identities")
 	}
-	found := false
-	for _, id := range identities {
+	// Every identity must be tight. policy-controller / Kyverno accept if any
+	// identity matches, so a wide-open second entry next to a good one neuters
+	// the pin while a "found one good identity" check would still pass.
+	for i, id := range identities {
 		m := asMap(t, id, "identity")
 		if asString(m["issuer"]) != wantIssuer {
-			t.Errorf("issuer = %q, want %q", asString(m["issuer"]), wantIssuer)
+			t.Errorf("identities[%d].issuer = %q, want %q", i, asString(m["issuer"]), wantIssuer)
 		}
 		subject := asString(m["subject"])
 		subjectRE := asString(m["subjectRegExp"])
+		if subject == "" && subjectRE == "" {
+			t.Errorf("identities[%d] pins neither subject nor subjectRegExp", i)
+			continue
+		}
 		if subject != "" {
 			if !strings.HasPrefix(subject, wantSubject) {
-				t.Errorf("subject = %q, want prefix %q", subject, wantSubject)
+				t.Errorf("identities[%d].subject = %q, want prefix %q", i, subject, wantSubject)
 			}
 			if strings.Contains(subject, ".+") || strings.Contains(subject, ".*") {
-				t.Errorf("subject = %q looks like a regexp; use subjectRegExp: for patterns "+
-					"(a regexp under subject: matches no SAN)", subject)
+				t.Errorf("identities[%d].subject = %q looks like a regexp; use subjectRegExp: for patterns "+
+					"(a regexp under subject: matches no SAN)", i, subject)
 			}
-			found = true
 		}
 		if subjectRE != "" {
-			// Optional loosening is fine in comments; a live subjectRegExp must
-			// still name attest.yml and refs/tags.
-			if !strings.Contains(subjectRE, "attest\\.yml") && !strings.Contains(subjectRE, "attest.yml") {
-				t.Errorf("subjectRegExp = %q does not name attest.yml", subjectRE)
+			if !strings.Contains(subjectRE, "NVIDIA/cluster-readiness-engine") {
+				t.Errorf("identities[%d].subjectRegExp = %q does not name NVIDIA/cluster-readiness-engine", i, subjectRE)
+			}
+			if !strings.Contains(subjectRE, `attest\.yml`) && !strings.Contains(subjectRE, "attest.yml") {
+				t.Errorf("identities[%d].subjectRegExp = %q does not name attest.yml", i, subjectRE)
 			}
 			if !strings.Contains(subjectRE, "refs/tags") {
-				t.Errorf("subjectRegExp = %q does not anchor refs/tags", subjectRE)
+				t.Errorf("identities[%d].subjectRegExp = %q does not require refs/tags", i, subjectRE)
 			}
-			found = true
+			if !strings.HasPrefix(subjectRE, "^") || !strings.HasSuffix(subjectRE, "$") {
+				t.Errorf("identities[%d].subjectRegExp = %q must be anchored with ^...$", i, subjectRE)
+			}
 		}
 	}
-	if !found {
-		t.Error("no identity pins subject or subjectRegExp")
+}
+
+func resourceRulesInclude(rules []any, resource string) bool {
+	for _, r := range rules {
+		m, _ := r.(map[string]any)
+		if slices.Contains(asStringSlice(m["resources"]), resource) {
+			return true
+		}
 	}
+	return false
 }
 
 func attestationTypePresent(atts []any, want string) bool {
