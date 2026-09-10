@@ -178,6 +178,38 @@ func TestDefaultImage(t *testing.T) {
 	assert.Contains(t, img, "ghcr.io/nvidia/cluster-readiness-engine/manager:")
 }
 
+func TestInitCommandChartRefFlagDefaults(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "init-chart-ref-flags",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			Flags []string `yaml:"flags"`
+		}
+		if err := sigsyaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
+
+		cmd := newInitCommand("v0.0.0-test")
+		defaults := make(map[string]string, len(in.Flags))
+		for _, name := range in.Flags {
+			f := cmd.Flags().Lookup(name)
+			if f == nil {
+				return fmt.Errorf("init has no --%s flag", name)
+			}
+			defaults[name] = f.DefValue
+		}
+
+		b, err := json.MarshalIndent(defaults, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
+}
+
 // ---------------------------------------------------------------------------
 // Tests for YAML helpers (split, decode, patch)
 // ---------------------------------------------------------------------------

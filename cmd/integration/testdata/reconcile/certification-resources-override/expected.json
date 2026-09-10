@@ -325,7 +325,7 @@
                             "initContainers": [
                               {
                                 "args": [
-                                  "set -ex\nif [ ! -d \"/mnt/workspace/megatron-lm/.git\" ]; then\n  git clone --depth 1 -b core_v0.15.2 https://github.com/NVIDIA/Megatron-LM.git /mnt/workspace/megatron-lm\nfi\necho \"Megatron-LM cloned successfully\"\n"
+                                  "set -e\nsrc=/mnt/workspace/megatron-lm\ntmp=/mnt/workspace/.megatron-lm.tmp\nrm -rf \"$tmp\"\nif [ -d \"$src\" ]; then\n  echo \"Using pre-seeded workspace at $src\"\nelif [ -d /opt/megatron-lm ]; then\n  mkdir -p \"$tmp\"\n  cp -a /opt/megatron-lm/. \"$tmp\"\n  mv \"$tmp\" \"$src\"\n  echo \"Copied Megatron-LM from image at /opt/megatron-lm\"\nelse\n  repo=\"https://github.com/NVIDIA/Megatron-LM.git\"\n  git clone --depth 1 -b core_v0.15.2 \"$repo\" \"$tmp\"\n  mv \"$tmp\" \"$src\"\n  echo \"Cloned Megatron-LM from the configured source repo\"\nfi\n"
                                 ],
                                 "command": [
                                   "/bin/bash",

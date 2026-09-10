@@ -1,0 +1,5 @@
+# Both charts mirrored off GHCR (a full restricted-egress config, issue
+# #321): the refs are consistent, so no warning is printed.
+chartRef: "oci://registry.example.com/mirror/cluster-readiness-engine"
+trainerChartRef: "oci://registry.example.com/mirror/kubeflow-trainer"
+skipDeps: false

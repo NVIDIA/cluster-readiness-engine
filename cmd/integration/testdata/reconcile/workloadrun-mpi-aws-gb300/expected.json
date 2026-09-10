@@ -121,7 +121,7 @@
                             "containers": [
                               {
                                 "args": [
-                                  "set -x \u0026\u0026 apt-get update \u0026\u0026 apt-get install -y --no-install-recommends openssh-server \u0026\u0026 mkdir -p /var/run/sshd \u0026\u0026 chmod 0755 /var/run/sshd \u0026\u0026 mkdir -p /root/.ssh \u0026\u0026 chmod 700 /root/.ssh \u0026\u0026 cp /tmp/mpi-ssh-raw/* /root/.ssh/ \u0026\u0026 chmod 600 /root/.ssh/id_rsa \u0026\u0026 chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys \u0026\u0026 /usr/sbin/sshd -De"
+                                  "set -x \u0026\u0026 test -x /usr/sbin/sshd || (apt-get update \u0026\u0026 apt-get install -y --no-install-recommends openssh-server) \u0026\u0026 mkdir -p /var/run/sshd \u0026\u0026 chmod 0755 /var/run/sshd \u0026\u0026 mkdir -p /root/.ssh \u0026\u0026 chmod 700 /root/.ssh \u0026\u0026 cp /tmp/mpi-ssh-raw/* /root/.ssh/ \u0026\u0026 chmod 600 /root/.ssh/id_rsa \u0026\u0026 chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys \u0026\u0026 /usr/sbin/sshd -De"
                                 ],
                                 "command": [
                                   "sh",

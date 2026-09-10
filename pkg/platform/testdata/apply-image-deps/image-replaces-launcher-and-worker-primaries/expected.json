@@ -1,0 +1,96 @@
+{
+  "trainerImage": "registry.example.com/prebaked/nccl-tests:v1",
+  "dependencies": [
+    {
+      "index": 0,
+      "kind": "TrainingRuntime",
+      "rawUnchanged": false,
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "containerImages": [
+            "registry.example.com/prebaked/nccl-tests:v1"
+          ],
+          "initContainerImages": null
+        },
+        {
+          "name": "launcher",
+          "containerImages": [
+            "registry.example.com/prebaked/nccl-tests:v1"
+          ],
+          "initContainerImages": [
+            "registry.example.com/prebaked/nccl-tests:v1"
+          ]
+        }
+      ],
+      "resource": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainingRuntime",
+        "metadata": {
+          "name": "nccl-all-reduce-runtime"
+        },
+        "spec": {
+          "template": {
+            "spec": {
+              "replicatedJobs": [
+                {
+                  "name": "node",
+                  "template": {
+                    "spec": {
+                      "template": {
+                        "spec": {
+                          "containers": [
+                            {
+                              "image": "registry.example.com/prebaked/nccl-tests:v1",
+                              "name": "node"
+                            }
+                          ],
+                          "restartPolicy": "OnFailure"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "dependsOn": [
+                    {
+                      "name": "node",
+                      "status": "Ready"
+                    }
+                  ],
+                  "name": "launcher",
+                  "template": {
+                    "metadata": {
+                      "labels": {
+                        "trainer.kubeflow.org/trainjob-ancestor-step": "trainer"
+                      }
+                    },
+                    "spec": {
+                      "template": {
+                        "spec": {
+                          "containers": [
+                            {
+                              "image": "registry.example.com/prebaked/nccl-tests:v1",
+                              "name": "node"
+                            }
+                          ],
+                          "initContainers": [
+                            {
+                              "image": "registry.example.com/prebaked/nccl-tests:v1",
+                              "name": "fix-ssh-permissions"
+                            }
+                          ],
+                          "restartPolicy": "OnFailure"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

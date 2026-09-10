@@ -10,7 +10,7 @@ The catalog is the registry of all supported certification categories. It maps `
 
 ## Structure
 
-Each catalog entry is a YAML file at `pkg/catalog/entries/<domain>/<variant>.yaml`. The file defines the base workload spec (dependencies, job template, orchestration) plus platform- and GPU-specific overrides. The catalog loader discovers entries by scanning that directory tree at startup.
+Each catalog entry is a YAML file at `pkg/catalog/entries/<domain>/<variant>.yaml`. The file defines the base workload spec (dependencies, job template, orchestration) plus platform- and GPU-specific overrides. Entries are embedded into the NVCRE binaries at compile time via `//go:embed` (`pkg/catalog/loader.go`); the loader walks the embedded tree and registers every entry automatically. Adding or changing an entry therefore requires rebuilding `nvcrectl` and building and deploying a new controller image; entries cannot be dropped in at runtime.
 
 ## Domains and variants
 
@@ -92,4 +92,4 @@ Catalog entries define a base workload spec. Platform-specific and GPU-specific 
 
 ## Adding a custom entry
 
-See [How-to: Custom Catalog Entries](../how-to-guides/custom-catalog-entries.md).
+See [How-to: Custom Catalog Entries](../how-to-guides/custom-catalog-entries.md). For running a custom test without rebuilding the binaries, see that guide's [runtime alternatives](../how-to-guides/custom-catalog-entries.md#runtime-alternatives).

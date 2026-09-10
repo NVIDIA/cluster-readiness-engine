@@ -1,0 +1,65 @@
+{
+  "trainerImage": "registry.example.com/prebaked/nccl-tests:v1",
+  "dependencies": [
+    {
+      "index": 0,
+      "kind": "ConfigMap",
+      "rawUnchanged": true,
+      "replicatedJobs": [],
+      "resource": {
+        "apiVersion": "v1",
+        "data": {
+          "config.yaml": "image: keep-me"
+        },
+        "kind": "ConfigMap",
+        "metadata": {
+          "name": "model-config"
+        }
+      }
+    },
+    {
+      "index": 1,
+      "kind": "ComputeDomain",
+      "rawUnchanged": true,
+      "replicatedJobs": [],
+      "resource": {
+        "apiVersion": "resource.nvidia.com/v1beta1",
+        "kind": "ComputeDomain",
+        "metadata": {
+          "name": "nccl-all-reduce-compute-domain"
+        },
+        "spec": {
+          "channel": {
+            "resourceClaimTemplate": {
+              "name": "nccl-all-reduce-compute-domain-channel"
+            }
+          },
+          "numNodes": 2
+        }
+      }
+    },
+    {
+      "index": 2,
+      "kind": "PersistentVolumeClaim",
+      "rawUnchanged": true,
+      "replicatedJobs": [],
+      "resource": {
+        "apiVersion": "v1",
+        "kind": "PersistentVolumeClaim",
+        "metadata": {
+          "name": "checkpoint-pvc"
+        },
+        "spec": {
+          "accessModes": [
+            "ReadWriteMany"
+          ],
+          "resources": {
+            "requests": {
+              "storage": "10Ti"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

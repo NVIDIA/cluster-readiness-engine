@@ -36,13 +36,13 @@ nvcrectl setup init
 1. **deps** — Kubeflow Trainer (required for `TrainJob` workloads)
 2. **helm** — the NVCRE Helm chart: CRDs, controller Deployment, RBAC, metrics Service/ServiceMonitor, and built-in LogProfiles. The CRDs are server-side-applied from the chart before the Helm release is installed or upgraded, on every run — Helm alone would only install them once and never update them.
 
-The Helm chart is pulled from GHCR at the CLI's own version, so a tagged release needs no version flag. **Dev builds (built from `main`) require `--version`** to name the chart version explicitly:
+By default the Helm chart is pulled from GHCR at the CLI's own version, so a tagged release needs no version flag. **Dev builds (built from `main`) require `--version`** to name the chart version explicitly:
 
 ```bash
 nvcrectl setup init --version <chart-version>
 ```
 
-The image and chart are public on GHCR, so no token is needed. For clusters that pull from a private mirror or fork, `--image-pull-secret <github-token>` creates the `nvcrectl-pull-secret` image pull secret in the `nvcre` namespace and authenticates the Helm chart pull. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, and `--auto-approve` to skip the confirmation prompt in CI.
+The image and chart are public on GHCR, so no token is needed. For a private fork on GHCR, `--image-pull-secret <github-token>` creates the `nvcrectl-pull-secret` image pull secret in the `nvcre` namespace and authenticates chart pulls from GHCR. For a chart hosted on a private non-GHCR mirror, run `helm registry login <mirror>` before `setup init` instead. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, and `--auto-approve` to skip the confirmation prompt in CI. On clusters that cannot reach GHCR at all, `--chart-ref` and `--trainer-chart-ref` point both chart pulls at a mirror registry; see [Restricted egress and air-gapped installs](#restricted-egress-and-air-gapped-installs).
 
 Check the installation at any time:
 
@@ -84,6 +84,43 @@ Key chart values:
 | `pdb.minAvailable` | `1` | Minimum ready controller pods during voluntary eviction; integer or percentage |
 | `metrics.port` | `8443` | Controller metrics port |
 | `metrics.serviceMonitor.enabled` | `true` | Install a `ServiceMonitor` (requires the Prometheus Operator CRDs; set to `false` on clusters without them) |
+
+### Restricted egress and air-gapped installs
+
+By default the install path reaches GHCR for three artifacts: the NVCRE Helm chart (`oci://ghcr.io/nvidia/cluster-readiness-engine`), the Kubeflow Trainer Helm chart (`oci://ghcr.io/kubeflow/charts/kubeflow-trainer`), and the controller image (`ghcr.io/nvidia/cluster-readiness-engine/manager`). On clusters that cannot reach GHCR, either point `setup init` at a mirror or bypass it entirely.
+
+**Mirror the artifacts.** Copy both charts and the image set to a registry the cluster can reach: the controller image, the images referenced by the Kubeflow Trainer chart, and the workload images used by the certification categories you plan to run. The published Kubeflow Trainer chart package vendors its JobSet chart dependency inside the archive (`charts/jobset/` in the `.tgz`), so mirroring the chart artifact is sufficient; repackaging the chart from source without its vendored dependencies would reintroduce a registry fetch at install time. Then override every reference on `setup init`:
+
+```bash
+nvcrectl setup init \
+  --chart-ref oci://registry.example.com/mirror/cluster-readiness-engine \
+  --trainer-chart-ref oci://registry.example.com/mirror/kubeflow-trainer \
+  --image registry.example.com/mirror/manager:<version>
+```
+
+`--chart-ref` is used both for the release install and for the CRD extraction (`helm show crds`), so the `helm` phase needs no GHCR access. When the chart ref points at a non-GHCR registry, `setup init` does not attempt a GHCR registry login at all, even with `--image-pull-secret` set, so the install cannot fail on unreachable GHCR. If only one of `--chart-ref` and `--trainer-chart-ref` points at a mirror while the other still resolves to `ghcr.io` (and the GHCR-bound pull is not skipped, e.g. via `--skip-phases=deps`), `setup init` prints a non-fatal warning naming the chart that would still be pulled from GHCR. The chart versions do not change: the mirror must host the NVCRE chart at the CLI version (or `--version`) and the Kubeflow Trainer chart at the pinned version (`2.2.1` for this release). If the mirror requires authentication for the chart pulls, run `helm registry login <mirror>` before `setup init`; Helm then uses its stored credentials for the pulls. `--image-pull-secret` authenticates against `ghcr.io` only; it still creates the `nvcrectl-pull-secret` Kubernetes secret (scoped to `ghcr.io`) regardless of the chart location.
+
+For a controller image mirrored off GHCR, omit `--image-pull-secret`: both its token and the secret it creates are scoped to `ghcr.io`, so they cannot authenticate pulls from the mirror. Authenticate the mirror pull one of two ways instead:
+
+- **Node-level registry credentials.** Configure the mirror credentials in the nodes' container runtime (containerd registry configuration or a kubelet credential provider). Nothing is bound to the controller pod, so `setup init` works exactly as shown above.
+- **A pull secret bound through the chart.** Create the secret in the `nvcre` namespace and bind it through the chart's `manager.imagePullSecrets` value. `setup init` has no flag to bind a custom-named pull secret today (the only secret it wires into `manager.imagePullSecrets` is the `ghcr.io`-scoped `nvcrectl-pull-secret`), so this path means installing the chart directly with Helm, from the mirrored chart ref or from the in-repo chart described below:
+
+  ```bash
+  kubectl create namespace nvcre
+  kubectl create secret docker-registry mirror-pull-secret --namespace nvcre \
+    --docker-server registry.example.com \
+    --docker-username <user> --docker-password <password>
+
+  helm upgrade --install nvcre oci://registry.example.com/mirror/cluster-readiness-engine \
+    --version <version> --namespace nvcre \
+    --set manager.image.repository=registry.example.com/mirror/manager \
+    --set manager.image.tag=<version> \
+    --set 'manager.imagePullSecrets[0].name=mirror-pull-secret'
+  ```
+
+  Installing the chart with Helm directly carries the same caveats as bypassing `setup init` below: install Kubeflow Trainer yourself, and re-apply the CRDs on upgrades.
+
+**Bypass `setup init`.** Install the in-repo chart (`helm/cluster-readiness-engine` in the source tree) directly with `helm install`, setting `manager.image.repository` and `manager.image.tag` to your mirrored image (and `manager.imagePullSecrets` when the mirror needs credentials), and install Kubeflow Trainer manually. Nothing is pulled from a chart registry, but you take on installing the Kubeflow Trainer version this release supports and re-applying the CRDs on upgrades yourself.
 
 ## Resource requirements
 
@@ -248,6 +285,29 @@ The controller runs without external network access at runtime. All catalog entr
 3. Pre-load any workload images referenced by catalog entries (NeMo, NCCL tests)
 
 No internet access, external telemetry endpoints, or license servers are required at runtime.
+
+### Training categories: Megatron-LM source
+
+The `training/nemotron5-8b` and `training/nemotron5-56b` categories run a `megatron-clone` init container that resolves the entry's source checkout at pod start, in this order: if the workspace already holds the source at `/mnt/workspace/megatron-lm`, it is used unchanged; otherwise, if the workload image ships the source at `/opt/megatron-lm`, it is copied into the workspace; otherwise the init container clones over the network. Both entries define Megatron-LM as their source, with `https://github.com/NVIDIA/Megatron-LM.git` (branch `core_v0.15.2`) as their entry-defined default upstream. The clone step is workload-pod egress, so image mirroring alone does not cover it unless the image itself carries the source. Three ways to run these categories without GitHub access, in order of preference:
+
+1. **Bake the source into the workload image.** `/opt/megatron-lm` is the documented in-image location the entries look for. Extend the training image with the pinned checkout:
+
+   ```dockerfile
+   RUN git clone --depth 1 -b core_v0.15.2 https://github.com/NVIDIA/Megatron-LM.git /opt/megatron-lm
+   ```
+
+   That exact line keeps the branch pin identical to the one the init container would clone and leaves `.git` present for anything that expects a git checkout. The init container copies the tree into the workspace on every fresh pod start, so the source travels with the image and is covered by the ordinary workload-image pre-loading described at the top of this section; no git egress happens at runtime. The entries have no image knob, so serve the extended image under the same `nvcr.io/nvidia/pytorch:25.08-py3` reference they use: pre-load it on the nodes or publish it through your registry mirror under that name.
+
+2. **Pre-seed the workspace PVC.** Set `enableCheckpoint: true` (plus `storageClassName` if the cluster has no default StorageClass). The category then mounts a PersistentVolumeClaim named `<variant>-pvc` (for example `nemotron5-8b-pvc`) at `/mnt/workspace` instead of a memory-backed `emptyDir`. Pre-populate that volume with the Megatron-LM source at `megatron-lm/` before creating the Certification: the init container uses the workspace unchanged whenever `/mnt/workspace/megatron-lm` exists (a plain source export works; `.git` is not required). Without `enableCheckpoint` the workspace is an `emptyDir`, so this option does not apply and the source is resolved from the image or the network on every pod start.
+
+3. **Point the clone at an internal Git mirror.** For sites that run one, set `sourceRepo` on the Certification, either globally in `spec` or per category under `categories[].options`, to a Git mirror of the entry's source. Each catalog entry defines what its source is and its default upstream; for these two entries the source is Megatron-LM. The branch pin is unchanged, so the mirror must serve the `core_v0.15.2` branch. The URL must use an authenticated remote scheme (`https://` or `ssh://`); `http://` and `git://` URLs (unauthenticated transports the workload would execute code from), scp-style `git@host:path` syntax, and `file://` URLs are rejected by CRD validation (non-TLS mirrors and local source belong in the image or on the pre-seeded PVC above). The clone only runs when neither the workspace nor the image provides the source.
+
+   ```yaml
+   spec:
+     sourceRepo: https://git.example.com/mirrors/Megatron-LM.git
+   ```
+
+The rest of the training path makes no other network calls: the training script builds the local checkout with `pip install -e . --no-deps --no-build-isolation` rather than installing from PyPI, and trains on mock data with a null tokenizer, so no dataset or tokenizer downloads occur.
 
 ## Health checks
 

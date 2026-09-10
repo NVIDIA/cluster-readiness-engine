@@ -1,0 +1,49 @@
+[
+  {
+    "workflow": "image-cert-communication-90790",
+    "trainerImage": "registry.example.com/prebaked/nccl-tests:v1",
+    "containers": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "kind": "container",
+        "name": "node",
+        "image": "registry.example.com/prebaked/nccl-tests:v1"
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "kind": "container",
+        "name": "node",
+        "image": "registry.example.com/prebaked/nccl-tests:v1"
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "kind": "initContainer",
+        "name": "fix-ssh-permissions",
+        "image": "registry.example.com/prebaked/nccl-tests:v1"
+      }
+    ]
+  },
+  {
+    "workflow": "image-cert-training-nemot-c5620",
+    "trainerImage": "nvcr.io/nvidia/pytorch:25.08-py3",
+    "containers": [
+      {
+        "dependency": "nemotron5-8b-runtime",
+        "replicatedJob": "node",
+        "kind": "container",
+        "name": "node",
+        "image": "nvcr.io/nvidia/pytorch:25.08-py3"
+      },
+      {
+        "dependency": "nemotron5-8b-runtime",
+        "replicatedJob": "node",
+        "kind": "initContainer",
+        "name": "megatron-clone",
+        "image": "nvcr.io/nvidia/pytorch:25.08-py3"
+      }
+    ]
+  }
+]
