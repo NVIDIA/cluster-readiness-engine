@@ -1,0 +1,54 @@
+### get_certification_status
+{
+  "categories": [
+    {
+      "domain": "communication",
+      "status": "Succeeded",
+      "variant": "nccl-all-reduce"
+    }
+  ],
+  "conditions": [
+    {
+      "message": "all certification categories succeeded",
+      "reason": "AllCategoriesSucceeded",
+      "status": "True",
+      "type": "Succeeded"
+    }
+  ],
+  "excludedNodes": [
+    "node003",
+    "node004"
+  ],
+  "exclusionReason": "cordoned",
+  "name": "cert-excluded",
+  "namespace": "default",
+  "result": "INCOMPLETE",
+  "totalNodes": 2
+}
+### get_certification_report
+{
+  "report": {
+    "categories": [
+      {
+        "domain": "communication",
+        "jobs": 1,
+        "nodesPerJob": 2,
+        "runtime": "10m 0s",
+        "status": "Succeeded",
+        "testScale": "full-scale",
+        "variant": "nccl-all-reduce"
+      }
+    ],
+    "excludedNodes": [
+      "node003",
+      "node004"
+    ],
+    "exclusionReason": "cordoned",
+    "failedNodes": null,
+    "gpu": "h100",
+    "name": "cert-excluded",
+    "platform": "onprem",
+    "result": "INCOMPLETE",
+    "totalNodes": 2
+  }
+}

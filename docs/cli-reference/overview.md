@@ -28,6 +28,7 @@ The installer also creates a `kubectl-nvcre` symlink so the CLI is available as 
 | `nvcrectl workloadrun` | Run, render, report, status, and cancel WorkloadRun resources |
 | `nvcrectl cluster` | Inspect GPU nodes, platform, and network topology |
 | `nvcrectl workflow` | Render Workflow manifests offline with overrides applied |
+| `nvcrectl mcp` | Serve read-only certification state to MCP agents over stdio |
 
 ## Global flags
 

@@ -66,6 +66,8 @@ navigation:
         path: cli-reference/cluster.md
       - page: workflow
         path: cli-reference/workflow.md
+      - page: mcp
+        path: cli-reference/mcp.md
 
   - section: API Reference
     contents:

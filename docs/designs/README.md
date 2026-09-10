@@ -82,3 +82,4 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 072 | [Freeze GoodputMeasurement Status at Job Terminal State](072-goodput-terminal-freeze.md) |
 | 073 | [Convergent `setup init` Retry After a Partial Kubeflow Trainer Install](073-setup-retry-convergence.md) |
 | 074 | [Supply Chain Artifact and Verification Contract](074-supply-chain-attestation.md) |
+| 075 | [A Read-Only MCP Server for Certification State](075-mcp-server.md) |
