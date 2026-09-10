@@ -209,6 +209,9 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 				workflows[i].Spec.Dependencies, cert.Spec.GangScheduler); err != nil {
 				return fmt.Errorf("apply gang scheduler for %s: %w", workflows[i].Name, err)
 			}
+			if err := applyWorkflowImage(cert, workflows, i); err != nil {
+				return err
+			}
 
 			results, dryRunErr := render.DryRunCreate(ctx, dryRunClient, namespace, &workflows[i].Spec, nodes)
 			if dryRunErr != nil {
@@ -271,6 +274,28 @@ func resolveWorkflowsOffline(
 			workflows[i].Spec.Dependencies, cert.Spec.GangScheduler); err != nil {
 			return fmt.Errorf("apply gang scheduler for %s: %w", workflows[i].Name, err)
 		}
+		if err := applyWorkflowImage(cert, workflows, i); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// applyWorkflowImage opts workflow i into the Certification's workload image
+// override, at the same post-resolve point as the gang scheduler and for the
+// same reason: platform overrides choose images too, and options.image must
+// win over all of them. The image is resolved per category, per-category over
+// spec-level, exactly like the other options; renderCertification emits one
+// Workflow per category in declaration order, so workflows[i] pairs with
+// cert.Spec.Categories[i].
+func applyWorkflowImage(cert *nvcrev1alpha1.Certification, workflows []nvcrev1alpha1.Workflow, i int) error {
+	if i >= len(cert.Spec.Categories) {
+		return fmt.Errorf("apply workload image for %s: no category at index %d", workflows[i].Name, i)
+	}
+	opts := controller.ResolveOptions(&cert.Spec.CategoryOptions, cert.Spec.Categories[i].Options)
+	platform.ApplyImageToJobTemplate(&workflows[i].Spec.JobTemplate, opts.Image)
+	if err := platform.ApplyImageToDependencies(workflows[i].Spec.Dependencies, opts.Image); err != nil {
+		return fmt.Errorf("apply workload image for %s: %w", workflows[i].Name, err)
 	}
 	return nil
 }
@@ -358,6 +383,7 @@ func renderCertification(cert *nvcrev1alpha1.Certification, platformName string)
 			MaxRestarts:        derefInt32Ptr(opts.MaxRestarts),
 			TimeoutPerJob:      opts.TimeoutPerJob,
 			MeasurementTimeout: opts.MeasurementTimeout,
+			SourceRepo:         opts.SourceRepo,
 		})
 		if buildErr != nil {
 			return nil, fmt.Errorf("building workflow for %s/%s: %w", cat.Domain, cat.Variant, buildErr)

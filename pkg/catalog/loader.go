@@ -194,6 +194,12 @@ type TemplateData struct {
 	// Templates use: {{- range $k, $v := .Thresholds }}
 	Thresholds map[string]string
 
+	// SourceRepo is the Git repository URL overriding the default upstream of
+	// the source checkout an entry clones at pod start. Stays empty when the
+	// user sets nothing; each entry supplies its own canonical fallback.
+	// Templates use: {{ if .SourceRepo }}{{ .SourceRepo }}{{ else }}<entry default>{{ end }}
+	SourceRepo string
+
 	// TP is tensor-model-parallel size from meta.yaml for the resolved architecture.
 	// Templates use: {{ .TP }}
 	TP int32
@@ -442,6 +448,7 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 		TimeoutPerJob:      config.TimeoutPerJob,
 		MeasurementTimeout: config.MeasurementTimeout,
 		Thresholds:         config.Thresholds,
+		SourceRepo:         config.SourceRepo,
 	}
 	if td.MaxSteps == 0 {
 		td.MaxSteps = DefaultMaxSteps
