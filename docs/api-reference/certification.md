@@ -56,6 +56,14 @@ _Fields documented so far:_
 
 Like the rest of `spec`, `gangScheduler` is immutable after the Certification is created.
 
+## Category options
+
+`spec` embeds a set of workload options that apply to every category, and each `spec.categories[]` entry can override them via `options`; the per-category value wins. Options documented so far:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `image` | string | Optional. Overrides the workload container image for catalog workloads. Replaces the trainer image in the rendered job template, the primary workload container (`containers[0]`) of every replicated job in the resolved `TrainingRuntime` dependencies, and every init container in those pods whose image exactly equals the primary's pre-override image (the workload-derived inits such as `fix-ssh-permissions` and `megatron-clone`); init containers with a distinct image (such as GCP's `tcpxo-daemon`) and any additional containers keep their catalog images. Applied after the catalog and platform overrides resolve, so it also replaces an image a platform override selects. Settable at the spec level and per category (`categories[].options.image`). **Beware**: on AWS EFA platforms (H100, GB200) the platform overrides land the workers on an `nccl-tests` image that ships the aws-ofi-nccl (EFA) plugin; setting `image` replaces that image, and you then own the EFA OFI plugin being present in the replacement. NVCRE does not restrict which registries or images the field may reference; clusters that require trusted images should enforce that with cluster-wide admission policy (for example Kyverno or the Sigstore policy-controller), which covers this field, `WorkloadRun` `spec.image`, and every other pod alike |
+
 ## Spec immutability
 
 <Warning>

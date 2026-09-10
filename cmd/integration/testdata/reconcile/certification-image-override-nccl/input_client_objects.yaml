@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Same shape as certification-aws-gb200-nccl, plus a per-category
+# options.image. The AWS EFA overrides land both replicatedJobs and the
+# launcher's fix-ssh-permissions init container on the nccl-tests image; this
+# case pins that the user image replaces the trainer image, the primary
+# container of both node and launcher, and the fix-ssh-permissions init,
+# which is workload-derived (it carries the primary's pre-override image), so
+# nothing in the rendered Workflow still references the EFA nccl-tests image.
+apiVersion: v1
+kind: Node
+metadata:
+  name: image-override-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: image-override-node-01
+spec:
+  providerID: "aws://us-east-1a/i-0000000000000001"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: image-override-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: image-override-node-02
+spec:
+  providerID: "aws://us-east-1a/i-0000000000000002"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: image-override
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        image: registry.example.com/prebaked/nccl-tests:v1
