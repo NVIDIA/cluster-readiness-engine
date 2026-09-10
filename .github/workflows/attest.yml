@@ -3,12 +3,9 @@
 
 # Reusable workflow that signs and attests a release artifact.
 #
-# This is intended to become the only place in the repository that invokes
-# `cosign sign`, `cosign attest`, or `cosign attest-blob`. It is NOT yet: at the
-# time this workflow landed, publish.yml still signs the container image inline.
-# #266, #267 and #268 route the image, chart and binaries through here; #274
-# adds the test that keeps it true afterwards. Concentrating signing does two
-# things (ADR-074 decision 4):
+# This is the only place in the repository that invokes `cosign sign`,
+# `cosign attest`, or `cosign attest-blob`. `TestAttestIsSoleSigner` keeps that
+# true. Concentrating signing does two things (ADR-074 decision 4):
 #
 #  1. It gives every released artifact ONE certificate identity to pin. cosign
 #     uses the OIDC `job_workflow_ref` as the Fulcio SAN, so signing from a
@@ -17,22 +14,26 @@
 #       https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/<TAG>
 #
 #     Signing inline in each caller would instead produce one identity per
-#     calling workflow and per ref, which is what makes the current
-#     SECURITY.md verification command accept a main-branch build as a release.
+#     calling workflow and per ref, which is what made the pre-epic SECURITY.md
+#     verification command accept a main-branch build as a release.
 #
 #  2. It isolates the signing token from caller-defined build steps.
 #
-# This is SLSA Build **L2**, not L3, and nothing here may claim otherwise. L3
-# requires the BUILD to run inside the protected reusable workflow; the builds
-# stay in the callers (`docker buildx` in publish.yml, the Go cross-compile and
-# `helm package` in release.yml) and this workflow signs a digest it is handed.
-# A caller that produced the wrong artifact would get a faithful signature over
-# the wrong digest. Reaching L3 means moving artifact generation in here, which
-# is a separate decision.
+# This is SLSA Build **L2**, not L3, and nothing here may claim otherwise.
+# Provenance is unforgeable by the build process today (minted here from
+# trusted context), but builder isolation is absent: the builds stay in the
+# callers — `docker buildx` inside the reusable `build-image.yml` (invoked by
+# publish.yml / release.yml), and the Go cross-compile / `helm package` in
+# release.yml — and this workflow signs a digest it is handed. A caller that
+# produced the wrong artifact would get a faithful signature over the wrong
+# digest. Reaching L3 means moving artifact generation behind a protected
+# build+attest boundary (see ADR-074 decision 4 deferred path), which is a
+# separate decision.
 #
 # Because the build happens in the caller, `runDetails.builder.id` in the
-# provenance names the CALLER's workflow, not this one. Naming the attestor as
-# the builder would make the predicate false on its face.
+# provenance names the CALLER's top-level workflow (release.yml / publish.yml),
+# not this one and not build-image.yml where image builds actually run. Naming
+# the attestor as the builder would make the predicate false on its face.
 
 name: Attest (reusable)
 
