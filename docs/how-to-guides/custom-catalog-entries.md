@@ -6,7 +6,7 @@ description: Add a new domain/variant pair to the certification catalog.
 ---
 
 
-The catalog is extensible — add a YAML file to `pkg/catalog/entries/` to register a custom certification category.
+The catalog is extensible: add a YAML file to `pkg/catalog/entries/` in the source tree to register a custom certification category, then build and deploy new binaries.
 
 ## File layout
 
@@ -16,7 +16,7 @@ pkg/catalog/entries/
     <variant>.yaml     ← new file
 ```
 
-The catalog loader discovers entries by scanning this directory tree at startup. No registration step or code change is required.
+Catalog entries are embedded into the binaries at compile time via `//go:embed` (see `pkg/catalog/loader.go`). The loader discovers every entry in the embedded tree automatically, so no registration step or Go code change is required. Because the entries ship inside the binary, however, adding or changing an entry requires building and deploying a new image. Both `nvcrectl` and the controller embed the catalog, so both must be rebuilt to pick up the change. Entries cannot be dropped into a running system at runtime; see [Runtime alternatives](#runtime-alternatives) below for options that do not require a rebuild.
 
 ## YAML structure
 
@@ -117,14 +117,26 @@ orchestration:
 
 ## Verify
 
-After adding the file, verify it appears in the catalog and renders correctly:
+After adding the file, rebuild `nvcrectl` so the new entry is embedded, then verify it appears in the catalog and renders correctly:
 
 ```bash
-nvcrectl certification list-categories
+make build-nvcrectl
 
-nvcrectl certification render \
+bin/nvcrectl certification list-categories
+
+bin/nvcrectl certification render \
   --platform aws \
   /tmp/my-cert.yaml
 ```
 
-Check the rendered Workflow for correct resource requests, env vars, and override annotations.
+Check the rendered Workflow for correct resource requests, env vars, and override annotations. To run the new category on a cluster, the controller must embed the entry too: `make build` produces the `bin/manager` binary and `make docker-build` builds the controller image to deploy.
+
+## Runtime alternatives
+
+A catalog entry is the most curated option, but it is compile-time only. If you need a custom test without rebuilding and redeploying, NVCRE has two runtime paths in addition to the catalog entry itself. From most curated to most flexible:
+
+1. **Catalog entry** (this guide). Curated and certification-integrated: the category participates in `Certification` runs and appears in `nvcrectl certification list-categories`. Compile-time: changes require building and deploying a new image.
+2. **`WorkloadRun`**. A runtime custom test with a supported UX. You choose a framework (`torch`, `mpi`, or `exec`), optionally mount config files via `spec.config`, and get automatic platform and GPU adaptation. It supports CEL pass/fail `thresholds`, goodput and bandwidth measurements, per-node pass/fail results referenced from status (`succeededNodesRef` / `failedNodesRef`), and your own `spec.overrides` appended to the auto-generated platform overrides. No rebuild needed. See [How-to: Run a WorkloadRun](./run-workloadrun.md).
+3. **Hand-authored `Workflow` CR**. Full control over `jobTemplate`, `dependencies`, `orchestration`, and `overrides` at runtime. The controller still detects the platform and GPU architecture and applies matching overrides at reconcile time. This path is kubectl-only and self-maintained: there is no curated guide for it, nothing curates the spec for you, and you own keeping it working across NVCRE upgrades. The [Workflow API reference](../api-reference/workflow.md) documents the spec fields.
+
+Delivering curated catalog updates independently of operator upgrades is tracked in [issue #244](https://github.com/NVIDIA/cluster-readiness-engine/issues/244).
