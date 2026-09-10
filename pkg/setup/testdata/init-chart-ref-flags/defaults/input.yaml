@@ -1,0 +1,5 @@
+# The chart-ref flags must default to the published GHCR chart locations,
+# so plain `setup init` behavior is unchanged when the flags are unset.
+flags:
+  - chart-ref
+  - trainer-chart-ref

@@ -1,0 +1,32 @@
+# A TrainingRuntime whose replicatedJob carries no containers list. The helper
+# never creates structure, so the job is left alone and the raw bytes come
+# back untouched even though an image is set. The pod does carry an init
+# container: with no primary there is no pre-override image to match, so the
+# init stays pinned too, even though its image looks like a workload image.
+image: registry.example.com/prebaked/nccl-tests:v1
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          name: bare-runtime
+        trainer:
+          image: nvcr.io/nvidia/pytorch:26.01-py3
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: bare-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      restartPolicy: OnFailure
+                      initContainers:
+                        - name: bootstrap
+                          image: nvcr.io/nvidia/pytorch:26.01-py3

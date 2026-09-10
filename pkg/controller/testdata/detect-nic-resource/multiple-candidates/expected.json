@@ -1,0 +1,9 @@
+{
+  "name": "",
+  "detectionRan": true,
+  "candidates": [
+    "nvidia.com/mlnxnics",
+    "rdma/ib"
+  ],
+  "message": "NIC resource auto-detection found multiple candidates allocatable on every target node (nvidia.com/mlnxnics, rdma/ib); no NIC resource is requested. Set nicResourceName to choose one."
+}

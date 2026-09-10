@@ -1,0 +1,34 @@
+# An init container on the same repository as the primary but at a different
+# tag. Following is decided by exact string equality with the primary's
+# pre-override image, not by repository: a tag-only mismatch means the catalog
+# pinned that init on purpose, so it keeps its image while the primary and the
+# trainer take the override.
+image: registry.example.com/prebaked/pytorch:v2
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          name: tag-mismatch-runtime
+        trainer:
+          image: nvcr.io/nvidia/pytorch:26.01-py3
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: tag-mismatch-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: node
+                          image: nvcr.io/nvidia/pytorch:26.01-py3
+                      initContainers:
+                        - name: pinned-init
+                          image: nvcr.io/nvidia/pytorch:25.08-py3

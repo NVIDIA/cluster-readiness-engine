@@ -34,7 +34,7 @@
   "runtimeVolumes": [
     "dshm"
   ],
-  "overrideCount": 15,
+  "overrideCount": 17,
   "gangSchedulerName": "kai-scheduler",
   "gangSchedulerJobLabels": [
     "app=wr-gang",

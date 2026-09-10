@@ -111,8 +111,10 @@ type helmInstallParams struct {
 	versionOverride string
 	registryToken   string
 	image           string
-	pullSecretName  string
-	out             io.Writer
+	// chartRef is the NVCRE chart location; empty means helmChartOCI.
+	chartRef       string
+	pullSecretName string
+	out            io.Writer
 }
 
 // installHelmRelease installs or upgrades NVCRE via the helm CLI, after
@@ -131,7 +133,14 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 		return "", err
 	}
 
-	if p.registryToken != "" {
+	// Log in to GHCR only when the chart being pulled is actually hosted
+	// there. With --chart-ref pointing at a non-GHCR mirror (restricted
+	// egress, issue #321) a GHCR login would fail on a cluster that cannot
+	// reach GHCR and abort the install even though the chart lives on the
+	// reachable mirror. For mirror-hosted charts the operator runs
+	// `helm registry login <mirror>` beforehand and Helm uses its own
+	// stored credentials.
+	if p.registryToken != "" && chartNeedsGHCRLogin(p.chartRef) {
 		if err := helmRegistryLogin(helmPath, defaultImageRegistry, p.registryToken, p.out); err != nil {
 			return "", err
 		}
@@ -144,7 +153,7 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 	// source on every run; server-side apply is idempotent, so first-install
 	// behavior is unchanged.
 	_, _ = fmt.Fprintf(p.out, "[helm] Applying NVCRE CRDs from chart version %s...\n", chartVersion)
-	crds, err := fetchChartCRDs(helmPath, chartVersion, p.out)
+	crds, err := fetchChartCRDs(helmPath, p.chartRef, chartVersion, p.out)
 	if err != nil {
 		return "", err
 	}
@@ -153,8 +162,23 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 	}
 
 	imageName, imageTag := parseImage(p.image)
+	args := nvcreHelmUpgradeArgs(p.chartRef, chartVersion, imageName, imageTag, p.pullSecretName)
+	args = appendKubeconfigArgs(args, p.kubeconfig, p.kubeContext)
+
+	_, _ = fmt.Fprintf(p.out,
+		"[helm] Installing NVCRE Helm release %q in namespace %s...\n",
+		helmReleaseName, nvcreNamespace)
+	return runHelmCapture(helmPath, args, p.out)
+}
+
+// nvcreHelmUpgradeArgs returns the `helm upgrade --install` argument list for
+// the NVCRE release. An empty chartRef means the published GHCR chart.
+func nvcreHelmUpgradeArgs(chartRef, chartVersion, imageName, imageTag, pullSecretName string) []string {
+	if chartRef == "" {
+		chartRef = helmChartOCI
+	}
 	args := []string{
-		"upgrade", "--install", helmReleaseName, helmChartOCI,
+		"upgrade", "--install", helmReleaseName, chartRef,
 		helmFlagNamespace, nvcreNamespace,
 		"--create-namespace",
 		helmFlagVersion, chartVersion,
@@ -163,15 +187,10 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 		helmFlagWait,
 		helmFlagTimeout, helmInstallTimeout.String(),
 	}
-	if p.pullSecretName != "" {
-		args = append(args, helmFlagSet, "manager.imagePullSecrets[0].name="+p.pullSecretName)
+	if pullSecretName != "" {
+		args = append(args, helmFlagSet, "manager.imagePullSecrets[0].name="+pullSecretName)
 	}
-	args = appendKubeconfigArgs(args, p.kubeconfig, p.kubeContext)
-
-	_, _ = fmt.Fprintf(p.out,
-		"[helm] Installing NVCRE Helm release %q in namespace %s...\n",
-		helmReleaseName, nvcreNamespace)
-	return runHelmCapture(helmPath, args, p.out)
+	return args
 }
 
 type helmUninstallParams struct {
@@ -204,18 +223,48 @@ func uninstallHelmRelease(p helmUninstallParams) error {
 
 // installTrainerHelmRelease installs Kubeflow Trainer via the helm CLI and
 // returns the captured helm transcript so the [deps] phase can classify a
-// failure (ADR-073). The helm CLI resolves OCI sub-chart dependencies
-// (including JobSet) automatically.
-func installTrainerHelmRelease(kubeconfig, kubeContext string, out io.Writer) (string, error) {
+// failure (ADR-073). The published chart package vendors its JobSet chart
+// dependency (charts/jobset/ inside the archive), so the install needs no
+// additional registry access; helm resolves remote dependencies only for
+// unpackaged source charts. chartRef overrides the chart location;
+// empty means the published GHCR chart. registryToken authenticates the
+// chart pull for a GHCR-hosted chart (e.g. --trainer-chart-ref pointing at a
+// private fork); empty means no token was passed.
+func installTrainerHelmRelease(kubeconfig, kubeContext, chartRef, registryToken string, out io.Writer) (string, error) {
 	helmPath, err := ensureHelm()
 	if err != nil {
 		return "", err
 	}
 
+	// Same gating as installHelmRelease: log in to GHCR only when the chart
+	// being pulled is actually hosted there, so a mirror ref (restricted
+	// egress, issue #321) never triggers a GHCR login; for mirror-hosted
+	// charts the operator runs `helm registry login <mirror>` beforehand and
+	// Helm uses its own stored credentials. The login wraps every install
+	// invocation, including the reinstall inside the ADR-073 recovery arm,
+	// because recovery calls back into this function.
+	if registryToken != "" && chartNeedsGHCRLogin(chartRef) {
+		if err := helmRegistryLogin(helmPath, defaultImageRegistry, registryToken, out); err != nil {
+			return "", err
+		}
+		defer helmRegistryLogout(helmPath, defaultImageRegistry, out)
+	}
+
 	_, _ = fmt.Fprintf(out, "[deps] Installing Kubeflow Trainer Helm release %q in namespace %s...\n",
 		trainerReleaseName, trainerNamespace)
-	args := []string{
-		"upgrade", "--install", trainerReleaseName, trainerHelmChartOCI,
+	args := appendKubeconfigArgs(trainerHelmUpgradeArgs(chartRef), kubeconfig, kubeContext)
+	return runHelmCapture(helmPath, args, out)
+}
+
+// trainerHelmUpgradeArgs returns the `helm upgrade --install` argument list
+// for the Kubeflow Trainer release. An empty chartRef means the published
+// GHCR chart.
+func trainerHelmUpgradeArgs(chartRef string) []string {
+	if chartRef == "" {
+		chartRef = trainerHelmChartOCI
+	}
+	return []string{
+		"upgrade", "--install", trainerReleaseName, chartRef,
 		helmFlagNamespace, trainerNamespace,
 		"--create-namespace",
 		helmFlagVersion, strings.TrimPrefix(kubeflowTrainerVersion, "v"),
@@ -224,8 +273,6 @@ func installTrainerHelmRelease(kubeconfig, kubeContext string, out io.Writer) (s
 		helmFlagWait,
 		helmFlagTimeout, helmInstallTimeout.String(),
 	}
-	args = appendKubeconfigArgs(args, kubeconfig, kubeContext)
-	return runHelmCapture(helmPath, args, out)
 }
 
 // uninstallTrainerHelmRelease removes the Kubeflow Trainer Helm release.
@@ -449,6 +496,62 @@ func printGHCR403Hint(out io.Writer, output string) {
 		_, _ = fmt.Fprintln(out, "      If you passed --image-pull-secret, the token may be expired or missing the")
 		_, _ = fmt.Fprintln(out, "      read:packages scope. Re-run setup init --image-pull-secret with a fresh")
 		_, _ = fmt.Fprintln(out, "      token to recreate the pull secret.")
+	}
+}
+
+// chartRefRegistryHost returns the registry host of an OCI chart ref: the
+// oci:// scheme is stripped and the segment before the first slash is the
+// host. An empty ref means the published NVCRE chart, so it resolves to
+// helmChartOCI first.
+func chartRefRegistryHost(ref string) string {
+	if ref == "" {
+		ref = helmChartOCI
+	}
+	host, _, _ := strings.Cut(strings.TrimPrefix(ref, "oci://"), "/")
+	return host
+}
+
+// chartNeedsGHCRLogin reports whether the chart at ref is pulled from GHCR,
+// the only registry a --image-pull-secret token authenticates against. For a
+// chart hosted anywhere else the token login is skipped entirely, so a
+// cluster with no GHCR access can still install from a mirror (issue #321).
+func chartNeedsGHCRLogin(ref string) bool {
+	return chartRefRegistryHost(ref) == defaultImageRegistry
+}
+
+// asymmetricChartRefsWarning returns a warning when exactly one of the two
+// effective chart refs resolves to GHCR while the other points at a mirror,
+// and the GHCR-bound pull will actually run: the NVCRE chart is pulled on
+// every init, while the Kubeflow Trainer chart is only pulled when the [deps]
+// phase is not skipped. A half-mirrored configuration like this is usually a
+// partial restricted-egress setup (issue #321) that still reaches out to
+// ghcr.io at install time. An empty string means the refs are consistent or
+// the GHCR-bound pull is skipped.
+func asymmetricChartRefsWarning(chartRef, trainerChartRef string, depsSkipped bool) string {
+	nvcreHost := chartRefRegistryHost(chartRef)
+	trainerHost := chartRefRegistryHost(trainerChartRef)
+	nvcreOnGHCR := nvcreHost == defaultImageRegistry
+	trainerOnGHCR := trainerHost == defaultImageRegistry
+
+	switch {
+	case nvcreOnGHCR == trainerOnGHCR:
+		// Both on GHCR (the defaults) or both mirrored: consistent.
+		return ""
+	case trainerOnGHCR && depsSkipped:
+		// The Trainer chart is the only GHCR-bound pull left and the [deps]
+		// phase that would pull it is skipped, so nothing reaches GHCR.
+		return ""
+	case trainerOnGHCR:
+		return fmt.Sprintf(
+			"[preflight] Warning: --chart-ref points at %s but --trainer-chart-ref still points at %s, "+
+				"so the [deps] phase pulls the Kubeflow Trainer chart from %s. "+
+				"Mirror both charts or pass --skip-phases=deps.",
+			nvcreHost, defaultImageRegistry, defaultImageRegistry)
+	default: // nvcreOnGHCR
+		return fmt.Sprintf(
+			"[preflight] Warning: --trainer-chart-ref points at %s but --chart-ref still points at %s, "+
+				"so the [helm] phase pulls the NVCRE chart from %s. Mirror both charts.",
+			trainerHost, defaultImageRegistry, defaultImageRegistry)
 	}
 }
 

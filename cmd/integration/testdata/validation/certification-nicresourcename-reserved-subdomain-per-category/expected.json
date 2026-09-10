@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.categories[0].options.nicResourceName",
+      "message": "Invalid value: \"sub.k8s.io/gpu\": nicResourceName must not use the reserved kubernetes.io or k8s.io domains"
+    }
+  ]
+}

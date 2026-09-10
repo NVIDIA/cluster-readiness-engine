@@ -441,6 +441,23 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	if opts.MlnxPerNode != nil {
 		mlnxPerNode = *opts.MlnxPerNode
 	}
+	// The NIC resource name has no architecture default: it depends on the
+	// RDMA device plugin the site runs. The field always wins; when it is
+	// unset on the on-prem GB200/GB300 target the override matches, detection
+	// fills the gap from node allocatable, but only when exactly one
+	// candidate (rdma/* or nvidia.com/mlnxnics) is allocatable at the
+	// resolved mlnxPerNode count — the amount the templates will request per
+	// container — on every node the job is sized against (the same
+	// arch-filtered set nodesPerJob resolution uses). Zero or multiple
+	// candidates means nothing is injected and a Normal event says why;
+	// detection never guesses (ADR-075).
+	nicDetected := resolveNICResourceName(
+		opts.NicResourceName, detectedPlatform, gpuArch, archNodes, mlnxPerNode)
+	nicResourceName := nicDetected.Name
+	if nicDetected.Ran && nicResourceName == "" {
+		r.normalf(certification, ReasonNICResourceDetection,
+			"%s/%s: %s", category.Domain, category.Variant, nicDetectionMessage(nicDetected))
+	}
 
 	capableNodes, err := dropUnderCapacityNodes(archNodes, category, gpusPerNode)
 	if err != nil {
@@ -464,6 +481,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		NodesPerJob:        nodesPerJob,
 		GpusPerNode:        gpusPerNode,
 		MlnxPerNode:        mlnxPerNode,
+		NicResourceName:    nicResourceName,
 		Resources:          opts.Resources,
 		EnableMNNVL:        enableMNNVL,
 		EnableCheckpoint:   derefBool(opts.EnableCheckpoint),
@@ -485,6 +503,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		MaxRestarts:        derefInt32(opts.MaxRestarts),
 		TimeoutPerJob:      opts.TimeoutPerJob,
 		MeasurementTimeout: opts.MeasurementTimeout,
+		SourceRepo:         opts.SourceRepo,
 	})
 	if buildErr != nil {
 		return "", fmt.Errorf("building workflow for %s/%s: %w", category.Domain, category.Variant, buildErr)
@@ -508,6 +527,15 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	if err := platform.ApplyGangSchedulerToDependencies(
 		workflowSpec.Dependencies, certification.Spec.GangScheduler); err != nil {
 		return "", fmt.Errorf("applying gang scheduler for %s/%s: %w", category.Domain, category.Variant, err)
+	}
+
+	// The workload image override is applied at the same post-resolve point for
+	// the same reason: platform overrides choose images too (the AWS EFA
+	// overrides swap the workers to an nccl-tests build), and options.image
+	// must win over all of them.
+	platform.ApplyImageToJobTemplate(&workflowSpec.JobTemplate, opts.Image)
+	if err := platform.ApplyImageToDependencies(workflowSpec.Dependencies, opts.Image); err != nil {
+		return "", fmt.Errorf("applying workload image for %s/%s: %w", category.Domain, category.Variant, err)
 	}
 
 	if len(applied) > 0 || len(workflowSpec.Overrides) > 0 {
@@ -614,11 +642,17 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	if override.MlnxPerNode != nil {
 		resolved.MlnxPerNode = override.MlnxPerNode
 	}
+	if override.NicResourceName != nil {
+		resolved.NicResourceName = override.NicResourceName
+	}
 	if override.Resources != nil {
 		resolved.Resources = override.Resources
 	}
 	if override.EnableMNNVL != nil {
 		resolved.EnableMNNVL = override.EnableMNNVL
+	}
+	if override.Image != "" {
+		resolved.Image = override.Image
 	}
 	if len(override.ImagePullSecrets) > 0 {
 		resolved.ImagePullSecrets = override.ImagePullSecrets
@@ -670,6 +704,9 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	}
 	if override.MeasurementTimeout != "" {
 		resolved.MeasurementTimeout = override.MeasurementTimeout
+	}
+	if override.SourceRepo != "" {
+		resolved.SourceRepo = override.SourceRepo
 	}
 	return resolved
 }
@@ -988,15 +1025,24 @@ func derefInt32(p *int32) int32 {
 	return *p
 }
 
-// warnf emits a Warning event if the Recorder is configured. Every
-// Certification-tier event is a warning; the Workflow reconciler's eventf
-// takes an explicit type because it emits Normal events too.
+// warnf emits a Warning event if the Recorder is configured.
 //
 // Safe to call when Recorder is nil (e.g. in unit tests, or any embedding that
 // constructs CertificationReconciler directly).
 func (r *CertificationReconciler) warnf(obj runtime.Object, reason, messageFmt string, args ...any) {
 	if r.Recorder != nil {
 		r.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, reason, reason, messageFmt, args...)
+	}
+}
+
+// normalf emits a Normal event if the Recorder is configured. Used for
+// advisory outcomes that are not failures, like NIC resource auto-detection
+// declining to pick a candidate (ReasonNICResourceDetection).
+//
+// Safe to call when Recorder is nil, like warnf.
+func (r *CertificationReconciler) normalf(obj runtime.Object, reason, messageFmt string, args ...any) {
+	if r.Recorder != nil {
+		r.Recorder.Eventf(obj, nil, corev1.EventTypeNormal, reason, reason, messageFmt, args...)
 	}
 }
 

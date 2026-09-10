@@ -93,6 +93,26 @@ spec:
                           format: int32
                           minimum: 1
                           type: integer
+                        image:
+                          description: |-
+                            image overrides the workload container image for catalog workloads.
+                            It replaces the trainer image in the rendered job template, the image
+                            of the primary workload container of every replicated job in the
+                            resolved TrainingRuntime dependencies, and the image of every init
+                            container in those pods whose image exactly equals the primary's
+                            pre-override image (the workload-derived inits such as
+                            fix-ssh-permissions and megatron-clone); init containers with a
+                            distinct image (such as GCP's tcpxo-daemon) and any additional
+                            containers keep their catalog images. Applied after catalog and
+                            platform overrides resolve, so it also replaces an image a platform
+                            override selects. Beware: on AWS EFA platforms (H100, GB200) the
+                            platform overrides land the workers on an nccl-tests image that ships
+                            the aws-ofi-nccl (EFA) plugin; setting image replaces that image, and
+                            the operator then owns the EFA OFI plugin being present in the
+                            replacement.
+                          maxLength: 512
+                          minLength: 1
+                          type: string
                         imagePullSecrets:
                           description: |-
                             imagePullSecrets is an optional list of references to secrets for pulling
@@ -168,6 +188,32 @@ spec:
                           format: int32
                           minimum: 0
                           type: integer
+                        nicResourceName:
+                          description: |-
+                            nicResourceName sets the Kubernetes extended resource name of the RDMA
+                            NIC devices requested on workload containers for on-prem GB200/GB300
+                            targets (e.g., "rdma/ib", "nvidia.com/mlnxnics"); the name depends on
+                            the RDMA device plugin the site runs, and the per-container count
+                            comes from mlnxPerNode. When unset, the controller auto-detects the
+                            name on on-prem GB200/GB300 targets: a single candidate resource
+                            (rdma/* or nvidia.com/mlnxnics) allocatable at the resolved
+                            mlnxPerNode count on every target node is requested; zero or several
+                            qualifying candidates inject nothing and emit a NICResourceDetection
+                            event explaining what was found. Offline nvcrectl render (without
+                            --dry-run) has no cluster to inspect and uses only this field. The
+                            value must be a fully qualified extended resource name: a
+                            DNS-subdomain domain, a slash, and a name segment of at most 63
+                            characters; the reserved kubernetes.io and k8s.io domains (including
+                            their subdomains) are rejected, matching what Kubernetes accepts as an
+                            extended resource.
+                          maxLength: 253
+                          pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]{0,61}[a-zA-Z0-9])?$
+                          type: string
+                          x-kubernetes-validations:
+                          - message: nicResourceName must not use the reserved kubernetes.io
+                              or k8s.io domains
+                            rule: '!self.contains(''kubernetes.io/'') && !self.startsWith(''k8s.io/'')
+                              && !self.contains(''.k8s.io/'')'
                         nodesPerJob:
                           description: |-
                             nodesPerJob is the number of nodes per job for multi-node workloads.
@@ -310,6 +356,22 @@ spec:
                           format: int32
                           minimum: 1
                           type: integer
+                        sourceRepo:
+                          description: |-
+                            sourceRepo is the Git repository for the source checkout this category
+                            clones at pod start. Each catalog entry defines what its source is and
+                            its default upstream; point this at an internal mirror for air-gapped
+                            or restricted-egress clusters. Entries that clone no source ignore it.
+                            The URL must use an authenticated remote scheme (https:// or ssh://).
+                            http:// and git:// are intentionally rejected: the cloned source is
+                            executed by the workload, and those transports are unauthenticated.
+                            scp-style git@host:path syntax and file:// are intentionally rejected:
+                            the contract is a remote git mirror. Non-TLS mirrors and local source
+                            belong on the pre-seeded checkpoint PVC path or in the workload image
+                            instead.
+                          maxLength: 2048
+                          pattern: ^(https|ssh)://[A-Za-z0-9._~:/@%+-]+$
+                          type: string
                         storageClassName:
                           description: |-
                             storageClassName is the StorageClass to use for PersistentVolumeClaim
@@ -444,6 +506,26 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
+              image:
+                description: |-
+                  image overrides the workload container image for catalog workloads.
+                  It replaces the trainer image in the rendered job template, the image
+                  of the primary workload container of every replicated job in the
+                  resolved TrainingRuntime dependencies, and the image of every init
+                  container in those pods whose image exactly equals the primary's
+                  pre-override image (the workload-derived inits such as
+                  fix-ssh-permissions and megatron-clone); init containers with a
+                  distinct image (such as GCP's tcpxo-daemon) and any additional
+                  containers keep their catalog images. Applied after catalog and
+                  platform overrides resolve, so it also replaces an image a platform
+                  override selects. Beware: on AWS EFA platforms (H100, GB200) the
+                  platform overrides land the workers on an nccl-tests image that ships
+                  the aws-ofi-nccl (EFA) plugin; setting image replaces that image, and
+                  the operator then owns the EFA OFI plugin being present in the
+                  replacement.
+                maxLength: 512
+                minLength: 1
+                type: string
               imagePullSecrets:
                 description: |-
                   imagePullSecrets is an optional list of references to secrets for pulling
@@ -519,6 +601,32 @@ spec:
                 format: int32
                 minimum: 0
                 type: integer
+              nicResourceName:
+                description: |-
+                  nicResourceName sets the Kubernetes extended resource name of the RDMA
+                  NIC devices requested on workload containers for on-prem GB200/GB300
+                  targets (e.g., "rdma/ib", "nvidia.com/mlnxnics"); the name depends on
+                  the RDMA device plugin the site runs, and the per-container count
+                  comes from mlnxPerNode. When unset, the controller auto-detects the
+                  name on on-prem GB200/GB300 targets: a single candidate resource
+                  (rdma/* or nvidia.com/mlnxnics) allocatable at the resolved
+                  mlnxPerNode count on every target node is requested; zero or several
+                  qualifying candidates inject nothing and emit a NICResourceDetection
+                  event explaining what was found. Offline nvcrectl render (without
+                  --dry-run) has no cluster to inspect and uses only this field. The
+                  value must be a fully qualified extended resource name: a
+                  DNS-subdomain domain, a slash, and a name segment of at most 63
+                  characters; the reserved kubernetes.io and k8s.io domains (including
+                  their subdomains) are rejected, matching what Kubernetes accepts as an
+                  extended resource.
+                maxLength: 253
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]{0,61}[a-zA-Z0-9])?$
+                type: string
+                x-kubernetes-validations:
+                - message: nicResourceName must not use the reserved kubernetes.io
+                    or k8s.io domains
+                  rule: '!self.contains(''kubernetes.io/'') && !self.startsWith(''k8s.io/'')
+                    && !self.contains(''.k8s.io/'')'
               nodesPerJob:
                 description: |-
                   nodesPerJob is the number of nodes per job for multi-node workloads.
@@ -655,6 +763,22 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
+              sourceRepo:
+                description: |-
+                  sourceRepo is the Git repository for the source checkout this category
+                  clones at pod start. Each catalog entry defines what its source is and
+                  its default upstream; point this at an internal mirror for air-gapped
+                  or restricted-egress clusters. Entries that clone no source ignore it.
+                  The URL must use an authenticated remote scheme (https:// or ssh://).
+                  http:// and git:// are intentionally rejected: the cloned source is
+                  executed by the workload, and those transports are unauthenticated.
+                  scp-style git@host:path syntax and file:// are intentionally rejected:
+                  the contract is a remote git mirror. Non-TLS mirrors and local source
+                  belong on the pre-seeded checkpoint PVC path or in the workload image
+                  instead.
+                maxLength: 2048
+                pattern: ^(https|ssh)://[A-Za-z0-9._~:/@%+-]+$
+                type: string
               storageClassName:
                 description: |-
                   storageClassName is the StorageClass to use for PersistentVolumeClaim

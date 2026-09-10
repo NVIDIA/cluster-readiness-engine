@@ -1,0 +1,15 @@
+# One rdma/ candidate allocatable at the requested count on every node:
+# detection picks it. A shared-device plugin site (one pooled resource per
+# pod), so mlnxPerNode is 1 per the API guidance.
+platform: onprem
+gpuArchitecture: gb300
+mlnxPerNode: 1
+nodes:
+  - name: node-01
+    allocatable:
+      nvidia.com/gpu: "4"
+      rdma/ib: "1"
+  - name: node-02
+    allocatable:
+      nvidia.com/gpu: "4"
+      rdma/ib: "1"

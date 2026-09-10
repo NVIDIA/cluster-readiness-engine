@@ -1,0 +1,38 @@
+# Dependencies that are not TrainingRuntimes pass through byte for byte even
+# when an image is set: the override targets workload pods, not the
+# ConfigMaps, ComputeDomains, and PVCs a category provisions around them.
+image: registry.example.com/prebaked/nccl-tests:v1
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          name: nccl-all-reduce-runtime
+        trainer:
+          image: nvcr.io/nvidia/pytorch:26.01-py3
+dependencies:
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: model-config
+    data:
+      config.yaml: "image: keep-me"
+  - apiVersion: resource.nvidia.com/v1beta1
+    kind: ComputeDomain
+    metadata:
+      name: nccl-all-reduce-compute-domain
+    spec:
+      numNodes: 2
+      channel:
+        resourceClaimTemplate:
+          name: nccl-all-reduce-compute-domain-channel
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: checkpoint-pvc
+    spec:
+      accessModes:
+        - ReadWriteMany
+      resources:
+        requests:
+          storage: 10Ti

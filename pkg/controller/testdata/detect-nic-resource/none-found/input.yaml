@@ -1,0 +1,12 @@
+# No candidate resource anywhere: nothing to pick, message says none found
+# (as opposed to candidates present but below the requested count).
+platform: onprem
+gpuArchitecture: gb300
+mlnxPerNode: 8
+nodes:
+  - name: node-01
+    allocatable:
+      nvidia.com/gpu: "4"
+  - name: node-02
+    allocatable:
+      nvidia.com/gpu: "4"

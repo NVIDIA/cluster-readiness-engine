@@ -1,0 +1,12 @@
+{
+  "config": {
+    "EntryName": "test",
+    "NodesPerJob": 2,
+    "GpusPerNode": 4,
+    "MlnxPerNode": 1,
+    "NicResourceName": "rdma/ib",
+    "EnableMNNVL": true,
+    "FrameworkType": "mpi"
+  },
+  "atLeastOneOverride": true
+}

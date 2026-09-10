@@ -53,11 +53,17 @@ Automatic recovery deletes the `kubeflow-system` namespace, including anything y
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--image-pull-secret` | — | GitHub token for clusters that pull from a private GHCR mirror or fork: the CLI creates a `ghcr.io` pull secret and uses it to authenticate the Helm chart pull. The public image and chart need no token. |
+| `--image-pull-secret` | — | GitHub token for clusters that pull from a private GHCR mirror or fork: the CLI creates the `ghcr.io`-scoped Kubernetes pull secret and authenticates Helm chart pulls only when the chart ref is on GHCR. For a chart on a non-GHCR mirror, run `helm registry login <mirror>` before `setup init` instead. The public image and chart need no token. |
 | `--image` | — | Override the controller image (default: `ghcr.io/nvidia/cluster-readiness-engine/manager:<version>`) |
+| `--chart-ref` | `oci://ghcr.io/nvidia/cluster-readiness-engine` | NVCRE Helm chart location. Override to install from a mirror registry; used for both the release install and the CRD extraction (`helm show crds`). |
+| `--trainer-chart-ref` | `oci://ghcr.io/kubeflow/charts/kubeflow-trainer` | Kubeflow Trainer Helm chart location. Override to install from a mirror registry. |
 | `--skip-phases` | — | Comma-separated phases to skip (e.g., `deps`) |
 | `--version` | — | Helm chart version to install (required for dev builds) |
 | `--auto-approve` | `false` | Skip the interactive confirmation prompt (for CI/automation) |
+
+The chart versions are unaffected by the `-ref` flags: the NVCRE chart is still pulled at the CLI version (or `--version`), and Kubeflow Trainer at the pinned version, so a mirror must host those chart versions.
+
+For a controller image on a private non-GHCR mirror, `--image-pull-secret` does not help: its token and the secret it creates are scoped to `ghcr.io`, and `setup init` has no flag to bind a custom-named pull secret to the controller pod. Either configure node-level registry credentials for the mirror (containerd/kubelet), or install the chart directly with Helm and bind the secret via `--set 'manager.imagePullSecrets[0].name=<secret-name>'`; see [Restricted egress and air-gapped installs](../operations/deployment.md#restricted-egress-and-air-gapped-installs).
 
 ### Example
 
@@ -65,11 +71,18 @@ Automatic recovery deletes the `kubeflow-system` namespace, including anything y
 # Standard install
 nvcrectl setup init
 
-# For a private GHCR mirror or fork (the public image and chart need no token)
+# For a private GHCR mirror or fork (the public image and chart need no token;
+# a chart on a non-GHCR mirror needs `helm registry login <mirror>` instead)
 nvcrectl setup init --image-pull-secret $GITHUB_TOKEN
 
 # Skip Kubeflow Trainer (already installed)
 nvcrectl setup init --skip-phases=deps
+
+# Restricted egress: pull both charts and the controller image from a mirror
+nvcrectl setup init \
+  --chart-ref oci://registry.example.com/mirror/cluster-readiness-engine \
+  --trainer-chart-ref oci://registry.example.com/mirror/kubeflow-trainer \
+  --image registry.example.com/mirror/manager:<version>
 ```
 
 ## nvcrectl setup status

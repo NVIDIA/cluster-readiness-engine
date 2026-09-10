@@ -44,7 +44,11 @@ type validationCause struct {
 // name segment, the CEL rule rejects a prefix over 253 characters, which the
 // pattern alone cannot count, and an explicit empty string is accepted, since
 // the code resolves it to the default key the same way an empty queue resolves
-// to default-queue (ADR-076).
+// to default-queue (ADR-076). The nicResourceName cases check
+// that both CRDs hold the field to the extended resource name rules — the
+// pattern caps the name segment after the slash at 63 characters and the CEL
+// rule rejects the reserved kubernetes.io and k8s.io domains (including
+// subdomains) — at every level the field appears (ADR-075).
 func TestCertificationValidation(t *testing.T) {
 	suite := &testutil.IntegrationTestSuite{}
 	suite.Environment.CRDDirectoryPaths = []string{"../../helm/cluster-readiness-engine/crds"}

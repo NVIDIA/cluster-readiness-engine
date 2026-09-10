@@ -152,7 +152,7 @@ func projectGangScheduling(wf *nvcrev1alpha1.Workflow, queueLabelKey string) (ga
 			return out, err
 		}
 		out.DependencyKinds = append(out.DependencyKinds, typeMeta.Kind)
-		if typeMeta.Kind != "TrainingRuntime" {
+		if typeMeta.Kind != trainerv1alpha1.TrainingRuntimeKind {
 			continue
 		}
 

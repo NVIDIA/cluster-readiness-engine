@@ -1,0 +1,52 @@
+# The MPI shape after the AWS EFA overrides resolve: both node and launcher
+# replicatedJobs run the nccl-tests image, and the GB200 EFA patch pins the
+# launcher's fix-ssh-permissions init container to that same image
+# (aws-gb200-efa-runtime-patch-comm.yaml). options.image must replace the
+# primary container of both replicatedJobs and the trainer image in the job
+# template, and because fix-ssh-permissions carries the exact pre-override
+# primary image it is workload-derived and must follow the override too.
+image: registry.example.com/prebaked/nccl-tests:v1
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          name: nccl-all-reduce-runtime
+        trainer:
+          image: public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nccl-all-reduce-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      restartPolicy: OnFailure
+                      containers:
+                        - name: node
+                          image: public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9
+            - name: launcher
+              dependsOn:
+                - name: node
+                  status: Ready
+              template:
+                metadata:
+                  labels:
+                    trainer.kubeflow.org/trainjob-ancestor-step: trainer
+                spec:
+                  template:
+                    spec:
+                      restartPolicy: OnFailure
+                      containers:
+                        - name: node
+                          image: public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9
+                      initContainers:
+                        - name: fix-ssh-permissions
+                          image: public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9

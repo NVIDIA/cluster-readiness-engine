@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The kubernetes.io domain is reserved for native resources: Kubernetes'
+# IsExtendedResourceName treats any name containing "kubernetes.io/" as
+# native, so the CEL rule rejects it here instead of the kubelet ignoring the
+# request later.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-nicname-reserved
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300
+  nicResourceName: kubernetes.io/gpu
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

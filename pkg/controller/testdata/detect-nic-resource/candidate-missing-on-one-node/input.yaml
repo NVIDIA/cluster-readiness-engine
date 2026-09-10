@@ -1,0 +1,13 @@
+# The candidate is absent from node-02: the every-node rule disqualifies it,
+# and the message reports the candidate as present but below the requested
+# count (absence is allocatable zero).
+platform: onprem
+gpuArchitecture: gb300
+mlnxPerNode: 1
+nodes:
+  - name: node-01
+    allocatable:
+      rdma/ib: "1"
+  - name: node-02
+    allocatable:
+      nvidia.com/gpu: "4"

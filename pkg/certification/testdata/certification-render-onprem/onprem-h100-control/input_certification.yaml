@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Control case: onprem is the detection fallback for every no-providerID
+# cluster, so the override's gpuArchitecture guard must keep it off H100.
+# nicResourceName is set but must go nowhere: no template consumes it outside
+# the GB200/GB300 on-prem patches.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: onprem-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 8
+  enableMNNVL: false
+  nicResourceName: rdma/ib
+  mlnxPerNode: 1
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
