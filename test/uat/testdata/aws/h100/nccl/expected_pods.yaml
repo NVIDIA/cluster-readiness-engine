@@ -259,8 +259,7 @@ spec:
   - args:
     - |-
       set -x &&
-      apt-get update &&
-      apt-get install -y --no-install-recommends openssh-server  &&
+      test -x /usr/sbin/sshd || (apt-get update && apt-get install -y --no-install-recommends openssh-server) &&
       mkdir -p /var/run/sshd  &&
       chmod 0755 /var/run/sshd  &&
       mkdir -p /root/.ssh &&
@@ -413,8 +412,7 @@ spec:
   - args:
     - |-
       set -x &&
-      apt-get update &&
-      apt-get install -y --no-install-recommends openssh-server  &&
+      test -x /usr/sbin/sshd || (apt-get update && apt-get install -y --no-install-recommends openssh-server) &&
       mkdir -p /var/run/sshd  &&
       chmod 0755 /var/run/sshd  &&
       mkdir -p /root/.ssh &&

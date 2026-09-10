@@ -1,0 +1,5 @@
+# Both charts on GHCR (the flag defaults): the refs are consistent, so no
+# warning is printed.
+chartRef: "oci://ghcr.io/nvidia/cluster-readiness-engine"
+trainerChartRef: "oci://ghcr.io/kubeflow/charts/kubeflow-trainer"
+skipDeps: false

@@ -130,6 +130,11 @@ type BuildConfig struct {
 	// MaxRestarts overrides the checkpoint maxRestarts for training workloads.
 	// 0 means use catalog default. Only used when EnableCheckpoint is true.
 	MaxRestarts int32
+
+	// SourceRepo is the Git repository URL for the source checkout cloned by
+	// entries that fetch source at pod start. Empty means each entry uses its
+	// own default upstream; entries that clone no source ignore it.
+	SourceRepo string
 }
 
 // Entry holds a builder that produces a WorkflowSpec for a given target.

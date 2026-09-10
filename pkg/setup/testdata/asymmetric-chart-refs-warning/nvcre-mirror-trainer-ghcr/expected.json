@@ -1,0 +1,3 @@
+{
+  "warning": "[preflight] Warning: --chart-ref points at registry.example.com but --trainer-chart-ref still points at ghcr.io, so the [deps] phase pulls the Kubeflow Trainer chart from ghcr.io. Mirror both charts or pass --skip-phases=deps."
+}
