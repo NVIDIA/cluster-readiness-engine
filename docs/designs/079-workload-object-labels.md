@@ -74,7 +74,12 @@ stage.
    WorkloadMetadata *WorkloadMetadata `json:"workloadMetadata,omitempty"`
    ```
 
-   and an optional `workloadMetadata` field on `JobSpec`. The type intentionally
+   and an optional `workloadMetadata` field on `JobSpec`. `CertificationSpec`
+   embeds `CategoryOptions` with `json:",inline"` as its global defaults, so the
+   single `CategoryOptions.WorkloadMetadata` field surfaces both as the global
+   `Certification.spec.workloadMetadata` and as the per-category
+   `spec.categories[].options.workloadMetadata`; no separate top-level field is
+   declared. The type intentionally
    contains only labels. It does not expose `metav1.ObjectMeta`, because users
    must not control the generated object's name, namespace, owner references,
    finalizers, or other lifecycle metadata. The nested shape leaves room for a
@@ -287,8 +292,13 @@ stage.
   - Add optional `WorkloadRunSpec.WorkloadMetadata`. The existing whole-spec
     immutability rule covers it.
 - `api/v1alpha1/certification_types.go`
-  - Add optional `CategoryOptions.WorkloadMetadata`. The existing whole-spec
-    immutability rule covers global and per-category forms.
+  - Add optional `CategoryOptions.WorkloadMetadata`. Because `CertificationSpec`
+    inlines `CategoryOptions`, this one field is deserialized at both the global
+    `spec.workloadMetadata` path and the per-category
+    `spec.categories[].options.workloadMetadata` path; do not add a second
+    top-level field. `ResolveOptions` merges the two per key with per-category
+    values winning, per Decision 3. The existing whole-spec `self == oldSelf`
+    immutability rule covers both forms.
   - Regenerate CRDs and deepcopy code with `make manifests generate` after
     implementation; generated files are not edited directly.
 - `pkg/workload/metadata.go`
