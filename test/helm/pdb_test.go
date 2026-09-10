@@ -125,7 +125,11 @@ func TestHelmTemplateDefaultControllerAntiAffinity(t *testing.T) {
 	}
 
 	deployment := decodeManagerDeployment(t, rendered)
-	preferred := deployment.Spec.Template.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution
+	affinity := deployment.Spec.Template.Spec.Affinity
+	if affinity == nil || affinity.PodAntiAffinity == nil {
+		t.Fatal("default pod anti-affinity was not rendered")
+	}
+	preferred := affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution
 	if len(preferred) != 1 {
 		t.Fatalf("got %d preferred pod anti-affinity terms, want 1", len(preferred))
 	}
