@@ -1,0 +1,36 @@
+# The GCP H100 shape: the tcpxo-daemon init container rides along in the node
+# pod (pkg/catalog/entries/_lib/deps/gcp-h100-tcpxo-runtime-patch.yaml). The
+# override must replace containers[0] only; the tcpxo-daemon image is
+# GCP-provided infrastructure whose ref never equals the workload image, so
+# the equality rule leaves it pinned by construction.
+image: registry.example.com/prebaked/pytorch:v2
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          name: nccl-all-reduce-runtime
+        trainer:
+          image: nvcr.io/nvidia/pytorch:26.01-py3
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nccl-all-reduce-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      restartPolicy: OnFailure
+                      containers:
+                        - name: node
+                          image: nvcr.io/nvidia/pytorch:26.01-py3
+                      initContainers:
+                        - name: tcpxo-daemon
+                          image: us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.8
+                          restartPolicy: Always

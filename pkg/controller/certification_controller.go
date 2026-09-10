@@ -510,6 +510,15 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		return "", fmt.Errorf("applying gang scheduler for %s/%s: %w", category.Domain, category.Variant, err)
 	}
 
+	// The workload image override is applied at the same post-resolve point for
+	// the same reason: platform overrides choose images too (the AWS EFA
+	// overrides swap the workers to an nccl-tests build), and options.image
+	// must win over all of them.
+	platform.ApplyImageToJobTemplate(&workflowSpec.JobTemplate, opts.Image)
+	if err := platform.ApplyImageToDependencies(workflowSpec.Dependencies, opts.Image); err != nil {
+		return "", fmt.Errorf("applying workload image for %s/%s: %w", category.Domain, category.Variant, err)
+	}
+
 	if len(applied) > 0 || len(workflowSpec.Overrides) > 0 {
 		log.Info("Resolved overlays",
 			"domain", category.Domain, "variant", category.Variant,
@@ -619,6 +628,9 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	}
 	if override.EnableMNNVL != nil {
 		resolved.EnableMNNVL = override.EnableMNNVL
+	}
+	if override.Image != "" {
+		resolved.Image = override.Image
 	}
 	if len(override.ImagePullSecrets) > 0 {
 		resolved.ImagePullSecrets = override.ImagePullSecrets

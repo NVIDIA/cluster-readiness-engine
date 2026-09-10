@@ -1,0 +1,59 @@
+{
+  "trainerImage": "public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9",
+  "dependencies": [
+    {
+      "index": 0,
+      "kind": "TrainingRuntime",
+      "rawUnchanged": true,
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "containerImages": [
+            "public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9"
+          ],
+          "initContainerImages": [
+            "nvcr.io/nvidia/pytorch:26.01-py3"
+          ]
+        }
+      ],
+      "resource": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainingRuntime",
+        "metadata": {
+          "name": "nccl-all-reduce-runtime"
+        },
+        "spec": {
+          "template": {
+            "spec": {
+              "replicatedJobs": [
+                {
+                  "name": "node",
+                  "template": {
+                    "spec": {
+                      "template": {
+                        "spec": {
+                          "containers": [
+                            {
+                              "image": "public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9",
+                              "name": "node"
+                            }
+                          ],
+                          "initContainers": [
+                            {
+                              "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                              "name": "fix-ssh-permissions"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

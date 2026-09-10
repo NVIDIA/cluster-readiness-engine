@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No spec-level image, options.image on the communication category only. That
+# category's workers leave the EFA nccl-tests image behind (the documented
+# footgun: the operator now owns the EFA OFI plugin); the training category
+# keeps every image the catalog and platform overrides landed on.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: image-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 2
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        image: registry.example.com/prebaked/nccl-tests:v1
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 50

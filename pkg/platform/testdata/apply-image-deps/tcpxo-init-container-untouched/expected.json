@@ -1,0 +1,61 @@
+{
+  "trainerImage": "registry.example.com/prebaked/pytorch:v2",
+  "dependencies": [
+    {
+      "index": 0,
+      "kind": "TrainingRuntime",
+      "rawUnchanged": false,
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "containerImages": [
+            "registry.example.com/prebaked/pytorch:v2"
+          ],
+          "initContainerImages": [
+            "us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.8"
+          ]
+        }
+      ],
+      "resource": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainingRuntime",
+        "metadata": {
+          "name": "nccl-all-reduce-runtime"
+        },
+        "spec": {
+          "template": {
+            "spec": {
+              "replicatedJobs": [
+                {
+                  "name": "node",
+                  "template": {
+                    "spec": {
+                      "template": {
+                        "spec": {
+                          "containers": [
+                            {
+                              "image": "registry.example.com/prebaked/pytorch:v2",
+                              "name": "node"
+                            }
+                          ],
+                          "initContainers": [
+                            {
+                              "image": "us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.8",
+                              "name": "tcpxo-daemon",
+                              "restartPolicy": "Always"
+                            }
+                          ],
+                          "restartPolicy": "OnFailure"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -93,6 +93,26 @@ spec:
                           format: int32
                           minimum: 1
                           type: integer
+                        image:
+                          description: |-
+                            image overrides the workload container image for catalog workloads.
+                            It replaces the trainer image in the rendered job template, the image
+                            of the primary workload container of every replicated job in the
+                            resolved TrainingRuntime dependencies, and the image of every init
+                            container in those pods whose image exactly equals the primary's
+                            pre-override image (the workload-derived inits such as
+                            fix-ssh-permissions and megatron-clone); init containers with a
+                            distinct image (such as GCP's tcpxo-daemon) and any additional
+                            containers keep their catalog images. Applied after catalog and
+                            platform overrides resolve, so it also replaces an image a platform
+                            override selects. Beware: on AWS EFA platforms (H100, GB200) the
+                            platform overrides land the workers on an nccl-tests image that ships
+                            the aws-ofi-nccl (EFA) plugin; setting image replaces that image, and
+                            the operator then owns the EFA OFI plugin being present in the
+                            replacement.
+                          maxLength: 512
+                          minLength: 1
+                          type: string
                         imagePullSecrets:
                           description: |-
                             imagePullSecrets is an optional list of references to secrets for pulling
@@ -425,6 +445,26 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
+              image:
+                description: |-
+                  image overrides the workload container image for catalog workloads.
+                  It replaces the trainer image in the rendered job template, the image
+                  of the primary workload container of every replicated job in the
+                  resolved TrainingRuntime dependencies, and the image of every init
+                  container in those pods whose image exactly equals the primary's
+                  pre-override image (the workload-derived inits such as
+                  fix-ssh-permissions and megatron-clone); init containers with a
+                  distinct image (such as GCP's tcpxo-daemon) and any additional
+                  containers keep their catalog images. Applied after catalog and
+                  platform overrides resolve, so it also replaces an image a platform
+                  override selects. Beware: on AWS EFA platforms (H100, GB200) the
+                  platform overrides land the workers on an nccl-tests image that ships
+                  the aws-ofi-nccl (EFA) plugin; setting image replaces that image, and
+                  the operator then owns the EFA OFI plugin being present in the
+                  replacement.
+                maxLength: 512
+                minLength: 1
+                type: string
               imagePullSecrets:
                 description: |-
                   imagePullSecrets is an optional list of references to secrets for pulling

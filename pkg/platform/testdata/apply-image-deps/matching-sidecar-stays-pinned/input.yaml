@@ -1,0 +1,36 @@
+# A synthetic pod with two entries in containers[] that share one image, plus
+# an init container on that same image. The equality rule is inits-only: the
+# init follows the override because it matches the primary's pre-override
+# image, but containers[1] must come back untouched even though its image is
+# byte-identical to the primary's. Only containers[0] is the workload.
+image: registry.example.com/prebaked/nccl-tests:v1
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          name: sidecar-runtime
+        trainer:
+          image: nvcr.io/nvidia/pytorch:26.01-py3
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: sidecar-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: node
+                          image: nvcr.io/nvidia/pytorch:26.01-py3
+                        - name: sidecar
+                          image: nvcr.io/nvidia/pytorch:26.01-py3
+                      initContainers:
+                        - name: fix-ssh-permissions
+                          image: nvcr.io/nvidia/pytorch:26.01-py3

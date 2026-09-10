@@ -1,0 +1,63 @@
+[
+  {
+    "workflow": "image-cert-communication-90790",
+    "trainerImage": "registry.example.com/prebaked/workload:v1",
+    "containers": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "kind": "container",
+        "name": "node",
+        "image": "registry.example.com/prebaked/workload:v1"
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "kind": "initContainer",
+        "name": "tcpxo-daemon",
+        "image": "us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.8"
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "kind": "container",
+        "name": "node",
+        "image": "registry.example.com/prebaked/workload:v1"
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "kind": "initContainer",
+        "name": "fix-ssh-permissions",
+        "image": "registry.example.com/prebaked/workload:v1"
+      }
+    ]
+  },
+  {
+    "workflow": "image-cert-training-nemot-c5620",
+    "trainerImage": "registry.example.com/prebaked/workload:v1",
+    "containers": [
+      {
+        "dependency": "nemotron5-8b-runtime",
+        "replicatedJob": "node",
+        "kind": "container",
+        "name": "node",
+        "image": "registry.example.com/prebaked/workload:v1"
+      },
+      {
+        "dependency": "nemotron5-8b-runtime",
+        "replicatedJob": "node",
+        "kind": "initContainer",
+        "name": "megatron-clone",
+        "image": "registry.example.com/prebaked/workload:v1"
+      },
+      {
+        "dependency": "nemotron5-8b-runtime",
+        "replicatedJob": "node",
+        "kind": "initContainer",
+        "name": "tcpxo-daemon",
+        "image": "us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.8"
+      }
+    ]
+  }
+]
