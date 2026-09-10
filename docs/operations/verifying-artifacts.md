@@ -407,7 +407,7 @@ provenance (`emit_provenance: false` on those legs); pin the index digest in Hel
 2. **Label the namespace** that runs the controller (default `nvcre`) so enforcement is
    opt-in, not cluster-wide:
 
-   ```bash
+   ```shell
    # Kyverno sample (matchConstraints.namespaceSelector)
    kubectl label namespace nvcre \
      kubernetes.nvcre.nvidia.com/image-admission=enforce
@@ -418,7 +418,7 @@ provenance (`emit_provenance: false` on those legs); pin the index digest in Hel
 
 3. Apply the sample that matches the admission controller you already run:
 
-   ```bash
+   ```shell
    kubectl apply -f config/samples/policy/kyverno-verify-images.yaml
    # or
    kubectl apply -f config/samples/policy/policy-controller-verify-images.yaml
@@ -442,7 +442,7 @@ These constraints are load-bearing; a first attempt that skipped them was parked
 This environment may not have Docker or Kind. On a machine that does, the intended check
 is server-side dry-run so the admission webhook actually runs:
 
-```bash
+```shell
 TAG=v0.2.0
 IMAGE=ghcr.io/nvidia/cluster-readiness-engine/manager
 DIGEST="$(crane digest "${IMAGE}:${TAG}")"
@@ -474,7 +474,7 @@ kubectl run nvcre-other --image="busybox:1.36" -n nvcre \
   --dry-run=server --restart=Never -o name
 ```
 
-CI does **not** reproduce live admission: it needs a cluster and registry access. Structural
+These repro steps are fenced as `shell` rather than `bash` so Docs Verify (which extracts and runs every `bash` block on this page) does not try them without a cluster. CI does **not** reproduce live admission: it needs a cluster and registry access. Structural
 tests under `test/docspolicy` pin the kind, fail-closed policy, issuer, identity prefix,
 namespace selector, provenance attestation, narrow globs, and `signatureFormat: bundle`
 so the samples cannot silently rot into the parked shape.
