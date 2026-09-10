@@ -826,7 +826,7 @@ func executeWorkloadRunRun(cfg *wrRunConfig) error {
 	if cfg.doSetup {
 		_, _ = fmt.Fprintln(out, "Installing NVCRE components...")
 		if initErr := setup.RunInit("", cfg.controllerImage, cfg.controllerPullSecret, "",
-			true, cfg.configFlags, "", os.Stdin, out); initErr != nil {
+			true, cfg.configFlags, "", "", "", os.Stdin, out); initErr != nil {
 			return fmt.Errorf("setup: %w", initErr)
 		}
 		_, _ = fmt.Fprintln(out, "Setup complete.")

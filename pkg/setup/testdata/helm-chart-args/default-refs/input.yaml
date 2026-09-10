@@ -1,0 +1,8 @@
+# Empty chart refs: both installs and the CRD fetch use the published
+# GHCR charts.
+chartRef: ""
+trainerChartRef: ""
+chartVersion: "0.2.0"
+imageName: "ghcr.io/nvidia/cluster-readiness-engine/manager"
+imageTag: "v0.2.0"
+pullSecretName: ""

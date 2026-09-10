@@ -1,0 +1,6 @@
+# Only the Kubeflow Trainer chart is mirrored: the NVCRE chart is still
+# pulled from GHCR on every init, so init warns and suggests mirroring both
+# charts. --skip-phases=deps would not help here, so it is not suggested.
+chartRef: "oci://ghcr.io/nvidia/cluster-readiness-engine"
+trainerChartRef: "oci://registry.example.com/mirror/kubeflow-trainer"
+skipDeps: false
