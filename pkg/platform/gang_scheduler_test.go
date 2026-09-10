@@ -23,14 +23,17 @@ type applyGangSchedulerInput struct {
 	Dependencies  []nvcrev1alpha1.DependencySpec   `json:"dependencies"`
 }
 
-// replicatedJobProjection records the two fields the helper is allowed to
+// replicatedJobProjection records the three fields the helper is allowed to
 // write, per replicatedJob. templateLabels is nil (JSON null) when the job has
 // no template.metadata.labels at all, which distinguishes "left alone" from
-// "given an empty labels map".
+// "given an empty labels map"; podTemplateLabels does the same for
+// template.spec.template.metadata.labels, the pod-level copy of the queue
+// label.
 type replicatedJobProjection struct {
-	Name           string            `json:"name"`
-	SchedulerName  string            `json:"schedulerName"`
-	TemplateLabels map[string]string `json:"templateLabels"`
+	Name              string            `json:"name"`
+	SchedulerName     string            `json:"schedulerName"`
+	TemplateLabels    map[string]string `json:"templateLabels"`
+	PodTemplateLabels map[string]string `json:"podTemplateLabels"`
 }
 
 // dependencyProjection is the golden-file view of one dependency after the
@@ -118,12 +121,14 @@ func projectDependency(index int, before []byte, dep nvcrev1alpha1.DependencySpe
 		}
 		name, _ := job[keyName].(string)
 		jobTemplate := mapAt(job, keyTemplate)
-		schedulerName, _ := mapAt(mapAt(mapAt(jobTemplate, keySpec), keyTemplate), keySpec)[keySchedulerName].(string)
+		podTemplate := mapAt(mapAt(jobTemplate, keySpec), keyTemplate)
+		schedulerName, _ := mapAt(podTemplate, keySpec)[keySchedulerName].(string)
 
 		proj.ReplicatedJobs = append(proj.ReplicatedJobs, replicatedJobProjection{
-			Name:           name,
-			SchedulerName:  schedulerName,
-			TemplateLabels: stringLabels(mapAt(mapAt(jobTemplate, keyMetadata), keyLabels)),
+			Name:              name,
+			SchedulerName:     schedulerName,
+			TemplateLabels:    stringLabels(mapAt(mapAt(jobTemplate, keyMetadata), keyLabels)),
+			PodTemplateLabels: stringLabels(mapAt(mapAt(podTemplate, keyMetadata), keyLabels)),
 		})
 	}
 	return proj, nil

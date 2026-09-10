@@ -39,7 +39,12 @@ type validationCause struct {
 // #283). The gangScheduler cases check that the field stays optional, that a
 // scheduler name is mandatory once the field is set, and that the queue is
 // held to the Kubernetes label value rules before it is copied into the
-// kai.scheduler/queue label (issue #300). The nicResourceName cases check
+// queue label (issue #300). The queueLabelKey cases check that the key is held
+// to the Kubernetes label key rules: the qualified-name pattern rejects a bad
+// name segment, the CEL rule rejects a prefix over 253 characters, which the
+// pattern alone cannot count, and an explicit empty string is accepted, since
+// the code resolves it to the default key the same way an empty queue resolves
+// to default-queue (ADR-076). The nicResourceName cases check
 // that both CRDs hold the field to the extended resource name rules — the
 // pattern caps the name segment after the slash at 63 characters and the CEL
 // rule rejects the reserved kubernetes.io and k8s.io domains (including

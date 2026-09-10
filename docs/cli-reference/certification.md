@@ -79,7 +79,7 @@ nvcrectl certification render [flags] <cert-file>
 | `--dry-run` | `false` | Validate against the live API server without creating resources |
 | `--output` | `yaml` | Output format: `yaml` or `json` |
 
-A Certification that sets `spec.gangScheduler` has that applied to the rendered output too: the scheduler name and the `kai.scheduler/queue` label appear in the rendered manifests, so what you inspect matches what the controller creates. There is no flag for it; the field is set in the Certification YAML.
+A Certification that sets `spec.gangScheduler` has that applied to the rendered output too: the scheduler name and the queue label (`gangScheduler.queueLabelKey`, `kai.scheduler/queue` when unset; `runai/queue` on a Run:ai cluster) appear in the rendered manifests on both the Job template and the pod template metadata, so what you inspect matches what the controller creates. There is no flag for it; the field is set in the Certification YAML.
 
 ## nvcrectl certification report
 

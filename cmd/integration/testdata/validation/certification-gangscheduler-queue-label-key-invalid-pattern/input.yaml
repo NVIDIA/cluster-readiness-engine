@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# queueLabelKey must be a valid Kubernetes label key. A name segment with a
+# trailing hyphen is not, and is rejected here instead of failing later when
+# the label is applied to the pod template.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-gang-queue-label-key-pattern
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  gangScheduler:
+    schedulerName: runai-scheduler
+    queueLabelKey: "runai/queue-"
+    queue: team-a
+  categories:
+    - domain: training
+      variant: nemotron5-8b

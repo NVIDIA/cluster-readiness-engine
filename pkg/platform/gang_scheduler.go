@@ -13,7 +13,8 @@ import (
 const (
 	// keySchedulerName is the pod spec field naming the scheduler that binds the pod.
 	keySchedulerName = "schedulerName"
-	// labelKeyGangQueue is the label KAI Scheduler reads to place a workload in a queue.
+	// labelKeyGangQueue is the label KAI Scheduler reads to place a workload in
+	// a queue. It is the queue label key used when the user names no other.
 	labelKeyGangQueue = "kai.scheduler/queue"
 	// defaultGangQueue is the queue used when the user names a scheduler but no queue.
 	defaultGangQueue = "default-queue"
@@ -31,11 +32,25 @@ func gangSchedulerQueue(queue string) string {
 	return defaultGangQueue
 }
 
+// gangSchedulerQueueLabelKey returns the effective queue label key, defaulting
+// to "kai.scheduler/queue". A scheduler that reads a different label, such as
+// the NVIDIA Run:ai platform with "runai/queue", is selected by setting
+// gangScheduler.queueLabelKey.
+func gangSchedulerQueueLabelKey(key string) string {
+	if key != "" {
+		return key
+	}
+	return labelKeyGangQueue
+}
+
 // ApplyGangSchedulerToDependencies rewrites every TrainingRuntime dependency in
 // place so each of its replicatedJobs runs under the configured gang scheduler.
-// For each replicatedJob it sets schedulerName on the pod spec and the
-// kai.scheduler/queue label on the job template metadata, matching what
-// BuildTorchRuntime and BuildMPIRuntime already emit for a WorkloadRun.
+// For each replicatedJob it sets schedulerName on the pod spec and the queue
+// label (gangScheduler.queueLabelKey, "kai.scheduler/queue" when unset) on both
+// the job template metadata and the pod template metadata, matching what
+// BuildTorchRuntime and BuildMPIRuntime already emit for a WorkloadRun. The
+// pod-level copy keeps queue assignment from depending on the Trainer/JobSet
+// layer propagating template metadata onto the pods.
 //
 // It is a no-op when gs is nil, so a Certification that does not ask for gang
 // scheduling renders byte-identically to before. It is also a no-op when the
@@ -53,6 +68,7 @@ func ApplyGangSchedulerToDependencies(deps []nvcrev1alpha1.DependencySpec, gs *n
 		return nil
 	}
 	queue := gangSchedulerQueue(gs.Queue)
+	queueKey := gangSchedulerQueueLabelKey(gs.QueueLabelKey)
 
 	for i := range deps {
 		if len(deps[i].Raw) == 0 {
@@ -79,12 +95,17 @@ func ApplyGangSchedulerToDependencies(deps []nvcrev1alpha1.DependencySpec, gs *n
 			// Pod spec: replicatedJobs[].template.spec.template.spec. The
 			// nesting is JobTemplateSpec -> JobSpec -> PodTemplateSpec -> PodSpec.
 			jobTemplate := ensureMap(job, keyTemplate)
-			podSpec := ensureMap(ensureMap(ensureMap(jobTemplate, keySpec), keyTemplate), keySpec)
+			podTemplate := ensureMap(ensureMap(jobTemplate, keySpec), keyTemplate)
+			podSpec := ensureMap(podTemplate, keySpec)
 			podSpec[keySchedulerName] = gs.SchedulerName
 
-			// Queue label: replicatedJobs[].template.metadata.labels.
-			labels := ensureMap(ensureMap(jobTemplate, keyMetadata), keyLabels)
-			labels[labelKeyGangQueue] = queue
+			// Queue label: replicatedJobs[].template.metadata.labels and
+			// replicatedJobs[].template.spec.template.metadata.labels, so the
+			// pods carry the label themselves.
+			jobLabels := ensureMap(ensureMap(jobTemplate, keyMetadata), keyLabels)
+			jobLabels[queueKey] = queue
+			podLabels := ensureMap(ensureMap(podTemplate, keyMetadata), keyLabels)
+			podLabels[queueKey] = queue
 		}
 
 		raw, err := json.Marshal(obj)

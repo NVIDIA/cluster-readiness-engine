@@ -6,23 +6,23 @@
     "replicatedJobs": [
       {
         "name": "node",
-        "schedulerName": "kai-scheduler",
+        "schedulerName": "runai-scheduler",
         "templateLabels": {
-          "kai.scheduler/queue": "nccl-queue"
+          "runai/queue": "team-a"
         },
         "podTemplateLabels": {
-          "kai.scheduler/queue": "nccl-queue"
+          "runai/queue": "team-a"
         }
       },
       {
         "name": "launcher",
-        "schedulerName": "kai-scheduler",
+        "schedulerName": "runai-scheduler",
         "templateLabels": {
-          "kai.scheduler/queue": "nccl-queue",
+          "runai/queue": "team-a",
           "trainer.kubeflow.org/trainjob-ancestor-step": "trainer"
         },
         "podTemplateLabels": {
-          "kai.scheduler/queue": "nccl-queue"
+          "runai/queue": "team-a"
         }
       }
     ],
@@ -41,14 +41,14 @@
                 "template": {
                   "metadata": {
                     "labels": {
-                      "kai.scheduler/queue": "nccl-queue"
+                      "runai/queue": "team-a"
                     }
                   },
                   "spec": {
                     "template": {
                       "metadata": {
                         "labels": {
-                          "kai.scheduler/queue": "nccl-queue"
+                          "runai/queue": "team-a"
                         }
                       },
                       "spec": {
@@ -59,7 +59,7 @@
                           }
                         ],
                         "restartPolicy": "OnFailure",
-                        "schedulerName": "kai-scheduler"
+                        "schedulerName": "runai-scheduler"
                       }
                     }
                   }
@@ -76,7 +76,7 @@
                 "template": {
                   "metadata": {
                     "labels": {
-                      "kai.scheduler/queue": "nccl-queue",
+                      "runai/queue": "team-a",
                       "trainer.kubeflow.org/trainjob-ancestor-step": "trainer"
                     }
                   },
@@ -84,7 +84,7 @@
                     "template": {
                       "metadata": {
                         "labels": {
-                          "kai.scheduler/queue": "nccl-queue"
+                          "runai/queue": "team-a"
                         }
                       },
                       "spec": {
@@ -95,7 +95,7 @@
                           }
                         ],
                         "restartPolicy": "OnFailure",
-                        "schedulerName": "kai-scheduler"
+                        "schedulerName": "runai-scheduler"
                       }
                     }
                   }

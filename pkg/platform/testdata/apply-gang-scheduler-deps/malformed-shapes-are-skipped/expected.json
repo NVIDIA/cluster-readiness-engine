@@ -7,7 +7,8 @@
       {
         "name": "node",
         "schedulerName": "",
-        "templateLabels": null
+        "templateLabels": null,
+        "podTemplateLabels": null
       }
     ],
     "resource": {
@@ -55,12 +56,16 @@
       {
         "name": "(not an object)",
         "schedulerName": "",
-        "templateLabels": null
+        "templateLabels": null,
+        "podTemplateLabels": null
       },
       {
         "name": "node",
         "schedulerName": "kai-scheduler",
         "templateLabels": {
+          "kai.scheduler/queue": "high-priority"
+        },
+        "podTemplateLabels": {
           "kai.scheduler/queue": "high-priority"
         }
       }
@@ -86,6 +91,11 @@
                   },
                   "spec": {
                     "template": {
+                      "metadata": {
+                        "labels": {
+                          "kai.scheduler/queue": "high-priority"
+                        }
+                      },
                       "spec": {
                         "containers": [
                           {

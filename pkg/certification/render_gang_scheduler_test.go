@@ -19,8 +19,9 @@ import (
 )
 
 // gangQueueLabelKey is the label KAI Scheduler reads to place a workload in a
-// queue. It is spelled out here rather than imported so that a rename in
-// pkg/platform shows up as a golden-file diff instead of silently following.
+// queue. It is the key the code defaults to when spec.gangScheduler names no
+// queueLabelKey. It is spelled out here rather than imported so that a rename
+// in pkg/platform shows up as a golden-file diff instead of silently following.
 const gangQueueLabelKey = "kai.scheduler/queue"
 
 // gangReplicatedJob records what gang scheduling did to one replicatedJob of
@@ -31,14 +32,21 @@ type gangReplicatedJob struct {
 	// SchedulerName is replicatedJobs[].template.spec.template.spec.schedulerName.
 	// Empty means the catalog left it unset and nothing wrote it.
 	SchedulerName string `json:"schedulerName"`
-	// QueueLabel is the kai.scheduler/queue value on
-	// replicatedJobs[].template.metadata.labels, empty when the label is absent.
+	// QueueLabel is the queue value on replicatedJobs[].template.metadata.labels
+	// under the effective queue label key (spec.gangScheduler.queueLabelKey,
+	// kai.scheduler/queue when unset), resolved the same way the code under test
+	// resolves it. Empty when the label is absent.
 	QueueLabel string `json:"queueLabel"`
 	// TemplateLabels is every label on that same metadata, sorted. It is here so
 	// a case can tell "queue label added" apart from "labels replaced by the
 	// queue label", which is what would happen if the helper assigned a fresh
-	// map over an existing one.
+	// map over an existing one. The list also shows which key was used.
 	TemplateLabels []string `json:"templateLabels"`
+	// PodTemplateLabels is every label on
+	// replicatedJobs[].template.spec.template.metadata, sorted. The queue label
+	// is stamped there too (ADR-076) so the pods carry it without relying on
+	// Trainer/JobSet label propagation; nothing else may land at that level.
+	PodTemplateLabels []string `json:"podTemplateLabels"`
 }
 
 // gangWorkflow is the per-Workflow projection written to the golden file.
@@ -92,9 +100,17 @@ func TestCertificationRenderGangScheduler(t *testing.T) {
 			return err
 		}
 
+		// Resolve the effective queue label key the same way the code under
+		// test does: spec.gangScheduler.queueLabelKey, kai.scheduler/queue
+		// when unset or empty.
+		queueLabelKey := gangQueueLabelKey
+		if cert.Spec.GangScheduler != nil && cert.Spec.GangScheduler.QueueLabelKey != "" {
+			queueLabelKey = cert.Spec.GangScheduler.QueueLabelKey
+		}
+
 		result := make([]gangWorkflow, 0, len(workflows))
 		for i := range workflows {
-			projected, projectErr := projectGangScheduling(&workflows[i])
+			projected, projectErr := projectGangScheduling(&workflows[i], queueLabelKey)
 			if projectErr != nil {
 				return projectErr
 			}
@@ -113,8 +129,9 @@ func TestCertificationRenderGangScheduler(t *testing.T) {
 // projectGangScheduling walks a resolved Workflow in declaration order:
 // dependencies as the catalog lists them, then replicatedJobs as the runtime
 // lists them. Nothing is sorted except the label lists, so the output is stable
-// without hiding a reordering.
-func projectGangScheduling(wf *nvcrev1alpha1.Workflow) (gangWorkflow, error) {
+// without hiding a reordering. queueLabelKey is the effective key the queue
+// value is expected under.
+func projectGangScheduling(wf *nvcrev1alpha1.Workflow, queueLabelKey string) (gangWorkflow, error) {
 	out := gangWorkflow{
 		Workflow:        wf.Name,
 		DependencyKinds: []string{},
@@ -145,11 +162,12 @@ func projectGangScheduling(wf *nvcrev1alpha1.Workflow) (gangWorkflow, error) {
 		}
 		for _, rj := range rt.Spec.Template.Spec.ReplicatedJobs {
 			out.ReplicatedJobs = append(out.ReplicatedJobs, gangReplicatedJob{
-				Dependency:     rt.Name,
-				ReplicatedJob:  rj.Name,
-				SchedulerName:  rj.Template.Spec.Template.Spec.SchedulerName,
-				QueueLabel:     rj.Template.Labels[gangQueueLabelKey],
-				TemplateLabels: sortedLabels(rj.Template.Labels),
+				Dependency:        rt.Name,
+				ReplicatedJob:     rj.Name,
+				SchedulerName:     rj.Template.Spec.Template.Spec.SchedulerName,
+				QueueLabel:        rj.Template.Labels[queueLabelKey],
+				TemplateLabels:    sortedLabels(rj.Template.Labels),
+				PodTemplateLabels: sortedLabels(rj.Template.Spec.Template.Labels),
 			})
 		}
 	}

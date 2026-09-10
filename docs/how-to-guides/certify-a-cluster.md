@@ -78,12 +78,23 @@ spec:
       variant: nemotron5-8b
 ```
 
-`schedulerName` is required. `queue` is optional and defaults to `default-queue`; when set, it must be a valid Kubernetes label value (at most 63 characters, beginning and ending with an alphanumeric character, containing only alphanumerics, hyphens, underscores, or dots).
+On a cluster running the NVIDIA Run:ai platform, name its scheduler and its queue label key instead, and make `queue` name an existing Run:ai queue:
+
+```yaml
+  gangScheduler:
+    schedulerName: runai-scheduler
+    queueLabelKey: runai/queue
+    queue: team-a   # must name an existing Run:ai queue
+```
+
+Run the certification in a namespace associated with a Run:ai project (the platform's scheduling components act on project namespaces), and make sure the named queue exists: Run:ai validates the queue rather than falling back to a default. When the workload manifest cannot set `schedulerName`, Run:ai's `runai/enforce-scheduler-name` namespace annotation enforces the scheduler namespace-wide, but it does not translate the queue label key, so `queueLabelKey` is still needed.
+
+`schedulerName` is required. `queue` is optional and defaults to `default-queue`; on Run:ai that default is not a real queue, so always set `queue` explicitly to an existing Run:ai queue. When non-empty, `queue` must be a valid Kubernetes label value (at most 63 characters, beginning and ending with an alphanumeric character, containing only alphanumerics, hyphens, underscores, or dots). `queueLabelKey` is optional and defaults to `kai.scheduler/queue`; when non-empty, it must be a valid Kubernetes label key.
 
 The setting is certification-wide: it applies to **every** category in `spec.categories`, not to one of them. For each category, NVCRE rewrites every pod template in the resolved `TrainingRuntime`. For the MPI-based communication categories that is both the launcher and the worker pods:
 
 - The configured scheduler name is injected as `schedulerName` in each pod spec, so the pods bypass the default scheduler.
-- The queue is applied as the `kai.scheduler/queue` label on each replicated job's template metadata, so a gang-aware scheduler can hold all pods in the gang until they can be placed together.
+- The queue is applied as a label (`queueLabelKey`, `kai.scheduler/queue` when unset) on both each replicated job's template metadata and its pod template metadata, so a gang-aware scheduler can hold all pods in the gang until they can be placed together and the pods carry the label themselves.
 
 The rewrite runs after the catalog entry and the platform overrides have resolved, so it replaces a scheduler name a catalog entry hardcodes. `training/nemotron5-8b` and `training/nemotron5-56b` pin `schedulerName: default-scheduler`, and both pick up the configured scheduler instead. `nvcrectl certification render` applies the same rewrite, so the rendered manifests show what the controller will create.
 

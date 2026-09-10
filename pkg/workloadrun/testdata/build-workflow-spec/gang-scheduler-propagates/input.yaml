@@ -1,7 +1,7 @@
 # Verifies that GangScheduler.SchedulerName and GangScheduler.Queue propagate
 # through BuildWorkflowSpec into the TrainingRuntime dependency, so pkg/platform
 # injects schedulerName into pod specs and the kai.scheduler/queue label into
-# pod template metadata (WR-002-gang).
+# both the Job template and the pod template metadata (WR-002-gang).
 run:
   metadata:
     name: wr-gang
