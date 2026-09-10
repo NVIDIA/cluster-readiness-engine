@@ -1,0 +1,142 @@
+[
+  {
+    "workflow": "onprem-cert-communication-52b66",
+    "dependencyKinds": [
+      "TrainingRuntime",
+      "ComputeDomain"
+    ],
+    "trainerArgs": [
+      "-N",
+      "4",
+      "--allow-run-as-root",
+      "--mca",
+      "plm_rsh_args",
+      "-o StrictHostKeyChecking=no",
+      "-x",
+      "NCCL_DEBUG=INFO",
+      "-x",
+      "NCCL_NVLS_ENABLE=1",
+      "-x",
+      "NCCL_CUMEM_ENABLE=1",
+      "-x",
+      "NCCL_P2P_NET_CHUNKSIZE=2097152",
+      "-x",
+      "NCCL_MNNVL_ENABLE=1",
+      "-x",
+      "NCCL_IB_PCI_RELAXED_ORDERING=1",
+      "-x",
+      "SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING=1",
+      "-x",
+      "OMPI_MCA_btl_openib_warn_default_gid_prefix=0",
+      "-x",
+      "PMIX_MCA_gds=^ds12",
+      "/usr/local/bin/all_reduce_perf_mpi",
+      "-b",
+      "8",
+      "-e",
+      "16G",
+      "-f",
+      "2",
+      "-n",
+      "100",
+      "-N",
+      "10"
+    ],
+    "trainerEnv": [],
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "tolerations": [
+          "kubernetes.io/arch=arm64:NoSchedule",
+          "nvidia.com/gpu=present:NoSchedule"
+        ],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/nvidia.com/gpu=4",
+              "limits/rdma/ib=1",
+              "requests/nvidia.com/gpu=4",
+              "requests/rdma/ib=1"
+            ],
+            "env": [
+              "NCCL_MNNVL_ENABLE=1"
+            ]
+          }
+        ]
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "tolerations": [],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/cpu=2",
+              "limits/memory=1Gi"
+            ],
+            "env": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "workflow": "onprem-cert-communication-c7e4f",
+    "dependencyKinds": [
+      "TrainingRuntime",
+      "ComputeDomain"
+    ],
+    "trainerArgs": [
+      "-b",
+      "8",
+      "-e",
+      "16G",
+      "-f",
+      "2",
+      "-g",
+      "4",
+      "-n",
+      "100",
+      "-N",
+      "10"
+    ],
+    "trainerEnv": [
+      "NCCL_DEBUG=INFO",
+      "NCCL_NVLS_ENABLE=1",
+      "NCCL_CUMEM_ENABLE=1",
+      "NCCL_P2P_NET_CHUNKSIZE=2097152",
+      "NCCL_MNNVL_ENABLE=1",
+      "NCCL_IB_PCI_RELAXED_ORDERING=1",
+      "SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING=1",
+      "OMPI_MCA_btl_openib_warn_default_gid_prefix=0",
+      "PMIX_MCA_gds=^ds12"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-loopback-nvswitch-runtime",
+        "replicatedJob": "node",
+        "tolerations": [
+          "kubernetes.io/arch=arm64:NoSchedule",
+          "nvidia.com/gpu=present:NoSchedule"
+        ],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/nvidia.com/gpu=4",
+              "limits/rdma/ib=1",
+              "requests/nvidia.com/gpu=4",
+              "requests/rdma/ib=1"
+            ],
+            "env": [
+              "NCCL_MNNVL_ENABLE=1"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -15,6 +15,12 @@ import (
 const (
 	// ReasonNotApplicable is the default condition reason for inactive conditions.
 	ReasonNotApplicable = "NotApplicable"
+
+	// ReasonNICResourceDetection is shared by the Certification and WorkloadRun
+	// tiers: both emit a Normal event under it when NIC resource auto-detection
+	// ran (on-prem GB200/GB300 target with nicResourceName unset) and found
+	// zero or multiple qualifying candidates, so nothing was injected.
+	ReasonNICResourceDetection = "NICResourceDetection"
 )
 
 // requeueImmediate is a short self-requeue delay used to advance a reconciler's

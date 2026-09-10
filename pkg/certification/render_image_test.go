@@ -122,7 +122,7 @@ func projectWorkflowImages(wf *nvcrev1alpha1.Workflow) (imageWorkflow, error) {
 		if err := json.Unmarshal(raw, &typeMeta); err != nil {
 			return out, err
 		}
-		if typeMeta.Kind != "TrainingRuntime" {
+		if typeMeta.Kind != trainerv1alpha1.TrainingRuntimeKind {
 			continue
 		}
 

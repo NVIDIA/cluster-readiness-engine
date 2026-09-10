@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: onprem-nc-g3-auto-communi-f074b
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: onprem-nc-g3-auto
+    namespace: default
+  - kind: Workflow
+    name: onprem-nc-g3-auto-communi-f074b
+    namespace: default

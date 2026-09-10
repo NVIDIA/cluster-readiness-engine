@@ -68,6 +68,14 @@ func resolveWRTimeout(v string) *metav1.Duration {
 	return &metav1.Duration{Duration: d}
 }
 
+// derefString returns the pointed-to string, or "" for nil.
+func derefString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 // NewCommand returns the "workloadrun" cobra command.
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -99,11 +107,12 @@ func newWorkloadRunRenderCommand() *cobra.Command {
 including auto-generated TrainingRuntime, ConfigMap, platform overrides, and NCCL env vars.
 
 Use --platform to simulate platform-specific overrides offline.
-Use --dry-run to discover real nodes from the cluster and apply overrides based on actual platform and GPU.`,
+Use --dry-run to discover real nodes from the cluster and apply overrides based on actual platform and GPU.
+Combining --platform with --dry-run overrides the detected platform while still using real nodes.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dryRun {
-				return runWorkloadRunRenderDryRun(args[0], outputFormat, configFlags)
+				return runWorkloadRunRenderDryRun(args[0], outputFormat, platformFlag, configFlags)
 			}
 			return runWorkloadRunRender(args[0], outputFormat, platformFlag)
 		},
@@ -325,12 +334,13 @@ func BuildWorkflowSpec(
 
 	// Build platform overrides.
 	overrideCfg := platform.OverrideConfig{
-		EntryName:     run.Name,
-		NodesPerJob:   controller.NodesPerJobForScale(spec.Orchestration, spec.NumNodes),
-		GpusPerNode:   gpusPerNode,
-		MlnxPerNode:   mlnxPerNode,
-		EnableMNNVL:   enableMNNVL,
-		FrameworkType: frameworkType,
+		EntryName:       run.Name,
+		NodesPerJob:     controller.NodesPerJobForScale(spec.Orchestration, spec.NumNodes),
+		GpusPerNode:     gpusPerNode,
+		MlnxPerNode:     mlnxPerNode,
+		NicResourceName: derefString(spec.NicResourceName),
+		EnableMNNVL:     enableMNNVL,
+		FrameworkType:   frameworkType,
 	}
 	wrOverrides := platform.BuildOverrides(overrideCfg)
 	overrides := make([]nvcrev1alpha1.OverrideSpec, 0, len(wrOverrides)+len(spec.Overrides))
@@ -373,12 +383,13 @@ func applyPlatformMPIArgs(
 		return
 	}
 	wrOverrides := platform.BuildOverrides(platform.OverrideConfig{
-		EntryName:     run.Name,
-		NodesPerJob:   controller.NodesPerJobForScale(run.Spec.Orchestration, run.Spec.NumNodes),
-		GpusPerNode:   gpusPerNode,
-		MlnxPerNode:   mlnxPerNode,
-		EnableMNNVL:   enableMNNVL,
-		FrameworkType: frameworkType,
+		EntryName:       run.Name,
+		NodesPerJob:     controller.NodesPerJobForScale(run.Spec.Orchestration, run.Spec.NumNodes),
+		GpusPerNode:     gpusPerNode,
+		MlnxPerNode:     mlnxPerNode,
+		NicResourceName: derefString(run.Spec.NicResourceName),
+		EnableMNNVL:     enableMNNVL,
+		FrameworkType:   frameworkType,
 	})
 	octx := controller.OverrideContext{
 		Platform:        platformName,
@@ -503,9 +514,20 @@ func buildWRCLIConfigMapDep(name string, data map[string]string) nvcrev1alpha1.D
 
 // runWorkloadRunRenderDryRun connects to a live cluster to discover
 // real nodes, detect platform/GPU, and render with actual overrides.
+//
+// platformFlag (--platform) wins over node-based platform detection when set,
+// so a target whose providerID detects as another platform (for example
+// metal3:// resolving to mistral) can still be rendered as the intended one.
+// The effective platform is used everywhere the detected one would be:
+// catalog defaults, NIC resource detection, MPI override baking, override
+// matching, the printed status, and the recorded annotations.
 func runWorkloadRunRenderDryRun(
-	file, outputFormat string, configFlags *kubeconfig.ConfigFlags,
+	file, outputFormat, platformFlag string, configFlags *kubeconfig.ConfigFlags,
 ) error {
+	if err := platform.ValidateFlag(platformFlag); err != nil {
+		return err
+	}
+
 	run, err := readWorkloadRun(file)
 	if err != nil {
 		return err
@@ -523,8 +545,12 @@ func runWorkloadRunRenderDryRun(
 	}
 
 	detectedPlatform := controller.DetectPlatform(nodes)
+	effectivePlatform := detectedPlatform
+	if platformFlag != "" {
+		effectivePlatform = platformFlag
+	}
 	gpuArch := controller.DetectGPUArchitecture(nodes)
-	nd := catalog.GPUDefaults(gpuArch, detectedPlatform)
+	nd := catalog.GPUDefaults(gpuArch, effectivePlatform)
 	gpusPerNode := nd.GpusPerNode
 	mlnxPerNode := nd.MlnxPerNode
 	if run.Spec.GpusPerNode != nil {
@@ -538,9 +564,13 @@ func runWorkloadRunRenderDryRun(
 		enableMNNVL = *run.Spec.EnableMNNVL
 	}
 
+	platformNote := ""
+	if platformFlag != "" && platformFlag != detectedPlatform {
+		platformNote = fmt.Sprintf("; --platform overrides detected %s", detectedPlatform)
+	}
 	_, _ = fmt.Fprintf(os.Stderr,
-		"Discovered %d nodes: %s (%s on %s)\n",
-		len(nodes), gpuProduct, gpuArch, detectedPlatform)
+		"Discovered %d nodes: %s (%s on %s%s)\n",
+		len(nodes), gpuProduct, gpuArch, effectivePlatform, platformNote)
 
 	frameworkType := controller.FrameworkExec
 	if run.Spec.Framework.Torch != nil {
@@ -552,16 +582,35 @@ func runWorkloadRunRenderDryRun(
 		return err
 	}
 
+	// NIC resource auto-detection (ADR-075), mirroring the WorkloadRun
+	// controller: the field always wins; when it is unset on an on-prem
+	// GB200/GB300 target, the single candidate (rdma/* or
+	// nvidia.com/mlnxnics) allocatable at the resolved mlnxPerNode count on
+	// every discovered node is used. On zero or multiple candidates nothing
+	// is injected and the note below matches the controllers'
+	// NICResourceDetection event. The offline render (no --dry-run) has no
+	// cluster and stays field-only.
+	if name, refusalMessage, ran := controller.ResolveNICResourceName(
+		run.Spec.NicResourceName, effectivePlatform, gpuArch, nodes, mlnxPerNode); ran {
+		if name == "" {
+			_, _ = fmt.Fprintln(os.Stderr, refusalMessage)
+		} else {
+			_, _ = fmt.Fprintf(os.Stderr,
+				"Auto-detected NIC resource %q (allocatable at the requested count on every target node)\n", name)
+			run.Spec.NicResourceName = &name
+		}
+	}
+
 	// Bake platform mpirun args into the spec before the job template is
 	// built, exactly as the controller does at reconcile time.
-	applyPlatformMPIArgs(run, detectedPlatform, gpuArch,
+	applyPlatformMPIArgs(run, effectivePlatform, gpuArch,
 		gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
 
 	workflowSpec := BuildWorkflowSpec(
 		run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
 
 	orch := &nvcrev1alpha1.OrchestrationStatus{
-		DetectedPlatform:        detectedPlatform,
+		DetectedPlatform:        effectivePlatform,
 		DetectedGPUArchitecture: gpuArch,
 	}
 	octx := controller.BuildOverrideContext(workflowSpec, orch, nodes)
@@ -582,7 +631,7 @@ func runWorkloadRunRenderDryRun(
 		},
 		Annotations: map[string]string{
 			"nvcrectl.nvidia.com/detected-gpu-architecture": gpuArch,
-			"nvcrectl.nvidia.com/detected-platform":         detectedPlatform,
+			"nvcrectl.nvidia.com/detected-platform":         effectivePlatform,
 		},
 		Spec: *workflowSpec,
 	}

@@ -1,0 +1,6 @@
+{
+  "name": "",
+  "detectionRan": true,
+  "candidates": [],
+  "message": "NIC resource auto-detection found no RDMA extended resource (rdma/* or nvidia.com/mlnxnics) on any target node; no NIC resource is requested. Set nicResourceName to request one."
+}

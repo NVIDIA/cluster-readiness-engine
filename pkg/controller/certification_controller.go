@@ -441,6 +441,23 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	if opts.MlnxPerNode != nil {
 		mlnxPerNode = *opts.MlnxPerNode
 	}
+	// The NIC resource name has no architecture default: it depends on the
+	// RDMA device plugin the site runs. The field always wins; when it is
+	// unset on the on-prem GB200/GB300 target the override matches, detection
+	// fills the gap from node allocatable, but only when exactly one
+	// candidate (rdma/* or nvidia.com/mlnxnics) is allocatable at the
+	// resolved mlnxPerNode count — the amount the templates will request per
+	// container — on every node the job is sized against (the same
+	// arch-filtered set nodesPerJob resolution uses). Zero or multiple
+	// candidates means nothing is injected and a Normal event says why;
+	// detection never guesses (ADR-075).
+	nicDetected := resolveNICResourceName(
+		opts.NicResourceName, detectedPlatform, gpuArch, archNodes, mlnxPerNode)
+	nicResourceName := nicDetected.Name
+	if nicDetected.Ran && nicResourceName == "" {
+		r.normalf(certification, ReasonNICResourceDetection,
+			"%s/%s: %s", category.Domain, category.Variant, nicDetectionMessage(nicDetected))
+	}
 
 	capableNodes, err := dropUnderCapacityNodes(archNodes, category, gpusPerNode)
 	if err != nil {
@@ -464,6 +481,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		NodesPerJob:        nodesPerJob,
 		GpusPerNode:        gpusPerNode,
 		MlnxPerNode:        mlnxPerNode,
+		NicResourceName:    nicResourceName,
 		Resources:          opts.Resources,
 		EnableMNNVL:        enableMNNVL,
 		EnableCheckpoint:   derefBool(opts.EnableCheckpoint),
@@ -623,6 +641,9 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	}
 	if override.MlnxPerNode != nil {
 		resolved.MlnxPerNode = override.MlnxPerNode
+	}
+	if override.NicResourceName != nil {
+		resolved.NicResourceName = override.NicResourceName
 	}
 	if override.Resources != nil {
 		resolved.Resources = override.Resources
@@ -1004,15 +1025,24 @@ func derefInt32(p *int32) int32 {
 	return *p
 }
 
-// warnf emits a Warning event if the Recorder is configured. Every
-// Certification-tier event is a warning; the Workflow reconciler's eventf
-// takes an explicit type because it emits Normal events too.
+// warnf emits a Warning event if the Recorder is configured.
 //
 // Safe to call when Recorder is nil (e.g. in unit tests, or any embedding that
 // constructs CertificationReconciler directly).
 func (r *CertificationReconciler) warnf(obj runtime.Object, reason, messageFmt string, args ...any) {
 	if r.Recorder != nil {
 		r.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, reason, reason, messageFmt, args...)
+	}
+}
+
+// normalf emits a Normal event if the Recorder is configured. Used for
+// advisory outcomes that are not failures, like NIC resource auto-detection
+// declining to pick a candidate (ReasonNICResourceDetection).
+//
+// Safe to call when Recorder is nil, like warnf.
+func (r *CertificationReconciler) normalf(obj runtime.Object, reason, messageFmt string, args ...any) {
+	if r.Recorder != nil {
+		r.Recorder.Eventf(obj, nil, corev1.EventTypeNormal, reason, reason, messageFmt, args...)
 	}
 }
 

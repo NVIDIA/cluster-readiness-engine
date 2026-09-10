@@ -95,6 +95,11 @@ type TemplateData struct {
 	// 0 means omit nvidia.com/mlnxnics. Templates use: {{ .MlnxPerNode }}
 	MlnxPerNode int32
 
+	// NicResourceName is the extended resource name of the RDMA NIC devices
+	// for the on-prem GB200/GB300 templates. Empty means omit the NIC resource
+	// block. Templates use: {{- if .NicResourceName }} ... {{ .NicResourceName }}
+	NicResourceName string
+
 	// TrainingCPULimit is the CPU limit for training containers
 	// (always non-empty after defaults). Templates use: {{ .TrainingCPULimit }}
 	TrainingCPULimit string
@@ -429,6 +434,7 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 		NodesPerJob:        config.NodesPerJob,
 		GpusPerNode:        config.GpusPerNode,
 		MlnxPerNode:        config.MlnxPerNode,
+		NicResourceName:    config.NicResourceName,
 		EnableMNNVL:        config.EnableMNNVL,
 		EnableCheckpoint:   config.EnableCheckpoint,
 		MaxSteps:           config.MaxSteps,

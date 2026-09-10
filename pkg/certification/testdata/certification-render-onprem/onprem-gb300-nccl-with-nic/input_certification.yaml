@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Global nicResourceName + mlnxPerNode exercise the spec-level resolution path.
+# nccl-loopback-nvswitch pins the env-replacement variant of the override next
+# to the MPI args-replacement variant of nccl-all-reduce.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: onprem-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300
+  nodesPerJob: 8
+  enableMNNVL: true
+  nicResourceName: rdma/ib
+  mlnxPerNode: 1
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: communication
+      variant: nccl-loopback-nvswitch

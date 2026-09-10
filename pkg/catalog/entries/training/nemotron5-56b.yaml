@@ -378,3 +378,15 @@ overrides:
       equals: gb300
   dependencies:
 {{ lib "deps/mistral-gb300-ib-runtime-patch-training.yaml" . | indent 2 }}
+# --- On-prem + GB200/GB300 (generic NVL72 bare metal; ADR-075) ---
+# The runtime patch carries the portable IB env (torchrun inherits the
+# container env directly), arm64/GPU taint tolerations, and the optional NIC
+# resource block (injected only when nicResourceName is set, count from
+# mlnxPerNode).
+- when:
+    platform:
+      equals: onprem
+    gpuArchitecture:
+      in: [gb200, gb300]
+  dependencies:
+{{ lib "deps/onprem-gb200-gb300-runtime-patch-training.yaml" . | indent 2 }}

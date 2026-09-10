@@ -4,6 +4,7 @@
     "NodesPerJob": 2,
     "GpusPerNode": 4,
     "MlnxPerNode": 2,
+    "NicResourceName": "",
     "EnableMNNVL": true,
     "FrameworkType": "mpi"
   },

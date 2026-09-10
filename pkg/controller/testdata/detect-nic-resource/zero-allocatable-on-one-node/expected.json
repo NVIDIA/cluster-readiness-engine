@@ -1,0 +1,6 @@
+{
+  "name": "",
+  "detectionRan": true,
+  "candidates": [],
+  "message": "NIC resource auto-detection found candidates (rdma/ib), but none is allocatable at the requested count 1 on every target node; no NIC resource is requested. Set nicResourceName to request one, or adjust mlnxPerNode."
+}

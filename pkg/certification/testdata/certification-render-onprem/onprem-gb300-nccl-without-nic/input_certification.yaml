@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No nicResourceName: the override must still contribute tolerations and the
+# portable IB env, and must NOT inject any NIC resource.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: onprem-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300
+  nodesPerJob: 8
+  enableMNNVL: true
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

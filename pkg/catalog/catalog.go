@@ -47,6 +47,12 @@ type BuildConfig struct {
 	// Resolved from gpu-defaults.yaml + platform overrides + user override.
 	MlnxPerNode int32
 
+	// NicResourceName is the extended resource name of the RDMA NIC devices
+	// requested by the on-prem GB200/GB300 templates (e.g., "rdma/ib"). Empty
+	// means the templates omit the NIC resource block. The per-container count
+	// comes from MlnxPerNode.
+	NicResourceName string
+
 	// Resources overrides the CPU and memory of training containers.
 	// Nil (or nil sub-fields) means the training entries keep their
 	// DGX-class defaults (limits: cpu 128 / memory 800Gi; requests:
