@@ -113,6 +113,14 @@ const (
 	ReasonWorkloadCreationError = "WorkloadCreationError"
 	ReasonWorkloadStalled       = "WorkloadStalled"
 
+	// ReasonWorkloadSchedulingBlocked indicates the workload is unsuspended
+	// and admitted, but at least one of its pods cannot be scheduled
+	// (PodScheduled=False/Unschedulable). The Job stays InProgress and the
+	// blocked time does not count against timeoutPerJob or stall detection —
+	// the same clock-neutral treatment as WorkloadPending (issue #213).
+	// See ADR-075.
+	ReasonWorkloadSchedulingBlocked = "WorkloadSchedulingBlocked"
+
 	// ReasonMeasurementCreationError indicates a GoodputMeasurement or
 	// BandwidthMeasurement child resource could not be created. Handling is
 	// non-fatal, so this event is the operator-visible signal; a threshold that

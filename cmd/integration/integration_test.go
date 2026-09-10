@@ -1045,6 +1045,12 @@ func sanitizeObject(obj client.Object) {
 		if o.Status.WorkloadStartTime != nil {
 			o.Status.WorkloadStartTime = &metav1.Time{Time: time.Unix(0, 0).UTC()}
 		}
+		// schedulingBlockedSince is wall clock for the same reason; normalize
+		// to a fixed placeholder so goldens stay deterministic while still
+		// pinning whether a blocked episode is recorded (ADR-075).
+		if o.Status.SchedulingBlockedSince != nil {
+			o.Status.SchedulingBlockedSince = &metav1.Time{Time: time.Unix(0, 0).UTC()}
+		}
 	case *nvcrev1alpha1.Workflow:
 		clearConditionTimestamps(o.Status.Conditions)
 		// Node-result ConfigMaps use generateName, so their names are

@@ -12,9 +12,10 @@ description: CRD reference for the Job resource.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `conditions` | []Condition | Exclusive set: `InProgress`, `Succeeded`, `Failed`. Independent (additive): `HardwareFailed` (can be True alongside execution state), `ValidationFailed` (can be True alongside `Succeeded`) |
+| `conditions` | []Condition | Exclusive set: `InProgress` (`WorkloadCreated`, `WorkloadPending`, `WorkloadRunning`, `WorkloadSchedulingBlocked`, `WorkloadRestarting`), `Succeeded`, `Failed` (`WorkloadFailed`, `WorkloadStalled`, plus Workflow-set `JobTimedOut`). Independent (additive): `HardwareFailed` (can be True alongside execution state), `ValidationFailed` (can be True alongside `Succeeded`) |
 | `workloadRef` | WorkloadReference | Reference to the created workload (`TrainJob`) |
 | `workloadStartTime` | Time | When the workload was first observed running rather than pending (e.g. suspended by Kueue). `timeoutPerJob` is measured from this timestamp, and the stall clock never starts before it, so queued time counts against neither. Cleared on checkpoint restart |
+| `schedulingBlockedSince` | Time | When the workload's pods were first observed unschedulable (`PodScheduled=False/Unschedulable`) in the current blocked episode. Cleared when any pod schedules. Blocked time counts against neither `timeoutPerJob` nor the stall clock; the Job reports `InProgress` with reason `WorkloadSchedulingBlocked` while it persists. See [ADR-075](../designs/075-scheduling-stall-visibility.md) |
 | `failedNodes` | []FailedNode | Nodes identified as failed; each entry has `name`, `reason`, and optional `message` |
 | `restartCount` | int32 | Number of checkpoint-based restarts |
 | `failureLog` | FailureLog | Tail of pod logs from the most recent failure (pod name, node, exit code, log tail) |
@@ -28,6 +29,7 @@ Each `FailedNode` entry has:
 | `message` | string | Detailed failure message |
 
 `GoodputMeasurement` and `BandwidthMeasurement` resources reference the Job via their own `spec.jobRef` — the Job does not hold references to them.
+If the workload is admitted but its pods cannot be placed, the `InProgress` condition carries reason `WorkloadSchedulingBlocked` and the message relays the scheduler's own diagnosis (the same text as the pod's `FailedScheduling` event). Blocked time does not count against `timeoutPerJob` or stall detection; the grace window before the reason surfaces is tunable via `spec.schedulingStallGraceSeconds` (default 5 minutes). See [ADR-075](../designs/075-scheduling-stall-visibility.md).
 
 ## Naming
 

@@ -68,6 +68,11 @@ const (
 	// for the first training step before declaring a startup stall.
 	defaultStartupStallTimeout = 20 * time.Minute
 
+	// defaultSchedulingStallGrace is how long workload pods may remain
+	// unschedulable before the Job surfaces WorkloadSchedulingBlocked
+	// (ADR-075). Overridable via spec.schedulingStallGraceSeconds.
+	defaultSchedulingStallGrace = 5 * time.Minute
+
 	// Job tier reason constants are in helpers.go.
 
 	// defaultMeasurementTimeout is how long after the Job succeeds to wait for
@@ -504,6 +509,33 @@ func (r *JobReconciler) updateStatusFromWorkload(ctx context.Context, job *nvcre
 		// inside the persisting status write below, so a Job declared stalled
 		// on this reconcile never carries a workloadStartTime it did not
 		// record while running.
+		// Scheduling-stall check (ADR-075, amended). Blocked time must not
+		// count against timeoutPerJob, so when blocked persists past the grace
+		// window the caller clears WorkloadStartTime — pausing the clock —
+		// and restores it on the next genuinely-running observation via the
+		// first-observe logic below. checkSchedulingBlocked owns the
+		// schedulingBlockedSince marker (set on first blocked observation,
+		// cleared when a pod schedules); the caller never writes it.
+		blocked, blockMsg := r.checkSchedulingBlocked(ctx, job)
+		if blocked {
+			log.V(1).Info("Workload pods are unschedulable", "kind", ref.Kind, "name", ref.Name)
+			if err := r.setJobInProgress(ctx, job, ReasonWorkloadSchedulingBlocked, blockMsg,
+				func(j *nvcrev1alpha1.Job) bool {
+					if j.Status.WorkloadStartTime == nil {
+						return false
+					}
+					j.Status.WorkloadStartTime = nil
+					return true
+				}); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to update Job status: %w", err)
+			}
+			return ctrl.Result{RequeueAfter: r.getWorkloadRequeueInterval()}, nil
+		}
+		if job.Status.SchedulingBlockedSince != nil {
+			// Within the grace window: requeue, keep the clock as-is.
+			return ctrl.Result{RequeueAfter: r.getWorkloadRequeueInterval()}, nil
+		}
+
 		workloadStart := job.Status.WorkloadStartTime
 		var firstObservedRunning *metav1.Time
 		if workloadStart == nil {
@@ -671,6 +703,166 @@ func (r *JobReconciler) checkStallTimeout(ctx context.Context, job *nvcrev1alpha
 	}
 
 	return false, ""
+}
+
+// checkSchedulingBlocked reports whether the workload's pods are stuck
+// unschedulable (ADR-075). Detection: at least one workload pod has
+// PodScheduled=False/Unschedulable and no nodeName, and the blocked state has
+// persisted past the grace window (spec.schedulingStallGraceSeconds, default
+// 300s). Returns (true, message) only after the grace window elapses; the
+// message relays the scheduler's own FailedScheduling event text.
+//
+// Grace-window state is persisted on Job.status.schedulingBlockedSince so
+// controller restarts do not reset the clock. The detector owns both the set
+// (first observation of blocked pods) and the clear (successful list with no
+// blocked pods); the caller only holds clock-neutral while the marker is set
+// and never touches the marker itself.
+//
+// Does NOT update Job status. Never writes terminal state: a scheduling stall
+// is frequently transient, and timeoutPerJob remains the ultimate bound.
+func (r *JobReconciler) checkSchedulingBlocked(ctx context.Context, job *nvcrev1alpha1.Job) (bool, string) {
+	// Detection runs on every reconcile of a non-terminal workload, including
+	// after the clock started: the common failure is workload created (clock
+	// started on reconcile 1) and the pod rejected by the scheduler on
+	// reconcile 2. When blocked persists, the caller clears WorkloadStartTime
+	// (pausing the clock) and the first-observe logic restores it on recovery.
+	// The condition message follows the caller's "Workload <kind>/<name> is
+	// running" format. WorkloadRef is always set once the workload exists;
+	// fall back to the Job identity if it somehow is not.
+	kind, name := "Workload", job.Name
+	if ref := job.Status.WorkloadRef; ref != nil {
+		kind, name = ref.Kind, ref.Name
+	}
+
+	podList := &corev1.PodList{}
+	listOpts := []client.ListOption{
+		client.InNamespace(job.Namespace),
+		client.MatchingFields{nodemonitor.PodNVCREJobIndexField: job.Name},
+	}
+	if err := r.List(ctx, podList, listOpts...); err != nil {
+		// Fall back to the label selector if the field index is unavailable
+		// (same pattern as NodeDiscoverer.DiscoverNodesForJob).
+		labelSelector := client.MatchingLabels{nodemonitor.NVCREJobLabel: job.Name}
+		if err := r.List(ctx, podList, client.InNamespace(job.Namespace), labelSelector); err != nil {
+			logf.FromContext(ctx).V(1).Info("Failed to list pods for scheduling check", "error", err)
+			return false, ""
+		}
+	}
+
+	// Find the first blocked pod and relay its newest FailedScheduling event
+	// message — the scheduler already wrote the diagnosis; NVCRE relays it.
+	var newestMessage string
+	blocked := false
+	for i := range podList.Items {
+		pod := &podList.Items[i]
+		if pod.Spec.NodeName != "" {
+			continue
+		}
+		// Only pods the scheduler has explicitly rejected count as blocked:
+		// PodScheduled=False. A pod with no PodScheduled condition at all has
+		// not been processed yet — counting it would fire on pods that are
+		// merely new.
+		schedulingRejected := false
+		for _, cond := range pod.Status.Conditions {
+			if cond.Type == corev1.PodScheduled &&
+				cond.Status == corev1.ConditionFalse {
+				schedulingRejected = true
+				break
+			}
+		}
+		if !schedulingRejected {
+			continue
+		}
+		blocked = true
+		if newestMessage == "" {
+			newestMessage = newestFailedSchedulingMessage(ctx, r.Client, pod)
+		}
+	}
+	if !blocked {
+		// Pods can schedule (or none exist yet): clear any marker from a
+		// prior episode. The detector is the only writer of the marker — the
+		// clear happens only on a successful list that found no blocked pods,
+		// so a transient list error cannot reset the grace clock.
+		if job.Status.SchedulingBlockedSince != nil {
+			if err := r.setJobInProgress(ctx, job, ReasonWorkloadRunning,
+				fmt.Sprintf("Workload %s/%s is running", kind, name),
+				func(j *nvcrev1alpha1.Job) bool {
+					if j.Status.SchedulingBlockedSince == nil {
+						return false
+					}
+					j.Status.SchedulingBlockedSince = nil
+					return true
+				}); err != nil {
+				logf.FromContext(ctx).Error(err, "Failed to clear schedulingBlockedSince")
+			}
+		}
+		return false, ""
+	}
+
+	now := metav1.Now()
+	if job.Status.SchedulingBlockedSince == nil {
+		// First observation of this blocked episode: record it and requeue.
+		// The condition surfaces only after the grace window, on a later
+		// reconcile.
+		if err := r.setJobInProgress(ctx, job, ReasonWorkloadRunning,
+			fmt.Sprintf("Workload %s/%s is running", kind, name),
+			func(j *nvcrev1alpha1.Job) bool {
+				if j.Status.SchedulingBlockedSince != nil {
+					return false
+				}
+				j.Status.SchedulingBlockedSince = &now
+				return true
+			}); err != nil {
+			logf.FromContext(ctx).Error(err, "Failed to record schedulingBlockedSince")
+		}
+		return false, ""
+	}
+
+	grace := defaultSchedulingStallGrace
+	if job.Spec.SchedulingStallGraceSeconds != nil {
+		grace = time.Duration(*job.Spec.SchedulingStallGraceSeconds) * time.Second
+	}
+	if time.Since(job.Status.SchedulingBlockedSince.Time) < grace {
+		return false, ""
+	}
+
+	message := "Workload pods are unschedulable"
+	if newestMessage != "" {
+		message = message + ": " + newestMessage
+	}
+	return true, message
+}
+
+// newestFailedSchedulingMessage returns the message of the pod's most recent
+// FailedScheduling warning event, or "" when none is found. Best-effort: an
+// event-listing error returns "" so detection still fires with the generic
+// message.
+func newestFailedSchedulingMessage(ctx context.Context, c client.Client, pod *corev1.Pod) string {
+	eventList := &corev1.EventList{}
+	if err := c.List(ctx, eventList, client.InNamespace(pod.Namespace),
+		client.MatchingFields{eventInvolvedNameIndexField: pod.Name},
+	); err != nil {
+		return ""
+	}
+	var (
+		newest    time.Time
+		newestMsg string
+	)
+	for i := range eventList.Items {
+		ev := &eventList.Items[i]
+		if ev.InvolvedObject.Name != pod.Name || ev.Reason != "FailedScheduling" {
+			continue
+		}
+		ts := ev.LastTimestamp.Time
+		if ts.IsZero() {
+			ts = ev.EventTime.Time
+		}
+		if ts.After(newest) {
+			newest = ts
+			newestMsg = ev.Message
+		}
+	}
+	return newestMsg
 }
 
 // startupStallAnchor returns the time the startup-stall budget is measured

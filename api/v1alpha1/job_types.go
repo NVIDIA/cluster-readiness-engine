@@ -208,6 +208,15 @@ type JobSpec struct {
 	// +kubebuilder:validation:Minimum=1
 	StartupStallTimeoutSeconds *int32 `json:"startupStallTimeoutSeconds,omitempty"`
 
+	// schedulingStallGraceSeconds is how long the workload's pods may remain
+	// unschedulable (PodScheduled=False/Unschedulable) before the Job surfaces
+	// an InProgress condition with reason "WorkloadSchedulingBlocked". Blocked
+	// time does not count against timeoutPerJob or stall detection.
+	// Default: 300 (5 minutes). See ADR-075.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	SchedulingStallGraceSeconds *int32 `json:"schedulingStallGraceSeconds,omitempty"`
+
 	// goodputMeasurement configures automatic creation of a GoodputMeasurement
 	// child resource that tracks training goodput metrics by parsing pod logs.
 	// When absent, no measurement is created (suitable for non-training jobs).
@@ -300,6 +309,14 @@ type JobStatus struct {
 	// workload gets a fresh budget.
 	// +optional
 	WorkloadStartTime *metav1.Time `json:"workloadStartTime,omitempty"`
+
+	// schedulingBlockedSince records when the workload's pods were first
+	// observed unschedulable in the current blocked episode. Set by the
+	// controller when the blocked state is first detected, cleared when any
+	// pod schedules. Persisted so controller restarts do not reset the grace
+	// window. See ADR-075.
+	// +optional
+	SchedulingBlockedSince *metav1.Time `json:"schedulingBlockedSince,omitempty"`
 
 	// restartCount tracks the number of times the workload has been restarted from checkpoint.
 	// +optional
