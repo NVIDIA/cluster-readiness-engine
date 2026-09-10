@@ -1,0 +1,3 @@
+# A mirrored Kubeflow Trainer chart ref resolves to the mirror host, not
+# GHCR.
+chartRef: "oci://registry.example.com/mirror/kubeflow-trainer"

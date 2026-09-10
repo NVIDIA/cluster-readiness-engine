@@ -51,6 +51,8 @@ nvcrectl setup init
 
 The controller image and Helm chart are pulled anonymously from GHCR; no token is needed. If your cluster pulls from a private mirror or fork instead, pass `--image-pull-secret <github-token>` and the CLI creates the pull secret for you.
 
+On clusters with restricted egress, both Helm charts can be pulled from a mirror registry with `--chart-ref` and `--trainer-chart-ref`; see [Deployment](../operations/deployment.md#restricted-egress-and-air-gapped-installs) for the full procedure.
+
 ## Verify
 
 Check that the controller is running:

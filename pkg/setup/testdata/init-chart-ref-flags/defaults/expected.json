@@ -1,0 +1,4 @@
+{
+  "chart-ref": "oci://ghcr.io/nvidia/cluster-readiness-engine",
+  "trainer-chart-ref": "oci://ghcr.io/kubeflow/charts/kubeflow-trainer"
+}
