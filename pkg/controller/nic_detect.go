@@ -129,10 +129,7 @@ func resolveNICResourceName(
 	if !isOnPremNVL72(platformName, gpuArch) {
 		return nicDetection{}
 	}
-	required := int64(mlnxPerNode)
-	if required < 1 {
-		required = 1
-	}
+	required := max(int64(mlnxPerNode), 1)
 	name, qualifying, present := detectNICResource(nodes, required)
 	return nicDetection{
 		Name:       name,

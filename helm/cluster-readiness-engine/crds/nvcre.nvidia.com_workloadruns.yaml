@@ -1997,13 +1997,19 @@ spec:
                   nicResourceName sets the Kubernetes extended resource name of the RDMA
                   NIC devices requested on workload containers for on-prem GB200/GB300
                   targets (e.g., "rdma/ib", "nvidia.com/mlnxnics"); the name depends on
-                  the RDMA device plugin the site runs, so there is no safe default. The
-                  per-container count comes from mlnxPerNode. When unset, no NIC resource
-                  is requested and scheduling is unchanged. The value must be a fully
-                  qualified extended resource name: a DNS-subdomain domain, a slash, and
-                  a name segment of at most 63 characters; the reserved kubernetes.io and
-                  k8s.io domains (including their subdomains) are rejected, matching what
-                  Kubernetes accepts as an extended resource.
+                  the RDMA device plugin the site runs, and the per-container count
+                  comes from mlnxPerNode. When unset, the controller auto-detects the
+                  name on on-prem GB200/GB300 targets: a single candidate resource
+                  (rdma/* or nvidia.com/mlnxnics) allocatable at the resolved
+                  mlnxPerNode count on every target node is requested; zero or several
+                  qualifying candidates inject nothing and emit a NICResourceDetection
+                  event explaining what was found. Offline nvcrectl render (without
+                  --dry-run) has no cluster to inspect and uses only this field. The
+                  value must be a fully qualified extended resource name: a
+                  DNS-subdomain domain, a slash, and a name segment of at most 63
+                  characters; the reserved kubernetes.io and k8s.io domains (including
+                  their subdomains) are rejected, matching what Kubernetes accepts as an
+                  extended resource.
                 maxLength: 253
                 pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]{0,61}[a-zA-Z0-9])?$
                 type: string

@@ -386,8 +386,11 @@ func renderCertification(cert *nvcrev1alpha1.Certification, platformName string)
 		if opts.MlnxPerNode != nil {
 			mlnxPerNode = *opts.MlnxPerNode
 		}
-		// The NIC resource name has no architecture default: it depends on the
-		// RDMA device plugin the site runs, so it is only ever user-supplied.
+		// The NIC resource name has no architecture default: it depends on
+		// the RDMA device plugin the site runs. Offline (no --dry-run) it is
+		// only ever user-supplied; on the dry-run path applyNICDetection has
+		// already written the auto-detected name into
+		// cert.Spec.NicResourceName before this render runs.
 		nicResourceName := ""
 		if opts.NicResourceName != nil {
 			nicResourceName = *opts.NicResourceName

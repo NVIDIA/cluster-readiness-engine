@@ -9,7 +9,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
@@ -52,8 +51,8 @@ func TestResolveNICResourceName(t *testing.T) {
 		nodes := make([]corev1.Node, 0, len(input.Nodes))
 		for _, n := range input.Nodes {
 			node := corev1.Node{
-				ObjectMeta: metav1.ObjectMeta{Name: n.Name},
-				Status:     corev1.NodeStatus{Allocatable: corev1.ResourceList{}},
+				Name:   n.Name,
+				Status: corev1.NodeStatus{Allocatable: corev1.ResourceList{}},
 			}
 			for res, qty := range n.Allocatable {
 				parsed, err := resource.ParseQuantity(qty)
