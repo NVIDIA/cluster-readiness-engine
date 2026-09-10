@@ -26,6 +26,12 @@
 #    per-platform child manifest carries a signature + CycloneDX SBOM and
 #    no SLSA provenance, so requiring provenance against a platform digest
 #    correctly denies.
+# 4. If you mirrored the controller image off ghcr.io, rewrite every
+#    matchImageReferences glob below to your mirror repository path.
+#    Kyverno pre-filters images.* to glob matches and initialises an empty
+#    list when nothing matches — both validations then succeed vacuously
+#    (fail-open). A silent no-op on the documented air-gap path is worse
+#    than a deny.
 #
 # PARKED FAILURE MODES THIS SAMPLE ADDRESSES (issue #272)
 # -------------------------------------------------------
@@ -61,6 +67,17 @@ metadata:
 spec:
   validationActions: [Deny]
   failurePolicy: Fail
+  # Explicit CRD defaults (v1.19): each of these defaults to true. Setting them
+  # here documents that applying this sample also registers a *mutating*
+  # webhook that rewrites matching tags to digests (mutateDigest), and that
+  # required/verifyDigest run alongside the CEL validations below. required
+  # is load-bearing for init/ephemeral coverage even before the concatenations
+  # in validations: (EnforceRequired denies matched images that no validation
+  # checked).
+  validationConfigurations:
+    mutateDigest: true
+    verifyDigest: true
+    required: true
   webhookConfiguration:
     timeoutSeconds: 20
   evaluation:
@@ -82,7 +99,10 @@ spec:
       - apiGroups: [""]
         apiVersions: ["v1"]
         operations: ["CREATE", "UPDATE"]
-        resources: ["pods"]
+        # pods/ephemeralcontainers is required for kubectl debug / ephemeral
+        # coverage; images.ephemeralContainers is populated only when this
+        # subresource is in matchConstraints.
+        resources: ["pods", "pods/ephemeralcontainers"]
       - apiGroups: ["apps"]
         apiVersions: ["v1"]
         operations: ["CREATE", "UPDATE"]
@@ -95,6 +115,8 @@ spec:
     # Narrow globs on purpose. A trailing `manager*` can match manager-debug,
     # managerial-tool, or manager/nested/extra depending on the glob library.
     # Tag and digest forms are listed explicitly instead.
+    # Hard-pinned to ghcr.io for the public default. Mirror / air-gap installs
+    # must rewrite these (see BEFORE YOU APPLY #4) — unmatched globs fail open.
     - glob: "ghcr.io/nvidia/cluster-readiness-engine/manager"
     - glob: "ghcr.io/nvidia/cluster-readiness-engine/manager:*"
     - glob: "ghcr.io/nvidia/cluster-readiness-engine/manager@*"
@@ -105,7 +127,9 @@ spec:
           identities:
             # EDIT THIS TAG to the release you run before applying.
             # Exact identity — never a prefix regexp that also accepts
-            # publish.yml@refs/heads/main development images.
+            # attest.yml@refs/heads/main development images (publish.yml now
+            # routes all signing through attest.yml; main builds carry
+            # attest.yml@refs/heads/main).
             - issuer: "https://token.actions.githubusercontent.com"
               subject: "https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/v0.2.0"
               # Loosening (operator choice, not the published contract):
@@ -115,8 +139,9 @@ spec:
               # image. To accept any release tag while still rejecting
               # refs/heads/main, replace subject: with subjectRegExp:
               #   subjectRegExp: "^https://github\\.com/NVIDIA/cluster-readiness-engine/\\.github/workflows/attest\\.yml@refs/tags/.+$"
-              # Do not use subjectRegExp that omits the workflow or the
-              # refs/tags/ anchor — that re-opens main-<sha> development images.
+              # Do not use subjectRegExp that omits the repository path, the
+              # workflow, or the refs/tags/ anchor — that re-opens main-<sha>
+              # development images and foreign forks.
         ctlog:
           url: "https://rekor.sigstore.dev"
   attestations:
@@ -127,15 +152,23 @@ spec:
         # Same predicate the docs verify with --type slsaprovenance1.
         type: "https://slsa.dev/provenance/v1"
   validations:
+    # Concatenate containers + initContainers + ephemeralContainers. The three
+    # are distinct keys on images (pkg/cel/compiler/images.go); containers alone
+    # leaves init/ephemeral to validationConfigurations.required (deny with a
+    # "no policy performed a check" message). Explicit coverage keeps the deny
+    # message accurate. ephemeralContainers only appears when
+    # pods/ephemeralcontainers is in matchConstraints above.
     - expression: >-
-        images.containers.map(image,
+        (images.?containers.orValue([]) + images.?initContainers.orValue([]) +
+          images.?ephemeralContainers.orValue([])).map(image,
           verifyImageSignatures(image, [attestors.nvcreRelease])).all(e, e > 0)
       message: >-
         NVCRE manager image signature verification failed. Expected a new-bundle
         cosign signature under attest.yml@refs/tags/<pinned-tag>. Legacy
         ClusterPolicy/verifyImages cannot see these signatures.
     - expression: >-
-        images.containers.map(image,
+        (images.?containers.orValue([]) + images.?initContainers.orValue([]) +
+          images.?ephemeralContainers.orValue([])).map(image,
           verifyAttestationSignatures(image, attestations.slsaProvenance,
             [attestors.nvcreRelease])).all(e, e > 0)
       message: >-
