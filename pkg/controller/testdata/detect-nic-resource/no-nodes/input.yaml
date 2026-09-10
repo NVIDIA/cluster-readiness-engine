@@ -1,0 +1,8 @@
+# No nodes to inspect: detection runs (the gate matched) but finds nothing,
+# so nothing is injected. Unreachable from the controllers today (both
+# require discovered nodes before this point) but pinned so the helper stays
+# safe if a caller changes.
+platform: onprem
+gpuArchitecture: gb300
+mlnxPerNode: 8
+nodes: []

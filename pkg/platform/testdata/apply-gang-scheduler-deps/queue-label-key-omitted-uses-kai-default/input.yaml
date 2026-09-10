@@ -1,0 +1,24 @@
+# queueLabelKey is optional. Omitting it must keep the key at
+# kai.scheduler/queue, resolved in code the same way queue defaults to
+# default-queue, so a spec written before the field existed places its queue
+# under the same key it always did (now at both metadata levels).
+gangScheduler:
+  schedulerName: kai-scheduler
+  queue: team-a
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: torch-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: node
+                          image: nvcr.io/nvidia/nemo:25.07

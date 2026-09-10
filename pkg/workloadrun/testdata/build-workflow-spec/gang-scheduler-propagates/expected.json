@@ -34,7 +34,14 @@
   "runtimeVolumes": [
     "dshm"
   ],
-  "overrideCount": 15,
+  "overrideCount": 17,
   "gangSchedulerName": "kai-scheduler",
-  "gangSchedulerQueue": "high-priority"
+  "gangSchedulerJobLabels": [
+    "app=wr-gang",
+    "kai.scheduler/queue=high-priority",
+    "trainer.kubeflow.org/trainjob-ancestor-step=trainer"
+  ],
+  "gangSchedulerPodLabels": [
+    "kai.scheduler/queue=high-priority"
+  ]
 }

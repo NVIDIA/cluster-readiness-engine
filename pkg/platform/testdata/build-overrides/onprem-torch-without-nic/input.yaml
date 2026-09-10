@@ -1,0 +1,6 @@
+entryName: test
+nodesPerJob: 2
+gpusPerNode: 4
+mlnxPerNode: 8
+enableMNNVL: true
+frameworkType: torch

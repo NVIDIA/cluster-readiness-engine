@@ -93,7 +93,7 @@ anything.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&platform, "platform", "", "Target platform (aws, gcp, azure, oci, mistral, forge)")
+	cmd.Flags().StringVar(&platform, "platform", "", "Target platform (aws, gcp, azure, oci, mistral, onprem, forge)")
 	cmd.Flags().StringVar(&gpuArch, "gpu-arch", "", "Target GPU architecture (h100, h200, b200, gb200, gb300, a100, l40s, l40; mock templates: h100, gb200, gb300)")
 	cmd.Flags().StringVar(&nodesFile, "nodes-file", "",
 		"Custom nodes YAML file (mutually exclusive with --platform/--gpu-arch)")
@@ -137,8 +137,22 @@ func readWorkflow(path string) (*nvcrev1alpha1.Workflow, error) {
 // ResolveWorkflow applies overrides to a Workflow in-place and returns
 // detection metadata. The workflow's spec is mutated directly.
 func ResolveWorkflow(workflow *nvcrev1alpha1.Workflow, nodes []corev1.Node) (*renderMetadata, error) {
+	return ResolveWorkflowForPlatform(workflow, nodes, "")
+}
+
+// ResolveWorkflowForPlatform is ResolveWorkflow with the platform forced when
+// platformName is non-empty: the dry-run paths pass --platform through here
+// so override matching and the recorded metadata honor the flag instead of
+// silently reverting to node-based detection. GPU architecture is always
+// detected from the nodes. An empty platformName detects the platform too.
+func ResolveWorkflowForPlatform(
+	workflow *nvcrev1alpha1.Workflow, nodes []corev1.Node, platformName string,
+) (*renderMetadata, error) {
+	if platformName == "" {
+		platformName = controller.DetectPlatform(nodes)
+	}
 	orch := &nvcrev1alpha1.OrchestrationStatus{
-		DetectedPlatform:        controller.DetectPlatform(nodes),
+		DetectedPlatform:        platformName,
 		DetectedGPUArchitecture: controller.DetectGPUArchitecture(nodes),
 	}
 

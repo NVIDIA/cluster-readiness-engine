@@ -267,3 +267,30 @@
             env:
 {{ lib "nccl/mistral-ib-env.yaml" . | indent 12 }}
 {{- end }}
+
+# --- On-prem + GB200/GB300 (generic NVL72 runtime patch; ADR-075) ---
+# Portable IB env plus arm64/GPU taint tolerations; the NIC resource block is
+# injected only when spec.nicResourceName is set (count from mlnxPerNode).
+- when:
+    platform:
+      equals: onprem
+    gpuArchitecture:
+      in: [gb200, gb300]
+  dependencies:
+{{ lib "deps/onprem-gb200-gb300-runtime-patch-training.yaml" . | indent 2 }}
+
+# --- On-prem + GB200/GB300 (IB env vars, non-MPI only) ---
+{{- if ne .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: onprem
+    gpuArchitecture:
+      in: [gb200, gb300]
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/onprem-ib-env.yaml" . | indent 12 }}
+{{- end }}

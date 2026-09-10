@@ -396,3 +396,27 @@ overrides:
               value: PCI_BUS_ID
             - name: NCCL_MNNVL_ENABLE
               value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"
+# --- On-prem + GB200/GB300 (generic NVL72 bare metal; ADR-075) ---
+# Appended last so its trainer.env replacement wins over the GB200/GB300
+# ComputeDomain block above. onprem-ib-env carries the base GB200/GB300 vars;
+# NCCL_SHM_DISABLE/NCCL_P2P_DISABLE are re-listed because this variant forces
+# the network transport and lists replace. The NIC resource is injected only
+# when nicResourceName is set (count from mlnxPerNode).
+- when:
+    platform:
+      equals: onprem
+    gpuArchitecture:
+      in: [gb200, gb300]
+  dependencies:
+{{ lib "deps/onprem-gb200-gb300-runtime-patch-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/onprem-ib-env.yaml" . | indent 12 }}
+            - name: NCCL_SHM_DISABLE
+              value: "1"
+            - name: NCCL_P2P_DISABLE
+              value: "1"

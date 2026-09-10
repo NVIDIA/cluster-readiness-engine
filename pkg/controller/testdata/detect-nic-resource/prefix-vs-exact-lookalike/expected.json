@@ -1,0 +1,7 @@
+{
+  "name": "rdma/shared_ib",
+  "detectionRan": true,
+  "candidates": [
+    "rdma/shared_ib"
+  ]
+}

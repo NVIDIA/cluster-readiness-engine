@@ -1,0 +1,62 @@
+[
+  {
+    "index": 0,
+    "kind": "TrainingRuntime",
+    "rawUnchanged": false,
+    "replicatedJobs": [
+      {
+        "name": "node",
+        "schedulerName": "kai-scheduler",
+        "templateLabels": {
+          "kai.scheduler/queue": "team-a"
+        },
+        "podTemplateLabels": {
+          "kai.scheduler/queue": "team-a"
+        }
+      }
+    ],
+    "resource": {
+      "apiVersion": "trainer.kubeflow.org/v1alpha1",
+      "kind": "TrainingRuntime",
+      "metadata": {
+        "name": "torch-runtime"
+      },
+      "spec": {
+        "template": {
+          "spec": {
+            "replicatedJobs": [
+              {
+                "name": "node",
+                "template": {
+                  "metadata": {
+                    "labels": {
+                      "kai.scheduler/queue": "team-a"
+                    }
+                  },
+                  "spec": {
+                    "template": {
+                      "metadata": {
+                        "labels": {
+                          "kai.scheduler/queue": "team-a"
+                        }
+                      },
+                      "spec": {
+                        "containers": [
+                          {
+                            "image": "nvcr.io/nvidia/nemo:25.07",
+                            "name": "node"
+                          }
+                        ],
+                        "schedulerName": "kai-scheduler"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+]

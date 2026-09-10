@@ -1,0 +1,110 @@
+[
+  {
+    "index": 0,
+    "kind": "TrainingRuntime",
+    "rawUnchanged": false,
+    "replicatedJobs": [
+      {
+        "name": "node",
+        "schedulerName": "runai-scheduler",
+        "templateLabels": {
+          "runai/queue": "team-a"
+        },
+        "podTemplateLabels": {
+          "runai/queue": "team-a"
+        }
+      },
+      {
+        "name": "launcher",
+        "schedulerName": "runai-scheduler",
+        "templateLabels": {
+          "runai/queue": "team-a",
+          "trainer.kubeflow.org/trainjob-ancestor-step": "trainer"
+        },
+        "podTemplateLabels": {
+          "runai/queue": "team-a"
+        }
+      }
+    ],
+    "resource": {
+      "apiVersion": "trainer.kubeflow.org/v1alpha1",
+      "kind": "TrainingRuntime",
+      "metadata": {
+        "name": "nccl-all-reduce-runtime"
+      },
+      "spec": {
+        "template": {
+          "spec": {
+            "replicatedJobs": [
+              {
+                "name": "node",
+                "template": {
+                  "metadata": {
+                    "labels": {
+                      "runai/queue": "team-a"
+                    }
+                  },
+                  "spec": {
+                    "template": {
+                      "metadata": {
+                        "labels": {
+                          "runai/queue": "team-a"
+                        }
+                      },
+                      "spec": {
+                        "containers": [
+                          {
+                            "image": "nvcr.io/nvidia/pytorch:25.01",
+                            "name": "node"
+                          }
+                        ],
+                        "restartPolicy": "OnFailure",
+                        "schedulerName": "runai-scheduler"
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "dependsOn": [
+                  {
+                    "name": "node",
+                    "status": "Ready"
+                  }
+                ],
+                "name": "launcher",
+                "template": {
+                  "metadata": {
+                    "labels": {
+                      "runai/queue": "team-a",
+                      "trainer.kubeflow.org/trainjob-ancestor-step": "trainer"
+                    }
+                  },
+                  "spec": {
+                    "template": {
+                      "metadata": {
+                        "labels": {
+                          "runai/queue": "team-a"
+                        }
+                      },
+                      "spec": {
+                        "containers": [
+                          {
+                            "image": "nvcr.io/nvidia/pytorch:25.01",
+                            "name": "node"
+                          }
+                        ],
+                        "restartPolicy": "OnFailure",
+                        "schedulerName": "runai-scheduler"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+]

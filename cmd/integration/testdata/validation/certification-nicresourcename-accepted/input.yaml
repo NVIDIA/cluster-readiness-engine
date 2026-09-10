@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Well-formed extended resource names pass at both levels the field appears:
+# the spec level (embedded CategoryOptions) and per category.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-nicname-accepted
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300
+  nicResourceName: rdma/ib
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        nicResourceName: nvidia.com/mlnxnics

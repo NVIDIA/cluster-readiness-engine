@@ -48,6 +48,9 @@
         "schedulerName": "kai-scheduler",
         "templateLabels": {
           "kai.scheduler/queue": "high-priority"
+        },
+        "podTemplateLabels": {
+          "kai.scheduler/queue": "high-priority"
         }
       }
     ],
@@ -71,6 +74,11 @@
                   },
                   "spec": {
                     "template": {
+                      "metadata": {
+                        "labels": {
+                          "kai.scheduler/queue": "high-priority"
+                        }
+                      },
                       "spec": {
                         "containers": [
                           {

@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# TrainingRuntime patch for generic on-prem GB200/GB300 communication entries
+# (ADR-075). Tolerates the arm64 and GPU taints common on NVL72 deployments.
+# The NIC resource block is injected only when nicResourceName is configured;
+# the resource name depends on the RDMA device plugin the site runs, so there
+# is no safe default. The per-container count comes from mlnxPerNode.
+
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    mlPolicy:
+      mpi:
+        numProcPerNode: {{ .GpusPerNode }}
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+{{- if .NicResourceName }}
+                  containers:
+                  - name: node
+                    resources:
+                      limits:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        {{ .NicResourceName }}: "{{ .MlnxPerNode }}"
+                      requests:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        {{ .NicResourceName }}: "{{ .MlnxPerNode }}"
+{{- end }}
+                  tolerations:
+                  - key: kubernetes.io/arch
+                    operator: Equal
+                    value: arm64
+                    effect: NoSchedule
+                  - key: nvidia.com/gpu
+                    operator: Equal
+                    value: present
+                    effect: NoSchedule

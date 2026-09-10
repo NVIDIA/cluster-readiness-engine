@@ -7,7 +7,8 @@
       {
         "name": "node",
         "schedulerName": "default-scheduler",
-        "templateLabels": null
+        "templateLabels": null,
+        "podTemplateLabels": null
       }
     ],
     "resource": {

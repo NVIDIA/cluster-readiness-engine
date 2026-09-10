@@ -82,4 +82,6 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 072 | [Freeze GoodputMeasurement Status at Job Terminal State](072-goodput-terminal-freeze.md) |
 | 073 | [Convergent `setup init` Retry After a Partial Kubeflow Trainer Install](073-setup-retry-convergence.md) |
 | 074 | [Supply Chain Artifact and Verification Contract](074-supply-chain-attestation.md) |
+| 075 | [On-Prem GB200/GB300 Override (Generic NVL72 Bare Metal)](075-onprem-gb200-gb300-override.md) |
+| 076 | [Configurable Gang Scheduler Queue Label Key (Run:ai Support)](076-gang-scheduler-queue-label-key.md) |
 | 077 | [Certification Workload Image Override](077-workload-image-override.md) |

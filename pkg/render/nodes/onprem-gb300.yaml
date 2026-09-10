@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# On-prem is the detection fallback: an empty providerID (and no Forge
+# hostname or NKE site label) resolves to "onprem".
+metadata:
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-GB300"
+spec:
+  providerID: ""

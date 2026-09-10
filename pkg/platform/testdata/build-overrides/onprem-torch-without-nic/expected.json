@@ -1,0 +1,12 @@
+{
+  "config": {
+    "EntryName": "test",
+    "NodesPerJob": 2,
+    "GpusPerNode": 4,
+    "MlnxPerNode": 8,
+    "NicResourceName": "",
+    "EnableMNNVL": true,
+    "FrameworkType": "torch"
+  },
+  "atLeastOneOverride": true
+}

@@ -1,0 +1,36 @@
+[
+  {
+    "workflow": "gang-cert-communication-n-dd05f",
+    "dependencyKinds": [
+      "TrainingRuntime",
+      "ComputeDomain"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "schedulerName": "runai-scheduler",
+        "queueLabel": "team-a",
+        "templateLabels": [
+          "runai/queue=team-a"
+        ],
+        "podTemplateLabels": [
+          "runai/queue=team-a"
+        ]
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "schedulerName": "runai-scheduler",
+        "queueLabel": "team-a",
+        "templateLabels": [
+          "runai/queue=team-a",
+          "trainer.kubeflow.org/trainjob-ancestor-step=trainer"
+        ],
+        "podTemplateLabels": [
+          "runai/queue=team-a"
+        ]
+      }
+    ]
+  }
+]

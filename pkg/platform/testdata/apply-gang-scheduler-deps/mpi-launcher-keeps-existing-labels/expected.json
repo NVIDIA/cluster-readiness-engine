@@ -9,6 +9,9 @@
         "schedulerName": "kai-scheduler",
         "templateLabels": {
           "kai.scheduler/queue": "nccl-queue"
+        },
+        "podTemplateLabels": {
+          "kai.scheduler/queue": "nccl-queue"
         }
       },
       {
@@ -17,6 +20,9 @@
         "templateLabels": {
           "kai.scheduler/queue": "nccl-queue",
           "trainer.kubeflow.org/trainjob-ancestor-step": "trainer"
+        },
+        "podTemplateLabels": {
+          "kai.scheduler/queue": "nccl-queue"
         }
       }
     ],
@@ -40,6 +46,11 @@
                   },
                   "spec": {
                     "template": {
+                      "metadata": {
+                        "labels": {
+                          "kai.scheduler/queue": "nccl-queue"
+                        }
+                      },
                       "spec": {
                         "containers": [
                           {
@@ -71,6 +82,11 @@
                   },
                   "spec": {
                     "template": {
+                      "metadata": {
+                        "labels": {
+                          "kai.scheduler/queue": "nccl-queue"
+                        }
+                      },
                       "spec": {
                         "containers": [
                           {

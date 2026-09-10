@@ -29,10 +29,16 @@ var overridesFS embed.FS
 // Field names match the catalog template data shape so _lib/ fragments
 // can be rendered directly without mapping.
 type OverrideConfig struct {
-	EntryName     string
-	NodesPerJob   int32
-	GpusPerNode   int32
-	MlnxPerNode   int32
+	EntryName   string
+	NodesPerJob int32
+	GpusPerNode int32
+	MlnxPerNode int32
+
+	// NicResourceName is the extended resource name of the RDMA NIC devices
+	// for the on-prem GB200/GB300 override. Empty means the override omits
+	// the NIC resource block. The per-container count comes from MlnxPerNode.
+	NicResourceName string
+
 	EnableMNNVL   bool
 	FrameworkType string
 }

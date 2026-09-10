@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# queueLabelKey names the label key the queue value is written under. The
+# Run:ai combination from ADR-076 is a valid Kubernetes label key: accepted.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-gang-queue-label-key-runai
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  gangScheduler:
+    schedulerName: runai-scheduler
+    queueLabelKey: runai/queue
+    queue: team-a
+  categories:
+    - domain: training
+      variant: nemotron5-8b

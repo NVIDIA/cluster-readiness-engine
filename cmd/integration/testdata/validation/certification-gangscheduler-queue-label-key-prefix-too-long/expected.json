@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.gangScheduler.queueLabelKey",
+      "message": "Invalid value: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/queue\": queueLabelKey prefix must be at most 253 characters"
+    }
+  ]
+}

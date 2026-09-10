@@ -335,9 +335,13 @@ spec:
   gangScheduler:
     schedulerName: kai-scheduler   # required; injected as schedulerName into every workload pod
     queue: high-priority           # optional; defaults to "default-queue"
+    # On a Run:ai cluster instead:
+    #   schedulerName: runai-scheduler
+    #   queueLabelKey: runai/queue
+    #   queue: team-a   # must name an existing Run:ai queue
 ```
 
-The `queue` value is applied as the `kai.scheduler/queue` label on the pod template metadata. It must be a valid Kubernetes label value (at most 63 characters). See [Run a WorkloadRun](./run-workloadrun.md) for details.
+The `queue` value is applied as a label (`queueLabelKey`, `kai.scheduler/queue` when unset) on both the Job template and the pod template metadata. It must be a valid Kubernetes label value (at most 63 characters). See [Run a WorkloadRun](./run-workloadrun.md) for details.
 
 ## Clean up
 

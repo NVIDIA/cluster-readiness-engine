@@ -11,5 +11,6 @@
   "mistral-gb300",
   "oci-gb200",
   "oci-gb300",
-  "oci-h100"
+  "oci-h100",
+  "onprem-gb300"
 ]

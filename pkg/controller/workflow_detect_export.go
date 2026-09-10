@@ -27,6 +27,27 @@ func DetectGPUArchitecture(nodes []corev1.Node) string {
 	return detectGPUArchitecture(nodes)
 }
 
+// ResolveNICResourceName is the exported version of resolveNICResourceName
+// for use by the CLI dry-run paths, so "certification render --dry-run" and
+// "workloadrun render --dry-run" resolve the NIC resource exactly as a
+// reconcile of the same target would: field wins, detection only for on-prem
+// GB200/GB300, and only a single candidate allocatable at the resolved
+// mlnxPerNode count on every node is used. mlnxPerNode must be the caller's
+// fully resolved value (field or catalog default).
+//
+// refusalMessage is non-empty exactly when detection ran and refused to pick
+// (name == ""); it is the same text the controllers emit as the
+// NICResourceDetection event, for the CLI to print to stderr.
+func ResolveNICResourceName(
+	field *string, platformName, gpuArch string, nodes []corev1.Node, mlnxPerNode int32,
+) (name, refusalMessage string, detectionRan bool) {
+	d := resolveNICResourceName(field, platformName, gpuArch, nodes, mlnxPerNode)
+	if d.Ran && d.Name == "" {
+		refusalMessage = nicDetectionMessage(d)
+	}
+	return d.Name, refusalMessage, d.Ran
+}
+
 // BuildOverrideContext is the exported version of buildOverrideContext for use by CLI tools.
 func BuildOverrideContext(spec *nvcrev1alpha1.WorkflowSpec, orch *nvcrev1alpha1.OrchestrationStatus, nodes []corev1.Node) OverrideContext {
 	return buildOverrideContext(spec, orch, nodes)

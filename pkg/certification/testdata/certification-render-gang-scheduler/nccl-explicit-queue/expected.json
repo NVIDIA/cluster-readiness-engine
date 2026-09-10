@@ -13,6 +13,9 @@
         "queueLabel": "high-priority",
         "templateLabels": [
           "kai.scheduler/queue=high-priority"
+        ],
+        "podTemplateLabels": [
+          "kai.scheduler/queue=high-priority"
         ]
       },
       {
@@ -23,6 +26,9 @@
         "templateLabels": [
           "kai.scheduler/queue=high-priority",
           "trainer.kubeflow.org/trainjob-ancestor-step=trainer"
+        ],
+        "podTemplateLabels": [
+          "kai.scheduler/queue=high-priority"
         ]
       }
     ]
