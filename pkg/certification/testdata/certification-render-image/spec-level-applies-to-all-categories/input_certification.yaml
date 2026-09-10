@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A spec-level image with no per-category override applies to every category.
+# On GCP H100 the tcpxo-daemon init container must keep the GCP-provided
+# image (its ref never equals the workload image) while both workload
+# primaries and the workload-derived inits (fix-ssh-permissions,
+# megatron-clone, which carry the primary's pre-override image) take the
+# override.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: image-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 2
+  image: registry.example.com/prebaked/workload:v1
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 50

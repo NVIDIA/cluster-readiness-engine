@@ -1,0 +1,64 @@
+{
+  "trainerImage": "registry.example.com/prebaked/nccl-tests:v1",
+  "dependencies": [
+    {
+      "index": 0,
+      "kind": "TrainingRuntime",
+      "rawUnchanged": false,
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "containerImages": [
+            "registry.example.com/prebaked/nccl-tests:v1",
+            "nvcr.io/nvidia/pytorch:26.01-py3"
+          ],
+          "initContainerImages": [
+            "registry.example.com/prebaked/nccl-tests:v1"
+          ]
+        }
+      ],
+      "resource": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainingRuntime",
+        "metadata": {
+          "name": "sidecar-runtime"
+        },
+        "spec": {
+          "template": {
+            "spec": {
+              "replicatedJobs": [
+                {
+                  "name": "node",
+                  "template": {
+                    "spec": {
+                      "template": {
+                        "spec": {
+                          "containers": [
+                            {
+                              "image": "registry.example.com/prebaked/nccl-tests:v1",
+                              "name": "node"
+                            },
+                            {
+                              "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                              "name": "sidecar"
+                            }
+                          ],
+                          "initContainers": [
+                            {
+                              "image": "registry.example.com/prebaked/nccl-tests:v1",
+                              "name": "fix-ssh-permissions"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

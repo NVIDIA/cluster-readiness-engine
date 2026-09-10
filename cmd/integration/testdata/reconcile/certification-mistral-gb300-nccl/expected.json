@@ -255,7 +255,7 @@
                             "containers": [
                               {
                                 "args": [
-                                  "set -x \u0026\u0026\napt-get update \u0026\u0026\napt-get install -y --no-install-recommends openssh-server  \u0026\u0026\nmkdir -p /var/run/sshd  \u0026\u0026\nchmod 0755 /var/run/sshd  \u0026\u0026\nmkdir -p /root/.ssh \u0026\u0026\nchmod 700 /root/.ssh \u0026\u0026\ncp /tmp/mpi-ssh-raw/* /root/.ssh/ \u0026\u0026\nchmod 600 /root/.ssh/id_rsa \u0026\u0026\nchmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys \u0026\u0026\n/usr/sbin/sshd -De"
+                                  "set -x \u0026\u0026\ntest -x /usr/sbin/sshd || (apt-get update \u0026\u0026 apt-get install -y --no-install-recommends openssh-server) \u0026\u0026\nmkdir -p /var/run/sshd  \u0026\u0026\nchmod 0755 /var/run/sshd  \u0026\u0026\nmkdir -p /root/.ssh \u0026\u0026\nchmod 700 /root/.ssh \u0026\u0026\ncp /tmp/mpi-ssh-raw/* /root/.ssh/ \u0026\u0026\nchmod 600 /root/.ssh/id_rsa \u0026\u0026\nchmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys \u0026\u0026\n/usr/sbin/sshd -De"
                                 ],
                                 "command": [
                                   "sh",

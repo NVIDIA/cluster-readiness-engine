@@ -1,0 +1,60 @@
+{
+  "trainerImage": "registry.example.com/prebaked/nemo:v3",
+  "dependencies": [
+    {
+      "index": 0,
+      "kind": "TrainingRuntime",
+      "rawUnchanged": false,
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "containerImages": [
+            "registry.example.com/prebaked/nemo:v3"
+          ],
+          "initContainerImages": [
+            "registry.example.com/prebaked/nemo:v3"
+          ]
+        }
+      ],
+      "resource": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainingRuntime",
+        "metadata": {
+          "name": "nemotron5-8b-runtime"
+        },
+        "spec": {
+          "template": {
+            "spec": {
+              "replicatedJobs": [
+                {
+                  "name": "node",
+                  "template": {
+                    "spec": {
+                      "template": {
+                        "spec": {
+                          "containers": [
+                            {
+                              "image": "registry.example.com/prebaked/nemo:v3",
+                              "name": "node"
+                            }
+                          ],
+                          "initContainers": [
+                            {
+                              "image": "registry.example.com/prebaked/nemo:v3",
+                              "name": "megatron-clone"
+                            }
+                          ],
+                          "schedulerName": "default-scheduler"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

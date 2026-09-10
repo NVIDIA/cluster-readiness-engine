@@ -1,0 +1,32 @@
+# A Certification that never set options.image. The trainer keeps the catalog
+# image, no container is rewritten, and the raw dependency bytes must come
+# back untouched: the strict no-op is what keeps default renders
+# byte-identical to before the feature existed.
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          name: nccl-all-reduce-runtime
+        trainer:
+          image: public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nccl-all-reduce-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: node
+                          image: public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9
+                      initContainers:
+                        - name: fix-ssh-permissions
+                          image: nvcr.io/nvidia/pytorch:26.01-py3
