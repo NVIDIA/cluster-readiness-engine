@@ -85,3 +85,4 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 075 | [On-Prem GB200/GB300 Override (Generic NVL72 Bare Metal)](075-onprem-gb200-gb300-override.md) |
 | 076 | [Configurable Gang Scheduler Queue Label Key (Run:ai Support)](076-gang-scheduler-queue-label-key.md) |
 | 077 | [Certification Workload Image Override](077-workload-image-override.md) |
+| 079 | [Declarative Labels for Generated Workload Objects](079-workload-object-labels.md) |
