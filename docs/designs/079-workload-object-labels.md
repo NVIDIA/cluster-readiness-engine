@@ -212,6 +212,10 @@ stage.
    helper. The controller then overlays its own identification labels and owner
    reference as it does today.
 
+   Preserve adapter-produced labels with unrelated keys. For a requested key
+   already present on the object, accept an identical value and reject a
+   different value with a construction error; neither side silently wins.
+
    `Adapter.Build` remains responsible for constructing the framework-specific
    typed object from `WorkloadSpec`. The Adapter interface does not gain a
    `SetWorkloadLabels` method, and future adapters need no label-specific code.
@@ -231,6 +235,20 @@ stage.
    Certification construction and the workload-object builder as a defensive
    check.
 
+   Bound each `labels` map to 32 entries (`maxProperties: 32`) and each value
+   to 63 characters (`additionalProperties.maxLength: 63`). Label keys must
+   satisfy the Kubernetes qualified-name grammar: an optional DNS-subdomain
+   prefix of at most 253 characters, followed by `/`, and a non-empty name of
+   at most 63 characters. Values may be empty and otherwise follow Kubernetes
+   label-value syntax. These bounds are chosen to keep CEL map iteration within
+   the API server's static cost budget, including the repeated metadata schema under
+   Certification's up-to-64 categories. The 32-entry cap is motivated by that
+   budget, but is an enforced API limit and must be documented as such.
+   Validate the composed workload metadata after merging global/category
+   labels and inserting any gang-scheduler queue label; exceeding 32 entries
+   fails rather than truncating labels. Adapter-produced and controller-owned
+   object labels are outside this metadata-map cap.
+
    Workload metadata is immutable in both presence and value. On `JobSpec`,
    combine a parent-level transition rule
    `has(self.workloadMetadata) == has(oldSelf.workloadMetadata)` with the
@@ -243,6 +261,10 @@ stage.
    immutability already covers WorkloadRun and Certification. Objects created
    without the field must remain without it on updates, including objects
    created before this schema change. Creation with or without it is allowed.
+
+   Retrofitting presence immutability for the existing `nodeHealthMonitor`,
+   `goodputMeasurement`, and `bandwidthMeasurement` fields is outside this ADR's
+   scope and should be tracked separately.
 
 7. **Do not infer propagation between metadata levels.** Ordinary
    `JobTemplate.metadata.labels` continue to label the CRE Job only. They are
@@ -281,6 +303,16 @@ stage.
   - Put Kubernetes label syntax and reserved-key OpenAPI/CEL validation on the
     shared metadata type so every containing CRD receives the same admission
     rules.
+  - Set the labels-map `maxProperties` to 32 and string-value `maxLength` to
+    63 for CEL cost budgeting. Use an OpenAPI pattern for value syntax and CEL
+    for map-key syntax; OpenAPI `pattern` does not constrain map keys. On the
+    labels map, sketch the reserved-key rule as
+    `self.all(k, k != 'app.kubernetes.io/managed-by' && !k.startsWith('nvcre.nvidia.com/'))`.
+    Add key-grammar rules with the 253-character prefix and 63-character name
+    bounds from Decision 6. Admission must enforce the complete syntax and
+    reserved-key contract; Go validation mirrors it, not a weaker subset.
+    Verify both per-rule and whole-schema cost budgets by installing all four
+    generated CRDs in envtest, especially the nested Certification path.
   - Add both parent-level presence invariance and field-level equality from
     Decision 6. Reject addition, removal, and value changes on updates so a
     checkpoint restart uses the original Job's labels.
@@ -305,7 +337,8 @@ stage.
   - Add shared validation and map-cloning/merge helpers.
   - Add `BuildObject(adapter, name, namespace, workloadSpec, metadata)`, which
     preserves any labels produced by an adapter and merges requested labels on
-    the returned `client.Object`.
+    the returned `client.Object`: identical values are idempotent, conflicting
+    values fail, and unrelated adapter labels survive.
 - `pkg/controller/job_controller.go` and `pkg/render/render.go`
   - Replace direct `adapter.Build` calls with `workload.BuildObject`.
   - Keep controller-owned labels and the owner reference applied by the Job
@@ -327,6 +360,9 @@ stage.
     template, and runtime dependencies as inputs. Check the effective queue and
     scheduler fields after runtime patches; keep this framework-specific
     inspection separate from generic workload-object label application.
+    NVCRE owns insertion of the TrainJob queue label, while runtime labels are
+    assertions over dependency payloads: restore a missing TrainJob key before
+    checking it, but reject missing or conflicting runtime keys without repair.
 - `pkg/controller/certification_controller.go` and
   `pkg/certification/certification.go`
   - Use the named transform stage after override resolution in reconciliation,
@@ -358,6 +394,11 @@ stage.
 
 ### Testing plan
 
+- Install all four generated CRDs in envtest to prove CEL cost-budget
+  acceptance, including Certification's nested category schema. Exercise
+  admission and Go validation at 32/33 labels, 63/64-character values,
+  253/254-character key prefixes, and 63/64-character key names. Cover merged
+  metadata and queue insertion exceeding the map cap without truncation.
 - API and helper tests:
   - valid arbitrary keys and empty values;
   - invalid label keys and values;
@@ -376,15 +417,23 @@ stage.
   must use generated CRDs and the API server, not just Go validators.
 - Workload-object construction tests assert both `kueue.x-k8s.io/queue-name` and
   `kai.scheduler/queue` on the built TrainJob's top-level `metadata.labels`.
+  Cover adapter-produced labels: unrelated keys survive, identical values
+  succeed, and conflicting values fail without mutating source maps.
 - Job controller integration covers a Workflow-created Job whose child
   TrainJob has user labels plus the controller-owned labels. A checkpoint
   restart case verifies the replacement TrainJob receives the same labels.
 - WorkloadRun tests cover controller and CLI-render construction, including the
   queue label derived from `gangScheduler`.
+- For both Certification and WorkloadRun without `workloadMetadata`, cover
+  KAI and Run:ai with an explicit queue and an omitted queue. Assert the
+  TrainJob receives the configured queue label with the explicit value or
+  `default-queue`, respectively; controller and CLI output must agree and
+  runtime queue labels must remain consistent.
 - WorkloadRun override cases start with queue A, then override only the TrainJob
   label to B, only a runtime Job/pod queue label to B, or both to B. All fail
   against the persisted queue A intent. A JSON patch removing the TrainJob
-  queue label restores A; removing a runtime queue label fails. Include runtime
+  queue label restores A; removing a runtime queue label fails. Assert that a
+  missing runtime label remains absent after failed validation. Include runtime
   patches changing launcher/worker labels or scheduler names,
   and replacement runtime references that cannot be validated. Matching A and
   unrelated overrides succeed. Check controller, resolved offline render, and
@@ -400,6 +449,18 @@ stage.
 - Structured outputs and integration goldens follow the repository's testutil
   conventions. Golden files are regenerated only after field-by-field review
   and explicit maintainer approval.
+
+### Validation
+
+| Area | Required proof |
+|---|---|
+| CRD admission | All generated CRDs install within CEL budgets; invalid labels, exceeded bounds, and forbidden updates are rejected |
+| Workflow template immutability | Adding, removing, or changing typed template workload metadata is rejected by the propagated JobSpec rules |
+| Workload builder | Unrelated adapter labels survive; identical collisions succeed; conflicting values fail |
+| Gang scheduling | Post-override validation restores missing TrainJob queue labels and rejects invalid runtime labels without repair |
+| Existing users | Configured gang scheduling emits explicit/default queue labels without workloadMetadata |
+| Controller/CLI parity | Both produce consistent resolved workload labels |
+| Label placement | Workload metadata does not automatically propagate to pod labels |
 
 ## Rationale
 
@@ -522,6 +583,16 @@ unimplementable passthrough semantics.
   Any system requiring another metadata level needs an explicit, separately
   tested transform for that level. ADR-076 remains the explicit queue-label
   exception.
+- **ADR-078 is held by [PR #336](https://github.com/NVIDIA/cluster-readiness-engine/pull/336)**
+  (`078-jobset-ownership.md`, JobSet ownership). The design index on this
+  branch therefore runs `077` to `079` on purpose; ADR-080 is likewise held by
+  open PR #338. The gap is merge ordering, not a free number. Whichever of
+  these records merges later rebases onto the others so the index reads
+  `077 / 078 / 079 / 080` without a duplicate or a silent drop.
+- Retrofitting presence immutability onto the three existing optional
+  `JobSpec` pointer fields (Decision 6) is a named follow-on, to be filed as
+  its own issue before this record is accepted, so the CRD does not ship two
+  meanings of "immutable" without a tracked owner.
 - Kueue may mutate `TrainJob.spec.suspend` during admission. The workload
   adapter's Pending phase already models an admission-controlled TrainJob that
   has not started; this ADR does not add Kueue lifecycle management.
@@ -537,7 +608,8 @@ unimplementable passthrough semantics.
 - [ADR-003: Strongly-Typed Workload Adapter Pattern](003-workload-adapter-pattern.md)
 - [ADR-076: Configurable Gang Scheduler Queue Label Key](076-gang-scheduler-queue-label-key.md)
 - [ADR-077: Certification Workload Image Override](077-workload-image-override.md)
-- `api/v1alpha1/job_types.go` — `WorkloadSpec`, `JobSpec`, and `JobTemplateSpec`
+- `api/v1alpha1/job_types.go` — `WorkloadSpec` and `JobSpec`
+- `api/v1alpha1/workflow_types.go` — `JobTemplateSpec` and `WorkflowSpec`
 - `api/v1alpha1/workloadrun_types.go` — `WorkloadRunSpec` and `GangSchedulerSpec`
 - `api/v1alpha1/certification_types.go` — `CategoryOptions` and Certification spec immutability
 - `pkg/workload/adapter.go` and `pkg/workload/trainjob.go` — adapter contract, object construction, and pod-template injection
