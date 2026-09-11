@@ -16,6 +16,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -475,21 +477,114 @@ func TestAttestWorkflowIsGatedToThisRepository(t *testing.T) {
 	}
 }
 
-// TestAttestSelftestIsRefGated pins the caller-side guard that stops a
-// workflow_dispatch of attest-selftest.yml at a v* tag from reaching attest.yml
-// and minting the release signing identity (#340).
+// TestMainBranchAttestCallersPinExactRefGuards pins the full job-level `if:`
+// expressions that keep workflow_dispatch off a v* tag from minting the release
+// signing identity (#340).
 //
-// Matching publish.yml: both the smoke job that calls attest.yml and the
-// report job that interprets its result must carry github.ref == refs/heads/main.
-// Without the report guard, a skipped smoke job (correct under the ref guard)
-// still fails the workflow via always()+skipped-as-error.
-func TestAttestSelftestIsRefGated(t *testing.T) {
-	path := filepath.Join(workflowDir, wfAttestSmoke)
+// Substring needles are not enough: appending `|| github.event_name ==
+// 'workflow_dispatch'` keeps both needles present while making the guard
+// vacuous (`&&` binds tighter than `||`, and these workflows are
+// workflow_dispatch-capable). Pinning the whitespace-normalized whole
+// expression is the difference between asserting the guard is mentioned and
+// asserting the guard is the condition.
+//
+// publish.yml carries the same load-bearing shape on `tag` / `attested`. Both
+// files are tabled here so deleting either guard fails the same test.
+func TestMainBranchAttestCallersPinExactRefGuards(t *testing.T) {
+	const (
+		repoAndMain = "github.repository == 'NVIDIA/cluster-readiness-engine'" +
+			" && github.ref == 'refs/heads/main'"
+		alwaysRepoAndMain = "always() && github.repository == 'NVIDIA/cluster-readiness-engine'" +
+			" && github.ref == 'refs/heads/main'"
+	)
+	cases := []struct {
+		workflow string
+		job      string
+		wantIf   string
+	}{
+		{wfAttestSmoke, "smoke", repoAndMain},
+		{wfAttestSmoke, "report", alwaysRepoAndMain},
+		{wfPublish, "tag", repoAndMain},
+		{wfPublish, "attested", alwaysRepoAndMain},
+	}
+	for _, tc := range cases {
+		t.Run(tc.workflow+"/"+tc.job, func(t *testing.T) {
+			got := normalizeWorkflowIf(jobIfCondition(t, tc.workflow, tc.job))
+			if got != tc.wantIf {
+				t.Errorf("%s job %q if: = %q, want exact %q; a widened expression that still "+
+					"mentions the needles would mint the release signing identity on a v* "+
+					"workflow_dispatch", tc.workflow, tc.job, got, tc.wantIf)
+			}
+		})
+	}
+}
+
+// TestAttestDispatchCallersRequireRefGuards closes the class for future
+// workflow_dispatch callers of attest.yml that forget their own ref guard.
+//
+// attest.yml's non-tag refusal only fires when allow_untagged is false; a
+// caller that forgets a ref guard and does not pass the flag takes the release
+// branch, hits no check, and mints the identity. Enumerating every
+// workflow_dispatch caller and requiring a ref constraint on the path to each
+// attest.yml call is what actually closes that class, whatever inputs the
+// caller passes.
+//
+// A "ref guard" is either a job-level `if:` that mentions github.ref, or a run
+// block that compares GITHUB_REF (release.yml's dispatch check). The guard must
+// sit on the attest-calling job itself or on a needs-ancestor: a dead job with
+// a ref check elsewhere does not count.
+func TestAttestDispatchCallersRequireRefGuards(t *testing.T) {
+	for _, path := range workflowFiles(t) {
+		base := filepath.Base(path)
+		if base == wfAttest {
+			continue
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		triggers := workflowTriggers(raw, t)
+		if _, ok := triggers["workflow_dispatch"]; !ok {
+			continue
+		}
+
+		jobs := loadJobsWithNeeds(t, raw, base)
+		var callers []string
+		for name, job := range jobs {
+			if isAttestWorkflowCall(job.Uses) {
+				callers = append(callers, name)
+			}
+		}
+		if len(callers) == 0 {
+			continue
+		}
+		sort.Strings(callers)
+
+		for _, caller := range callers {
+			if !jobOrAncestorHasRefGuard(jobs, caller) {
+				t.Errorf("%s: job %q calls attest.yml and the workflow has workflow_dispatch, "+
+					"but neither %q nor any needs-ancestor carries a github.ref / GITHUB_REF "+
+					"guard; without one a dispatch at a v* ref mints the release signing identity",
+					base, caller, caller)
+			}
+		}
+	}
+}
+
+// normalizeWorkflowIf collapses YAML folded-scalar whitespace so an exact
+// expression comparison is stable across `>-` line breaks.
+func normalizeWorkflowIf(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func jobIfCondition(t *testing.T, workflow, jobName string) string {
+	t.Helper()
+
+	path := filepath.Join(workflowDir, workflow)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
 	}
-
 	var wf struct {
 		Jobs map[string]struct {
 			If string `json:"if"`
@@ -498,22 +593,82 @@ func TestAttestSelftestIsRefGated(t *testing.T) {
 	if err := yaml.Unmarshal(raw, &wf); err != nil {
 		t.Fatalf("parse %s: %v", path, err)
 	}
+	job, ok := wf.Jobs[jobName]
+	if !ok {
+		t.Fatalf("%s is missing job %q", workflow, jobName)
+	}
+	return job.If
+}
 
-	const (
-		wantRepo = "github.repository == 'NVIDIA/cluster-readiness-engine'"
-		wantRef  = "github.ref == 'refs/heads/main'"
-	)
-	for _, name := range []string{"smoke", "report"} {
-		job, ok := wf.Jobs[name]
-		if !ok {
-			t.Fatalf("%s is missing job %q", wfAttestSmoke, name)
+type policyJob struct {
+	If    string
+	Uses  string
+	Needs []string
+	Runs  []string
+}
+
+func loadJobsWithNeeds(t *testing.T, raw []byte, base string) map[string]policyJob {
+	t.Helper()
+
+	var doc struct {
+		Jobs map[string]struct {
+			If    string        `json:"if"`
+			Uses  string        `json:"uses"`
+			Needs stringOrSlice `json:"needs"`
+			Steps []struct {
+				Run string `json:"run"`
+			} `json:"steps"`
+		} `json:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("parse %s: %v", base, err)
+	}
+	out := make(map[string]policyJob, len(doc.Jobs))
+	for name, job := range doc.Jobs {
+		runs := make([]string, 0, len(job.Steps))
+		for _, step := range job.Steps {
+			if step.Run != "" {
+				runs = append(runs, step.Run)
+			}
 		}
-		if !strings.Contains(job.If, wantRepo) {
-			t.Errorf("%s job %q is missing the repository gate %s", wfAttestSmoke, name, wantRepo)
-		}
-		if !strings.Contains(job.If, wantRef) {
-			t.Errorf("%s job %q is missing the ref guard %s; without it a v* "+
-				"workflow_dispatch mints the release signing identity", wfAttestSmoke, name, wantRef)
+		out[name] = policyJob{
+			If:    job.If,
+			Uses:  job.Uses,
+			Needs: append([]string(nil), job.Needs...),
+			Runs:  runs,
 		}
 	}
+	return out
+}
+
+func jobHasRefGuard(job policyJob) bool {
+	if strings.Contains(job.If, "github.ref") {
+		return true
+	}
+	for _, run := range job.Runs {
+		if strings.Contains(run, "GITHUB_REF") {
+			return true
+		}
+	}
+	return false
+}
+
+func jobOrAncestorHasRefGuard(jobs map[string]policyJob, name string) bool {
+	seen := map[string]bool{}
+	var walk func(string) bool
+	walk = func(n string) bool {
+		if seen[n] {
+			return false
+		}
+		seen[n] = true
+		job, ok := jobs[n]
+		if !ok {
+			return false
+		}
+		if jobHasRefGuard(job) {
+			return true
+		}
+		return slices.ContainsFunc(job.Needs, walk)
+	}
+	return walk(name)
 }
