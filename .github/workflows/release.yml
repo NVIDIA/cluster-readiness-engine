@@ -460,7 +460,7 @@ jobs:
     strategy:
       fail-fast: false
       # Ten legs, and the four binary legs sign twice, so an unbounded fan-out
-      # is ~13 near-simultaneous calls to public-good Fulcio and Rekor from one
+      # is ~14 near-simultaneous calls to public-good Fulcio and Rekor from one
       # caller. attest.yml retries on a fixed 5s/10s backoff with no jitter, so
       # legs that fail together retry together. The gate requires every leg, so
       # one correlated blip fails the whole release. Three at a time keeps the
