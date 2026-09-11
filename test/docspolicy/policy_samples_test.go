@@ -6,6 +6,7 @@ package docspolicy
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -63,8 +64,7 @@ func TestPolicySamplePinsTheReleaseIdentity(t *testing.T) {
 		globs := imageGlobs(t, spec["matchImageReferences"], "matchImageReferences")
 		assertNarrowManagerGlobs(t, globs)
 
-		identities := kyvernoIdentities(t, spec)
-		assertExactReleaseIdentity(t, identities)
+		attestorName := assertKyvernoSingleTightAttestor(t, spec)
 
 		atts := asSlice(t, spec["attestations"], "spec.attestations")
 		if !attestationTypePresent(atts, wantProvenanceType) {
@@ -82,15 +82,23 @@ func TestPolicySamplePinsTheReleaseIdentity(t *testing.T) {
 		if !strings.Contains(joined, "slsaProvenance") {
 			t.Error("validations must reference attestations.slsaProvenance")
 		}
-		for _, key := range []string{"initContainers", "ephemeralContainers"} {
-			if !strings.Contains(joined, key) {
-				t.Errorf("validations must include images.%s (containers alone is incomplete)", key)
+		assertValidationsReferenceOnlyAttestor(t, joined, attestorName)
+		// Per expression, not across the joined set: one validation covering
+		// init/ephemeral must not paper over another that dropped back to
+		// images.containers alone.
+		for i, raw := range vals {
+			expr := asString(asMap(t, raw, "validations[]")["expression"])
+			for _, key := range []string{"initContainers", "ephemeralContainers"} {
+				if !strings.Contains(expr, key) {
+					t.Errorf("validations[%d] must include images.%s (containers alone is incomplete)", i, key)
+				}
 			}
 		}
-		// Ephemeral coverage also needs the subresource in matchConstraints.
+		// Ephemeral coverage also needs the subresource routed to this policy.
 		rules := asSlice(t, match["resourceRules"], "spec.matchConstraints.resourceRules")
-		if !resourceRulesInclude(rules, "pods/ephemeralcontainers") {
-			t.Error("matchConstraints.resourceRules must include pods/ephemeralcontainers")
+		if !resourceRuleCoversEphemeralContainers(rules) {
+			t.Error("matchConstraints.resourceRules must cover pods/ephemeralcontainers " +
+				`on ""/v1 with UPDATE, alongside pods in the same rule`)
 		}
 	})
 
@@ -284,16 +292,44 @@ func assertNarrowManagerGlobs(t *testing.T, globs []string) {
 	}
 }
 
-func kyvernoIdentities(t *testing.T, spec map[string]any) []any {
+// assertKyvernoSingleTightAttestor mirrors the policy-controller len==1 pin:
+// Kyverno admits if any listed attestor verifies, so a second looser attestor
+// would neuter the release identity while attestors[0]-only checks stayed green.
+func assertKyvernoSingleTightAttestor(t *testing.T, spec map[string]any) string {
 	t.Helper()
 	atts := asSlice(t, spec["attestors"], "spec.attestors")
-	if len(atts) == 0 {
-		t.Fatal("spec.attestors is empty")
+	if len(atts) != 1 {
+		t.Fatalf("spec.attestors has %d entries, want exactly 1", len(atts))
 	}
-	attestor := asMap(t, atts[0], "attestors[0]")
-	cosign := asMap(t, attestor["cosign"], "attestors[0].cosign")
-	keyless := asMap(t, cosign["keyless"], "attestors[0].cosign.keyless")
-	return asSlice(t, keyless["identities"], "keyless.identities")
+	var name string
+	for i, raw := range atts {
+		attestor := asMap(t, raw, "attestors[]")
+		name = asString(attestor["name"])
+		if name == "" {
+			t.Fatalf("attestors[%d].name is empty", i)
+		}
+		cosign := asMap(t, attestor["cosign"], "attestors[].cosign")
+		keyless := asMap(t, cosign["keyless"], "attestors[].cosign.keyless")
+		ids := asSlice(t, keyless["identities"], "keyless.identities")
+		assertExactReleaseIdentity(t, ids)
+	}
+	return name
+}
+
+var attestorSelector = regexp.MustCompile(`attestors\.([A-Za-z_][A-Za-z0-9_]*)`)
+
+func assertValidationsReferenceOnlyAttestor(t *testing.T, joined, wantName string) {
+	t.Helper()
+	wantRef := "attestors." + wantName
+	if !strings.Contains(joined, wantRef) {
+		t.Errorf("validations must reference %s", wantRef)
+	}
+	for _, m := range attestorSelector.FindAllStringSubmatch(joined, -1) {
+		if m[1] != wantName {
+			t.Errorf("validations reference attestors.%s; only %s is defined "+
+				"(a second looser attestor in CEL would neuter the pin)", m[1], wantRef)
+		}
+	}
 }
 
 func assertExactReleaseIdentity(t *testing.T, identities []any) {
@@ -341,12 +377,30 @@ func assertExactReleaseIdentity(t *testing.T, identities []any) {
 	}
 }
 
-func resourceRulesInclude(rules []any, resource string) bool {
+// resourceRuleCoversEphemeralContainers requires the subresource on the core
+// v1 Pod rule with UPDATE (the operation kubectl debug uses), and pods in the
+// same rule so a tidy-up that relocates the subresource under apps cannot keep
+// the assertion green while the API server never routes it to the policy.
+func resourceRuleCoversEphemeralContainers(rules []any) bool {
 	for _, r := range rules {
 		m, _ := r.(map[string]any)
-		if slices.Contains(asStringSlice(m["resources"]), resource) {
-			return true
+		resources := asStringSlice(m["resources"])
+		if !slices.Contains(resources, "pods/ephemeralcontainers") {
+			continue
 		}
+		if !slices.Contains(resources, "pods") {
+			return false
+		}
+		if !slices.Contains(asStringSlice(m["apiGroups"]), "") {
+			return false
+		}
+		if !slices.Contains(asStringSlice(m["apiVersions"]), "v1") {
+			return false
+		}
+		if !slices.Contains(asStringSlice(m["operations"]), "UPDATE") {
+			return false
+		}
+		return true
 	}
 	return false
 }
