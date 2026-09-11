@@ -116,7 +116,7 @@ A **daily re-verification job** re-runs the same suite against the latest releas
 ### Workflow topology
 
 ```
-publish.yml (tag)  ──┐
+publish.yml (main)  ──┐
                      ├──> attest.yml (workflow_call, isolated signer)
 release.yml (tag)  ──┘         │
                                ├─ image index      -> provenance

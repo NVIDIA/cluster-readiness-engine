@@ -112,7 +112,7 @@ for the release identity pinned above, it is tag protection / repository ruleset
 still go green while proving less than Build L2: you no longer know the attestation was
 minted inside the reusable workflow. The published commands keep the exact pin. The
 gate-test enumeration that backs this claim lives in
-[SECURITY.md](../../SECURITY.md#supply-chain) (kept in one place so renaming a test
+[SECURITY.md](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/SECURITY.md#supply-chain) (kept in one place so renaming a test
 cannot leave two pages asserting enforcement by a name that no longer exists); this page
 links rather than duplicates it.
 
