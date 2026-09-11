@@ -30,9 +30,11 @@
 # the input validation for every subject kind, but validation only -- no
 # signing branch.
 #
-# The run signs under a NON-RELEASE identity: the caller ref is a branch, so the
-# Fulcio SAN carries `@refs/heads/...` and attest.yml logs a loud non-production
-# warning. It cannot be mistaken for, or verified as, a release attestation.
+# The run signs under a NON-RELEASE identity: the smoke job's ref guard holds
+# github.ref to refs/heads/main, so the Fulcio SAN carries `@refs/heads/main`
+# and attest.yml logs a loud non-production warning. It cannot be mistaken for,
+# or verified as, a release attestation. That guard is load-bearing — see the
+# smoke job comment — because workflow_dispatch accepts a tag as its ref.
 
 name: Attest Self-Test
 
@@ -68,7 +70,19 @@ concurrency:
 jobs:
   smoke:
     name: Sign a non-release image through attest.yml
-    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    # The ref guard is load-bearing, not hygiene. workflow_dispatch accepts a
+    # TAG as its ref, and this workflow always passes allow_untagged: true.
+    # Dispatched from refs/tags/v*, CALLER_REF in attest.yml is the tag, so the
+    # non-tag refusal never fires, the non-production warning never prints, and
+    # Fulcio mints attest.yml@refs/tags/v* — the exact identity SECURITY.md
+    # tells users proves an official release — for whatever image_tag and
+    # expected_digest the dispatch supplied. The v* tag ruleset does not cover
+    # this: minting that identity creates no tag and moves no tag. allow_untagged
+    # cannot prevent it either; it only relaxes a check, it does not influence
+    # the certificate. Match publish.yml: hold the caller to refs/heads/main.
+    if: >-
+      github.repository == 'NVIDIA/cluster-readiness-engine'
+      && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
@@ -89,7 +103,14 @@ jobs:
   report:
     name: Report outcome
     needs: [smoke]
-    if: always() && github.repository == 'NVIDIA/cluster-readiness-engine'
+    # Carries the same ref guard as smoke. Without it a workflow_dispatch from a
+    # non-main ref skips smoke — which is correct, that is what the guard is for
+    # — and then this job still runs on always() and treats the skip as a failed
+    # caller gate, turning a deliberate no-op into a red run.
+    if: >-
+      always()
+      && github.repository == 'NVIDIA/cluster-readiness-engine'
+      && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
