@@ -279,7 +279,19 @@ jobs:
           # Release attestations come from tags. A non-tag run is permitted only
           # when the caller says so explicitly, so a test run cannot quietly
           # produce something shaped like a release attestation.
-          if [[ "${CALLER_REF}" != refs/tags/v* ]]; then
+          #
+          # The converse is also refused: allow_untagged: true on a v* tag is
+          # contradictory. Callers that intend a non-production run must not
+          # reach here on a release ref (see attest-selftest.yml / publish.yml
+          # ref guards); callers that intend a release run must not pass the
+          # escape hatch. Without this, a future caller that forgets its own
+          # ref guard and passes allow_untagged: true from refs/tags/v* would
+          # mint the release identity while believing it asked for a test run.
+          if [[ "${CALLER_REF}" == refs/tags/v* ]]; then
+            if [[ "${IN_ALLOW_UNTAGGED}" == "true" ]]; then
+              fail "allow_untagged: true is contradictory on release ref ${CALLER_REF}; refuse rather than mint the release identity for a caller that claimed a non-production run"
+            fi
+          else
             if [[ "${IN_ALLOW_UNTAGGED}" != "true" ]]; then
               fail "attest.yml refuses to run on ${CALLER_REF}; pass allow_untagged: true for a non-production test run"
             fi
