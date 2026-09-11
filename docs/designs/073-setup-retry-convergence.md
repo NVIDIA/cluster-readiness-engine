@@ -1,6 +1,8 @@
 # ADR-073: Convergent `setup init` Retry After a Partial Kubeflow Trainer Install
 
 > **Status:** Accepted
+>
+> **Amended by:** [ADR-078](078-jobset-ownership.md) (proposed) — JobSet CRD retention, JobSet-instance recovery gating, and protection of unrelated resources in `kubeflow-system` during automatic recovery. The proposal reverses this record's accepted namespace-cleanup policy for resources within its protected inventory; Events, core `Endpoints`, and EndpointSlices are excluded. These changes are not yet accepted.
 
 ## Context
 
@@ -11,6 +13,8 @@
 3. `helm rollback` failed on the same four conflicts — Helm's own recovery tool re-applies through the same mechanics, so there is no Helm-native way out.
 4. `nvcrectl setup status` reported **ready** while the Trainer Helm revision was `failed`. Issue #179 / PR #188 fixes the reporting half: it adds `helmStateFunc` plumbing that queries `helm status -o json` per managed release and blocks readiness on `failed`/`pending-*` states.
 5. The recovery that actually worked was manual: `helm uninstall kubeflow-trainer`, delete its four CRDs (`trainjobs`, `trainingruntimes`, `clustertrainingruntimes` in `trainer.kubeflow.org`; `jobsets` in `jobset.x-k8s.io`), delete the `kubeflow-system` namespace, then re-run the pinned `setup init`.
+
+> **Historical procedure:** step 5 records the recovery observed in issue #180. [ADR-078](078-jobset-ownership.md) proposes retaining JobSet CRDs and adding namespace-resource protection. An implementation of ADR-078 must use its amended procedure below, rather than copying this historical four-CRD deletion sequence.
 
 So the reporting gap is closed by #188, but `setup init` itself still retries into a wall: an identical command against identical conflicted state produces an identical failure, forever. `setup init` needs to converge from any partial state, and it needs to do so without ever endangering user workloads.
 
@@ -24,6 +28,16 @@ So the reporting gap is closed by #188, but `setup init` itself still retries in
    - **(a) Automatic safe recovery.** When the failure is conflict-classified AND the safety gate passes (see decision 5), `setup init` performs the field-validated recovery itself, exactly once per run: `helm uninstall kubeflow-trainer` → delete the four `trainer.kubeflow.org`/`jobset.x-k8s.io` CRDs (reusing [`deleteCRDsByGroup`](../../pkg/setup/setup.go)) → delete the `kubeflow-system` namespace and wait ([`WaitForNamespaceDeletion`](../../pkg/setup/setup.go#L477)) → reinstall the pinned chart fresh. CRDs are deleted deliberately and reinstalled by the fresh chart install; the safety gate guarantees no instances exist, so no data is lost.
    - **(c) Fail fast with the exact procedure.** When the failure is conflict-classified but the safety gate does not pass — or classification is ambiguous — `setup init` fails with the manual recovery procedure from issue #180 printed verbatim (uninstall, the four CRD deletions, namespace deletion, pinned re-init) plus the reason automatic recovery was refused.
    - Option (b), Helm-level `--force` or `--take-ownership`, is rejected outright (see Alternatives Considered).
+
+   > **Proposed amendments from ADR-078 (not yet accepted):** upon acceptance and implementation, the following replace the corresponding instructions in decisions 1, 3(a), 3(c), and 5:
+   >
+   > - **Pinned-version skip (1):** apply ADR-078 decision 2's JobSet CRD existence check before skipping. An absent CRD on a deployed release requires operator repair before either skip or upgrade; a failed CRD read stops the dependency phase. A present CRD preserves the pinned-version skip without a full ownership probe.
+   > - **Unknown release state (4):** `helmStateUnknown` stops the dependency phase before skip or Helm mutation, reports the preserved state-query cause, and prints ADR-078's manual-install fallback, instead of `upgrade --install`. The install decision is now evidence-dependent, and an unreadable release cannot be classified as fresh or existing; the `unknown-state-attempts` case is replaced by that refusal.
+   > - **Automatic recovery (3a):** require ADR-078 decision 4's operator-maintained quiescence and repeat its complete gate after confirmation before uninstalling Trainer. Recheck workload blockers before each Trainer CRD deletion, retain `jobsets.jobset.x-k8s.io`, and perform fresh discovery and a final protected namespace inventory before namespace deletion. Compare against expected cleanup using preserved ownership and UID evidence; delete with the inspected namespace UID precondition, wait, then reinstall using the selected JobSet mode preserved under ADR-078 decision 2. Keep the existing SSA eligibility, confirmation, and one-attempt limit.
+   > - **Manual guidance (3c):** explain blockers and omit JobSet CRD deletion from every recovery plan and manual procedure. Do not print unconditional namespace deletion when protected resources block it. On a late refusal, report partial completion and stop further deletion and automatic reinstall; do not claim that earlier cleanup was undone. Follow ADR-078's ownership guidance and manual-install fallback where applicable.
+   > - **Safety rails (5):** preserve the TrainJob and non-Helm runtime blockers. Bundled-controller removal remains blocked by any JobSets; external JobSets outside `kubeflow-system` do not alone block recovery, while namespace-local JobSets and protected foreign resources do. Events, core `Endpoints`, and EndpointSlices are excluded as specified in ADR-078. Required inspection failures block recovery. Repeated checks cannot establish quiescence or eliminate check-to-delete races; ADR-078 replaces the absolute safety guarantee with protection conditional on operator-maintained quiescence, including the affected cluster-wide writes.
+   >
+   > Implementations of ADR-078 must update `trainerRecoveryCRDs`, `printManualTrainerRecovery`, `printTrainerRecoveryPlan`, and the actual cleanup operations together so none retains the old four-CRD deletion procedure. The original text remains here as the accepted ADR-073 record until the proposed amendment takes effect.
 
 4. **Enumerate the partial states and give each a deterministic action**, so `setup init` converges from any of them:
 
@@ -100,6 +114,7 @@ So the reporting gap is closed by #188, but `setup init` itself still retries in
 ## References
 
 - Issue #180 — `setup init` retry certificate field-ownership conflicts (field evidence and manual recovery).
+- [ADR-078](078-jobset-ownership.md) — proposes preserving JobSet CRDs, refining this record's JobSet recovery safety gate, and blocking automatic recovery when namespace deletion would remove unrelated resources, reversing this record's accepted namespace-cleanup policy. Decision 2 (attempt-then-classify for webhook SSA) is unchanged.
 - Issue #179 / PR #188 — `setup status` Helm release health (`helmStateFunc` plumbing this ADR reuses).
 - ADR-064: Helm chart distribution.
 - ADR-065: nvcrectl Helm install — the decision to drive Helm via CLI subprocess rather than SDK, which shapes the attempt-then-classify design.
