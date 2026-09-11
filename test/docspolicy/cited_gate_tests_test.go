@@ -20,15 +20,16 @@ import (
 var gateTestCitePages = []string{
 	"../../SECURITY.md",
 	"../../docs/operations/verifying-artifacts.md",
+	"../../docs/designs/074-supply-chain-attestation.md",
 }
 
 // testIdent matches a Go test function identifier cited in prose.
 var testIdent = regexp.MustCompile(`\bTest[A-Z][A-Za-z0-9_]+\b`)
 
-// TestCitedGateTestsExist fails when SECURITY.md or verifying-artifacts.md
-// names a Test* that is not defined under test/releasepolicy/ or
-// test/docspolicy/. Keeps the gate-test enumeration honest without requiring
-// the list to be duplicated verbatim in both pages.
+// TestCitedGateTestsExist fails when a gateTestCitePages entry names a
+// Test* that is not defined under test/releasepolicy/ or test/docspolicy/.
+// Keeps the gate-test enumeration honest without requiring the list to be
+// duplicated verbatim across SECURITY.md, verifying-artifacts.md, and ADR-074.
 func TestCitedGateTestsExist(t *testing.T) {
 	defined := definedTests(t, []string{"../releasepolicy", "."})
 
