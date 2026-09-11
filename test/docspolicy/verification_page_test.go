@@ -189,3 +189,58 @@ func navHasPath(node any, want string) bool {
 	}
 	return false
 }
+
+// securityMd is the root security policy; its fenced verify commands are as
+// copy-pasteable as the operations page, so a wrong-org or missing identity
+// pin there is the same class of defect TestVerificationPagePinsAnExactIdentity
+// catches for verifying-artifacts.md.
+const securityMd = "../../SECURITY.md"
+
+// TestSecurityMdPinsAnExactIdentity extends the exact-identity check to
+// SECURITY.md's bash fences. TestPublishedVerifyCommandsAreExact only rejects
+// the regexp form; this one requires the NVIDIA attest.yml identity on every
+// cosign verify* command, matching what TestVerificationPagePinsAnExactIdentity
+// already enforces for the operations page.
+func TestSecurityMdPinsAnExactIdentity(t *testing.T) {
+	raw, err := os.ReadFile(securityMd)
+	if err != nil {
+		t.Fatalf("read %s: %v", securityMd, err)
+	}
+	matches := bashFence.FindAllStringSubmatch(string(raw), -1)
+	if len(matches) == 0 {
+		t.Fatalf("%s has no ```bash blocks with verify commands", securityMd)
+	}
+	blocks := make([]string, 0, len(matches))
+	for _, m := range matches {
+		blocks = append(blocks, m[1])
+	}
+	joined := strings.Join(blocks, "\n")
+
+	if strings.Contains(joined, "--certificate-identity-regexp") {
+		t.Error("SECURITY.md publishes --certificate-identity-regexp in a fenced command")
+	}
+
+	const wantIdentity = "https://github.com/NVIDIA/cluster-readiness-engine" +
+		"/.github/workflows/attest.yml@refs/tags/"
+
+	cmds := cosignVerifyCommands(joined)
+	if len(cmds) == 0 {
+		t.Fatal("SECURITY.md publishes no cosign verify commands in bash fences")
+	}
+	for _, c := range cmds {
+		flat := strings.Join(strings.Fields(c), " ")
+		if !strings.Contains(flat, "--certificate-identity") {
+			t.Errorf("SECURITY.md command pins no --certificate-identity: %s", flat)
+			continue
+		}
+		// SECURITY.md inlines the identity; do not accept ${ID} here. A
+		// command that set ID to another repository could otherwise ride on a
+		// different fence's literal and still pass a page-wide check.
+		if !strings.Contains(flat, wantIdentity) {
+			t.Errorf("SECURITY.md command does not pin this repository's identity: %s", flat)
+		}
+		if !strings.Contains(flat, "--certificate-oidc-issuer") {
+			t.Errorf("SECURITY.md command pins no --certificate-oidc-issuer: %s", flat)
+		}
+	}
+}
