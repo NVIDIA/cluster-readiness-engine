@@ -6,8 +6,9 @@
 
 Issue #150 asked for Kubernetes Events so that `kubectl describe` explains a
 resource's history without controller log access. It landed in two halves.
-Commit `a331c85` wired an `EventRecorder` into the Job and Workflow
-reconcilers, and #250 wired the remaining four (Certification,
+The Workflow reconciler already had an `EventRecorder`; commit `a331c85`
+populated the Job reconciler's, which `main.go` had left nil, and #250 wired
+the remaining four (Certification,
 GoodputMeasurement, BandwidthMeasurement, WorkloadRun) and gave each a nil-safe
 `warnf` helper. Both changes emit only **Warning events tied to a failed action
 on the current reconcile pass**: a child Create rejected by the API server, an
@@ -17,9 +18,11 @@ recurs only when it fails again.
 
 Issue #252 is the deliberately split-off other half: events on the phase
 transitions themselves (InProgress, Succeeded, Failed). #250 excluded them
-because they need dedup logic against the poll. Every reconciler requeues on a
-configurable interval (15s in production), and a naive event at the status
-write would fire once per pass, not once per transition.
+because they need dedup logic against the poll. Every reconciler requeues:
+Job, Workflow, and Certification on a configurable interval (15s in
+production), WorkloadRun on a fixed 15s package constant, and
+GoodputMeasurement on its 60s default sample interval. A naive event at the
+status write would fire once per pass, not once per transition.
 
 Events RBAC and every recorder are already in place. The remaining problem is
 placement and dedup. Two facts about the code shape the design.
@@ -28,7 +31,7 @@ placement and dedup. Two facts about the code shape the design.
 `setExclusiveStatusCondition` ([status.go](../../pkg/controller/status.go))
 returns `true` whenever any condition in the exclusive set differs after the
 write: a reason or message update within the same phase (Certification
-`WaitingForNodes` to `Running`, a progress message rewritten each pass), an
+`WaitingForNodes` to `WorkflowCreated`, a progress message rewritten each pass), an
 `ObservedGeneration` bump after a spec edit, or a caller-supplied `extra`
 mutation. Emitting on `changed` would produce a Normal event on every message
 refresh. Dedup has to key on which condition type flipped to `True`.
@@ -58,6 +61,12 @@ Both facts drive the scope decision below.
    phases. Exclude the two measurement tiers.** Job, Workflow, Certification,
    and WorkloadRun each emit at most one event when their exclusive condition
    set flips to `InProgress`, `Succeeded`, or `Failed`. Twelve sites.
+
+   This amends the scope in #252's title, "across all six reconcilers": the
+   two measurement reconcilers are deliberately excluded for the reasons
+   below, and an implementation matching this record should not be bounced
+   for not matching the issue's title. The trigger to revisit is a future
+   `Failed` condition on a measurement CRD.
 
    GoodputMeasurement and BandwidthMeasurement emit no transition events. Their
    CRDs define only `Measuring` and `Complete`; there is no `Failed` phase to
@@ -109,6 +118,14 @@ Both facts drive the scope decision below.
    callback of `setJobHardwareFailed` and `setJobValidationStatus`, emit after
    the write succeeds, never on a failed write. With the Workflow-driven
    timeout write from decision 3, sixteen sites in total.
+
+   WorkloadRun's additive `ValidationFailed` condition is **status-only** and
+   gets no event. It is a mirror of the Workflow's `ValidationFailed`, which
+   is itself a roll-up of the Job verdict, so the same threshold finding
+   already has a Warning on the Job (`ThresholdViolation`) and a Failed
+   transition on the Workflow (`JobValidationFailed`); a third copy on the
+   WorkloadRun would add a row without adding information. The WorkloadRun's
+   own `Failed` transition is what its Events section shows.
 
 2. **Dedup on the true-type flip, detected inside the write callback.** A
    transition is "the condition type that is `True` after the write differs
@@ -192,22 +209,55 @@ Both facts drive the scope decision below.
    the Events section as in the Conditions block, and the existing tier-prefixed
    reason vocabulary is reused rather than doubled.
 
-5. **The two Certification pre-Workflow validation failures are covered by the
-   Failed transition; no separate site is added.** #252 also asks for a Warning
-   on the two build/validation failure paths before Workflow creation
-   ([certification_controller.go](../../pkg/controller/certification_controller.go),
-   the two `setCertificationFailed(..., ReasonWorkflowValidationFailed, ...)`
-   calls). Both go terminal through `setCertificationFailed`, so under
-   decision 4 they now emit `Warning / WorkflowValidationFailed` with the
-   validation error as the message, at most once. Adding a hand-placed `warnf`
-   there as well would produce a redundant pair with the same reason.
+5. **The Certification catch-alls are covered by the Failed transition, once
+   they stop overwriting a more specific reason.** #252 also asks for a
+   Warning on the two `setCertificationFailed(..., ReasonWorkflowValidationFailed, ...)`
+   calls in
+   [certification_controller.go](../../pkg/controller/certification_controller.go).
+   They are not dedicated validation paths; they are generic catch-alls
+   around the whole `createWorkflowForCategory` step. Today that matters: on
+   a rejected Workflow `Create`, `createWorkflowForCategory` writes
+   `Failed / WorkflowFailed` and returns the error, and the caller's catch-all
+   then rewrites the same condition to `Failed / WorkflowValidationFailed`.
+   Under emit-on-flip the second write is a reason-only change and emits
+   nothing, so Events would say `WorkflowFailed` while Conditions settle on
+   `WorkflowValidationFailed`, breaking decision 4's same-words promise.
+
+   **Prerequisite code change:** the catch-alls must not clobber a terminal
+   reason already written on this pass. `createWorkflowForCategory` returns a
+   typed Create-rejected error carrying the original Create error and any
+   failure from its `setCertificationFailed` call, preserving both causes for
+   error inspection. Both callers recognize it before the generic catch-all,
+   skip the second Failed write, and return that error unchanged. A failed
+   status write therefore remains an error-driven retry, not terminal success;
+   it emits no transition event, while the existing `WorkflowCreationError`
+   action Warning remains. When the inner status write succeeds, the persisted
+   reason is `WorkflowFailed`, and a later reconcile sees the terminal status.
+   The typed error identifies the Create-rejected path, not proof of successful
+   status persistence.
+
+   The existing collision handler is a precedent for bypassing the generic
+   catch-all, but writes its own collision-specific Failed condition. Other
+   errors still reach the generic `WorkflowValidationFailed` write, including
+   build/validation errors, failed reads of an existing Workflow, and a
+   terminating foreign Workflow. Reclassifying those remaining errors is out
+   of scope. Both failure paths emit through the Failed transition only after
+   successful persistence. Adding a hand-placed `warnf` at the catch-alls would
+   produce a same-reason pair.
 
    The existing action-failure Warnings are kept **unless they share a
-   reason with the Failed transition on the same object.** The recorder
-   correlates on `(type, reason, regarding)`, not on message, so a
+   reason with the Failed transition on the same object.** The `events/v1`
+   recorder correlates on `(type, action, reason, reportingController,
+   reportingInstance, regarding, related)`, and the message is not part of
+   the key. Every emit helper in this repository passes the reason as the
+   `action` argument (`Eventf(obj, nil, eventType, reason, reason, ...)`),
+   and **this record makes that an explicit constraint**: the transition hook
+   and every fallback pass `action == reason` too. Under that constraint a
    hand-placed Warning immediately followed by a Failed transition with the
    same reason is not two rows but one `Event` with `count: 2`, which the
-   single-failure cases in this design forbid. Where that happens, the transition owns the
+   single-failure cases in this design forbid. If any emitter passed a
+   different action, the pair would split into two rows and this analysis
+   would not hold. Where that happens, the transition owns the
    notification on success, and the unconditional pre-write emission becomes
    a fallback on status-write failure. Three sites match
    today:
@@ -217,10 +267,17 @@ Both facts drive the scope decision below.
    - Workflow `HeterogeneousPlatform`: `eventf(Warning)` followed by
      `setWorkflowFailed("HeterogeneousPlatform")`.
    - Workflow `OverrideError`: `eventf(Warning)` followed by
-     `setWorkflowFailed("OverrideError")`.
+     `setWorkflowFailed("OverrideError")`. A second `OverrideError` site,
+     the early `applyOverrides` guard in `reconcileJob`, writes
+     `Failed / OverrideError` with no hand-placed emission. It is covered by
+     the same rule so one reason is treated evenly: the transition Warning on
+     success, and the same `OverrideErrorStatusUpdateFailed` fallback when its
+     status write fails.
 
-   At each of these three sites, first attempt the Failed status write. If it
-   succeeds, only the transition hook emits; no fallback is emitted. If the
+   There are three existing dual-emission sites and four fallback sites,
+   counting the early `OverrideError` guard. At all four fallback sites, first
+   attempt the Failed status write. If it succeeds, only the transition hook
+   emits; no fallback is emitted. If the
    status operation returns an error, emit one action Warning for that failed
    operation, after any internal retries have finished, using a distinct
    reason: `BuildFailedStatusUpdateFailed`,
@@ -239,11 +296,15 @@ Both facts drive the scope decision below.
 
    Where the reasons differ, both stay, because they describe two facts:
    Certification `WorkflowCreationError` (the Create that was rejected)
-   followed by `Failed / WorkflowFailed` (the outcome). Where an action
-   Warning is followed by a returned error and no Failed write (Job and
-   WorkloadRun `*CreationError`), or is informational with no phase change
-   (Workflow `CordonedNodesExcluded`, `HeterogeneousGPU`,
-   `InsufficientGPUCapacity`), nothing changes.
+   followed by `Failed / WorkflowFailed` (the outcome), and Workflow
+   `InsufficientGPUCapacity` followed by `Failed / PartitionError` when every
+   surviving node is capacity-excluded. Nothing changes at the remaining
+   action Warnings: Job `WorkloadCreationError` and WorkloadRun
+   `WorkflowCreationError` return an error with no Failed write; Job
+   `MeasurementCreationError` is deliberately non-fatal and the reconcile
+   continues to the workload status update; and Workflow
+   `CordonedNodesExcluded` and `HeterogeneousGPU` are Warning-typed
+   exclusion notices with no Failed write of their own.
 
 6. **Integration coverage asserts real Event objects, opt-in per case.** The
    integration harness runs envtest, a real API server, so emitted events are
@@ -257,18 +318,32 @@ Both facts drive the scope decision below.
    sorted by the first five. Event names, UIDs, timestamps, source, and
    reporting instance are omitted; they are not stable across runs.
 
-   `count` is load-bearing. The `events/v1` recorder correlates events on
-   `(type, action, reason, reportingController, reportingInstance,
-   regarding)`; the message is **not** part of that key. Repeated emissions
-   for the same object and reason therefore do not appear as extra rows: they
-   collapse into one `Event` whose `series.count` increments. A projection
-   without `count` cannot distinguish one emission from fifty. The collector
-   emits `count` as `series.count` when a series exists and `1` otherwise.
-   For each new phase or verdict event whose case drives one qualifying
-   transition, the expected count is `1`; a higher count is a dedup defect,
-   not a regeneration candidate. This rule does not apply to retained action
-   or informational events: repeated failed actions or multiple applied
-   overrides may legitimately produce a count above `1`.
+   `count` is load-bearing but coarse. The `events/v1` recorder correlates
+   on `(type, action, reason, reportingController, reportingInstance,
+   regarding, related)`; the message is **not** part of that key, and
+   `action == reason` by the decision 5 constraint. Repeated emissions for
+   the same object and reason therefore collapse into one `Event` rather
+   than new rows, but only the **second** emission promptly patches the API
+   object (`series.count: 2`); the third and later bump an in-memory counter
+   that is flushed by periodic refresh or idle-series finalization. Refresh
+   runs every 30 minutes; cleanup runs every 6 minutes and finalizes series
+   idle for more than 6 minutes. Closure therefore occurs on an eligible
+   cleanup pass, not exactly 6 minutes after the last emission. Before either
+   flush, and after asynchronous delivery, the API-visible `count` provides
+   only a coarse signal: `1` versus at-least-two (`2`), not an exact total of
+   later emissions. After a series is removed from the broadcaster cache, a
+   repeat lands as a fresh row with `count: 1`. The collector emits `count` as
+   `series.count` when a series exists and `1` otherwise. For each new phase
+   or verdict event whose case drives one qualifying transition, the expected
+   result is one row with `count: 1`; a `2` is a dedup defect, not a
+   regeneration candidate. Give opted-in cases a cumulative 3-minute deadline
+   from recorder startup through event collection, with a fresh broadcaster
+   per case, so periodic refresh and idle cleanup cannot change that signal.
+   Each wait uses the smaller of its configured timeout and the remaining
+   budget; fail the case if collection exceeds the deadline. Existing
+   configurable per-wait timeouts do not guarantee this total duration.
+   This rule does not apply to retained
+   action or informational events, which may legitimately show `2`.
 
    Delivery is asynchronous: the recorder hands events to a broadcaster
    goroutine, so observing the status transition does not mean the `Event`
@@ -315,6 +390,19 @@ Both facts drive the scope decision below.
 ## Implementation
 
 - `pkg/controller/status.go`
+  - Add a pure `conditionFlip(before, after, types)` helper returning the
+    watched conditions whose presence or Status changed, including old/new
+    presence and Status and the resulting condition. Ignore reason, message,
+    and ObservedGeneration-only edits. Snapshot the watched values before
+    mutation; do not retain an alias to the mutated condition slice.
+    For exclusive phases, callers select a condition becoming True; for Job
+    verdicts, select absent/False to True for Warnings and absent to False for
+    ThresholdsMet. For timeout, watch only JobFailed becoming True, regardless
+    of InProgress. The helper reports changes; callers retain event policy.
+    Compute fresh results inside each retry callback and replace any previous
+    attempt's result, including clearing it on a no-op retry. WorkloadRun and
+    timeout callers instead snapshot immediately before their direct mutation
+    and compare afterward. Every caller emits only after a successful write.
   - Extend `setExclusiveStatusCondition` to report the transition: the type
     that was `True` before the mutation and the type that is `True` after, read
     inside the mutate callback on the object state the write is computed from.
@@ -340,10 +428,16 @@ Both facts drive the scope decision below.
     condition flipped to `True`, and the `Normal / ThresholdsMet` when
     `ValidationFailed` flipped from absent to `False`. A write that leaves the
     condition's status unchanged emits nothing.
-  - Job and Certification currently expose only `warnf`/`normalf`; add or
-    generalize to an `eventf(obj, eventType, reason, fmt, args...)` matching
-    the Workflow tier so the wrapper can pass the type. Keep all helpers
+  - Job exposes only `warnf`, and Certification `warnf`/`normalf`; add or
+    generalize each to an `eventf(obj, eventType, reason, fmt, args...)`
+    matching the Workflow tier so the wrapper can pass the type. Every helper
+    passes the reason as the `action` argument (decision 5). Keep all helpers
     nil-safe.
+  - Prerequisite from decision 5: `createWorkflowForCategory` returns a typed
+    Create-rejected error and both Certification callers skip their
+    `setCertificationFailed` catch-all for it. Preserve and return both the
+    Create error and any status-write error; `WorkflowFailed` is persisted only
+    when the inner status write succeeds. Do not return success when it fails.
 - `pkg/controller/workflow_controller.go`, `updateStatusFromJobs`
   - At the `timeoutPerJob` write, read whether `JobFailed` is already `True`
     before `meta.SetStatusCondition`, and after `Status().Update` returns
@@ -351,7 +445,9 @@ Both facts drive the scope decision below.
     Leave the write itself, including its effect on `InProgress`, unchanged.
   - Replace the unconditional `eventf(Warning)` at the `HeterogeneousPlatform`
     and `OverrideError` sites with decision 5's fallback in the status-error
-    branch. Add their distinct fallback reason constants. Successful writes
+    branch. Add the same fallback to the early `applyOverrides` guard that
+    currently has no preceding event. Add their distinct fallback reason
+    constants. Successful writes
     notify through the Failed-transition hook only.
 - `pkg/controller/workloadrun_controller.go`
   - Replace the unconditional `warnf(BuildFailed)` with decision 5's fallback
@@ -364,6 +460,9 @@ Both facts drive the scope decision below.
     small helper that wraps the pair so the rule lives in one place.
 - `cmd/integration/integration_test.go`
   - Wire recorders for all six reconcilers.
+  - Enforce decision 6's cumulative 3-minute deadline for opted-in cases from
+    fresh recorder startup through collection, sharing the remaining budget
+    across waits. Leave cases without event collection unchanged.
   - Add an `events` list to `waitConfig` with `involvedKind`, `involvedName`,
     `namespace`, and `expect: [{type, reason}]`. Readiness waits for every
     `expect` row; serialization then emits all rows for the object in the
@@ -380,12 +479,20 @@ Both facts drive the scope decision below.
 
 ### Testing plan
 
-- `pkg/controller/status_test.go` (table tests are the accepted idiom in this
-  file): the transition result for absent to InProgress, InProgress to
-  Succeeded, InProgress to Failed, same phase with a new reason (no
-  transition), same phase with a new message (no transition), `extra`-only
-  mutation (no transition), and a conflict retry where the refetched object
-  already holds the target phase (no transition).
+- Transition-result cases as `testutil.TestCaseParser` goldens under
+  `pkg/controller/testdata/`, since the result is a multi-field structure and
+  `pkg/controller/` is a required-golden package: absent to InProgress,
+  InProgress to Succeeded, InProgress to Failed, same phase with a new reason
+  (no transition), same phase with a new message (no transition),
+  `extra`-only mutation (no transition), and a conflict retry where the
+  refetched object already holds the target phase (no transition). Tables
+  stay only where the convention allows them: nil-recorder pins and the
+  single-value `FakeRecorder` call counts below.
+- Shared-detector goldens cover absent-to-False verdicts, False-to-True
+  verdicts, unchanged verdict status with changed details, and JobFailed
+  becoming True while InProgress remains True. Exercise the direct-write
+  consumers as well as retry callbacks; a failed attempt's result must not
+  survive a no-op retry.
 - Emission tests at the recorder level, using client-go's
   `events.FakeRecorder` injected as the wrapper's `Recorder`, since the golden
   projection observes only the aggregated `Event` and the fake sees every
@@ -398,13 +505,23 @@ Both facts drive the scope decision below.
   error emits nothing; a conflict sequence that exhausts `retry.DefaultRetry`
   emits nothing; a conflict followed by success emits exactly once. These pin
   the "no transition event on failed write" rule from decision 3.
-- Recorder-level tests for each of decision 5's three fallback sites:
-  successful status persistence emits one transition and no fallback; a
+- Recorder-level tests for all four fallback sites: WorkloadRun BuildFailed,
+  Workflow HeterogeneousPlatform, and both Workflow OverrideError guards.
+  Successful status persistence emits one transition and no fallback; a
   non-conflict status error emits one fallback and no transition; Workflow
   conflict exhaustion emits one fallback after retries, not one per attempt.
   A failed reconcile followed by successful persistence emits the fallback
   and then one transition under distinct reasons. Assert that fallback
   messages contain both errors and do not claim a persisted Failed phase.
+- For both Certification callers, inject Create rejection with successful
+  status persistence, a non-conflict status error, and exhausted status
+  conflicts. Assert no generic catch-all overwrite; successful persistence
+  leaves WorkflowFailed and emits its transition, while failure returns the
+  Create and status errors, retains the action Warning, and emits no
+  transition. A retry with another rejected Create and a successful status
+  write emits the transition once.
+- Harness deadline tests cover multiple waits sharing one budget and collection
+  after expiry. An individual wait timeout must not reset the total budget.
 - Nil-recorder pins for any new or generalized event helper, mirroring
   `TestJobWarnfNilRecorder`.
 - A recorder-level case applying multiple overrides asserts one retained
@@ -438,6 +555,13 @@ Both facts drive the scope decision below.
     shows `Normal / WorkloadCompleted` then `Normal / ThresholdsMet`;
   - a checkpoint-restart Job case asserting the restart does not emit a second
     InProgress event for the same Job when the phase does not flip;
+  - the second `OverrideError` site (the early `applyOverrides` guard): the
+    transition Warning on success and the `OverrideErrorStatusUpdateFailed`
+    fallback on a failed status write, matching the `eventf` site;
+  - a Certification rejected-Create case asserting the persisted reason stays
+    `WorkflowFailed` (the catch-all no longer overwrites it) and Events and
+    Conditions agree; and a genuine build error asserting
+    `WorkflowValidationFailed` on both;
   - a Certification `WorkflowCreationError` case asserting both the action
     Warning and the outcome Warning appear with their distinct reasons;
   - the three same-reason sites from decision 5 (WorkloadRun `BuildFailed`,
@@ -513,7 +637,9 @@ maintainer approval.
   reason, two Warning events result. This is documented, not deduplicated.
   Where the reasons were identical, the unconditional emission is replaced at
   three sites: the transition emits on success, and a distinct action
-  fallback emits if status persistence fails. On success, at WorkloadRun `BuildFailed`
+  fallback emits if status persistence fails. The early `OverrideError` guard,
+  which has no existing emission, also gains the same status-write-failure
+  fallback. On success, at WorkloadRun `BuildFailed`
   and Workflow `HeterogeneousPlatform` the message is unchanged. At Workflow
   `OverrideError` the message changes from `Override failed: …` to the
   condition's `Failed to apply overrides: …`; the reason is the same, and the
@@ -618,11 +744,12 @@ Rejected. The condition reasons already carry tier and cause. A second
 vocabulary would have to be kept in sync and would show different words in
 `describe`'s Events and Conditions sections for the same fact.
 
-### Hand-place a `warnf` at the two Certification validation paths
+### Hand-place a `warnf` at the two Certification catch-alls
 
-Rejected. Under decision 4 the Failed transition already emits
-`Warning / WorkflowValidationFailed` there. A second site would be a
-same-reason duplicate.
+Rejected. Under decision 4 the Failed transition already emits the persisted
+reason there. A second site would be a same-reason duplicate, and it would
+not fix the underlying problem, which is the catch-all overwriting
+`WorkflowFailed`; decision 5 fixes that in the code instead.
 
 ### Assert events with a fake recorder in the harness
 
@@ -631,15 +758,49 @@ production path, exercises the recorder's aggregation, and requires no
 test-only interface on the reconcilers. Nondeterministic fields are handled by
 projection rather than by faking the sink.
 
+### Hook emission inside `updateStatusWithRetry`
+
+Considered seriously, and partly adopted. Twelve of the sixteen sites reach
+`updateStatusWithRetry`: the three tier wrappers and `setJobFailed` through
+`setExclusiveStatusCondition`, and both Job verdict setters directly. A flip
+detector at that choke point would collapse most per-seam prose, and would
+absorb the Workflow timeout write if that is ever routed through the shared
+helper. What stops it is that `updateStatusWithRetry` is generic over
+`client.Object` and knows nothing about conditions: to detect a flip it
+would need, per call, a conditions accessor, the set of types to watch, the
+event-type policy for each, and a recorder. Those are exactly the per-seam
+facts, moved from call sites into arguments, and they would couple a plain
+retry helper to condition semantics and event emission it has no other
+reason to know about. The remaining four sites (WorkloadRun's direct
+`Status().Update` calls and the timeout write) would still need their own
+hooks. **Adopted instead:** the shared, pure `conditionFlip(before, after,
+types)` helper specified in Implementation reports per-condition presence and
+Status changes. Retry-based callers snapshot and compare inside each callback;
+direct-write callers do so around their in-memory mutation. Each caller applies
+its phase or verdict policy and emits after successful persistence. The two
+rejected detection
+alternatives above are weaker versions of the choke-point idea and fail for
+the reasons given there.
+
 ### Rely on the recorder's built-in aggregation for dedup
 
-Rejected. The events library aggregates identical events into a `count` bump
-within a window; it does not suppress them, and the aggregation window is
-shorter than a long-running InProgress phase. Dedup must be a property of the
-emit decision.
+Rejected. The events library correlates isomorphic emissions into one
+`Event` and bumps `series.count`; it does not suppress them. The series stays
+open as long as emissions keep arriving (periodic cleanup closes it only when
+it has been idle for more than 6 minutes), so with a 15s requeue a
+naive per-pass emission produces one row whose count grows for the life of
+the phase, plus a fresh row if an idle gap lets cleanup remove the series.
+That is inflation, not suppression, and it is only visible to the API server
+on the second emission
+and at flush time. Dedup must be a property of the emit decision.
 
 ## Notes
 
+- **ADR-078 is held by [PR #336](https://github.com/NVIDIA/cluster-readiness-engine/pull/336)
+  and ADR-079 by [PR #337](https://github.com/NVIDIA/cluster-readiness-engine/pull/337).**
+  The design index on this branch therefore runs `077` to `080` on purpose;
+  the gap is merge ordering, not skipped numbers. Whichever record merges
+  later rebases onto the others so the index reads `077 / 078 / 079 / 080`.
 - `HardwareFailed` and `ValidationFailed` are written by `setJobHardwareFailed`
   and `setJobValidationStatus` through their own `updateStatusWithRetry`
   calls, not through the exclusive-set wrapper. That is why decision 1 gives
@@ -665,10 +826,11 @@ emit decision.
 - [Issue #252: Emit Normal events on phase transitions across all six reconcilers](https://github.com/NVIDIA/cluster-readiness-engine/issues/252)
 - [Issue #150: Reconcilers do not emit Kubernetes Events](https://github.com/NVIDIA/cluster-readiness-engine/issues/150)
 - [PR #250: wire event recorders into the four recorder-less reconcilers](https://github.com/NVIDIA/cluster-readiness-engine/pull/250)
-- Commit `a331c85`: Job and Workflow tier events
+- Commit `a331c85`: wires the Job tier's recorder (the Workflow tier already had one) and adds `MeasurementCreationError`
 - [ADR-072: Freeze GoodputMeasurement Status at Job Terminal State](072-goodput-terminal-freeze.md)
 - [ADR-000: CRD hierarchy](000-adr.md)
-- [Kubernetes Events API and `--event-ttl`](https://kubernetes.io/docs/reference/kubernetes-api/cluster-resources/event-v1/)
+- [Kubernetes Events API](https://kubernetes.io/docs/reference/kubernetes-api/cluster-resources/event-v1/)
+- [kube-apiserver reference, `--event-ttl` (default 1h)](https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/)
 - [`pkg/controller/status.go`](../../pkg/controller/status.go): `setExclusiveStatusCondition`, `updateStatusWithRetry`
 - [`pkg/controller/workloadrun_controller.go`](../../pkg/controller/workloadrun_controller.go): `setWorkloadRunCondition`
 - [`cmd/integration/integration_test.go`](../../cmd/integration/integration_test.go): recorder wiring and `collectSpec`
