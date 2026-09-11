@@ -28,6 +28,11 @@ var localAttestUses = regexp.MustCompile(`^\./\.github/workflows/attest\.yml(@.+
 // same laundering as referencing inputs.* directly.
 var needsOutputRef = regexp.MustCompile(`needs\.[A-Za-z0-9_-]+\.outputs\.[A-Za-z0-9_-]+`)
 
+// Bracket-index forms (`inputs['x']`, `needs['job']…`) are valid expression
+// syntax and do not contain the literal `inputs.` / `needs.` needles above.
+var inputsBracketRef = regexp.MustCompile(`inputs\[`)
+var needsBracketRef = regexp.MustCompile(`needs\[`)
+
 // TestAttestIsInvokedAsReusableWorkflow pins the half of ADR-074 D2 that
 // TestAttestIsSoleSigner (workflow_policy_test.go) does not cover: every
 // release-path caller must reach attest.yml through `uses: ./…`. The unique
@@ -100,25 +105,27 @@ func assertAttestIsInvokedAsReusableWorkflow(t *testing.T) {
 func TestAttestPredicateUsesOnlyTrustedContext(t *testing.T) {
 	step := provenanceStep(t)
 
-	// Reject inputs.* / needs.*.outputs.* on every env level the step can see,
-	// and inside the run block, for anything that could reach an origin field.
+	// Reject inputs.* / inputs[ / needs.*.outputs.* / needs[ on every env
+	// level the step can see, and inside the run block, for anything that
+	// could reach an origin field. Bracket forms are valid expression syntax
+	// and would otherwise sneak past a `inputs.` / `needs.` literal scan.
 	// SUBJECT_KIND may legitimately expand needs.validate.outputs.subject_kind.
 	for envName, envVal := range step.MergedEnv {
 		if envName == "SUBJECT_KIND" {
 			continue
 		}
-		if strings.Contains(envVal, "inputs.") {
+		if strings.Contains(envVal, "inputs.") || inputsBracketRef.MatchString(envVal) {
 			t.Errorf("provenance step env %q expands %q; origin fields must not "+
 				"be sourced from workflow_call inputs", envName, envVal)
 		}
-		if needsOutputRef.MatchString(envVal) {
+		if needsOutputRef.MatchString(envVal) || needsBracketRef.MatchString(envVal) {
 			t.Errorf("provenance step env %q expands %q; origin fields must not "+
 				"be laundered through needs.*.outputs.* (caller inputs)", envName, envVal)
 		}
 	}
-	if strings.Contains(step.Run, "inputs.") {
-		t.Errorf("provenance step run block references inputs.*; origin fields " +
-			"must be built from trusted context only")
+	if strings.Contains(step.Run, "inputs.") || inputsBracketRef.MatchString(step.Run) {
+		t.Errorf("provenance step run block references inputs.*/inputs[; origin " +
+			"fields must be built from trusted context only")
 	}
 
 	callerRef, ok := step.MergedEnv["CALLER_WORKFLOW_REF"]
@@ -176,6 +183,7 @@ func TestAttestPredicateUsesOnlyTrustedContext(t *testing.T) {
 				SubjectKind string `json:"subjectKind"`
 			} `json:"externalParameters"`
 			ResolvedDependencies []struct {
+				URI    string `json:"uri"`
 				Digest struct {
 					GitCommit string `json:"gitCommit"`
 				} `json:"digest"`
@@ -204,9 +212,18 @@ func TestAttestPredicateUsesOnlyTrustedContext(t *testing.T) {
 	if ep.SubjectKind != wantKind {
 		t.Errorf("externalParameters.subjectKind = %q, want %q", ep.SubjectKind, wantKind)
 	}
-	if len(pred.BuildDefinition.ResolvedDependencies) == 0 ||
-		pred.BuildDefinition.ResolvedDependencies[0].Digest.GitCommit != wantSHA {
-		t.Errorf("resolvedDependencies gitCommit missing or wrong; want %q", wantSHA)
+	if len(pred.BuildDefinition.ResolvedDependencies) == 0 {
+		t.Fatal("resolvedDependencies missing")
+	}
+	rd0 := pred.BuildDefinition.ResolvedDependencies[0]
+	wantURI := "git+" + wantServer + "/" + wantRepo + "@" + wantRef
+	if rd0.URI != wantURI {
+		t.Errorf("resolvedDependencies[0].uri = %q, want %q (trusted SLSA source URI)",
+			rd0.URI, wantURI)
+	}
+	if rd0.Digest.GitCommit != wantSHA {
+		t.Errorf("resolvedDependencies[0].digest.gitCommit = %q, want %q",
+			rd0.Digest.GitCommit, wantSHA)
 	}
 	wantBuilder := wantServer + "/" + wantRepo + "/.github/workflows/release.yml"
 	if pred.RunDetails.Builder.ID != wantBuilder {
