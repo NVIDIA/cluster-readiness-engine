@@ -2,7 +2,7 @@
 
 > **Status:** Accepted
 >
-> **Amended by:** [ADR-078](078-jobset-ownership.md) (proposed) — JobSet CRD retention, JobSet-instance recovery gating, and protection of unrelated resources in `kubeflow-system` during automatic recovery. The proposal reverses this record's accepted namespace-cleanup policy for resources within its protected inventory; Events and EndpointSlices are excluded. These changes are not yet accepted.
+> **Amended by:** [ADR-078](078-jobset-ownership.md) (proposed) — JobSet CRD retention, JobSet-instance recovery gating, and protection of unrelated resources in `kubeflow-system` during automatic recovery. The proposal reverses this record's accepted namespace-cleanup policy for resources within its protected inventory; Events, core `Endpoints`, and EndpointSlices are excluded. These changes are not yet accepted.
 
 ## Context
 
@@ -31,9 +31,9 @@ So the reporting gap is closed by #188, but `setup init` itself still retries in
 
    > **Proposed amendments from ADR-078 (not yet accepted):** upon acceptance and implementation, the following replace the corresponding instructions in decisions 3(a), 3(c), and 5:
    >
-   > - **Automatic recovery (3a):** before any destructive action, apply ADR-078 decision 4's JobSet-controller and protected namespace-resource gate. If it passes, uninstall Trainer, delete only the Trainer CRDs in `trainer.kubeflow.org`, retain `jobsets.jobset.x-k8s.io`, delete the namespace and wait, then reinstall using the selected JobSet mode preserved under ADR-078 decision 2. Keep the existing SSA eligibility, confirmation, and one-attempt limit.
-   > - **Manual guidance (3c):** explain blockers and omit JobSet CRD deletion from every recovery plan and manual procedure. Do not print unconditional namespace deletion when protected resources block it. Follow ADR-078's ownership guidance and manual-install fallback where applicable.
-   > - **Safety rails (5):** preserve the TrainJob and non-Helm runtime blockers. Bundled-controller removal remains blocked by any JobSets; external JobSets outside `kubeflow-system` do not alone block recovery, while namespace-local JobSets and protected foreign resources do. Events and EndpointSlices are excluded as specified in ADR-078. Required inspection failures block recovery.
+   > - **Automatic recovery (3a):** require ADR-078 decision 4's operator-maintained quiescence and repeat its complete gate after confirmation before uninstalling Trainer. Recheck workload blockers before each Trainer CRD deletion, retain `jobsets.jobset.x-k8s.io`, and perform fresh discovery and a final protected namespace inventory before namespace deletion. Compare against expected cleanup using preserved ownership and UID evidence; delete with the inspected namespace UID precondition, wait, then reinstall using the selected JobSet mode preserved under ADR-078 decision 2. Keep the existing SSA eligibility, confirmation, and one-attempt limit.
+   > - **Manual guidance (3c):** explain blockers and omit JobSet CRD deletion from every recovery plan and manual procedure. Do not print unconditional namespace deletion when protected resources block it. On a late refusal, report partial completion and stop further deletion and automatic reinstall; do not claim that earlier cleanup was undone. Follow ADR-078's ownership guidance and manual-install fallback where applicable.
+   > - **Safety rails (5):** preserve the TrainJob and non-Helm runtime blockers. Bundled-controller removal remains blocked by any JobSets; external JobSets outside `kubeflow-system` do not alone block recovery, while namespace-local JobSets and protected foreign resources do. Events, core `Endpoints`, and EndpointSlices are excluded as specified in ADR-078. Required inspection failures block recovery. Repeated checks cannot establish quiescence or eliminate check-to-delete races; ADR-078 replaces the absolute safety guarantee with protection conditional on operator-maintained quiescence, including the affected cluster-wide writes.
    >
    > Implementations of ADR-078 must update `trainerRecoveryCRDs`, `printManualTrainerRecovery`, `printTrainerRecoveryPlan`, and the actual cleanup operations together so none retains the old four-CRD deletion procedure. The original text remains here as the accepted ADR-073 record until the proposed amendment takes effect.
 
