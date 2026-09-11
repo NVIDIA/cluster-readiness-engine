@@ -459,7 +459,8 @@ IMAGE=ghcr.io/nvidia/cluster-readiness-engine/manager
 DIGEST="$(crane digest "${IMAGE}:${TAG}")"
 ID="https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}"
 # Live main-<sha7> tag from GHCR (publish.yml does not publish a floating :main).
-# Replace with any current main-<sha7> if this example ages out.
+# List a current one when this example ages out:
+#   crane ls ghcr.io/nvidia/cluster-readiness-engine/manager | grep '^main-' | head -n1
 DEV_TAG=main-c2d4d47
 
 # --- Kyverno path (primary for issue #272) ---
@@ -504,7 +505,7 @@ kubectl run nvcre-other --image="busybox:1.36" -n nvcre \
 These repro steps are fenced as `shell` rather than `bash` so Docs Verify (which extracts and runs every `bash` block on this page) does not try them without a cluster. CI does **not** reproduce live admission: it needs a cluster and registry access. Structural
 tests under `test/docspolicy` pin the kind, `validationActions: [Deny]`, fail-closed
 `failurePolicy`, issuer, identity prefix (and anchored repository path), single
-authority, namespace selector, provenance attestation, narrow globs, and
+attestor / authority, namespace selector, provenance attestation, narrow globs, and
 `signatureFormat: bundle` so the samples cannot silently rot into the parked shape.
 
 ## Troubleshooting

@@ -99,9 +99,12 @@ spec:
       - apiGroups: [""]
         apiVersions: ["v1"]
         operations: ["CREATE", "UPDATE"]
-        # pods/ephemeralcontainers is required for kubectl debug / ephemeral
-        # coverage; images.ephemeralContainers is populated only when this
-        # subresource is in matchConstraints.
+        # pods/ephemeralcontainers is required so the API server routes
+        # kubectl debug / ephemeral-container patches to this policy. Without
+        # it, CREATE/UPDATE on pods alone never sees those requests.
+        # (images.ephemeralContainers is always present on built-in GVRs —
+        # initialised to [] — and can be non-empty on a plain pods UPDATE;
+        # the subresource rule is about interception, not key presence.)
         resources: ["pods", "pods/ephemeralcontainers"]
       - apiGroups: ["apps"]
         apiVersions: ["v1"]
@@ -156,8 +159,9 @@ spec:
     # are distinct keys on images (pkg/cel/compiler/images.go); containers alone
     # leaves init/ephemeral to validationConfigurations.required (deny with a
     # "no policy performed a check" message). Explicit coverage keeps the deny
-    # message accurate. ephemeralContainers only appears when
-    # pods/ephemeralcontainers is in matchConstraints above.
+    # message accurate. The pods/ephemeralcontainers matchConstraints rule above
+    # is what routes kubectl debug into these checks — the ephemeralContainers
+    # key itself is always populated (as [] when empty).
     - expression: >-
         (images.?containers.orValue([]) + images.?initContainers.orValue([]) +
           images.?ephemeralContainers.orValue([])).map(image,
