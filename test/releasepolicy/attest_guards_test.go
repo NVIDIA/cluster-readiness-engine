@@ -245,6 +245,13 @@ func TestAttestValidationRejects(t *testing.T) {
 			inputs{callerRef: "refs/heads/main"},
 			"refuses to run on refs/heads/main",
 		},
+		// allow_untagged on a v* tag is contradictory: the caller claimed a
+		// non-production run while standing on the release ref that mints the
+		// identity SECURITY.md pins. Refuse rather than silently mint it.
+		"allow_untagged on a release tag": {
+			inputs{inAllowUntagged: boolTrue},
+			"allow_untagged: true is contradictory on release ref",
+		},
 		"digest with non-hex characters": {
 			inputs{inExpectedDigest: "sha256:zzzz"},
 			errDigestMustMatch,
@@ -464,6 +471,49 @@ func TestAttestWorkflowIsGatedToThisRepository(t *testing.T) {
 		if !strings.Contains(job.If, want) {
 			t.Errorf("job %q is missing the caller gate %s; a public reusable workflow without it "+
 				"lets any repository sign under this repository's release identity", name, want)
+		}
+	}
+}
+
+// TestAttestSelftestIsRefGated pins the caller-side guard that stops a
+// workflow_dispatch of attest-selftest.yml at a v* tag from reaching attest.yml
+// and minting the release signing identity (#340).
+//
+// Matching publish.yml: both the smoke job that calls attest.yml and the
+// report job that interprets its result must carry github.ref == refs/heads/main.
+// Without the report guard, a skipped smoke job (correct under the ref guard)
+// still fails the workflow via always()+skipped-as-error.
+func TestAttestSelftestIsRefGated(t *testing.T) {
+	path := filepath.Join(workflowDir, wfAttestSmoke)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	var wf struct {
+		Jobs map[string]struct {
+			If string `json:"if"`
+		} `json:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &wf); err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	const (
+		wantRepo = "github.repository == 'NVIDIA/cluster-readiness-engine'"
+		wantRef  = "github.ref == 'refs/heads/main'"
+	)
+	for _, name := range []string{"smoke", "report"} {
+		job, ok := wf.Jobs[name]
+		if !ok {
+			t.Fatalf("%s is missing job %q", wfAttestSmoke, name)
+		}
+		if !strings.Contains(job.If, wantRepo) {
+			t.Errorf("%s job %q is missing the repository gate %s", wfAttestSmoke, name, wantRepo)
+		}
+		if !strings.Contains(job.If, wantRef) {
+			t.Errorf("%s job %q is missing the ref guard %s; without it a v* "+
+				"workflow_dispatch mints the release signing identity", wfAttestSmoke, name, wantRef)
 		}
 	}
 }
