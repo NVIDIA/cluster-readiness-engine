@@ -1,0 +1,102 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Sigstore policy-controller ClusterImagePolicy for the NVCRE manager image.
+#
+# WHY signatureFormat: bundle
+# --------------------------
+# NVCRE publishes cosign *new-bundle* artifacts as OCI referrers (ADR-074 pins
+# cosign v3.1.3, where --new-bundle-format defaults to true). policy-controller
+# defaults to the legacy signature format and will not see our referrers unless
+# `signatureFormat: bundle` is set on the authority.
+#
+# In bundle mode, policy-controller verifies *attestations*, not the legacy
+# plain-signature path. The sample therefore requires:
+#   - https://sigstore.dev/cosign/sign/v1  (the signed identity, bundle form)
+#   - https://slsa.dev/provenance/v1      (the provenance the docs also check)
+# See sigstore/policy-controller#1899 for the bundle + cosign/sign/v1 shape.
+#
+# NAMESPACE SCOPING
+# -----------------
+# policy-controller is opt-in by namespace label (default chart behaviour):
+#   kubectl label namespace nvcre policy.sigstore.dev/include=true
+# Unlabeled namespaces are not evaluated. Labelling a namespace does *not*
+# narrow enforcement to images that match this ClusterImagePolicy alone:
+# chart-default `no-match-policy` is `deny`, so every image in a labeled
+# namespace that matches no ClusterImagePolicy is rejected. A Fail / enforce
+# mode here therefore does not strand workload creation cluster-wide, but it
+# *does* deny non-NVCRE images inside the labeled namespace unless the
+# operator has separately set `no-match-policy` to `allow` or `warn`. Do not
+# flip the webhook to opt-out without understanding the blast radius.
+#
+# BEFORE YOU APPLY
+# ----------------
+# 1. Edit the `subject:` pin to the release tag you run.
+# 2. Label the namespace (above) — and decide `no-match-policy` if that
+#    namespace runs any non-NVCRE images.
+# 3. Deploy the manager by index digest — provenance is on the index only.
+# 4. If you mirrored the controller image off ghcr.io, rewrite every
+#    `images[].glob` below to your mirror repository path. Globs that match
+#    nothing leave the image under no-match-policy (deny by default), which
+#    is a hard deny rather than Kyverno's empty-list fail-open — still wrong
+#    for a mirrored manager image you intended to admit under this policy.
+#
+# Tested versions to prefer when re-checking: policy-controller >= v0.15.0
+# (vendors cosign v3). Chart-default older versions may still work with
+# signatureFormat: bundle; do not treat a default-settings failure as a
+# format incompatibility without that field set. This sample shape has not
+# been re-tested end-to-end for issue #272; see verifying-artifacts.md.
+#
+# Identity contract (ADR-074 / verifying-artifacts.md):
+#   issuer:  https://token.actions.githubusercontent.com
+#   subject: https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/<TAG>
+apiVersion: policy.sigstore.dev/v1beta1
+kind: ClusterImagePolicy
+metadata:
+  name: nvcre-manager-verify-images
+  labels:
+    app.kubernetes.io/name: cluster-readiness-engine
+    app.kubernetes.io/component: admission-sample
+spec:
+  mode: enforce
+  images:
+    # policy-controller compiles globs in pkg/apis/glob/glob.go (not
+    # filepath.Match): `.` → `\.`, `**` → `.*`, `*` → `[^/]*`. So `*` cannot
+    # cross `/` and a bare `manager*` suffix still over-matches manager-debug
+    # in the final path segment — avoid it. Patterns are matched against
+    # ref.Name(), which is always fully qualified with a tag or digest, so a
+    # bare `.../manager` glob (no `:` / `@`) never matches and is omitted.
+    # Hard-pinned to ghcr.io for the public default; rewrite on mirror installs
+    # (see BEFORE YOU APPLY #4).
+    - glob: "ghcr.io/nvidia/cluster-readiness-engine/manager:*"
+    - glob: "ghcr.io/nvidia/cluster-readiness-engine/manager@sha256:*"
+  authorities:
+    - name: nvcre-release
+      keyless:
+        url: https://fulcio.sigstore.dev
+        identities:
+          # EDIT THIS TAG to the release you run before applying.
+          - issuer: "https://token.actions.githubusercontent.com"
+            subject: "https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/v0.2.0"
+            # Loosening: subject is a STRICT match. A pattern under subject
+            # such as refs/tags/.+ matches no SAN. Use subjectRegExp instead:
+            #   subjectRegExp: "^https://github\\.com/NVIDIA/cluster-readiness-engine/\\.github/workflows/attest\\.yml@refs/tags/.+$"
+            # Still reject refs/heads/main and any identity that omits attest.yml
+            # or the NVIDIA/cluster-readiness-engine repository path.
+      # Required for NVCRE's referrer / new-bundle layout. Without this field
+      # the authority looks for legacy .sig tags we do not publish on current
+      # release digests.
+      signatureFormat: bundle
+      # ctlog.url is not read in bundle mode — verification material comes from
+      # the TUF trusted root; only ctlog.trustRootRef is compared to
+      # keyless.trustRootRef. Omitted here on purpose (Kyverno's ctlog.url is
+      # live and stays set in that sample).
+      attestations:
+        # Bundle format exposes the cosign signature as this predicate type
+        # (not as a separate legacy signature object).
+        - name: signature
+          predicateType: https://sigstore.dev/cosign/sign/v1
+        # Same predicate docs/operations/verifying-artifacts.md checks with
+        # cosign verify-attestation --type slsaprovenance1.
+        - name: provenance
+          predicateType: https://slsa.dev/provenance/v1

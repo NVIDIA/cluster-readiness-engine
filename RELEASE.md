@@ -35,7 +35,15 @@ people do not tag at the same time.
 1. Make sure `main` is green. Every required check must pass: Lint, Build, Test, Verify,
    and UAT.
 2. Decide the version. See Versioning above.
-3. Tag the commit on `main` and push the tag.
+3. Bump the pinned `subject:` tag in
+   `config/samples/policy/kyverno-verify-images.yaml` and
+   `config/samples/policy/policy-controller-verify-images.yaml` to the version you are
+   about to cut, and land that change on `main` **before** tagging. Nothing in CI
+   rewrites those strings. Tagging first and bumping later leaves the samples at that
+   tag pinned to the previous release — exactly the stale-pin outage the bump exists to
+   prevent. See [Verifying release artifacts](docs/operations/verifying-artifacts.md#admission-policy-samples).
+4. Tag the commit on `main` (the one that already carries the bumped pins) and push the
+   tag.
 
    ```bash
    git checkout main && git pull --ff-only
@@ -47,10 +55,10 @@ people do not tag at the same time.
    `NVIDIA/cluster-readiness-engine`, which is usually `upstream`.
 
    Sign the tag (`-s`). Pushing the tag is the release trigger.
-4. Watch the `Release` workflow. The GitHub Release is created as a **draft** and is
+5. Watch the `Release` workflow. The GitHub Release is created as a **draft** and is
    made visible only by the `Verify release` job, after it has verified every published
    artifact. If that job fails, the release stays a draft — see Troubleshooting.
-5. Check the published release, then announce it.
+6. Check the published release, then announce it.
 
 Do not publish a draft release by hand. A draft left behind by a failed `Verify release`
 is a release the pipeline determined it could not verify; publishing it from the UI is

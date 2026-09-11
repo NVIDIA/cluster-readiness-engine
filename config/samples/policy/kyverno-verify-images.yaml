@@ -1,0 +1,181 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Kyverno ImageValidatingPolicy for the NVCRE manager image.
+#
+# WHY ImageValidatingPolicy (not ClusterPolicy / verifyImages)
+# -----------------------------------------------------------
+# NVCRE publishes Sigstore *new-bundle* signatures as OCI referrers
+# (https://sigstore.dev/cosign/sign/v1 and https://slsa.dev/provenance/v1).
+# There is no legacy `sha256-<digest>.sig` tag for current releases.
+# Kyverno's deprecated ClusterPolicy `verifyImages` looks only for that
+# legacy tag and reports "no signatures found" against a correctly signed
+# image. ImageValidatingPolicy reads the referrer / bundle path.
+#
+# BEFORE YOU APPLY
+# ----------------
+# 1. Edit `subject:` below so the tag matches the release you actually run.
+#    Applying a pin that does not match the image already in the cluster
+#    will deny the next upgrade, rollout restart, node drain, or crash
+#    replacement until you edit the policy again.
+# 2. Label the namespace that runs the controller (default `nvcre`):
+#      kubectl label namespace nvcre \
+#        kubernetes.nvcre.nvidia.com/image-admission=enforce
+# 3. Prefer deploying the manager by *index digest* (see verifying-artifacts.md).
+#    Provenance is attested to the multi-platform index digest only; a
+#    per-platform child manifest carries a signature + CycloneDX SBOM and
+#    no SLSA provenance, so requiring provenance against a platform digest
+#    correctly denies.
+# 4. If you mirrored the controller image off ghcr.io, rewrite every
+#    matchImageReferences glob below to your mirror repository path.
+#    Kyverno pre-filters images.* to glob matches and initialises an empty
+#    list when nothing matches — both validations then succeed vacuously
+#    (fail-open). A silent no-op on the documented air-gap path is worse
+#    than a deny.
+#
+# PARKED FAILURE MODES THIS SAMPLE ADDRESSES (issue #272)
+# -------------------------------------------------------
+# 1. Namespace scoping — matchConstraints.namespaceSelector confines the
+#    ValidatingAdmissionPolicy / webhook to labeled namespaces. Without it,
+#    failurePolicy: Fail is effectively cluster-wide for every Pod /
+#    Deployment / Job create in every namespace except Kyverno's excludes.
+# 2. failurePolicy — Fail is intentional (fail closed), but only safe once
+#    namespace-scoped. matchImageReferences is evaluated *inside* Kyverno
+#    after the API server has already called the webhook; it cannot narrow
+#    which requests reach a Fail webhook. Namespace selectors can.
+# 3. Provenance — validations require verifyAttestationSignatures for
+#    https://slsa.dev/provenance/v1 in addition to the image signature,
+#    matching the human-run `cosign verify` + `verify-attestation --type
+#    slsaprovenance1` contract in docs/operations/verifying-artifacts.md.
+# 4. subject / glob — `subject:` is a STRICT match. Putting `refs/tags/.+`
+#    under `subject:` matches no real SAN and denies everything; the regexp
+#    form needs `subjectRegExp:`. The image globs name the repository path
+#    exactly (no `manager*` prefix wildcard that crosses path segments).
+#
+# Identity contract (ADR-074 / verifying-artifacts.md):
+#   issuer:  https://token.actions.githubusercontent.com
+#   subject: https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/<TAG>
+#
+# Requires Kyverno >= v1.19 (ImageValidatingPolicy stable on policies.kyverno.io/v1).
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
+metadata:
+  name: nvcre-manager-verify-images
+  labels:
+    app.kubernetes.io/name: cluster-readiness-engine
+    app.kubernetes.io/component: admission-sample
+spec:
+  validationActions: [Deny]
+  failurePolicy: Fail
+  # Explicit CRD defaults (v1.19): each of these defaults to true. Setting them
+  # here documents that applying this sample also registers a *mutating*
+  # webhook that rewrites matching tags to digests (mutateDigest), and that
+  # required/verifyDigest run alongside the CEL validations below. required
+  # is load-bearing for init/ephemeral coverage even before the concatenations
+  # in validations: (EnforceRequired denies matched images that no validation
+  # checked).
+  validationConfigurations:
+    mutateDigest: true
+    verifyDigest: true
+    required: true
+  webhookConfiguration:
+    timeoutSeconds: 20
+  evaluation:
+    background:
+      # Do not background-scan existing objects: a stale pin must not page
+      # operators for workloads that were admitted under a previous release.
+      enabled: false
+  matchConstraints:
+    # Confines webhook evaluation to namespaces the operator opted in.
+    # failurePolicy: Fail still fails closed — but only for these namespaces.
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.nvcre.nvidia.com/image-admission
+          operator: In
+          values: ["enforce"]
+    resourceRules:
+      # Include controllers that own pod templates. Matching only Pods lets a
+      # Deployment create succeed and then fail when the Pod is created.
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        # pods/ephemeralcontainers is required so the API server routes
+        # kubectl debug / ephemeral-container patches to this policy. Without
+        # it, CREATE/UPDATE on pods alone never sees those requests.
+        # (images.ephemeralContainers is always present on built-in GVRs —
+        # initialised to [] — and can be non-empty on a plain pods UPDATE;
+        # the subresource rule is about interception, not key presence.)
+        resources: ["pods", "pods/ephemeralcontainers"]
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "replicasets", "daemonsets", "statefulsets"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs", "cronjobs"]
+  matchImageReferences:
+    # Narrow globs on purpose. A trailing `manager*` can match manager-debug,
+    # managerial-tool, or manager/nested/extra depending on the glob library.
+    # Tag and digest forms are listed explicitly instead.
+    # Hard-pinned to ghcr.io for the public default. Mirror / air-gap installs
+    # must rewrite these (see BEFORE YOU APPLY #4) — unmatched globs fail open.
+    - glob: "ghcr.io/nvidia/cluster-readiness-engine/manager"
+    - glob: "ghcr.io/nvidia/cluster-readiness-engine/manager:*"
+    - glob: "ghcr.io/nvidia/cluster-readiness-engine/manager@*"
+  attestors:
+    - name: nvcreRelease
+      cosign:
+        keyless:
+          identities:
+            # EDIT THIS TAG to the release you run before applying.
+            # Exact identity — never a prefix regexp that also accepts
+            # attest.yml@refs/heads/main development images (publish.yml now
+            # routes all signing through attest.yml; main builds carry
+            # attest.yml@refs/heads/main).
+            - issuer: "https://token.actions.githubusercontent.com"
+              subject: "https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/v0.2.0"
+              # Loosening (operator choice, not the published contract):
+              # subject: is a STRICT string match. A value like
+              #   .../attest.yml@refs/tags/.+
+              # under subject: matches no certificate SAN and denies every
+              # image. To accept any release tag while still rejecting
+              # refs/heads/main, replace subject: with subjectRegExp:
+              #   subjectRegExp: "^https://github\\.com/NVIDIA/cluster-readiness-engine/\\.github/workflows/attest\\.yml@refs/tags/.+$"
+              # Do not use subjectRegExp that omits the repository path, the
+              # workflow, or the refs/tags/ anchor — that re-opens main-<sha>
+              # development images and foreign forks.
+        ctlog:
+          url: "https://rekor.sigstore.dev"
+  attestations:
+    # CamelCase name so CEL can use attestations.slsaProvenance (hyphens are not
+    # valid field selectors).
+    - name: slsaProvenance
+      intoto:
+        # Same predicate the docs verify with --type slsaprovenance1.
+        type: "https://slsa.dev/provenance/v1"
+  validations:
+    # Concatenate containers + initContainers + ephemeralContainers. The three
+    # are distinct keys on images (pkg/cel/compiler/images.go); containers alone
+    # leaves init/ephemeral to validationConfigurations.required (deny with a
+    # "no policy performed a check" message). Explicit coverage keeps the deny
+    # message accurate. The pods/ephemeralcontainers matchConstraints rule above
+    # is what routes kubectl debug into these checks — the ephemeralContainers
+    # key itself is always populated (as [] when empty).
+    - expression: >-
+        (images.?containers.orValue([]) + images.?initContainers.orValue([]) +
+          images.?ephemeralContainers.orValue([])).map(image,
+          verifyImageSignatures(image, [attestors.nvcreRelease])).all(e, e > 0)
+      message: >-
+        NVCRE manager image signature verification failed. Expected a new-bundle
+        cosign signature under attest.yml@refs/tags/<pinned-tag>. Legacy
+        ClusterPolicy/verifyImages cannot see these signatures.
+    - expression: >-
+        (images.?containers.orValue([]) + images.?initContainers.orValue([]) +
+          images.?ephemeralContainers.orValue([])).map(image,
+          verifyAttestationSignatures(image, attestations.slsaProvenance,
+            [attestors.nvcreRelease])).all(e, e > 0)
+      message: >-
+        NVCRE manager image is missing a verified SLSA Build Provenance v1
+        attestation on the index digest (ADR-074). Per-platform manifests carry
+        an SBOM, not provenance — pin the index digest.
