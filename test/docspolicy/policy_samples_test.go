@@ -86,6 +86,7 @@ func TestPolicySamplePinsTheReleaseIdentity(t *testing.T) {
 		// Per expression, not across the joined set: one validation covering
 		// init/ephemeral must not paper over another that dropped back to
 		// images.containers alone.
+		allPositive := regexp.MustCompile(`all\(\s*\w+\s*,\s*\w+\s*>\s*0\s*\)`)
 		for i, raw := range vals {
 			expr := asString(asMap(t, raw, "validations[]")["expression"])
 			for _, key := range []string{"initContainers", "ephemeralContainers"} {
@@ -93,12 +94,17 @@ func TestPolicySamplePinsTheReleaseIdentity(t *testing.T) {
 					t.Errorf("validations[%d] must include images.%s (containers alone is incomplete)", i, key)
 				}
 			}
+			// `.all(e, e >= 0)` / `.exists(...)` / a dropped `.all` are all
+			// vacuously true for zero verified signatures — fail-open rot.
+			if !allPositive.MatchString(expr) {
+				t.Errorf("validations[%d] must require all(..., e > 0); >= 0 or exists() fail open", i)
+			}
 		}
 		// Ephemeral coverage also needs the subresource routed to this policy.
 		rules := asSlice(t, match["resourceRules"], "spec.matchConstraints.resourceRules")
 		if !resourceRuleCoversEphemeralContainers(rules) {
 			t.Error("matchConstraints.resourceRules must cover pods/ephemeralcontainers " +
-				`on ""/v1 with UPDATE, alongside pods in the same rule`)
+				`on ""/v1 with CREATE+UPDATE (or *), alongside pods in the same rule`)
 		}
 	})
 
@@ -316,18 +322,24 @@ func assertKyvernoSingleTightAttestor(t *testing.T, spec map[string]any) string 
 	return name
 }
 
-var attestorSelector = regexp.MustCompile(`attestors\.([A-Za-z_][A-Za-z0-9_]*)`)
+// attestorSelector matches dotted and bracket CEL selectors. len(attestors)==1
+// is the load-bearing pin; this is defence in depth on the CEL side.
+var attestorSelector = regexp.MustCompile(
+	`attestors(?:\.([A-Za-z_][A-Za-z0-9_]*)|\["([^"]+)"\]|\['([^']+)'\])`)
 
 func assertValidationsReferenceOnlyAttestor(t *testing.T, joined, wantName string) {
 	t.Helper()
 	wantRef := "attestors." + wantName
-	if !strings.Contains(joined, wantRef) {
+	if !strings.Contains(joined, wantRef) &&
+		!strings.Contains(joined, `attestors["`+wantName+`"]`) &&
+		!strings.Contains(joined, `attestors['`+wantName+`']`) {
 		t.Errorf("validations must reference %s", wantRef)
 	}
 	for _, m := range attestorSelector.FindAllStringSubmatch(joined, -1) {
-		if m[1] != wantName {
+		got := m[1] + m[2] + m[3]
+		if got != wantName {
 			t.Errorf("validations reference attestors.%s; only %s is defined "+
-				"(a second looser attestor in CEL would neuter the pin)", m[1], wantRef)
+				"(a second looser attestor in CEL would neuter the pin)", got, wantRef)
 		}
 	}
 }
@@ -377,10 +389,11 @@ func assertExactReleaseIdentity(t *testing.T, identities []any) {
 	}
 }
 
-// resourceRuleCoversEphemeralContainers requires the subresource on the core
-// v1 Pod rule with UPDATE (the operation kubectl debug uses), and pods in the
-// same rule so a tidy-up that relocates the subresource under apps cannot keep
-// the assertion green while the API server never routes it to the policy.
+// resourceRuleCoversEphemeralContainers requires the subresource on a core
+// v1 Pod rule with CREATE+UPDATE (or *), and pods in the same rule so a
+// tidy-up that relocates the subresource under apps cannot keep the assertion
+// green while the API server never routes it to the policy. A broken earlier
+// rule must continue so a later correct core rule still counts.
 func resourceRuleCoversEphemeralContainers(rules []any) bool {
 	for _, r := range rules {
 		m, _ := r.(map[string]any)
@@ -389,20 +402,27 @@ func resourceRuleCoversEphemeralContainers(rules []any) bool {
 			continue
 		}
 		if !slices.Contains(resources, "pods") {
-			return false
+			continue
 		}
 		if !slices.Contains(asStringSlice(m["apiGroups"]), "") {
-			return false
+			continue
 		}
 		if !slices.Contains(asStringSlice(m["apiVersions"]), "v1") {
-			return false
+			continue
 		}
-		if !slices.Contains(asStringSlice(m["operations"]), "UPDATE") {
-			return false
+		if !operationsCoverPodAdmission(asStringSlice(m["operations"])) {
+			continue
 		}
 		return true
 	}
 	return false
+}
+
+func operationsCoverPodAdmission(ops []string) bool {
+	if slices.Contains(ops, "*") {
+		return true
+	}
+	return slices.Contains(ops, "CREATE") && slices.Contains(ops, "UPDATE")
 }
 
 func attestationTypePresent(atts []any, want string) bool {

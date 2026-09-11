@@ -459,8 +459,9 @@ IMAGE=ghcr.io/nvidia/cluster-readiness-engine/manager
 DIGEST="$(crane digest "${IMAGE}:${TAG}")"
 ID="https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}"
 # Live main-<sha7> tag from GHCR (publish.yml does not publish a floating :main).
-# List a current one when this example ages out:
-#   crane ls ghcr.io/nvidia/cluster-readiness-engine/manager | grep '^main-' | head -n1
+# GHCR lists tags oldest-first, so `crane ls | grep '^main-' | head -n1` returns
+# an unsigned early build. publish.yml computes the tag as main-${GITHUB_SHA::7}:
+#   DEV_TAG="main-$(git rev-parse --short=7 origin/main)"
 DEV_TAG=main-c2d4d47
 
 # --- Kyverno path (primary for issue #272) ---
@@ -481,10 +482,11 @@ kubectl run nvcre-admit --image="${IMAGE}@${DIGEST}" -n nvcre \
 kubectl run nvcre-deny-main --image="${IMAGE}:${DEV_TAG}" -n nvcre \
   --dry-run=server --restart=Never -o name
 
-# Denied: unpublished tag under our repository. We do not ship unsigned manager
-# images, so this is the practical stand-in for "no signature material" (manifest
-# lookup fails). It is not an identity-pin test — that is the DEV_TAG case above.
-kubectl run nvcre-deny-unsigned --image="${IMAGE}:not-a-release" -n nvcre \
+# Denied: published but unsigned. Pre-dates release signing, which starts at
+# v0.1.0-rc.9, so admission resolves the manifest and fails on missing
+# signature material rather than on the lookup. (These old tags could be GC'd;
+# a 404 then is obvious. :not-a-release is a lookup failure, not this criterion.)
+kubectl run nvcre-deny-unsigned --image="${IMAGE}:v0.1.0-rc.1" -n nvcre \
   --dry-run=server --restart=Never -o name
 
 # Untouched on Kyverno: image outside matchImageReferences, even in the labeled
