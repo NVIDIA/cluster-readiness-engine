@@ -233,7 +233,10 @@ func TestSecurityMdPinsAnExactIdentity(t *testing.T) {
 			t.Errorf("SECURITY.md command pins no --certificate-identity: %s", flat)
 			continue
 		}
-		if !strings.Contains(flat, wantIdentity) && !strings.Contains(flat, "${ID}") {
+		// SECURITY.md inlines the identity; do not accept ${ID} here. A
+		// command that set ID to another repository could otherwise ride on a
+		// different fence's literal and still pass a page-wide check.
+		if !strings.Contains(flat, wantIdentity) {
 			t.Errorf("SECURITY.md command does not pin this repository's identity: %s", flat)
 		}
 		if !strings.Contains(flat, "--certificate-oidc-issuer") {

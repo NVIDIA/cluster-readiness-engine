@@ -20,9 +20,12 @@
 #  2. It isolates the signing token from caller-defined build steps.
 #
 # This is SLSA Build **L2**, not L3, and nothing here may claim otherwise.
-# Provenance is unforgeable by the build process today (minted here from
-# trusted context), but builder isolation is absent: the builds stay in the
-# callers — `docker buildx` inside the reusable `build-image.yml` (invoked by
+# Provenance **origin** fields are unforgeable by the build process today
+# (minted here from trusted context: GITHUB_REPOSITORY / REF / SHA / SERVER_URL /
+# RUN_ID and github.workflow_ref). `externalParameters.subjectKind` is an
+# enum-validated pass-through of inputs.subject_kind and is out of that origin
+# claim. Builder isolation is absent: the builds stay in the callers —
+# `docker buildx` inside the reusable `build-image.yml` (invoked by
 # publish.yml / release.yml), and the Go cross-compile / `helm package` in
 # release.yml — and this workflow signs a digest it is handed. A caller that
 # produced the wrong artifact would get a faithful signature over the wrong
