@@ -1,1 +1,2 @@
 input: "deps,crds,controller,logprofiles"
+allowed: [deps, helm]

@@ -1,0 +1,18 @@
+# The only jobset.x-k8s.io rule belongs to Trainer's manager ClusterRole,
+# which consumes JobSets but is not a JobSet controller. It is verified
+# against the exact manifest and excluded, leaving no controller ownership.
+crdPresent: true
+releaseState: deployed
+releaseManifest: |
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: kubeflow-trainer-controller-manager
+    labels:
+      helm.sh/chart: kubeflow-trainer-2.2.1
+      app.kubernetes.io/name: kubeflow-trainer
+      app.kubernetes.io/component: manager
+  rules:
+    - apiGroups: [jobset.x-k8s.io]
+      resources: [jobsets]
+      verbs: [create, get, list, watch]

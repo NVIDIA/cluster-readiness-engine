@@ -124,21 +124,35 @@ func TestParseSkipPhases(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
-			Input string `yaml:"input"`
+			Input   string   `yaml:"input"`
+			Allowed []string `yaml:"allowed"`
 		}
 		if err := sigsyaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
 			return err
 		}
 
-		result := parseSkipPhases(in.Input)
+		if len(in.Allowed) == 0 {
+			in.Allowed = []string{phaseCR, phaseHelm, phaseDeps}
+		}
+		result, parseErr := parseSkipPhases(in.Input, in.Allowed...)
 
-		b, err := json.MarshalIndent(result, "", "  ")
+		b, err := json.MarshalIndent(struct {
+			Phases map[string]bool `json:"phases,omitempty"`
+			Error  string          `json:"error,omitempty"`
+		}{Phases: result, Error: errorString(parseErr)}, "", "  ")
 		if err != nil {
 			return err
 		}
 		tc.Actual = string(b) + "\n"
 		return nil
 	})
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 // ---------------------------------------------------------------------------

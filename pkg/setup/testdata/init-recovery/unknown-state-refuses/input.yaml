@@ -1,9 +1,9 @@
 # The state query could not complete (helm missing, cluster unreachable):
-# upgrade --install runs as today, and a failure — even one that looks like
-# a conflict — fails with the raw helm output, because the release-state
-# signal can never agree (ADR-073 decision 4, row 5).
+# setup stops before Helm mutation because ownership-sensitive action cannot
+# be selected without knowing whether this is a fresh or existing release.
 releaseState: unknown
 chartVersion: ""
+stateError: 'helm status kubeflow-trainer: Kubernetes cluster unreachable'
 installResults:
   - fail: true
     output: |

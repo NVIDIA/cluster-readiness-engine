@@ -20,8 +20,10 @@ import (
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -40,11 +42,29 @@ const (
 	// Phase names (kubeadm-style).
 	phaseCR   = "cr"
 	phaseDeps = "deps"
+	phaseHelm = "helm"
 
 	nvcreAPIGroup = "nvcre.nvidia.com"
 
 	trainerAPIGroup = "trainer.kubeflow.org"
 	jobsetAPIGroup  = "jobset.x-k8s.io"
+
+	kindCustomResourceDefinition = "CustomResourceDefinition"
+	kindNamespace                = "Namespace"
+	kindClusterRole              = "ClusterRole"
+	kindDeployment               = "Deployment"
+	kindService                  = "Service"
+	kindServiceAccount           = "ServiceAccount"
+	kindConfigMap                = "ConfigMap"
+	kindTrainingRuntime          = "TrainingRuntime"
+	kindJobSet                   = "JobSet"
+	kindValidatingWebhook        = "ValidatingWebhookConfiguration"
+	kindMutatingWebhook          = "MutatingWebhookConfiguration"
+	jobSetControllerName         = "jobset-controller"
+	jobSetWebhookServiceName     = "jobset-webhook-service"
+	appsAPIGroup                 = "apps"
+	rbacAPIGroup                 = "rbac.authorization.k8s.io"
+	rbacV1APIVersion             = "rbac.authorization.k8s.io/v1"
 
 	crGracefulTimeout = 10 * time.Minute
 )
@@ -145,7 +165,10 @@ func RunInit(
 	chartRef, trainerChartRef string,
 	in io.Reader, out io.Writer,
 ) error {
-	skip := parseSkipPhases(skipPhases)
+	skip, err := parseSkipPhases(skipPhases, phaseDeps, phaseHelm)
+	if err != nil {
+		return err
+	}
 	kubeconfigPath, kubeContext := *configFlags.KubeConfig, *configFlags.Context
 	if chartRef == "" {
 		chartRef = helmChartOCI
@@ -157,7 +180,7 @@ func RunInit(
 	// A half-mirrored chart-ref configuration still pulls one chart from
 	// GHCR (issue #321); warn but continue, because a reachable GHCR makes
 	// it a valid setup.
-	if warning := asymmetricChartRefsWarning(chartRef, trainerChartRef, skip[phaseDeps]); warning != "" {
+	if warning := asymmetricChartRefsWarning(chartRef, trainerChartRef, skip[phaseDeps], skip[phaseHelm]); warning != "" {
 		_, _ = fmt.Fprintln(out, warning)
 	}
 
@@ -181,6 +204,10 @@ func RunInit(
 	if err != nil {
 		return fmt.Errorf("[preflight] build kubernetes client: %w", err)
 	}
+	discoverNamespaced, err := newSetupDiscovery(configFlags)
+	if err != nil {
+		return fmt.Errorf("[preflight] build kubernetes discovery client: %w", err)
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
@@ -192,7 +219,7 @@ func RunInit(
 		_, _ = fmt.Fprintf(out, "\n  Phases:\n")
 		printPhaseList(out, skip, []phaseInfo{
 			{phaseDeps, fmt.Sprintf("Kubeflow Trainer %s (%s)", kubeflowTrainerVersion, trainerChartRef)},
-			{"helm", fmt.Sprintf("NVCRE Helm chart (%s), image %s", chartRef, image)},
+			{phaseHelm, fmt.Sprintf("NVCRE Helm chart (%s), image %s", chartRef, image)},
 		})
 		_, _ = fmt.Fprintf(out,
 			"\nDo you want to proceed? Only 'yes' will be accepted to confirm.\n")
@@ -204,20 +231,27 @@ func RunInit(
 	}
 
 	sp := setupPhaseParams{
-		ctx:         ctx,
-		c:           c,
-		kubeconfig:  kubeconfigPath,
-		kubeContext: kubeContext,
-		skip:        skip,
-		in:          in,
-		autoApprove: autoApprove,
-		trainer:     newTrainerHelm(kubeconfigPath, kubeContext, trainerChartRef, imagePullSecret),
-		out:         out,
+		ctx:                ctx,
+		c:                  c,
+		kubeconfig:         kubeconfigPath,
+		kubeContext:        kubeContext,
+		skip:               skip,
+		in:                 in,
+		autoApprove:        autoApprove,
+		trainer:            newTrainerHelm(kubeconfigPath, kubeContext, trainerChartRef, imagePullSecret),
+		discoverNamespaced: discoverNamespaced,
+		out:                out,
 	}
 
 	if err := installDepsPhase(sp); err != nil {
 		return err
 	}
+	if skip[phaseHelm] {
+		_, _ = fmt.Fprintln(out, "[helm] Skipped.")
+		_, _ = fmt.Fprintln(out, "\nNVCRE dependency setup completed successfully.")
+		return nil
+	}
+
 	pullSecret, err := setupControllerSecret(sp, imagePullSecret)
 	if err != nil {
 		return fmt.Errorf("[helm] %w", err)
@@ -270,7 +304,15 @@ type setupPhaseParams struct {
 	autoApprove bool
 	// trainer bundles the Helm subprocess operations the [deps] phase needs.
 	trainer trainerHelm
-	out     io.Writer
+	// jobSetMode is selected before Trainer mutation and preserved across
+	// destructive recovery so reinstall uses the same ownership decision.
+	jobSetMode             jobSetMode
+	jobSetOwnershipToken   string
+	releaseManifestObjects map[string]struct{}
+	// discoverNamespaced returns preferred namespaced API resources. A partial
+	// discovery result is returned with its error and is rejected by recovery.
+	discoverNamespaced func() ([]*metav1.APIResourceList, error)
+	out                io.Writer
 }
 
 // trainerHelm bundles the Helm subprocess operations the [deps] phase uses,
@@ -280,9 +322,11 @@ type trainerHelm struct {
 	// state returns the trainer release state and installed chart version.
 	state trainerStateFunc
 	// install runs helm upgrade --install and returns the captured transcript.
-	install func(out io.Writer) (string, error)
+	install func(mode jobSetMode, out io.Writer) (string, error)
 	// uninstall removes the trainer release.
 	uninstall func(out io.Writer) error
+	// manifest returns the stored manifest for the exact trainer release.
+	manifest func() (string, error)
 }
 
 // newTrainerHelm returns the CLI-backed trainerHelm implementation. chartRef
@@ -292,11 +336,15 @@ type trainerHelm struct {
 func newTrainerHelm(kubeconfigPath, kubeContext, chartRef, registryToken string) trainerHelm {
 	return trainerHelm{
 		state: newTrainerStateQuery(kubeconfigPath, kubeContext),
-		install: func(out io.Writer) (string, error) {
-			return installTrainerHelmRelease(kubeconfigPath, kubeContext, chartRef, registryToken, out)
+		install: func(mode jobSetMode, out io.Writer) (string, error) {
+			return installTrainerHelmRelease(
+				kubeconfigPath, kubeContext, chartRef, registryToken, mode != jobSetModeExternal, out)
 		},
 		uninstall: func(out io.Writer) error {
 			return uninstallTrainerHelmRelease(kubeconfigPath, kubeContext, out)
+		},
+		manifest: func() (string, error) {
+			return trainerReleaseManifest(kubeconfigPath, kubeContext)
 		},
 	}
 }
@@ -305,8 +353,8 @@ func newTrainerHelm(kubeconfigPath, kubeContext, chartRef, registryToken string)
 type trainerAction int
 
 const (
-	// trainerActionInstall runs helm upgrade --install as today; a failure
-	// is reported raw with no recovery arm (fresh installs, unknown state).
+	// trainerActionInstall runs helm upgrade --install for a confirmed fresh
+	// installation; a failure is reported raw with no recovery arm.
 	trainerActionInstall trainerAction = iota
 	// trainerActionSkip prints "already deployed" and does nothing: the
 	// release is deployed at the pinned chart version, and never
@@ -316,6 +364,8 @@ const (
 	// failure per ADR-073 decision 2; the conflict class arms the gated
 	// automatic recovery.
 	trainerActionAttemptRecover
+	// trainerActionRefuse stops because the release state could not be read.
+	trainerActionRefuse
 )
 
 // planTrainerPhase maps the observed trainer release state to a [deps]
@@ -328,7 +378,9 @@ func planTrainerPhase(state, chartVersion string) trainerAction {
 			return trainerActionSkip
 		}
 		return trainerActionAttemptRecover
-	case helmStateNotInstalled, helmStateUninstalled, helmStateUnknown:
+	case helmStateUnknown:
+		return trainerActionRefuse
+	case helmStateNotInstalled, helmStateUninstalled:
 		return trainerActionInstall
 	default: // failed, pending-install, pending-upgrade, pending-rollback, ...
 		return trainerActionAttemptRecover
@@ -342,28 +394,72 @@ func helmStateFailedOrPending(state string) bool {
 	return state == "failed" || strings.HasPrefix(state, "pending-")
 }
 
-// installDepsPhase installs Kubeflow Trainer, converging from any partial
-// state (ADR-073): skip when already deployed at the pinned version,
-// otherwise attempt the install once and classify any failure. A failure
-// carrying the issue #180 field-ownership conflict signature arms the gated
-// automatic recovery; anything else fails with the raw helm output.
+// installDepsPhase installs Kubeflow Trainer when release and JobSet ownership
+// evidence select a safe action. It skips a pinned healthy release, refuses
+// unknown or incomplete evidence, and classifies a failed install attempt. A
+// failure carrying the issue #180 field-ownership conflict signature arms the
+// gated automatic recovery; anything else fails with the raw helm output.
 func installDepsPhase(sp setupPhaseParams) error {
 	if sp.skip[phaseDeps] {
 		_, _ = fmt.Fprintln(sp.out, "[deps] Skipped.")
 		return nil
 	}
 
-	state, chartVersion := sp.trainer.state()
-	switch planTrainerPhase(state, chartVersion) {
-	case trainerActionSkip:
+	stateResult := sp.trainer.state()
+	state, chartVersion := stateResult.state, stateResult.chartVersion
+	action := planTrainerPhase(state, chartVersion)
+	if action == trainerActionRefuse {
+		if stateResult.err == nil {
+			stateResult.err = fmt.Errorf("helm returned an unknown release state without a diagnostic")
+		}
+		printUnknownTrainerStateFallback(sp.out, stateResult.err)
+		return fmt.Errorf("[deps] cannot determine Kubeflow Trainer release state: %w", stateResult.err)
+	}
+
+	crdPresent, err := jobSetCRDExists(sp.ctx, sp.c)
+	if err != nil {
+		printJobSetOwnershipFallback(sp.out, unknownJobSet("read JobSet CRD: "+err.Error()))
+		return fmt.Errorf("[deps] read JobSet CRD: %w", err)
+	}
+	if action == trainerActionSkip {
+		if !crdPresent {
+			return missingJobSetCRDError(sp.out, state)
+		}
 		_, _ = fmt.Fprintf(sp.out,
 			"[deps] Kubeflow Trainer release %q already deployed at chart version %s; skipping.\n",
 			trainerReleaseName, chartVersion)
 		return nil
+	}
+	if !crdPresent && state != helmStateNotInstalled && state != helmStateUninstalled {
+		return missingJobSetCRDError(sp.out, state)
+	}
 
+	observation := observeJobSetOwnership(sp.ctx, sp.c, crdPresent, state, sp.trainer.manifest)
+	if observation.mode == jobSetModeUnknown {
+		printJobSetOwnershipFallback(sp.out, observation)
+		return fmt.Errorf("[deps] JobSet ownership is unknown: %s", strings.Join(observation.evidence, "; "))
+	}
+	sp.jobSetMode = observation.mode
+	sp.jobSetOwnershipToken = observation.ownershipToken
+	sp.releaseManifestObjects = observation.manifestObjects
+	if observation.mode == jobSetModeAbsent || observation.mode == jobSetModeCRDOnly {
+		_, _ = fmt.Fprintln(sp.out,
+			"[deps] JobSet detection covers the verified chart fingerprint only; operators with customized or uncertain prior installations must use operator-managed installation.")
+	}
+	if observation.mode == jobSetModeCRDOnly {
+		_, _ = fmt.Fprintln(sp.out,
+			"[deps] Installing the bundled JobSet controller using the retained JobSet CRD; its schema is not refreshed.")
+	}
+
+	switch action {
+	case trainerActionSkip, trainerActionRefuse:
+		// Both were resolved above; reaching here is a programming error and
+		// must not mutate the cluster.
+		return fmt.Errorf("[deps] internal error: action %d reached the install path", action)
 	case trainerActionInstall:
 		_, _ = fmt.Fprintf(sp.out, "[deps] Installing Kubeflow Trainer %s...\n", kubeflowTrainerVersion)
-		if _, err := sp.trainer.install(sp.out); err != nil {
+		if output, err := sp.trainer.install(observation.mode, sp.out); err != nil {
+			printTrainerFailureGuidance(sp, output)
 			return fmt.Errorf("[deps] %w", err)
 		}
 		return nil
@@ -374,7 +470,7 @@ func installDepsPhase(sp setupPhaseParams) error {
 	_, _ = fmt.Fprintf(sp.out,
 		"[deps] Kubeflow Trainer release is in state %q; attempting install of %s...\n",
 		state, kubeflowTrainerVersion)
-	output, err := sp.trainer.install(sp.out)
+	output, err := sp.trainer.install(observation.mode, sp.out)
 	if err == nil {
 		return nil
 	}
@@ -387,7 +483,12 @@ func installDepsPhase(sp setupPhaseParams) error {
 func handleTrainerInstallFailure(sp setupPhaseParams, output string, installErr error) error {
 	installErr = fmt.Errorf("[deps] %w", installErr)
 
-	if classifyTrainerInstallFailure(output) != failureClassSSAConflict {
+	failure := classifyTrainerInstallFailure(output)
+	if failure == failureClassJobSetOwnership {
+		printTrainerFailureGuidance(sp, output)
+		return installErr
+	}
+	if failure != failureClassSSAConflict {
 		// Not this failure class (e.g. a registry timeout): fail with the
 		// raw helm output, which the install attempt already printed.
 		return installErr
@@ -396,7 +497,7 @@ func handleTrainerInstallFailure(sp setupPhaseParams, output string, installErr 
 	// Second signal: the release state must agree before anything
 	// destructive happens. A stray "conflict" substring in an unrelated
 	// error must not trigger recovery.
-	postState, _ := sp.trainer.state()
+	postState := sp.trainer.state().state
 	if !helmStateFailedOrPending(postState) {
 		_, _ = fmt.Fprintf(sp.out,
 			"[deps] The install output matches the webhook Secret field-ownership conflict signature, "+
@@ -409,8 +510,15 @@ func handleTrainerInstallFailure(sp setupPhaseParams, output string, installErr 
 		"[deps] Install failed with webhook Secret field-ownership conflicts and the release is %s (issue #180).\n",
 		postState)
 	printSecretOwnershipDiagnostics(sp.ctx, sp.c, sp.out)
+	if err := refreshRecoveryReleaseEvidence(&sp); err != nil {
+		_, _ = fmt.Fprintf(sp.out, "[deps] Automatic recovery refused while refreshing exact release evidence: %v\n", err)
+		printManualTrainerRecovery(sp.out)
+		return installErr
+	}
 
-	safe, blockers := trainerRecoveryGate(sp.ctx, sp.c)
+	printRecoveryQuiescencePrerequisite(sp.out)
+	baseline, blockers := recoveryGate(sp, nil, false)
+	safe := len(blockers) == 0
 	if !safe {
 		_, _ = fmt.Fprintln(sp.out, "[deps] Automatic recovery refused:")
 		for _, b := range blockers {
@@ -432,39 +540,67 @@ func handleTrainerInstallFailure(sp setupPhaseParams, output string, installErr 
 		_, _ = fmt.Fprintln(sp.out)
 	}
 
+	preUninstall, blockers := recoveryGate(sp, &baseline, false)
+	blockers = append(blockers, compareRecoveryEvidence(baseline, preUninstall, false)...)
+	if len(blockers) != 0 {
+		_, _ = fmt.Fprintln(sp.out, "[deps] Automatic recovery refused after confirmation:")
+		for _, blocker := range blockers {
+			_, _ = fmt.Fprintf(sp.out, "  - %s\n", blocker)
+		}
+		return installErr
+	}
+
 	// Exactly one recovery attempt per run; a second failure falls through
 	// to the manual procedure instead of looping (ADR-073 decision 5).
-	if err := recoverTrainerRelease(sp); err != nil {
+	if err := recoverTrainerRelease(sp, baseline); err != nil {
 		printManualTrainerRecovery(sp.out)
 		return fmt.Errorf("[deps] automatic recovery failed: %w", err)
 	}
 	return nil
 }
 
-// trainerRecoveryCRDs are the four CRDs the recovery deletes — the same set
-// setup reset removes via deleteCRDsByGroup.
+func refreshRecoveryReleaseEvidence(sp *setupPhaseParams) error {
+	present, err := jobSetCRDExists(sp.ctx, sp.c)
+	if err != nil {
+		return err
+	}
+	observed := observeJobSetOwnership(sp.ctx, sp.c, present, "failed", sp.trainer.manifest)
+	if observed.mode == jobSetModeUnknown {
+		return fmt.Errorf("JobSet ownership became ambiguous: %s", strings.Join(observed.evidence, "; "))
+	}
+	if sp.jobSetMode == jobSetModeExternal &&
+		(observed.mode != jobSetModeExternal || observed.ownershipToken != sp.jobSetOwnershipToken) {
+		return fmt.Errorf("external JobSet ownership changed: selected %s, observed %s", sp.jobSetMode, observed.mode)
+	}
+	if sp.jobSetMode != jobSetModeExternal && observed.mode == jobSetModeExternal {
+		return fmt.Errorf("JobSet ownership changed from %s to external", sp.jobSetMode)
+	}
+	sp.releaseManifestObjects = observed.manifestObjects
+	if observed.ownershipToken != "" {
+		sp.jobSetOwnershipToken = observed.ownershipToken
+	}
+	return nil
+}
+
+// trainerRecoveryCRDs are the Trainer-owned CRDs recovery deletes. The shared
+// JobSet CRD is intentionally absent and is retained in every ownership mode.
 var trainerRecoveryCRDs = []string{
 	"trainjobs." + trainerAPIGroup,
 	"trainingruntimes." + trainerAPIGroup,
 	"clustertrainingruntimes." + trainerAPIGroup,
-	"jobsets." + jobsetAPIGroup,
 }
 
-// trainerRecoveryGate decides whether the automatic recovery is provably
-// safe (ADR-073 decision 5). It refuses when any TrainJob or JobSet instance
-// exists, or when a TrainingRuntime/ClusterTrainingRuntime exists that is
-// not Helm-owned, because deleting the CRDs would destroy them. Any listing
-// failure blocks recovery too: safety must be proven, not assumed.
-func trainerRecoveryGate(ctx context.Context, c client.Client) (bool, []string) {
+// trainerWorkloadGate enforces the cluster-wide custom-resource blockers.
+func trainerWorkloadGate(sp setupPhaseParams) (bool, []string) {
 	var blockers []string
 	for _, group := range []string{trainerAPIGroup, jobsetAPIGroup} {
-		resources, err := discoverResourcesByGroup(ctx, c, group)
+		resources, err := discoverResourcesByGroup(sp.ctx, sp.c, group)
 		if err != nil {
 			blockers = append(blockers, fmt.Sprintf("cannot list CRDs in group %s: %v", group, err))
 			continue
 		}
 		for _, res := range resources {
-			items, err := listNVCRECRs(ctx, c, res)
+			items, err := listNVCRECRs(sp.ctx, sp.c, res)
 			if err != nil {
 				blockers = append(blockers, fmt.Sprintf("cannot list %s instances: %v", res.kind, err))
 				continue
@@ -476,14 +612,22 @@ func trainerRecoveryGate(ctx context.Context, c client.Client) (bool, []string) 
 				}
 				switch res.kind {
 				case "TrainingRuntime", "ClusterTrainingRuntime":
-					// The chart's own runtimes are Helm-owned and are
-					// reinstalled with the fresh chart install.
-					if item.GetLabels()["app.kubernetes.io/managed-by"] == "Helm" {
+					// Only runtimes proven to belong to this exact release and
+					// its stored manifest are recreated by the reinstall.
+					_, inManifest := sp.releaseManifestObjects[manifestIdentity(
+						item.GetAPIVersion(), item.GetKind(), item.GetNamespace(), item.GetName())]
+					if completeHelmOwner(&item).bundled() && inManifest {
 						continue
 					}
 					blockers = append(blockers, fmt.Sprintf(
-						"%s %s is not Helm-owned (missing app.kubernetes.io/managed-by: Helm); deleting the CRDs would destroy it",
+						"%s %s is not proven to belong to the exact Trainer release manifest; deleting the CRDs would destroy it",
 						res.kind, name))
+				case "JobSet":
+					if sp.jobSetMode == jobSetModeExternal && item.GetNamespace() != trainerNamespace {
+						continue
+					}
+					blockers = append(blockers, fmt.Sprintf(
+						"%s %s exists; recovery would remove its controller or namespace", res.kind, name))
 				default:
 					blockers = append(blockers, fmt.Sprintf(
 						"%s %s exists; recovery deletes its CRD", res.kind, name))
@@ -495,47 +639,78 @@ func trainerRecoveryGate(ctx context.Context, c client.Client) (bool, []string) 
 	return len(blockers) == 0, blockers
 }
 
-// recoverTrainerRelease performs the field-validated recovery from issue
-// #180 exactly once: uninstall the trainer release, delete its four CRDs,
-// delete the kubeflow-system namespace, and reinstall the pinned chart. The
-// caller has already passed the safety gate and confirmed the plan.
-func recoverTrainerRelease(sp setupPhaseParams) error {
+func recoveryGate(
+	sp setupPhaseParams, prior *recoveryEvidence, trainerAPIsRemoved bool,
+) (recoveryEvidence, []string) {
+	_, workloadBlockers := trainerWorkloadGate(sp)
+	evidence, inventoryBlockers := collectRecoveryEvidence(sp, prior, trainerAPIsRemoved)
+	blockers := append(workloadBlockers, inventoryBlockers...)
+	if ownershipBlocker := revalidateRecoveryJobSetOwnership(sp, trainerAPIsRemoved); ownershipBlocker != "" {
+		blockers = append(blockers, ownershipBlocker)
+	}
+	sort.Strings(blockers)
+	return evidence, blockers
+}
+
+func revalidateRecoveryJobSetOwnership(sp setupPhaseParams, trainerRemoved bool) string {
+	present, err := jobSetCRDExists(sp.ctx, sp.c)
+	if err != nil {
+		return "cannot revalidate JobSet CRD ownership: " + err.Error()
+	}
+	state := "failed"
+	manifest := sp.trainer.manifest
+	if trainerRemoved {
+		state = helmStateNotInstalled
+		manifest = nil
+	}
+	observed := observeJobSetOwnership(sp.ctx, sp.c, present, state, manifest)
+	if observed.mode == jobSetModeUnknown || observed.mode == jobSetModeExternal && sp.jobSetMode != jobSetModeExternal ||
+		sp.jobSetMode == jobSetModeExternal && (observed.mode != jobSetModeExternal ||
+			observed.ownershipToken != sp.jobSetOwnershipToken) {
+		return fmt.Sprintf("JobSet ownership changed or became ambiguous: selected %s, observed %s (%s)",
+			sp.jobSetMode, observed.mode, strings.Join(observed.evidence, "; "))
+	}
+	return ""
+}
+
+// recoverTrainerRelease performs the gated recovery exactly once. It repeats
+// workload checks at every CRD boundary, inventories the namespace again, and
+// deletes only the inspected namespace UID.
+func recoverTrainerRelease(sp setupPhaseParams, baseline recoveryEvidence) error {
 	out := sp.out
 	_, _ = fmt.Fprintf(out, "[deps][recover] Uninstalling Helm release %q from namespace %s...\n",
 		trainerReleaseName, trainerNamespace)
 	if err := sp.trainer.uninstall(out); err != nil {
-		return fmt.Errorf("uninstall %s: %w", trainerReleaseName, err)
+		return fmt.Errorf("uninstall %s failed; outcome may be partial and no further cleanup was attempted: %w",
+			trainerReleaseName, err)
 	}
 
-	if err := deleteCRDsByGroup(sp.ctx, sp.c, trainerAPIGroup, "[deps][recover]", "Kubeflow Trainer", out); err != nil {
-		return err
-	}
-	if err := deleteCRDsByGroup(sp.ctx, sp.c, jobsetAPIGroup, "[deps][recover]", "JobSet", out); err != nil {
-		return err
+	_, _ = fmt.Fprintln(out, "[deps][recover] Removing Kubeflow Trainer CRDs (JobSet CRD is retained)...")
+	for _, name := range trainerRecoveryCRDs {
+		if err := deleteTrainerCRDWithRecheck(sp, name); err != nil {
+			return fmt.Errorf("partial recovery after Trainer uninstall: %w", err)
+		}
 	}
 
+	finalEvidence, blockers := recoveryGate(sp, &baseline, true)
+	blockers = append(blockers, compareRecoveryEvidence(baseline, finalEvidence, true)...)
+	if len(blockers) != 0 {
+		return fmt.Errorf("partial recovery stopped before namespace deletion: %s", strings.Join(blockers, "; "))
+	}
 	_, _ = fmt.Fprintf(out, "[deps][recover] Deleting namespace %s...\n", trainerNamespace)
-	ns := &unstructured.Unstructured{}
-	ns.SetAPIVersion("v1")
-	ns.SetKind("Namespace")
-	ns.SetName(trainerNamespace)
-	switch err := sp.c.Delete(sp.ctx, ns); {
-	case apierrors.IsNotFound(err):
-		_, _ = fmt.Fprintf(out, "  Namespace %s already deleted.\n", trainerNamespace)
-	case err != nil:
-		return fmt.Errorf("delete namespace %s: %w", trainerNamespace, err)
-	default:
-		WaitForNamespaceDeletion(sp.ctx, sp.c, trainerNamespace, out)
+	if err := deleteNamespaceWithUID(sp, baseline.namespaceUID); err != nil {
+		return fmt.Errorf("partial recovery stopped after Trainer CRD deletion: %w", err)
 	}
 
 	_, _ = fmt.Fprintf(out, "[deps][recover] Reinstalling Kubeflow Trainer %s...\n", kubeflowTrainerVersion)
-	if _, err := sp.trainer.install(out); err != nil {
+	if output, err := sp.trainer.install(sp.jobSetMode, out); err != nil {
+		printTrainerFailureGuidance(sp, output)
 		return fmt.Errorf("reinstall: %w", err)
 	}
 
 	_, _ = fmt.Fprintf(out,
-		"[deps][recover] Recovery complete: uninstalled release %q, deleted CRDs (%s), deleted namespace %s, reinstalled Kubeflow Trainer %s.\n",
-		trainerReleaseName, strings.Join(trainerRecoveryCRDs, ", "), trainerNamespace, kubeflowTrainerVersion)
+		"[deps][recover] Recovery complete: uninstalled release %q, deleted Trainer CRDs (%s), retained JobSet CRD %s, deleted namespace %s, reinstalled Kubeflow Trainer %s.\n",
+		trainerReleaseName, strings.Join(trainerRecoveryCRDs, ", "), jobSetCRDName, trainerNamespace, kubeflowTrainerVersion)
 	return nil
 }
 
@@ -544,19 +719,26 @@ func recoverTrainerRelease(sp setupPhaseParams) error {
 func printTrainerRecoveryPlan(out io.Writer) {
 	_, _ = fmt.Fprintln(out, "\n  Recovery plan (issue #180):")
 	_, _ = fmt.Fprintf(out, "    1. Uninstall Helm release %q (namespace: %s)\n", trainerReleaseName, trainerNamespace)
-	_, _ = fmt.Fprintf(out, "    2. Delete CRDs: %s\n", strings.Join(trainerRecoveryCRDs, ", "))
+	_, _ = fmt.Fprintf(out, "    2. Delete Trainer CRDs: %s (retain %s)\n", strings.Join(trainerRecoveryCRDs, ", "), jobSetCRDName)
 	_, _ = fmt.Fprintf(out, "    3. Delete namespace %s and wait for termination\n", trainerNamespace)
 	_, _ = fmt.Fprintf(out, "    4. Reinstall Kubeflow Trainer %s\n", kubeflowTrainerVersion)
+}
+
+func printRecoveryQuiescencePrerequisite(out io.Writer) {
+	_, _ = fmt.Fprintln(out,
+		"[deps] Recovery prerequisite: keep kubeflow-system protected-resource writes and Trainer custom-resource writes quiescent until recovery stops or completes.")
+	_, _ = fmt.Fprintln(out,
+		"[deps] If recovery removes the bundled JobSet controller, JobSet creation must also remain quiescent. --auto-approve does not establish this condition.")
 }
 
 // printManualTrainerRecovery prints the field-validated manual recovery
 // procedure from issue #180. It is printed on every fail-fast path.
 func printManualTrainerRecovery(out io.Writer) {
-	_, _ = fmt.Fprintln(out, "\n[deps] Manual recovery procedure (issue #180):")
+	_, _ = fmt.Fprintln(out, "\n[deps] Operator-managed recovery guidance (issue #180):")
 	_, _ = fmt.Fprintf(out, "  1. helm uninstall %s --namespace %s\n", trainerReleaseName, trainerNamespace)
-	_, _ = fmt.Fprintf(out, "  2. kubectl delete crd %s\n", strings.Join(trainerRecoveryCRDs, " "))
-	_, _ = fmt.Fprintf(out, "  3. kubectl delete namespace %s\n", trainerNamespace)
-	_, _ = fmt.Fprintf(out, "  4. Re-run 'nvcrectl setup init' to reinstall Kubeflow Trainer %s\n", kubeflowTrainerVersion)
+	_, _ = fmt.Fprintf(out, "  2. kubectl delete crd %s  # retain %s\n", strings.Join(trainerRecoveryCRDs, " "), jobSetCRDName)
+	_, _ = fmt.Fprintf(out, "  3. Inventory %s and delete it only after applying the same protected-resource and quiescence checks.\n", trainerNamespace)
+	_, _ = fmt.Fprintf(out, "  4. Re-run 'nvcrectl setup init' to reinstall Kubeflow Trainer %s. Earlier cleanup is not rolled back.\n", kubeflowTrainerVersion)
 }
 
 // printSecretOwnershipDiagnostics prints the field managers of every Secret
@@ -653,7 +835,10 @@ func RunReset(
 	configFlags *kubeconfig.ConfigFlags,
 	in io.Reader, out io.Writer,
 ) error {
-	skip := parseSkipPhases(skipPhases)
+	skip, err := parseSkipPhases(skipPhases, phaseCR, phaseHelm, phaseDeps)
+	if err != nil {
+		return err
+	}
 	kubeconfigPath, kubeContext := *configFlags.KubeConfig, *configFlags.Context
 
 	// [preflight]
@@ -701,20 +886,22 @@ func RunReset(
 		}
 	}
 
-	if err := uninstallHelmRelease(helmUninstallParams{
-		kubeconfig:  kubeconfigPath,
-		kubeContext: kubeContext,
-		out:         out,
-	}); err != nil {
-		return fmt.Errorf("[helm] %w", err)
-	}
+	if skip[phaseHelm] {
+		_, _ = fmt.Fprintln(out, "[helm] Skipped.")
+	} else {
+		if err := uninstallHelmRelease(helmUninstallParams{
+			kubeconfig:  kubeconfigPath,
+			kubeContext: kubeContext,
+			out:         out,
+		}); err != nil {
+			return fmt.Errorf("[helm] %w", err)
+		}
 
-	// Helm intentionally never deletes CRDs that live in a chart's crds/
-	// directory (to avoid accidental data loss on uninstall), so `helm
-	// uninstall` leaves the NVCRE CRDs behind. Delete them explicitly to
-	// leave the cluster clean and let a subsequent init start fresh.
-	if err := deleteCRDsByGroup(ctx, c, nvcreAPIGroup, "[helm]", "NVCRE", out); err != nil {
-		return fmt.Errorf("[helm] %w", err)
+		// Helm intentionally never deletes CRDs that live in a chart's crds/
+		// directory. Delete NVCRE's CRDs explicitly when this phase runs.
+		if err := deleteCRDsByGroup(ctx, c, nvcreAPIGroup, "[helm]", "NVCRE", out); err != nil {
+			return fmt.Errorf("[helm] %w", err)
+		}
 	}
 
 	sp := setupPhaseParams{
@@ -743,13 +930,9 @@ func uninstallDepsPhase(sp setupPhaseParams) error {
 		return fmt.Errorf("[deps] %w", err)
 	}
 
-	// Same Helm CRD-preservation behavior as the [helm] phase: uninstalling
-	// the kubeflow-trainer release (and its JobSet sub-chart dependency)
-	// leaves their CRDs behind. Clean them up explicitly.
+	// Helm leaves chart CRDs behind. Remove only Trainer-owned CRDs; the
+	// shared JobSet CRD is retained for cluster-wide consumers.
 	if err := deleteCRDsByGroup(sp.ctx, sp.c, trainerAPIGroup, "[deps]", "Kubeflow Trainer", sp.out); err != nil {
-		return fmt.Errorf("[deps] %w", err)
-	}
-	if err := deleteCRDsByGroup(sp.ctx, sp.c, jobsetAPIGroup, "[deps]", "JobSet", sp.out); err != nil {
 		return fmt.Errorf("[deps] %w", err)
 	}
 	return nil
@@ -760,9 +943,9 @@ func uninstallDepsPhase(sp setupPhaseParams) error {
 type retainedResource struct {
 	description string
 	cleanup     string
-	// unverified is true when the existence check failed (e.g. RBAC denied),
-	// so the resource is reported as "may remain" instead of being hidden.
-	unverified bool
+	// lookupError preserves a failed existence check (e.g. RBAC denied),
+	// so the resource is reported as "may remain" with the underlying cause.
+	lookupError error
 }
 
 // printRetainedResources reports what reset intentionally keeps — the shared
@@ -777,7 +960,7 @@ func printRetainedResources(
 	var retained []retainedResource
 	record := func(exists bool, err error, r retainedResource) {
 		if err != nil {
-			r.unverified = true
+			r.lookupError = err
 			retained = append(retained, r)
 			return
 		}
@@ -786,18 +969,22 @@ func printRetainedResources(
 		}
 	}
 
-	exists, err := namespaceExists(ctx, c, nvcreNamespace)
-	record(exists, err, retainedResource{
-		description: "Namespace " + nvcreNamespace,
-		cleanup:     "kubectl delete namespace " + nvcreNamespace,
-	})
+	var exists bool
+	var err error
+	if !skip[phaseHelm] {
+		exists, err = namespaceExists(ctx, c, nvcreNamespace)
+		record(exists, err, retainedResource{
+			description: "Namespace " + nvcreNamespace,
+			cleanup:     "kubectl delete namespace " + nvcreNamespace,
+		})
 
-	exists, err = secretExists(ctx, c, nvcreNamespace, pullSecretName)
-	record(exists, err, retainedResource{
-		description: fmt.Sprintf("Secret %s/%s", nvcreNamespace, pullSecretName),
-		cleanup: fmt.Sprintf("kubectl delete secret %s -n %s",
-			pullSecretName, nvcreNamespace),
-	})
+		exists, err = secretExists(ctx, c, nvcreNamespace, pullSecretName)
+		record(exists, err, retainedResource{
+			description: fmt.Sprintf("Secret %s/%s", nvcreNamespace, pullSecretName),
+			cleanup: fmt.Sprintf("kubectl delete secret %s -n %s",
+				pullSecretName, nvcreNamespace),
+		})
+	}
 
 	// Only mention the Trainer namespace when the deps phase actually ran;
 	// with --skip-phases=deps the kubeflow-trainer release still lives there.
@@ -807,6 +994,13 @@ func printRetainedResources(
 			description: "Namespace " + trainerNamespace,
 			cleanup:     "kubectl delete namespace " + trainerNamespace,
 		})
+
+		exists, err = jobSetCRDExists(ctx, c)
+		record(exists, err, retainedResource{
+			description: "JobSet CRD jobsets." + jobsetAPIGroup +
+				" (deleting it destroys JobSets across all namespaces)",
+			cleanup: "",
+		})
 	}
 
 	if len(retained) == 0 {
@@ -814,12 +1008,14 @@ func printRetainedResources(
 	}
 	_, _ = fmt.Fprintln(out, "\nRetained resources (not removed by reset):")
 	for _, r := range retained {
-		if r.unverified {
-			_, _ = fmt.Fprintf(out, "  - %s (may remain; existence check failed)\n", r.description)
+		if r.lookupError != nil {
+			_, _ = fmt.Fprintf(out, "  - %s (may remain; existence check failed: %v)\n", r.description, r.lookupError)
 		} else {
 			_, _ = fmt.Fprintf(out, "  - %s\n", r.description)
 		}
-		_, _ = fmt.Fprintf(out, "      %s\n", r.cleanup)
+		if r.cleanup != "" {
+			_, _ = fmt.Fprintf(out, "      %s\n", r.cleanup)
+		}
 	}
 }
 
@@ -872,18 +1068,25 @@ func printPhaseList(out io.Writer, skip map[string]bool, phases []phaseInfo) {
 }
 
 // parseSkipPhases converts a comma-separated string into a set of phase names.
-func parseSkipPhases(s string) map[string]bool {
+func parseSkipPhases(s string, allowed ...string) (map[string]bool, error) {
 	skip := make(map[string]bool)
 	if s == "" {
-		return skip
+		return skip, nil
+	}
+	valid := make(map[string]struct{}, len(allowed))
+	for _, phase := range allowed {
+		valid[phase] = struct{}{}
 	}
 	for phase := range strings.SplitSeq(s, ",") {
 		phase = strings.TrimSpace(phase)
 		if phase != "" {
+			if _, ok := valid[phase]; !ok {
+				return nil, fmt.Errorf("unknown phase %q; accepted phases: %s", phase, strings.Join(allowed, ", "))
+			}
 			skip[phase] = true
 		}
 	}
-	return skip
+	return skip, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -974,6 +1177,18 @@ func newSetupClient(cf *kubeconfig.ConfigFlags) (client.Client, error) {
 	_ = clientgoscheme.AddToScheme(s)
 
 	return client.New(restConfig, client.Options{Scheme: s})
+}
+
+func newSetupDiscovery(cf *kubeconfig.ConfigFlags) (func() ([]*metav1.APIResourceList, error), error) {
+	restConfig, err := cf.ToRESTConfig()
+	if err != nil {
+		return nil, fmt.Errorf("load kubeconfig: %w", err)
+	}
+	d, err := discovery.NewDiscoveryClientForConfig(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("build discovery client: %w", err)
+	}
+	return d.ServerPreferredNamespacedResources, nil
 }
 
 // ---------------------------------------------------------------------------

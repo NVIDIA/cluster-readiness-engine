@@ -1,6 +1,3 @@
 {
-  "controller": true,
-  "crds": true,
-  "deps": true,
-  "logprofiles": true
+  "error": "unknown phase \"crds\"; accepted phases: deps, helm"
 }

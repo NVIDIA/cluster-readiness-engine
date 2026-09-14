@@ -1,0 +1,8 @@
+{
+  "mode": "unknown",
+  "evidence": [
+    "JobSet-related resources remain: ClusterRole/renamed-jobset-consumer"
+  ],
+  "installJobSet": true,
+  "manifestCalls": 0
+}

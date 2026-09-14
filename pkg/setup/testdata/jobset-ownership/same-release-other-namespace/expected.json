@@ -1,0 +1,8 @@
+{
+  "mode": "external",
+  "evidence": [
+    "verified external JobSet controller owned by Helm release external-system/kubeflow-trainer"
+  ],
+  "installJobSet": false,
+  "manifestCalls": 0
+}

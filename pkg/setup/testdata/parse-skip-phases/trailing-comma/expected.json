@@ -1,3 +1,5 @@
 {
-  "deps": true
+  "phases": {
+    "deps": true
+  }
 }

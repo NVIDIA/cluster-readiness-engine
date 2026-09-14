@@ -1,0 +1,11 @@
+[deps] JobSet CRD jobsets.jobset.x-k8s.io is missing while the Trainer release is "deployed". Restore a compatible CRD using the intended JobSet installation procedure, wait for it to become established, and rerun setup init. Restoring the CRD cannot restore deleted JobSets.
+
+--- result ---
+error: [deps] existing Kubeflow Trainer release is missing JobSet CRD jobsets.jobset.x-k8s.io
+installCalls: 0
+installModes: []
+uninstallCalls: 0
+crdDeletes: 0
+jobSetCRDPresent: false
+namespacePresent: false
+trainerCRDsPresent: []

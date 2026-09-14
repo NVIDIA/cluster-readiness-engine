@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//nolint:goconst // Status fixtures intentionally repeat Kubernetes field and kind literals.
 package setup
 
 import (
@@ -175,7 +176,9 @@ func allDeployedHelmQuery(string, string) string { return helmStateDeployed }
 
 // trainerNotInHelm reports the trainer release as unknown to helm, forcing
 // version detection onto the cluster-object sources.
-func trainerNotInHelm() (string, string) { return helmStateNotInstalled, "" }
+func trainerNotInHelm() trainerReleaseState {
+	return trainerReleaseState{state: helmStateNotInstalled}
+}
 
 // TestSetupStatusHelmReleases drives collectSetupStatus and printSetupStatus
 // against a ready cluster with the Helm release states given in input.yaml.
@@ -203,12 +206,12 @@ func TestSetupStatusHelmReleases(t *testing.T) {
 		}
 		// The trainer version stub reports the pinned chart version when the
 		// release is deployed; any other state forces the fallback sources.
-		trainerState := func() (string, string) {
+		trainerState := func() trainerReleaseState {
 			state := query(trainerReleaseName, trainerNamespace)
 			if state == helmStateDeployed {
-				return state, strings.TrimPrefix(kubeflowTrainerVersion, "v")
+				return trainerReleaseState{state: state, chartVersion: strings.TrimPrefix(kubeflowTrainerVersion, "v")}
 			}
-			return state, ""
+			return trainerReleaseState{state: state}
 		}
 
 		c := fake.NewClientBuilder().
@@ -300,7 +303,9 @@ func TestSetupStatusTrainerVersion(t *testing.T) {
 		// The trainer release state comes from trainerState; the helm query
 		// only answers for the nvcre release.
 		query := func(string, string) string { return helmStateDeployed }
-		trainerState := func() (string, string) { return in.Helm.State, in.Helm.ChartVersion }
+		trainerState := func() trainerReleaseState {
+			return trainerReleaseState{state: in.Helm.State, chartVersion: in.Helm.ChartVersion}
+		}
 
 		c := fake.NewClientBuilder().WithScheme(newSetupScheme(t)).WithObjects(objs...).Build()
 		s := collectSetupStatus(context.Background(), c, query, trainerState)

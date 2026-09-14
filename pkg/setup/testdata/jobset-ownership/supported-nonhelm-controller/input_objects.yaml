@@ -1,0 +1,47 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: jobset-controller, uid: role-uid}
+rules:
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets]
+    verbs: [get, list, watch]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata: {name: jobset-mutating-webhook-configuration, uid: mutating-uid}
+webhooks:
+  - name: mjobset.kb.io
+    clientConfig:
+      service: {name: jobset-webhook-service, namespace: external-system}
+    rules:
+      - apiGroups: [jobset.x-k8s.io]
+        resources: [jobsets]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata: {name: jobset-validating-webhook-configuration, uid: validating-uid}
+webhooks:
+  - name: vjobset.kb.io
+    clientConfig:
+      service: {name: jobset-webhook-service, namespace: external-system}
+    rules:
+      - apiGroups: [jobset.x-k8s.io]
+        resources: [jobsets]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: jobset-webhook-service, namespace: external-system}
+spec:
+  selector: {control-plane: controller-manager}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: jobset-controller, namespace: external-system}
+spec:
+  selector:
+    matchLabels: {control-plane: controller-manager}
+  template:
+    metadata:
+      labels: {control-plane: controller-manager}
+    spec:
+      containers: [{name: manager, image: example.invalid/jobset:test}]

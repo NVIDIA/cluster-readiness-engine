@@ -1,0 +1,14 @@
+# The Trainer release manifest still renders the bundled JobSet subchart, but
+# the only live JobSet controller resource belongs to another Helm release.
+# Release and live evidence conflict, so neither subchart value is chosen.
+crdPresent: true
+releaseState: deployed
+releaseManifest: |
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: jobset-controller
+  rules:
+    - apiGroups: [jobset.x-k8s.io]
+      resources: [jobsets]
+      verbs: [get, list, watch]

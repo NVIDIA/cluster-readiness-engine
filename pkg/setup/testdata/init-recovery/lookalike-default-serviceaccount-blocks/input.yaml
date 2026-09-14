@@ -1,0 +1,8 @@
+# A default ServiceAccount that has been customized with an imagePullSecret is operator configuration, not the namespace's generated default: it blocks.
+releaseState: failed
+seedRecovery: true
+extendedDiscovery: true
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: cannot patch Secret "kubeflow-trainer-webhook-cert" in namespace kubeflow-system: conflict with manager: .data.tls.crt

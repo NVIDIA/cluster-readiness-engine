@@ -1,0 +1,3 @@
+transcript: |
+  [debug] inspecting ClusterRole "jobset-controller"
+  Error: INSTALLATION FAILED: ConfigMap "trainer-config" exists and cannot be imported into the current release: invalid ownership metadata; annotation validation error: key "meta.helm.sh/release-name" must equal "kubeflow-trainer": current value is "other"
