@@ -2,7 +2,7 @@
 
 > **Status:** Accepted
 >
-> **Amended by:** [ADR-078](078-jobset-ownership.md) (proposed) — JobSet CRD retention, JobSet-instance recovery gating, and protection of unrelated resources in `kubeflow-system` during automatic recovery. The proposal reverses this record's accepted namespace-cleanup policy for resources within its protected inventory; Events, core `Endpoints`, and EndpointSlices are excluded. These changes are not yet accepted.
+> **Amended by:** [ADR-078](078-jobset-ownership.md) (proposed) — missing-JobSet-CRD checks before pinned-version skip, refusal on unknown release state, JobSet CRD retention, JobSet-instance recovery gating, and protection of unrelated resources in `kubeflow-system` during automatic recovery. The proposal reverses this record's accepted namespace-cleanup policy for resources within its protected inventory; Events, core `Endpoints`, and EndpointSlices are excluded. These changes are not yet accepted.
 
 ## Context
 
@@ -29,7 +29,7 @@ So the reporting gap is closed by #188, but `setup init` itself still retries in
    - **(c) Fail fast with the exact procedure.** When the failure is conflict-classified but the safety gate does not pass — or classification is ambiguous — `setup init` fails with the manual recovery procedure from issue #180 printed verbatim (uninstall, the four CRD deletions, namespace deletion, pinned re-init) plus the reason automatic recovery was refused.
    - Option (b), Helm-level `--force` or `--take-ownership`, is rejected outright (see Alternatives Considered).
 
-   > **Proposed amendments from ADR-078 (not yet accepted):** upon acceptance and implementation, the following replace the corresponding instructions in decisions 1, 3(a), 3(c), and 5:
+   > **Proposed amendments from ADR-078 (not yet accepted):** upon acceptance and implementation, the following replace the corresponding instructions in decisions 1, 3(a), 3(c), 4, and 5:
    >
    > - **Pinned-version skip (1):** apply ADR-078 decision 2's JobSet CRD existence check before skipping. An absent CRD on a deployed release requires operator repair before either skip or upgrade; a failed CRD read stops the dependency phase. A present CRD preserves the pinned-version skip without a full ownership probe.
    > - **Unknown release state (4):** `helmStateUnknown` stops the dependency phase before skip or Helm mutation, reports the preserved state-query cause, and prints ADR-078's manual-install fallback, instead of `upgrade --install`. The install decision is now evidence-dependent, and an unreadable release cannot be classified as fresh or existing; the `unknown-state-attempts` case is replaced by that refusal.
@@ -114,7 +114,7 @@ So the reporting gap is closed by #188, but `setup init` itself still retries in
 ## References
 
 - Issue #180 — `setup init` retry certificate field-ownership conflicts (field evidence and manual recovery).
-- [ADR-078](078-jobset-ownership.md) — proposes preserving JobSet CRDs, refining this record's JobSet recovery safety gate, and blocking automatic recovery when namespace deletion would remove unrelated resources, reversing this record's accepted namespace-cleanup policy. Decision 2 (attempt-then-classify for webhook SSA) is unchanged.
+- [ADR-078](078-jobset-ownership.md) — proposes checking JobSet CRD existence before pinned-version skip, refusing unknown release state instead of attempting install, preserving JobSet CRDs, refining this record's JobSet recovery safety gate, and blocking automatic recovery when namespace deletion would remove unrelated resources, reversing this record's accepted namespace-cleanup policy. Decision 2 (attempt-then-classify for webhook SSA) is unchanged.
 - Issue #179 / PR #188 — `setup status` Helm release health (`helmStateFunc` plumbing this ADR reuses).
 - ADR-064: Helm chart distribution.
 - ADR-065: nvcrectl Helm install — the decision to drive Helm via CLI subprocess rather than SDK, which shapes the attempt-then-classify design.
