@@ -86,16 +86,19 @@ Both facts drive the scope decision below.
 
    **Plus the Job's two verdict conditions, `HardwareFailed` and
    `ValidationFailed`.** Both are deliberately outside the Job's exclusive
-   set. `HardwareFailed` is not terminal; execution continues after it is
-   set. `ValidationFailed` records the threshold verdict and is written
-   `True` on a violation, an invalid threshold expression, a measurement
-   timeout, or an unknown threshold key, and `False` with `ThresholdsMet` when
-   thresholds pass. Neither is a phase transition, so the rule above would
-   never emit for them, yet they are the two verdicts a burn-in exists to
-   produce. Each gets its own event: a `Warning` emitted once, when the
-   condition flips from absent or `False` to `True`, with the condition's
-   reason (`HardwareFailureDetected`, `ThresholdViolated`,
-   `InvalidThresholdExpression`, `MeasurementTimeout`, or
+   set. Writing `HardwareFailed` does not directly change the Job's execution
+   phase, and the Job reconciler does not treat it as terminal. The Workflow
+   does: once it observes `HardwareFailed=True`, it treats the current group
+   attempt as terminal, deletes the workload, and either retries the group or
+   marks it failed. `ValidationFailed` records the threshold verdict and is
+   written `True` on a violation, an invalid threshold expression, a
+   measurement timeout, or an unknown threshold key, and `False` with
+   `ThresholdsMet` when thresholds pass. Neither verdict write is a Job phase
+   transition, so the rule above would never emit for them, yet they are the
+   two verdicts a burn-in exists to produce. Each gets its own event: a
+   `Warning` emitted once, when the condition flips from absent or `False` to
+   `True`, with the condition's reason (`HardwareFailureDetected`,
+   `ThresholdViolated`, `InvalidThresholdExpression`, `MeasurementTimeout`, or
    `UnknownThresholdKey`) and message.
 
    **Execution success and validation success are distinct facts, and the
@@ -106,7 +109,9 @@ Both facts drive the scope decision below.
    of a threshold, and `Succeeded` announces only that the workload ran to
    completion. The tier that fails on a verdict is the Workflow, whose
    `Failed` reason becomes `JobValidationFailed` or `JobHardwareFailed`.
-   Hardware failure likewise leaves the phase alone; execution continues.
+   A threshold failure leaves the completed Job `Succeeded`; a hardware
+   verdict likewise leaves the Job phase unchanged even though the Workflow
+   terminates that group attempt.
 
    Because `Succeeded` cannot stand in for the passing verdict, the pass gets
    its own event too: a `Normal / ThresholdsMet` when `ValidationFailed` is
@@ -570,11 +575,16 @@ Both facts drive the scope decision below.
     reason or message (Certification `WaitingForNodes` is the natural one) and
     asserts a single InProgress event;
   - a Job hardware-failure case: the first detection yields one
-    `Warning / HardwareFailureDetected` row with `count: 1`; a second pass that adds another
-    failed node while the condition is already `True` emits nothing more; the
-    Job's execution phase is unchanged by the verdict, and if the workload
-    itself later fails, that `Failed` transition is a separate row with its
-    own reason;
+    `Warning / HardwareFailureDetected` row with `count: 1`; a second pass that
+    adds another failed node while the condition is already `True` emits
+    nothing more. The verdict write itself leaves the Job's execution phase
+    unchanged. Pair this with Workflow coverage showing that the Workflow
+    treats the hardware verdict as terminal for the group attempt, deletes the
+    workload, and either retries the group or emits `Failed /
+    JobHardwareFailed` when the group remains failed. Do not require a later
+    Job `Failed` event: a Workflow-managed Job may observe the deleted workload
+    and write `Failed / WorkloadFailed` depending on reconciliation ordering,
+    but that teardown artifact is not part of the promised event sequence;
   - a Job threshold case in each direction, both asserting the Job stays
     `Succeeded`: after `Normal / WorkloadCreated`, a violation shows `Normal /
     WorkloadCompleted` then `Warning / ThresholdViolated` and no Job `Failed`
@@ -835,14 +845,16 @@ and at flush time. Dedup must be a property of the emit decision.
   and `setJobValidationStatus` through their own `updateStatusWithRetry`
   calls, not through the exclusive-set wrapper. That is why decision 1 gives
   them an explicit rule rather than assuming the phase hook covers them.
-  Neither verdict changes the Job's execution phase: a threshold violation
-  lands on a Job that is already `Succeeded`, and a hardware failure lands on
-  one that is still running. The lifecycle consequence appears one tier up,
-  as the Workflow's `Failed / JobValidationFailed` or `Failed /
-  JobHardwareFailed`. Reading a Job's events top to bottom therefore gives
-  "what started" (`WorkloadCreated`), "what happened" (`WorkloadCompleted`),
-  and then "what was found" (`ThresholdsMet` or a verdict Warning), as three
-  rows.
+  Neither verdict write changes the Job's execution phase. For threshold
+  validation, the Job is already `Succeeded`, so its events read
+  `WorkloadCreated`, `WorkloadCompleted`, then `ThresholdsMet` or a validation
+  Warning. A hardware failure instead lands while the Job is running: the Job
+  emits `HardwareFailureDetected`, then the Workflow treats that condition as
+  terminal for the group attempt and deletes the workload. If the group is not
+  retried, the Workflow emits `Failed / JobHardwareFailed`; a retry starts a
+  new Job attempt instead. A later `Failed / WorkloadFailed` on the original
+  Job can occur if its reconciler observes the Workflow-initiated deletion,
+  but that ordering-dependent teardown artifact is not a guaranteed event.
 - Workflow already emits `OverrideApplied` and `NoOverridesMatched` Normal
   events outside the transition path. They are unaffected and will appear in
   Workflow cases that opt into event collection.
