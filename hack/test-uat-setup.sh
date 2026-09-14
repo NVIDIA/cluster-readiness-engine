@@ -44,9 +44,9 @@ if kind get clusters | grep -Fxq "${cluster}"; then
   exit 1
 fi
 
-owned=1
 trap cleanup EXIT
 kind create cluster --name "${cluster}" --kubeconfig "${kubeconfig}"
+owned=1
 context="kind-${cluster}"
 go build -ldflags "-s -w" -o bin/nvcrectl ./cmd/nvcrectl/
 KUBECONFIG="${kubeconfig}" KUBE_CONTEXT="${context}" NVCRECTL="${PWD}/bin/nvcrectl" \

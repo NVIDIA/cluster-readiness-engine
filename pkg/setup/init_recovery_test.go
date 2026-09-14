@@ -78,6 +78,7 @@ type initRecoveryInput struct {
 	DiscoveryEmptyCall int    `yaml:"discoveryEmptyCall"`
 	DiscoveryErrorCall int    `yaml:"discoveryErrorCall"`
 	ListFailureKind    string `yaml:"listFailureKind"`
+	UnservedCRD        string `yaml:"unservedCRD"`
 	// ExtendedDiscovery makes the discovery stub return the full protected
 	// kind set (workloads, storage, leases, and the excluded kinds) instead
 	// of the minimal Secret/ConfigMap pair the ADR-073 cases were written for.
@@ -113,6 +114,9 @@ func TestInstallDepsPhaseRecovery(t *testing.T) {
 		registerTrainerKinds(scheme)
 		if in.SeedRecovery {
 			objs = append(objs, recoverySeedObjects()...)
+		}
+		if err := markCRDUnserved(objs, in.UnservedCRD); err != nil {
+			return err
 		}
 		var c client.Client
 		crdDeletes := 0
@@ -240,6 +244,24 @@ func TestInstallDepsPhaseRecovery(t *testing.T) {
 		tc.Actual = buf.String()
 		return nil
 	})
+}
+
+func markCRDUnserved(objects []client.Object, name string) error {
+	if name == "" {
+		return nil
+	}
+	for _, object := range objects {
+		if object.GetName() != name {
+			continue
+		}
+		unstructuredObject, ok := object.(*unstructured.Unstructured)
+		if !ok {
+			return fmt.Errorf("test object %s is not unstructured", object.GetName())
+		}
+		return unstructured.SetNestedSlice(unstructuredObject.Object,
+			[]any{map[string]any{"name": testAPIVersionV1Alpha1, "served": false}}, "spec", "versions")
+	}
+	return fmt.Errorf("test CRD %s was not found", name)
 }
 
 // recoveryDiscoveryStub returns the discovery function the init-recovery

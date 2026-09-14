@@ -1358,7 +1358,10 @@ func discoverResourcesByGroup(ctx context.Context, c client.Client, apiGroup str
 
 		apiVersion := ""
 		versions, found, err := unstructured.NestedSlice(item.Object, "spec", "versions")
-		if err == nil && found {
+		if err != nil {
+			return nil, fmt.Errorf("inspect CRD %s versions: %w", item.GetName(), err)
+		}
+		if found {
 			for _, v := range versions {
 				vm, ok := v.(map[string]any)
 				if !ok {
@@ -1373,7 +1376,7 @@ func discoverResourcesByGroup(ctx context.Context, c client.Client, apiGroup str
 			}
 		}
 		if apiVersion == "" {
-			continue
+			return nil, fmt.Errorf("CRD %s in group %s has no served version", item.GetName(), apiGroup)
 		}
 
 		resources = append(resources, nvcreResource{
