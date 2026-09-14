@@ -23,9 +23,20 @@ spec:
         {{- include "nvcre.labels" . | nindent 8 }}
         control-plane: manager
     spec:
-      {{- with .Values.manager.affinity }}
+      {{- if .Values.manager.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- toYaml .Values.manager.affinity | nindent 8 }}
+      {{- else }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    {{- include "nvcre.selectorLabels" . | nindent 20 }}
+                    control-plane: manager
+                topologyKey: kubernetes.io/hostname
       {{- end }}
       containers:
       - args:

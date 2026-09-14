@@ -27,6 +27,8 @@ import (
 
 const helmTemplateTimeout = 30 * time.Second
 
+const deploymentKind = "Deployment"
+
 func TestHelmTemplateRendersConcurrencyArgs(t *testing.T) {
 	requireHelm(t)
 	chartDir := chartDir(t)
@@ -133,7 +135,7 @@ func managerArgs(rendered []byte) ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("decode helm template output: %w", err)
 		}
-		if obj.GetKind() != "Deployment" {
+		if obj.GetKind() != deploymentKind {
 			continue
 		}
 
@@ -162,7 +164,7 @@ func managerImage(rendered []byte) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("decode helm template output: %w", err)
 		}
-		if obj.GetKind() != "Deployment" {
+		if obj.GetKind() != deploymentKind {
 			continue
 		}
 		var dep appsv1.Deployment

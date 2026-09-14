@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "nvcre.resourceName" (dict "suffix" "manager" "context" $) }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nvcre.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.pdb.minAvailable | toYaml }}
+  selector:
+    matchLabels:
+      {{- include "nvcre.selectorLabels" . | nindent 6 }}
+      control-plane: manager
+{{- end }}

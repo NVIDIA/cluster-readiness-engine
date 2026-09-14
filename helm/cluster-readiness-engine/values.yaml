@@ -29,10 +29,19 @@ manager:
     requests:
       cpu: 10m
       memory: 1Gi
+  # Replaces the complete default affinity when non-empty. Include pod anti-affinity
+  # explicitly when combining custom node placement with multiple replicas.
   affinity: {}
   tolerations:
     - operator: Exists
   terminationGracePeriodSeconds: 10
+
+# Protect the controller from voluntary evictions. With one replica and
+# minAvailable: 1, node drains are blocked even when no Certification is running.
+pdb:
+  enabled: false
+  # Minimum ready controller pods, as an integer or percentage (for example "50%").
+  minAvailable: 1
 
 metrics:
   port: 8443
