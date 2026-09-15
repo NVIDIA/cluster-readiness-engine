@@ -440,9 +440,10 @@ jobs:
           path: release-assets/
           retention-days: 7
 
-  # Nine published assets each need a verifying bundle: the four binaries, the
-  # installer, and the four SBOMs. attest.yml signs one subject per call, so
-  # this is a matrix over subjects rather than nine near-identical jobs.
+  # Ten published assets each need a verifying bundle: the four binaries, the
+  # installer, THIRD_PARTY_NOTICES.md, and the four SBOMs. attest.yml signs one
+  # subject per call, so this is a matrix over subjects rather than ten
+  # near-identical jobs.
   #
   # The binaries carry their SBOM as a predicate, which binds the SBOM to the
   # binary. The SBOM files are ALSO signed in their own right, because a user
@@ -458,8 +459,8 @@ jobs:
       id-token: write
     strategy:
       fail-fast: false
-      # Nine legs, and the four binary legs sign twice, so an unbounded fan-out
-      # is ~13 near-simultaneous calls to public-good Fulcio and Rekor from one
+      # Ten legs, and the four binary legs sign twice, so an unbounded fan-out
+      # is ~14 near-simultaneous calls to public-good Fulcio and Rekor from one
       # caller. attest.yml retries on a fixed 5s/10s backoff with no jitter, so
       # legs that fail together retry together. The gate requires every leg, so
       # one correlated blip fails the whole release. Three at a time keeps the
