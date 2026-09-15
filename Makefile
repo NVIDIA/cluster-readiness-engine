@@ -109,6 +109,8 @@ test-integration: fmt vet setup-envtest ## Run integration tests.
 
 KIND_CLUSTER_UAT ?= nvcre-test-uat
 KIND_NODE_IMAGE ?=
+# Deliberately manual pin (GitHub-release binary, not a go.mod tool). See
+# .github/dependabot.yml.
 KWOK_VERSION ?= v0.7.0
 UAT_IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):uat-test
 
@@ -171,10 +173,12 @@ verify-codegen: manifests generate ## Verify generated CRDs, RBAC, and DeepCopy 
 	}
 
 .PHONY: verify-mod
-verify-mod: ## Verify go.mod and go.sum are tidy.
+verify-mod: ## Verify go.mod and go.sum are tidy, in this module and in tools/.
 	go mod tidy
-	@git diff --exit-code -- go.mod go.sum || { \
-	  echo "ERROR: go.mod or go.sum is not tidy. Run 'go mod tidy' and commit the result."; \
+	go -C tools mod tidy
+	@git diff --exit-code -- go.mod go.sum tools/go.mod tools/go.sum || { \
+	  echo "ERROR: a go.mod or go.sum is not tidy. Run 'go mod tidy' and"; \
+	  echo "'go -C tools mod tidy', then commit the result."; \
 	  exit 1; \
 	}
 
@@ -344,19 +348,25 @@ GOTESTSUM ?= $(LOCALBIN)/gotestsum
 GOCOVER_COBERTURA ?= $(LOCALBIN)/gocover-cobertura
 
 ## Tool Versions
-CONTROLLER_TOOLS_VERSION ?= v0.20.0
-ADDLICENSE_VERSION ?= v1.2.0
+# Go CLI tools are versioned in the nested tools/go.mod, via its `tool`
+# directives. That module is not imported by anything here, so their
+# dependency trees stay out of this module's graph and out of the graph any
+# consumer of api/v1alpha1 inherits. Dependabot raises those pins under its
+# own `gomod` entry for /tools, on the same weekly schedule and cooldown as
+# the root module. The Makefile only reads the versions, so a local
+# `go install` matches what CI resolved. Override any of these with an
+# exported env var when you need a one-off local bump (`?=`).
+#
+# Non-Go pins such as KWOK_VERSION above stay manual — see .github/dependabot.yml.
+CONTROLLER_TOOLS_VERSION ?= $(call gomodver,sigs.k8s.io/controller-tools,tools)
+ADDLICENSE_VERSION ?= $(call gomodver,github.com/google/addlicense,tools)
 # Pinned rather than installed with @latest so a CI run is reproducible and a
 # local run resolves the same tool. An @latest scanner also means a new release
 # can turn a green pipeline red with no commit here to explain it.
-#
-# `?=` matches the convention used by the pins above, which means an exported
-# environment variable of the same name silently wins over the value here. That
-# is intentional for local overrides, but it does mean "local matches CI" holds
-# only in a shell that does not already export these names.
-GOVULNCHECK_VERSION ?= v1.7.0
-GOTESTSUM_VERSION ?= v1.13.0
-GOCOVER_COBERTURA_VERSION ?= v1.5.0
+GOVULNCHECK_VERSION ?= $(call gomodver,golang.org/x/vuln,tools)
+GOTESTSUM_VERSION ?= $(call gomodver,gotest.tools/gotestsum,tools)
+GOCOVER_COBERTURA_VERSION ?= $(call gomodver,github.com/boumenot/gocover-cobertura,tools)
+GOLANGCI_LINT_VERSION ?= $(call gomodver,github.com/golangci/golangci-lint/v2,tools)
 
 #ENVTEST_VERSION is the version of controller-runtime release branch to fetch the envtest setup script (i.e. release-0.20)
 ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
@@ -367,8 +377,6 @@ ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; 
 ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
   [ -n "$$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api replace has no tag)" >&2; exit 1; }; \
   printf '%s\n' "$$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
-
-GOLANGCI_LINT_VERSION ?= v2.13.2
 
 .PHONY: controller-gen
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
@@ -428,18 +436,28 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 # $1 - target path with name of binary
 # $2 - package url which can be installed
 # $3 - specific version of package
+#
+# GOTOOLCHAIN is pinned to this module's Go version (go env GOVERSION). Without
+# that, `go install pkg@version` follows the *tool* module's minimum Go and may
+# build a binary too old to lint/build this tree (e.g. golangci-lint on go1.26
+# refusing go 1.27.0 in go.mod).
 define go-install-tool
-@[ -f "$(1)-$(3)" ] && [ "$$(readlink -- "$(1)" 2>/dev/null)" = "$(1)-$(3)" ] || { \
+@[ -n "$(3)" ] || { echo "Error: empty version for $(2); is it a tool in tools/go.mod?" >&2; exit 1; }; \
+[ -f "$(1)-$(3)" ] && [ "$$(readlink -- "$(1)" 2>/dev/null)" = "$(1)-$(3)" ] || { \
 set -e; \
 package=$(2)@$(3) ;\
 echo "Downloading $${package}" ;\
 rm -f "$(1)" ;\
-GOBIN="$(LOCALBIN)" go install $${package} ;\
+GOTOOLCHAIN="$$(go env GOVERSION)" GOBIN="$(LOCALBIN)" go install $${package} ;\
 mv "$(LOCALBIN)/$$(basename "$(1)")" "$(1)-$(3)" ;\
 } ;\
 ln -sf "$$(realpath "$(1)-$(3)")" "$(1)"
 endef
 
+# gomodver reads a module's resolved version out of a go.mod.
+# $1 - module path to look up
+# $2 - optional directory of the go.mod to read; defaults to this module's
+#      root. Pass `tools` for the nested tool module.
 define gomodver
-$(shell go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' $(1) 2>/dev/null)
+$(shell go list $(if $(2),-C $(2),) -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' $(1) 2>/dev/null)
 endef
