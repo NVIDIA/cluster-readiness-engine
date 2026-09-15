@@ -122,8 +122,8 @@ type TargetSpec struct {
 	// +optional
 	MatchExpressions []corev1.NodeSelectorRequirement `json:"matchExpressions,omitempty"`
 
-	// nodeNames explicitly lists nodes to include.
-	// If specified, nodeSelector is ignored.
+	// nodeNames explicitly lists nodes to include. Nodes must also match
+	// nodeSelector and matchExpressions, if set.
 	// +optional
 	NodeNames []string `json:"nodeNames,omitempty"`
 
