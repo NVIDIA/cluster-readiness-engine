@@ -93,5 +93,27 @@
         ]
       }
     }
-  }
+  },
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "JobRunning",
+      "message": "Iteration 1/1: 0 groups running",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "test-workflow-fail"
+      },
+      "count": 1
+    },
+    {
+      "type": "Warning",
+      "reason": "IterationsFailed",
+      "message": "1 groups failed across 1 iterations",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "test-workflow-fail"
+      },
+      "count": 1
+    }
+  ]
 }

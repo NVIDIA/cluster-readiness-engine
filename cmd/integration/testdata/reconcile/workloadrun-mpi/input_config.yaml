@@ -13,3 +13,10 @@ collect:
   - kind: Workflow
     name: test-mpi-run
     namespace: default
+events:
+  - involvedKind: WorkloadRun
+    involvedName: test-mpi-run
+    namespace: default
+    expect:
+      - {type: Normal, reason: WorkflowCreated}
+      - {type: Warning, reason: WorkflowFailed}

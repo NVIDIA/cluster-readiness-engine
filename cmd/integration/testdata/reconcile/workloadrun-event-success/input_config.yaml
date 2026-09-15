@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+steps:
+  - waitFor:
+      kind: Job
+      name: event-success-run-job
+      namespace: default
+      condition: InProgress
+    patches:
+      - target:
+          kind: TrainJob
+          name: event-success-run-job-workload
+          namespace: default
+        status: true
+        patch:
+          status:
+            conditions:
+              - type: Complete
+                status: "True"
+                reason: JobCompleted
+                message: All workers completed
+                lastTransitionTime: "2026-01-22T10:00:00Z"
+waitFor:
+  kind: WorkloadRun
+  name: event-success-run
+  namespace: default
+  condition: Succeeded
+timeoutSeconds: 60
+collect:
+  - kind: WorkloadRun
+    name: event-success-run
+    namespace: default
+events:
+  - involvedKind: WorkloadRun
+    involvedName: event-success-run
+    namespace: default
+    expect:
+      - {type: Normal, reason: WorkflowCreated}
+      - {type: Normal, reason: WorkflowSucceeded}

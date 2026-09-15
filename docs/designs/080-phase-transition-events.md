@@ -1,6 +1,6 @@
 # ADR-080: Phase Transition Events Across the Lifecycle Tiers
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 
@@ -556,6 +556,24 @@ Both facts drive the scope decision below.
   after expiry. An individual wait timeout must not reset the total budget.
 - Nil-recorder pins for any new or generalized event helper, mirroring
   `TestJobWarnfNilRecorder`.
+- WorkloadRun's empty-framework BuildFailed guard is exercised with a fake
+  client: the current CRD rejects an empty framework before reconciliation.
+  An admission golden pins that rejection; do not weaken the CRD to make the
+  guard reachable in an Event integration fixture.
+- **Checkpoint restart testing-method amendment:** retain the integration
+  requirement that restart emits no additional InProgress event, using a
+  recorder observer alongside the running manager and the existing Job state
+  golden. Forward every Event unchanged to Kubernetes, but count InProgress
+  emission calls for the same Job UID before API aggregation. Observe the
+  initial emission before inducing failure, require a replacement TrainJob UID
+  in the manager cache, and confirm a subsequent reconcile restores the running
+  reason after a reason-only status probe. Stop the manager and drain its
+  workers before asserting exactly one InProgress emission. All steps share
+  decision 6's cumulative deadline. The complete Event set is not golden-tested:
+  cache catch-up can produce a retained WorkloadCreationError with a
+  timing-dependent count. This changes the assertion method, not the required
+  integration coverage or production Event policy. Other Event goldens test API
+  persistence; a FakeRecorder test also exercises the restart method directly.
 - A recorder-level case applying multiple overrides asserts one retained
   `OverrideApplied` emission per applied override, including each distinct
   message. These legitimate repeated reasons are not transition duplicates;
@@ -591,8 +609,6 @@ Both facts drive the scope decision below.
     row, with the owning Workflow's `Failed / JobValidationFailed` row in the
     same case; a pass shows `Normal / WorkloadCompleted` then `Normal /
     ThresholdsMet`;
-  - a checkpoint-restart Job case asserting the restart does not emit a second
-    InProgress event for the same Job when the phase does not flip;
   - the second `OverrideError` site (the early `applyOverrides` guard): the
     transition Warning on successful status persistence, matching the `eventf`
     site. Its failed-write fallback is covered by the recorder-level matrix,
@@ -603,8 +619,8 @@ Both facts drive the scope decision below.
     `WorkflowValidationFailed` on both;
   - a Certification `WorkflowCreationError` case asserting both the action
     Warning and the outcome Warning appear with their distinct reasons;
-  - the three same-reason sites from decision 5 (WorkloadRun `BuildFailed`,
-    Workflow `HeterogeneousPlatform`, Workflow `OverrideError`), each
+  - the Workflow same-reason sites from decision 5 (`HeterogeneousPlatform`
+    and both `OverrideError` guards), each
     asserting a single transition row with `count: 1` and no fallback after
     successful status persistence. An unexpected second row with `count: 1`
     is the regression these tests exist to catch: the removed pre-write event

@@ -1354,5 +1354,27 @@
       "detectedPlatform": "aws",
       "detectedGPUArchitecture": "gb200"
     }
-  }
+  },
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "WorkflowCreated",
+      "message": "Workflow test-mpi-run created",
+      "involvedObject": {
+        "kind": "WorkloadRun",
+        "name": "test-mpi-run"
+      },
+      "count": 1
+    },
+    {
+      "type": "Warning",
+      "reason": "WorkflowFailed",
+      "message": "Failed to partition nodes: node \"gpu-node-01\" missing topology label \"topology.k8s.aws/network-node-layer-1\"",
+      "involvedObject": {
+        "kind": "WorkloadRun",
+        "name": "test-mpi-run"
+      },
+      "count": 1
+    }
+  ]
 }

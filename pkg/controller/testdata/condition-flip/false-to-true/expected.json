@@ -1,0 +1,20 @@
+[
+  {
+    "type": "ValidationFailed",
+    "before": {
+      "present": true,
+      "status": "False"
+    },
+    "after": {
+      "present": true,
+      "status": "True"
+    },
+    "condition": {
+      "type": "ValidationFailed",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "ThresholdViolated",
+      "message": "Bandwidth was below the minimum"
+    }
+  }
+]

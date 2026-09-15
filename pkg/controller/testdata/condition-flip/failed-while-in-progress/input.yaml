@@ -1,0 +1,16 @@
+watched: [Failed]
+before:
+  - type: InProgress
+    status: "True"
+    reason: WorkloadRunning
+  - type: Failed
+    status: "False"
+    reason: NotApplicable
+after:
+  - type: InProgress
+    status: "True"
+    reason: WorkloadRunning
+  - type: Failed
+    status: "True"
+    reason: JobTimedOut
+    message: Job exceeded its timeout

@@ -1,0 +1,37 @@
+{
+  "changed": true,
+  "transition": {
+    "newTrueType": "InProgress",
+    "condition": {
+      "type": "InProgress",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "JobCreated",
+      "message": "Job was created"
+    }
+  },
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "JobCreated",
+      "message": "Job was created"
+    },
+    {
+      "type": "Succeeded",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "NotApplicable",
+      "message": ""
+    },
+    {
+      "type": "Failed",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "NotApplicable",
+      "message": ""
+    }
+  ],
+  "extraSet": false
+}
