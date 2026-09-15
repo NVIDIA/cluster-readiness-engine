@@ -29,6 +29,50 @@ permissions:
   contents: read
 
 jobs:
+  setup-lifecycle:
+    name: Setup lifecycle UAT (isolated Kind)
+    runs-on: linux-amd64-cpu32
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.19.2
+
+      - name: Install UAT tools
+        uses: ./.github/actions/install-uat-tools
+
+      - name: Prep system for Kind
+        run: |
+          sudo systemctl stop apparmor || true
+          sudo systemctl disable apparmor || true
+          sudo modprobe br_netfilter || true
+          sudo sysctl -w net.ipv6.conf.all.forwarding=1
+          sudo sysctl -w net.ipv4.ip_forward=1
+          sudo sysctl -w net.bridge.bridge-nf-call-ip6tables=1
+          sudo sysctl -w net.bridge.bridge-nf-call-iptables=1
+          sudo systemctl restart docker
+
+      - name: Run isolated setup lifecycle UAT
+        run: make test-uat-setup
+
+      - name: Upload setup lifecycle diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: setup-uat-diagnostics-${{ github.run_id }}
+          path: ${{ env.SETUP_UAT_DIAGNOSTICS }}
+          retention-days: 7
+          if-no-files-found: warn
+
   uat:
     name: UAT (Kind + KWOK + Tilt)
     runs-on: linux-amd64-cpu32

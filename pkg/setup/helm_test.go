@@ -4,7 +4,11 @@
 package setup
 
 import (
+	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
@@ -12,6 +16,38 @@ import (
 	"github.com/stretchr/testify/require"
 	sigsyaml "sigs.k8s.io/yaml"
 )
+
+func TestClassifyJobSetOwnershipFailure(t *testing.T) {
+	p := testutil.TestCaseParser{Subdir: "jobset-ownership-failure", ExpectedSuffix: testutil.SuffixJSON}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			Transcript string `yaml:"transcript"`
+		}
+		if err := sigsyaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
+		actual, err := json.MarshalIndent(struct {
+			JobSetOwnership bool `json:"jobSetOwnership"`
+		}{classifyJobSetOwnershipFailure(in.Transcript)}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(actual) + "\n"
+		return nil
+	})
+}
+
+func TestUninstallTrainerHelmReleasePropagatesProductionHelperFailure(t *testing.T) {
+	dir := t.TempDir()
+	helm := filepath.Join(dir, "helm")
+	require.NoError(t, os.WriteFile(helm, []byte("#!/bin/sh\nprintf 'simulated uninstall timeout\\n' >&2\nexit 1\n"), 0o755))
+	t.Setenv("PATH", dir)
+	var out bytes.Buffer
+	err := uninstallTrainerHelmRelease("/tmp/test-kubeconfig", "test-context", &out)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "helm uninstall")
+	assert.True(t, strings.Contains(out.String(), "simulated uninstall timeout"))
+}
 
 func TestHelmChartArgs(t *testing.T) {
 	p := testutil.TestCaseParser{
@@ -38,7 +74,7 @@ func TestHelmChartArgs(t *testing.T) {
 		}{
 			nvcreHelmUpgradeArgs(in.ChartRef, in.ChartVersion, in.ImageName, in.ImageTag, in.PullSecretName),
 			chartCRDsArgs(in.ChartRef, in.ChartVersion),
-			trainerHelmUpgradeArgs(in.TrainerChartRef),
+			trainerHelmUpgradeArgs(in.TrainerChartRef, true),
 		}, "", "  ")
 		if err != nil {
 			return err
@@ -86,6 +122,7 @@ func TestAsymmetricChartRefsWarning(t *testing.T) {
 			ChartRef        string `yaml:"chartRef"`
 			TrainerChartRef string `yaml:"trainerChartRef"`
 			SkipDeps        bool   `yaml:"skipDeps"`
+			SkipHelm        bool   `yaml:"skipHelm"`
 		}
 		if err := sigsyaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
 			return err
@@ -94,7 +131,7 @@ func TestAsymmetricChartRefsWarning(t *testing.T) {
 		b, err := json.MarshalIndent(struct {
 			Warning string `json:"warning"`
 		}{
-			asymmetricChartRefsWarning(in.ChartRef, in.TrainerChartRef, in.SkipDeps),
+			asymmetricChartRefsWarning(in.ChartRef, in.TrainerChartRef, in.SkipDeps, in.SkipHelm),
 		}, "", "  ")
 		if err != nil {
 			return err

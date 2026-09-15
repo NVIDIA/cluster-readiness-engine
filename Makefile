@@ -143,6 +143,10 @@ test-uat: tilt-uat-ci ## Run UAT tests (Tilt deploys everything, then run tests)
 test-uat-run: ## Run UAT tests against existing Tilt-managed cluster (dev iteration).
 	NVCRECTL=$(LOCALBIN)/nvcrectl go test -tags=uat ./test/uat/ -v -timeout 1800s -count=1
 
+.PHONY: test-uat-setup
+test-uat-setup: ## Run destructive setup lifecycle UAT in its own disposable Kind cluster.
+	hack/test-uat-setup.sh
+
 .PHONY: cleanup-test-uat
 cleanup-test-uat: ## Delete Kind cluster for UAT tests.
 	@$(KIND) delete cluster --name $(KIND_CLUSTER_UAT)

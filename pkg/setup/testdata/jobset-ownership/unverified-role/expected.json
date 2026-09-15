@@ -1,0 +1,8 @@
+{
+  "mode": "unknown",
+  "evidence": [
+    "unverified non-Helm or incomplete ownership evidence: ClusterRole/custom-jobset-controller"
+  ],
+  "installJobSet": true,
+  "manifestCalls": 0
+}

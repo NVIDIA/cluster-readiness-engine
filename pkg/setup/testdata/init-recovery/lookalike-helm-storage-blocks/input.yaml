@@ -1,0 +1,8 @@
+# A Helm storage Secret for a different release in kubeflow-system is not the exact Trainer release record: it blocks.
+releaseState: failed
+seedRecovery: true
+extendedDiscovery: true
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: cannot patch Secret "kubeflow-trainer-webhook-cert" in namespace kubeflow-system: conflict with manager: .data.tls.crt

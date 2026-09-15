@@ -1,0 +1,16 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubeflow-trainer-controller-manager
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: kubeflow-trainer-2.2.1
+    app.kubernetes.io/name: kubeflow-trainer
+    app.kubernetes.io/component: manager
+  annotations:
+    meta.helm.sh/release-name: kubeflow-trainer
+    meta.helm.sh/release-namespace: kubeflow-system
+rules:
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets]
+    verbs: [create, get, list, watch]

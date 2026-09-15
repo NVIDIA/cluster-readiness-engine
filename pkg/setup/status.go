@@ -187,7 +187,8 @@ func collectSetupStatus(
 
 	// One helm query answers both the trainer release row and the version
 	// detection, so status does not run the same subprocess twice.
-	trainerHelmState, trainerChartVersion := trainerState()
+	trainerResult := trainerState()
+	trainerHelmState, trainerChartVersion := trainerResult.state, trainerResult.chartVersion
 
 	// The TrainJob CRD must exist, and when the installed Trainer version can
 	// be determined it must be the supported one. A Trainer whose version

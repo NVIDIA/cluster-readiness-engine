@@ -1,10 +1,28 @@
 # The issue #180 field failure: the release is failed and the retry hits the
 # webhook Secret field-ownership conflicts. No TrainJob/JobSet instances
 # exist and the only runtime CR is Helm-owned, so the safety gate passes and
-# the automatic recovery runs: uninstall, delete the four CRDs, delete the
+# the automatic recovery runs: uninstall, delete the three Trainer CRDs while
+# retaining the JobSet CRD, delete the
 # namespace, reinstall (ADR-073 decision 3a).
 releaseState: failed
 chartVersion: ""
+releaseManifest: |
+  apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: ClusterTrainingRuntime
+  metadata:
+    name: torch-distributed
+  ---
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: kubeflow-trainer-webhook-cert
+    namespace: kubeflow-system
+  ---
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: jobset-webhook-server-cert
+    namespace: kubeflow-system
 installResults:
   - fail: true
     output: |

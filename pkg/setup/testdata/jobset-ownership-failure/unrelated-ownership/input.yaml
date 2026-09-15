@@ -1,0 +1,2 @@
+transcript: |
+  Error: INSTALLATION FAILED: ClusterRole "unrelated-jobset-reader" exists and cannot be imported: invalid ownership metadata; annotation validation error: key "meta.helm.sh/release-name" must equal "kubeflow-trainer"

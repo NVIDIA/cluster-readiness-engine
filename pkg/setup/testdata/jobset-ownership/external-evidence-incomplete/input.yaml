@@ -1,0 +1,5 @@
+# One externally owned ClusterRole matches but no webhook configuration
+# references a Service, so the controller cannot be correlated. External
+# ownership needs supporting evidence, not a single role.
+crdPresent: true
+releaseState: not installed

@@ -1,0 +1,11 @@
+# A live ClusterRole carries complete bundled Helm ownership, but the exact
+# stored manifest of the Trainer release does not contain it. Labels alone do
+# not prove the release created it, so the mode is unknown.
+crdPresent: true
+releaseState: deployed
+releaseManifest: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: kubeflow-trainer-controller-manager
+    namespace: kubeflow-system

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: team-registry-credentials
+  namespace: kubeflow-system
+  uid: foreign-secret-uid
+type: kubernetes.io/dockerconfigjson
+data:
+  .dockerconfigjson: e30=

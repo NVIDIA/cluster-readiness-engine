@@ -1,0 +1,21 @@
+# The full inventory of a healthy-looking failed release: the controller
+# Deployment matches the exact manifest with complete Helm ownership, its
+# ReplicaSet and Pod are UID-linked descendants, the default ServiceAccount
+# and kube-root-ca.crt match their predicates, the Helm storage Secret is the
+# exact release's record, and the leader-election Lease is held by the
+# verified Pod. Every predicate passes, so recovery runs to completion while
+# retaining the JobSet CRD.
+releaseState: failed
+seedRecovery: true
+extendedDiscovery: true
+releaseManifest: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: kubeflow-trainer-controller-manager
+    namespace: kubeflow-system
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: cannot patch Secret "kubeflow-trainer-webhook-cert" in namespace kubeflow-system: conflict with manager: .data.tls.crt
+  - fail: false

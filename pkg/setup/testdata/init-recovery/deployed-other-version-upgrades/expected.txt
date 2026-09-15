@@ -1,7 +1,14 @@
+[deps] JobSet detection covers the verified chart fingerprint only; operators with customized or uncertain prior installations must use operator-managed installation.
+[deps] Installing the bundled JobSet controller using the retained JobSet CRD; its schema is not refreshed.
 [deps] Kubeflow Trainer release is in state "deployed"; attempting install of v2.2.1...
 [deps] Installing Kubeflow Trainer Helm release "kubeflow-trainer" in namespace kubeflow-system...
 
 --- result ---
 error: <nil>
 installCalls: 1
+installModes: [crd-only]
 uninstallCalls: 0
+crdDeletes: 0
+jobSetCRDPresent: true
+namespacePresent: false
+trainerCRDsPresent: []

@@ -1,0 +1,6 @@
+releaseState: failed
+uninstallFail: true
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: cannot patch Secret "kubeflow-trainer-webhook-cert" in namespace kubeflow-system: conflict with "trainer-controller": .data.tls.crt

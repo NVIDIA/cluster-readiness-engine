@@ -1,0 +1,8 @@
+# A kube-root-ca.crt ConfigMap that carries an extra data key is not the API server's generated object: the per-kind predicate rejects it.
+releaseState: failed
+seedRecovery: true
+extendedDiscovery: true
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: cannot patch Secret "kubeflow-trainer-webhook-cert" in namespace kubeflow-system: conflict with manager: .data.tls.crt
