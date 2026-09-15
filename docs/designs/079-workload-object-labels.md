@@ -66,8 +66,13 @@ stage.
    boundary.** Introduce:
 
    ```go
+   // +kubebuilder:validation:MaxLength=63
+   // +kubebuilder:validation:Pattern=`^$|^[a-zA-Z0-9]([-a-zA-Z0-9_.]{0,61}[a-zA-Z0-9])?$`
+   type WorkloadLabelValue string
+
    type WorkloadMetadata struct {
-       Labels map[string]string `json:"labels,omitempty"`
+       // +kubebuilder:validation:MaxProperties=32
+       Labels map[string]WorkloadLabelValue `json:"labels,omitempty"`
    }
 
    // On JobSpec, WorkloadRunSpec, and CategoryOptions respectively.
@@ -235,15 +240,19 @@ stage.
    Certification construction and the workload-object builder as a defensive
    check.
 
-   Bound each `labels` map to 32 entries (`maxProperties: 32`) and each value
-   to 63 characters (`additionalProperties.maxLength: 63`). Label keys must
+   Bound each `labels` map to 32 entries (`maxProperties: 32`). A finite
+   `maxProperties` is required to bound the static cost of CEL rules that
+   iterate map keys, but the estimator does not force the value 32: larger
+   tested bounds also fit the current budget. Thirty-two is the chosen API
+   limit and must be documented as such. Bound each value to 63 characters
+   (`additionalProperties.maxLength: 63`) because that is the Kubernetes label
+   value limit, independently of CEL cost. Label keys must
    satisfy the Kubernetes qualified-name grammar: an optional DNS-subdomain
    prefix of at most 253 characters, followed by `/`, and a non-empty name of
    at most 63 characters. Values may be empty and otherwise follow Kubernetes
-   label-value syntax. These bounds are chosen to keep CEL map iteration within
-   the API server's static cost budget, including the repeated metadata schema under
-   Certification's up-to-64 categories. The 32-entry cap is motivated by that
-   budget, but is an enforced API limit and must be documented as such.
+   label-value syntax. Verify the complete schema remains within both per-rule
+   and total API-server cost budgets, including the repeated metadata schema
+   under Certification's up-to-64 categories.
    Validate the composed workload metadata after merging global/category
    labels and inserting any gang-scheduler queue label; exceeding 32 entries
    fails rather than truncating labels. Adapter-produced and controller-owned
@@ -264,7 +273,8 @@ stage.
 
    Retrofitting presence immutability for the existing `nodeHealthMonitor`,
    `goodputMeasurement`, and `bandwidthMeasurement` fields is outside this ADR's
-   scope and should be tracked separately.
+   scope and is tracked by
+   [issue #347](https://github.com/NVIDIA/cluster-readiness-engine/issues/347).
 
 7. **Do not infer propagation between metadata levels.** Ordinary
    `JobTemplate.metadata.labels` continue to label the CRE Job only. They are
@@ -303,9 +313,14 @@ stage.
   - Put Kubernetes label syntax and reserved-key OpenAPI/CEL validation on the
     shared metadata type so every containing CRD receives the same admission
     rules.
-  - Set the labels-map `maxProperties` to 32 and string-value `maxLength` to
-    63 for CEL cost budgeting. Use an OpenAPI pattern for value syntax and CEL
-    for map-key syntax; OpenAPI `pattern` does not constrain map keys. On the
+  - Set the labels-map `maxProperties` to 32 to bound CEL map-key iteration and
+    enforce the chosen API limit. Define `WorkloadLabelValue` as a named string
+    type carrying `MaxLength=63` and the Kubernetes label-value `Pattern`, then
+    use it as the map value type so controller-gen emits
+    `additionalProperties.maxLength` and `additionalProperties.pattern`;
+    controller-gen v0.20 has no marker that attaches those constraints directly
+    to the values of `map[string]string`. Use CEL for map-key syntax because
+    OpenAPI `pattern` does not constrain map keys. On the
     labels map, sketch the reserved-key rule as
     `self.all(k, k != 'app.kubernetes.io/managed-by' && !k.startsWith('nvcre.nvidia.com/'))`.
     Add key-grammar rules with the 253-character prefix and 63-character name
@@ -583,16 +598,11 @@ unimplementable passthrough semantics.
   Any system requiring another metadata level needs an explicit, separately
   tested transform for that level. ADR-076 remains the explicit queue-label
   exception.
-- **ADR-078 is held by [PR #336](https://github.com/NVIDIA/cluster-readiness-engine/pull/336)**
-  (`078-jobset-ownership.md`, JobSet ownership). The design index on this
-  branch therefore runs `077` to `079` on purpose; ADR-080 is likewise held by
-  open PR #338. The gap is merge ordering, not a free number. Whichever of
-  these records merges later rebases onto the others so the index reads
-  `077 / 078 / 079 / 080` without a duplicate or a silent drop.
 - Retrofitting presence immutability onto the three existing optional
-  `JobSpec` pointer fields (Decision 6) is a named follow-on, to be filed as
-  its own issue before this record is accepted, so the CRD does not ship two
-  meanings of "immutable" without a tracked owner.
+  `JobSpec` pointer fields (Decision 6) is tracked separately by
+  [issue #347](https://github.com/NVIDIA/cluster-readiness-engine/issues/347),
+  so this ADR does not silently expand into a compatibility change for existing
+  fields.
 - Kueue may mutate `TrainJob.spec.suspend` during admission. The workload
   adapter's Pending phase already models an admission-controlled TrainJob that
   has not started; this ADR does not add Kueue lifecycle management.
