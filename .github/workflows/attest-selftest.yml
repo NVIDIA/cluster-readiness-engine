@@ -35,6 +35,18 @@
 # and attest.yml logs a loud non-production warning. It cannot be mistaken for,
 # or verified as, a release attestation. That guard is load-bearing — see the
 # smoke job comment — because workflow_dispatch accepts a tag as its ref.
+#
+# Rollout: this file on `main` is not what a dispatch at an older `v*` tag runs.
+# Tags cut before the ref guard (`v0.2.0`, `v0.2.0-rc.1`, `v0.2.0-rc.2`) still
+# ship the repository-only gate; see RELEASE.md "Existing-tag attest-selftest
+# rollout". Do not treat merge of this guard as closing that path on those refs.
+#
+# Repository setting: Attest Self-Test is disabled at the Actions workflow level
+# (`state: disabled_manually`) so workflow_dispatch is refused at every ref —
+# including those older tags — until the v0.2.0 series is out of use. Re-enabling
+# this workflow reopens the old-tag path; only re-enable for a maintainer smoke
+# run from refs/heads/main, then disable again. A dispatch does nothing while
+# the workflow stays disabled.
 
 name: Attest Self-Test
 

@@ -477,6 +477,29 @@ func TestAttestWorkflowIsGatedToThisRepository(t *testing.T) {
 	}
 }
 
+// Exact job-level `if:` expressions that keep workflow_dispatch off a v* tag
+// from minting the release signing identity (#340). Shared by the pin test and
+// the fail-closed recognizer so the allowlist cannot drift from what we assert.
+const (
+	exactRepoAndMainIf = "github.repository == 'NVIDIA/cluster-readiness-engine'" +
+		" && github.ref == 'refs/heads/main'"
+	exactAlwaysRepoAndMainIf = "always() && github.repository == 'NVIDIA/cluster-readiness-engine'" +
+		" && github.ref == 'refs/heads/main'"
+)
+
+// Exact shell comparison release.yml's release-tag job uses to refuse a
+// workflow_dispatch whose GITHUB_REF is not the release tag. Mentioning
+// GITHUB_REF is not enough; this is the tested restriction.
+const exactReleaseTagRefCheck = `[[ "${GITHUB_REF}" != "refs/tags/${INPUT_TAG}" ]]`
+
+// Fixture job names / uses for fail-closed recognition cases.
+const (
+	jobCaller       = "caller"
+	jobGuarded      = "guarded"
+	jobReleaseTag   = "release-tag"
+	localAttestUses = "./.github/workflows/attest.yml"
+)
+
 // TestMainBranchAttestCallersPinExactRefGuards pins the full job-level `if:`
 // expressions that keep workflow_dispatch off a v* tag from minting the release
 // signing identity (#340).
@@ -491,21 +514,15 @@ func TestAttestWorkflowIsGatedToThisRepository(t *testing.T) {
 // publish.yml carries the same load-bearing shape on `tag` / `attested`. Both
 // files are tabled here so deleting either guard fails the same test.
 func TestMainBranchAttestCallersPinExactRefGuards(t *testing.T) {
-	const (
-		repoAndMain = "github.repository == 'NVIDIA/cluster-readiness-engine'" +
-			" && github.ref == 'refs/heads/main'"
-		alwaysRepoAndMain = "always() && github.repository == 'NVIDIA/cluster-readiness-engine'" +
-			" && github.ref == 'refs/heads/main'"
-	)
 	cases := []struct {
 		workflow string
 		job      string
 		wantIf   string
 	}{
-		{wfAttestSmoke, "smoke", repoAndMain},
-		{wfAttestSmoke, "report", alwaysRepoAndMain},
-		{wfPublish, "tag", repoAndMain},
-		{wfPublish, "attested", alwaysRepoAndMain},
+		{wfAttestSmoke, "smoke", exactRepoAndMainIf},
+		{wfAttestSmoke, "report", exactAlwaysRepoAndMainIf},
+		{wfPublish, "tag", exactRepoAndMainIf},
+		{wfPublish, "attested", exactAlwaysRepoAndMainIf},
 	}
 	for _, tc := range cases {
 		t.Run(tc.workflow+"/"+tc.job, func(t *testing.T) {
@@ -525,14 +542,21 @@ func TestMainBranchAttestCallersPinExactRefGuards(t *testing.T) {
 // attest.yml's non-tag refusal only fires when allow_untagged is false; a
 // caller that forgets a ref guard and does not pass the flag takes the release
 // branch, hits no check, and mints the identity. Enumerating every
-// workflow_dispatch caller and requiring a ref constraint on the path to each
-// attest.yml call is what actually closes that class, whatever inputs the
-// caller passes.
+// workflow_dispatch caller and requiring an *effective* ref constraint on the
+// path to each attest.yml call is what actually closes that class, whatever
+// inputs the caller passes.
 //
-// A "ref guard" is either a job-level `if:` that mentions github.ref, or a run
-// block that compares GITHUB_REF (release.yml's dispatch check). The guard must
-// sit on the attest-calling job itself or on a needs-ancestor: a dead job with
-// a ref check elsewhere does not count.
+// Recognition is fail-closed: only the exact `if:` expressions pinned above
+// and release.yml's exact GITHUB_REF comparison count. Substring mentions of
+// github.ref / GITHUB_REF, non-restrictive checks, and ancestor guards behind
+// an `if: always()` caller do not. Unrecognized shapes fail this test so a
+// new pattern must be explicitly allowlisted and covered before it protects
+// anything.
+//
+// This covers callers whose workflow files already contain the fix. Existing
+// release tags that still ship the pre-fix attest-selftest.yml are a rollout
+// gap documented in SECURITY.md / RELEASE.md — merge alone does not close #340
+// for those refs.
 func TestAttestDispatchCallersRequireRefGuards(t *testing.T) {
 	for _, path := range workflowFiles(t) {
 		base := filepath.Base(path)
@@ -563,12 +587,132 @@ func TestAttestDispatchCallersRequireRefGuards(t *testing.T) {
 		for _, caller := range callers {
 			if !jobOrAncestorHasRefGuard(jobs, caller) {
 				t.Errorf("%s: job %q calls attest.yml and the workflow has workflow_dispatch, "+
-					"but neither %q nor any needs-ancestor carries a github.ref / GITHUB_REF "+
-					"guard; without one a dispatch at a v* ref mints the release signing identity",
+					"but neither %q nor any needs-ancestor carries a recognized ref guard "+
+					"(exact main-branch if: or release.yml's GITHUB_REF tag check); without "+
+					"one a dispatch at a v* ref mints the release signing identity",
 					base, caller, caller)
 			}
 		}
 	}
+}
+
+// TestRefGuardRecognitionFailsClosed pins the three unsafe shapes kaynetu
+// confirmed still returned true under substring recognition: a non-restrictive
+// github.ref check, a GITHUB_REF echo with no comparison, and an always()
+// caller that inherits a guarded ancestor. Unrecognized shapes must fail
+// closed; only the explicit tested patterns may pass.
+func TestRefGuardRecognitionFailsClosed(t *testing.T) {
+	t.Run("negatives", func(t *testing.T) {
+		cases := []struct {
+			name   string
+			jobs   map[string]policyJob
+			caller string
+		}{
+			{
+				name: "nonrestrictive github.ref inequality",
+				jobs: map[string]policyJob{
+					jobCaller: {
+						If:   "github.ref != ''",
+						Uses: localAttestUses,
+					},
+				},
+				caller: jobCaller,
+			},
+			{
+				name: "GITHUB_REF echo is not a restriction",
+				jobs: map[string]policyJob{
+					jobCaller: {
+						Uses: localAttestUses,
+						Runs: []string{`echo "$GITHUB_REF"`},
+					},
+				},
+				caller: jobCaller,
+			},
+			{
+				name: "always caller does not inherit ancestor ref guard",
+				jobs: map[string]policyJob{
+					jobGuarded: {If: exactRepoAndMainIf},
+					jobCaller: {
+						If:    "always()",
+						Needs: []string{jobGuarded},
+						Uses:  localAttestUses,
+					},
+				},
+				caller: jobCaller,
+			},
+			{
+				name: "always with repo gate still does not inherit",
+				jobs: map[string]policyJob{
+					jobGuarded: {If: exactRepoAndMainIf},
+					jobCaller: {
+						If:    "always() && github.repository == 'NVIDIA/cluster-readiness-engine'",
+						Needs: []string{jobGuarded},
+						Uses:  localAttestUses,
+					},
+				},
+				caller: jobCaller,
+			},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				if jobHasRefGuard(tc.jobs[tc.caller]) {
+					t.Errorf("jobHasRefGuard(%q) = true, want false; unrecognized shapes must fail closed", tc.name)
+				}
+				if jobOrAncestorHasRefGuard(tc.jobs, tc.caller) {
+					t.Errorf("jobOrAncestorHasRefGuard(%q) = true, want false; unrecognized shapes must fail closed", tc.name)
+				}
+			})
+		}
+	})
+
+	t.Run("positives", func(t *testing.T) {
+		cases := []struct {
+			name   string
+			jobs   map[string]policyJob
+			caller string
+		}{
+			{
+				name: "exact main-branch if on caller",
+				jobs: map[string]policyJob{
+					jobCaller: {If: exactRepoAndMainIf, Uses: localAttestUses},
+				},
+				caller: jobCaller,
+			},
+			{
+				name: "exact always+main if on caller",
+				jobs: map[string]policyJob{
+					jobCaller: {If: exactAlwaysRepoAndMainIf, Uses: localAttestUses},
+				},
+				caller: jobCaller,
+			},
+			{
+				name: "inherit exact main-branch if from needs",
+				jobs: map[string]policyJob{
+					jobGuarded: {If: exactRepoAndMainIf},
+					jobCaller:  {Needs: []string{jobGuarded}, Uses: localAttestUses},
+				},
+				caller: jobCaller,
+			},
+			{
+				name: "release-tag GITHUB_REF comparison on ancestor",
+				jobs: map[string]policyJob{
+					jobReleaseTag: {
+						If:   "github.repository == 'NVIDIA/cluster-readiness-engine'",
+						Runs: []string{"if " + exactReleaseTagRefCheck + "; then\n  exit 1\nfi"},
+					},
+					jobCaller: {Needs: []string{jobReleaseTag}, Uses: localAttestUses},
+				},
+				caller: jobCaller,
+			},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				if !jobOrAncestorHasRefGuard(tc.jobs, tc.caller) {
+					t.Errorf("jobOrAncestorHasRefGuard(%q) = false, want true for an allowlisted pattern", tc.name)
+				}
+			})
+		}
+	})
 }
 
 // normalizeWorkflowIf collapses YAML folded-scalar whitespace so an exact
@@ -641,18 +785,34 @@ func loadJobsWithNeeds(t *testing.T, raw []byte, base string) map[string]policyJ
 	return out
 }
 
+// jobHasRefGuard reports whether job itself carries a recognized, effective
+// ref restriction. Fail-closed: only exact allowlisted `if:` expressions and
+// release.yml's exact GITHUB_REF comparison count. A bare github.ref /
+// GITHUB_REF mention is not a guard.
 func jobHasRefGuard(job policyJob) bool {
-	if strings.Contains(job.If, "github.ref") {
+	switch normalizeWorkflowIf(job.If) {
+	case exactRepoAndMainIf, exactAlwaysRepoAndMainIf:
 		return true
 	}
 	for _, run := range job.Runs {
-		if strings.Contains(run, "GITHUB_REF") {
+		if strings.Contains(normalizeWorkflowIf(run), exactReleaseTagRefCheck) {
 			return true
 		}
 	}
 	return false
 }
 
+// jobIfUsesAlways reports whether the job's if: invokes always(), which lets
+// the job run when needed jobs are skipped. Ancestor ref guards do not
+// constrain such a job.
+func jobIfUsesAlways(job policyJob) bool {
+	return strings.Contains(normalizeWorkflowIf(job.If), "always()")
+}
+
+// jobOrAncestorHasRefGuard walks the needs graph from name and returns true
+// only when a recognized ref guard sits on the caller or on a needs-ancestor
+// that can actually skip the caller. An always() job without its own guard
+// cannot inherit: it still runs when the guarded ancestor is skipped.
 func jobOrAncestorHasRefGuard(jobs map[string]policyJob, name string) bool {
 	seen := map[string]bool{}
 	var walk func(string) bool
@@ -667,6 +827,9 @@ func jobOrAncestorHasRefGuard(jobs map[string]policyJob, name string) bool {
 		}
 		if jobHasRefGuard(job) {
 			return true
+		}
+		if jobIfUsesAlways(job) {
+			return false
 		}
 		return slices.ContainsFunc(job.Needs, walk)
 	}
