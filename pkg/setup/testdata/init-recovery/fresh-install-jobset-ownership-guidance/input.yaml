@@ -1,0 +1,32 @@
+# The fresh-install call site of printTrainerFailureGuidance
+# (trainerActionInstall). NVCRE runs `helm upgrade --install`, whose
+# fresh-install arm omits the INSTALLATION FAILED wrap, so this is the shape a
+# first install against an external JobSet produces.
+#
+# Adapted, not verbatim: the transcript is the captured
+# jobset-ownership-failure/helm3-upgrade-install-fresh-collision one with the
+# conflicting object changed from ClusterRole to ClusterRoleBinding. Both are
+# rendered by the chart under the same name and both are in the classifier's
+# known set, but only ClusterRole is covered by the fingerprint scan. A
+# leftover ClusterRole would therefore select unknown and stop before Helm, so
+# the install arm this fixture exists to cover would never run. The verbatim
+# capture is asserted by its own classifier golden; this case asserts the
+# guidance the classification produces.
+#
+# The golden asserts the emitted text, not just the classification, because
+# the class exists only to print it. ADR-078 decision 5 requires this guidance
+# on fresh install as well as on retry and the recovery reinstall; the sibling
+# retry-jobset-ownership-guidance and recovery-reinstall-jobset-ownership-guidance
+# cases pin the other two sites.
+#
+# Nothing destructive may follow an ownership error: uninstallCalls and
+# crdDeletes stay 0, and the JobSet CRD is untouched.
+releaseState: not installed
+chartVersion: ""
+installResults:
+  - fail: true
+    output: |
+      Release "kubeflow-trainer" does not exist. Installing it now.
+      Pulled: ghcr.io/kubeflow/charts/kubeflow-trainer:2.2.1
+      Digest: sha256:8e8e3de0257be804f60dbc8e6784eaddb64b2e158a46cade30ca18b6030183b1
+      Error: Unable to continue with install: ClusterRoleBinding "jobset-controller" in namespace "" exists and cannot be imported into the current release: invalid ownership metadata; annotation validation error: key "meta.helm.sh/release-name" must equal "kubeflow-trainer": current value is "jobset"; annotation validation error: key "meta.helm.sh/release-namespace" must equal "kubeflow-system": current value is "jobset-system"

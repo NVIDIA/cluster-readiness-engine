@@ -1,0 +1,5 @@
+
+Retained resources (not removed by reset):
+  - Namespace kubeflow-system
+      kubectl delete namespace kubeflow-system
+  - JobSet CRD jobsets.jobset.x-k8s.io (deleting it destroys JobSets across all namespaces)

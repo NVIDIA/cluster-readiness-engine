@@ -42,7 +42,9 @@ By default the Helm chart is pulled from GHCR at the CLI's own version, so a tag
 nvcrectl setup init --version <chart-version>
 ```
 
-The image and chart are public on GHCR, so no token is needed. For a private fork on GHCR, `--image-pull-secret <github-token>` creates the `nvcrectl-pull-secret` image pull secret in the `nvcre` namespace and authenticates chart pulls from GHCR. For a chart hosted on a private non-GHCR mirror, run `helm registry login <mirror>` before `setup init` instead. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, and `--auto-approve` to skip the confirmation prompt in CI. On clusters that cannot reach GHCR at all, `--chart-ref` and `--trainer-chart-ref` point both chart pulls at a mirror registry; see [Restricted egress and air-gapped installs](#restricted-egress-and-air-gapped-installs).
+The image and chart are public on GHCR, so no token is needed. For a private fork on GHCR, `--image-pull-secret <github-token>` creates the `nvcrectl-pull-secret` image pull secret in the `nvcre` namespace and authenticates chart pulls from GHCR. For a chart hosted on a private non-GHCR mirror, run `helm registry login <mirror>` before `setup init` instead. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, `--skip-phases=helm` to run only dependency setup, and `--auto-approve` to skip the confirmation prompt in CI. Unknown phase names are rejected. On clusters that cannot reach GHCR at all, `--chart-ref` and `--trainer-chart-ref` point both chart pulls at a mirror registry; see [Restricted egress and air-gapped installs](#restricted-egress-and-air-gapped-installs).
+
+Before installing or upgrading Trainer, `setup init` checks the shared JobSet CRD and correlates the supported JobSet controller fingerprints with live resources and the exact Trainer release manifest. A verified external JobSet controller makes Trainer install with `jobset.install=false`; a bundled controller stays bundled. An orphaned JobSet CRD with no controller, supporting resources, release evidence, or JobSets keeps the CRD and installs the bundled controller without refreshing the CRD schema. An existing Trainer release with a missing JobSet CRD stops with repair guidance because Helm does not restore a chart CRD during upgrade. Ambiguous or unreadable ownership stops before Helm mutation and prints the manual Trainer installation followed by the `nvcrectl setup init --skip-phases=deps` path. The bounded fingerprint scan covers the published chart pattern, not arbitrary customized controllers; operators who cannot establish that assumption must manage the Trainer installation explicitly. Operator-managed Trainer and JobSet installations are responsible for compatible Trainer and JobSet CRD schemas, controllers, external consumers, and any required migrations. Automatic reconciliation of the shared JobSet CRD is deferred work that needs its own design, covering schema compatibility, stored-version migration, and coordination with external controllers and workloads.
 
 Check the installation at any time:
 
@@ -374,15 +376,17 @@ If you installed with `nvcrectl setup init`, upgrade by installing the new CLI v
 nvcrectl setup reset
 ```
 
-`setup reset` runs three phases: **cr** (deletes all NVCRE custom resource instances while the controller can still process finalizers), **helm** (removes the NVCRE Helm release and then explicitly deletes the NVCRE CRDs), and **deps** (removes Kubeflow Trainer and its CRDs). Use `--skip-phases=deps` to keep Kubeflow Trainer.
+`setup reset` runs three phases: **cr** (deletes all NVCRE custom resource instances while the controller can still process finalizers), **helm** (removes the NVCRE Helm release and then explicitly deletes the NVCRE CRDs), and **deps** (removes Kubeflow Trainer and its Trainer-owned CRDs). Use `--skip-phases=deps` to keep Kubeflow Trainer, or `--skip-phases=cr,helm` to run only dependency removal. A Trainer Helm uninstall error stops reset before CRD cleanup and returns a nonzero result; rerun after resolving the Helm, API, timeout, or finalizer failure.
 
 **What `setup reset` retains** — clean these up yourself if you want a pristine cluster:
 
 - The `nvcre` and `kubeflow-system` namespaces are not deleted.
 - The `nvcrectl-pull-secret` image pull secret created by `setup init --image-pull-secret` remains in the `nvcre` namespace.
+- The shared `jobsets.jobset.x-k8s.io` CRD remains. Deleting it destroys every JobSet in every namespace, so `setup reset` reports it without printing a cleanup command. Assess all cluster-wide consumers and follow the owning JobSet release's CRD upgrade or removal procedure.
 
 ```bash
-# Removes both retained namespaces (and the pull secret inside them)
+# Removes both retained namespaces (and the pull secret inside them).
+# Inventory kubeflow-system first; it may contain externally managed resources.
 kubectl delete namespace nvcre kubeflow-system
 ```
 

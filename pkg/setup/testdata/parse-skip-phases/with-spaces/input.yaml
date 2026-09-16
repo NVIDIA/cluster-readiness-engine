@@ -1,1 +1,2 @@
-input: " deps , crds "
+input: " deps , helm "
+allowed: [deps, helm]

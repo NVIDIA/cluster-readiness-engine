@@ -58,11 +58,15 @@ metadata:
   name: torch-distributed
   labels:
     app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: kubeflow-trainer
+    meta.helm.sh/release-namespace: kubeflow-system
 ---
 apiVersion: v1
 kind: Namespace
 metadata:
   name: kubeflow-system
+  uid: namespace-uid
 ---
 # The webhook cert Secrets whose .data fields carry the conflict. The fake
 # client does not preserve supplied managedFields, so the diagnostics render
@@ -73,6 +77,12 @@ kind: Secret
 metadata:
   name: kubeflow-trainer-webhook-cert
   namespace: kubeflow-system
+  uid: trainer-secret-uid
+  labels:
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: kubeflow-trainer
+    meta.helm.sh/release-namespace: kubeflow-system
 type: Opaque
 ---
 apiVersion: v1
@@ -80,4 +90,10 @@ kind: Secret
 metadata:
   name: jobset-webhook-server-cert
   namespace: kubeflow-system
+  uid: jobset-secret-uid
+  labels:
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: kubeflow-trainer
+    meta.helm.sh/release-namespace: kubeflow-system
 type: Opaque

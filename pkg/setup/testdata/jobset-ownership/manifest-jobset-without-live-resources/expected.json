@@ -1,0 +1,8 @@
+{
+  "mode": "unknown",
+  "evidence": [
+    "Trainer release manifest contains JobSet resources but no live fingerprint resources were found"
+  ],
+  "installJobSet": true,
+  "manifestCalls": 1
+}

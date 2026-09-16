@@ -1,30 +1,36 @@
+[deps] JobSet detection covers the verified chart fingerprint only; operators with customized or uncertain prior installations must use operator-managed installation.
+[deps] Installing the bundled JobSet controller using the retained JobSet CRD; its schema is not refreshed.
 [deps] Kubeflow Trainer release is in state "failed"; attempting install of v2.2.1...
 [deps] Installing Kubeflow Trainer Helm release "kubeflow-trainer" in namespace kubeflow-system...
 Error: UPGRADE FAILED: Unable to continue with update: could not update Secret "kubeflow-trainer-webhook-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "trainer-controller" using v1: .data.tls.crt, .data.tls.key
 could not update Secret "jobset-webhook-server-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "jobset-controller" using v1: .data.tls.crt, .data.tls.key
 [deps] Install failed with webhook Secret field-ownership conflicts and the release is failed (issue #180).
 [deps] Secret field ownership in namespace kubeflow-system:
+[deps] Recovery prerequisite: keep kubeflow-system protected-resource writes and Trainer custom-resource writes quiescent until recovery stops or completes.
+[deps] If recovery removes the bundled JobSet controller, JobSet creation must also remain quiescent. --auto-approve does not establish this condition.
 [deps][recover] Uninstalling Helm release "kubeflow-trainer" from namespace kubeflow-system...
 [deps] Removing Helm release "kubeflow-trainer" from namespace kubeflow-system...
-[deps][recover] Removing Kubeflow Trainer CRDs...
-  Waiting for CRDs to be fully removed...
-  All Kubeflow Trainer CRDs removed.
-[deps][recover] Removing JobSet CRDs...
-  Waiting for CRDs to be fully removed...
-  All JobSet CRDs removed.
-[deps][recover] Deleting namespace kubeflow-system...
-  Namespace kubeflow-system already deleted.
+[deps][recover] Removing Kubeflow Trainer CRDs (JobSet CRD is retained)...
+[deps] Confirmed Trainer CRD trainjobs.trainer.kubeflow.org is absent after cleanup.
+[deps] Confirmed Trainer CRD trainingruntimes.trainer.kubeflow.org is absent after cleanup.
+[deps] Confirmed Trainer CRD clustertrainingruntimes.trainer.kubeflow.org is absent after cleanup.
+[deps][recover] Namespace kubeflow-system is already absent; no deletion was required.
 [deps][recover] Reinstalling Kubeflow Trainer v2.2.1...
 [deps] Installing Kubeflow Trainer Helm release "kubeflow-trainer" in namespace kubeflow-system...
 Error: INSTALLATION FAILED: context deadline exceeded
 
-[deps] Manual recovery procedure (issue #180):
+[deps] Operator-managed recovery guidance (issue #180):
   1. helm uninstall kubeflow-trainer --namespace kubeflow-system
-  2. kubectl delete crd trainjobs.trainer.kubeflow.org trainingruntimes.trainer.kubeflow.org clustertrainingruntimes.trainer.kubeflow.org jobsets.jobset.x-k8s.io
-  3. kubectl delete namespace kubeflow-system
-  4. Re-run 'nvcrectl setup init' to reinstall Kubeflow Trainer v2.2.1
+  2. kubectl delete crd trainjobs.trainer.kubeflow.org trainingruntimes.trainer.kubeflow.org clustertrainingruntimes.trainer.kubeflow.org  # retain jobsets.jobset.x-k8s.io
+  3. Inventory kubeflow-system and delete it only after applying the same protected-resource and quiescence checks.
+  4. Re-run 'nvcrectl setup init' to reinstall Kubeflow Trainer v2.2.1. Earlier cleanup is not rolled back.
 
 --- result ---
 error: [deps] automatic recovery failed: reinstall: helm upgrade: exit status 1
 installCalls: 2
+installModes: [crd-only crd-only]
 uninstallCalls: 1
+crdDeletes: 3
+jobSetCRDPresent: true
+namespacePresent: false
+trainerCRDsPresent: []

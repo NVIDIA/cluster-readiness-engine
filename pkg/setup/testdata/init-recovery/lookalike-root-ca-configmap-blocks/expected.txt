@@ -1,0 +1,27 @@
+[deps] JobSet detection covers the verified chart fingerprint only; operators with customized or uncertain prior installations must use operator-managed installation.
+[deps] Installing the bundled JobSet controller using the retained JobSet CRD; its schema is not refreshed.
+[deps] Kubeflow Trainer release is in state "failed"; attempting install of v2.2.1...
+[deps] Installing Kubeflow Trainer Helm release "kubeflow-trainer" in namespace kubeflow-system...
+Error: UPGRADE FAILED: cannot patch Secret "kubeflow-trainer-webhook-cert" in namespace kubeflow-system: conflict with manager: .data.tls.crt
+[deps] Install failed with webhook Secret field-ownership conflicts and the release is failed (issue #180).
+[deps] Secret field ownership in namespace kubeflow-system:
+[deps] Recovery prerequisite: keep kubeflow-system protected-resource writes and Trainer custom-resource writes quiescent until recovery stops or completes.
+[deps] If recovery removes the bundled JobSet controller, JobSet creation must also remain quiescent. --auto-approve does not establish this condition.
+[deps] Automatic recovery refused:
+  - protected ConfigMap kubeflow-system/kube-root-ca.crt is not a verified Trainer release resource or UID-linked descendant
+
+[deps] Operator-managed recovery guidance (issue #180):
+  1. helm uninstall kubeflow-trainer --namespace kubeflow-system
+  2. kubectl delete crd trainjobs.trainer.kubeflow.org trainingruntimes.trainer.kubeflow.org clustertrainingruntimes.trainer.kubeflow.org  # retain jobsets.jobset.x-k8s.io
+  3. Inventory kubeflow-system and delete it only after applying the same protected-resource and quiescence checks.
+  4. Re-run 'nvcrectl setup init' to reinstall Kubeflow Trainer v2.2.1. Earlier cleanup is not rolled back.
+
+--- result ---
+error: [deps] helm upgrade: exit status 1
+installCalls: 1
+installModes: [crd-only]
+uninstallCalls: 0
+crdDeletes: 0
+jobSetCRDPresent: true
+namespacePresent: true
+trainerCRDsPresent: [trainjobs.trainer.kubeflow.org trainingruntimes.trainer.kubeflow.org clustertrainingruntimes.trainer.kubeflow.org]

@@ -1,0 +1,5 @@
+# The CRD remains and the cluster-scoped scan is clean, but a chart-named
+# webhook Service survives in another namespace without Helm metadata. A
+# leftover supporting resource must refuse rather than resolve to crd-only.
+crdPresent: true
+releaseState: not installed

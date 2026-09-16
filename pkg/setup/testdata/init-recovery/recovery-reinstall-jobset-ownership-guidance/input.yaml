@@ -1,0 +1,25 @@
+# The recovery-reinstall call site. The Secret-conflict recovery runs to
+# completion, then the reinstall collides with an external JobSet that the
+# uninstall left in place. ADR-078 decision 5 requires the ownership guidance
+# here too, and requires that it not start a second recovery attempt: exactly
+# two install calls, and the manual procedure follows because recovery failed.
+#
+# The reinstall is a fresh install after the release was uninstalled, so its
+# transcript carries no INSTALLATION FAILED wrap.
+#
+# Adapted, not verbatim: the second transcript is the captured
+# jobset-ownership-failure/helm3-upgrade-install-fresh-collision one with the
+# conflicting object changed from ClusterRole to ClusterRoleBinding, for the
+# reason given in fresh-install-jobset-ownership-guidance. The verbatim
+# capture is asserted by its own classifier golden.
+releaseState: failed
+chartVersion: ""
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: Unable to continue with update: could not update Secret "kubeflow-trainer-webhook-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "trainer-controller" using v1: .data.tls.crt, .data.tls.key
+      could not update Secret "jobset-webhook-server-cert" in namespace "kubeflow-system": Apply failed with 2 conflicts: conflicts with "jobset-controller" using v1: .data.tls.crt, .data.tls.key
+  - fail: true
+    output: |
+      Release "kubeflow-trainer" does not exist. Installing it now.
+      Error: Unable to continue with install: ClusterRoleBinding "jobset-controller" in namespace "" exists and cannot be imported into the current release: invalid ownership metadata; annotation validation error: key "meta.helm.sh/release-name" must equal "kubeflow-trainer": current value is "jobset"; annotation validation error: key "meta.helm.sh/release-namespace" must equal "kubeflow-system": current value is "jobset-system"

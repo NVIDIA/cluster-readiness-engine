@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-root-ca.crt
+  namespace: kubeflow-system
+  uid: lookalike-ca-uid
+data:
+  ca.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t
+  extra-bundle.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//nolint:goconst // Test manifests intentionally repeat Kubernetes field and kind literals.
 package setup
 
 import (

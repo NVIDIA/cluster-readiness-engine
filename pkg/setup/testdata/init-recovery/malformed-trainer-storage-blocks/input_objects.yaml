@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sh.helm.release.v1.kubeflow-trainer.v1
+  namespace: kubeflow-system
+  uid: user-secret-uid
+  labels:
+    owner: helm
+    name: kubeflow-trainer
+    version: "1"
+    status: failed
+type: helm.sh/release.v1
+data:
+  release: dXNlci1kYXRh

@@ -1,0 +1,8 @@
+{
+  "mode": "unknown",
+  "evidence": [
+    "external JobSet evidence is incomplete: release kueue-system/kueue holds JobSet API-group rules but registers no admission configuration carrying the JobSet chart identity (helm.sh/chart=jobset-\u003cversion\u003e), so it may only consume the JobSet API"
+  ],
+  "installJobSet": true,
+  "manifestCalls": 0
+}

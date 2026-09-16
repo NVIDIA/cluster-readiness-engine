@@ -1,0 +1,28 @@
+# Recovery in external JobSet mode. No init-recovery case selected external
+# before, so the ownership-token comparison at the two revalidation points was
+# executed by nothing: an unstable token would abort every legitimate external
+# recovery and no test would notice.
+#
+# The cluster carries the chart-derived external JobSet release from
+# jobset-ownership/external-controller alongside the verified Trainer release
+# inventory. Recovery runs to completion and the selected mode survives the
+# uninstall, so both install attempts report external and the reinstall keeps
+# passing --set jobset.install=false. The external release is untouched.
+#
+# A JobSet in team-a rides along to pin the other half of the blocker: an
+# external instance outside kubeflow-system does not block, because its
+# controller and CRD both survive.
+releaseState: failed
+seedRecovery: true
+extendedDiscovery: true
+releaseManifest: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: kubeflow-trainer-controller-manager
+    namespace: kubeflow-system
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: cannot patch Secret "kubeflow-trainer-webhook-cert" in namespace kubeflow-system: conflict with manager: .data.tls.crt
+  - fail: false

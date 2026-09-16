@@ -1,0 +1,10 @@
+# Captured with Helm 4.3.0 by installing the published Trainer 2.2.1 chart
+# (digest sha256:8e8e3de0257be804f60dbc8e6784eaddb64b2e158a46cade30ca18b6030183b1)
+# under a second release while kubeflow-trainer owned the cluster role.
+# Reproduction, against an isolated cluster and explicit kubeconfig/context:
+#   helm install kubeflow-trainer oci://ghcr.io/kubeflow/charts/kubeflow-trainer --version 2.2.1 --namespace kubeflow-system --create-namespace --kubeconfig <kubeconfig> --kube-context <context> --wait --timeout 5m
+#   helm install adr078-collision-probe oci://ghcr.io/kubeflow/charts/kubeflow-trainer --version 2.2.1 --namespace adr078-collision-probe --create-namespace --kubeconfig <kubeconfig> --kube-context <context> --wait --timeout 1m
+transcript: |
+  Pulled: ghcr.io/kubeflow/charts/kubeflow-trainer:2.2.1
+  Digest: sha256:8e8e3de0257be804f60dbc8e6784eaddb64b2e158a46cade30ca18b6030183b1
+  Error: INSTALLATION FAILED: unable to continue with install: ClusterRole "jobset-controller" in namespace "" exists and cannot be imported into the current release: invalid ownership metadata; annotation validation error: key "meta.helm.sh/release-name" must equal "adr078-collision-probe": current value is "kubeflow-trainer"; annotation validation error: key "meta.helm.sh/release-namespace" must equal "adr078-collision-probe": current value is "kubeflow-system"

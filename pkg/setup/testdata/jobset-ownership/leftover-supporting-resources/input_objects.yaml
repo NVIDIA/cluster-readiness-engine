@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: jobset-webhook-service
+  namespace: jobset-system
+spec:
+  selector:
+    app: jobset

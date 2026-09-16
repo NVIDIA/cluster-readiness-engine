@@ -1,0 +1,14 @@
+# The failed release's manifest renders the bundled JobSet controller, but no
+# fingerprint, supporting resource, or instance is live. The release record
+# and the cluster disagree, so the mode is unknown rather than crd-only.
+crdPresent: true
+releaseState: failed
+releaseManifest: |
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: jobset-controller
+  rules:
+    - apiGroups: [jobset.x-k8s.io]
+      resources: [jobsets]
+      verbs: [get, list, watch]

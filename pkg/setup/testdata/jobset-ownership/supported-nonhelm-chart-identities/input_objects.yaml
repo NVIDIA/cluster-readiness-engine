@@ -1,0 +1,158 @@
+# Synthetic. This is a compatibility fixture, not a published install
+# channel: it pins the second identity set the non-Helm pattern accepts, the
+# chart's `jobset-controller` name for both the ClusterRole and the controller
+# Deployment, with no ownership metadata from any installer. The real non-Helm
+# channel is the upstream kustomize build, covered by
+# supported-nonhelm-controller.
+#
+# It is explicitly NOT `helm template | kubectl apply`, and must not be read
+# as evidence that channel works. That channel renders
+# `app.kubernetes.io/managed-by: Helm` from `jobset.labels` with no
+# `meta.helm.sh/*` annotations, which the detector refuses as partial
+# ownership evidence. No label here claims any installer.
+# TestSupportedNonHelmEvidenceConflictsWithBundledOrPartialHelmMetadata pins
+# that refusal.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: jobset-controller
+  uid: manager-role-uid
+  labels:
+    app.kubernetes.io/name: jobset
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list, watch]
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets/finalizers]
+    verbs: [get, patch, update]
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets/status]
+    verbs: [get, patch, update]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: jobset-mutating-webhook-configuration
+  uid: mutating-uid
+  labels:
+    app.kubernetes.io/name: jobset
+webhooks:
+  - name: mjobset.kb.io
+    admissionReviewVersions: [v1]
+    failurePolicy: Fail
+    sideEffects: None
+    clientConfig:
+      service:
+        name: jobset-webhook-service
+        namespace: jobset-system
+        path: /mutate-jobset-x-k8s-io-v1alpha2-jobset
+    rules:
+      - apiGroups: [jobset.x-k8s.io]
+        apiVersions: [v1alpha2]
+        operations: [CREATE]
+        resources: [jobsets]
+  - name: mpod.kb.io
+    admissionReviewVersions: [v1]
+    failurePolicy: Fail
+    sideEffects: None
+    clientConfig:
+      service:
+        name: jobset-webhook-service
+        namespace: jobset-system
+        path: /mutate--v1-pod
+    objectSelector:
+      matchExpressions:
+        - key: jobset.sigs.k8s.io/jobset-name
+          operator: Exists
+    rules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [pods]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: jobset-validating-webhook-configuration
+  uid: validating-uid
+  labels:
+    app.kubernetes.io/name: jobset
+webhooks:
+  - name: vjobset.kb.io
+    admissionReviewVersions: [v1]
+    failurePolicy: Fail
+    sideEffects: None
+    clientConfig:
+      service:
+        name: jobset-webhook-service
+        namespace: jobset-system
+        path: /validate-jobset-x-k8s-io-v1alpha2-jobset
+    rules:
+      - apiGroups: [jobset.x-k8s.io]
+        apiVersions: [v1alpha2]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [jobsets]
+  - name: vpod.kb.io
+    admissionReviewVersions: [v1]
+    failurePolicy: Fail
+    sideEffects: None
+    clientConfig:
+      service:
+        name: jobset-webhook-service
+        namespace: jobset-system
+        path: /validate--v1-pod
+    objectSelector:
+      matchExpressions:
+        - key: jobset.sigs.k8s.io/jobset-name
+          operator: Exists
+    rules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [pods]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jobset-webhook-service
+  namespace: jobset-system
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/name: jobset
+spec:
+  ports:
+    - port: 443
+      protocol: TCP
+      targetPort: 9443
+  selector:
+    app.kubernetes.io/name: jobset
+    control-plane: controller-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jobset-controller
+  namespace: jobset-system
+  labels:
+    app.kubernetes.io/component: manager
+    app.kubernetes.io/name: jobset
+    control-plane: controller-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: jobset
+      control-plane: controller-manager
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: jobset
+        control-plane: controller-manager
+    spec:
+      containers:
+        - name: manager
+          image: example.invalid/jobset:test

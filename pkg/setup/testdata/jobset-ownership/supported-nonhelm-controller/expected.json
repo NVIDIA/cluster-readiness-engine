@@ -1,0 +1,8 @@
+{
+  "mode": "external",
+  "evidence": [
+    "verified supported non-Helm JobSet controller pattern"
+  ],
+  "installJobSet": false,
+  "manifestCalls": 0
+}

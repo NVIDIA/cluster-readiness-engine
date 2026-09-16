@@ -1,7 +1,13 @@
+[deps] JobSet detection covers the verified chart fingerprint only; operators with customized or uncertain prior installations must use operator-managed installation.
 [deps] Installing Kubeflow Trainer v2.2.1...
 [deps] Installing Kubeflow Trainer Helm release "kubeflow-trainer" in namespace kubeflow-system...
 
 --- result ---
 error: <nil>
 installCalls: 1
+installModes: [absent]
 uninstallCalls: 0
+crdDeletes: 0
+jobSetCRDPresent: false
+namespacePresent: false
+trainerCRDsPresent: []

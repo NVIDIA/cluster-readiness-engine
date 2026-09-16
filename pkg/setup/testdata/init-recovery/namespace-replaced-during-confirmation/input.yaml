@@ -1,0 +1,9 @@
+releaseState: failed
+seedRecovery: true
+autoApprove: false
+confirmInput: "yes"
+confirmMutation: replace-namespace
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: cannot patch Secret "kubeflow-trainer-webhook-cert" in namespace kubeflow-system: conflict with manager: .data.tls.crt

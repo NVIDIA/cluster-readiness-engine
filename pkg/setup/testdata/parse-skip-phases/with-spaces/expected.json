@@ -1,4 +1,6 @@
 {
-  "crds": true,
-  "deps": true
+  "phases": {
+    "deps": true,
+    "helm": true
+  }
 }

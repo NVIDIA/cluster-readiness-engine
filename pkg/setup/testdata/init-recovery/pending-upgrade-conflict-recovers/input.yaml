@@ -1,7 +1,10 @@
 # An interrupted upgrade left the release pending-upgrade; the retry hits
 # the conflict signature. pending-* states arm the recovery the same way
 # failed does (ADR-073 decision 2). No kubeflow-system Namespace object
-# exists here, so the recovery reports it as already deleted.
+# exists here, so the baseline gate records no namespace UID. With no UID to
+# attach as a delete precondition the recovery issues no Delete, and both the
+# step line and the completion summary report the namespace as already
+# absent rather than claiming a deletion.
 releaseState: pending-upgrade
 chartVersion: ""
 installResults:

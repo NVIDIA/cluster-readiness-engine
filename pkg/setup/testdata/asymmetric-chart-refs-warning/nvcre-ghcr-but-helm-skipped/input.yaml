@@ -1,0 +1,9 @@
+# The mirror image of trainer-ghcr-but-deps-skipped, and the only case that
+# takes the helmSkipped arm. Only the Kubeflow Trainer chart is mirrored, so
+# the NVCRE chart is the sole GHCR-bound pull left, but the [helm] phase that
+# would pull it is skipped. Nothing reaches GHCR, so nvcre-ghcr-trainer-mirror's
+# warning must not be printed here.
+chartRef: "oci://ghcr.io/nvidia/cluster-readiness-engine"
+trainerChartRef: "oci://registry.example.com/mirror/kubeflow-trainer"
+skipDeps: false
+skipHelm: true
