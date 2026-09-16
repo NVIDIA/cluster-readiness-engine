@@ -1,0 +1,25 @@
+[deps] JobSet detection covers the verified chart fingerprint only; operators with customized or uncertain prior installations must use operator-managed installation.
+[deps] Installing Kubeflow Trainer v2.2.1...
+[deps] Installing Kubeflow Trainer Helm release "kubeflow-trainer" in namespace kubeflow-system...
+Release "kubeflow-trainer" does not exist. Installing it now.
+Pulled: ghcr.io/kubeflow/charts/kubeflow-trainer:2.2.1
+Digest: sha256:8e8e3de0257be804f60dbc8e6784eaddb64b2e158a46cade30ca18b6030183b1
+Error: Unable to continue with install: ClusterRoleBinding "jobset-controller" in namespace "" exists and cannot be imported into the current release: invalid ownership metadata; annotation validation error: key "meta.helm.sh/release-name" must equal "kubeflow-trainer": current value is "jobset"; annotation validation error: key "meta.helm.sh/release-namespace" must equal "kubeflow-system": current value is "jobset-system"
+[deps] Helm reported invalid ownership metadata for a concrete JobSet resource.
+[deps] If external ownership is confirmed, install Trainer manually with jobset.install=false.
+[deps] Resolve JobSet ownership, then install Kubeflow Trainer manually with the appropriate jobset.install value.
+[deps] Continue with: nvcrectl setup init --skip-phases=deps
+[deps] This skips Trainer setup only and still installs NVCRE. A dev CLI build requires --version <nvcre-chart-version>.
+[deps] Dev-build command: nvcrectl setup init --skip-phases=deps --version <nvcre-chart-version>
+[deps] The NVCRE chart must be reachable; optionally use --chart-ref <nvcre-chart-reference> with registry access.
+[deps] Older CLIs also require setup reset --skip-phases=deps to preserve external JobSet.
+
+--- result ---
+error: [deps] helm upgrade: exit status 1
+installCalls: 1
+installModes: [absent]
+uninstallCalls: 0
+crdDeletes: 0
+jobSetCRDPresent: false
+namespacePresent: false
+trainerCRDsPresent: []

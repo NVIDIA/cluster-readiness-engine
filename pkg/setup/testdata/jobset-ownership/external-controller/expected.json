@@ -1,7 +1,7 @@
 {
   "mode": "external",
   "evidence": [
-    "verified external JobSet controller owned by Helm release external-system/external-jobset"
+    "verified external JobSet controller owned by Helm release external-jobset-system/external-jobset"
   ],
   "installJobSet": false,
   "manifestCalls": 0

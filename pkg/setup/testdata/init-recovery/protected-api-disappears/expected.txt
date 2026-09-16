@@ -11,6 +11,12 @@ Error: UPGRADE FAILED: cannot patch Secret "kubeflow-trainer-webhook-cert" in na
   - previously discovered protected API resource disappeared: v1/configmaps
   - previously discovered protected API resource disappeared: v1/secrets
 
+[deps] Operator-managed recovery guidance (issue #180):
+  1. helm uninstall kubeflow-trainer --namespace kubeflow-system
+  2. kubectl delete crd trainjobs.trainer.kubeflow.org trainingruntimes.trainer.kubeflow.org clustertrainingruntimes.trainer.kubeflow.org  # retain jobsets.jobset.x-k8s.io
+  3. Inventory kubeflow-system and delete it only after applying the same protected-resource and quiescence checks.
+  4. Re-run 'nvcrectl setup init' to reinstall Kubeflow Trainer v2.2.1. Earlier cleanup is not rolled back.
+
 --- result ---
 error: [deps] helm upgrade: exit status 1
 installCalls: 1

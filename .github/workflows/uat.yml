@@ -64,8 +64,13 @@ jobs:
       - name: Run isolated setup lifecycle UAT
         run: make test-uat-setup
 
+      # The env guard covers failures in the steps above, which never reach
+      # the UAT script and so never publish a diagnostics path. upload-artifact
+      # reads the required `path` input before it consults
+      # if-no-files-found, so an unset value fails this step outright and
+      # reports nothing useful.
       - name: Upload setup lifecycle diagnostics
-        if: failure()
+        if: failure() && env.SETUP_UAT_DIAGNOSTICS != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: setup-uat-diagnostics-${{ github.run_id }}

@@ -22,17 +22,24 @@ owned=0
 export HELM_PLUGINS="${workdir}/helm-plugins"
 mkdir -p "${HELM_PLUGINS}"
 
+# Publish the diagnostics path before the cleanup trap is armed. The trap is
+# installed only after the tool and cluster preflight checks below, so a
+# failure before that point would otherwise leave the variable unset and the
+# workflow's upload step would fail on a missing required `path` input
+# instead of warning that it found no files.
+diagnostics="${workdir}/diagnostics"
+if [[ -n "${GITHUB_ENV:-}" ]]; then
+  echo "SETUP_UAT_DIAGNOSTICS=${diagnostics}" >>"${GITHUB_ENV}"
+fi
+
 cleanup() {
   status=$?
   if [[ ${status} -ne 0 ]]; then
-    mkdir -p "${workdir}/diagnostics"
-    kind export logs "${workdir}/diagnostics/kind" --name "${cluster}" || true
-    kubectl --kubeconfig "${kubeconfig}" get all --all-namespaces -o wide >"${workdir}/diagnostics/resources.txt" 2>&1 || true
-    kubectl --kubeconfig "${kubeconfig}" get events --all-namespaces --sort-by=.lastTimestamp >"${workdir}/diagnostics/events.txt" 2>&1 || true
-    echo "Setup UAT diagnostics: ${workdir}/diagnostics"
-    if [[ -n "${GITHUB_ENV:-}" ]]; then
-      echo "SETUP_UAT_DIAGNOSTICS=${workdir}/diagnostics" >>"${GITHUB_ENV}"
-    fi
+    mkdir -p "${diagnostics}"
+    kind export logs "${diagnostics}/kind" --name "${cluster}" || true
+    kubectl --kubeconfig "${kubeconfig}" get all --all-namespaces -o wide >"${diagnostics}/resources.txt" 2>&1 || true
+    kubectl --kubeconfig "${kubeconfig}" get events --all-namespaces --sort-by=.lastTimestamp >"${diagnostics}/events.txt" 2>&1 || true
+    echo "Setup UAT diagnostics: ${diagnostics}"
   fi
   if [[ ${owned} -eq 1 ]]; then
     kind delete cluster --name "${cluster}" || true

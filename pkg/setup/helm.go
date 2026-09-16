@@ -509,7 +509,8 @@ func classifyTrainerInstallFailure(output string) failureClass {
 func classifyJobSetOwnershipFailure(output string) bool {
 	lower := strings.ToLower(output)
 	if !strings.Contains(lower, "invalid ownership metadata") ||
-		!strings.Contains(lower, "meta.helm.sh/release-") {
+		(!strings.Contains(lower, "meta.helm.sh/release-") &&
+			!strings.Contains(lower, helmManagedByLabel)) {
 		return false
 	}
 	// Match only concrete chart-derived cluster-scoped objects. Incidental
@@ -518,15 +519,32 @@ func classifyJobSetOwnershipFailure(output string) bool {
 		{"customresourcedefinition", jobSetCRDName},
 		{"clusterrole", jobSetControllerName},
 		{"clusterrolebinding", jobSetControllerName},
-		{"validatingwebhookconfiguration", "jobset-validating-webhook-configuration"},
-		{"mutatingwebhookconfiguration", "jobset-mutating-webhook-configuration"},
+		{"validatingwebhookconfiguration", jobSetValidatingWebhookConfigurationName},
+		{"mutatingwebhookconfiguration", jobSetMutatingWebhookConfigurationName},
 	}
 	for _, object := range known {
 		// Bind the object to Helm's ownership-error clause on the same line.
 		// A debug mention elsewhere must not reclassify an unrelated collision.
-		pattern := `(?im)^Error: (?:INSTALLATION|UPGRADE) FAILED: (?:Unable to continue with (?:install|update): )?` +
+		//
+		// The `<VERB> FAILED: ` segment is optional because `helm upgrade
+		// --install` omits it on its fresh-install path: `newUpgradeCmd`
+		// returns `runInstall`'s error unwrapped, and only `newInstallCmd`
+		// adds the `INSTALLATION FAILED` wrap. Since setup always invokes
+		// `upgrade --install`, a first install against an external JobSet
+		// reports `Error: Unable to continue with install: ...`. Requiring the
+		// segment left that path, and the recovery reinstall, without
+		// guidance.
+		//
+		// Either validated ownership key satisfies the clause. Helm's
+		// `checkOwnership` validates the managed-by label and the two release
+		// annotations independently and reports only the keys that failed, so
+		// an object carrying this release's annotations without the label
+		// produces a label clause alone, with no `meta.helm.sh/release-` in
+		// the message. Requiring the annotation key dropped that transcript.
+		pattern := `(?im)^Error: (?:(?:INSTALLATION|UPGRADE) FAILED: )?(?:Unable to continue with (?:install|update): )?` +
 			regexp.QuoteMeta(object.kind) + ` "` + regexp.QuoteMeta(object.name) +
-			`" in namespace "" exists and cannot be imported into the current release: invalid ownership metadata;[^\r\n]*meta\.helm\.sh/release-`
+			`" in namespace "" exists and cannot be imported into the current release: invalid ownership metadata;[^\r\n]*` +
+			`(?:meta\.helm\.sh/release-|` + regexp.QuoteMeta(helmManagedByLabel) + `)`
 		if regexp.MustCompile(pattern).MatchString(output) {
 			return true
 		}

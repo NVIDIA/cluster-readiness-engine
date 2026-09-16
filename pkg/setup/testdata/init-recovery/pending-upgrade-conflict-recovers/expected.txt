@@ -14,10 +14,10 @@ could not update Secret "jobset-webhook-server-cert" in namespace "kubeflow-syst
 [deps] Confirmed Trainer CRD trainjobs.trainer.kubeflow.org is absent after cleanup.
 [deps] Confirmed Trainer CRD trainingruntimes.trainer.kubeflow.org is absent after cleanup.
 [deps] Confirmed Trainer CRD clustertrainingruntimes.trainer.kubeflow.org is absent after cleanup.
-[deps][recover] Deleting namespace kubeflow-system...
+[deps][recover] Namespace kubeflow-system is already absent; no deletion was required.
 [deps][recover] Reinstalling Kubeflow Trainer v2.2.1...
 [deps] Installing Kubeflow Trainer Helm release "kubeflow-trainer" in namespace kubeflow-system...
-[deps][recover] Recovery complete: uninstalled release "kubeflow-trainer", deleted Trainer CRDs (trainjobs.trainer.kubeflow.org, trainingruntimes.trainer.kubeflow.org, clustertrainingruntimes.trainer.kubeflow.org), retained JobSet CRD jobsets.jobset.x-k8s.io, deleted namespace kubeflow-system, reinstalled Kubeflow Trainer v2.2.1.
+[deps][recover] Recovery complete: uninstalled release "kubeflow-trainer", deleted Trainer CRDs (trainjobs.trainer.kubeflow.org, trainingruntimes.trainer.kubeflow.org, clustertrainingruntimes.trainer.kubeflow.org), retained JobSet CRD jobsets.jobset.x-k8s.io, namespace kubeflow-system was already absent, reinstalled Kubeflow Trainer v2.2.1.
 
 --- result ---
 error: <nil>

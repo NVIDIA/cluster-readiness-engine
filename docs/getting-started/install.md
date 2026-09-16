@@ -47,7 +47,7 @@ nvcrectl --version
 nvcrectl setup init
 ```
 
-Setup detects the supported JobSet controller ownership pattern. A verified external JobSet controller is preserved and Trainer is installed without its bundled JobSet subchart. Ambiguous ownership stops before Helm mutation and prints an operator-managed fallback. An existing Trainer release with a missing JobSet CRD also stops: restore a compatible CRD using the intended JobSet installation procedure before rerunning setup. Existing JobSet CRDs are retained and are not automatically refreshed. For operator-managed Trainer or JobSet, you are responsible for keeping both CRD schemas, their controllers, and external consumers compatible.
+Setup detects the supported JobSet controller ownership pattern. A verified external JobSet controller is preserved and Trainer is installed without its bundled JobSet subchart. Ambiguous ownership stops before Helm mutation and prints an operator-managed fallback. An existing Trainer release with a missing JobSet CRD also stops: restore a compatible CRD using the intended JobSet installation procedure before rerunning setup. Existing JobSet CRDs are retained and are not automatically refreshed. For operator-managed Trainer or JobSet, you are responsible for keeping both CRD schemas, their controllers, and external consumers compatible. Automatic reconciliation of the shared JobSet CRD is deferred work that needs its own design.
 
 ### Registry access
 

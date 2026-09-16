@@ -20,7 +20,11 @@ kind: ClusterRole
 metadata:
   name: external-jobset-controller
   labels:
+    helm.sh/chart: jobset-0.10.1
     app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/instance: external-jobset
+    app.kubernetes.io/component: controller
   annotations:
     meta.helm.sh/release-name: external-jobset
     meta.helm.sh/release-namespace: external-system
@@ -32,16 +36,20 @@ rules:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: external-jobset-validating
+  name: jobset-validating-webhook-configuration
   labels:
+    helm.sh/chart: jobset-0.10.1
     app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/instance: external-jobset
+    app.kubernetes.io/component: webhook
   annotations:
     meta.helm.sh/release-name: external-jobset
     meta.helm.sh/release-namespace: external-system
 webhooks:
-  - name: jobsets.external.example
+  - name: validate-jobset-x-k8s-io-v1alpha2-jobset.x-k8s.io
     clientConfig:
-      service: {name: external-jobset-webhook, namespace: external-system}
+      service: {name: external-jobset-webhook-service, namespace: external-system}
     rules:
       - apiGroups: [jobset.x-k8s.io]
         resources: [jobsets]
@@ -49,15 +57,21 @@ webhooks:
 apiVersion: v1
 kind: Service
 metadata:
-  name: external-jobset-webhook
+  name: external-jobset-webhook-service
   namespace: external-system
   labels:
+    helm.sh/chart: jobset-0.10.1
     app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/instance: external-jobset
+    app.kubernetes.io/component: webhook
   annotations:
     meta.helm.sh/release-name: external-jobset
     meta.helm.sh/release-namespace: external-system
 spec:
-  selector: {app: external-jobset}
+  selector:
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/instance: external-jobset
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -65,15 +79,25 @@ metadata:
   name: external-jobset-controller
   namespace: external-system
   labels:
+    helm.sh/chart: jobset-0.10.1
     app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/instance: external-jobset
+    app.kubernetes.io/component: controller
   annotations:
     meta.helm.sh/release-name: external-jobset
     meta.helm.sh/release-namespace: external-system
 spec:
   selector:
-    matchLabels: {app: external-jobset}
+    matchLabels:
+      app.kubernetes.io/name: jobset
+      app.kubernetes.io/instance: external-jobset
+      app.kubernetes.io/component: controller
   template:
     metadata:
-      labels: {app: external-jobset}
+      labels:
+        app.kubernetes.io/name: jobset
+        app.kubernetes.io/instance: external-jobset
+        app.kubernetes.io/component: controller
     spec:
       containers: [{name: manager, image: example.invalid/jobset:test}]

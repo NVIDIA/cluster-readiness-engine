@@ -1,0 +1,47 @@
+# Captured on 2026-09-16 with Helm 3.22.0 and Kind Kubernetes 1.37.0.
+# Trainer chart 2.2.1 digest:
+# sha256:8e8e3de0257be804f60dbc8e6784eaddb64b2e158a46cade30ca18b6030183b1
+#
+# Ownership validation failing on the managed-by label alone. Helm's
+# `checkOwnership` (pkg/action/validate.go) validates
+# `app.kubernetes.io/managed-by`, `meta.helm.sh/release-name` and
+# `meta.helm.sh/release-namespace` independently and appends a clause only for
+# the keys that failed. A JobSet resource carrying this release's annotations
+# without the label therefore produces one label clause and no
+# `meta.helm.sh/release-` anywhere in the message, unlike every other fixture
+# here. Requiring that annotation key sent this transcript to
+# failureClassOther with no jobset.install guidance.
+#
+# `requireValue` has two wordings for the same key: `missing key %q: must be
+# set to %q` below, and `key %q must equal %q: current value is %q` when the
+# label is present but not "Helm" (a commonLabels override, or a relabel by
+# other tooling). Both name the key, so both classify.
+#
+# Reachable whenever a bundled JobSet resource keeps its release annotations
+# but loses the label: a Helm 2 to 3 migration that annotated without
+# labelling, a GitOps or policy controller rewriting labels, or a chart
+# installed with commonLabels overriding managed-by.
+#
+# Reproduce only in a disposable cluster, with an isolated Helm plugin
+# directory. The planted ClusterRole stands in for that resource; the error
+# text is Helm's own.
+#   export HELM_PLUGINS=<empty-plugin-directory>
+#   kubectl apply -f - <<'YAML'
+#   apiVersion: rbac.authorization.k8s.io/v1
+#   kind: ClusterRole
+#   metadata:
+#     name: jobset-controller
+#     annotations:
+#       meta.helm.sh/release-name: kubeflow-trainer
+#       meta.helm.sh/release-namespace: kubeflow-system
+#   rules:
+#     - apiGroups: ["jobset.x-k8s.io"]
+#       resources: ["jobsets"]
+#       verbs: ["get", "list", "watch"]
+#   YAML
+#   helm upgrade --install kubeflow-trainer oci://ghcr.io/kubeflow/charts/kubeflow-trainer --namespace kubeflow-system --create-namespace --version 2.2.1 --set 'manager.tolerations[0].operator=Exists' --set 'jobset.controller.tolerations[0].operator=Exists' --wait --timeout 5m0s --kubeconfig <kubeconfig> --kube-context <context>
+transcript: |
+  Release "kubeflow-trainer" does not exist. Installing it now.
+  Pulled: ghcr.io/kubeflow/charts/kubeflow-trainer:2.2.1
+  Digest: sha256:8e8e3de0257be804f60dbc8e6784eaddb64b2e158a46cade30ca18b6030183b1
+  Error: Unable to continue with install: ClusterRole "jobset-controller" in namespace "" exists and cannot be imported into the current release: invalid ownership metadata; label validation error: missing key "app.kubernetes.io/managed-by": must be set to "Helm"

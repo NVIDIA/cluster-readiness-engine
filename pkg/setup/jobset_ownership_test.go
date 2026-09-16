@@ -144,6 +144,47 @@ func TestFingerprintScanConsumesEveryPageAndFailsClosed(t *testing.T) {
 	}
 }
 
+// TestAbsentProbeSkipsNamespacedAndJobSetLists pins the CRD-first probe's
+// minimality (ADR-078 decision 1). The fresh-absent golden asserts the mode,
+// the evidence and manifestCalls, but installs no List interceptor, so it
+// cannot tell a probe that stops at the cluster-scoped scan from one that goes
+// on to read namespaced controller resources and every JobSet in the cluster.
+// Those reads need permissions the fresh path is documented not to require.
+func TestAbsentProbeSkipsNamespacedAndJobSetLists(t *testing.T) {
+	scanned := map[string]int{}
+	forbidden := map[string]bool{
+		"ServiceAccountList": true, "ServiceList": true, "ConfigMapList": true,
+		"SecretList": true, "DeploymentList": true, "RoleList": true,
+		"RoleBindingList": true, "JobSetList": true,
+	}
+	scheme := newSetupScheme(t)
+	registerTrainerKinds(scheme)
+	c := fake.NewClientBuilder().WithScheme(scheme).WithInterceptorFuncs(interceptor.Funcs{
+		List: func(ctx context.Context, underlying client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+			kind := list.GetObjectKind().GroupVersionKind().Kind
+			scanned[kind]++
+			if forbidden[kind] {
+				t.Errorf("absent path must not list %s", kind)
+			}
+			return underlying.List(ctx, list, opts...)
+		},
+	}).Build()
+
+	observation := observeJobSetOwnership(context.Background(), c, false, helmStateNotInstalled, nil)
+	if observation.mode != jobSetModeAbsent {
+		t.Fatalf("clean scan with an absent CRD must be absent, got %s: %v", observation.mode, observation.evidence)
+	}
+	// Exactly the three cluster-scoped kinds the fingerprint scan covers.
+	for _, kind := range []string{"ValidatingWebhookConfigurationList", "MutatingWebhookConfigurationList", "ClusterRoleList"} {
+		if scanned[kind] == 0 {
+			t.Errorf("fingerprint scan did not list %s", kind)
+		}
+	}
+	if len(scanned) != 3 {
+		t.Errorf("absent path listed more than the fingerprint kinds: %v", scanned)
+	}
+}
+
 func TestInstallDepsCRDReadFailureRefusesBeforePinnedSkip(t *testing.T) {
 	installCalls := 0
 	c := fake.NewClientBuilder().WithScheme(newSetupScheme(t)).WithInterceptorFuncs(interceptor.Funcs{

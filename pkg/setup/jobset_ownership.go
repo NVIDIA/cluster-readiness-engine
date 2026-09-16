@@ -21,6 +21,18 @@ import (
 
 const jobSetCRDName = "jobsets." + jobsetAPIGroup
 
+// The JobSet chart hardcodes both webhook configuration names in
+// `templates/webhook/_helpers.tpl`, and the upstream kustomize build renders
+// the same two, so no release name or override changes them.
+const (
+	jobSetMutatingWebhookConfigurationName   = "jobset-mutating-webhook-configuration"
+	jobSetValidatingWebhookConfigurationName = "jobset-validating-webhook-configuration"
+)
+
+// helmManagedByLabel is the label Helm validates when deciding whether it may
+// adopt an existing resource, alongside the two release annotations.
+const helmManagedByLabel = "app.kubernetes.io/managed-by"
+
 type jobSetMode string
 
 const (
@@ -167,11 +179,20 @@ func observeJobSetOwnership(
 	}
 	if len(unowned) != 0 {
 		if len(unowned) == len(controllerFindings) && !manifestContainsJobSet(manifestObjects) {
-			if token, verifyErr := verifySupportedNonHelmJobSetController(ctx, c, controllerFindings); verifyErr == nil {
+			token, verifyErr := verifySupportedNonHelmJobSetController(ctx, c, controllerFindings)
+			if verifyErr == nil {
 				return jobSetObservation{mode: jobSetModeExternal, evidence: []string{
 					"verified supported non-Helm JobSet controller pattern",
 				}, manifestObjects: manifestObjects, ownershipToken: token}
 			}
+			// Report why verification refused. The object list alone does not
+			// tell an operator which piece of the supported pattern is absent.
+			// Name the observed objects too, unless the refusal already did.
+			evidence := "unverified non-Helm JobSet controller: " + verifyErr.Error()
+			if observed := strings.Join(unowned, ", "); !strings.Contains(evidence, observed) {
+				evidence += " (observed: " + observed + ")"
+			}
+			return unknownJobSet(evidence)
 		}
 		return unknownJobSet("unverified non-Helm or incomplete ownership evidence: " + strings.Join(unowned, ", "))
 	}
@@ -207,63 +228,144 @@ func observeJobSetOwnership(
 	}, manifestObjects: manifestObjects, ownershipToken: fingerprintOwnershipToken(owner, findings) + supportToken}
 }
 
+// jobSetNonHelmClusterRoleNames are the controller ClusterRole identities the
+// two supported non-Helm channels render: `jobset-manager-role` from the
+// upstream kustomize build, and the chart's `jobset-controller` for a cluster
+// where those names were applied without a release record.
+var jobSetNonHelmClusterRoleNames = []string{"jobset-manager-role", jobSetControllerName}
+
+// jobSetNonHelmDeploymentNames are the matching controller Deployment
+// identities: `jobset-controller-manager` from kustomize, `jobset-controller`
+// from the chart.
+var jobSetNonHelmDeploymentNames = []string{"jobset-controller-manager", jobSetControllerName}
+
+// verifySupportedNonHelmJobSetController verifies a JobSet controller that
+// left no Helm release record, which is the only way a fingerprint scan
+// produces a complete set of unowned matches.
+//
+// It targets two channels, whose rendered identities differ:
+//
+//   - `kubectl apply -f .../jobset/releases/download/<tag>/manifests.yaml`,
+//     the kustomize build upstream publishes. It renders ClusterRole
+//     `jobset-manager-role` and Deployment `jobset-controller-manager` in
+//     `jobset-system`, and labels every object
+//     `app.kubernetes.io/managed-by: kustomize`.
+//   - the chart's own identities, `jobset-controller` for both, applied
+//     without a release record.
+//
+// Both hardcode the two webhook configuration names and render two webhooks
+// per configuration — one for JobSets, one for their Pods — pointing at a
+// single `jobset-webhook-service`. Counting references would therefore reject
+// either channel, so the requirement is that every reference resolves to the
+// same verified Service.
+//
+// `helm template | kubectl apply` is deliberately out of scope. `jobset.labels`
+// emits `app.kubernetes.io/managed-by: Helm` while the apply leaves no
+// `meta.helm.sh/*` annotations, which is partial ownership evidence rather
+// than a non-Helm install; ADR-078 resolves mixed evidence to `unknown`.
 func verifySupportedNonHelmJobSetController(
 	ctx context.Context, c client.Client, findings []jobSetFingerprint,
 ) (string, error) {
-	required := map[string]bool{
-		"ClusterRole/jobset-controller":                                          false,
-		"MutatingWebhookConfiguration/jobset-mutating-webhook-configuration":     false,
-		"ValidatingWebhookConfiguration/jobset-validating-webhook-configuration": false,
-	}
+	var sawClusterRole, sawMutating, sawValidating bool
 	var refs []client.ObjectKey
 	var tokenParts []string
+	seen := map[client.ObjectKey]bool{}
 	for _, finding := range findings {
 		key := finding.kind + "/" + finding.name
-		if _, expected := required[key]; !expected || hasAnyHelmOwnershipMetadata(&finding.object) {
+		if hasAnyHelmOwnershipMetadata(&finding.object) {
+			return "", fmt.Errorf("fingerprint %s carries partial Helm ownership metadata", key)
+		}
+		switch {
+		case finding.kind == kindClusterRole && slices.Contains(jobSetNonHelmClusterRoleNames, finding.name):
+			sawClusterRole = true
+		case finding.kind == kindMutatingWebhook && finding.name == jobSetMutatingWebhookConfigurationName:
+			sawMutating = true
+		case finding.kind == kindValidatingWebhook && finding.name == jobSetValidatingWebhookConfigurationName:
+			sawValidating = true
+		default:
 			return "", fmt.Errorf("unsupported fingerprint %s", key)
 		}
-		required[key] = true
-		refs = append(refs, finding.serviceRefs...)
+		for _, ref := range finding.serviceRefs {
+			if seen[ref] {
+				continue
+			}
+			seen[ref] = true
+			refs = append(refs, ref)
+		}
 		tokenParts = append(tokenParts, key+"/"+string(finding.object.GetUID()))
 	}
-	for key, present := range required {
-		if !present {
-			return "", fmt.Errorf("missing %s", key)
-		}
+	switch {
+	case !sawClusterRole:
+		return "", fmt.Errorf("missing a JobSet controller ClusterRole (%s)",
+			strings.Join(jobSetNonHelmClusterRoleNames, " or "))
+	case !sawMutating:
+		return "", fmt.Errorf("missing MutatingWebhookConfiguration/%s", jobSetMutatingWebhookConfigurationName)
+	case !sawValidating:
+		return "", fmt.Errorf("missing ValidatingWebhookConfiguration/%s", jobSetValidatingWebhookConfigurationName)
 	}
-	if len(refs) != 2 {
-		return "", fmt.Errorf("expected two webhook service references, got %d", len(refs))
+	if len(refs) != 1 {
+		return "", fmt.Errorf("expected every JobSet webhook to reference one webhook Service, got %d: %s",
+			len(refs), objectKeyNames(refs))
 	}
-	for _, ref := range refs {
-		if ref.Name != jobSetWebhookServiceName || ref.Namespace == "" {
-			return "", fmt.Errorf("unexpected webhook Service %s/%s", ref.Namespace, ref.Name)
-		}
-		service := &unstructured.Unstructured{}
-		service.SetGroupVersionKind(schema.GroupVersionKind{Version: "v1", Kind: kindService})
-		if err := c.Get(ctx, ref, service); err != nil || hasAnyHelmOwnershipMetadata(service) {
-			return "", fmt.Errorf("unverified webhook Service %s/%s", ref.Namespace, ref.Name)
-		}
-		selector, _, _ := unstructured.NestedStringMap(service.Object, "spec", "selector")
-		deployment := &unstructured.Unstructured{}
-		deployment.SetGroupVersionKind(schema.GroupVersionKind{Group: appsAPIGroup, Version: "v1", Kind: kindDeployment})
-		if err := c.Get(ctx, client.ObjectKey{Namespace: ref.Namespace, Name: jobSetControllerName}, deployment); err != nil ||
-			hasAnyHelmOwnershipMetadata(deployment) {
-			return "", fmt.Errorf("unverified controller Deployment in %s", ref.Namespace)
-		}
-		labels, _, _ := unstructured.NestedStringMap(deployment.Object, "spec", "template", "metadata", "labels")
-		if len(selector) == 0 || !selectorMatches(selector, labels) {
-			return "", fmt.Errorf("webhook Service does not select the controller Deployment")
-		}
-		tokenParts = append(tokenParts, "Service/"+ref.Namespace+"/"+ref.Name+"/"+string(service.GetUID()),
-			"Deployment/"+ref.Namespace+"/"+deployment.GetName()+"/"+string(deployment.GetUID()))
+	ref := refs[0]
+	if ref.Name != jobSetWebhookServiceName || ref.Namespace == "" {
+		return "", fmt.Errorf("unexpected webhook Service %s/%s", ref.Namespace, ref.Name)
 	}
+	service := &unstructured.Unstructured{}
+	service.SetGroupVersionKind(schema.GroupVersionKind{Version: "v1", Kind: kindService})
+	if err := c.Get(ctx, ref, service); err != nil || hasAnyHelmOwnershipMetadata(service) {
+		return "", fmt.Errorf("unverified webhook Service %s/%s", ref.Namespace, ref.Name)
+	}
+	selector, _, _ := unstructured.NestedStringMap(service.Object, "spec", "selector")
+	deployment, err := nonHelmJobSetControllerDeployment(ctx, c, ref.Namespace)
+	if err != nil {
+		return "", err
+	}
+	labels, _, _ := unstructured.NestedStringMap(deployment.Object, "spec", "template", "metadata", "labels")
+	if len(selector) == 0 || !selectorMatches(selector, labels) {
+		return "", fmt.Errorf("webhook Service does not select the controller Deployment")
+	}
+	tokenParts = append(tokenParts, "Service/"+ref.Namespace+"/"+ref.Name+"/"+string(service.GetUID()),
+		"Deployment/"+ref.Namespace+"/"+deployment.GetName()+"/"+string(deployment.GetUID()))
 	sort.Strings(tokenParts)
 	return "nonhelm|" + strings.Join(tokenParts, "|"), nil
 }
 
+// nonHelmJobSetControllerDeployment resolves the controller Deployment behind
+// the webhook Service, accepting either channel's identity.
+func nonHelmJobSetControllerDeployment(
+	ctx context.Context, c client.Client, namespace string,
+) (*unstructured.Unstructured, error) {
+	for _, name := range jobSetNonHelmDeploymentNames {
+		deployment := &unstructured.Unstructured{}
+		deployment.SetGroupVersionKind(schema.GroupVersionKind{Group: appsAPIGroup, Version: "v1", Kind: kindDeployment})
+		if err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, deployment); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return nil, fmt.Errorf("get controller Deployment %s/%s: %w", namespace, name, err)
+		}
+		if hasAnyHelmOwnershipMetadata(deployment) {
+			return nil, fmt.Errorf("controller Deployment %s/%s carries partial Helm ownership metadata", namespace, name)
+		}
+		return deployment, nil
+	}
+	return nil, fmt.Errorf("no JobSet controller Deployment (%s) in namespace %s",
+		strings.Join(jobSetNonHelmDeploymentNames, " or "), namespace)
+}
+
+func objectKeyNames(refs []client.ObjectKey) string {
+	names := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		names = append(names, ref.Namespace+"/"+ref.Name)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
+}
+
 func hasAnyHelmOwnershipMetadata(object client.Object) bool {
 	annotations := object.GetAnnotations()
-	return object.GetLabels()["app.kubernetes.io/managed-by"] == "Helm" ||
+	return object.GetLabels()[helmManagedByLabel] == "Helm" ||
 		annotations["meta.helm.sh/release-name"] != "" || annotations["meta.helm.sh/release-namespace"] != ""
 }
 
@@ -330,7 +432,7 @@ func unknownJobSet(reason string) jobSetObservation {
 }
 
 func completeHelmOwner(obj client.Object) helmOwner {
-	if obj.GetLabels()["app.kubernetes.io/managed-by"] != "Helm" {
+	if obj.GetLabels()[helmManagedByLabel] != "Helm" {
 		return helmOwner{}
 	}
 	annotations := obj.GetAnnotations()
@@ -442,16 +544,94 @@ func webhookServiceRefs(object map[string]any) []client.ObjectKey {
 	return refs
 }
 
+// jobSetChartName is the JobSet chart's own name. `jobset.chart` renders
+// `helm.sh/chart: <chart name>-<chart version>` from chart metadata alone,
+// and the bundled subchart renders the same label, so it identifies the
+// JobSet project whatever release name, `nameOverride`, or
+// `fullnameOverride` an operator chose.
+const jobSetChartName = "jobset"
+
+// hasJobSetChartIdentity reports whether an object carries the JobSet
+// chart's identity. A release that only consumes the JobSet API labels its
+// resources after itself: Kueue, which NVCRE supports as a gang scheduler,
+// renders `helm.sh/chart: kueue-<version>` on the ClusterRole and webhook
+// configurations through which it reconciles JobSets.
+//
+// `app.kubernetes.io/name` is deliberately not accepted as an alternative.
+// Both charts derive it from `default .Chart.Name .Values.nameOverride`, so
+// a Kueue release installed with `nameOverride=jobset` would carry
+// `app.kubernetes.io/name: jobset` while remaining a consumer. A configurable
+// application name cannot establish ownership on its own.
+func hasJobSetChartIdentity(object client.Object) bool {
+	return chartNameFromLabel(object.GetLabels()["helm.sh/chart"]) == jobSetChartName
+}
+
+// chartNameFromLabel splits the chart name out of a `helm.sh/chart` label,
+// which Helm renders as `<name>-<version>`. Only the final segment is a
+// version, so `jobset-0.11.0` yields `jobset` while a hypothetical
+// `jobset-operator-1.2.3` yields `jobset-operator` and does not match.
+func chartNameFromLabel(chart string) string {
+	index := strings.LastIndex(chart, "-")
+	if index <= 0 {
+		return ""
+	}
+	return chart[:index]
+}
+
+// jobSetAPIRegistrationEvidence returns the admission configuration that
+// establishes the candidate release as a JobSet controller rather than a
+// JobSet consumer.
+//
+// A rule naming the JobSet API group is not that evidence: any consumer
+// reconciling JobSets holds the same rules and can register its own
+// admission webhooks on the same resources and paths. What separates the two
+// is that the release ships the JobSet project's own admission
+// configuration, carrying the chart identity above. Without it the release
+// may only react to JobSets, and disabling the bundled subchart would leave
+// the cluster with no JobSet controller at all (ADR-078 decision 1).
+func jobSetAPIRegistrationEvidence(findings []jobSetFingerprint) (string, bool) {
+	for _, finding := range findings {
+		if finding.kind != kindMutatingWebhook && finding.kind != kindValidatingWebhook {
+			continue
+		}
+		if hasJobSetChartIdentity(&finding.object) {
+			return finding.kind + "/" + finding.name, true
+		}
+	}
+	return "", false
+}
+
 func verifyExternalJobSetController(
 	ctx context.Context, c client.Client, findings []jobSetFingerprint, owner helmOwner,
 ) (string, error) {
+	var owned []jobSetFingerprint
 	var refs []client.ObjectKey
 	var tokenParts []string
+	// The chart renders two webhooks per configuration, one for JobSets and
+	// one for their Pods, both pointing at the same Service. Verify each
+	// distinct Service once.
+	seen := map[client.ObjectKey]bool{}
 	for _, finding := range findings {
-		refs = append(refs, finding.serviceRefs...)
+		if completeHelmOwner(&finding.object) != owner {
+			continue
+		}
+		owned = append(owned, finding)
+		for _, ref := range finding.serviceRefs {
+			if seen[ref] {
+				continue
+			}
+			seen[ref] = true
+			refs = append(refs, ref)
+		}
 	}
 	if len(refs) == 0 {
 		return "", fmt.Errorf("matching roles exist without a JobSet webhook service reference")
+	}
+	if _, ok := jobSetAPIRegistrationEvidence(owned); !ok {
+		return "", fmt.Errorf(
+			"release %s/%s holds JobSet API-group rules but registers no admission configuration carrying the JobSet chart identity"+
+				" (helm.sh/chart=%s-<version>), so it may only consume the JobSet API",
+			owner.namespace, owner.release, jobSetChartName)
 	}
 	for _, ref := range refs {
 		service := &unstructured.Unstructured{}
@@ -472,16 +652,32 @@ func verifyExternalJobSetController(
 			return "", fmt.Errorf("list Deployments in %s: %w", ref.Namespace, err)
 		}
 		matched := false
+		lookalike := ""
 		for _, deployment := range deployments {
 			labels, _, _ := unstructured.NestedStringMap(deployment.Object, "spec", "template", "metadata", "labels")
-			if completeHelmOwner(&deployment) == owner && selectorMatches(selector, labels) {
-				matched = true
-				tokenParts = append(tokenParts, "Service/"+ref.Namespace+"/"+ref.Name+"/"+string(service.GetUID()),
-					"Deployment/"+ref.Namespace+"/"+deployment.GetName()+"/"+string(deployment.GetUID()))
-				break
+			if completeHelmOwner(&deployment) != owner || !selectorMatches(selector, labels) {
+				continue
 			}
+			// The workload behind the webhook must be the JobSet controller
+			// itself. A consumer's controller-manager backs its own webhook
+			// Service on the same selector.
+			if !hasJobSetChartIdentity(&deployment) {
+				if lookalike == "" {
+					lookalike = deployment.GetName()
+				}
+				continue
+			}
+			matched = true
+			tokenParts = append(tokenParts, "Service/"+ref.Namespace+"/"+ref.Name+"/"+string(service.GetUID()),
+				"Deployment/"+ref.Namespace+"/"+deployment.GetName()+"/"+string(deployment.GetUID()))
+			break
 		}
 		if !matched {
+			if lookalike != "" {
+				return "", fmt.Errorf(
+					"webhook Service %s/%s is backed by Deployment %s without the JobSet chart identity, so it may run a JobSet consumer rather than its controller",
+					ref.Namespace, ref.Name, lookalike)
+			}
 			return "", fmt.Errorf("no same-release Deployment backs webhook Service %s/%s", ref.Namespace, ref.Name)
 		}
 	}
@@ -579,8 +775,8 @@ func manifestContainsJobSet(objects map[string]struct{}) bool {
 		{"apiextensions.k8s.io/v1", kindCustomResourceDefinition, jobSetCRDName},
 		{rbacV1APIVersion, kindClusterRole, jobSetControllerName},
 		{rbacV1APIVersion, "ClusterRoleBinding", jobSetControllerName},
-		{"admissionregistration.k8s.io/v1", kindMutatingWebhook, "jobset-mutating-webhook-configuration"},
-		{"admissionregistration.k8s.io/v1", kindValidatingWebhook, "jobset-validating-webhook-configuration"},
+		{"admissionregistration.k8s.io/v1", kindMutatingWebhook, jobSetMutatingWebhookConfigurationName},
+		{"admissionregistration.k8s.io/v1", kindValidatingWebhook, jobSetValidatingWebhookConfigurationName},
 	}
 	for _, object := range clusterObjects {
 		if _, ok := objects[manifestIdentity(object[0], object[1], "", object[2])]; ok {

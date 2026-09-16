@@ -1,0 +1,138 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kueue-manager-role
+  labels:
+    helm.sh/chart: kueue-0.19.4
+    app.kubernetes.io/name: kueue
+    app.kubernetes.io/instance: kueue
+    control-plane: controller-manager
+    app.kubernetes.io/version: "v0.19.4"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: kueue
+    meta.helm.sh/release-namespace: kueue-system
+rules:
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets]
+    verbs: [delete, get, list, patch, update, watch]
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets/finalizers]
+    verbs: [get, update]
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets/status]
+    verbs: [get, patch, update]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: kueue-mutating-webhook-configuration
+  labels:
+    helm.sh/chart: kueue-0.19.4
+    app.kubernetes.io/name: kueue
+    app.kubernetes.io/instance: kueue
+    control-plane: controller-manager
+    app.kubernetes.io/version: "v0.19.4"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: kueue
+    meta.helm.sh/release-namespace: kueue-system
+webhooks:
+  - name: mjobset.kb.io
+    admissionReviewVersions: [v1]
+    failurePolicy: Fail
+    sideEffects: None
+    clientConfig:
+      service:
+        name: kueue-webhook-service
+        namespace: kueue-system
+        path: /mutate-jobset-x-k8s-io-v1alpha2-jobset
+    rules:
+      - apiGroups: [jobset.x-k8s.io]
+        apiVersions: [v1alpha2]
+        operations: [CREATE]
+        resources: [jobsets]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: kueue-validating-webhook-configuration
+  labels:
+    helm.sh/chart: kueue-0.19.4
+    app.kubernetes.io/name: kueue
+    app.kubernetes.io/instance: kueue
+    control-plane: controller-manager
+    app.kubernetes.io/version: "v0.19.4"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: kueue
+    meta.helm.sh/release-namespace: kueue-system
+webhooks:
+  - name: vjobset.kb.io
+    admissionReviewVersions: [v1]
+    failurePolicy: Fail
+    sideEffects: None
+    clientConfig:
+      service:
+        name: kueue-webhook-service
+        namespace: kueue-system
+        path: /validate-jobset-x-k8s-io-v1alpha2-jobset
+    rules:
+      - apiGroups: [jobset.x-k8s.io]
+        apiVersions: [v1alpha2]
+        operations: [CREATE, UPDATE]
+        resources: [jobsets]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kueue-webhook-service
+  namespace: kueue-system
+  labels:
+    helm.sh/chart: kueue-0.19.4
+    app.kubernetes.io/name: kueue
+    app.kubernetes.io/instance: kueue
+    control-plane: controller-manager
+    app.kubernetes.io/version: "v0.19.4"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: webhook-service
+  annotations:
+    meta.helm.sh/release-name: kueue
+    meta.helm.sh/release-namespace: kueue-system
+spec:
+  selector:
+    app.kubernetes.io/name: kueue
+    app.kubernetes.io/instance: kueue
+    control-plane: controller-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kueue-controller-manager
+  namespace: kueue-system
+  labels:
+    helm.sh/chart: kueue-0.19.4
+    app.kubernetes.io/name: kueue
+    app.kubernetes.io/instance: kueue
+    control-plane: controller-manager
+    app.kubernetes.io/version: "v0.19.4"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: kueue
+    meta.helm.sh/release-namespace: kueue-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kueue
+      app.kubernetes.io/instance: kueue
+      control-plane: controller-manager
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kueue
+        app.kubernetes.io/instance: kueue
+        control-plane: controller-manager
+    spec:
+      containers:
+        - name: manager
+          image: example.invalid/kueue:test

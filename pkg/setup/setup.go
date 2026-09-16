@@ -120,9 +120,15 @@ Use --skip-phases=deps to skip Kubeflow Trainer installation.
 Use --auto-approve to skip the confirmation prompt (for CI/automation).
 
 Re-running init is safe: a Kubeflow Trainer release already deployed at the
-pinned version is skipped, and a release wedged by webhook Secret
-field-ownership conflicts (issue #180) is recovered automatically when no
-Trainer workloads exist, or the manual procedure is printed.
+pinned version is skipped. A release wedged by webhook Secret field-ownership
+conflicts (issue #180) is recovered automatically only when no Trainer
+workloads exist, JobSet ownership is unambiguous, and the protected-resource
+inventory in kubeflow-system passes recovery safety checks.
+Otherwise the blocking evidence and the operator-managed procedure are
+printed. These conditions are rechecked at each destructive boundary: a
+refusal before the Helm uninstall leaves the cluster untouched, while a
+refusal at a later boundary reports what it already completed and stops.
+Earlier cleanup is not rolled back.
 
 The NVCRE CRDs are server-side-applied from the chart before every Helm
 upgrade, so re-running init after a version bump also updates the CRD
@@ -165,7 +171,7 @@ func RunInit(
 	chartRef, trainerChartRef string,
 	in io.Reader, out io.Writer,
 ) error {
-	skip, err := parseSkipPhases(skipPhases, phaseDeps, phaseHelm)
+	skip, err := parseSkipPhases(skipPhases, initSkipPhases...)
 	if err != nil {
 		return err
 	}
@@ -217,10 +223,7 @@ func RunInit(
 		_, _ = fmt.Fprintf(out, "  Context:  %s\n", ctxName)
 		_, _ = fmt.Fprintf(out, "  Server:   %s\n", serverURL)
 		_, _ = fmt.Fprintf(out, "\n  Phases:\n")
-		printPhaseList(out, skip, []phaseInfo{
-			{phaseDeps, fmt.Sprintf("Kubeflow Trainer %s (%s)", kubeflowTrainerVersion, trainerChartRef)},
-			{phaseHelm, fmt.Sprintf("NVCRE Helm chart (%s), image %s", chartRef, image)},
-		})
+		printPhaseList(out, skip, initPhaseSummary(trainerChartRef, chartRef, image))
 		_, _ = fmt.Fprintf(out,
 			"\nDo you want to proceed? Only 'yes' will be accepted to confirm.\n")
 		if !promptForConfirmation(in, out) {
@@ -547,6 +550,10 @@ func handleTrainerInstallFailure(sp setupPhaseParams, output string, installErr 
 		for _, blocker := range blockers {
 			_, _ = fmt.Fprintf(sp.out, "  - %s\n", blocker)
 		}
+		// This gate runs after the operator confirmed the destructive plan,
+		// so the refusal leaves a still-broken release and no procedure
+		// unless the manual one is printed here too.
+		printManualTrainerRecovery(sp.out)
 		return installErr
 	}
 
@@ -594,7 +601,7 @@ var trainerRecoveryCRDs = []string{
 func trainerWorkloadGate(sp setupPhaseParams) (bool, []string) {
 	var blockers []string
 	for _, group := range []string{trainerAPIGroup, jobsetAPIGroup} {
-		resources, err := discoverResourcesByGroup(sp.ctx, sp.c, group)
+		resources, err := discoverServedResourcesByGroup(sp.ctx, sp.c, group)
 		if err != nil {
 			blockers = append(blockers, fmt.Sprintf("cannot list CRDs in group %s: %v", group, err))
 			continue
@@ -664,9 +671,16 @@ func revalidateRecoveryJobSetOwnership(sp setupPhaseParams, trainerRemoved bool)
 		manifest = nil
 	}
 	observed := observeJobSetOwnership(sp.ctx, sp.c, present, state, manifest)
+	// The mode can agree while the controller behind it does not. Every token
+	// part embeds a UID, so a replaced external controller shows up here and
+	// reporting it as a mode change would name the same mode on both sides.
+	if sp.jobSetMode == jobSetModeExternal && observed.mode == jobSetModeExternal &&
+		observed.ownershipToken != sp.jobSetOwnershipToken {
+		return "external JobSet controller identity changed since it was verified; recovery would proceed against " +
+			"a controller it has not inspected (" + strings.Join(observed.evidence, "; ") + ")"
+	}
 	if observed.mode == jobSetModeUnknown || observed.mode == jobSetModeExternal && sp.jobSetMode != jobSetModeExternal ||
-		sp.jobSetMode == jobSetModeExternal && (observed.mode != jobSetModeExternal ||
-			observed.ownershipToken != sp.jobSetOwnershipToken) {
+		sp.jobSetMode == jobSetModeExternal && observed.mode != jobSetModeExternal {
 		return fmt.Sprintf("JobSet ownership changed or became ambiguous: selected %s, observed %s (%s)",
 			sp.jobSetMode, observed.mode, strings.Join(observed.evidence, "; "))
 	}
@@ -697,7 +711,18 @@ func recoverTrainerRelease(sp setupPhaseParams, baseline recoveryEvidence) error
 	if len(blockers) != 0 {
 		return fmt.Errorf("partial recovery stopped before namespace deletion: %s", strings.Join(blockers, "; "))
 	}
-	_, _ = fmt.Fprintf(out, "[deps][recover] Deleting namespace %s...\n", trainerNamespace)
+	// deleteNamespaceWithUID issues no Delete without an inspected UID, since
+	// there is no precondition to attach. Say so rather than reporting a
+	// deletion that never happened: collectRecoveryEvidence leaves the UID
+	// unset when the namespace was already absent at the baseline gate.
+	namespaceOutcome := fmt.Sprintf("deleted namespace %s", trainerNamespace)
+	if baseline.namespaceUID == "" {
+		namespaceOutcome = fmt.Sprintf("namespace %s was already absent", trainerNamespace)
+		_, _ = fmt.Fprintf(out, "[deps][recover] Namespace %s is already absent; no deletion was required.\n",
+			trainerNamespace)
+	} else {
+		_, _ = fmt.Fprintf(out, "[deps][recover] Deleting namespace %s...\n", trainerNamespace)
+	}
 	if err := deleteNamespaceWithUID(sp, baseline.namespaceUID); err != nil {
 		return fmt.Errorf("partial recovery stopped after Trainer CRD deletion: %w", err)
 	}
@@ -709,8 +734,8 @@ func recoverTrainerRelease(sp setupPhaseParams, baseline recoveryEvidence) error
 	}
 
 	_, _ = fmt.Fprintf(out,
-		"[deps][recover] Recovery complete: uninstalled release %q, deleted Trainer CRDs (%s), retained JobSet CRD %s, deleted namespace %s, reinstalled Kubeflow Trainer %s.\n",
-		trainerReleaseName, strings.Join(trainerRecoveryCRDs, ", "), jobSetCRDName, trainerNamespace, kubeflowTrainerVersion)
+		"[deps][recover] Recovery complete: uninstalled release %q, deleted Trainer CRDs (%s), retained JobSet CRD %s, %s, reinstalled Kubeflow Trainer %s.\n",
+		trainerReleaseName, strings.Join(trainerRecoveryCRDs, ", "), jobSetCRDName, namespaceOutcome, kubeflowTrainerVersion)
 	return nil
 }
 
@@ -809,8 +834,11 @@ Phases:
   [helm]  NVCRE Helm release (CRDs, controller, LogProfiles)
   [deps]  Kubeflow Trainer ` + kubeflowTrainerVersion + `
 
-Shared namespaces and the controller pull secret are intentionally retained;
-reset prints a "Retained resources" list with the cleanup command for each.
+Shared namespaces and the controller pull secret are intentionally retained,
+as is the shared JobSet CRD. reset prints a "Retained resources" list; entries
+that are safe to remove carry a cleanup command, while the JobSet CRD is
+reported as a warning only, because deleting it destroys JobSets in every
+namespace.
 
 Use --skip-phases=deps to keep Kubeflow Trainer.
 Use --auto-approve to skip the confirmation prompt (for CI/automation).`,
@@ -835,7 +863,7 @@ func RunReset(
 	configFlags *kubeconfig.ConfigFlags,
 	in io.Reader, out io.Writer,
 ) error {
-	skip, err := parseSkipPhases(skipPhases, phaseCR, phaseHelm, phaseDeps)
+	skip, err := parseSkipPhases(skipPhases, resetSkipPhases...)
 	if err != nil {
 		return err
 	}
@@ -862,11 +890,7 @@ func RunReset(
 		_, _ = fmt.Fprintf(out, "  Context:  %s\n", ctxName)
 		_, _ = fmt.Fprintf(out, "  Server:   %s\n", serverURL)
 		_, _ = fmt.Fprintf(out, "\n  Phases:\n")
-		printPhaseList(out, skip, []phaseInfo{
-			{phaseCR, "NVCRE custom resources"},
-			{"helm", "NVCRE Helm release (CRDs, controller, LogProfiles)"},
-			{phaseDeps, fmt.Sprintf("Kubeflow Trainer %s", kubeflowTrainerVersion)},
-		})
+		printPhaseList(out, skip, resetPhaseSummary())
 		_, _ = fmt.Fprintf(out,
 			"\nDo you want to proceed? Only 'yes' will be accepted to confirm.\n")
 		if !promptForConfirmation(in, out) {
@@ -1055,6 +1079,33 @@ type phaseInfo struct {
 	name        string
 	description string
 }
+
+// initPhaseSummary and resetPhaseSummary are the phase lists the confirmation
+// prompt prints, kept beside the accepted --skip-phases sets below so the
+// summary cannot advertise a phase the command does not gate. That divergence
+// is what made `--skip-phases=helm` a silent no-op that only changed the
+// printed summary.
+func initPhaseSummary(trainerChartRef, chartRef, image string) []phaseInfo {
+	return []phaseInfo{
+		{phaseDeps, fmt.Sprintf("Kubeflow Trainer %s (%s)", kubeflowTrainerVersion, trainerChartRef)},
+		{phaseHelm, fmt.Sprintf("NVCRE Helm chart (%s), image %s", chartRef, image)},
+	}
+}
+
+func resetPhaseSummary() []phaseInfo {
+	return []phaseInfo{
+		{phaseCR, "NVCRE custom resources"},
+		{phaseHelm, "NVCRE Helm release (CRDs, controller, LogProfiles)"},
+		{phaseDeps, fmt.Sprintf("Kubeflow Trainer %s", kubeflowTrainerVersion)},
+	}
+}
+
+// initSkipPhases and resetSkipPhases are the phase names each command accepts
+// in --skip-phases.
+var (
+	initSkipPhases  = []string{phaseDeps, phaseHelm}
+	resetSkipPhases = []string{phaseCR, phaseHelm, phaseDeps}
+)
 
 // printPhaseList prints the phase summary with skip indicators.
 func printPhaseList(out io.Writer, skip map[string]bool, phases []phaseInfo) {
@@ -1331,9 +1382,28 @@ func discoverNVCREResources(ctx context.Context, c client.Client) ([]nvcreResour
 	return filtered, nil
 }
 
-// discoverResourcesByGroup returns all CRD-backed resources for an API
-// group, including their served apiVersion and Kind metadata.
+// discoverResourcesByGroup returns all CRD-backed resources for an API group
+// that expose a served version, skipping any CRD that does not. Reset's [cr]
+// phase uses this: an inspection gap must not stop an explicit cleanup the
+// operator asked for (ADR-078 decision 3), and the later [helm] phase still
+// removes the CRD.
 func discoverResourcesByGroup(ctx context.Context, c client.Client, apiGroup string) ([]nvcreResource, error) {
+	return discoverGroupResources(ctx, c, apiGroup, false)
+}
+
+// discoverServedResourcesByGroup is the fail-closed variant: a CRD in the
+// group with no served version is an error. The recovery gate uses this,
+// because a CRD it cannot enumerate is a CRD whose stored objects it cannot
+// see, and it is about to delete CRDs and the namespace (ADR-078 decision 4).
+// Kubernetes requires exactly one storage version but no served one, so this
+// state is reachable through a half-applied or deliberately disabled CRD.
+func discoverServedResourcesByGroup(ctx context.Context, c client.Client, apiGroup string) ([]nvcreResource, error) {
+	return discoverGroupResources(ctx, c, apiGroup, true)
+}
+
+func discoverGroupResources(
+	ctx context.Context, c client.Client, apiGroup string, requireServed bool,
+) ([]nvcreResource, error) {
 	list := &unstructured.UnstructuredList{}
 	list.SetAPIVersion("apiextensions.k8s.io/v1")
 	list.SetKind("CustomResourceDefinitionList")
@@ -1376,7 +1446,10 @@ func discoverResourcesByGroup(ctx context.Context, c client.Client, apiGroup str
 			}
 		}
 		if apiVersion == "" {
-			return nil, fmt.Errorf("CRD %s in group %s has no served version", item.GetName(), apiGroup)
+			if requireServed {
+				return nil, fmt.Errorf("CRD %s in group %s has no served version", item.GetName(), apiGroup)
+			}
+			continue
 		}
 
 		resources = append(resources, nvcreResource{

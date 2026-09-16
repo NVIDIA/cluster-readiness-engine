@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -27,6 +28,15 @@ import (
 // testAPIVersionV1Alpha1 is the "v1alpha1" version string shared by the
 // NVCRE and Trainer GroupVersionKinds registered for tests in this package.
 const testAPIVersionV1Alpha1 = "v1alpha1"
+
+// The external JobSet release the external-mode recovery fixtures seed. The
+// names are chart-derived: release "external-jobset" with
+// fullnameOverride=external-jobset renders <fullname>-controller and
+// <fullname>-webhook-service.
+const (
+	externalJobSetNamespace  = "external-jobset-system"
+	externalJobSetController = "external-jobset-controller"
+)
 
 // registerTrainerKinds registers the Trainer-family kinds the recovery gate
 // lists, so the fake client can serve them as unstructured objects — the
@@ -121,12 +131,7 @@ func TestInstallDepsPhaseRecovery(t *testing.T) {
 		var c client.Client
 		crdDeletes := 0
 		c = fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).WithInterceptorFuncs(interceptor.Funcs{
-			List: func(ctx context.Context, underlying client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
-				if in.ListFailureKind != "" && list.GetObjectKind().GroupVersionKind().Kind == in.ListFailureKind+"List" {
-					return errors.New("simulated required list denial")
-				}
-				return underlying.List(ctx, list, opts...)
-			},
+			List: recoveryListInterceptor(in.ListFailureKind, &crdDeletes),
 			Delete: func(ctx context.Context, underlying client.WithWatch, object client.Object, opts ...client.DeleteOption) error {
 				err := underlying.Delete(ctx, object, opts...)
 				if err == nil && strings.HasSuffix(object.GetName(), "."+trainerAPIGroup) {
@@ -191,15 +196,27 @@ func TestInstallDepsPhaseRecovery(t *testing.T) {
 				if in.UninstallFail {
 					return errors.New("helm uninstall: exit status 1")
 				}
-				secrets := &unstructured.UnstructuredList{}
-				secrets.SetAPIVersion("v1")
-				secrets.SetKind("SecretList")
-				if err := c.List(context.Background(), secrets, client.InNamespace(trainerNamespace)); err != nil {
-					return err
-				}
-				for i := range secrets.Items {
-					if completeHelmOwner(&secrets.Items[i]).bundled() {
-						if err := c.Delete(context.Background(), &secrets.Items[i]); err != nil {
+				// A real helm uninstall removes every resource it rendered,
+				// which includes the controller Deployment, not just the
+				// conflicting webhook Secrets. Deleting the Deployment leaves
+				// its ReplicaSet and Pod as descendants of a now-absent owner,
+				// so the final gate has to re-verify them from the preserved
+				// pre-uninstall evidence instead of re-deriving them from a
+				// still-live owner chain.
+				for _, listKind := range []struct{ apiVersion, kind string }{
+					{"v1", "SecretList"}, {"apps/v1", "DeploymentList"},
+				} {
+					rendered := &unstructured.UnstructuredList{}
+					rendered.SetAPIVersion(listKind.apiVersion)
+					rendered.SetKind(listKind.kind)
+					if err := c.List(context.Background(), rendered, client.InNamespace(trainerNamespace)); err != nil {
+						return err
+					}
+					for i := range rendered.Items {
+						if !completeHelmOwner(&rendered.Items[i]).bundled() {
+							continue
+						}
+						if err := c.Delete(context.Background(), &rendered.Items[i]); err != nil {
 							return err
 						}
 					}
@@ -307,6 +324,15 @@ func recoveryDiscoveryStub(in initRecoveryInput, discoveryCalls *int) func() ([]
 			{GroupVersion: "discovery.k8s.io/v1", APIResources: []metav1.APIResource{
 				{Name: "endpointslices", Kind: "EndpointSlice", Namespaced: true, Verbs: metav1.Verbs{"list"}},
 			}},
+			// Production discovery returns the namespaced Trainer resources
+			// too, and recovery deletes their CRDs mid-run. Without them the
+			// trainerAPIsRemoved arms in collectRecoveryEvidence and
+			// compareRecoveryEvidence are evaluated but never taken, so the
+			// accounting for intentionally removed APIs is untested even
+			// though it runs on every real recovery.
+			{GroupVersion: trainerAPIGroup + "/" + testAPIVersionV1Alpha1, APIResources: []metav1.APIResource{
+				{Name: "trainingruntimes", Kind: "TrainingRuntime", Namespaced: true, Verbs: metav1.Verbs{"list"}},
+			}},
 		}, nil
 	}
 }
@@ -325,6 +351,27 @@ func (r *mutationReader) Read(p []byte) (int, error) {
 		}
 	}
 	return r.reader.Read(p)
+}
+
+// recoveryListInterceptor denies one kind on request, and stops serving the
+// Trainer group once recovery has deleted its CRDs. The fake client keeps
+// serving a kind after its CRD is gone while a real API server stops, so
+// without this the accounting for the APIs recovery just removed would be
+// satisfied by empty lists instead of having to be correct.
+func recoveryListInterceptor(
+	failureKind string, crdDeletes *int,
+) func(context.Context, client.WithWatch, client.ObjectList, ...client.ListOption) error {
+	return func(ctx context.Context, underlying client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+		gvk := list.GetObjectKind().GroupVersionKind()
+		if failureKind != "" && gvk.Kind == failureKind+"List" {
+			return errors.New("simulated required list denial")
+		}
+		if gvk.Group == trainerAPIGroup && *crdDeletes >= len(trainerRecoveryCRDs) {
+			resource := strings.ToLower(strings.TrimSuffix(gvk.Kind, "List")) + "s"
+			return apierrors.NewNotFound(schema.GroupResource{Group: gvk.Group, Resource: resource}, "")
+		}
+		return underlying.List(ctx, list, opts...)
+	}
 }
 
 func recoverySeedObjects() []client.Object {
@@ -382,6 +429,31 @@ func createRecoveryMutation(ctx context.Context, c client.Client, mutation strin
 		namespace.SetResourceVersion("")
 		namespace.SetUID("replacement-namespace-uid")
 		return c.Create(ctx, namespace)
+	case "jobset":
+		// A JobSet appearing mid-recovery. Outside external mode every
+		// instance blocks, because the cleanup removes the controller that
+		// would reconcile it (ADR-078 decision 4).
+		object := &unstructured.Unstructured{Object: map[string]any{
+			"apiVersion": jobsetAPIGroup + "/v1alpha2", "kind": "JobSet",
+			"metadata": map[string]any{"name": "late-jobset", "namespace": "team-a", "uid": "late-jobset-uid"},
+		}}
+		return c.Create(ctx, object)
+	case "replace-external-controller":
+		// The external JobSet controller is replaced by an identically named
+		// Deployment with a new UID. Every ownership-token part embeds a UID,
+		// so this must be caught before the release is uninstalled; a token
+		// built from names alone would wave it through.
+		deployment := &unstructured.Unstructured{}
+		deployment.SetGroupVersionKind(schema.GroupVersionKind{Group: appsAPIGroup, Version: "v1", Kind: kindDeployment})
+		if err := c.Get(ctx, client.ObjectKey{Namespace: externalJobSetNamespace, Name: externalJobSetController}, deployment); err != nil {
+			return err
+		}
+		if err := c.Delete(ctx, deployment); err != nil {
+			return err
+		}
+		deployment.SetResourceVersion("")
+		deployment.SetUID("replacement-external-controller-uid")
+		return c.Create(ctx, deployment)
 	default:
 		return fmt.Errorf("unknown recovery mutation %q", mutation)
 	}
