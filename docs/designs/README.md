@@ -86,3 +86,5 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 076 | [Configurable Gang Scheduler Queue Label Key (Run:ai Support)](076-gang-scheduler-queue-label-key.md) |
 | 077 | [Certification Workload Image Override](077-workload-image-override.md) |
 | 078 | [Preserve Externally Managed JobSet Across setup init and reset](078-jobset-ownership.md) |
+| 079 | [Declarative Labels for Generated Workload Objects](079-workload-object-labels.md) |
+| 080 | [Phase Transition Events Across the Lifecycle Tiers](080-phase-transition-events.md) |
