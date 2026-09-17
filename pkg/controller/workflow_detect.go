@@ -59,10 +59,9 @@ func nodePlatform(n corev1.Node) string {
 	case strings.HasPrefix(providerID, "ocid1."):
 		return platform.OCI
 	case strings.HasPrefix(providerID, "openstack://"):
-		if _, ok := n.Status.Allocatable[corev1.ResourceName("nscale.com/rdmashare")]; ok {
-			return platform.NScale
-		}
 		return platformOnPrem
+	case strings.HasPrefix(providerID, "nscale://"):
+		return platform.NScale
 	case strings.HasPrefix(providerID, "kubevirt://"):
 		if _, ok := n.Labels["node-role.together.ai/worker"]; ok {
 			return platform.TogetherAI
