@@ -294,3 +294,28 @@
             env:
 {{ lib "nccl/onprem-ib-env.yaml" . | indent 12 }}
 {{- end }}
+
+# --- Nscale NKS (GPU+RDMA DRA claims runtime patch; ADR-085) ---
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      in: [b200, gb300]
+  dependencies:
+{{ lib "deps/nscale-gpu-rdma.yaml" . | indent 2 }}
+
+# --- Nscale NKS (IB env vars, non-MPI only) ---
+{{- if ne .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      in: [b200, gb300]
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/nscale-ib-env.yaml" . | indent 12 }}
+{{- end }}
