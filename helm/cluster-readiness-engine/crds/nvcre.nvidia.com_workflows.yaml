@@ -131,6 +131,66 @@ spec:
                   x-kubernetes-embedded-resource: true
                   x-kubernetes-preserve-unknown-fields: true
                 type: array
+              gangScheduler:
+                description: |-
+                  gangScheduler records the gang-scheduling intent of the WorkloadRun or
+                  Certification that generated this Workflow, with the queue and queue
+                  label key already resolved to their effective values.
+
+                  It is a consistency contract, not a second place to configure gang
+                  scheduling. The Workflow controller uses it after overrides resolve to
+                  check that every effective queue label and pod scheduler name in the
+                  Job template and the referenced TrainingRuntime dependency still agrees
+                  with what the owner asked for, and to restore the workload-object queue
+                  label if an override removed it. A conflicting runtime override fails
+                  the Workflow rather than being silently repaired.
+
+                  It sits outside jobTemplate, dependencies and orchestration, so no
+                  override can reach it, and it is immutable in both presence and value so
+                  the contract holds across every group and iteration. A rendered Workflow
+                  submitted on its own therefore enforces the same checks without needing
+                  its original WorkloadRun.
+                properties:
+                  queue:
+                    description: |-
+                      queue is the scheduler queue to submit the workload to.
+                      Defaults to "default-queue" if not specified.
+                      When non-empty, must be a valid Kubernetes label value: at most 63 characters,
+                      beginning and ending with an alphanumeric character, and containing only
+                      alphanumerics, hyphens, underscores, or dots.
+                    maxLength: 63
+                    pattern: ^$|^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$
+                    type: string
+                  queueLabelKey:
+                    description: |-
+                      queueLabelKey is the label key the queue name is written under, for
+                      schedulers that read a different label than KAI Scheduler does.
+                      Defaults to "kai.scheduler/queue" if not specified. Set it to
+                      "runai/queue" (with schedulerName "runai-scheduler") on clusters running
+                      the NVIDIA Run:ai platform.
+                      When non-empty, must be a valid Kubernetes label key (qualified name): an
+                      optional DNS-subdomain prefix of at most 253 characters followed by "/",
+                      then a name of at most 63 characters beginning and ending with an
+                      alphanumeric character and containing only alphanumerics, hyphens,
+                      underscores, or dots.
+                    maxLength: 317
+                    pattern: ^$|^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[a-zA-Z0-9]([-a-zA-Z0-9_.]{0,61}[a-zA-Z0-9])?$
+                    type: string
+                    x-kubernetes-validations:
+                    - message: queueLabelKey prefix must be at most 253 characters
+                      rule: 'self.contains(''/'') ? self.split(''/'')[0].size() <=
+                        253 : true'
+                  schedulerName:
+                    description: schedulerName is the name of the gang-aware scheduler
+                      to use (e.g. "kai-scheduler").
+                    minLength: 1
+                    type: string
+                required:
+                - schedulerName
+                type: object
+                x-kubernetes-validations:
+                - message: gangScheduler is immutable
+                  rule: self == oldSelf
               jobTemplate:
                 description: jobTemplate defines the Job template used to create Jobs
                   for each execution group.
@@ -6797,9 +6857,77 @@ spec:
                         x-kubernetes-validations:
                         - message: workload is immutable
                           rule: self == oldSelf
+                      workloadMetadata:
+                        description: |-
+                          workloadMetadata sets labels on the workload object created from
+                          spec.workload. This is the canonical boundary for workload-object
+                          labels: WorkloadRun and Certification both resolve their own
+                          workloadMetadata into this field, and a hand-authored Workflow writes
+                          spec.jobTemplate.spec.workloadMetadata directly.
+
+                          Ordinary Job labels (Workflow spec.jobTemplate.metadata.labels) are not
+                          copied here. Labels are executable policy, so opting a workload into an
+                          admission controller or a queue has to be written down explicitly.
+
+                          Immutable in both presence and value, so a checkpoint restart recreates
+                          the workload with the labels it was admitted with.
+                        properties:
+                          labels:
+                            additionalProperties:
+                              description: |-
+                                WorkloadLabelValue is a Kubernetes label value in a WorkloadMetadata labels
+                                map. It exists as a named type only so controller-gen emits the length and
+                                pattern constraints under the map's additionalProperties: there is no marker
+                                that attaches value constraints to a map[string]string.
+                              maxLength: 63
+                              pattern: ^$|^[a-zA-Z0-9]([-a-zA-Z0-9_.]{0,61}[a-zA-Z0-9])?$
+                              type: string
+                            description: |-
+                              labels are merged onto the generated workload object's metadata.labels.
+
+                              Keys must be valid Kubernetes label keys: an optional DNS-subdomain
+                              prefix of at most 253 characters followed by "/", then a name of at most
+                              63 characters. Values follow Kubernetes label-value syntax and may be
+                              empty; an empty value is a real label, not a deletion.
+
+                              The controller-owned keys "app.kubernetes.io/managed-by" and anything
+                              under the "nvcre.nvidia.com/" prefix are rejected rather than silently
+                              overwritten — they identify controller ownership and Job association.
+
+                              At most 32 entries. That bound is an enforced API limit, chosen as the
+                              product decision for how many workload labels one object may carry.
+                              (A finite maxProperties is separately required to bound the static cost
+                              of the CEL rules below, but the cost estimator accepts far larger
+                              values, so it does not pick this number.)
+                              The key grammar uses [.] rather than \. because the marker parser
+                              collapses the escape and CEL then rejects \. as an invalid escape in a
+                              string literal. The two are equivalent to the regex engine.
+                            maxProperties: 32
+                            type: object
+                            x-kubernetes-validations:
+                            - message: labels must not set the controller-owned keys
+                                app.kubernetes.io/managed-by or any key under the
+                                nvcre.nvidia.com/ prefix
+                              rule: self.all(k, k != 'app.kubernetes.io/managed-by'
+                                && !k.startsWith('nvcre.nvidia.com/'))
+                            - message: 'each label key must be a valid Kubernetes
+                                label key: an optional DNS-subdomain prefix followed
+                                by ''/'', then a name of at most 63 characters beginning
+                                and ending with an alphanumeric character'
+                              rule: self.all(k, k.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[a-zA-Z0-9]([-a-zA-Z0-9_.]{0,61}[a-zA-Z0-9])?$'))
+                            - message: each label key prefix must be at most 253 characters
+                              rule: 'self.all(k, k.contains(''/'') ? k.split(''/'')[0].size()
+                                <= 253 : true)'
+                        type: object
+                        x-kubernetes-validations:
+                        - message: workloadMetadata is immutable
+                          rule: self == oldSelf
                     required:
                     - workload
                     type: object
+                    x-kubernetes-validations:
+                    - message: workloadMetadata cannot be added or removed after creation
+                      rule: has(self.workloadMetadata) == has(oldSelf.workloadMetadata)
                 required:
                 - spec
                 type: object
@@ -7377,6 +7505,9 @@ spec:
             - jobTemplate
             - orchestration
             type: object
+            x-kubernetes-validations:
+            - message: gangScheduler cannot be added or removed after creation
+              rule: has(self.gangScheduler) == has(oldSelf.gangScheduler)
           status:
             description: status defines the observed state of Workflow
             properties:

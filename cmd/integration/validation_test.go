@@ -51,7 +51,7 @@ type validationCause struct {
 // subdomains) — at every level the field appears (ADR-075).
 func TestCertificationValidation(t *testing.T) {
 	suite := &testutil.IntegrationTestSuite{}
-	suite.Environment.CRDDirectoryPaths = []string{"../../helm/cluster-readiness-engine/crds"}
+	suite.Environment.CRDDirectoryPaths = []string{generatedCRDPath}
 	suite.Environment.ErrorIfCRDPathMissing = true
 	suite.SetupTestSuite(t)
 	defer suite.TearDownTestSuite(t)

@@ -1,0 +1,95 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The restore half of the insert/same/conflict rule, under the controller.
+#
+# ADR-079 splits the two metadata levels deliberately: the workload object's
+# queue label is NVCRE's to write, so an override that removes it gets it back,
+# while a runtime override that disagrees fails. Every other fixture covers the
+# failing half. This one covers the restore, and it has to run under the
+# controller because the restore writes to the in-memory job template that
+# createJobForGroup copies — the stored Workflow keeps its own spec untouched,
+# so no render or dry-run path can show the created Job's labels.
+#
+# The patch removes the queue label and adds cost-center in the same operation
+# list. That pairing is what makes the case provable: cost-center on the Job
+# shows the patch really applied, so the queue label being present alongside it
+# can only be the restore, not an override that silently never matched.
+apiVersion: v1
+kind: Node
+metadata:
+  name: label-restore-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: label-restore-node-01
+spec:
+  providerID: aws:///us-east-1a/i-0ccc
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: label-restore-wf
+  namespace: default
+spec:
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: queue-a
+    queueLabelKey: kai.scheduler/queue
+  jobTemplate:
+    spec:
+      workloadMetadata:
+        labels:
+          kai.scheduler/queue: queue-a
+          environment: burn-in
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: restore-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: restore-runtime
+        namespace: default
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+              - name: node
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: queue-a
+                  spec:
+                    template:
+                      metadata:
+                        labels:
+                          kai.scheduler/queue: queue-a
+                      spec:
+                        schedulerName: kai-scheduler
+                        containers:
+                          - name: node
+                            image: test-image:latest
+  overrides:
+    - when:
+        platform:
+          equals: aws
+      jobTemplatePatch:
+        - op: remove
+          path: /spec/workloadMetadata/labels/kai.scheduler~1queue
+        - op: add
+          path: /spec/workloadMetadata/labels/cost-center
+          value: hpc
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"

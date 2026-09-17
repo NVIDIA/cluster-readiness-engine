@@ -1,0 +1,15 @@
+{
+  "create": {
+    "accepted": true
+  },
+  "update": {
+    "accepted": false,
+    "causes": [
+      {
+        "type": "FieldValueInvalid",
+        "field": "spec.gangScheduler",
+        "message": "Invalid value: gangScheduler is immutable"
+      }
+    ]
+  }
+}

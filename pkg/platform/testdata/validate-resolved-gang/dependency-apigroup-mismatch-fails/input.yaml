@@ -1,0 +1,56 @@
+# The mirror image: the reference is well formed but the only TrainingRuntime
+# dependency belongs to a foreign API group, so it is not the runtime Trainer
+# will resolve and cannot establish the guarantee.
+spec:
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: queue-a
+  jobTemplate:
+    spec:
+      workloadMetadata:
+        labels:
+          kai.scheduler/queue: queue-a
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: nccl-runtime
+  dependencies:
+    - apiVersion: example.com/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: nccl-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+              - name: node
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: queue-a
+                  spec:
+                    template:
+                      metadata:
+                        labels:
+                          kai.scheduler/queue: queue-a
+                      spec:
+                        schedulerName: kai-scheduler
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01
+              - name: launcher
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: queue-a
+                  spec:
+                    template:
+                      metadata:
+                        labels:
+                          kai.scheduler/queue: queue-a
+                      spec:
+                        schedulerName: kai-scheduler
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01

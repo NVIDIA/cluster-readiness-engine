@@ -1,0 +1,196 @@
+{
+  "Workflow/later-conflict-wf": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "later-conflict-wf",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "later-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          },
+          "workloadMetadata": {
+            "labels": {
+              "kai.scheduler/queue": "queue-a"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      },
+      "dependencies": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "metadata": {
+            "name": "later-runtime",
+            "namespace": "default"
+          },
+          "spec": {
+            "template": {
+              "spec": {
+                "replicatedJobs": [
+                  {
+                    "name": "node",
+                    "template": {
+                      "metadata": {
+                        "labels": {
+                          "kai.scheduler/queue": "queue-a"
+                        }
+                      },
+                      "spec": {
+                        "template": {
+                          "metadata": {
+                            "labels": {
+                              "kai.scheduler/queue": "queue-a"
+                            }
+                          },
+                          "spec": {
+                            "containers": [
+                              {
+                                "image": "test-image:latest",
+                                "name": "node"
+                              }
+                            ],
+                            "schedulerName": "kai-scheduler"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "overrides": [
+        {
+          "when": {
+            "platform": {
+              "equals": "aws"
+            }
+          },
+          "dependencies": [
+            {
+              "apiVersion": "trainer.kubeflow.org/v1alpha1",
+              "kind": "TrainingRuntime",
+              "metadata": {
+                "name": "later-runtime",
+                "namespace": "default"
+              },
+              "spec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "metadata": {
+                            "labels": {
+                              "kai.scheduler/queue": "queue-b"
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "gangScheduler": {
+        "schedulerName": "kai-scheduler",
+        "queue": "queue-a",
+        "queueLabelKey": "kai.scheduler/queue"
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "GangSchedulingConflict",
+          "message": "group group-1: gangScheduler is configured with queue \"queue-a\" but TrainingRuntime \"later-runtime-2027d-group-1-iter-1\" replicatedJob \"node\" sets label \"kai.scheduler/queue\" to \"queue-b\" on template.metadata.labels"
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 2,
+        "nodesPerJob": 1,
+        "totalGroups": 2,
+        "currentIteration": 1,
+        "detectedPlatform": "aws",
+        "detectedGPUArchitecture": "h100",
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "later-group-node-01"
+            ],
+            "phase": "Failed"
+          },
+          {
+            "name": "group-1",
+            "nodes": [
+              "later-group-node-02"
+            ],
+            "phase": "Pending"
+          }
+        ]
+      }
+    }
+  },
+  "expectAbsent": {
+    "Job/later-conflict-wf-group-1-iter-1": "notCreated",
+    "TrainingRuntime/later-runtime-2027d-group-1-iter-1": "notCreated"
+  }
+}

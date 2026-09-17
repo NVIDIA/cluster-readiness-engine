@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Dry-run half of Certification's composition contract. The spec starts from a
+# catalog job spec that already carries a label, then the global labels, then
+# the per-category labels replacing one global key, then the derived
+# gang-scheduler queue. The category says nothing about environment, which
+# must therefore survive.
+#
+# The submitted TrainJob carries only these labels. The controller-owned
+# app.kubernetes.io/managed-by and nvcre.nvidia.com/job are the Job
+# controller's to overlay and are deliberately absent from a dry run.
+runtimeQueue: queue-a
+workloadLabels:
+  catalog: nccl
+certification:
+  global:
+    environment: burn-in
+    kueue.x-k8s.io/queue-name: global-queue
+  category:
+    kueue.x-k8s.io/queue-name: nccl-queue

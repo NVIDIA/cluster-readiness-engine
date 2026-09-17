@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The persisted gang-scheduling intent is the cross-group queue invariant, so
+# repointing it after creation would break the promise the post-override check
+# relies on.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: imm-wf-gang-value
+  namespace: default
+spec:
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: queue-b
+    queueLabelKey: kai.scheduler/queue
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+  orchestration:
+    target:
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB

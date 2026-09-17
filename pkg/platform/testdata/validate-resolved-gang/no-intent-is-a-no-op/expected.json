@@ -1,0 +1,8 @@
+{
+  "workloadLabels": null,
+  "runtimeQueueLabels": {
+    "nccl-runtime/node/job/kai.scheduler/queue": "whatever",
+    "nccl-runtime/node/pod/kai.scheduler/queue": "other",
+    "nccl-runtime/node/schedulerName": "some-scheduler"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "labels": {
+    "kai.scheduler/queue": "default-queue"
+  },
+  "gangScheduler": {
+    "schedulerName": "kai-scheduler",
+    "queue": "default-queue",
+    "queueLabelKey": "kai.scheduler/queue"
+  }
+}

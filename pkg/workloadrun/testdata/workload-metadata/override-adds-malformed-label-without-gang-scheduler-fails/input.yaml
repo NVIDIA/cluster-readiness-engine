@@ -1,0 +1,26 @@
+# Key syntax is held to the same standard on the same path.
+run:
+  metadata:
+    name: wr-badkey-override
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    overrides:
+      - when:
+          platform:
+              equals: aws
+        jobTemplate:
+          spec:
+            workloadMetadata:
+              labels:
+                "bad key": x
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch
+platform: aws
+gpuArchitecture: NVIDIA-GB200

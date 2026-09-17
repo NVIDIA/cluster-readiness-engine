@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Adding the field to a Certification created without it. The whole-spec rule
+# rejects it, which is why Decision 6 does not put a field-level oldSelf rule
+# on CategoryOptions — that would land inside spec.categories[], an
+# uncorrelatable path the API server refuses outright.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: imm-cert-add
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  categories:
+    - domain: training
+      variant: nemotron5-8b

@@ -1,0 +1,5 @@
+{
+  "error": "spec.workloadMetadata.labels[\"nvcre.nvidia.com/job\"]: label key is reserved for the controller: \"app.kubernetes.io/managed-by\" and any key under \"nvcre.nvidia.com/\" identify workload ownership",
+  "labels": null,
+  "sourcesUnchanged": true
+}

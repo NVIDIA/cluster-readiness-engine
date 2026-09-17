@@ -1,0 +1,10 @@
+# An adapter that stamps labels of its own keeps them: the merge adds keys, it
+# does not replace the map.
+workload:
+  trainJob:
+    runtimeRef:
+      name: nccl-runtime
+adapterLabels:
+  trainer.kubeflow.org/framework: torch
+labels:
+  kueue.x-k8s.io/queue-name: gpu-team-a

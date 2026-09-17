@@ -1,0 +1,41 @@
+# The same redirection one level down, at the pod template. ADR-076 stamps
+# the label there too so queue assignment does not depend on Trainer/JobSet
+# propagating template metadata onto pods.
+spec:
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: queue-a
+  jobTemplate:
+    spec:
+      workloadMetadata:
+        labels:
+          kai.scheduler/queue: queue-a
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: nccl-runtime
+  dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: nccl-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+              - name: node
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: queue-a
+                  spec:
+                    template:
+                      metadata:
+                        labels:
+                          kai.scheduler/queue: queue-b
+                      spec:
+                        schedulerName: kai-scheduler
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01

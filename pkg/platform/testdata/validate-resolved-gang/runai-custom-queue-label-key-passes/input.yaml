@@ -1,0 +1,57 @@
+# A Run:ai configuration: the persisted intent carries runai/queue, so that
+# is the key checked at every level. kai.scheduler/queue is irrelevant here
+# and is not required to be present.
+spec:
+  gangScheduler:
+    schedulerName: runai-scheduler
+    queue: team-a
+    queueLabelKey: runai/queue
+  jobTemplate:
+    spec:
+      workloadMetadata:
+        labels:
+          runai/queue: team-a
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: nccl-runtime
+  dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: nccl-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+              - name: node
+                template:
+                  metadata:
+                    labels:
+                      runai/queue: team-a
+                  spec:
+                    template:
+                      metadata:
+                        labels:
+                          runai/queue: team-a
+                      spec:
+                        schedulerName: runai-scheduler
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01
+              - name: launcher
+                template:
+                  metadata:
+                    labels:
+                      runai/queue: team-a
+                  spec:
+                    template:
+                      metadata:
+                        labels:
+                          runai/queue: team-a
+                      spec:
+                        schedulerName: runai-scheduler
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01

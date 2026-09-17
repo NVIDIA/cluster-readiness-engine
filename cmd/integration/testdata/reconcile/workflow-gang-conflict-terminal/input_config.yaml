@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# This case fails during initial discovery, before any group is launched, so
+# neither a Job nor a renamed runtime copy may exist. The companion fixture
+# workflow-gang-conflict-later-group covers the same assertion on the
+# group-launch path.
+waitFor:
+  kind: Workflow
+  name: gang-conflict-wf
+  namespace: default
+  condition: Failed
+  reason: GangSchedulingConflict
+collect:
+  - kind: Workflow
+    name: gang-conflict-wf
+    namespace: default
+expectAbsent:
+  - kind: Job
+    name: gang-conflict-wf-job
+    namespace: default
+  - kind: TrainingRuntime
+    name: conflict-runtime-1ba86-job
+    namespace: default

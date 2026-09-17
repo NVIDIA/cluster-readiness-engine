@@ -1,0 +1,8 @@
+{
+  "merged": {
+    "long-value": "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv"
+  },
+  "metadataNil": false,
+  "validationError": "labels[\"long-value\"]: invalid label value \"vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv\": must be no more than 63 bytes",
+  "sourcesUnchanged": true
+}

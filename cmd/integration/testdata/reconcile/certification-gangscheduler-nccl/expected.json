@@ -204,6 +204,11 @@
               "managedBy": "trainer.kubeflow.org/trainjob-controller"
             }
           },
+          "workloadMetadata": {
+            "labels": {
+              "kai.scheduler/queue": "high-priority"
+            }
+          },
           "nodeHealthMonitor": {
             "cel": {
               "expression": "node.spec.unschedulable == true"
@@ -463,7 +468,12 @@
             "numNodes": 2
           }
         }
-      ]
+      ],
+      "gangScheduler": {
+        "schedulerName": "kai-scheduler",
+        "queue": "high-priority",
+        "queueLabelKey": "kai.scheduler/queue"
+      }
     },
     "status": {
       "conditions": [

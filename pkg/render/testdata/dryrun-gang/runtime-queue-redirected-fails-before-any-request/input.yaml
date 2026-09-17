@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The runtime's queue was redirected to queue-b while the persisted intent says
+# queue-a. The conflict must be reported before a single create request.
+runtimeQueue: queue-b

@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The controller half of two contracts the CLI fixtures cover on their own.
+#
+# First, the existing-user matrix: a Run:ai configuration that names no queue.
+# The resolved default-queue must reach the generated workload object under the
+# custom runai/queue key, and the Workflow must carry the intent with both
+# defaults filled in, so a rendered Workflow submitted alone enforces the same
+# thing.
+#
+# Second, Certification label composition through the controller rather than
+# through nvcrectl: a global label, a per-category label that replaces one
+# global key, and the derived queue label all have to land on the same map.
+apiVersion: v1
+kind: Node
+metadata:
+  name: runai-labels-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: runai-labels-node-01
+spec:
+  providerID: "aws://us-east-1a/i-0000000000000001"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: runai-labels-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: runai-labels-node-02
+spec:
+  providerID: "aws://us-east-1a/i-0000000000000002"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: runai-labels
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+  gangScheduler:
+    schedulerName: runai-scheduler
+    queueLabelKey: runai/queue
+  workloadMetadata:
+    labels:
+      environment: burn-in
+      kueue.x-k8s.io/queue-name: global-queue
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        workloadMetadata:
+          labels:
+            kueue.x-k8s.io/queue-name: nccl-queue

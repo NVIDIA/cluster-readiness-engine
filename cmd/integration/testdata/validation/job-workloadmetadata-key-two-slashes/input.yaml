@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A qualified name carries at most one "/".
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: val-wm-two-slashes
+  namespace: default
+spec:
+  workloadMetadata:
+    labels:
+      a/b/c: x
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime

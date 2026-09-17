@@ -1,0 +1,5 @@
+# A different value under the resolved key is a conflict naming both values.
+overlay:
+  kai.scheduler/queue: some-other-queue
+insertKey: kai.scheduler/queue
+insertValue: burn-in-queue

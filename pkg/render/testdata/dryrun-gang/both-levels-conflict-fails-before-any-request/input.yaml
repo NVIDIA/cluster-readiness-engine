@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The workload object and the runtime both say queue-b while the intent says
+# queue-a: consistent with each other, inconsistent with what was configured.
+# Dry-run half of workflow-gang-conflict-both-levels and of pkg/workloadrun's
+# override-redirects-both-levels-fails.
+runtimeQueue: queue-b
+workloadLabels:
+  kai.scheduler/queue: queue-b

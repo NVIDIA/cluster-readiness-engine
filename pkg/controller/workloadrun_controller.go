@@ -85,7 +85,15 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, r.Status().Update(ctx, &run)
 	}
 
-	workflowSpec := r.buildWorkflowSpec(ctx, &run)
+	workflowSpec, buildErr := r.buildWorkflowSpec(ctx, &run)
+	if buildErr != nil {
+		// The spec is immutable, so this cannot succeed on a later reconcile;
+		// fail the WorkloadRun rather than retrying forever.
+		r.warnf(&run, ReasonBuildFailed, "workloadrun %s: %v", run.Name, buildErr)
+		r.setWorkloadRunCondition(&run, nvcrev1alpha1.WorkloadRunFailed, ReasonBuildFailed,
+			fmt.Sprintf("workloadrun %s: %v", run.Name, buildErr))
+		return ctrl.Result{}, r.Status().Update(ctx, &run)
+	}
 
 	workflow := &nvcrev1alpha1.Workflow{
 		Name:      run.Name,
@@ -231,7 +239,11 @@ func NodesPerJobForScale(orch *nvcrev1alpha1.WorkloadOrchestration, numNodes int
 }
 
 // buildWorkflowSpec translates a WorkloadRunSpec into a WorkflowSpec.
-func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcrev1alpha1.WorkloadRun) *nvcrev1alpha1.WorkflowSpec {
+//
+// It returns an error when the workload-object labels cannot be composed, for
+// example when workloadMetadata names the gang scheduler's queue key with a
+// different queue than gangScheduler configures.
+func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcrev1alpha1.WorkloadRun) (*nvcrev1alpha1.WorkflowSpec, error) {
 	spec := &run.Spec
 
 	// Best-effort node discovery for GPU + platform defaults. The Workflow
@@ -417,7 +429,12 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 		}
 	}
 
-	return workflowSpec
+	if err := platform.ApplyWorkloadRunScheduling(
+		workflowSpec, spec.GangScheduler, spec.WorkloadMetadata); err != nil {
+		return nil, err
+	}
+
+	return workflowSpec, nil
 }
 
 // buildJobTemplate constructs the JobTemplateSpec for the workload.

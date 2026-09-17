@@ -1,0 +1,51 @@
+# The converse: the dependency payload is missing the label but a patch
+# supplies the configured queue. The effective value is what matters, so
+# this is accepted.
+spec:
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: queue-a
+  jobTemplate:
+    spec:
+      workloadMetadata:
+        labels:
+          kai.scheduler/queue: queue-a
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: nccl-runtime
+          runtimePatches:
+            - manager: user
+              trainingRuntimeSpec:
+                template:
+                  spec:
+                    replicatedJobs:
+                      - name: node
+                        template:
+                          metadata:
+                            labels:
+                              kai.scheduler/queue: queue-a
+                          spec:
+                            template:
+                              metadata:
+                                labels:
+                                  kai.scheduler/queue: queue-a
+  dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: nccl-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+              - name: node
+                template:
+                  spec:
+                    template:
+                      spec:
+                        schedulerName: kai-scheduler
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01

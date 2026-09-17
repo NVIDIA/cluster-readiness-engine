@@ -24,6 +24,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -47,6 +49,10 @@ import (
 
 const metricLabelNamespace = "namespace"
 
+// generatedCRDPath is the directory `make manifests` writes the NVCRE CRDs to.
+// Every suite that needs a real API server installs them from here.
+const generatedCRDPath = "../../helm/cluster-readiness-engine/crds"
+
 func init() {
 	_ = nvcrev1alpha1.AddToScheme(scheme.Scheme)
 	_ = trainerv1alpha1.AddToScheme(scheme.Scheme)
@@ -57,7 +63,7 @@ func TestIntegration(t *testing.T) {
 
 	suite := &testutil.IntegrationTestSuite{}
 	suite.Environment.CRDDirectoryPaths = []string{
-		"../../helm/cluster-readiness-engine/crds",
+		generatedCRDPath,
 		"../../hack/crds",
 	}
 	suite.Environment.ErrorIfCRDPathMissing = true
@@ -125,7 +131,7 @@ func TestIntegration(t *testing.T) {
 			waitForDeletion(tt, mgr.GetClient(), cfg)
 		}
 
-		tc.Actual = collectAndSerialize(tt, mgr.GetClient(), cfg, frozenGoodput, specImmutability)
+		tc.Actual = collectAndSerialize(tt, mgr.GetClient(), suite.Client, cfg, frozenGoodput, specImmutability)
 		return nil
 	})
 }
@@ -518,7 +524,14 @@ type waitConfig struct {
 	DeleteAfterWait []collectSpec `json:"deleteAfterWait,omitempty"`
 	// WaitForDeletion lists resources that must be fully deleted before collection.
 	WaitForDeletion []collectSpec `json:"waitForDeletion,omitempty"`
-	TimeoutSeconds  int           `json:"timeoutSeconds"`
+	// ExpectAbsent lists resources that must not exist when collection runs.
+	//
+	// A fixture asserting a terminal failure needs this: collecting only the
+	// failed parent would pass just as well if reconciliation had created a
+	// child before giving up. Each entry is recorded in the golden so the
+	// absence is a visible expectation rather than a silent one.
+	ExpectAbsent   []collectSpec `json:"expectAbsent,omitempty"`
+	TimeoutSeconds int           `json:"timeoutSeconds"`
 }
 
 // verifySpecImmutableSpec describes one spec edit that must be rejected.
@@ -946,14 +959,81 @@ func getObject(ctx context.Context, t *testing.T, c client.Client, spec collectS
 			return nil
 		}
 		return obj
+	case "TrainingRuntime":
+		// Collected as unstructured because the Workflow's dependencies are
+		// opaque JSON: a case asserting what a per-job dependency copy ended
+		// up containing has to read the created object, not a typed view of
+		// what NVCRE meant to create.
+		obj := &unstructured.Unstructured{}
+		obj.SetGroupVersionKind(trainerv1alpha1.GroupVersion.WithKind("TrainingRuntime"))
+		if err := c.Get(ctx, key, obj); err != nil {
+			return nil
+		}
+		return obj
 	default:
 		t.Fatalf("unknown kind: %s", spec.Kind)
 		return nil
 	}
 }
 
+// collectAndSerialize reads the collected objects through the manager's cached
+// client, matching what the controllers themselves see, and any expectAbsent
+// entries through apiClient, which reads the API server directly. A cached
+// read cannot distinguish "does not exist" from "the informer has not seen it
+// yet", which would turn every absence assertion into a coin flip.
+// requireAbsent fails unless the named object is genuinely absent, and returns
+// the key to record it under.
+//
+// It insists on a NotFound specifically rather than reusing getObject, which
+// reports every Get error as a nil object. Under that treatment a forbidden
+// response, a timeout, or an unregistered type would all read as proof that
+// the controller correctly created nothing — the assertion would hold most
+// firmly when the test was least able to check it.
+func requireAbsent(
+	ctx context.Context, t *testing.T, c client.Client, spec collectSpec,
+) string {
+	t.Helper()
+	key := fmt.Sprintf("%s/%s", spec.Kind, spec.Name)
+
+	obj := newObjectForKind(t, spec.Kind)
+	err := c.Get(ctx, types.NamespacedName{Name: spec.Name, Namespace: spec.Namespace}, obj)
+	if err == nil {
+		t.Fatalf("%s exists in namespace %s but the case requires it never to have been created",
+			key, spec.Namespace)
+	}
+	require.Truef(t, apierrors.IsNotFound(err),
+		"reading %s in namespace %s to prove it is absent failed with a non-NotFound error: %v",
+		key, spec.Namespace, err)
+	return key
+}
+
+// newObjectForKind returns an empty object of the named kind for an absence
+// read. Unstructured is enough here: nothing inspects the contents.
+func newObjectForKind(t *testing.T, kind string) client.Object {
+	t.Helper()
+	gvks := map[string]schema.GroupVersionKind{
+		"Job":                   nvcrev1alpha1.GroupVersion.WithKind("Job"),
+		"Workflow":              nvcrev1alpha1.GroupVersion.WithKind("Workflow"),
+		"Certification":         nvcrev1alpha1.GroupVersion.WithKind("Certification"),
+		"WorkloadRun":           nvcrev1alpha1.GroupVersion.WithKind("WorkloadRun"),
+		"GoodputMeasurement":    nvcrev1alpha1.GroupVersion.WithKind("GoodputMeasurement"),
+		"BandwidthMeasurement":  nvcrev1alpha1.GroupVersion.WithKind("BandwidthMeasurement"),
+		"TrainJob":              trainerv1alpha1.GroupVersion.WithKind("TrainJob"),
+		"TrainingRuntime":       trainerv1alpha1.GroupVersion.WithKind("TrainingRuntime"),
+		"ConfigMap":             corev1.SchemeGroupVersion.WithKind("ConfigMap"),
+		"PersistentVolumeClaim": corev1.SchemeGroupVersion.WithKind("PersistentVolumeClaim"),
+	}
+	gvk, ok := gvks[kind]
+	require.Truef(t, ok, "expectAbsent does not support kind %q", kind)
+
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(gvk)
+	return obj
+}
+
 func collectAndSerialize(
-	t *testing.T, c client.Client, cfg waitConfig, frozenGoodput, specImmutability map[string]any,
+	t *testing.T, c, apiClient client.Client, cfg waitConfig,
+	frozenGoodput, specImmutability map[string]any,
 ) string {
 	t.Helper()
 	ctx := context.Background()
@@ -971,6 +1051,14 @@ func collectAndSerialize(
 		sanitizeObject(obj)
 		key := fmt.Sprintf("%s/%s", spec.Kind, spec.Name)
 		results[key] = obj
+	}
+
+	if len(cfg.ExpectAbsent) > 0 {
+		absent := make(map[string]any, len(cfg.ExpectAbsent))
+		for _, spec := range cfg.ExpectAbsent {
+			absent[requireAbsent(ctx, t, apiClient, spec)] = "notCreated"
+		}
+		results["expectAbsent"] = absent
 	}
 
 	// Include Prometheus gauge values when configured.

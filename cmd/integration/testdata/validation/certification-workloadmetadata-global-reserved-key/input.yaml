@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The reserved-key rule applies at the global level.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-cert-wm
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  workloadMetadata:
+    labels:
+      nvcre.nvidia.com/job: other-job
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        workloadMetadata:
+          labels:
+            kueue.x-k8s.io/queue-name: nccl-queue

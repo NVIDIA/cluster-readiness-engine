@@ -1,0 +1,6 @@
+# There is deliberately no deletion syntax. A category that wants a key gone
+# must not set it globally.
+base:
+  environment: burn-in
+overlay:
+  environment: ""

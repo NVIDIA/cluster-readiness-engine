@@ -103,6 +103,11 @@ const (
 	// name is already taken by an object this Workflow did not create. The
 	// foreign object is neither adopted nor recorded for cleanup.
 	ReasonDependencyNameCollision = "DependencyNameCollision"
+	// ReasonGangSchedulingConflict marks a Workflow whose resolved spec no
+	// longer agrees with the gang-scheduling intent its owner persisted —
+	// typically an override that redirected a runtime queue label or a pod
+	// scheduler name. The conflict is reported rather than repaired.
+	ReasonGangSchedulingConflict = "GangSchedulingConflict"
 )
 
 // Job tier reasons (Job → Workload).
@@ -150,6 +155,19 @@ type nameCollisionError struct {
 }
 
 func (e *nameCollisionError) Error() string { return e.Message }
+
+// gangSchedulingConflictError reports that a resolved Workflow no longer
+// agrees with the gang-scheduling intent its owner persisted. It is terminal:
+// both the intent and a created Job's workload metadata are immutable, so no
+// retry can reconcile the two, and a plain error would leave the Workflow
+// retrying at InProgress with nothing naming the cause.
+type gangSchedulingConflictError struct {
+	err error
+}
+
+func (e *gangSchedulingConflictError) Error() string { return e.err.Error() }
+
+func (e *gangSchedulingConflictError) Unwrap() error { return e.err }
 
 // --- Shared condition helpers ---
 

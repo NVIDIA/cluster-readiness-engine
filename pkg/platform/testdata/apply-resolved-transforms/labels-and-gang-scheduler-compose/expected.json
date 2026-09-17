@@ -1,0 +1,25 @@
+{
+  "workloadLabels": {
+    "environment": "burn-in",
+    "kai.scheduler/queue": "burn-in-queue",
+    "kueue.x-k8s.io/queue-name": "gpu-team-a"
+  },
+  "persistedGangScheduler": {
+    "schedulerName": "kai-scheduler",
+    "queue": "burn-in-queue",
+    "queueLabelKey": "kai.scheduler/queue"
+  },
+  "runtimeQueueLabels": {
+    "nccl-runtime/launcher/job/kai.scheduler/queue": "burn-in-queue",
+    "nccl-runtime/launcher/pod/kai.scheduler/queue": "burn-in-queue",
+    "nccl-runtime/launcher/schedulerName": "kai-scheduler",
+    "nccl-runtime/node/job/kai.scheduler/queue": "burn-in-queue",
+    "nccl-runtime/node/pod/kai.scheduler/queue": "burn-in-queue",
+    "nccl-runtime/node/schedulerName": "kai-scheduler"
+  },
+  "trainerImage": "nvcr.io/nvidia/pytorch:25.01",
+  "runtimeImages": {
+    "nccl-runtime/launcher": "nvcr.io/nvidia/pytorch:25.01",
+    "nccl-runtime/node": "nvcr.io/nvidia/pytorch:25.01"
+  }
+}

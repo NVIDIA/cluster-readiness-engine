@@ -348,7 +348,8 @@ func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *nvcrev1
 	adapter.InjectPodLabel(specCopy, labelJobKey, job.Name)
 
 	workloadName := r.getWorkloadName(job)
-	obj, err := adapter.Build(workloadName, job.Namespace, specCopy)
+	obj, err := workload.BuildObject(
+		adapter, workloadName, job.Namespace, specCopy, job.Spec.WorkloadMetadata)
 	if err != nil {
 		if statusErr := r.setJobFailed(ctx, job, ReasonWorkloadCreationError,
 			fmt.Sprintf("Failed to build workload: %v", err)); statusErr != nil {

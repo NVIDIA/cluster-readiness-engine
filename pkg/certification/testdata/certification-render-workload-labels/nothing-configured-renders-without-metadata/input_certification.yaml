@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The compatibility case. A Certification that sets neither workloadMetadata
+# nor gangScheduler must resolve to no workloadMetadata and no persisted
+# intent, so its Workflows are byte-identical to what earlier versions
+# rendered.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: labels-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 2
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

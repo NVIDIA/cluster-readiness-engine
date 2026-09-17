@@ -1,0 +1,6 @@
+{
+  "labels": {
+    "kueue.x-k8s.io/queue-name": "gpu-team-a"
+  },
+  "gangScheduler": null
+}

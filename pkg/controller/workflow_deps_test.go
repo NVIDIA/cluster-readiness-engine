@@ -236,9 +236,15 @@ func TestBuildReplacementMap(t *testing.T) {
 	})
 }
 
-func TestSuffixDependencyObject(t *testing.T) {
+// TestSuffixRaw covers the blind quoted-string substitution that renames a
+// dependency for a per-job copy, decoding the result the way
+// createJobDependencies does. The cases are dependency documents rather than
+// bare strings because what matters is which occurrences inside a real
+// manifest get rewritten: an internal reference between two dependencies must
+// follow the rename, and a PVC reference must too.
+func TestSuffixRaw(t *testing.T) {
 	p := testutil.TestCaseParser{
-		Subdir:         "suffix-dependency-object",
+		Subdir:         "suffix-raw",
 		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
@@ -250,8 +256,9 @@ func TestSuffixDependencyObject(t *testing.T) {
 			return err
 		}
 
-		obj, err := suffixDependencyObject([]byte(input.Raw), input.Replacements)
-		if err != nil {
+		obj := &unstructured.Unstructured{}
+		if err := json.Unmarshal(
+			[]byte(suffixRaw([]byte(input.Raw), input.Replacements)), &obj.Object); err != nil {
 			return err
 		}
 

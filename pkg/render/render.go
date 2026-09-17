@@ -27,6 +27,7 @@ import (
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
+	nvcreplatform "github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
 
@@ -353,6 +354,16 @@ func DryRunCreate(ctx context.Context, c client.Client, namespace string,
 	// Build a Job from the template.
 	specCopy := spec.JobTemplate.Spec.DeepCopy()
 
+	// Check the resolved spec against its persisted gang-scheduling intent
+	// before any API request, so a conflicting override is reported as the
+	// conflict it is rather than as whatever the API server makes of
+	// inconsistent manifests. Operates on the copy, like every other
+	// mutation here.
+	if err := nvcreplatform.ValidateResolvedJobTemplate(
+		specCopy, spec.Dependencies, spec.GangScheduler); err != nil {
+		return nil, err
+	}
+
 	// Get the workload adapter.
 	adapter, err := workload.ForSpec(&specCopy.Workload)
 	if err != nil {
@@ -443,7 +454,8 @@ func DryRunCreate(ctx context.Context, c client.Client, namespace string,
 	results = append(results, jobResult)
 
 	// --- 3. Validate workload ---
-	wlObj, err := adapter.Build("dry-run-workload", namespace, &specCopy.Workload)
+	wlObj, err := workload.BuildObject(
+		adapter, "dry-run-workload", namespace, &specCopy.Workload, specCopy.WorkloadMetadata)
 	if err != nil {
 		results = append(results, DryRunResult{
 			Resource: fmt.Sprintf("%s/dry-run-workload", adapter.GVK().Kind),

@@ -1,0 +1,8 @@
+{
+  "workloadLabels": {
+    "kai.scheduler/queue": "queue-a"
+  },
+  "runtimeQueueLabels": {
+    "nccl-runtime/node/schedulerName": "kai-scheduler"
+  }
+}

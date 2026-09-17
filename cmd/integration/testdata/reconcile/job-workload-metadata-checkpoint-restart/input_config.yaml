@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A checkpoint restart replaces the failed TrainJob with a fresh one. Because
+# workloadMetadata is immutable on JobSpec, the replacement must be built with
+# the same labels the Job was admitted with — otherwise a restart could land
+# the workload in a different queue than the one that admitted it.
+waitFor:
+  kind: Job
+  name: test-wm-ckpt-restart
+  namespace: default
+  condition: InProgress
+collect:
+  - kind: Job
+    name: test-wm-ckpt-restart
+    namespace: default
+  - kind: TrainJob
+    name: test-wm-ckpt-restart-workload
+    namespace: default

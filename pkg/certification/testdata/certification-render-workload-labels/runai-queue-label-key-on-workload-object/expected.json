@@ -1,0 +1,13 @@
+[
+  {
+    "workflow": "labels-cert-communication-742e8",
+    "labels": {
+      "runai/queue": "team-a"
+    },
+    "gangScheduler": {
+      "schedulerName": "runai-scheduler",
+      "queue": "team-a",
+      "queueLabelKey": "runai/queue"
+    }
+  }
+]

@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# 253 characters is the DNS-subdomain limit for a label key's prefix. The
+# pattern alone cannot count it, so a separate CEL rule does.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: val-wm-prefix-253
+  namespace: default
+spec:
+  workloadMetadata:
+    labels:
+      ppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp/name: x
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime

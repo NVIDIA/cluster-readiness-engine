@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The dry-run path shares the label contract too, not just the gang one: a
+# Workflow with no gangScheduler at all still cannot dry-run a controller-owned
+# key past the check.
+runtimeQueue: queue-a
+noGangScheduler: true
+workloadLabels:
+  nvcre.nvidia.com/job: sneaky
