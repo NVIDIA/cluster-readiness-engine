@@ -54,6 +54,8 @@ const nvcreCRDDirectory = "../../helm/cluster-readiness-engine/crds"
 
 const eventCaseTimeout = 3 * time.Minute
 
+const kindJob = "Job"
+
 func init() {
 	_ = nvcrev1alpha1.AddToScheme(scheme.Scheme)
 	_ = trainerv1alpha1.AddToScheme(scheme.Scheme)
@@ -151,7 +153,7 @@ func TestIntegration(t *testing.T) {
 		// the rejections and the unchanged spec.
 		var specImmutability map[string]any
 		if len(cfg.VerifySpecImmutable) > 0 {
-			specImmutability = verifySpecImmutable(tt, suite.Client, cfg.VerifySpecImmutable)
+			specImmutability = verifySpecImmutable(tt, suite.Client, cfg.VerifySpecImmutable, deadline)
 		}
 
 		// Delete resources after the initial wait (e.g., to test deletion cascade).
@@ -783,11 +785,12 @@ func contextForDeadline(deadline time.Time) (context.Context, context.CancelFunc
 
 func waitForCondition(t *testing.T, c client.Client, cfg waitConfig, deadline time.Time) {
 	t.Helper()
+	ctx, cancel := contextForDeadline(deadline)
+	defer cancel()
 	timeout := boundedWaitTimeout(t, time.Duration(cfg.TimeoutSeconds)*time.Second, deadline)
 	interval := 500 * time.Millisecond
 
 	require.Eventually(t, func() bool {
-		ctx := context.Background()
 		obj := getObject(ctx, t, c, collectSpec{
 			Kind:      cfg.WaitFor.Kind,
 			Name:      cfg.WaitFor.Name,
@@ -827,7 +830,8 @@ func waitForCondition(t *testing.T, c client.Client, cfg waitConfig, deadline ti
 // allowing controllers to process the deletion cascade (finalizers, child cleanup, etc.).
 func deleteAfterWait(t *testing.T, c client.Client, specs []collectSpec, deadline time.Time) {
 	t.Helper()
-	ctx := context.Background()
+	ctx, cancel := contextForDeadline(deadline)
+	defer cancel()
 	for _, spec := range specs {
 		obj := getObject(ctx, t, c, spec)
 		require.NotNil(t, obj, "deleteAfterWait: %s/%s not found", spec.Kind, spec.Name)
@@ -857,12 +861,14 @@ func deleteAfterWait(t *testing.T, c client.Client, specs []collectSpec, deadlin
 // waitForDeletion polls until all specified resources are fully removed from the API server.
 func waitForDeletion(t *testing.T, c client.Client, cfg waitConfig, deadline time.Time) {
 	t.Helper()
+	ctx, cancel := contextForDeadline(deadline)
+	defer cancel()
 	interval := 500 * time.Millisecond
 
 	for _, spec := range cfg.WaitForDeletion {
 		timeout := boundedWaitTimeout(t, time.Duration(cfg.TimeoutSeconds)*time.Second, deadline)
 		require.Eventually(t, func() bool {
-			obj := getObject(context.Background(), t, c, spec)
+			obj := getObject(ctx, t, c, spec)
 			return obj == nil
 		}, timeout, interval, "timed out waiting for deletion of %s/%s", spec.Kind, spec.Name)
 	}
@@ -886,7 +892,8 @@ func verifyFrozenGoodput(
 	t *testing.T, direct, cached client.Client, cfg waitConfig, deadline time.Time,
 ) map[string]any {
 	t.Helper()
-	ctx := context.Background()
+	ctx, cancel := contextForDeadline(deadline)
+	defer cancel()
 	key := types.NamespacedName{Name: cfg.VerifyFrozenGoodput.Name, Namespace: cfg.VerifyFrozenGoodput.Namespace}
 	gm := &nvcrev1alpha1.GoodputMeasurement{}
 	require.NoError(t, direct.Get(ctx, key, gm))
@@ -978,9 +985,12 @@ func verifyFrozenGoodput(
 // Each entry applies a JSON merge patch under .spec via a direct (uncached)
 // client and requires an Invalid rejection carrying the rule message. The
 // returned map is embedded in the golden so every rejection is pinned.
-func verifySpecImmutable(t *testing.T, c client.Client, specs []verifySpecImmutableSpec) map[string]any {
+func verifySpecImmutable(
+	t *testing.T, c client.Client, specs []verifySpecImmutableSpec, deadline time.Time,
+) map[string]any {
 	t.Helper()
-	ctx := context.Background()
+	ctx, cancel := contextForDeadline(deadline)
+	defer cancel()
 
 	results := make(map[string]any, len(specs))
 	for _, s := range specs {
@@ -1049,7 +1059,7 @@ func getObject(ctx context.Context, t *testing.T, c client.Client, spec collectS
 	key := types.NamespacedName{Name: spec.Name, Namespace: spec.Namespace}
 
 	switch spec.Kind {
-	case "Job":
+	case kindJob:
 		obj := &nvcrev1alpha1.Job{}
 		if err := c.Get(ctx, key, obj); err != nil {
 			return nil
@@ -1248,6 +1258,7 @@ func compareEventProjections(a, b eventProjection) int {
 		strings.Compare(a.Message, b.Message),
 		strings.Compare(a.InvolvedObject.Kind, b.InvolvedObject.Kind),
 		strings.Compare(a.InvolvedObject.Name, b.InvolvedObject.Name),
+		cmp.Compare(a.Count, b.Count),
 	)
 }
 
@@ -1260,7 +1271,8 @@ func collectAndSerialize(
 	frozenGoodput, specImmutability map[string]any,
 ) string {
 	t.Helper()
-	ctx := context.Background()
+	ctx, cancel := contextForDeadline(deadline)
+	defer cancel()
 
 	results := make(map[string]any)
 	if frozenGoodput != nil {

@@ -337,8 +337,9 @@ Both facts drive the scope decision below.
    name from contaminating the result. Then serialize a
    projection for deterministic test fixtures: `type`, `reason`,
    `message`, `involvedObject.kind`, `involvedObject.name`, and `count`,
-   sorted by the first five. Event names, UIDs, timestamps, source, and
-   reporting instance are omitted; they are not stable across runs.
+   sorted by the first five with `count` as the final tie-breaker. Event names,
+   UIDs, timestamps, source, and reporting instance are omitted; they are not
+   stable across runs.
 
    `count` is load-bearing but coarse. The `events/v1` recorder correlates
    on `(type, action, reason, reportingController, reportingInstance,
@@ -365,8 +366,10 @@ Both facts drive the scope decision below.
    from recorder startup through event collection, with a fresh broadcaster
    per case, so periodic refresh and idle cleanup cannot change that signal.
    Each wait uses the smaller of its configured timeout and the remaining
-   budget; fail the case if collection exceeds the deadline. Existing
-   configurable per-wait timeouts do not guarantee this total duration.
+   budget, and API calls in waits, verification, deletion, and final collection
+   carry the same deadline so a blocked call cannot outlive it. Fail the case
+   if collection exceeds the deadline. Existing configurable per-wait timeouts
+   do not guarantee this total duration.
    This rule does not apply to retained
    action or informational events, which may legitimately show `2`.
 
@@ -500,7 +503,9 @@ Both facts drive the scope decision below.
   - Wire recorders for all six reconcilers.
   - Enforce decision 6's cumulative 3-minute deadline for opted-in cases from
     fresh recorder startup through collection, sharing the remaining budget
-    across waits. Leave cases without event collection unchanged.
+    across waits and propagating the deadline into their API calls and all
+    pre-collection verification, deletion, and resource reads. Leave cases
+    without event collection unchanged.
   - Add an `events` list to `waitConfig` with `involvedKind`, `involvedName`,
     `namespace`, and `expect: [{type, reason}]`. Resolve the current involved
     object's UID and filter listed Events on that UID so Events retained from a

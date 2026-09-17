@@ -44,7 +44,7 @@ func TestEventCaseDeadlineOnlyAppliesToOptedInCases(t *testing.T) {
 		"a case with no events list must not acquire a deadline")
 
 	cfg := waitConfig{Events: []eventCollectionSpec{{
-		InvolvedKind: "Job",
+		InvolvedKind: kindJob,
 		InvolvedName: "test-job",
 		Namespace:    "default",
 	}}}
@@ -118,4 +118,22 @@ func TestContextForDeadlineTracksTheCaseBudget(t *testing.T) {
 	got, ok := dctx.Deadline()
 	require.True(t, ok, "an opted-in case propagates its deadline to lookups")
 	require.WithinDuration(t, deadline, got, time.Second)
+}
+
+func TestCompareEventProjectionsUsesCountAsFinalTieBreaker(t *testing.T) {
+	base := eventProjection{
+		Type:    "Normal",
+		Reason:  "WorkloadRunning",
+		Message: "Workload is running",
+		InvolvedObject: involvedObjectProjection{
+			Kind: kindJob,
+			Name: "test-job",
+		},
+		Count: 1,
+	}
+	repeated := base
+	repeated.Count = 2
+
+	require.Negative(t, compareEventProjections(base, repeated))
+	require.Positive(t, compareEventProjections(repeated, base))
 }

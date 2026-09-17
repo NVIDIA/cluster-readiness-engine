@@ -138,7 +138,7 @@ func newCheckpointObservation(t *testing.T, c client.Client, cfg waitConfig) *ch
 	if !cfg.VerifyCheckpointEvents {
 		return nil
 	}
-	require.Equal(t, "Job", cfg.WaitFor.Kind)
+	require.Equal(t, kindJob, cfg.WaitFor.Kind)
 	jobKey := client.ObjectKey{Name: cfg.WaitFor.Name, Namespace: cfg.WaitFor.Namespace}
 	job := &nvcrev1alpha1.Job{}
 	require.NoError(t, c.Get(context.Background(), jobKey, job))
