@@ -1,0 +1,12 @@
+# Captured on 2026-09-14 with Helm 3.19.2 and Kind Kubernetes 1.37.0.
+# Standalone JobSet chart 0.10.1 digest:
+# sha256:e289973c8b9bac8f8934bd34f35d5e4109f45a4a31a52ba0bb39e26a9a2173c5
+# Trainer chart 2.2.1 digest is preserved in the transcript below.
+# Reproduce only in a disposable cluster, with an isolated Helm plugin directory:
+#   export HELM_PLUGINS=<empty-plugin-directory>
+#   helm install jobset oci://registry.k8s.io/jobset/charts/jobset --version 0.10.1 --namespace jobset-system --create-namespace --set fullnameOverride=jobset --kubeconfig <kubeconfig> --kube-context <context> --wait --timeout 5m
+#   helm install kubeflow-trainer oci://ghcr.io/kubeflow/charts/kubeflow-trainer --version 2.2.1 --namespace kubeflow-system --create-namespace --kubeconfig <kubeconfig> --kube-context <context> --wait --timeout 1m
+transcript: |
+  Pulled: ghcr.io/kubeflow/charts/kubeflow-trainer:2.2.1
+  Digest: sha256:8e8e3de0257be804f60dbc8e6784eaddb64b2e158a46cade30ca18b6030183b1
+  Error: INSTALLATION FAILED: Unable to continue with install: ClusterRole "jobset-controller" in namespace "" exists and cannot be imported into the current release: invalid ownership metadata; annotation validation error: key "meta.helm.sh/release-name" must equal "kubeflow-trainer": current value is "jobset"; annotation validation error: key "meta.helm.sh/release-namespace" must equal "kubeflow-system": current value is "jobset-system"

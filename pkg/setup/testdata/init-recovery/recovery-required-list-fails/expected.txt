@@ -1,0 +1,17 @@
+[deps] JobSet ownership inspection is inconclusive:
+  - inspect known JobSet controller resources: list ConfigMap across namespaces: simulated required list denial
+[deps] Resolve JobSet ownership, then install Kubeflow Trainer manually with the appropriate jobset.install value.
+[deps] Continue with: nvcrectl setup init --skip-phases=deps
+[deps] This skips Trainer setup only and still installs NVCRE. A dev CLI build requires --version <nvcre-chart-version>.
+[deps] Dev-build command: nvcrectl setup init --skip-phases=deps --version <nvcre-chart-version>
+[deps] The NVCRE chart must be reachable; optionally use --chart-ref <nvcre-chart-reference> with registry access.
+
+--- result ---
+error: [deps] JobSet ownership is unknown: inspect known JobSet controller resources: list ConfigMap across namespaces: simulated required list denial
+installCalls: 0
+installModes: []
+uninstallCalls: 0
+crdDeletes: 0
+jobSetCRDPresent: true
+namespacePresent: true
+trainerCRDsPresent: [trainjobs.trainer.kubeflow.org trainingruntimes.trainer.kubeflow.org clustertrainingruntimes.trainer.kubeflow.org]

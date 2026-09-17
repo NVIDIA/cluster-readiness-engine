@@ -1,0 +1,104 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubeflow-trainer-controller-manager
+  namespace: kubeflow-system
+  uid: manager-deployment-uid
+  labels:
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: kubeflow-trainer
+    meta.helm.sh/release-namespace: kubeflow-system
+spec:
+  selector:
+    matchLabels: {app: trainer}
+  template:
+    metadata:
+      labels: {app: trainer}
+    spec:
+      containers:
+        - name: manager
+          image: example.invalid/trainer:test
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: kubeflow-trainer-controller-manager-7d9f
+  namespace: kubeflow-system
+  uid: manager-replicaset-uid
+  ownerReferences:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: kubeflow-trainer-controller-manager
+      uid: manager-deployment-uid
+      controller: true
+spec:
+  selector:
+    matchLabels: {app: trainer}
+  template:
+    metadata:
+      labels: {app: trainer}
+    spec:
+      containers:
+        - name: manager
+          image: example.invalid/trainer:test
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kubeflow-trainer-controller-manager-7d9f-abcde
+  namespace: kubeflow-system
+  uid: manager-pod-uid
+  ownerReferences:
+    - apiVersion: apps/v1
+      kind: ReplicaSet
+      name: kubeflow-trainer-controller-manager-7d9f
+      uid: manager-replicaset-uid
+      controller: true
+spec:
+  containers:
+    - name: manager
+      image: example.invalid/trainer:test
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: default
+  namespace: kubeflow-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-root-ca.crt
+  namespace: kubeflow-system
+  uid: root-ca-uid
+  annotations:
+    kubernetes.io/description: Contains a CA bundle that can be used to verify the kube-apiserver when using internal endpoints such as the internal service IP or kubernetes.default.svc.
+data:
+  ca.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sh.helm.release.v1.kubeflow-trainer.v1
+  namespace: kubeflow-system
+  uid: release-record-uid
+  labels:
+    owner: helm
+    name: kubeflow-trainer
+    status: failed
+    version: "1"
+type: helm.sh/release.v1
+data:
+  release: SDRzSUFBQUFBQUFBQTFYS01RNkFJQXdGMEx2OEdRZFhibE8xSkVRcGhoYU5JZHhkNHViOFhvTlFZbmpzZGVGdzVIdXlRbEc0d0gyaUo2MC8xa2VOMDlDTGk4WXM4TE5EbEpEaEc5VElxbzRlS0I2OG9mY1gxMjhaSzJBQUFBQT0=
+---
+apiVersion: coordination.k8s.io/v1
+kind: Lease
+metadata:
+  name: trainer.kubeflow.org
+  namespace: kubeflow-system
+  uid: trainer-lease-uid
+spec:
+  holderIdentity: kubeflow-trainer-controller-manager-7d9f-abcde_1f2e3d4c
+  leaseDurationSeconds: 15
+  renewTime: "2026-09-14T00:00:00.000000Z"

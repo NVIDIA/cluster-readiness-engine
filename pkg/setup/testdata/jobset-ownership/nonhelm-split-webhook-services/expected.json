@@ -1,0 +1,8 @@
+{
+  "mode": "unknown",
+  "evidence": [
+    "unverified non-Helm JobSet controller: expected every JobSet webhook to reference one webhook Service, got 2: jobset-standby/jobset-webhook-service, jobset-system/jobset-webhook-service (observed: ClusterRole/jobset-manager-role, MutatingWebhookConfiguration/jobset-mutating-webhook-configuration, ValidatingWebhookConfiguration/jobset-validating-webhook-configuration)"
+  ],
+  "installJobSet": true,
+  "manifestCalls": 0
+}

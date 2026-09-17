@@ -1,0 +1,8 @@
+{
+  "mode": "unknown",
+  "evidence": [
+    "external live ownership conflicts with bundled JobSet resources in the exact Trainer release manifest"
+  ],
+  "installJobSet": true,
+  "manifestCalls": 1
+}

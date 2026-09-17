@@ -1,0 +1,4 @@
+# Two ClusterRoles with jobset.x-k8s.io rules belong to two different Helm
+# releases. Mixed ownership requires operator reconciliation, never a guess.
+crdPresent: true
+releaseState: not installed

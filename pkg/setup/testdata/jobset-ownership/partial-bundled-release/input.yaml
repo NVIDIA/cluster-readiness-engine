@@ -1,0 +1,12 @@
+# A failed bundled release whose cluster-scoped ClusterRole and webhooks are
+# already gone but whose controller Deployment still exists with complete
+# bundled Helm ownership and an exact manifest match. The manifest and the
+# partial live state agree, so the mode is bundled, not crd-only or unknown.
+crdPresent: true
+releaseState: failed
+releaseManifest: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: jobset-controller
+    namespace: kubeflow-system

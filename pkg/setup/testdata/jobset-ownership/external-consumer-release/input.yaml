@@ -1,0 +1,22 @@
+# A JobSet consumer, not a JobSet controller. Modelled on Kueue's rendered
+# chart output, which NVCRE supports as a gang scheduler: charts/kueue
+# v0.19.4 renders `kueue-manager-role` with unconditional `jobset.x-k8s.io`
+# rules on jobsets, jobsets/finalizers and jobsets/status
+# (templates/rbac/role.yaml:197-222), plus the `mjobset.kb.io` and
+# `vjobset.kb.io` webhooks on the same API group behind
+# `kueue-webhook-service` (templates/webhook/manifests.yaml:182-211 and
+# :847-876). None of it is behind an `{{ if }}`, and `kueue.labels` marks all
+# of it Helm-managed.
+#
+# Every correlation the external path performs succeeds here: one Helm owner,
+# a live same-release webhook Service, and a same-release Deployment the
+# Service's selector matches. Only the chart identity separates this from a
+# real external JobSet install.
+#
+# The state is reachable. Decision 3 makes `setup reset` retain the JobSet CRD
+# while Helm uninstall removes the bundled controller, so re-running `init` on
+# a Kueue cluster lands exactly here. Selecting external would pass
+# `--set jobset.install=false` and leave the cluster with no JobSet controller
+# at all, silently stalling every TrainJob's JobSet.
+crdPresent: true
+releaseState: not installed

@@ -1,0 +1,13 @@
+# The same Kueue consumer as external-consumer-release, installed with
+# `--set nameOverride=jobset`. Both charts derive
+# `app.kubernetes.io/name` from `default .Chart.Name .Values.nameOverride`
+# (charts/kueue/templates/_helpers.tpl `kueue.name`), so this release labels
+# every resource `app.kubernetes.io/name: jobset` while remaining a consumer
+# that reconciles JobSets rather than serving them.
+#
+# `helm.sh/chart` comes from `.Chart.Name-.Chart.Version` and has no override,
+# so it still reads `kueue-0.19.4`. Accepting the application label as an
+# alternative identity would classify this as external and disable the bundled
+# subchart on a cluster whose only JobSet-aware component is Kueue.
+crdPresent: true
+releaseState: not installed

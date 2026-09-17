@@ -1,0 +1,15 @@
+crdPresent: true
+releaseState: deployed
+releaseManifest: |
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: kubeflow-trainer-controller-manager
+    labels:
+      helm.sh/chart: kubeflow-trainer-2.1.0
+      app.kubernetes.io/name: kubeflow-trainer
+      app.kubernetes.io/component: manager
+  rules:
+    - apiGroups: [jobset.x-k8s.io]
+      resources: [jobsets]
+      verbs: [get, list, watch]

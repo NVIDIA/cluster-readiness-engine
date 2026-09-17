@@ -1,0 +1,8 @@
+{
+  "mode": "unknown",
+  "evidence": [
+    "external JobSet evidence is incomplete: webhook Service external-system/external-jobset-webhook-service is backed by Deployment queue-controller-manager without the JobSet chart identity, so it may run a JobSet consumer rather than its controller"
+  ],
+  "installJobSet": true,
+  "manifestCalls": 0
+}

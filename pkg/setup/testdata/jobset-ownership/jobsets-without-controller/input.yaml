@@ -1,0 +1,5 @@
+# Clean scan, no supporting resources, but a JobSet instance exists. Nothing
+# identifies its controller, so installing the bundled controller would start
+# reconciling a workload of unknown management: refuse.
+crdPresent: true
+releaseState: not installed

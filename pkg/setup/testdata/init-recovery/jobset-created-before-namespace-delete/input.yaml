@@ -1,0 +1,23 @@
+# A JobSet appears after the Trainer CRDs are deleted but before the namespace
+# is. ADR-078 decision 4 requires the applicable JobSet blockers to be
+# rechecked before further cleanup, so recovery must stop here and report
+# partial completion rather than deleting the namespace or reinstalling.
+#
+# The mode is crd-only, where every JobSet blocks: the external exemption for
+# instances outside kubeflow-system applies only once an external controller
+# has been verified.
+releaseState: failed
+seedRecovery: true
+extendedDiscovery: true
+afterCRDDelete: 1
+deleteMutation: jobset
+releaseManifest: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: kubeflow-trainer-controller-manager
+    namespace: kubeflow-system
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: cannot patch Secret "kubeflow-trainer-webhook-cert" in namespace kubeflow-system: conflict with manager: .data.tls.crt

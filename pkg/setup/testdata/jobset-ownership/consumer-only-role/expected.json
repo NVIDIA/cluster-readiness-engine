@@ -1,0 +1,8 @@
+{
+  "mode": "unknown",
+  "evidence": [
+    "only the Trainer consumer role was found; no JobSet controller ownership was established"
+  ],
+  "installJobSet": true,
+  "manifestCalls": 1
+}

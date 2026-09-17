@@ -1,0 +1,165 @@
+# Derived from `helm template external-jobset
+# oci://registry.k8s.io/jobset/charts/jobset --version 0.10.1 --namespace
+# external-jobset-system --set fullnameOverride=external-jobset`, with the two
+# webhook configurations renamed the way test/uat/setup's post-renderer renames
+# them. The chart hardcodes those names, so an external install that must not
+# collide with the bundled subchart renames them; the detector therefore cannot
+# key off them. What it keys off is the chart identity `jobset.labels` renders
+# on every resource: `helm.sh/chart: jobset-<version>` and
+# `app.kubernetes.io/name: jobset`, neither of which the release name or
+# fullnameOverride changes.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: external-jobset-controller
+  labels:
+    helm.sh/chart: jobset-0.10.1
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "0.10.1"
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/instance: external-jobset
+    app.kubernetes.io/component: controller
+  annotations:
+    meta.helm.sh/release-name: external-jobset
+    meta.helm.sh/release-namespace: external-jobset-system
+rules:
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets, jobsets/finalizers, jobsets/status]
+    verbs: [create, delete, get, list, patch, update, watch]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: external-jobset-mutating-webhook-configuration
+  labels:
+    helm.sh/chart: jobset-0.10.1
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "0.10.1"
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/instance: external-jobset
+    app.kubernetes.io/component: webhook
+  annotations:
+    meta.helm.sh/release-name: external-jobset
+    meta.helm.sh/release-namespace: external-jobset-system
+webhooks:
+  - name: mutate-jobset-x-k8s-io-v1alpha2-jobset.x-k8s.io
+    admissionReviewVersions: [v1]
+    sideEffects: None
+    clientConfig:
+      service:
+        name: external-jobset-webhook-service
+        namespace: external-jobset-system
+        path: /mutate-jobset-x-k8s-io-v1alpha2-jobset
+    rules:
+      - apiGroups: [jobset.x-k8s.io]
+        apiVersions: [v1alpha2]
+        operations: [CREATE]
+        resources: [jobsets]
+  - name: mutate--v1-pod.x-k8s.io
+    admissionReviewVersions: [v1]
+    sideEffects: None
+    clientConfig:
+      service:
+        name: external-jobset-webhook-service
+        namespace: external-jobset-system
+        path: /mutate--v1-pod
+    rules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [pods]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: external-jobset-validating-webhook-configuration
+  labels:
+    helm.sh/chart: jobset-0.10.1
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "0.10.1"
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/instance: external-jobset
+    app.kubernetes.io/component: webhook
+  annotations:
+    meta.helm.sh/release-name: external-jobset
+    meta.helm.sh/release-namespace: external-jobset-system
+webhooks:
+  - name: validate-jobset-x-k8s-io-v1alpha2-jobset.x-k8s.io
+    admissionReviewVersions: [v1]
+    sideEffects: None
+    clientConfig:
+      service:
+        name: external-jobset-webhook-service
+        namespace: external-jobset-system
+        path: /validate-jobset-x-k8s-io-v1alpha2-jobset
+    rules:
+      - apiGroups: [jobset.x-k8s.io]
+        apiVersions: [v1alpha2]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [jobsets]
+  - name: validate--v1-pod.x-k8s.io
+    admissionReviewVersions: [v1]
+    sideEffects: None
+    clientConfig:
+      service:
+        name: external-jobset-webhook-service
+        namespace: external-jobset-system
+        path: /validate--v1-pod
+    rules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [pods]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-jobset-webhook-service
+  namespace: external-jobset-system
+  labels:
+    helm.sh/chart: jobset-0.10.1
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "0.10.1"
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/instance: external-jobset
+    app.kubernetes.io/component: webhook
+  annotations:
+    meta.helm.sh/release-name: external-jobset
+    meta.helm.sh/release-namespace: external-jobset-system
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/instance: external-jobset
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: external-jobset-controller
+  namespace: external-jobset-system
+  labels:
+    helm.sh/chart: jobset-0.10.1
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/version: "0.10.1"
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/instance: external-jobset
+    app.kubernetes.io/component: controller
+  annotations:
+    meta.helm.sh/release-name: external-jobset
+    meta.helm.sh/release-namespace: external-jobset-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: jobset
+      app.kubernetes.io/instance: external-jobset
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: jobset
+        app.kubernetes.io/instance: external-jobset
+        app.kubernetes.io/component: controller
+    spec:
+      containers:
+        - name: manager
+          image: example.invalid/jobset:test

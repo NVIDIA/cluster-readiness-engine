@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -117,6 +118,49 @@ users:
 // Tests for phase parsing
 // ---------------------------------------------------------------------------
 
+// TestPhaseSummaryMatchesGatedPhases pins the confirmation summary against
+// each command's accepted --skip-phases set. A summary listing a phase the
+// command does not gate is how `--skip-phases=helm` became a silent no-op
+// that changed only the printed output, and nothing caught it.
+func TestPhaseSummaryMatchesGatedPhases(t *testing.T) {
+	summaryNames := func(phases []phaseInfo) []string {
+		names := make([]string, 0, len(phases))
+		for _, phase := range phases {
+			names = append(names, phase.name)
+			assert.NotEmpty(t, phase.description, "phase %s has no description", phase.name)
+		}
+		sort.Strings(names)
+		return names
+	}
+	sorted := func(in []string) []string {
+		out := append([]string{}, in...)
+		sort.Strings(out)
+		return out
+	}
+
+	assert.Equal(t, sorted(initSkipPhases), summaryNames(initPhaseSummary("trainer-ref", "chart-ref", "image")),
+		"init summary and its --skip-phases set disagree")
+	assert.Equal(t, sorted(resetSkipPhases), summaryNames(resetPhaseSummary()),
+		"reset summary and its --skip-phases set disagree")
+}
+
+// TestPrintPhaseListMarksExactlySkippedPhases covers the (skipped) branch,
+// which no test reached: RunInit and RunReset are never invoked here and the
+// UAT always passes --auto-approve.
+func TestPrintPhaseListMarksExactlySkippedPhases(t *testing.T) {
+	skip := map[string]bool{phaseHelm: true}
+	var out bytes.Buffer
+	printPhaseList(&out, skip, resetPhaseSummary())
+
+	for line := range strings.SplitSeq(strings.TrimRight(out.String(), "\n"), "\n") {
+		require.True(t, strings.HasPrefix(line, "    - ["), "unexpected summary line %q", line)
+		name := strings.TrimSpace(line[strings.Index(line, "[")+1 : strings.Index(line, "]")])
+		assert.Equal(t, skip[name], strings.HasSuffix(line, "(skipped)"),
+			"phase %s skip marking disagrees with the skip map", name)
+	}
+	assert.Contains(t, out.String(), "(skipped)", "the skipped branch was not exercised")
+}
+
 func TestParseSkipPhases(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "parse-skip-phases",
@@ -124,21 +168,35 @@ func TestParseSkipPhases(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
-			Input string `yaml:"input"`
+			Input   string   `yaml:"input"`
+			Allowed []string `yaml:"allowed"`
 		}
 		if err := sigsyaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
 			return err
 		}
 
-		result := parseSkipPhases(in.Input)
+		if len(in.Allowed) == 0 {
+			in.Allowed = []string{phaseCR, phaseHelm, phaseDeps}
+		}
+		result, parseErr := parseSkipPhases(in.Input, in.Allowed...)
 
-		b, err := json.MarshalIndent(result, "", "  ")
+		b, err := json.MarshalIndent(struct {
+			Phases map[string]bool `json:"phases,omitempty"`
+			Error  string          `json:"error,omitempty"`
+		}{Phases: result, Error: errorString(parseErr)}, "", "  ")
 		if err != nil {
 			return err
 		}
 		tc.Actual = string(b) + "\n"
 		return nil
 	})
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 // ---------------------------------------------------------------------------

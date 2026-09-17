@@ -3,4 +3,9 @@
 --- result ---
 error: <nil>
 installCalls: 0
+installModes: []
 uninstallCalls: 0
+crdDeletes: 0
+jobSetCRDPresent: true
+namespacePresent: false
+trainerCRDsPresent: []

@@ -1,0 +1,24 @@
+# A required protected-resource list fails inside the recovery inventory.
+# recovery-required-list-fails denies Secrets, which the ownership probe reads
+# first, so it aborts before collectRecoveryEvidence ever runs. PVCs are not in
+# knownJobSetNamespacedLeftovers, so denying them lands in the inventory's own
+# fail-closed branch: the gate that decides whether to uninstall the release and
+# delete the namespace.
+#
+# ADR-078 decision 4 requires a failed protected list to block with the affected
+# resource, scope and operation named. Nothing destructive may run:
+# uninstallCalls and crdDeletes stay 0.
+listFailureKind: PersistentVolumeClaim
+releaseState: failed
+seedRecovery: true
+extendedDiscovery: true
+releaseManifest: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: kubeflow-trainer-controller-manager
+    namespace: kubeflow-system
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: cannot patch Secret "kubeflow-trainer-webhook-cert" in namespace kubeflow-system: conflict with manager: .data.tls.crt

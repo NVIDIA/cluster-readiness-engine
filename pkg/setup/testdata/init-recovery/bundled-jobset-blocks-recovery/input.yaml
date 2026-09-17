@@ -1,0 +1,30 @@
+# Bundled mode with a JobSet already present. The bundled JobSet controller is
+# part of the release recovery would uninstall, so any instance blocks before
+# anything is deleted (ADR-078 decision 4). Nothing in the suite put a JobSet
+# in the cluster during recovery before this, so dropping the external-mode
+# guard from the blocker left the package green.
+releaseState: failed
+seedRecovery: true
+extendedDiscovery: true
+# The manifest renders both the controller Deployment and the bundled JobSet
+# subchart, so the namespace inventory is fully verified and the JobSet is the
+# only blocker.
+releaseManifest: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: kubeflow-trainer-controller-manager
+    namespace: kubeflow-system
+  ---
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: jobset-controller
+  rules:
+    - apiGroups: [jobset.x-k8s.io]
+      resources: [jobsets]
+      verbs: [get, list, watch]
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: cannot patch Secret "kubeflow-trainer-webhook-cert" in namespace kubeflow-system: conflict with manager: .data.tls.crt

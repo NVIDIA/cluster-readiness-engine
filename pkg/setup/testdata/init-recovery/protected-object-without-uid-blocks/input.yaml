@@ -1,0 +1,22 @@
+# A protected resource that passes its per-kind predicate but carries no UID.
+# Recovery compares pre- and post-uninstall inventories by UID, so an object it
+# cannot identify cannot be re-verified after the release records and owners are
+# gone. ADR-078 decision 4 makes unresolved ownership inside the protected
+# inventory a blocker rather than something to wave through.
+#
+# Here the namespace's default ServiceAccount matches its predicate but has no
+# UID, which reaches the blocker adjacent to the inventory's list-failure
+# branch. Nothing destructive may run.
+releaseState: failed
+seedRecovery: true
+extendedDiscovery: true
+releaseManifest: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: kubeflow-trainer-controller-manager
+    namespace: kubeflow-system
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: cannot patch Secret "kubeflow-trainer-webhook-cert" in namespace kubeflow-system: conflict with manager: .data.tls.crt

@@ -1,0 +1,23 @@
+# Left behind by a standalone JobSet Helm release. The bounded fingerprint
+# scan covers ClusterRoles and the two webhook configurations only, so a
+# ClusterRoleBinding is invisible to it. That is how a clean scan and a Helm
+# ownership collision coexist, and it is the "leftover conflicting Helm
+# object" ADR-078 decision 2 expects to reach ownership diagnostics without
+# adoption rather than being adopted or deleted.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: jobset-controller
+  labels:
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: jobset
+    meta.helm.sh/release-namespace: jobset-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: jobset-controller
+subjects:
+  - kind: ServiceAccount
+    name: jobset-controller
+    namespace: jobset-system

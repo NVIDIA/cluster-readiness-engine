@@ -1,0 +1,34 @@
+# The NVCRE release was not removed (--skip-phases=helm), so its namespace and
+# pull secret are still in use and must not be offered for cleanup. Only the
+# dependency phase's retention decisions are reported.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nvcre
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nvcrectl-pull-secret
+  namespace: nvcre
+type: kubernetes.io/dockerconfigjson
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubeflow-system
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: jobsets.jobset.x-k8s.io
+spec:
+  group: jobset.x-k8s.io
+  names:
+    kind: JobSet
+    plural: jobsets
+  scope: Namespaced
+  versions:
+    - name: v1alpha2
+      served: true
+      storage: true

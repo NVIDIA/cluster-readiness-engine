@@ -1,0 +1,75 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: external-jobset-controller
+  labels:
+    helm.sh/chart: jobset-0.10.1
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: external-jobset
+    meta.helm.sh/release-namespace: external-system
+rules:
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets]
+    verbs: [get, list, watch]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: external-jobset-validating-webhook-configuration
+  labels:
+    helm.sh/chart: jobset-0.10.1
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: external-jobset
+    meta.helm.sh/release-namespace: external-system
+webhooks:
+  - name: validate-jobset-x-k8s-io-v1alpha2-jobset.x-k8s.io
+    clientConfig:
+      service:
+        name: external-jobset-webhook-service
+        namespace: external-system
+    rules:
+      - apiGroups: [jobset.x-k8s.io]
+        apiVersions: [v1alpha2]
+        operations: [CREATE, UPDATE]
+        resources: [jobsets]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-jobset-webhook-service
+  namespace: external-system
+  labels:
+    helm.sh/chart: jobset-0.10.1
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: external-jobset
+    meta.helm.sh/release-namespace: external-system
+spec:
+  selector:
+    control-plane: controller-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: queue-controller-manager
+  namespace: external-system
+  labels:
+    helm.sh/chart: some-scheduler-1.0.0
+    app.kubernetes.io/name: some-scheduler
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: external-jobset
+    meta.helm.sh/release-namespace: external-system
+spec:
+  selector:
+    matchLabels: {control-plane: controller-manager}
+  template:
+    metadata:
+      labels: {control-plane: controller-manager}
+    spec:
+      containers: [{name: manager, image: example.invalid/scheduler:test}]
