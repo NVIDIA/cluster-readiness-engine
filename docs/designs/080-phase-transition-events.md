@@ -215,10 +215,11 @@ Both facts drive the scope decision below.
 
    The event's reason is the condition's reason (`ReasonAllWorkflowsSucceeded`,
    `ThresholdViolated`, `ReasonWorkflowValidationFailed`, and so on) and its
-   message is the condition's message. No new reason constants are introduced
-   for transitions. `kubectl describe` then shows the same words in the Events
-   section as in the Conditions block, and the existing tier-prefixed reason
-   vocabulary is reused rather than doubled.
+   message is the condition's message, shortened with a truncation marker if
+   it exceeds the 1,024-byte Event-note limit (see Consequences). No new reason
+   constants are introduced for transitions. `kubectl describe` then shows
+   matching diagnostic text in Events and Conditions, and the existing
+   tier-prefixed reason vocabulary is reused rather than doubled.
 
 5. **The Certification catch-alls are covered by the Failed transition, once
    they stop overwriting a more specific reason.** #252 also asks for a
@@ -432,8 +433,15 @@ Both facts drive the scope decision below.
   - Extend `setExclusiveStatusCondition` to report the transition: the type
     that was `True` before the mutation and the type that is `True` after, read
     inside the mutate callback on the object state the write is computed from.
-    Keep `changed` and its semantics. A callback that performs no write reports
-    no transition.
+    Preserve `changed` as an attempted-mutation indicator across retries, not
+    proof that a write landed. A callback that performs no write reports no
+    transition. The Job-specific `setExclusiveStatusConditionUnless` guard
+    checks each retry's refreshed object before any mutation: if Succeeded or
+    Failed is already True, return `changed=false` and no transition, skipping
+    both phase changes and extra callbacks. This preserves a concurrent
+    terminal decision, including Workflow's additive timeout write, rather
+    than replacing it with a stale workload observation. Hardware and
+    validation verdict writes remain independent of this guard.
   - Add a small shared `transitionEventType(conditionType, failedType) string`
     or equivalent that returns `Warning` for the tier's Failed type and
     `Normal` otherwise, so the four tiers cannot drift on decision 4.
@@ -442,10 +450,11 @@ Both facts drive the scope decision below.
   - In each `setExclusiveCondition` wrapper **and in `setJobFailed`**, after
     the shared helper returns `nil`, emit one event when a transition is
     reported, with type from decision 4 and the condition's reason and
-    message. `setJobFailed` keeps its `extra` closure (failure-log capture and
-    `FailedNodes` seeding) unchanged; only the post-write emission is added
-    beside its existing `recordJobStatus` call. Leave the existing log
-    line and `recordJobStatus` on `changed`.
+    message, subject to the Event-note limit below. `setJobFailed` retains its
+    `extra` closure (failure-log capture and `FailedNodes` seeding), but the
+    terminal guard skips that closure when preserving a competing decision.
+    Add post-write emission beside its existing `recordJobStatus` call. Leave
+    the existing log line and `recordJobStatus` on `changed`.
   - In `setJobHardwareFailed` and `setJobValidationStatus`, read whether the
     condition was already `True` inside the mutate callback (in the former,
     alongside the existing `isFirstFailure` computation, which is keyed on
@@ -537,6 +546,18 @@ Both facts drive the scope decision below.
   error emits nothing; a conflict sequence that exhausts `retry.DefaultRetry`
   emits nothing; a conflict followed by success emits exactly once. These pin
   the "no transition event on failed write" rule from decision 3.
+- Verdict setters additionally simulate a competing writer persisting the
+  identical hardware-failure, validation-failure, or validation-pass verdict
+  before returning a conflict. The refreshed retry must perform no status
+  write and emit no Event from the losing attempt's flip.
+- Event-note boundary tests cover ASCII and multibyte UTF-8, the exact
+  1,024-byte limit, the truncation suffix, and literal percent signs through
+  all six recorder wrappers. A targeted envtest persistence assertion drives
+  the WorkloadRun Failed transition through the real events/v1 broadcaster:
+  the API server must accept the shortened note, correlated to the current
+  object's UID, while the full diagnostic remains in its persisted condition.
+  This byte-boundary assertion supplements, rather than replaces, lifecycle
+  Event goldens and recorder-level deduplication tests.
 - Recorder-level tests for all four fallback sites: WorkloadRun BuildFailed,
   Workflow HeterogeneousPlatform, and both Workflow OverrideError guards.
   Successful status persistence emits one transition and no fallback; a
@@ -560,6 +581,15 @@ Both facts drive the scope decision below.
   client: the current CRD rejects an empty framework before reconciliation.
   An admission golden pins that rejection; do not weaken the CRD to make the
   guard reachable in an Event integration fixture.
+- **WorkloadRun success testing-method amendment:** start the success fixture
+  from a persisted InProgress status and an existing Succeeded Workflow, then
+  assert the WorkloadRun's `Normal / WorkflowSucceeded` transition. Creating
+  both resources under the running manager exposes a pre-existing informer
+  ordering race in which the WorkloadRun can observe its new `workflowRef`
+  before the Workflow enters the cache and incorrectly persist
+  `Failed / WorkflowDeleted`. The `workloadrun-mpi` integration golden retains
+  API-level coverage of `Normal / WorkflowCreated`, while the WorkloadRun
+  recorder test covers the full InProgress-to-Succeeded sequence.
 - **Checkpoint restart testing-method amendment:** retain the integration
   requirement that restart emits no additional InProgress event, using a
   recorder observer alongside the running manager and the existing Job state
@@ -589,9 +619,11 @@ Both facts drive the scope decision below.
   - a Workflow-driven timeout case (decision 3): the Workflow's timeout write
     yields one `Warning / JobTimedOut` row on the Job with `count: 1`, and the
     pod-drain re-entry pass that follows adds no second row;
-  - a dedup case that stays InProgress across several requeues with a changing
-    reason or message (Certification `WaitingForNodes` is the natural one) and
-    asserts a single InProgress event;
+  - the Certification `WaitingForNodes` polling case is an exception to API
+    Event goldens: `verifyNodePollEvents` uses recorder-count assertions to
+    verify one InProgress emission across repeated polls with changing
+    messages. Its resource status is golden-tested, but the time-dependent
+    countdown message is not an API Event golden assertion;
   - a Job hardware-failure case: the first detection yields one
     `Warning / HardwareFailureDetected` row with `count: 1`; a second pass that
     adds another failed node while the condition is already `True` emits
@@ -666,6 +698,18 @@ maintainer approval.
 
 ## Consequences
 
+- All six recorder wrappers format Event notes before emission and cap them at
+  1,024 bytes, including a `... [truncated]` suffix when shortened. Truncation
+  preserves UTF-8 character boundaries. Pass the resulting text with `%s` so
+  percent signs in diagnostics are not interpreted again. Short notes are
+  unchanged; long phase/verdict notes are prefixes of the full condition
+  message plus the suffix. Status messages are not truncated by this helper.
+- The terminal guard intentionally skips stale failure-log capture and
+  `FailedNodes` seeding as well as phase updates. It does not repair timeout
+  condition exclusivity or synchronize metrics: Workflow's timeout writer
+  does not update the Job gauge, so an existing `in_progress=1` series can
+  remain until Job cleanup or process restart. Metric synchronization is a
+  separate change, not a reason to overwrite the terminal decision.
 - Events are best-effort with duplicate suppression. A crash between a status
   write and its emission drops that one event and it is not replayed. Nothing
   may treat the absence of an event as evidence that a transition did not
@@ -857,6 +901,11 @@ and at flush time. Dedup must be a property of the emit decision.
   The design index on this branch therefore runs `077` to `080` on purpose;
   the gap is merge ordering, not skipped numbers. Whichever record merges
   later rebases onto the others so the index reads `077 / 078 / 079 / 080`.
+- **Known follow-up:** [Issue #352](https://github.com/NVIDIA/cluster-readiness-engine/issues/352)
+  tracks the pre-existing informer-ordering race in which a WorkloadRun can
+  mistake a transient Workflow cache miss for deletion and persist
+  `Failed / WorkflowDeleted`. This implementation hardens its success fixture
+  but deliberately leaves that controller behavior to the follow-up.
 - `HardwareFailed` and `ValidationFailed` are written by `setJobHardwareFailed`
   and `setJobValidationStatus` through their own `updateStatusWithRetry`
   calls, not through the exclusive-set wrapper. That is why decision 1 gives

@@ -31,11 +31,12 @@ const (
 	testStatusHardError           = "hard-error"
 	testStatusConflictsExhausted  = "exhausted-conflicts"
 	testStatusConflictThenSuccess = "conflict-then-success"
+	testStatusConflictWinner      = "conflict-winner-no-op"
 )
 
 func TestJobVerdictEventsRequireSuccessfulStatusWrite(t *testing.T) {
 	for _, verdict := range []string{"hardware", "validation-failed", "validation-passed"} {
-		for _, mode := range []string{testStatusHardError, testStatusConflictsExhausted, testStatusConflictThenSuccess} {
+		for _, mode := range []string{testStatusHardError, testStatusConflictsExhausted, testStatusConflictThenSuccess, testStatusConflictWinner} {
 			t.Run(verdict+"/"+mode, func(t *testing.T) {
 				ctx := context.Background()
 				r, job, recorder := newJobVerdictFixture(t)
@@ -50,6 +51,11 @@ func TestJobVerdictEventsRequireSuccessfulStatusWrite(t *testing.T) {
 							return errSimulatedStatus
 						}
 						if mode == testStatusConflictsExhausted || attempts == 1 {
+							if mode == testStatusConflictWinner {
+								// Another writer persists the identical verdict before our
+								// attempt loses its resource-version race.
+								require.NoError(t, c.Status().Update(ctx, obj, opts...))
+							}
 							return apierrors.NewConflict(schema.GroupResource{Resource: testJobsResource}, obj.GetName(), errSimulatedStatus)
 						}
 						return c.Status().Update(ctx, obj, opts...)
@@ -67,12 +73,19 @@ func TestJobVerdictEventsRequireSuccessfulStatusWrite(t *testing.T) {
 				}
 				persisted := &nvcrev1alpha1.Job{}
 				require.NoError(t, r.Get(ctx, client.ObjectKeyFromObject(job), persisted))
-				if mode == testStatusConflictThenSuccess {
+				switch mode {
+				case testStatusConflictThenSuccess:
 					require.NoError(t, err)
 					require.Equal(t, 2, attempts)
 					require.Len(t, recorder.Events, 1)
 					require.Len(t, persisted.Status.Conditions, 1)
-				} else {
+				case testStatusConflictWinner:
+					require.NoError(t, err)
+					require.Equal(t, 1, attempts, "refetched winner must make the retry a no-op")
+					require.Empty(t, recorder.Events, "discard the losing attempt's verdict flip")
+					require.Len(t, persisted.Status.Conditions, 1)
+					require.Equal(t, job.Status.Conditions, persisted.Status.Conditions)
+				default:
 					require.Error(t, err)
 					require.Empty(t, recorder.Events)
 					require.Empty(t, persisted.Status.Conditions)

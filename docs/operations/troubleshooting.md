@@ -23,9 +23,15 @@ kubectl describe workloadruns.nvcre.nvidia.com <name> -n <namespace>
 ```
 
 Job Events also report hardware and validation verdicts. A completed workload
-first emits `WorkloadCompleted`, then emits `ThresholdsMet` or the validation
-failure reason. A hardware verdict leaves the Job phase unchanged, but its
-parent Workflow treats the verdict as terminal for that group attempt.
+emits `WorkloadCompleted`. If the Job configures thresholds, it subsequently
+emits `ThresholdsMet` or the validation failure reason. Without thresholds,
+there is no validation verdict Event. A hardware verdict leaves the Job phase
+unchanged, but its parent Workflow treats the verdict as terminal for that
+group attempt.
+
+Event notes are limited to 1,024 bytes. Longer notes end with `... [truncated]`;
+for phase and verdict Events, inspect the object's status conditions for the
+full message.
 
 GoodputMeasurement and BandwidthMeasurement do not emit phase-transition
 Events. Inspect the owning Job for threshold verdicts; measurement-specific

@@ -3334,7 +3334,7 @@ func (r *WorkflowReconciler) isTerminal(workflow *nvcrev1alpha1.Workflow) bool {
 // Safe to call when Recorder is nil (e.g. in unit tests).
 func (r *WorkflowReconciler) eventf(obj runtime.Object, eventType, reason, messageFmt string, args ...any) {
 	if r.Recorder != nil {
-		r.Recorder.Eventf(obj, nil, eventType, reason, reason, messageFmt, args...)
+		r.Recorder.Eventf(obj, nil, eventType, reason, reason, "%s", formatEventNote(messageFmt, args...))
 	}
 }
 

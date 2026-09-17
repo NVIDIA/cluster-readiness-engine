@@ -50,6 +50,8 @@ import (
 
 const metricLabelNamespace = "namespace"
 
+const nvcreCRDDirectory = "../../helm/cluster-readiness-engine/crds"
+
 const eventCaseTimeout = 3 * time.Minute
 
 func init() {
@@ -62,7 +64,7 @@ func TestIntegration(t *testing.T) {
 
 	suite := &testutil.IntegrationTestSuite{}
 	suite.Environment.CRDDirectoryPaths = []string{
-		"../../helm/cluster-readiness-engine/crds",
+		nvcreCRDDirectory,
 		"../../hack/crds",
 	}
 	suite.Environment.ErrorIfCRDPathMissing = true

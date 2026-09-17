@@ -677,7 +677,7 @@ func condReason(conditions []metav1.Condition, condType string) string {
 // eventf emits an event if the Recorder is configured.
 func (r *WorkloadRunReconciler) eventf(obj kruntime.Object, eventType, reason, messageFmt string, args ...any) {
 	if r.Recorder != nil {
-		r.Recorder.Eventf(obj, nil, eventType, reason, reason, messageFmt, args...)
+		r.Recorder.Eventf(obj, nil, eventType, reason, reason, "%s", formatEventNote(messageFmt, args...))
 	}
 }
 

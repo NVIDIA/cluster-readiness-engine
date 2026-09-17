@@ -63,16 +63,6 @@
   "events": [
     {
       "type": "Normal",
-      "reason": "WorkflowCreated",
-      "message": "Workflow event-success-run created",
-      "involvedObject": {
-        "kind": "WorkloadRun",
-        "name": "event-success-run"
-      },
-      "count": 1
-    },
-    {
-      "type": "Normal",
       "reason": "WorkflowSucceeded",
       "message": "Workflow completed successfully",
       "involvedObject": {

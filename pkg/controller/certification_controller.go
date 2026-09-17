@@ -1050,7 +1050,7 @@ func derefInt32(p *int32) int32 {
 // eventf emits an event if the Recorder is configured.
 func (r *CertificationReconciler) eventf(obj runtime.Object, eventType, reason, messageFmt string, args ...any) {
 	if r.Recorder != nil {
-		r.Recorder.Eventf(obj, nil, eventType, reason, reason, messageFmt, args...)
+		r.Recorder.Eventf(obj, nil, eventType, reason, reason, "%s", formatEventNote(messageFmt, args...))
 	}
 }
 

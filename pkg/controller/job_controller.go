@@ -1546,7 +1546,7 @@ func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *nvc
 // eventf emits an event if the Recorder is configured.
 func (r *JobReconciler) eventf(obj runtime.Object, eventType, reason, messageFmt string, args ...any) {
 	if r.Recorder != nil {
-		r.Recorder.Eventf(obj, nil, eventType, reason, reason, messageFmt, args...)
+		r.Recorder.Eventf(obj, nil, eventType, reason, reason, "%s", formatEventNote(messageFmt, args...))
 	}
 }
 

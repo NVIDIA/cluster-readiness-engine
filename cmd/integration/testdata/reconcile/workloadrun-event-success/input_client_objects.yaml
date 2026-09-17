@@ -30,3 +30,64 @@ spec:
     exec:
       command: [echo, success]
   numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "True"
+      reason: WorkflowCreated
+      message: Workflow event-success-run created
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "False"
+      reason: Superseded
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Failed
+      status: "False"
+      reason: Superseded
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+  workflowRef:
+    name: event-success-run
+    namespace: default
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: event-success-run
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command: [echo, success]
+            numNodes: 1
+  orchestration:
+    target:
+      nodeSelector:
+        event-success: "true"
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: Succeeded
+      status: "True"
+      reason: JobCompleted
+      message: All iterations completed successfully
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: Failed
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+  orchestration:
+    detectedPlatform: aws
+    detectedGPUArchitecture: h100
+  succeededNodesRef:
+    kind: ConfigMap
+    name: succeeded-nodes
