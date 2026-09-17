@@ -314,24 +314,6 @@ overrides:
             - -d
             - uint8
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
-# --- nscale (OpenStack + RoCE) ---
-- when:
-    platform:
-      equals: nscale
-  dependencies:
-{{ lib "deps/nscale-rdmashare-comm.yaml" . | indent 2 }}
-  jobTemplate:
-    spec:
-      workload:
-        trainJob:
-          trainer:
-            args:
-{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
-{{ lib "nccl/nscale-roce-env.yaml" . | toMpiArgs | indent 12 }}
-            - /usr/local/bin/alltoall_perf_mpi
-            - -d
-            - uint8
-{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
 # --- OCI (RoCE) ---
 - when:
     platform:
@@ -572,6 +554,29 @@ overrides:
             args:
 {{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
 {{ lib "nccl/gcp-rtxpro6000-tcp-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/alltoall_perf_mpi
+            - -d
+            - uint8
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- Nscale NKS (GPU+RDMA DRA claims, InfiniBand; ADR-085) ---
+# Ordered after the GB200/GB300 ComputeDomain block so this block's
+# trainer.args replacement wins; on Nscale GB300 both blocks fire and their
+# dependency claims coexist (different claim names, no collision).
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      in: [b200, gb300]
+  dependencies:
+{{ lib "deps/nscale-gpu-rdma.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/nscale-ib-env.yaml" . | toMpiArgs | indent 12 }}
             - /usr/local/bin/alltoall_perf_mpi
             - -d
             - uint8
