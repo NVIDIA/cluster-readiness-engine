@@ -164,6 +164,23 @@ func ResolveWorkflowForPlatform(
 		return nil, fmt.Errorf("apply overrides: %w", err)
 	}
 
+	// Ordinary offline render does not call DryRunCreate, so this resolution
+	// boundary is its only opportunity to reject overrides that leave the
+	// workload metadata or runtime scheduling inconsistent. Without this
+	// check, the command can successfully emit a Workflow whose persisted
+	// gang-scheduling intent says queue A while its resolved runtime uses
+	// queue B. Certification invokes additional transforms after this helper
+	// and validates again there; at this point its gang intent is not yet
+	// persisted, so this still provides the generic workload-label check
+	// without pre-empting those transforms.
+	if err := nvcreplatform.ValidateResolvedJobTemplate(
+		&workflow.Spec.JobTemplate.Spec,
+		workflow.Spec.Dependencies,
+		workflow.Spec.GangScheduler,
+	); err != nil {
+		return nil, fmt.Errorf("validate resolved job template: %w", err)
+	}
+
 	// Clear overrides since they've been resolved.
 	workflow.Spec.Overrides = nil
 
