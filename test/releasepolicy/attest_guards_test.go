@@ -485,6 +485,11 @@ const (
 		" && github.ref == 'refs/heads/main'"
 	exactAlwaysRepoAndMainIf = "always() && github.repository == 'NVIDIA/cluster-readiness-engine'" +
 		" && github.ref == 'refs/heads/main'"
+	// exactRepoOnlyIf is the job-level repository gate release.yml uses on
+	// intermediates (build-cli, helm-publish, release-tag, ...). It is not a
+	// ref guard, but it is the only non-empty if: we allowlist for needs-walk
+	// traversal so attest-binaries can still see release-tag's shell check.
+	exactRepoOnlyIf = "github.repository == 'NVIDIA/cluster-readiness-engine'"
 )
 
 // Exact shell comparison release.yml's release-tag job uses to refuse a
@@ -549,9 +554,9 @@ func TestMainBranchAttestCallersPinExactRefGuards(t *testing.T) {
 // Recognition is fail-closed: only the exact `if:` expressions pinned above
 // and release.yml's exact GITHUB_REF comparison count. Substring mentions of
 // github.ref / GITHUB_REF, non-restrictive checks, and ancestor guards behind
-// an `if: always()` caller do not. Unrecognized shapes fail this test so a
-// new pattern must be explicitly allowlisted and covered before it protects
-// anything.
+// an `if: always()` / `if: !cancelled()` caller do not. Unrecognized shapes
+// fail this test so a new pattern must be explicitly allowlisted and covered
+// before it protects anything.
 //
 // This covers callers whose workflow files already contain the fix. Existing
 // release tags that still ship the pre-fix attest-selftest.yml are a rollout
@@ -596,11 +601,12 @@ func TestAttestDispatchCallersRequireRefGuards(t *testing.T) {
 	}
 }
 
-// TestRefGuardRecognitionFailsClosed pins the three unsafe shapes kaynetu
-// confirmed still returned true under substring recognition: a non-restrictive
-// github.ref check, a GITHUB_REF echo with no comparison, and an always()
-// caller that inherits a guarded ancestor. Unrecognized shapes must fail
-// closed; only the explicit tested patterns may pass.
+// TestRefGuardRecognitionFailsClosed pins the unsafe shapes that still returned
+// true under substring / fail-open recognition: a non-restrictive github.ref
+// check, a GITHUB_REF echo with no comparison, an always() caller that inherits
+// a guarded ancestor, and a !cancelled() caller that likewise inherits (GitHub's
+// documented alternative to always() for overriding skipped-needs). Unrecognized
+// shapes must fail closed; only the explicit tested patterns may pass.
 func TestRefGuardRecognitionFailsClosed(t *testing.T) {
 	t.Run("negatives", func(t *testing.T) {
 		cases := []struct {
@@ -652,6 +658,41 @@ func TestRefGuardRecognitionFailsClosed(t *testing.T) {
 				},
 				caller: jobCaller,
 			},
+			{
+				name: "cancelled caller does not inherit ancestor ref guard",
+				jobs: map[string]policyJob{
+					jobGuarded: {If: exactRepoAndMainIf},
+					jobCaller: {
+						If:    "${{ !cancelled() }}",
+						Needs: []string{jobGuarded},
+						Uses:  localAttestUses,
+					},
+				},
+				caller: jobCaller,
+			},
+			{
+				name: "bare !cancelled() does not inherit ancestor ref guard",
+				jobs: map[string]policyJob{
+					jobGuarded: {If: exactRepoAndMainIf},
+					jobCaller: {
+						If:    "!cancelled()",
+						Needs: []string{jobGuarded},
+						Uses:  localAttestUses,
+					},
+				},
+				caller: jobCaller,
+			},
+			{
+				name: "release-tag comparison without exit 1 is not a guard",
+				jobs: map[string]policyJob{
+					jobReleaseTag: {
+						If:   exactRepoOnlyIf,
+						Runs: []string{"if " + exactReleaseTagRefCheck + "; then\n  :\nfi"},
+					},
+					jobCaller: {Needs: []string{jobReleaseTag}, Uses: localAttestUses},
+				},
+				caller: jobCaller,
+			},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
@@ -697,10 +738,22 @@ func TestRefGuardRecognitionFailsClosed(t *testing.T) {
 				name: "release-tag GITHUB_REF comparison on ancestor",
 				jobs: map[string]policyJob{
 					jobReleaseTag: {
-						If:   "github.repository == 'NVIDIA/cluster-readiness-engine'",
+						If:   exactRepoOnlyIf,
 						Runs: []string{"if " + exactReleaseTagRefCheck + "; then\n  exit 1\nfi"},
 					},
 					jobCaller: {Needs: []string{jobReleaseTag}, Uses: localAttestUses},
+				},
+				caller: jobCaller,
+			},
+			{
+				name: "inherit release-tag check through repo-only intermediate",
+				jobs: map[string]policyJob{
+					jobReleaseTag: {
+						If:   exactRepoOnlyIf,
+						Runs: []string{"if " + exactReleaseTagRefCheck + "; then\n  exit 1\nfi"},
+					},
+					"build-cli": {If: exactRepoOnlyIf, Needs: []string{jobReleaseTag}},
+					jobCaller:   {Needs: []string{"build-cli"}, Uses: localAttestUses},
 				},
 				caller: jobCaller,
 			},
@@ -713,6 +766,110 @@ func TestRefGuardRecognitionFailsClosed(t *testing.T) {
 			})
 		}
 	})
+}
+
+// TestReleaseTagRefCheckFailsClosed executes release.yml's Resolve tag step and
+// pins that the mismatched-ref branch actually rejects. Substring recognition of
+// the comparison alone stayed green when that branch's `exit 1` was stubbed with
+// `:` (kaynetu #341); the recognizer and this execution table both require the
+// rejection to remain effective. The step must also be mandatory: no
+// continue-on-error that would swallow a failed check before attest callers run.
+func TestReleaseTagRefCheckFailsClosed(t *testing.T) {
+	script, continueOnError := releaseTagResolveStep(t)
+	if continueOnError {
+		t.Fatalf("%s job %q step Resolve tag has continue-on-error; a failed "+
+			"mismatched-ref check must fail the job so attest callers do not run",
+			wfRelease, jobReleaseTag)
+	}
+	if !runHasEffectiveReleaseTagRefCheck(script) {
+		t.Fatalf("%s Resolve tag step no longer carries an effective GITHUB_REF "+
+			"mismatch rejection (comparison + exit 1 in the then-branch)", wfRelease)
+	}
+
+	// Stub only the mismatched-ref branch's exit 1 (the mutation kaynetu applied).
+	idx := strings.Index(script, exactReleaseTagRefCheck)
+	if idx < 0 {
+		t.Fatal("Resolve tag step missing exactReleaseTagRefCheck")
+	}
+	rest := script[idx:]
+	exitIdx := strings.Index(rest, "exit 1")
+	if exitIdx < 0 {
+		t.Fatal("Resolve tag step missing exit 1 after ref check")
+	}
+	stubbed := script[:idx+exitIdx] + ":" + script[idx+exitIdx+len("exit 1"):]
+	if runHasEffectiveReleaseTagRefCheck(stubbed) {
+		t.Fatalf("runHasEffectiveReleaseTagRefCheck still true after stubbing " +
+			"mismatched-ref exit 1; recognizer must fail closed")
+	}
+
+	dir := t.TempDir()
+	acceptEnv := []string{
+		"GITHUB_EVENT_NAME=workflow_dispatch",
+		"GITHUB_REF=refs/tags/v1.2.3",
+		"INPUT_TAG=v1.2.3",
+	}
+	out, failed := runShell(t, dir, script, acceptEnv...)
+	if failed {
+		t.Fatalf("Resolve tag rejected a matching dispatch ref: %s", out)
+	}
+
+	rejectDir := t.TempDir()
+	rejectEnv := []string{
+		"GITHUB_EVENT_NAME=workflow_dispatch",
+		"GITHUB_REF=refs/heads/main",
+		"INPUT_TAG=v1.2.3",
+	}
+	out, failed = runShell(t, rejectDir, script, rejectEnv...)
+	if !failed {
+		t.Fatalf("Resolve tag accepted mismatched ref "+
+			"(GITHUB_REF=refs/heads/main, INPUT_TAG=v1.2.3); want exit 1. output: %s", out)
+	}
+	if !strings.Contains(out, "dispatched with tag=v1.2.3") {
+		t.Fatalf("mismatched-ref rejection missing expected error annotation; output: %s", out)
+	}
+
+	// Stubbed script must accept the mismatched ref (proves the mutation removed
+	// the rejection the recognizer is supposed to require).
+	stubDir := t.TempDir()
+	out, failed = runShell(t, stubDir, stubbed, rejectEnv...)
+	if failed {
+		t.Fatalf("stubbed Resolve tag still rejected mismatched ref; mutation did not remove the guard: %s", out)
+	}
+}
+
+// releaseTagResolveStep returns the body of release.yml's release-tag
+// "Resolve tag" step and whether that step sets continue-on-error.
+func releaseTagResolveStep(t *testing.T) (script string, continueOnError bool) {
+	t.Helper()
+
+	path := filepath.Join(workflowDir, wfRelease)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	var doc struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name            string `json:"name"`
+				Run             string `json:"run"`
+				ContinueOnError bool   `json:"continue-on-error"`
+			} `json:"steps"`
+		} `json:"jobs"`
+	}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	job, ok := doc.Jobs[jobReleaseTag]
+	if !ok {
+		t.Fatalf("%s missing job %q", wfRelease, jobReleaseTag)
+	}
+	for _, step := range job.Steps {
+		if step.Name == "Resolve tag" {
+			return step.Run, step.ContinueOnError
+		}
+	}
+	t.Fatalf("%s job %q has no step named %q", wfRelease, jobReleaseTag, "Resolve tag")
+	return "", false
 }
 
 // normalizeWorkflowIf collapses YAML folded-scalar whitespace so an exact
@@ -787,32 +944,67 @@ func loadJobsWithNeeds(t *testing.T, raw []byte, base string) map[string]policyJ
 
 // jobHasRefGuard reports whether job itself carries a recognized, effective
 // ref restriction. Fail-closed: only exact allowlisted `if:` expressions and
-// release.yml's exact GITHUB_REF comparison count. A bare github.ref /
-// GITHUB_REF mention is not a guard.
+// release.yml's release-tag shell check that both compares GITHUB_REF and
+// exits non-zero on mismatch. A bare github.ref / GITHUB_REF mention, or a
+// comparison whose rejection has been stubbed out, is not a guard.
 func jobHasRefGuard(job policyJob) bool {
 	switch normalizeWorkflowIf(job.If) {
 	case exactRepoAndMainIf, exactAlwaysRepoAndMainIf:
 		return true
 	}
-	for _, run := range job.Runs {
-		if strings.Contains(normalizeWorkflowIf(run), exactReleaseTagRefCheck) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(job.Runs, runHasEffectiveReleaseTagRefCheck)
 }
 
-// jobIfUsesAlways reports whether the job's if: invokes always(), which lets
-// the job run when needed jobs are skipped. Ancestor ref guards do not
-// constrain such a job.
-func jobIfUsesAlways(job policyJob) bool {
-	return strings.Contains(normalizeWorkflowIf(job.If), "always()")
+// runHasEffectiveReleaseTagRefCheck reports whether run contains release.yml's
+// exact GITHUB_REF mismatch comparison *and* an `exit 1` in that then-branch.
+// The comparison text alone is insufficient: stubbing the rejection with `:`
+// left the previous substring recognizer green (kaynetu #341).
+func runHasEffectiveReleaseTagRefCheck(run string) bool {
+	norm := normalizeWorkflowIf(run)
+	idx := strings.Index(norm, exactReleaseTagRefCheck)
+	if idx < 0 {
+		return false
+	}
+	rest := norm[idx:]
+	// Bound the then-branch at the first " fi" after the comparison so a later
+	// unrelated `exit 1` in the same step cannot satisfy this check.
+	end := strings.Index(rest, " fi")
+	if end < 0 {
+		end = len(rest)
+	}
+	return strings.Contains(rest[:end], "exit 1")
+}
+
+// jobIfPropagatesSkippedNeeds reports whether job's if: is empty or the exact
+// repository-only gate release.yml uses on intermediates. Those are the only
+// conditions we allowlist for needs-walk traversal. always(), !cancelled(), and
+// every other non-empty unrecognized condition can let the job run when a
+// guarded ancestor is skipped, so inheritance through them fails closed
+// (ndipebot #341).
+func jobIfPropagatesSkippedNeeds(job policyJob) bool {
+	switch normalizeWorkflowIf(stripExpressionWrappers(job.If)) {
+	case "", exactRepoOnlyIf:
+		return true
+	default:
+		return false
+	}
+}
+
+// stripExpressionWrappers removes a single surrounding ${{ }} so normalized
+// comparisons see the inner expression.
+func stripExpressionWrappers(s string) string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "${{") && strings.HasSuffix(s, "}}") {
+		return strings.TrimSpace(s[3 : len(s)-2])
+	}
+	return s
 }
 
 // jobOrAncestorHasRefGuard walks the needs graph from name and returns true
 // only when a recognized ref guard sits on the caller or on a needs-ancestor
-// that can actually skip the caller. An always() job without its own guard
-// cannot inherit: it still runs when the guarded ancestor is skipped.
+// reached only through empty if: conditions (skip-propagating). always(),
+// !cancelled(), and any other non-empty unrecognized if: block inheritance:
+// those jobs can still run when the guarded ancestor is skipped.
 func jobOrAncestorHasRefGuard(jobs map[string]policyJob, name string) bool {
 	seen := map[string]bool{}
 	var walk func(string) bool
@@ -828,7 +1020,7 @@ func jobOrAncestorHasRefGuard(jobs map[string]policyJob, name string) bool {
 		if jobHasRefGuard(job) {
 			return true
 		}
-		if jobIfUsesAlways(job) {
+		if !jobIfPropagatesSkippedNeeds(job) {
 			return false
 		}
 		return slices.ContainsFunc(job.Needs, walk)

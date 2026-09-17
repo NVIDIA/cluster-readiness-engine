@@ -33,19 +33,69 @@ func onReleasePath(base string) bool {
 	return slices.Contains(releasePathWorkflows, base)
 }
 
+// workflowGlobPatterns are the extensions GitHub Actions accepts for workflow
+// files. Enumerating only *.yml would miss a *.yaml workflow_dispatch caller of
+// attest.yml (ndipebot / CodeRabbit on #341).
+var workflowGlobPatterns = []string{"*.yml", "*.yaml"}
+
+// globWorkflowFiles lists workflow definitions under dir for both supported
+// extensions, sorted for stable output.
+func globWorkflowFiles(dir string) ([]string, error) {
+	var paths []string
+	for _, pattern := range workflowGlobPatterns {
+		matched, err := filepath.Glob(filepath.Join(dir, pattern))
+		if err != nil {
+			return nil, err
+		}
+		paths = append(paths, matched...)
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
 // workflowFiles lists the workflow definitions, sorted for stable output.
+// GitHub runs both .yml and .yaml; both must be enumerated.
 func workflowFiles(t *testing.T) []string {
 	t.Helper()
 
-	paths, err := filepath.Glob(filepath.Join(workflowDir, "*.yml"))
+	paths, err := globWorkflowFiles(workflowDir)
 	if err != nil {
 		t.Fatalf("glob workflows: %v", err)
 	}
 	if len(paths) == 0 {
 		t.Fatalf("no workflows found under %s", workflowDir)
 	}
-	sort.Strings(paths)
 	return paths
+}
+
+// TestWorkflowFilesDiscoversYamlExtension pins that caller enumeration sees
+// both extensions GitHub accepts. A *.yaml-only glob miss left
+// TestAttestDispatchCallersRequireRefGuards green for an unguarded
+// workflow_dispatch attest caller saved as .yaml (ndipebot #341).
+func TestWorkflowFilesDiscoversYamlExtension(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"aa.yml", "bb.yaml", "cc.yml"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("name: probe\n"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	// Non-workflow extension must stay invisible.
+	if err := os.WriteFile(filepath.Join(dir, "dd.txt"), []byte("nope\n"), 0o600); err != nil {
+		t.Fatalf("write dd.txt: %v", err)
+	}
+
+	got, err := globWorkflowFiles(dir)
+	if err != nil {
+		t.Fatalf("globWorkflowFiles: %v", err)
+	}
+	bases := make([]string, 0, len(got))
+	for _, p := range got {
+		bases = append(bases, filepath.Base(p))
+	}
+	want := []string{"aa.yml", "bb.yaml", "cc.yml"}
+	if !slices.Equal(bases, want) {
+		t.Fatalf("globWorkflowFiles bases = %v, want %v (both .yml and .yaml)", bases, want)
+	}
 }
 
 // step is one run step plus the environment it can actually see.
