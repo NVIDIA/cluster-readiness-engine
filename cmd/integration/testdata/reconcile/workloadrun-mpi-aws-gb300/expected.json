@@ -1221,6 +1221,142 @@
               }
             }
           ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "in": [
+                "b200",
+                "gb300"
+              ]
+            },
+            "platform": {
+              "equals": "nscale"
+            }
+          },
+          "dependencies": [
+            {
+              "apiVersion": "resource.k8s.io/v1",
+              "kind": "ResourceClaimTemplate",
+              "metadata": {
+                "labels": {
+                  "app": "test-mpi-gb300-run"
+                },
+                "name": "test-mpi-gb300-run-gpu"
+              },
+              "spec": {
+                "spec": {
+                  "devices": {
+                    "requests": [
+                      {
+                        "exactly": {
+                          "count": 4,
+                          "deviceClassName": "gpu.nvidia.com"
+                        },
+                        "name": "gpu"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "apiVersion": "resource.k8s.io/v1",
+              "kind": "ResourceClaimTemplate",
+              "metadata": {
+                "labels": {
+                  "app": "test-mpi-gb300-run"
+                },
+                "name": "test-mpi-gb300-run-rdma"
+              },
+              "spec": {
+                "spec": {
+                  "devices": {
+                    "requests": [
+                      {
+                        "exactly": {
+                          "count": 4,
+                          "deviceClassName": "rdma.nscale.com"
+                        },
+                        "name": "rdma"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "apiVersion": "trainer.kubeflow.org/v1alpha1",
+              "kind": "TrainingRuntime",
+              "metadata": {
+                "name": "test-mpi-gb300-run-runtime"
+              },
+              "spec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "containers": [
+                                  {
+                                    "name": "node",
+                                    "resources": {
+                                      "claims": [
+                                        {
+                                          "name": "gpu"
+                                        },
+                                        {
+                                          "name": "rdma"
+                                        }
+                                      ],
+                                      "limits": {
+                                        "nvidia.com/gpu": null
+                                      },
+                                      "requests": {
+                                        "nvidia.com/gpu": null
+                                      }
+                                    }
+                                  }
+                                ],
+                                "resourceClaims": [
+                                  {
+                                    "name": "gpu",
+                                    "resourceClaimTemplateName": "test-mpi-gb300-run-gpu"
+                                  },
+                                  {
+                                    "name": "rdma",
+                                    "resourceClaimTemplateName": "test-mpi-gb300-run-rdma"
+                                  }
+                                ],
+                                "tolerations": [
+                                  {
+                                    "effect": "NoSchedule",
+                                    "key": "kubernetes.io/arch",
+                                    "operator": "Equal",
+                                    "value": "arm64"
+                                  },
+                                  {
+                                    "effect": "NoSchedule",
+                                    "key": "nvidia.com/gpu",
+                                    "operator": "Equal",
+                                    "value": "present"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
         }
       ]
     },
