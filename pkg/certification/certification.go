@@ -868,9 +868,12 @@ func buildConfigFromFlags(
 		},
 		Spec: nvcrev1alpha1.CertificationSpec{
 			Target: nvcrev1alpha1.TargetSpec{
+				// gpu.present alone, not gpu.product: this selector is
+				// persisted and drives every future reconcile's node
+				// discovery, so it must not pin the value discovered at
+				// creation. gpu.present is ADR-042's default target.
 				NodeSelector: map[string]string{
 					"nvidia.com/gpu.present": "true",
-					"nvidia.com/gpu.product": gpuProduct,
 				},
 			},
 			Categories: cats,
