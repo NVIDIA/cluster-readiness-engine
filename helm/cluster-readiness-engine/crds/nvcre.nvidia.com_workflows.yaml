@@ -6908,8 +6908,8 @@ spec:
                         type: array
                       nodeNames:
                         description: |-
-                          nodeNames explicitly lists nodes to include.
-                          If specified, nodeSelector is ignored.
+                          nodeNames explicitly lists nodes to include. Nodes must also match
+                          nodeSelector and matchExpressions, if set.
                         items:
                           type: string
                         type: array
@@ -7165,8 +7165,8 @@ spec:
                               type: array
                             nodeNames:
                               description: |-
-                                nodeNames explicitly lists nodes to include.
-                                If specified, nodeSelector is ignored.
+                                nodeNames explicitly lists nodes to include. Nodes must also match
+                                nodeSelector and matchExpressions, if set.
                               items:
                                 type: string
                               type: array

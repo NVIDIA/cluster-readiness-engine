@@ -20,7 +20,7 @@ You need:
 - For GB200 and GB300 clusters only: the NVIDIA DRA driver, because those catalog entries create `ComputeDomain` resources. GB300 RoCE entries also need a Kubernetes version that serves `resource.k8s.io/v1`.
 - For training categories only: egress to `github.com` from worker nodes. The training pods clone Megatron-LM at start.
 
-Cordoned nodes are skipped. If a node is cordoned, NVCRE does not select it, and it does not appear in the results.
+Cordoned nodes are skipped by default. If a node is cordoned, NVCRE does not select it, and it does not appear in the results. To opt into targeting cordoned nodes only, set `target.taintSelectors` to the `node.kubernetes.io/unschedulable` taint.
 
 ## Step 1: install the CLI
 
