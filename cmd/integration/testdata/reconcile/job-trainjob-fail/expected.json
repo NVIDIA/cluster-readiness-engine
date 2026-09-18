@@ -64,5 +64,17 @@
         "namespace": "default"
       }
     }
-  }
+  },
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "WorkloadFailed",
+      "message": "Workload TrainJob/test-trainjob-fail-workload failed: Worker crashed",
+      "involvedObject": {
+        "kind": "Job",
+        "name": "test-trainjob-fail"
+      },
+      "count": 1
+    }
+  ]
 }

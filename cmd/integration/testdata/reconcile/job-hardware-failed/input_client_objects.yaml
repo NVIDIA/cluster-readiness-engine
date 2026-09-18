@@ -83,3 +83,26 @@ spec:
       image: test-image:latest
 status:
   phase: Running
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: test-hw-second-node
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.unhealthy: "false"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-hw-second-pod
+  namespace: default
+  labels:
+    nvcre.nvidia.com/job: test-hw-failed-job
+spec:
+  nodeName: test-hw-second-node
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Running

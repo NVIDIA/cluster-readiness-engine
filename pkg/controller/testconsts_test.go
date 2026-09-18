@@ -8,6 +8,8 @@ package controller
 // constants collect the ones that span file boundaries so every call site
 // can share a single definition instead of duplicating the literal.
 const (
+	// testJobsResource is the plural resource name used by injected conflicts.
+	testJobsResource = "jobs"
 	// testGPUProductLabel is the node label key advertising GPU product.
 	testGPUProductLabel = "nvidia.com/gpu.product"
 	// testGPUProductH100 is a GPU product label value used by fixtures.
@@ -22,4 +24,14 @@ const (
 	testVariantNCCLAllReduce = "nccl-all-reduce"
 	// testNS is the namespace used by fixtures.
 	testNS = "default"
+	// testPlatformAWS is the detected-platform value used by fixtures.
+	testPlatformAWS = "aws"
+	// testProviderIDAWS is an AWS providerID; nodePlatform keys off its prefix.
+	testProviderIDAWS = "aws://us-east-1/i-0abc"
+	// testRunName is the WorkloadRun name used by fixtures.
+	testRunName = "run"
+	// testJobName is the Job name used by fixtures.
+	testJobName = "job"
+	// testNodeFailureDetail is a per-node failure message used by fixtures.
+	testNodeFailureDetail = "xid"
 )

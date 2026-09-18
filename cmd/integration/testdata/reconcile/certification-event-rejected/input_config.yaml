@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+rejectWorkflowCreates: true
+waitFor:
+  kind: Certification
+  name: event-rejected-cert
+  namespace: default
+  condition: Failed
+  reason: WorkflowFailed
+collect:
+  - kind: Certification
+    name: event-rejected-cert
+    namespace: default
+events:
+  - involvedKind: Certification
+    involvedName: event-rejected-cert
+    namespace: default
+    expect:
+      - {type: Warning, reason: WorkflowCreationError}
+      - {type: Warning, reason: WorkflowFailed}

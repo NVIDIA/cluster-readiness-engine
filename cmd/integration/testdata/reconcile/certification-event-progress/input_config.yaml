@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+verifyNodePollEvents: true
+steps:
+  - waitFor:
+      kind: Certification
+      name: event-progress-cert
+      namespace: default
+      condition: InProgress
+      reason: WaitingForNodes
+    patches:
+      - target:
+          kind: Node
+          name: event-progress-node
+        patch:
+          metadata:
+            labels:
+              event-progress: "true"
+waitFor:
+  kind: Certification
+  name: event-progress-cert
+  namespace: default
+  condition: InProgress
+  reason: WorkflowRunning
+collect:
+  - kind: Certification
+    name: event-progress-cert
+    namespace: default

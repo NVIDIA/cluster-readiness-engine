@@ -200,6 +200,9 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 			}
 			return ctrl.Result{}, nil
 		}
+		if _, ok := errors.AsType[*workflowCreateRejectedError](err); ok {
+			return ctrl.Result{}, err
+		}
 		log.Error(err, "Failed to build Workflow for category", "domain", firstCategory.Domain, "variant", firstCategory.Variant)
 		if statusErr := r.setCertificationFailed(ctx, certification, ReasonWorkflowValidationFailed, err.Error()); statusErr != nil {
 			log.Error(statusErr, "Failed to update Certification status after Workflow build failure")
@@ -277,6 +280,9 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{}, nil
+		}
+		if _, ok := errors.AsType[*workflowCreateRejectedError](err); ok {
+			return ctrl.Result{}, err
 		}
 		log.Error(err, "Failed to build Workflow for category", "domain", category.Domain, "variant", category.Variant)
 		if statusErr := r.setCertificationFailed(ctx, certification, ReasonWorkflowValidationFailed, err.Error()); statusErr != nil {
@@ -599,23 +605,34 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 			log.Info("Workflow already exists and is controlled by this Certification, proceeding", "name", workflowName)
 		} else {
 			log.Error(err, "Failed to create Workflow", "name", workflowName)
-			// One event per failed Create attempt. This branch is only reached
-			// while a category is being started (never from the steady-state
-			// polling path, which goes through checkActiveWorkflow), and the
-			// setCertificationFailed below makes the Certification terminal, so
-			// subsequent requeues short-circuit in reconcileWorkflows.
+			// One event per failed Create attempt. A successful status write makes
+			// the Certification terminal; a failed status write deliberately leaves
+			// it non-terminal so the error-driven retry can try the Create again.
 			r.warnf(certification, ReasonWorkflowCreationError,
 				"Failed to create Workflow %s: %v", workflowName, err)
-			if statusErr := r.setCertificationFailed(ctx, certification, ReasonWorkflowFailed,
-				fmt.Sprintf("Failed to create Workflow %s: %v", workflowName, err)); statusErr != nil {
+			createErr := fmt.Errorf("failed to create Workflow %s: %w", workflowName, err)
+			statusErr := r.setCertificationFailed(ctx, certification, ReasonWorkflowFailed,
+				fmt.Sprintf("Failed to create Workflow %s: %v", workflowName, err))
+			if statusErr != nil {
 				log.Error(statusErr, "Failed to update Certification status after Workflow creation failure")
 			}
-			return "", fmt.Errorf("failed to create Workflow %s: %w", workflowName, err)
+			return "", &workflowCreateRejectedError{err: errors.Join(createErr, statusErr)}
 		}
 	}
 
 	return workflowName, nil
 }
+
+// workflowCreateRejectedError tells createWorkflowForCategory callers that the
+// Create path already attempted the specific WorkflowFailed status write. The
+// callers must not overwrite it with their generic WorkflowValidationFailed
+// catch-all. Its wrapped error preserves both the Create and status failures.
+type workflowCreateRejectedError struct {
+	err error
+}
+
+func (e *workflowCreateRejectedError) Error() string { return e.err.Error() }
+func (e *workflowCreateRejectedError) Unwrap() error { return e.err }
 
 // ResolveOptions merges per-category overrides with global defaults.
 // Returns a flat CategoryOptions with all values resolved.
@@ -893,7 +910,7 @@ func (r *CertificationReconciler) setCertificationFailed(ctx context.Context, ce
 
 // setExclusiveCondition sets one condition True and all others False (mutually exclusive).
 func (r *CertificationReconciler) setExclusiveCondition(ctx context.Context, certification *nvcrev1alpha1.Certification, conditionType, reason, message string) error {
-	changed, err := setExclusiveStatusCondition(ctx, r.Client, certification,
+	changed, transition, err := setExclusiveStatusCondition(ctx, r.Client, certification,
 		func(c *nvcrev1alpha1.Certification) *[]metav1.Condition { return &c.Status.Conditions },
 		[]string{
 			nvcrev1alpha1.CertificationInProgress,
@@ -904,6 +921,11 @@ func (r *CertificationReconciler) setExclusiveCondition(ctx context.Context, cer
 	)
 	if err != nil {
 		return err
+	}
+	if transition != nil {
+		r.eventf(certification,
+			transitionEventType(transition.NewTrueType, nvcrev1alpha1.CertificationFailed),
+			transition.Condition.Reason, "%s", transition.Condition.Message)
 	}
 	if changed {
 		logf.FromContext(ctx).Info("Certification status updated", "status", conditionType, "reason", reason)
@@ -1025,14 +1047,19 @@ func derefInt32(p *int32) int32 {
 	return *p
 }
 
+// eventf emits an event if the Recorder is configured.
+func (r *CertificationReconciler) eventf(obj runtime.Object, eventType, reason, messageFmt string, args ...any) {
+	if r.Recorder != nil {
+		r.Recorder.Eventf(obj, nil, eventType, reason, reason, "%s", formatEventNote(messageFmt, args...))
+	}
+}
+
 // warnf emits a Warning event if the Recorder is configured.
 //
 // Safe to call when Recorder is nil (e.g. in unit tests, or any embedding that
 // constructs CertificationReconciler directly).
 func (r *CertificationReconciler) warnf(obj runtime.Object, reason, messageFmt string, args ...any) {
-	if r.Recorder != nil {
-		r.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, reason, reason, messageFmt, args...)
-	}
+	r.eventf(obj, corev1.EventTypeWarning, reason, messageFmt, args...)
 }
 
 // normalf emits a Normal event if the Recorder is configured. Used for
@@ -1041,9 +1068,7 @@ func (r *CertificationReconciler) warnf(obj runtime.Object, reason, messageFmt s
 //
 // Safe to call when Recorder is nil, like warnf.
 func (r *CertificationReconciler) normalf(obj runtime.Object, reason, messageFmt string, args ...any) {
-	if r.Recorder != nil {
-		r.Recorder.Eventf(obj, nil, corev1.EventTypeNormal, reason, reason, messageFmt, args...)
-	}
+	r.eventf(obj, corev1.EventTypeNormal, reason, messageFmt, args...)
 }
 
 // SetupWithManager sets up the controller with the Manager.

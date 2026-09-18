@@ -1,0 +1,77 @@
+{
+  "Certification/event-rejected-cert": {
+    "kind": "Certification",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "event-rejected-cert",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "event-rejected": "true"
+        }
+      },
+      "categories": [
+        {
+          "domain": "communication",
+          "variant": "nccl-all-reduce"
+        }
+      ],
+      "nodesPerJob": 1
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkflowFailed",
+          "message": "Failed to create Workflow event-rejected-cert-commu-f23fc: workflows.nvcre.nvidia.com \"event-rejected-cert-commu-f23fc\" is forbidden: injected Workflow Create rejection"
+        }
+      ]
+    }
+  },
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "WorkflowCreationError",
+      "message": "Failed to create Workflow event-rejected-cert-commu-f23fc: workflows.nvcre.nvidia.com \"event-rejected-cert-commu-f23fc\" is forbidden: injected Workflow Create rejection",
+      "involvedObject": {
+        "kind": "Certification",
+        "name": "event-rejected-cert"
+      },
+      "count": 1
+    },
+    {
+      "type": "Warning",
+      "reason": "WorkflowFailed",
+      "message": "Failed to create Workflow event-rejected-cert-commu-f23fc: workflows.nvcre.nvidia.com \"event-rejected-cert-commu-f23fc\" is forbidden: injected Workflow Create rejection",
+      "involvedObject": {
+        "kind": "Certification",
+        "name": "event-rejected-cert"
+      },
+      "count": 1
+    }
+  ]
+}

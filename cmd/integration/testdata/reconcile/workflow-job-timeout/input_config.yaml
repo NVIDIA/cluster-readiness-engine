@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# ADR-080 decision 3: the timeoutPerJob write bypasses the Job tier's wrapper.
+# The Workflow reconciler writes JobFailed=True / JobTimedOut on the Job with a
+# bare Status().Update, so that site carries its own emission hook. The workload
+# is first observed running, then its start time is moved into the past so
+# the next monitoring pass times the Job out without a startup race.
+#
+# Two things are pinned here. The Warning is emitted against the Job even though
+# the Workflow reconciler is what recorded it, and the pod-drain re-entry pass
+# that follows completeTerminalGroup does not add a second row: the !ts.terminal
+# guard means the write happens once, so the condition never flips again.
+#
+# The Job deliberately keeps InProgress=True beside Failed=True. That
+# exclusivity gap predates this design and is left alone (ADR-080 defers it).
+steps:
+  - waitFor:
+      kind: Job
+      name: test-workflow-job-timeout-job
+      namespace: default
+      condition: InProgress
+      reason: WorkloadRunning
+    patches:
+      - target:
+          kind: Job
+          name: test-workflow-job-timeout-job
+          namespace: default
+        status: true
+        patch:
+          status:
+            workloadStartTime: "2020-01-01T00:00:00Z"
+  - waitFor:
+      kind: Job
+      name: test-workflow-job-timeout-job
+      namespace: default
+      condition: Failed
+      reason: JobTimedOut
+    patches:
+      - target:
+          kind: Pod
+          name: timeout-draining-pod
+          namespace: default
+        status: true
+        patch:
+          status:
+            phase: Succeeded
+waitFor:
+  kind: Workflow
+  name: test-workflow-job-timeout
+  namespace: default
+  condition: Failed
+collect:
+  - kind: Job
+    name: test-workflow-job-timeout-job
+    namespace: default
+events:
+  - involvedKind: Job
+    involvedName: test-workflow-job-timeout-job
+    namespace: default
+    expect:
+      - {type: Normal, reason: WorkloadRunning}
+      - {type: Warning, reason: JobTimedOut}

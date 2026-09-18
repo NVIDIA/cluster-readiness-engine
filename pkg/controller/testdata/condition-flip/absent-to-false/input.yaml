@@ -1,0 +1,7 @@
+watched: [ValidationFailed]
+before: []
+after:
+  - type: ValidationFailed
+    status: "False"
+    reason: ThresholdsMet
+    message: All thresholds passed
