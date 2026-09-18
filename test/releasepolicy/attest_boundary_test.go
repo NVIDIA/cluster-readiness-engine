@@ -20,7 +20,7 @@ import (
 // Complements isAttestWorkflowCall in workflow_policy_test.go: that helper
 // accepts any path whose base is attest.yml; this one insists on the ./ form
 // that keeps the call a same-repo workflow_call boundary.
-var localAttestUses = regexp.MustCompile(`^\./\.github/workflows/attest\.yml(@.+)?$`)
+var localAttestUsesRE = regexp.MustCompile(`^\./\.github/workflows/attest\.yml(@.+)?$`)
 
 // needsOutputRef matches a GitHub Actions expression that reads a job output.
 // Those outputs are typically pass-throughs of workflow_call inputs (see
@@ -73,10 +73,10 @@ func assertAttestIsInvokedAsReusableWorkflow(t *testing.T) {
 			}
 			called[base] = true
 			// Assert the ./ form on EVERY attest.yml call, not only those that
-			// already match localAttestUses. An org-qualified sha-pinned call
+			// already match localAttestUsesRE. An org-qualified sha-pinned call
 			// would otherwise keep the must-call count green while attesting
 			// under a stale pre-hardening attest.yml.
-			if !localAttestUses.MatchString(uses) || !strings.HasPrefix(uses, "./") {
+			if !localAttestUsesRE.MatchString(uses) || !strings.HasPrefix(uses, "./") {
 				t.Errorf("%s: job %q calls attest.yml as %q; same-repo reusable "+
 					"calls must use the ./ form so the call is a workflow_call boundary",
 					base, jobName, uses)
