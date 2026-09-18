@@ -1,0 +1,26 @@
+# The retry call site (trainerActionAttemptRecover into
+# handleTrainerInstallFailure). A failed release is retried once, the attempt
+# collides with an external JobSet, and the ownership class must print its
+# guidance and return before the ADR-073 Secret-conflict recovery is even
+# considered.
+#
+# The release exists, so `upgrade --install` takes the upgrade path and Helm
+# adds the UPGRADE FAILED wrap.
+#
+# Adapted, not verbatim: the transcript is the captured
+# jobset-ownership-failure/helm3-upgrade-collision one with the conflicting
+# object changed from ClusterRole to ClusterRoleBinding, for the reason given
+# in fresh-install-jobset-ownership-guidance — a leftover ClusterRole is
+# caught by the fingerprint scan and would stop the phase before this arm
+# runs. The verbatim capture is asserted by its own classifier golden.
+#
+# Ownership errors never arm cleanup, so uninstallCalls and crdDeletes stay 0
+# and no recovery plan is printed.
+releaseState: failed
+chartVersion: ""
+installResults:
+  - fail: true
+    output: |
+      Pulled: ghcr.io/kubeflow/charts/kubeflow-trainer:2.2.1
+      Digest: sha256:8e8e3de0257be804f60dbc8e6784eaddb64b2e158a46cade30ca18b6030183b1
+      Error: UPGRADE FAILED: Unable to continue with update: ClusterRoleBinding "jobset-controller" in namespace "" exists and cannot be imported into the current release: invalid ownership metadata; annotation validation error: key "meta.helm.sh/release-name" must equal "kubeflow-trainer": current value is "jobset"; annotation validation error: key "meta.helm.sh/release-namespace" must equal "kubeflow-system": current value is "jobset-system"

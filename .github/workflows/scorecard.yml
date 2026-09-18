@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Runs the OpenSSF Scorecard supply-chain checks against this repository.
+#
+# Results are published to the OpenSSF Scorecard API (publish_results: true),
+# which powers the public badge, and uploaded as SARIF so findings appear in
+# the repository's code scanning dashboard.
+
+name: OpenSSF Scorecard
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: '47 3 * * 6'
+  workflow_dispatch:
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    # ubuntu-latest is deliberate: publishing results to the OpenSSF API
+    # requires a GitHub-hosted runner.
+    runs-on: ubuntu-latest
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    timeout-minutes: 30
+    permissions:
+      # Upload SARIF results to the code scanning dashboard.
+      security-events: write
+      # Mint the OIDC token that authenticates publishing to the OpenSSF API.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run Scorecard analysis
+        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        with:
+          results_format: sarif
+          results_file: results.sarif
+          publish_results: true
+
+      # Keep the raw results around for debugging failed or surprising runs.
+      - name: Upload results artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scorecard-results
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload SARIF to code scanning
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
+        with:
+          sarif_file: results.sarif

@@ -33,3 +33,11 @@ jobs:
 
       - name: Run verification checks
         run: make verify
+
+      # Fails the build when any Go dependency carries a forbidden or
+      # restricted license, so an incompatible module cannot land silently.
+      # GOROOT is set explicitly: `go run pkg@version` builds with -trimpath,
+      # which empties the binary's baked-in GOROOT, and go-licenses v1.6.0
+      # then misclassifies every stdlib package and exits non-zero.
+      - name: Dependency license scan
+        run: GOROOT="$(go env GOROOT)" go run github.com/google/go-licenses@v1.6.0 check ./... --disallowed_types=forbidden,restricted

@@ -1,0 +1,7 @@
+# The release is deployed at the pinned chart version, which would normally
+# take the "already deployed" skip. The JobSet CRD is absent, so the skip is
+# refused: neither a skipped nor an upgraded release can restore a chart CRD.
+releaseState: deployed
+chartVersion: "2.2.1"
+jobSetCRD: absent
+installResults: []

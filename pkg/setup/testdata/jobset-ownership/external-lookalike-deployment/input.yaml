@@ -1,0 +1,7 @@
+# The webhook correlation succeeds but the workload behind the Service carries
+# no JobSet chart identity, so it cannot be told apart from a consumer's
+# controller-manager. The admission configuration does carry the identity, so
+# this pins the Deployment half of the check independently of the
+# registration half that external-consumer-release covers.
+crdPresent: true
+releaseState: not installed

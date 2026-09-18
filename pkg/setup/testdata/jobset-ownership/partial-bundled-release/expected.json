@@ -1,0 +1,8 @@
+{
+  "mode": "bundled",
+  "evidence": [
+    "exact Trainer release manifest and partial live JobSet resources agree"
+  ],
+  "installJobSet": true,
+  "manifestCalls": 1
+}

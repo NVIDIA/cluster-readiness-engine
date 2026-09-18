@@ -1,0 +1,95 @@
+# A JobSet chart release that happens to be named kubeflow-trainer, in a
+# namespace that is not kubeflow-system. Helm release names are namespace
+# scoped, so this is external however closely the name matches.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubeflow-trainer-jobset-controller
+  labels:
+    helm.sh/chart: jobset-0.10.1
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/instance: kubeflow-trainer
+    app.kubernetes.io/component: controller
+  annotations:
+    meta.helm.sh/release-name: kubeflow-trainer
+    meta.helm.sh/release-namespace: external-system
+rules:
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets]
+    verbs: [get, list, watch]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: jobset-validating-webhook-configuration
+  labels:
+    helm.sh/chart: jobset-0.10.1
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/instance: kubeflow-trainer
+    app.kubernetes.io/component: webhook
+  annotations:
+    meta.helm.sh/release-name: kubeflow-trainer
+    meta.helm.sh/release-namespace: external-system
+webhooks:
+  - name: validate-jobset-x-k8s-io-v1alpha2-jobset.x-k8s.io
+    clientConfig:
+      service:
+        name: kubeflow-trainer-jobset-webhook-service
+        namespace: external-system
+    rules:
+      - apiGroups: [jobset.x-k8s.io]
+        apiVersions: [v1alpha2]
+        operations: [CREATE, UPDATE]
+        resources: [jobsets]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubeflow-trainer-jobset-webhook-service
+  namespace: external-system
+  labels:
+    helm.sh/chart: jobset-0.10.1
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/instance: kubeflow-trainer
+    app.kubernetes.io/component: webhook
+  annotations:
+    meta.helm.sh/release-name: kubeflow-trainer
+    meta.helm.sh/release-namespace: external-system
+spec:
+  selector:
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/instance: kubeflow-trainer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubeflow-trainer-jobset-controller
+  namespace: external-system
+  labels:
+    helm.sh/chart: jobset-0.10.1
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/instance: kubeflow-trainer
+    app.kubernetes.io/component: controller
+  annotations:
+    meta.helm.sh/release-name: kubeflow-trainer
+    meta.helm.sh/release-namespace: external-system
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: jobset
+      app.kubernetes.io/instance: kubeflow-trainer
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: jobset
+        app.kubernetes.io/instance: kubeflow-trainer
+        app.kubernetes.io/component: controller
+    spec:
+      containers:
+        - name: manager
+          image: example.invalid/jobset:test

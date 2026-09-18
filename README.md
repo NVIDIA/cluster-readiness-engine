@@ -3,6 +3,7 @@
 [![CI](https://github.com/NVIDIA/cluster-readiness-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/NVIDIA/cluster-readiness-engine/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.27+-00ADD8.svg)](go.mod)
+[![Go Reference](https://pkg.go.dev/badge/github.com/NVIDIA/cluster-readiness-engine.svg)](https://pkg.go.dev/github.com/NVIDIA/cluster-readiness-engine)
 
 New GPU clusters often contain faulty nodes, and those faults surface only under real distributed load. NVCRE is a Kubernetes controller that certifies GPU clusters before production workloads run on them. It runs real training and communication workloads across topology-aware node groups, measures performance, detects hardware failures, and reports every bad node with a reason. Quarantine is left to your platform: NVCRE never cordons, taints, or otherwise modifies a node.
 
@@ -231,19 +232,29 @@ NVCRE certifies clusters with burn-in workloads and reports the nodes that fail.
 - A general workload scheduler or a training platform for production pipelines.
 - A benchmark leaderboard. The measurements exist to find faults, not to rank hardware.
 
+## How NVCRE relates to other tools
+
+- The [NVIDIA GPU Operator](https://github.com/NVIDIA/gpu-operator) is a prerequisite, not a component: it provides the driver stack and the GPU node labels (such as `nvidia.com/gpu.product`) that NVCRE reads for architecture detection, and NVCRE does not manage it.
+- [Kubeflow Trainer](https://github.com/kubeflow/trainer) is the execution engine NVCRE drives: the Job controller creates TrainJobs through an adapter, and `setup init` installs Trainer as a dependency, not an alternative.
+- DCGM diagnostics check the health of a single node; NVCRE complements them with multi-node distributed burn-in, and its `diagnostics/dcgm-level4` catalog entry runs DCGM level 4 diagnostics as one certification category.
+- [node-problem-detector](https://github.com/kubernetes/node-problem-detector) and node health check operators do continuous production monitoring with remediation, whereas NVCRE is a one-shot pre-production certification pass that watches nodes only while its workloads run and never cordons, taints, or modifies a node.
+- What NVCRE combines that none of the above do alone: a catalog of real training and communication burn-in workloads, topology-aware node partitioning with adaptive fault isolation, and per-node failure attribution with a reason for every failed node.
+
 ## Documentation
 
-- [Architecture Decision Records](docs/designs/) explain the design (ADR-000 to ADR-069).
+- [Documentation site](https://docs.nvidia.com/cluster-readiness-engine) is the hosted documentation, versioned per release.
+- [API reference](https://pkg.go.dev/github.com/NVIDIA/cluster-readiness-engine) is generated from the Go source.
+- [Operations guide](docs/operations/) covers deployment, monitoring, metrics, and troubleshooting.
+- [examples/](examples/) contains runnable manifests, each with the command to run it.
+- [Architecture Decision Records](docs/designs/) explain the design (ADR-000 to ADR-080).
 - [CONTRIBUTING.md](CONTRIBUTING.md) describes the contribution workflow.
 - [GOVERNANCE.md](GOVERNANCE.md) and [MAINTAINERS.md](MAINTAINERS.md) describe who decides what.
 - [RELEASE.md](RELEASE.md) describes how a release is cut and how to verify one.
 - [SECURITY.md](SECURITY.md) describes how to report a vulnerability.
 
-A hosted documentation site is in progress.
-
 ## Roadmap
 
-- Hosted documentation site
+- Declarative labels on generated workload objects, so placement systems such as Kueue and KAI Scheduler can select a queue from the workload's metadata, designed in [ADR-079](docs/designs/079-workload-object-labels.md).
 
 ## Community
 

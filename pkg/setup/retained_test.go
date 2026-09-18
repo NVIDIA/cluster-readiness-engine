@@ -61,7 +61,11 @@ func TestPrintRetainedResources(t *testing.T) {
 		c := builder.Build()
 
 		var out bytes.Buffer
-		printRetainedResources(context.Background(), c, parseSkipPhases(cfg.SkipPhases), &out)
+		skip, err := parseSkipPhases(cfg.SkipPhases, phaseCR, phaseHelm, phaseDeps)
+		if err != nil {
+			return err
+		}
+		printRetainedResources(context.Background(), c, skip, &out)
 		tc.Actual = out.String()
 		return nil
 	})

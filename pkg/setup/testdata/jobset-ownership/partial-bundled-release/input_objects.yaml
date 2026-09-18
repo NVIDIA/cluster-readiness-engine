@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jobset-controller
+  namespace: kubeflow-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    meta.helm.sh/release-name: kubeflow-trainer
+    meta.helm.sh/release-namespace: kubeflow-system
+spec:
+  selector:
+    matchLabels: {app: jobset}
+  template:
+    metadata:
+      labels: {app: jobset}
+    spec:
+      containers:
+        - name: manager
+          image: example.invalid/jobset:test

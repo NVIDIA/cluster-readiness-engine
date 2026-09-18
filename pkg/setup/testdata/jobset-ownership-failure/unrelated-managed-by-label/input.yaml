@@ -1,0 +1,6 @@
+# Synthetic negative guarding the widened ownership-key alternation. The
+# label clause is now accepted, so an unrelated object failing the same
+# validation must still stay generic: the class is bound to a concrete
+# chart-derived JobSet kind and name, not to the presence of an ownership key.
+transcript: |
+  Error: Unable to continue with install: ConfigMap "trainer-config" in namespace "kubeflow-system" exists and cannot be imported into the current release: invalid ownership metadata; label validation error: missing key "app.kubernetes.io/managed-by": must be set to "Helm"

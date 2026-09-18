@@ -1,0 +1,175 @@
+# The upstream kustomize install, `kubectl apply -f
+# https://github.com/kubernetes-sigs/jobset/releases/download/v0.12.0/manifests.yaml`.
+# Identities and labels are taken from that published build: ClusterRole
+# `jobset-manager-role` (the only ClusterRole there carrying jobset.x-k8s.io
+# rules), Deployment `jobset-controller-manager`, the two hardcoded webhook
+# configuration names, and two webhooks per configuration — one for JobSets,
+# one for their Pods — both against a single `jobset-webhook-service`.
+#
+# `app.kubernetes.io/managed-by: kustomize` is what keeps this channel
+# distinguishable from `helm template | kubectl apply`, which stamps
+# `managed-by: Helm` without any release record and stays ambiguous.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: jobset-manager-role
+  uid: manager-role-uid
+  labels:
+    app.kubernetes.io/instance: jobset
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: jobset
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list, watch]
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets/finalizers]
+    verbs: [get, patch, update]
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets/status]
+    verbs: [get, patch, update]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: jobset-mutating-webhook-configuration
+  uid: mutating-uid
+  labels:
+    app.kubernetes.io/instance: jobset
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: jobset
+webhooks:
+  - name: mjobset.kb.io
+    admissionReviewVersions: [v1]
+    failurePolicy: Fail
+    sideEffects: None
+    clientConfig:
+      service:
+        name: jobset-webhook-service
+        namespace: jobset-system
+        path: /mutate-jobset-x-k8s-io-v1alpha2-jobset
+    rules:
+      - apiGroups: [jobset.x-k8s.io]
+        apiVersions: [v1alpha2]
+        operations: [CREATE]
+        resources: [jobsets]
+  - name: mpod.kb.io
+    admissionReviewVersions: [v1]
+    failurePolicy: Fail
+    sideEffects: None
+    clientConfig:
+      service:
+        name: jobset-webhook-service
+        namespace: jobset-system
+        path: /mutate--v1-pod
+    objectSelector:
+      matchExpressions:
+        - key: jobset.sigs.k8s.io/jobset-name
+          operator: Exists
+    rules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [pods]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: jobset-validating-webhook-configuration
+  uid: validating-uid
+  labels:
+    app.kubernetes.io/instance: jobset
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: jobset
+webhooks:
+  - name: vjobset.kb.io
+    admissionReviewVersions: [v1]
+    failurePolicy: Fail
+    sideEffects: None
+    clientConfig:
+      service:
+        name: jobset-webhook-service
+        namespace: jobset-system
+        path: /validate-jobset-x-k8s-io-v1alpha2-jobset
+    rules:
+      - apiGroups: [jobset.x-k8s.io]
+        apiVersions: [v1alpha2]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [jobsets]
+  - name: vpod.kb.io
+    admissionReviewVersions: [v1]
+    failurePolicy: Fail
+    sideEffects: None
+    clientConfig:
+      service:
+        name: jobset-webhook-service
+        namespace: jobset-system
+        path: /validate--v1-pod
+    objectSelector:
+      matchExpressions:
+        - key: jobset.sigs.k8s.io/jobset-name
+          operator: Exists
+    rules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [pods]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jobset-webhook-service
+  namespace: jobset-system
+  labels:
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/created-by: jobset
+    app.kubernetes.io/instance: jobset
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/part-of: jobset
+spec:
+  ports:
+    - port: 443
+      protocol: TCP
+      targetPort: 9443
+  selector:
+    app.kubernetes.io/instance: jobset
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: jobset
+    control-plane: controller-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jobset-controller-manager
+  namespace: jobset-system
+  labels:
+    app.kubernetes.io/component: manager
+    app.kubernetes.io/created-by: jobset
+    app.kubernetes.io/instance: jobset
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: jobset
+    app.kubernetes.io/part-of: jobset
+    control-plane: controller-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: jobset
+      app.kubernetes.io/managed-by: kustomize
+      app.kubernetes.io/name: jobset
+      control-plane: controller-manager
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: jobset
+        app.kubernetes.io/managed-by: kustomize
+        app.kubernetes.io/name: jobset
+        control-plane: controller-manager
+    spec:
+      containers:
+        - name: manager
+          image: example.invalid/jobset:test

@@ -32,6 +32,13 @@ var cosignSignCmds = regexp.MustCompile(`(?m)(?:^|[\s;|&])(?:retry\s+)?cosign\s+
 
 var attestProvenanceAction = regexp.MustCompile(`(^|/)actions/attest-build-provenance(@|$)`)
 
+// ossf/scorecard-action with publish_results: true Sigstore-signs the results
+// it publishes to the OpenSSF REST API with a Fulcio-bound OIDC identity; the
+// action requires id-token: write for exactly that signing step. It signs its
+// own scan output, never release artifacts, so it does not widen the published
+// identity contract that pins attest.yml as the sole artifact signer.
+var scorecardPublishAction = regexp.MustCompile(`(^|/)ossf/scorecard-action(@|$)`)
+
 // shaRef is a full 40-character commit SHA. Tags, branches, and short SHAs are
 // all mutable (or mutable-enough) references and fail the pin check.
 var shaRef = regexp.MustCompile(`^[0-9a-f]{40}$`)
@@ -98,9 +105,10 @@ func TestAttestIsSoleSigner(t *testing.T) {
 // policyStep is the subset of a workflow/composite step the signer checks
 // reason about.
 type policyStep struct {
-	Name string `json:"name"`
-	Run  string `json:"run"`
-	Uses string `json:"uses"`
+	Name string         `json:"name"`
+	Run  string         `json:"run"`
+	Uses string         `json:"uses"`
+	With map[string]any `json:"with"`
 }
 
 func assertStepsForbidForeignSigners(t *testing.T, where string, allowCosign bool, steps []policyStep) {
@@ -278,6 +286,11 @@ func jobSigns(uses string, steps []policyStep) bool {
 			return true
 		}
 		if attestProvenanceAction.MatchString(step.Uses) {
+			return true
+		}
+		// Scoped to publish_results: true; without it the action does not
+		// sign and its job must not mint an OIDC token.
+		if scorecardPublishAction.MatchString(step.Uses) && step.With["publish_results"] == true {
 			return true
 		}
 	}

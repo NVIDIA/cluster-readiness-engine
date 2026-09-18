@@ -1,0 +1,9 @@
+# A matching CRD can retain stored objects while exposing no served REST
+# version. Recovery must refuse before uninstall because it cannot list them.
+releaseState: failed
+seedRecovery: true
+unservedCRD: trainjobs.trainer.kubeflow.org
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: cannot patch Secret "kubeflow-trainer-webhook-cert" in namespace kubeflow-system: conflict with manager: .data.tls.crt

@@ -1,0 +1,8 @@
+{
+  "mode": "unknown",
+  "evidence": [
+    "JobSet supporting resources remain: Service/jobset-system/jobset-webhook-service"
+  ],
+  "installJobSet": true,
+  "manifestCalls": 0
+}

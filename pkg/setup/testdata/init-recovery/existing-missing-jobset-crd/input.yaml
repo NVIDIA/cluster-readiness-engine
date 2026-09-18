@@ -1,0 +1,4 @@
+releaseState: deployed
+chartVersion: "2.1.0"
+jobSetCRD: absent
+installResults: []

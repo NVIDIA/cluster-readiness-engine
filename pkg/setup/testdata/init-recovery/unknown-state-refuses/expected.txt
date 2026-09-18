@@ -1,0 +1,17 @@
+[deps] Cannot determine the Kubeflow Trainer release state: helm status kubeflow-trainer: Kubernetes cluster unreachable
+[deps] Resolve the Helm release-state inspection failure, then rerun setup init. No Trainer mutation was attempted.
+[deps] Alternatively, independently verify the existing Trainer installation and JobSet ownership before managing Trainer manually.
+[deps] Continue with: nvcrectl setup init --skip-phases=deps
+[deps] This skips Trainer setup only and still installs NVCRE. A dev CLI build requires --version <nvcre-chart-version>.
+[deps] Dev-build command: nvcrectl setup init --skip-phases=deps --version <nvcre-chart-version>
+[deps] The NVCRE chart must be reachable; optionally use --chart-ref <nvcre-chart-reference> with registry access.
+
+--- result ---
+error: [deps] cannot determine Kubeflow Trainer release state: helm status kubeflow-trainer: Kubernetes cluster unreachable
+installCalls: 0
+installModes: []
+uninstallCalls: 0
+crdDeletes: 0
+jobSetCRDPresent: false
+namespacePresent: false
+trainerCRDsPresent: []

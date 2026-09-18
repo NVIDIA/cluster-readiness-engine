@@ -92,7 +92,7 @@ func applyChartCRDs(ctx context.Context, c client.Client, manifests []byte, out 
 		}
 
 		obj := &unstructured.Unstructured{Object: probe}
-		if obj.GetKind() != "CustomResourceDefinition" {
+		if obj.GetKind() != kindCustomResourceDefinition {
 			continue
 		}
 		if err := c.Apply(ctx, client.ApplyConfigurationFromUnstructured(obj),

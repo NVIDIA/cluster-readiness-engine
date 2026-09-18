@@ -1,0 +1,25 @@
+# The other regression direction for the ownership token. The external JobSet
+# controller Deployment is replaced between the initial gate and the
+# post-confirmation gate by an identically named Deployment with a new UID,
+# which is what a redeploy of the external release looks like.
+#
+# Every token part embeds a UID, so the replacement must be caught before
+# `helm uninstall` runs. A token built from names alone would compare equal and
+# let recovery proceed against a controller it never actually verified.
+# uninstallCalls and crdDeletes stay 0.
+releaseState: failed
+seedRecovery: true
+extendedDiscovery: true
+autoApprove: false
+confirmInput: "yes\n"
+confirmMutation: replace-external-controller
+releaseManifest: |
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: kubeflow-trainer-controller-manager
+    namespace: kubeflow-system
+installResults:
+  - fail: true
+    output: |
+      Error: UPGRADE FAILED: cannot patch Secret "kubeflow-trainer-webhook-cert" in namespace kubeflow-system: conflict with manager: .data.tls.crt

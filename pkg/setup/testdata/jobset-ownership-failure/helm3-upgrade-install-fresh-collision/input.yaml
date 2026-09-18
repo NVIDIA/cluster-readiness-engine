@@ -1,0 +1,30 @@
+# Captured on 2026-09-16 with Helm 3.22.0 and Kind Kubernetes 1.37.0.
+# Standalone JobSet chart 0.10.1 digest:
+# sha256:e289973c8b9bac8f8934bd34f35d5e4109f45a4a31a52ba0bb39e26a9a2173c5
+# Trainer chart 2.2.1 digest:
+# sha256:8e8e3de0257be804f60dbc8e6784eaddb64b2e158a46cade30ca18b6030183b1
+#
+# This is the transcript NVCRE's own first install produces. The other
+# fixtures in this directory were captured from bare `helm install` and bare
+# `helm upgrade`, which wrap the failure as `INSTALLATION FAILED:` and
+# `UPGRADE FAILED:`. `installTrainerHelmRelease` always runs
+# `helm upgrade --install`, and on its fresh-install path Helm emits neither
+# wrap: `cmd/helm/upgrade.go` returns `runInstall`'s error unchanged, while
+# the `INSTALLATION FAILED` wrap lives only in `cmd/helm/install.go`. The
+# conflict itself is wrapped as `Unable to continue with install` by
+# `pkg/action/install.go`. Verified identical in Helm v3.19.2 and v3.22.0.
+#
+# The second command is the pinned NVCRE invocation, with the release absent
+# so the install arm runs. Reproduce only in a disposable cluster, with an
+# isolated Helm plugin directory:
+#   export HELM_PLUGINS=<empty-plugin-directory>
+#   helm install jobset oci://registry.k8s.io/jobset/charts/jobset --version 0.10.1 --namespace jobset-system --create-namespace --set fullnameOverride=jobset --kubeconfig <kubeconfig> --kube-context <context>
+#   helm upgrade --install kubeflow-trainer oci://ghcr.io/kubeflow/charts/kubeflow-trainer --namespace kubeflow-system --create-namespace --version 2.2.1 --set 'manager.tolerations[0].operator=Exists' --set 'jobset.controller.tolerations[0].operator=Exists' --wait --timeout 5m0s --kubeconfig <kubeconfig> --kube-context <context>
+#
+# Helm's own first line records which arm ran, so the fixture cannot be
+# mistaken for an upgrade of an existing release.
+transcript: |
+  Release "kubeflow-trainer" does not exist. Installing it now.
+  Pulled: ghcr.io/kubeflow/charts/kubeflow-trainer:2.2.1
+  Digest: sha256:8e8e3de0257be804f60dbc8e6784eaddb64b2e158a46cade30ca18b6030183b1
+  Error: Unable to continue with install: ClusterRole "jobset-controller" in namespace "" exists and cannot be imported into the current release: invalid ownership metadata; annotation validation error: key "meta.helm.sh/release-name" must equal "kubeflow-trainer": current value is "jobset"; annotation validation error: key "meta.helm.sh/release-namespace" must equal "kubeflow-system": current value is "jobset-system"

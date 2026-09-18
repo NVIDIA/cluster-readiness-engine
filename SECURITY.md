@@ -25,6 +25,7 @@ NVIDIA offers acknowledgement for externally reported security issues under our 
 
 - Reports submitted through the channels above are **acknowledged within 5 business days**.
 - NVIDIA PSIRT coordinates triage, remediation, and disclosure with the reporter under the [coordinated vulnerability disclosure policy](https://www.nvidia.com/en-us/security/psirt-policies/).
+- Reports are handled under embargo: NVIDIA PSIRT coordinates the disclosure date with the reporter, and details are not published before a fix or mitigation is available, consistent with the coordinated vulnerability disclosure policy linked above.
 
 ## Supported Versions
 
@@ -80,6 +81,21 @@ We credit reporters of confirmed vulnerabilities in the release notes of the fix
   ```
 
   Use `--certificate-identity`, not `--certificate-identity-regexp`. An identity that names no workflow and no ref also accepts images built from branches, which are not releases and are labelled non-production when they are signed.
+
+  The release signing identity is minted only when `attest.yml` runs on a `refs/tags/v*`
+  caller ref. On `main`, every `workflow_dispatch` caller of that workflow carries a
+  ref guard (or `release.yml`'s `GITHUB_REF` check) so a dispatch at a tag cannot reach
+  the attestor through those callers. **Existing release tags cut before that guard
+  landed — notably `v0.2.0`, `v0.2.0-rc.1`, and `v0.2.0-rc.2` — still ship the older
+  `attest-selftest.yml`, which gates on repository alone and passes `allow_untagged:
+  true`.** A dispatch at one of those refs uses the workflow files *on that tag*, not
+  the fixed copies on `main`, and can still mint `attest.yml@refs/tags/<that-tag>`.
+  Tag protection / the `v*` ruleset does not cover this path (no tag is created or
+  moved). Merging the `main` fix alone does not close [#340](https://github.com/NVIDIA/cluster-readiness-engine/issues/340)
+  for those refs; the residual control is the repository-level disable of *Attest
+  Self-Test* documented in [RELEASE.md](RELEASE.md#existing-tag-attest-selftest-rollout)
+  (re-enabling reopens the old-tag path).
+
 
   Retrieve the provenance with `cosign verify-attestation --type slsaprovenance1` against the index digest, and a platform's SBOM with `--type cyclonedx` against that platform's manifest digest (`crane digest --platform linux/amd64 "${IMAGE}:${TAG}"`).
 
