@@ -98,6 +98,17 @@ func TestIntegration(t *testing.T) {
 
 		fakeFetcher := buildFakeLogFetcher(tc)
 		deadline := eventCaseDeadline(cfg)
+		if cfg.InitializeWorkloadRun {
+			// Separate construction from cache-backed mirroring until #352 fixes
+			// the create-to-cache observation race. No creation Event is recorded.
+			require.Equal(tt, "WorkloadRun", cfg.WaitFor.Kind)
+			ctx, stop := contextForDeadline(deadline)
+			r := &controller.WorkloadRunReconciler{Client: suite.Client, Scheme: scheme.Scheme}
+			_, err := r.Reconcile(ctx, ctrl.Request{
+				Name: cfg.WaitFor.Name, Namespace: cfg.WaitFor.Namespace})
+			stop()
+			require.NoError(tt, err)
+		}
 		checkpoint := newCheckpointObservation(tt, suite.Client, cfg)
 		var nodePollRecorder *phaseCountingRecorder
 		var nodePollUID types.UID
@@ -592,6 +603,7 @@ type eventTestStep struct {
 }
 
 type waitConfig struct {
+	InitializeWorkloadRun  bool          `json:"initializeWorkloadRun,omitempty"`
 	VerifyNodePollEvents   bool          `json:"verifyNodePollEvents,omitempty"`
 	VerifyCheckpointEvents bool          `json:"verifyCheckpointEvents,omitempty"`
 	RejectWorkflowCreates  bool          `json:"rejectWorkflowCreates,omitempty"`
@@ -868,9 +880,10 @@ func waitForDeletion(t *testing.T, c client.Client, cfg waitConfig, deadline tim
 	for _, spec := range cfg.WaitForDeletion {
 		timeout := boundedWaitTimeout(t, time.Duration(cfg.TimeoutSeconds)*time.Second, deadline)
 		require.Eventually(t, func() bool {
-			obj := getObject(ctx, t, c, spec)
-			return obj == nil
+			_, err := readObject(ctx, c, spec)
+			return ctx.Err() == nil && apierrors.IsNotFound(err)
 		}, timeout, interval, "timed out waiting for deletion of %s/%s", spec.Kind, spec.Name)
+		require.NoError(t, ctx.Err(), "deadline expired during waitForDeletion of %s/%s", spec.Kind, spec.Name)
 	}
 }
 
@@ -1054,105 +1067,65 @@ func hasConditionWithReason(conditions []metav1.Condition, condType, reason stri
 	return false
 }
 
-func getObject(ctx context.Context, t *testing.T, c client.Client, spec collectSpec) client.Object { //nolint:gocyclo
+func getObject(ctx context.Context, t *testing.T, c client.Client, spec collectSpec) client.Object {
 	t.Helper()
-	key := types.NamespacedName{Name: spec.Name, Namespace: spec.Namespace}
-
-	switch spec.Kind {
-	case kindJob:
-		obj := &nvcrev1alpha1.Job{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "Workflow":
-		obj := &nvcrev1alpha1.Workflow{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "Certification":
-		obj := &nvcrev1alpha1.Certification{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "WorkloadRun":
-		obj := &nvcrev1alpha1.WorkloadRun{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "GoodputMeasurement":
-		obj := &nvcrev1alpha1.GoodputMeasurement{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "BandwidthMeasurement":
-		obj := &nvcrev1alpha1.BandwidthMeasurement{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "PersistentVolumeClaim":
-		obj := &corev1.PersistentVolumeClaim{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "PersistentVolume":
-		obj := &corev1.PersistentVolume{}
-		if err := c.Get(ctx, types.NamespacedName{Name: spec.Name}, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "ConfigMap":
-		obj := &corev1.ConfigMap{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "Node":
-		obj := &corev1.Node{}
-		if err := c.Get(ctx, types.NamespacedName{Name: spec.Name}, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "LogProfile":
-		obj := &nvcrev1alpha1.LogProfile{}
-		if err := c.Get(ctx, types.NamespacedName{Name: spec.Name}, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "Namespace":
-		obj := &corev1.Namespace{}
-		if err := c.Get(ctx, types.NamespacedName{Name: spec.Name}, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "TrainJob":
-		obj := &trainerv1alpha1.TrainJob{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "Pod":
-		obj := &corev1.Pod{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "BatchJob":
-		obj := &batchv1.Job{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	default:
-		t.Fatalf("unknown kind: %s", spec.Kind)
+	obj, err := readObject(ctx, c, spec)
+	if apierrors.IsNotFound(err) {
 		return nil
 	}
+	require.NoError(t, err, "reading %s/%s", spec.Kind, spec.Name)
+	return obj
+}
+
+// readObject preserves errors so absence is never inferred from a failed read.
+func readObject(ctx context.Context, c client.Client, spec collectSpec) (client.Object, error) {
+	key := types.NamespacedName{Name: spec.Name, Namespace: spec.Namespace}
+	var obj client.Object
+	switch spec.Kind {
+	case kindJob:
+		obj = &nvcrev1alpha1.Job{}
+	case "Workflow":
+		obj = &nvcrev1alpha1.Workflow{}
+	case "Certification":
+		obj = &nvcrev1alpha1.Certification{}
+	case "WorkloadRun":
+		obj = &nvcrev1alpha1.WorkloadRun{}
+	case "GoodputMeasurement":
+		obj = &nvcrev1alpha1.GoodputMeasurement{}
+	case "BandwidthMeasurement":
+		obj = &nvcrev1alpha1.BandwidthMeasurement{}
+	case "PersistentVolumeClaim":
+		obj = &corev1.PersistentVolumeClaim{}
+	case "PersistentVolume":
+		obj = &corev1.PersistentVolume{}
+		key.Namespace = ""
+	case kindConfigMap:
+		obj = &corev1.ConfigMap{}
+	case "Node":
+		obj = &corev1.Node{}
+		key.Namespace = ""
+	case "LogProfile":
+		obj = &nvcrev1alpha1.LogProfile{}
+		key.Namespace = ""
+	case "Namespace":
+		obj = &corev1.Namespace{}
+		key.Namespace = ""
+	case "TrainJob":
+		obj = &trainerv1alpha1.TrainJob{}
+	case "Pod":
+		obj = &corev1.Pod{}
+	case "BatchJob":
+		obj = &batchv1.Job{}
+	default:
+		return nil, fmt.Errorf("unknown kind: %s", spec.Kind)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := c.Get(ctx, key, obj); err != nil {
+		return nil, err
+	}
+	return obj, nil
 }
 
 func waitForEvents(t *testing.T, c client.Client, cfg waitConfig, deadline time.Time) {

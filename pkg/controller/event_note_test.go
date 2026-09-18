@@ -72,3 +72,17 @@ func TestRecorderWrappersBoundEventNotes(t *testing.T) {
 		})
 	}
 }
+
+func TestFormatEventNoteBinaryInput(t *testing.T) {
+	t.Parallel()
+	limit := maxEventNoteBytes - len(eventNoteTruncationSuffix)
+	for _, input := range []string{
+		strings.Repeat("\x80", 1200),
+		strings.Repeat("a", 500) + strings.Repeat("\x80", 700),
+		strings.Repeat("a", limit-1) + "\xff" + strings.Repeat("\x80", 100),
+	} {
+		got := formatEventNote("%s", input)
+		require.Equal(t, input[:limit]+eventNoteTruncationSuffix, got)
+		require.Len(t, got, maxEventNoteBytes)
+	}
+}

@@ -586,15 +586,22 @@ Both facts drive the scope decision below.
   client: the current CRD rejects an empty framework before reconciliation.
   An admission golden pins that rejection; do not weaken the CRD to make the
   guard reachable in an Event integration fixture.
-- **WorkloadRun success testing-method amendment:** start the success fixture
+- **Known WorkloadRun lifecycle coverage gap pending #352:** start the success fixture
   from a persisted InProgress status and an existing Succeeded Workflow, then
   assert the WorkloadRun's `Normal / WorkflowSucceeded` transition. Creating
   both resources under the running manager exposes a pre-existing informer
   ordering race in which the WorkloadRun can observe its new `workflowRef`
   before the Workflow enters the cache and incorrectly persist
-  `Failed / WorkflowDeleted`. The `workloadrun-mpi` integration golden retains
-  API-level coverage of `Normal / WorkflowCreated`, while the WorkloadRun
-  recorder test covers the full InProgress-to-Succeeded sequence.
+  `Failed / WorkflowDeleted`. This proves only the terminal success Event,
+  not the required full cache-backed creation-to-success lifecycle. The
+  fake-client recorder test pins helper deduplication, not `Reconcile` or
+  API-level creation coverage, and is not a substitute for that requirement.
+  `workloadrun-mpi` similarly runs its initial reconciliation with the direct
+  API client before starting the manager (`initializeWorkloadRun`), preserving
+  MPI construction checks while asserting only the terminal `WorkflowFailed`
+  Event. It does not accept `WorkflowDeleted` as a valid expected outcome.
+  Restore full lifecycle integration coverage after #352; the per-tier
+  InProgress-then-Succeeded requirement below remains outstanding for WorkloadRun.
 - **Checkpoint restart testing-method amendment:** retain the integration
   requirement that restart emits no additional InProgress event, using a
   recorder observer alongside the running manager and the existing Job state
@@ -641,7 +648,8 @@ Both facts drive the scope decision below.
     and write `Failed / WorkloadFailed` depending on reconciliation ordering,
     but that teardown artifact is not part of the promised event sequence;
   - a Job threshold case in each direction, both asserting the Job stays
-    `Succeeded`: after `Normal / WorkloadCreated`, a violation shows `Normal /
+    `Succeeded`: these fixtures pre-create the TrainJob and do not assert
+    `WorkloadCreated`. A violation shows `Normal /
     WorkloadCompleted` then `Warning / ThresholdViolated` and no Job `Failed`
     row, with the owning Workflow's `Failed / JobValidationFailed` row in the
     same case; a pass shows `Normal / WorkloadCompleted` then `Normal /
@@ -909,8 +917,14 @@ and at flush time. Dedup must be a property of the emit decision.
 - **Known follow-up:** [Issue #352](https://github.com/NVIDIA/cluster-readiness-engine/issues/352)
   tracks the pre-existing informer-ordering race in which a WorkloadRun can
   mistake a transient Workflow cache miss for deletion and persist
-  `Failed / WorkflowDeleted`. This implementation hardens its success fixture
+  `Failed / WorkflowDeleted`. This implementation hardens its Event fixtures
   but deliberately leaves that controller behavior to the follow-up.
+  **Release prerequisite:** work on #352 immediately after this PR. Do not cut
+  a release containing ADR-080's implementation until both changes have landed
+  and the affected lifecycle fixtures pass repeated race-instrumented runs.
+  Restore the full WorkloadRun creation-to-success integration assertion as
+  part of #352. Separate PRs are a scope boundary, not permission to release
+  the misleading `WorkflowDeleted` Warning before the production fix.
 - `HardwareFailed` and `ValidationFailed` are written by `setJobHardwareFailed`
   and `setJobValidationStatus` through their own `updateStatusWithRetry`
   calls, not through the exclusive-set wrapper. That is why decision 1 gives
