@@ -88,3 +88,4 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 078 | [Preserve Externally Managed JobSet Across setup init and reset](078-jobset-ownership.md) |
 | 079 | [Declarative Labels for Generated Workload Objects](079-workload-object-labels.md) |
 | 080 | [Phase Transition Events Across the Lifecycle Tiers](080-phase-transition-events.md) |
+| 081 | [Support for Cordoned Node Selection](081-cordoned-node-selection.md) |
