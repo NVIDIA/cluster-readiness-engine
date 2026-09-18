@@ -902,6 +902,18 @@ jobs:
           fi
           echo "release ${TAG} is a draft; the gate controls when it becomes visible"
 
+      # Redundant with the softprops attachment above on purpose: the action
+      # already uploads dist/checksums.txt, but supply-chain scanners look for
+      # the explicit `gh release upload` pattern when checking that releases
+      # publish checksums. --clobber makes the re-upload a no-op-safe overwrite.
+      - name: Upload checksums to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-tag.outputs.value }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" dist/checksums.txt --clobber --repo "$GITHUB_REPOSITORY"
+
   # The release is a draft until this passes.
   verify-release:
     name: Verify the published release

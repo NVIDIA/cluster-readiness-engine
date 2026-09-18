@@ -61,7 +61,7 @@ Each failed node entry carries a `reason`:
 | `WorkloadFailed` | The workload exited non-zero or stalled |
 
 <Note>
-Cordoned nodes and nodes reporting fewer allocatable GPUs than the workload requests per node are filtered **before** a Job runs, not attributed as `HardwareFailureDetected`. They appear in `status.orchestration.excludedNodes` with the reason in `exclusionReason` and cause the run to be marked `INCOMPLETE` rather than `Failed`. If **no** matching node can supply the requested GPU count, the run fails immediately with a message naming the requirement and the best available count instead of scheduling pods that would stay `Pending` forever.
+Cordoned nodes and nodes reporting fewer allocatable GPUs than the workload requests per node are filtered **before** a Job runs by default, not attributed as `HardwareFailureDetected`. They appear in `status.orchestration.excludedNodes` with the reason in `exclusionReason` and cause the run to be marked `INCOMPLETE` rather than `Failed`. If **no** matching node can supply the requested GPU count, the run fails immediately with a message naming the requirement and the best available count instead of scheduling pods that would stay `Pending` forever. Operators can opt into targeting cordoned nodes directly by setting `target.taintSelectors` to the `node.kubernetes.io/unschedulable` taint, which also drops the hardware-failure check for the run.
 </Note>
 
 ### Queued (suspended) workloads
