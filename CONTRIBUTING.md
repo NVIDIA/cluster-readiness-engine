@@ -27,7 +27,7 @@ Ways to contribute:
 NVCRE has two main extension points:
 
 - **A new certification category** is one YAML entry at `pkg/catalog/entries/<domain>/<variant>.yaml`. The catalog embeds the entries directory at compile time and registers every entry at startup, so there is no registration code to edit. Follow the existing entries under `pkg/catalog/entries/communication/` as templates.
-- **A new training framework** is an implementation of the `Adapter` interface in `pkg/workload/`, which normalizes each framework's workload to a common `WorkloadPhase` (Pending, Running, Succeeded, Failed). `ForSpec()` selects the adapter based on which `WorkloadSpec` field is set.
+- **A new training framework** is an implementation of the `Adapter` interface in `pkg/workload/`, which normalizes each framework's workload to a common `WorkloadPhase` (Pending, Running, Succeeded, Failed). The adapter alone is not selectable: `ForSpec()` picks the adapter based on which `WorkloadSpec` field is set, so a new framework also needs a field on `WorkloadSpec` in `api/v1alpha1` and a matching case in `ForSpec()`. Changing `WorkloadSpec` is a CRD change; open an issue first.
 
 ## Issue-First Workflow
 

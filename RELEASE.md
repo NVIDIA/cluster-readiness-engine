@@ -175,10 +175,12 @@ A scheduled workflow, [`.github/workflows/prune-images.yml`](.github/workflows/p
 runs weekly and prunes stale untagged image versions from the `manager` package on
 GHCR: superseded digests that development builds leave behind and that no tag points
 at any more. Before deleting anything it builds a keep set by resolving every tag in
-the package to its manifest and collecting every digest that manifest references, so
-the untagged per-platform manifests and attestations that tagged multi-platform
-indexes depend on are never removed. Only untagged versions outside the keep set and
-older than 30 days are deleted; tagged versions are never deleted.
+the package to its manifest, collecting every digest that manifest references, and
+adding every OCI referrer of those digests, so the untagged per-platform manifests,
+attestations, and referrer-attached supply-chain metadata that tagged images depend
+on are never removed. Only untagged versions outside the keep set and older than 30
+days are deleted; tagged versions are never deleted, and the run aborts without
+deleting if the package's tag list changed while the keep set was being built.
 
 A manual dispatch defaults to a dry-run mode that lists what would be deleted without
 deleting anything. Every run logs the untagged versions it considers and each deletion

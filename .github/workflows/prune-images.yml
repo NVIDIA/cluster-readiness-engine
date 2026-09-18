@@ -14,9 +14,14 @@
 # and attestations a tagged multi-platform index references are themselves
 # untagged versions, and removing one breaks every pull of that tag. So the
 # prune builds a keep set first: it resolves every tag in the package to its
-# manifest and collects every digest that manifest references. Only untagged
-# versions that are outside the keep set AND older than 30 days are deleted.
-# Tagged versions are never deleted.
+# manifest, collects every digest that manifest references, and adds every
+# OCI referrer of every kept digest (cosign currently stores signatures and
+# attestations under sha256-<digest> tags, which are protected as tagged
+# versions, but newer bundle formats attach them as untagged referrer
+# manifests instead; the keep set covers both). Only untagged versions that
+# are outside the keep set AND older than 30 days are deleted. Tagged
+# versions are never deleted, and a run aborts before deleting if the
+# package's tag list changed while the keep set was being built.
 #
 # After pruning, the run verifies that every digest in the keep set still
 # resolves in the registry (per-platform manifests and attestations included),
@@ -82,6 +87,35 @@ jobs:
           sort -u keep-digests.txt -o keep-digests.txt
           echo "$(wc -l < keep-digests.txt | tr -d ' ') referenced digest(s) protected"
 
+      # Signatures, provenance, and SBOMs can be attached to a kept digest as
+      # untagged OCI referrer manifests. Protect them too, or a prune would
+      # leave a tag pullable but strip its supply-chain metadata. The subjects
+      # are every tagged manifest digest and every index child collected above.
+      - name: Add OCI referrers to the keep set
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "${VERSIONS_API}?per_page=100" \
+            --jq '.[] | select((.metadata.container.tags | length) > 0) | .name' \
+            | sort -u > tagged-digests.txt
+          sort -u tagged-digests.txt keep-digests.txt > referrer-subjects.txt
+          token="$(curl -fsSL 'https://ghcr.io/token?scope=repository:nvidia/cluster-readiness-engine/manager:pull' | jq -r .token)"
+          while IFS= read -r digest; do
+            # 404 means no referrers for this subject; anything else that
+            # fails aborts the run rather than pruning with a partial view.
+            resp="$(curl -fsSL \
+              -H "Authorization: Bearer ${token}" \
+              -H 'Accept: application/vnd.oci.image.index.v1+json' \
+              "https://ghcr.io/v2/nvidia/cluster-readiness-engine/manager/referrers/${digest}" \
+              || true)"
+            [[ -n "${resp}" ]] || continue
+            printf '%s' "${resp}" \
+              | jq -r '.manifests[]?.digest // empty' >> keep-digests.txt
+          done < referrer-subjects.txt
+          sort -u keep-digests.txt -o keep-digests.txt
+          echo "$(wc -l < keep-digests.txt | tr -d ' ') digest(s) protected including referrers"
+
       # Always printed, so a dry run answers the question it exists to ask,
       # and a real run leaves a record of what was on the block before the
       # delete step decided.
@@ -104,6 +138,17 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run == true }}
         run: |
           set -euo pipefail
+          # A publish that lands while the keep set is being built could
+          # reference digests this run never saw. The under-30-days guard
+          # below already protects freshly pushed manifests; aborting on tag
+          # drift closes the rest. Next week's run prunes with a fresh view.
+          gh api --paginate "${VERSIONS_API}?per_page=100" \
+            --jq '.[] | .metadata.container.tags[]?' | sort -u > tags-now.txt
+          if ! cmp -s tags.txt tags-now.txt; then
+            echo "::error::the package's tag list changed while this run was working; aborting without deleting"
+            diff tags.txt tags-now.txt || true
+            exit 1
+          fi
           cutoff="$(date -u -d '30 days ago' +%s)"
           examined=0 acted=0
           while IFS=$'\t' read -r id created digest; do
