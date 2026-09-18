@@ -1,0 +1,18 @@
+[
+  {
+    "workflow": "labels-cert-communication-742e8",
+    "labels": {
+      "environment": "burn-in",
+      "kueue.x-k8s.io/queue-name": "nccl-queue"
+    },
+    "gangScheduler": null
+  },
+  {
+    "workflow": "labels-cert-communication-8da20",
+    "labels": {
+      "environment": "burn-in",
+      "kueue.x-k8s.io/queue-name": "default-queue"
+    },
+    "gangScheduler": null
+  }
+]

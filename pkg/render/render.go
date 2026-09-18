@@ -27,6 +27,7 @@ import (
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
+	nvcreplatform "github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
 
@@ -161,6 +162,23 @@ func ResolveWorkflowForPlatform(
 	applied, err := controller.ApplyOverridesWithTracking(&workflow.Spec, octx)
 	if err != nil {
 		return nil, fmt.Errorf("apply overrides: %w", err)
+	}
+
+	// Ordinary offline render does not call DryRunCreate, so this resolution
+	// boundary is its only opportunity to reject overrides that leave the
+	// workload metadata or runtime scheduling inconsistent. Without this
+	// check, the command can successfully emit a Workflow whose persisted
+	// gang-scheduling intent says queue A while its resolved runtime uses
+	// queue B. Certification invokes additional transforms after this helper
+	// and validates again there; at this point its gang intent is not yet
+	// persisted, so this still provides the generic workload-label check
+	// without pre-empting those transforms.
+	if err := nvcreplatform.ValidateResolvedJobTemplate(
+		&workflow.Spec.JobTemplate.Spec,
+		workflow.Spec.Dependencies,
+		workflow.Spec.GangScheduler,
+	); err != nil {
+		return nil, fmt.Errorf("validate resolved job template: %w", err)
 	}
 
 	// Clear overrides since they've been resolved.
@@ -353,6 +371,16 @@ func DryRunCreate(ctx context.Context, c client.Client, namespace string,
 	// Build a Job from the template.
 	specCopy := spec.JobTemplate.Spec.DeepCopy()
 
+	// Check the resolved spec against its persisted gang-scheduling intent
+	// before any API request, so a conflicting override is reported as the
+	// conflict it is rather than as whatever the API server makes of
+	// inconsistent manifests. Operates on the copy, like every other
+	// mutation here.
+	if err := nvcreplatform.ValidateResolvedJobTemplate(
+		specCopy, spec.Dependencies, spec.GangScheduler); err != nil {
+		return nil, err
+	}
+
 	// Get the workload adapter.
 	adapter, err := workload.ForSpec(&specCopy.Workload)
 	if err != nil {
@@ -443,7 +471,8 @@ func DryRunCreate(ctx context.Context, c client.Client, namespace string,
 	results = append(results, jobResult)
 
 	// --- 3. Validate workload ---
-	wlObj, err := adapter.Build("dry-run-workload", namespace, &specCopy.Workload)
+	wlObj, err := workload.BuildObject(
+		adapter, "dry-run-workload", namespace, &specCopy.Workload, specCopy.WorkloadMetadata)
 	if err != nil {
 		results = append(results, DryRunResult{
 			Resource: fmt.Sprintf("%s/dry-run-workload", adapter.GVK().Kind),

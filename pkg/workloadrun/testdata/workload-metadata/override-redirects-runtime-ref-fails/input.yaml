@@ -1,0 +1,31 @@
+# An override repointed runtimeRef at a runtime NVCRE was not given, so the
+# contract cannot be checked and the case fails rather than passing unchecked.
+run:
+  metadata:
+    name: wr-ref
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    gangScheduler:
+      schedulerName: kai-scheduler
+      queue: queue-a
+    overrides:
+      - when:
+          platform:
+              equals: aws
+        jobTemplate:
+          spec:
+            workload:
+              trainJob:
+                runtimeRef:
+                  name: somebody-elses-runtime
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch
+platform: aws
+gpuArchitecture: NVIDIA-GB200

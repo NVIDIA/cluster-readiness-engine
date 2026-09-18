@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.categories[0].options.workloadMetadata.labels",
+      "message": "Invalid value: each label key must be a valid Kubernetes label key: an optional DNS-subdomain prefix followed by '/', then a name of at most 63 characters beginning and ending with an alphanumeric character"
+    }
+  ]
+}

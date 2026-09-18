@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The controller half of the construction-time conflict rule. gangScheduler
+# names queue team-a while workloadMetadata sets the same KAI key to team-b.
+# The insert/same/conflict rule has to fail the WorkloadRun itself: the spec
+# is immutable, so no later reconcile could resolve the disagreement, and a
+# retry loop at InProgress would hide the cause. Nothing may be created from
+# a spec that never composed.
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: gpu-node-01
+  annotations: {}
+spec:
+  providerID: "aws://us-east-1a/i-0123456789abcdef0"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: wr-queue-conflict
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  image: nvcr.io/nvidia/pytorch:25.08-py3
+  framework:
+    torch:
+      script: /workspace/train.py
+  numNodes: 1
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: team-a
+  workloadMetadata:
+    labels:
+      kai.scheduler/queue: team-b

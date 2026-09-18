@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# JobTemplateSpec.Spec is a plain JobSpec, so the markers on JobSpec fields land
+# in the Workflow CRD too. This proves the reserved-key rule reaches
+# spec.jobTemplate.spec.workloadMetadata and not only a direct Job.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: val-wf-wm
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workloadMetadata:
+        labels:
+          nvcre.nvidia.com/job: other-job
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+  orchestration:
+    target:
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB

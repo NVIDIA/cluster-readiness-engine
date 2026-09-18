@@ -1,0 +1,8 @@
+# The nvcre.nvidia.com/ prefix carries the Job association the controller uses
+# to find its own workloads.
+workload:
+  trainJob:
+    runtimeRef:
+      name: nccl-runtime
+labels:
+  nvcre.nvidia.com/job: some-other-job

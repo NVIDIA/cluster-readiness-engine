@@ -1,0 +1,15 @@
+{
+  "create": {
+    "accepted": true
+  },
+  "update": {
+    "accepted": false,
+    "causes": [
+      {
+        "type": "FieldValueInvalid",
+        "field": "spec.jobTemplate.spec",
+        "message": "Invalid value: workloadMetadata cannot be added or removed after creation"
+      }
+    ]
+  }
+}

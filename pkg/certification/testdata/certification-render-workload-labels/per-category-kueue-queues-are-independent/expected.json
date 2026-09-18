@@ -1,0 +1,26 @@
+[
+  {
+    "workflow": "labels-cert-communication-742e8",
+    "labels": {
+      "kai.scheduler/queue": "burn-in",
+      "kueue.x-k8s.io/queue-name": "reduce-queue"
+    },
+    "gangScheduler": {
+      "schedulerName": "kai-scheduler",
+      "queue": "burn-in",
+      "queueLabelKey": "kai.scheduler/queue"
+    }
+  },
+  {
+    "workflow": "labels-cert-communication-8da20",
+    "labels": {
+      "kai.scheduler/queue": "burn-in",
+      "kueue.x-k8s.io/queue-name": "gather-queue"
+    },
+    "gangScheduler": {
+      "schedulerName": "kai-scheduler",
+      "queue": "burn-in",
+      "queueLabelKey": "kai.scheduler/queue"
+    }
+  }
+]

@@ -1,0 +1,7 @@
+{
+  "labels": {
+    "kueue.x-k8s.io/queue-name": "gpu-team-a",
+    "trainer.kubeflow.org/framework": "torch"
+  },
+  "sourcesUnchanged": true
+}

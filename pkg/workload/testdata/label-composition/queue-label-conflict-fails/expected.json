@@ -1,0 +1,8 @@
+{
+  "merged": {
+    "kai.scheduler/queue": "some-other-queue"
+  },
+  "metadataNil": false,
+  "insertError": "labels[\"kai.scheduler/queue\"]: conflicting label value \"some-other-queue\", expected \"burn-in-queue\"",
+  "sourcesUnchanged": true
+}

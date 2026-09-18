@@ -753,6 +753,11 @@ type OverrideSpec struct {
 }
 
 // WorkflowSpec defines the desired state of Workflow.
+//
+// The gangScheduler presence rule lives at the struct level for the same
+// reason as JobSpec's workloadMetadata rule: a transition rule scoped to an
+// optional field does not run when that field is added or removed.
+// +kubebuilder:validation:XValidation:rule="has(self.gangScheduler) == has(oldSelf.gangScheduler)",message="gangScheduler cannot be added or removed after creation"
 type WorkflowSpec struct {
 	// namespace is the target namespace for Jobs and dependencies created by this Workflow.
 	// If not specified, the controller auto-generates one.
@@ -782,6 +787,27 @@ type WorkflowSpec struct {
 	// validation defines performance validation and metrics collection.
 	// +optional
 	Validation *ValidationSpec `json:"validation,omitempty"`
+
+	// gangScheduler records the gang-scheduling intent of the WorkloadRun or
+	// Certification that generated this Workflow, with the queue and queue
+	// label key already resolved to their effective values.
+	//
+	// It is a consistency contract, not a second place to configure gang
+	// scheduling. The Workflow controller uses it after overrides resolve to
+	// check that every effective queue label and pod scheduler name in the
+	// Job template and the referenced TrainingRuntime dependency still agrees
+	// with what the owner asked for, and to restore the workload-object queue
+	// label if an override removed it. A conflicting runtime override fails
+	// the Workflow rather than being silently repaired.
+	//
+	// It sits outside jobTemplate, dependencies and orchestration, so no
+	// override can reach it, and it is immutable in both presence and value so
+	// the contract holds across every group and iteration. A rendered Workflow
+	// submitted on its own therefore enforces the same checks without needing
+	// its original WorkloadRun.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="gangScheduler is immutable"
+	GangScheduler *GangSchedulerSpec `json:"gangScheduler,omitempty"`
 }
 
 // WorkflowStatus defines the observed state of Workflow.

@@ -1,0 +1,11 @@
+{
+  "labels": {
+    "kai.scheduler/queue": "team-a",
+    "kueue.x-k8s.io/queue-name": "gpu-team-a"
+  },
+  "gangScheduler": {
+    "schedulerName": "kai-scheduler",
+    "queue": "team-a",
+    "queueLabelKey": "kai.scheduler/queue"
+  }
+}

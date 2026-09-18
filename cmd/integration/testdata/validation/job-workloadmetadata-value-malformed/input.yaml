@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The value half of the syntax contract at admission. Unlike the key grammar,
+# which needs CEL because OpenAPI `pattern` cannot constrain map keys, this
+# comes from the pattern controller-gen emits under additionalProperties for
+# the named WorkloadLabelValue type. A space is not in the label-value grammar.
+#
+# A pattern violation is reported on its own, unlike the maxLength violation in
+# job-workloadmetadata-value-64-rejected, which also draws the "some validation
+# rules were not checked" cause.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: val-wm-bad-value
+  namespace: default
+spec:
+  workloadMetadata:
+    labels:
+      environment: burn in
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime

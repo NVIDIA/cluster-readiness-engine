@@ -1,0 +1,14 @@
+{
+  "error": "spec.jobTemplate.spec.workloadMetadata.labels[\"nvcre.nvidia.com/job\"]: label key is reserved for the controller: \"app.kubernetes.io/managed-by\" and any key under \"nvcre.nvidia.com/\" identify workload ownership",
+  "workloadLabels": {
+    "nvcre.nvidia.com/job": "sneaky"
+  },
+  "runtimeQueueLabels": {
+    "nccl-runtime/launcher/job/kai.scheduler/queue": "queue-a",
+    "nccl-runtime/launcher/pod/kai.scheduler/queue": "queue-a",
+    "nccl-runtime/launcher/schedulerName": "kai-scheduler",
+    "nccl-runtime/node/job/kai.scheduler/queue": "queue-a",
+    "nccl-runtime/node/pod/kai.scheduler/queue": "queue-a",
+    "nccl-runtime/node/schedulerName": "kai-scheduler"
+  }
+}

@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Both collected objects matter. The Job's spec.workloadMetadata.labels must
+# still read "shared-runtime" even though the runtimeRef beside them was
+# rewritten to the suffixed per-job copy. The copy itself must still carry the
+# configured queue on both its Job- and pod-template metadata, because the
+# same substitution would otherwise have suffixed those label values too. The
+# TrainJob closes the Workflow -> Job -> TrainJob chain: it is the object the
+# labels exist for, and it must carry them alongside the controller-owned
+# identification labels.
+waitFor:
+  kind: Workflow
+  name: label-rename-wf
+  namespace: default
+  condition: InProgress
+collect:
+  - kind: Job
+    name: label-rename-wf-job
+    namespace: default
+  - kind: TrainingRuntime
+    name: shared-runtime-998ae-job
+    namespace: default
+  - kind: TrainJob
+    name: label-rename-wf-job-workload
+    namespace: default

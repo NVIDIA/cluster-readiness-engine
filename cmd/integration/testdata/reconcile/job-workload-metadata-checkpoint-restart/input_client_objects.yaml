@@ -1,0 +1,83 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: test-wm-ckpt-logprofile
+spec:
+  timestamp:
+    layout: "2006-01-02T15:04:05.999999999Z"
+  patterns:
+    trainingStep:
+      regex: 'step (?P<globalStep>\d+)'
+      example: "step 100"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-wm-ckpt-restart
+  namespace: default
+spec:
+  workloadMetadata:
+    labels:
+      kai.scheduler/queue: burn-in
+      kueue.x-k8s.io/queue-name: gpu-team-a
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+  checkpoint:
+    pvcName: test-wm-ckpt-pvc
+    maxRestarts: 3
+status:
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-wm-ckpt-restart-workload
+    namespace: default
+---
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-wm-ckpt-restart-workload
+  namespace: default
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - python
+      - train.py
+    numNodes: 1
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: WorkerFailed
+      message: "Worker crashed"
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: GoodputMeasurement
+metadata:
+  name: test-wm-ckpt-restart-gm
+  namespace: default
+spec:
+  jobRef:
+    apiGroup: nvcre.nvidia.com
+    kind: Job
+    name: test-wm-ckpt-restart
+  logProfileRef: test-wm-ckpt-logprofile
+  sampleInterval: 1s
+status:
+  lastCheckpointStep: 100

@@ -1,0 +1,6 @@
+workload:
+  trainJob:
+    runtimeRef:
+      name: nccl-runtime
+labels:
+  "bad key": x

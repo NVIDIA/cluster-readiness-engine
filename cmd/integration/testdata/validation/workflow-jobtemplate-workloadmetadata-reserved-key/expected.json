@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.jobTemplate.spec.workloadMetadata.labels",
+      "message": "Invalid value: labels must not set the controller-owned keys app.kubernetes.io/managed-by or any key under the nvcre.nvidia.com/ prefix"
+    }
+  ]
+}

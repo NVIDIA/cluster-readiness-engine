@@ -1,0 +1,10 @@
+# The two documented integrations at once: Kueue selects the local queue from
+# the TrainJob's own metadata.labels before any pod exists, and Kubeflow's KAI
+# guide puts kai.scheduler/queue at the same level.
+workload:
+  trainJob:
+    runtimeRef:
+      name: nccl-runtime
+labels:
+  kueue.x-k8s.io/queue-name: gpu-team-a
+  kai.scheduler/queue: burn-in

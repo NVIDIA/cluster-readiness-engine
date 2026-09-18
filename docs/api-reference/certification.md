@@ -71,12 +71,61 @@ _Fields documented so far:_
 
 Like the rest of `spec`, `gangScheduler` is immutable after the Certification is created.
 
+When `gangScheduler` is set, its resolved queue is also placed on each category's generated workload object (the `TrainJob`), under `gangScheduler.queueLabelKey`, in addition to the runtime Job- and pod-template placement described above. See [Workload object labels](#workload-object-labels).
+
+## Workload object labels
+
+`workloadMetadata` sets labels on the workload object each category's Job creates — today a Kubeflow `TrainJob`. That object's own `metadata.labels` is where Kueue selects a local queue and where Kubeflow's KAI Scheduler guide documents the queue label, both read before any workload pod exists.
+
+Because `CertificationSpec` inlines the shared category options, the one field is read at two paths: globally at `spec.workloadMetadata` and per category at `spec.categories[].options.workloadMetadata`.
+
+```yaml
+spec:
+  workloadMetadata:
+    labels:
+      environment: burn-in
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        workloadMetadata:
+          labels:
+            kueue.x-k8s.io/queue-name: nccl-queue
+```
+
+That `nccl-all-reduce` category's `TrainJob` receives both `environment: burn-in` and `kueue.x-k8s.io/queue-name: nccl-queue`.
+
+These labels are not pod labels. See [Job workload object labels](job.md#workload-object-labels) for the full contract, reserved keys, limits, and immutability rules.
+
+### Precedence
+
+Unlike the other maps, slices, and pointers in category options — `thresholds`, `resources`, `imagePullSecrets` — workload labels **merge per key** rather than replacing the whole value. The order is:
+
+1. labels already present in the resolved catalog job spec,
+2. global `spec.workloadMetadata.labels`,
+3. per-category `options.workloadMetadata.labels`, and
+4. the resolved `gangScheduler` queue label.
+
+Steps 2 and 3 replace earlier values by key. Step 4 does not overwrite: a missing key is inserted, the same value is accepted, and a different value fails.
+
+The consequence of merging is that a category can **change or add** a key but cannot **remove** a global one — there is no deletion syntax, and an empty string is a real label value. A category needing a wholly different map should not set those keys globally.
+
+### Per-category queue conflicts
+
+`spec.gangScheduler` is global, so every category receives the same resolved queue, including the `default-queue` default. A category that sets that same KAI or Run:ai key to a different value fails, naming the key, both values, and the field path. Per-category Kueue queues remain independent, because `kueue.x-k8s.io/queue-name` is a different key.
+
+<Note>
+A Certification that sets `gangScheduler` and no `workloadMetadata` now emits the resolved queue label — the explicit `queue`, or `default-queue` when omitted — on every category's `TrainJob` as well as on the runtime templates. This is an intended behavior change that aligns the submitted object with Kubeflow's documented KAI placement.
+</Note>
+
 ## Category options
 
 `spec` embeds a set of workload options that apply to every category, and each `spec.categories[]` entry can override them via `options`; the per-category value wins. Options documented so far:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `workloadMetadata` | WorkloadMetadata | Optional. Labels applied to the generated workload object (the `TrainJob`). Settable globally on `spec` and per category under `categories[].options`; unlike the other options the two levels **merge per key**, with the per-category value winning. See [Workload object labels](#workload-object-labels) |
+| `workloadMetadata.labels` | map[string]string | Optional. At most 32 entries after merging and after any `gangScheduler` queue label is inserted — exceeding the cap fails rather than dropping labels. Keys must be valid Kubernetes label keys and values valid Kubernetes label values; `app.kubernetes.io/managed-by` and any key under `nvcre.nvidia.com/` are rejected |
 | `image` | string | Optional. Overrides the workload container image for catalog workloads. Replaces the trainer image in the rendered job template, the primary workload container (`containers[0]`) of every replicated job in the resolved `TrainingRuntime` dependencies, and every init container in those pods whose image exactly equals the primary's pre-override image (the workload-derived inits such as `fix-ssh-permissions` and `megatron-clone`); init containers with a distinct image (such as GCP's `tcpxo-daemon`) and any additional containers keep their catalog images. Applied after the catalog and platform overrides resolve, so it also replaces an image a platform override selects. Settable at the spec level and per category (`categories[].options.image`). **Beware**: on AWS EFA platforms (H100, GB200) the platform overrides land the workers on an `nccl-tests` image that ships the aws-ofi-nccl (EFA) plugin; setting `image` replaces that image, and you then own the EFA OFI plugin being present in the replacement. NVCRE does not restrict which registries or images the field may reference; clusters that require trusted images should enforce that with cluster-wide admission policy (for example Kyverno or the Sigstore policy-controller), which covers this field, `WorkloadRun` `spec.image`, and every other pod alike |
 
 ## Spec immutability

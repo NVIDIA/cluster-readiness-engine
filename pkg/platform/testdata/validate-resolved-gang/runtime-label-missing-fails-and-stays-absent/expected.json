@@ -1,0 +1,9 @@
+{
+  "error": "gangScheduler is configured with queue \"queue-a\" but TrainingRuntime \"nccl-runtime\" replicatedJob \"node\" is missing label \"kai.scheduler/queue\" on template.metadata.labels",
+  "workloadLabels": {
+    "kai.scheduler/queue": "queue-a"
+  },
+  "runtimeQueueLabels": {
+    "nccl-runtime/node/schedulerName": "kai-scheduler"
+  }
+}

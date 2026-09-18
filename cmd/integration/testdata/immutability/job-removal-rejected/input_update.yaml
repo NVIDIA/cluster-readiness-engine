@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Present to absent. The field-level rule does not run at all here, which is
+# why the parent-level presence rule exists.
+#
+# This is also the transition the pair is really there to stop: dropping the
+# field and re-adding it under a different queue. That sequence fails here, at
+# the removal, so the re-addition never happens and needs no case of its own.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: imm-job-remove
+  namespace: default
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime

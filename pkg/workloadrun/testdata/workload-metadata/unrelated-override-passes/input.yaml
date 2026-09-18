@@ -1,0 +1,31 @@
+# An override that touches nothing about scheduling is unaffected: the check only
+# concerns the queue key and the scheduler name.
+run:
+  metadata:
+    name: wr-unrelated
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    gangScheduler:
+      schedulerName: kai-scheduler
+      queue: queue-a
+    workloadMetadata:
+      labels:
+        environment: burn-in
+    overrides:
+      - when:
+          platform:
+              equals: aws
+        jobTemplate:
+          spec:
+            stallMultiplier: 12
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch
+platform: aws
+gpuArchitecture: NVIDIA-GB200

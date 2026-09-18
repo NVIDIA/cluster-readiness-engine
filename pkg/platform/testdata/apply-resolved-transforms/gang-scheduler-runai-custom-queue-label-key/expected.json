@@ -1,0 +1,23 @@
+{
+  "workloadLabels": {
+    "runai/queue": "team-a"
+  },
+  "persistedGangScheduler": {
+    "schedulerName": "runai-scheduler",
+    "queue": "team-a",
+    "queueLabelKey": "runai/queue"
+  },
+  "runtimeQueueLabels": {
+    "nccl-runtime/launcher/job/runai/queue": "team-a",
+    "nccl-runtime/launcher/pod/runai/queue": "team-a",
+    "nccl-runtime/launcher/schedulerName": "runai-scheduler",
+    "nccl-runtime/node/job/runai/queue": "team-a",
+    "nccl-runtime/node/pod/runai/queue": "team-a",
+    "nccl-runtime/node/schedulerName": "runai-scheduler"
+  },
+  "trainerImage": "nvcr.io/nvidia/pytorch:25.01",
+  "runtimeImages": {
+    "nccl-runtime/launcher": "nvcr.io/nvidia/pytorch:25.01",
+    "nccl-runtime/node": "nvcr.io/nvidia/pytorch:25.01"
+  }
+}

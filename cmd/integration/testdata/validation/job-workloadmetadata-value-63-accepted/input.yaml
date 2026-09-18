@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# 63 characters is the Kubernetes label value limit. It reaches the schema as
+# additionalProperties.maxLength via the named WorkloadLabelValue type, since
+# controller-gen has no marker for the values of a map[string]string.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: val-wm-value-63
+  namespace: default
+spec:
+  workloadMetadata:
+    labels:
+      long: vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime

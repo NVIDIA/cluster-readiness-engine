@@ -1,0 +1,7 @@
+{
+  "labels": {
+    "kai.scheduler/queue": "burn-in",
+    "kueue.x-k8s.io/queue-name": "gpu-team-a"
+  },
+  "sourcesUnchanged": true
+}

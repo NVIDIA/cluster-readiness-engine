@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A training entry rather than a communication one. Training entries hardcode
+# schedulerName: default-scheduler and carry PVC and ConfigMap dependencies, so
+# this covers the labels landing on a category whose runtime the gang scheduler
+# has to rewrite.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: labels-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 2
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: training-queue
+  workloadMetadata:
+    labels:
+      environment: burn-in
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 10

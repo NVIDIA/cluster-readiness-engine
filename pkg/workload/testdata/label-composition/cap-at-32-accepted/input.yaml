@@ -1,0 +1,3 @@
+# 32 is the enforced API limit, so exactly 32 passes.
+bounds:
+  labelCount: 32

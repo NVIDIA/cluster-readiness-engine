@@ -1,0 +1,30 @@
+# Preservation inserts nothing. A runtime whose queue label an override removed
+# comes back still missing it, so validation reports the gap rather than having
+# it quietly filled in.
+gangScheduler:
+  schedulerName: kai-scheduler
+  queue: queue-a
+  queueLabelKey: kai.scheduler/queue
+replacements:
+  shared-runtime: shared-runtime-group-0-job
+dependency:
+  apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: shared-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+          - name: node
+            template:
+              spec:
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: queue-a
+                  spec:
+                    schedulerName: kai-scheduler
+                    containers:
+                      - name: node
+                        image: test:latest
