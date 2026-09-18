@@ -243,6 +243,37 @@ if nothing published, commit your work, and tag again.
 **`releases/latest` returns 404.** No stable release exists yet. Use an explicit version
 in the download URL.
 
+## Existing-tag attest-selftest rollout
+
+`attest-selftest.yml` on `main` holds `github.ref` to `refs/heads/main`, so a
+`workflow_dispatch` at a `v*` ref cannot reach `attest.yml` through that caller.
+GitHub selects workflow files from the ref you dispatch at, not from `main`, so
+**tags that still contain the pre-fix workflow remain reachable.**
+
+Affected published tags today: `v0.2.0`, `v0.2.0-rc.1`, `v0.2.0-rc.2` (same
+`attest-selftest.yml` blob; repository gate only, `allow_untagged: true`). Older
+tags without that workflow are out of scope for this path.
+
+Merging the `main` fix does **not** close [#340](https://github.com/NVIDIA/cluster-readiness-engine/issues/340)
+for those refs. Close the residual gap with both of the following before treating
+the trust gap as closed:
+
+1. **Operational mitigation (immediate).** *Attest Self-Test* is disabled at the
+   repository Actions level (`state: disabled_manually`), so GitHub refuses
+   `workflow_dispatch` on it at every ref — including existing vulnerable tags —
+   independently of this merge. That setting is not visible to tests: if someone
+   re-enables the workflow for a smoke run and leaves it on, the old-tag path
+   reopens until the `v0.2.0` series is out of use. Re-enable only for a
+   maintainer smoke run from `main`, then disable again. Do not dispatch at a
+   `v*` ref. The `v*` tag ruleset does not block this path.
+2. **Next release (durable for new tags).** Cut the next `v*` release from
+   `main` after the fix lands. New tags carry the guarded workflow. Do not move
+   or rewrite existing tags to pick up the fix.
+
+The acceptance criterion "dispatching at a `v*` ref does not reach `attest.yml`"
+applies to refs that contain the fix; existing vulnerable tags need the
+mitigation above.
+
 ## See also
 
 - [CONTRIBUTING.md](CONTRIBUTING.md) — how to get a change into `main` before it ships
