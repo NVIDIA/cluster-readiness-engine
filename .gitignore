@@ -34,8 +34,6 @@ go.work
 # OSX
 .DS_Store
 
-examples/
-
 # Hugo site build artifacts
 site/public/
 site/bin/
