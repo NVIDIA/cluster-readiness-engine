@@ -15,6 +15,16 @@ The project is at `v0.x`. Under SemVer that means the public surface can still c
 a minor release. Treat CRD schemas, the `nvcrectl` command line, and Helm values as
 unstable until `v1.0.0`. Breaking changes are called out in the release notes.
 
+Notable changes in each release are summarized in [CHANGELOG.md](CHANGELOG.md); the
+authoritative record is the release notes on each GitHub Release.
+
+## Supported versions
+
+Security and bug fixes land on `main` and ship in the latest release. While NVCRE is
+pre-1.0, only the latest minor release is supported; older releases do not receive
+backported fixes. If you are running an older release and need a fix, upgrade to the
+latest release.
+
 ## Cadence
 
 There is no fixed schedule. NVCRE releases when there is something worth releasing.
@@ -166,6 +176,25 @@ installer equivalents.
 
 Releases up to and including `v0.1.0-rc.7` predate the checksum step and carry no
 `checksums.txt`.
+
+## Registry hygiene
+
+A scheduled workflow, [`.github/workflows/prune-images.yml`](.github/workflows/prune-images.yml),
+runs weekly and prunes stale untagged image versions from the `manager` package on
+GHCR: superseded digests that development builds leave behind and that no tag points
+at any more. Before deleting anything it builds a keep set by resolving every tag in
+the package to its manifest, collecting every digest that manifest references, and
+adding every OCI referrer of those digests, so the untagged per-platform manifests,
+attestations, and referrer-attached supply-chain metadata that tagged images depend
+on are never removed. Only untagged versions outside the keep set and older than 30
+days are deleted; tagged versions are never deleted, and the run aborts without
+deleting if the package's tag list changed while the keep set was being built.
+
+A manual dispatch defaults to a dry-run mode that lists what would be deleted without
+deleting anything. Every run logs the untagged versions it considers and each deletion
+it performs, and finishes by confirming that every digest referenced by a tagged
+manifest still resolves in the registry and by smoke-pulling every release-tagged
+image.
 
 ## Troubleshooting
 

@@ -25,6 +25,7 @@ NVIDIA offers acknowledgement for externally reported security issues under our 
 
 - Reports submitted through the channels above are **acknowledged within 5 business days**.
 - NVIDIA PSIRT coordinates triage, remediation, and disclosure with the reporter under the [coordinated vulnerability disclosure policy](https://www.nvidia.com/en-us/security/psirt-policies/).
+- Reports are handled under embargo: NVIDIA PSIRT coordinates the disclosure date with the reporter, and details are not published before a fix or mitigation is available, consistent with the coordinated vulnerability disclosure policy linked above.
 
 ## Supported Versions
 
