@@ -48,8 +48,7 @@ on:
         type: string
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: fern-publish
@@ -64,6 +63,11 @@ jobs:
     runs-on: linux-amd64-cpu8
     if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 20
+    permissions:
+      # create-pull-request pushes the registry branch (contents) and opens
+      # the PR against main (pull-requests).
+      contents: write
+      pull-requests: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

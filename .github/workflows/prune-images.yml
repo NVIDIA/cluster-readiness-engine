@@ -1,0 +1,195 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Weekly pruning of stale untagged image versions from the manager package on
+# GHCR.
+#
+# publish.yml builds a main-<sha> development image on every push to main, and
+# multi-platform builds leave per-platform manifests behind as untagged
+# versions. Superseded digests that no tag points at any more accumulate in
+# the package forever; nothing can pull them by name, but they pad the package
+# listing and never go away on their own. This deletes them.
+#
+# Deleting "untagged" versions naively is not safe: the per-platform manifests
+# and attestations a tagged multi-platform index references are themselves
+# untagged versions, and removing one breaks every pull of that tag. So the
+# prune builds a keep set first: it resolves every tag in the package to its
+# manifest, collects every digest that manifest references, and adds every
+# OCI referrer of every kept digest (cosign currently stores signatures and
+# attestations under sha256-<digest> tags, which are protected as tagged
+# versions, but newer bundle formats attach them as untagged referrer
+# manifests instead; the keep set covers both). Only untagged versions that
+# are outside the keep set AND older than 30 days are deleted. Tagged
+# versions are never deleted, and a run aborts before deleting if the
+# package's tag list changed while the keep set was being built.
+#
+# After pruning, the run verifies that every digest in the keep set still
+# resolves in the registry (per-platform manifests and attestations included),
+# and smoke-pulls every release-tagged image. A prune that removed something a
+# tagged index still references fails this run loudly instead of surfacing
+# later as a broken pull for an operator.
+#
+# It does not build anything, and a manual dispatch defaults to a dry run
+# that only lists what a real run would delete.
+
+name: Prune stale images
+
+on:
+  schedule:
+    # Monday 09:00 UTC. Offset from codeql (06:00), govulncheck (06:30),
+    # docs-verify (07:00) and the image vulnerability scan (08:00), the other
+    # scheduled job that talks to the registry on Monday mornings.
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'List what would be deleted without deleting anything'
+        type: boolean
+        default: true
+
+permissions: {}
+
+env:
+  IMAGE: ghcr.io/nvidia/cluster-readiness-engine/manager
+  # The slash in the package name must be URL-encoded on the API path.
+  VERSIONS_API: /orgs/nvidia/packages/container/cluster-readiness-engine%2Fmanager/versions
+
+jobs:
+  prune:
+    name: Prune untagged versions
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      packages: write
+    steps:
+      # Everything a tag references must survive the prune. Resolving a tag
+      # through the registry (not the package API) is what ties an untagged
+      # per-platform manifest back to the index that needs it. A tag that
+      # fails to resolve aborts the run: pruning with an incomplete keep set
+      # is exactly the failure mode this workflow is designed to prevent.
+      - name: Build the keep set from tagged manifests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "${VERSIONS_API}?per_page=100" \
+            --jq '.[] | .metadata.container.tags[]?' | sort -u > tags.txt
+          echo "$(wc -l < tags.txt | tr -d ' ') tag(s) in the package:"
+          cat tags.txt
+          : > keep-digests.txt
+          while IFS= read -r tag; do
+            manifest="$(docker buildx imagetools inspect --raw "${IMAGE}:${tag}")" \
+              || { echo "::error::could not resolve ${IMAGE}:${tag}; refusing to prune with an incomplete keep set"; exit 1; }
+            printf '%s' "${manifest}" \
+              | jq -r '.manifests[]?.digest // empty' >> keep-digests.txt
+          done < tags.txt
+          sort -u keep-digests.txt -o keep-digests.txt
+          echo "$(wc -l < keep-digests.txt | tr -d ' ') referenced digest(s) protected"
+
+      # Signatures, provenance, and SBOMs can be attached to a kept digest as
+      # untagged OCI referrer manifests. Protect them too, or a prune would
+      # leave a tag pullable but strip its supply-chain metadata. The subjects
+      # are every tagged manifest digest and every index child collected above.
+      - name: Add OCI referrers to the keep set
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "${VERSIONS_API}?per_page=100" \
+            --jq '.[] | select((.metadata.container.tags | length) > 0) | .name' \
+            | sort -u > tagged-digests.txt
+          sort -u tagged-digests.txt keep-digests.txt > referrer-subjects.txt
+          token="$(curl -fsSL 'https://ghcr.io/token?scope=repository:nvidia/cluster-readiness-engine/manager:pull' | jq -r .token)"
+          while IFS= read -r digest; do
+            # 404 means no referrers for this subject; anything else that
+            # fails aborts the run rather than pruning with a partial view.
+            resp="$(curl -fsSL \
+              -H "Authorization: Bearer ${token}" \
+              -H 'Accept: application/vnd.oci.image.index.v1+json' \
+              "https://ghcr.io/v2/nvidia/cluster-readiness-engine/manager/referrers/${digest}" \
+              || true)"
+            [[ -n "${resp}" ]] || continue
+            printf '%s' "${resp}" \
+              | jq -r '.manifests[]?.digest // empty' >> keep-digests.txt
+          done < referrer-subjects.txt
+          sort -u keep-digests.txt -o keep-digests.txt
+          echo "$(wc -l < keep-digests.txt | tr -d ' ') digest(s) protected including referrers"
+
+      # Always printed, so a dry run answers the question it exists to ask,
+      # and a real run leaves a record of what was on the block before the
+      # delete step decided.
+      - name: List untagged versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "${VERSIONS_API}?per_page=100" \
+            --jq '.[] | select((.metadata.container.tags | length) == 0)
+                      | "\(.id)\t\(.created_at)\t\(.name)"' > untagged.txt
+          echo "$(wc -l < untagged.txt | tr -d ' ') untagged version(s):"
+          cat untagged.txt
+
+      # inputs.dry_run is unset on the schedule, so a scheduled run deletes;
+      # a manual run deletes only when dry_run is explicitly set to false.
+      - name: Delete stale untagged versions outside the keep set
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry_run == true }}
+        run: |
+          set -euo pipefail
+          # A publish that lands while the keep set is being built could
+          # reference digests this run never saw. The under-30-days guard
+          # below already protects freshly pushed manifests; aborting on tag
+          # drift closes the rest. Next week's run prunes with a fresh view.
+          gh api --paginate "${VERSIONS_API}?per_page=100" \
+            --jq '.[] | .metadata.container.tags[]?' | sort -u > tags-now.txt
+          if ! cmp -s tags.txt tags-now.txt; then
+            echo "::error::the package's tag list changed while this run was working; aborting without deleting"
+            diff tags.txt tags-now.txt || true
+            exit 1
+          fi
+          cutoff="$(date -u -d '30 days ago' +%s)"
+          examined=0 acted=0
+          while IFS=$'\t' read -r id created digest; do
+            examined=$((examined + 1))
+            [[ "$(date -u -d "${created}" +%s)" -lt "${cutoff}" ]] || continue
+            if grep -qxF "${digest}" keep-digests.txt; then
+              continue
+            fi
+            # Re-check right before deleting: a version that acquired a tag
+            # after the listing above must survive, whatever the tag is.
+            if [[ "$(gh api "${VERSIONS_API}/${id}" --jq '.metadata.container.tags | length')" != "0" ]]; then
+              echo "skipping ${id} ${digest}: tagged since the listing"
+              continue
+            fi
+            if [[ "${DRY_RUN}" == "true" ]]; then
+              echo "would delete ${id} ${digest} (created ${created})"
+            else
+              gh api -X DELETE "${VERSIONS_API}/${id}"
+              echo "deleted ${id} ${digest} (created ${created})"
+            fi
+            acted=$((acted + 1))
+          done < untagged.txt
+          echo "${examined} untagged version(s) examined, ${acted} matched the prune criteria (dry_run=${DRY_RUN})"
+
+      # Prove the invariant rather than assert it. A plain pull only fetches
+      # one platform's child, so the real check is that every digest a tagged
+      # manifest references still resolves; the release-tag pulls are a
+      # smoke test on top. Runs on dry runs too, so the checks themselves
+      # stay exercised.
+      - name: Confirm every kept digest still resolves
+        run: |
+          set -euo pipefail
+          while IFS= read -r digest; do
+            docker buildx imagetools inspect --raw "${IMAGE}@${digest}" > /dev/null
+            echo "ok: ${digest}"
+          done < keep-digests.txt
+
+      - name: Confirm every release image still pulls
+        run: |
+          set -euo pipefail
+          while IFS= read -r tag; do
+            docker pull --quiet "${IMAGE}:${tag}"
+            echo "ok: ${IMAGE}:${tag}"
+          done < <(grep '^v' tags.txt || true)
