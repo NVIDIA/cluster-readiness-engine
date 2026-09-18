@@ -659,18 +659,23 @@ func discoverTargetNodes(ctx context.Context, reader client.Reader, target *nvcr
 	// would turn a fully certified fleet into INCOMPLETE over a node that could
 	// never have been tested. That is reachable whenever the target is not the
 	// usual gpu.present selector — a nodeNames list can pull in CPU nodes.
-	var schedulable []corev1.Node
+	//
+	// Only skip cordoned nodes if there does not exist a taintSelectors entry which
+	// targets the node.kubernetes.io/unschedulable taint.
 	var cordoned []string
-	for _, n := range nodes {
-		if n.Spec.Unschedulable {
-			if n.Labels[GPUNodeLabel] == present {
-				cordoned = append(cordoned, n.Name)
+	if !targetsCordonedNodes(target) {
+		var schedulable []corev1.Node
+		for _, n := range nodes {
+			if n.Spec.Unschedulable {
+				if n.Labels[GPUNodeLabel] == present {
+					cordoned = append(cordoned, n.Name)
+				}
+				continue
 			}
-			continue
+			schedulable = append(schedulable, n)
 		}
-		schedulable = append(schedulable, n)
+		nodes = schedulable
 	}
-	nodes = schedulable
 
 	// Filter to GPU-equipped nodes only
 	var gpuFiltered []corev1.Node
@@ -721,6 +726,20 @@ func nodeHasTaint(node corev1.Node, sel nvcrev1alpha1.TaintSelector) bool {
 			continue
 		}
 		return true
+	}
+	return false
+}
+
+// Returns true if the given targetSpec contains a taintSelectors entry which
+// targets the node.kubernetes.io/unschedulable taint.
+func targetsCordonedNodes(target *nvcrev1alpha1.TargetSpec) bool {
+	if target == nil {
+		return false
+	}
+	for _, sel := range target.TaintSelectors {
+		if sel.Key == corev1.TaintNodeUnschedulable {
+			return true
+		}
 	}
 	return false
 }
@@ -1057,8 +1076,13 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 		applyDiagnoseMNNVLOverride(&job.Spec.Workload, orch.Diagnose, group.Nodes)
 	}
 
-	// Set default node health monitor if not already configured
-	if job.Spec.NodeHealthMonitor == nil {
+	// If the given targetSpec has a taintSelector entry which targets the
+	// node.kubernetes.io/unschedulable taint, clear the NodeHealthMonitor to
+	// prevent HardwareFailures for cordoned nodes. Otherwise, use the default
+	// NodeHealthMonitor if one has not been specified.
+	if targetsCordonedNodes(workflow.Spec.Orchestration.Target) {
+		job.Spec.NodeHealthMonitor = nil
+	} else if job.Spec.NodeHealthMonitor == nil {
 		job.Spec.NodeHealthMonitor = &nvcrev1alpha1.NodeHealthMonitor{
 			CEL: &nvcrev1alpha1.CELNodeHealthCheck{
 				Expression: `node.spec.unschedulable == true`,

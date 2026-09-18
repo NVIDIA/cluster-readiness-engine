@@ -65,6 +65,32 @@ func TestNodeMatchesTaints(t *testing.T) {
 	})
 }
 
+func TestTargetsCordonedNodes(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "targets-cordoned-nodes",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			Target *nvcrev1alpha1.TargetSpec `yaml:"target"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		result := targetsCordonedNodes(input.Target)
+
+		data, err := json.MarshalIndent(struct {
+			Result bool `json:"result"`
+		}{Result: result}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
 func TestCanLaunchOverflow(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "can-launch-overflow",
