@@ -31,6 +31,8 @@ const attestWorkflow = "../../.github/workflows/attest.yml"
 // the digest happened to be malformed too.
 const validDigest = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
 
+const mainBranchRef = "refs/heads/main"
+
 const managerImage = "ghcr.io/nvidia/cluster-readiness-engine/manager"
 
 // The environment names the validate step reads. They are the workflow_call
@@ -214,7 +216,7 @@ func TestAttestValidationAccepts(t *testing.T) {
 		// The non-production escape hatch, which exists so the guards can be
 		// exercised by dispatch at all. It must still work.
 		"untagged ref with allow_untagged": {
-			callerRef:       "refs/heads/main",
+			callerRef:       mainBranchRef,
 			inSubjectTag:    "main-abc1234",
 			inAllowUntagged: boolTrue,
 		},
@@ -244,7 +246,7 @@ func TestAttestValidationRejects(t *testing.T) {
 		// Release attestations come from tags. Without this, a branch build
 		// signs under an identity users are told to trust.
 		"non-tag ref without allow_untagged": {
-			inputs{callerRef: "refs/heads/main"},
+			inputs{callerRef: mainBranchRef},
 			"refuses to run on refs/heads/main",
 		},
 		// allow_untagged on a v* tag is contradictory: the caller claimed a
@@ -563,42 +565,73 @@ func TestMainBranchAttestCallersPinExactRefGuards(t *testing.T) {
 // gap documented in SECURITY.md / RELEASE.md — merge alone does not close #340
 // for those refs.
 func TestAttestDispatchCallersRequireRefGuards(t *testing.T) {
+	workflows := map[string]map[string]policyJob{}
+	dispatch := map[string]bool{}
 	for _, path := range workflowFiles(t) {
 		base := filepath.Base(path)
-		if base == wfAttest {
-			continue
-		}
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("read %s: %v", path, err)
 		}
-		triggers := workflowTriggers(raw, t)
-		if _, ok := triggers["workflow_dispatch"]; !ok {
+		workflows[base] = loadJobsWithNeeds(t, raw, base)
+		_, dispatch[base] = workflowTriggers(raw, t)["workflow_dispatch"]
+	}
+	for base, jobs := range workflows {
+		if base == wfAttest || !dispatch[base] {
 			continue
 		}
-
-		jobs := loadJobsWithNeeds(t, raw, base)
-		var callers []string
-		for name, job := range jobs {
-			if isAttestWorkflowCall(job.Uses) {
-				callers = append(callers, name)
-			}
-		}
-		if len(callers) == 0 {
-			continue
-		}
-		sort.Strings(callers)
-
-		for _, caller := range callers {
-			if !jobOrAncestorHasRefGuard(jobs, caller) {
-				t.Errorf("%s: job %q calls attest.yml and the workflow has workflow_dispatch, "+
-					"but neither %q nor any needs-ancestor carries a recognized ref guard "+
-					"(exact main-branch if: or release.yml's GITHUB_REF tag check); without "+
-					"one a dispatch at a v* ref mints the release signing identity",
-					base, caller, caller)
-			}
+		for _, caller := range unguardedAttestCallers(t, workflows, jobs) {
+			t.Errorf("%s: job %q reaches attest.yml and the workflow has workflow_dispatch, "+
+				"but neither %q nor any needs-ancestor carries a recognized ref guard "+
+				"(exact main-branch if: or release.yml's GITHUB_REF tag check); without "+
+				"one a dispatch at a v* ref mints the release signing identity",
+				base, caller, caller)
 		}
 	}
+}
+
+// unguardedAttestCallers returns direct and transitive attest callers whose
+// dispatch workflow does not gate them on a recognized ref restriction.
+func unguardedAttestCallers(
+	t *testing.T, workflows map[string]map[string]policyJob, jobs map[string]policyJob,
+) []string {
+	t.Helper()
+	var callers []string
+	for name, job := range jobs {
+		if callsAttestThroughLocalWorkflows(workflows, job.Uses) && !jobOrAncestorHasRefGuard(t, jobs, name) {
+			callers = append(callers, name)
+		}
+	}
+	sort.Strings(callers)
+	return callers
+}
+
+// callsAttestThroughLocalWorkflows follows local reusable workflows as well as
+// direct attest calls. Each file is visited once, including in cyclic graphs.
+func callsAttestThroughLocalWorkflows(workflows map[string]map[string]policyJob, uses string) bool {
+	seen := map[string]bool{}
+	var walk func(string) bool
+	walk = func(uses string) bool {
+		if isAttestWorkflowCall(uses) {
+			return true
+		}
+		const prefix = "./.github/workflows/"
+		if !strings.HasPrefix(uses, prefix) {
+			return false
+		}
+		name := strings.TrimPrefix(uses, prefix)
+		if seen[name] {
+			return false
+		}
+		seen[name] = true
+		for _, job := range workflows[name] {
+			if walk(job.Uses) {
+				return true
+			}
+		}
+		return false
+	}
+	return walk(uses)
 }
 
 // TestRefGuardRecognitionFailsClosed pins the unsafe shapes that still returned
@@ -696,11 +729,11 @@ func TestRefGuardRecognitionFailsClosed(t *testing.T) {
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				if jobHasRefGuard(tc.jobs[tc.caller]) {
-					t.Errorf("jobHasRefGuard(%q) = true, want false; unrecognized shapes must fail closed", tc.name)
+				if jobHasRefGuard(t, tc.jobs[tc.caller]) {
+					t.Errorf("jobHasRefGuard(t, %q) = true, want false; unrecognized shapes must fail closed", tc.name)
 				}
-				if jobOrAncestorHasRefGuard(tc.jobs, tc.caller) {
-					t.Errorf("jobOrAncestorHasRefGuard(%q) = true, want false; unrecognized shapes must fail closed", tc.name)
+				if jobOrAncestorHasRefGuard(t, tc.jobs, tc.caller) {
+					t.Errorf("jobOrAncestorHasRefGuard(t, %q) = true, want false; unrecognized shapes must fail closed", tc.name)
 				}
 			})
 		}
@@ -760,8 +793,8 @@ func TestRefGuardRecognitionFailsClosed(t *testing.T) {
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				if !jobOrAncestorHasRefGuard(tc.jobs, tc.caller) {
-					t.Errorf("jobOrAncestorHasRefGuard(%q) = false, want true for an allowlisted pattern", tc.name)
+				if !jobOrAncestorHasRefGuard(t, tc.jobs, tc.caller) {
+					t.Errorf("jobOrAncestorHasRefGuard(t, %q) = false, want true for an allowlisted pattern", tc.name)
 				}
 			})
 		}
@@ -781,7 +814,7 @@ func TestReleaseTagRefCheckFailsClosed(t *testing.T) {
 			"mismatched-ref check must fail the job so attest callers do not run",
 			wfRelease, jobReleaseTag)
 	}
-	if !runHasEffectiveReleaseTagRefCheck(script) {
+	if !runHasEffectiveReleaseTagRefCheck(t, script) {
 		t.Fatalf("%s Resolve tag step no longer carries an effective GITHUB_REF "+
 			"mismatch rejection (comparison + exit 1 in the then-branch)", wfRelease)
 	}
@@ -797,7 +830,7 @@ func TestReleaseTagRefCheckFailsClosed(t *testing.T) {
 		t.Fatal("Resolve tag step missing exit 1 after ref check")
 	}
 	stubbed := script[:idx+exitIdx] + ":" + script[idx+exitIdx+len("exit 1"):]
-	if runHasEffectiveReleaseTagRefCheck(stubbed) {
+	if runHasEffectiveReleaseTagRefCheck(t, stubbed) {
 		t.Fatalf("runHasEffectiveReleaseTagRefCheck still true after stubbing " +
 			"mismatched-ref exit 1; recognizer must fail closed")
 	}
@@ -917,7 +950,10 @@ func loadJobsWithNeeds(t *testing.T, raw []byte, base string) map[string]policyJ
 			Uses  string        `json:"uses"`
 			Needs stringOrSlice `json:"needs"`
 			Steps []struct {
-				Run string `json:"run"`
+				Name            string `json:"name"`
+				Run             string `json:"run"`
+				If              string `json:"if"`
+				ContinueOnError any    `json:"continue-on-error"`
 			} `json:"steps"`
 		} `json:"jobs"`
 	}
@@ -928,7 +964,10 @@ func loadJobsWithNeeds(t *testing.T, raw []byte, base string) map[string]policyJ
 	for name, job := range doc.Jobs {
 		runs := make([]string, 0, len(job.Steps))
 		for _, step := range job.Steps {
-			if step.Run != "" {
+			// Only the known, unconditional release-tag step may provide a
+			// shell guard. A skipped or tolerated failure cannot gate callers.
+			if base == wfRelease && name == jobReleaseTag && step.Name == "Resolve tag" &&
+				step.If == "" && (step.ContinueOnError == nil || step.ContinueOnError == false) {
 				runs = append(runs, step.Run)
 			}
 		}
@@ -947,32 +986,43 @@ func loadJobsWithNeeds(t *testing.T, raw []byte, base string) map[string]policyJ
 // release.yml's release-tag shell check that both compares GITHUB_REF and
 // exits non-zero on mismatch. A bare github.ref / GITHUB_REF mention, or a
 // comparison whose rejection has been stubbed out, is not a guard.
-func jobHasRefGuard(job policyJob) bool {
+func jobHasRefGuard(t *testing.T, job policyJob) bool {
 	switch normalizeWorkflowIf(job.If) {
 	case exactRepoAndMainIf, exactAlwaysRepoAndMainIf:
 		return true
 	}
-	return slices.ContainsFunc(job.Runs, runHasEffectiveReleaseTagRefCheck)
+	return slices.ContainsFunc(job.Runs, func(run string) bool {
+		return runHasEffectiveReleaseTagRefCheck(t, run)
+	})
 }
 
-// runHasEffectiveReleaseTagRefCheck reports whether run contains release.yml's
-// exact GITHUB_REF mismatch comparison *and* an `exit 1` in that then-branch.
-// The comparison text alone is insufficient: stubbing the rejection with `:`
-// left the previous substring recognizer green (kaynetu #341).
-func runHasEffectiveReleaseTagRefCheck(run string) bool {
-	norm := normalizeWorkflowIf(run)
-	idx := strings.Index(norm, exactReleaseTagRefCheck)
-	if idx < 0 {
+// runHasEffectiveReleaseTagRefCheck executes the allowlisted comparison's
+// acceptance and rejection cases. Text in a comment, quoted string, else branch,
+// or unreachable block cannot stand in for an effective rejection (#351).
+func runHasEffectiveReleaseTagRefCheck(t *testing.T, run string) bool {
+	t.Helper()
+	if !strings.Contains(normalizeWorkflowIf(run), exactReleaseTagRefCheck) {
 		return false
 	}
-	rest := norm[idx:]
-	// Bound the then-branch at the first " fi" after the comparison so a later
-	// unrelated `exit 1` in the same step cannot satisfy this check.
-	end := strings.Index(rest, " fi")
-	if end < 0 {
-		end = len(rest)
+	cases := []struct {
+		ref    string
+		reject bool
+	}{
+		{"refs/tags/v1.2.3", false},
+		{mainBranchRef, true},
+		{"refs/tags/v2.0.0", true},
 	}
-	return strings.Contains(rest[:end], "exit 1")
+	for _, tc := range cases {
+		_, failed := runShell(t, t.TempDir(), run,
+			"GITHUB_EVENT_NAME=workflow_dispatch",
+			"GITHUB_REF="+tc.ref,
+			"INPUT_TAG=v1.2.3",
+		)
+		if failed != tc.reject {
+			return false
+		}
+	}
+	return true
 }
 
 // jobIfPropagatesSkippedNeeds reports whether job's if: is empty or the exact
@@ -1005,7 +1055,7 @@ func stripExpressionWrappers(s string) string {
 // reached only through empty if: conditions (skip-propagating). always(),
 // !cancelled(), and any other non-empty unrecognized if: block inheritance:
 // those jobs can still run when the guarded ancestor is skipped.
-func jobOrAncestorHasRefGuard(jobs map[string]policyJob, name string) bool {
+func jobOrAncestorHasRefGuard(t *testing.T, jobs map[string]policyJob, name string) bool {
 	seen := map[string]bool{}
 	var walk func(string) bool
 	walk = func(n string) bool {
@@ -1017,7 +1067,7 @@ func jobOrAncestorHasRefGuard(jobs map[string]policyJob, name string) bool {
 		if !ok {
 			return false
 		}
-		if jobHasRefGuard(job) {
+		if jobHasRefGuard(t, job) {
 			return true
 		}
 		if !jobIfPropagatesSkippedNeeds(job) {
