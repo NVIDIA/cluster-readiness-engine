@@ -615,11 +615,13 @@ func callsAttestThroughLocalWorkflows(workflows map[string]map[string]policyJob,
 		if isAttestWorkflowCall(uses) {
 			return true
 		}
-		const prefix = "./.github/workflows/"
-		if !strings.HasPrefix(uses, prefix) {
+		name, local := strings.CutPrefix(uses, "./.github/workflows/")
+		if !local {
+			name, local = strings.CutPrefix(uses, "$/.github/workflows/")
+		}
+		if !local {
 			return false
 		}
-		name := strings.TrimPrefix(uses, prefix)
 		if seen[name] {
 			return false
 		}

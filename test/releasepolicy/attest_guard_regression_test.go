@@ -8,7 +8,11 @@ import (
 	"testing"
 )
 
-const jobSign = "sign"
+const (
+	jobSign         = "sign"
+	jobWrap         = "wrap"
+	selfWrapperUses = "$/.github/workflows/wrapper.yml"
+)
 
 // TestReleaseTagRefRecognitionMutations exercises the recognizer against valid
 // shell that mentions the rejection without enforcing it (#351).
@@ -50,11 +54,12 @@ func TestReleaseTagRefRecognitionMutations(t *testing.T) {
 // changing the real workflows or dispatching a signing job.
 func TestAttestWrapperReachability(t *testing.T) {
 	workflows := map[string]map[string]policyJob{
-		"wrapper.yml": {jobSign: {Uses: localAttestUses}},
-		"outer.yaml":  {"wrap": {Uses: "./.github/workflows/wrapper.yml"}},
-		"plain.yml":   {"build": {}},
-		"cycle-a.yml": {"next": {Uses: "./.github/workflows/cycle-b.yml"}},
-		"cycle-b.yml": {"next": {Uses: "./.github/workflows/cycle-a.yml"}},
+		"wrapper.yml":     {jobSign: {Uses: localAttestUses}},
+		"outer.yaml":      {jobWrap: {Uses: "./.github/workflows/wrapper.yml"}},
+		"plain.yml":       {"build": {}},
+		"self-outer.yaml": {jobWrap: {Uses: selfWrapperUses}},
+		"cycle-a.yml":     {"next": {Uses: "./.github/workflows/cycle-b.yml"}},
+		"cycle-b.yml":     {"next": {Uses: "./.github/workflows/cycle-a.yml"}},
 		"cycle-sign.yml": {
 			"cycle": {Uses: "./.github/workflows/cycle-sign.yml"},
 			jobSign: {Uses: localAttestUses},
@@ -66,6 +71,9 @@ func TestAttestWrapperReachability(t *testing.T) {
 	}{
 		{"direct", localAttestUses, true},
 		{"one wrapper", "./.github/workflows/wrapper.yml", true},
+		{"self-repository wrapper", selfWrapperUses, true},
+		{"two self-repository wrappers", "$/.github/workflows/self-outer.yaml", true},
+		{"mixed wrapper prefixes", "./.github/workflows/self-outer.yaml", true},
 		{"two wrappers and yaml extension", "./.github/workflows/outer.yaml", true},
 		{"ordinary workflow", "./.github/workflows/plain.yml", false},
 		{"no reusable call", "", false},
@@ -116,9 +124,10 @@ func TestLoadedReleaseTagGuardMustBeMandatory(t *testing.T) {
 func TestWrappedAttestCallersRequireRefGuards(t *testing.T) {
 	const wrapper = "./.github/workflows/wrapper.yml"
 	workflows := map[string]map[string]policyJob{
-		"wrapper.yml": {jobSign: {Uses: localAttestUses}},
-		"outer.yaml":  {"wrap": {Uses: wrapper}},
-		"plain.yml":   {"build": {}},
+		"wrapper.yml":     {jobSign: {Uses: localAttestUses}},
+		"outer.yaml":      {jobWrap: {Uses: wrapper}},
+		"plain.yml":       {"build": {}},
+		"self-outer.yaml": {jobWrap: {Uses: selfWrapperUses}},
 	}
 	cases := []struct {
 		name   string
@@ -127,6 +136,9 @@ func TestWrappedAttestCallersRequireRefGuards(t *testing.T) {
 		want   int
 	}{
 		{"unguarded wrapper", policyJob{Uses: wrapper}, policyJob{}, 1},
+		{"unguarded self-repository wrapper", policyJob{Uses: selfWrapperUses}, policyJob{}, 1},
+		{"two self-repository wrappers", policyJob{Uses: "$/.github/workflows/self-outer.yaml"}, policyJob{}, 1},
+		{"guarded self-repository wrapper", policyJob{Uses: selfWrapperUses, If: exactRepoAndMainIf}, policyJob{}, 0},
 		{"two wrappers", policyJob{Uses: "./.github/workflows/outer.yaml"}, policyJob{}, 1},
 		{"guarded caller", policyJob{Uses: wrapper, If: exactRepoAndMainIf}, policyJob{}, 0},
 		{"guarded ancestor", policyJob{Uses: wrapper, Needs: []string{jobGuarded}},
