@@ -86,10 +86,11 @@ We credit reporters of confirmed vulnerabilities in the release notes of the fix
   caller ref. On `main`, every `workflow_dispatch` caller of that workflow carries a
   ref guard (or `release.yml`'s `GITHUB_REF` check) so a dispatch at a tag cannot reach
   the attestor through those callers. **Existing release tags cut before that guard
-  landed — notably `v0.2.0`, `v0.2.0-rc.1`, and `v0.2.0-rc.2` — still ship the older
-  `attest-selftest.yml`, which gates on repository alone and passes `allow_untagged:
-  true`.** A dispatch at one of those refs uses the workflow files *on that tag*, not
-  the fixed copies on `main`, and can still mint `attest.yml@refs/tags/<that-tag>`.
+  landed — notably `v0.2.0`, `v0.2.0-rc.1`, `v0.2.0-rc.2`, and `v0.3.0` — still
+  ship the older `attest-selftest.yml`, which gates on repository alone and passes
+  `allow_untagged: true`.** A dispatch at one of those refs uses the workflow files
+  *on that tag*, not the fixed copies on `main`, and can still mint
+  `attest.yml@refs/tags/<that-tag>`.
   Tag protection / the `v*` ruleset does not cover this path (no tag is created or
   moved). Merging the `main` fix alone does not close [#340](https://github.com/NVIDIA/cluster-readiness-engine/issues/340)
   for those refs; the residual control is the repository-level disable of *Attest

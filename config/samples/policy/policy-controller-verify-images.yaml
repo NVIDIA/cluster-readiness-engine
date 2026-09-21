@@ -77,7 +77,7 @@ spec:
         identities:
           # EDIT THIS TAG to the release you run before applying.
           - issuer: "https://token.actions.githubusercontent.com"
-            subject: "https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/v0.2.0"
+            subject: "https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/v0.4.0"
             # Loosening: subject is a STRICT match. A pattern under subject
             # such as refs/tags/.+ matches no SAN. Use subjectRegExp instead:
             #   subjectRegExp: "^https://github\\.com/NVIDIA/cluster-readiness-engine/\\.github/workflows/attest\\.yml@refs/tags/.+$"
