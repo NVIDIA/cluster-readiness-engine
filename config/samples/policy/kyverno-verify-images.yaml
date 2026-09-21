@@ -134,7 +134,7 @@ spec:
             # routes all signing through attest.yml; main builds carry
             # attest.yml@refs/heads/main).
             - issuer: "https://token.actions.githubusercontent.com"
-              subject: "https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/v0.2.0"
+              subject: "https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/v0.4.0"
               # Loosening (operator choice, not the published contract):
               # subject: is a STRICT string match. A value like
               #   .../attest.yml@refs/tags/.+

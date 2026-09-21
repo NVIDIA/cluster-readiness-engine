@@ -246,7 +246,7 @@ NVCRE certifies clusters with burn-in workloads and reports the nodes that fail.
 - [API reference](https://pkg.go.dev/github.com/NVIDIA/cluster-readiness-engine) is generated from the Go source.
 - [Operations guide](docs/operations/) covers deployment, monitoring, metrics, and troubleshooting.
 - [examples/](examples/) contains runnable manifests, each with the command to run it.
-- [Architecture Decision Records](docs/designs/) explain the design (ADR-000 to ADR-080).
+- [Architecture Decision Records](docs/designs/) explain the design (ADR-000 to ADR-081).
 - [CONTRIBUTING.md](CONTRIBUTING.md) describes the contribution workflow.
 - [GOVERNANCE.md](GOVERNANCE.md) and [MAINTAINERS.md](MAINTAINERS.md) describe who decides what.
 - [RELEASE.md](RELEASE.md) describes how a release is cut and how to verify one.
