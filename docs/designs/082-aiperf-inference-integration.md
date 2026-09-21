@@ -404,14 +404,23 @@ That Succeeded rule is stricter than TrainJob. A TrainJob can be Succeeded
 while its pods still exist. A serving pod holds the GPUs under test, so
 inference `Succeeded` means those pods are already gone.
 
-Workflow does not read InferenceRun. It reads the Job, and the Job controller
-reads `GetStatus`, which returns phase, reason, and message.
-`GetStatus` stays `WorkloadRunning` through Cleaning and returns
-`WorkloadSucceeded` only after serving and client pods are gone, so the Job
-becomes Succeeded only then. On failure, `GetStatus` returns `WorkloadFailed`
-while cleanup is still in progress, and the Job controller copies
-InferenceRun's `CleanupComplete` onto the Job. Workflow retry and group
-release check that Job condition.
+Workflow does not read InferenceRun. It reads the Job.
+`GetStatus` stays the [ADR-003](003-workload-adapter-pattern.md) phase
+contract: phase, reason, and message. It does not grow a cleanup field, and
+v1 does not add an adapter method for one. `GetStatus` stays
+`WorkloadRunning` through Cleaning and returns `WorkloadSucceeded` only after
+serving and client pods are gone, so the Job becomes Succeeded only then. On
+failure, `GetStatus` returns `WorkloadFailed` while cleanup is still in
+progress.
+
+The Job controller already `Get`s the object named by
+`job.status.workloadRef` before it calls `GetStatus`. When that object is an
+InferenceRun, the same reconcile reads its `CleanupComplete` condition and
+copies it onto the Job. That read is allowed because the controller owns the
+child and already fetched it. It is not a Workflow watch and not a change to
+`WorkloadStatus`. Workflow retry and group release check the Job condition.
+Generated manager RBAC includes get, list, and watch on InferenceRun. The
+publisher Role still cannot write Job status.
 
 `shouldWaitForPodDrain` lists pods by `nvcre.nvidia.com/job`. That set is the
 serving pods. Benchmark and publisher pods do not carry the label, so the
@@ -494,12 +503,17 @@ transport owned by InferenceRun; thresholds and reports do not read it.
 A measurement CRD is not added. Nothing reconciles the result after the freeze
 write. The ConfigMap is a bounded document with a status reference, the same
 retention shape as the node-results ConfigMaps in
-[ADR-062](062-node-detail-propagation.md). `collectJobMeasuredValues` loads
-the ConfigMap through the reference on InferenceRun status, after the freeze
-condition is true. It does not list ConfigMaps by name or label. The report
-reads the same object. Neither path reads a live InferenceRun pod, and neither
-stores the metric map on Job status. Inference keys present in that object are
-emitted even when the value is zero, as section 5 requires.
+[ADR-062](062-node-detail-propagation.md). `collectJobMeasuredValues` receives
+the Job. It follows `job.status.workloadRef` to the InferenceRun the
+controller already fetched, and only after that object's freeze condition is
+true does it `Get` the ConfigMap named by the reference on InferenceRun
+status, checking the ConfigMap UID against the reference. It does not list
+ConfigMaps by name or label, and `GetStatus` does not carry the reference.
+The manager role already grants get, list, and watch on ConfigMaps. The
+report reads the same object once orchestration status records the reference.
+Neither path reads a live InferenceRun pod, and neither stores the metric map
+on Job status. Inference keys present in that object are emitted even when
+the value is zero, as section 5 requires.
 
 Failed attempts get an evidence ConfigMap under the same ownership when no
 valid metrics exist. Per-attempt results stay separate populations. Reports
@@ -558,8 +572,9 @@ implemented by the document change itself.
    `pkg/inference/`. WorkloadRun does not grow an inference framework.
 3. **Connect verdicts and reports.** Register the inference keys in
    `pkg/threshold.Registry`. Extend `collectJobMeasuredValues` to read the
-   Workflow-owned result ConfigMap after the freeze condition, with no metric
-   copy on Job status, and emit present zeros. Mirror `CleanupComplete` onto
+   Workflow-owned result ConfigMap through `job.status.workloadRef` after the
+   freeze condition, with no metric copy on Job status, and emit present
+   zeros. Mirror `CleanupComplete` from that same fetched InferenceRun onto
    the Job and make Workflow's retry guard read that Job condition. Render and
    Workflow preflight reject a group
    size other than one serving node, and reject `options.image` on an
