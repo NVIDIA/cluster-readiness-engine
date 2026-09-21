@@ -50,7 +50,7 @@
           "status": "True",
           "lastTransitionTime": null,
           "reason": "BuildFailed",
-          "message": "workloadrun wr-queue-conflict: spec.jobTemplate.spec.workloadMetadata.labels[\"kai.scheduler/queue\"]: conflicting label value \"team-b\", expected \"team-a\""
+          "message": "workloadrun wr-queue-conflict: spec.workloadMetadata.labels[\"kai.scheduler/queue\"]: conflicting label value \"team-b\", expected \"team-a\""
         }
       ]
     }

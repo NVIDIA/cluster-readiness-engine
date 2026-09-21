@@ -15,10 +15,16 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
 
-// jobTemplateLabelsPath names the resolved workload metadata in errors. Every
-// caller of ApplyResolvedWorkflowTransforms is writing this same field on a
-// resolved WorkflowSpec, whatever higher-level API the labels came from.
-const jobTemplateLabelsPath = "spec.jobTemplate.spec.workloadMetadata.labels"
+const (
+	// JobTemplateWorkloadLabelsPath names workload metadata on a Job or
+	// Workflow spec. Callers validating those API surfaces should use it in
+	// field-specific errors.
+	JobTemplateWorkloadLabelsPath = "spec.jobTemplate.spec.workloadMetadata.labels"
+	// WorkloadRunWorkloadLabelsPath names the source field on a WorkloadRun.
+	// The generated Workflow has a jobTemplate, but reporting that internal
+	// path would point WorkloadRun users at a field their API does not expose.
+	WorkloadRunWorkloadLabelsPath = "spec.workloadMetadata.labels"
+)
 
 const (
 	// trainerAPIGroup and kindClusterTrainingRuntime are the defaults
@@ -79,12 +85,14 @@ func ApplyResolvedWorkflowTransforms(
 		return err
 	}
 
-	if err := applyWorkloadMetadata(&spec.JobTemplate.Spec, t); err != nil {
+	if err := applyWorkloadMetadata(&spec.JobTemplate.Spec, t, JobTemplateWorkloadLabelsPath); err != nil {
 		return err
 	}
 
 	spec.GangScheduler = ResolvedGangScheduler(t.GangScheduler)
-	return ValidateResolvedJobTemplate(&spec.JobTemplate.Spec, spec.Dependencies, spec.GangScheduler)
+	return ValidateResolvedJobTemplate(
+		&spec.JobTemplate.Spec, spec.Dependencies, spec.GangScheduler,
+		JobTemplateWorkloadLabelsPath)
 }
 
 // applyWorkloadMetadata composes the workload-object labels for the resolved
@@ -97,20 +105,21 @@ func ApplyResolvedWorkflowTransforms(
 // it whole. Exceeding the cap fails rather than dropping labels.
 func applyWorkloadMetadata(
 	js *nvcrev1alpha1.JobSpec, t ResolvedWorkflowTransforms,
+	workloadLabelsPath string,
 ) error {
 	labels := workload.MergeLabels(
 		workload.LabelsOf(js.WorkloadMetadata), t.WorkloadLabels)
 
 	if gs := ResolvedGangScheduler(t.GangScheduler); gs != nil {
 		merged, err := workload.InsertConsistentLabel(
-			labels, gs.QueueLabelKey, gs.Queue, jobTemplateLabelsPath)
+			labels, gs.QueueLabelKey, gs.Queue, workloadLabelsPath)
 		if err != nil {
 			return err
 		}
 		labels = merged
 	}
 
-	if err := workload.ValidateLabels(labels, jobTemplateLabelsPath); err != nil {
+	if err := workload.ValidateLabels(labels, workloadLabelsPath); err != nil {
 		return err
 	}
 	js.WorkloadMetadata = workload.MetadataFrom(labels)
@@ -138,7 +147,7 @@ func ApplyWorkloadRunScheduling(
 	if err := applyWorkloadMetadata(&spec.JobTemplate.Spec, ResolvedWorkflowTransforms{
 		GangScheduler:  gs,
 		WorkloadLabels: workload.LabelsOf(md),
-	}); err != nil {
+	}, WorkloadRunWorkloadLabelsPath); err != nil {
 		return err
 	}
 	spec.GangScheduler = ResolvedGangScheduler(gs)
@@ -178,12 +187,13 @@ func ValidateResolvedJobTemplate(
 	js *nvcrev1alpha1.JobSpec,
 	deps []nvcrev1alpha1.DependencySpec,
 	gs *nvcrev1alpha1.GangSchedulerSpec,
+	workloadLabelsPath string,
 ) error {
 	if err := workload.ValidateLabels(
-		workload.LabelsOf(js.WorkloadMetadata), jobTemplateLabelsPath); err != nil {
+		workload.LabelsOf(js.WorkloadMetadata), workloadLabelsPath); err != nil {
 		return err
 	}
-	return ValidateResolvedGangScheduling(js, deps, gs)
+	return ValidateResolvedGangScheduling(js, deps, gs, workloadLabelsPath)
 }
 
 // ValidateResolvedGangScheduling checks that the effective manifests NVCRE is
@@ -216,6 +226,7 @@ func ValidateResolvedGangScheduling(
 	js *nvcrev1alpha1.JobSpec,
 	deps []nvcrev1alpha1.DependencySpec,
 	gs *nvcrev1alpha1.GangSchedulerSpec,
+	workloadLabelsPath string,
 ) error {
 	gs = ResolvedGangScheduler(gs)
 	if gs == nil {
@@ -226,11 +237,11 @@ func ValidateResolvedGangScheduling(
 	// different one.
 	labels, err := workload.InsertConsistentLabel(
 		workload.LabelsOf(js.WorkloadMetadata),
-		gs.QueueLabelKey, gs.Queue, jobTemplateLabelsPath)
+		gs.QueueLabelKey, gs.Queue, workloadLabelsPath)
 	if err != nil {
 		return err
 	}
-	if err := workload.ValidateLabels(labels, jobTemplateLabelsPath); err != nil {
+	if err := workload.ValidateLabels(labels, workloadLabelsPath); err != nil {
 		return err
 	}
 	js.WorkloadMetadata = workload.MetadataFrom(labels)

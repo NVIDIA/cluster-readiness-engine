@@ -214,7 +214,8 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 		// output is a template, so it keeps spec.gangScheduler unchecked and
 		// resolution on a target performs this check instead.
 		if err := platform.ValidateResolvedJobTemplate(
-			&workflowSpec.JobTemplate.Spec, workflowSpec.Dependencies, workflowSpec.GangScheduler); err != nil {
+			&workflowSpec.JobTemplate.Spec, workflowSpec.Dependencies, workflowSpec.GangScheduler,
+			platform.WorkloadRunWorkloadLabelsPath); err != nil {
 			return err
 		}
 	}
@@ -655,7 +656,8 @@ func runWorkloadRunRenderDryRun(
 	// reported as the conflict it is rather than as whatever the API server
 	// makes of the inconsistent manifests.
 	if err := platform.ValidateResolvedJobTemplate(
-		&workflowSpec.JobTemplate.Spec, workflowSpec.Dependencies, workflowSpec.GangScheduler); err != nil {
+		&workflowSpec.JobTemplate.Spec, workflowSpec.Dependencies, workflowSpec.GangScheduler,
+		platform.WorkloadRunWorkloadLabelsPath); err != nil {
 		return err
 	}
 

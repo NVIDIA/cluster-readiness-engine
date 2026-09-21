@@ -358,7 +358,7 @@ func (r *WorkflowReconciler) enforceGangSchedulingIntent(
 ) error {
 	err := platform.ValidateResolvedJobTemplate(
 		&workflow.Spec.JobTemplate.Spec, workflow.Spec.Dependencies,
-		workflow.Spec.GangScheduler)
+		workflow.Spec.GangScheduler, platform.JobTemplateWorkloadLabelsPath)
 	if err == nil {
 		return nil
 	}
@@ -1059,7 +1059,8 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 	// later reconciles, long after discovery ran. The conflict is terminal —
 	// the intent is immutable, so no retry can reconcile the two.
 	if err := platform.ValidateResolvedJobTemplate(
-		patchedSpec, prepared.EffectiveDependencies, workflow.Spec.GangScheduler); err != nil {
+		patchedSpec, prepared.EffectiveDependencies, workflow.Spec.GangScheduler,
+		platform.JobTemplateWorkloadLabelsPath); err != nil {
 		return &gangSchedulingConflictError{
 			err: fmt.Errorf("group %s: %w", group.Name, err),
 		}
@@ -3063,8 +3064,9 @@ func isMNNVLEnabledInJobTemplate(tmpl *nvcrev1alpha1.JobTemplateSpec) bool {
 // The caller's subsequent Status().Update() (e.g. setWorkflowInProgress, job status
 // updates) writes the full status including any new dependency refs.
 func (r *WorkflowReconciler) ensureWorkflowDependencies(ctx context.Context, workflow *nvcrev1alpha1.Workflow) error {
-	// Classify deps by reachability from the job template
-	jobSpecJSON, err := json.Marshal(&workflow.Spec.JobTemplate.Spec)
+	// Classify deps by reachability from the job template. Workload metadata is
+	// excluded because its arbitrary values are not dependency references.
+	jobSpecJSON, err := marshalJobSpecForDependencyClassification(&workflow.Spec.JobTemplate.Spec)
 	if err != nil {
 		return fmt.Errorf("failed to marshal job spec for classification: %w", err)
 	}

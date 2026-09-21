@@ -87,7 +87,8 @@ func TestWorkloadRunWorkloadMetadata(t *testing.T) {
 			spec.Overrides = nil
 
 			if validateErr := platform.ValidateResolvedJobTemplate(
-				&spec.JobTemplate.Spec, spec.Dependencies, spec.GangScheduler); validateErr != nil {
+				&spec.JobTemplate.Spec, spec.Dependencies, spec.GangScheduler,
+				platform.WorkloadRunWorkloadLabelsPath); validateErr != nil {
 				result.ValidateError = validateErr.Error()
 			}
 		}

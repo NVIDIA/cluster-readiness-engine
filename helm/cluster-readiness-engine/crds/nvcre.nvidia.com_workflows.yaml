@@ -180,6 +180,10 @@ spec:
                     - message: queueLabelKey prefix must be at most 253 characters
                       rule: 'self.contains(''/'') ? self.split(''/'')[0].size() <=
                         253 : true'
+                    - message: queueLabelKey must not use the controller-owned key
+                        app.kubernetes.io/managed-by or any key under the nvcre.nvidia.com/
+                        prefix
+                      rule: self != 'app.kubernetes.io/managed-by' && !self.startsWith('nvcre.nvidia.com/')
                   schedulerName:
                     description: schedulerName is the name of the gang-aware scheduler
                       to use (e.g. "kai-scheduler").

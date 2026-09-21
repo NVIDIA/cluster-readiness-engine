@@ -177,6 +177,7 @@ func ResolveWorkflowForPlatform(
 		&workflow.Spec.JobTemplate.Spec,
 		workflow.Spec.Dependencies,
 		workflow.Spec.GangScheduler,
+		nvcreplatform.JobTemplateWorkloadLabelsPath,
 	); err != nil {
 		return nil, fmt.Errorf("validate resolved job template: %w", err)
 	}
@@ -377,7 +378,8 @@ func DryRunCreate(ctx context.Context, c client.Client, namespace string,
 	// inconsistent manifests. Operates on the copy, like every other
 	// mutation here.
 	if err := nvcreplatform.ValidateResolvedJobTemplate(
-		specCopy, spec.Dependencies, spec.GangScheduler); err != nil {
+		specCopy, spec.Dependencies, spec.GangScheduler,
+		nvcreplatform.JobTemplateWorkloadLabelsPath); err != nil {
 		return nil, err
 	}
 

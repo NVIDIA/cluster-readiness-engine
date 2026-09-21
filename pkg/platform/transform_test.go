@@ -133,7 +133,8 @@ func TestValidateResolvedGangScheduling(t *testing.T) {
 
 		result := validateGangResult{}
 		err := ValidateResolvedGangScheduling(
-			&in.Spec.JobTemplate.Spec, in.Spec.Dependencies, in.Spec.GangScheduler)
+			&in.Spec.JobTemplate.Spec, in.Spec.Dependencies, in.Spec.GangScheduler,
+			JobTemplateWorkloadLabelsPath)
 		if err != nil {
 			result.Error = err.Error()
 		}
@@ -172,7 +173,8 @@ func TestValidateResolvedJobTemplate(t *testing.T) {
 
 		result := validateGangResult{}
 		if err := ValidateResolvedJobTemplate(
-			&in.Spec.JobTemplate.Spec, in.Spec.Dependencies, in.Spec.GangScheduler); err != nil {
+			&in.Spec.JobTemplate.Spec, in.Spec.Dependencies, in.Spec.GangScheduler,
+			JobTemplateWorkloadLabelsPath); err != nil {
 			result.Error = err.Error()
 		}
 

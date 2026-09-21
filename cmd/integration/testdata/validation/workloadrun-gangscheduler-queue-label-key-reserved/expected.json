@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.gangScheduler.queueLabelKey",
+      "message": "Invalid value: \"nvcre.nvidia.com/queue\": queueLabelKey must not use the controller-owned key app.kubernetes.io/managed-by or any key under the nvcre.nvidia.com/ prefix"
+    }
+  ]
+}

@@ -39,7 +39,16 @@ func TestClassifyDependencies(t *testing.T) {
 			})
 		}
 
-		workflowDeps, jobDeps := classifyDependencies(deps, []byte(input.JobSpec))
+		var jobSpec nvcrev1alpha1.JobSpec
+		if err := json.Unmarshal([]byte(input.JobSpec), &jobSpec); err != nil {
+			return err
+		}
+		jobSpecJSON, err := marshalJobSpecForDependencyClassification(&jobSpec)
+		if err != nil {
+			return err
+		}
+
+		workflowDeps, jobDeps := classifyDependencies(deps, jobSpecJSON)
 
 		var workflowNames, jobNames []string
 		for _, dep := range workflowDeps {

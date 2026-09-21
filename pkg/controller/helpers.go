@@ -103,10 +103,11 @@ const (
 	// name is already taken by an object this Workflow did not create. The
 	// foreign object is neither adopted nor recorded for cleanup.
 	ReasonDependencyNameCollision = "DependencyNameCollision"
-	// ReasonGangSchedulingConflict marks a Workflow whose resolved spec no
-	// longer agrees with the gang-scheduling intent its owner persisted —
-	// typically an override that redirected a runtime queue label or a pod
-	// scheduler name. The conflict is reported rather than repaired.
+	// ReasonGangSchedulingConflict marks a Workflow whose resolved Job template
+	// is invalid after overrides. This includes workload metadata that fails
+	// label validation even when no gang scheduler is configured, as well as a
+	// template that no longer agrees with the gang-scheduling intent its owner
+	// persisted. The invalid result is reported rather than repaired.
 	ReasonGangSchedulingConflict = "GangSchedulingConflict"
 )
 

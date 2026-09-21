@@ -129,6 +129,20 @@ func classifyDependencies(deps []nvcrev1alpha1.DependencySpec, jobSpecJSON []byt
 	return workflowDeps, jobDeps
 }
 
+// marshalJobSpecForDependencyClassification removes metadata values before
+// collecting references. Workload metadata and metadata inside runtime patches
+// are copied verbatim onto generated objects and never name dependencies;
+// allowing an arbitrary label or annotation value to seed classification would
+// make that dependency job-scoped even though the Job spec does not reference
+// the suffixed copy. Real references elsewhere in a runtime patch, such as a
+// PVC claimName, remain in the classification input.
+func marshalJobSpecForDependencyClassification(spec *nvcrev1alpha1.JobSpec) ([]byte, error) {
+	classifiable := spec.DeepCopy()
+	classifiable.WorkloadMetadata = nil
+	clearRuntimePatchMetadata(classifiable)
+	return json.Marshal(classifiable)
+}
+
 // detectCrossRefs finds resource-name-shaped strings that appear in 2+ job-scoped
 // deps but aren't any dep's metadata.name. These are internal names (e.g., a
 // ComputeDomain channel template name) that need per-job suffixing.
@@ -461,6 +475,46 @@ func restoreRuntimePatchMetadata(original, renamed *nvcrev1alpha1.JobSpec) {
 	}
 }
 
+// clearRuntimePatchMetadata removes only the label and annotation maps that
+// suffixJobSpec restores after blind name substitution. The rest of each patch
+// stays visible to dependency classification because it can carry real object
+// references, including PVC claim names.
+func clearRuntimePatchMetadata(spec *nvcrev1alpha1.JobSpec) {
+	trainJob := spec.Workload.TrainJob
+	if trainJob == nil {
+		return
+	}
+	for i := range trainJob.RuntimePatches {
+		patch := trainJob.RuntimePatches[i].TrainingRuntimeSpec
+		if patch == nil || patch.Template == nil {
+			continue
+		}
+		clearObjectMeta(patch.Template.Metadata)
+		if patch.Template.Spec == nil {
+			continue
+		}
+		for j := range patch.Template.Spec.ReplicatedJobs {
+			job := patch.Template.Spec.ReplicatedJobs[j].Template
+			if job == nil {
+				continue
+			}
+			clearObjectMeta(job.Metadata)
+			if job.Spec == nil || job.Spec.Template == nil {
+				continue
+			}
+			clearObjectMeta(job.Spec.Template.Metadata)
+		}
+	}
+}
+
+func clearObjectMeta(metadata *metav1.ObjectMeta) {
+	if metadata == nil {
+		return
+	}
+	metadata.Labels = nil
+	metadata.Annotations = nil
+}
+
 // restoreObjectMeta copies src's labels and annotations onto dst, leaving
 // everything else renaming produced alone.
 func restoreObjectMeta(src, dst *metav1.ObjectMeta) {
@@ -516,8 +570,9 @@ func prepareJobDependencies(
 	// own dependency list is already the effective one.
 	unchanged := preparedJob{Spec: spec, EffectiveDependencies: workflow.Spec.Dependencies}
 
-	// Marshal job spec for classification
-	jobSpecJSON, err := json.Marshal(spec)
+	// Marshal only fields that can reference dependencies. Metadata values can
+	// legitimately equal a dependency name but never refer to that object.
+	jobSpecJSON, err := marshalJobSpecForDependencyClassification(spec)
 	if err != nil {
 		return preparedJob{}, fmt.Errorf("failed to marshal job spec: %w", err)
 	}

@@ -351,6 +351,7 @@ type GangSchedulerSpec struct {
 	// +kubebuilder:validation:MaxLength=317
 	// +kubebuilder:validation:Pattern=`^$|^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[a-zA-Z0-9]([-a-zA-Z0-9_.]{0,61}[a-zA-Z0-9])?$`
 	// +kubebuilder:validation:XValidation:rule="self.contains('/') ? self.split('/')[0].size() <= 253 : true",message="queueLabelKey prefix must be at most 253 characters"
+	// +kubebuilder:validation:XValidation:rule="self != 'app.kubernetes.io/managed-by' && !self.startsWith('nvcre.nvidia.com/')",message="queueLabelKey must not use the controller-owned key app.kubernetes.io/managed-by or any key under the nvcre.nvidia.com/ prefix"
 	QueueLabelKey string `json:"queueLabelKey,omitempty"`
 }
 

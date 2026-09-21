@@ -1,5 +1,5 @@
 {
-  "validateError": "spec.jobTemplate.spec.workloadMetadata.labels[\"kai.scheduler/queue\"]: conflicting label value \"queue-b\", expected \"queue-a\"",
+  "validateError": "spec.workloadMetadata.labels[\"kai.scheduler/queue\"]: conflicting label value \"queue-b\", expected \"queue-a\"",
   "labels": {
     "kai.scheduler/queue": "queue-b"
   },
