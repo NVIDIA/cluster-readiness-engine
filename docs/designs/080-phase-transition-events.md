@@ -381,12 +381,17 @@ Both facts drive the scope decision below.
    ```yaml
    events:
      - involvedKind: Job
-       involvedName: test-timeout
+       involvedName: test-workflow-job-timeout-job
        namespace: default
        expect:
-         - { type: Normal,  reason: WorkloadCreated }
+         - { type: Normal,  reason: WorkloadRunning }
          - { type: Warning, reason: JobTimedOut }
    ```
+
+   That block is the `workflow-job-timeout` fixture. It expects
+   `WorkloadRunning` because the Job already has `status.workloadRef`, so
+   reconciliation updates the existing workload and does not pass through
+   workload creation.
 
    Readiness is "every `expect` row is present", checked with the harness's
    existing `require.Eventually` idiom, after resolving the involved object's
@@ -561,6 +566,13 @@ Both facts drive the scope decision below.
   the WorkloadRun Failed transition through the real events/v1 broadcaster:
   the API server must accept the shortened note, correlated to the current
   object's UID, while the full diagnostic remains in its persisted condition.
+  Invalid UTF-8 is replaced with U+FFFD before that byte budget. An isolated
+  invalid byte expands to three bytes, and a contiguous invalid run collapses
+  to one replacement, so budgeting the original Go string can exceed the
+  events/v1 limit on the wire. A separate envtest assertion sends one
+  invalid-byte note through `eventf` and the real broadcaster; a persisted
+  condition cannot carry those bytes, because the API server replaces them
+  on write.
   This byte-boundary assertion supplements, rather than replaces, lifecycle
   Event goldens and recorder-level deduplication tests.
 - Recorder-level tests for all four fallback sites: WorkloadRun BuildFailed,
@@ -600,8 +612,12 @@ Both facts drive the scope decision below.
   API client before starting the manager (`initializeWorkloadRun`), preserving
   MPI construction checks while asserting only the terminal `WorkflowFailed`
   Event. It does not accept `WorkflowDeleted` as a valid expected outcome.
-  Restore full lifecycle integration coverage after #352; the per-tier
-  InProgress-then-Succeeded requirement below remains outstanding for WorkloadRun.
+  Neither fixture asserts `Normal / WorkflowCreated`. After that MPI list was
+  reduced to `WorkflowFailed`, no unit or integration test asserts that Event.
+  Restore full lifecycle integration coverage after #352, including
+  `Normal / WorkflowCreated` alongside the creation-to-success assertion; the
+  per-tier InProgress-then-Succeeded requirement below remains outstanding
+  for WorkloadRun.
 - **Checkpoint restart testing-method amendment:** retain the integration
   requirement that restart emits no additional InProgress event, using a
   recorder observer alongside the running manager and the existing Job state
@@ -648,8 +664,11 @@ Both facts drive the scope decision below.
     and write `Failed / WorkloadFailed` depending on reconciliation ordering,
     but that teardown artifact is not part of the promised event sequence;
   - a Job threshold case in each direction, both asserting the Job stays
-    `Succeeded`: these fixtures pre-create the TrainJob and do not assert
-    `WorkloadCreated`. A violation shows `Normal /
+    `Succeeded`: these fixtures already set `status.workloadRef`, so
+    reconciliation never reaches workload creation and they do not assert
+    `WorkloadCreated`. A pre-created TrainJob with `workloadRef` unset is not
+    this case; creation hits `AlreadyExists` and emits `WorkloadCreationError`.
+    A violation shows `Normal /
     WorkloadCompleted` then `Warning / ThresholdViolated` and no Job `Failed`
     row, with the owning Workflow's `Failed / JobValidationFailed` row in the
     same case; a pass shows `Normal / WorkloadCompleted` then `Normal /
@@ -922,8 +941,8 @@ and at flush time. Dedup must be a property of the emit decision.
   **Release prerequisite:** work on #352 immediately after this PR. Do not cut
   a release containing ADR-080's implementation until both changes have landed
   and the affected lifecycle fixtures pass repeated race-instrumented runs.
-  Restore the full WorkloadRun creation-to-success integration assertion as
-  part of #352. Separate PRs are a scope boundary, not permission to release
+  Restore the full WorkloadRun creation-to-success integration assertion,
+  including `Normal / WorkflowCreated`, as part of #352. Separate PRs are a scope boundary, not permission to release
   the misleading `WorkflowDeleted` Warning before the production fix.
 - `HardwareFailed` and `ValidationFailed` are written by `setJobHardwareFailed`
   and `setJobValidationStatus` through their own `updateStatusWithRetry`

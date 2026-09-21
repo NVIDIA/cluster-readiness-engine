@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -802,13 +803,15 @@ func waitForCondition(t *testing.T, c client.Client, cfg waitConfig, deadline ti
 	timeout := boundedWaitTimeout(t, time.Duration(cfg.TimeoutSeconds)*time.Second, deadline)
 	interval := 500 * time.Millisecond
 
+	spec := collectSpec{
+		Kind:      cfg.WaitFor.Kind,
+		Name:      cfg.WaitFor.Name,
+		Namespace: cfg.WaitFor.Namespace,
+	}
+	rejectUnknownKind(t, spec)
 	require.Eventually(t, func() bool {
-		obj := getObject(ctx, t, c, collectSpec{
-			Kind:      cfg.WaitFor.Kind,
-			Name:      cfg.WaitFor.Name,
-			Namespace: cfg.WaitFor.Namespace,
-		})
-		if obj == nil {
+		obj, err := readObject(ctx, c, spec)
+		if err != nil {
 			return false
 		}
 
@@ -852,9 +855,13 @@ func deleteAfterWait(t *testing.T, c client.Client, specs []collectSpec, deadlin
 		t.Logf("deleteAfterWait: deleted %s/%s", spec.Kind, spec.Name)
 		if spec.StripFinalizers {
 			require.Eventually(t, func() bool {
-				fresh := getObject(ctx, t, c, spec)
-				if fresh == nil {
+				fresh, err := readObject(ctx, c, spec)
+				if apierrors.IsNotFound(err) {
 					return true
+				}
+				if err != nil {
+					t.Logf("deleteAfterWait: retrying finalizer strip on %s/%s: %v", spec.Kind, spec.Name, err)
+					return false
 				}
 				if len(fresh.GetFinalizers()) > 0 {
 					fresh.SetFinalizers(nil)
@@ -878,12 +885,12 @@ func waitForDeletion(t *testing.T, c client.Client, cfg waitConfig, deadline tim
 	interval := 500 * time.Millisecond
 
 	for _, spec := range cfg.WaitForDeletion {
+		rejectUnknownKind(t, spec)
 		timeout := boundedWaitTimeout(t, time.Duration(cfg.TimeoutSeconds)*time.Second, deadline)
 		require.Eventually(t, func() bool {
 			_, err := readObject(ctx, c, spec)
 			return ctx.Err() == nil && apierrors.IsNotFound(err)
 		}, timeout, interval, "timed out waiting for deletion of %s/%s", spec.Kind, spec.Name)
-		require.NoError(t, ctx.Err(), "deadline expired during waitForDeletion of %s/%s", spec.Kind, spec.Name)
 	}
 }
 
@@ -1067,6 +1074,15 @@ func hasConditionWithReason(conditions []metav1.Condition, condType, reason stri
 	return false
 }
 
+var errUnknownKind = errors.New("unknown kind")
+
+func rejectUnknownKind(t *testing.T, spec collectSpec) {
+	t.Helper()
+	if _, _, err := objectForKind(spec.Kind); errors.Is(err, errUnknownKind) {
+		t.Fatalf("unknown kind: %s", spec.Kind)
+	}
+}
+
 func getObject(ctx context.Context, t *testing.T, c client.Client, spec collectSpec) client.Object {
 	t.Helper()
 	obj, err := readObject(ctx, c, spec)
@@ -1079,45 +1095,13 @@ func getObject(ctx context.Context, t *testing.T, c client.Client, spec collectS
 
 // readObject preserves errors so absence is never inferred from a failed read.
 func readObject(ctx context.Context, c client.Client, spec collectSpec) (client.Object, error) {
+	obj, namespaced, err := objectForKind(spec.Kind)
+	if err != nil {
+		return nil, err
+	}
 	key := types.NamespacedName{Name: spec.Name, Namespace: spec.Namespace}
-	var obj client.Object
-	switch spec.Kind {
-	case kindJob:
-		obj = &nvcrev1alpha1.Job{}
-	case "Workflow":
-		obj = &nvcrev1alpha1.Workflow{}
-	case "Certification":
-		obj = &nvcrev1alpha1.Certification{}
-	case "WorkloadRun":
-		obj = &nvcrev1alpha1.WorkloadRun{}
-	case "GoodputMeasurement":
-		obj = &nvcrev1alpha1.GoodputMeasurement{}
-	case "BandwidthMeasurement":
-		obj = &nvcrev1alpha1.BandwidthMeasurement{}
-	case "PersistentVolumeClaim":
-		obj = &corev1.PersistentVolumeClaim{}
-	case "PersistentVolume":
-		obj = &corev1.PersistentVolume{}
+	if !namespaced {
 		key.Namespace = ""
-	case kindConfigMap:
-		obj = &corev1.ConfigMap{}
-	case "Node":
-		obj = &corev1.Node{}
-		key.Namespace = ""
-	case "LogProfile":
-		obj = &nvcrev1alpha1.LogProfile{}
-		key.Namespace = ""
-	case "Namespace":
-		obj = &corev1.Namespace{}
-		key.Namespace = ""
-	case "TrainJob":
-		obj = &trainerv1alpha1.TrainJob{}
-	case "Pod":
-		obj = &corev1.Pod{}
-	case "BatchJob":
-		obj = &batchv1.Job{}
-	default:
-		return nil, fmt.Errorf("unknown kind: %s", spec.Kind)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -1126,6 +1110,43 @@ func readObject(ctx context.Context, c client.Client, spec collectSpec) (client.
 		return nil, err
 	}
 	return obj, nil
+}
+
+func objectForKind(kind string) (client.Object, bool, error) {
+	switch kind {
+	case kindJob:
+		return &nvcrev1alpha1.Job{}, true, nil
+	case "Workflow":
+		return &nvcrev1alpha1.Workflow{}, true, nil
+	case "Certification":
+		return &nvcrev1alpha1.Certification{}, true, nil
+	case "WorkloadRun":
+		return &nvcrev1alpha1.WorkloadRun{}, true, nil
+	case "GoodputMeasurement":
+		return &nvcrev1alpha1.GoodputMeasurement{}, true, nil
+	case "BandwidthMeasurement":
+		return &nvcrev1alpha1.BandwidthMeasurement{}, true, nil
+	case "PersistentVolumeClaim":
+		return &corev1.PersistentVolumeClaim{}, true, nil
+	case "PersistentVolume":
+		return &corev1.PersistentVolume{}, false, nil
+	case kindConfigMap:
+		return &corev1.ConfigMap{}, true, nil
+	case "Node":
+		return &corev1.Node{}, false, nil
+	case "LogProfile":
+		return &nvcrev1alpha1.LogProfile{}, false, nil
+	case "Namespace":
+		return &corev1.Namespace{}, false, nil
+	case "TrainJob":
+		return &trainerv1alpha1.TrainJob{}, true, nil
+	case "Pod":
+		return &corev1.Pod{}, true, nil
+	case "BatchJob":
+		return &batchv1.Job{}, true, nil
+	default:
+		return nil, false, fmt.Errorf("%w: %s", errUnknownKind, kind)
+	}
 }
 
 func waitForEvents(t *testing.T, c client.Client, cfg waitConfig, deadline time.Time) {

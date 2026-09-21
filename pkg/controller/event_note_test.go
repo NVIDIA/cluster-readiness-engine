@@ -4,12 +4,14 @@
 package controller
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
 
@@ -75,14 +77,68 @@ func TestRecorderWrappersBoundEventNotes(t *testing.T) {
 
 func TestFormatEventNoteBinaryInput(t *testing.T) {
 	t.Parallel()
-	limit := maxEventNoteBytes - len(eventNoteTruncationSuffix)
-	for _, input := range []string{
-		strings.Repeat("\x80", 1200),
-		strings.Repeat("a", 500) + strings.Repeat("\x80", 700),
-		strings.Repeat("a", limit-1) + "\xff" + strings.Repeat("\x80", 100),
+	suffix := eventNoteTruncationSuffix
+	replacement := "\uFFFD"
+	for _, tc := range []struct {
+		name, input, want string
+	}{
+		{
+			// A contiguous invalid run collapses to one replacement, so the
+			// valid prefix must survive instead of shrinking to the marker.
+			name:  "all-continuation",
+			input: strings.Repeat("\x80", 1200),
+			want:  replacement,
+		},
+		{
+			name:  "ascii-then-binary",
+			input: strings.Repeat("a", 500) + strings.Repeat("\x80", 700),
+			want:  strings.Repeat("a", 500) + replacement,
+		},
+		{
+			name:  "invalid-run-at-cutoff",
+			input: strings.Repeat("a", 1008) + "\xff" + strings.Repeat("\x80", 100),
+			want:  strings.Repeat("a", 1008) + replacement,
+		},
+		{
+			// Isolated invalid bytes expand threefold. 600 pairs become
+			// 2,400 bytes and must be cut on the expanded form.
+			name:  "alternating-invalid-bytes",
+			input: strings.Repeat("a\x80", 600),
+			want:  strings.Repeat("a"+replacement, 252) + "a" + suffix,
+		},
+		{
+			// 1,024 Go bytes with one invalid lead byte. Budgeting the Go
+			// string sends 1,026 bytes after JSON replacement.
+			name:  "lead-byte-within-go-limit",
+			input: strings.Repeat("a", 1008) + "\xC3" + strings.Repeat("b", 15),
+			want:  strings.Repeat("a", 1008) + suffix,
+		},
+		{
+			name:  "short-binary",
+			input: strings.Repeat("\x80", 10),
+			want:  replacement,
+		},
 	} {
-		got := formatEventNote("%s", input)
-		require.Equal(t, input[:limit]+eventNoteTruncationSuffix, got)
-		require.Len(t, got, maxEventNoteBytes)
+		t.Run(tc.name, func(t *testing.T) {
+			got := formatEventNote("%s", tc.input)
+			require.Equal(t, tc.want, got)
+			require.NotEqual(t, suffix, got)
+			assertEventNoteAcceptedOnWire(t, got)
+		})
 	}
+}
+
+// assertEventNoteAcceptedOnWire pins the events/v1 limit against the JSON
+// codec the client uses, not the Go string length. Invalid bytes expand to
+// U+FFFD in transit.
+func assertEventNoteAcceptedOnWire(t *testing.T, note string) {
+	t.Helper()
+	require.LessOrEqual(t, len(note), maxEventNoteBytes)
+	require.True(t, utf8.ValidString(note))
+	encoded, err := json.Marshal(&eventsv1.Event{Note: note})
+	require.NoError(t, err)
+	var decoded eventsv1.Event
+	require.NoError(t, json.Unmarshal(encoded, &decoded))
+	require.Equal(t, note, decoded.Note)
+	require.LessOrEqual(t, len(decoded.Note), maxEventNoteBytes)
 }

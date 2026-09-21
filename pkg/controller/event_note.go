@@ -5,6 +5,7 @@ package controller
 
 import (
 	"fmt"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -17,13 +18,17 @@ const (
 // Status messages remain intact; only the recorder's copy is shortened.
 // Callers must pass the result through a literal "%s" recorder format.
 func formatEventNote(format string, args ...any) string {
-	note := fmt.Sprintf(format, args...)
+	// Budget against the encoded form. encoding/json replaces every invalid
+	// byte with U+FFFD, and strings.ToValidUTF8 does the same for each
+	// isolated byte while collapsing a contiguous invalid run to one rune.
+	// Either way the replacement is three bytes, so measuring the original
+	// Go string can let the note the API server receives exceed 1,024 bytes.
+	note := strings.ToValidUTF8(fmt.Sprintf(format, args...), "\uFFFD")
 	if len(note) <= maxEventNoteBytes {
 		return note
 	}
 	end := maxEventNoteBytes - len(eventNoteTruncationSuffix)
-	// Only shorten further when a valid rune actually crosses the cutoff.
-	// Invalid continuation-byte runs are binary data, not an unbounded rune.
+	// A valid rune may still straddle the cutoff. Walk back at most one rune.
 	for start := end - 1; start >= 0 && end-start < utf8.UTFMax; start-- {
 		if !utf8.RuneStart(note[start]) {
 			continue

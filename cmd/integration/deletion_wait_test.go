@@ -6,6 +6,7 @@ package integration_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"testing"
@@ -40,6 +41,8 @@ func TestReadObjectPreservesErrors(t *testing.T) {
 	spec.Name = "absent-probe"
 	_, err = readObject(context.Background(), c, spec)
 	require.True(t, apierrors.IsNotFound(err))
+	_, err = readObject(context.Background(), c, collectSpec{Kind: "Bogus", Name: "x"})
+	require.ErrorIs(t, err, errUnknownKind)
 	for _, readErr := range []error{
 		context.DeadlineExceeded,
 		apierrors.NewForbidden(schema.GroupResource{Resource: resourceConfigMaps}, spec.Name, errors.New("denied")),
@@ -73,24 +76,29 @@ func TestWaitForDeletionPropagatesDeadline(t *testing.T) {
 
 // Exercise the fatal wait path in a subprocess. Neither a failed read nor a
 // context expiring during a read may satisfy the deletion predicate.
+const modeDeadline = "deadline"
+
 func TestWaitForDeletionRejectsReadFailures(t *testing.T) {
 	if mode := os.Getenv("CRE_TEST_DELETION_ERROR"); mode != "" {
 		c := fake.NewClientBuilder().WithInterceptorFuncs(interceptor.Funcs{
 			Get: func(ctx context.Context, _ client.WithWatch, key client.ObjectKey,
 				_ client.Object, _ ...client.GetOption) error {
-				if mode == "deadline" {
+				if mode == modeDeadline {
+					fmt.Fprintln(os.Stderr, "deletion-predicate-ran")
 					<-ctx.Done()
 					return ctx.Err()
 				}
 				return apierrors.NewForbidden(schema.GroupResource{Resource: resourceConfigMaps}, key.Name, errors.New("denied"))
 			},
 		}).Build()
+		// testify evaluates the predicate once immediately, so the stderr
+		// marker proves it ran before the deadline failed the wait.
 		waitForDeletion(t, c, waitConfig{TimeoutSeconds: 1, WaitForDeletion: []collectSpec{{
 			Kind: kindConfigMap, Name: deletionProbeName, Namespace: corev1.NamespaceDefault,
 		}}}, time.Now().Add(200*time.Millisecond))
 		return
 	}
-	for _, mode := range []string{"deadline", "forbidden"} {
+	for _, mode := range []string{modeDeadline, "forbidden"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -101,6 +109,32 @@ func TestWaitForDeletionRejectsReadFailures(t *testing.T) {
 			require.Error(t, err)
 			require.Contains(t, string(output), "timed out waiting for deletion")
 			require.NotContains(t, string(output), "panic:")
+			if mode == modeDeadline {
+				require.Contains(t, string(output), "deletion-predicate-ran")
+			}
 		})
 	}
+}
+
+func TestWaitForDeletionRejectsUnknownKind(t *testing.T) {
+	if os.Getenv("CRE_TEST_UNKNOWN_KIND") == "1" {
+		waitForDeletion(t, fake.NewClientBuilder().Build(), waitConfig{
+			TimeoutSeconds: 4,
+			WaitForDeletion: []collectSpec{{
+				Kind: "Bogus", Name: "x", Namespace: corev1.NamespaceDefault,
+			}},
+		}, time.Now().Add(time.Minute))
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	start := time.Now()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestWaitForDeletionRejectsUnknownKind$")
+	cmd.Env = append(os.Environ(), "CRE_TEST_UNKNOWN_KIND=1")
+	output, err := cmd.CombinedOutput()
+	require.NoError(t, ctx.Err(), "child must fail, not hang")
+	require.Error(t, err)
+	require.Contains(t, string(output), "unknown kind: Bogus")
+	require.NotContains(t, string(output), "timed out waiting for deletion")
+	require.Less(t, time.Since(start), 2*time.Second)
 }
