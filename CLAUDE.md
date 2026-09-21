@@ -330,4 +330,4 @@ job.Status.Conditions = append(job.Status.Conditions, condition)
 
 ## Design Decisions
 
-Architecture decision records are in `docs/designs/` (ADR-000 through ADR-069). Read these before making significant changes to understand why things are the way they are.
+Architecture decision records are in `docs/designs/` (ADR-000 through ADR-081). Read these before making significant changes to understand why things are the way they are.

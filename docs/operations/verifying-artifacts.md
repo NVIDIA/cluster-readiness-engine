@@ -20,12 +20,12 @@ on the other end is the one we published. The script runs before anything has ch
 Set `TAG` to the release you actually have. These commands verify the artifact `TAG`
 names and nothing else — pointed at a different release they will happily report success
 while telling you nothing about the file on your disk. `releases/latest` resolves to the
-newest *stable* release, so it is not `v0.2.0-rc.1`.
+newest *stable* release, never a pre-release.
 
 To know what you are about to run, check it first:
 
 ```bash
-TAG=v0.2.0-rc.1
+TAG=v0.4.0
 BASE="https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${TAG}"
 ID="https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}"
 ISSUER='https://token.actions.githubusercontent.com'
@@ -52,10 +52,11 @@ in which something with write access could swap it — small, and it requires a 
 that is already worse than this, but it is a window and not a proof.
 
 The installer also verifies the binary *it* downloads, refusing to install one whose
-bundle it cannot check, with `--skip-verify` as the only override. That landed after
-`v0.2.0-rc.1` was cut, so the installer published with the release pinned above does not
-yet do it — it checks only `checksums.txt`. Verify `installer` yourself, as above, until
-a release carries the newer one.
+bundle it cannot check, with `--skip-verify` as the only override. Releases up to and
+including `v0.2.0-rc.1` ship an older installer that checks only `checksums.txt` (before
+`v0.1.0-rc.9`, nothing at all). `v0.2.0-rc.1` is the only one of them with bundles, so it
+is the only one whose installer you can verify as above; releases before it carry no
+bundles and cannot be verified this way.
 
 ## Prerequisites
 
@@ -106,7 +107,7 @@ not describe, so each platform gets its own.
 Signature and provenance, against the tag:
 
 ```bash
-TAG=v0.2.0-rc.1
+TAG=v0.4.0
 IMAGE=ghcr.io/nvidia/cluster-readiness-engine/manager
 ID="https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}"
 ISSUER='https://token.actions.githubusercontent.com'
@@ -454,7 +455,7 @@ This environment may not have Docker or Kind. On a machine that does, the intend
 is server-side dry-run so the admission webhook actually runs:
 
 ```shell
-TAG=v0.2.0
+TAG=v0.4.0
 IMAGE=ghcr.io/nvidia/cluster-readiness-engine/manager
 DIGEST="$(crane digest "${IMAGE}:${TAG}")"
 ID="https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}"
