@@ -497,8 +497,10 @@ does not exist at Job creation, so nothing is created up front to sample. When
 ingestion accepts the publisher document, the InferenceRun reconciler writes
 one immutable result ConfigMap and sets a freeze condition plus the ConfigMap
 reference on InferenceRun status. The ConfigMap is owned by the Workflow, or
-by the CRE Job when there is no Workflow owner. The publisher ConfigMap stays
-transport owned by InferenceRun; thresholds and reports do not read it.
+by the CRE Job when there is no Workflow owner. Ownership decides retention,
+not lookup: both modes are found through the same InferenceRun status
+reference. The publisher ConfigMap stays transport owned by InferenceRun;
+thresholds and reports do not read it.
 
 A measurement CRD is not added. Nothing reconciles the result after the freeze
 write. The ConfigMap is a bounded document with a status reference, the same
@@ -572,8 +574,9 @@ implemented by the document change itself.
    `pkg/inference/`. WorkloadRun does not grow an inference framework.
 3. **Connect verdicts and reports.** Register the inference keys in
    `pkg/threshold.Registry`. Extend `collectJobMeasuredValues` to read the
-   Workflow-owned result ConfigMap through `job.status.workloadRef` after the
-   freeze condition, with no metric copy on Job status, and emit present
+   frozen result ConfigMap through `job.status.workloadRef` after the freeze
+   condition, under either owner, so a direct inference Job collects the same
+   keys as one under a Workflow. No metric copy on Job status, and emit present
    zeros. Mirror `CleanupComplete` from that same fetched InferenceRun onto
    the Job and make Workflow's retry guard read that Job condition. Render and
    Workflow preflight reject a group
@@ -628,8 +631,9 @@ commitment than maintaining traffic generation and streaming metric semantics.
 InferenceRun preserves the one-resource workload adapter while making the
 server and client lifecycle explicit. A public `kubeJob` arm would still leave
 serving placement, readiness, evidence, and teardown unspecified. The frozen
-result is a Workflow-owned ConfigMap, not a new measurement controller: the
-run produces one terminal document, and Job status is not a second copy of it.
+result is a ConfigMap owned by the Workflow, or by the Job when there is no
+Workflow, not a new measurement controller: the run produces one terminal
+document, and Job status is not a second copy of it.
 
 ## Consequences
 
