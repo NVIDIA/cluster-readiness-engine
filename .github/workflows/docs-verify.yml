@@ -22,6 +22,8 @@ on:
     paths:
       - 'docs/operations/verifying-artifacts.md'
       - '.github/workflows/docs-verify.yml'
+      - '.github/workflows/attest.yml'
+      - '.github/actions/read-attest-pins/**'
   schedule:
     # Weekly. The commands depend on Rekor, GHCR and the release assets, none of
     # which this repository controls.
@@ -42,19 +44,26 @@ jobs:
         with:
           persist-credentials: false
 
+      # Same pin the signer documents. A literal cosign-release or a second
+      # CRANE_VERSION/CRANE_SHA256 pair here would let the docs verifier drift
+      # from the bundle format and digest-resolution tool attest.yml uses.
+      - name: Read signer tool pins
+        id: pins
+        uses: ./.github/actions/read-attest-pins
+
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
-          cosign-release: v3.1.3
+          cosign-release: ${{ steps.pins.outputs.cosign_version }}
 
       # Same pattern as attest.yml: download from the project that publishes it
-      # and check a digest pinned here. A setup action would have installed
+      # and check the digest pinned there. A setup action would have installed
       # whatever crane is newest at run time, unverified, which is the opposite
       # of what this workflow is checking.
       - name: Install crane
         env:
-          CRANE_VERSION: v0.20.6
-          CRANE_SHA256: c1d593d01551f2c9a3df5ca0a0be4385a839bd9b86d4a76e18d7b17d16559127
+          CRANE_VERSION: ${{ steps.pins.outputs.crane_version }}
+          CRANE_SHA256: ${{ steps.pins.outputs.crane_sha256 }}
         run: |
           set -euo pipefail
           base="https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}"

@@ -198,9 +198,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
-        with:
-          version: v3.19.2
+      - uses: ./.github/actions/setup-helm
 
       - name: Log in to GHCR
         env:
@@ -917,7 +915,6 @@ jobs:
       packages: read
       id-token: none
     env:
-      COSIGN_VERSION: v3.1.3
       TAG: ${{ needs.release-tag.outputs.value }}
       IMAGE: ${{ needs.build-image.outputs.image_name }}
       INDEX: ${{ needs.build-image.outputs.index_digest }}
@@ -931,10 +928,16 @@ jobs:
         with:
           persist-credentials: false
 
+      # Same pin the signer documents. A second COSIGN_VERSION here would let
+      # verification drift from the bundle format attest.yml emits (ADR-074).
+      - name: Read signer tool pins
+        id: pins
+        uses: ./.github/actions/read-attest-pins
+
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
-          cosign-release: ${{ env.COSIGN_VERSION }}
+          cosign-release: ${{ steps.pins.outputs.cosign_version }}
 
       # The identity every check below pins. Exact, never a regexp: a pattern
       # naming no workflow and no ref also accepts a branch build, which is how

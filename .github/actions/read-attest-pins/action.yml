@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Single source for the verifier-side cosign/crane pins: the workflow_call
+# defaults (and crane digest) already documented on attest.yml. Dependabot
+# cannot raise those defaults; see .github/dependabot.yml.
+
+name: Read attest.yml tool pins
+description: >
+  Read the cosign and crane pins from attest.yml so verifier jobs use the
+  same versions the signer documents.
+
+outputs:
+  cosign_version:
+    description: workflow_call default for cosign_version
+    value: ${{ steps.read.outputs.cosign_version }}
+  crane_version:
+    description: workflow_call default for crane_version
+    value: ${{ steps.read.outputs.crane_version }}
+  crane_sha256:
+    description: CRANE_SHA256 next to the crane install in attest.yml
+    value: ${{ steps.read.outputs.crane_sha256 }}
+
+runs:
+  using: composite
+  steps:
+    - id: read
+      name: Parse attest.yml defaults
+      shell: bash
+      run: python3 "${GITHUB_ACTION_PATH}/read.py"

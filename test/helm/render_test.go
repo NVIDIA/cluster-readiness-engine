@@ -66,7 +66,7 @@ func requireHelm(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("helm"); err != nil {
 		if os.Getenv("CI") != "" {
-			t.Fatal("helm is required in CI but not on PATH; the test job must install helm (azure/setup-helm)")
+			t.Fatal("helm is required in CI but not on PATH; the test job must install helm (.github/actions/setup-helm)")
 		}
 		t.Skip("helm not available; skipping chart render test")
 	}

@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Helm CLI pin for ci.yml, release.yml, and uat.yml. Dependabot's
+# github-actions ecosystem updates the setup-helm action SHA below; it does
+# not touch `version:`. Bump that input here — one place — during release
+# prep. See .github/dependabot.yml.
+
+name: Setup Helm
+description: >
+  Install the pinned Helm CLI. The CLI version is a manual pin (Dependabot
+  only updates the setup-helm action SHA).
+
+runs:
+  using: composite
+  steps:
+    - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      with:
+        version: v3.19.2

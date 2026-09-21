@@ -73,9 +73,18 @@ updates:
   # need a companion digest or a release-format review a blind bump would
   # skip). Check during release prep:
   #   - cosign_version / crane_version defaults on attest.yml workflow_call
-  #     inputs. Dependabot does not update workflow_call input defaults; cosign
-  #     governs the attestation bundle format, and crane's download is
-  #     digest-pinned for one version only.
+  #     inputs, plus CRANE_SHA256 on that workflow's install step. This is the
+  #     single pin: release.yml verify-release and docs-verify.yml read those
+  #     defaults via .github/actions/read-attest-pins rather than carrying
+  #     their own copies (COSIGN_VERSION, a literal cosign-release, or a
+  #     second CRANE_VERSION/CRANE_SHA256 pair). Dependabot does not update
+  #     workflow_call input defaults or env: values; cosign governs the
+  #     attestation bundle format (ADR-074), and crane's download digest is
+  #     known for one version only.
+  #   - Helm CLI `version:` in .github/actions/setup-helm (consumed by ci.yml,
+  #     release.yml, uat.yml). Dependabot updates the azure/setup-helm action
+  #     SHA; it does not touch the input that selects the helm binary. One
+  #     home so those three workflows cannot drift.
   #   - SYFT_VERSION + SYFT_SHA256 in release.yml: version and digest must move
   #     together, and there is no atomic pair update for that.
   #   - YQ_VERSION in publish-fern-docs.yml, KIND_VERSION / TILT_VERSION in
