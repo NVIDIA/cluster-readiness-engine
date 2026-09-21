@@ -331,6 +331,9 @@ jobs:
       # that release's own checksums, rather than through a setup action. Same
       # reasoning as crane in attest.yml: fewer third parties in the release
       # path, and the binary is verified on arrival.
+      #
+      # Deliberately manual pin: SYFT_VERSION and SYFT_SHA256 must move together.
+      # Dependabot cannot update that pair atomically — see .github/dependabot.yml.
       - name: Install syft
         id: syft
         env:
