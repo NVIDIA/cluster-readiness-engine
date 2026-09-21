@@ -15,6 +15,16 @@ The project is at `v0.x`. Under SemVer that means the public surface can still c
 a minor release. Treat CRD schemas, the `nvcrectl` command line, and Helm values as
 unstable until `v1.0.0`. Breaking changes are called out in the release notes.
 
+Notable changes in each release are summarized in [CHANGELOG.md](CHANGELOG.md); the
+authoritative record is the release notes on each GitHub Release.
+
+## Supported versions
+
+Security and bug fixes land on `main` and ship in the latest release. While NVCRE is
+pre-1.0, only the latest minor release is supported; older releases do not receive
+backported fixes. If you are running an older release and need a fix, upgrade to the
+latest release.
+
 ## Cadence
 
 There is no fixed schedule. NVCRE releases when there is something worth releasing.
@@ -35,7 +45,15 @@ people do not tag at the same time.
 1. Make sure `main` is green. Every required check must pass: Lint, Build, Test, Verify,
    and UAT.
 2. Decide the version. See Versioning above.
-3. Tag the commit on `main` and push the tag.
+3. Bump the pinned `subject:` tag in
+   `config/samples/policy/kyverno-verify-images.yaml` and
+   `config/samples/policy/policy-controller-verify-images.yaml` to the version you are
+   about to cut, and land that change on `main` **before** tagging. Nothing in CI
+   rewrites those strings. Tagging first and bumping later leaves the samples at that
+   tag pinned to the previous release — exactly the stale-pin outage the bump exists to
+   prevent. See [Verifying release artifacts](docs/operations/verifying-artifacts.md#admission-policy-samples).
+4. Tag the commit on `main` (the one that already carries the bumped pins) and push the
+   tag.
 
    ```bash
    git checkout main && git pull --ff-only
@@ -47,10 +65,10 @@ people do not tag at the same time.
    `NVIDIA/cluster-readiness-engine`, which is usually `upstream`.
 
    Sign the tag (`-s`). Pushing the tag is the release trigger.
-4. Watch the `Release` workflow. The GitHub Release is created as a **draft** and is
+5. Watch the `Release` workflow. The GitHub Release is created as a **draft** and is
    made visible only by the `Verify release` job, after it has verified every published
    artifact. If that job fails, the release stays a draft — see Troubleshooting.
-5. Check the published release, then announce it.
+6. Check the published release, then announce it.
 
 Do not publish a draft release by hand. A draft left behind by a failed `Verify release`
 is a release the pipeline determined it could not verify; publishing it from the UI is
@@ -86,7 +104,7 @@ Pushing a `v*` tag runs `.github/workflows/release.yml`, which owns every releas
 | Publish Helm Chart | `oci://ghcr.io/nvidia/cluster-readiness-engine` |
 | Attest Helm chart | signature and provenance on the chart digest |
 | Build CLI Binaries | cross-compiled `nvcrectl` for linux and macOS, amd64 and arm64 |
-| Attest binaries | a Sigstore bundle per binary, per SBOM, and for the installer |
+| Attest binaries | a Sigstore bundle per binary, per SBOM, for the installer and for `THIRD_PARTY_NOTICES.md`, plus one binding each SBOM to its binary |
 | Create GitHub Release | the GitHub Release as a **draft**, its notes, and the assets below |
 | Verify release | verifies every published artifact, then makes the release visible |
 
@@ -112,7 +130,11 @@ Release assets:
 - `installer` — the install script the README points at
 - `nvcrectl-linux-amd64`, `nvcrectl-linux-arm64`
 - `nvcrectl-darwin-amd64`, `nvcrectl-darwin-arm64`
-- `checksums.txt` — SHA-256 of every asset above
+- `nvcrectl-<os>-<arch>.cyclonedx.json` — a CycloneDX SBOM per binary
+- `THIRD_PARTY_NOTICES.md` — third-party license notices for the CLI
+- `<asset>.sigstore.json` — a Sigstore bundle for each asset above, plus
+  `nvcrectl-<os>-<arch>.cyclonedx.sigstore.json` binding each SBOM to its binary
+- `checksums.txt` — SHA-256 of the assets above
 
 ## Verifying a release
 
@@ -137,7 +159,7 @@ publication, the release is returned to draft.
 To verify manually, check the signature — not the checksum:
 
 ```bash
-VERSION=v0.2.0-rc.1
+VERSION=v0.4.0
 BASE="https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${VERSION}"
 curl -fsSLO "${BASE}/nvcrectl-linux-amd64"
 curl -fsSLO "${BASE}/nvcrectl-linux-amd64.sigstore.json"
@@ -158,6 +180,25 @@ installer equivalents.
 
 Releases up to and including `v0.1.0-rc.7` predate the checksum step and carry no
 `checksums.txt`.
+
+## Registry hygiene
+
+A scheduled workflow, [`.github/workflows/prune-images.yml`](.github/workflows/prune-images.yml),
+runs weekly and prunes stale untagged image versions from the `manager` package on
+GHCR: superseded digests that development builds leave behind and that no tag points
+at any more. Before deleting anything it builds a keep set by resolving every tag in
+the package to its manifest, collecting every digest that manifest references, and
+adding every OCI referrer of those digests, so the untagged per-platform manifests,
+attestations, and referrer-attached supply-chain metadata that tagged images depend
+on are never removed. Only untagged versions outside the keep set and older than 30
+days are deleted; tagged versions are never deleted, and the run aborts without
+deleting if the package's tag list changed while the keep set was being built.
+
+A manual dispatch defaults to a dry-run mode that lists what would be deleted without
+deleting anything. Every run logs the untagged versions it considers and each deletion
+it performs, and finishes by confirming that every digest referenced by a tagged
+manifest still resolves in the registry and by smoke-pulling every release-tagged
+image.
 
 ## Troubleshooting
 
@@ -215,6 +256,38 @@ if nothing published, commit your work, and tag again.
 
 **`releases/latest` returns 404.** No stable release exists yet. Use an explicit version
 in the download URL.
+
+## Existing-tag attest-selftest rollout
+
+`attest-selftest.yml` on `main` holds `github.ref` to `refs/heads/main`, so a
+`workflow_dispatch` at a `v*` ref cannot reach `attest.yml` through that caller.
+GitHub selects workflow files from the ref you dispatch at, not from `main`, so
+**tags that still contain the pre-fix workflow remain reachable.**
+
+Affected published tags today: `v0.2.0`, `v0.2.0-rc.1`, `v0.2.0-rc.2`, and
+`v0.3.0` (same `attest-selftest.yml` blob; repository gate only,
+`allow_untagged: true`). Older tags without that workflow are out of scope for
+this path.
+
+Merging the `main` fix does **not** close [#340](https://github.com/NVIDIA/cluster-readiness-engine/issues/340)
+for those refs. Close the residual gap with both of the following before treating
+the trust gap as closed:
+
+1. **Operational mitigation (immediate).** *Attest Self-Test* is disabled at the
+   repository Actions level (`state: disabled_manually`), so GitHub refuses
+   `workflow_dispatch` on it at every ref — including existing vulnerable tags —
+   independently of this merge. That setting is not visible to tests: if someone
+   re-enables the workflow for a smoke run and leaves it on, the old-tag path
+   reopens until the `v0.2.0` series and `v0.3.0` are out of use. Re-enable only
+   for a maintainer smoke run from `main`, then disable again. Do not dispatch
+   at a `v*` ref. The `v*` tag ruleset does not block this path.
+2. **Next release (durable for new tags).** Cut the next `v*` release from
+   `main` after the fix lands. New tags carry the guarded workflow. Do not move
+   or rewrite existing tags to pick up the fix.
+
+The acceptance criterion "dispatching at a `v*` ref does not reach `attest.yml`"
+applies to refs that contain the fix; existing vulnerable tags need the
+mitigation above.
 
 ## See also
 

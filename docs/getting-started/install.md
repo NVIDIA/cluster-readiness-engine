@@ -28,7 +28,7 @@ To pin a version, download the installer from that release and pass the tag:
 curl -fsSL https://github.com/NVIDIA/cluster-readiness-engine/releases/download/<tag>/installer | bash -s -- -v <tag>
 ```
 
-The installer automatically downloads and verifies a SHA-256 checksum before installing. On air-gapped systems, ensure `checksums.txt` from the same release is reachable alongside the binary.
+The installer verifies the binary against that release's Sigstore bundle (`<binary>.sigstore.json`) before installing it, using `cosign` from your `PATH` or a pinned copy it downloads and checks. It also checks `checksums.txt`. If either check fails or cannot run, it stops without installing. `--skip-verify` skips only the signature check; the checksum check has no override. The installer fetches everything from `github.com` and runs `cosign` without `--trusted-root`, so it does not work on an air-gapped host. There, download the binary and its `.sigstore.json` on a connected machine, verify them offline as described in [Air-gapped verification](../operations/verifying-artifacts.md#air-gapped-verification), and copy the binary into place yourself. See [SECURITY.md](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/SECURITY.md#supply-chain) for what each check proves.
 
 Verify the installation:
 

@@ -114,3 +114,59 @@ jobs:
             cover-unit.out
             cover-integration.out
           if-no-files-found: ignore
+
+  # Report-only performance tracking. Runs the Go benchmarks on every push and,
+  # on pull-request branches, compares HEAD against the merge-base with
+  # benchstat in the job summary. It never fails the build for a performance
+  # delta; it fails only on genuine errors, such as benchmarks that do not
+  # compile. Do not add this job to any required-checks list.
+  benchmark:
+    name: Benchmark
+    runs-on: linux-amd64-cpu16
+    if: github.repository == 'NVIDIA/cluster-readiness-engine'
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history so the merge-base against main can be resolved.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run benchmarks on HEAD
+        run: |
+          set -euo pipefail
+          go test -run '^$' -bench=. -benchmem -count=6 ./pkg/orchestration/ | tee bench-new.txt
+
+      - name: Run benchmarks on the merge-base
+        if: startsWith(github.ref, 'refs/heads/pull-request/')
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          base="$(git merge-base HEAD origin/main)"
+          echo "merge-base: ${base}"
+          git worktree add "${RUNNER_TEMP}/bench-base" "${base}"
+          # The merge-base may predate the benchmarks; tolerate a failed run
+          # instead of failing the job. The compare step checks the output.
+          (cd "${RUNNER_TEMP}/bench-base" && \
+            go test -run '^$' -bench=. -benchmem -count=6 ./pkg/orchestration/) \
+            > bench-old.txt || true
+
+      - name: Compare against the merge-base
+        if: startsWith(github.ref, 'refs/heads/pull-request/')
+        run: |
+          set -euo pipefail
+          if [[ ! -s bench-old.txt ]] || ! grep -q '^Benchmark' bench-old.txt; then
+            echo "No benchmarks at the merge-base; nothing to compare." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "## Benchmark comparison (merge-base vs HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          # Report-only: benchstat output goes to the summary and a benchstat
+          # error never fails the build.
+          go run golang.org/x/perf/cmd/benchstat@v0.0.0-20260908200009-22c9c6c9d4da bench-old.txt bench-new.txt \
+            | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

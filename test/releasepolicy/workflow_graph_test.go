@@ -64,7 +64,7 @@ var needsRef = regexp.MustCompile(`needs\.([A-Za-z0-9_-]+)\.outputs\.([A-Za-z0-9
 func loadWorkflows(t *testing.T) map[string]wf {
 	t.Helper()
 
-	paths, err := filepath.Glob(filepath.Join(workflowDir, "*.yml"))
+	paths, err := globWorkflowFiles(workflowDir)
 	if err != nil {
 		t.Fatalf("glob workflows: %v", err)
 	}
@@ -167,10 +167,7 @@ func TestJobOutputReferencesResolve(t *testing.T) {
 // `|`, so an interpolated value is executed rather than read. Values must cross
 // into a shell through `env:`.
 func TestNoExpressionInterpolationInRunBlocks(t *testing.T) {
-	paths, err := filepath.Glob(filepath.Join(workflowDir, "*.yml"))
-	if err != nil {
-		t.Fatalf("glob workflows: %v", err)
-	}
+	paths := workflowFiles(t)
 
 	var steps struct {
 		Jobs map[string]struct {

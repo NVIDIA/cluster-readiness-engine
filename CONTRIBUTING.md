@@ -20,7 +20,14 @@ Ways to contribute:
 - Improve documentation
 - Add tests to increase coverage
 - Fix issues with code contributions
-- Add new workload adapters or catalog entries
+- Add new workload adapters or catalog entries (see [Extending NVCRE](#extending-nvcre))
+
+### Extending NVCRE
+
+NVCRE has two main extension points:
+
+- **A new certification category** is one YAML entry at `pkg/catalog/entries/<domain>/<variant>.yaml`. The catalog embeds the entries directory at compile time and registers every entry at startup, so there is no registration code to edit. Follow the existing entries under `pkg/catalog/entries/communication/` as templates.
+- **A new training framework** is an implementation of the `Adapter` interface in `pkg/workload/`, which normalizes each framework's workload to a common `WorkloadPhase` (Pending, Running, Succeeded, Failed). The adapter alone is not selectable: `ForSpec()` picks the adapter based on which `WorkloadSpec` field is set, so a new framework also needs a field on `WorkloadSpec` in `api/v1alpha1` and a matching case in `ForSpec()`. Changing `WorkloadSpec` is a CRD change; open an issue first.
 
 ## Issue-First Workflow
 
@@ -42,6 +49,22 @@ When reporting issues:
 3. Include environment details (NVCRE version, Kubernetes version, GPU architecture, platform)
 4. Add relevant logs or error messages, with secrets removed
 5. Search existing issues first to avoid duplicates
+
+## Issue Priority
+
+Maintainers triage new issues and remove the `needs-triage` label that the issue templates apply. Priority roughly follows this order:
+
+1. Security reports (through the [security policy](SECURITY.md), never through issues)
+2. Correctness regressions in released versions
+3. Other bugs
+4. Feature requests
+
+Contributors can influence where an issue lands:
+
+- Describe concrete impact in the issue: the cluster scale affected, how often it happens, and what a workaround costs you.
+- Thumbs-up reactions and "me too" comments that add environment details raise visibility.
+- Offering to implement the fix raises it further; see the [Issue-First Workflow](#issue-first-workflow) above.
+- For time-sensitive escalations, start a thread in [GitHub Discussions](https://github.com/NVIDIA/cluster-readiness-engine/discussions).
 
 ## Submitting Pull Requests
 

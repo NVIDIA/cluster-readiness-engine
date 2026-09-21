@@ -30,9 +30,7 @@ on:
     workflows: ["Preview Fern Docs: Build"]
     types: [completed]
 
-permissions:
-  pull-requests: write
-  actions: read
+permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.workflow_run.head_repository.full_name || github.repository }}-${{ github.event.workflow_run.head_branch || github.event.workflow_run.id }}
@@ -43,6 +41,9 @@ jobs:
     runs-on: linux-amd64-cpu8
     timeout-minutes: 5
     if: ${{ github.repository == 'NVIDIA/cluster-readiness-engine' && github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      # Listing another run's artifacts via the Actions API needs actions: read.
+      actions: read
     outputs:
       has_artifact: ${{ steps.check.outputs.has_artifact }}
     steps:
@@ -60,6 +61,12 @@ jobs:
     if: github.repository == 'NVIDIA/cluster-readiness-engine' && needs.check-artifact.outputs.has_artifact == 'true'
     runs-on: linux-amd64-cpu8
     timeout-minutes: 15
+    permissions:
+      # download-artifact fetches a cross-run artifact with run-id +
+      # github-token, which needs actions: read; the :herb: comment needs
+      # pull-requests: write.
+      actions: read
+      pull-requests: write
     steps:
       - name: Download fern sources and metadata
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
