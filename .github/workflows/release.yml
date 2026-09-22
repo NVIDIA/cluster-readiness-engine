@@ -1012,12 +1012,40 @@ jobs:
           ASSETS="${BINARIES} installer THIRD_PARTY_NOTICES.md"
           for b in ${BINARIES}; do ASSETS="${ASSETS} ${b}.cyclonedx.json"; done
 
+          # Refuse a legacy LocalSignedPayload. cosign verify-blob-attestation
+          # falls back to reading it, and a legacy bundle can bypass the
+          # pinned identity (GHSA-fx35-mq7g-6g98). The protobuf bundle's
+          # mediaType is the discriminator; we fail without calling cosign.
+          reject_legacy_blob_bundle() {
+            local artifact="$1" bundle="$2"
+            local mediaType
+            if ! mediaType="$(jq -r '.mediaType // empty' "${bundle}")"; then
+              echo "::error::${artifact}'s bundle is not JSON; refuse to read it"
+              return 1
+            fi
+            case "${mediaType}" in
+              application/vnd.dev.sigstore.bundle*) ;;
+              *)
+                echo "::error::${artifact} has a legacy-format bundle (mediaType=${mediaType:-missing}); refuse to read it"
+                return 1
+                ;;
+            esac
+            return 0
+          }
+
           for a in ${ASSETS}; do
             if [[ ! -s "${a}" ]]; then
               echo "::error::asset ${a} is missing from the release"; failed=1; continue
             fi
             if [[ ! -s "${a}.sigstore.json" ]]; then
               echo "::error::asset ${a} has no signature bundle"; failed=1; continue
+            fi
+            if [[ -e "${a}.sig" ]]; then
+              echo "::error::legacy detached signature ${a}.sig is present; refuse to read it"
+              failed=1; continue
+            fi
+            if ! reject_legacy_blob_bundle "${a}" "${a}.sigstore.json"; then
+              failed=1; continue
             fi
             if retry cosign verify-blob-attestation \
                  --bundle "${a}.sigstore.json" \
@@ -1038,6 +1066,9 @@ jobs:
             bundle="${b}.cyclonedx.sigstore.json"
             if [[ ! -s "${bundle}" ]]; then
               echo "::error::${b} has no bundle binding its SBOM to it"; failed=1; continue
+            fi
+            if ! reject_legacy_blob_bundle "${b}'s SBOM binding" "${bundle}"; then
+              failed=1; continue
             fi
             if retry cosign verify-blob-attestation \
                  --bundle "${bundle}" --type cyclonedx \
@@ -1081,6 +1112,29 @@ jobs:
               sleep $((n * 5))
             done
           }
+
+          # Refuse a legacy cosign sidecar (sha256-<digest>.sig / .att).
+          # New-format signatures are OCI referrers; GHCR's tag fallback is
+          # sha256-<hex> with no suffix. cosign verify falls back to reading
+          # the old tags, so seeing one is the condition we fail on -- and
+          # we fail without calling verify.
+          reject_legacy_registry() {
+            local what="$1" ref="$2"
+            local tree=""
+            if ! tree="$(retry cosign tree "${ref}" 2>>verify.log)"; then
+              echo "::error::${what}: could not inspect registry attachments for legacy-format tags"
+              return 1
+            fi
+            if grep -qE ':sha256-[0-9a-f]+\.(sig|att)($|[[:space:]])' <<<"${tree}"; then
+              echo "::error::${what} has a legacy-format registry tag; refuse to read it"
+              return 1
+            fi
+            return 0
+          }
+
+          reject_legacy_registry "image index" "${IMAGE}@${INDEX}"
+          reject_legacy_registry "amd64 image" "${IMAGE}@${AMD64}"
+          reject_legacy_registry "arm64 image" "${IMAGE}@${ARM64}"
 
           # if/else rather than `cmd && echo ok || err`: in that form the error
           # branch also runs when the echo fails, which in a gate is a false
@@ -1199,6 +1253,24 @@ jobs:
             done
           }
 
+          # Same check as the image step: a legacy sha256-<digest>.sig / .att
+          # sidecar is refused without calling verify.
+          reject_legacy_registry() {
+            local what="$1" ref="$2"
+            local tree=""
+            if ! tree="$(retry cosign tree "${ref}" 2>>verify.log)"; then
+              echo "::error::${what}: could not inspect registry attachments for legacy-format tags"
+              return 1
+            fi
+            if grep -qE ':sha256-[0-9a-f]+\.(sig|att)($|[[:space:]])' <<<"${tree}"; then
+              echo "::error::${what} has a legacy-format registry tag; refuse to read it"
+              return 1
+            fi
+            return 0
+          }
+
+          reject_legacy_registry "Helm chart" "${CHART_NAME}@${CHART_DIGEST}"
+
           if retry cosign verify --certificate-identity "${IDENTITY}" \
                --certificate-oidc-issuer "${OIDC_ISSUER}" \
                "${CHART_NAME}@${CHART_DIGEST}" >>verify.log 2>&1; then
@@ -1279,6 +1351,27 @@ jobs:
           done
           [[ "$(head -c 2 installer)" == '#!' ]] || { echo "::error::installer is not a shell script"; exit 1; }
           bash -n installer
+
+          # Same discriminator as the asset step: do not fall back to reading
+          # a legacy LocalSignedPayload over the public channel either.
+          reject_legacy_blob_bundle() {
+            local artifact="$1" bundle="$2"
+            local mediaType
+            if ! mediaType="$(jq -r '.mediaType // empty' "${bundle}")"; then
+              echo "::error::${artifact}'s bundle is not JSON; refuse to read it"
+              exit 1
+            fi
+            case "${mediaType}" in
+              application/vnd.dev.sigstore.bundle*) ;;
+              *)
+                echo "::error::${artifact} has a legacy-format bundle (mediaType=${mediaType:-missing}); refuse to read it"
+                exit 1
+                ;;
+            esac
+          }
+          reject_legacy_blob_bundle installer installer.sigstore.json
+          reject_legacy_blob_bundle nvcrectl-linux-amd64 nvcrectl-linux-amd64.sigstore.json
+
           retry cosign verify-blob-attestation \
             --bundle installer.sigstore.json \
             --type https://slsa.dev/provenance/v1 \

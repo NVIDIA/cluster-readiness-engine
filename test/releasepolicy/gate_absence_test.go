@@ -128,6 +128,16 @@ func runShell(t *testing.T, dir, script string, env ...string) (string, bool) {
 // darwinARM64 is named because the fixture and two verification cases share it.
 const darwinARM64 = "nvcrectl-darwin-arm64"
 
+// protobufBundle is the minimum JSON the gate's mediaType check accepts.
+// The payload is not verified here; the stub cosign is.
+const protobufBundle = `{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json"}` + "\n"
+
+// legacyBlobBundle is the LocalSignedPayload shape cosign falls back to.
+const legacyBlobBundle = `{"base64Signature":"MEUCIQlegacy",` +
+	`"cert":"-----BEGIN PUBLIC KEY-----\nMFkw\n-----END PUBLIC KEY-----"}` + "\n"
+
+const installerBundleFile = "installer.sigstore.json"
+
 var (
 	gateBinaries = []string{
 		"nvcrectl-linux-amd64",
@@ -264,6 +274,12 @@ func stageRelease(t *testing.T, omit string, truncate string) string {
 			continue
 		}
 		body := []byte("content of " + f + "\n")
+		if strings.HasSuffix(f, ".sigstore.json") {
+			// The gate refuses anything that is not a protobuf Sigstore
+			// bundle. A plain "content of …" body used to be enough because
+			// only presence was checked; now the discriminator reads JSON.
+			body = []byte(protobufBundle)
+		}
 		if f == truncate {
 			// Present but empty. The gate tests with `-s`, not `-e`: a
 			// zero-length upload is a failed upload, not an asset.
@@ -370,7 +386,7 @@ func TestGateRejectsMissingAssets(t *testing.T) {
 	// then passes verification, and the release ships.
 	for _, empty := range []string{
 		"installer",
-		"installer.sigstore.json",
+		installerBundleFile,
 		"nvcrectl-linux-amd64.cyclonedx.sigstore.json",
 		"checksums.txt",
 	} {
@@ -395,7 +411,7 @@ func TestGateRejectsMissingAssets(t *testing.T) {
 	// reported the last artifact it looked at would still contain it.
 	for _, c := range []struct{ name, bundle, wantError string }{
 		{"an asset's provenance does not verify",
-			"installer.sigstore.json",
+			installerBundleFile,
 			"::error::installer does not verify against "},
 		{"an SBOM's binding to its binary does not verify",
 			darwinARM64 + ".cyclonedx.sigstore.json",
@@ -470,8 +486,10 @@ func runJobGuard(t *testing.T, g jobGuard, step string, results []string) (strin
 // Only the job-level half. These three guards read `needs.<job>.result` and
 // nothing else, so disabling the signing *step* inside attest.yml while its job
 // still succeeds passes all three. That case is caught later, by verify-release
-// re-checking the signatures against the registry, which is a path this test
-// does not cover and the criterion's "test by dispatch" prescribes.
+// re-checking the signatures against the registry.
+// TestGateRegistryRecheckRejectsUnsigned drives that path: image and chart
+// verification against a stub that mints no signatures, which is what a
+// disabled Sign and Attest step leaves behind.
 //
 // A skipped job does not fail its caller. That is the whole hazard: disable a
 // signing job and the release does not go red, it goes green with an unsigned
