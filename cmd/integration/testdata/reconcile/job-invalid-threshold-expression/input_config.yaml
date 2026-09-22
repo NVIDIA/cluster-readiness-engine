@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+waitFor:
+  kind: Job
+  name: test-invalid-threshold
+  namespace: default
+  condition: ValidationFailed
+  reason: InvalidThresholdExpression
+collect:
+  - kind: Job
+    name: test-invalid-threshold
+    namespace: default
+events:
+  - involvedKind: Job
+    involvedName: test-invalid-threshold
+    namespace: default
+    expect:
+      - {type: Normal, reason: WorkloadCompleted}
+      - {type: Warning, reason: InvalidThresholdExpression}

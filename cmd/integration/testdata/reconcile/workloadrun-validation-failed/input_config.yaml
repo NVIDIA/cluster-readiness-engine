@@ -18,3 +18,9 @@ collect:
   - kind: Workflow
     name: test-wr-validation-fail
     namespace: default
+events:
+  - involvedKind: WorkloadRun
+    involvedName: test-wr-validation-fail
+    namespace: default
+    expect:
+      - {type: Warning, reason: WorkflowValidationFailed}

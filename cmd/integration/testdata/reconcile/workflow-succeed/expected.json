@@ -98,5 +98,27 @@
         ]
       }
     }
-  }
+  },
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "JobCompleted",
+      "message": "All 1 iterations completed successfully",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "test-workflow-succeed"
+      },
+      "count": 1
+    },
+    {
+      "type": "Normal",
+      "reason": "JobRunning",
+      "message": "Iteration 1/1: 0 groups running",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "test-workflow-succeed"
+      },
+      "count": 1
+    }
+  ]
 }

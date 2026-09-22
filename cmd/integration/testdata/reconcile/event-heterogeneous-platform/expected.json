@@ -1,0 +1,92 @@
+{
+  "Workflow/event-heterogeneous-platform": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "event-heterogeneous-platform",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "echo",
+                  "test"
+                ],
+                "numNodes": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "event-case": "event-heterogeneous-platform"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "HeterogeneousPlatform",
+          "message": "heterogeneous platforms detected: map[aws:1 gcp:1]"
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 0,
+        "nodesPerJob": 0,
+        "totalGroups": 0
+      }
+    }
+  },
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "HeterogeneousPlatform",
+      "message": "heterogeneous platforms detected: map[aws:1 gcp:1]",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "event-heterogeneous-platform"
+      },
+      "count": 1
+    }
+  ]
+}

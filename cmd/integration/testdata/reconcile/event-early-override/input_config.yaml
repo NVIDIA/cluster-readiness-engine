@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+waitFor:
+  kind: Workflow
+  name: event-early-override
+  namespace: default
+  condition: Failed
+  reason: OverrideError
+collect:
+  - kind: Workflow
+    name: event-early-override
+    namespace: default
+events:
+  - involvedKind: Workflow
+    involvedName: event-early-override
+    namespace: default
+    expect:
+      - {type: Warning, reason: OverrideError}

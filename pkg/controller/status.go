@@ -7,12 +7,89 @@ import (
 	"context"
 	"fmt"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+type conditionState struct {
+	Present bool                   `json:"present"`
+	Status  metav1.ConditionStatus `json:"status,omitempty"`
+}
+
+type conditionFlipResult struct {
+	Type      string           `json:"type"`
+	Before    conditionState   `json:"before"`
+	After     conditionState   `json:"after"`
+	Condition metav1.Condition `json:"condition"`
+}
+
+type conditionTransition struct {
+	PreviousTrueType string           `json:"previousTrueType,omitempty"`
+	NewTrueType      string           `json:"newTrueType"`
+	Condition        metav1.Condition `json:"condition"`
+}
+
+// conditionFlip reports watched conditions whose presence or status changed.
+// Changes to reason, message, timestamps, or observed generation alone are
+// deliberately ignored. Results follow the order of watchedTypes.
+func conditionFlip(before, after []metav1.Condition, watchedTypes []string) []conditionFlipResult {
+	results := make([]conditionFlipResult, 0, len(watchedTypes))
+	for _, conditionType := range watchedTypes {
+		beforeCondition := meta.FindStatusCondition(before, conditionType)
+		afterCondition := meta.FindStatusCondition(after, conditionType)
+		beforeState := conditionState{Present: beforeCondition != nil}
+		afterState := conditionState{Present: afterCondition != nil}
+		if beforeCondition != nil {
+			beforeState.Status = beforeCondition.Status
+		}
+		if afterCondition != nil {
+			afterState.Status = afterCondition.Status
+		}
+		if beforeState == afterState {
+			continue
+		}
+		result := conditionFlipResult{
+			Type:   conditionType,
+			Before: beforeState,
+			After:  afterState,
+		}
+		if afterCondition != nil {
+			result.Condition = *afterCondition
+		}
+		results = append(results, result)
+	}
+	return results
+}
+
+func trueConditionType(conditions []metav1.Condition, conditionTypes []string) string {
+	for _, conditionType := range conditionTypes {
+		condition := meta.FindStatusCondition(conditions, conditionType)
+		if condition != nil && condition.Status == metav1.ConditionTrue {
+			return conditionType
+		}
+	}
+	return ""
+}
+
+// transitionEventType maps a newly-true condition type to its Event type, per
+// ADR-080 decision 4: the tier's Failed type is a Warning and every other phase
+// is Normal. failedType is the caller's own Failed constant rather than a
+// hardcoded one, so a tier that renames its Failed condition cannot silently
+// start reporting terminal failures as Normal.
+//
+// unparam is silenced deliberately: all four tiers spell their Failed condition
+// "Failed" today, so the argument is redundant now and load-bearing the moment
+// one of them diverges.
+func transitionEventType(conditionType, failedType string) string { //nolint:unparam
+	if conditionType == failedType {
+		return corev1.EventTypeWarning
+	}
+	return corev1.EventTypeNormal
+}
 
 // updateStatusWithRetry applies mutate to obj and writes the status subresource,
 // retrying on optimistic-concurrency conflicts.
@@ -63,9 +140,10 @@ func updateStatusWithRetry[T client.Object](
 // This is shared by the Certification, Workflow and Job reconcilers, which
 // differ only in their condition-type triple.
 //
-// Returns whether a write was actually issued, so callers can keep status-change
-// logging and metrics on the transition rather than firing them on every
-// no-op reconcile.
+// Returns whether any attempt required a write and, after a successful final
+// attempt, the exclusive true-type transition. Callers keep status-change
+// logging and metrics off no-op reconciles and emit Events only from the final
+// transition result.
 func setExclusiveStatusCondition[T client.Object](
 	ctx context.Context,
 	c client.Client,
@@ -74,9 +152,34 @@ func setExclusiveStatusCondition[T client.Object](
 	allTypes []string,
 	conditionType, reason, message string,
 	extra ...func(T) bool,
-) (bool, error) {
+) (bool, *conditionTransition, error) {
+	return setExclusiveStatusConditionUnless(ctx, c, obj, conditions, allTypes,
+		conditionType, reason, message, nil, extra...)
+}
+
+// stop is checked against each retry's object before any mutations. A caller
+// can preserve a concurrent terminal decision without changing other tiers.
+func setExclusiveStatusConditionUnless[T client.Object](
+	ctx context.Context,
+	c client.Client,
+	obj T,
+	conditions func(T) *[]metav1.Condition,
+	allTypes []string,
+	conditionType, reason, message string,
+	stop func(T) bool,
+	extra ...func(T) bool,
+) (bool, *conditionTransition, error) {
 	wrote := false
+	var transition *conditionTransition
 	err := updateStatusWithRetry(ctx, c, obj, func(o T) bool {
+		// A conflict retry recomputes the transition from the freshly fetched
+		// object. Clear any result from the previous failed attempt first.
+		transition = nil
+		if stop != nil && stop(o) {
+			wrote = false
+			return false
+		}
+		before := append([]metav1.Condition(nil), (*conditions(o))...)
 		changed := false
 		// Apply any caller-supplied status mutation inside this same callback, so
 		// it is re-applied after the refetch on conflict and so it keeps the write
@@ -109,10 +212,24 @@ func setExclusiveStatusCondition[T client.Object](
 			}
 		}
 		wrote = wrote || changed
+		if !changed {
+			return false
+		}
+
+		previousTrueType := trueConditionType(before, allTypes)
+		newTrueType := trueConditionType(*conditions(o), allTypes)
+		if previousTrueType != newTrueType && newTrueType != "" {
+			condition := meta.FindStatusCondition(*conditions(o), newTrueType)
+			transition = &conditionTransition{
+				PreviousTrueType: previousTrueType,
+				NewTrueType:      newTrueType,
+				Condition:        *condition,
+			}
+		}
 		return changed
 	})
 	if err != nil {
-		return false, fmt.Errorf("failed to update %T status: %w", obj, err)
+		return false, nil, fmt.Errorf("failed to update %T status: %w", obj, err)
 	}
-	return wrote, nil
+	return wrote, transition, nil
 }

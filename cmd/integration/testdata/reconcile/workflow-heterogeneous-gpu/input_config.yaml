@@ -11,3 +11,10 @@ collect:
   - kind: Workflow
     name: test-heterogeneous
     namespace: default
+events:
+  - involvedKind: Workflow
+    involvedName: test-heterogeneous
+    namespace: default
+    expect:
+      - {type: Normal, reason: GroupsPartitioned}
+      - {type: Warning, reason: HeterogeneousGPU}

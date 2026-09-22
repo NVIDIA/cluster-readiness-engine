@@ -141,9 +141,11 @@ func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *nvcrev1
 	// so platform/GPU overrides won't match yet; discoverAndPartition
 	// applies them authoritatively once detection completes.
 	if err := applyOverrides(&workflow.Spec, buildOverrideContext(&workflow.Spec, orch, nil)); err != nil {
-		if statusErr := r.setWorkflowFailed(ctx, workflow, "OverrideError",
-			fmt.Sprintf("Failed to apply overrides: %v", err)); statusErr != nil {
+		message := fmt.Sprintf("Failed to apply overrides: %v", err)
+		if statusErr := r.setWorkflowFailed(ctx, workflow, "OverrideError", message); statusErr != nil {
 			logf.FromContext(ctx).Error(statusErr, "Failed to update Workflow status after override failure")
+			r.eventf(workflow, corev1.EventTypeWarning, ReasonOverrideErrorStatusUpdateFailed,
+				"Override failed: %v; recording the Workflow Failed condition also failed: %v", err, statusErr)
 		}
 		return ctrl.Result{}, err
 	}
@@ -369,10 +371,12 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	// For heterogeneous GPU architectures, warn and filter to the primary.
 	platform, err := detectPlatformConsistent(nodes)
 	if err != nil {
-		r.eventf(workflow, corev1.EventTypeWarning, "HeterogeneousPlatform", "%v", err)
 		if statusErr := r.setWorkflowFailed(ctx, workflow, "HeterogeneousPlatform",
 			err.Error()); statusErr != nil {
 			log.Error(statusErr, "Failed to update status")
+			r.eventf(workflow, corev1.EventTypeWarning, ReasonHeterogeneousPlatformStatusUpdateFailed,
+				"Platform detection failed: %v; recording the Workflow Failed condition also failed: %v",
+				err, statusErr)
 		}
 		return ctrl.Result{}, err
 	}
@@ -415,11 +419,12 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	octx := buildOverrideContext(&workflow.Spec, orch, nodes)
 	applied, err := applyOverridesWithTracking(&workflow.Spec, octx)
 	if err != nil {
-		r.eventf(workflow, corev1.EventTypeWarning, "OverrideError", "Override failed: %v", err)
 		if statusErr := r.setWorkflowFailed(ctx, workflow, "OverrideError",
 			fmt.Sprintf("Failed to apply overrides: %v", err),
 			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
 			log.Error(statusErr, "Failed to update Workflow status after override failure")
+			r.eventf(workflow, corev1.EventTypeWarning, ReasonOverrideErrorStatusUpdateFailed,
+				"Override failed: %v; recording the Workflow Failed condition also failed: %v", err, statusErr)
 		}
 		return ctrl.Result{}, err
 	}
@@ -1235,6 +1240,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 				// For MPI tests, the launcher pod has the actual NCCL output.
 				r.captureTimeoutLog(ctx, job)
 				// Mark Job as failed. The Job object stays for the report.
+				before := append([]metav1.Condition(nil), job.Status.Conditions...)
 				meta.SetStatusCondition(&job.Status.Conditions, metav1.Condition{
 					Type:    nvcrev1alpha1.JobFailed,
 					Status:  metav1.ConditionTrue,
@@ -1243,6 +1249,11 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 				})
 				if err := r.Status().Update(ctx, job); err != nil {
 					return ctrl.Result{}, fmt.Errorf("failed to update timed-out Job %s status: %w", ref.Name, err)
+				}
+				for _, flip := range conditionFlip(before, job.Status.Conditions, []string{nvcrev1alpha1.JobFailed}) {
+					if flip.After.Present && flip.After.Status == metav1.ConditionTrue {
+						r.eventf(job, corev1.EventTypeWarning, flip.Condition.Reason, "%s", flip.Condition.Message)
+					}
 				}
 				// Complete through the same path a re-observed terminal Job
 				// takes: completeTerminalGroup deletes the workload (the Job
@@ -2456,7 +2467,7 @@ func applyDependencyRefs(refs []nvcrev1alpha1.DependencyResourceRef) func(*nvcre
 
 // setExclusiveCondition sets one condition True and all others False (mutually exclusive).
 func (r *WorkflowReconciler) setExclusiveCondition(ctx context.Context, workflow *nvcrev1alpha1.Workflow, conditionType, reason, message string, extra ...func(*nvcrev1alpha1.Workflow) bool) error {
-	changed, err := setExclusiveStatusCondition(ctx, r.Client, workflow,
+	changed, transition, err := setExclusiveStatusCondition(ctx, r.Client, workflow,
 		func(w *nvcrev1alpha1.Workflow) *[]metav1.Condition { return &w.Status.Conditions },
 		[]string{
 			nvcrev1alpha1.WorkflowInProgress,
@@ -2467,6 +2478,11 @@ func (r *WorkflowReconciler) setExclusiveCondition(ctx context.Context, workflow
 	)
 	if err != nil {
 		return err
+	}
+	if transition != nil {
+		r.eventf(workflow,
+			transitionEventType(transition.NewTrueType, nvcrev1alpha1.WorkflowFailed),
+			transition.Condition.Reason, "%s", transition.Condition.Message)
 	}
 	if changed {
 		logf.FromContext(ctx).Info("Workflow status updated", "status", conditionType, "reason", reason)
@@ -3318,7 +3334,7 @@ func (r *WorkflowReconciler) isTerminal(workflow *nvcrev1alpha1.Workflow) bool {
 // Safe to call when Recorder is nil (e.g. in unit tests).
 func (r *WorkflowReconciler) eventf(obj runtime.Object, eventType, reason, messageFmt string, args ...any) {
 	if r.Recorder != nil {
-		r.Recorder.Eventf(obj, nil, eventType, reason, reason, messageFmt, args...)
+		r.Recorder.Eventf(obj, nil, eventType, reason, reason, "%s", formatEventNote(messageFmt, args...))
 	}
 }
 

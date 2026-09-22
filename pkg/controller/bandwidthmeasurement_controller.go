@@ -563,7 +563,7 @@ func mergeBandwidthResults(existing []nvcrev1alpha1.BandwidthResult, dataPoints 
 // constructs BandwidthMeasurementReconciler directly).
 func (r *BandwidthMeasurementReconciler) warnf(obj runtime.Object, reason, messageFmt string, args ...any) {
 	if r.Recorder != nil {
-		r.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, reason, reason, messageFmt, args...)
+		r.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, reason, reason, "%s", formatEventNote(messageFmt, args...))
 	}
 }
 
