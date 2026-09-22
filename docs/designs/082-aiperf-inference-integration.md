@@ -140,6 +140,7 @@ Certification → Workflow → CRE Job → InferenceRun
                                       │     └── result publisher
                                       ├── immutable request ConfigMap
                                       ├── transport result ConfigMap
+                                      ├── immutable accepted-envelope ConfigMap
                                       └── artifacts PVC (only under Retain)
 
 The CRE Job controller writes one frozen result ConfigMap per attempt,
@@ -234,6 +235,16 @@ from statistics. Output length is enforced through engine settings and the
 achieved token lengths are recorded; prefix caching, sampling, precision, and
 token-counting mode are recorded parts of the recipe.
 
+The runner and publisher receive their Pod UID through Downward API
+`metadata.uid` and their batch Job UID through
+`metadata.labels['batch.kubernetes.io/controller-uid']`. These runtime identities
+are separate from the immutable request and its digest. The supervisor includes
+them in the normalized document; the publisher checks them against its own
+injected values before publishing. Missing values fail publication. The
+reconciler independently verifies both UIDs and the Pod's controller owner
+reference against the benchmark Job it created; labels alone are not proof.
+Neither container needs permission to read Pods or Jobs.
+
 ### 4. Process and transport
 
 The benchmark Job runs once (`backoffLimit: 0`, `restartPolicy: Never`) with an
@@ -259,7 +270,8 @@ stream ([ADR-005](005-logprofile-goodput-measurement.md),
 [ADR-017](017-nccl-bandwidth-measurement.md)).
 
 The InferenceRun reconciler checks the transport ConfigMap's UID and owner,
-validates the document (§5), and sets `ResultAccepted` with the content hash.
+validates the document (§5), and persists the accepted envelope described below
+before setting `ResultAccepted` with its reference and hashes.
 Exceeding an output limit fails collection; accepted evidence is never
 silently truncated.
 
@@ -280,6 +292,21 @@ The reconciler attaches serving placement it observed itself: server and Pod
 UIDs, node name/UID, image ID, model revision, and Service/EndpointSlice
 membership. Client-reported node names never establish coverage. A result is
 rejected if serving identity or placement changed during the attempt.
+
+Before compute deletion, the reconciler persists a bounded, immutable
+`cre.inference.accepted/v1` envelope in a separate manager-written ConfigMap
+owned by InferenceRun. It contains the exact publisher document, the observed
+serving coverage above with observation timestamps, and `transportSha256` over
+the exact UTF-8 transport document bytes. `acceptedEnvelopeSha256` covers the
+exact serialized envelope bytes, including coverage; it is stored outside the
+hashed envelope in `InferenceRun.status.acceptedResultRef`, alongside the
+ConfigMap name, UID, and transport hash. `ResultAccepted` is set only after this
+object exists and matches. The publisher cannot write this ConfigMap. Restart
+and final freezing use the persisted envelope, never reconstructed placement
+from resources that may already be gone. The envelope has a separate 128 KiB
+limit; oversized or conflicting evidence fails closed. Failure cleanup still
+runs if persistence fails, with missing evidence explicitly reported rather
+than fabricated or treated as accepted.
 
 | CRE threshold key | AIPerf source | Unit | Population |
 |---|---|---|---|
@@ -381,8 +408,9 @@ terminal phase. Once the Job is terminal, the controller skips
   it skips the node for the rest of the Workflow, including later iterations
   under `repeatCount`, reporting it as not covered in each skipped iteration.
   Without that record, the next iteration would create a new serving pod on a
-  node whose GPUs may still be held. There is no hardware attribution.
-  Workflow never waits on a condition that can no longer change.
+  node whose GPUs may still be held. Workflow never waits on a condition that
+  can no longer change. Independent hardware evidence remains recorded; cleanup
+  failure itself adds none.
 
 A result accepted before cleanup expired is still frozen, thresholds are still
 evaluated on it, and reports show it. The node is **not** certified: releasing
@@ -397,7 +425,10 @@ passes the request to InferenceRun through a write-once `spec.cancellation`
 field. InferenceRun stops the benchmark and server under its own cleanup
 deadline, and the Job freezes the evidence before it turns terminal. A
 Workflow-side backstop ends the wait if InferenceRun stops making progress.
-Appendix C defines the protocol. Training timeout behavior is unchanged.
+Appendix C defines the protocol. A serving-node hardware fault uses the same
+cancellation, evidence-freezing, and cleanup sequence. `HardwareFailed=True`
+records the detector evidence immediately but is not sufficient to terminalize
+an inference group or delete its workload. Training behavior is unchanged.
 
 Restarts resume from persisted timestamps and UIDs. Deletion stops the
 benchmark, then the server, then transient configuration; finalizers verify
@@ -419,10 +450,10 @@ thresholds is reported as **unvalidated** and never produces a pass.
 | AIPerf crash, OOM, or deadline; `ClientSaturated`; incomplete population; publisher failure; unsupported schema | Benchmark failure; never a pass, never blames the serving node |
 | Valid result misses a threshold | Performance failure for the tested node |
 | Serving pod replaced, endpoint drift, unverified coverage | Coverage failure; attempt invalidated, evidence kept |
-| Health detector finds a serving-node hardware fault | Existing hardware-failure path; attempt stopped |
+| Health detector finds a serving-node hardware fault | Preserve detector attribution; cancel, freeze evidence, and finish bounded cleanup before completing the group |
 | API error reading or deleting children | Retried within the deadline; never read as absence |
 | Too few profiling requests or window completions, or a window shorter than `minSteadyStateSeconds` | `InsufficientEvidence`; validity failure, no attribution |
-| Cleanup deadline expired, or the Workflow backstop fired | `CleanupIncomplete`; node skipped for the rest of the Workflow and not covered, no hardware attribution |
+| Cleanup deadline expired, or the Workflow backstop fired | `CleanupIncomplete`; node skipped for the rest of the Workflow and not covered; no new hardware attribution |
 
 Workflow alone retries whole attempts. Each retry gets a fresh attempt ID,
 resources, and result ConfigMap; failed-attempt evidence is kept, and a later
@@ -441,7 +472,10 @@ InferenceRun reports `ResultAccepted`, the Job controller, in the reconcile
 where it already fetched the InferenceRun, writes one immutable result
 ConfigMap:
 
-- It copies the transport document and verifies it against the accepted hash.
+- It fetches the accepted envelope by name and UID from
+  `InferenceRun.status.acceptedResultRef`, checks both hashes, and copies its
+  exact bytes, including controller-observed coverage. It never freezes the
+  publisher document alone or substitutes current placement observations.
 - It uses the existing measurement ownership policy: the owning Workflow, or
   the Job only when no Workflow owner reference exists. Resolution is stricter
   than today's `getOwnerWorkflow` helper: validate the reference's API group,
@@ -462,15 +496,19 @@ ConfigMap:
 The Job does not evaluate thresholds or report a terminal phase before that
 ConfigMap exists, except through the Workflow backstop (Appendix C). A frozen result
 from an attempt that ended `CleanupIncomplete` is kept and reported, but never
-certifies the node. The transport copy lives until InferenceRun is deleted with
-the Job, so the freeze always happens first. `collectJobMeasuredValues` `Get`s
-the ConfigMap through the reference and checks its UID; nothing lists
-ConfigMaps by label. No measurement CRD is added: the result is one bounded,
+certifies the node. The transport and accepted-envelope copies live until
+InferenceRun is deleted with the Job; compute cleanup does not delete them.
+Normal completion freezes first; the backstop preserves them for recovery as
+described in Appendix C. `collectJobMeasuredValues` `Get`s the frozen ConfigMap
+through the reference, checks its UID, and reads metrics from the accepted
+envelope; unaccepted failure evidence supplies no threshold values. Nothing
+lists ConfigMaps by label. No measurement CRD is added: the result is one bounded,
 immutable document, the same shape as the node-results ConfigMaps in
 [ADR-062](062-node-detail-propagation.md).
 
 A failed attempt gets an evidence ConfigMap from the Job controller, under the
-same owner, holding the failure reason and any transport document. Reports show
+same owner, holding the failure reason, recorded hardware evidence, any accepted envelope,
+and any unaccepted transport document clearly marked as such. Reports show
 execution, validity, verdict, and cleanup state as separate fields. Orchestration
 status records the current attempt's reference and an index for history.
 Reports are snapshotted before the owning object is deleted.
@@ -501,9 +539,19 @@ With each client on its own node, parallel attempts share no measurement path,
 so `execution.maxConcurrent` limits setup load (registry pulls, model storage
 reads), not measurement interference. Today's default of 0 (unlimited) would
 load the model on every node at once, so the inference entry applies a finite
-default from qualification when `options.maxConcurrent` is unset. Model storage
-must allow concurrent read-only mounts from different nodes; preflight rejects
-a ReadWriteOnce model PVC unless `maxConcurrent` is 1.
+default from qualification when `options.maxConcurrent` is unset. Explicit
+zero retains the existing unlimited meaning; positive values are explicit
+limits and negative values are rejected. Presence must survive from the
+optional Certification/category option through catalog configuration until
+inference defaulting: today's scalar `MaxConcurrent` conversion loses it.
+Resolve the optional value before creating scalar template data, and render
+the resolved value into Workflow `execution.maxConcurrent`. This is Workflow
+orchestration configuration, not an InferenceRun experiment input. Training
+and communication defaults remain unchanged. Directly authored Workflows use
+their existing zero/unlimited semantics and do not receive a catalog default.
+Model storage must allow concurrent read-only mounts from different nodes;
+render and Workflow preflight reject a ReadWriteOnce model PVC unless the
+resolved `maxConcurrent` is exactly 1, including rejecting zero/unlimited.
 
 That default has a cost: nodes are not all under load at the same time, so v1
 makes no claim about the cluster at full simultaneous load. Staggering only
@@ -518,6 +566,16 @@ rejected for certification. Serving images, model and tokenizer revisions,
 recipe revision, and dataset seed are pinned too. The runner image is built for
 linux/amd64 and linux/arm64, because the client runs on the serving node and
 GB200/GB300 nodes have Arm (Grace) CPUs; each architecture is qualified.
+
+The runner image is a CRE release artifact, so it follows
+[ADR-074](074-supply-chain-attestation.md)'s artifact contract like the
+`manager` image. Each platform image gets a cosign signature and its own
+CycloneDX SBOM, and the index gets a signature and SLSA Build Provenance.
+ADR-074's artifact table gains a runner row when the image first ships. The
+compatibility tuple pins the digest those attestations describe. The vLLM
+serving image is third-party and not a CRE release artifact. It is pinned by
+digest. ADR-074 does not cover it, just as it does not cover the third-party
+images the catalog already uses, such as `nvcr.io/nvidia/pytorch`.
 
 The reviewed upstream source is commit
 [`ab7c8ee8`](https://github.com/ai-dynamo/aiperf/tree/ab7c8ee87c77b4848f853d7b38dc2c2f0b796157),
@@ -538,16 +596,18 @@ Implementation follows approval of this ADR.
    conditions, warmup exclusion, token accounting, units, and achieved
    concurrency.
 2. **Add InferenceRun.** API, reconciler, adapter, watches, RBAC, publisher,
-   deadlines, retention, and the vLLM arm, per §2. Reject goodput, bandwidth,
+   runtime identity injection, accepted-envelope persistence, deadlines,
+   retention, and the vLLM arm, per §2. Reject goodput, bandwidth,
    checkpoint, and stall settings on an inference Job. The runner binary lives
    under `cmd/` per [ADR-069](069-cmd-layout.md); translation and normalization
    live in `pkg/inference/`. WorkloadRun does not grow an inference framework.
 3. **Connect verdicts and reports.** Register the inference keys; have the Job
    controller freeze results and record `inferenceResultRef`; extend
    `collectJobMeasuredValues`; add strict result-owner resolution; route
-   inference `timeoutPerJob` through cancellation, cleanup, and evidence freeze;
+   inference `timeoutPerJob` and hardware failure through cancellation, cleanup,
+   and evidence freeze;
    copy final `CleanupComplete` in the terminal status write; handle
-   `CleanupIncomplete` in Workflow, including the backstop and skipping
+   `CleanupIncomplete` in Workflow, including independent backstop cleanup and skipping
    cleanup-blocked nodes in later iterations. Add the render and preflight rejections
    from §2, §3, and §8.
 4. **Add one recipe.** A pinned single-node vLLM model with thresholds, sample
@@ -583,7 +643,9 @@ Python dependency.
   ramps and nonpositive settling/minimum-window durations.
 - **Identity:** results from another UID, attempt, or config, stale
   ConfigMaps, changed serving pods, and foreign endpoints are rejected;
-  conflicting ownership fails closed.
+  conflicting ownership fails closed. Downward API runner identities reach both
+  containers without Pod/Job read permissions; missing values, forged labels,
+  and mismatched controller owner references fail acceptance.
 - **Reconcile:** restart at every stage, idempotent creation, publication
   conflicts, timeouts, health failure, API errors, and cleanup without garbage
   collection. New attempts never overlap old compute. A failure followed by
@@ -595,22 +657,37 @@ Python dependency.
   propagation. None may terminalize the Job before evidence and final cleanup
   status exist, restart the cleanup clock, or retry a timed-out attempt.
   With an InferenceRun reconciler that never progresses, the Workflow backstop
-  fails the group with `CleanupIncomplete` and does not wait forever. With
+  fails the group with `CleanupIncomplete` and independently deletes compute
+  controllers and descendants without garbage collection. Preserve independently
+  recorded hardware attribution when the backstop fires. Restart during the
+  handoff, an in-flight create, and terminal Workflow reconciliation must not
+  lose cleanup work or recreate compute. API deletion failures leave the node
+  blocked and evidence intact; later cleanup never changes the verdict. With
   failing API reads, the InferenceRun cleanup deadline still expires. With
   `repeatCount: 2`, a node left `CleanupIncomplete` in iteration 1 gets no
   serving pod in iteration 2 and is reported as not covered. An accepted
   result whose cleanup expires is reported with its threshold verdict and
   does not certify the node. A Job deleted while its freeze is blocked on
-  owner resolution completes deletion.
+  owner resolution completes deletion. Hardware failure before workload creation,
+  during profiling, and after result acceptance takes the cancellation path;
+  neither `HardwareFailed=True` nor a racing timeout may bypass freezing and
+  cleanup, reset the clock, or lose hardware evidence. Cover direct Jobs too.
 - **Verdict:** execution success, valid measurements, passing and failing
   thresholds, and missing evidence are distinct. Client failures, including
   `ClientSaturated`, never produce hardware attribution or node coverage.
 - **Render/RBAC:** only the publisher can update its ConfigMap; the client lands
   on the serving node with no GPU and no `nvcre.nvidia.com/job` label; image
   overrides cannot move a pinned digest; multiple URLs, queue settings, and a
-  ReadWriteOnce model PVC with `maxConcurrent` above 1 are rejected.
+  ReadWriteOnce model PVC with resolved `maxConcurrent != 1` are rejected.
+  Omitted inference concurrency renders the qualified finite default, explicit
+  zero renders unlimited, and positive values survive unchanged; negative
+  values fail. Verify both catalog rendering and direct Workflow preflight.
 - **Freeze:** the frozen ConfigMap under both owners, idempotent re-creation,
-  conflicting content, and no terminal Job phase before it exists.
+  conflicting content, and no terminal Job phase before it exists except the
+  documented backstop. Delete compute between acceptance and freezing: the
+  observed coverage must survive unchanged in the final envelope. Mutating the
+  transport bytes or coverage must fail the corresponding hash check; restart
+  after envelope creation but before `ResultAccepted` is idempotent.
   Workflow lookup timeout, Forbidden, NotFound, and a same-name replacement
   with a different UID must block freezing without Job-owner fallback; cleanup
   must still progress. Existing matching content under a different owner is a
@@ -644,6 +721,9 @@ bounds the interference a per-run check cannot see.
 
 - CRE gains a CRD, reconciler, runner image, publisher, and compatibility
   fixtures. This is more than a catalog entry.
+- The runner image is a new release artifact under ADR-074: the release
+  workflow must sign, attest, and publish SBOMs for it before the first
+  inference recipe ships.
 - The client takes a fixed slice of the serving node's CPU and memory, which
   recipes must leave free.
 - Raw AIPerf artifacts are discarded by default; keeping them needs `Retain`
@@ -841,6 +921,13 @@ concurrency; a later trace-replay mode would also gate on
   evidence freezing. The Workflow backstop in Appendix C replaces the old guarantee
   that `timeoutPerJob` ends the group regardless of the child. The existing
   path remains for TrainJob.
+- **Hardware failure.** `getJobTerminalState` currently treats
+  `HardwareFailed=True` as terminal even though the Job controller's execution
+  terminal guard does not. For inference, Workflow must gate that path on the
+  final execution phase and cleanup verdict, and must not call
+  `completeTerminalGroup` early. The Job records detector evidence and requests
+  cancellation under Appendix C, including for a direct Job without a Workflow.
+  Training hardware-failure behavior remains unchanged.
 - **Iterations.** Workflow creates a new Job for each group every iteration
   (`getGroupJobName(..., orch.CurrentIteration)`), and the pod-drain barrier
   stops waiting after `podDrainGracePeriod` (5 minutes). Neither keeps a
@@ -859,7 +946,7 @@ concurrency; a later trace-replay mode would also gate on
   behavior is unchanged. The manager role already has get/list/watch on
   ConfigMaps.
 
-## Appendix C: Timeout and cancellation protocol
+## Appendix C: Timeout, hardware failure, and cancellation protocol
 
 Workflow's `timeoutPerJob` is an outer execution cap for inference, not
 permission to skip cleanup or result freezing (§6). A persisted
@@ -886,6 +973,16 @@ path, which writes `JobFailed` directly (Appendix B):
    the group. `JobTimedOut` remains non-retryable; `CleanupIncomplete` takes
    precedence when cleanup expires, with the timeout cause retained.
 
+A serving-node health fault triggers the same protocol from the Job controller,
+with reason `HardwareFailureDetected`; it persists failed-node evidence and
+`HardwareFailed=True` before requesting cancellation. Workflow observes this as
+nonterminal until the final execution phase and cleanup verdict exist. The
+first cancellation reason and timestamp win atomically; a later timeout or
+hardware fault is retained as additional failure evidence, without changing
+`spec.cancellation` or resetting any deadline. Hardware failure never becomes
+a performance pass, even if measurements were accepted earlier. Cleanup failure
+can take precedence as the group reason without erasing detector attribution.
+
 If cancellation arrives before a workload exists, the Job controller prevents
 creation, confirms no attempt resources exist, freezes the cancellation
 evidence, and records cleanup complete. An ambiguous create/read response must
@@ -893,21 +990,53 @@ be resolved against the deterministic resource identity before absence is
 asserted. Training timeout behavior is unchanged.
 
 The protocol depends on InferenceRun enforcing its cleanup deadline, so
-Workflow keeps a backstop that does not. A bug, a finalizer stuck on a failing
-API call, or a deadline check that runs only after a successful read would
-otherwise leave the Job nonterminal forever. Once the cleanup deadline plus a
-grace period has passed since the first cancellation request, which is
-`timeoutPerJob + cleanup deadline + grace` after execution start, Workflow stops
-waiting on the Job. It fails the group with
-`CleanupIncomplete` and a cause that names the unresponsive InferenceRun, marks
-the node cleanup-blocked under the §6 rules, and attributes nothing to
-hardware. It does not delete the Job or InferenceRun itself; their finalizers
-keep running. Independently, InferenceRun evaluates its cleanup deadline from
-persisted timestamps on every reconcile, including one whose reads fail, so
-the deadline expires even while the API is erroring.
+Workflow keeps an independent backstop. Its deadline is the first cancellation
+request timestamp plus the cleanup timeout and a fixed grace period; for a
+timeout-triggered cancellation this is `timeoutPerJob + cleanup timeout + grace`
+after execution start. Hardware-triggered cancellation uses its earlier request
+time. InferenceRun checks its own persisted deadline on every reconcile,
+including when API reads fail.
+
+When the backstop fires, Workflow persists a cleanup handoff in orchestration
+status before failing the group with `CleanupIncomplete` and marking its node
+cleanup-blocked. The handoff contains Job and InferenceRun UIDs, attempt ID,
+resource inventory, available evidence references, and cleanup progress. It is
+reconciled by Workflow independently of InferenceRun, including after the group
+or Workflow becomes terminal, and protected by the Workflow deletion finalizer.
+It does not rely on the stalled child's finalizer making progress.
+
+InferenceRun records deterministic resource names before creation and resulting
+UIDs after creation; recovery resolves uncertain creates by name and validates
+the controller-owner chain to the recorded InferenceRun UID. Workflow uses this
+inventory and verified owner chains, never labels alone, with UID-preconditioned
+deletes. It first deletes the benchmark batch Job and serving controller, then
+explicitly removes their verified descendants (including ReplicaSets and Pods)
+and confirms they are gone. Foreground deletion and explicit descendant cleanup
+prevent controller recreation and work without garbage collection. Cancellation
+and the persisted handoff fence all further compute creation by InferenceRun;
+any in-flight create must be resolved and included before cleanup is complete.
+Manager RBAC includes the reads, watches, and deletes needed for this path.
+
+The backstop snapshots available evidence under the strict §7 ownership and
+identity rules, including an accepted envelope when present. If freezing is
+blocked, it records that failure and retains Job, InferenceRun, and their
+evidence ConfigMaps for recovery; evidence errors must not delay stopping
+compute. It never reports missing evidence as a valid result or removes a
+finalizer merely to force completion.
+
+API calls and each cleanup reconciliation are bounded. If deletion cannot be
+confirmed, the group still finishes failed, the node remains blocked for all
+iterations, and the persisted handoff continues rate-limited cleanup retries.
+A later verified cleanup is recorded separately and does not rewrite the
+attempt's frozen cleanup verdict or restore certification coverage. This gives
+the Workflow a bounded result without claiming GPUs were released when cleanup
+is impossible. Direct Jobs use the normal cancellation and deletion paths;
+the Workflow backstop applies only to Workflow-owned attempts.
 
 ## References
 
+- [Kubernetes Downward API](https://kubernetes.io/docs/concepts/workloads/pods/downward-api/)
+- [Kubernetes Job identity labels](https://kubernetes.io/docs/concepts/workloads/controllers/job/)
 - [ADR-003: Typed workload adapters](003-workload-adapter-pattern.md)
 - [ADR-005: LogProfile goodput measurement](005-logprofile-goodput-measurement.md)
 - [ADR-015: Auto-created GoodputMeasurement](015-auto-created-goodput-measurement.md)
@@ -920,6 +1049,7 @@ the deadline expires even while the API is erroring.
 - [ADR-066: Removal of generic kubeJob](066-remove-kubejob-workload-type.md)
 - [ADR-069: cmd/ layout](069-cmd-layout.md)
 - [ADR-072: Terminal measurement freeze](072-goodput-terminal-freeze.md)
+- [ADR-074: Supply chain artifact and verification contract](074-supply-chain-attestation.md)
 - [ADR-077: Workload image override](077-workload-image-override.md)
 - [ADR-079: Workload-object labels](079-workload-object-labels.md)
 - [AIPerf README, reviewed source](https://github.com/ai-dynamo/aiperf/blob/ab7c8ee87c77b4848f853d7b38dc2c2f0b796157/README.md)
