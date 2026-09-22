@@ -1,0 +1,7 @@
+# A read-only role that happens to carry the bundled chart's identity name.
+# The scan ignores it: verbs decide, not names. If the bundled install then
+# collides with it, Helm's ownership check refuses and decision 5's guidance
+# applies (pkg/setup/helm.go classifyJobSetOwnershipFailure); nothing here
+# adopts or deletes it.
+crdPresent: false
+releaseState: not installed

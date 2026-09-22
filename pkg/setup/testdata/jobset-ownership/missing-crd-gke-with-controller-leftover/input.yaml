@@ -1,0 +1,5 @@
+# The GKE read-only role sits beside a genuine write-capable controller
+# leftover. Ignoring the read-only rule must not hide the leftover: the
+# refusal names only the controller role.
+crdPresent: false
+releaseState: not installed

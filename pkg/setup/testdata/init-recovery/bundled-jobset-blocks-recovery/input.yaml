@@ -23,7 +23,7 @@ releaseManifest: |
   rules:
     - apiGroups: [jobset.x-k8s.io]
       resources: [jobsets]
-      verbs: [get, list, watch]
+      verbs: [create, delete, get, list, patch, update, watch]
 installResults:
   - fail: true
     output: |

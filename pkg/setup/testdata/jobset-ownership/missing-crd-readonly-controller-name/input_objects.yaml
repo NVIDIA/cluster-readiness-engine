@@ -1,8 +1,8 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: custom-jobset-controller
+  name: jobset-controller
 rules:
   - apiGroups: [jobset.x-k8s.io]
     resources: [jobsets]
-    verbs: [create, delete, get, list, patch, update, watch]
+    verbs: [get, list, watch]

@@ -1,0 +1,6 @@
+# The verified external controller from the external-controller case, plus
+# GKE's read-only system:clustermetrics role. The read-only role must neither
+# block nor count toward ownership: the outcome is identical to
+# external-controller.
+crdPresent: true
+releaseState: not installed

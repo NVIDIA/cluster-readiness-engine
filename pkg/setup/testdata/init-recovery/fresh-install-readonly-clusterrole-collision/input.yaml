@@ -1,0 +1,23 @@
+# A read-only ClusterRole that carries the bundled chart's identity name
+# (ADR-078, amended 2026-09-22). The fingerprint scan ignores it because its
+# only jobset.x-k8s.io rule grants get/list/watch, so a fresh install runs
+# instead of stopping on unknown ownership. Helm then refuses to adopt the
+# same-named object. This case asserts the full contract the amendment
+# promises for that collision: exactly one install attempt in absent mode,
+# decision 5's targeted guidance, and no uninstall, CRD deletion, or recovery.
+#
+# Adapted, not verbatim: the transcript is the captured
+# jobset-ownership-failure/real-clusterrole-collision one, moved onto the
+# `helm upgrade --install` fresh-install arm (no INSTALLATION FAILED wrap) and
+# with Helm's missing-key clauses, which is what an unlabeled object produces
+# from checkOwnership. The sibling fresh-install-jobset-ownership-guidance
+# covers the same arm with a ClusterRoleBinding that the scan never sees.
+releaseState: not installed
+chartVersion: ""
+installResults:
+  - fail: true
+    output: |
+      Release "kubeflow-trainer" does not exist. Installing it now.
+      Pulled: ghcr.io/kubeflow/charts/kubeflow-trainer:2.2.1
+      Digest: sha256:8e8e3de0257be804f60dbc8e6784eaddb64b2e158a46cade30ca18b6030183b1
+      Error: Unable to continue with install: ClusterRole "jobset-controller" in namespace "" exists and cannot be imported into the current release: invalid ownership metadata; label validation error: missing key "app.kubernetes.io/managed-by": must be set to "Helm"; annotation validation error: missing key "meta.helm.sh/release-name": must be set to "kubeflow-trainer"; annotation validation error: missing key "meta.helm.sh/release-namespace": must be set to "kubeflow-system"

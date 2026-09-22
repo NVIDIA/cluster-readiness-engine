@@ -1,0 +1,11 @@
+# Read-only, unlabeled, and named like the bundled controller role. Not a
+# fingerprint (verbs decide, not names), so the scan is clean; the collision
+# surfaces only when Helm tries to render the chart's jobset-controller.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: jobset-controller
+rules:
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets]
+    verbs: [get, list, watch]
