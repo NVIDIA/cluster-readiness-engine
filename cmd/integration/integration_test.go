@@ -27,6 +27,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -640,7 +641,14 @@ type waitConfig struct {
 	DeleteAfterWait []collectSpec `json:"deleteAfterWait,omitempty"`
 	// WaitForDeletion lists resources that must be fully deleted before collection.
 	WaitForDeletion []collectSpec `json:"waitForDeletion,omitempty"`
-	TimeoutSeconds  int           `json:"timeoutSeconds"`
+	// ExpectAbsent lists resources that must not exist when collection runs.
+	//
+	// A fixture asserting a terminal failure needs this: collecting only the
+	// failed parent would pass just as well if reconciliation had created a
+	// child before giving up. Each entry is recorded in the golden so the
+	// absence is a visible expectation rather than a silent one.
+	ExpectAbsent   []collectSpec `json:"expectAbsent,omitempty"`
+	TimeoutSeconds int           `json:"timeoutSeconds"`
 }
 
 // Inject only the Create failure; status writes and Event recording still use
@@ -1140,6 +1148,13 @@ func objectForKind(kind string) (client.Object, bool, error) {
 		return &corev1.Namespace{}, false, nil
 	case "TrainJob":
 		return &trainerv1alpha1.TrainJob{}, true, nil
+	case "TrainingRuntime":
+		// Collected as unstructured because Workflow dependencies are opaque
+		// JSON. The test must read the created object rather than a typed view
+		// of what NVCRE intended to create.
+		obj := &unstructured.Unstructured{}
+		obj.SetGroupVersionKind(trainerv1alpha1.GroupVersion.WithKind("TrainingRuntime"))
+		return obj, true, nil
 	case "Pod":
 		return &corev1.Pod{}, true, nil
 	case "BatchJob":
@@ -1147,6 +1162,26 @@ func objectForKind(kind string) (client.Object, bool, error) {
 	default:
 		return nil, false, fmt.Errorf("%w: %s", errUnknownKind, kind)
 	}
+}
+
+// requireAbsent fails unless the API server confirms that the named object
+// does not exist. It deliberately preserves non-NotFound errors: forbidden,
+// timeout, or unregistered-kind failures are not proof of absence.
+func requireAbsent(
+	ctx context.Context, t *testing.T, c client.Client, spec collectSpec,
+) string {
+	t.Helper()
+	key := fmt.Sprintf("%s/%s", spec.Kind, spec.Name)
+
+	_, err := readObject(ctx, c, spec)
+	if err == nil {
+		t.Fatalf("%s exists in namespace %s but the case requires it never to have been created",
+			key, spec.Namespace)
+	}
+	require.Truef(t, apierrors.IsNotFound(err),
+		"reading %s in namespace %s to prove it is absent failed with a non-NotFound error: %v",
+		key, spec.Namespace, err)
+	return key
 }
 
 func waitForEvents(t *testing.T, c client.Client, cfg waitConfig, deadline time.Time) {
@@ -1284,6 +1319,14 @@ func collectAndSerialize(
 		sanitizeObject(obj)
 		key := fmt.Sprintf("%s/%s", spec.Kind, spec.Name)
 		results[key] = obj
+	}
+
+	if len(cfg.ExpectAbsent) > 0 {
+		absent := make(map[string]any, len(cfg.ExpectAbsent))
+		for _, spec := range cfg.ExpectAbsent {
+			absent[requireAbsent(ctx, t, eventClient, spec)] = "notCreated"
+		}
+		results["expectAbsent"] = absent
 	}
 
 	// Include Prometheus gauge values when configured.

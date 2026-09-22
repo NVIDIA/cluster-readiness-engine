@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.workloadMetadata.labels.environment",
+      "message": "Invalid value: \"burn in\": spec.workloadMetadata.labels.environment in body should match '^$|^[a-zA-Z0-9]([-a-zA-Z0-9_.]{0,61}[a-zA-Z0-9])?$'"
+    }
+  ]
+}

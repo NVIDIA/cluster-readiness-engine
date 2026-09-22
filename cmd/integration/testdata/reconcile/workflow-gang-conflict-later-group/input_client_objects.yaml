@@ -1,0 +1,139 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Discovery is already complete (totalGroups 2) with group-0 running and
+# group-1 still pending, so this reconcile goes straight to launching the
+# pending group. That is the path the initial-discovery check never reaches,
+# and the one where a plain error used to leave the Workflow retrying at
+# InProgress forever.
+#
+# The aws override redirects the runtime's queue from queue-a to queue-b while
+# the persisted intent still says queue-a. Preparation must carry that override
+# through rather than resetting it, so validation sees the conflict, fails the
+# Workflow terminally, and creates no Job for group-1.
+apiVersion: v1
+kind: Node
+metadata:
+  name: later-group-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: later-group-node-01
+spec:
+  providerID: aws:///us-east-1a/i-0aaa
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: later-group-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: later-group-node-02
+spec:
+  providerID: aws:///us-east-1a/i-0bbb
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: later-conflict-wf
+  namespace: default
+spec:
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: queue-a
+    queueLabelKey: kai.scheduler/queue
+  jobTemplate:
+    spec:
+      workloadMetadata:
+        labels:
+          kai.scheduler/queue: queue-a
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: later-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: later-runtime
+        namespace: default
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+              - name: node
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: queue-a
+                  spec:
+                    template:
+                      metadata:
+                        labels:
+                          kai.scheduler/queue: queue-a
+                      spec:
+                        schedulerName: kai-scheduler
+                        containers:
+                          - name: node
+                            image: test-image:latest
+  overrides:
+    - when:
+        platform:
+          equals: aws
+      dependencies:
+        - apiVersion: trainer.kubeflow.org/v1alpha1
+          kind: TrainingRuntime
+          metadata:
+            name: later-runtime
+            namespace: default
+          spec:
+            template:
+              spec:
+                replicatedJobs:
+                  - name: node
+                    template:
+                      metadata:
+                        labels:
+                          kai.scheduler/queue: queue-b
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  conditions:
+    - type: InProgress
+      status: "True"
+      reason: JobCreated
+      message: "Iteration 1/1: 1 groups running"
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+  orchestration:
+    detectedPlatform: aws
+    detectedGPUArchitecture: h100
+    totalNodes: 2
+    nodesPerJob: 1
+    totalGroups: 2
+    currentIteration: 1
+    completedIterations: 0
+    groups:
+      - name: group-0
+        nodes:
+          - later-group-node-01
+        phase: Running
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: later-conflict-wf-group-0-iter-1
+          namespace: default
+      - name: group-1
+        nodes:
+          - later-group-node-02
+        phase: Pending

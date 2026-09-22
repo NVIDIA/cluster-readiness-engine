@@ -1,0 +1,28 @@
+# A JSON patch removed the workload object's metadata. NVCRE owns that label, so
+# the check restores the configured queue rather than failing.
+run:
+  metadata:
+    name: wr-tj-remove
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    gangScheduler:
+      schedulerName: kai-scheduler
+      queue: queue-a
+    overrides:
+      - when:
+          platform:
+              equals: aws
+        jobTemplatePatch:
+          - op: remove
+            path: /spec/workloadMetadata
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch
+platform: aws
+gpuArchitecture: NVIDIA-GB200

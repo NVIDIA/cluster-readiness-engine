@@ -1,0 +1,31 @@
+# An override changed the workload object's queue to B while the persisted intent
+# says A. The construction-time merge ran before this override, which is exactly
+# why the post-override check is the authoritative one.
+run:
+  metadata:
+    name: wr-tj-b
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    gangScheduler:
+      schedulerName: kai-scheduler
+      queue: queue-a
+    overrides:
+      - when:
+          platform:
+              equals: aws
+        jobTemplate:
+          spec:
+            workloadMetadata:
+              labels:
+                kai.scheduler/queue: queue-b
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch
+platform: aws
+gpuArchitecture: NVIDIA-GB200

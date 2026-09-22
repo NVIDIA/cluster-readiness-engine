@@ -1,0 +1,4 @@
+{
+  "error": "gangScheduler is configured with queue \"queue-a\" but TrainingRuntime \"dry-runtime\" replicatedJob \"node\" is missing label \"kai.scheduler/queue\" on template.metadata.labels",
+  "creates": 0
+}

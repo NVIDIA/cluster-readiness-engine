@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A runtime that never carried the queue label fails exactly like one carrying
+# the wrong value, and nothing is submitted: the dry run must not report a page
+# of successes for a gang that cannot form.
+runtimeQueue: queue-a
+stripRuntimeQueueLabels: true

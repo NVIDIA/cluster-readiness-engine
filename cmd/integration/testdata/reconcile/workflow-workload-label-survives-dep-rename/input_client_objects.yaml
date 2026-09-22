@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The queue values deliberately equal the TrainingRuntime dependency's name.
+# The Workflow copies that dependency per job under a suffixed name and
+# rewrites the job spec's references to match, by blind string substitution
+# over the whole spec. If workloadMetadata were in scope for that rewrite, the
+# created Job would be admitted into a queue nobody named, and the controller
+# would disagree with what nvcrectl render printed.
+apiVersion: v1
+kind: Node
+metadata:
+  name: label-rename-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: label-rename-node-01
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: label-rename-wf
+  namespace: default
+spec:
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: shared-runtime
+    queueLabelKey: kai.scheduler/queue
+  jobTemplate:
+    spec:
+      workloadMetadata:
+        labels:
+          kai.scheduler/queue: shared-runtime
+          kueue.x-k8s.io/queue-name: shared-runtime
+          environment: burn-in
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: shared-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: shared-runtime
+        namespace: default
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+              - name: node
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: shared-runtime
+                  spec:
+                    template:
+                      metadata:
+                        labels:
+                          kai.scheduler/queue: shared-runtime
+                      spec:
+                        schedulerName: kai-scheduler
+                        containers:
+                          - name: node
+                            image: test-image:latest
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"

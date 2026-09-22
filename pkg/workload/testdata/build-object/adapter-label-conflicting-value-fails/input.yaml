@@ -1,0 +1,10 @@
+# A different value is a conflict: neither the adapter nor the user silently
+# wins, because either outcome would submit a queue nobody asked for.
+workload:
+  trainJob:
+    runtimeRef:
+      name: nccl-runtime
+adapterLabels:
+  kai.scheduler/queue: adapter-queue
+labels:
+  kai.scheduler/queue: user-queue

@@ -1,0 +1,27 @@
+# The baseline for the two above: an override adding an ordinary label is
+# accepted and reaches the rendered output.
+run:
+  metadata:
+    name: wr-goodlabel-override
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    overrides:
+      - when:
+          platform:
+              equals: aws
+        jobTemplate:
+          spec:
+            workloadMetadata:
+              labels:
+                environment: burn-in
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch
+platform: aws
+gpuArchitecture: NVIDIA-GB200

@@ -281,6 +281,11 @@
           "managedBy": "trainer.kubeflow.org/trainjob-controller"
         }
       },
+      "workloadMetadata": {
+        "labels": {
+          "kai.scheduler/queue": "high-priority"
+        }
+      },
       "nodeHealthMonitor": {
         "cel": {
           "expression": "node.spec.unschedulable == true"
@@ -496,6 +501,11 @@
               },
               "suspend": false,
               "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          },
+          "workloadMetadata": {
+            "labels": {
+              "kai.scheduler/queue": "high-priority"
             }
           },
           "nodeHealthMonitor": {
@@ -871,7 +881,12 @@
             "name": "nemotron5-8b-training-config"
           }
         }
-      ]
+      ],
+      "gangScheduler": {
+        "schedulerName": "kai-scheduler",
+        "queue": "high-priority",
+        "queueLabelKey": "kai.scheduler/queue"
+      }
     },
     "status": {
       "conditions": [

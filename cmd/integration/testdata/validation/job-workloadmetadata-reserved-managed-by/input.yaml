@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# app.kubernetes.io/managed-by identifies controller ownership of the generated
+# workload. Admission rejects it rather than letting the controller overlay
+# silently win.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: val-wm-managed-by
+  namespace: default
+spec:
+  workloadMetadata:
+    labels:
+      app.kubernetes.io/managed-by: someone-else
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime

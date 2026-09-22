@@ -1,0 +1,11 @@
+{
+  "workflowScoped": [
+    "jobset-metadata-cm",
+    "job-template-cm",
+    "pod-template-cm"
+  ],
+  "jobScoped": [
+    "actual-runtime",
+    "actual-pvc"
+  ]
+}

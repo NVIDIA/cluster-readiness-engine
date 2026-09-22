@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Dropping one key from a present labels map. The map is still present, so the
+# parent-level presence rule says nothing and the field-level self == oldSelf
+# rule is the only thing standing between a running Job and losing the label
+# that admitted its workload to a queue. The Workflow Job template has the
+# matching case; a direct Job needs its own because the rule is evaluated
+# against a different parent path.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: imm-job-key-removed
+  namespace: default
+spec:
+  workloadMetadata:
+    labels:
+      kai.scheduler/queue: queue-a
+      kueue.x-k8s.io/queue-name: gpu-team-a
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime

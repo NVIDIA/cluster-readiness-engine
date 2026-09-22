@@ -1,0 +1,7 @@
+# A qualified name carries at most one "/".
+workload:
+  trainJob:
+    runtimeRef:
+      name: nccl-runtime
+labels:
+  a/b/c: x

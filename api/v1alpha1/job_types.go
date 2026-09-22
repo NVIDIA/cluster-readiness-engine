@@ -132,6 +132,53 @@ type WorkloadSpec struct {
 	TrainJob *trainerv1alpha1.TrainJobSpec `json:"trainJob,omitempty"`
 }
 
+// WorkloadLabelValue is a Kubernetes label value in a WorkloadMetadata labels
+// map. It exists as a named type only so controller-gen emits the length and
+// pattern constraints under the map's additionalProperties: there is no marker
+// that attaches value constraints to a map[string]string.
+// +kubebuilder:validation:MaxLength=63
+// +kubebuilder:validation:Pattern=`^$|^[a-zA-Z0-9]([-a-zA-Z0-9_.]{0,61}[a-zA-Z0-9])?$`
+type WorkloadLabelValue string
+
+// WorkloadMetadata describes metadata for the workload object a Job creates
+// from spec.workload — today a Kubeflow TrainJob. It carries labels only. It
+// deliberately does not expose metav1.ObjectMeta: the generated object's name,
+// namespace, owner references and finalizers are controller-owned.
+//
+// These labels are executable policy in most clusters, not decoration. They
+// are how a workload reaches a Kueue local queue
+// (kueue.x-k8s.io/queue-name), a KAI Scheduler queue (kai.scheduler/queue),
+// or any other integration keyed on the submitted object's labels — all of
+// which are read before workload pods exist. They are not pod-label
+// injection: they label the workload object and nothing below it.
+type WorkloadMetadata struct {
+	// labels are merged onto the generated workload object's metadata.labels.
+	//
+	// Keys must be valid Kubernetes label keys: an optional DNS-subdomain
+	// prefix of at most 253 characters followed by "/", then a name of at most
+	// 63 characters. Values follow Kubernetes label-value syntax and may be
+	// empty; an empty value is a real label, not a deletion.
+	//
+	// The controller-owned keys "app.kubernetes.io/managed-by" and anything
+	// under the "nvcre.nvidia.com/" prefix are rejected rather than silently
+	// overwritten — they identify controller ownership and Job association.
+	//
+	// At most 32 entries. That bound is an enforced API limit, chosen as the
+	// product decision for how many workload labels one object may carry.
+	// (A finite maxProperties is separately required to bound the static cost
+	// of the CEL rules below, but the cost estimator accepts far larger
+	// values, so it does not pick this number.)
+	// +optional
+	// +kubebuilder:validation:MaxProperties=32
+	// +kubebuilder:validation:XValidation:rule="self.all(k, k != 'app.kubernetes.io/managed-by' && !k.startsWith('nvcre.nvidia.com/'))",message="labels must not set the controller-owned keys app.kubernetes.io/managed-by or any key under the nvcre.nvidia.com/ prefix"
+	// The key grammar uses [.] rather than \. because the marker parser
+	// collapses the escape and CEL then rejects \. as an invalid escape in a
+	// string literal. The two are equivalent to the regex engine.
+	// +kubebuilder:validation:XValidation:rule="self.all(k, k.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[a-zA-Z0-9]([-a-zA-Z0-9_.]{0,61}[a-zA-Z0-9])?$'))",message="each label key must be a valid Kubernetes label key: an optional DNS-subdomain prefix followed by '/', then a name of at most 63 characters beginning and ending with an alphanumeric character"
+	// +kubebuilder:validation:XValidation:rule="self.all(k, k.contains('/') ? k.split('/')[0].size() <= 253 : true)",message="each label key prefix must be at most 253 characters"
+	Labels map[string]WorkloadLabelValue `json:"labels,omitempty"`
+}
+
 // CheckpointConfig configures checkpoint-based restart for the workload.
 // The user is responsible for defining the PVC volume and mounts in their
 // workload spec. The controller uses this config to validate the PVC
@@ -165,12 +212,35 @@ type GoodputMeasurementConfig struct {
 }
 
 // JobSpec defines the desired state of Job
+//
+// The workloadMetadata presence rule lives here rather than on the field
+// because a transition rule scoped to an optional field does not run when that
+// field is added or removed. Pairing it with the field's own self == oldSelf
+// forbids all three transitions, so a Job cannot drop workloadMetadata and
+// re-add it under a different queue.
+// +kubebuilder:validation:XValidation:rule="has(self.workloadMetadata) == has(oldSelf.workloadMetadata)",message="workloadMetadata cannot be added or removed after creation"
 type JobSpec struct {
 	// workload defines the workload to run.
 	// The workload is created as a child resource of the Job.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="workload is immutable"
 	Workload WorkloadSpec `json:"workload"`
+
+	// workloadMetadata sets labels on the workload object created from
+	// spec.workload. This is the canonical boundary for workload-object
+	// labels: WorkloadRun and Certification both resolve their own
+	// workloadMetadata into this field, and a hand-authored Workflow writes
+	// spec.jobTemplate.spec.workloadMetadata directly.
+	//
+	// Ordinary Job labels (Workflow spec.jobTemplate.metadata.labels) are not
+	// copied here. Labels are executable policy, so opting a workload into an
+	// admission controller or a queue has to be written down explicitly.
+	//
+	// Immutable in both presence and value, so a checkpoint restart recreates
+	// the workload with the labels it was admitted with.
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="workloadMetadata is immutable"
+	WorkloadMetadata *WorkloadMetadata `json:"workloadMetadata,omitempty"`
 
 	// nodeHealthMonitor configures hardware failure detection for nodes
 	// running this job's pods. When a failure is detected, the job will

@@ -1,0 +1,7 @@
+# Certification precedence: the global map is the base, per-category values
+# replace by key, and keys the category does not mention survive.
+base:
+  environment: burn-in
+  team: infra
+overlay:
+  team: platform

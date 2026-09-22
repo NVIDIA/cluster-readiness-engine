@@ -1,0 +1,8 @@
+# app.kubernetes.io/managed-by identifies controller ownership. The controller
+# overlay would win anyway; rejecting says so instead of hiding it.
+workload:
+  trainJob:
+    runtimeRef:
+      name: nccl-runtime
+labels:
+  app.kubernetes.io/managed-by: someone-else

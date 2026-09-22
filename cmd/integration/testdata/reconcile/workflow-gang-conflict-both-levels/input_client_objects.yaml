@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The override matrix case where both metadata levels move to queue-b while the
+# persisted intent still says queue-a: the runtime carries queue-b in the
+# dependency, and the override rewrites the workload object's label to match it.
+# Agreeing with each other is not the contract — both have to agree with the
+# intent — so this fails rather than being accepted as self-consistent.
+apiVersion: v1
+kind: Node
+metadata:
+  name: both-levels-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: both-levels-node-01
+spec:
+  providerID: "aws://us-east-1a/i-0000000000000001"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: both-levels-wf
+  namespace: default
+spec:
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: queue-a
+    queueLabelKey: kai.scheduler/queue
+  jobTemplate:
+    spec:
+      workloadMetadata:
+        labels:
+          kai.scheduler/queue: queue-a
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: both-levels-wf-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: both-levels-wf-runtime
+        namespace: default
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+              - name: node
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: queue-b
+                  spec:
+                    template:
+                      metadata:
+                        labels:
+                          kai.scheduler/queue: queue-b
+                      spec:
+                        schedulerName: kai-scheduler
+                        containers:
+                          - name: node
+                            image: test-image:latest
+  overrides:
+    - when:
+        platform:
+          equals: aws
+      jobTemplate:
+        spec:
+          workloadMetadata:
+            labels:
+              kai.scheduler/queue: queue-b
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"

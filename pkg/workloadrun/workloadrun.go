@@ -185,7 +185,10 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 	}
 
 	// Build WorkflowSpec.
-	workflowSpec := BuildWorkflowSpec(run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
+	workflowSpec, err := BuildWorkflowSpec(run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
+	if err != nil {
+		return err
+	}
 
 	// If platform specified, apply overrides using synthetic nodes.
 	if platformFlag != "" {
@@ -199,6 +202,22 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 			return fmt.Errorf("applying overrides: %w", overrideErr)
 		}
 		workflowSpec.Overrides = nil
+
+		// The construction-time merge inside BuildWorkflowSpec ran before
+		// these overrides, so it is the resolved spec that has to satisfy
+		// both contracts: the workload labels an override may have rewritten,
+		// and the gang-scheduling intent. Offline render never reaches an API
+		// server, so this is the only thing standing between an override and
+		// a rendered Workflow carrying labels the cluster will reject.
+		//
+		// Without --platform the overrides are still conditional and the
+		// output is a template, so it keeps spec.gangScheduler unchecked and
+		// resolution on a target performs this check instead.
+		if err := platform.ValidateResolvedJobTemplate(
+			&workflowSpec.JobTemplate.Spec, workflowSpec.Dependencies, workflowSpec.GangScheduler,
+			platform.WorkloadRunWorkloadLabelsPath); err != nil {
+			return err
+		}
 	}
 
 	// Build output Workflow.
@@ -234,10 +253,14 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 
 // BuildWorkflowSpec constructs a WorkflowSpec from a WorkloadRun
 // (shared logic between controller and CLI).
+//
+// It returns an error when the workload-object labels cannot be composed —
+// for example when workloadMetadata names the gang scheduler's queue key with
+// a different queue than gangScheduler configures.
 func BuildWorkflowSpec(
 	run *nvcrev1alpha1.WorkloadRun,
 	gpusPerNode, mlnxPerNode int32, enableMNNVL bool, frameworkType string,
-) *nvcrev1alpha1.WorkflowSpec {
+) (*nvcrev1alpha1.WorkflowSpec, error) {
 	spec := &run.Spec
 
 	// Build merged env vars.
@@ -368,7 +391,12 @@ func BuildWorkflowSpec(
 		}
 	}
 
-	return workflowSpec
+	if err := platform.ApplyWorkloadRunScheduling(
+		workflowSpec, spec.GangScheduler, spec.WorkloadMetadata); err != nil {
+		return nil, err
+	}
+
+	return workflowSpec, nil
 }
 
 // applyPlatformMPIArgs bakes platform-override mpirun args into the run spec
@@ -607,8 +635,11 @@ func runWorkloadRunRenderDryRun(
 	applyPlatformMPIArgs(run, effectivePlatform, gpuArch,
 		gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
 
-	workflowSpec := BuildWorkflowSpec(
+	workflowSpec, err := BuildWorkflowSpec(
 		run, gpusPerNode, mlnxPerNode, enableMNNVL, frameworkType)
+	if err != nil {
+		return err
+	}
 
 	orch := &nvcrev1alpha1.OrchestrationStatus{
 		DetectedPlatform:        effectivePlatform,
@@ -620,6 +651,15 @@ func runWorkloadRunRenderDryRun(
 		return fmt.Errorf("applying overrides: %w", overrideErr)
 	}
 	workflowSpec.Overrides = nil
+
+	// Fail before any dry-run API request, so a conflicting override is
+	// reported as the conflict it is rather than as whatever the API server
+	// makes of the inconsistent manifests.
+	if err := platform.ValidateResolvedJobTemplate(
+		&workflowSpec.JobTemplate.Spec, workflowSpec.Dependencies, workflowSpec.GangScheduler,
+		platform.WorkloadRunWorkloadLabelsPath); err != nil {
+		return err
+	}
 
 	workflow := &nvcrev1alpha1.Workflow{
 		APIVersion: nvcreAPIVersion,

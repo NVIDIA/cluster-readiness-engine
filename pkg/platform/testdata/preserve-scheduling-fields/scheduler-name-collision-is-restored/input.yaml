@@ -1,0 +1,31 @@
+# The scheduler name is a plain string and can collide just as a queue can.
+gangScheduler:
+  schedulerName: shared-runtime
+  queue: queue-a
+  queueLabelKey: kai.scheduler/queue
+replacements:
+  shared-runtime: shared-runtime-group-0-job
+dependency:
+  apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: shared-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+          - name: node
+            template:
+              metadata:
+                labels:
+                  kai.scheduler/queue: queue-a
+              spec:
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: queue-a
+                  spec:
+                    schedulerName: shared-runtime
+                    containers:
+                      - name: node
+                        image: test:latest

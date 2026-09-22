@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: absent-label-wf
+  namespace: default
+  condition: Failed
+  reason: GangSchedulingConflict
+collect:
+  - kind: Workflow
+    name: absent-label-wf
+    namespace: default
+expectAbsent:
+  - kind: Job
+    name: absent-label-wf-job
+    namespace: default
+  - kind: TrainingRuntime
+    name: absent-label-wf-runtime-52853-job
+    namespace: default

@@ -1,0 +1,5 @@
+{
+  "buildError": "spec.workloadMetadata.labels[\"kai.scheduler/queue\"]: conflicting label value \"other-queue\", expected \"team-a\"",
+  "labels": null,
+  "gangScheduler": null
+}

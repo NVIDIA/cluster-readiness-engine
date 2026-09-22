@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Certification's gangScheduler is global, so every category gets the same KAI
+# queue. Kueue's key is a different key, so per-category Kueue queues stay
+# independent of it and of each other.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: labels-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 2
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: burn-in
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        workloadMetadata:
+          labels:
+            kueue.x-k8s.io/queue-name: reduce-queue
+    - domain: communication
+      variant: nccl-all-gather
+      options:
+        workloadMetadata:
+          labels:
+            kueue.x-k8s.io/queue-name: gather-queue

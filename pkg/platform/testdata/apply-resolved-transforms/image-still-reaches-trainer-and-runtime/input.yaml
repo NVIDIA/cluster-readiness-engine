@@ -1,0 +1,43 @@
+# Workload metadata is written last, but the image transform still runs before
+# it and still reaches its own disjoint fields.
+image: nvcr.io/nvidia/nccl-tests:custom
+workloadLabels:
+  environment: burn-in
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: nccl-runtime
+          trainer:
+            image: nvcr.io/nvidia/pytorch:25.01
+  dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: nccl-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+              - name: node
+                template:
+                  spec:
+                    template:
+                      spec:
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01
+              - name: launcher
+                template:
+                  metadata:
+                    labels:
+                      trainer.kubeflow.org/trainjob-ancestor-step: trainer
+                  spec:
+                    template:
+                      spec:
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01

@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A category naming the global gang scheduler's own key with a different queue
+# is a conflict rather than a silent winner, and it names the key, both values
+# and the field path.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: labels-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 2
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: burn-in
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        workloadMetadata:
+          labels:
+            kai.scheduler/queue: some-other-queue

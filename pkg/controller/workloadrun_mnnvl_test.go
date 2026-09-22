@@ -75,7 +75,10 @@ func TestWorkloadRunMPILauncherMNNVL(t *testing.T) {
 		}
 
 		r := &WorkloadRunReconciler{Client: c, Scheme: scheme}
-		ws := r.buildWorkflowSpec(context.Background(), run)
+		ws, err := r.buildWorkflowSpec(context.Background(), run)
+		if err != nil {
+			return err
+		}
 
 		trainer := ws.JobTemplate.Spec.Workload.TrainJob.Trainer
 

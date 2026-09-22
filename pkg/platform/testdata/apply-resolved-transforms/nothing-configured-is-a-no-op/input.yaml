@@ -1,0 +1,42 @@
+# A Certification that sets no gang scheduler, no image and no labels must
+# leave the resolved spec exactly as the catalog produced it: no
+# workloadMetadata, no persisted intent. This is the compatibility guarantee
+# for every manifest written before ADR-079.
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: nccl-runtime
+          trainer:
+            image: nvcr.io/nvidia/pytorch:25.01
+  dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: nccl-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+              - name: node
+                template:
+                  spec:
+                    template:
+                      spec:
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01
+              - name: launcher
+                template:
+                  metadata:
+                    labels:
+                      trainer.kubeflow.org/trainjob-ancestor-step: trainer
+                  spec:
+                    template:
+                      spec:
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01

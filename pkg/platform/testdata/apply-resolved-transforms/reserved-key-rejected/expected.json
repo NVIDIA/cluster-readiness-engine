@@ -1,0 +1,10 @@
+{
+  "error": "spec.jobTemplate.spec.workloadMetadata.labels[\"nvcre.nvidia.com/job\"]: label key is reserved for the controller: \"app.kubernetes.io/managed-by\" and any key under \"nvcre.nvidia.com/\" identify workload ownership",
+  "workloadLabels": null,
+  "persistedGangScheduler": null,
+  "trainerImage": "nvcr.io/nvidia/pytorch:25.01",
+  "runtimeImages": {
+    "nccl-runtime/launcher": "nvcr.io/nvidia/pytorch:25.01",
+    "nccl-runtime/node": "nvcr.io/nvidia/pytorch:25.01"
+  }
+}

@@ -36,6 +36,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/report"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/setup"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/threshold"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
 
 // NewCommand returns the "certification" cobra command.
@@ -220,11 +221,7 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 				return fmt.Errorf("resolve workflow %s: %w", workflows[i].Name, err)
 			}
 			render.SetRenderAnnotations(&workflows[i], meta)
-			if err := platform.ApplyGangSchedulerToDependencies(
-				workflows[i].Spec.Dependencies, cert.Spec.GangScheduler); err != nil {
-				return fmt.Errorf("apply gang scheduler for %s: %w", workflows[i].Name, err)
-			}
-			if err := applyWorkflowImage(cert, workflows, i); err != nil {
+			if err := applyWorkflowTransforms(cert, workflows, i); err != nil {
 				return err
 			}
 
@@ -269,14 +266,9 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 }
 
 // resolveWorkflowsOffline applies overrides using a synthetic node derived from
-// the Certification's nodeSelector, then opts the resolved dependencies into the
-// Certification's gang scheduler. The synthetic node lets
-// GPU-architecture-specific overrides (images, env vars) apply even without
-// connecting to a real cluster.
-//
-// Gang scheduling is applied after render.ResolveWorkflow, matching the
-// certification controller. Overrides resolve first, so an override that sets
-// schedulerName cannot undo the scheduler the user asked for.
+// the Certification's nodeSelector, then runs the post-resolve transform stage.
+// The synthetic node lets GPU-architecture-specific overrides (images, env
+// vars) apply even without connecting to a real cluster.
 func resolveWorkflowsOffline(
 	cert *nvcrev1alpha1.Certification, workflows []nvcrev1alpha1.Workflow, platformFlag string,
 ) error {
@@ -285,32 +277,36 @@ func resolveWorkflowsOffline(
 		if _, err := render.ResolveWorkflow(&workflows[i], syntheticNodes); err != nil {
 			return fmt.Errorf("resolve overrides for %s: %w", workflows[i].Name, err)
 		}
-		if err := platform.ApplyGangSchedulerToDependencies(
-			workflows[i].Spec.Dependencies, cert.Spec.GangScheduler); err != nil {
-			return fmt.Errorf("apply gang scheduler for %s: %w", workflows[i].Name, err)
-		}
-		if err := applyWorkflowImage(cert, workflows, i); err != nil {
+		if err := applyWorkflowTransforms(cert, workflows, i); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// applyWorkflowImage opts workflow i into the Certification's workload image
-// override, at the same post-resolve point as the gang scheduler and for the
-// same reason: platform overrides choose images too, and options.image must
-// win over all of them. The image is resolved per category, per-category over
-// spec-level, exactly like the other options; renderCertification emits one
-// Workflow per category in declaration order, so workflows[i] pairs with
-// cert.Spec.Categories[i].
-func applyWorkflowImage(cert *nvcrev1alpha1.Certification, workflows []nvcrev1alpha1.Workflow, i int) error {
+// applyWorkflowTransforms runs the named post-resolve transform stage for
+// workflow i, so both CLI render paths and the certification controller share
+// one sequence rather than three copies of it. Overrides resolve first, so an
+// override that sets a scheduler, an image or a workload label cannot undo
+// what the Certification asked for.
+//
+// Options are resolved per category, per-category over spec-level, exactly
+// like every other option; renderCertification emits one Workflow per category
+// in declaration order, so workflows[i] pairs with cert.Spec.Categories[i].
+func applyWorkflowTransforms(
+	cert *nvcrev1alpha1.Certification, workflows []nvcrev1alpha1.Workflow, i int,
+) error {
 	if i >= len(cert.Spec.Categories) {
-		return fmt.Errorf("apply workload image for %s: no category at index %d", workflows[i].Name, i)
+		return fmt.Errorf("apply transforms for %s: no category at index %d", workflows[i].Name, i)
 	}
 	opts := controller.ResolveOptions(&cert.Spec.CategoryOptions, cert.Spec.Categories[i].Options)
-	platform.ApplyImageToJobTemplate(&workflows[i].Spec.JobTemplate, opts.Image)
-	if err := platform.ApplyImageToDependencies(workflows[i].Spec.Dependencies, opts.Image); err != nil {
-		return fmt.Errorf("apply workload image for %s: %w", workflows[i].Name, err)
+	if err := platform.ApplyResolvedWorkflowTransforms(
+		&workflows[i].Spec, platform.ResolvedWorkflowTransforms{
+			GangScheduler:  cert.Spec.GangScheduler,
+			Image:          opts.Image,
+			WorkloadLabels: workload.LabelsOf(opts.WorkloadMetadata),
+		}); err != nil {
+		return fmt.Errorf("apply transforms for %s: %w", workflows[i].Name, err)
 	}
 	return nil
 }

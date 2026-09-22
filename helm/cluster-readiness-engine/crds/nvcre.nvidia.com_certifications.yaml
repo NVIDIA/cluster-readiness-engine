@@ -416,6 +416,73 @@ spec:
                             When not set, defaults to "1h" (or "15m" for diagnose test scale).
                           pattern: ^([0-9]+(h|m|s|ms))+$
                           type: string
+                        workloadMetadata:
+                          description: |-
+                            workloadMetadata sets labels on the workload object each category's Job
+                            creates (today a Kubeflow TrainJob). Use it to place the workload in a
+                            Kueue local queue with kueue.x-k8s.io/queue-name, or for any other
+                            integration keyed on the submitted object's labels.
+
+                            Because CertificationSpec inlines CategoryOptions, this one field is
+                            read both globally at spec.workloadMetadata and per category at
+                            spec.categories[].options.workloadMetadata. Unlike the map and slice
+                            options next to it, the two levels merge per key rather than replacing
+                            wholesale: a category can change or add a key but cannot remove a
+                            global one. Set keys per category instead of globally when categories
+                            need genuinely different maps.
+
+                            These labels are not pod labels. When spec.gangScheduler is set, its
+                            resolved queue label is added to every category; a category that
+                            supplies that same key with a different value fails.
+                          properties:
+                            labels:
+                              additionalProperties:
+                                description: |-
+                                  WorkloadLabelValue is a Kubernetes label value in a WorkloadMetadata labels
+                                  map. It exists as a named type only so controller-gen emits the length and
+                                  pattern constraints under the map's additionalProperties: there is no marker
+                                  that attaches value constraints to a map[string]string.
+                                maxLength: 63
+                                pattern: ^$|^[a-zA-Z0-9]([-a-zA-Z0-9_.]{0,61}[a-zA-Z0-9])?$
+                                type: string
+                              description: |-
+                                labels are merged onto the generated workload object's metadata.labels.
+
+                                Keys must be valid Kubernetes label keys: an optional DNS-subdomain
+                                prefix of at most 253 characters followed by "/", then a name of at most
+                                63 characters. Values follow Kubernetes label-value syntax and may be
+                                empty; an empty value is a real label, not a deletion.
+
+                                The controller-owned keys "app.kubernetes.io/managed-by" and anything
+                                under the "nvcre.nvidia.com/" prefix are rejected rather than silently
+                                overwritten — they identify controller ownership and Job association.
+
+                                At most 32 entries. That bound is an enforced API limit, chosen as the
+                                product decision for how many workload labels one object may carry.
+                                (A finite maxProperties is separately required to bound the static cost
+                                of the CEL rules below, but the cost estimator accepts far larger
+                                values, so it does not pick this number.)
+                                The key grammar uses [.] rather than \. because the marker parser
+                                collapses the escape and CEL then rejects \. as an invalid escape in a
+                                string literal. The two are equivalent to the regex engine.
+                              maxProperties: 32
+                              type: object
+                              x-kubernetes-validations:
+                              - message: labels must not set the controller-owned
+                                  keys app.kubernetes.io/managed-by or any key under
+                                  the nvcre.nvidia.com/ prefix
+                                rule: self.all(k, k != 'app.kubernetes.io/managed-by'
+                                  && !k.startsWith('nvcre.nvidia.com/'))
+                              - message: 'each label key must be a valid Kubernetes
+                                  label key: an optional DNS-subdomain prefix followed
+                                  by ''/'', then a name of at most 63 characters beginning
+                                  and ending with an alphanumeric character'
+                                rule: self.all(k, k.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[a-zA-Z0-9]([-a-zA-Z0-9_.]{0,61}[a-zA-Z0-9])?$'))
+                              - message: each label key prefix must be at most 253
+                                  characters
+                                rule: 'self.all(k, k.contains(''/'') ? k.split(''/'')[0].size()
+                                  <= 253 : true)'
+                          type: object
                       type: object
                     variant:
                       description: Variant is the lower level type such as nemotron,
@@ -489,6 +556,10 @@ spec:
                     - message: queueLabelKey prefix must be at most 253 characters
                       rule: 'self.contains(''/'') ? self.split(''/'')[0].size() <=
                         253 : true'
+                    - message: queueLabelKey must not use the controller-owned key
+                        app.kubernetes.io/managed-by or any key under the nvcre.nvidia.com/
+                        prefix
+                      rule: self != 'app.kubernetes.io/managed-by' && !self.startsWith('nvcre.nvidia.com/')
                   schedulerName:
                     description: schedulerName is the name of the gang-aware scheduler
                       to use (e.g. "kai-scheduler").
@@ -904,6 +975,70 @@ spec:
                   When not set, defaults to "1h" (or "15m" for diagnose test scale).
                 pattern: ^([0-9]+(h|m|s|ms))+$
                 type: string
+              workloadMetadata:
+                description: |-
+                  workloadMetadata sets labels on the workload object each category's Job
+                  creates (today a Kubeflow TrainJob). Use it to place the workload in a
+                  Kueue local queue with kueue.x-k8s.io/queue-name, or for any other
+                  integration keyed on the submitted object's labels.
+
+                  Because CertificationSpec inlines CategoryOptions, this one field is
+                  read both globally at spec.workloadMetadata and per category at
+                  spec.categories[].options.workloadMetadata. Unlike the map and slice
+                  options next to it, the two levels merge per key rather than replacing
+                  wholesale: a category can change or add a key but cannot remove a
+                  global one. Set keys per category instead of globally when categories
+                  need genuinely different maps.
+
+                  These labels are not pod labels. When spec.gangScheduler is set, its
+                  resolved queue label is added to every category; a category that
+                  supplies that same key with a different value fails.
+                properties:
+                  labels:
+                    additionalProperties:
+                      description: |-
+                        WorkloadLabelValue is a Kubernetes label value in a WorkloadMetadata labels
+                        map. It exists as a named type only so controller-gen emits the length and
+                        pattern constraints under the map's additionalProperties: there is no marker
+                        that attaches value constraints to a map[string]string.
+                      maxLength: 63
+                      pattern: ^$|^[a-zA-Z0-9]([-a-zA-Z0-9_.]{0,61}[a-zA-Z0-9])?$
+                      type: string
+                    description: |-
+                      labels are merged onto the generated workload object's metadata.labels.
+
+                      Keys must be valid Kubernetes label keys: an optional DNS-subdomain
+                      prefix of at most 253 characters followed by "/", then a name of at most
+                      63 characters. Values follow Kubernetes label-value syntax and may be
+                      empty; an empty value is a real label, not a deletion.
+
+                      The controller-owned keys "app.kubernetes.io/managed-by" and anything
+                      under the "nvcre.nvidia.com/" prefix are rejected rather than silently
+                      overwritten — they identify controller ownership and Job association.
+
+                      At most 32 entries. That bound is an enforced API limit, chosen as the
+                      product decision for how many workload labels one object may carry.
+                      (A finite maxProperties is separately required to bound the static cost
+                      of the CEL rules below, but the cost estimator accepts far larger
+                      values, so it does not pick this number.)
+                      The key grammar uses [.] rather than \. because the marker parser
+                      collapses the escape and CEL then rejects \. as an invalid escape in a
+                      string literal. The two are equivalent to the regex engine.
+                    maxProperties: 32
+                    type: object
+                    x-kubernetes-validations:
+                    - message: labels must not set the controller-owned keys app.kubernetes.io/managed-by
+                        or any key under the nvcre.nvidia.com/ prefix
+                      rule: self.all(k, k != 'app.kubernetes.io/managed-by' && !k.startsWith('nvcre.nvidia.com/'))
+                    - message: 'each label key must be a valid Kubernetes label key:
+                        an optional DNS-subdomain prefix followed by ''/'', then a
+                        name of at most 63 characters beginning and ending with an
+                        alphanumeric character'
+                      rule: self.all(k, k.matches('^([a-z0-9]([-a-z0-9]*[a-z0-9])?([.][a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[a-zA-Z0-9]([-a-zA-Z0-9_.]{0,61}[a-zA-Z0-9])?$'))
+                    - message: each label key prefix must be at most 253 characters
+                      rule: 'self.all(k, k.contains(''/'') ? k.split(''/'')[0].size()
+                        <= 253 : true)'
+                type: object
             required:
             - categories
             - target

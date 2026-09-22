@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Job is the object under test: its spec.workloadMetadata.labels must carry
+# cost-center from the patch and kai.scheduler/queue restored from the
+# persisted intent. The TrainJob closes the chain, since the labels exist to
+# reach the object NVCRE actually submits.
+waitFor:
+  kind: Workflow
+  name: label-restore-wf
+  namespace: default
+  condition: InProgress
+collect:
+  - kind: Job
+    name: label-restore-wf-job
+    namespace: default
+  - kind: TrainJob
+    name: label-restore-wf-job-workload
+    namespace: default

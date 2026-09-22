@@ -1,0 +1,20 @@
+# Kueue is never inferred from gangScheduler, so an explicit workloadMetadata
+# label is the only route to its queue. Nothing is persisted, because there is no
+# gang-scheduling intent to enforce.
+run:
+  metadata:
+    name: wr-kueue
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    workloadMetadata:
+      labels:
+        kueue.x-k8s.io/queue-name: gpu-team-a
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch

@@ -1,0 +1,11 @@
+{
+  "validateError": "gangScheduler is configured with queue \"queue-a\" but TrainingRuntime \"wr-rt-b-runtime\" replicatedJob \"node\" sets label \"kai.scheduler/queue\" to \"queue-b\" on template.metadata.labels",
+  "labels": {
+    "kai.scheduler/queue": "queue-a"
+  },
+  "gangScheduler": {
+    "schedulerName": "kai-scheduler",
+    "queue": "queue-a",
+    "queueLabelKey": "kai.scheduler/queue"
+  }
+}

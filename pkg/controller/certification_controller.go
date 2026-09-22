@@ -27,6 +27,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
 
 // waitingForNodesMessage explains a wait that is otherwise invisible: which
@@ -528,20 +529,18 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	pruneAppliedOverrides(&workflowSpec, applied)
 	pruneUnmatchableOverrides(&workflowSpec, octx)
 
-	// Gang scheduling is applied last so it wins over anything the catalog entry
-	// or a platform override put in schedulerName.
-	if err := platform.ApplyGangSchedulerToDependencies(
-		workflowSpec.Dependencies, certification.Spec.GangScheduler); err != nil {
-		return "", fmt.Errorf("applying gang scheduler for %s/%s: %w", category.Domain, category.Variant, err)
-	}
-
-	// The workload image override is applied at the same post-resolve point for
-	// the same reason: platform overrides choose images too (the AWS EFA
-	// overrides swap the workers to an nccl-tests build), and options.image
-	// must win over all of them.
-	platform.ApplyImageToJobTemplate(&workflowSpec.JobTemplate, opts.Image)
-	if err := platform.ApplyImageToDependencies(workflowSpec.Dependencies, opts.Image); err != nil {
-		return "", fmt.Errorf("applying workload image for %s/%s: %w", category.Domain, category.Variant, err)
+	// Every post-resolve transform runs in one named stage, in the order
+	// ADR-079 pins. They all belong here rather than earlier because platform
+	// overrides also choose schedulers and images, and the resolved options
+	// must win over all of them. The stage also persists the resolved
+	// gang-scheduling intent on the Workflow and checks the effective
+	// manifests against it.
+	if err := platform.ApplyResolvedWorkflowTransforms(&workflowSpec, platform.ResolvedWorkflowTransforms{
+		GangScheduler:  certification.Spec.GangScheduler,
+		Image:          opts.Image,
+		WorkloadLabels: workload.LabelsOf(opts.WorkloadMetadata),
+	}); err != nil {
+		return "", fmt.Errorf("applying resolved transforms for %s/%s: %w", category.Domain, category.Variant, err)
 	}
 
 	if len(applied) > 0 || len(workflowSpec.Overrides) > 0 {
@@ -638,6 +637,12 @@ func (e *workflowCreateRejectedError) Unwrap() error { return e.err }
 // Returns a flat CategoryOptions with all values resolved.
 func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alpha1.CategoryOptions) nvcrev1alpha1.CategoryOptions {
 	resolved := *global
+	// The struct copy above aliases every map, slice and pointer in global.
+	// Workload labels are the one option merged rather than replaced, so they
+	// have to be detached before anything writes to them — otherwise the
+	// merge would edit the Certification's own global map. This runs before
+	// the early return so the result is never aliased either way.
+	resolved.WorkloadMetadata = resolveWorkloadMetadata(global, override)
 	if override == nil {
 		return resolved
 	}
@@ -726,6 +731,28 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 		resolved.SourceRepo = override.SourceRepo
 	}
 	return resolved
+}
+
+// resolveWorkloadMetadata merges global and per-category workload labels per
+// key, with the per-category value winning.
+//
+// This is deliberately different from the wholesale replacement used by the
+// maps, slices and pointers beside it — Thresholds, Resources,
+// ImagePullSecrets. A queue label and a cost-attribution label are
+// independent intents, so a category that names one should not silently drop
+// the other. The consequence is that a category can change or add a key but
+// cannot remove a global one; a category needing a wholly different map must
+// not set those keys globally.
+//
+// Every returned map is freshly allocated, so no caller can reach back into
+// the Certification through the result.
+func resolveWorkloadMetadata(global, override *nvcrev1alpha1.CategoryOptions) *nvcrev1alpha1.WorkloadMetadata {
+	var overrideLabels map[string]string
+	if override != nil {
+		overrideLabels = workload.LabelsOf(override.WorkloadMetadata)
+	}
+	return workload.MetadataFrom(workload.MergeLabels(
+		workload.LabelsOf(global.WorkloadMetadata), overrideLabels))
 }
 
 // dropUnderCapacityNodes removes nodes that cannot supply gpusPerNode before

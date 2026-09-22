@@ -34,6 +34,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/orchestration"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/threshold"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
@@ -343,6 +344,36 @@ func (r *WorkflowReconciler) failWorkflowForDependencyError(ctx context.Context,
 	return ctrl.Result{}, err
 }
 
+// enforceGangSchedulingIntent checks the resolved spec against the
+// gang-scheduling intent the owning WorkloadRun or Certification persisted.
+//
+// It runs once overrides have been applied authoritatively and before the
+// immutable TrainingRuntime is created from them, so an override that
+// redirected the queue or the scheduler fails the Workflow here rather than
+// producing a gang the scheduler will never hold. The helper's restore half
+// writes to the in-memory job template, which is what createJobForGroup
+// copies; the stored Workflow's immutable spec is untouched.
+func (r *WorkflowReconciler) enforceGangSchedulingIntent(
+	ctx context.Context,
+	workflow *nvcrev1alpha1.Workflow,
+	orch *nvcrev1alpha1.OrchestrationStatus,
+) error {
+	err := platform.ValidateResolvedJobTemplate(
+		&workflow.Spec.JobTemplate.Spec, workflow.Spec.Dependencies,
+		workflow.Spec.GangScheduler, platform.JobTemplateWorkloadLabelsPath)
+	if err == nil {
+		return nil
+	}
+
+	log := logf.FromContext(ctx)
+	log.Error(err, "Resolved Workflow conflicts with its gang scheduling intent")
+	if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonGangSchedulingConflict, err.Error(),
+		applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
+		log.Error(statusErr, "Failed to update Workflow status after gang scheduling conflict")
+	}
+	return err
+}
+
 // discoverAndPartition discovers target nodes, auto-detects nodesPerJob, and partitions nodes into groups.
 func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow *nvcrev1alpha1.Workflow, orch *nvcrev1alpha1.OrchestrationStatus) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -369,7 +400,7 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	// Detect platform and GPU architecture from target nodes.
 	// Fail if nodes report different platforms (likely misconfiguration).
 	// For heterogeneous GPU architectures, warn and filter to the primary.
-	platform, err := detectPlatformConsistent(nodes)
+	detectedPlatform, err := detectPlatformConsistent(nodes)
 	if err != nil {
 		if statusErr := r.setWorkflowFailed(ctx, workflow, "HeterogeneousPlatform",
 			err.Error()); statusErr != nil {
@@ -380,7 +411,7 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 		}
 		return ctrl.Result{}, err
 	}
-	orch.DetectedPlatform = platform
+	orch.DetectedPlatform = detectedPlatform
 
 	// A cordoned node matched the target and was never tested. discoverTargetNodes
 	// dropped it before anything here saw it, which is why the run is otherwise
@@ -467,6 +498,10 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 			log.Error(statusErr, "Failed to update status")
 		}
 		return ctrl.Result{}, fmt.Errorf("%s", msg)
+	}
+
+	if err := r.enforceGangSchedulingIntent(ctx, workflow, orch); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	// Create workflow-scoped dependencies AFTER overrides are applied.
@@ -960,6 +995,21 @@ func (r *WorkflowReconciler) launchPendingGroups(ctx context.Context, workflow *
 				}
 				return ctrl.Result{}, nil
 			}
+			// A conflict with the persisted gang-scheduling intent is terminal
+			// for the same reason: the intent and a created Job's workload
+			// metadata are both immutable, so retrying only reproduces the
+			// conflict while the Workflow sits at InProgress with nothing
+			// naming the cause. Route it to the same terminal failure path
+			// discovery uses.
+			if conflict, ok := errors.AsType[*gangSchedulingConflictError](err); ok {
+				logf.FromContext(ctx).Error(err, "Gang scheduling conflict while launching group", "group", g.Name)
+				if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonGangSchedulingConflict, conflict.Error(),
+					applyDependencyRefs(workflow.Status.DependencyRefs)); statusErr != nil {
+					logf.FromContext(ctx).Error(statusErr, "Failed to update Workflow status after gang scheduling conflict")
+					return ctrl.Result{}, statusErr
+				}
+				return ctrl.Result{}, nil
+			}
 			return ctrl.Result{}, err
 		}
 		running++
@@ -995,18 +1045,43 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 		}
 	}
 
-	// Create per-job dependency copies and patch the job spec references.
-	// Refs are appended even when ensureJobDependencies errors: copies created
-	// before a terminal failure (e.g. a name collision on a later dependency)
-	// must be tracked so the finalizer can clean them up.
-	patchedSpec, jobRefs, err := r.ensureJobDependencies(ctx, workflow, group, orch, specCopy)
+	// Work out the per-job dependency copies and the spec that references
+	// them, without writing anything yet.
+	prepared, err := prepareJobDependencies(workflow, group, orch, specCopy)
+	if err != nil {
+		return fmt.Errorf("failed to prepare job dependencies for group %s: %w", group.Name, err)
+	}
+	patchedSpec := prepared.Spec
+
+	// Check the manifests this Job will actually be created from, against the
+	// dependency set they actually reference, and do it before any API write.
+	// Preparation renames the job-scoped copies and rewrites the spec's
+	// references to match, so validating the Workflow's templates instead
+	// would be checking documents nothing gets submitted from — and creating
+	// first would leave a runtime dependency behind for a Job that never runs.
+	//
+	// This is also the check that covers groups and iterations launched on
+	// later reconciles, long after discovery ran. The conflict is terminal —
+	// the intent is immutable, so no retry can reconcile the two.
+	if err := platform.ValidateResolvedJobTemplate(
+		patchedSpec, prepared.EffectiveDependencies, workflow.Spec.GangScheduler,
+		platform.JobTemplateWorkloadLabelsPath); err != nil {
+		return &gangSchedulingConflictError{
+			err: fmt.Errorf("group %s: %w", group.Name, err),
+		}
+	}
+
+	// Refs are appended even when creation errors: copies created before a
+	// terminal failure (e.g. a name collision on a later dependency) must be
+	// tracked so the finalizer can clean them up.
+	jobRefs, err := r.createJobDependencies(ctx, workflow, group, orch, prepared)
 	if len(jobRefs) > 0 {
 		workflow.Status.DependencyRefs = append(workflow.Status.DependencyRefs, jobRefs...)
 		// Dep refs are written together with group status by setWorkflowInProgress.
 		// An intermediate Status().Update() here would replace workflow.Status with
 		// the API response, invalidating the caller's orch/group pointers and causing
 		// group.Phase = Running (set below) to write to stale memory.
-		// Crash recovery: if we crash before the final write, ensureJobDependencies
+		// Crash recovery: if we crash before the final write, createJobDependencies
 		// handles AlreadyExists on re-create and re-adds the refs.
 	}
 	if err != nil {
@@ -3005,8 +3080,9 @@ func isMNNVLEnabledInJobTemplate(tmpl *nvcrev1alpha1.JobTemplateSpec) bool {
 // The caller's subsequent Status().Update() (e.g. setWorkflowInProgress, job status
 // updates) writes the full status including any new dependency refs.
 func (r *WorkflowReconciler) ensureWorkflowDependencies(ctx context.Context, workflow *nvcrev1alpha1.Workflow) error {
-	// Classify deps by reachability from the job template
-	jobSpecJSON, err := json.Marshal(&workflow.Spec.JobTemplate.Spec)
+	// Classify deps by reachability from the job template. Workload metadata is
+	// excluded because its arbitrary values are not dependency references.
+	jobSpecJSON, err := marshalJobSpecForDependencyClassification(&workflow.Spec.JobTemplate.Spec)
 	if err != nil {
 		return fmt.Errorf("failed to marshal job spec for classification: %w", err)
 	}

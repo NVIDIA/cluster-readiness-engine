@@ -1,0 +1,14 @@
+{
+  "creates": 3,
+  "trainJobLabels": {
+    "catalog": "nccl",
+    "environment": "burn-in",
+    "kai.scheduler/queue": "queue-a",
+    "kueue.x-k8s.io/queue-name": "nccl-queue"
+  },
+  "runtimeScheduling": {
+    "node/jobTemplateQueue": "queue-a",
+    "node/podTemplateQueue": "queue-a",
+    "node/schedulerName": "kai-scheduler"
+  }
+}

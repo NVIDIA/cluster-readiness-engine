@@ -1,0 +1,10 @@
+# Requesting a key the adapter already set to the same value is accepted, so
+# the merge is idempotent rather than order-dependent.
+workload:
+  trainJob:
+    runtimeRef:
+      name: nccl-runtime
+adapterLabels:
+  kai.scheduler/queue: burn-in
+labels:
+  kai.scheduler/queue: burn-in

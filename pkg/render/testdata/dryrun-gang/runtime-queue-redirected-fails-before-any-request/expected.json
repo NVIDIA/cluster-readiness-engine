@@ -1,0 +1,4 @@
+{
+  "error": "gangScheduler is configured with queue \"queue-a\" but TrainingRuntime \"dry-runtime\" replicatedJob \"node\" sets label \"kai.scheduler/queue\" to \"queue-b\" on template.metadata.labels",
+  "creates": 0
+}

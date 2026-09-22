@@ -1,0 +1,11 @@
+{
+  "workloadLabels": {
+    "environment": "burn-in"
+  },
+  "persistedGangScheduler": null,
+  "trainerImage": "nvcr.io/nvidia/nccl-tests:custom",
+  "runtimeImages": {
+    "nccl-runtime/launcher": "nvcr.io/nvidia/nccl-tests:custom",
+    "nccl-runtime/node": "nvcr.io/nvidia/nccl-tests:custom"
+  }
+}

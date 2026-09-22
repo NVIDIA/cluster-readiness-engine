@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The control case. The runtime agrees with the persisted queue-a intent, so
+# the dry run must get past the check and actually issue requests, and the
+# submitted TrainJob must carry the queue label rather than merely exist. The
+# runtime must agree at both template levels and on the scheduler name.
+runtimeQueue: queue-a

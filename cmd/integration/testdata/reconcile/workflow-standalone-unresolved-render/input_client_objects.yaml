@@ -1,0 +1,714 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Workflow below is verbatim output from
+#
+#   nvcrectl workloadrun render /tmp/wr-unresolved.yaml
+#
+# run without --platform, so its conditional overrides are still unresolved.
+# ADR-079 says such output is a template rather than a claim that every
+# override branch was validated: the CLI exits successfully and keeps
+# spec.gangScheduler, deferring the check to whoever resolves it.
+#
+# This case is the other half of that contract. The template is submitted on
+# its own, with no WorkloadRun and no Certification anywhere, and the aws nodes
+# make its override match. The persisted intent is what lets the Workflow
+# controller enforce the same guarantee without its original owner: the
+# override redirects the runtime queue to queue-b, the intent says queue-a, and
+# the Workflow must fail terminally without creating a Job or a runtime copy.
+apiVersion: v1
+kind: Node
+metadata:
+  name: standalone-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: standalone-node-01
+spec:
+  providerID: "aws://us-east-1a/i-0000000000000001"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: standalone-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: standalone-node-02
+spec:
+  providerID: "aws://us-east-1a/i-0000000000000002"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  annotations:
+    nvcrectl.nvidia.com/detected-gpu-architecture: h100
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workload-run: standalone-render
+  name: standalone-render
+  namespace: default
+spec:
+  dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      labels:
+        app: standalone-render
+        trainer.kubeflow.org/framework: torch
+      name: standalone-render-runtime
+    spec:
+      mlPolicy:
+        numNodes: 2
+        torch:
+          numProcPerNode: 8
+      template:
+        spec:
+          replicatedJobs:
+          - name: node
+            template:
+              metadata:
+                labels:
+                  app: standalone-render
+                  kai.scheduler/queue: queue-a
+                  trainer.kubeflow.org/trainjob-ancestor-step: trainer
+              spec:
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: queue-a
+                  spec:
+                    containers:
+                    - env:
+                      - name: NCCL_DEBUG
+                        value: INFO
+                      - name: NCCL_DEBUG_SUBSYS
+                        value: NET,INIT
+                      - name: NCCL_NVLS_ENABLE
+                        value: "1"
+                      - name: NCCL_CUMEM_ENABLE
+                        value: "1"
+                      - name: NCCL_NET_GDR_C2C
+                        value: "1"
+                      - name: NCCL_NET_GDR_LEVEL
+                        value: PHB
+                      - name: NCCL_P2P_NET_CHUNKSIZE
+                        value: "2097152"
+                      - name: NCCL_SHM_DISABLE
+                        value: "1"
+                      - name: NCCL_MNNVL_ENABLE
+                        value: "0"
+                      - name: NCCL_SOCKET_IFNAME
+                        value: eth0
+                      image: nvcr.io/nvidia/pytorch:25.08-py3
+                      name: node
+                      resources:
+                        limits:
+                          nvidia.com/gpu: "8"
+                        requests:
+                          nvidia.com/gpu: "8"
+                      volumeMounts:
+                      - mountPath: /dev/shm
+                        name: dshm
+                    schedulerName: kai-scheduler
+                    securityContext:
+                      seccompProfile:
+                        type: RuntimeDefault
+                    terminationGracePeriodSeconds: 30
+                    volumes:
+                    - emptyDir:
+                        medium: Memory
+                      name: dshm
+  gangScheduler:
+    queue: queue-a
+    queueLabelKey: kai.scheduler/queue
+    schedulerName: kai-scheduler
+  jobTemplate:
+    spec:
+      nodeHealthMonitor:
+        cel:
+          expression: node.spec.unschedulable == true
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: standalone-render-runtime
+          trainer:
+            args:
+            - /workspace/train.py
+            command:
+            - torchrun
+            image: nvcr.io/nvidia/pytorch:25.08-py3
+            numNodes: 2
+            numProcPerNode: 8
+      workloadMetadata:
+        labels:
+          kai.scheduler/queue: queue-a
+  orchestration:
+    execution:
+      timeoutPerJob: 24h0m0s
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  overrides:
+  - dependencies:
+    - apiVersion: resource.nvidia.com/v1beta1
+      kind: ComputeDomain
+      metadata:
+        labels:
+          app: standalone-render
+        name: standalone-render-compute-domain
+      spec:
+        channel:
+          allocationMode: Single
+          resourceClaimTemplate:
+            name: standalone-render-channel
+        numNodes: 2
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: standalone-render-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                      - name: node
+                        resources:
+                          claims:
+                          - name: compute-domain
+                      resourceClaims:
+                      - name: compute-domain
+                        resourceClaimTemplateName: standalone-render-channel
+    when:
+      gpuArchitecture:
+        in:
+        - gb200
+        - gb300
+  - orchestration:
+      topology:
+        topologyKey: topology.k8s.aws/network-node-layer-1
+    when:
+      gpuArchitecture:
+        in:
+        - gb200
+        - gb300
+      platform:
+        equals: aws
+  - orchestration:
+      topology:
+        topologyKey: cloud.google.com/gce-topology-block
+    when:
+      gpuArchitecture:
+        in:
+        - gb200
+        - gb300
+      platform:
+        equals: gcp
+  - orchestration:
+      topology:
+        topologyKey: kubernetes.azure.com/ppg
+    when:
+      gpuArchitecture:
+        in:
+        - gb200
+        - gb300
+      platform:
+        equals: azure
+  - when:
+      platform:
+        equals: aws
+  - dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: standalone-render-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                      - name: node
+                        resources:
+                          limits:
+                            vpc.amazonaws.com/efa: 4
+                          requests:
+                            vpc.amazonaws.com/efa: 4
+    when:
+      gpuArchitecture:
+        equals: gb200
+      platform:
+        equals: aws
+  - dependencies:
+    - apiVersion: resource.k8s.io/v1
+      kind: ResourceClaimTemplate
+      metadata:
+        labels:
+          app: standalone-render
+        name: standalone-render-roce
+      spec:
+        spec:
+          devices:
+            requests:
+            - exactly:
+                count: 8
+                deviceClassName: roce.networking.k8s.aws
+              name: roce
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: standalone-render-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                      - name: node
+                        resources:
+                          claims:
+                          - name: compute-domain
+                          - name: roce-channel
+                      resourceClaims:
+                      - name: compute-domain
+                        resourceClaimTemplateName: standalone-render-channel
+                      - name: roce-channel
+                        resourceClaimTemplateName: standalone-render-roce
+    when:
+      gpuArchitecture:
+        equals: gb300
+      platform:
+        equals: aws
+  - dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: standalone-render-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                      - name: node
+                        resources:
+                          limits:
+                            vpc.amazonaws.com/efa: 32
+                          requests:
+                            vpc.amazonaws.com/efa: 32
+    when:
+      gpuArchitecture:
+        equals: h100
+      platform:
+        equals: aws
+  - jobTemplate:
+      spec:
+        workload:
+          trainJob:
+            trainer:
+              env:
+              - name: CUDA_DEVICE_MAX_CONNECTIONS
+                value: "1"
+              - name: NCCL_DEBUG
+                value: INFO
+              - name: LD_LIBRARY_PATH
+                value: /usr/lib/x86_64-linux-gnu:/usr/local/nvidia/lib64
+              - name: NCCL_FASTRAK_IFNAME
+                value: eth1,eth2,eth3,eth4,eth5,eth6,eth7,eth8
+              - name: NCCL_FASTRAK_CTRL_DEV
+                value: eth0
+              - name: NCCL_SOCKET_IFNAME
+                value: eth0
+              - name: NCCL_CROSS_NIC
+                value: "0"
+              - name: NCCL_ALGO
+                value: Ring,Tree
+              - name: NCCL_PROTO
+                value: Simple
+              - name: NCCL_MIN_NCHANNELS
+                value: "4"
+              - name: NCCL_P2P_NET_CHUNKSIZE
+                value: "524288"
+              - name: NCCL_P2P_PCI_CHUNKSIZE
+                value: "524288"
+              - name: NCCL_P2P_NVL_CHUNKSIZE
+                value: "1048576"
+              - name: NCCL_FASTRAK_NUM_FLOWS
+                value: "2"
+              - name: NCCL_FASTRAK_ENABLE_CONTROL_CHANNEL
+                value: "0"
+              - name: NCCL_BUFFSIZE
+                value: "8388608"
+              - name: NCCL_FASTRAK_USE_SNAP
+                value: "1"
+              - name: NCCL_FASTRAK_USE_LLCM
+                value: "1"
+              - name: NCCL_NET_GDR_LEVEL
+                value: PIX
+              - name: NCCL_FASTRAK_ENABLE_HOTPATH_LOGGING
+                value: "0"
+              - name: NCCL_TUNER_PLUGIN
+                value: libnccl-tuner.so
+              - name: NCCL_TUNER_CONFIG_PATH
+                value: /usr/local/nvidia/lib64/a3plus_tuner_config.textproto
+              - name: NCCL_SHIMNET_GUEST_CONFIG_CHECKER_CONFIG_FILE
+                value: /usr/local/nvidia/lib64/a3plus_guest_config.textproto
+              - name: NCCL_FASTRAK_PLUGIN_ACCEPT_TIMEOUT_MS
+                value: "600000"
+              - name: NCCL_DYNAMIC_CHUNK_SIZE
+                value: "524288"
+              - name: NCCL_FASTRAK_LLCM_DEVICE_DIRECTORY
+                value: /dev/aperture_devices
+              - name: NCCL_NVLS_ENABLE
+                value: "0"
+              - name: NCCL_CUMEM_ENABLE
+                value: "1"
+              - name: NCCL_NET_GDR_C2C
+                value: "1"
+    when:
+      gpuArchitecture:
+        equals: h100
+      platform:
+        equals: gcp
+  - dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: standalone-render-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+            - name: node
+              template:
+                metadata:
+                  annotations:
+                    networking.gke.io/default-interface: eth0
+                    networking.gke.io/interfaces: |
+                      [
+                        {"interfaceName":"eth0","network":"default"},
+                        {"interfaceName":"rdma0","network":"rdma-0"},
+                        {"interfaceName":"rdma1","network":"rdma-1"},
+                        {"interfaceName":"rdma2","network":"rdma-2"},
+                        {"interfaceName":"rdma3","network":"rdma-3"}
+                      ]
+                spec:
+                  template:
+                    spec:
+                      containers:
+                      - env:
+                        - name: NCCL_NET_GDR_LEVEL
+                          value: "5"
+                        - name: NCCL_DEBUG
+                          value: INFO
+                        name: node
+                        resources:
+                          limits:
+                            networking.gke.io.networks/rdma-0: "1"
+                            networking.gke.io.networks/rdma-1: "1"
+                            networking.gke.io.networks/rdma-2: "1"
+                            networking.gke.io.networks/rdma-3: "1"
+                          requests:
+                            networking.gke.io.networks/rdma-0: "1"
+                            networking.gke.io.networks/rdma-1: "1"
+                            networking.gke.io.networks/rdma-2: "1"
+                            networking.gke.io.networks/rdma-3: "1"
+                      tolerations:
+                      - effect: NoSchedule
+                        key: kubernetes.io/arch
+                        operator: Equal
+                        value: arm64
+                      - effect: NoSchedule
+                        key: nvidia.com/gpu
+                        operator: Equal
+                        value: present
+    when:
+      gpuArchitecture:
+        in:
+        - gb200
+        - gb300
+      platform:
+        equals: gcp
+  - dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: standalone-render-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                      - name: node
+                        resources:
+                          limits:
+                            nvidia.com/mlnxnics: 8
+                          requests:
+                            nvidia.com/mlnxnics: 8
+    when:
+      platform:
+        equals: azure
+  - dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: standalone-render-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                      - name: node
+                        resources:
+                          limits:
+                            nvidia.com/mlnxnics: "8"
+                          requests:
+                            nvidia.com/mlnxnics: "8"
+    when:
+      platform:
+        equals: togetherai
+  - jobTemplate:
+      spec:
+        workload:
+          trainJob:
+            trainer:
+              env:
+              - name: NCCL_DEBUG
+                value: INFO
+              - name: NCCL_IB_PCI_RELAXED_ORDERING
+                value: "1"
+              - name: NCCL_IGNORE_CPU_AFFINITY
+                value: "1"
+              - name: NCCL_SOCKET_IFNAME
+                value: eth0
+              - name: NCCL_IB_QPS_PER_CONNECTION
+                value: "2"
+              - name: NCCL_IB_SPLIT_DATA_ON_QPS
+                value: "0"
+              - name: NCCL_IB_AR_THRESHOLD
+                value: "0"
+              - name: NCCL_IB_HCA
+                value: =mlx5_7:1,mlx5_8:1,mlx5_9:1,mlx5_10:1,mlx5_11:1,mlx5_12:1,mlx5_5:1,mlx5_6:1,mlx5_2:1,mlx5_3:1,mlx5_0:1,mlx5_1:1
+              - name: NCCL_NVLS_ENABLE
+                value: "1"
+              - name: NCCL_CUMEM_ENABLE
+                value: "1"
+    when:
+      platform:
+        equals: togetherai
+  - dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: standalone-render-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                      - env:
+                        - name: NCCL_DEBUG
+                          value: INFO
+                        - name: NCCL_MNNVL_ENABLE
+                          value: "0"
+                        - name: NCCL_IB_HCA
+                          value: mlx5_0:1,mlx5_1:1,mlx5_2:1,mlx5_3:1
+                        - name: NCCL_IB_PCI_RELAXED_ORDERING
+                          value: "1"
+                        - name: UCX_NET_DEVICES
+                          value: mlx5_0:1,mlx5_1:1,mlx5_2:1,mlx5_3:1
+                        - name: SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING
+                          value: "1"
+                        - name: OMPI_MCA_btl_openib_warn_default_gid_prefix
+                          value: "0"
+                        - name: PMIX_MCA_gds
+                          value: ^ds12
+                        - name: CUDA_CACHE_DISABLE
+                          value: "1"
+                        - name: NCCL_DMABUF_ENABLE
+                          value: "0"
+                        name: node
+                        resources:
+                          limits:
+                            rdma/ib: "1"
+                          requests:
+                            rdma/ib: "1"
+                      tolerations:
+                      - effect: NoSchedule
+                        key: kubernetes.io/arch
+                        operator: Equal
+                        value: arm64
+                      - effect: NoSchedule
+                        key: nvidia.com/gpu
+                        operator: Equal
+                        value: present
+    when:
+      gpuArchitecture:
+        equals: gb300
+      platform:
+        equals: mistral
+  - jobTemplate:
+      spec:
+        workload:
+          trainJob:
+            trainer:
+              env:
+              - name: NCCL_DEBUG
+                value: INFO
+              - name: NCCL_MNNVL_ENABLE
+                value: "0"
+              - name: NCCL_IB_HCA
+                value: mlx5_0:1,mlx5_1:1,mlx5_2:1,mlx5_3:1
+              - name: NCCL_IB_PCI_RELAXED_ORDERING
+                value: "1"
+              - name: UCX_NET_DEVICES
+                value: mlx5_0:1,mlx5_1:1,mlx5_2:1,mlx5_3:1
+              - name: SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING
+                value: "1"
+              - name: OMPI_MCA_btl_openib_warn_default_gid_prefix
+                value: "0"
+              - name: PMIX_MCA_gds
+                value: ^ds12
+              - name: CUDA_CACHE_DISABLE
+                value: "1"
+              - name: NCCL_DMABUF_ENABLE
+                value: "0"
+    when:
+      gpuArchitecture:
+        equals: gb300
+      platform:
+        equals: mistral
+  - dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: standalone-render-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                      - env:
+                        - name: NCCL_DEBUG
+                          value: INFO
+                        - name: NCCL_NVLS_ENABLE
+                          value: "1"
+                        - name: NCCL_CUMEM_ENABLE
+                          value: "1"
+                        - name: NCCL_P2P_NET_CHUNKSIZE
+                          value: "2097152"
+                        - name: NCCL_MNNVL_ENABLE
+                          value: "0"
+                        - name: NCCL_IB_PCI_RELAXED_ORDERING
+                          value: "1"
+                        - name: SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING
+                          value: "1"
+                        - name: OMPI_MCA_btl_openib_warn_default_gid_prefix
+                          value: "0"
+                        - name: PMIX_MCA_gds
+                          value: ^ds12
+                        name: node
+                      tolerations:
+                      - effect: NoSchedule
+                        key: kubernetes.io/arch
+                        operator: Equal
+                        value: arm64
+                      - effect: NoSchedule
+                        key: nvidia.com/gpu
+                        operator: Equal
+                        value: present
+    when:
+      gpuArchitecture:
+        in:
+        - gb200
+        - gb300
+      platform:
+        equals: onprem
+  - jobTemplate:
+      spec:
+        workload:
+          trainJob:
+            trainer:
+              env:
+              - name: NCCL_DEBUG
+                value: INFO
+              - name: NCCL_NVLS_ENABLE
+                value: "1"
+              - name: NCCL_CUMEM_ENABLE
+                value: "1"
+              - name: NCCL_P2P_NET_CHUNKSIZE
+                value: "2097152"
+              - name: NCCL_MNNVL_ENABLE
+                value: "0"
+              - name: NCCL_IB_PCI_RELAXED_ORDERING
+                value: "1"
+              - name: SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING
+                value: "1"
+              - name: OMPI_MCA_btl_openib_warn_default_gid_prefix
+                value: "0"
+              - name: PMIX_MCA_gds
+                value: ^ds12
+    when:
+      gpuArchitecture:
+        in:
+        - gb200
+        - gb300
+      platform:
+        equals: onprem
+  - dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: standalone-render-runtime
+        namespace: default
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+            - name: node
+              template:
+                metadata:
+                  labels:
+                    kai.scheduler/queue: queue-b
+    when:
+      platform:
+        equals: aws
