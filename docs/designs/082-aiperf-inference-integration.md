@@ -608,7 +608,8 @@ Implementation follows approval of this ADR.
    and evidence freeze;
    copy final `CleanupComplete` in the terminal status write; handle
    `CleanupIncomplete` in Workflow, including independent backstop cleanup and skipping
-   cleanup-blocked nodes in later iterations. Add the render and preflight rejections
+   cleanup-blocked nodes in later iterations; add the equivalent Job-owned
+   backstop for direct Jobs. Add the render and preflight rejections
    from §2, §3, and §8.
 4. **Add one recipe.** A pinned single-node vLLM model with thresholds, sample
    minimums, a qualified client size, and a finite default `maxConcurrent`,
@@ -672,6 +673,13 @@ Python dependency.
   during profiling, and after result acceptance takes the cancellation path;
   neither `HardwareFailed=True` nor a racing timeout may bypass freezing and
   cleanup, reset the clock, or lose hardware evidence. Cover direct Jobs too.
+  With a stalled InferenceRun after direct-Job cancellation, the Job-owned
+  backstop must expire at the original deadline, persist the handoff, and
+  delete compute independently. Cover hardware-triggered cancellation, explicit
+  deletion, failed InferenceRun reads, controller restart, and reconciliation
+  after Job terminalization. Deletion errors keep the finalizer and cleanup
+  retries active; neither missing evidence nor a later cleanup may produce a
+  pass. Workflow-owner lookup errors must not activate the direct-Job backstop.
 - **Verdict:** execution success, valid measurements, passing and failing
   thresholds, and missing evidence are distinct. Client failures, including
   `ClientSaturated`, never produce hardware attribution or node coverage.
@@ -1030,8 +1038,31 @@ iterations, and the persisted handoff continues rate-limited cleanup retries.
 A later verified cleanup is recorded separately and does not rewrite the
 attempt's frozen cleanup verdict or restore certification coverage. This gives
 the Workflow a bounded result without claiming GPUs were released when cleanup
-is impossible. Direct Jobs use the normal cancellation and deletion paths;
-the Workflow backstop applies only to Workflow-owned attempts.
+is impossible.
+
+Direct Jobs have the same independent backstop, owned by the Job controller.
+It uses the persisted first cancellation timestamp plus cleanup timeout and the
+same fixed grace period, including an earlier hardware-triggered cancellation.
+Deletion initiates cancellation if none exists, anchored to `deletionTimestamp`;
+retries and restarts never reset the clock. The Job controller checks this
+deadline even when InferenceRun reads fail. This supplements InferenceRun's own
+deadline checks and does not depend on that reconciler making progress.
+
+When it expires, the Job controller persists the same handoff inventory and
+evidence references in Job status, records `Failed` with reason
+`CleanupIncomplete` and final `CleanupComplete=False`, and independently runs
+the UID-verified cleanup and evidence-preservation steps above. Handoff processing
+runs before the Job's terminal-state guard and in its deletion/finalizer path;
+the finalizer remains until compute deletion is confirmed. The Job owns any
+frozen evidence under §7. Failed reads, uncertain creates, and deletion failures
+never count as absence; cleanup retries continue after the Job becomes terminal,
+without changing its frozen verdict or creating another attempt. There is no
+Workflow iteration or group for a direct Job, so cleanup remains visible in its
+status rather than orchestration status.
+
+Exactly one parent owns the handoff: Workflow when a valid Workflow owner
+reference exists, otherwise the direct Job. Owner resolution follows §7; lookup
+failure or a UID mismatch never permits switching to direct-Job ownership.
 
 ## References
 
