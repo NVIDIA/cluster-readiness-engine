@@ -1,0 +1,27 @@
+{
+  "changed": true,
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "NotApplicable",
+      "message": ""
+    },
+    {
+      "type": "Succeeded",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "AllJobsSucceeded",
+      "message": "All Jobs succeeded"
+    },
+    {
+      "type": "Failed",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "NotApplicable",
+      "message": ""
+    }
+  ],
+  "extraSet": false
+}

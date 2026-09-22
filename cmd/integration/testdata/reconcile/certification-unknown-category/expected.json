@@ -52,5 +52,17 @@
         }
       ]
     }
-  }
+  },
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "CategoryNotFound",
+      "message": "Unknown certification category: unknown/unknown",
+      "involvedObject": {
+        "kind": "Certification",
+        "name": "test-cert-unknown"
+      },
+      "count": 1
+    }
+  ]
 }

@@ -1,0 +1,8 @@
+before:
+  - {type: InProgress, status: "True", reason: JobRunning, message: Job is running}
+  - {type: Succeeded, status: "False", reason: NotApplicable}
+  - {type: Failed, status: "False", reason: NotApplicable}
+target: Succeeded
+reason: AllJobsSucceeded
+message: All Jobs succeeded
+conflictWinner: true

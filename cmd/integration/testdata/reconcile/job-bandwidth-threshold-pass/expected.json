@@ -31,6 +31,9 @@
       "bandwidthMeasurement": {
         "logProfileRef": "nccl-bandwidth",
         "testType": "all_reduce"
+      },
+      "thresholds": {
+        "busBandwidthGBps": "value \u003e= 300"
       }
     },
     "status": {
@@ -58,6 +61,14 @@
           "lastTransitionTime": null,
           "reason": "NotApplicable",
           "message": ""
+        },
+        {
+          "type": "ValidationFailed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "ThresholdsMet",
+          "message": "All performance thresholds satisfied"
         }
       ],
       "workloadRef": {
@@ -67,5 +78,27 @@
         "namespace": "default"
       }
     }
-  }
+  },
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "ThresholdsMet",
+      "message": "All performance thresholds satisfied",
+      "involvedObject": {
+        "kind": "Job",
+        "name": "test-bw-threshold-pass"
+      },
+      "count": 1
+    },
+    {
+      "type": "Normal",
+      "reason": "WorkloadCompleted",
+      "message": "Workload TrainJob/test-bw-threshold-pass-workload completed: All workers completed",
+      "involvedObject": {
+        "kind": "Job",
+        "name": "test-bw-threshold-pass"
+      },
+      "count": 1
+    }
+  ]
 }

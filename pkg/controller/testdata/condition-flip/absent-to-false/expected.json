@@ -1,0 +1,19 @@
+[
+  {
+    "type": "ValidationFailed",
+    "before": {
+      "present": false
+    },
+    "after": {
+      "present": true,
+      "status": "False"
+    },
+    "condition": {
+      "type": "ValidationFailed",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "ThresholdsMet",
+      "message": "All thresholds passed"
+    }
+  }
+]

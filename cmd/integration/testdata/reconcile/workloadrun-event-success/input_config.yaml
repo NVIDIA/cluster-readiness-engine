@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+waitFor:
+  kind: WorkloadRun
+  name: event-success-run
+  namespace: default
+  condition: Succeeded
+timeoutSeconds: 60
+collect:
+  - kind: WorkloadRun
+    name: event-success-run
+    namespace: default
+events:
+  - involvedKind: WorkloadRun
+    involvedName: event-success-run
+    namespace: default
+    expect:
+      - {type: Normal, reason: WorkflowSucceeded}

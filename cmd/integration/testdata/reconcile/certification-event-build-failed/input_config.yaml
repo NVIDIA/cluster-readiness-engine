@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+waitFor:
+  kind: Certification
+  name: event-build-failed-cert
+  namespace: default
+  condition: Failed
+  reason: WorkflowValidationFailed
+collect:
+  - kind: Certification
+    name: event-build-failed-cert
+    namespace: default
+events:
+  - involvedKind: Certification
+    involvedName: event-build-failed-cert
+    namespace: default
+    expect:
+      - {type: Warning, reason: WorkflowValidationFailed}

@@ -1,0 +1,38 @@
+{
+  "changed": true,
+  "transition": {
+    "previousTrueType": "InProgress",
+    "newTrueType": "Failed",
+    "condition": {
+      "type": "Failed",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "JobFailed",
+      "message": "A Job failed"
+    }
+  },
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "NotApplicable",
+      "message": ""
+    },
+    {
+      "type": "Succeeded",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "NotApplicable",
+      "message": ""
+    },
+    {
+      "type": "Failed",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "JobFailed",
+      "message": "A Job failed"
+    }
+  ],
+  "extraSet": false
+}

@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: event-tracked-override
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command: [echo, test]
+            numNodes: 1
+  orchestration:
+    target:
+      nodeSelector:
+        event-case: event-tracked-override
+  overrides:
+    - when:
+        platform:
+          equals: aws
+      jobTemplatePatch: {"invalid": "not an array"}
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: event-tracked-override-aws
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    event-case: event-tracked-override
+spec:
+  providerID: aws://us-east-1a/i-0123456789abcdef0

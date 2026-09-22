@@ -1,11 +1,35 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+verifyCheckpointEvents: true
+steps:
+  - waitFor:
+      kind: Job
+      name: test-checkpoint-restart
+      namespace: default
+      condition: InProgress
+      reason: WorkloadRunning
+    patches:
+      - target:
+          kind: TrainJob
+          name: test-checkpoint-restart-workload
+          namespace: default
+        status: true
+        patch:
+          status:
+            conditions:
+              - type: Failed
+                status: "True"
+                reason: WorkerFailed
+                message: Worker crashed
+                lastTransitionTime: "2026-01-22T10:00:00Z"
 waitFor:
   kind: Job
   name: test-checkpoint-restart
   namespace: default
   condition: InProgress
+  reason: WorkloadRunning
+  restartCount: 1
 collect:
   - kind: Job
     name: test-checkpoint-restart

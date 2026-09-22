@@ -10,3 +10,10 @@ collect:
   - kind: Workflow
     name: test-workflow-fail
     namespace: default
+events:
+  - involvedKind: Workflow
+    involvedName: test-workflow-fail
+    namespace: default
+    expect:
+      - {type: Normal, reason: JobRunning}
+      - {type: Warning, reason: IterationsFailed}

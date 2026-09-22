@@ -10,3 +10,10 @@ collect:
   - kind: Certification
     name: test-cert-seq-progress
     namespace: default
+events:
+  - involvedKind: Certification
+    involvedName: test-cert-seq-progress
+    namespace: default
+    expect:
+      - {type: Normal, reason: WorkflowRunning}
+      - {type: Warning, reason: WorkflowFailed}

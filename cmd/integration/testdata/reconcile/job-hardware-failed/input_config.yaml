@@ -1,12 +1,34 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+steps:
+  - waitFor:
+      kind: Job
+      name: test-hw-failed-job
+      namespace: default
+      condition: HardwareFailed
+      failedNodeCount: 1
+    patches:
+      - target:
+          kind: Node
+          name: test-hw-second-node
+        patch:
+          metadata:
+            labels:
+              nvidia.com/gpu.unhealthy: "true"
 waitFor:
   kind: Job
   name: test-hw-failed-job
   namespace: default
   condition: HardwareFailed
+  failedNodeCount: 2
 collect:
   - kind: Job
     name: test-hw-failed-job
     namespace: default
+events:
+  - involvedKind: Job
+    involvedName: test-hw-failed-job
+    namespace: default
+    expect:
+      - {type: Warning, reason: HardwareFailureDetected}

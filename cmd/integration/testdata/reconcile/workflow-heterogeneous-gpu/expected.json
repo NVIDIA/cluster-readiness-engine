@@ -111,5 +111,27 @@
         ]
       }
     }
-  }
+  },
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "GroupsPartitioned",
+      "message": "Discovered 2 nodes, partitioned into 2 groups (1 nodes/job)",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "test-heterogeneous"
+      },
+      "count": 1
+    },
+    {
+      "type": "Warning",
+      "reason": "HeterogeneousGPU",
+      "message": "Filtered 2/3 nodes to primary GPU architecture h100; excluded: gpu-node-03-odd",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "test-heterogeneous"
+      },
+      "count": 1
+    }
+  ]
 }

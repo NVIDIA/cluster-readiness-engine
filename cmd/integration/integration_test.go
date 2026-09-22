@@ -4,9 +4,11 @@
 package integration_test
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -21,9 +23,11 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -47,6 +51,12 @@ import (
 
 const metricLabelNamespace = "namespace"
 
+const nvcreCRDDirectory = "../../helm/cluster-readiness-engine/crds"
+
+const eventCaseTimeout = 3 * time.Minute
+
+const kindJob = "Job"
+
 func init() {
 	_ = nvcrev1alpha1.AddToScheme(scheme.Scheme)
 	_ = trainerv1alpha1.AddToScheme(scheme.Scheme)
@@ -57,7 +67,7 @@ func TestIntegration(t *testing.T) {
 
 	suite := &testutil.IntegrationTestSuite{}
 	suite.Environment.CRDDirectoryPaths = []string{
-		"../../helm/cluster-readiness-engine/crds",
+		nvcreCRDDirectory,
 		"../../hack/crds",
 	}
 	suite.Environment.ErrorIfCRDPathMissing = true
@@ -88,7 +98,26 @@ func TestIntegration(t *testing.T) {
 		objs := createTestObjects(tt, suite.Client, tc)
 
 		fakeFetcher := buildFakeLogFetcher(tc)
-		mgr, cancel := startManager(tt, suite.Config, fakeFetcher)
+		deadline := eventCaseDeadline(cfg)
+		if cfg.InitializeWorkloadRun {
+			// Separate construction from cache-backed mirroring until #352 fixes
+			// the create-to-cache observation race. No creation Event is recorded.
+			require.Equal(tt, "WorkloadRun", cfg.WaitFor.Kind)
+			ctx, stop := contextForDeadline(deadline)
+			r := &controller.WorkloadRunReconciler{Client: suite.Client, Scheme: scheme.Scheme}
+			_, err := r.Reconcile(ctx, ctrl.Request{
+				Name: cfg.WaitFor.Name, Namespace: cfg.WaitFor.Namespace})
+			stop()
+			require.NoError(tt, err)
+		}
+		checkpoint := newCheckpointObservation(tt, suite.Client, cfg)
+		var nodePollRecorder *phaseCountingRecorder
+		var nodePollUID types.UID
+		if cfg.VerifyNodePollEvents {
+			nodePollRecorder = &phaseCountingRecorder{inProgress: make(map[types.UID]int)}
+		}
+		mgr, cancel, stopped := startManager(tt, suite.Config, fakeFetcher, deadline,
+			cfg.RejectWorkflowCreates, checkpoint, nodePollRecorder)
 
 		// Ensure cleanup always runs, even on test failure/timeout.
 		// Without this, a timed-out test leaks objects (e.g., cluster-scoped
@@ -99,13 +128,36 @@ func TestIntegration(t *testing.T) {
 			deleteTestObjects(tt, suite.Client, objs)
 		}()
 
-		waitForCondition(tt, mgr.GetClient(), cfg)
+		for _, step := range cfg.Steps {
+			stepConfig := cfg
+			stepConfig.WaitFor = step.WaitFor
+			waitForCondition(tt, mgr.GetClient(), stepConfig, deadline)
+			if nodePollRecorder != nil {
+				nodePollUID = waitForNodePollMessages(tt, suite.Client, cfg, deadline)
+			}
+			if checkpoint != nil {
+				checkpoint.waitForInitialEvent(tt, deadline)
+			}
+			for _, patch := range step.Patches {
+				ctx, cancelPatch := contextForDeadline(deadline)
+				obj := getObject(ctx, tt, suite.Client, patch.Target)
+				require.NotNil(tt, obj)
+				p := client.RawPatch(types.MergePatchType, patch.Patch)
+				if patch.Status {
+					require.NoError(tt, suite.Client.Status().Patch(ctx, obj, p))
+				} else {
+					require.NoError(tt, suite.Client.Patch(ctx, obj, p))
+				}
+				cancelPatch()
+			}
+		}
+		waitForCondition(tt, mgr.GetClient(), cfg, deadline)
 
 		// Verify a Complete GoodputMeasurement stays frozen across a terminal
 		// re-entry (ADR-072). Runs before collection so the golden pins it.
 		var frozenGoodput map[string]any
 		if cfg.VerifyFrozenGoodput != nil {
-			frozenGoodput = verifyFrozenGoodput(tt, suite.Client, mgr.GetClient(), cfg)
+			frozenGoodput = verifyFrozenGoodput(tt, suite.Client, mgr.GetClient(), cfg, deadline)
 		}
 
 		// Verify post-launch spec edits are rejected by the CRD transition
@@ -113,19 +165,39 @@ func TestIntegration(t *testing.T) {
 		// the rejections and the unchanged spec.
 		var specImmutability map[string]any
 		if len(cfg.VerifySpecImmutable) > 0 {
-			specImmutability = verifySpecImmutable(tt, suite.Client, cfg.VerifySpecImmutable)
+			specImmutability = verifySpecImmutable(tt, suite.Client, cfg.VerifySpecImmutable, deadline)
 		}
 
 		// Delete resources after the initial wait (e.g., to test deletion cascade).
 		if len(cfg.DeleteAfterWait) > 0 {
-			deleteAfterWait(tt, mgr.GetClient(), cfg.DeleteAfterWait)
+			deleteAfterWait(tt, mgr.GetClient(), cfg.DeleteAfterWait, deadline)
 		}
 		// Wait for specified resources to be fully deleted.
 		if len(cfg.WaitForDeletion) > 0 {
-			waitForDeletion(tt, mgr.GetClient(), cfg)
+			waitForDeletion(tt, mgr.GetClient(), cfg, deadline)
 		}
 
-		tc.Actual = collectAndSerialize(tt, mgr.GetClient(), cfg, frozenGoodput, specImmutability)
+		waitForEvents(tt, suite.Client, cfg, deadline)
+		if checkpoint != nil {
+			checkpoint.verifyReplacementReconcile(tt, suite.Client, mgr.GetClient(), cfg, deadline)
+		}
+		if checkpoint != nil || nodePollRecorder != nil {
+			cancel()
+			select {
+			case <-stopped:
+			case <-time.After(boundedWaitTimeout(tt, 10*time.Second, deadline)):
+				tt.Fatal("manager did not stop before Event assertion")
+			}
+		}
+		if nodePollRecorder != nil {
+			require.NotEmpty(tt, nodePollUID, "node-poll assertion requires a staged wait before releasing nodes")
+			require.Equal(tt, 1, nodePollRecorder.count(nodePollUID),
+				"poll messages or later reasons emitted another InProgress Event")
+		}
+		if checkpoint != nil {
+			require.Equal(tt, 1, checkpoint.recorder.count(checkpoint.jobUID), "restart emitted another InProgress Event")
+		}
+		tc.Actual = collectAndSerialize(tt, mgr.GetClient(), suite.Client, cfg, deadline, frozenGoodput, specImmutability)
 		return nil
 	})
 }
@@ -357,8 +429,10 @@ func deleteTestObjects(t *testing.T, c client.Client, objs []client.Object) {
 
 // startManager creates and starts a controller manager in-process.
 func startManager(
-	t *testing.T, cfg *rest.Config, fetcher podlogs.PodLogFetcher,
-) (ctrl.Manager, context.CancelFunc) {
+	t *testing.T, cfg *rest.Config, fetcher podlogs.PodLogFetcher, deadline time.Time, rejectWorkflowCreates bool,
+	checkpoint *checkpointObservation,
+	nodePollRecorder *phaseCountingRecorder,
+) (ctrl.Manager, context.CancelFunc, <-chan struct{}) {
 	t.Helper()
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
@@ -381,9 +455,15 @@ func startManager(
 	require.NoError(t, controller.RegisterFieldIndexes(context.Background(), mgr.GetFieldIndexer()))
 
 	// Register all controllers with short requeue intervals for test speed.
+	jobRecorder := mgr.GetEventRecorder("job-controller")
+	if checkpoint != nil {
+		checkpoint.recorder.EventRecorder = jobRecorder
+		jobRecorder = checkpoint.recorder
+	}
 	err = (&controller.JobReconciler{
 		Client:                  mgr.GetClient(),
 		Scheme:                  mgr.GetScheme(),
+		Recorder:                jobRecorder,
 		WorkloadRequeueInterval: 1 * time.Second,
 		MeasurementTimeout:      3 * time.Second,
 	}).SetupWithManager(mgr)
@@ -397,9 +477,19 @@ func startManager(
 	}).SetupWithManager(mgr)
 	require.NoError(t, err)
 
+	certificationClient := mgr.GetClient()
+	certificationRecorder := mgr.GetEventRecorder("certification-controller")
+	if nodePollRecorder != nil {
+		nodePollRecorder.EventRecorder = certificationRecorder
+		certificationRecorder = nodePollRecorder
+	}
+	if rejectWorkflowCreates {
+		certificationClient = &workflowCreateRejectingClient{Client: certificationClient}
+	}
 	err = (&controller.CertificationReconciler{
-		Client:                  mgr.GetClient(),
+		Client:                  certificationClient,
 		Scheme:                  mgr.GetScheme(),
+		Recorder:                certificationRecorder,
 		WorkflowRequeueInterval: 1 * time.Second,
 	}).SetupWithManager(mgr)
 	require.NoError(t, err)
@@ -407,6 +497,7 @@ func startManager(
 	err = (&controller.GoodputMeasurementReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
+		Recorder:   mgr.GetEventRecorder("goodputmeasurement-controller"),
 		LogFetcher: fetcher,
 	}).SetupWithManager(mgr)
 	require.NoError(t, err)
@@ -414,18 +505,28 @@ func startManager(
 	err = (&controller.BandwidthMeasurementReconciler{
 		Client:     mgr.GetClient(),
 		Scheme:     mgr.GetScheme(),
+		Recorder:   mgr.GetEventRecorder("bandwidthmeasurement-controller"),
 		LogFetcher: fetcher,
 	}).SetupWithManager(mgr)
 	require.NoError(t, err)
 
 	err = (&controller.WorkloadRunReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorder("workloadrun-controller"),
 	}).SetupWithManager(mgr)
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if !deadline.IsZero() {
+		ctx, cancel = context.WithDeadline(context.Background(), deadline)
+	} else {
+		ctx, cancel = context.WithCancel(context.Background())
+	}
+	stopped := make(chan struct{})
 	go func() {
+		defer close(stopped)
 		if err := mgr.Start(ctx); err != nil {
 			t.Logf("Manager stopped: %v", err)
 		}
@@ -439,7 +540,7 @@ func startManager(
 		t.Fatal("timed out waiting for informer cache sync")
 	}
 
-	return mgr, cancel
+	return mgr, cancel, stopped
 }
 
 // fakeLogFetcher returns pre-loaded log lines keyed by pod name.
@@ -483,19 +584,40 @@ func buildFakeLogFetcher(tc *testutil.TestCase) podlogs.PodLogFetcher {
 }
 
 // waitConfig specifies what condition to wait for and what objects to collect.
+type conditionWait struct {
+	RestartCount    *int32 `json:"restartCount,omitempty"`
+	FailedNodeCount int    `json:"failedNodeCount,omitempty"`
+	Kind            string `json:"kind"`
+	Name            string `json:"name"`
+	Namespace       string `json:"namespace"`
+	Condition       string `json:"condition"`
+	Reason          string `json:"reason,omitempty"` // optional: wait for specific reason
+}
+
+type eventTestStep struct {
+	WaitFor conditionWait `json:"waitFor"`
+	Patches []struct {
+		Target collectSpec     `json:"target"`
+		Status bool            `json:"status,omitempty"`
+		Patch  json.RawMessage `json:"patch"`
+	} `json:"patches"`
+}
+
 type waitConfig struct {
-	WaitFor struct {
-		Kind      string `json:"kind"`
-		Name      string `json:"name"`
-		Namespace string `json:"namespace"`
-		Condition string `json:"condition"`
-		Reason    string `json:"reason,omitempty"` // optional: wait for specific reason
-	} `json:"waitFor"`
+	InitializeWorkloadRun  bool          `json:"initializeWorkloadRun,omitempty"`
+	VerifyNodePollEvents   bool          `json:"verifyNodePollEvents,omitempty"`
+	VerifyCheckpointEvents bool          `json:"verifyCheckpointEvents,omitempty"`
+	RejectWorkflowCreates  bool          `json:"rejectWorkflowCreates,omitempty"`
+	WaitFor                conditionWait `json:"waitFor"`
+	// Steps drive external changes only after observing the preceding state.
+	// All waits and writes share the event case's original deadline.
+	Steps                   []eventTestStep              `json:"steps,omitempty"`
 	Collect                 []collectSpec                `json:"collect"`
 	CollectMetrics          *collectMetricsSpec          `json:"collectMetrics,omitempty"`
 	CollectBandwidthMetrics *collectBandwidthMetricsSpec `json:"collectBandwidthMetrics,omitempty"`
 	CollectJobMetrics       *collectJobMetricsSpec       `json:"collectJobMetrics,omitempty"`
 	CollectTopologyMetrics  *collectTopologyMetricsSpec  `json:"collectTopologyMetrics,omitempty"`
+	Events                  []eventCollectionSpec        `json:"events,omitempty"`
 	// GenerateNodes creates N GPU nodes programmatically before test objects.
 	// Avoids repeating Node YAML in fixtures for multi-node tests.
 	GenerateNodes *generateNodesSpec `json:"generateNodes,omitempty"`
@@ -519,6 +641,45 @@ type waitConfig struct {
 	// WaitForDeletion lists resources that must be fully deleted before collection.
 	WaitForDeletion []collectSpec `json:"waitForDeletion,omitempty"`
 	TimeoutSeconds  int           `json:"timeoutSeconds"`
+}
+
+// Inject only the Create failure; status writes and Event recording still use
+// the real API server, so the golden can compare persisted conditions and rows.
+type workflowCreateRejectingClient struct{ client.Client }
+
+func (c *workflowCreateRejectingClient) Create(
+	ctx context.Context, obj client.Object, opts ...client.CreateOption,
+) error {
+	if _, ok := obj.(*nvcrev1alpha1.Workflow); ok {
+		return apierrors.NewForbidden(schema.GroupResource{Group: nvcrev1alpha1.GroupVersion.Group, Resource: "workflows"},
+			obj.GetName(), fmt.Errorf("injected Workflow Create rejection"))
+	}
+	return c.Client.Create(ctx, obj, opts...)
+}
+
+type eventCollectionSpec struct {
+	InvolvedKind string             `json:"involvedKind"`
+	InvolvedName string             `json:"involvedName"`
+	Namespace    string             `json:"namespace"`
+	Expect       []eventExpectation `json:"expect"`
+}
+
+type eventExpectation struct {
+	Type   string `json:"type"`
+	Reason string `json:"reason"`
+}
+
+type eventProjection struct {
+	Type           string                   `json:"type"`
+	Reason         string                   `json:"reason"`
+	Message        string                   `json:"message"`
+	InvolvedObject involvedObjectProjection `json:"involvedObject"`
+	Count          int32                    `json:"count"`
+}
+
+type involvedObjectProjection struct {
+	Kind string `json:"kind"`
+	Name string `json:"name"`
 }
 
 // verifySpecImmutableSpec describes one spec edit that must be rejected.
@@ -602,25 +763,67 @@ func parseWaitConfig(tc *testutil.TestCase) waitConfig {
 	return cfg
 }
 
-func waitForCondition(t *testing.T, c client.Client, cfg waitConfig) {
+func eventCaseDeadline(cfg waitConfig) time.Time {
+	if len(cfg.Events) == 0 && !cfg.VerifyCheckpointEvents && !cfg.VerifyNodePollEvents {
+		return time.Time{}
+	}
+	return time.Now().Add(eventCaseTimeout)
+}
+
+func boundedWaitTimeout(t *testing.T, configured time.Duration, deadline time.Time) time.Duration {
 	t.Helper()
-	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
+	if deadline.IsZero() {
+		return configured
+	}
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		t.Fatalf("event-enabled test exceeded its cumulative %s deadline", eventCaseTimeout)
+	}
+	return min(configured, remaining)
+}
+
+func ensureBeforeDeadline(t *testing.T, deadline time.Time) {
+	t.Helper()
+	if !deadline.IsZero() && time.Now().After(deadline) {
+		t.Fatalf("event-enabled test exceeded its cumulative %s deadline", eventCaseTimeout)
+	}
+}
+
+func contextForDeadline(deadline time.Time) (context.Context, context.CancelFunc) {
+	if deadline.IsZero() {
+		return context.WithCancel(context.Background())
+	}
+	return context.WithDeadline(context.Background(), deadline)
+}
+
+func waitForCondition(t *testing.T, c client.Client, cfg waitConfig, deadline time.Time) {
+	t.Helper()
+	ctx, cancel := contextForDeadline(deadline)
+	defer cancel()
+	timeout := boundedWaitTimeout(t, time.Duration(cfg.TimeoutSeconds)*time.Second, deadline)
 	interval := 500 * time.Millisecond
 
+	spec := collectSpec{
+		Kind:      cfg.WaitFor.Kind,
+		Name:      cfg.WaitFor.Name,
+		Namespace: cfg.WaitFor.Namespace,
+	}
+	rejectUnknownKind(t, spec)
 	require.Eventually(t, func() bool {
-		ctx := context.Background()
-		obj := getObject(ctx, t, c, collectSpec{
-			Kind:      cfg.WaitFor.Kind,
-			Name:      cfg.WaitFor.Name,
-			Namespace: cfg.WaitFor.Namespace,
-		})
-		if obj == nil {
+		obj, err := readObject(ctx, c, spec)
+		if err != nil {
 			return false
 		}
 
 		reason := cfg.WaitFor.Reason
 		switch o := obj.(type) {
 		case *nvcrev1alpha1.Job:
+			if cfg.WaitFor.RestartCount != nil && o.Status.RestartCount != *cfg.WaitFor.RestartCount {
+				return false
+			}
+			if cfg.WaitFor.FailedNodeCount > 0 && len(o.Status.FailedNodes) != cfg.WaitFor.FailedNodeCount {
+				return false
+			}
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
 		case *nvcrev1alpha1.Workflow:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
@@ -640,9 +843,10 @@ func waitForCondition(t *testing.T, c client.Client, cfg waitConfig) {
 
 // deleteAfterWait deletes the specified resources while the manager is still running,
 // allowing controllers to process the deletion cascade (finalizers, child cleanup, etc.).
-func deleteAfterWait(t *testing.T, c client.Client, specs []collectSpec) {
+func deleteAfterWait(t *testing.T, c client.Client, specs []collectSpec, deadline time.Time) {
 	t.Helper()
-	ctx := context.Background()
+	ctx, cancel := contextForDeadline(deadline)
+	defer cancel()
 	for _, spec := range specs {
 		obj := getObject(ctx, t, c, spec)
 		require.NotNil(t, obj, "deleteAfterWait: %s/%s not found", spec.Kind, spec.Name)
@@ -651,9 +855,13 @@ func deleteAfterWait(t *testing.T, c client.Client, specs []collectSpec) {
 		t.Logf("deleteAfterWait: deleted %s/%s", spec.Kind, spec.Name)
 		if spec.StripFinalizers {
 			require.Eventually(t, func() bool {
-				fresh := getObject(ctx, t, c, spec)
-				if fresh == nil {
+				fresh, err := readObject(ctx, c, spec)
+				if apierrors.IsNotFound(err) {
 					return true
+				}
+				if err != nil {
+					t.Logf("deleteAfterWait: retrying finalizer strip on %s/%s: %v", spec.Kind, spec.Name, err)
+					return false
 				}
 				if len(fresh.GetFinalizers()) > 0 {
 					fresh.SetFinalizers(nil)
@@ -663,22 +871,25 @@ func deleteAfterWait(t *testing.T, c client.Client, specs []collectSpec) {
 					}
 				}
 				return true
-			}, 10*time.Second, 100*time.Millisecond,
+			}, boundedWaitTimeout(t, 10*time.Second, deadline), 100*time.Millisecond,
 				"deleteAfterWait: failed to strip finalizers from %s/%s", spec.Kind, spec.Name)
 		}
 	}
 }
 
 // waitForDeletion polls until all specified resources are fully removed from the API server.
-func waitForDeletion(t *testing.T, c client.Client, cfg waitConfig) {
+func waitForDeletion(t *testing.T, c client.Client, cfg waitConfig, deadline time.Time) {
 	t.Helper()
-	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
+	ctx, cancel := contextForDeadline(deadline)
+	defer cancel()
 	interval := 500 * time.Millisecond
 
 	for _, spec := range cfg.WaitForDeletion {
+		rejectUnknownKind(t, spec)
+		timeout := boundedWaitTimeout(t, time.Duration(cfg.TimeoutSeconds)*time.Second, deadline)
 		require.Eventually(t, func() bool {
-			obj := getObject(context.Background(), t, c, spec)
-			return obj == nil
+			_, err := readObject(ctx, c, spec)
+			return ctx.Err() == nil && apierrors.IsNotFound(err)
 		}, timeout, interval, "timed out waiting for deletion of %s/%s", spec.Kind, spec.Name)
 	}
 }
@@ -697,12 +908,13 @@ func waitForDeletion(t *testing.T, c client.Client, cfg waitConfig) {
 // waits for the controller to restore it, and a cached read could satisfy the
 // wait with the stale pre-strip object. cached is the manager's client, polled
 // at the end so the subsequent collection sees the restored state.
-func verifyFrozenGoodput(t *testing.T, direct, cached client.Client, cfg waitConfig) map[string]any {
+func verifyFrozenGoodput(
+	t *testing.T, direct, cached client.Client, cfg waitConfig, deadline time.Time,
+) map[string]any {
 	t.Helper()
-	ctx := context.Background()
+	ctx, cancel := contextForDeadline(deadline)
+	defer cancel()
 	key := types.NamespacedName{Name: cfg.VerifyFrozenGoodput.Name, Namespace: cfg.VerifyFrozenGoodput.Namespace}
-	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
-
 	gm := &nvcrev1alpha1.GoodputMeasurement{}
 	require.NoError(t, direct.Get(ctx, key, gm))
 	before := frozenStatusJSON(t, gm)
@@ -734,7 +946,7 @@ func verifyFrozenGoodput(t *testing.T, direct, cached client.Client, cfg waitCon
 				return false
 			}
 			return rawStatusJSON(t, fresh) != beforeRaw
-		}, 4*time.Second, 250*time.Millisecond,
+		}, boundedWaitTimeout(t, 4*time.Second, deadline), 250*time.Millisecond,
 			"status moved during a replay with Complete intact (first-write-wins violated, ADR-072)")
 		return map[string]any{
 			"untouchedWithCompleteIntact": true,
@@ -749,6 +961,7 @@ func verifyFrozenGoodput(t *testing.T, direct, cached client.Client, cfg waitCon
 	apimeta.RemoveStatusCondition(&gm.Status.Conditions, nvcrev1alpha1.GoodputMeasurementComplete)
 	require.NoError(t, direct.Status().Update(ctx, gm))
 
+	timeout := boundedWaitTimeout(t, time.Duration(cfg.TimeoutSeconds)*time.Second, deadline)
 	require.Eventually(t, func() bool {
 		fresh := &nvcrev1alpha1.GoodputMeasurement{}
 		if err := direct.Get(ctx, key, fresh); err != nil {
@@ -765,6 +978,7 @@ func verifyFrozenGoodput(t *testing.T, direct, cached client.Client, cfg waitCon
 		"terminal re-entry must regenerate a byte-identical status (ADR-072)")
 
 	// Let the manager's cache catch up so collection sees the restored state.
+	timeout = boundedWaitTimeout(t, time.Duration(cfg.TimeoutSeconds)*time.Second, deadline)
 	require.Eventually(t, func() bool {
 		fresh := &nvcrev1alpha1.GoodputMeasurement{}
 		if err := cached.Get(ctx, key, fresh); err != nil {
@@ -791,9 +1005,12 @@ func verifyFrozenGoodput(t *testing.T, direct, cached client.Client, cfg waitCon
 // Each entry applies a JSON merge patch under .spec via a direct (uncached)
 // client and requires an Invalid rejection carrying the rule message. The
 // returned map is embedded in the golden so every rejection is pinned.
-func verifySpecImmutable(t *testing.T, c client.Client, specs []verifySpecImmutableSpec) map[string]any {
+func verifySpecImmutable(
+	t *testing.T, c client.Client, specs []verifySpecImmutableSpec, deadline time.Time,
+) map[string]any {
 	t.Helper()
-	ctx := context.Background()
+	ctx, cancel := contextForDeadline(deadline)
+	defer cancel()
 
 	results := make(map[string]any, len(specs))
 	for _, s := range specs {
@@ -857,106 +1074,199 @@ func hasConditionWithReason(conditions []metav1.Condition, condType, reason stri
 	return false
 }
 
-func getObject(ctx context.Context, t *testing.T, c client.Client, spec collectSpec) client.Object { //nolint:gocyclo
-	t.Helper()
-	key := types.NamespacedName{Name: spec.Name, Namespace: spec.Namespace}
+var errUnknownKind = errors.New("unknown kind")
 
-	switch spec.Kind {
-	case "Job":
-		obj := &nvcrev1alpha1.Job{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "Workflow":
-		obj := &nvcrev1alpha1.Workflow{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "Certification":
-		obj := &nvcrev1alpha1.Certification{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "WorkloadRun":
-		obj := &nvcrev1alpha1.WorkloadRun{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "GoodputMeasurement":
-		obj := &nvcrev1alpha1.GoodputMeasurement{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "BandwidthMeasurement":
-		obj := &nvcrev1alpha1.BandwidthMeasurement{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "PersistentVolumeClaim":
-		obj := &corev1.PersistentVolumeClaim{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "PersistentVolume":
-		obj := &corev1.PersistentVolume{}
-		if err := c.Get(ctx, types.NamespacedName{Name: spec.Name}, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "ConfigMap":
-		obj := &corev1.ConfigMap{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "Node":
-		obj := &corev1.Node{}
-		if err := c.Get(ctx, types.NamespacedName{Name: spec.Name}, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "LogProfile":
-		obj := &nvcrev1alpha1.LogProfile{}
-		if err := c.Get(ctx, types.NamespacedName{Name: spec.Name}, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "Namespace":
-		obj := &corev1.Namespace{}
-		if err := c.Get(ctx, types.NamespacedName{Name: spec.Name}, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "TrainJob":
-		obj := &trainerv1alpha1.TrainJob{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	case "BatchJob":
-		obj := &batchv1.Job{}
-		if err := c.Get(ctx, key, obj); err != nil {
-			return nil
-		}
-		return obj
-	default:
+func rejectUnknownKind(t *testing.T, spec collectSpec) {
+	t.Helper()
+	if _, _, err := objectForKind(spec.Kind); errors.Is(err, errUnknownKind) {
 		t.Fatalf("unknown kind: %s", spec.Kind)
-		return nil
 	}
 }
 
+func getObject(ctx context.Context, t *testing.T, c client.Client, spec collectSpec) client.Object {
+	t.Helper()
+	obj, err := readObject(ctx, c, spec)
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	require.NoError(t, err, "reading %s/%s", spec.Kind, spec.Name)
+	return obj
+}
+
+// readObject preserves errors so absence is never inferred from a failed read.
+func readObject(ctx context.Context, c client.Client, spec collectSpec) (client.Object, error) {
+	obj, namespaced, err := objectForKind(spec.Kind)
+	if err != nil {
+		return nil, err
+	}
+	key := types.NamespacedName{Name: spec.Name, Namespace: spec.Namespace}
+	if !namespaced {
+		key.Namespace = ""
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := c.Get(ctx, key, obj); err != nil {
+		return nil, err
+	}
+	return obj, nil
+}
+
+func objectForKind(kind string) (client.Object, bool, error) {
+	switch kind {
+	case kindJob:
+		return &nvcrev1alpha1.Job{}, true, nil
+	case "Workflow":
+		return &nvcrev1alpha1.Workflow{}, true, nil
+	case "Certification":
+		return &nvcrev1alpha1.Certification{}, true, nil
+	case "WorkloadRun":
+		return &nvcrev1alpha1.WorkloadRun{}, true, nil
+	case "GoodputMeasurement":
+		return &nvcrev1alpha1.GoodputMeasurement{}, true, nil
+	case "BandwidthMeasurement":
+		return &nvcrev1alpha1.BandwidthMeasurement{}, true, nil
+	case "PersistentVolumeClaim":
+		return &corev1.PersistentVolumeClaim{}, true, nil
+	case "PersistentVolume":
+		return &corev1.PersistentVolume{}, false, nil
+	case kindConfigMap:
+		return &corev1.ConfigMap{}, true, nil
+	case "Node":
+		return &corev1.Node{}, false, nil
+	case "LogProfile":
+		return &nvcrev1alpha1.LogProfile{}, false, nil
+	case "Namespace":
+		return &corev1.Namespace{}, false, nil
+	case "TrainJob":
+		return &trainerv1alpha1.TrainJob{}, true, nil
+	case "Pod":
+		return &corev1.Pod{}, true, nil
+	case "BatchJob":
+		return &batchv1.Job{}, true, nil
+	default:
+		return nil, false, fmt.Errorf("%w: %s", errUnknownKind, kind)
+	}
+}
+
+func waitForEvents(t *testing.T, c client.Client, cfg waitConfig, deadline time.Time) {
+	t.Helper()
+	if len(cfg.Events) == 0 {
+		return
+	}
+
+	for _, spec := range cfg.Events {
+		ctx, cancel := contextForDeadline(deadline)
+		obj := getObject(ctx, t, c, collectSpec{
+			Kind:      spec.InvolvedKind,
+			Name:      spec.InvolvedName,
+			Namespace: spec.Namespace,
+		})
+		require.NotNil(t, obj, "failed to resolve event object %s/%s in namespace %s",
+			spec.InvolvedKind, spec.InvolvedName, spec.Namespace)
+		uid := obj.GetUID()
+		require.NotEmpty(t, uid, "event object %s/%s has no UID", spec.InvolvedKind, spec.InvolvedName)
+
+		timeout := boundedWaitTimeout(t, time.Duration(cfg.TimeoutSeconds)*time.Second, deadline)
+		require.Eventually(t, func() bool {
+			rows, err := listEventProjections(ctx, c, spec, uid)
+			if err != nil {
+				return false
+			}
+			for _, expected := range spec.Expect {
+				if !slices.ContainsFunc(rows, func(row eventProjection) bool {
+					return row.Type == expected.Type && row.Reason == expected.Reason
+				}) {
+					return false
+				}
+			}
+			return true
+		}, timeout, 250*time.Millisecond,
+			"timed out waiting for expected Events regarding %s/%s", spec.InvolvedKind, spec.InvolvedName)
+		cancel()
+	}
+}
+
+func collectEventProjections(
+	t *testing.T, c client.Client, specs []eventCollectionSpec, deadline time.Time,
+) []eventProjection {
+	t.Helper()
+	rows := make([]eventProjection, 0)
+	for _, spec := range specs {
+		ensureBeforeDeadline(t, deadline)
+		ctx, cancel := contextForDeadline(deadline)
+		obj := getObject(ctx, t, c, collectSpec{
+			Kind:      spec.InvolvedKind,
+			Name:      spec.InvolvedName,
+			Namespace: spec.Namespace,
+		})
+		require.NotNil(t, obj, "failed to resolve event object %s/%s in namespace %s",
+			spec.InvolvedKind, spec.InvolvedName, spec.Namespace)
+		current, err := listEventProjections(ctx, c, spec, obj.GetUID())
+		cancel()
+		require.NoError(t, err)
+		rows = append(rows, current...)
+		ensureBeforeDeadline(t, deadline)
+	}
+	slices.SortFunc(rows, compareEventProjections)
+	return rows
+}
+
+func listEventProjections(
+	ctx context.Context, c client.Client, spec eventCollectionSpec, uid types.UID,
+) ([]eventProjection, error) {
+	list := &eventsv1.EventList{}
+	if err := c.List(ctx, list, client.InNamespace(spec.Namespace)); err != nil {
+		return nil, err
+	}
+
+	rows := make([]eventProjection, 0)
+	for i := range list.Items {
+		event := &list.Items[i]
+		if event.Regarding.UID != uid {
+			continue
+		}
+		count := int32(1)
+		if event.Series != nil {
+			count = event.Series.Count
+		}
+		rows = append(rows, eventProjection{
+			Type:    event.Type,
+			Reason:  event.Reason,
+			Message: event.Note,
+			InvolvedObject: involvedObjectProjection{
+				Kind: event.Regarding.Kind,
+				Name: event.Regarding.Name,
+			},
+			Count: count,
+		})
+	}
+	slices.SortFunc(rows, compareEventProjections)
+	return rows, nil
+}
+
+func compareEventProjections(a, b eventProjection) int {
+	return cmp.Or(
+		strings.Compare(a.Type, b.Type),
+		strings.Compare(a.Reason, b.Reason),
+		strings.Compare(a.Message, b.Message),
+		strings.Compare(a.InvolvedObject.Kind, b.InvolvedObject.Kind),
+		strings.Compare(a.InvolvedObject.Name, b.InvolvedObject.Name),
+		cmp.Compare(a.Count, b.Count),
+	)
+}
+
 func collectAndSerialize(
-	t *testing.T, c client.Client, cfg waitConfig, frozenGoodput, specImmutability map[string]any,
+	t *testing.T,
+	c client.Client,
+	eventClient client.Client,
+	cfg waitConfig,
+	deadline time.Time,
+	frozenGoodput, specImmutability map[string]any,
 ) string {
 	t.Helper()
-	ctx := context.Background()
+	ctx, cancel := contextForDeadline(deadline)
+	defer cancel()
 
 	results := make(map[string]any)
 	if frozenGoodput != nil {
@@ -964,6 +1274,9 @@ func collectAndSerialize(
 	}
 	if specImmutability != nil {
 		results["specImmutability"] = specImmutability
+	}
+	if len(cfg.Events) > 0 {
+		results["events"] = collectEventProjections(t, eventClient, cfg.Events, deadline)
 	}
 	for _, spec := range cfg.Collect {
 		obj := getObject(ctx, t, c, spec)

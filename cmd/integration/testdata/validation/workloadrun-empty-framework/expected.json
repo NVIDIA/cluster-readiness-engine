@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.framework",
+      "message": "Invalid value: 0: spec.framework in body should have at least 1 properties"
+    }
+  ]
+}
