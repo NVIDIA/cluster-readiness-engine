@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+waitFor:
+  kind: Workflow
+  name: event-heterogeneous-platform
+  namespace: default
+  condition: Failed
+  reason: HeterogeneousPlatform
+collect:
+  - kind: Workflow
+    name: event-heterogeneous-platform
+    namespace: default
+events:
+  - involvedKind: Workflow
+    involvedName: event-heterogeneous-platform
+    namespace: default
+    expect:
+      - {type: Warning, reason: HeterogeneousPlatform}

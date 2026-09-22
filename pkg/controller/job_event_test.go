@@ -18,7 +18,7 @@ func TestJobWarnfNilRecorder(t *testing.T) {
 
 	r := &JobReconciler{} // Recorder deliberately unset
 	job := &nvcrev1alpha1.Job{
-		Name: "job", Namespace: testNS,
+		Name: testJobName, Namespace: testNS,
 	}
 
 	r.warnf(job, ReasonMeasurementCreationError,

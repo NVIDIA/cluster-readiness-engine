@@ -63,5 +63,27 @@
         }
       ]
     }
-  }
+  },
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "WorkflowRunning",
+      "message": "Workflow for category communication/nccl-all-reduce failed, advancing to next category",
+      "involvedObject": {
+        "kind": "Certification",
+        "name": "test-cert-fail"
+      },
+      "count": 1
+    },
+    {
+      "type": "Warning",
+      "reason": "WorkflowFailed",
+      "message": "One or more certification categories failed",
+      "involvedObject": {
+        "kind": "Certification",
+        "name": "test-cert-fail"
+      },
+      "count": 1
+    }
+  ]
 }

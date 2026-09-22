@@ -1,0 +1,11 @@
+watched: [ValidationFailed]
+before:
+  - type: ValidationFailed
+    status: "False"
+    reason: ThresholdsMet
+    message: All thresholds passed
+after:
+  - type: ValidationFailed
+    status: "True"
+    reason: ThresholdViolated
+    message: Bandwidth was below the minimum

@@ -5,6 +5,9 @@
     "metadata": {
       "name": "test-bw-threshold-fail",
       "namespace": "default",
+      "labels": {
+        "nvcre.nvidia.com/workflow": "threshold-event-workflow"
+      },
       "finalizers": [
         "nvcre.nvidia.com/finalizer"
       ]
@@ -78,5 +81,47 @@
         "namespace": "default"
       }
     }
-  }
+  },
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "JobRunning",
+      "message": "Iteration 1/1: 1 groups running",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "threshold-event-workflow"
+      },
+      "count": 1
+    },
+    {
+      "type": "Normal",
+      "reason": "WorkloadCompleted",
+      "message": "Workload TrainJob/test-bw-threshold-fail-workload completed: All workers completed",
+      "involvedObject": {
+        "kind": "Job",
+        "name": "test-bw-threshold-fail"
+      },
+      "count": 1
+    },
+    {
+      "type": "Warning",
+      "reason": "JobValidationFailed",
+      "message": "1 groups failed across 1 iterations",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "threshold-event-workflow"
+      },
+      "count": 1
+    },
+    {
+      "type": "Warning",
+      "reason": "ThresholdViolated",
+      "message": "Threshold \"busBandwidthGBps\" violated: measured 370.1400, expression: value \u003e= 400",
+      "involvedObject": {
+        "kind": "Job",
+        "name": "test-bw-threshold-fail"
+      },
+      "count": 1
+    }
+  ]
 }

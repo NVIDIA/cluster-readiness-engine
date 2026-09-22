@@ -823,7 +823,10 @@ func maxAlgBandwidth(results []nvcrev1alpha1.BandwidthResult) float64 {
 // This mirrors setJobHardwareFailed — the condition is additive, not exclusive.
 func (r *JobReconciler) setJobValidationStatus(ctx context.Context, job *nvcrev1alpha1.Job, status metav1.ConditionStatus, reason, message string) error {
 	changed := false
+	var flip *conditionFlipResult
 	err := updateStatusWithRetry(ctx, r.Client, job, func(j *nvcrev1alpha1.Job) bool {
+		flip = nil
+		before := append([]metav1.Condition(nil), j.Status.Conditions...)
 		if status == metav1.ConditionTrue && len(j.Status.FailedNodes) == 0 {
 			j.Status.FailedNodes = noderesults.NodesWithFailureDetails(groupNodeNames(j), ReasonThresholdViolation, message)
 		}
@@ -834,11 +837,22 @@ func (r *JobReconciler) setJobValidationStatus(ctx context.Context, job *nvcrev1
 			Message:            message,
 			ObservedGeneration: j.Generation,
 		})
+		if flips := conditionFlip(before, j.Status.Conditions, []string{nvcrev1alpha1.JobValidationFailed}); len(flips) > 0 {
+			flip = &flips[0]
+		}
 		changed = changed || c
 		return c
 	})
 	if err != nil {
 		return fmt.Errorf("failed to update status: %w", err)
+	}
+	if flip != nil && flip.After.Present {
+		switch {
+		case flip.After.Status == metav1.ConditionTrue:
+			r.warnf(job, flip.Condition.Reason, "%s", flip.Condition.Message)
+		case !flip.Before.Present && flip.After.Status == metav1.ConditionFalse:
+			r.eventf(job, corev1.EventTypeNormal, flip.Condition.Reason, "%s", flip.Condition.Message)
+		}
 	}
 	if changed {
 		logf.FromContext(ctx).Info("ValidationFailed condition set", "reason", reason)
@@ -932,7 +946,7 @@ func (r *JobReconciler) setJobSucceeded(ctx context.Context, job *nvcrev1alpha1.
 // Setting them on the stale object before the closure would cause them to be
 // silently discarded whenever the API server returns a conflict.
 func (r *JobReconciler) setJobFailed(ctx context.Context, job *nvcrev1alpha1.Job, reason, message string) error {
-	changed, err := setExclusiveStatusCondition(ctx, r.Client, job,
+	changed, transition, err := setExclusiveStatusConditionUnless(ctx, r.Client, job,
 		func(j *nvcrev1alpha1.Job) *[]metav1.Condition { return &j.Status.Conditions },
 		[]string{
 			nvcrev1alpha1.JobInProgress,
@@ -940,6 +954,7 @@ func (r *JobReconciler) setJobFailed(ctx context.Context, job *nvcrev1alpha1.Job
 			nvcrev1alpha1.JobFailed,
 		},
 		nvcrev1alpha1.JobFailed, reason, message,
+		r.isTerminalState,
 		func(j *nvcrev1alpha1.Job) bool {
 			c := false
 			if j.Status.FailureLog == nil {
@@ -955,6 +970,10 @@ func (r *JobReconciler) setJobFailed(ctx context.Context, job *nvcrev1alpha1.Job
 	)
 	if err != nil {
 		return err
+	}
+	if transition != nil {
+		r.eventf(job, transitionEventType(transition.NewTrueType, nvcrev1alpha1.JobFailed),
+			transition.Condition.Reason, "%s", transition.Condition.Message)
 	}
 	if changed {
 		recordJobStatus(job.Namespace, job.Name, job.Labels["nvcre.nvidia.com/workflow"], "failed")
@@ -1087,6 +1106,13 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *nvcrev1alpha
 
 // setJobHardwareFailed sets the HardwareFailed condition and records the failed nodes.
 // This condition is independent of job execution state (InProgress/Succeeded/Failed).
+//
+// unparam is silenced on reason: production has one caller and it always passes
+// ReasonHardwareFailureDetected. The parameter is kept so this setter mirrors
+// setJobValidationStatus, whose reason genuinely varies, and so the reason the
+// ADR-080 verdict hook emits is always the one the caller wrote.
+//
+//nolint:unparam
 func (r *JobReconciler) setJobHardwareFailed(ctx context.Context, job *nvcrev1alpha1.Job, reason, message string, failedNodes []nvcrev1alpha1.FailedNode) error {
 	log := logf.FromContext(ctx)
 
@@ -1094,7 +1120,10 @@ func (r *JobReconciler) setJobHardwareFailed(ctx context.Context, job *nvcrev1al
 	// this attempt observed, so it is recomputed inside the retry rather than
 	// captured from a possibly-stale read.
 	var isFirstFailure, changed bool
+	var flip *conditionFlipResult
 	err := updateStatusWithRetry(ctx, r.Client, job, func(j *nvcrev1alpha1.Job) bool {
+		flip = nil
+		before := append([]metav1.Condition(nil), j.Status.Conditions...)
 		isFirstFailure = len(j.Status.FailedNodes) == 0 && len(failedNodes) > 0
 		j.Status.FailedNodes = failedNodes
 
@@ -1107,11 +1136,17 @@ func (r *JobReconciler) setJobHardwareFailed(ctx context.Context, job *nvcrev1al
 			Message:            message,
 			ObservedGeneration: j.Generation,
 		})
+		if flips := conditionFlip(before, j.Status.Conditions, []string{nvcrev1alpha1.JobHardwareFailed}); len(flips) > 0 {
+			flip = &flips[0]
+		}
 		changed = changed || c
 		return c
 	})
 	if err != nil {
 		return fmt.Errorf("failed to update status: %w", err)
+	}
+	if flip != nil && flip.After.Present && flip.After.Status == metav1.ConditionTrue {
+		r.warnf(job, flip.Condition.Reason, "%s", flip.Condition.Message)
 	}
 
 	if changed {
@@ -1333,7 +1368,9 @@ func groupNodeNames(job *nvcrev1alpha1.Job) []string {
 func (r *JobReconciler) setExclusiveCondition(ctx context.Context, job *nvcrev1alpha1.Job, conditionType, reason, message string, extra ...func(*nvcrev1alpha1.Job) bool) error {
 	// Only job execution states are mutually exclusive; HardwareFailed is set
 	// independently and must not be cleared here.
-	changed, err := setExclusiveStatusCondition(ctx, r.Client, job,
+	// Recheck terminality after conflict refetch, not just at reconcile entry.
+	// A Workflow timeout may have won while this reconcile observed the workload.
+	changed, transition, err := setExclusiveStatusConditionUnless(ctx, r.Client, job,
 		func(j *nvcrev1alpha1.Job) *[]metav1.Condition { return &j.Status.Conditions },
 		[]string{
 			nvcrev1alpha1.JobInProgress,
@@ -1341,10 +1378,15 @@ func (r *JobReconciler) setExclusiveCondition(ctx context.Context, job *nvcrev1a
 			nvcrev1alpha1.JobFailed,
 		},
 		conditionType, reason, message,
+		r.isTerminalState,
 		extra...,
 	)
 	if err != nil {
 		return err
+	}
+	if transition != nil {
+		r.eventf(job, transitionEventType(transition.NewTrueType, nvcrev1alpha1.JobFailed),
+			transition.Condition.Reason, "%s", transition.Condition.Message)
 	}
 
 	if changed {
@@ -1502,16 +1544,19 @@ func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *nvc
 	return nil
 }
 
-// warnf emits a Warning event if the Recorder is configured. Every Job-tier
-// event is a warning; the Workflow reconciler's eventf takes an explicit type
-// because it emits Normal events too.
+// eventf emits an event if the Recorder is configured.
+func (r *JobReconciler) eventf(obj runtime.Object, eventType, reason, messageFmt string, args ...any) {
+	if r.Recorder != nil {
+		r.Recorder.Eventf(obj, nil, eventType, reason, reason, "%s", formatEventNote(messageFmt, args...))
+	}
+}
+
+// warnf emits a Warning event if the Recorder is configured.
 //
 // Safe to call when Recorder is nil (e.g. in unit tests, or any embedding that
 // constructs JobReconciler directly).
 func (r *JobReconciler) warnf(obj runtime.Object, reason, messageFmt string, args ...any) {
-	if r.Recorder != nil {
-		r.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, reason, reason, messageFmt, args...)
-	}
+	r.eventf(obj, corev1.EventTypeWarning, reason, messageFmt, args...)
 }
 
 // SetupWithManager sets up the controller with the Manager.

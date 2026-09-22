@@ -78,5 +78,27 @@
         "namespace": "default"
       }
     }
-  }
+  },
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "WorkloadCompleted",
+      "message": "Workload TrainJob/test-bw-timeout-workload completed: All workers completed",
+      "involvedObject": {
+        "kind": "Job",
+        "name": "test-bw-timeout"
+      },
+      "count": 1
+    },
+    {
+      "type": "Warning",
+      "reason": "MeasurementTimeout",
+      "message": "Measurement data not available within 3s for keys: [busBandwidthGBps]",
+      "involvedObject": {
+        "kind": "Job",
+        "name": "test-bw-timeout"
+      },
+      "count": 1
+    }
+  ]
 }

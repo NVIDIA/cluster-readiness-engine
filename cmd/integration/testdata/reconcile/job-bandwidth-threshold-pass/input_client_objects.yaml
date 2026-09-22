@@ -42,7 +42,8 @@ spec:
   bandwidthMeasurement:
     logProfileRef: nccl-bandwidth
     testType: all_reduce
-    minBusBandwidthGBps: "300"
+  thresholds:
+    busBandwidthGBps: "value >= 300"
 status:
   workloadRef:
     apiVersion: trainer.kubeflow.org/v1alpha1

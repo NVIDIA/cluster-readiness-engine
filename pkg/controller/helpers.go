@@ -73,6 +73,14 @@ const (
 	ReasonWorkflowCreationError = "WorkflowCreationError"
 )
 
+// WorkloadRun tier reasons (WorkloadRun → Workflow).
+const (
+	// ReasonBuildFailedStatusUpdateFailed reports a WorkloadRun build error
+	// when recording its Failed condition also fails. This action-failure
+	// Warning does not claim that the Failed phase was persisted.
+	ReasonBuildFailedStatusUpdateFailed = "BuildFailedStatusUpdateFailed"
+)
+
 // Workflow tier reasons (Workflow → Job).
 const (
 	ReasonJobCreated          = "JobCreated"
@@ -94,6 +102,16 @@ const (
 	ReasonDependencyCreationError = "DependencyCreationError"
 	ReasonNodeDiscoveryError      = "NodeDiscoveryError"
 	ReasonPartitionError          = "PartitionError"
+
+	// ReasonHeterogeneousPlatformStatusUpdateFailed reports inconsistent node
+	// platforms when recording the Workflow's Failed condition also fails.
+	// This action-failure Warning does not claim a persisted Failed phase.
+	ReasonHeterogeneousPlatformStatusUpdateFailed = "HeterogeneousPlatformStatusUpdateFailed"
+
+	// ReasonOverrideErrorStatusUpdateFailed reports an override application
+	// error when recording the Workflow's Failed condition also fails. Both
+	// override guards use this action-failure Warning, not a phase notification.
+	ReasonOverrideErrorStatusUpdateFailed = "OverrideErrorStatusUpdateFailed"
 
 	// ReasonJobNameCollision marks a Workflow whose generated Job name is
 	// already taken by a Job this Workflow does not control. The foreign

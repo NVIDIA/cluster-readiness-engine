@@ -1,0 +1,13 @@
+watched: [ValidationFailed]
+before:
+  - type: ValidationFailed
+    status: "True"
+    reason: ThresholdViolated
+    message: First message
+    observedGeneration: 1
+after:
+  - type: ValidationFailed
+    status: "True"
+    reason: MeasurementTimeout
+    message: Replacement message
+    observedGeneration: 2

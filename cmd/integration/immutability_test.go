@@ -46,7 +46,7 @@ type transitionResult struct {
 // nothing else evaluates them.
 func TestUpdateTransitionValidation(t *testing.T) {
 	suite := &testutil.IntegrationTestSuite{}
-	suite.Environment.CRDDirectoryPaths = []string{generatedCRDPath}
+	suite.Environment.CRDDirectoryPaths = []string{nvcreCRDDirectory}
 	suite.Environment.ErrorIfCRDPathMissing = true
 	suite.SetupTestSuite(t)
 	defer suite.TearDownTestSuite(t)

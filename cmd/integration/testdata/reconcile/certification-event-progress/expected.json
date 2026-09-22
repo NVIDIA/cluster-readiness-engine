@@ -1,0 +1,66 @@
+{
+  "Certification/event-progress-cert": {
+    "kind": "Certification",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "event-progress-cert",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "event-progress": "true"
+        }
+      },
+      "categories": [
+        {
+          "domain": "communication",
+          "variant": "nccl-all-reduce"
+        }
+      ],
+      "nodesPerJob": 1
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkflowRunning",
+          "message": "Certification in progress"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "categoryStatuses": [
+        {
+          "domain": "communication",
+          "variant": "nccl-all-reduce",
+          "workflowRef": {
+            "name": "event-progress-cert-commu-773db",
+            "namespace": "default"
+          },
+          "status": "InProgress"
+        }
+      ]
+    }
+  }
+}

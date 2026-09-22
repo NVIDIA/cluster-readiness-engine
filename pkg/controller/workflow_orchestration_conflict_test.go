@@ -73,7 +73,7 @@ func newConflictInjectingClient(scheme *runtime.Scheme, wf *nvcrev1alpha1.Workfl
 				if remaining > 0 {
 					remaining--
 					return apierrors.NewConflict(
-						schema.GroupResource{Group: nvcrev1alpha1.GroupVersion.Group, Resource: "workflows"},
+						schema.GroupResource{Group: nvcrev1alpha1.GroupVersion.Group, Resource: workflowResourceName},
 						obj.GetName(), errors.New("simulated stale write"))
 				}
 				return cl.Status().Update(ctx, obj, opts...)

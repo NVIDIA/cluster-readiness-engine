@@ -28,6 +28,8 @@ kind: Job
 metadata:
   name: test-bw-threshold-fail
   namespace: default
+  labels:
+    nvcre.nvidia.com/workflow: threshold-event-workflow
 spec:
   workload:
     trainJob:
@@ -77,3 +79,41 @@ status:
       algBW: "245.50"
       busBW: "370.14"
       samples: 1
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: threshold-event-workflow
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command: [mpirun]
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 1
+    nodesPerJob: 1
+    totalGroups: 1
+    currentIteration: 1
+    groups:
+      - name: group-0
+        nodes: [gpu-node-01]
+        phase: Running
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: test-bw-threshold-fail
+          namespace: default

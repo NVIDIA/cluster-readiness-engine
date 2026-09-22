@@ -1520,7 +1520,7 @@ func formatFloat(f float64) string {
 // constructs GoodputMeasurementReconciler directly).
 func (r *GoodputMeasurementReconciler) warnf(obj runtime.Object, reason, messageFmt string, args ...any) {
 	if r.Recorder != nil {
-		r.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, reason, reason, messageFmt, args...)
+		r.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, reason, reason, "%s", formatEventNote(messageFmt, args...))
 	}
 }
 

@@ -75,5 +75,27 @@
         "namespace": "default"
       }
     }
-  }
+  },
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "WorkloadCompleted",
+      "message": "Workload TrainJob/test-unknown-key-workload completed: All workers completed",
+      "involvedObject": {
+        "kind": "Job",
+        "name": "test-unknown-key"
+      },
+      "count": 1
+    },
+    {
+      "type": "Warning",
+      "reason": "UnknownThresholdKey",
+      "message": "unknown threshold key(s) [avgTFLOPSPerGPU]; valid keys: [busBandwidthGBps, algBandwidthGBps, goodputRatio, avgTFLOPsPerGPU, avgStepTimeSec]",
+      "involvedObject": {
+        "kind": "Job",
+        "name": "test-unknown-key"
+      },
+      "count": 1
+    }
+  ]
 }

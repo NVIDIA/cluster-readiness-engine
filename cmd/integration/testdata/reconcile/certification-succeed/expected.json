@@ -63,5 +63,27 @@
         }
       ]
     }
-  }
+  },
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "AllWorkflowsSucceeded",
+      "message": "All certification categories completed successfully",
+      "involvedObject": {
+        "kind": "Certification",
+        "name": "test-cert-succeed"
+      },
+      "count": 1
+    },
+    {
+      "type": "Normal",
+      "reason": "WorkflowRunning",
+      "message": "Workflow for category communication/nccl-all-reduce succeeded, advancing to next category",
+      "involvedObject": {
+        "kind": "Certification",
+        "name": "test-cert-succeed"
+      },
+      "count": 1
+    }
+  ]
 }

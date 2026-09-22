@@ -16,3 +16,10 @@ collect:
   - kind: Job
     name: test-unknown-key
     namespace: default
+events:
+  - involvedKind: Job
+    involvedName: test-unknown-key
+    namespace: default
+    expect:
+      - {type: Normal, reason: WorkloadCompleted}
+      - {type: Warning, reason: UnknownThresholdKey}
