@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Removing the intent would turn every later check into a no-op, which is
+# exactly the bypass the parent presence rule on WorkflowSpec prevents.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: imm-wf-gang-remove
+  namespace: default
+spec:
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: queue-a
+    queueLabelKey: kai.scheduler/queue
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+  orchestration:
+    target:
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB

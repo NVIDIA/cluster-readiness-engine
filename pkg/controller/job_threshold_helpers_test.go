@@ -31,7 +31,7 @@ func TestIsJobAwaitingThresholdEvaluation(t *testing.T) {
 	t.Parallel()
 
 	job := &nvcrev1alpha1.Job{
-		Name: "job", Namespace: testNS,
+		Name: testJobName, Namespace: testNS,
 		Spec: nvcrev1alpha1.JobSpec{
 			Thresholds: map[string]string{testMetricBusBandwidth: "value >= 900"},
 		},

@@ -1,0 +1,55 @@
+# The launcher template is covered as well as the worker. An MPI runtime has
+# both, and a gang that holds only the workers is not a gang.
+spec:
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: queue-a
+  jobTemplate:
+    spec:
+      workloadMetadata:
+        labels:
+          kai.scheduler/queue: queue-a
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: nccl-runtime
+  dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: nccl-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+              - name: node
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: queue-a
+                  spec:
+                    template:
+                      metadata:
+                        labels:
+                          kai.scheduler/queue: queue-a
+                      spec:
+                        schedulerName: kai-scheduler
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01
+              - name: launcher
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: queue-b
+                  spec:
+                    template:
+                      metadata:
+                        labels:
+                          kai.scheduler/queue: queue-a
+                      spec:
+                        schedulerName: kai-scheduler
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01

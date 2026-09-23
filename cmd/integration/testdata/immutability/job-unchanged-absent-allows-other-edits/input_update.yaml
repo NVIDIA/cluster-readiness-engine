@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The same for an object that never had the field: it stays without it, and
+# unrelated edits still go through.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: imm-job-absent-ok
+  namespace: default
+spec:
+  stallMultiplier: 20
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime

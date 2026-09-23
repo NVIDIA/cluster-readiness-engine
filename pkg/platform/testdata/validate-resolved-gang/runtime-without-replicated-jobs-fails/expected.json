@@ -1,0 +1,6 @@
+{
+  "error": "gangScheduler is configured but TrainingRuntime \"nccl-runtime\" has no spec.template.spec.replicatedJobs, so its queue labels cannot be checked",
+  "workloadLabels": {
+    "kai.scheduler/queue": "queue-a"
+  }
+}

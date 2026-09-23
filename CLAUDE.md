@@ -282,6 +282,18 @@ spec:
 - **`jobTemplatePatch`** uses RFC 6902 JSON Patch. Use `op: add` with `path: /spec/workload/trainJob/trainer/env/-` to **append** env vars without replacing the existing list. The `-` means "end of array".
 - Overrides are applied **in order** as listed in the YAML. A `jobTemplatePatch` must come after any `jobTemplate` override that sets the env array, otherwise the appended vars get wiped.
 
+## Git Configuration
+
+- Commit to the `main` branch (not `master`).
+- Sign every commit with both `-S` (cryptographic signature) and `-s` (DCO sign-off): `git commit -S -s -m "..."`.
+- Author every commit as the human (the configured `git config user.name` / `user.email`), never as the agent.
+- Do NOT add `Co-Authored-By` lines or any agent attribution (e.g. Claude Code, Codex, Copilot). This is organization policy.
+- Do NOT add "Generated with Claude Code", "Created by Codex", or similar attribution to commit messages, PR bodies, PR comments, or code comments.
+
+The reason is accountability, not credit. The human author takes full responsibility for every line they submit, including code an agent generated. Splitting authorship with a tool blurs that line, and the DCO sign-off is a certification a person makes, not a tool.
+
+Nothing in CI inspects commit authorship, so these rules hold by convention. The DCO app (`probot.github.io/apps/dco`) runs on every PR and validates the `Signed-off-by` trailer only: a commit missing `-s` fails that check, but an attributed commit passes it. See [CONTRIBUTING.md](CONTRIBUTING.md#ai-assisted-contributions) for the accountability rules that go with AI-assisted work.
+
 ## Agent Permissions
 
 **Always allowed** (no confirmation needed):
@@ -302,6 +314,7 @@ spec:
 - Never remove `// +kubebuilder:scaffold:*` markers.
 - Never create git tags. The user creates tags.
 - Never push to `main`.
+- Never attribute a commit or PR to an AI agent. No `Co-Authored-By` trailers, no "Generated with" footers, no agent name in the author field.
 
 ## Good and Bad Examples
 
@@ -330,4 +343,4 @@ job.Status.Conditions = append(job.Status.Conditions, condition)
 
 ## Design Decisions
 
-Architecture decision records are in `docs/designs/` (ADR-000 through ADR-069). Read these before making significant changes to understand why things are the way they are.
+Architecture decision records are in `docs/designs/` (ADR-000 through ADR-081). Read these before making significant changes to understand why things are the way they are.

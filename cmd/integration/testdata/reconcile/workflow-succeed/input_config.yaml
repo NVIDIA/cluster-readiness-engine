@@ -10,3 +10,10 @@ collect:
   - kind: Workflow
     name: test-workflow-succeed
     namespace: default
+events:
+  - involvedKind: Workflow
+    involvedName: test-workflow-succeed
+    namespace: default
+    expect:
+      - {type: Normal, reason: JobCompleted}
+      - {type: Normal, reason: JobRunning}

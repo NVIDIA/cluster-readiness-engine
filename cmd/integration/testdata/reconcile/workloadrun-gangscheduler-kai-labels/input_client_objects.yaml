@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# WorkloadRun controller parity for the KAI case. The controller builds its
+# Workflow through a separate path from the CLI builder, so this asserts the
+# resolved queue reaches the submitted TrainJob's own metadata.labels, the
+# runtime carries it at both template levels, and the Workflow persists the
+# intent with its defaults filled in. The Kueue label alongside it proves the
+# two keys stay independent through the controller too.
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: gpu-node-01
+  annotations: {}
+spec:
+  providerID: "aws://us-east-1a/i-0123456789abcdef0"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: gpu-node-02
+  annotations: {}
+spec:
+  providerID: "aws://us-east-1a/i-0123456789abcdef1"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: wr-kai-labels
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  image: nvcr.io/nvidia/pytorch:25.08-py3
+  framework:
+    torch:
+      script: /workspace/train.py
+  numNodes: 2
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: team-a
+  workloadMetadata:
+    labels:
+      kueue.x-k8s.io/queue-name: gpu-team-a

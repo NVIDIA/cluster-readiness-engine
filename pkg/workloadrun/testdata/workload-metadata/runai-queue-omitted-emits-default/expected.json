@@ -1,0 +1,10 @@
+{
+  "labels": {
+    "runai/queue": "default-queue"
+  },
+  "gangScheduler": {
+    "schedulerName": "runai-scheduler",
+    "queue": "default-queue",
+    "queueLabelKey": "runai/queue"
+  }
+}

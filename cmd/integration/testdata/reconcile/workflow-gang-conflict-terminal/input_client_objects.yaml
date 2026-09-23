@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A Workflow whose persisted intent says queue-a, with a platform-matched
+# override that redirects the runtime's queue label to queue-b. The conflict
+# only becomes visible once discovery has resolved the platform, so it is
+# reached during group launch rather than during the first reconcile.
+#
+# It must end as Failed/GangSchedulingConflict. A plain error here would leave
+# the Workflow retrying at InProgress forever with nothing naming the cause,
+# because the intent is immutable and no retry can reconcile the two.
+apiVersion: v1
+kind: Node
+metadata:
+  name: gang-conflict-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: gang-conflict-node-01
+spec:
+  providerID: aws:///us-east-1a/i-0abc
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: gang-conflict-wf
+  namespace: default
+spec:
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: queue-a
+    queueLabelKey: kai.scheduler/queue
+  jobTemplate:
+    spec:
+      workloadMetadata:
+        labels:
+          kai.scheduler/queue: queue-a
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: conflict-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: conflict-runtime
+        namespace: default
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+              - name: node
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: queue-a
+                  spec:
+                    template:
+                      metadata:
+                        labels:
+                          kai.scheduler/queue: queue-a
+                      spec:
+                        schedulerName: kai-scheduler
+                        containers:
+                          - name: node
+                            image: test-image:latest
+  overrides:
+    - when:
+        platform:
+          equals: aws
+      dependencies:
+        - apiVersion: trainer.kubeflow.org/v1alpha1
+          kind: TrainingRuntime
+          metadata:
+            name: conflict-runtime
+            namespace: default
+          spec:
+            template:
+              spec:
+                replicatedJobs:
+                  - name: node
+                    template:
+                      metadata:
+                        labels:
+                          kai.scheduler/queue: queue-b
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"

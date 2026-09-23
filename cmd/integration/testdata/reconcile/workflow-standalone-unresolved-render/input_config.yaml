@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: standalone-render
+  namespace: default
+  condition: Failed
+  reason: GangSchedulingConflict
+collect:
+  - kind: Workflow
+    name: standalone-render
+    namespace: default
+expectAbsent:
+  - kind: Job
+    name: standalone-render-job
+    namespace: default
+  - kind: TrainingRuntime
+    name: standalone-render-runtime-10690-job
+    namespace: default

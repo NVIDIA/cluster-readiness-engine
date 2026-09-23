@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# And inside spec.categories[], where the same rule is evaluated per item.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-cert-wm
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  workloadMetadata:
+    labels:
+      environment: burn-in
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        workloadMetadata:
+          labels:
+            bad key: x

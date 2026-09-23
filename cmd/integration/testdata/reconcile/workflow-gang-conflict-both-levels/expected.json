@@ -1,0 +1,167 @@
+{
+  "Workflow/both-levels-wf": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "both-levels-wf",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "both-levels-wf-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          },
+          "workloadMetadata": {
+            "labels": {
+              "kai.scheduler/queue": "queue-a"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      },
+      "dependencies": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "metadata": {
+            "name": "both-levels-wf-runtime",
+            "namespace": "default"
+          },
+          "spec": {
+            "template": {
+              "spec": {
+                "replicatedJobs": [
+                  {
+                    "name": "node",
+                    "template": {
+                      "metadata": {
+                        "labels": {
+                          "kai.scheduler/queue": "queue-b"
+                        }
+                      },
+                      "spec": {
+                        "template": {
+                          "metadata": {
+                            "labels": {
+                              "kai.scheduler/queue": "queue-b"
+                            }
+                          },
+                          "spec": {
+                            "containers": [
+                              {
+                                "image": "test-image:latest",
+                                "name": "node"
+                              }
+                            ],
+                            "schedulerName": "kai-scheduler"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "overrides": [
+        {
+          "when": {
+            "platform": {
+              "equals": "aws"
+            }
+          },
+          "jobTemplate": {
+            "spec": {
+              "workloadMetadata": {
+                "labels": {
+                  "kai.scheduler/queue": "queue-b"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "gangScheduler": {
+        "schedulerName": "kai-scheduler",
+        "queue": "queue-a",
+        "queueLabelKey": "kai.scheduler/queue"
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "GangSchedulingConflict",
+          "message": "spec.jobTemplate.spec.workloadMetadata.labels[\"kai.scheduler/queue\"]: conflicting label value \"queue-b\", expected \"queue-a\""
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 0,
+        "nodesPerJob": 0,
+        "totalGroups": 0,
+        "detectedPlatform": "aws",
+        "detectedGPUArchitecture": "h100",
+        "appliedOverrides": [
+          {
+            "index": 0,
+            "when": "platform=aws",
+            "patches": "jobTemplate"
+          }
+        ]
+      }
+    }
+  },
+  "expectAbsent": {
+    "Job/both-levels-wf-job": "notCreated",
+    "TrainingRuntime/both-levels-wf-runtime-c0096-job": "notCreated"
+  }
+}

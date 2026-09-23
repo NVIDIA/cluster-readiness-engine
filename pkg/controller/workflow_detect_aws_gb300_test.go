@@ -53,7 +53,7 @@ func TestAWSGB300EFAStripInvariant(t *testing.T) {
 	}
 
 	octx := OverrideContext{
-		Platform:        "aws",
+		Platform:        testPlatformAWS,
 		GPUArchitecture: testGPUArchGB300,
 		WorkloadKind:    "trainJob",
 	}

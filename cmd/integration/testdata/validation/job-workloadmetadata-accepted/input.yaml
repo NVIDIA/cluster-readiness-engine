@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The documented Kueue and KAI placement, plus an ordinary label and an empty
+# value, all through one admission request. Empty is valid Kubernetes and is a
+# real label, not a deletion.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: val-wm-accepted
+  namespace: default
+spec:
+  workloadMetadata:
+    labels:
+      kueue.x-k8s.io/queue-name: gpu-team-a
+      kai.scheduler/queue: burn-in
+      environment: burn-in
+      marker: ""
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime

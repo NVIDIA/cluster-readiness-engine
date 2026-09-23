@@ -1,0 +1,15 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "\u003cnil\u003e",
+      "message": "Invalid value: null: some validation rules were not checked because the object was invalid; correct the existing errors to complete validation"
+    },
+    {
+      "type": "FieldValueTooMany",
+      "field": "spec.workloadMetadata.labels",
+      "message": "Too many: 33: must have at most 32 items"
+    }
+  ]
+}

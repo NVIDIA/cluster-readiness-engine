@@ -2,11 +2,25 @@
 # SPDX-License-Identifier: Apache-2.0
 
 waitFor:
-  kind: Job
-  name: test-bw-threshold-fail
+  kind: Workflow
+  name: threshold-event-workflow
   namespace: default
-  condition: ValidationFailed
+  condition: Failed
+  reason: JobValidationFailed
 collect:
   - kind: Job
     name: test-bw-threshold-fail
     namespace: default
+events:
+  - involvedKind: Job
+    involvedName: test-bw-threshold-fail
+    namespace: default
+    expect:
+      - {type: Normal, reason: WorkloadCompleted}
+      - {type: Warning, reason: ThresholdViolated}
+  - involvedKind: Workflow
+    involvedName: threshold-event-workflow
+    namespace: default
+    expect:
+      - {type: Normal, reason: JobRunning}
+      - {type: Warning, reason: JobValidationFailed}

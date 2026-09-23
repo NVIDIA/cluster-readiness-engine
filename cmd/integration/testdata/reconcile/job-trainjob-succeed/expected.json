@@ -62,7 +62,30 @@
         "kind": "TrainJob",
         "name": "test-trainjob-succeed-workload",
         "namespace": "default"
-      }
+      },
+      "workloadStartTime": "1970-01-01T00:00:00Z"
     }
-  }
+  },
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "WorkloadCompleted",
+      "message": "Workload TrainJob/test-trainjob-succeed-workload completed: All workers completed",
+      "involvedObject": {
+        "kind": "Job",
+        "name": "test-trainjob-succeed"
+      },
+      "count": 1
+    },
+    {
+      "type": "Normal",
+      "reason": "WorkloadRunning",
+      "message": "Workload TrainJob/test-trainjob-succeed-workload is running",
+      "involvedObject": {
+        "kind": "Job",
+        "name": "test-trainjob-succeed"
+      },
+      "count": 1
+    }
+  ]
 }

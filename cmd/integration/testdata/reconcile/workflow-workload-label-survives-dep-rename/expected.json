@@ -1,0 +1,292 @@
+{
+  "Job/label-rename-wf-job": {
+    "kind": "Job",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "label-rename-wf-job",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/group": "group-0",
+        "nvcre.nvidia.com/workflow": "label-rename-wf"
+      },
+      "annotations": {
+        "nvcre.nvidia.com/group-nodes": "label-rename-node-01"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
+          "kind": "Workflow",
+          "name": "label-rename-wf",
+          "uid": "",
+          "controller": true,
+          "blockOwnerDeletion": true
+        }
+      ],
+      "finalizers": [
+        "nvcre.nvidia.com/finalizer"
+      ]
+    },
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "shared-runtime-998ae-job",
+            "apiGroup": "trainer.kubeflow.org",
+            "kind": "TrainingRuntime"
+          },
+          "trainer": {
+            "image": "test-image:latest",
+            "command": [
+              "python",
+              "train.py"
+            ],
+            "numNodes": 1
+          },
+          "runtimePatches": [
+            {
+              "manager": "nvcre.nvidia.com/controller",
+              "trainingRuntimeSpec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "affinity": {
+                                  "nodeAffinity": {
+                                    "requiredDuringSchedulingIgnoredDuringExecution": {
+                                      "nodeSelectorTerms": [
+                                        {
+                                          "matchExpressions": [
+                                            {
+                                              "key": "kubernetes.io/hostname",
+                                              "operator": "In",
+                                              "values": [
+                                                "label-rename-node-01"
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "suspend": false,
+          "managedBy": "trainer.kubeflow.org/trainjob-controller"
+        }
+      },
+      "workloadMetadata": {
+        "labels": {
+          "environment": "burn-in",
+          "kai.scheduler/queue": "shared-runtime",
+          "kueue.x-k8s.io/queue-name": "shared-runtime"
+        }
+      },
+      "nodeHealthMonitor": {
+        "cel": {
+          "expression": "node.spec.unschedulable == true"
+        }
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkloadRunning",
+          "message": "Workload TrainJob/label-rename-wf-job-workload is running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "workloadRef": {
+        "apiVersion": "trainer.kubeflow.org/v1alpha1",
+        "kind": "TrainJob",
+        "name": "label-rename-wf-job-workload",
+        "namespace": "default"
+      },
+      "workloadStartTime": "1970-01-01T00:00:00Z"
+    }
+  },
+  "TrainJob/label-rename-wf-job-workload": {
+    "kind": "TrainJob",
+    "apiVersion": "trainer.kubeflow.org/v1alpha1",
+    "metadata": {
+      "name": "label-rename-wf-job-workload",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "nvcre",
+        "environment": "burn-in",
+        "kai.scheduler/queue": "shared-runtime",
+        "kueue.x-k8s.io/queue-name": "shared-runtime",
+        "nvcre.nvidia.com/job": "label-rename-wf-job"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
+          "kind": "Job",
+          "name": "label-rename-wf-job",
+          "uid": "",
+          "controller": true,
+          "blockOwnerDeletion": true
+        }
+      ]
+    },
+    "spec": {
+      "runtimeRef": {
+        "name": "shared-runtime-998ae-job",
+        "apiGroup": "trainer.kubeflow.org",
+        "kind": "TrainingRuntime"
+      },
+      "trainer": {
+        "image": "test-image:latest",
+        "command": [
+          "python",
+          "train.py"
+        ],
+        "numNodes": 1
+      },
+      "runtimePatches": [
+        {
+          "manager": "nvcre.nvidia.com/controller",
+          "trainingRuntimeSpec": {
+            "template": {
+              "spec": {
+                "replicatedJobs": [
+                  {
+                    "name": "node",
+                    "template": {
+                      "spec": {
+                        "template": {
+                          "metadata": {
+                            "labels": {
+                              "nvcre.nvidia.com/job": "label-rename-wf-job"
+                            }
+                          },
+                          "spec": {
+                            "affinity": {
+                              "nodeAffinity": {
+                                "requiredDuringSchedulingIgnoredDuringExecution": {
+                                  "nodeSelectorTerms": [
+                                    {
+                                      "matchExpressions": [
+                                        {
+                                          "key": "kubernetes.io/hostname",
+                                          "operator": "In",
+                                          "values": [
+                                            "label-rename-node-01"
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "suspend": false,
+      "managedBy": "trainer.kubeflow.org/trainjob-controller"
+    }
+  },
+  "TrainingRuntime/shared-runtime-998ae-job": {
+    "apiVersion": "trainer.kubeflow.org/v1alpha1",
+    "kind": "TrainingRuntime",
+    "metadata": {
+      "annotations": {
+        "nvcre.nvidia.com/workflow-uid": "workflow-uid"
+      },
+      "labels": {
+        "nvcre.nvidia.com/workflow": "label-rename-wf"
+      },
+      "name": "shared-runtime-998ae-job",
+      "namespace": "default",
+      "ownerReferences": [
+        {
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
+          "kind": "Job",
+          "name": "label-rename-wf-job",
+          "uid": ""
+        }
+      ]
+    },
+    "spec": {
+      "template": {
+        "spec": {
+          "replicatedJobs": [
+            {
+              "groupName": "default",
+              "name": "node",
+              "replicas": 1,
+              "template": {
+                "metadata": {
+                  "labels": {
+                    "kai.scheduler/queue": "shared-runtime"
+                  }
+                },
+                "spec": {
+                  "template": {
+                    "metadata": {
+                      "labels": {
+                        "kai.scheduler/queue": "shared-runtime"
+                      }
+                    },
+                    "spec": {
+                      "containers": [
+                        {
+                          "image": "test-image:latest",
+                          "name": "node"
+                        }
+                      ],
+                      "schedulerName": "kai-scheduler"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

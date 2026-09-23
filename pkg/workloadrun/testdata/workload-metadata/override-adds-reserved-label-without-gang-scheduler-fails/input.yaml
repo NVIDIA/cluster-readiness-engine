@@ -1,0 +1,30 @@
+# No gangScheduler at all, and an override introduces a controller-owned key
+# after construction. The gang half of the post-override check has nothing to do
+# here, so gating label validation behind gangScheduler would let the CLI exit
+# successfully and print a Workflow carrying a label the cluster rejects. Offline
+# render never reaches an API server, so this check is the only thing in the way.
+run:
+  metadata:
+    name: wr-reserved-override
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    overrides:
+      - when:
+          platform:
+              equals: aws
+        jobTemplate:
+          spec:
+            workloadMetadata:
+              labels:
+                nvcre.nvidia.com/job: sneaky
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch
+platform: aws
+gpuArchitecture: NVIDIA-GB200

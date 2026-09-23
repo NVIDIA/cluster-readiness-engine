@@ -1,0 +1,36 @@
+# A direct Job or hand-authored Workflow without gangScheduler keeps
+# responsibility for its own scheduling. The runtime here disagrees with
+# itself on purpose and is still accepted: with no intent there is nothing
+# to check against, and nothing is inserted.
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: nccl-runtime
+  dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: nccl-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+              - name: node
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: whatever
+                  spec:
+                    template:
+                      metadata:
+                        labels:
+                          kai.scheduler/queue: other
+                      spec:
+                        schedulerName: some-scheduler
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01

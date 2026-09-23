@@ -10,3 +10,9 @@ collect:
   - kind: Job
     name: test-trainjob-fail
     namespace: default
+events:
+  - involvedKind: Job
+    involvedName: test-trainjob-fail
+    namespace: default
+    expect:
+      - {type: Warning, reason: WorkloadFailed}

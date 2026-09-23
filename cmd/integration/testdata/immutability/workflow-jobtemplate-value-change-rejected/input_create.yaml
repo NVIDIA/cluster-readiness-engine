@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The JobSpec rules propagate through JobTemplateSpec.Spec, so a hand edit to a
+# long-lived Workflow's job template mid-flight is rejected. That is what makes
+# the typed template metadata a sticky contract across every group and
+# iteration rather than something later groups could observe differently.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: imm-wf-value
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workloadMetadata:
+        labels:
+          kai.scheduler/queue: queue-a
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+  orchestration:
+    target:
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB

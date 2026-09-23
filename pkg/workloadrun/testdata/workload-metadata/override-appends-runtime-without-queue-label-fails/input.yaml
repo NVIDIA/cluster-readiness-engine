@@ -1,0 +1,53 @@
+# An override genuinely producing a missing runtime label, which a dependency
+# merge cannot do on its own: recursive map merge has no delete, so instead the
+# override appends a second TrainingRuntime that was never given the queue label
+# and repoints runtimeRef at it. The appended runtime is among the Workflow's
+# dependencies, so it is found and checked — and fails for the label it lacks
+# rather than for being unknown.
+run:
+  metadata:
+    name: wr-appended
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    gangScheduler:
+      schedulerName: kai-scheduler
+      queue: queue-a
+    overrides:
+      - when:
+          platform:
+              equals: aws
+        jobTemplate:
+          spec:
+            workload:
+              trainJob:
+                runtimeRef:
+                  name: bare-runtime
+        dependencies:
+          - apiVersion: trainer.kubeflow.org/v1alpha1
+            kind: TrainingRuntime
+            metadata:
+              name: bare-runtime
+            spec:
+              template:
+                spec:
+                  replicatedJobs:
+                    - name: node
+                      template:
+                        spec:
+                          template:
+                            spec:
+                              schedulerName: kai-scheduler
+                              containers:
+                                - name: node
+                                  image: test:latest
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch
+platform: aws
+gpuArchitecture: NVIDIA-GB200

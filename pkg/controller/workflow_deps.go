@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"sort"
 	"strings"
@@ -20,6 +21,7 @@ import (
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
 )
 
 const (
@@ -125,6 +127,20 @@ func classifyDependencies(deps []nvcrev1alpha1.DependencySpec, jobSpecJSON []byt
 		}
 	}
 	return workflowDeps, jobDeps
+}
+
+// marshalJobSpecForDependencyClassification removes metadata values before
+// collecting references. Workload metadata and metadata inside runtime patches
+// are copied verbatim onto generated objects and never name dependencies;
+// allowing an arbitrary label or annotation value to seed classification would
+// make that dependency job-scoped even though the Job spec does not reference
+// the suffixed copy. Real references elsewhere in a runtime patch, such as a
+// PVC claimName, remain in the classification input.
+func marshalJobSpecForDependencyClassification(spec *nvcrev1alpha1.JobSpec) ([]byte, error) {
+	classifiable := spec.DeepCopy()
+	classifiable.WorkloadMetadata = nil
+	clearRuntimePatchMetadata(classifiable)
+	return json.Marshal(classifiable)
 }
 
 // detectCrossRefs finds resource-name-shaped strings that appear in 2+ job-scoped
@@ -380,59 +396,190 @@ func buildReplacementMap(deps []nvcrev1alpha1.DependencySpec, suffix string) map
 	return replacements
 }
 
-// suffixDependencyObject applies name replacements to a raw dependency JSON,
-// returning the modified unstructured object.
-func suffixDependencyObject(raw []byte, replacements map[string]string) (*unstructured.Unstructured, error) {
+// suffixRaw replaces every quoted occurrence of each replacement key. It is a
+// blind string substitution over the whole document, which is why callers must
+// keep user-supplied values that are not references out of its way.
+func suffixRaw(raw []byte, replacements map[string]string) string {
 	data := string(raw)
 	for old, newVal := range replacements {
 		data = strings.ReplaceAll(data, `"`+old+`"`, `"`+newVal+`"`)
 	}
-
-	obj := &unstructured.Unstructured{}
-	if err := json.Unmarshal([]byte(data), &obj.Object); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal suffixed dependency: %w", err)
-	}
-	return obj, nil
+	return data
 }
 
 // suffixJobSpec applies name replacements to a job spec via JSON round-trip.
+//
+// Two things are protected from that substitution, because their values are
+// metadata rather than references and can legitimately equal a dependency
+// name — a queue named after the runtime it serves, say:
+//
+//   - workloadMetadata, detached entirely and restored afterwards. Nothing in
+//     it ever references a dependency.
+//   - the metadata inside trainJob.runtimePatches. These cannot be detached
+//     wholesale, because a patch's volumes can carry a real PVC reference that
+//     does need renaming, so only their label and annotation maps are put
+//     back.
+//
+// Without this, renaming would silently rewrite the queue a user asked for and
+// the Job would be admitted into a queue nobody named.
 func suffixJobSpec(spec *nvcrev1alpha1.JobSpec, replacements map[string]string) (*nvcrev1alpha1.JobSpec, error) {
-	data, err := json.Marshal(spec)
+	preserved := spec.WorkloadMetadata
+	renameable := spec.DeepCopy()
+	renameable.WorkloadMetadata = nil
+
+	data, err := json.Marshal(renameable)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal job spec: %w", err)
 	}
 
-	s := string(data)
-	for old, newVal := range replacements {
-		s = strings.ReplaceAll(s, `"`+old+`"`, `"`+newVal+`"`)
-	}
-
 	result := &nvcrev1alpha1.JobSpec{}
-	if err := json.Unmarshal([]byte(s), result); err != nil {
+	if err := json.Unmarshal([]byte(suffixRaw(data, replacements)), result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal suffixed job spec: %w", err)
 	}
+	result.WorkloadMetadata = preserved.DeepCopy()
+	restoreRuntimePatchMetadata(spec, result)
 	return result, nil
 }
 
-// ensureJobDependencies creates per-job dependency copies and returns the patched job spec.
-// Idempotent: if refs for this group+iteration already exist in status, it skips creation
-// and only patches the job spec with the name replacements.
-func (r *WorkflowReconciler) ensureJobDependencies(
-	ctx context.Context,
+// restoreRuntimePatchMetadata copies the label and annotation maps out of
+// original's runtimePatches over renamed's. Renaming changes only string
+// values, never the shape, so the two slices line up by index at every level.
+func restoreRuntimePatchMetadata(original, renamed *nvcrev1alpha1.JobSpec) {
+	from, to := original.Workload.TrainJob, renamed.Workload.TrainJob
+	if from == nil || to == nil || len(from.RuntimePatches) != len(to.RuntimePatches) {
+		return
+	}
+	for i := range from.RuntimePatches {
+		src, dst := from.RuntimePatches[i].TrainingRuntimeSpec, to.RuntimePatches[i].TrainingRuntimeSpec
+		if src == nil || dst == nil || src.Template == nil || dst.Template == nil {
+			continue
+		}
+		restoreObjectMeta(src.Template.Metadata, dst.Template.Metadata)
+		if src.Template.Spec == nil || dst.Template.Spec == nil ||
+			len(src.Template.Spec.ReplicatedJobs) != len(dst.Template.Spec.ReplicatedJobs) {
+			continue
+		}
+		for j := range src.Template.Spec.ReplicatedJobs {
+			srcJob := src.Template.Spec.ReplicatedJobs[j].Template
+			dstJob := dst.Template.Spec.ReplicatedJobs[j].Template
+			if srcJob == nil || dstJob == nil {
+				continue
+			}
+			restoreObjectMeta(srcJob.Metadata, dstJob.Metadata)
+			if srcJob.Spec == nil || dstJob.Spec == nil ||
+				srcJob.Spec.Template == nil || dstJob.Spec.Template == nil {
+				continue
+			}
+			restoreObjectMeta(srcJob.Spec.Template.Metadata, dstJob.Spec.Template.Metadata)
+		}
+	}
+}
+
+// clearRuntimePatchMetadata removes only the label and annotation maps that
+// suffixJobSpec restores after blind name substitution. The rest of each patch
+// stays visible to dependency classification because it can carry real object
+// references, including PVC claim names.
+func clearRuntimePatchMetadata(spec *nvcrev1alpha1.JobSpec) {
+	trainJob := spec.Workload.TrainJob
+	if trainJob == nil {
+		return
+	}
+	for i := range trainJob.RuntimePatches {
+		patch := trainJob.RuntimePatches[i].TrainingRuntimeSpec
+		if patch == nil || patch.Template == nil {
+			continue
+		}
+		clearObjectMeta(patch.Template.Metadata)
+		if patch.Template.Spec == nil {
+			continue
+		}
+		for j := range patch.Template.Spec.ReplicatedJobs {
+			job := patch.Template.Spec.ReplicatedJobs[j].Template
+			if job == nil {
+				continue
+			}
+			clearObjectMeta(job.Metadata)
+			if job.Spec == nil || job.Spec.Template == nil {
+				continue
+			}
+			clearObjectMeta(job.Spec.Template.Metadata)
+		}
+	}
+}
+
+func clearObjectMeta(metadata *metav1.ObjectMeta) {
+	if metadata == nil {
+		return
+	}
+	metadata.Labels = nil
+	metadata.Annotations = nil
+}
+
+// restoreObjectMeta copies src's labels and annotations onto dst, leaving
+// everything else renaming produced alone.
+func restoreObjectMeta(src, dst *metav1.ObjectMeta) {
+	if src == nil || dst == nil {
+		return
+	}
+	if src.Labels != nil {
+		dst.Labels = maps.Clone(src.Labels)
+	}
+	if src.Annotations != nil {
+		dst.Annotations = maps.Clone(src.Annotations)
+	}
+}
+
+// preparedJob is the outcome of per-job dependency preparation: the Job spec
+// that will be submitted, the dependency set that spec actually references,
+// and the refs to record for cleanup.
+//
+// EffectiveDependencies exists so callers can check the final manifests rather
+// than the Workflow's templates. Job-scoped dependencies are copied under
+// suffixed names and the spec's references are rewritten to match, so after
+// this step the Workflow's own dependency list no longer describes the
+// runtimes this Job will use.
+type preparedJob struct {
+	Spec                  *nvcrev1alpha1.JobSpec
+	EffectiveDependencies []nvcrev1alpha1.DependencySpec
+
+	// alreadyCreated records that this group's copies exist from an earlier
+	// reconcile, so creation is a no-op while the spec is still patched.
+	alreadyCreated bool
+	// originals and renamed are the job-scoped dependencies before and after
+	// renaming, paired by index. Creation needs both: the original carries the
+	// kind and ordering metadata, the renamed copy is what gets created.
+	originals []nvcrev1alpha1.DependencySpec
+	renamed   []nvcrev1alpha1.DependencySpec
+}
+
+// prepareJobDependencies computes everything about a group's dependencies
+// without touching the API: the renamed copies, the Job spec whose references
+// point at them, and the set those references resolve to.
+//
+// It is deliberately free of side effects. Creating the copies is
+// createJobDependencies' job, so a caller can validate the final manifests
+// before anything is written — otherwise a conflict detected after preparation
+// would already have left a runtime dependency behind in the cluster.
+func prepareJobDependencies(
 	workflow *nvcrev1alpha1.Workflow,
 	group *nvcrev1alpha1.GroupStatus,
 	orch *nvcrev1alpha1.OrchestrationStatus,
 	spec *nvcrev1alpha1.JobSpec,
-) (*nvcrev1alpha1.JobSpec, []nvcrev1alpha1.DependencyResourceRef, error) {
-	// Marshal job spec for classification
-	jobSpecJSON, err := json.Marshal(spec)
+) (preparedJob, error) {
+	// Nothing is renamed on the pass-through paths below, so the Workflow's
+	// own dependency list is already the effective one.
+	unchanged := preparedJob{Spec: spec, EffectiveDependencies: workflow.Spec.Dependencies}
+
+	// Marshal only fields that can reference dependencies. Metadata values can
+	// legitimately equal a dependency name but never refer to that object.
+	jobSpecJSON, err := marshalJobSpecForDependencyClassification(spec)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to marshal job spec: %w", err)
+		return preparedJob{}, fmt.Errorf("failed to marshal job spec: %w", err)
 	}
 
-	_, jobDeps := classifyDependencies(workflow.Spec.Dependencies, jobSpecJSON)
+	workflowDeps, jobDeps := classifyDependencies(workflow.Spec.Dependencies, jobSpecJSON)
 	if len(jobDeps) == 0 {
-		return spec, nil, nil
+		return unchanged, nil
 	}
 
 	// Order job deps for creation
@@ -444,7 +591,7 @@ func (r *WorkflowReconciler) ensureJobDependencies(
 	replacements := buildReplacementMap(jobDeps, suffix)
 
 	if len(replacements) == 0 {
-		return spec, nil, nil
+		return unchanged, nil
 	}
 
 	// Idempotency: check if refs for this group+iteration already exist
@@ -456,32 +603,83 @@ func (r *WorkflowReconciler) ensureJobDependencies(
 		}
 	}
 
+	// Renamed copies of the job-scoped dependencies, built whether or not this
+	// reconcile creates them, so the idempotent path still reports the set the
+	// patched spec references.
+	// Rename each dependency, then put back the scheduling fields the
+	// substitution may have rewritten because a queue value happened to equal
+	// a dependency name. Preservation carries through whatever the operator
+	// configured, including a conflicting override, which validation then
+	// rejects; re-applying the configured intent here instead would overwrite
+	// that override and run the Job in a queue nobody chose.
+	suffixed := make([]nvcrev1alpha1.DependencySpec, len(jobDeps))
+	for i, dep := range jobDeps {
+		renamed, err := platform.PreserveSchedulingFields(
+			dep.Raw, []byte(suffixRaw(dep.Raw, replacements)), workflow.Spec.GangScheduler)
+		if err != nil {
+			return preparedJob{}, fmt.Errorf("failed to rename job dependency: %w", err)
+		}
+		suffixed[i] = nvcrev1alpha1.DependencySpec{Raw: renamed}
+	}
+
+	effective := make([]nvcrev1alpha1.DependencySpec, 0, len(workflow.Spec.Dependencies))
+	effective = append(effective, workflowDeps...)
+	effective = append(effective, suffixed...)
+
+	// The job spec is patched whether or not this reconcile creates anything,
+	// so the idempotent path still describes the copies that already exist.
+	patchedSpec, err := suffixJobSpec(spec, replacements)
+	if err != nil {
+		return preparedJob{}, err
+	}
+
+	return preparedJob{
+		Spec:                  patchedSpec,
+		EffectiveDependencies: effective,
+		alreadyCreated:        alreadyCreated,
+		originals:             jobDeps,
+		renamed:               suffixed,
+	}, nil
+}
+
+// createJobDependencies creates the copies prepareJobDependencies computed.
+// Callers must have validated the prepared manifests first: everything here
+// writes to the cluster.
+//
+// Refs are returned even on failure so the caller can record them. On a
+// terminal error, such as a name collision on a later dependency, there is no
+// retry that would re-adopt the copies already created, and untracked copies
+// would leak permanently.
+func (r *WorkflowReconciler) createJobDependencies(
+	ctx context.Context,
+	workflow *nvcrev1alpha1.Workflow,
+	group *nvcrev1alpha1.GroupStatus,
+	orch *nvcrev1alpha1.OrchestrationStatus,
+	prepared preparedJob,
+) ([]nvcrev1alpha1.DependencyResourceRef, error) {
+	if prepared.alreadyCreated {
+		return nil, nil
+	}
+
 	var refs []nvcrev1alpha1.DependencyResourceRef
 	hasNewComputeDomain := false
-	if !alreadyCreated {
-		// Create suffixed dependency objects
-		for _, dep := range jobDeps {
-			obj, err := suffixDependencyObject(dep.Raw, replacements)
-			if err != nil {
-				return nil, nil, err
-			}
-
-			ref, created, err := r.createDependencyResource(ctx, nil, workflow, dep, obj)
-			if err != nil {
-				// Return the refs accumulated so far so the caller can record
-				// them: on a terminal error (e.g. a name collision on a later
-				// dependency) there is no retry to re-adopt the copies already
-				// created, and without tracking they would leak permanently.
-				return nil, refs, err
-			}
-			if created && extractKind(dep.Raw) == "ComputeDomain" {
-				hasNewComputeDomain = true
-			}
-			ref.Scope = scopeJob
-			ref.GroupName = group.Name
-			ref.Iteration = orch.CurrentIteration
-			refs = append(refs, *ref)
+	for i, dep := range prepared.originals {
+		obj := &unstructured.Unstructured{}
+		if err := json.Unmarshal(prepared.renamed[i].Raw, &obj.Object); err != nil {
+			return refs, fmt.Errorf("failed to unmarshal suffixed dependency: %w", err)
 		}
+
+		ref, created, err := r.createDependencyResource(ctx, nil, workflow, dep, obj)
+		if err != nil {
+			return refs, err
+		}
+		if created && extractKind(dep.Raw) == "ComputeDomain" {
+			hasNewComputeDomain = true
+		}
+		ref.Scope = scopeJob
+		ref.GroupName = group.Name
+		ref.Iteration = orch.CurrentIteration
+		refs = append(refs, *ref)
 	}
 
 	// If a ComputeDomain was just created, requeue to give the external ComputeDomain
@@ -490,16 +688,10 @@ func (r *WorkflowReconciler) ensureJobDependencies(
 	// does not retry FailedResourceClaimCreation — pods stay stuck permanently.
 	if hasNewComputeDomain {
 		logf.FromContext(ctx).Info("ComputeDomain just created, requeueing to wait for channel ResourceClaimTemplate")
-		return nil, refs, errDependencyNotReady
+		return refs, errDependencyNotReady
 	}
 
-	// Always patch the job spec (even if refs already existed)
-	patchedSpec, err := suffixJobSpec(spec, replacements)
-	if err != nil {
-		return nil, refs, err
-	}
-
-	return patchedSpec, refs, nil
+	return refs, nil
 }
 
 // cleanupScopedDependencies deletes dependency resources matching the given scope, group, and iteration,

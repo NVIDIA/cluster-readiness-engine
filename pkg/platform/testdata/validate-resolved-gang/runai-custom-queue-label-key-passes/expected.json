@@ -1,0 +1,13 @@
+{
+  "workloadLabels": {
+    "runai/queue": "team-a"
+  },
+  "runtimeQueueLabels": {
+    "nccl-runtime/launcher/job/runai/queue": "team-a",
+    "nccl-runtime/launcher/pod/runai/queue": "team-a",
+    "nccl-runtime/launcher/schedulerName": "runai-scheduler",
+    "nccl-runtime/node/job/runai/queue": "team-a",
+    "nccl-runtime/node/pod/runai/queue": "team-a",
+    "nccl-runtime/node/schedulerName": "runai-scheduler"
+  }
+}

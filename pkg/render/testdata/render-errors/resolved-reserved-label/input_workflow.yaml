@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The base Workflow is valid and configures no gang scheduler. Its AWS
+# jobTemplate override introduces a controller-owned workload label, which
+# ordinary offline render must reject after resolving the override.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: resolved-reserved-label
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            numNodes: 1
+  overrides:
+    - when:
+        platform:
+          equals: aws
+      jobTemplate:
+        spec:
+          workloadMetadata:
+            labels:
+              nvcre.nvidia.com/job: sneaky
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"

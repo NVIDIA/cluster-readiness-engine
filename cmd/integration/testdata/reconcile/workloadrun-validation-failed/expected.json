@@ -175,5 +175,17 @@
         "name": "failed-nodes"
       }
     }
-  }
+  },
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "WorkflowValidationFailed",
+      "message": "1 groups failed across 1 iterations",
+      "involvedObject": {
+        "kind": "WorkloadRun",
+        "name": "test-wr-validation-fail"
+      },
+      "count": 1
+    }
+  ]
 }

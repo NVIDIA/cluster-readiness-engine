@@ -1,0 +1,13 @@
+{
+  "renamedOnly": {
+    "shared-runtime-group-0-job/node/job/kai.scheduler/queue": "queue-a",
+    "shared-runtime-group-0-job/node/pod/kai.scheduler/queue": "queue-a",
+    "shared-runtime-group-0-job/node/schedulerName": "shared-runtime-group-0-job"
+  },
+  "preserved": {
+    "shared-runtime-group-0-job/node/job/kai.scheduler/queue": "queue-a",
+    "shared-runtime-group-0-job/node/pod/kai.scheduler/queue": "queue-a",
+    "shared-runtime-group-0-job/node/schedulerName": "shared-runtime"
+  },
+  "sourceIntact": true
+}

@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Step 1 of the pinned composition order: the labels the resolved catalog and
+# override JobSpec already carries are the base map, not a starting point that
+# gets discarded.
+#
+# The two catalog labels are chosen to separate the two halves of that claim.
+# `catalog` appears at no other level, so it can only survive by the base map
+# being read at all. The Kueue key appears at both levels with different
+# values, so it shows the owner's resolved labels replacing the base per key —
+# which is the precedence the pinned order exists to make unambiguous, and
+# which no other case at this level exercises.
+gangScheduler:
+  schedulerName: kai-scheduler
+  queue: burn-in-queue
+workloadLabels:
+  kueue.x-k8s.io/queue-name: gpu-team-a
+  environment: burn-in
+spec:
+  jobTemplate:
+    spec:
+      workloadMetadata:
+        labels:
+          catalog: nccl-all-reduce
+          kueue.x-k8s.io/queue-name: catalog-default
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: nccl-runtime
+          trainer:
+            image: nvcr.io/nvidia/pytorch:25.01
+  dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: nccl-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+              - name: node
+                template:
+                  spec:
+                    template:
+                      spec:
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01

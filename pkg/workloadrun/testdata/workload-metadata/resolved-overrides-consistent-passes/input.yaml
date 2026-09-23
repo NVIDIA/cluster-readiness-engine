@@ -1,0 +1,22 @@
+# The baseline for the post-override check: with the platform overrides resolved,
+# the effective runtime still carries the configured queue and scheduler, so the
+# check passes and the intent stays persisted.
+run:
+  metadata:
+    name: wr-ok
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    gangScheduler:
+      schedulerName: kai-scheduler
+      queue: queue-a
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch
+platform: aws
+gpuArchitecture: NVIDIA-GB200

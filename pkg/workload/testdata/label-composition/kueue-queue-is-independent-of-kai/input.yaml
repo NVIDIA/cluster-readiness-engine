@@ -1,0 +1,6 @@
+# kueue.x-k8s.io/queue-name is a different key, so a per-category Kueue queue
+# coexists with the global KAI queue the gang scheduler derives.
+overlay:
+  kueue.x-k8s.io/queue-name: nccl-queue
+insertKey: kai.scheduler/queue
+insertValue: burn-in-queue

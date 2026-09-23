@@ -55,13 +55,6 @@ spec:
       - python
       - train.py
     numNodes: 1
-status:
-  conditions:
-    - type: Failed
-      status: "True"
-      reason: WorkerFailed
-      message: "Worker crashed"
-      lastTransitionTime: "2026-01-22T10:00:00Z"
 ---
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: GoodputMeasurement

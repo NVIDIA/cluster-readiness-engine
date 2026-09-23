@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Workflow is what carries the resolved composition: the Job template's
+# workloadMetadata and the persisted gangScheduler intent with both defaults
+# filled in. Collecting it alongside the Certification makes the controller's
+# output directly comparable with the nvcrectl fixtures in pkg/certification.
+waitFor:
+  kind: Workflow
+  name: runai-labels-communicatio-4817e
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: runai-labels
+    namespace: default
+  - kind: Workflow
+    name: runai-labels-communicatio-4817e
+    namespace: default

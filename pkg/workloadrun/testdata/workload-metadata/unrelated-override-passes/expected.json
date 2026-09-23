@@ -1,0 +1,11 @@
+{
+  "labels": {
+    "environment": "burn-in",
+    "kai.scheduler/queue": "queue-a"
+  },
+  "gangScheduler": {
+    "schedulerName": "kai-scheduler",
+    "queue": "queue-a",
+    "queueLabelKey": "kai.scheduler/queue"
+  }
+}

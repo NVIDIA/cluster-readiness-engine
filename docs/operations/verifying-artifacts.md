@@ -20,12 +20,12 @@ on the other end is the one we published. The script runs before anything has ch
 Set `TAG` to the release you actually have. These commands verify the artifact `TAG`
 names and nothing else — pointed at a different release they will happily report success
 while telling you nothing about the file on your disk. `releases/latest` resolves to the
-newest *stable* release, so it is not `v0.2.0-rc.1`.
+newest *stable* release, never a pre-release.
 
 To know what you are about to run, check it first:
 
 ```bash
-TAG=v0.2.0-rc.1
+TAG=v0.4.0
 BASE="https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${TAG}"
 ID="https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}"
 ISSUER='https://token.actions.githubusercontent.com'
@@ -52,10 +52,11 @@ in which something with write access could swap it — small, and it requires a 
 that is already worse than this, but it is a window and not a proof.
 
 The installer also verifies the binary *it* downloads, refusing to install one whose
-bundle it cannot check, with `--skip-verify` as the only override. That landed after
-`v0.2.0-rc.1` was cut, so the installer published with the release pinned above does not
-yet do it — it checks only `checksums.txt`. Verify `installer` yourself, as above, until
-a release carries the newer one.
+bundle it cannot check, with `--skip-verify` as the only override. Releases up to and
+including `v0.2.0-rc.1` ship an older installer that checks only `checksums.txt` (before
+`v0.1.0-rc.9`, nothing at all). `v0.2.0-rc.1` is the only one of them with bundles, so it
+is the only one whose installer you can verify as above; releases before it carry no
+bundles and cannot be verified this way.
 
 ## Prerequisites
 
@@ -89,6 +90,33 @@ built on it reports success for an artifact that was never released. The exact f
 the workflow **and** the tag, so a signature from `v0.1.0` cannot pass as `v0.2.0`, and a
 branch build cannot pass as either.
 
+## Build Level, and why the pin matters
+
+Provenance is **SLSA Build L2 per artifact** today — the `manager` image index, the Helm
+chart, each `nvcrectl` binary, `installer`, `THIRD_PARTY_NOTICES.md`, and the standalone
+`nvcrectl-*.cyclonedx.json` SBOM release assets alike. The project does not publish a
+single project-wide level, and it does not claim L3: builder isolation is still missing
+(the build runs in the caller — for images, inside `build-image.yml` invoked by the
+top-level orchestrator; `attest.yml` attests a digest it is handed). What L2 here does
+claim is that provenance **origin** fields are unforgeable by that build process — Fulcio
+names `attest.yml`, origin fields come from trusted `GITHUB_*` context inside that
+workflow, and a guard refuses to list `attest.yml` as the builder.
+
+The same-repo reusable-workflow form (`uses: ./.github/workflows/attest.yml`) isolates
+attestation from the caller's build steps, not from write access to the repository. For
+`main` (dev-image) pushes the practical control is branch protection over `attest.yml`;
+for the release identity pinned above, it is tag protection / repository rulesets over
+`v*` tags.
+
+**Pinning the identity above is the check that makes the level observable.** Drop the
+`--certificate-identity` flag (or replace it with a loose regexp) and verification can
+still go green while proving less than Build L2: you no longer know the attestation was
+minted inside the reusable workflow. The published commands keep the exact pin. The
+gate-test enumeration that backs this claim lives in
+[SECURITY.md](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/SECURITY.md#supply-chain) (kept in one place so renaming a test
+cannot leave two pages asserting enforcement by a name that no longer exists); this page
+links rather than duplicates it.
+
 ## Verifying the container image
 
 The image is a multi-platform index. Two different things are attested, to two different
@@ -106,7 +134,7 @@ not describe, so each platform gets its own.
 Signature and provenance, against the tag:
 
 ```bash
-TAG=v0.2.0-rc.1
+TAG=v0.4.0
 IMAGE=ghcr.io/nvidia/cluster-readiness-engine/manager
 ID="https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}"
 ISSUER='https://token.actions.githubusercontent.com'
@@ -454,7 +482,7 @@ This environment may not have Docker or Kind. On a machine that does, the intend
 is server-side dry-run so the admission webhook actually runs:
 
 ```shell
-TAG=v0.2.0
+TAG=v0.4.0
 IMAGE=ghcr.io/nvidia/cluster-readiness-engine/manager
 DIGEST="$(crane digest "${IMAGE}:${TAG}")"
 ID="https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}"

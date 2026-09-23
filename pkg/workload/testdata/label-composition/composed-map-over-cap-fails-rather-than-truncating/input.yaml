@@ -1,0 +1,7 @@
+# The cap is checked after the derived queue label is inserted, because the
+# composed map is the one that reaches the API and no single admission rule
+# ever saw it whole. 32 configured labels plus the queue label is 33.
+bounds:
+  labelCount: 32
+insertKey: kai.scheduler/queue
+insertValue: burn-in-queue

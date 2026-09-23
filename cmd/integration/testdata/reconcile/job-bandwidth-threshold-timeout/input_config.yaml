@@ -9,7 +9,15 @@ waitFor:
   name: test-bw-timeout
   namespace: default
   condition: ValidationFailed
+  reason: MeasurementTimeout
 collect:
   - kind: Job
     name: test-bw-timeout
     namespace: default
+events:
+  - involvedKind: Job
+    involvedName: test-bw-timeout
+    namespace: default
+    expect:
+      - {type: Normal, reason: WorkloadCompleted}
+      - {type: Warning, reason: MeasurementTimeout}

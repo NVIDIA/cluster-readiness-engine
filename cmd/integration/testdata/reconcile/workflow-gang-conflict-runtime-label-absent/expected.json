@@ -1,0 +1,137 @@
+{
+  "Workflow/absent-label-wf": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "absent-label-wf",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "absent-label-wf-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          },
+          "workloadMetadata": {
+            "labels": {
+              "kai.scheduler/queue": "queue-a"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      },
+      "dependencies": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "metadata": {
+            "name": "absent-label-wf-runtime",
+            "namespace": "default"
+          },
+          "spec": {
+            "template": {
+              "spec": {
+                "replicatedJobs": [
+                  {
+                    "name": "node",
+                    "template": {
+                      "spec": {
+                        "template": {
+                          "metadata": {
+                            "labels": {
+                              "kai.scheduler/queue": "queue-a"
+                            }
+                          },
+                          "spec": {
+                            "containers": [
+                              {
+                                "image": "test-image:latest",
+                                "name": "node"
+                              }
+                            ],
+                            "schedulerName": "kai-scheduler"
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "gangScheduler": {
+        "schedulerName": "kai-scheduler",
+        "queue": "queue-a",
+        "queueLabelKey": "kai.scheduler/queue"
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "GangSchedulingConflict",
+          "message": "gangScheduler is configured with queue \"queue-a\" but TrainingRuntime \"absent-label-wf-runtime\" replicatedJob \"node\" is missing label \"kai.scheduler/queue\" on template.metadata.labels"
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 0,
+        "nodesPerJob": 0,
+        "totalGroups": 0,
+        "detectedPlatform": "aws",
+        "detectedGPUArchitecture": "h100"
+      }
+    }
+  },
+  "expectAbsent": {
+    "Job/absent-label-wf-job": "notCreated",
+    "TrainingRuntime/absent-label-wf-runtime-52853-job": "notCreated"
+  }
+}

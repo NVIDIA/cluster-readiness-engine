@@ -1,0 +1,8 @@
+# An empty label value is valid Kubernetes and a real label. There is no
+# deletion syntax, so this adds a key rather than removing one.
+workload:
+  trainJob:
+    runtimeRef:
+      name: nccl-runtime
+labels:
+  marker: ""

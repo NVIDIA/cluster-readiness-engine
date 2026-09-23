@@ -1,0 +1,11 @@
+{
+  "validateError": "gangScheduler is configured but the workload references runtime \"somebody-elses-runtime\", which is not among the Workflow's TrainingRuntime.trainer.kubeflow.org dependencies",
+  "labels": {
+    "kai.scheduler/queue": "queue-a"
+  },
+  "gangScheduler": {
+    "schedulerName": "kai-scheduler",
+    "queue": "queue-a",
+    "queueLabelKey": "kai.scheduler/queue"
+  }
+}

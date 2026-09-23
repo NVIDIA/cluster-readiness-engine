@@ -1,6 +1,6 @@
 # ADR-079: Declarative Labels for Generated Workload Objects
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 
@@ -449,8 +449,10 @@ stage.
   against the persisted queue A intent. A JSON patch removing the TrainJob
   queue label restores A; removing a runtime queue label fails. Assert that a
   missing runtime label remains absent after failed validation. Include runtime
-  patches changing launcher/worker labels or scheduler names,
-  and replacement runtime references that cannot be validated. Matching A and
+  patches changing launcher/worker labels, dependency payloads changing or
+  omitting the pod scheduler name (Kubeflow's `PodSpecPatch` cannot reach
+  `schedulerName`, so runtime patches cannot), and replacement runtime
+  references that cannot be validated. Matching A and
   unrelated overrides succeed. Check controller, resolved offline render, and
   `--dry-run` parity, and assert failure occurs before any dependency/Job create
   or dry-run API request on initial resolution, and before new Job creation on

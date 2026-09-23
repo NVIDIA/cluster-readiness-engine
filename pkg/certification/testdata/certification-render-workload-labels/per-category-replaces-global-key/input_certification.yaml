@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Per-category values win per key, and keys the category does not mention
+# survive. The second category leaves the global map alone, which pins that
+# the first category's resolution did not write through to the shared source.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: labels-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 2
+  workloadMetadata:
+    labels:
+      environment: burn-in
+      kueue.x-k8s.io/queue-name: default-queue
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        workloadMetadata:
+          labels:
+            kueue.x-k8s.io/queue-name: nccl-queue
+    - domain: communication
+      variant: nccl-all-gather

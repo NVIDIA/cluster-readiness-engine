@@ -370,6 +370,25 @@ type CategoryOptions struct {
 	// +kubebuilder:validation:MaxLength=2048
 	// +kubebuilder:validation:Pattern=`^(https|ssh)://[A-Za-z0-9._~:/@%+-]+$`
 	SourceRepo string `json:"sourceRepo,omitempty"`
+
+	// workloadMetadata sets labels on the workload object each category's Job
+	// creates (today a Kubeflow TrainJob). Use it to place the workload in a
+	// Kueue local queue with kueue.x-k8s.io/queue-name, or for any other
+	// integration keyed on the submitted object's labels.
+	//
+	// Because CertificationSpec inlines CategoryOptions, this one field is
+	// read both globally at spec.workloadMetadata and per category at
+	// spec.categories[].options.workloadMetadata. Unlike the map and slice
+	// options next to it, the two levels merge per key rather than replacing
+	// wholesale: a category can change or add a key but cannot remove a
+	// global one. Set keys per category instead of globally when categories
+	// need genuinely different maps.
+	//
+	// These labels are not pod labels. When spec.gangScheduler is set, its
+	// resolved queue label is added to every category; a category that
+	// supplies that same key with a different value fails.
+	// +optional
+	WorkloadMetadata *WorkloadMetadata `json:"workloadMetadata,omitempty"`
 }
 
 type CertificateCategory struct {

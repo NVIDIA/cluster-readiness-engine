@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Equality compares the whole metadata object, so emptying the nested labels map
+# while keeping workloadMetadata present is rejected too. Neither the parent
+# presence rule nor a shallow field comparison would catch this on its own.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: imm-job-nested
+  namespace: default
+spec:
+  workloadMetadata:
+    labels:
+      kai.scheduler/queue: queue-a
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime

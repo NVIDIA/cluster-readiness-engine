@@ -1,0 +1,6 @@
+# A Job created before this field existed, or one that never sets it: the
+# built object must come back exactly as TrainJobAdapter.Build left it.
+workload:
+  trainJob:
+    runtimeRef:
+      name: nccl-runtime

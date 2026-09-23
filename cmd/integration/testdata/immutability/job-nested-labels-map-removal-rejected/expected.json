@@ -1,0 +1,15 @@
+{
+  "create": {
+    "accepted": true
+  },
+  "update": {
+    "accepted": false,
+    "causes": [
+      {
+        "type": "FieldValueInvalid",
+        "field": "spec.workloadMetadata",
+        "message": "Invalid value: workloadMetadata is immutable"
+      }
+    ]
+  }
+}
