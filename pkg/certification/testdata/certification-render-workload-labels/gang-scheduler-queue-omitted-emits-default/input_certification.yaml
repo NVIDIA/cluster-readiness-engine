@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The same for a configuration that names no queue: default-queue reaches the
+# workload object, and the persisted intent records it explicitly so later
+# post-override checks compare against a resolved value.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: labels-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 2
+  gangScheduler:
+    schedulerName: kai-scheduler
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

@@ -1,0 +1,22 @@
+# Both at once. The two keys are independent, so a Kueue queue and a KAI queue
+# coexist on the same workload object.
+run:
+  metadata:
+    name: wr-both
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    gangScheduler:
+      schedulerName: kai-scheduler
+      queue: team-a
+    workloadMetadata:
+      labels:
+        kueue.x-k8s.io/queue-name: gpu-team-a
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch

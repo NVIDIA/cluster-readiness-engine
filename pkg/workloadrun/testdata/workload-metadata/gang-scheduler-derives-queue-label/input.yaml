@@ -1,0 +1,20 @@
+# The resolved KAI queue reaches the workload object in addition to the runtime
+# templates BuildTorchRuntime already stamped, and the intent is persisted with
+# its defaults filled in.
+run:
+  metadata:
+    name: wr-kai
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    gangScheduler:
+      schedulerName: kai-scheduler
+      queue: team-a
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch

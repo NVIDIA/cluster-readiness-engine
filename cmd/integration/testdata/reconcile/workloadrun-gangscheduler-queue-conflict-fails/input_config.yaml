@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Failed condition must name the conflict, and the Workflow must not exist:
+# the conflict is detected while composing the Workflow spec, before anything
+# is submitted.
+waitFor:
+  kind: WorkloadRun
+  name: wr-queue-conflict
+  namespace: default
+  condition: Failed
+  reason: BuildFailed
+collect:
+  - kind: WorkloadRun
+    name: wr-queue-conflict
+    namespace: default
+expectAbsent:
+  - kind: Workflow
+    name: wr-queue-conflict
+    namespace: default

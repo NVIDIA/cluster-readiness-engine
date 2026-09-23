@@ -1,0 +1,46 @@
+# The resolved-render half of the both-level case: an override moves the workload
+# object's label and the runtime's label to queue-b together. Agreeing with each
+# other is not the contract — both have to agree with the persisted intent — so
+# this fails rather than passing as self-consistent.
+run:
+  metadata:
+    name: wr-both
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    gangScheduler:
+      schedulerName: kai-scheduler
+      queue: queue-a
+    overrides:
+      - when:
+          platform:
+              equals: aws
+        jobTemplate:
+          spec:
+            workloadMetadata:
+              labels:
+                kai.scheduler/queue: queue-b
+        dependencies:
+          - apiVersion: trainer.kubeflow.org/v1alpha1
+            kind: TrainingRuntime
+            metadata:
+              name: wr-both-runtime
+            spec:
+              template:
+                spec:
+                  replicatedJobs:
+                    - name: node
+                      template:
+                        metadata:
+                          labels:
+                            kai.scheduler/queue: queue-b
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch
+platform: aws
+gpuArchitecture: NVIDIA-GB200

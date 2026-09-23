@@ -1,0 +1,36 @@
+# The case that separates preservation from repair. The operator overrode the
+# runtime queue to queue-b while the intent says queue-a, and the override does
+# not collide with any dependency name, so renaming left it alone. Preservation
+# must carry queue-b through untouched so validation can reject it. Re-applying
+# the intent here would rewrite it to queue-a and run the Job in a queue the
+# operator did not choose.
+gangScheduler:
+  schedulerName: kai-scheduler
+  queue: queue-a
+  queueLabelKey: kai.scheduler/queue
+replacements:
+  shared-runtime: shared-runtime-group-0-job
+dependency:
+  apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: shared-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+          - name: node
+            template:
+              metadata:
+                labels:
+                  kai.scheduler/queue: queue-b
+              spec:
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: queue-b
+                  spec:
+                    schedulerName: kai-scheduler
+                    containers:
+                      - name: node
+                        image: test:latest

@@ -1,0 +1,5 @@
+# The user naming the same queue the gang scheduler resolved is accepted.
+overlay:
+  kai.scheduler/queue: burn-in-queue
+insertKey: kai.scheduler/queue
+insertValue: burn-in-queue

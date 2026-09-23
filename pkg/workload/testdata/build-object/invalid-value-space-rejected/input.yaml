@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The value half of the syntax contract, alongside the two invalid-key cases.
+# The length bounds in label-composition cover how long a value may be; nothing
+# else covers what a value may contain, and a space is the likeliest way to get
+# it wrong by hand.
+workload:
+  trainJob:
+    runtimeRef:
+      name: nccl-runtime
+labels:
+  environment: burn in

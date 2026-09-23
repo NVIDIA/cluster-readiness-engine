@@ -1,0 +1,5 @@
+{
+  "error": "spec.workloadMetadata.labels[\"kai.scheduler/queue\"]: conflicts with the label TrainJob already set by the workload builder: requested \"user-queue\", built \"adapter-queue\"",
+  "labels": null,
+  "sourcesUnchanged": true
+}

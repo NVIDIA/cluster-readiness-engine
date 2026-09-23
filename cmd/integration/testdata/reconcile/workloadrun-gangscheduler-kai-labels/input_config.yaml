@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The TrainJob is the object these labels exist for, and the TrainingRuntime
+# is where ADR-076 puts the queue, so collecting both is what makes this a
+# parity fixture against the nvcrectl cases in pkg/workloadrun. The runtime is
+# job-scoped, so the object that actually exists is the suffixed per-job copy.
+waitFor:
+  kind: Job
+  name: wr-kai-labels-job
+  namespace: default
+  condition: InProgress
+collect:
+  - kind: Workflow
+    name: wr-kai-labels
+    namespace: default
+  - kind: TrainJob
+    name: wr-kai-labels-job-workload
+    namespace: default
+  - kind: TrainingRuntime
+    name: wr-kai-labels-runtime-23213-job
+    namespace: default

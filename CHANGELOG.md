@@ -13,6 +13,40 @@ the full pull request list for a release is in its release notes. Pre-release ta
 (`-rc.N`) are not listed here; their changes appear under the stable release that
 followed them.
 
+## [0.4.0] - 2026-09-21
+
+### Added
+
+- Admission-policy samples for Kyverno and Sigstore policy-controller that require the
+  release signature and SLSA provenance on the controller image (#334)
+- Runnable `Certification` and `WorkloadRun` examples under `examples/` (#355)
+
+### Changed
+
+- `nvcrectl setup init` and `setup reset` reject unknown `--skip-phases` values (#346)
+- `nvcrectl setup init` stops before mutating the cluster when JobSet ownership is
+  ambiguous and prints the manual Kubeflow Trainer install path (#346)
+
+### Fixed
+
+- `nvcrectl setup init` installs Kubeflow Trainer without its bundled JobSet
+  controller when a verified external JobSet controller is present, and reset and
+  recovery retain the shared JobSet CRD (#346)
+- `--skip-phases=helm` on `setup init` and `setup reset` skips the Helm phase instead
+  of being silently ignored; reset previously removed the NVCRE release and CRDs
+  anyway (#346)
+- A Kubeflow Trainer uninstall failure during `setup reset` stops before CRD cleanup
+  and returns non-zero (#346)
+- CRD descriptions for `spec.target.nodeNames` no longer claim `nodeSelector` is
+  ignored; both filters have always applied (#356)
+
+### Security
+
+- A `workflow_dispatch` at any tag cut from `v0.4.0` onward can no longer mint the
+  release signing identity: the attest self-test holds its ref to `main`, and
+  `attest.yml` refuses `allow_untagged` on a release tag. `v0.3.0` and the `v0.2.0`
+  series still ship the unguarded copy (#341)
+
 ## [0.3.0] - 2026-09-14
 
 ### Added
@@ -93,6 +127,7 @@ failed node with a reason.
 - Certification and WorkloadRun specs are immutable after creation (#240)
 - `spec.env` is passed to MPI containers instead of silently dropped (#230)
 
+[0.4.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.4.0
 [0.3.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.3.0
 [0.2.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.2.0
 [0.1.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.1.0

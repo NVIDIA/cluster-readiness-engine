@@ -1,0 +1,16 @@
+# A WorkloadRun that sets neither workloadMetadata nor gangScheduler renders with
+# no workload metadata and no persisted intent, exactly as it did before ADR-079.
+run:
+  metadata:
+    name: wr-plain
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch

@@ -75,17 +75,26 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Guard: exec is the default framework; spec.framework.exec must be non-nil when
 	// no other framework is configured, or buildJobTemplate will nil-dereference.
 	if run.Spec.Framework.Torch == nil && run.Spec.Framework.MPI == nil && run.Spec.Framework.Exec == nil {
-		// One event per failed build attempt. Once the status update lands the
-		// run is terminal Failed and the early return above stops re-entry; the
-		// spec is immutable, so this cannot alternate.
-		r.warnf(&run, ReasonBuildFailed,
-			"workloadrun %s: exec framework selected but spec.framework.exec is nil", run.Name)
-		r.setWorkloadRunCondition(&run, nvcrev1alpha1.WorkloadRunFailed, ReasonBuildFailed,
-			fmt.Sprintf("workloadrun %s: exec framework selected but spec.framework.exec is nil", run.Name))
-		return ctrl.Result{}, r.Status().Update(ctx, &run)
+		message := fmt.Sprintf("workloadrun %s: exec framework selected but spec.framework.exec is nil", run.Name)
+		if err := r.setWorkloadRunConditionAndUpdate(ctx, &run,
+			nvcrev1alpha1.WorkloadRunFailed, ReasonBuildFailed, message); err != nil {
+			r.warnf(&run, ReasonBuildFailedStatusUpdateFailed,
+				"WorkloadRun build failed: %s; recording the WorkloadRun Failed condition also failed: %v",
+				message, err)
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
 	}
 
-	workflowSpec := r.buildWorkflowSpec(ctx, &run)
+	workflowSpec, buildErr := r.buildWorkflowSpec(ctx, &run)
+	if buildErr != nil {
+		// The spec is immutable, so this cannot succeed on a later reconcile;
+		// fail the WorkloadRun rather than retrying forever.
+		r.warnf(&run, ReasonBuildFailed, "workloadrun %s: %v", run.Name, buildErr)
+		r.setWorkloadRunCondition(&run, nvcrev1alpha1.WorkloadRunFailed, ReasonBuildFailed,
+			fmt.Sprintf("workloadrun %s: %v", run.Name, buildErr))
+		return ctrl.Result{}, r.Status().Update(ctx, &run)
+	}
 
 	workflow := &nvcrev1alpha1.Workflow{
 		Name:      run.Name,
@@ -118,9 +127,9 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		Name:      workflow.Name,
 		Namespace: workflow.Namespace,
 	}
-	r.setWorkloadRunCondition(&run, nvcrev1alpha1.WorkloadRunInProgress, ReasonWorkflowCreated,
-		fmt.Sprintf("Workflow %s created", workflow.Name))
-	if err := r.Status().Update(ctx, &run); err != nil {
+	if err := r.setWorkloadRunConditionAndUpdate(ctx, &run,
+		nvcrev1alpha1.WorkloadRunInProgress, ReasonWorkflowCreated,
+		fmt.Sprintf("Workflow %s created", workflow.Name)); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -134,8 +143,8 @@ func (r *WorkloadRunReconciler) mirrorWorkflowStatus(ctx context.Context, run *n
 	key := client.ObjectKey{Name: run.Status.WorkflowRef.Name, Namespace: run.Namespace}
 	if err := r.Get(ctx, key, &workflow); err != nil {
 		if apierrors.IsNotFound(err) {
-			r.setWorkloadRunCondition(run, nvcrev1alpha1.WorkloadRunFailed, ReasonWorkflowDeleted, "Workflow was deleted")
-			return ctrl.Result{}, r.Status().Update(ctx, run)
+			return ctrl.Result{}, r.setWorkloadRunConditionAndUpdate(ctx, run,
+				nvcrev1alpha1.WorkloadRunFailed, ReasonWorkflowDeleted, "Workflow was deleted")
 		}
 		return ctrl.Result{}, err
 	}
@@ -166,8 +175,8 @@ func (r *WorkloadRunReconciler) mirrorWorkflowStatus(ctx context.Context, run *n
 
 	// Mirror terminal conditions.
 	if condIsTrue(workflow.Status.Conditions, nvcrev1alpha1.WorkflowSucceeded) {
-		r.setWorkloadRunCondition(run, nvcrev1alpha1.WorkloadRunSucceeded, ReasonWorkflowSucceeded, "Workflow completed successfully")
-		return ctrl.Result{}, r.Status().Update(ctx, run)
+		return ctrl.Result{}, r.setWorkloadRunConditionAndUpdate(ctx, run,
+			nvcrev1alpha1.WorkloadRunSucceeded, ReasonWorkflowSucceeded, "Workflow completed successfully")
 	}
 	if condIsTrue(workflow.Status.Conditions, nvcrev1alpha1.WorkflowFailed) {
 		msg := condMsg(workflow.Status.Conditions, nvcrev1alpha1.WorkflowFailed)
@@ -181,8 +190,8 @@ func (r *WorkloadRunReconciler) mirrorWorkflowStatus(ctx context.Context, run *n
 		if condReason(workflow.Status.Conditions, nvcrev1alpha1.WorkflowFailed) == ReasonJobValidationFailed {
 			reason = ReasonWorkflowValidationFailed
 		}
-		r.setWorkloadRunCondition(run, nvcrev1alpha1.WorkloadRunFailed, reason, msg)
-		return ctrl.Result{}, r.Status().Update(ctx, run)
+		return ctrl.Result{}, r.setWorkloadRunConditionAndUpdate(ctx, run,
+			nvcrev1alpha1.WorkloadRunFailed, reason, msg)
 	}
 
 	if err := r.Status().Update(ctx, run); err != nil {
@@ -215,6 +224,33 @@ func (r *WorkloadRunReconciler) setWorkloadRunCondition(run *nvcrev1alpha1.Workl
 	}
 }
 
+func (r *WorkloadRunReconciler) setWorkloadRunConditionAndUpdate(
+	ctx context.Context,
+	run *nvcrev1alpha1.WorkloadRun,
+	condType, reason, message string,
+) error {
+	executionTypes := []string{
+		nvcrev1alpha1.WorkloadRunInProgress,
+		nvcrev1alpha1.WorkloadRunSucceeded,
+		nvcrev1alpha1.WorkloadRunFailed,
+	}
+	before := append([]metav1.Condition(nil), run.Status.Conditions...)
+	r.setWorkloadRunCondition(run, condType, reason, message)
+	previousTrueType := trueConditionType(before, executionTypes)
+	newTrueType := trueConditionType(run.Status.Conditions, executionTypes)
+	if err := r.Status().Update(ctx, run); err != nil {
+		return err
+	}
+	if previousTrueType != newTrueType && newTrueType != "" {
+		condition := meta.FindStatusCondition(run.Status.Conditions, newTrueType)
+		if condition != nil {
+			r.eventf(run, transitionEventType(newTrueType, nvcrev1alpha1.WorkloadRunFailed),
+				condition.Reason, "%s", condition.Message)
+		}
+	}
+	return nil
+}
+
 // NodesPerJobForScale returns how many nodes a single Job should span.
 // intra-node means each node is tested on its own, so one node per Job however
 // many the run targets; the Workflow then makes one group per node. Anything
@@ -231,7 +267,11 @@ func NodesPerJobForScale(orch *nvcrev1alpha1.WorkloadOrchestration, numNodes int
 }
 
 // buildWorkflowSpec translates a WorkloadRunSpec into a WorkflowSpec.
-func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcrev1alpha1.WorkloadRun) *nvcrev1alpha1.WorkflowSpec {
+//
+// It returns an error when the workload-object labels cannot be composed, for
+// example when workloadMetadata names the gang scheduler's queue key with a
+// different queue than gangScheduler configures.
+func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcrev1alpha1.WorkloadRun) (*nvcrev1alpha1.WorkflowSpec, error) {
 	spec := &run.Spec
 
 	// Best-effort node discovery for GPU + platform defaults. The Workflow
@@ -417,7 +457,12 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 		}
 	}
 
-	return workflowSpec
+	if err := platform.ApplyWorkloadRunScheduling(
+		workflowSpec, spec.GangScheduler, spec.WorkloadMetadata); err != nil {
+		return nil, err
+	}
+
+	return workflowSpec, nil
 }
 
 // buildJobTemplate constructs the JobTemplateSpec for the workload.
@@ -646,14 +691,19 @@ func condReason(conditions []metav1.Condition, condType string) string {
 	return ""
 }
 
+// eventf emits an event if the Recorder is configured.
+func (r *WorkloadRunReconciler) eventf(obj kruntime.Object, eventType, reason, messageFmt string, args ...any) {
+	if r.Recorder != nil {
+		r.Recorder.Eventf(obj, nil, eventType, reason, reason, "%s", formatEventNote(messageFmt, args...))
+	}
+}
+
 // warnf emits a Warning event if the Recorder is configured.
 //
 // Safe to call when Recorder is nil (e.g. in unit tests, or any embedding that
 // constructs WorkloadRunReconciler directly).
 func (r *WorkloadRunReconciler) warnf(obj kruntime.Object, reason, messageFmt string, args ...any) {
-	if r.Recorder != nil {
-		r.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, reason, reason, messageFmt, args...)
-	}
+	r.eventf(obj, corev1.EventTypeWarning, reason, messageFmt, args...)
 }
 
 // normalf emits a Normal event if the Recorder is configured. Used for
@@ -662,9 +712,7 @@ func (r *WorkloadRunReconciler) warnf(obj kruntime.Object, reason, messageFmt st
 //
 // Safe to call when Recorder is nil, like warnf.
 func (r *WorkloadRunReconciler) normalf(obj kruntime.Object, reason, messageFmt string, args ...any) {
-	if r.Recorder != nil {
-		r.Recorder.Eventf(obj, nil, corev1.EventTypeNormal, reason, reason, messageFmt, args...)
-	}
+	r.eventf(obj, corev1.EventTypeNormal, reason, messageFmt, args...)
 }
 
 func (r *WorkloadRunReconciler) SetupWithManager(mgr ctrl.Manager) error {

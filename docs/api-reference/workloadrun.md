@@ -54,10 +54,83 @@ _Fields documented so far:_
 | `gangScheduler` | GangSchedulerSpec | Optional. Opts workload pods into a gang-aware scheduler such as KAI Scheduler. When set, the scheduler name is injected as `schedulerName` into every workload pod template (for MPI, both launcher and worker pods) and the queue is applied as a label (`gangScheduler.queueLabelKey`, `kai.scheduler/queue` when unset) on both the Job template metadata and the pod template metadata, so the scheduler holds all pods until the entire gang can be placed. On a Run:ai cluster set `schedulerName: runai-scheduler` and `queueLabelKey: runai/queue`, and make `queue` name an existing Run:ai queue |
 | `gangScheduler.schedulerName` | string | Required; minimum length 1. Name of the gang-aware scheduler to use (e.g., `kai-scheduler`, or `runai-scheduler` on a Run:ai cluster). Injected as `schedulerName` in each workload pod spec |
 | `gangScheduler.queue` | string | Optional. Scheduler queue to submit the workload to; defaults to `default-queue` when unset. On a Run:ai cluster it must name an existing Run:ai queue. When non-empty, must be a valid Kubernetes label value: at most 63 characters, beginning and ending with an alphanumeric character, and containing only alphanumerics, hyphens, underscores, or dots (pattern `^$\|^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$`) |
-| `gangScheduler.queueLabelKey` | string | Optional. Label key the queue value is written under; defaults to `kai.scheduler/queue` when unset. Set it to `runai/queue` on a Run:ai cluster, which reads that label and ignores `kai.scheduler/queue`. When non-empty, must be a valid Kubernetes label key (qualified name): an optional DNS-subdomain prefix of at most 253 characters followed by `/`, then a name of at most 63 characters; at most 317 characters in total |
+| `gangScheduler.queueLabelKey` | string | Optional. Label key the queue value is written under; defaults to `kai.scheduler/queue` when unset. Set it to `runai/queue` on a Run:ai cluster, which reads that label and ignores `kai.scheduler/queue`. When non-empty, must be a valid Kubernetes label key (qualified name): an optional DNS-subdomain prefix of at most 253 characters followed by `/`, then a name of at most 63 characters; at most 317 characters in total. `app.kubernetes.io/managed-by` and any key under `nvcre.nvidia.com/` are rejected because the resolved queue label is inserted into workload metadata |
+| `workloadMetadata` | WorkloadMetadata | Optional. Labels applied to the generated workload object (the `TrainJob`), copied into the generated Workflow's `spec.jobTemplate.spec.workloadMetadata`. Use it for Kueue (`kueue.x-k8s.io/queue-name`) or any other integration keyed on the submitted object's labels. See [Workload object labels](#workload-object-labels) |
+| `workloadMetadata.labels` | map[string]string | Optional. At most 32 entries after merging and after any `gangScheduler` queue label is inserted — exceeding the cap fails rather than dropping labels. When `gangScheduler` is set, the queue label consumes one entry, leaving room for at most 31 user-supplied labels. Keys must be valid Kubernetes label keys and values valid Kubernetes label values; `app.kubernetes.io/managed-by` and any key under `nvcre.nvidia.com/` are rejected |
 | `nicResourceName` | string | Optional. Kubernetes extended resource name of the RDMA NIC devices to request on workload containers for on-prem GB200/GB300 targets, for example `rdma/ib` or `nvidia.com/mlnxnics`. Must be a fully qualified extended resource name (domain, slash, and a name segment of at most 63 characters); the reserved `kubernetes.io` and `k8s.io` domains are rejected. When unset, the controller detects the name automatically: if exactly one candidate resource (`rdma/*` or `nvidia.com/mlnxnics`) is allocatable at the resolved `mlnxPerNode` count on every target node, it is requested; otherwise nothing is requested and a Normal `NICResourceDetection` event on the WorkloadRun explains what was found: no candidate on any node, candidates below the requested count (naming the count), or multiple qualifying candidates. Set the field to override detection or when detection is ambiguous; requesting a resource the nodes do not advertise at the requested count leaves pods permanently Pending. Offline `nvcrectl workloadrun render` (without `--dry-run`) has no cluster to inspect and requires the field. The per-container count always comes from `mlnxPerNode` (GB200/GB300 default to 8; sites running a shared-device plugin should set `mlnxPerNode: 1`, or detection will refuse a pooled resource advertised as 1) |
 
 `numNodes` (shown in the example above) is the number of nodes **per job group**, not a total: the orchestrator partitions all eligible nodes into groups of that size.
+
+## Workload object labels
+
+`spec.workloadMetadata.labels` sets labels on the workload object the generated Job creates — today a Kubeflow `TrainJob`. That object's own `metadata.labels` is where Kueue selects a local queue and where Kubeflow's KAI Scheduler guide documents the queue label, both read before any workload pod exists.
+
+```yaml
+spec:
+  workloadMetadata:
+    labels:
+      kueue.x-k8s.io/queue-name: gpu-team-a
+```
+
+Kueue is never inferred from `gangScheduler`, so an explicit label is the only route to its queue. These labels are not pod labels; see [Job workload object labels](job.md#workload-object-labels) for the full contract, reserved keys, limits, and immutability rules.
+
+### Interaction with `gangScheduler`
+
+When `gangScheduler` is set, its resolved queue is placed on the workload object too, under `gangScheduler.queueLabelKey` (`kai.scheduler/queue` when unset). This is **in addition to** the existing Job-template and pod-template placement in the generated `TrainingRuntime`, and it aligns the submitted object with Kubeflow's documented KAI placement.
+
+<Note>
+This is a behavior change for existing configurations. A WorkloadRun that sets `gangScheduler` and no `workloadMetadata` now emits the resolved queue label — the explicit `queue`, or `default-queue` when omitted — on the `TrainJob` as well as on the runtime templates.
+</Note>
+
+Setting that same key in `workloadMetadata.labels` is accepted when the value matches and rejected when it differs, naming the key, both values, and the field path. Because `kueue.x-k8s.io/queue-name` is a different key, a Kueue queue and a KAI or Run:ai queue coexist without interfering.
+
+### Persisted scheduling contract
+
+When `gangScheduler` is configured, the generated Workflow records the resolved intent — scheduler name, queue, and queue label key, with defaults already filled in — on `Workflow.spec.gangScheduler`. That field sits outside `jobTemplate`, `dependencies`, and `orchestration`, so no override can reach it, and it is immutable in both presence and value.
+
+After every override resolves, and before any dependency or Job is created, NVCRE checks the effective manifests against that intent:
+
+- The workload object's queue label is NVCRE's to write, so an override that **removed** it gets it restored, and an override that **changed** it fails.
+- Runtime queue labels and pod scheduler names are assertions over the `TrainingRuntime` dependency, which an operator may legitimately own. A missing or conflicting value **fails and is never silently repaired** — rewriting someone's runtime override would hide the disagreement rather than surface it. `TrainJob` `runtimePatches` are folded in when computing the effective values, for launcher and worker templates alike.
+- An override that repoints `runtimeRef` at a runtime NVCRE was not given also fails: it cannot vouch for a runtime it cannot see.
+
+To run against a different queue, create a new WorkloadRun with a different `gangScheduler`. Offline `nvcrectl workloadrun render` without `--platform` leaves overrides unresolved, so its output keeps `spec.gangScheduler` as a template and defers the check to the point where the overrides resolve.
+
+For example, with `gangScheduler.queue: team-a`, an override that only adds an unrelated label is accepted:
+
+```yaml
+spec:
+  overrides:
+    - when:
+        platform:
+          equals: aws
+      jobTemplate:
+        spec:
+          workloadMetadata:
+            labels:
+              cost-center: hpc
+```
+
+An override that moves the workload object to another queue is rejected, and `nvcrectl workloadrun render --platform aws` reports the conflict instead of writing a Workflow:
+
+```yaml
+spec:
+  overrides:
+    - when:
+        platform:
+          equals: aws
+      jobTemplate:
+        spec:
+          workloadMetadata:
+            labels:
+              kai.scheduler/queue: team-b
+```
+
+```text
+spec.jobTemplate.spec.workloadMetadata.labels["kai.scheduler/queue"]: conflicting label value "team-b", expected "team-a"
+```
+
+See [Workflow: accepted and conflicting overrides](workflow.md#accepted-and-conflicting-overrides) for the runtime-side cases.
 
 ## Status fields
 

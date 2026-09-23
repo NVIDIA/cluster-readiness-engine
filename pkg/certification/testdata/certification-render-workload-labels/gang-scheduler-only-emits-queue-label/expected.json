@@ -1,0 +1,13 @@
+[
+  {
+    "workflow": "labels-cert-communication-742e8",
+    "labels": {
+      "kai.scheduler/queue": "high-priority"
+    },
+    "gangScheduler": {
+      "schedulerName": "kai-scheduler",
+      "queue": "high-priority",
+      "queueLabelKey": "kai.scheduler/queue"
+    }
+  }
+]

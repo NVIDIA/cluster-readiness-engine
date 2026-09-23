@@ -1,0 +1,5 @@
+# The gang-scheduler invariant: a missing key is inserted.
+base:
+  environment: burn-in
+insertKey: kai.scheduler/queue
+insertValue: burn-in-queue

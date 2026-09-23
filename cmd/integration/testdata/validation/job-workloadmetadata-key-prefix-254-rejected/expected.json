@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.workloadMetadata.labels",
+      "message": "Invalid value: each label key prefix must be at most 253 characters"
+    }
+  ]
+}

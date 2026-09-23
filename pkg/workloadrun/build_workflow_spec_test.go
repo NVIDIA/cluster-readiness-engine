@@ -50,8 +50,11 @@ func TestBuildWorkflowSpec(t *testing.T) {
 			return err
 		}
 
-		got := BuildWorkflowSpec(&input.Run, input.GpusPerNode, input.MlnxPerNode,
+		got, err := BuildWorkflowSpec(&input.Run, input.GpusPerNode, input.MlnxPerNode,
 			input.EnableMNNVL, input.FrameworkType)
+		if err != nil {
+			return err
+		}
 
 		b, err := json.MarshalIndent(project(got), "", "  ")
 		if err != nil {

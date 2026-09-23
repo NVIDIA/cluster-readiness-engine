@@ -1,0 +1,33 @@
+# Both at once: the override is queue-b and also equals nothing being renamed,
+# while the runtime name is what gets suffixed. The override survives as the
+# operator wrote it, so the conflict is still visible to validation.
+gangScheduler:
+  schedulerName: kai-scheduler
+  queue: shared-runtime
+  queueLabelKey: kai.scheduler/queue
+replacements:
+  shared-runtime: shared-runtime-group-0-job
+dependency:
+  apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: shared-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+          - name: node
+            template:
+              metadata:
+                labels:
+                  kai.scheduler/queue: queue-b
+              spec:
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: queue-b
+                  spec:
+                    schedulerName: kai-scheduler
+                    containers:
+                      - name: node
+                        image: test:latest

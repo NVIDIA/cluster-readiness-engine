@@ -86,16 +86,20 @@ We credit reporters of confirmed vulnerabilities in the release notes of the fix
   caller ref. On `main`, every `workflow_dispatch` caller of that workflow carries a
   ref guard (or `release.yml`'s `GITHUB_REF` check) so a dispatch at a tag cannot reach
   the attestor through those callers. **Existing release tags cut before that guard
-  landed — notably `v0.2.0`, `v0.2.0-rc.1`, and `v0.2.0-rc.2` — still ship the older
-  `attest-selftest.yml`, which gates on repository alone and passes `allow_untagged:
-  true`.** A dispatch at one of those refs uses the workflow files *on that tag*, not
-  the fixed copies on `main`, and can still mint `attest.yml@refs/tags/<that-tag>`.
+  landed — notably `v0.2.0`, `v0.2.0-rc.1`, `v0.2.0-rc.2`, and `v0.3.0` — still
+  ship the older `attest-selftest.yml`, which gates on repository alone and passes
+  `allow_untagged: true`.** A dispatch at one of those refs uses the workflow files
+  *on that tag*, not the fixed copies on `main`, and can still mint
+  `attest.yml@refs/tags/<that-tag>`.
   Tag protection / the `v*` ruleset does not cover this path (no tag is created or
   moved). Merging the `main` fix alone does not close [#340](https://github.com/NVIDIA/cluster-readiness-engine/issues/340)
   for those refs; the residual control is the repository-level disable of *Attest
   Self-Test* documented in [RELEASE.md](RELEASE.md#existing-tag-attest-selftest-rollout)
   (re-enabling reopens the old-tag path).
 
+  **Build Level (per artifact).** Artifacts this repository publishes with Build L2 provenance today include the `manager` image (index provenance), the Helm chart, the `nvcrectl` binaries, `installer`, `THIRD_PARTY_NOTICES.md`, and the standalone `nvcrectl-*.cyclonedx.json` SBOM release assets. The claim is per-artifact, not project-wide: nothing here states a single level for "the release". Provenance origin fields are unforgeable by the build process because they are minted inside the reusable `attest.yml` workflow (Fulcio names that workflow; origin fields come from `GITHUB_*` context; a guard refuses to name `attest.yml` as the builder). What is absent is builder isolation — the build still runs in the caller (for images, inside `build-image.yml` invoked by the top-level orchestrator) — so we do not claim L3. A same-repo `uses: ./…` boundary additionally rests on branch protection over `.github/workflows/attest.yml` for `main` pushes, and on tag protection / repository rulesets over `v*` tags for the release identity everyone pins.
+
+  Pinning the workflow identity above is what makes that level checkable. Verification that omits `--certificate-identity` (or loosens it to a regexp) can still succeed while proving a weaker claim: it no longer distinguishes an attestation minted inside `attest.yml` from one produced elsewhere. `TestVerificationUsesExactIdentity` and `TestPublishedVerifyCommandsAreExact` in `test/releasepolicy` reject the `--certificate-identity-regexp` form (and bare `gh attestation verify` in release-path workflows); the published verification page's exact NVIDIA identity pin is gated by `TestVerificationPagePinsAnExactIdentity` in `test/docspolicy`. The reusable-workflow boundary itself is gated by `TestAttestIsSoleSigner`, `TestAttestIsInvokedAsReusableWorkflow`, `TestAttestPredicateUsesOnlyTrustedContext`, and `TestAttestBuilderIdGuardRejectsAttestorAsBuilder`. No level is claimed here without a test behind it.
 
   Retrieve the provenance with `cosign verify-attestation --type slsaprovenance1` against the index digest, and a platform's SBOM with `--type cyclonedx` against that platform's manifest digest (`crane digest --platform linux/amd64 "${IMAGE}:${TAG}"`).
 

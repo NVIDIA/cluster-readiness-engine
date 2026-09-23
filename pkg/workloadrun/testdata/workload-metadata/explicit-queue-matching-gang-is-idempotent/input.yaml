@@ -1,0 +1,22 @@
+# Naming the resolved key with the queue the gang scheduler already resolved is
+# accepted at construction rather than treated as a conflict.
+run:
+  metadata:
+    name: wr-same
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    gangScheduler:
+      schedulerName: kai-scheduler
+      queue: team-a
+    workloadMetadata:
+      labels:
+        kai.scheduler/queue: team-a
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch

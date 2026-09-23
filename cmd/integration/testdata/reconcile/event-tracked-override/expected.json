@@ -1,0 +1,106 @@
+{
+  "Workflow/event-tracked-override": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "event-tracked-override",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "echo",
+                  "test"
+                ],
+                "numNodes": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "event-case": "event-tracked-override"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      },
+      "overrides": [
+        {
+          "when": {
+            "platform": {
+              "equals": "aws"
+            }
+          },
+          "jobTemplatePatch": {
+            "invalid": "not an array"
+          }
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "OverrideError",
+          "message": "Failed to apply overrides: override[0]: failed to apply jobTemplatePatch: invalid JSON Patch: json: cannot unmarshal object into Go value of type jsonpatch.Patch"
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 0,
+        "nodesPerJob": 0,
+        "totalGroups": 0,
+        "detectedPlatform": "aws",
+        "detectedGPUArchitecture": "h100"
+      }
+    }
+  },
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "OverrideError",
+      "message": "Failed to apply overrides: override[0]: failed to apply jobTemplatePatch: invalid JSON Patch: json: cannot unmarshal object into Go value of type jsonpatch.Patch",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "event-tracked-override"
+      },
+      "count": 1
+    }
+  ]
+}

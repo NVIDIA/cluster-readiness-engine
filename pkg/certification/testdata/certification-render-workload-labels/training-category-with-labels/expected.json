@@ -1,0 +1,14 @@
+[
+  {
+    "workflow": "labels-cert-training-nemo-7f601",
+    "labels": {
+      "environment": "burn-in",
+      "kai.scheduler/queue": "training-queue"
+    },
+    "gangScheduler": {
+      "schedulerName": "kai-scheduler",
+      "queue": "training-queue",
+      "queueLabelKey": "kai.scheduler/queue"
+    }
+  }
+]

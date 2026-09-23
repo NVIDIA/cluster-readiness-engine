@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+jobSpec: '{"workload":{"trainJob":{"runtimeRef":{"name":"actual-runtime"},"runtimePatches":[{"manager":"nvcre.nvidia.com/catalog","trainingRuntimeSpec":{"template":{"metadata":{"annotations":{"example.com/config":"jobset-metadata-cm"}},"spec":{"replicatedJobs":[{"name":"node","template":{"metadata":{"labels":{"example.com/config":"job-template-cm"}},"spec":{"template":{"metadata":{"annotations":{"example.com/config":"pod-template-cm"}},"spec":{"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"actual-pvc"}}]}}}}}]}}}}]}}}'
+deps:
+- raw: '{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"jobset-metadata-cm"}}'
+- raw: '{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"job-template-cm"}}'
+- raw: '{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"pod-template-cm"}}'
+- raw: '{"apiVersion":"trainer.kubeflow.org/v1alpha1","kind":"TrainingRuntime","metadata":{"name":"actual-runtime"}}'
+- raw: '{"apiVersion":"v1","kind":"PersistentVolumeClaim","metadata":{"name":"actual-pvc"}}'

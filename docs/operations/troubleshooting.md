@@ -8,6 +8,40 @@ description: Diagnose and resolve common issues — stuck jobs, hardware detecti
 
 This page is for operators who need to diagnose problems with the NVIDIA Cluster Readiness Engine (NVCRE). Each section follows a problem-solution format: symptoms, diagnostic commands, and fixes.
 
+## Read lifecycle Events
+
+`kubectl describe` shows lifecycle Events for Certifications, Workflows, Jobs,
+and WorkloadRuns. An `InProgress` or `Succeeded` transition is `Normal`; a
+`Failed` transition is `Warning`. The Event reason and message match the
+condition that was persisted on the object.
+
+```bash
+kubectl describe certifications.nvcre.nvidia.com <name> -n <namespace>
+kubectl describe workflows.nvcre.nvidia.com <name> -n <namespace>
+kubectl describe jobs.nvcre.nvidia.com <name> -n <namespace>
+kubectl describe workloadruns.nvcre.nvidia.com <name> -n <namespace>
+```
+
+Job Events also report hardware and validation verdicts. A completed workload
+emits `WorkloadCompleted`. If the Job configures thresholds, it subsequently
+emits `ThresholdsMet` or the validation failure reason. Without thresholds,
+there is no validation verdict Event. A hardware verdict leaves the Job phase
+unchanged, but its parent Workflow treats the verdict as terminal for that
+group attempt.
+
+Event notes are limited to 1,024 bytes. Longer notes end with `... [truncated]`;
+for phase and verdict Events, inspect the object's status conditions for the
+full message.
+
+GoodputMeasurement and BandwidthMeasurement do not emit phase-transition
+Events. Inspect the owning Job for threshold verdicts; measurement-specific
+action failures still appear on the measurement object.
+
+Events are best-effort diagnostics, not the source of truth. Confirm the
+current state in `.status.conditions`. Kubernetes retains Events according to
+the API server's `--event-ttl` setting, which defaults to one hour, so older
+transitions may no longer be present.
+
 ## Job not progressing
 
 **Symptoms:** Job stays in `InProgress` for longer than expected. No `Succeeded` or `Failed` condition appears.

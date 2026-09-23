@@ -67,12 +67,17 @@
           "observedGeneration": 1,
           "lastTransitionTime": null,
           "reason": "HardwareFailureDetected",
-          "message": "Hardware failure detected on node(s): [test-hw-node]"
+          "message": "Hardware failure detected on node(s): [test-hw-node test-hw-second-node]"
         }
       ],
       "failedNodes": [
         {
           "name": "test-hw-node",
+          "reason": "HardwareFailureDetected",
+          "message": "Hardware failure detected by node health check"
+        },
+        {
+          "name": "test-hw-second-node",
           "reason": "HardwareFailureDetected",
           "message": "Hardware failure detected by node health check"
         }
@@ -85,5 +90,17 @@
       },
       "workloadStartTime": "1970-01-01T00:00:00Z"
     }
-  }
+  },
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "HardwareFailureDetected",
+      "message": "Hardware failure detected on node(s): [test-hw-node]",
+      "involvedObject": {
+        "kind": "Job",
+        "name": "test-hw-failed-job"
+      },
+      "count": 1
+    }
+  ]
 }

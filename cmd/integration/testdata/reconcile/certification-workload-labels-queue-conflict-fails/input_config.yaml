@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Workflow name is the one getWorkflowName derives for this category and
+# its options hash. Its absence proves the conflict was caught while composing
+# the Workflow spec, before the create.
+waitFor:
+  kind: Certification
+  name: cert-queue-conflict
+  namespace: default
+  condition: Failed
+  reason: WorkflowValidationFailed
+collect:
+  - kind: Certification
+    name: cert-queue-conflict
+    namespace: default
+expectAbsent:
+  - kind: Workflow
+    name: cert-queue-conflict-commu-d5664
+    namespace: default

@@ -1,0 +1,14 @@
+{
+  "error": "spec.jobTemplate.spec.workloadMetadata.labels[\"kai.scheduler/queue\"]: conflicting label value \"queue-b\", expected \"queue-a\"",
+  "workloadLabels": {
+    "kai.scheduler/queue": "queue-b"
+  },
+  "runtimeQueueLabels": {
+    "nccl-runtime/launcher/job/kai.scheduler/queue": "queue-a",
+    "nccl-runtime/launcher/pod/kai.scheduler/queue": "queue-a",
+    "nccl-runtime/launcher/schedulerName": "kai-scheduler",
+    "nccl-runtime/node/job/kai.scheduler/queue": "queue-a",
+    "nccl-runtime/node/pod/kai.scheduler/queue": "queue-a",
+    "nccl-runtime/node/schedulerName": "kai-scheduler"
+  }
+}

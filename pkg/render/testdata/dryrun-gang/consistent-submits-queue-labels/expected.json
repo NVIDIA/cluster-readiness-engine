@@ -1,0 +1,11 @@
+{
+  "creates": 3,
+  "trainJobLabels": {
+    "kai.scheduler/queue": "queue-a"
+  },
+  "runtimeScheduling": {
+    "node/jobTemplateQueue": "queue-a",
+    "node/podTemplateQueue": "queue-a",
+    "node/schedulerName": "kai-scheduler"
+  }
+}

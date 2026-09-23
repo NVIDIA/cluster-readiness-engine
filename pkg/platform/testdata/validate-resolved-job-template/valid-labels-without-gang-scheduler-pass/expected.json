@@ -1,0 +1,14 @@
+{
+  "workloadLabels": {
+    "environment": "burn-in",
+    "kueue.x-k8s.io/queue-name": "gpu-team-a"
+  },
+  "runtimeQueueLabels": {
+    "nccl-runtime/launcher/job/kai.scheduler/queue": "queue-a",
+    "nccl-runtime/launcher/pod/kai.scheduler/queue": "queue-a",
+    "nccl-runtime/launcher/schedulerName": "kai-scheduler",
+    "nccl-runtime/node/job/kai.scheduler/queue": "queue-a",
+    "nccl-runtime/node/pod/kai.scheduler/queue": "queue-a",
+    "nccl-runtime/node/schedulerName": "kai-scheduler"
+  }
+}

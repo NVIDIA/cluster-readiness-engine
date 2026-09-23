@@ -1,0 +1,28 @@
+# Without a persisted intent there is no queue label key to identify, so
+# preservation is a no-op and renaming stands as it is.
+replacements:
+  shared-runtime: shared-runtime-group-0-job
+dependency:
+  apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: shared-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+          - name: node
+            template:
+              metadata:
+                labels:
+                  kai.scheduler/queue: shared-runtime
+              spec:
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: shared-runtime
+                  spec:
+                    schedulerName: kai-scheduler
+                    containers:
+                      - name: node
+                        image: test:latest

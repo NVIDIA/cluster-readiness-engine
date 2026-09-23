@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# expectAbsent is the assertion that makes this case mean anything. Waiting for
+# Failed/GangSchedulingConflict alone would pass just as well if reconciliation
+# had created group-1's Job and its renamed runtime copy first and only then
+# given up — which is exactly the behaviour being guarded against, since
+# validation is supposed to run before any API write.
+waitFor:
+  kind: Workflow
+  name: later-conflict-wf
+  namespace: default
+  condition: Failed
+  reason: GangSchedulingConflict
+collect:
+  - kind: Workflow
+    name: later-conflict-wf
+    namespace: default
+expectAbsent:
+  - kind: Job
+    name: later-conflict-wf-group-1-iter-1
+    namespace: default
+  - kind: TrainingRuntime
+    name: later-runtime-2027d-group-1-iter-1
+    namespace: default

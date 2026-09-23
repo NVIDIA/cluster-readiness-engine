@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: both-levels-wf
+  namespace: default
+  condition: Failed
+  reason: GangSchedulingConflict
+collect:
+  - kind: Workflow
+    name: both-levels-wf
+    namespace: default
+expectAbsent:
+  - kind: Job
+    name: both-levels-wf-job
+    namespace: default
+  - kind: TrainingRuntime
+    name: both-levels-wf-runtime-c0096-job
+    namespace: default

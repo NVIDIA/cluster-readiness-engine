@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# 33 is one over the cap.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: val-wm-33
+  namespace: default
+spec:
+  workloadMetadata:
+    labels:
+      filler-0000: x
+      filler-0001: x
+      filler-0002: x
+      filler-0003: x
+      filler-0004: x
+      filler-0005: x
+      filler-0006: x
+      filler-0007: x
+      filler-0008: x
+      filler-0009: x
+      filler-0010: x
+      filler-0011: x
+      filler-0012: x
+      filler-0013: x
+      filler-0014: x
+      filler-0015: x
+      filler-0016: x
+      filler-0017: x
+      filler-0018: x
+      filler-0019: x
+      filler-0020: x
+      filler-0021: x
+      filler-0022: x
+      filler-0023: x
+      filler-0024: x
+      filler-0025: x
+      filler-0026: x
+      filler-0027: x
+      filler-0028: x
+      filler-0029: x
+      filler-0030: x
+      filler-0031: x
+      filler-0032: x
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime

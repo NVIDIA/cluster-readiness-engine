@@ -10,3 +10,10 @@ collect:
   - kind: Job
     name: test-bw-threshold-pass
     namespace: default
+events:
+  - involvedKind: Job
+    involvedName: test-bw-threshold-pass
+    namespace: default
+    expect:
+      - {type: Normal, reason: ThresholdsMet}
+      - {type: Normal, reason: WorkloadCompleted}

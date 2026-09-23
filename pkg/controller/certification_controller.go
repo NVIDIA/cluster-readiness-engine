@@ -27,6 +27,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
 
 // waitingForNodesMessage explains a wait that is otherwise invisible: which
@@ -200,6 +201,9 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 			}
 			return ctrl.Result{}, nil
 		}
+		if _, ok := errors.AsType[*workflowCreateRejectedError](err); ok {
+			return ctrl.Result{}, err
+		}
 		log.Error(err, "Failed to build Workflow for category", "domain", firstCategory.Domain, "variant", firstCategory.Variant)
 		if statusErr := r.setCertificationFailed(ctx, certification, ReasonWorkflowValidationFailed, err.Error()); statusErr != nil {
 			log.Error(statusErr, "Failed to update Certification status after Workflow build failure")
@@ -277,6 +281,9 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{}, nil
+		}
+		if _, ok := errors.AsType[*workflowCreateRejectedError](err); ok {
+			return ctrl.Result{}, err
 		}
 		log.Error(err, "Failed to build Workflow for category", "domain", category.Domain, "variant", category.Variant)
 		if statusErr := r.setCertificationFailed(ctx, certification, ReasonWorkflowValidationFailed, err.Error()); statusErr != nil {
@@ -522,20 +529,18 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	pruneAppliedOverrides(&workflowSpec, applied)
 	pruneUnmatchableOverrides(&workflowSpec, octx)
 
-	// Gang scheduling is applied last so it wins over anything the catalog entry
-	// or a platform override put in schedulerName.
-	if err := platform.ApplyGangSchedulerToDependencies(
-		workflowSpec.Dependencies, certification.Spec.GangScheduler); err != nil {
-		return "", fmt.Errorf("applying gang scheduler for %s/%s: %w", category.Domain, category.Variant, err)
-	}
-
-	// The workload image override is applied at the same post-resolve point for
-	// the same reason: platform overrides choose images too (the AWS EFA
-	// overrides swap the workers to an nccl-tests build), and options.image
-	// must win over all of them.
-	platform.ApplyImageToJobTemplate(&workflowSpec.JobTemplate, opts.Image)
-	if err := platform.ApplyImageToDependencies(workflowSpec.Dependencies, opts.Image); err != nil {
-		return "", fmt.Errorf("applying workload image for %s/%s: %w", category.Domain, category.Variant, err)
+	// Every post-resolve transform runs in one named stage, in the order
+	// ADR-079 pins. They all belong here rather than earlier because platform
+	// overrides also choose schedulers and images, and the resolved options
+	// must win over all of them. The stage also persists the resolved
+	// gang-scheduling intent on the Workflow and checks the effective
+	// manifests against it.
+	if err := platform.ApplyResolvedWorkflowTransforms(&workflowSpec, platform.ResolvedWorkflowTransforms{
+		GangScheduler:  certification.Spec.GangScheduler,
+		Image:          opts.Image,
+		WorkloadLabels: workload.LabelsOf(opts.WorkloadMetadata),
+	}); err != nil {
+		return "", fmt.Errorf("applying resolved transforms for %s/%s: %w", category.Domain, category.Variant, err)
 	}
 
 	if len(applied) > 0 || len(workflowSpec.Overrides) > 0 {
@@ -599,28 +604,45 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 			log.Info("Workflow already exists and is controlled by this Certification, proceeding", "name", workflowName)
 		} else {
 			log.Error(err, "Failed to create Workflow", "name", workflowName)
-			// One event per failed Create attempt. This branch is only reached
-			// while a category is being started (never from the steady-state
-			// polling path, which goes through checkActiveWorkflow), and the
-			// setCertificationFailed below makes the Certification terminal, so
-			// subsequent requeues short-circuit in reconcileWorkflows.
+			// One event per failed Create attempt. A successful status write makes
+			// the Certification terminal; a failed status write deliberately leaves
+			// it non-terminal so the error-driven retry can try the Create again.
 			r.warnf(certification, ReasonWorkflowCreationError,
 				"Failed to create Workflow %s: %v", workflowName, err)
-			if statusErr := r.setCertificationFailed(ctx, certification, ReasonWorkflowFailed,
-				fmt.Sprintf("Failed to create Workflow %s: %v", workflowName, err)); statusErr != nil {
+			createErr := fmt.Errorf("failed to create Workflow %s: %w", workflowName, err)
+			statusErr := r.setCertificationFailed(ctx, certification, ReasonWorkflowFailed,
+				fmt.Sprintf("Failed to create Workflow %s: %v", workflowName, err))
+			if statusErr != nil {
 				log.Error(statusErr, "Failed to update Certification status after Workflow creation failure")
 			}
-			return "", fmt.Errorf("failed to create Workflow %s: %w", workflowName, err)
+			return "", &workflowCreateRejectedError{err: errors.Join(createErr, statusErr)}
 		}
 	}
 
 	return workflowName, nil
 }
 
+// workflowCreateRejectedError tells createWorkflowForCategory callers that the
+// Create path already attempted the specific WorkflowFailed status write. The
+// callers must not overwrite it with their generic WorkflowValidationFailed
+// catch-all. Its wrapped error preserves both the Create and status failures.
+type workflowCreateRejectedError struct {
+	err error
+}
+
+func (e *workflowCreateRejectedError) Error() string { return e.err.Error() }
+func (e *workflowCreateRejectedError) Unwrap() error { return e.err }
+
 // ResolveOptions merges per-category overrides with global defaults.
 // Returns a flat CategoryOptions with all values resolved.
 func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alpha1.CategoryOptions) nvcrev1alpha1.CategoryOptions {
 	resolved := *global
+	// The struct copy above aliases every map, slice and pointer in global.
+	// Workload labels are the one option merged rather than replaced, so they
+	// have to be detached before anything writes to them — otherwise the
+	// merge would edit the Certification's own global map. This runs before
+	// the early return so the result is never aliased either way.
+	resolved.WorkloadMetadata = resolveWorkloadMetadata(global, override)
 	if override == nil {
 		return resolved
 	}
@@ -709,6 +731,28 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 		resolved.SourceRepo = override.SourceRepo
 	}
 	return resolved
+}
+
+// resolveWorkloadMetadata merges global and per-category workload labels per
+// key, with the per-category value winning.
+//
+// This is deliberately different from the wholesale replacement used by the
+// maps, slices and pointers beside it — Thresholds, Resources,
+// ImagePullSecrets. A queue label and a cost-attribution label are
+// independent intents, so a category that names one should not silently drop
+// the other. The consequence is that a category can change or add a key but
+// cannot remove a global one; a category needing a wholly different map must
+// not set those keys globally.
+//
+// Every returned map is freshly allocated, so no caller can reach back into
+// the Certification through the result.
+func resolveWorkloadMetadata(global, override *nvcrev1alpha1.CategoryOptions) *nvcrev1alpha1.WorkloadMetadata {
+	var overrideLabels map[string]string
+	if override != nil {
+		overrideLabels = workload.LabelsOf(override.WorkloadMetadata)
+	}
+	return workload.MetadataFrom(workload.MergeLabels(
+		workload.LabelsOf(global.WorkloadMetadata), overrideLabels))
 }
 
 // dropUnderCapacityNodes removes nodes that cannot supply gpusPerNode before
@@ -893,7 +937,7 @@ func (r *CertificationReconciler) setCertificationFailed(ctx context.Context, ce
 
 // setExclusiveCondition sets one condition True and all others False (mutually exclusive).
 func (r *CertificationReconciler) setExclusiveCondition(ctx context.Context, certification *nvcrev1alpha1.Certification, conditionType, reason, message string) error {
-	changed, err := setExclusiveStatusCondition(ctx, r.Client, certification,
+	changed, transition, err := setExclusiveStatusCondition(ctx, r.Client, certification,
 		func(c *nvcrev1alpha1.Certification) *[]metav1.Condition { return &c.Status.Conditions },
 		[]string{
 			nvcrev1alpha1.CertificationInProgress,
@@ -904,6 +948,11 @@ func (r *CertificationReconciler) setExclusiveCondition(ctx context.Context, cer
 	)
 	if err != nil {
 		return err
+	}
+	if transition != nil {
+		r.eventf(certification,
+			transitionEventType(transition.NewTrueType, nvcrev1alpha1.CertificationFailed),
+			transition.Condition.Reason, "%s", transition.Condition.Message)
 	}
 	if changed {
 		logf.FromContext(ctx).Info("Certification status updated", "status", conditionType, "reason", reason)
@@ -1025,14 +1074,19 @@ func derefInt32(p *int32) int32 {
 	return *p
 }
 
+// eventf emits an event if the Recorder is configured.
+func (r *CertificationReconciler) eventf(obj runtime.Object, eventType, reason, messageFmt string, args ...any) {
+	if r.Recorder != nil {
+		r.Recorder.Eventf(obj, nil, eventType, reason, reason, "%s", formatEventNote(messageFmt, args...))
+	}
+}
+
 // warnf emits a Warning event if the Recorder is configured.
 //
 // Safe to call when Recorder is nil (e.g. in unit tests, or any embedding that
 // constructs CertificationReconciler directly).
 func (r *CertificationReconciler) warnf(obj runtime.Object, reason, messageFmt string, args ...any) {
-	if r.Recorder != nil {
-		r.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, reason, reason, messageFmt, args...)
-	}
+	r.eventf(obj, corev1.EventTypeWarning, reason, messageFmt, args...)
 }
 
 // normalf emits a Normal event if the Recorder is configured. Used for
@@ -1041,9 +1095,7 @@ func (r *CertificationReconciler) warnf(obj runtime.Object, reason, messageFmt s
 //
 // Safe to call when Recorder is nil, like warnf.
 func (r *CertificationReconciler) normalf(obj runtime.Object, reason, messageFmt string, args ...any) {
-	if r.Recorder != nil {
-		r.Recorder.Eventf(obj, nil, corev1.EventTypeNormal, reason, reason, messageFmt, args...)
-	}
+	r.eventf(obj, corev1.EventTypeNormal, reason, messageFmt, args...)
 }
 
 // SetupWithManager sets up the controller with the Manager.

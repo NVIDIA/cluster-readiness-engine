@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Collecting the TrainJob is the point: its metadata.labels must carry the four
+# requested labels alongside the controller-owned app.kubernetes.io/managed-by
+# and nvcre.nvidia.com/job, which the Job controller overlays after the shared
+# builder runs.
+waitFor:
+  kind: Job
+  name: test-workload-metadata
+  namespace: default
+  condition: InProgress
+collect:
+  - kind: Job
+    name: test-workload-metadata
+    namespace: default
+  - kind: TrainJob
+    name: test-workload-metadata-workload
+    namespace: default

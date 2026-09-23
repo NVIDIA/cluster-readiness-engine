@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The field-level self == oldSelf rule: changing a present value is rejected, so
+# a checkpoint restart recreates the workload with the labels it was admitted
+# with.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: imm-job-value
+  namespace: default
+spec:
+  workloadMetadata:
+    labels:
+      kai.scheduler/queue: queue-b
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime

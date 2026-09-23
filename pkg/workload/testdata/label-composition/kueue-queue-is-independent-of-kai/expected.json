@@ -1,0 +1,8 @@
+{
+  "merged": {
+    "kai.scheduler/queue": "burn-in-queue",
+    "kueue.x-k8s.io/queue-name": "nccl-queue"
+  },
+  "metadataNil": false,
+  "sourcesUnchanged": true
+}

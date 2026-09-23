@@ -1,0 +1,15 @@
+{
+  "create": {
+    "accepted": true
+  },
+  "update": {
+    "accepted": false,
+    "causes": [
+      {
+        "type": "FieldValueInvalid",
+        "field": "spec",
+        "message": "Invalid value: gangScheduler cannot be added or removed after creation"
+      }
+    ]
+  }
+}

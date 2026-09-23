@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The intended behavior change for existing users: a Certification with
+# gangScheduler and no workloadMetadata now also places the resolved queue on
+# the generated workload object, which is where Kueue and Kubeflow's KAI guide
+# document reading it.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: labels-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 2
+  gangScheduler:
+    schedulerName: kai-scheduler
+    queue: high-priority
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# OpenAPI `pattern` cannot constrain map keys, so the key grammar is a CEL
+# rule. A space is not in the qualified-name grammar.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: val-wm-bad-key
+  namespace: default
+spec:
+  workloadMetadata:
+    labels:
+      "bad key": x
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime

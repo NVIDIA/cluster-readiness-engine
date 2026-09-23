@@ -1,0 +1,4 @@
+{
+  "error": "spec.jobTemplate.spec.workloadMetadata.labels[\"kai.scheduler/queue\"]: conflicting label value \"queue-b\", expected \"queue-a\"",
+  "creates": 0
+}

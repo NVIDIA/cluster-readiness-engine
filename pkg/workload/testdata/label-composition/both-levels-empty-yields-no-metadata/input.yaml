@@ -1,0 +1,3 @@
+# Nothing configured anywhere must leave workloadMetadata absent rather than
+# writing an empty object, so an unconfigured Certification renders exactly as
+# it did before the field existed.

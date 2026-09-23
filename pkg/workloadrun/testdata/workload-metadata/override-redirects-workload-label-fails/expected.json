@@ -1,0 +1,11 @@
+{
+  "validateError": "spec.workloadMetadata.labels[\"kai.scheduler/queue\"]: conflicting label value \"queue-b\", expected \"queue-a\"",
+  "labels": {
+    "kai.scheduler/queue": "queue-b"
+  },
+  "gangScheduler": {
+    "schedulerName": "kai-scheduler",
+    "queue": "queue-a",
+    "queueLabelKey": "kai.scheduler/queue"
+  }
+}

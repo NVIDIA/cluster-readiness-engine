@@ -302,8 +302,22 @@ type WorkloadRunSpec struct {
 	// gangScheduler opts workload pods into a gang-aware scheduler such as KAI Scheduler.
 	// When set, schedulerName is injected into every pod template and the queue label
 	// is applied so the scheduler holds all pods until the full gang can be placed.
+	// The resolved queue also lands on the generated workload object's labels,
+	// which is where KAI Scheduler and Kubeflow Trainer document it.
 	// +optional
 	GangScheduler *GangSchedulerSpec `json:"gangScheduler,omitempty"`
+
+	// workloadMetadata sets labels on the workload object the generated Job
+	// creates (today a Kubeflow TrainJob). Use it to place the workload in a
+	// Kueue local queue with kueue.x-k8s.io/queue-name, or for any other
+	// integration keyed on the submitted object's labels. It is copied into
+	// the generated Workflow's spec.jobTemplate.spec.workloadMetadata.
+	//
+	// These labels are not pod labels. When gangScheduler is also set, its
+	// resolved queue label is added here too; supplying the same key with a
+	// different value is a conflict and fails.
+	// +optional
+	WorkloadMetadata *WorkloadMetadata `json:"workloadMetadata,omitempty"`
 }
 
 // GangSchedulerSpec configures gang scheduling for WorkloadRun pods.
@@ -337,6 +351,7 @@ type GangSchedulerSpec struct {
 	// +kubebuilder:validation:MaxLength=317
 	// +kubebuilder:validation:Pattern=`^$|^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[a-zA-Z0-9]([-a-zA-Z0-9_.]{0,61}[a-zA-Z0-9])?$`
 	// +kubebuilder:validation:XValidation:rule="self.contains('/') ? self.split('/')[0].size() <= 253 : true",message="queueLabelKey prefix must be at most 253 characters"
+	// +kubebuilder:validation:XValidation:rule="self != 'app.kubernetes.io/managed-by' && !self.startsWith('nvcre.nvidia.com/')",message="queueLabelKey must not use the controller-owned key app.kubernetes.io/managed-by or any key under the nvcre.nvidia.com/ prefix"
 	QueueLabelKey string `json:"queueLabelKey,omitempty"`
 }
 

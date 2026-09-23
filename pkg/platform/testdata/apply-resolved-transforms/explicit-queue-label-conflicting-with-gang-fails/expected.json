@@ -1,0 +1,18 @@
+{
+  "error": "spec.jobTemplate.spec.workloadMetadata.labels[\"kai.scheduler/queue\"]: conflicting label value \"some-other-queue\", expected \"burn-in-queue\"",
+  "workloadLabels": null,
+  "persistedGangScheduler": null,
+  "runtimeQueueLabels": {
+    "nccl-runtime/launcher/job/kai.scheduler/queue": "burn-in-queue",
+    "nccl-runtime/launcher/pod/kai.scheduler/queue": "burn-in-queue",
+    "nccl-runtime/launcher/schedulerName": "kai-scheduler",
+    "nccl-runtime/node/job/kai.scheduler/queue": "burn-in-queue",
+    "nccl-runtime/node/pod/kai.scheduler/queue": "burn-in-queue",
+    "nccl-runtime/node/schedulerName": "kai-scheduler"
+  },
+  "trainerImage": "nvcr.io/nvidia/pytorch:25.01",
+  "runtimeImages": {
+    "nccl-runtime/launcher": "nvcr.io/nvidia/pytorch:25.01",
+    "nccl-runtime/node": "nvcr.io/nvidia/pytorch:25.01"
+  }
+}

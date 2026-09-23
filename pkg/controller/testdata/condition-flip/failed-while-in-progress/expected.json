@@ -1,0 +1,20 @@
+[
+  {
+    "type": "Failed",
+    "before": {
+      "present": true,
+      "status": "False"
+    },
+    "after": {
+      "present": true,
+      "status": "True"
+    },
+    "condition": {
+      "type": "Failed",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "JobTimedOut",
+      "message": "Job exceeded its timeout"
+    }
+  }
+]

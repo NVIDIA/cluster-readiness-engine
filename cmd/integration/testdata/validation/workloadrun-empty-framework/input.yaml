@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: event-build-guard-admission
+  namespace: default
+spec:
+  image: test-image:latest
+  numNodes: 1
+  framework: {}
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"

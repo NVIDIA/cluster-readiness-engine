@@ -1,0 +1,22 @@
+# A different queue under the resolved key is caught by the construction-time
+# merge, before any override runs, so the WorkloadRun never produces a Workflow.
+run:
+  metadata:
+    name: wr-conflict
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      torch:
+        script: /workspace/train.py
+    gangScheduler:
+      schedulerName: kai-scheduler
+      queue: team-a
+    workloadMetadata:
+      labels:
+        kai.scheduler/queue: other-queue
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: torch

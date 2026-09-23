@@ -73,6 +73,14 @@ const (
 	ReasonWorkflowCreationError = "WorkflowCreationError"
 )
 
+// WorkloadRun tier reasons (WorkloadRun → Workflow).
+const (
+	// ReasonBuildFailedStatusUpdateFailed reports a WorkloadRun build error
+	// when recording its Failed condition also fails. This action-failure
+	// Warning does not claim that the Failed phase was persisted.
+	ReasonBuildFailedStatusUpdateFailed = "BuildFailedStatusUpdateFailed"
+)
+
 // Workflow tier reasons (Workflow → Job).
 const (
 	ReasonJobCreated          = "JobCreated"
@@ -95,6 +103,16 @@ const (
 	ReasonNodeDiscoveryError      = "NodeDiscoveryError"
 	ReasonPartitionError          = "PartitionError"
 
+	// ReasonHeterogeneousPlatformStatusUpdateFailed reports inconsistent node
+	// platforms when recording the Workflow's Failed condition also fails.
+	// This action-failure Warning does not claim a persisted Failed phase.
+	ReasonHeterogeneousPlatformStatusUpdateFailed = "HeterogeneousPlatformStatusUpdateFailed"
+
+	// ReasonOverrideErrorStatusUpdateFailed reports an override application
+	// error when recording the Workflow's Failed condition also fails. Both
+	// override guards use this action-failure Warning, not a phase notification.
+	ReasonOverrideErrorStatusUpdateFailed = "OverrideErrorStatusUpdateFailed"
+
 	// ReasonJobNameCollision marks a Workflow whose generated Job name is
 	// already taken by a Job this Workflow does not control. The foreign
 	// object is neither adopted nor recorded for cleanup.
@@ -103,6 +121,12 @@ const (
 	// name is already taken by an object this Workflow did not create. The
 	// foreign object is neither adopted nor recorded for cleanup.
 	ReasonDependencyNameCollision = "DependencyNameCollision"
+	// ReasonGangSchedulingConflict marks a Workflow whose resolved Job template
+	// is invalid after overrides. This includes workload metadata that fails
+	// label validation even when no gang scheduler is configured, as well as a
+	// template that no longer agrees with the gang-scheduling intent its owner
+	// persisted. The invalid result is reported rather than repaired.
+	ReasonGangSchedulingConflict = "GangSchedulingConflict"
 )
 
 // Job tier reasons (Job → Workload).
@@ -150,6 +174,19 @@ type nameCollisionError struct {
 }
 
 func (e *nameCollisionError) Error() string { return e.Message }
+
+// gangSchedulingConflictError reports that a resolved Workflow no longer
+// agrees with the gang-scheduling intent its owner persisted. It is terminal:
+// both the intent and a created Job's workload metadata are immutable, so no
+// retry can reconcile the two, and a plain error would leave the Workflow
+// retrying at InProgress with nothing naming the cause.
+type gangSchedulingConflictError struct {
+	err error
+}
+
+func (e *gangSchedulingConflictError) Error() string { return e.err.Error() }
+
+func (e *gangSchedulingConflictError) Unwrap() error { return e.err }
 
 // --- Shared condition helpers ---
 

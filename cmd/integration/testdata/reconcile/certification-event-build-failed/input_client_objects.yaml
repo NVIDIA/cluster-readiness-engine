@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# A real catalog entry, but only 8 of its required 32 GPUs. Node discovery
+# succeeds; Workflow construction fails in resolveNodesPerJob before Create.
+apiVersion: v1
+kind: Node
+metadata:
+  name: event-build-failed-node
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    event-build-failed: "true"
+spec:
+  providerID: aws://us-east-1a/i-0123456789abcdef0
+status:
+  capacity:
+    nvidia.com/gpu: "8"
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: event-build-failed-cert
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      event-build-failed: "true"
+  nodesPerJob: 1
+  categories:
+    - domain: training
+      variant: nemotron5-56b

@@ -1,0 +1,67 @@
+{
+  "Certification/event-build-failed-cert": {
+    "kind": "Certification",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "event-build-failed-cert",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "event-build-failed": "true"
+        }
+      },
+      "categories": [
+        {
+          "domain": "training",
+          "variant": "nemotron5-56b"
+        }
+      ],
+      "nodesPerJob": 1
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkflowValidationFailed",
+          "message": "training/nemotron5-56b: no valid node count \u003c= 1 satisfies model constraints (gpusPerNode=8, arch=h100)"
+        }
+      ]
+    }
+  },
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "WorkflowValidationFailed",
+      "message": "training/nemotron5-56b: no valid node count \u003c= 1 satisfies model constraints (gpusPerNode=8, arch=h100)",
+      "involvedObject": {
+        "kind": "Certification",
+        "name": "event-build-failed-cert"
+      },
+      "count": 1
+    }
+  ]
+}

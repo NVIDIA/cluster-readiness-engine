@@ -1,0 +1,10 @@
+{
+  "error": "gangScheduler is configured with schedulerName \"kai-scheduler\" but TrainingRuntime \"nccl-runtime\" replicatedJob \"node\" sets schedulerName \"\"",
+  "workloadLabels": {
+    "kai.scheduler/queue": "queue-a"
+  },
+  "runtimeQueueLabels": {
+    "nccl-runtime/node/job/kai.scheduler/queue": "queue-a",
+    "nccl-runtime/node/pod/kai.scheduler/queue": "queue-a"
+  }
+}

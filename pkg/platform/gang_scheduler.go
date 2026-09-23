@@ -117,6 +117,123 @@ func ApplyGangSchedulerToDependencies(deps []nvcrev1alpha1.DependencySpec, gs *n
 	return nil
 }
 
+// PreserveSchedulingFields copies the gang-scheduling fields ADR-076 writes
+// from original into renamed, and returns the corrected document.
+//
+// It exists because per-job dependency renaming rewrites every quoted
+// occurrence of a dependency name, which also catches a queue label value that
+// happens to equal one — a queue named after the runtime it serves. The queue
+// a user configured is not a reference and must survive renaming intact.
+//
+// Crucially this preserves rather than repairs. Unlike
+// ApplyGangSchedulerToDependencies it asserts nothing and inserts nothing: a
+// field absent from original stays absent, and a value the operator overrode
+// to something else is carried through unchanged. An override that redirects
+// the queue therefore survives renaming and is rejected by validation, which
+// is the reject-without-repair contract. Re-applying the configured intent
+// here instead would silently overwrite that override and let the Job run in a
+// queue the operator did not choose.
+//
+// It is a no-op when gs configures nothing, since then there is no queue label
+// key to identify.
+func PreserveSchedulingFields(
+	original, renamed []byte, gs *nvcrev1alpha1.GangSchedulerSpec,
+) ([]byte, error) {
+	if gs == nil || gs.SchedulerName == "" || len(original) == 0 || len(renamed) == 0 {
+		return renamed, nil
+	}
+	queueKey := gangSchedulerQueueLabelKey(gs.QueueLabelKey)
+
+	var before, after map[string]any
+	if err := json.Unmarshal(original, &before); err != nil {
+		return nil, fmt.Errorf("unmarshal pre-rename dependency: %w", err)
+	}
+	if err := json.Unmarshal(renamed, &after); err != nil {
+		return nil, fmt.Errorf("unmarshal renamed dependency: %w", err)
+	}
+	if kind, _ := after[keyKind].(string); kind != kindTrainingRuntime {
+		return renamed, nil
+	}
+
+	beforeJobs, okBefore := nestedSlice(before, keySpec, keyTemplate, keySpec, keyReplicatedJobs)
+	afterJobs, okAfter := nestedSlice(after, keySpec, keyTemplate, keySpec, keyReplicatedJobs)
+	if !okBefore || !okAfter || len(beforeJobs) != len(afterJobs) {
+		// A shape that does not line up is left exactly as renaming produced
+		// it; validation is what reports an unusable runtime.
+		return renamed, nil
+	}
+
+	changed := false
+	for i := range afterJobs {
+		src, srcOK := beforeJobs[i].(map[string]any)
+		dst, dstOK := afterJobs[i].(map[string]any)
+		if !srcOK || !dstOK {
+			continue
+		}
+		srcJob, ok1 := nestedMap(src, keyTemplate)
+		dstJob, ok2 := nestedMap(dst, keyTemplate)
+		if !ok1 || !ok2 {
+			continue
+		}
+		changed = restoreLabel(srcJob, dstJob, queueKey) || changed
+
+		srcPod, ok1 := nestedMap(srcJob, keySpec, keyTemplate)
+		dstPod, ok2 := nestedMap(dstJob, keySpec, keyTemplate)
+		if !ok1 || !ok2 {
+			continue
+		}
+		changed = restoreLabel(srcPod, dstPod, queueKey) || changed
+
+		// The scheduler name is a plain string that could equally collide
+		// with a dependency name.
+		srcSpec, ok1 := nestedMap(srcPod, keySpec)
+		dstSpec, ok2 := nestedMap(dstPod, keySpec)
+		if !ok1 || !ok2 {
+			continue
+		}
+		if was, present := srcSpec[keySchedulerName].(string); present {
+			if now, _ := dstSpec[keySchedulerName].(string); now != was {
+				dstSpec[keySchedulerName] = was
+				changed = true
+			}
+		}
+	}
+
+	// Return the input bytes untouched when nothing needed restoring, so a
+	// dependency renaming did not disturb round-trips byte for byte.
+	if !changed {
+		return renamed, nil
+	}
+	corrected, err := json.Marshal(after)
+	if err != nil {
+		return nil, fmt.Errorf("marshal renamed dependency: %w", err)
+	}
+	return corrected, nil
+}
+
+// restoreLabel copies one label from src's metadata.labels to dst's, reporting
+// whether it had to change anything. A label absent from src is left absent in
+// dst rather than created.
+func restoreLabel(src, dst map[string]any, key string) bool {
+	srcLabels, ok := nestedMap(src, keyMetadata, keyLabels)
+	if !ok {
+		return false
+	}
+	was, present := srcLabels[key].(string)
+	if !present {
+		return false
+	}
+	dstLabels, ok := nestedMap(dst, keyMetadata, keyLabels)
+	if !ok {
+		return false
+	}
+	if now, _ := dstLabels[key].(string); now == was {
+		return false
+	}
+	dstLabels[key] = was
+	return true
+}
+
 // nestedSlice walks obj down the given keys and returns the slice found at the
 // end. It reports false if any step is missing or is not the expected type, so
 // a dependency whose shape does not match is skipped rather than panicking.

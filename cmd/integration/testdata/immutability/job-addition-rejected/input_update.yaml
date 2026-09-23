@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Absent to present, covering an object whose stored spec predates this field.
+# Without the parent rule this would be accepted, letting a live Job be opted
+# into a queue after the fact.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: imm-job-add
+  namespace: default
+spec:
+  workloadMetadata:
+    labels:
+      kai.scheduler/queue: queue-a
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime

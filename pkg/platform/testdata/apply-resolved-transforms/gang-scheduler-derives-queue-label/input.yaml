@@ -1,0 +1,44 @@
+# The queue label reaches the workload object in addition to ADR-076's Job- and
+# pod-template placement, which is where Kueue and Kubeflow's KAI guide both
+# document reading it.
+gangScheduler:
+  schedulerName: kai-scheduler
+  queue: burn-in-queue
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: nccl-runtime
+          trainer:
+            image: nvcr.io/nvidia/pytorch:25.01
+  dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: nccl-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+              - name: node
+                template:
+                  spec:
+                    template:
+                      spec:
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01
+              - name: launcher
+                template:
+                  metadata:
+                    labels:
+                      trainer.kubeflow.org/trainjob-ancestor-step: trainer
+                  spec:
+                    template:
+                      spec:
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01

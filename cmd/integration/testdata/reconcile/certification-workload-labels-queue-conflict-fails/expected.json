@@ -1,0 +1,68 @@
+{
+  "Certification/cert-queue-conflict": {
+    "kind": "Certification",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "cert-queue-conflict",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.product": "NVIDIA-GB200-NVL72"
+        }
+      },
+      "categories": [
+        {
+          "domain": "communication",
+          "variant": "nccl-all-reduce",
+          "options": {
+            "workloadMetadata": {
+              "labels": {
+                "kai.scheduler/queue": "team-b"
+              }
+            }
+          }
+        }
+      ],
+      "gangScheduler": {
+        "schedulerName": "kai-scheduler",
+        "queue": "team-a"
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkflowValidationFailed",
+          "message": "applying resolved transforms for communication/nccl-all-reduce: spec.jobTemplate.spec.workloadMetadata.labels[\"kai.scheduler/queue\"]: conflicting label value \"team-b\", expected \"team-a\""
+        }
+      ]
+    }
+  },
+  "expectAbsent": {
+    "Workflow/cert-queue-conflict-commu-d5664": "notCreated"
+  }
+}

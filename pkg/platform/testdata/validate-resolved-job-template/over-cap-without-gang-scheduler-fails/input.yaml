@@ -1,0 +1,84 @@
+# The size bound is enforced on the same terms: an override that grows the map
+# past 32 entries is caught whether or not gang scheduling is configured.
+spec:
+  jobTemplate:
+    spec:
+      workloadMetadata:
+        labels:
+          filler-0000: x
+          filler-0001: x
+          filler-0002: x
+          filler-0003: x
+          filler-0004: x
+          filler-0005: x
+          filler-0006: x
+          filler-0007: x
+          filler-0008: x
+          filler-0009: x
+          filler-0010: x
+          filler-0011: x
+          filler-0012: x
+          filler-0013: x
+          filler-0014: x
+          filler-0015: x
+          filler-0016: x
+          filler-0017: x
+          filler-0018: x
+          filler-0019: x
+          filler-0020: x
+          filler-0021: x
+          filler-0022: x
+          filler-0023: x
+          filler-0024: x
+          filler-0025: x
+          filler-0026: x
+          filler-0027: x
+          filler-0028: x
+          filler-0029: x
+          filler-0030: x
+          filler-0031: x
+          filler-0032: x
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: nccl-runtime
+  dependencies:
+    - apiVersion: trainer.kubeflow.org/v1alpha1
+      kind: TrainingRuntime
+      metadata:
+        name: nccl-runtime
+      spec:
+        template:
+          spec:
+            replicatedJobs:
+              - name: node
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: queue-a
+                  spec:
+                    template:
+                      metadata:
+                        labels:
+                          kai.scheduler/queue: queue-a
+                      spec:
+                        schedulerName: kai-scheduler
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01
+              - name: launcher
+                template:
+                  metadata:
+                    labels:
+                      kai.scheduler/queue: queue-a
+                  spec:
+                    template:
+                      metadata:
+                        labels:
+                          kai.scheduler/queue: queue-a
+                      spec:
+                        schedulerName: kai-scheduler
+                        containers:
+                          - name: node
+                            image: nvcr.io/nvidia/pytorch:25.01
