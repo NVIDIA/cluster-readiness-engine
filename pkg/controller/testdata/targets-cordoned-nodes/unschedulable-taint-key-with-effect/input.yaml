@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A taintSelectors entry for node.kubernetes.io/unschedulable with an effect set opts in.
+target:
+  taintSelectors:
+    - key: node.kubernetes.io/unschedulable
+      effect: NoSchedule

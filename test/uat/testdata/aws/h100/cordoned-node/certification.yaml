@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A Certification can succeed against a cordoned node targeted via a taintSelectors entry for the unschedulable taint.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: aws-h100-cordoned-node
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+    nodeNames:
+      - aws-h100-cordoned-node-01
+    taintSelectors:
+      - key: node.kubernetes.io/unschedulable
+        effect: NoSchedule
+  nodesPerJob: 1
+  categories:
+    - domain: communication
+      variant: nccl-loopback
