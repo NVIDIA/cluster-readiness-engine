@@ -65,12 +65,41 @@ func TestSupportedNonHelmEvidenceConflictsWithBundledOrPartialHelmMetadata(t *te
 	})
 }
 
+// TestRBACVerbsAreReadOnly pins the boundary of the read-only carve-out
+// (ADR-078, amended 2026-09-22). The jobset-ownership fixtures cover the same
+// boundaries through the scan; this table names each one directly so a
+// loosened helper fails here with the offending verb list in the message.
+func TestRBACVerbsAreReadOnly(t *testing.T) {
+	cases := []struct {
+		verbs []string
+		want  bool
+	}{
+		{verbs: []string{"get"}, want: true},
+		{verbs: []string{"get", "list", "watch"}, want: true},
+		{verbs: []string{"watch", "list"}, want: true},
+		{verbs: nil, want: false},
+		{verbs: []string{}, want: false},
+		{verbs: []string{"*"}, want: false},
+		{verbs: []string{"get", "list", "watch", "*"}, want: false},
+		{verbs: []string{"get", "list", "watch", "patch"}, want: false},
+		{verbs: []string{"get", "list", "watch", "impersonate"}, want: false},
+		{verbs: []string{"GET"}, want: false},
+	}
+	for _, tc := range cases {
+		if got := rbacVerbsAreReadOnly(tc.verbs); got != tc.want {
+			t.Errorf("rbacVerbsAreReadOnly(%q) = %v, want %v", tc.verbs, got, tc.want)
+		}
+	}
+}
+
 func TestFingerprintScanConsumesEveryPageAndFailsClosed(t *testing.T) {
 	role := func(name string) unstructured.Unstructured {
 		return unstructured.Unstructured{Object: map[string]any{
 			"apiVersion": "rbac.authorization.k8s.io/v1", "kind": "ClusterRole",
 			"metadata": map[string]any{"name": name},
-			"rules":    []any{map[string]any{"apiGroups": []any{jobsetAPIGroup}, "resources": []any{"jobsets"}, "verbs": []any{"get"}}},
+			// Write verbs: a read-only rule is not a fingerprint (ADR-078, amended
+			// 2026-09-22), and this test pins pagination of fingerprints.
+			"rules": []any{map[string]any{"apiGroups": []any{jobsetAPIGroup}, "resources": []any{"jobsets"}, "verbs": []any{"get", "patch", "update"}}},
 		}}
 	}
 	scheme := newSetupScheme(t)

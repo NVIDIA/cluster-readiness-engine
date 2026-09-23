@@ -1,0 +1,11 @@
+# A wildcard verb on the JobSet group grants writes. Unlike wildcard-only-rbac,
+# whose wildcard is on apiGroups, this rule names jobset.x-k8s.io explicitly,
+# so the per-rule verb test runs and must stay conservative.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: missing-crd-wildcard-verb-role
+rules:
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets]
+    verbs: ['*']
