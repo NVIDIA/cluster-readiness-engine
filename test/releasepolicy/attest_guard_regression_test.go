@@ -124,10 +124,33 @@ func TestLoadedReleaseTagGuardMustBeMandatory(t *testing.T) {
 func TestWrappedAttestCallersRequireRefGuards(t *testing.T) {
 	const wrapper = "./.github/workflows/wrapper.yml"
 	workflows := map[string]map[string]policyJob{
-		"wrapper.yml":     {jobSign: {Uses: localAttestUses}},
-		"outer.yaml":      {jobWrap: {Uses: wrapper}},
-		"plain.yml":       {"build": {}},
-		"self-outer.yaml": {jobWrap: {Uses: selfWrapperUses}},
+		"wrapper.yml":         {jobSign: {Uses: localAttestUses}},
+		"outer.yaml":          {jobWrap: {Uses: wrapper}},
+		"plain.yml":           {"build": {}},
+		"self-outer.yaml":     {jobWrap: {Uses: selfWrapperUses}},
+		"guarded-wrapper.yml": {jobSign: {Uses: localAttestUses, If: exactRepoAndMainIf}},
+		"guarded-needs.yml": {
+			jobGuarded: {If: exactRepoAndMainIf},
+			jobSign:    {Uses: localAttestUses, Needs: []string{jobGuarded}},
+		},
+		"unrelated-guard.yml": {
+			jobGuarded: {If: exactRepoAndMainIf},
+			jobSign:    {Uses: localAttestUses},
+		},
+		"cancelled-bypass.yml": {
+			jobGuarded: {If: exactRepoAndMainIf},
+			jobSign:    {Uses: localAttestUses, Needs: []string{jobGuarded}, If: notCancelledIf},
+		},
+		"partly-guarded.yml": {
+			jobSign:  {Uses: localAttestUses, If: exactRepoAndMainIf},
+			"resign": {Uses: localAttestUses},
+		},
+		"shared-wrapper.yml": {
+			"guarded-hop": {Uses: wrapper, If: exactRepoAndMainIf},
+			"open-hop":    {Uses: wrapper},
+		},
+		"guarded-outer.yaml": {jobWrap: {Uses: wrapper, If: exactRepoAndMainIf}},
+		"outer-guarded.yaml": {jobWrap: {Uses: "./.github/workflows/guarded-wrapper.yml"}},
 	}
 	cases := []struct {
 		name   string
@@ -144,9 +167,24 @@ func TestWrappedAttestCallersRequireRefGuards(t *testing.T) {
 		{"guarded ancestor", policyJob{Uses: wrapper, Needs: []string{jobGuarded}},
 			policyJob{If: exactRepoAndMainIf}, 0},
 		{"unrelated guard", policyJob{Uses: wrapper}, policyJob{If: exactRepoAndMainIf}, 1},
-		{"cancelled bypass", policyJob{Uses: wrapper, Needs: []string{jobGuarded}, If: "!cancelled()"},
+		{"cancelled bypass", policyJob{Uses: wrapper, Needs: []string{jobGuarded}, If: notCancelledIf},
 			policyJob{If: exactRepoAndMainIf}, 1},
 		{"no attest path", policyJob{Uses: "./.github/workflows/plain.yml"}, policyJob{}, 0},
+		{"guard inside the wrapper", policyJob{Uses: "./.github/workflows/guarded-wrapper.yml"}, policyJob{}, 0},
+		{"guard inside a self-repository wrapper", policyJob{Uses: "$/.github/workflows/guarded-wrapper.yml"},
+			policyJob{}, 0},
+		{"guarded ancestor inside the wrapper", policyJob{Uses: "./.github/workflows/guarded-needs.yml"},
+			policyJob{}, 0},
+		{"unrelated guard inside the wrapper", policyJob{Uses: "./.github/workflows/unrelated-guard.yml"},
+			policyJob{}, 1},
+		{"cancelled bypass inside the wrapper", policyJob{Uses: "./.github/workflows/cancelled-bypass.yml"},
+			policyJob{}, 1},
+		{"one unguarded path inside the wrapper", policyJob{Uses: "./.github/workflows/partly-guarded.yml"},
+			policyJob{}, 1},
+		{"guarded and unguarded hops share a wrapper", policyJob{Uses: "./.github/workflows/shared-wrapper.yml"},
+			policyJob{}, 1},
+		{"guard on the middle wrapper", policyJob{Uses: "./.github/workflows/guarded-outer.yaml"}, policyJob{}, 0},
+		{"guard on the inner wrapper", policyJob{Uses: "./.github/workflows/outer-guarded.yaml"}, policyJob{}, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

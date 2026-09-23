@@ -505,6 +505,7 @@ const (
 	jobGuarded      = "guarded"
 	jobReleaseTag   = "release-tag"
 	localAttestUses = "./.github/workflows/attest.yml"
+	notCancelledIf  = "!cancelled()"
 )
 
 // TestMainBranchAttestCallersPinExactRefGuards pins the full job-level `if:`
@@ -582,7 +583,8 @@ func TestAttestDispatchCallersRequireRefGuards(t *testing.T) {
 		}
 		for _, caller := range unguardedAttestCallers(t, workflows, jobs) {
 			t.Errorf("%s: job %q reaches attest.yml and the workflow has workflow_dispatch, "+
-				"but neither %q nor any needs-ancestor carries a recognized ref guard "+
+				"but no recognized ref guard sits on %q, its needs-ancestors, or the local "+
+				"wrapper jobs on its path to attest.yml "+
 				"(exact main-branch if: or release.yml's GITHUB_REF tag check); without "+
 				"one a dispatch at a v* ref mints the release signing identity",
 				base, caller, caller)
@@ -590,15 +592,22 @@ func TestAttestDispatchCallersRequireRefGuards(t *testing.T) {
 	}
 }
 
-// unguardedAttestCallers returns direct and transitive attest callers whose
-// dispatch workflow does not gate them on a recognized ref restriction.
+// unguardedAttestCallers returns direct and transitive attest callers that no
+// recognized ref restriction gates. A guard counts on the caller or its
+// needs-ancestors in the dispatch workflow, or on the job that leads to
+// attest.yml (or its needs-ancestors) inside a local wrapper on the path.
 func unguardedAttestCallers(
 	t *testing.T, workflows map[string]map[string]policyJob, jobs map[string]policyJob,
 ) []string {
 	t.Helper()
+	// A reusable workflow evaluates its jobs' if: against the caller's github
+	// context, so a guard on the wrapper job gates the call just as well.
+	guarded := func(wrapperJobs map[string]policyJob, name string) bool {
+		return jobOrAncestorHasRefGuard(t, wrapperJobs, name)
+	}
 	var callers []string
 	for name, job := range jobs {
-		if callsAttestThroughLocalWorkflows(workflows, job.Uses) && !jobOrAncestorHasRefGuard(t, jobs, name) {
+		if reachesAttest(workflows, job.Uses, guarded) && !jobOrAncestorHasRefGuard(t, jobs, name) {
 			callers = append(callers, name)
 		}
 	}
@@ -609,6 +618,15 @@ func unguardedAttestCallers(
 // callsAttestThroughLocalWorkflows follows local reusable workflows as well as
 // direct attest calls. Each file is visited once, including in cyclic graphs.
 func callsAttestThroughLocalWorkflows(workflows map[string]map[string]policyJob, uses string) bool {
+	return reachesAttest(workflows, uses, func(map[string]policyJob, string) bool { return false })
+}
+
+// reachesAttest is callsAttestThroughLocalWorkflows without the wrapper jobs
+// for which skip returns true. skip is checked before a job's call is followed,
+// so a skipped job never marks a shared wrapper as visited.
+func reachesAttest(
+	workflows map[string]map[string]policyJob, uses string, skip func(map[string]policyJob, string) bool,
+) bool {
 	seen := map[string]bool{}
 	var walk func(string) bool
 	walk = func(uses string) bool {
@@ -626,8 +644,9 @@ func callsAttestThroughLocalWorkflows(workflows map[string]map[string]policyJob,
 			return false
 		}
 		seen[name] = true
-		for _, job := range workflows[name] {
-			if walk(job.Uses) {
+		jobs := workflows[name]
+		for jobName, job := range jobs {
+			if !skip(jobs, jobName) && walk(job.Uses) {
 				return true
 			}
 		}
@@ -710,7 +729,7 @@ func TestRefGuardRecognitionFailsClosed(t *testing.T) {
 				jobs: map[string]policyJob{
 					jobGuarded: {If: exactRepoAndMainIf},
 					jobCaller: {
-						If:    "!cancelled()",
+						If:    notCancelledIf,
 						Needs: []string{jobGuarded},
 						Uses:  localAttestUses,
 					},
