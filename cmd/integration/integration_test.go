@@ -100,17 +100,6 @@ func TestIntegration(t *testing.T) {
 
 		fakeFetcher := buildFakeLogFetcher(tc)
 		deadline := eventCaseDeadline(cfg)
-		if cfg.InitializeWorkloadRun {
-			// Separate construction from cache-backed mirroring until #352 fixes
-			// the create-to-cache observation race. No creation Event is recorded.
-			require.Equal(tt, "WorkloadRun", cfg.WaitFor.Kind)
-			ctx, stop := contextForDeadline(deadline)
-			r := &controller.WorkloadRunReconciler{Client: suite.Client, Scheme: scheme.Scheme}
-			_, err := r.Reconcile(ctx, ctrl.Request{
-				Name: cfg.WaitFor.Name, Namespace: cfg.WaitFor.Namespace})
-			stop()
-			require.NoError(tt, err)
-		}
 		checkpoint := newCheckpointObservation(tt, suite.Client, cfg)
 		var nodePollRecorder *phaseCountingRecorder
 		var nodePollUID types.UID
@@ -512,9 +501,10 @@ func startManager(
 	require.NoError(t, err)
 
 	err = (&controller.WorkloadRunReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorder("workloadrun-controller"),
+		Client:    mgr.GetClient(),
+		APIReader: mgr.GetAPIReader(),
+		Scheme:    mgr.GetScheme(),
+		Recorder:  mgr.GetEventRecorder("workloadrun-controller"),
 	}).SetupWithManager(mgr)
 	require.NoError(t, err)
 
@@ -605,7 +595,6 @@ type eventTestStep struct {
 }
 
 type waitConfig struct {
-	InitializeWorkloadRun  bool          `json:"initializeWorkloadRun,omitempty"`
 	VerifyNodePollEvents   bool          `json:"verifyNodePollEvents,omitempty"`
 	VerifyCheckpointEvents bool          `json:"verifyCheckpointEvents,omitempty"`
 	RejectWorkflowCreates  bool          `json:"rejectWorkflowCreates,omitempty"`
