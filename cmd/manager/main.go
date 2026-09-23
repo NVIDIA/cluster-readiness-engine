@@ -255,6 +255,7 @@ func newRootCommand() *cobra.Command {
 			}
 			if err := (&controller.WorkloadRunReconciler{
 				Client:                  mgr.GetClient(),
+				APIReader:               mgr.GetAPIReader(),
 				Scheme:                  mgr.GetScheme(),
 				Recorder:                mgr.GetEventRecorder("workloadrun-controller"),
 				MaxConcurrentReconciles: concurrency.maxConcurrentReconciles,

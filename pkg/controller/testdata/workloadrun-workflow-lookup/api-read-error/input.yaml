@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+# The live read fails, so absence is unproven. Retry without a status write.
+inCache: false
+inAPI: true
+apiError: simulated API server unavailable
