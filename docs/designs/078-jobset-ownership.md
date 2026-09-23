@@ -46,7 +46,7 @@ This record does not reopen ADR-073's SSA recovery for webhook Secret `.data` co
 
    | State | Meaning |
    |---|---|
-   | `absent` | The JobSet CRD `Get` returns `NotFound` and the cluster-scoped webhook-configuration and ClusterRole scan finds no fingerprint rule (a webhook rule naming `jobset.x-k8s.io`, or a ClusterRole rule naming it with any verb outside `get`, `list`, `watch`); bounded to the verified chart pattern above, not proof of arbitrary controller absence |
+   | `absent` | The JobSet CRD `Get` returns `NotFound` and the cluster-scoped webhook-configuration and ClusterRole scan finds no fingerprint rule (a webhook rule naming `jobset.x-k8s.io`, or a ClusterRole rule naming it whose verbs are not a non-empty subset of `get`, `list`, `watch`); bounded to the verified chart pattern above, not proof of arbitrary controller absence |
    | `bundled` | The Trainer release manifest or its live JobSet resources identify the bundled controller, with no conflicting external ownership |
    | `external` | External controller ownership is established |
    | `crd-only` | The CRD exists, the complete name-independent fingerprint scan is clean, and successful inspection finds no JobSet controller or supporting resources, no bundled or conflicting release evidence, and no JobSet instances cluster-wide |
