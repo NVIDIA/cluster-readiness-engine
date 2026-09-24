@@ -212,26 +212,51 @@ func FailedNodesFromRef(
 	return nodes
 }
 
-// CertFailedNodes returns the deduped union of failed node names across all
-// categories, resolved from each category's nodeResultsRef ConfigMap.
-func CertFailedNodes(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certification) []string {
+// CertFailedNodeDetails returns every distinct (node, reason, message) failure
+// across all categories, resolved from each category's nodeResultsRef
+// ConfigMap and sorted by node, reason, then message. It is the single walk
+// behind both CertFailedNodes and the MCP list_failed_nodes tool, so the two
+// cannot disagree on which nodes failed.
+func CertFailedNodeDetails(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certification) []nvcrev1alpha1.FailedNode {
 	seen := make(map[string]struct{})
-	// Non-nil so an empty result serializes as [] rather than null: null reads
-	// as "unknown" to a consumer, where the truth is "no nodes failed".
-	union := []string{}
+	details := []nvcrev1alpha1.FailedNode{}
 	for _, cat := range cert.Status.CategoryStatuses {
 		for _, n := range FailedNodesFromRef(ctx, c, cert.Namespace, cat.FailedNodesRef) {
+			key := n.Name + "|" + string(n.Reason) + "|" + n.Message
 			if n.Name == "" {
 				continue
 			}
-			if _, ok := seen[n.Name]; ok {
+			if _, ok := seen[key]; ok {
 				continue
 			}
-			seen[n.Name] = struct{}{}
+			seen[key] = struct{}{}
+			details = append(details, n)
+		}
+	}
+	sort.Slice(details, func(i, j int) bool {
+		a, b := details[i], details[j]
+		if a.Name != b.Name {
+			return a.Name < b.Name
+		}
+		if a.Reason != b.Reason {
+			return a.Reason < b.Reason
+		}
+		return a.Message < b.Message
+	})
+	return details
+}
+
+// CertFailedNodes returns the deduped union of failed node names across all
+// categories: the unique names from CertFailedNodeDetails.
+func CertFailedNodes(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certification) []string {
+	// Non-nil so an empty result serializes as [] rather than null: null reads
+	// as "unknown" to a consumer, where the truth is "no nodes failed".
+	union := []string{}
+	for _, n := range CertFailedNodeDetails(ctx, c, cert) {
+		if len(union) == 0 || union[len(union)-1] != n.Name {
 			union = append(union, n.Name)
 		}
 	}
-	sort.Strings(union)
 	return union
 }
 

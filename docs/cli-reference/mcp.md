@@ -29,7 +29,9 @@ The three certification-scoped tools accept `name` and `namespace` (default `def
 
 `INCOMPLETE` means the run passed but left some targeted nodes untested — the Workflow excluded them, and `excludedNodes`/`exclusionReason` say which and why. Treat it as "not certified": nothing was observed about those nodes either way. Both `get_certification_status` and `get_certification_report` report it, because both derive the verdict from the same builder.
 
-`get_certification_status.failedNodes` is the unique node names, deduplicated across categories. `list_failed_nodes` returns one row per distinct failure reason instead, so a node that failed in several categories appears more than once — use the former for a count.
+`result` is the authoritative outcome. `get_certification_status.conditions` are the Certification's raw conditions, which the `INCOMPLETE` downgrade does not touch: an `INCOMPLETE` run still carries `Succeeded=True` (`AllCategoriesSucceeded`). Never infer a pass from `conditions`.
+
+`get_certification_status.failedNodes` is the unique node names, deduplicated across categories. `list_failed_nodes` returns one row per distinct failure reason instead, so a node that failed in several categories appears more than once — use the former for a count. Both come from the same walk over the categories' node-results ConfigMaps, so the set of node names always matches.
 
 ### Authentication
 

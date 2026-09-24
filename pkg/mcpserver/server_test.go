@@ -157,6 +157,28 @@ func TestStatusAgreesWithReport(t *testing.T) {
 					t.Errorf("%s: failedNodes mismatch: status=%v report=%v",
 						cert.Name, status.FailedNodes, rep.Report.FailedNodes)
 				}
+
+				// list_failed_nodes repeats a name once per distinct reason,
+				// but its set of names must be exactly the report's.
+				var detail listFailedNodesOutput
+				unmarshalTool(t, callTool(t, session, "list_failed_nodes", args), &detail)
+				names := []string{}
+				for _, n := range detail.FailedNodes {
+					if len(names) == 0 || names[len(names)-1] != n.Name {
+						names = append(names, n.Name)
+					}
+				}
+				if !reflect.DeepEqual(names, orEmpty(rep.Report.FailedNodes)) {
+					t.Errorf("%s: list_failed_nodes names %v disagree with report failedNodes %v",
+						cert.Name, names, rep.Report.FailedNodes)
+				}
+
+				// result is authoritative over the raw conditions: on the
+				// INCOMPLETE path the CR still says Succeeded=True, and the
+				// tool description must tell an agent not to trust that.
+				if status.Result == "INCOMPLETE" && !strings.Contains(getCertStatusTool().Description, "result is authoritative") {
+					t.Errorf("%s: INCOMPLETE result but the status tool does not declare result authoritative", cert.Name)
+				}
 			}
 		})
 	}

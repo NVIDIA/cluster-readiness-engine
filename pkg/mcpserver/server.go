@@ -19,7 +19,6 @@ package mcpserver
 import (
 	"context"
 	"fmt"
-	"sort"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -110,7 +109,7 @@ func listCategoriesTool() *mcp.Tool {
 func getCertStatusTool() *mcp.Tool {
 	return &mcp.Tool{
 		Name:        "get_certification_status",
-		Description: "Get the status of one Certification: overall result (PASSED/INCOMPLETE/FAILED/RUNNING), conditions, per-category state, any nodes excluded from the run, and the unique names of failed nodes. INCOMPLETE means the run passed but left some targeted nodes untested.",
+		Description: "Get the status of one Certification: overall result (PASSED/INCOMPLETE/FAILED/RUNNING), conditions, per-category state, any nodes excluded from the run, and the unique names of failed nodes. INCOMPLETE means the run passed but left some targeted nodes untested. result is authoritative: conditions are the raw Certification conditions and can still read Succeeded=True on an INCOMPLETE run, so never infer the outcome from conditions.",
 	}
 }
 
@@ -209,33 +208,16 @@ func listFailedNodesHandler(store *Store) mcp.ToolHandlerFor[certRef, any] {
 			return nil, nil, err
 		}
 
-		seen := map[string]bool{}
+		// Same walk report.CertFailedNodes uses, so this tool and the report
+		// cannot disagree on which nodes failed.
 		details := []failedNodeDetail{}
-		for _, cat := range cert.Status.CategoryStatuses {
-			for _, n := range report.FailedNodesFromRef(ctx, store.Client, cert.Namespace, cat.FailedNodesRef) {
-				key := n.Name + "|" + string(n.Reason) + "|" + n.Message
-				if n.Name == "" || seen[key] {
-					continue
-				}
-				seen[key] = true
-				details = append(details, failedNodeDetail{
-					Name:    n.Name,
-					Reason:  string(n.Reason),
-					Message: n.Message,
-				})
-			}
+		for _, n := range report.CertFailedNodeDetails(ctx, store.Client, cert) {
+			details = append(details, failedNodeDetail{
+				Name:    n.Name,
+				Reason:  string(n.Reason),
+				Message: n.Message,
+			})
 		}
-		// Deterministic order for the goldens.
-		sort.Slice(details, func(i, j int) bool {
-			a, b := details[i], details[j]
-			if a.Name != b.Name {
-				return a.Name < b.Name
-			}
-			if a.Reason != b.Reason {
-				return a.Reason < b.Reason
-			}
-			return a.Message < b.Message
-		})
 		return textResult(&listFailedNodesOutput{
 			Name:        cert.Name,
 			Namespace:   cert.Namespace,
@@ -273,9 +255,13 @@ type categorySummary struct {
 // field the tool description points at for a node count, so a vanishing key
 // is the one misreading this feature exists to prevent.
 type getCertStatusOutput struct {
-	Name       string `json:"name"`
-	Namespace  string `json:"namespace"`
-	Result     string `json:"result"` // "PASSED", "INCOMPLETE", "FAILED", or "RUNNING"
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	// Result is the authoritative outcome: "PASSED", "INCOMPLETE", "FAILED",
+	// or "RUNNING". It is projected from report.Build, which downgrades
+	// PASSED to INCOMPLETE when nodes were excluded; Conditions are the raw
+	// CR conditions and do not, so they can disagree on that path.
+	Result     string `json:"result"`
 	TotalNodes int    `json:"totalNodes,omitempty"`
 	// ExcludedNodes lists nodes that matched the target but were left
 	// untested; a run reports INCOMPLETE rather than PASSED when it has any.
