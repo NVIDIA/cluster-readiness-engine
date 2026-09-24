@@ -463,6 +463,7 @@ func startManager(
 	}
 	err = (&controller.JobReconciler{
 		Client:                  mgr.GetClient(),
+		APIReader:               mgr.GetAPIReader(),
 		Scheme:                  mgr.GetScheme(),
 		Recorder:                jobRecorder,
 		WorkloadRequeueInterval: 1 * time.Second,
@@ -1400,6 +1401,12 @@ func sanitizeObject(obj client.Object) {
 		// A pending (e.g. suspended) workload must NOT have it.
 		if o.Status.WorkloadStartTime != nil {
 			o.Status.WorkloadStartTime = &metav1.Time{Time: time.Unix(0, 0).UTC()}
+		}
+		// schedulingBlockedSince is wall clock for the same reason; normalize
+		// to a fixed placeholder so goldens stay deterministic while still
+		// pinning whether a blocked episode is recorded (ADR-083).
+		if o.Status.SchedulingBlockedSince != nil {
+			o.Status.SchedulingBlockedSince = &metav1.Time{Time: time.Unix(0, 0).UTC()}
 		}
 	case *nvcrev1alpha1.Workflow:
 		clearConditionTimestamps(o.Status.Conditions)

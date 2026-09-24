@@ -81,6 +81,7 @@ type CategoryReport struct {
 	Variant       string `json:"variant"`
 	Status        string `json:"status"`
 	FailureReason string `json:"failureReason,omitempty"` // populated from Workflow Failed condition message
+	StatusDetail  string `json:"statusDetail,omitempty"`  // why a Running category is not progressing, e.g. scheduling blocked (ADR-083)
 	Runtime       string `json:"runtime,omitempty"`       // total runtime across all iterations
 	TestScale     string `json:"testScale,omitempty"`
 	NodesPerJob   int    `json:"nodesPerJob,omitempty"`
@@ -295,6 +296,9 @@ func Build(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certificati
 				if cat.Status == statusFailed {
 					cat.FailureReason = failureReasonFromConditions(wf.Status.Conditions)
 				}
+				if cat.Status == statusRunning {
+					cat.StatusDetail = schedulingBlockedDetail(wf.Status.Conditions)
+				}
 			}
 		}
 
@@ -375,6 +379,19 @@ func batchJobFailureReason(ctx context.Context, c client.Client, jobMsg, namespa
 func failureReasonFromConditions(conditions []metav1.Condition) string {
 	for _, cond := range conditions {
 		if cond.Type == nvcrev1alpha1.WorkflowFailed && cond.Status == metav1.ConditionTrue {
+			return cond.Message
+		}
+	}
+	return ""
+}
+
+// schedulingBlockedDetail returns the Workflow InProgress message when its
+// reason is JobSchedulingBlocked, so a stalled Running category says why
+// (ADR-083). Returns "" otherwise.
+func schedulingBlockedDetail(conditions []metav1.Condition) string {
+	for _, cond := range conditions {
+		if cond.Type == nvcrev1alpha1.WorkflowInProgress && cond.Status == metav1.ConditionTrue &&
+			cond.Reason == controller.ReasonJobSchedulingBlocked {
 			return cond.Message
 		}
 	}
@@ -1269,6 +1286,10 @@ func printCategoryCard(w io.Writer, cat *CategoryReport) {
 			reasonLine = reasonLine[:boxWidth-7] + "..."
 		}
 		_, _ = fmt.Fprintf(w, "│  %s%s│\n", reasonLine, pad(boxWidth-4-len(reasonLine)))
+	}
+	if cat.StatusDetail != "" {
+		// Relayed Event text: sanitize and wrap like the failure log.
+		printWrappedBoxText(w, "Blocked:   ", cat.StatusDetail)
 	}
 	if cat.Runtime != "" {
 		label := fmt.Sprintf("Runtime:   %s", cat.Runtime)

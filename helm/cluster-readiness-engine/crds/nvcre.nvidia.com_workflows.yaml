@@ -324,6 +324,17 @@ spec:
                         x-kubernetes-validations:
                         - message: nodeHealthMonitor is immutable
                           rule: self == oldSelf
+                      schedulingStallGraceSeconds:
+                        description: |-
+                          schedulingStallGraceSeconds is how long the workload's pods may remain
+                          unschedulable (PodScheduled=False/Unschedulable) before the Job surfaces
+                          an InProgress condition with reason "WorkloadSchedulingBlocked". The
+                          grace window only delays the condition: blocked time is excluded from
+                          timeoutPerJob and stall detection from the first blocked observation.
+                          Default: 300 (5 minutes). See ADR-083.
+                        format: int32
+                        minimum: 1
+                        type: integer
                       stallMultiplier:
                         description: |-
                           stallMultiplier configures stall detection for the workload. When set,

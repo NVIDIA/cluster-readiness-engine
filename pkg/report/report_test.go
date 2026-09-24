@@ -405,6 +405,32 @@ func TestPrintReportFailed(t *testing.T) {
 	assert.Contains(t, output, "0/1 passed")
 }
 
+// TestPrintReportBlockedDetail pins that relayed scheduler text on a Running
+// category is sanitized and wrapped to the card width (ADR-083): any principal
+// that can create Events in the namespace controls that text.
+func TestPrintReportBlockedDetail(t *testing.T) {
+	report := &CertReport{
+		Name: "blocked-cert",
+		Categories: []CategoryReport{{
+			Domain: testDomainTraining, Variant: "v1", Status: statusRunning,
+			StatusDetail: "job j scheduling blocked: 0/3 nodes are available:\n\x1b[31m" +
+				strings.Repeat("Insufficient nvidia.com/gpu ", 6),
+		}},
+		Result: "RUNNING",
+	}
+
+	var buf bytes.Buffer
+	Print(&buf, report)
+	output := buf.String()
+
+	assert.Contains(t, output, "Blocked:   job j scheduling blocked")
+	assert.Contains(t, output, `\x1b[31m`)
+	assert.NotContains(t, output, "\x1b[31m")
+	for line := range strings.SplitSeq(strings.TrimSuffix(output, "\n"), "\n") {
+		assert.LessOrEqual(t, displayWidth(line), boxWidth)
+	}
+}
+
 // TestPrintFailureLog covers captured diagnostics and timeout-only reasons.
 func TestPrintFailureLog(t *testing.T) {
 	t.Run("renders and sanitizes captured log", func(t *testing.T) {
