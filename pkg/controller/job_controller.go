@@ -95,6 +95,10 @@ const (
 // JobReconciler reconciles a Job object
 type JobReconciler struct {
 	client.Client
+	// APIReader reads straight from the API server. The scheduling-stall
+	// detector uses it for Events so the manager never caches every Event
+	// in the cluster (ADR-083). Falls back to Client when nil.
+	APIReader      client.Reader
 	Scheme         *runtime.Scheme
 	Clientset      *kubernetes.Clientset
 	NodeDiscoverer *nodemonitor.NodeDiscoverer
@@ -781,7 +785,7 @@ func (r *JobReconciler) checkSchedulingBlocked(ctx context.Context, job *nvcrev1
 		}
 		blocked = true
 		if newestMessage == "" {
-			newestMessage = newestFailedSchedulingMessage(ctx, r.Client, pod)
+			newestMessage = newestFailedSchedulingMessage(ctx, r.eventReader(), pod)
 		}
 	}
 	if !blocked {
@@ -861,14 +865,28 @@ func resumeFromSchedulingBlock(j *nvcrev1alpha1.Job, now metav1.Time) {
 	j.Status.SchedulingResumedTime = &now
 }
 
+// eventInvolvedNameField is the Event field selector the API server supports
+// for the involved object's name.
+const eventInvolvedNameField = "involvedObject.name"
+
+// eventReader returns the uncached reader for Events, or the cached client
+// when none is wired (unit tests).
+func (r *JobReconciler) eventReader() client.Reader {
+	if r.APIReader != nil {
+		return r.APIReader
+	}
+	return r.Client
+}
+
 // newestFailedSchedulingMessage returns the message of the pod's most recent
 // FailedScheduling warning event, or "" when none is found. Best-effort: an
 // event-listing error returns "" so detection still fires with the generic
-// message.
-func newestFailedSchedulingMessage(ctx context.Context, c client.Client, pod *corev1.Pod) string {
+// message. The read is a server-side field-selected list, run only for pods
+// that are already blocked; the reason filter is applied here.
+func newestFailedSchedulingMessage(ctx context.Context, c client.Reader, pod *corev1.Pod) string {
 	eventList := &corev1.EventList{}
 	if err := c.List(ctx, eventList, client.InNamespace(pod.Namespace),
-		client.MatchingFields{eventInvolvedNameIndexField: pod.Name},
+		client.MatchingFields{eventInvolvedNameField: pod.Name},
 	); err != nil {
 		return ""
 	}

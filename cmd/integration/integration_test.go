@@ -463,6 +463,7 @@ func startManager(
 	}
 	err = (&controller.JobReconciler{
 		Client:                  mgr.GetClient(),
+		APIReader:               mgr.GetAPIReader(),
 		Scheme:                  mgr.GetScheme(),
 		Recorder:                jobRecorder,
 		WorkloadRequeueInterval: 1 * time.Second,

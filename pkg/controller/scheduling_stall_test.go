@@ -58,7 +58,7 @@ func newSchedulingFakeClient(t *testing.T, scheme *runtime.Scheme, objs ...clien
 			}
 			return nil
 		}).
-		WithIndex(&corev1.Event{}, eventInvolvedNameIndexField, func(obj client.Object) []string {
+		WithIndex(&corev1.Event{}, eventInvolvedNameField, func(obj client.Object) []string {
 			ev, ok := obj.(*corev1.Event)
 			if !ok || ev.InvolvedObject.Name == "" {
 				return nil

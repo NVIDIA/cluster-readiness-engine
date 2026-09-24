@@ -164,14 +164,21 @@ changing adapter phase semantics or retry behavior.
 - **`pkg/controller/workflow_controller.go`**: `isJobTimedOut` freezes elapsed
   runtime at `schedulingBlockedSince`; the running-group loop raises
   `JobSchedulingBlocked` on the Workflow.
-- **`pkg/controller/indexes.go`**: Event `involvedObject.name` field index for
-  keyed `FailedScheduling` lookups.
-- **`helm/.../manager-role.yaml`**: `get`/`list`/`watch` on `events` (core and
-  `events.k8s.io`), required by the event relay.
+- **Event reads are uncached.** `newestFailedSchedulingMessage` lists Events
+  through the manager's API reader with an `involvedObject.name` field
+  selector. An Event index would start an informer that caches every Event in
+  the cluster in every manager replica, for a lookup that runs only for pods
+  that are already blocked.
+- **`helm/.../manager-role.yaml`**: `get`/`list` on `events` (core and
+  `events.k8s.io`), required by the event relay. No `watch`: nothing informs
+  on Events.
 - **`pkg/report/report.go`**: `CategoryReport.StatusDetail` and the `Blocked:`
-  card line.
-- **Pod-list cost:** one indexed pod list per running-path reconcile of a
-  non-terminal workload, plus one indexed event list per blocked pod.
+  card line. The text is relayed from Events, which any principal allowed to
+  create Events in the namespace can write, so it is sanitized and wrapped
+  like the failure log.
+- **API cost:** one indexed (cached) pod list per running-path reconcile of a
+  non-terminal workload, plus one field-selected Event list against the API
+  server per blocked pod.
 
 ## Rationale
 
@@ -210,7 +217,7 @@ changing adapter phase semantics or retry behavior.
   the runtime consumed before a block is still charged after it.
 - New status fields `schedulingBlockedSince` and `schedulingResumedTime` on
   Job, new spec field `schedulingStallGraceSeconds` (all additive, optional).
-- New RBAC: the manager reads Events (`get`/`list`/`watch`) for the relay.
+- New RBAC: the manager reads Events (`get`/`list`) for the relay.
 - Adapters unchanged.
 - Risk: misclassification of a slow but healthy scheduler as blocked is
   bounded by the grace window for the condition and self-corrects on

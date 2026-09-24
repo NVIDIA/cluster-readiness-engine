@@ -64,7 +64,6 @@ rules:
   - get
   - list
   - patch
-  - watch
 - apiGroups:
   - nvcre.nvidia.com
   resources:

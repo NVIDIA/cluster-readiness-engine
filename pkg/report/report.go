@@ -1288,11 +1288,8 @@ func printCategoryCard(w io.Writer, cat *CategoryReport) {
 		_, _ = fmt.Fprintf(w, "│  %s%s│\n", reasonLine, pad(boxWidth-4-len(reasonLine)))
 	}
 	if cat.StatusDetail != "" {
-		detailLine := fmt.Sprintf("Blocked:   %s", cat.StatusDetail)
-		if len(detailLine) > boxWidth-4 {
-			detailLine = detailLine[:boxWidth-7] + "..."
-		}
-		_, _ = fmt.Fprintf(w, "│  %s%s│\n", detailLine, pad(boxWidth-4-len(detailLine)))
+		// Relayed Event text: sanitize and wrap like the failure log.
+		printWrappedBoxText(w, "Blocked:   ", cat.StatusDetail)
 	}
 	if cat.Runtime != "" {
 		label := fmt.Sprintf("Runtime:   %s", cat.Runtime)
