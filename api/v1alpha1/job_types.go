@@ -280,9 +280,10 @@ type JobSpec struct {
 
 	// schedulingStallGraceSeconds is how long the workload's pods may remain
 	// unschedulable (PodScheduled=False/Unschedulable) before the Job surfaces
-	// an InProgress condition with reason "WorkloadSchedulingBlocked". Blocked
-	// time does not count against timeoutPerJob or stall detection.
-	// Default: 300 (5 minutes). See ADR-075.
+	// an InProgress condition with reason "WorkloadSchedulingBlocked". The
+	// grace window only delays the condition: blocked time is excluded from
+	// timeoutPerJob and stall detection from the first blocked observation.
+	// Default: 300 (5 minutes). See ADR-083.
 	// +optional
 	// +kubebuilder:validation:Minimum=1
 	SchedulingStallGraceSeconds *int32 `json:"schedulingStallGraceSeconds,omitempty"`
@@ -376,17 +377,27 @@ type JobStatus struct {
 	// queued time does not count against timeoutPerJob or stall detection:
 	// timeoutPerJob is measured from this timestamp, and the stall clock never
 	// starts before it. Cleared on checkpoint restart so the replacement
-	// workload gets a fresh budget.
+	// workload gets a fresh budget. When a scheduling-blocked episode ends,
+	// it is advanced by the paused interval, so the workload keeps only the
+	// budget it had left before the block (ADR-083).
 	// +optional
 	WorkloadStartTime *metav1.Time `json:"workloadStartTime,omitempty"`
 
 	// schedulingBlockedSince records when the workload's pods were first
 	// observed unschedulable in the current blocked episode. Set by the
-	// controller when the blocked state is first detected, cleared when any
-	// pod schedules. Persisted so controller restarts do not reset the grace
-	// window. See ADR-075.
+	// controller when the blocked state is first detected, cleared when no
+	// pod is blocked. While set, the timeoutPerJob clock is paused at this
+	// instant. Persisted so controller restarts do not reset the grace
+	// window. See ADR-083.
 	// +optional
 	SchedulingBlockedSince *metav1.Time `json:"schedulingBlockedSince,omitempty"`
+
+	// schedulingResumedTime records when the most recent blocked episode
+	// ended. Training-stall detection measures from this instant when it is
+	// later than the last observed training step, so time spent unschedulable
+	// is not charged to the stall budget. See ADR-083.
+	// +optional
+	SchedulingResumedTime *metav1.Time `json:"schedulingResumedTime,omitempty"`
 
 	// restartCount tracks the number of times the workload has been restarted from checkpoint.
 	// +optional

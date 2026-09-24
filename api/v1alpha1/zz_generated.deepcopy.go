@@ -1362,6 +1362,10 @@ func (in *JobStatus) DeepCopyInto(out *JobStatus) {
 		in, out := &in.SchedulingBlockedSince, &out.SchedulingBlockedSince
 		*out = (*in).DeepCopy()
 	}
+	if in.SchedulingResumedTime != nil {
+		in, out := &in.SchedulingResumedTime, &out.SchedulingResumedTime
+		*out = (*in).DeepCopy()
+	}
 	if in.FailureLog != nil {
 		in, out := &in.FailureLog, &out.FailureLog
 		*out = new(FailureLog)

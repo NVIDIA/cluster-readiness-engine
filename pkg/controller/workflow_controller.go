@@ -877,13 +877,21 @@ func (r *WorkflowReconciler) deleteWorkloadForJob(ctx context.Context, job *nvcr
 // Only when no workload has been created at all does the group's StartTime
 // remain the bound, so a Job whose workload can never be created still
 // terminates.
+//
+// While the Job reports a scheduling-blocked episode
+// (job.status.schedulingBlockedSince), the clock is paused at the first
+// blocked observation, grace window included; the Job controller advances
+// workloadStartTime by the paused interval when the episode ends (ADR-083).
 func (r *WorkflowReconciler) isJobTimedOut(workflow *nvcrev1alpha1.Workflow, g *nvcrev1alpha1.GroupStatus, job *nvcrev1alpha1.Job) bool {
 	timeout := workflow.Spec.Orchestration.Execution.TimeoutPerJob
 	if timeout == nil {
 		return false
 	}
-	if job.Status.WorkloadStartTime != nil {
-		return time.Since(job.Status.WorkloadStartTime.Time) > timeout.Duration
+	if start := job.Status.WorkloadStartTime; start != nil {
+		if blocked := job.Status.SchedulingBlockedSince; blocked != nil {
+			return blocked.Sub(start.Time) > timeout.Duration
+		}
+		return time.Since(start.Time) > timeout.Duration
 	}
 	if job.Status.WorkloadRef != nil {
 		// Workload created but not yet observed running (e.g. suspended,
@@ -894,6 +902,18 @@ func (r *WorkflowReconciler) isJobTimedOut(workflow *nvcrev1alpha1.Workflow, g *
 		return false
 	}
 	return time.Since(g.StartTime.Time) > timeout.Duration
+}
+
+// schedulingBlockedMessage returns "job <name> scheduling blocked: <reason>"
+// when the Job's InProgress condition carries WorkloadSchedulingBlocked, or
+// "" otherwise. The Job condition message already relays the scheduler's
+// diagnosis, so the Workflow relays it verbatim (ADR-083).
+func schedulingBlockedMessage(job *nvcrev1alpha1.Job) string {
+	cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobInProgress)
+	if cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != ReasonWorkloadSchedulingBlocked {
+		return ""
+	}
+	return fmt.Sprintf("job %s scheduling blocked: %s", job.Name, cond.Message)
 }
 
 func (r *WorkflowReconciler) hasRunningGroups(orch *nvcrev1alpha1.OrchestrationStatus) bool {
@@ -1252,6 +1272,9 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 
 	anyRunning := false
 	statusChanged := false
+	// blockedMsg carries the first running Job's scheduling-blocked diagnosis
+	// up to the Workflow condition (ADR-083).
+	blockedMsg := ""
 
 	for i := range orch.Groups {
 		g := &orch.Groups[i]
@@ -1351,6 +1374,9 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 				continue
 			}
 			anyRunning = true
+			if blockedMsg == "" {
+				blockedMsg = schedulingBlockedMessage(job)
+			}
 			continue
 		}
 
@@ -1378,6 +1404,11 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		runningCount := countRunningGroups(orch)
 		msg := fmt.Sprintf("Iteration %d/%d: %d groups running",
 			orch.CurrentIteration, effectiveIterations(workflow.Spec.Orchestration), runningCount)
+		reason := ReasonJobRunning
+		if blockedMsg != "" {
+			reason = ReasonJobSchedulingBlocked
+			msg = msg + "; " + blockedMsg
+		}
 		// The loop above mutated orch.Groups on workflow.Status directly. Hand
 		// those phases to the condition write so they land in the same update:
 		// updateStatusWithRetry skips the write when its mutate reports no change,
@@ -1393,7 +1424,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 			w.Status.Orchestration.Groups = want
 			return true
 		}
-		if err := r.setWorkflowInProgress(ctx, workflow, ReasonJobRunning, msg, applyGroups); err != nil {
+		if err := r.setWorkflowInProgress(ctx, workflow, reason, msg, applyGroups); err != nil {
 			return ctrl.Result{}, err
 		}
 	}

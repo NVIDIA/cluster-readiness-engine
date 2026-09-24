@@ -1403,7 +1403,7 @@ func sanitizeObject(obj client.Object) {
 		}
 		// schedulingBlockedSince is wall clock for the same reason; normalize
 		// to a fixed placeholder so goldens stay deterministic while still
-		// pinning whether a blocked episode is recorded (ADR-075).
+		// pinning whether a blocked episode is recorded (ADR-083).
 		if o.Status.SchedulingBlockedSince != nil {
 			o.Status.SchedulingBlockedSince = &metav1.Time{Time: time.Unix(0, 0).UTC()}
 		}

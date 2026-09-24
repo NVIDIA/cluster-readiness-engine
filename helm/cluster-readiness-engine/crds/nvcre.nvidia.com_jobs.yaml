@@ -160,9 +160,10 @@ spec:
                 description: |-
                   schedulingStallGraceSeconds is how long the workload's pods may remain
                   unschedulable (PodScheduled=False/Unschedulable) before the Job surfaces
-                  an InProgress condition with reason "WorkloadSchedulingBlocked". Blocked
-                  time does not count against timeoutPerJob or stall detection.
-                  Default: 300 (5 minutes). See ADR-075.
+                  an InProgress condition with reason "WorkloadSchedulingBlocked". The
+                  grace window only delays the condition: blocked time is excluded from
+                  timeoutPerJob and stall detection from the first blocked observation.
+                  Default: 300 (5 minutes). See ADR-083.
                 format: int32
                 minimum: 1
                 type: integer
@@ -6596,9 +6597,18 @@ spec:
                 description: |-
                   schedulingBlockedSince records when the workload's pods were first
                   observed unschedulable in the current blocked episode. Set by the
-                  controller when the blocked state is first detected, cleared when any
-                  pod schedules. Persisted so controller restarts do not reset the grace
-                  window. See ADR-075.
+                  controller when the blocked state is first detected, cleared when no
+                  pod is blocked. While set, the timeoutPerJob clock is paused at this
+                  instant. Persisted so controller restarts do not reset the grace
+                  window. See ADR-083.
+                format: date-time
+                type: string
+              schedulingResumedTime:
+                description: |-
+                  schedulingResumedTime records when the most recent blocked episode
+                  ended. Training-stall detection measures from this instant when it is
+                  later than the last observed training step, so time spent unschedulable
+                  is not charged to the stall budget. See ADR-083.
                 format: date-time
                 type: string
               workloadRef:
@@ -6633,7 +6643,9 @@ spec:
                   queued time does not count against timeoutPerJob or stall detection:
                   timeoutPerJob is measured from this timestamp, and the stall clock never
                   starts before it. Cleared on checkpoint restart so the replacement
-                  workload gets a fresh budget.
+                  workload gets a fresh budget. When a scheduling-blocked episode ends,
+                  it is advanced by the paused interval, so the workload keeps only the
+                  budget it had left before the block (ADR-083).
                 format: date-time
                 type: string
             type: object

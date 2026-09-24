@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -19,7 +20,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor"
 )
 
-// Tests for checkSchedulingBlocked (ADR-075): the detector must fire
+// Tests for checkSchedulingBlocked (ADR-083): the detector must fire
 // WorkloadSchedulingBlocked when a running-path workload's pods carry
 // PodScheduled=False/Unschedulable past the grace window — including after
 // WorkloadStartTime is set (clock-pause amendment) — must relay the
@@ -46,6 +47,7 @@ func newSchedulingFakeClient(t *testing.T, scheme *runtime.Scheme, objs ...clien
 	t.Helper()
 
 	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).
+		WithStatusSubresource(&nvcrev1alpha1.Job{}).
 		WithIndex(&corev1.Pod{}, nodemonitor.PodNVCREJobIndexField, func(obj client.Object) []string {
 			pod, ok := obj.(*corev1.Pod)
 			if !ok {
@@ -211,6 +213,16 @@ func TestCheckSchedulingBlocked(t *testing.T) {
 			wantMsgPart: testUnschedulableMsg,
 		},
 		{
+			name: "SchedulingGated pod past grace — not blocked (intentional hold, not a rejection)",
+			job:  schedulingJob("job-i", &oldBlockedSince, &grace),
+			pods: func() []*corev1.Pod {
+				p := unschedulablePod("p1", "job-i")
+				p.Status.Conditions[0].Reason = corev1.PodReasonSchedulingGated
+				return []*corev1.Pod{p}
+			}(),
+			wantBlocked: false,
+		},
+		{
 			name: "unscheduled but PodScheduled=True — not blocked",
 			job:  schedulingJob("job-h", &oldBlockedSince, &grace),
 			pods: func() []*corev1.Pod {
@@ -296,4 +308,152 @@ func TestNewestFailedSchedulingMessageNoEvents(t *testing.T) {
 	if got != "" {
 		t.Fatalf("expected empty message with no events, got %q", got)
 	}
+}
+
+// A workload that ran 49 minutes, then sat unschedulable for 10, resumes with
+// exactly 49 minutes consumed: WorkloadStartTime moves forward by the paused
+// interval instead of being reset to the recovery instant.
+func TestResumeFromSchedulingBlockPreservesConsumedRuntime(t *testing.T) {
+	now := metav1.NewTime(time.Now().Truncate(time.Second))
+	start := metav1.NewTime(now.Add(-59 * time.Minute))
+	blockedSince := metav1.NewTime(now.Add(-10 * time.Minute))
+
+	j := schedulingJob("job-r", &blockedSince, nil)
+	j.Status.WorkloadStartTime = &start
+	resumeFromSchedulingBlock(j, now)
+
+	require.Nil(t, j.Status.SchedulingBlockedSince)
+	require.NotNil(t, j.Status.SchedulingResumedTime)
+	require.True(t, j.Status.SchedulingResumedTime.Equal(&now))
+	require.Equal(t, 49*time.Minute, now.Sub(j.Status.WorkloadStartTime.Time))
+}
+
+// A workload blocked before its clock ever started keeps the clock unset, so
+// the first-observe logic stamps it when the workload actually runs.
+func TestResumeFromSchedulingBlockLeavesUnstartedClockUnset(t *testing.T) {
+	now := metav1.Now()
+	blockedSince := metav1.NewTime(now.Add(-10 * time.Minute))
+
+	j := schedulingJob("job-s", &blockedSince, nil)
+	resumeFromSchedulingBlock(j, now)
+
+	require.Nil(t, j.Status.WorkloadStartTime)
+	require.Nil(t, j.Status.SchedulingBlockedSince)
+}
+
+// End to end through the detector: once no pod is blocked, the marker is
+// cleared and the shifted start and resume time are persisted.
+func TestCheckSchedulingBlockedRecoveryShiftsClock(t *testing.T) {
+	ctx := context.Background()
+	scheme := schedulingTestScheme(t)
+
+	start := metav1.NewTime(time.Now().Add(-30 * time.Minute).Truncate(time.Second))
+	blockedSince := metav1.NewTime(time.Now().Add(-20 * time.Minute).Truncate(time.Second))
+	job := schedulingJob("job-t", &blockedSince, nil)
+	job.Status.WorkloadStartTime = &start
+
+	c := newSchedulingFakeClient(t, scheme, job.DeepCopy(), runningPod("p1", "job-t"))
+	r := &JobReconciler{Client: c, Scheme: scheme}
+	require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(job), job))
+
+	blocked, _ := r.checkSchedulingBlocked(ctx, job)
+	require.False(t, blocked)
+
+	persisted := &nvcrev1alpha1.Job{}
+	require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(job), persisted))
+	require.Nil(t, persisted.Status.SchedulingBlockedSince)
+	require.NotNil(t, persisted.Status.SchedulingResumedTime)
+	// About 10 minutes consumed before the block; the ~20 blocked minutes
+	// are not charged.
+	consumed := time.Since(persisted.Status.WorkloadStartTime.Time)
+	require.InDelta(t, (10 * time.Minute).Seconds(), consumed.Seconds(), 5)
+}
+
+// The reviewer's reproduction: started 2m ago, blocked since 1m ago, default
+// 5m grace, 90s timeoutPerJob. The clock is paused at the first blocked
+// observation, so the Workflow must not time the Job out during grace.
+func TestIsJobTimedOutPausedWhileSchedulingBlocked(t *testing.T) {
+	r := &WorkflowReconciler{}
+	wf := &nvcrev1alpha1.Workflow{}
+	wf.Spec.Orchestration.Execution.TimeoutPerJob = &metav1.Duration{Duration: 90 * time.Second}
+
+	start := metav1.NewTime(time.Now().Add(-2 * time.Minute))
+	blockedSince := metav1.NewTime(time.Now().Add(-time.Minute))
+	job := &nvcrev1alpha1.Job{Status: nvcrev1alpha1.JobStatus{
+		WorkloadStartTime:      &start,
+		SchedulingBlockedSince: &blockedSince,
+	}}
+	require.False(t, r.isJobTimedOut(wf, &nvcrev1alpha1.GroupStatus{}, job),
+		"only 60s were consumed before the block")
+
+	// Consumed runtime before the block still counts.
+	early := metav1.NewTime(time.Now().Add(-5 * time.Minute))
+	job.Status.WorkloadStartTime = &early
+	require.True(t, r.isJobTimedOut(wf, &nvcrev1alpha1.GroupStatus{}, job),
+		"4m consumed before the block exceeds the 90s budget")
+
+	// Without a block the same start time times out.
+	job.Status.WorkloadStartTime = &start
+	job.Status.SchedulingBlockedSince = nil
+	require.True(t, r.isJobTimedOut(wf, &nvcrev1alpha1.GroupStatus{}, job))
+}
+
+// A training workload whose last step predates a long scheduling block must
+// not be declared stalled the moment it recovers: the training-stall budget
+// restarts from schedulingResumedTime.
+func TestCheckStallTimeoutCreditsSchedulingBlock(t *testing.T) {
+	ctx := context.Background()
+	scheme := schedulingTestScheme(t)
+
+	multiplier := int32(3)
+	lastStep := metav1.NewTime(time.Now().Add(-2 * time.Hour))
+	gmMeta := metav1.ObjectMeta{Name: "gm-u", Namespace: schedulingTestNS}
+	gm := &nvcrev1alpha1.GoodputMeasurement{
+		ObjectMeta: gmMeta,
+		Spec: nvcrev1alpha1.GoodputMeasurementSpec{
+			JobRef: corev1.TypedLocalObjectReference{Kind: "Job", Name: "job-u"},
+		},
+		Status: nvcrev1alpha1.GoodputMeasurementStatus{
+			LastStepTimestamp: &lastStep,
+			AvgStepTimeSec:    "10",
+			LogInterval:       1,
+		},
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(gm).
+		WithIndex(&nvcrev1alpha1.GoodputMeasurement{}, measurementJobRefIndexField, func(obj client.Object) []string {
+			return []string{obj.(*nvcrev1alpha1.GoodputMeasurement).Spec.JobRef.Name}
+		}).Build()
+	r := &JobReconciler{Client: c, Scheme: scheme}
+
+	job := schedulingJob("job-u", nil, nil)
+	job.Spec.StallMultiplier = &multiplier
+	start := metav1.NewTime(time.Now().Add(-3 * time.Hour))
+	job.Status.WorkloadStartTime = &start
+
+	stalled, _ := r.checkStallTimeout(ctx, job, &start)
+	require.True(t, stalled, "no block recorded: a 2h-old step is a stall")
+
+	resumed := metav1.NewTime(time.Now().Add(-10 * time.Second))
+	job.Status.SchedulingResumedTime = &resumed
+	stalled, _ = r.checkStallTimeout(ctx, job, &start)
+	require.False(t, stalled, "the budget restarts at recovery")
+}
+
+func TestSchedulingBlockedMessage(t *testing.T) {
+	meta := metav1.ObjectMeta{Name: "job-v"}
+	job := &nvcrev1alpha1.Job{ObjectMeta: meta}
+	require.Empty(t, schedulingBlockedMessage(job))
+
+	job.Status.Conditions = []metav1.Condition{{
+		Type:    nvcrev1alpha1.JobInProgress,
+		Status:  metav1.ConditionTrue,
+		Reason:  ReasonWorkloadSchedulingBlocked,
+		Message: "Workload pods are unschedulable: 0/3 nodes are available",
+	}}
+	require.Equal(t,
+		"job job-v scheduling blocked: Workload pods are unschedulable: 0/3 nodes are available",
+		schedulingBlockedMessage(job))
+
+	job.Status.Conditions[0].Reason = ReasonWorkloadRunning
+	require.Empty(t, schedulingBlockedMessage(job))
 }

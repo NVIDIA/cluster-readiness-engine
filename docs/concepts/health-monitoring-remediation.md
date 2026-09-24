@@ -78,10 +78,11 @@ Without this distinction, a workload waiting for quota would eventually be treat
 A workload whose pods cannot be placed — for example a job pinned to one node whose GPUs are held by another tenant — reports `InProgress` with reason `WorkloadSchedulingBlocked`, and the condition message relays the scheduler's own diagnosis (for example `0/3 nodes are available: 1 Insufficient nvidia.com/gpu, 2 node(s) didn't match Pod's node affinity/selector`).
 
 - Detection requires the scheduler to have explicitly rejected the pod (`PodScheduled=False/Unschedulable`) and the state to persist past a grace window (default 5 minutes, overridable with `spec.schedulingStallGraceSeconds`).
-- Like queued workloads, blocked time does not count against `timeoutPerJob` or stall detection: `status.workloadStartTime` stays unset while the block persists, and `status.schedulingBlockedSince` records when the episode began.
+- Like queued workloads, blocked time does not count against `timeoutPerJob` or stall detection, from the first blocked observation (the grace window only delays the condition). `status.schedulingBlockedSince` records when the episode began; on recovery `status.workloadStartTime` is advanced by the paused interval, so the workload keeps only the budget it had left before the block.
+- The Workflow's `InProgress` condition carries reason `JobSchedulingBlocked` with the Job's message, and `nvcrectl certification report` shows a `Blocked:` line on the running category.
 - The condition clears automatically if the pod schedules. No terminal state is ever set by the detector — `timeoutPerJob` remains the bound.
 
-See [ADR-075](../designs/075-scheduling-stall-visibility.md).
+See [ADR-083](../designs/083-scheduling-stall-visibility.md).
 
 Different nodes in the same category can fail with different reasons. A node that fails in multiple categories appears in each category's failed-nodes ConfigMap, potentially with a different reason each time.
 

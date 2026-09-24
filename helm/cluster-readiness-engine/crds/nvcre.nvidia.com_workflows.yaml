@@ -328,9 +328,10 @@ spec:
                         description: |-
                           schedulingStallGraceSeconds is how long the workload's pods may remain
                           unschedulable (PodScheduled=False/Unschedulable) before the Job surfaces
-                          an InProgress condition with reason "WorkloadSchedulingBlocked". Blocked
-                          time does not count against timeoutPerJob or stall detection.
-                          Default: 300 (5 minutes). See ADR-075.
+                          an InProgress condition with reason "WorkloadSchedulingBlocked". The
+                          grace window only delays the condition: blocked time is excluded from
+                          timeoutPerJob and stall detection from the first blocked observation.
+                          Default: 300 (5 minutes). See ADR-083.
                         format: int32
                         minimum: 1
                         type: integer

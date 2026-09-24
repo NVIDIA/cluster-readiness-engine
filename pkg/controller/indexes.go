@@ -32,7 +32,7 @@ const (
 	measurementJobRefIndexField = "spec.jobRef.name"
 
 	// eventInvolvedNameIndexField indexes Events by involvedObject.name, so
-	// the scheduling-stall detector (ADR-075) can look up a pod's
+	// the scheduling-stall detector (ADR-083) can look up a pod's
 	// FailedScheduling events as a keyed read instead of a full list.
 	eventInvolvedNameIndexField = "involvedObject.name"
 )
