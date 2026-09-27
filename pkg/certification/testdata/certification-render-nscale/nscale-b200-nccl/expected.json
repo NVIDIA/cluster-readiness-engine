@@ -55,6 +55,12 @@
       "-N",
       "10"
     ],
+    "trainerEnv": [],
+    "orchestration": {
+      "topologyKey": "",
+      "strictDomain": false,
+      "diagnoseTopologyKey": ""
+    },
     "replicatedJobs": [
       {
         "dependency": "nccl-all-reduce-runtime",
@@ -73,7 +79,8 @@
             "claims": [
               "gpu",
               "rdma"
-            ]
+            ],
+            "env": []
           }
         ]
       },
@@ -88,7 +95,8 @@
               "limits/cpu=2",
               "limits/memory=1Gi"
             ],
-            "claims": []
+            "claims": [],
+            "env": []
           }
         ]
       }
