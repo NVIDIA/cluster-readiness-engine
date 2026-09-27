@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# dcgm-level4 gets the GPU-only claim (hostNetwork pod, no RDMA), keeps its
+# --host args and its tolerate-everything toleration; no topology key on B200.
+platform: nscale
+gpuArch: b200

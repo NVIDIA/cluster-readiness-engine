@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Training entries: IB env rides the runtime container env (torchrun), gpu
+# request nulled while cpu/memory survive, gpu/rdma claims present.
+# nodesPerJob 4 x 8 GPUs satisfies nemotron5-56b minGPUs 32.
+platform: nscale
+gpuArch: b200
