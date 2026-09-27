@@ -527,3 +527,31 @@ overrides:
 {{ lib "nccl/nscale-ib-env.yaml" . | toMpiArgs | indent 12 }}
             - /usr/local/bin/all_reduce_perf_mpi
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- Nscale + GB300 topology key (ADR-085) ---
+# Nscale runs no GFD, so nvidia.com/gpu.clique never exists there; the NVLink
+# domain is published as topology.nks.nscale.com/accelerator-domain. Wrapped
+# in the same testScale conditional as the base orchestration block: an
+# orchestration override replaces the whole topology/diagnose object, so it
+# must only be emitted when the base emits one, and must repeat strictDomain
+# and minGroupSize.
+{{- if eq .TestScale "intra-rack" }}
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      equals: gb300
+  orchestration:
+    topology:
+      topologyKey: topology.nks.nscale.com/accelerator-domain
+      strictDomain: true
+{{- else if eq .TestScale "diagnose" }}
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      equals: gb300
+  orchestration:
+    diagnose:
+      minGroupSize: {{ .MinGroupSize }}
+      topologyKey: topology.nks.nscale.com/accelerator-domain
+{{- end }}

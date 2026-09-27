@@ -362,3 +362,25 @@ overrides:
           trainer:
             env:
 {{ lib "nccl/onprem-ib-env.yaml" . | indent 12 }}
+# --- Nscale NKS (GPU+RDMA DRA claims, InfiniBand; ADR-085) ---
+# Appended last so its trainer.env replacement wins over the GB200/GB300
+# ComputeDomain block above. nscale-ib-env carries the base GB200/GB300 vars.
+# Unlike nccl-loopback, NCCL_SHM_DISABLE/NCCL_P2P_DISABLE are intentionally
+# NOT set: this variant exercises the NVLink/NVSwitch fabric. The Nscale
+# fragment's own toleration list would replace this per-node entry's
+# tolerate-everything toleration, so the trailing patch restores it.
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      in: [b200, gb300]
+  dependencies:
+{{ lib "deps/nscale-gpu-rdma.yaml" . | indent 2 }}
+{{ lib "deps/tolerate-all-runtime-patch.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/nscale-ib-env.yaml" . | indent 12 }}

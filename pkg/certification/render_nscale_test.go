@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	resourcev1 "k8s.io/api/resource/v1"
 	"sigs.k8s.io/yaml"
 
@@ -34,11 +35,25 @@ type nscaleContainer struct {
 	Name string `json:"name"`
 	// Resources renders limits and requests as sorted "limits/<name>=<qty>"
 	// and "requests/<name>=<qty>" strings. nvidia.com/gpu must be absent on
-	// nscale: the override nulls out the base entry's request.
+	// nscale: the override nulls out the base entry's request. On the
+	// training entries cpu/memory must survive that null.
 	Resources []string `json:"resources"`
 	// Claims is resources.claims in declaration order, where the gpu/rdma
 	// DRA claims and (on GB300) the ComputeDomain channel claim coexist.
 	Claims []string `json:"claims"`
+	// Env is the runtime container env ("NAME=value") in declaration order.
+	// The training entries carry the portable IB env here (merged by name
+	// into the base env) because torchrun inherits the container env.
+	Env []string `json:"env"`
+}
+
+// nscaleOrchestration pins the topology key an Nscale GB300 override must
+// replace: Nscale runs no GFD, so nvidia.com/gpu.clique never exists there
+// and the NVLink domain is topology.nks.nscale.com/accelerator-domain.
+type nscaleOrchestration struct {
+	TopologyKey         string `json:"topologyKey"`
+	StrictDomain        bool   `json:"strictDomain"`
+	DiagnoseTopologyKey string `json:"diagnoseTopologyKey"`
 }
 
 type nscaleReplicatedJob struct {
@@ -63,18 +78,26 @@ type nscaleWorkflow struct {
 	// TrainerArgs is the resolved jobTemplate trainer args, where the
 	// nscale-ib-env.yaml vars ride as -x pairs and NCCL_IB_HCA/
 	// UCX_NET_DEVICES must NOT appear.
-	TrainerArgs    []string              `json:"trainerArgs"`
+	TrainerArgs []string `json:"trainerArgs"`
+	// TrainerEnv is the resolved jobTemplate trainer env ("NAME=value"),
+	// where the loopback variants carry the replaced env list.
+	TrainerEnv     []string              `json:"trainerEnv"`
+	Orchestration  nscaleOrchestration   `json:"orchestration"`
 	ReplicatedJobs []nscaleReplicatedJob `json:"replicatedJobs"`
 }
 
 // TestCertificationRenderNScale covers the ADR-085 Nscale NKS override end to
 // end through the same path "nvcrectl certification render --platform nscale
-// --gpu-arch <arch>" uses. The goldens pin the markers the override owns: the
-// gpu.nvidia.com/rdma.nscale.com ResourceClaimTemplates, the absence of
+// --gpu-arch <arch>" uses, for every catalog entry. The goldens pin the
+// markers the override owns: the gpu.nvidia.com/rdma.nscale.com
+// ResourceClaimTemplates (GPU-only on dcgm-level4), the absence of
 // nvidia.com/gpu from the rendered container resources, the portable IB env
-// (and the absence of pinned HCA names), and — on GB300 — that the nscale
-// claims and the GB200/GB300 ComputeDomain block's claim coexist without a
-// name collision.
+// in trainer args (MPI collectives), trainer env (loopbacks) or the runtime
+// container env (training), the absence of pinned HCA names, the retained
+// tolerate-everything toleration on the per-node entries, the
+// accelerator-domain topology key on GB300 (and gpu.clique left alone on
+// B200), and — on GB300 — that the Nscale claims and the GB200/GB300
+// ComputeDomain block's claim coexist without a name collision.
 func TestCertificationRenderNScale(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "certification-render-nscale",
@@ -134,11 +157,22 @@ func projectNScaleOverride(wf *nvcrev1alpha1.Workflow) (nscaleWorkflow, error) {
 		DependencyKinds: []string{},
 		ClaimTemplates:  []nscaleClaimTemplate{},
 		TrainerArgs:     []string{},
+		TrainerEnv:      []string{},
 		ReplicatedJobs:  []nscaleReplicatedJob{},
 	}
 
 	if tj := wf.Spec.JobTemplate.Spec.Workload.TrainJob; tj != nil && tj.Trainer != nil {
 		out.TrainerArgs = append(out.TrainerArgs, tj.Trainer.Args...)
+		for _, e := range tj.Trainer.Env {
+			out.TrainerEnv = append(out.TrainerEnv, e.Name+"="+e.Value)
+		}
+	}
+	if topo := wf.Spec.Orchestration.Topology; topo != nil {
+		out.Orchestration.TopologyKey = topo.TopologyKey
+		out.Orchestration.StrictDomain = topo.StrictDomain
+	}
+	if diag := wf.Spec.Orchestration.Diagnose; diag != nil {
+		out.Orchestration.DiagnoseTopologyKey = diag.TopologyKey
 	}
 
 	for i := range wf.Spec.Dependencies {
@@ -197,11 +231,20 @@ func projectNScaleOverride(wf *nvcrev1alpha1.Workflow) (nscaleWorkflow, error) {
 						fmt.Sprintf("%s=%s", rc.Name, templateName))
 				}
 				for _, tol := range podSpec.Tolerations {
+					if tol.Key == "" && tol.Operator == corev1.TolerationOpExists {
+						// The per-node entries' tolerate-everything toleration,
+						// which the Nscale blocks must leave in place.
+						projected.Tolerations = append(projected.Tolerations, "operator=Exists")
+						continue
+					}
 					projected.Tolerations = append(projected.Tolerations,
 						fmt.Sprintf("%s=%s:%s", tol.Key, tol.Value, tol.Effect))
 				}
 				for _, c := range podSpec.Containers {
-					pc := nscaleContainer{Name: c.Name, Resources: []string{}, Claims: []string{}}
+					pc := nscaleContainer{Name: c.Name, Resources: []string{}, Claims: []string{}, Env: []string{}}
+					for _, e := range c.Env {
+						pc.Env = append(pc.Env, e.Name+"="+e.Value)
+					}
 					for name, qty := range c.Resources.Limits {
 						pc.Resources = append(pc.Resources, fmt.Sprintf("limits/%s=%s", name, qty.String()))
 					}

@@ -1,6 +1,6 @@
 # ADR-085: Nscale NKS Support on the DRA Stack
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 
@@ -78,8 +78,9 @@ separate exercise once this ADR is approved.
    DeviceClass and the `rdma.nscale.com` DeviceClass, on the same shape as the existing AWS
    GB300 RoCE claim (`_lib/deps/gb300-roce-comm.yaml`), and removes `resources.limits/requests["nvidia.com/gpu"]`
    from the rendered container (base entry request at
-   `pkg/catalog/entries/communication/nccl-all-reduce.yaml:53,55`) via the override's
-   `jobTemplate` merge.
+   `pkg/catalog/entries/communication/nccl-all-reduce.yaml:53,55`) by nulling it in the
+   fragment's TrainingRuntime patch: the request lives in the runtime dependency, not in
+   `jobTemplate`, and `mergeMaps` deletes a key on an explicit null.
 
 4. **Portable IB profile, no HCA pinning.** The DRA claim injects only the HCAs it actually
    claims, so pinning device names the way the legacy `nscale-roce-env.yaml` does
@@ -89,7 +90,10 @@ separate exercise once this ADR is approved.
    `NCCL_IB_HCA`/`UCX_NET_DEVICES` pin, and NCCL's documented auto-detection fills the gap.
 
 5. **Scope the new blocks to `platform: nscale` × `gpuArchitecture`, ordered after the
-   arch-only GB200/GB300 ComputeDomain block.** The existing GB200/GB300 block
+   arch-only GB200/GB300 ComputeDomain block, in all eight catalog entries.** Not only the
+   three MPI collectives: the two loopback variants, `dcgm-level4` and both Nemotron training
+   entries request `nvidia.com/gpu` the same way and are equally unschedulable on NKS without
+   a claim. The existing GB200/GB300 block
    (`nccl-all-reduce.yaml:352-357` and the equivalent WorkloadRun block,
    `pkg/platform/overrides/workloadrun.yaml:8-13`) has no platform matcher and already fires on
    Nscale GB300 nodes; the new Nscale blocks are appended after it in every entry's
@@ -116,6 +120,41 @@ separate exercise once this ADR is approved.
    (`pkg/render/render.go:96-97`). Offline `certification render`/`workloadrun render` have no
    cluster to query ResourceSlices against, so without this flag an offline Nscale render can
    only resolve to `unknown` architecture and hard-fails the override match in decision 5.
+
+8. **Per-node entries keep their tolerate-everything toleration.** `nccl-loopback`,
+   `nccl-loopback-nvswitch` and `dcgm-level4` tolerate every taint in their base runtime
+   (`tolerations: [{operator: Exists}]`). Toleration lists carry no `name`, so `mergeMaps`
+   replaces them wholesale, and the shared fragment's arm64/GPU tolerations would silently
+   narrow what those entries tolerate. The loopback blocks therefore list a trailing
+   `deps/tolerate-all-runtime-patch.yaml` after the Nscale fragment, restoring the base
+   toleration (a strict superset of the keyed ones); `dcgm-level4` uses a fragment that sets
+   no tolerations at all.
+
+9. **`dcgm-level4` claims the GPU only, and keeps the standalone DCGM Service prerequisite.**
+   The dcgm pod runs `hostNetwork`, so an `rdma.nscale.com` (`dra.net`) claim has no pod
+   network namespace to move a netdev into, and level-4 diagnostics are intra-node. A GPU-only
+   fragment (`deps/nscale-gpu.yaml`) avoids allocating an RDMA device nothing can use. The
+   `dcgmi diag --host nvidia-dcgm.gpu-operator.svc:5555` args are unchanged: on NKS the GPU
+   Operator still creates that Service when `spec.dcgm.enabled` is true, exactly as on every
+   other platform, and `nvcrectl setup status` already reports it when missing.
+
+10. **GB300 on Nscale uses `topology.nks.nscale.com/accelerator-domain` as its topology key.**
+    The arch-only GB200/GB300 blocks (`_lib/overrides/gb200-topology-key.yaml` in
+    `dcgm-level4`, the ComputeDomain block in both Nemotron entries, and the intra-rack /
+    diagnose `orchestration` in the three collectives) set `nvidia.com/gpu.clique`. That label
+    is written by GFD, which Nscale does not run, so `partitionTopology` would fail every
+    topology-mode Workflow with `missing topology label`. A `platform: nscale` ×
+    `gpuArchitecture: gb300` block appended after each of those replaces the key with the
+    NVLink-domain label NKS publishes. In the collectives the block is wrapped in the same
+    `testScale` conditional as the base `orchestration`, because an orchestration override
+    replaces the whole `topology`/`diagnose` object and must only be emitted when the base
+    emits one (repeating `strictDomain` and `minGroupSize`). B200 has no arch-only topology
+    key, so nothing changes there; the `fabric-tier-0` mapping in Notes stays future work.
+
+11. **`OrchestrationOverrideSpec` gains an optional `diagnose` field.** Overrides could
+    replace `topology` but not `diagnose`, so decision 10 was impossible for the diagnose test
+    scale without a CRD change. The field mirrors `topology`: nil leaves the base value, non-nil
+    replaces it wholesale (`mergeOrchestration`). Workflow and WorkloadRun CRDs regenerate.
 
 ## Implementation
 
@@ -149,18 +188,32 @@ Once that's confirmed, implementation follows the shape ADR-075 and ADR-058 esta
 - **RBAC**: add a `resource.k8s.io` / `resourceslices` rule (`get`, `list`, `watch`) to
   `helm/cluster-readiness-engine/templates/manager-role.yaml`, generated via
   `+kubebuilder:rbac` markers and `make manifests`, not hand-edited.
-- **Catalog fragments** (`pkg/catalog/entries/_lib/`): `deps/nscale-gpu-rdma-comm.yaml` (two
-  `ResourceClaimTemplate`s — `gpu.nvidia.com` and `rdma.nscale.com` — plus the `resourceClaims`/
-  `resources.claims` wiring into the TrainingRuntime, mirroring `deps/gb300-roce-comm.yaml`) and
-  `nccl/nscale-ib-env.yaml` (unpinned IB env, mirroring `_lib/nccl/onprem-ib-env.yaml` from
-  ADR-075). A training-entry variant follows the same split ADR-075 used for comm vs. training
-  fragments if training entries need the DRA claims too.
-- **Per-entry override blocks**: replace the three legacy nscale blocks
-  (`nccl-all-reduce.yaml:302-318`, `nccl-all-gather.yaml`, `nccl-alltoall.yaml`) with the new
-  `when: {platform: {equals: nscale}}` block, appended after the GB200/GB300 ComputeDomain
-  block per decision 5, and drop the base `nvidia.com/gpu` request via the override's
-  `jobTemplate` (subject to the null-survival check above). Mirror in
-  `pkg/platform/overrides/workloadrun.yaml`.
+- **Catalog fragments** (`pkg/catalog/entries/_lib/`):
+  - `deps/nscale-gpu-rdma.yaml`: two `ResourceClaimTemplate`s — `gpu.nvidia.com` and
+    `rdma.nscale.com` — plus the `resourceClaims`/`resources.claims` wiring and the
+    `nvidia.com/gpu: null` deletion in the TrainingRuntime, mirroring `deps/gb300-roce-comm.yaml`.
+    It sets no `mlPolicy`, so it serves MPI and torch entries alike (no `-comm` suffix).
+  - `deps/nscale-gpu-rdma-training.yaml`: `lib`-includes the fragment above and adds the IB env
+    to the runtime container (merged by name into the base env), because torchrun inherits the
+    container env and has no `mpirun -x` to ride on — the same split ADR-075 used.
+  - `deps/nscale-gpu.yaml`: GPU-only claim for `dcgm-level4` (decision 9), no tolerations.
+  - `deps/tolerate-all-runtime-patch.yaml`: platform-neutral patch restoring
+    `tolerations: [{operator: Exists}]` (decision 8).
+  - `nccl/nscale-ib-env.yaml`: unpinned IB env, mirroring `_lib/nccl/onprem-ib-env.yaml`.
+- **Per-entry override blocks**, each appended last per decision 5:
+  - `nccl-all-reduce`, `nccl-all-gather`, `nccl-alltoall`: `nscale-gpu-rdma.yaml` +
+    `trainer.args` replacement carrying the IB env as `-x` pairs; then the GB300 topology block
+    inside the `testScale` conditional (decision 10).
+  - `nccl-loopback`, `nccl-loopback-nvswitch`: `nscale-gpu-rdma.yaml` +
+    `tolerate-all-runtime-patch.yaml`, and `trainer.env` replaced by the IB env (plus
+    `NCCL_SHM_DISABLE`/`NCCL_P2P_DISABLE` re-listed on `nccl-loopback` only, since lists replace).
+  - `dcgm-level4`: `nscale-gpu.yaml`; then the GB300 topology block.
+  - `nemotron5-8b`, `nemotron5-56b`: deps-only `nscale-gpu-rdma-training.yaml`; then the GB300
+    topology block.
+  - `pkg/platform/overrides/workloadrun.yaml` carries the claim and env blocks; its GB200/GB300
+    block sets no clique key, so it gets no topology block (see Notes).
+- **API**: `Diagnose *DiagnoseSpec` on `OrchestrationOverrideSpec` and the matching branch in
+  `mergeOrchestration` (decision 11).
 - **CLI flags**: add `--gpu-arch` to `certification render` and `workloadrun render`
   following the existing `pkg/render/render.go:96-97` flag definitions and validation shape.
 - **Removal**: delete `_lib/deps/nscale-rdmashare-comm.yaml`, `_lib/nccl/nscale-roce-env.yaml`,
@@ -178,11 +231,24 @@ Once that's confirmed, implementation follows the shape ADR-075 and ADR-058 esta
   the Nscale RDMA claim coexist without name collision. Confirm the
   `nvcrectl.nvidia.com/applied-overrides` annotation lists the Nscale block and
   `detected-platform: nscale`.
-- **testutil goldens**: new cases under `pkg/platform/testdata/build-overrides/` (nscale B200,
-  nscale GB300), new render cases under `pkg/certification/testdata/certification-render-nscale/`,
-  and a new integration case `certification-nscale-gb300-nccl` under
-  `cmd/integration/testdata/reconcile/`, mirroring `certification-mistral-gb300-nccl` and
-  `certification-onprem-gb300-nccl`.
+- **testutil goldens**: cases under `pkg/platform/testdata/build-overrides/` (Nscale B200,
+  Nscale GB300); render cases under `pkg/certification/testdata/certification-render-nscale/`
+  covering every entry on both architectures — `nscale-{b200,gb300}-nccl` (all-reduce),
+  `-nccl-scales` (all-gather at `intra-rack` and alltoall at `diagnose`, pinning the topology
+  and diagnose keys: `gpu.clique` on B200 as the control, `accelerator-domain` on GB300),
+  `-loopback` (both loopback variants: replaced `trainer.env`, restored tolerate-everything
+  toleration), `-dcgm` (GPU-only claim, unchanged `--host` args) and `-training` (both Nemotron
+  entries: IB env in the runtime container env, cpu/memory surviving the GPU null,
+  ComputeDomain + gpu/rdma claims on GB300). The projection records trainer args and env,
+  runtime container env, tolerations, claims and the orchestration keys.
+- **Integration cases** under `cmd/integration/testdata/reconcile/`:
+  `certification-nscale-gb300-nccl` (the null-survival round trip),
+  `certification-nscale-b200-dcgm` (hostNetwork entry with the GPU-only fragment),
+  `certification-nscale-gb300-nemotron5-8b` (nodes labelled
+  `topology.nks.nscale.com/accelerator-domain` and deliberately without `gpu.clique`, so a
+  missed topology override fails at partition instead of reaching `JobRunning`; also the
+  nested training fragment and container-env merge through the API server), and
+  `certification-nscale-b200-loopback` (`trainer.env` replacement plus the toleration restore).
 - **Detection goldens**: unit cases for the `nscale://` prefix match, the reverted
   `openstack://` → `onprem` path (no allocatable branch), and the ResourceSlice-based
   architecture vote (single product, mixed labeled/unlabeled nodes, no ResourceSlices present,
@@ -231,7 +297,18 @@ Once that's confirmed, implementation follows the shape ADR-075 and ADR-058 esta
   mitigated.
 - **CRD/RBAC surface grows by one rule** (`resourceslices`, read-only) and the manager needs it
   wherever architecture detection can run against a live cluster (both controllers, both
-  `--dry-run` CLI paths).
+  `--dry-run` CLI paths). The Workflow and WorkloadRun CRDs also gain one optional override
+  field (`overrides[].orchestration.diagnose`, decision 11).
+- **A GB300 NKS cluster whose nodes lack `topology.nks.nscale.com/accelerator-domain` fails
+  every topology-mode Workflow** (intra-rack and diagnose collectives, `dcgm-level4`, both
+  Nemotron entries) with `PartitionError: node … missing topology label`. This is stated, not
+  mitigated: the alternative — silently falling back to name-sorted partitioning — would
+  certify MNNVL placement that never happened. Full-scale collectives and the loopbacks set no
+  topology key and are unaffected.
+- **`dcgm-level4` on NKS needs GPU Operator `spec.dcgm.enabled: true`**, the same prerequisite
+  as everywhere else; NKS disables the device plugin and GFD, not the standalone DCGM engine.
+- **Training entries inherit `NCCL_SOCKET_IFNAME=eth0`** from `gb200-training-base-env.yaml`
+  unchanged, as the on-prem override does; the IB env is appended, not substituted.
 - **Catalog fragment count is roughly flat**: two legacy fragments (`nscale-rdmashare-comm.yaml`,
   `nscale-roce-env.yaml`) are deleted and two to three new ones are added (GPU+RDMA claims, IB
   env, possibly a training variant), so this is a swap, not net growth, beyond the shared
@@ -326,16 +403,21 @@ environment exposes only five variables (`pkg/controller/workflow_detect.go:481-
 among `dra.net` devices with `rdma == true`, take the majority `encapsulation` attribute. This
 ADR defers that work; the Nscale blocks it adds get re-scoped once RoCE support actually lands.
 
-**Topology labels are coming but are not wired by this design.** nscale is adding
-`topology.nks.nscale.com/*` node labels: `accelerator-domain` (NVLink/MNNVL scope),
+**Topology labels.** Nscale publishes `topology.nks.nscale.com/*` node labels:
+`accelerator-domain` (NVLink/MNNVL scope),
 `fabric-tier-0` (leaf switch *group* — a node label can't name one switch, since each node
 touches one leaf per rail), `fabric-tier-1` (spine), and `fabric-tier-2` (super-spine). The
 mapping a future design should use: **B200 → `fabric-tier-0`** (no NVLink beyond the node, so
 the leaf group is the finest real topology boundary — analogous to AWS's
 `network-node-layer-1`); **GB300 → `accelerator-domain`** (MNNVL must stay inside one NVLink
 domain, which outranks network locality). Tiers 1 and 2 are explicitly **not** usable as a
-`topologyKey` — recorded here so a future reader doesn't reach for the wrong one. None of this
-is wired now; the labels don't exist on any nscale cluster yet.
+`topologyKey` — recorded here so a future reader doesn't reach for the wrong one. Decision 10
+wires the GB300 → `accelerator-domain` half of this mapping wherever the catalog already sets a
+clique key. Still unwired: a B200 → `fabric-tier-0` key (no entry sets any topology key on B200
+today, so there is nothing to replace), and a GB300 topology block in
+`pkg/platform/overrides/workloadrun.yaml` alongside the AWS/GCP/Azure ones (the WorkloadRun
+GB200/GB300 block sets no clique key). Validation gate: the `accelerator-domain` label must be
+observed on real GB300 NKS nodes before topology-mode results from such a cluster are trusted.
 
 ## References
 

@@ -2203,6 +2203,27 @@ spec:
                         orchestration overrides orchestration settings (target, topology, execution, iterations).
                         Non-nil fields replace the base value; nil fields are preserved.
                       properties:
+                        diagnose:
+                          description: |-
+                            diagnose overrides the adaptive fault-isolation configuration, so a
+                            platform override can replace the base entry's diagnose topologyKey
+                            the same way it replaces the topology one.
+                          properties:
+                            minGroupSize:
+                              default: 2
+                              description: |-
+                                minGroupSize is the smallest group at which bisection stops.
+                                Nodes in failed groups of this size become suspects for confirmation.
+                              minimum: 1
+                              type: integer
+                            topologyKey:
+                              description: |-
+                                topologyKey is the node label key for topology-aware screening.
+                                When set, Stage 1 groups nodes by this label (e.g., one group per clique).
+                                When empty, nodes are grouped into disjoint chunks of ceil(sqrt(N)).
+                                Example: "nvidia.com/gpu.clique"
+                              type: string
+                          type: object
                         execution:
                           description: execution overrides how jobs are scheduled
                             across groups.

@@ -82,7 +82,7 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | H100 | AWS | EFA | `vpc.amazonaws.com/efa: 32`, no hugepages |
 | H100 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap |
 | GB200/GB300 | On-prem | InfiniBand | arm64/GPU taint tolerations, portable IB NCCL env (no HCA pinning), NIC resource auto-detected or set via `nicResourceName`, ComputeDomain |
-| B200/GB300 | nscale | InfiniBand | `gpu.nvidia.com`/`rdma.nscale.com` DRA `ResourceClaimTemplate`s (no `nvidia.com/gpu` extended-resource request), portable IB NCCL env (no HCA pinning), arm64/GPU taint tolerations; GB300 additionally gets the ComputeDomain block |
+| B200/GB300 | nscale | InfiniBand | `gpu.nvidia.com`/`rdma.nscale.com` DRA `ResourceClaimTemplate`s (no `nvidia.com/gpu` extended-resource request; `dcgm-level4` claims the GPU only, since it runs `hostNetwork`), portable IB NCCL env (no HCA pinning), arm64/GPU taint tolerations; GB300 additionally gets the ComputeDomain block and uses `topology.nks.nscale.com/accelerator-domain` as the topology key wherever other platforms use `nvidia.com/gpu.clique` (nscale runs no GFD, so that label never exists). `dcgm-level4` still needs the GPU Operator's standalone DCGM Service (`spec.dcgm.enabled: true`) |
 
 The live controller tracks which overrides matched in `status.orchestration.appliedOverrides`. When using `nvcrectl workflow render`, the same information is also written to the `nvcrectl.nvidia.com/applied-overrides` annotation on the rendered manifest.
 

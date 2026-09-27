@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# GB300 training: ComputeDomain + gpu/rdma claims coexist and the GB200/GB300
+# block's gpu.clique topology key is replaced by accelerator-domain.
+# nodesPerJob 8 x 4 GPUs satisfies nemotron5-56b minGPUs 32.
+platform: nscale
+gpuArch: gb300
