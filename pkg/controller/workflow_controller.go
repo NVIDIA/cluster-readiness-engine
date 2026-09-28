@@ -699,18 +699,23 @@ func discoverTargetNodes(ctx context.Context, reader client.Reader, target *nvcr
 	// would turn a fully certified fleet into INCOMPLETE over a node that could
 	// never have been tested. That is reachable whenever the target is not the
 	// usual gpu.present selector — a nodeNames list can pull in CPU nodes.
-	var schedulable []corev1.Node
+	//
+	// Only skip cordoned nodes if there does not exist a taintSelectors entry which
+	// targets the node.kubernetes.io/unschedulable taint.
 	var cordoned []string
-	for _, n := range nodes {
-		if n.Spec.Unschedulable {
-			if n.Labels[GPUNodeLabel] == present {
-				cordoned = append(cordoned, n.Name)
+	if !TargetsCordonedNodes(target) {
+		var schedulable []corev1.Node
+		for _, n := range nodes {
+			if n.Spec.Unschedulable {
+				if n.Labels[GPUNodeLabel] == present {
+					cordoned = append(cordoned, n.Name)
+				}
+				continue
 			}
-			continue
+			schedulable = append(schedulable, n)
 		}
-		schedulable = append(schedulable, n)
+		nodes = schedulable
 	}
-	nodes = schedulable
 
 	// Filter to GPU-equipped nodes only
 	var gpuFiltered []corev1.Node
@@ -761,6 +766,20 @@ func nodeHasTaint(node corev1.Node, sel nvcrev1alpha1.TaintSelector) bool {
 			continue
 		}
 		return true
+	}
+	return false
+}
+
+// TargetsCordonedNodes returns true if the given targetSpec contains a taintSelectors entry which
+// targets the node.kubernetes.io/unschedulable taint.
+func TargetsCordonedNodes(target *nvcrev1alpha1.TargetSpec) bool {
+	if target == nil {
+		return false
+	}
+	for _, sel := range target.TaintSelectors {
+		if sel.Key == corev1.TaintNodeUnschedulable {
+			return true
+		}
 	}
 	return false
 }
@@ -1169,8 +1188,13 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 		applyDiagnoseMNNVLOverride(&job.Spec.Workload, orch.Diagnose, group.Nodes)
 	}
 
-	// Set default node health monitor if not already configured
-	if job.Spec.NodeHealthMonitor == nil {
+	// If the given targetSpec has a taintSelector entry which targets the
+	// node.kubernetes.io/unschedulable taint, clear the NodeHealthMonitor to
+	// prevent HardwareFailures for cordoned nodes. Otherwise, use the default
+	// NodeHealthMonitor if one has not been specified.
+	if TargetsCordonedNodes(workflow.Spec.Orchestration.Target) {
+		job.Spec.NodeHealthMonitor = nil
+	} else if job.Spec.NodeHealthMonitor == nil {
 		job.Spec.NodeHealthMonitor = &nvcrev1alpha1.NodeHealthMonitor{
 			CEL: &nvcrev1alpha1.CELNodeHealthCheck{
 				Expression: `node.spec.unschedulable == true`,
@@ -1200,39 +1224,63 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 	}
 
 	log.Info("Creating Job for group", "name", jobName, "group", group.Name, "iteration", orch.CurrentIteration)
+	if err := r.createOrAdoptJob(ctx, workflow, job); err != nil {
+		return err
+	}
+
+	if err := r.setDependencyOwners(ctx, job, jobRefs); err != nil {
+		return err
+	}
+
+	now := metav1.Now()
+	group.Phase = nvcrev1alpha1.GroupRunning
+	group.JobRef = &nvcrev1alpha1.WorkloadReference{
+		APIVersion: "nvcre.nvidia.com/v1alpha1",
+		Kind:       kindJob,
+		Name:       jobName,
+		Namespace:  workflow.Namespace,
+	}
+	group.StartTime = &now
+
+	return nil
+}
+
+// createOrAdoptJob creates the Job or verifies the existing one belongs to this Workflow.
+func (r *WorkflowReconciler) createOrAdoptJob(ctx context.Context, workflow *nvcrev1alpha1.Workflow, job *nvcrev1alpha1.Job) error {
+	log := logf.FromContext(ctx)
+	jobName := job.Name
 	if err := r.Create(ctx, job); err != nil {
-		if apierrors.IsAlreadyExists(err) {
-			// Fetch the existing Job (also gives us its UID for owner references)
-			// and verify it is the one this Workflow created — a duplicate create
-			// caused by cache lag or a crash-retry. A foreign Job with a colliding
-			// name is never adopted: it would be used as the group's Job and made
-			// the owner of job-scoped dependencies it did not create.
-			if err := r.Get(ctx, client.ObjectKeyFromObject(job), job); err != nil {
-				return fmt.Errorf("failed to get existing Job %s: %w", jobName, err)
-			}
-			if !metav1.IsControlledBy(job, workflow) {
-				// A foreign holder that is already terminating (e.g. the child of
-				// a same-named parent that was just deleted) releases the name
-				// shortly: retry with backoff instead of failing terminally.
-				if !job.DeletionTimestamp.IsZero() {
-					return fmt.Errorf("existing Job %q in namespace %q is being deleted; retrying",
-						jobName, workflow.Namespace)
-				}
-				return &nameCollisionError{
-					Reason: ReasonJobNameCollision,
-					Message: fmt.Sprintf("Job %q already exists in namespace %q and is not controlled by Workflow %q; refusing to adopt it",
-						jobName, workflow.Namespace, workflow.Name),
-				}
-			}
-			log.Info("Job already exists and is controlled by this Workflow, proceeding", "name", jobName)
-		} else {
+		if !apierrors.IsAlreadyExists(err) {
 			log.Error(err, "Failed to create Job", "name", jobName)
 			return fmt.Errorf("failed to create Job %s: %w", jobName, err)
 		}
+		// Fetch the existing Job and verify it is the one this Workflow created —
+		// a duplicate create caused by cache lag or a crash-retry. A foreign Job
+		// with a colliding name is never adopted.
+		if err := r.Get(ctx, client.ObjectKeyFromObject(job), job); err != nil {
+			return fmt.Errorf("failed to get existing Job %s: %w", jobName, err)
+		}
+		if !metav1.IsControlledBy(job, workflow) {
+			// A foreign holder that is already terminating releases the name
+			// shortly: retry with backoff instead of failing terminally.
+			if !job.DeletionTimestamp.IsZero() {
+				return fmt.Errorf("existing Job %q in namespace %q is being deleted; retrying",
+					jobName, workflow.Namespace)
+			}
+			return &nameCollisionError{
+				Reason: ReasonJobNameCollision,
+				Message: fmt.Sprintf("Job %q already exists in namespace %q and is not controlled by Workflow %q; refusing to adopt it",
+					jobName, workflow.Namespace, workflow.Name),
+			}
+		}
+		log.Info("Job already exists and is controlled by this Workflow, proceeding", "name", jobName)
 	}
+	return nil
+}
 
-	// Set the Job as owner of its job-scoped dependencies so they cascade on Job deletion
-	for _, ref := range jobRefs {
+// setDependencyOwners sets the Job as the owner of its job-scoped dependencies so they cascade on Job deletion.
+func (r *WorkflowReconciler) setDependencyOwners(ctx context.Context, job *nvcrev1alpha1.Job, refs []nvcrev1alpha1.DependencyResourceRef) error {
+	for _, ref := range refs {
 		if ref.Kind == "" {
 			continue
 		}
@@ -1256,18 +1304,6 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 			return fmt.Errorf("failed to update dependency %s with Job owner: %w", ref.Name, err)
 		}
 	}
-
-	// Update group status
-	now := metav1.Now()
-	group.Phase = nvcrev1alpha1.GroupRunning
-	group.JobRef = &nvcrev1alpha1.WorkloadReference{
-		APIVersion: "nvcre.nvidia.com/v1alpha1",
-		Kind:       kindJob,
-		Name:       jobName,
-		Namespace:  workflow.Namespace,
-	}
-	group.StartTime = &now
-
 	return nil
 }
 

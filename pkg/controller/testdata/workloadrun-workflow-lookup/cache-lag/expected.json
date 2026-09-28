@@ -1,0 +1,28 @@
+{
+  "requeueAfter": "15s",
+  "apiReads": 1,
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "WorkflowCreated",
+      "message": "Workflow run created"
+    },
+    {
+      "type": "Succeeded",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "Superseded",
+      "message": ""
+    },
+    {
+      "type": "Failed",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "Superseded",
+      "message": ""
+    }
+  ],
+  "events": []
+}

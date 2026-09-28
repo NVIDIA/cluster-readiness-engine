@@ -33,10 +33,10 @@ release body between the intro paragraph (ending "…full feature list.") and
 Do NOT use this skill to cut a tag, create or publish a release, or edit any
 file in the repository. It writes one Markdown draft to a temp file.
 
-**Never publish a draft release.** A draft is a release the `Verify release`
-job determined it could not verify. Editing a draft's *body* is fine and is
-what this skill's output is for; flipping it public from the UI bypasses the
-gate entirely. See [RELEASE.md](../../../RELEASE.md).
+**Never publish a draft release.** A draft is a release the `Verify the
+published release` job determined it could not verify. Editing a draft's
+*body* is fine and is what this skill's output is for; flipping it public
+from the UI bypasses the gate entirely. See [RELEASE.md](../../../RELEASE.md).
 
 ## Inputs
 

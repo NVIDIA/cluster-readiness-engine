@@ -252,10 +252,6 @@ NVCRE certifies clusters with burn-in workloads and reports the nodes that fail.
 - [RELEASE.md](RELEASE.md) describes how a release is cut and how to verify one.
 - [SECURITY.md](SECURITY.md) describes how to report a vulnerability.
 
-## Roadmap
-
-- Declarative labels on generated workload objects, so placement systems such as Kueue and KAI Scheduler can select a queue from the workload's metadata, designed in [ADR-079](docs/designs/079-workload-object-labels.md).
-
 ## Community
 
 - Ask questions in [GitHub Discussions](https://github.com/NVIDIA/cluster-readiness-engine/discussions).

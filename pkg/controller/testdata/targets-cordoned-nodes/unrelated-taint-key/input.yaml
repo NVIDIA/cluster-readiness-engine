@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A taintSelectors entry for an unrelated key does not opt into cordoned-node targeting.
+target:
+  taintSelectors:
+    - key: nvidia.com/gpu
+      value: "present"
+      effect: NoSchedule

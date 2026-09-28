@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A cordoned-node target must stay unmonitored even with no explicit monitor set.
+targetsCordoned: true
+explicitMonitor: false

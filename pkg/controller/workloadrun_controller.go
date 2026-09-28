@@ -32,10 +32,27 @@ import (
 // WorkloadRunReconciler reconciles a WorkloadRun object.
 type WorkloadRunReconciler struct {
 	client.Client
-	Scheme   *kruntime.Scheme
-	Recorder events.EventRecorder
+	// APIReader is an uncached client used to confirm that a Workflow missing
+	// from the informer cache is really gone. Right after Create, the
+	// WorkloadRun's workflowRef write can reach the cache before the new
+	// Workflow does; without a direct read that lag looks like a deletion and
+	// fails the run (issue #352).
+	APIReader client.Reader
+	Scheme    *kruntime.Scheme
+	Recorder  events.EventRecorder
 	// MaxConcurrentReconciles bounds the number of WorkloadRun objects reconciled concurrently.
 	MaxConcurrentReconciles int
+}
+
+// workflowReader returns the APIReader when available, falling back to
+// r.Client. The fallback is only safe when r.Client has no cache, as with the
+// fake clients in unit tests that call Reconcile directly; SetupWithManager
+// always sets APIReader so a manager-backed reconciler never takes it.
+func (r *WorkloadRunReconciler) workflowReader() client.Reader {
+	if r.APIReader != nil {
+		return r.APIReader
+	}
+	return r.Client
 }
 
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workloadruns,verbs=get;list;watch;create;update;patch;delete
@@ -142,11 +159,21 @@ func (r *WorkloadRunReconciler) mirrorWorkflowStatus(ctx context.Context, run *n
 	var workflow nvcrev1alpha1.Workflow
 	key := client.ObjectKey{Name: run.Status.WorkflowRef.Name, Namespace: run.Namespace}
 	if err := r.Get(ctx, key, &workflow); err != nil {
-		if apierrors.IsNotFound(err) {
-			return ctrl.Result{}, r.setWorkloadRunConditionAndUpdate(ctx, run,
-				nvcrev1alpha1.WorkloadRunFailed, ReasonWorkflowDeleted, "Workflow was deleted")
+		if !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, err
+		// A cache miss is not proof of deletion: the cache can observe
+		// workflowRef before the Workflow it names. Only a live read decides.
+		// While the cache lags, the Owns watch reconciles again once the
+		// Workflow arrives; the requeue is a safety net.
+		if err := r.workflowReader().Get(ctx, key, &workflow); err == nil {
+			logf.FromContext(ctx).V(1).Info("Workflow not yet in cache; waiting", "workflow", key.Name)
+			return ctrl.Result{RequeueAfter: workloadRunRequeueInterval}, nil
+		} else if !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, r.setWorkloadRunConditionAndUpdate(ctx, run,
+			nvcrev1alpha1.WorkloadRunFailed, ReasonWorkflowDeleted, "Workflow was deleted")
 	}
 
 	// Mirror detected platform/GPU from orchestration status.
@@ -716,6 +743,11 @@ func (r *WorkloadRunReconciler) normalf(obj kruntime.Object, reason, messageFmt 
 }
 
 func (r *WorkloadRunReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Falling back to the cached client would re-read the same stale cache
+	// and reintroduce the false WorkflowDeleted failure (issue #352).
+	if r.APIReader == nil {
+		r.APIReader = mgr.GetAPIReader()
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nvcrev1alpha1.WorkloadRun{}).
 		Owns(&nvcrev1alpha1.Workflow{}).

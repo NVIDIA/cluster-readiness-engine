@@ -1,0 +1,30 @@
+{
+  "requeueAfter": "0s",
+  "apiReads": 1,
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "Superseded",
+      "message": ""
+    },
+    {
+      "type": "Succeeded",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "Superseded",
+      "message": ""
+    },
+    {
+      "type": "Failed",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "WorkflowDeleted",
+      "message": "Workflow was deleted"
+    }
+  ],
+  "events": [
+    "Warning WorkflowDeleted Workflow was deleted"
+  ]
+}
