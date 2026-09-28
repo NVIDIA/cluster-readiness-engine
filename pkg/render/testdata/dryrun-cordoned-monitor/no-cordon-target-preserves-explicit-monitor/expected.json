@@ -1,0 +1,7 @@
+{
+  "nodeHealthMonitor": {
+    "cel": {
+      "expression": "node.spec.unschedulable == true"
+    }
+  }
+}

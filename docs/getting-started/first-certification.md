@@ -20,7 +20,7 @@ You need:
 - For GB200 and GB300 clusters only: the NVIDIA DRA driver, because those catalog entries create `ComputeDomain` resources. GB300 RoCE entries also need a Kubernetes version that serves `resource.k8s.io/v1`.
 - For training categories only: egress to `github.com` from worker nodes. The training pods clone Megatron-LM at start.
 
-Cordoned nodes are skipped. If a node is cordoned, NVCRE does not select it, and it does not appear in the results.
+Cordoned nodes are skipped by default. If a node is cordoned, NVCRE does not select it, and it does not appear in the results, unless `spec.target.taintSelectors` lists the `node.kubernetes.io/unschedulable` taint to opt it in.
 
 ## Step 1: install the CLI
 
@@ -138,7 +138,7 @@ Pass the certification name and the namespace from the run output. The `report` 
 
 Pass and fail are informational unless you set thresholds. No thresholds ship by default. To enforce them, use a Certification YAML with `options.thresholds` (for example `busBandwidthGBps: "value >= 300"`) and run with `--cert-file` instead of `--category`.
 
-NVCRE reports failed nodes. It does not modify them. Quarantining a bad node (cordon, taint, drain) is your platform's job. Because NVCRE skips cordoned nodes, `kubectl uncordon <node>` is what makes a repaired node eligible for the next run.
+NVCRE reports failed nodes. It does not modify them. Quarantining a bad node (cordon, taint, drain) is your platform's job. Because NVCRE skips cordoned nodes by default, `kubectl uncordon <node>` is what makes a repaired node eligible for the next run.
 
 
 ## Step 6: clean up
