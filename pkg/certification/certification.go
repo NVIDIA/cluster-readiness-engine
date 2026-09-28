@@ -21,7 +21,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -606,12 +605,6 @@ func syntheticRenderNode(platformName string, nodeSelector map[string]string, gp
 		node.Labels["node-role.together.ai/worker"] = ""
 	case platform.Forge:
 		node.Labels["kubernetes.io/hostname"] = "synthetic-forge-node"
-	case platform.NScale:
-		// Detection maps openstack:// to nscale only when the node also
-		// reports the nscale.com/rdmashare allocatable.
-		node.Status.Allocatable = corev1.ResourceList{
-			"nscale.com/rdmashare": resource.MustParse("8"),
-		}
 	}
 	return node
 }

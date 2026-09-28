@@ -20,7 +20,6 @@ import (
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -1360,14 +1359,6 @@ func loadSyntheticNodes(platformName, gpuArch string) []corev1.Node {
 		Spec: corev1.NodeSpec{
 			ProviderID: render.SyntheticProviderID(platformName),
 		},
-	}
-	// nscale shares the openstack:// providerID prefix; detection disambiguates
-	// via the rdmashare allocatable (see pkg/render/nodes.go), so the synthetic
-	// node must carry it for node-based detection to resolve to nscale.
-	if platformName == "nscale" {
-		node.Status.Allocatable = corev1.ResourceList{
-			"nscale.com/rdmashare": resource.MustParse("8"),
-		}
 	}
 	return []corev1.Node{node}
 }
