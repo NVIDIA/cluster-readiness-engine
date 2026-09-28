@@ -15,7 +15,7 @@
     "trainerArgs": [
       "diag",
       "--host",
-      "nvidia-dcgm.gpu-operator.svc:5555",
+      "nvidia-dcgm-dra.nvidia-platform.svc:5555",
       "--run",
       "4",
       "--json",

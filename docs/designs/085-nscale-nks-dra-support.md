@@ -130,13 +130,16 @@ separate exercise once this ADR is approved.
    toleration (a strict superset of the keyed ones); `dcgm-level4` uses a fragment that sets
    no tolerations at all.
 
-9. **`dcgm-level4` claims the GPU only, and keeps the standalone DCGM Service prerequisite.**
+9. **`dcgm-level4` claims the GPU only, and points `--host` at the NKS DCGM Service.**
    The dcgm pod runs `hostNetwork`, so an `rdma.nscale.com` (`dra.net`) claim has no pod
    network namespace to move a netdev into, and level-4 diagnostics are intra-node. A GPU-only
-   fragment (`deps/nscale-gpu.yaml`) avoids allocating an RDMA device nothing can use. The
-   `dcgmi diag --host nvidia-dcgm.gpu-operator.svc:5555` args are unchanged: on NKS the GPU
-   Operator still creates that Service when `spec.dcgm.enabled` is true, exactly as on every
-   other platform, and `nvcrectl setup status` already reports it when missing.
+   fragment (`deps/nscale-gpu.yaml`) avoids allocating an RDMA device nothing can use. NKS
+   runs the DRA-flavoured DCGM hostengine as `nvidia-platform/nvidia-dcgm-dra` rather than the
+   GPU Operator's `gpu-operator/nvidia-dcgm`, so the Nscale block's `jobTemplatePatch` replaces
+   the `--host` value with `nvidia-dcgm-dra.nvidia-platform.svc:5555`. A leading `test` op
+   pins the base value at that index, so reordering the base args fails the render instead of
+   overwriting the wrong argument. The Service is `internalTrafficPolicy: Local`, so each diag
+   reaches the hostengine on its own node, as the GPU Operator Service does elsewhere.
 
 10. **GB300 on Nscale uses `topology.nks.nscale.com/accelerator-domain` as its topology key.**
     The arch-only GB200/GB300 blocks (`_lib/overrides/gb200-topology-key.yaml` in
@@ -207,7 +210,7 @@ Once that's confirmed, implementation follows the shape ADR-075 and ADR-058 esta
   - `nccl-loopback`, `nccl-loopback-nvswitch`: `nscale-gpu-rdma.yaml` +
     `tolerate-all-runtime-patch.yaml`, and `trainer.env` replaced by the IB env (plus
     `NCCL_SHM_DISABLE`/`NCCL_P2P_DISABLE` re-listed on `nccl-loopback` only, since lists replace).
-  - `dcgm-level4`: `nscale-gpu.yaml`; then the GB300 topology block.
+  - `dcgm-level4`: `nscale-gpu.yaml` and the `--host` patch; then the GB300 topology block.
   - `nemotron5-8b`, `nemotron5-56b`: deps-only `nscale-gpu-rdma-training.yaml`; then the GB300
     topology block.
   - `pkg/platform/overrides/workloadrun.yaml` carries the claim and env blocks; its GB200/GB300
@@ -237,7 +240,7 @@ Once that's confirmed, implementation follows the shape ADR-075 and ADR-058 esta
   `-nccl-scales` (all-gather at `intra-rack` and alltoall at `diagnose`, pinning the topology
   and diagnose keys: `gpu.clique` on B200 as the control, `accelerator-domain` on GB300),
   `-loopback` (both loopback variants: replaced `trainer.env`, restored tolerate-everything
-  toleration), `-dcgm` (GPU-only claim, unchanged `--host` args) and `-training` (both Nemotron
+  toleration), `-dcgm` (GPU-only claim, `--host` repointed at `nvidia-dcgm-dra`) and `-training` (both Nemotron
   entries: IB env in the runtime container env, cpu/memory surviving the GPU null,
   ComputeDomain + gpu/rdma claims on GB300). The projection records trainer args and env,
   runtime container env, tolerations, claims and the orchestration keys.
@@ -305,8 +308,9 @@ Once that's confirmed, implementation follows the shape ADR-075 and ADR-058 esta
   mitigated: the alternative — silently falling back to name-sorted partitioning — would
   certify MNNVL placement that never happened. Full-scale collectives and the loopbacks set no
   topology key and are unaffected.
-- **`dcgm-level4` on NKS needs GPU Operator `spec.dcgm.enabled: true`**, the same prerequisite
-  as everywhere else; NKS disables the device plugin and GFD, not the standalone DCGM engine.
+- **`dcgm-level4` on NKS depends on the `nvidia-platform/nvidia-dcgm-dra` Service** that NKS
+  ships, not the GPU Operator's `gpu-operator/nvidia-dcgm`. `nvcrectl setup status` still
+  checks only the latter, so on NKS it reports DCGM missing even when `dcgm-level4` can run.
 - **Training entries inherit `NCCL_SOCKET_IFNAME=eth0`** from `gb200-training-base-env.yaml`
   unchanged, as the on-prem override does; the IB env is appended, not substituted.
 - **Catalog fragment count is roughly flat**: two legacy fragments (`nscale-rdmashare-comm.yaml`,
