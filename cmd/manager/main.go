@@ -226,6 +226,7 @@ func newRootCommand() *cobra.Command {
 			}
 			if err := (&controller.CertificationReconciler{
 				Client:                  mgr.GetClient(),
+				APIReader:               mgr.GetAPIReader(),
 				Scheme:                  mgr.GetScheme(),
 				Recorder:                mgr.GetEventRecorder("certification-controller"),
 				MaxConcurrentReconciles: concurrency.maxConcurrentReconciles,

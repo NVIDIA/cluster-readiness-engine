@@ -1,0 +1,8 @@
+# The Workflow succeeded and the status write loses a race. The conflict
+# refetches the Certification in place, so the category's own outcome has to be
+# re-applied by the retry rather than assigned before the write.
+inCache: true
+inAPI: true
+succeeded: true
+statusWriteFailures: 1
+reconciles: 1

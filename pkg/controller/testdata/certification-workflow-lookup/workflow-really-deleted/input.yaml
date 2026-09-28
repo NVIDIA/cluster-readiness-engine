@@ -1,0 +1,5 @@
+# Somebody deleted the Workflow out from under the Certification. The live read
+# agrees with the cache, so the category is burned and the run advances.
+inCache: false
+inAPI: false
+reconciles: 2
