@@ -1,0 +1,4 @@
+# Issue #385. The Job this Workflow just created is not in the cache yet.
+# The live read finds it and the Workflow adopts its own Job.
+holder: own
+inCache: false

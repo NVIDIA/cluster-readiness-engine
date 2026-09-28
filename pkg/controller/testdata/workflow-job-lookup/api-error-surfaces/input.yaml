@@ -1,0 +1,6 @@
+# The live read itself fails. That is not evidence of deletion either, so the
+# error surfaces and the group is left alone.
+inCache: false
+inAPI: false
+apiError: "connection refused"
+passes: 1

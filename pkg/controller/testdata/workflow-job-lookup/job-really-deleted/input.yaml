@@ -1,0 +1,5 @@
+# Nobody can see the Job. A confirmed deletion still fails the group, clears
+# JobRef, and revokes the job-scoped dependency.
+inCache: false
+inAPI: false
+passes: 2

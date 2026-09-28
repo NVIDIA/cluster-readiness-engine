@@ -217,6 +217,7 @@ func newRootCommand() *cobra.Command {
 			}
 			if err := (&controller.WorkflowReconciler{
 				Client:                  mgr.GetClient(),
+				APIReader:               mgr.GetAPIReader(),
 				Scheme:                  mgr.GetScheme(),
 				Clientset:               clientset,
 				Recorder:                mgr.GetEventRecorder("workflow-controller"),
