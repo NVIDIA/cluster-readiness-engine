@@ -387,15 +387,16 @@ type JobStatus struct {
 	// observed unschedulable in the current blocked episode. Set by the
 	// controller when the blocked state is first detected, cleared when no
 	// pod is blocked. While set, the timeoutPerJob clock is paused at this
-	// instant. Persisted so controller restarts do not reset the grace
-	// window. See ADR-083.
+	// instant; an episode longer than timeoutPerJob times the Job out.
+	// Persisted so controller restarts do not reset the grace window.
+	// See ADR-083.
 	// +optional
 	SchedulingBlockedSince *metav1.Time `json:"schedulingBlockedSince,omitempty"`
 
 	// schedulingResumedTime records when the most recent blocked episode
-	// ended. Training-stall detection measures from this instant when it is
-	// later than the last observed training step, so time spent unschedulable
-	// is not charged to the stall budget. See ADR-083.
+	// ended. Startup- and training-stall detection measure from this instant
+	// when it is later than their own anchor, so time spent unschedulable is
+	// not charged to the stall budget. See ADR-083.
 	// +optional
 	SchedulingResumedTime *metav1.Time `json:"schedulingResumedTime,omitempty"`
 

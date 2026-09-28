@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A scheduling block after the application started: recovery shifted
+# workloadStartTime to before the application start, so only the
+# schedulingResumedTime clamp keeps the blocked interval out of the startup
+# budget (ADR-083).
+gmStatus:
+  applicationStartTime: "2026-01-01T00:10:00Z"
+jobStatus:
+  workloadStartTime: "2026-01-01T00:08:00Z"
+  schedulingResumedTime: "2026-01-01T00:19:00Z"

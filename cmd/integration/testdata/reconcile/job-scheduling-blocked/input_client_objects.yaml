@@ -66,18 +66,5 @@ status:
     - type: PodScheduled
       status: "False"
       reason: Unschedulable
+      message: "0/3 nodes are available: 1 Insufficient nvidia.com/gpu, 2 node(s) didn't match Pod's node affinity/selector"
       lastTransitionTime: "2026-02-16T10:00:00Z"
----
-apiVersion: v1
-kind: Event
-metadata:
-  name: test-scheduling-blocked-job-workload-node-0-0.1
-  namespace: default
-involvedObject:
-  kind: Pod
-  name: test-scheduling-blocked-job-workload-node-0-0
-  namespace: default
-reason: FailedScheduling
-message: "0/3 nodes are available: 1 Insufficient nvidia.com/gpu, 2 node(s) didn't match Pod's node affinity/selector"
-type: Warning
-lastTimestamp: "2026-02-16T10:00:05Z"

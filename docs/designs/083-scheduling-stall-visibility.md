@@ -101,11 +101,31 @@ changing adapter phase semantics or retry behavior.
    The Job stays `InProgress`. No retry, no restart, no node-failure
    attribution. NVCRE does not modify the cluster (ADR-061); it reports.
 
+   **The pause is bounded by `timeoutPerJob`.** A single blocked episode that
+   lasts longer than `timeoutPerJob` times the Job out (`JobTimedOut`, message
+   `Job exceeded timeoutPerJob while its pods were unschedulable`), whether or
+   not its clock had started. Without the bound, a Job whose pods can never
+   schedule (a node cordoned or removed mid-run and JobSet recreating pods
+   nothing can host, or a request no node satisfies) would stay non-terminal
+   forever: `timeoutPerJob` is the only wall-clock bound the controller
+   enforces, and the CLI's `--wait` timeout does not terminate the run unless
+   `--cleanup` is set. A permanently blocked Job therefore ends within the
+   runtime it consumed before the block plus one `timeoutPerJob`. Reusing
+   `timeoutPerJob` as the bound needs no new API field: an operator who sized
+   the budget for the run has already said how long they are willing to wait.
+
 5. **Message carries the scheduler's reason.** The condition message embeds the
-   most recent `FailedScheduling` event message for the blocked pod (e.g.
+   blocked pod's `PodScheduled=False/Unschedulable` condition message (e.g.
    `0/3 nodes are available: 1 Insufficient nvidia.com/gpu, 2 node(s) didn't
    match Pod's node affinity/selector`). The scheduler already wrote the
-   diagnosis; NVCRE's job is to relay it, not re-derive it.
+   diagnosis; NVCRE's job is to relay it, not re-derive it. The condition is
+   the source rather than the `FailedScheduling` Event: it holds the full,
+   latest diagnosis (kube-scheduler truncates the Event copy to 1 KB), it is
+   already on the pod the detector lists, so reading it costs no API call and
+   no RBAC, and it cannot be stale or belong to another pod. Events recorded
+   through `events.k8s.io` keep the first message of a series even when the
+   reason changes, and matching Events by `involvedObject.name` could relay a
+   deleted pod's diagnosis for a replacement with the same name.
 
 6. **Recovery preserves consumed runtime.** When a reconcile finds no blocked
    pod, the detector ends the episode in one status write:
@@ -117,8 +137,13 @@ changing adapter phase semantics or retry behavior.
    - `status.schedulingResumedTime` is stamped. Training-stall detection
      measures from `max(lastStepTimestamp, schedulingResumedTime)`, so a
      workload whose last step predates a long block is not declared stalled
-     the moment it recovers. Startup-stall detection is covered by the shifted
-     `WorkloadStartTime`, which it already clamps to;
+     the moment it recovers. Startup-stall detection clamps its anchor forward
+     to `schedulingResumedTime` the same way. The shifted `WorkloadStartTime`
+     alone is not enough there: the startup anchor is
+     `max(applicationStartTime or GM startTime, workloadStartTime)`, and when
+     the application started after the shifted start, the blocked interval
+     would still count. Recovery restarts the startup budget, matching the
+     training-stall policy;
    - `schedulingBlockedSince` is cleared and the InProgress reason returns to
      `WorkloadRunning`.
 
@@ -160,25 +185,20 @@ changing adapter phase semantics or retry behavior.
     `InProgress(WorkloadSchedulingBlocked)`; within grace it requeues. Both
     paths skip stall detection.
   - `checkStallTimeout` training branch anchors on
-    `max(lastStepTimestamp, schedulingResumedTime)`.
+    `max(lastStepTimestamp, schedulingResumedTime)`; `startupStallAnchor`
+    also clamps to `schedulingResumedTime`.
 - **`pkg/controller/workflow_controller.go`**: `isJobTimedOut` freezes elapsed
-  runtime at `schedulingBlockedSince`; the running-group loop raises
+  runtime at `schedulingBlockedSince` and times the Job out once the episode
+  itself exceeds `timeoutPerJob`; the running-group loop raises
   `JobSchedulingBlocked` on the Workflow.
-- **Event reads are uncached.** `newestFailedSchedulingMessage` lists Events
-  through the manager's API reader with an `involvedObject.name` field
-  selector. An Event index would start an informer that caches every Event in
-  the cluster in every manager replica, for a lookup that runs only for pods
-  that are already blocked.
-- **`helm/.../manager-role.yaml`**: `get`/`list` on `events` (core and
-  `events.k8s.io`), required by the event relay. No `watch`: nothing informs
-  on Events.
+- **No Event reads and no new RBAC.** The diagnosis comes from the pod
+  condition the detector has already listed.
 - **`pkg/report/report.go`**: `CategoryReport.StatusDetail` and the `Blocked:`
-  card line. The text is relayed from Events, which any principal allowed to
-  create Events in the namespace can write, so it is sanitized and wrapped
-  like the failure log.
+  card line. The text is relayed from the scheduler's diagnosis, which names
+  node labels and resource names, so it is sanitized and wrapped like the
+  failure log.
 - **API cost:** one indexed (cached) pod list per running-path reconcile of a
-  non-terminal workload, plus one field-selected Event list against the API
-  server per blocked pod.
+  non-terminal workload.
 
 ## Rationale
 
@@ -214,10 +234,15 @@ changing adapter phase semantics or retry behavior.
   stream is a tracked follow-up (Decision 7).
 - `timeoutPerJob` no longer burns while pods cannot schedule, grace window
   included, so a 1h budget is no longer consumed by a 7h scheduling stall, and
-  the runtime consumed before a block is still charged after it.
+  the runtime consumed before a block is still charged after it. A single
+  blocked episode is still bounded by `timeoutPerJob`, so a Job that can never
+  schedule terminates as `JobTimedOut` instead of waiting forever. The
+  trade-off: repeated blocked episodes, each shorter than `timeoutPerJob`, can
+  stretch wall-clock time beyond it. Every recovery means the pods did
+  schedule and the workload ran, so the run is making progress.
 - New status fields `schedulingBlockedSince` and `schedulingResumedTime` on
   Job, new spec field `schedulingStallGraceSeconds` (all additive, optional).
-- New RBAC: the manager reads Events (`get`/`list`) for the relay.
+- No new RBAC.
 - Adapters unchanged.
 - Risk: misclassification of a slow but healthy scheduler as blocked is
   bounded by the grace window for the condition and self-corrects on
@@ -247,7 +272,16 @@ changing adapter phase semantics or retry behavior.
 - **Fail the Job immediately on detection.** Rejected: a scheduling stall is
   frequently transient (another tenant's job ends) and failing pre-empts
   recovery that Kubernetes would do for free. The operator's
-  `timeoutPerJob` remains the ultimate bound — but now an honest one.
+  `timeoutPerJob` remains the ultimate bound, applied to each blocked episode
+  (Decision 4).
+- **A separate `maxSchedulingBlockedSeconds` field.** Deferred: it adds an API
+  field for a bound `timeoutPerJob` already expresses. It can be added later
+  if operators need blocked time bounded independently of the run budget.
+- **Relay the `FailedScheduling` Event.** The first implementation did. It
+  needed an uncached Event list per blocked pod and `get`/`list` RBAC on
+  Events, and could relay truncated, stale, or another pod's text
+  (Decision 5). The pod condition carries the same diagnosis without those
+  problems.
 
 ## Notes
 
@@ -282,3 +316,8 @@ changing adapter phase semantics or retry behavior.
   stall, `Unschedulable` reason filter, Workflow and report visibility, and
   `--wait` deferred to a follow-up. Renumbered from ADR-075 (taken by the
   on-prem GB200/GB300 override).
+- **Second amendment (review of #371):** a blocked episode longer than
+  `timeoutPerJob` times the Job out, so a Job that can never schedule still
+  terminates; the startup-stall anchor clamps to `schedulingResumedTime`; the
+  diagnosis is read from the pod's `PodScheduled` condition instead of from
+  Events, which drops the Event list and the `get`/`list` events RBAC.

@@ -95,10 +95,6 @@ const (
 // JobReconciler reconciles a Job object
 type JobReconciler struct {
 	client.Client
-	// APIReader reads straight from the API server. The scheduling-stall
-	// detector uses it for Events so the manager never caches every Event
-	// in the cluster (ADR-083). Falls back to Client when nil.
-	APIReader      client.Reader
 	Scheme         *runtime.Scheme
 	Clientset      *kubernetes.Clientset
 	NodeDiscoverer *nodemonitor.NodeDiscoverer
@@ -645,7 +641,7 @@ func (r *JobReconciler) checkStallTimeout(ctx context.Context, job *nvcrev1alpha
 		// available, otherwise from measurement start. This catches both
 		// post-init stalls (app started but no steps) and pre-init stalls
 		// (NCCL hang, crash loop — app never started).
-		since, ok := startupStallAnchor(gm, workloadStart)
+		since, ok := startupStallAnchor(gm, workloadStart, job.Status.SchedulingResumedTime)
 		if !ok {
 			return false, ""
 		}
@@ -716,7 +712,8 @@ func (r *JobReconciler) checkStallTimeout(ctx context.Context, job *nvcrev1alpha
 // PodScheduled=False/Unschedulable and no nodeName, and the blocked state has
 // persisted past the grace window (spec.schedulingStallGraceSeconds, default
 // 300s). Returns (true, message) only after the grace window elapses; the
-// message relays the scheduler's own FailedScheduling event text.
+// message relays the scheduler's own diagnosis from the pod's
+// PodScheduled=False condition message.
 //
 // Grace-window state is persisted on Job.status.schedulingBlockedSince so
 // controller restarts do not reset the clock. The detector owns both the set
@@ -728,7 +725,8 @@ func (r *JobReconciler) checkStallTimeout(ctx context.Context, job *nvcrev1alpha
 // schedulingResumedTime is stamped for training-stall accounting.
 //
 // Does NOT update Job status. Never writes terminal state: a scheduling stall
-// is frequently transient, and timeoutPerJob remains the ultimate bound.
+// is frequently transient. The Workflow controller bounds it instead: a
+// single blocked episode longer than timeoutPerJob times the Job out.
 func (r *JobReconciler) checkSchedulingBlocked(ctx context.Context, job *nvcrev1alpha1.Job) (bool, string) {
 	// Detection runs on every reconcile of a non-terminal workload, including
 	// after the clock started: the common failure is workload created (clock
@@ -757,9 +755,11 @@ func (r *JobReconciler) checkSchedulingBlocked(ctx context.Context, job *nvcrev1
 		}
 	}
 
-	// Find the first blocked pod and relay its newest FailedScheduling event
-	// message — the scheduler already wrote the diagnosis; NVCRE relays it.
-	var newestMessage string
+	// Find the first blocked pod and relay its scheduling diagnosis: the
+	// scheduler already wrote it into the PodScheduled condition; NVCRE
+	// relays it. The condition holds the full, latest diagnosis, whereas the
+	// FailedScheduling Event copy is truncated and can carry stale text.
+	var diagnosis string
 	blocked := false
 	for i := range podList.Items {
 		pod := &podList.Items[i]
@@ -777,15 +777,14 @@ func (r *JobReconciler) checkSchedulingBlocked(ctx context.Context, job *nvcrev1
 				cond.Status == corev1.ConditionFalse &&
 				cond.Reason == corev1.PodReasonUnschedulable {
 				schedulingRejected = true
+				if diagnosis == "" {
+					diagnosis = cond.Message
+				}
 				break
 			}
 		}
-		if !schedulingRejected {
-			continue
-		}
-		blocked = true
-		if newestMessage == "" {
-			newestMessage = newestFailedSchedulingMessage(ctx, r.eventReader(), pod)
+		if schedulingRejected {
+			blocked = true
 		}
 	}
 	if !blocked {
@@ -837,8 +836,8 @@ func (r *JobReconciler) checkSchedulingBlocked(ctx context.Context, job *nvcrev1
 	}
 
 	message := "Workload pods are unschedulable"
-	if newestMessage != "" {
-		message = message + ": " + newestMessage
+	if diagnosis != "" {
+		message = message + ": " + diagnosis
 	}
 	return true, message
 }
@@ -865,52 +864,6 @@ func resumeFromSchedulingBlock(j *nvcrev1alpha1.Job, now metav1.Time) {
 	j.Status.SchedulingResumedTime = &now
 }
 
-// eventInvolvedNameField is the Event field selector the API server supports
-// for the involved object's name.
-const eventInvolvedNameField = "involvedObject.name"
-
-// eventReader returns the uncached reader for Events, or the cached client
-// when none is wired (unit tests).
-func (r *JobReconciler) eventReader() client.Reader {
-	if r.APIReader != nil {
-		return r.APIReader
-	}
-	return r.Client
-}
-
-// newestFailedSchedulingMessage returns the message of the pod's most recent
-// FailedScheduling warning event, or "" when none is found. Best-effort: an
-// event-listing error returns "" so detection still fires with the generic
-// message. The read is a server-side field-selected list, run only for pods
-// that are already blocked; the reason filter is applied here.
-func newestFailedSchedulingMessage(ctx context.Context, c client.Reader, pod *corev1.Pod) string {
-	eventList := &corev1.EventList{}
-	if err := c.List(ctx, eventList, client.InNamespace(pod.Namespace),
-		client.MatchingFields{eventInvolvedNameField: pod.Name},
-	); err != nil {
-		return ""
-	}
-	var (
-		newest    time.Time
-		newestMsg string
-	)
-	for i := range eventList.Items {
-		ev := &eventList.Items[i]
-		if ev.InvolvedObject.Name != pod.Name || ev.Reason != "FailedScheduling" {
-			continue
-		}
-		ts := ev.LastTimestamp.Time
-		if ts.IsZero() {
-			ts = ev.EventTime.Time
-		}
-		if ts.After(newest) {
-			newest = ts
-			newestMsg = ev.Message
-		}
-	}
-	return newestMsg
-}
-
 // startupStallAnchor returns the time the startup-stall budget is measured
 // from, or false when startup stall detection cannot run yet.
 //
@@ -924,11 +877,18 @@ func newestFailedSchedulingMessage(ctx context.Context, c client.Reader, pod *co
 // to the restart initiation and would otherwise include any queued time of
 // the replacement workload.
 //
+// The anchor is also clamped forward to schedulingResumedTime, the end of the
+// last scheduling-blocked episode (ADR-083). Shifting workloadStartTime alone
+// is not enough: when the application or measurement timestamp is later than
+// the shifted start, the blocked interval would still count against the
+// startup budget. Recovery restarts the startup budget, matching the
+// training-stall policy.
+//
 // workloadStart alone is deliberately not an anchor: before the GM has
 // sampled a running pod there is no evidence the workload is unhealthy
 // (image pulls and scheduling can legitimately take a long time), and
 // timeoutPerJob already bounds that phase.
-func startupStallAnchor(gm *nvcrev1alpha1.GoodputMeasurement, workloadStart *metav1.Time) (time.Time, bool) {
+func startupStallAnchor(gm *nvcrev1alpha1.GoodputMeasurement, workloadStart, schedulingResumed *metav1.Time) (time.Time, bool) {
 	var since time.Time
 	switch {
 	case gm.Status.ApplicationStartTime != nil:
@@ -938,8 +898,10 @@ func startupStallAnchor(gm *nvcrev1alpha1.GoodputMeasurement, workloadStart *met
 	default:
 		return time.Time{}, false
 	}
-	if workloadStart != nil && workloadStart.After(since) {
-		since = workloadStart.Time
+	for _, t := range []*metav1.Time{workloadStart, schedulingResumed} {
+		if t != nil && t.After(since) {
+			since = t.Time
+		}
 	}
 	return since, true
 }

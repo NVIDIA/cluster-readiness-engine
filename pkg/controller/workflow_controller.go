@@ -882,15 +882,27 @@ func (r *WorkflowReconciler) deleteWorkloadForJob(ctx context.Context, job *nvcr
 // (job.status.schedulingBlockedSince), the clock is paused at the first
 // blocked observation, grace window included; the Job controller advances
 // workloadStartTime by the paused interval when the episode ends (ADR-083).
+// The pause is bounded: a single blocked episode that lasts longer than
+// timeoutPerJob times the Job out, whether or not its clock had started.
+// Without that bound, a Job whose pods can never schedule (a node cordoned
+// or removed mid-run, a request no node can satisfy) would never terminate.
+// A permanently blocked Job therefore ends within the runtime it consumed
+// before the block plus one timeoutPerJob.
 func (r *WorkflowReconciler) isJobTimedOut(workflow *nvcrev1alpha1.Workflow, g *nvcrev1alpha1.GroupStatus, job *nvcrev1alpha1.Job) bool {
 	timeout := workflow.Spec.Orchestration.Execution.TimeoutPerJob
 	if timeout == nil {
 		return false
 	}
-	if start := job.Status.WorkloadStartTime; start != nil {
-		if blocked := job.Status.SchedulingBlockedSince; blocked != nil {
+	if blocked := job.Status.SchedulingBlockedSince; blocked != nil {
+		if time.Since(blocked.Time) > timeout.Duration {
+			return true
+		}
+		if start := job.Status.WorkloadStartTime; start != nil {
 			return blocked.Sub(start.Time) > timeout.Duration
 		}
+		return false
+	}
+	if start := job.Status.WorkloadStartTime; start != nil {
 		return time.Since(start.Time) > timeout.Duration
 	}
 	if job.Status.WorkloadRef != nil {
@@ -1339,11 +1351,15 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 				r.captureTimeoutLog(ctx, job)
 				// Mark Job as failed. The Job object stays for the report.
 				before := append([]metav1.Condition(nil), job.Status.Conditions...)
+				timeoutMsg := "Job exceeded timeoutPerJob"
+				if job.Status.SchedulingBlockedSince != nil {
+					timeoutMsg = "Job exceeded timeoutPerJob while its pods were unschedulable"
+				}
 				meta.SetStatusCondition(&job.Status.Conditions, metav1.Condition{
 					Type:    nvcrev1alpha1.JobFailed,
 					Status:  metav1.ConditionTrue,
 					Reason:  ReasonJobTimedOut,
-					Message: "Job exceeded timeoutPerJob",
+					Message: timeoutMsg,
 				})
 				if err := r.Status().Update(ctx, job); err != nil {
 					return ctrl.Result{}, fmt.Errorf("failed to update timed-out Job %s status: %w", ref.Name, err)

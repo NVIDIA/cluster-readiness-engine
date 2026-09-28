@@ -5,7 +5,6 @@ package controller
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -24,7 +23,7 @@ import (
 // WorkloadSchedulingBlocked when a running-path workload's pods carry
 // PodScheduled=False/Unschedulable past the grace window — including after
 // WorkloadStartTime is set (clock-pause amendment) — must relay the
-// scheduler's FailedScheduling message, and must clear the persisted
+// scheduler's diagnosis from the PodScheduled condition, and must clear the persisted
 // blocked-since marker when any pod schedules.
 
 const schedulingTestNS = "sched-test"
@@ -58,13 +57,6 @@ func newSchedulingFakeClient(t *testing.T, scheme *runtime.Scheme, objs ...clien
 			}
 			return nil
 		}).
-		WithIndex(&corev1.Event{}, eventInvolvedNameField, func(obj client.Object) []string {
-			ev, ok := obj.(*corev1.Event)
-			if !ok || ev.InvolvedObject.Name == "" {
-				return nil
-			}
-			return []string{ev.InvolvedObject.Name}
-		}).
 		Build()
 }
 
@@ -88,33 +80,13 @@ func unschedulablePod(name, jobName string) *corev1.Pod {
 	}
 }
 
-func failedSchedulingEvent(name string, message string, at time.Time) *corev1.Event {
-	meta := metav1.ObjectMeta{
-		Name: name + "-evt-" + messageNameSuffix(message), Namespace: schedulingTestNS,
-	}
-	return &corev1.Event{
-		ObjectMeta:     meta,
-		InvolvedObject: corev1.ObjectReference{Name: name, Namespace: schedulingTestNS},
-		Reason:         "FailedScheduling",
-		Message:        message,
-		LastTimestamp:  metav1.Time{Time: messageTime(at)},
-	}
-}
-
-// messageNameSuffix derives a stable unique suffix from the message text so
-// multiple events for the same pod never collide on the fake client's name
-// uniqueness check.
-func messageNameSuffix(message string) string {
-	return strings.ReplaceAll(strings.ToLower(message[:min(len(message), 12)]), " ", "-")
-}
-
-// messageTime falls back to a minute ago when no explicit timestamp is given,
-// so "newest wins" is observable in tests that register two events.
-func messageTime(at time.Time) time.Time {
-	if at.IsZero() {
-		return time.Now().Add(-time.Minute)
-	}
-	return at
+// unschedulablePodWithDiagnosis is unschedulablePod with the scheduler's
+// diagnosis in the PodScheduled condition message, where kube-scheduler
+// writes it.
+func unschedulablePodWithDiagnosis(name, jobName, diagnosis string) *corev1.Pod {
+	p := unschedulablePod(name, jobName)
+	p.Status.Conditions[0].Message = diagnosis
+	return p
 }
 
 func runningPod(name, jobName string) *corev1.Pod {
@@ -151,7 +123,6 @@ func TestCheckSchedulingBlocked(t *testing.T) {
 		name        string
 		job         *nvcrev1alpha1.Job
 		pods        []*corev1.Pod
-		events      []*corev1.Event
 		wantBlocked bool
 		wantMsgPart string
 	}{
@@ -181,11 +152,10 @@ func TestCheckSchedulingBlocked(t *testing.T) {
 			wantMsgPart: testUnschedulableMsg,
 		},
 		{
-			name: "unschedulable pod with FailedScheduling event relays scheduler message",
+			name: "unschedulable pod relays the PodScheduled condition message",
 			job:  schedulingJob("job-e", &oldBlockedSince, &grace),
-			pods: []*corev1.Pod{unschedulablePod("p1", "job-e")},
-			events: []*corev1.Event{
-				failedSchedulingEvent("p1", "0/3 nodes are available: 1 Insufficient nvidia.com/gpu.", time.Time{}),
+			pods: []*corev1.Pod{
+				unschedulablePodWithDiagnosis("p1", "job-e", "0/3 nodes are available: 1 Insufficient nvidia.com/gpu."),
 			},
 			wantBlocked: true,
 			wantMsgPart: "0/3 nodes are available: 1 Insufficient nvidia.com/gpu.",
@@ -243,9 +213,6 @@ func TestCheckSchedulingBlocked(t *testing.T) {
 			for _, p := range tc.pods {
 				objs = append(objs, p.DeepCopy())
 			}
-			for _, e := range tc.events {
-				objs = append(objs, e.DeepCopy())
-			}
 			c := newSchedulingFakeClient(t, scheme, objs...)
 			r := &JobReconciler{Client: c, Scheme: scheme}
 
@@ -271,43 +238,6 @@ func indexOf(s, sub string) int {
 		}
 	}
 	return -1
-}
-
-func TestNewestFailedSchedulingMessage(t *testing.T) {
-	ctx := context.Background()
-
-	scheme := schedulingTestScheme(t)
-	old := time.Now().Add(-2 * time.Hour)
-	recent := time.Now().Add(-5 * time.Minute)
-
-	pod := unschedulablePod("p1", "job-x")
-	job := schedulingJob("job-x", nil, nil)
-
-	c := newSchedulingFakeClient(t, scheme,
-		pod.DeepCopy(), job.DeepCopy(),
-		failedSchedulingEvent("p1", "older message", old),
-		failedSchedulingEvent("p1", "newer message wins", recent),
-	)
-
-	got := newestFailedSchedulingMessage(ctx, c, pod)
-	if got != "newer message wins" {
-		t.Fatalf("newestFailedSchedulingMessage = %q, want %q", got, "newer message wins")
-	}
-}
-
-func TestNewestFailedSchedulingMessageNoEvents(t *testing.T) {
-	ctx := context.Background()
-
-	scheme := schedulingTestScheme(t)
-	pod := unschedulablePod("p1", "job-y")
-	job := schedulingJob("job-y", nil, nil)
-
-	c := newSchedulingFakeClient(t, scheme, pod.DeepCopy(), job.DeepCopy())
-
-	got := newestFailedSchedulingMessage(ctx, c, pod)
-	if got != "" {
-		t.Fatalf("expected empty message with no events, got %q", got)
-	}
 }
 
 // A workload that ran 49 minutes, then sat unschedulable for 10, resumes with
@@ -398,6 +328,47 @@ func TestIsJobTimedOutPausedWhileSchedulingBlocked(t *testing.T) {
 	require.True(t, r.isJobTimedOut(wf, &nvcrev1alpha1.GroupStatus{}, job))
 }
 
+// The pause is bounded: a blocked episode longer than timeoutPerJob times the
+// Job out, both mid-run and before the clock ever started. Otherwise a Job
+// whose pods can never schedule would stay non-terminal forever.
+func TestIsJobTimedOutBoundsSchedulingBlockedEpisode(t *testing.T) {
+	r := &WorkflowReconciler{}
+	wf := &nvcrev1alpha1.Workflow{}
+	wf.Spec.Orchestration.Execution.TimeoutPerJob = &metav1.Duration{Duration: 10 * time.Minute}
+	g := &nvcrev1alpha1.GroupStatus{}
+
+	start := metav1.NewTime(time.Now().Add(-30 * time.Minute))
+	blockedSince := metav1.NewTime(time.Now().Add(-9 * time.Minute))
+	job := &nvcrev1alpha1.Job{Status: nvcrev1alpha1.JobStatus{
+		WorkloadStartTime:      &start,
+		SchedulingBlockedSince: &blockedSince,
+		WorkloadRef:            &nvcrev1alpha1.WorkloadReference{Name: "tj"},
+	}}
+	// 30m-9m = 21m consumed before the block exceeds the budget on its own.
+	require.True(t, r.isJobTimedOut(wf, g, job))
+
+	// Mid-run block: 1m consumed, blocked for 9m, still within the bound.
+	start = metav1.NewTime(time.Now().Add(-10 * time.Minute))
+	job.Status.WorkloadStartTime = &start
+	require.False(t, r.isJobTimedOut(wf, g, job),
+		"a 9m episode is paused within a 10m timeoutPerJob")
+
+	// The same episode past timeoutPerJob times the Job out.
+	longBlocked := metav1.NewTime(time.Now().Add(-11 * time.Minute))
+	start = metav1.NewTime(time.Now().Add(-12 * time.Minute))
+	job.Status.WorkloadStartTime = &start
+	job.Status.SchedulingBlockedSince = &longBlocked
+	require.True(t, r.isJobTimedOut(wf, g, job),
+		"an 11m episode exceeds a 10m timeoutPerJob")
+
+	// Blocked before the clock started: no workloadStartTime, workload
+	// created. Bounded by the episode alone.
+	job.Status.WorkloadStartTime = nil
+	require.True(t, r.isJobTimedOut(wf, g, job))
+	job.Status.SchedulingBlockedSince = &blockedSince
+	require.False(t, r.isJobTimedOut(wf, g, job))
+}
+
 // A training workload whose last step predates a long scheduling block must
 // not be declared stalled the moment it recovers: the training-stall budget
 // restarts from schedulingResumedTime.
@@ -437,6 +408,54 @@ func TestCheckStallTimeoutCreditsSchedulingBlock(t *testing.T) {
 	job.Status.SchedulingResumedTime = &resumed
 	stalled, _ = r.checkStallTimeout(ctx, job, &start)
 	require.False(t, stalled, "the budget restarts at recovery")
+}
+
+// A startup-phase workload blocked after its application started must not be
+// charged the blocked interval: the application start is later than the
+// shifted workloadStartTime, so only the schedulingResumedTime clamp keeps
+// the blocked time out of the startup budget.
+func TestCheckStallTimeoutCreditsSchedulingBlockDuringStartup(t *testing.T) {
+	ctx := context.Background()
+	scheme := schedulingTestScheme(t)
+
+	multiplier := int32(3)
+	startupTimeout := int32(300)
+	sample := metav1.Duration{Duration: 10 * time.Second}
+	// Workload started 19m ago, the application 9m later; blocked for 8m and
+	// recovered just now. Shifted start: 11m ago, earlier than app start.
+	now := time.Now()
+	appStart := metav1.NewTime(now.Add(-9 * time.Minute))
+	shiftedStart := metav1.NewTime(now.Add(-11 * time.Minute))
+	gmMeta := metav1.ObjectMeta{Name: "gm-w", Namespace: schedulingTestNS}
+	gm := &nvcrev1alpha1.GoodputMeasurement{
+		ObjectMeta: gmMeta,
+		Spec: nvcrev1alpha1.GoodputMeasurementSpec{
+			JobRef:         corev1.TypedLocalObjectReference{Kind: "Job", Name: "job-w"},
+			SampleInterval: &sample,
+		},
+		Status: nvcrev1alpha1.GoodputMeasurementStatus{
+			StartTime:            &appStart,
+			ApplicationStartTime: &appStart,
+		},
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(gm).
+		WithIndex(&nvcrev1alpha1.GoodputMeasurement{}, measurementJobRefIndexField, func(obj client.Object) []string {
+			return []string{obj.(*nvcrev1alpha1.GoodputMeasurement).Spec.JobRef.Name}
+		}).Build()
+	r := &JobReconciler{Client: c, Scheme: scheme}
+
+	job := schedulingJob("job-w", nil, nil)
+	job.Spec.StallMultiplier = &multiplier
+	job.Spec.StartupStallTimeoutSeconds = &startupTimeout
+	job.Status.WorkloadStartTime = &shiftedStart
+
+	stalled, _ := r.checkStallTimeout(ctx, job, &shiftedStart)
+	require.True(t, stalled, "without a recorded recovery, 9m since app start exceeds 5m")
+
+	resumed := metav1.NewTime(now.Add(-5 * time.Second))
+	job.Status.SchedulingResumedTime = &resumed
+	stalled, _ = r.checkStallTimeout(ctx, job, &shiftedStart)
+	require.False(t, stalled, "the startup budget restarts at recovery")
 }
 
 func TestSchedulingBlockedMessage(t *testing.T) {
