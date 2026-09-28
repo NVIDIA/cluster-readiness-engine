@@ -85,10 +85,11 @@ We credit reporters of confirmed vulnerabilities in the release notes of the fix
   The release signing identity is minted only when `attest.yml` runs on a `refs/tags/v*`
   caller ref. On `main`, every `workflow_dispatch` caller of that workflow carries a
   ref guard (or `release.yml`'s `GITHUB_REF` check) so a dispatch at a tag cannot reach
-  the attestor through those callers. **Existing release tags cut before that guard
-  landed — notably `v0.2.0`, `v0.2.0-rc.1`, `v0.2.0-rc.2`, and `v0.3.0` — still
-  ship the older `attest-selftest.yml`, which gates on repository alone and passes
-  `allow_untagged: true`.** A dispatch at one of those refs uses the workflow files
+  the attestor through those callers. **Four existing release tags still ship the
+  older `attest-selftest.yml`, which gates on repository alone and passes
+  `allow_untagged: true`: `v0.2.0`, `v0.2.0-rc.1`, `v0.2.0-rc.2`, and `v0.3.0`.**
+  `v0.4.0` and later carry the guard, and tags before the `v0.2.0` series do not
+  contain that workflow at all. A dispatch at one of those refs uses the workflow files
   *on that tag*, not the fixed copies on `main`, and can still mint
   `attest.yml@refs/tags/<that-tag>`.
   Tag protection / the `v*` ruleset does not cover this path (no tag is created or

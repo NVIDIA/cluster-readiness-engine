@@ -1,6 +1,6 @@
 # ADR-081: Support for Cordoned Node Selection
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Date:** 2026-09-15
 

@@ -13,6 +13,35 @@ the full pull request list for a release is in its release notes. Pre-release ta
 (`-rc.N`) are not listed here; their changes appear under the stable release that
 followed them.
 
+## [0.5.0] - 2026-09-28
+
+### Added
+
+- Lifecycle Events for phase transitions on Certification, Workflow, Job, and
+  WorkloadRun, so `kubectl describe` shows each transition; Failed transitions emit
+  Warnings (#349)
+- `workloadMetadata.labels` sets labels on the generated workload object, globally at
+  `spec.workloadMetadata` and per category at
+  `spec.categories[].options.workloadMetadata` (#353)
+- The gang-scheduler queue label is written to the submitted workload object, not only
+  the runtime Job and pod templates, so Kueue and KAI Scheduler read it where they
+  expect it (#353)
+- Cordoned nodes can be certified by adding a `target.taintSelectors` entry for the
+  `node.kubernetes.io/unschedulable` taint, which also drops the hardware-failure
+  check for the run (#358)
+
+### Fixed
+
+- `nvcrectl setup init` no longer rejects read-only JobSet consumer roles such as
+  GKE's `system:clustermetrics` as a leftover JobSet controller, which blocked
+  Kubeflow Trainer installation (#368)
+
+### Security
+
+- The reusable-workflow signing boundary is enforced by release-path tests: weakening
+  `attest.yml`'s sole-signer boundary, its trusted-context provenance predicate, or
+  the builder-identity guard now fails `make test` (#308)
+
 ## [0.4.0] - 2026-09-21
 
 ### Added
@@ -127,6 +156,7 @@ failed node with a reason.
 - Certification and WorkloadRun specs are immutable after creation (#240)
 - `spec.env` is passed to MPI containers instead of silently dropped (#230)
 
+[0.5.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.5.0
 [0.4.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.4.0
 [0.3.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.3.0
 [0.2.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.2.0

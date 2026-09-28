@@ -341,7 +341,7 @@ spec:
     #   queue: team-a   # must name an existing Run:ai queue
 ```
 
-The `queue` value is applied as a label (`queueLabelKey`, `kai.scheduler/queue` when unset) on both the Job template and the pod template metadata. It must be a valid Kubernetes label value (at most 63 characters). See [Run a WorkloadRun](./run-workloadrun.md) for details.
+The `queue` value is applied as a label (`queueLabelKey`, `kai.scheduler/queue` when unset) on the submitted `TrainJob`, on the Job template, and on the pod template metadata. It must be a valid Kubernetes label value (at most 63 characters). See [Run a WorkloadRun](./run-workloadrun.md) for details.
 
 ## Clean up
 
