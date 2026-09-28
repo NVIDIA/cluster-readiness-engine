@@ -1,0 +1,48 @@
+metadata:
+  finalizers:
+  - nvcre.nvidia.com/certification-finalizer
+  name: aws-h100-cordoned-node
+spec:
+  categories:
+  - domain: communication
+    variant: nccl-loopback
+  nodesPerJob: 1
+  target:
+    nodeNames:
+    - aws-h100-cordoned-node-01
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+    taintSelectors:
+    - effect: NoSchedule
+      key: node.kubernetes.io/unschedulable
+status:
+  categoryStatuses:
+  - domain: communication
+    status: Succeeded
+    succeededNodesRef:
+      apiGroup: null
+      kind: ConfigMap
+      name: succeeded-nodes
+    variant: nccl-loopback
+    workflowRef:
+      name: aws-h100-cordoned-node-co-9a3eb
+      namespace: default
+  conditions:
+  - lastTransitionTime: null
+    message: ""
+    observedGeneration: 1
+    reason: NotApplicable
+    status: "False"
+    type: InProgress
+  - lastTransitionTime: null
+    message: All certification categories completed successfully
+    observedGeneration: 1
+    reason: AllWorkflowsSucceeded
+    status: "True"
+    type: Succeeded
+  - lastTransitionTime: null
+    message: ""
+    observedGeneration: 1
+    reason: NotApplicable
+    status: "False"
+    type: Failed
