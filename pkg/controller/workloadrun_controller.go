@@ -106,11 +106,19 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	workflowSpec, buildErr := r.buildWorkflowSpec(ctx, &run)
 	if buildErr != nil {
 		// The spec is immutable, so this cannot succeed on a later reconcile;
-		// fail the WorkloadRun rather than retrying forever.
-		r.warnf(&run, ReasonBuildFailed, "workloadrun %s: %v", run.Name, buildErr)
-		r.setWorkloadRunCondition(&run, nvcrev1alpha1.WorkloadRunFailed, ReasonBuildFailed,
-			fmt.Sprintf("workloadrun %s: %v", run.Name, buildErr))
-		return ctrl.Result{}, r.Status().Update(ctx, &run)
+		// fail the WorkloadRun rather than retrying forever. Record it the way
+		// every other terminal write in this file does: a bare Status().Update
+		// drops the condition on a conflict, and the next pass then re-runs the
+		// same deterministic build failure and re-emits the Warning below.
+		message := fmt.Sprintf("workloadrun %s: %v", run.Name, buildErr)
+		if err := r.setWorkloadRunConditionAndUpdate(ctx, &run,
+			nvcrev1alpha1.WorkloadRunFailed, ReasonBuildFailed, message); err != nil {
+			r.warnf(&run, ReasonBuildFailedStatusUpdateFailed,
+				"WorkloadRun build failed: %s; recording the WorkloadRun Failed condition also failed: %v",
+				message, err)
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
 	}
 
 	workflow := &nvcrev1alpha1.Workflow{
@@ -128,25 +136,76 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	if err := r.Create(ctx, workflow); err != nil {
-		if apierrors.IsAlreadyExists(err) {
+		if !apierrors.IsAlreadyExists(err) {
+			// One event per failed Create attempt. This path is only reached
+			// while status.workflowRef is unset.
+			r.warnf(&run, ReasonWorkflowCreationError,
+				"Failed to create Workflow %s: %v", workflow.Name, err)
+			return ctrl.Result{}, fmt.Errorf("creating Workflow: %w", err)
+		}
+		// The name is taken, which does not say who took it. Creating the
+		// Workflow and recording workflowRef are two separate writes, so a
+		// Workflow this very run created can outlive a failed status write and
+		// leave the ref unset. Requeueing without deciding would then re-enter
+		// this branch forever and strand the run with an empty status (#383).
+		//
+		// Read uncached: the holder may have been created moments ago, and the
+		// cache is exactly what is behind in the case this guards.
+		existing := &nvcrev1alpha1.Workflow{}
+		if err := r.workflowReader().Get(ctx, client.ObjectKeyFromObject(workflow), existing); err != nil {
+			return ctrl.Result{}, fmt.Errorf("getting existing Workflow %s: %w", workflow.Name, err)
+		}
+		switch {
+		case !metav1.IsControlledBy(existing, &run) && !existing.DeletionTimestamp.IsZero():
+			// Foreign, but on its way out: the name is released shortly, so
+			// this is a retry rather than a terminal collision. Same split the
+			// Certification and Workflow tiers make.
+			log.Info("Foreign Workflow holding the name is terminating; waiting",
+				"workflow", workflow.Name)
+			return ctrl.Result{RequeueAfter: workloadRunRequeueInterval}, nil
+		case !metav1.IsControlledBy(existing, &run):
+			// A live foreign Workflow, or the child of a same-named WorkloadRun
+			// that was deleted and recreated. Adopting it would bind this run to
+			// a Workflow it does not own and mirror a stranger's result, so this
+			// is terminal. Say so: requeueing in silence would leave the run with
+			// an empty status and no events forever, which is the #383 symptom
+			// this fix exists to remove.
+			message := fmt.Sprintf(
+				"Workflow %q already exists in namespace %q and is not controlled by WorkloadRun %q; refusing to adopt it",
+				workflow.Name, run.Namespace, run.Name)
+			// The Warning event comes from the Failed transition itself; a
+			// warnf here would duplicate it.
+			if err := r.setWorkloadRunConditionAndUpdate(ctx, &run,
+				nvcrev1alpha1.WorkloadRunFailed, ReasonWorkflowNameCollision, message); err != nil {
+				return ctrl.Result{}, err
+			}
+			return ctrl.Result{}, nil
+		case !existing.DeletionTimestamp.IsZero():
+			// Ours, but on its way out and still holding workflowFinalizer.
+			// Recording the ref now would mirror its deletion straight into a
+			// terminal Failed/WorkflowDeleted, which is #352. The name is
+			// released shortly, so wait for it.
+			log.Info("Own Workflow is terminating; waiting for the name", "workflow", workflow.Name)
 			return ctrl.Result{RequeueAfter: workloadRunRequeueInterval}, nil
 		}
-		// One event per failed Create attempt. This path is only reached while
-		// status.workflowRef is unset; once the Workflow exists, reconciles go
-		// through mirrorWorkflowStatus and never re-enter here.
-		r.warnf(&run, ReasonWorkflowCreationError,
-			"Failed to create Workflow %s: %v", workflow.Name, err)
-		return ctrl.Result{}, fmt.Errorf("creating Workflow: %w", err)
+		// Ours and live: a previous reconcile created it and failed to record
+		// the ref. Fall through and record it now.
+		log.Info("Adopting Workflow this WorkloadRun already created", "workflow", workflow.Name)
 	}
 
-	// Update status with workflow ref.
-	run.Status.WorkflowRef = &nvcrev1alpha1.WorkflowReference{
-		Name:      workflow.Name,
-		Namespace: workflow.Namespace,
+	// Record the ref inside the status-write callback, not before it: a
+	// conflict refetches the run in place, which would discard an assignment
+	// made out here and leave the ref unset again.
+	setRef := func(o *nvcrev1alpha1.WorkloadRun) bool {
+		o.Status.WorkflowRef = &nvcrev1alpha1.WorkflowReference{
+			Name:      workflow.Name,
+			Namespace: workflow.Namespace,
+		}
+		return true
 	}
 	if err := r.setWorkloadRunConditionAndUpdate(ctx, &run,
 		nvcrev1alpha1.WorkloadRunInProgress, ReasonWorkflowCreated,
-		fmt.Sprintf("Workflow %s created", workflow.Name)); err != nil {
+		fmt.Sprintf("Workflow %s created", workflow.Name), setRef); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -176,34 +235,41 @@ func (r *WorkloadRunReconciler) mirrorWorkflowStatus(ctx context.Context, run *n
 			nvcrev1alpha1.WorkloadRunFailed, ReasonWorkflowDeleted, "Workflow was deleted")
 	}
 
-	// Mirror detected platform/GPU from orchestration status.
-	if workflow.Status.Orchestration != nil {
-		run.Status.DetectedPlatform = workflow.Status.Orchestration.DetectedPlatform
-		run.Status.DetectedGPUArchitecture = workflow.Status.Orchestration.DetectedGPUArchitecture
-	}
+	// Every field mirrored from the Workflow is applied through this callback so
+	// that a conflict retry, which refetches the run in place, re-applies it.
+	// Mirroring outside the callback would be silently dropped on that refetch.
+	mirror := func(o *nvcrev1alpha1.WorkloadRun) bool {
+		// Mirror detected platform/GPU from orchestration status.
+		if workflow.Status.Orchestration != nil {
+			o.Status.DetectedPlatform = workflow.Status.Orchestration.DetectedPlatform
+			o.Status.DetectedGPUArchitecture = workflow.Status.Orchestration.DetectedGPUArchitecture
+		}
 
-	// Mirror the succeeded-nodes and failed-nodes ConfigMap references.
-	run.Status.SucceededNodesRef = workflow.Status.SucceededNodesRef
-	run.Status.FailedNodesRef = workflow.Status.FailedNodesRef
+		// Mirror the succeeded-nodes and failed-nodes ConfigMap references.
+		o.Status.SucceededNodesRef = workflow.Status.SucceededNodesRef
+		o.Status.FailedNodesRef = workflow.Status.FailedNodesRef
 
-	// Mirror validation failed (independent condition) BEFORE the terminal
-	// mirrors below: the Workflow controller sets ValidationFailed alongside
-	// Failed, so mirroring it after the Failed early-return would leave this
-	// code unreachable in the only case it exists for (issue #67).
-	if condIsTrue(workflow.Status.Conditions, nvcrev1alpha1.WorkflowValidationFailed) {
-		msg := condMsg(workflow.Status.Conditions, nvcrev1alpha1.WorkflowValidationFailed)
-		meta.SetStatusCondition(&run.Status.Conditions, metav1.Condition{
-			Type:    nvcrev1alpha1.WorkloadRunValidationFailed,
-			Status:  metav1.ConditionTrue,
-			Reason:  ReasonThresholdViolation,
-			Message: msg,
-		})
+		// Mirror validation failed (independent condition) BEFORE the terminal
+		// mirrors below: the Workflow controller sets ValidationFailed alongside
+		// Failed, so mirroring it after the Failed early-return would leave this
+		// code unreachable in the only case it exists for (issue #67).
+		if condIsTrue(workflow.Status.Conditions, nvcrev1alpha1.WorkflowValidationFailed) {
+			msg := condMsg(workflow.Status.Conditions, nvcrev1alpha1.WorkflowValidationFailed)
+			meta.SetStatusCondition(&o.Status.Conditions, metav1.Condition{
+				Type:    nvcrev1alpha1.WorkloadRunValidationFailed,
+				Status:  metav1.ConditionTrue,
+				Reason:  ReasonThresholdViolation,
+				Message: msg,
+			})
+		}
+		return true
 	}
 
 	// Mirror terminal conditions.
 	if condIsTrue(workflow.Status.Conditions, nvcrev1alpha1.WorkflowSucceeded) {
 		return ctrl.Result{}, r.setWorkloadRunConditionAndUpdate(ctx, run,
-			nvcrev1alpha1.WorkloadRunSucceeded, ReasonWorkflowSucceeded, "Workflow completed successfully")
+			nvcrev1alpha1.WorkloadRunSucceeded, ReasonWorkflowSucceeded, "Workflow completed successfully",
+			mirror)
 	}
 	if condIsTrue(workflow.Status.Conditions, nvcrev1alpha1.WorkflowFailed) {
 		msg := condMsg(workflow.Status.Conditions, nvcrev1alpha1.WorkflowFailed)
@@ -218,10 +284,10 @@ func (r *WorkloadRunReconciler) mirrorWorkflowStatus(ctx context.Context, run *n
 			reason = ReasonWorkflowValidationFailed
 		}
 		return ctrl.Result{}, r.setWorkloadRunConditionAndUpdate(ctx, run,
-			nvcrev1alpha1.WorkloadRunFailed, reason, msg)
+			nvcrev1alpha1.WorkloadRunFailed, reason, msg, mirror)
 	}
 
-	if err := r.Status().Update(ctx, run); err != nil {
+	if err := updateStatusWithRetry(ctx, r.Client, run, mirror); err != nil {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{RequeueAfter: workloadRunRequeueInterval}, nil
@@ -251,21 +317,38 @@ func (r *WorkloadRunReconciler) setWorkloadRunCondition(run *nvcrev1alpha1.Workl
 	}
 }
 
+// setWorkloadRunConditionAndUpdate sets condType exclusively and persists the
+// status, retrying on conflict.
+//
+// extra carries any other status mutation that belongs in the same write. It
+// must be passed here rather than applied by the caller beforehand: a conflict
+// refetches the run in place, so anything mutated outside this callback is
+// silently discarded on the retry. That is how a lost write used to strand a
+// run with no workflowRef and no conditions at all (#383).
 func (r *WorkloadRunReconciler) setWorkloadRunConditionAndUpdate(
 	ctx context.Context,
 	run *nvcrev1alpha1.WorkloadRun,
 	condType, reason, message string,
+	extra ...func(*nvcrev1alpha1.WorkloadRun) bool,
 ) error {
 	executionTypes := []string{
 		nvcrev1alpha1.WorkloadRunInProgress,
 		nvcrev1alpha1.WorkloadRunSucceeded,
 		nvcrev1alpha1.WorkloadRunFailed,
 	}
-	before := append([]metav1.Condition(nil), run.Status.Conditions...)
-	r.setWorkloadRunCondition(run, condType, reason, message)
-	previousTrueType := trueConditionType(before, executionTypes)
-	newTrueType := trueConditionType(run.Status.Conditions, executionTypes)
-	if err := r.Status().Update(ctx, run); err != nil {
+	var previousTrueType, newTrueType string
+	if err := updateStatusWithRetry(ctx, r.Client, run, func(o *nvcrev1alpha1.WorkloadRun) bool {
+		for _, f := range extra {
+			if f != nil {
+				f(o)
+			}
+		}
+		before := append([]metav1.Condition(nil), o.Status.Conditions...)
+		r.setWorkloadRunCondition(o, condType, reason, message)
+		previousTrueType = trueConditionType(before, executionTypes)
+		newTrueType = trueConditionType(o.Status.Conditions, executionTypes)
+		return true
+	}); err != nil {
 		return err
 	}
 	if previousTrueType != newTrueType && newTrueType != "" {
