@@ -419,8 +419,11 @@ func DryRunCreate(ctx context.Context, c client.Client, namespace string,
 		Operator: corev1.TolerationOpExists,
 	}})
 
-	// Set default node health monitor if nil.
-	if specCopy.NodeHealthMonitor == nil {
+	// When taintSelectors targets the unschedulable taint, clear NodeHealthMonitor
+	// so the dry-run validates the same Job the controller actually creates.
+	if controller.TargetsCordonedNodes(spec.Orchestration.Target) {
+		specCopy.NodeHealthMonitor = nil
+	} else if specCopy.NodeHealthMonitor == nil {
 		specCopy.NodeHealthMonitor = &nvcrev1alpha1.NodeHealthMonitor{
 			CEL: &nvcrev1alpha1.CELNodeHealthCheck{
 				Expression: `node.spec.unschedulable == true`,

@@ -117,10 +117,10 @@ Run the WorkloadRun in a namespace associated with a Run:ai project (the platfor
 
 `schedulerName` is required. `queue` is optional and defaults to `default-queue`; on Run:ai that default is not a real queue, so always set `queue` explicitly to an existing Run:ai queue. When non-empty, `queue` must be a valid Kubernetes label value (at most 63 characters, beginning and ending with an alphanumeric character, containing only alphanumerics, hyphens, underscores, or dots). `queueLabelKey` is optional and defaults to `kai.scheduler/queue`; when non-empty, it must be a valid Kubernetes label key and cannot be `app.kubernetes.io/managed-by` or use the `nvcre.nvidia.com/` prefix.
 
-When `gangScheduler` is set, NVCRE modifies every pod template generated for the workload — for MPI frameworks that includes both the launcher and the worker pods:
+When `gangScheduler` is set, NVCRE labels the submitted workload object and modifies every pod template generated for the workload — for MPI frameworks that includes both the launcher and the worker pods:
 
 - The configured scheduler name is injected as `schedulerName` in each pod spec, so the pods bypass the default scheduler.
-- The queue is applied as a label (`queueLabelKey`, `kai.scheduler/queue` when unset) on both the Job template metadata and the pod template metadata, so a gang-aware scheduler can hold all pods in the gang until they can be placed together and the pods carry the label themselves.
+- The queue is applied as a label (`queueLabelKey`, `kai.scheduler/queue` when unset) on the submitted workload object (the `TrainJob`), on the Job template metadata, and on the pod template metadata. Schedulers that select a queue from the submitted object, such as Kueue and KAI Scheduler, read it before any pod exists; the pod-level copies let a gang-aware scheduler hold all pods in the gang until they can be placed together.
 
 See [API Reference: WorkloadRun](../api-reference/workloadrun.md) for validation details.
 

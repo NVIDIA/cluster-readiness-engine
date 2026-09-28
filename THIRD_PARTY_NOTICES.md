@@ -19,10 +19,10 @@ also excluded.
 | `github.com/prometheus/client_golang` | v1.24.1 | Apache-2.0 | https://github.com/prometheus/client_golang/blob/v1.24.1/LICENSE |
 | `github.com/spf13/cobra` | v1.10.2 | Apache-2.0 | https://github.com/spf13/cobra/blob/v1.10.2/LICENSE.txt |
 | `github.com/spf13/pflag` | v1.0.10 | BSD-3-Clause | https://github.com/spf13/pflag/blob/v1.0.10/LICENSE |
-| `k8s.io/api` | v0.36.4 | Apache-2.0 | https://github.com/kubernetes/api/blob/v0.36.4/LICENSE |
-| `k8s.io/apiextensions-apiserver` | v0.36.4 | Apache-2.0 | https://github.com/kubernetes/apiextensions-apiserver/blob/v0.36.4/LICENSE |
-| `k8s.io/apimachinery` | v0.36.4 | Apache-2.0 | https://github.com/kubernetes/apimachinery/blob/v0.36.4/LICENSE |
-| `k8s.io/client-go` | v0.36.4 | Apache-2.0 | https://github.com/kubernetes/client-go/blob/v0.36.4/LICENSE |
+| `k8s.io/api` | v0.36.5 | Apache-2.0 | https://github.com/kubernetes/api/blob/v0.36.5/LICENSE |
+| `k8s.io/apiextensions-apiserver` | v0.36.5 | Apache-2.0 | https://github.com/kubernetes/apiextensions-apiserver/blob/v0.36.5/LICENSE |
+| `k8s.io/apimachinery` | v0.36.5 | Apache-2.0 | https://github.com/kubernetes/apimachinery/blob/v0.36.5/LICENSE |
+| `k8s.io/client-go` | v0.36.5 | Apache-2.0 | https://github.com/kubernetes/client-go/blob/v0.36.5/LICENSE |
 | `sigs.k8s.io/controller-runtime` | v0.24.1 | Apache-2.0 | https://github.com/kubernetes-sigs/controller-runtime/blob/v0.24.1/LICENSE |
 | `sigs.k8s.io/yaml` | v1.6.0 | MIT, Apache-2.0, BSD-3-Clause | https://github.com/kubernetes-sigs/yaml/blob/v1.6.0/LICENSE |
 
@@ -994,9 +994,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### k8s.io/api
 
-* Version: v0.36.4
+* Version: v0.36.5
 * License: Apache-2.0
-* Source: https://github.com/kubernetes/api/blob/v0.36.4/LICENSE
+* Source: https://github.com/kubernetes/api/blob/v0.36.5/LICENSE
 
 #### LICENSE
 
@@ -1207,9 +1207,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### k8s.io/apiextensions-apiserver
 
-* Version: v0.36.4
+* Version: v0.36.5
 * License: Apache-2.0
-* Source: https://github.com/kubernetes/apiextensions-apiserver/blob/v0.36.4/LICENSE
+* Source: https://github.com/kubernetes/apiextensions-apiserver/blob/v0.36.5/LICENSE
 
 #### LICENSE
 
@@ -1420,9 +1420,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### k8s.io/apimachinery
 
-* Version: v0.36.4
+* Version: v0.36.5
 * License: Apache-2.0
-* Source: https://github.com/kubernetes/apimachinery/blob/v0.36.4/LICENSE
+* Source: https://github.com/kubernetes/apimachinery/blob/v0.36.5/LICENSE
 
 #### LICENSE
 
@@ -1633,9 +1633,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ### k8s.io/client-go
 
-* Version: v0.36.4
+* Version: v0.36.5
 * License: Apache-2.0
-* Source: https://github.com/kubernetes/client-go/blob/v0.36.4/LICENSE
+* Source: https://github.com/kubernetes/client-go/blob/v0.36.5/LICENSE
 
 #### LICENSE
 

@@ -31,9 +31,9 @@ import (
 )
 
 // waitingForNodesMessage explains a wait that is otherwise invisible: which
-// selector matched nothing, and how much of the discovery window is left. Note
-// that discoverTargetNodes filters unschedulable nodes before counting, so this
-// covers a cordoned fleet as well as a selector that matches nothing at all.
+// selector matched nothing, and how much of the discovery window is left.
+// When taintSelectors targets the node.kubernetes.io/unschedulable taint,
+// cordoned nodes count.
 func waitingForNodesMessage(cert *nvcrev1alpha1.Certification) string {
 	remaining := max((nodeDiscoveryTimeout - time.Since(cert.CreationTimestamp.Time)).Round(time.Second), 0)
 	sel := "any node"
@@ -44,6 +44,11 @@ func waitingForNodesMessage(cert *nvcrev1alpha1.Certification) string {
 		}
 		sort.Strings(parts)
 		sel = strings.Join(parts, ",")
+	}
+	if TargetsCordonedNodes(&cert.Spec.Target) {
+		return fmt.Sprintf(
+			"No nodes (including unschedulable) match %s; retrying for up to %s more.",
+			sel, remaining)
 	}
 	return fmt.Sprintf(
 		"No schedulable nodes match %s; retrying for up to %s more."+
