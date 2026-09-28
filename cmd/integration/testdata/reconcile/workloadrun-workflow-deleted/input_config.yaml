@@ -1,22 +1,20 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+# The WorkloadRun names a Workflow that the API server confirms is absent.
+# A live read, not a cache miss, is what establishes the deletion (#352).
 waitFor:
   kind: WorkloadRun
-  name: test-mpi-run
+  name: deleted-workflow-run
   namespace: default
   condition: Failed
 collect:
   - kind: WorkloadRun
-    name: test-mpi-run
-    namespace: default
-  - kind: Workflow
-    name: test-mpi-run
+    name: deleted-workflow-run
     namespace: default
 events:
   - involvedKind: WorkloadRun
-    involvedName: test-mpi-run
+    involvedName: deleted-workflow-run
     namespace: default
     expect:
-      - {type: Normal, reason: WorkflowCreated}
-      - {type: Warning, reason: WorkflowFailed}
+      - {type: Warning, reason: WorkflowDeleted}

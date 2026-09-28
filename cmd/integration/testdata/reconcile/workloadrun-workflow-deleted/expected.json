@@ -1,15 +1,15 @@
 {
-  "WorkloadRun/event-success-run": {
+  "WorkloadRun/deleted-workflow-run": {
     "kind": "WorkloadRun",
     "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
-      "name": "event-success-run",
+      "name": "deleted-workflow-run",
       "namespace": "default"
     },
     "spec": {
       "target": {
         "nodeSelector": {
-          "event-success": "true"
+          "deleted-workflow": "true"
         }
       },
       "image": "test-image:latest",
@@ -34,50 +34,33 @@
         },
         {
           "type": "Succeeded",
-          "status": "True",
-          "lastTransitionTime": null,
-          "reason": "WorkflowSucceeded",
-          "message": "Workflow completed successfully"
-        },
-        {
-          "type": "Failed",
           "status": "False",
           "lastTransitionTime": null,
           "reason": "Superseded",
           "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "lastTransitionTime": null,
+          "reason": "WorkflowDeleted",
+          "message": "Workflow was deleted"
         }
       ],
       "workflowRef": {
-        "name": "event-success-run",
+        "name": "deleted-workflow-run",
         "namespace": "default"
-      },
-      "detectedPlatform": "aws",
-      "detectedGPUArchitecture": "h100",
-      "succeededNodesRef": {
-        "apiGroup": null,
-        "kind": "ConfigMap",
-        "name": "succeeded-nodes"
       }
     }
   },
   "events": [
     {
-      "type": "Normal",
-      "reason": "WorkflowCreated",
-      "message": "Workflow event-success-run created",
+      "type": "Warning",
+      "reason": "WorkflowDeleted",
+      "message": "Workflow was deleted",
       "involvedObject": {
         "kind": "WorkloadRun",
-        "name": "event-success-run"
-      },
-      "count": 1
-    },
-    {
-      "type": "Normal",
-      "reason": "WorkflowSucceeded",
-      "message": "Workflow completed successfully",
-      "involvedObject": {
-        "kind": "WorkloadRun",
-        "name": "event-success-run"
+        "name": "deleted-workflow-run"
       },
       "count": 1
     }
