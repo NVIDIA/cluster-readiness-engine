@@ -62,6 +62,10 @@ func (r *WorkloadRunReconciler) workflowReader() client.Reader {
 
 const workloadRunRequeueInterval = 15 * time.Second
 
+// workloadRunKind is the Kind an owner reference carries when a WorkloadRun
+// controls the object.
+const workloadRunKind = "WorkloadRun"
+
 // Shared reason constants are in helpers.go (ReasonWorkflowCreated, etc.).
 
 func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -163,13 +167,24 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			log.Info("Foreign Workflow holding the name is terminating; waiting",
 				"workflow", workflow.Name)
 			return ctrl.Result{RequeueAfter: workloadRunRequeueInterval}, nil
+		case ownedByPredecessor(existing, &run):
+			// The child of an earlier WorkloadRun of this name, left behind by a
+			// delete and recreate. Background propagation is the default, so the
+			// garbage collector has not stamped a DeletionTimestamp on it yet and
+			// the branch above does not catch it. Its owner is gone by definition
+			// (this run holds the name now), so the collector will remove it and
+			// release the name. Failing here would make every recreate terminal,
+			// and the terminal short-circuit at the top of Reconcile would keep
+			// it failed long after the holder was collected.
+			log.Info("Workflow left by a deleted WorkloadRun of this name still holds it; waiting",
+				"workflow", workflow.Name)
+			return ctrl.Result{RequeueAfter: workloadRunRequeueInterval}, nil
 		case !metav1.IsControlledBy(existing, &run):
-			// A live foreign Workflow, or the child of a same-named WorkloadRun
-			// that was deleted and recreated. Adopting it would bind this run to
-			// a Workflow it does not own and mirror a stranger's result, so this
-			// is terminal. Say so: requeueing in silence would leave the run with
-			// an empty status and no events forever, which is the #383 symptom
-			// this fix exists to remove.
+			// A live Workflow owned by something unrelated. Adopting it would
+			// bind this run to a Workflow it does not own and mirror a stranger's
+			// result, so this is terminal. Say so: requeueing in silence would
+			// leave the run with an empty status and no events forever, which is
+			// the #383 symptom this fix exists to remove.
 			message := fmt.Sprintf(
 				"Workflow %q already exists in namespace %q and is not controlled by WorkloadRun %q; refusing to adopt it",
 				workflow.Name, run.Namespace, run.Name)
@@ -211,6 +226,23 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	log.Info("Created Workflow", "workflow", workflow.Name)
 	return ctrl.Result{RequeueAfter: workloadRunRequeueInterval}, nil
+}
+
+// ownedByPredecessor reports whether existing is the child of an earlier
+// WorkloadRun that carried run's name. The controller reference is enough to
+// tell that apart from a genuinely foreign holder: a reference naming a
+// WorkloadRun called run.Name with a different UID can only point at an object
+// that no longer exists, because run is what holds that name now. The garbage
+// collector will collect existing, so the caller waits rather than failing.
+func ownedByPredecessor(existing *nvcrev1alpha1.Workflow, run *nvcrev1alpha1.WorkloadRun) bool {
+	owner := metav1.GetControllerOf(existing)
+	if owner == nil {
+		return false
+	}
+	return owner.APIVersion == nvcrev1alpha1.GroupVersion.String() &&
+		owner.Kind == workloadRunKind &&
+		owner.Name == run.Name &&
+		owner.UID != run.UID
 }
 
 // mirrorWorkflowStatus copies the Workflow's terminal conditions to the WorkloadRun.

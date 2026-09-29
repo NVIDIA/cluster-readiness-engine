@@ -49,6 +49,10 @@ func TestWorkloadRunCreateAdopt(t *testing.T) {
 			// conflict, modelling a write lost to a lagging cache or a
 			// controller restart.
 			StatusWriteFailures int `yaml:"statusWriteFailures"`
+			// CacheHidesWorkflow makes the reconciler's Client answer NotFound
+			// for every Workflow Get while the object store still holds it, so
+			// only a read through APIReader can see the holder.
+			CacheHidesWorkflow bool `yaml:"cacheHidesWorkflow"`
 			// Reconciles is how many passes to drive.
 			Reconciles int `yaml:"reconciles"`
 		}
@@ -97,10 +101,37 @@ func TestWorkloadRunCreateAdopt(t *testing.T) {
 			}).
 			Build()
 
+		// The test always reads through c, which plays the API server. The
+		// reconciler reads through cached. They are the same object store, so
+		// the only difference is what the case asks cached to withhold: with
+		// cacheHidesWorkflow set, every Workflow Get through it answers
+		// NotFound, which is exactly what a lagging informer does after a
+		// Create that has not landed in the cache yet. APIReader is then the
+		// only way to see the holder, so a fixture using it fails if the adopt
+		// path is changed back to r.Get.
+		cached := client.Client(c)
+		var apiReader client.Reader
+		if input.CacheHidesWorkflow {
+			cached = interceptor.NewClient(c, interceptor.Funcs{
+				Get: func(ctx context.Context, inner client.WithWatch, key client.ObjectKey,
+					obj client.Object, opts ...client.GetOption,
+				) error {
+					if _, isWorkflow := obj.(*nvcrev1alpha1.Workflow); isWorkflow {
+						return apierrors.NewNotFound(schema.GroupResource{
+							Group:    nvcrev1alpha1.GroupVersion.Group,
+							Resource: workflowResourceName,
+						}, key.Name)
+					}
+					return inner.Get(ctx, key, obj, opts...)
+				},
+			})
+			apiReader = c
+		}
+
 		recorder := events.NewFakeRecorder(20)
-		// APIReader is left nil so the uncached confirmation falls back to the
-		// same fake client, which has no cache to lag behind.
-		r := &WorkloadRunReconciler{Client: c, Scheme: scheme, Recorder: recorder}
+		r := &WorkloadRunReconciler{
+			Client: cached, APIReader: apiReader, Scheme: scheme, Recorder: recorder,
+		}
 		key := client.ObjectKey{Name: testRunName, Namespace: testNS}
 
 		type pass struct {
@@ -168,24 +199,36 @@ func TestWorkloadRunCreateAdopt(t *testing.T) {
 
 // buildHolder returns a Workflow already occupying the run's name, owned as the
 // case requires, or nil when the name is free.
+//
+// The three owners are deliberately distinct, because the reconciler splits on
+// exactly that. "own" is this run. "predecessor" is an earlier WorkloadRun of
+// the same name, which cannot still exist and so is a wait. "foreign" is an
+// unrelated object, which is a real collision.
 func buildHolder(kind string) *nvcrev1alpha1.Workflow {
 	if kind == "" || kind == "none" {
 		return nil
 	}
 	wf := &nvcrev1alpha1.Workflow{Name: testRunName, Namespace: testNS}
-	ownerUID := testRunUID
-	if strings.HasPrefix(kind, "foreign") {
-		// A same-named WorkloadRun from an earlier delete-and-recreate cycle,
-		// or an unrelated object. Either way this run does not own it.
-		ownerUID = "a-different-run-uid"
-	}
-	wf.OwnerReferences = []metav1.OwnerReference{{
+	owner := metav1.OwnerReference{
 		APIVersion: nvcrev1alpha1.GroupVersion.String(),
-		Kind:       "WorkloadRun",
+		Kind:       workloadRunKind,
 		Name:       testRunName,
-		UID:        ownerUID,
+		UID:        testRunUID,
 		Controller: new(true),
-	}}
+	}
+	switch {
+	case strings.HasPrefix(kind, "predecessor"):
+		// Same kind, same name, different UID: a WorkloadRun that was deleted
+		// and recreated. That owner is gone, so the collector frees the name.
+		owner.UID = "a-deleted-run-uid"
+	case strings.HasPrefix(kind, "foreign"):
+		// Nothing to do with this run: a different kind under a different name.
+		owner.APIVersion = nvcrev1alpha1.GroupVersion.String()
+		owner.Kind = "Certification"
+		owner.Name = "some-other-certification"
+		owner.UID = "an-unrelated-uid"
+	}
+	wf.OwnerReferences = []metav1.OwnerReference{owner}
 	if strings.HasSuffix(kind, "terminating") {
 		now := metav1.Now()
 		wf.DeletionTimestamp = &now
