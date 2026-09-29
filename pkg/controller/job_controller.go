@@ -416,6 +416,18 @@ func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *nvcrev1
 				gvk.Kind, workloadName, getErr)
 		}
 		if !metav1.IsControlledBy(existing, job) {
+			// A foreign holder that is already terminating releases the name
+			// shortly: retry with backoff instead of failing terminally. The
+			// workload name is derived from the Job name, and this tier's
+			// finalizer deletes the workload and then waits out pod drain, so
+			// a Job recreated under a name its predecessor just released lands
+			// here on nothing worse than timing. Failing is terminal at this
+			// tier, so without this the recreated Job never runs.
+			if !existing.GetDeletionTimestamp().IsZero() {
+				log.Info("Workload name held by a terminating workload; waiting",
+					"kind", gvk.Kind, "name", workloadName)
+				return ctrl.Result{RequeueAfter: r.getWorkloadRequeueInterval()}, nil
+			}
 			// A workload this Job does not own. Adopting it would mirror a
 			// stranger's result into this Job's status, so fail rather than
 			// report on work that is not ours.

@@ -1,0 +1,8 @@
+# A workload owned by a different Job holds the name, but it is already
+# terminating and will release it shortly. This is what a predecessor Job of
+# the same name leaves behind: the workload name is derived from the Job name,
+# and the Job tier's finalizer deletes the workload and then waits out pod
+# drain, so a recreated Job can arrive while the old workload is still going.
+# Failing is terminal at this tier, so treating that as a collision would mean
+# the recreated Job never runs. Wait instead.
+holder: foreign-terminating

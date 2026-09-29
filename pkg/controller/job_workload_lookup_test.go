@@ -40,6 +40,12 @@ const (
 	testJobWorkloadName = testJobName + "-workload"
 	// testTrainJobsResource is the resource name a TrainJob NotFound carries.
 	testTrainJobsResource = "trainjobs"
+
+	// holderOwn, holderForeign and holderForeignTerminating are the three
+	// things that can already occupy the workload name.
+	holderOwn                = "own"
+	holderForeign            = "foreign"
+	holderForeignTerminating = "foreign-terminating"
 )
 
 // newJobLookupWorkloadScheme adds the TrainJob types the Job tier creates.
@@ -83,8 +89,11 @@ func newLookupJob(withRef bool) *nvcrev1alpha1.Job {
 }
 
 // newLookupTrainJob returns the Job's workload, owned by the Job unless the
-// case asks for a stranger's.
-func newLookupTrainJob(foreign bool) *trainerv1alpha1.TrainJob {
+// case asks for a stranger's. A "foreign-terminating" holder is a stranger
+// that is already going away, which is what a predecessor Job of the same
+// name leaves behind: the workload name is derived from the Job name, and the
+// Job tier's finalizer deletes the workload and then waits out pod drain.
+func newLookupTrainJob(holder string) *trainerv1alpha1.TrainJob {
 	tj := &trainerv1alpha1.TrainJob{
 		Name: testJobWorkloadName, Namespace: testNS, UID: "trainjob-uid",
 		OwnerReferences: []metav1.OwnerReference{{
@@ -100,9 +109,17 @@ func newLookupTrainJob(foreign bool) *trainerv1alpha1.TrainJob {
 			},
 		},
 	}
-	if foreign {
+	if holder == holderForeign || holder == holderForeignTerminating {
 		tj.OwnerReferences[0].Name = "some-other-job"
 		tj.OwnerReferences[0].UID = "an-unrelated-uid"
+	}
+	if holder == holderForeignTerminating {
+		// The fake client rejects a deletionTimestamp with no finalizer, and a
+		// real terminating workload holds the name for the same reason: something
+		// is still keeping it alive.
+		now := metav1.Now()
+		tj.DeletionTimestamp = &now
+		tj.Finalizers = []string{"nvcre.nvidia.com/test-hold"}
 	}
 	return tj
 }
@@ -278,7 +295,7 @@ func TestJobWorkloadLookup(t *testing.T) {
 
 		objects := []client.Object{job.DeepCopy()}
 		if input.WorkloadExists {
-			objects = append(objects, newLookupTrainJob(false))
+			objects = append(objects, newLookupTrainJob(holderOwn))
 		}
 		// One store, served two ways. The reconciler reads and writes through
 		// cached; the assertions read through apiServer. The only difference
@@ -330,8 +347,9 @@ func TestJobCreateOrAdoptWorkload(t *testing.T) {
 
 		var input struct {
 			// Holder says who owns the workload already occupying the name:
-			// "own" for this Job, "foreign" for an unrelated one, empty to
-			// leave the name free.
+			// "own" for this Job, "foreign" for an unrelated one,
+			// "foreign-terminating" for an unrelated one already going away,
+			// empty to leave the name free.
 			Holder string `yaml:"holder"`
 			// CacheHidesWorkload makes every cached TrainJob Get answer
 			// NotFound while the API server still serves it, which is what a
@@ -359,7 +377,7 @@ func TestJobCreateOrAdoptWorkload(t *testing.T) {
 		job := newLookupJob(false)
 		objects := []client.Object{job.DeepCopy()}
 		if input.Holder != "" {
-			objects = append(objects, newLookupTrainJob(input.Holder == "foreign"))
+			objects = append(objects, newLookupTrainJob(input.Holder))
 		}
 		// One store, served two ways: the reconciler reads through cached and
 		// the assertions read through apiServer, so the only difference is
