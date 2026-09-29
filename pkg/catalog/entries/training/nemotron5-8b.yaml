@@ -453,3 +453,18 @@ overrides:
       in: [gb200, gb300]
   dependencies:
 {{ lib "deps/onprem-gb200-gb300-runtime-patch-training.yaml" . | indent 2 }}
+# --- GCP + RTX PRO 6000 (G4 TCP; 8B training on 4-GPU nodes) ---
+- when:
+    platform:
+      equals: gcp
+    gpuArchitecture:
+      equals: rtxpro6000
+  dependencies:
+{{ lib "deps/gcp-rtxpro6000-runtime-patch-training.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/gcp-rtxpro6000-tcp-env.yaml" . | indent 12 }}

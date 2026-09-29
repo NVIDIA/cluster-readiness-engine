@@ -523,3 +523,21 @@ overrides:
 {{ lib "nccl/onprem-ib-env.yaml" . | toMpiArgs | indent 12 }}
             - /usr/local/bin/all_reduce_perf_mpi
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- GCP + RTX PRO 6000 (G4 TCP over eth0; PCIe P2P within a node) ---
+- when:
+    platform:
+      equals: gcp
+    gpuArchitecture:
+      equals: rtxpro6000
+  dependencies:
+{{ lib "deps/gcp-rtxpro6000-runtime-patch-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/gcp-rtxpro6000-tcp-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_reduce_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}

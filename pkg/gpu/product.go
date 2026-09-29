@@ -14,6 +14,11 @@ func ParseProduct(product string) string {
 		return ""
 	}
 	product = strings.TrimPrefix(product, "NVIDIA-")
+	// RTX PRO product labels contain hyphens within the model name. Preserve the
+	// model before the generic first-segment fallback (which would return rtx).
+	if strings.HasPrefix(strings.ToUpper(product), "RTX-PRO-6000") {
+		return "rtxpro6000"
+	}
 	if idx := strings.Index(product, "-"); idx > 0 {
 		product = product[:idx]
 	}

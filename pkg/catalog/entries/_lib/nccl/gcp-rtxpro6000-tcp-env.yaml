@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# GKE G4 exposes one default eth0 network and no RDMA extended resources.
+- name: NCCL_DEBUG
+  value: INFO
+- name: NCCL_IB_DISABLE
+  value: "1"
+- name: NCCL_SOCKET_IFNAME
+  value: eth0
+# G4 GPU peer-to-peer uses PCIe; Google's guidance differs by machine size.
+{{- if eq (int .GpusPerNode) 8 }}
+- name: NCCL_P2P_LEVEL
+  value: SYS
+{{- else if or (eq (int .GpusPerNode) 2) (eq (int .GpusPerNode) 4) }}
+- name: NCCL_P2P_LEVEL
+  value: PHB
+{{- end }}

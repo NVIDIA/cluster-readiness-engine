@@ -57,5 +57,25 @@
       "-x",
       "NCCL_NET_GDR_C2C=1"
     ]
+  },
+  {
+    "when": {
+      "gpuArchitecture": {
+        "equals": "rtxpro6000"
+      },
+      "platform": {
+        "equals": "gcp"
+      }
+    },
+    "mpiArgs": [
+      "-x",
+      "NCCL_DEBUG=INFO",
+      "-x",
+      "NCCL_IB_DISABLE=1",
+      "-x",
+      "NCCL_SOCKET_IFNAME=eth0",
+      "-x",
+      "NCCL_P2P_LEVEL=PHB"
+    ]
   }
 ]

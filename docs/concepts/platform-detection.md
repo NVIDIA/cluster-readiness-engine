@@ -71,6 +71,7 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | GB300 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
 | H100 | AWS | EFA | `vpc.amazonaws.com/efa: 32`, no hugepages |
 | H100 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap |
+| RTX PRO 6000 Blackwell | GCP G4 | TCP over `eth0`, PCIe GPU peer-to-peer | Four GPUs per `g4-standard-192` node; `nvidia.com/gpu=present:NoSchedule` toleration; no RDMA resource request |
 | GB200/GB300 | On-prem | InfiniBand | arm64/GPU taint tolerations, portable IB NCCL env (no HCA pinning), NIC resource auto-detected or set via `nicResourceName`, ComputeDomain |
 
 The live controller tracks which overrides matched in `status.orchestration.appliedOverrides`. When using `nvcrectl workflow render`, the same information is also written to the `nvcrectl.nvidia.com/applied-overrides` annotation on the rendered manifest.
