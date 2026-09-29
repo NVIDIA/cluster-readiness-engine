@@ -123,9 +123,16 @@ jobs:
       # Authored content only. The frozen version content below is a copy of
       # docs/ at a release tag, so checking it here would report every finding
       # twice and fail on pages that can no longer be edited.
+      #
+      # node_modules is excluded for the same reason: the Fern CLI install
+      # above now puts third-party READMEs under fern/, and a dependency
+      # shipping a badge '<img>' would fail this check on a file nobody here
+      # wrote. The exclusion is order-independent, so moving the install does
+      # not silently re-expose it.
       - name: Check MDX safety
         run: |
-          BAD=$(grep -rn '<img\b[^>]*[^/]>\|<img>' docs/ fern/ --include="*.md" --include="*.mdx" || true)
+          BAD=$(grep -rn '<img\b[^>]*[^/]>\|<img>' docs/ fern/ \
+            --include="*.md" --include="*.mdx" --exclude-dir=node_modules || true)
           if [ -n "$BAD" ]; then
             echo "::error::Non-self-closing <img> tags found (MDX requires <img ... />):"
             echo "$BAD"
