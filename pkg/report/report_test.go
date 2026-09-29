@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
@@ -493,6 +494,31 @@ func TestFailureLogCaptureShapes(t *testing.T) {
 }
 
 // TestFailureLogExcerptLimits checks boundary budgets and preservation of JSON.
+// assertExcerptInvariants checks the properties failureLogExcerpt must hold for
+// every input: the line cap, valid UTF-8, the per-line byte backstop, and the
+// sanitizer guarantee that no control or bidi rune reaches an operator's
+// terminal.
+//
+// TestFailureLogExcerptLimits and FuzzFailureLogExcerpt share it so the two
+// cannot drift. The golden test pins exact output for inputs someone chose; the
+// fuzz target pins these same properties for inputs nobody chose. Held
+// separately, the two copies had already diverged -- only the fuzz target
+// checked the control and bidi runes.
+func assertExcerptInvariants(t testing.TB, lines []string) {
+	t.Helper()
+	require.LessOrEqual(t, len(lines), failureLogHumanMaxLines)
+	for _, line := range lines {
+		require.Truef(t, utf8.ValidString(line), "line is not valid UTF-8: %q", line)
+		require.LessOrEqualf(t, len(line), wrappedTextMaxLineBytes,
+			"line exceeds byte backstop: %q", line)
+		for _, r := range line {
+			require.Falsef(t,
+				r < ' ' || (r >= 0x7f && r <= 0x9f) || unicode.Is(unicode.Bidi_Control, r),
+				"unsanitized rune %U survived into %q", r, line)
+		}
+	}
+}
+
 func TestFailureLogExcerptLimits(t *testing.T) {
 	p := testutil.TestCaseParser{Subdir: "failure-log-excerpt-limits", ExpectedSuffix: testutil.SuffixJSON}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
@@ -507,11 +533,9 @@ func TestFailureLogExcerptLimits(t *testing.T) {
 		}
 		tail := input.Prefix + strings.Repeat(input.Repeat, input.Count) + input.Suffix
 		lines, truncated := failureLogExcerpt(tail)
-		assert.LessOrEqual(t, len(lines), failureLogHumanMaxLines)
-		for _, line := range lines {
-			assert.True(t, utf8.ValidString(line))
-			assert.LessOrEqual(t, len(line), wrappedTextMaxLineBytes)
-		}
+		// tc.T is this case's subtest, so a failure names the case that
+		// produced it rather than the parent test.
+		assertExcerptInvariants(tc.T, lines)
 		assert.True(t, strings.HasSuffix(strings.Join(lines, ""), "END"))
 		fl := FailureLogReport{Tail: tail}
 		var buf bytes.Buffer
