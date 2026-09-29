@@ -1,0 +1,5 @@
+# Create reports the name taken and the live read that decides who holds it
+# fails for its own reasons. That says nothing about the holder, so the error
+# surfaces and the reconcile backs off rather than guessing.
+holder: own
+apiError: "etcdserver: request timed out"

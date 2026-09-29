@@ -112,7 +112,7 @@ func TestGoodputFinalSample(t *testing.T) {
 		job := &nvcrev1alpha1.Job{
 			Name: "j", Namespace: "ns",
 			Status: nvcrev1alpha1.JobStatus{
-				WorkloadRef: &nvcrev1alpha1.WorkloadReference{Kind: "TrainJob", Name: "w"},
+				WorkloadRef: &nvcrev1alpha1.WorkloadReference{Kind: testKindTrainJob, Name: "w"},
 				Conditions: []metav1.Condition{{
 					Type:               nvcrev1alpha1.JobSucceeded,
 					Status:             metav1.ConditionTrue,

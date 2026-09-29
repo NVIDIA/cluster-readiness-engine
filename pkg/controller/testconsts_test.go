@@ -42,4 +42,6 @@ const (
 	testFakeAPIServerHost = "https://127.0.0.1:0"
 	// testNilRef is how golden files spell an unset object reference.
 	testNilRef = "<nil>"
+	// testKindTrainJob is the workload Kind the Job tier creates.
+	testKindTrainJob = "TrainJob"
 )

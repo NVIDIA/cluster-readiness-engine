@@ -208,6 +208,7 @@ func newRootCommand() *cobra.Command {
 
 			if err := (&controller.JobReconciler{
 				Client:                  mgr.GetClient(),
+				APIReader:               mgr.GetAPIReader(),
 				Scheme:                  mgr.GetScheme(),
 				Clientset:               clientset,
 				Recorder:                mgr.GetEventRecorder("job-controller"),
