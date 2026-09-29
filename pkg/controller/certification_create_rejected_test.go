@@ -100,7 +100,7 @@ func newRejectedCreateFixture(
 			return apierrors.NewConflict(
 				schema.GroupResource{
 					Group:    nvcrev1alpha1.GroupVersion.Group,
-					Resource: "certifications",
+					Resource: testCertificationsResource,
 				},
 				obj.GetName(), errors.New("simulated stale write"))
 		}

@@ -41,7 +41,7 @@ const testCertUID types.UID = "cert-uid"
 // cache, so SetupWithManager supplies the uncached reader when the caller
 // leaves it unset (issue #384).
 func TestCertificationSetupDefaultsAPIReader(t *testing.T) {
-	mgr, err := ctrl.NewManager(&rest.Config{Host: "https://127.0.0.1:0"}, ctrl.Options{
+	mgr, err := ctrl.NewManager(&rest.Config{Host: testFakeAPIServerHost}, ctrl.Options{
 		Scheme:     newFallbackScheme(t),
 		Metrics:    metricsserver.Options{BindAddress: "0"},
 		Controller: config.Controller{SkipNameValidation: new(true)},
@@ -196,7 +196,7 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 						return apierrors.NewConflict(
 							schema.GroupResource{
 								Group:    nvcrev1alpha1.GroupVersion.Group,
-								Resource: "certifications",
+								Resource: testCertificationsResource,
 							},
 							obj.GetName(), errors.New("simulated lost status write"))
 					}
@@ -266,7 +266,7 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 				p.Error = reconcileErr.Error()
 			}
 			for _, cs := range current.Status.CategoryStatuses {
-				row := category{Status: cs.Status, WorkflowRef: "<nil>"}
+				row := category{Status: cs.Status, WorkflowRef: testNilRef}
 				if cs.WorkflowRef != nil {
 					row.WorkflowRef = cs.WorkflowRef.Name
 				}
