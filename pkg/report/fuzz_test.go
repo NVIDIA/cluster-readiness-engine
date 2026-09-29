@@ -6,10 +6,6 @@ package report
 import (
 	"strings"
 	"testing"
-	"unicode"
-	"unicode/utf8"
-
-	"github.com/stretchr/testify/require"
 )
 
 // FuzzFailureLogExcerpt asserts the invariants failureLogExcerpt must hold for
@@ -19,9 +15,12 @@ import (
 //
 // This complements rather than replaces TestFailureLogExcerptLimits: the golden
 // test pins exact output for chosen inputs, while this pins the properties that
-// must survive inputs nobody chose. The properties are the same ones asserted at
-// the top of that test, plus the sanitizer guarantee that no control or bidi
-// rune reaches an operator's terminal.
+// must survive inputs nobody chose. Both call assertExcerptInvariants, so
+// neither can quietly assert less than the other.
+//
+// Any input that breaks an invariant is written to
+// testdata/fuzz/FuzzFailureLogExcerpt/ and replays under `make test` from then
+// on, which is how a fuzz finding becomes a permanent regression case.
 func FuzzFailureLogExcerpt(f *testing.F) {
 	f.Add("")
 	f.Add("plain line\n")
@@ -36,16 +35,6 @@ func FuzzFailureLogExcerpt(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, tail string) {
 		lines, _ := failureLogExcerpt(tail)
-
-		require.LessOrEqual(t, len(lines), failureLogHumanMaxLines)
-		for _, line := range lines {
-			require.True(t, utf8.ValidString(line), "line is not valid UTF-8: %q", line)
-			require.LessOrEqual(t, len(line), wrappedTextMaxLineBytes, "line exceeds byte backstop: %q", line)
-			for _, r := range line {
-				require.Falsef(t,
-					r < ' ' || (r >= 0x7f && r <= 0x9f) || unicode.Is(unicode.Bidi_Control, r),
-					"unsanitized rune %U survived into %q", r, line)
-			}
-		}
+		assertExcerptInvariants(t, lines)
 	})
 }
