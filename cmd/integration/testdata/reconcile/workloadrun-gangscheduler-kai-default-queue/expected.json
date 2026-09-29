@@ -1496,6 +1496,10 @@
                         "value": "1"
                       },
                       {
+                        "name": "NCCL_NET_PLUGIN",
+                        "value": "none"
+                      },
+                      {
                         "name": "NCCL_SOCKET_IFNAME",
                         "value": "eth0"
                       },
