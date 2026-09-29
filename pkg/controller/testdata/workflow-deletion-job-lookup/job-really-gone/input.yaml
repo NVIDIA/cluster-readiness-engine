@@ -1,0 +1,5 @@
+# Neither side has the Job, so it really has drained. Confirming the absence
+# changes nothing here: Phase 2 revokes the job-scoped dependency and the
+# finalizer is released, exactly as before.
+inCache: false
+inAPI: false

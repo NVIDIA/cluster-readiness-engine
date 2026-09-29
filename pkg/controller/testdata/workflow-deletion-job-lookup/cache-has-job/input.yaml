@@ -1,0 +1,6 @@
+# The ordinary case: the cache and the API server agree the group's Job is
+# still there. Phase 1 deletes it, the drain wait holds the finalizer, and the
+# job-scoped ResourceClaimTemplate backing its pods' DRA allocations is left
+# alone until the Job is fully gone.
+inCache: true
+inAPI: true

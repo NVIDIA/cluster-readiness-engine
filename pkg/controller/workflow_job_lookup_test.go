@@ -24,6 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/config"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/yaml"
 
@@ -344,6 +345,114 @@ func TestWorkflowCreateOrAdoptJobLookup(t *testing.T) {
 		data, marshalErr := json.MarshalIndent(output, "", "  ")
 		if marshalErr != nil {
 			return marshalErr
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
+// TestWorkflowDeletionJobLookup pins the teardown half of the same defect.
+// handleDeletion lists the Workflow's Jobs and reads an empty list as proof
+// they have all drained: Phase 1 deletes nothing, the drain wait is skipped,
+// and Phase 2 revokes the job-scoped DRA dependencies backing the workload's
+// pods. Deleting a Workflow shortly after a group's Job is created reaches
+// that through cache lag alone, and the result is the CUDA 719 failure the
+// pod-drain barrier from #121 exists to prevent (issue #385).
+//
+// The reconciler's Client plays the informer cache and APIReader plays the API
+// server, so each case sets exactly what each side can see.
+func TestWorkflowDeletionJobLookup(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "workflow-deletion-job-lookup",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			// InCache and InAPI place the group's Job in the cache and on the
+			// API server respectively.
+			InCache bool `yaml:"inCache"`
+			InAPI   bool `yaml:"inAPI"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		ctx := context.Background()
+		scheme := newJobLookupScheme(t)
+
+		now := metav1.Now()
+		workflow := &nvcrev1alpha1.Workflow{
+			Name: testWorkflowName, Namespace: testNS, UID: "workflow-uid",
+			Finalizers:        []string{workflowFinalizer},
+			DeletionTimestamp: &now,
+			Status: nvcrev1alpha1.WorkflowStatus{
+				DependencyRefs: []nvcrev1alpha1.DependencyResourceRef{{
+					APIVersion: resourcev1.SchemeGroupVersion.String(),
+					Kind:       "ResourceClaimTemplate",
+					Name:       testClaimTemplateName,
+					Namespace:  testNS,
+					Scope:      "job",
+					GroupName:  testGroupName,
+				}},
+			},
+		}
+
+		// The group's job-scoped DRA dependency. Phase 2 deletes it, so whether
+		// it survives the call is the whole point of the fixture.
+		claim := &unstructured.Unstructured{}
+		claim.SetAPIVersion(resourcev1.SchemeGroupVersion.String())
+		claim.SetKind("ResourceClaimTemplate")
+		claim.SetName(testClaimTemplateName)
+		claim.SetNamespace(testNS)
+		claim.SetAnnotations(map[string]string{annotationWorkflowUID: string(workflow.UID)})
+
+		newJob := func() *nvcrev1alpha1.Job {
+			return &nvcrev1alpha1.Job{
+				Name: testGroupJobName, Namespace: testNS, UID: "job-uid",
+				Labels:     map[string]string{labelWorkflowTracking: testWorkflowName},
+				Finalizers: []string{jobFinalizer},
+			}
+		}
+
+		cacheObjects := []client.Object{workflow, claim}
+		if input.InCache {
+			cacheObjects = append(cacheObjects, newJob())
+		}
+		cache := fake.NewClientBuilder().WithScheme(scheme).
+			WithObjects(cacheObjects...).Build()
+
+		apiBuilder := fake.NewClientBuilder().WithScheme(scheme)
+		if input.InAPI {
+			apiBuilder = apiBuilder.WithObjects(newJob())
+		}
+
+		r := &WorkflowReconciler{Client: cache, APIReader: apiBuilder.Build(), Scheme: scheme}
+		result, reconcileErr := r.handleDeletion(ctx, workflow)
+
+		// Read the dependency back through the cache, which is where Phase 2
+		// would have deleted it.
+		probe := &unstructured.Unstructured{}
+		probe.SetAPIVersion(resourcev1.SchemeGroupVersion.String())
+		probe.SetKind("ResourceClaimTemplate")
+		claimErr := cache.Get(ctx,
+			client.ObjectKey{Namespace: testNS, Name: testClaimTemplateName}, probe)
+
+		output := struct {
+			RequeueAfter  string `json:"requeueAfter"`
+			Error         string `json:"error,omitempty"`
+			ClaimSurvives bool   `json:"jobScopedDependencySurvives"`
+			FinalizerHeld bool   `json:"finalizerStillHeld"`
+		}{
+			RequeueAfter:  result.RequeueAfter.String(),
+			ClaimSurvives: claimErr == nil,
+			FinalizerHeld: controllerutil.ContainsFinalizer(workflow, workflowFinalizer),
+		}
+		if reconcileErr != nil {
+			output.Error = reconcileErr.Error()
+		}
+		data, err := json.MarshalIndent(output, "", "  ")
+		if err != nil {
+			return err
 		}
 		tc.Actual = string(data) + "\n"
 		return nil

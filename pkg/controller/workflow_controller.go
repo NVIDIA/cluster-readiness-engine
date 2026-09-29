@@ -2775,11 +2775,25 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *nvcre
 	// there may be completed Jobs from previous iterations that are no longer referenced.
 	// The Job controller's finalizer handles workload (TrainJob) deletion and pod termination.
 	jobList := &nvcrev1alpha1.JobList{}
-	if err := r.List(ctx, jobList,
+	listOpts := []client.ListOption{
 		client.InNamespace(workflow.Namespace),
 		client.MatchingLabels{"nvcre.nvidia.com/workflow": workflow.Name},
-	); err != nil {
+	}
+	if err := r.List(ctx, jobList, listOpts...); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to list Jobs for deletion: %w", err)
+	}
+	// An empty cached list is not proof the Jobs have drained, and everything
+	// below treats it as exactly that: Phase 1 deletes nothing, the wait below
+	// is skipped, and Phase 2 revokes the job-scoped dependencies that back the
+	// workload's DRA allocations. A Workflow deleted shortly after a group's
+	// Job is created is enough to reach it, because the Job informer need not
+	// have caught up. That kills pods still holding those allocations with CUDA
+	// error 719 and skips the pod-drain barrier from #121, which is the same
+	// cache-miss-as-deletion mistake this change removes from the running path.
+	if len(jobList.Items) == 0 {
+		if err := r.jobReader().List(ctx, jobList, listOpts...); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to confirm Jobs for deletion: %w", err)
+		}
 	}
 	for i := range jobList.Items {
 		if jobList.Items[i].DeletionTimestamp.IsZero() {
