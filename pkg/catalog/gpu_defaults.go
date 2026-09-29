@@ -91,12 +91,13 @@ func GPUDefaults(gpuArch, platform string) NodeDefaults {
 // so "gb300", "NVIDIA-GB300" and "NVIDIA GB300" are equivalent, and rejects
 // an architecture gpu-defaults.yaml does not list: GPUDefaults would silently
 // fall back for it and no gpuArchitecture override would match. An empty
-// value is allowed (architecture not specified).
+// flag is allowed (architecture not specified); a non-empty one that
+// normalizes to empty, e.g. "NVIDIA-", is rejected.
 func ParseGPUArchFlag(value string) (string, error) {
-	arch := gpu.ParseProduct(value)
-	if arch == "" {
+	if value == "" {
 		return "", nil
 	}
+	arch := gpu.ParseProduct(value)
 	ensureGPUDefaultsLoaded()
 	if _, ok := gpuDefaults.Defaults[arch]; !ok {
 		return "", fmt.Errorf("invalid --gpu-arch %q: must be one of %s",
