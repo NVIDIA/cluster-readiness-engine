@@ -1,0 +1,10 @@
+[
+  {
+    "name": "node-labeled",
+    "gpuProduct": "NVIDIA-H100-80GB-HBM3"
+  },
+  {
+    "name": "node-unlabeled",
+    "gpuProduct": "NVIDIA-GB300"
+  }
+]
