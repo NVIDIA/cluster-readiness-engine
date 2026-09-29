@@ -1,0 +1,5 @@
+{
+  "error": "decode ConfigMap failed-nodes: invalid failed-nodes compression: unexpected EOF",
+  "notReady": false,
+  "sourceNotFinal": false
+}

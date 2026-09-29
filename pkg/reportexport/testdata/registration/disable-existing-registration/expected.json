@@ -1,0 +1,46 @@
+[
+  {
+    "action": "register",
+    "cleanupReady": false,
+    "exports": [
+      {
+        "name": "report-aac0c5b499012ed291ac47bca5a4b5e22348a58f",
+        "url": "https://receiver.example.test/original",
+        "sourceUID": "source-uid",
+        "policyUID": "policy-uid",
+        "policyGeneration": 1
+      }
+    ],
+    "registrations": 1
+  },
+  {
+    "action": "disable",
+    "error": "restore the original report namespace configuration before continuing this registered certification",
+    "cleanupReady": false,
+    "exports": [
+      {
+        "name": "report-aac0c5b499012ed291ac47bca5a4b5e22348a58f",
+        "url": "https://receiver.example.test/original",
+        "sourceUID": "source-uid",
+        "policyUID": "policy-uid",
+        "policyGeneration": 1
+      }
+    ],
+    "registrations": 1
+  },
+  {
+    "action": "register",
+    "error": "restore the original report namespace configuration before continuing this registered certification",
+    "cleanupReady": false,
+    "exports": [
+      {
+        "name": "report-aac0c5b499012ed291ac47bca5a4b5e22348a58f",
+        "url": "https://receiver.example.test/original",
+        "sourceUID": "source-uid",
+        "policyUID": "policy-uid",
+        "policyGeneration": 1
+      }
+    ],
+    "registrations": 1
+  }
+]

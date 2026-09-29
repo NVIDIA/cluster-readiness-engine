@@ -20,11 +20,11 @@ import (
 	"golang.org/x/text/width"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/numstr"
 )
@@ -34,6 +34,7 @@ const (
 	statusFailed     = "Failed"
 	statusRunning    = "Running"
 	statusInProgress = "InProgress"
+	labelWorkflow    = "nvcre.nvidia.com/workflow"
 )
 
 // Diagnose stage names, as returned by inferDiagnoseStage.
@@ -258,9 +259,9 @@ func CategoryMNNVL(cert *nvcrev1alpha1.Certification, i int) string {
 // Build fetches Workflow and measurement data for a Certification (completed or running).
 func Build(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certification) *CertReport {
 	result := "RUNNING"
-	if controller.CondIsTrue(cert.Status.Conditions, nvcrev1alpha1.CertificationFailed) {
+	if meta.IsStatusConditionTrue(cert.Status.Conditions, nvcrev1alpha1.CertificationFailed) {
 		result = "FAILED"
-	} else if controller.CondIsTrue(cert.Status.Conditions, nvcrev1alpha1.CertificationSucceeded) {
+	} else if meta.IsStatusConditionTrue(cert.Status.Conditions, nvcrev1alpha1.CertificationSucceeded) {
 		result = "PASSED"
 	}
 	report := &CertReport{
@@ -628,8 +629,8 @@ func PopulateCategoryFromWorkflow(
 		stage := diag.Stage
 		// If the workflow is terminal, show "complete" regardless of the stored stage
 		// (older controller versions may not have set it on failure paths).
-		if controller.CondIsTrue(wf.Status.Conditions, nvcrev1alpha1.WorkflowSucceeded) ||
-			controller.CondIsTrue(wf.Status.Conditions, nvcrev1alpha1.WorkflowFailed) {
+		if meta.IsStatusConditionTrue(wf.Status.Conditions, nvcrev1alpha1.WorkflowSucceeded) ||
+			meta.IsStatusConditionTrue(wf.Status.Conditions, nvcrev1alpha1.WorkflowFailed) {
 			stage = nvcrev1alpha1.DiagnoseStageComplete
 		}
 		cat.Diagnose = &DiagnoseReport{
@@ -1524,7 +1525,7 @@ func collectWorkflowJobs(
 	if orch != nil && orch.Diagnose != nil {
 		var jobList nvcrev1alpha1.JobList
 		if err := c.List(ctx, &jobList, client.InNamespace(wf.Namespace),
-			client.MatchingLabels{"nvcre.nvidia.com/workflow": wf.Name}); err == nil {
+			client.MatchingLabels{labelWorkflow: wf.Name}); err == nil {
 			for _, j := range jobList.Items {
 				jobs[j.Name] = true
 			}
@@ -1557,7 +1558,7 @@ func buildDiagnoseTests(
 	// List all Jobs for this Workflow.
 	var jobList nvcrev1alpha1.JobList
 	if err := c.List(ctx, &jobList, client.InNamespace(wf.Namespace),
-		client.MatchingLabels{"nvcre.nvidia.com/workflow": wf.Name}); err != nil {
+		client.MatchingLabels{labelWorkflow: wf.Name}); err != nil {
 		return nil
 	}
 
@@ -1565,7 +1566,7 @@ func buildDiagnoseTests(
 	for _, j := range jobList.Items {
 		groupName := j.GetLabels()["nvcre.nvidia.com/group"]
 		stage := inferDiagnoseStage(groupName)
-		passed := controller.CondIsTrue(j.Status.Conditions, nvcrev1alpha1.JobSucceeded)
+		passed := meta.IsStatusConditionTrue(j.Status.Conditions, nvcrev1alpha1.JobSucceeded)
 		nodes := getJobNodes(&j)
 
 		// Only set domain for screening tests — other stages list individual nodes.

@@ -1,0 +1,12 @@
+{
+  "responses": [
+    202
+  ],
+  "actions": [
+    "reconcile",
+    "reconcile",
+    "delete-source",
+    "expire",
+    "reconcile"
+  ]
+}

@@ -368,6 +368,14 @@ helm rollback nvcre <revision> --namespace nvcre
 
 If you installed with `nvcrectl setup init`, upgrade by installing the new CLI version and re-running `nvcrectl setup init` — it reconciles the CRDs from the chart on every run before upgrading the Helm release, so no manual CRD step is needed.
 
+## Independent report exporter
+
+Enable durable webhook delivery with a separate `helm/report-exporter` release in a persistent reporting namespace. The exporter runs `/report-exporter` from the same image as the manager and continues sending stored reports after a per-run controller teardown. The exporter chart is installed from the repository; it is not assumed to be published as an OCI chart. See [Export Reports to a Webhook](../how-to-guides/export-reports.md) for the complete installation sequence.
+
+The main chart's `reportExport.enabled` defaults to `false`. To enable registration, set `reportExport.namespace` (default `nvcre-reports`) and a non-empty, stable `reportExport.clusterID`. Install the exporter and reporting namespace first. Keep the namespace distinct from the manager and temporary workload namespaces. The main chart grants registration permissions in that namespace; authentication Secret access belongs to the exporter and is limited to namespaced `get`.
+
+The exporter chart supports `replicas`, image tag/digest/pull Secrets, resources, node placement, and `allowHTTP` (default `false`). Leader election coordinates replicas. The exporter exposes `/healthz` and `/readyz` on port 8081 and metrics on port 8080; the chart creates no public Service. Permit egress to the Kubernetes API, cluster DNS, and the configured HTTPS receiver. Reporting namespace administrators control destinations and access to cross-namespace reports.
+
 ## Uninstall and cleanup
 
 ### nvcrectl setup reset
@@ -376,11 +384,17 @@ If you installed with `nvcrectl setup init`, upgrade by installing the new CLI v
 nvcrectl setup reset
 ```
 
-`setup reset` runs three phases: **cr** (deletes all NVCRE custom resource instances while the controller can still process finalizers), **helm** (removes the NVCRE Helm release and then explicitly deletes the NVCRE CRDs), and **deps** (removes Kubeflow Trainer and its Trainer-owned CRDs). Use `--skip-phases=deps` to keep Kubeflow Trainer, or `--skip-phases=cr,helm` to run only dependency removal. A Trainer Helm uninstall error stops reset before CRD cleanup and returns a nonzero result; rerun after resolving the Helm, API, timeout, or finalizer failure.
+`setup reset` runs three phases: **cr** (deletes NVCRE execution resources while the controller can still process finalizers), **helm** (removes the NVCRE Helm release and explicitly deletes execution CRDs), and **deps** (removes Kubeflow Trainer and its Trainer-owned CRDs). ReportExportPolicy and ReportExport instances and CRDs are retained, along with the separately installed reporting service. Use `--skip-phases=deps` to keep Kubeflow Trainer, or `--skip-phases=cr,helm` to run only dependency removal. A Trainer Helm uninstall error stops reset before CRD cleanup and returns a nonzero result; rerun after resolving the Helm, API, timeout, or finalizer failure.
 
 **What `setup reset` retains** — clean these up yourself if you want a pristine cluster:
 
+Reset first waits for Certification deletion, including report snapshots, before
+deleting child resources. Skipping the `cr` phase does not bypass this barrier:
+Certifications must already be gone before removing the controller or workload
+dependencies.
+
 - The `nvcre` and `kubeflow-system` namespaces are not deleted.
+- ReportExportPolicy and ReportExport CRDs and instances, the independent exporter release, and its reporting namespace remain so durable deliveries can finish. Do not remove them while reports are pending. Controlled Certification cleanup waits for snapshots, but never waits for the remote receiver.
 - The `nvcrectl-pull-secret` image pull secret created by `setup init --image-pull-secret` remains in the `nvcre` namespace.
 - The shared `jobsets.jobset.x-k8s.io` CRD remains. Deleting it destroys every JobSet in every namespace, so `setup reset` reports it without printing a cleanup command. Assess all cluster-wide consumers and follow the owning JobSet release's CRD upgrade or removal procedure.
 
@@ -392,7 +406,7 @@ kubectl delete namespace nvcre kubeflow-system
 
 ### helm uninstall leaves the CRDs behind
 
-Helm intentionally never deletes CRDs that live in a chart's `crds/` directory (to avoid accidental data loss), so a manual `helm uninstall nvcre` leaves all seven `nvcre.nvidia.com` CRDs — and every remaining custom resource instance — in the cluster. Delete them explicitly:
+Helm intentionally never deletes CRDs that live in a chart's `crds/` directory (to avoid accidental data loss), so a manual `helm uninstall nvcre` leaves the `nvcre.nvidia.com` CRDs and every remaining custom resource instance in the cluster. Delete the execution CRDs explicitly only after source cleanup has completed; keep the two reporting CRDs while the independent exporter is in use:
 
 ```bash
 kubectl delete crd \

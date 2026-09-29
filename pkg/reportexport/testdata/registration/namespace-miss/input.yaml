@@ -1,0 +1,6 @@
+{
+  "mode": "wrong-source-namespace",
+  "actions": [
+    "register"
+  ]
+}

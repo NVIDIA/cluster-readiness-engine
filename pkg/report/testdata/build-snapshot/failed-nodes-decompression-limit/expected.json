@@ -1,0 +1,5 @@
+{
+  "error": "decode ConfigMap failed-nodes: failed-nodes data exceeds the 8 MiB decompression limit",
+  "notReady": false,
+  "sourceNotFinal": false
+}

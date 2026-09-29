@@ -1,0 +1,135 @@
+apiVersion: "nvcre.nvidia.com/v1alpha1"
+kind: "Certification"
+metadata:
+  name: "cert"
+  namespace: "burn-in"
+  uid: "cert-uid"
+  generation: 1
+spec:
+  categories:
+    - domain: "communication"
+      variant: "nccl-all-reduce"
+status:
+  conditions:
+    - type: "Succeeded"
+      status: "True"
+      observedGeneration: 1
+      reason: "Completed"
+      message: "Finished"
+      lastTransitionTime: "2026-09-30T10:00:00Z"
+  categoryStatuses:
+    - domain: "communication"
+      variant: "nccl-all-reduce"
+      status: "Succeeded"
+      workflowRef:
+        name: "wf"
+        namespace: "burn-in"
+---
+apiVersion: "nvcre.nvidia.com/v1alpha1"
+kind: "Workflow"
+metadata:
+  name: "wf"
+  namespace: "burn-in"
+  uid: "wf-uid"
+  generation: 1
+  ownerReferences:
+    - apiVersion: "nvcre.nvidia.com/v1alpha1"
+      kind: "Certification"
+      name: "cert"
+      uid: "cert-uid"
+      controller: true
+spec:
+  orchestration:
+    iterations: 1
+status:
+  conditions:
+    - type: "Succeeded"
+      status: "True"
+      observedGeneration: 1
+      reason: "Completed"
+      message: "Finished"
+      lastTransitionTime: "2026-09-30T10:00:00Z"
+  orchestration:
+    totalNodes: 2
+    nodesPerJob: 2
+    totalGroups: 1
+    currentIteration: 1
+    completedIterations: 1
+    detectedPlatform: "onprem"
+    detectedGPUArchitecture: "h100"
+    groups:
+      - name: "group-0"
+        phase: "Succeeded"
+        nodes:
+          - "node-a"
+          - "node-b"
+        jobRef:
+          name: "job"
+          namespace: "burn-in"
+        startTime: "2026-09-30T10:00:00Z"
+        completionTime: "2026-09-30T10:01:00Z"
+---
+apiVersion: "nvcre.nvidia.com/v1alpha1"
+kind: "Job"
+metadata:
+  name: "job"
+  namespace: "burn-in"
+  uid: "job-uid"
+  generation: 1
+  ownerReferences:
+    - apiVersion: "nvcre.nvidia.com/v1alpha1"
+      kind: "Workflow"
+      name: "wf"
+      uid: "wf-uid"
+      controller: true
+  labels:
+    nvcre.nvidia.com/workflow: "wf"
+    nvcre.nvidia.com/group: "group-0"
+  annotations:
+    nvcre.nvidia.com/group-nodes: "node-a,node-b"
+spec:
+  bandwidthMeasurement:
+    logProfileRef: "nccl"
+status:
+  conditions:
+    - type: "Succeeded"
+      status: "True"
+      observedGeneration: 1
+      reason: "Completed"
+      message: "Finished"
+      lastTransitionTime: "2026-09-30T10:00:00Z"
+  workloadRef:
+    kind: "TrainJob"
+    name: "trainjob"
+---
+apiVersion: "nvcre.nvidia.com/v1alpha1"
+kind: "BandwidthMeasurement"
+metadata:
+  name: "bw"
+  namespace: "burn-in"
+  uid: "bw-uid"
+  generation: 1
+  ownerReferences:
+    - apiVersion: "nvcre.nvidia.com/v1alpha1"
+      kind: "Workflow"
+      name: "wf"
+      uid: "other-workflow"
+      controller: true
+spec:
+  jobRef:
+    kind: "Job"
+    name: "job"
+  logProfileRef: "nccl"
+status:
+  conditions:
+    - type: "Complete"
+      status: "True"
+      observedGeneration: 1
+      reason: "Completed"
+      message: "Finished"
+      lastTransitionTime: "2026-09-30T10:00:00Z"
+  results:
+    - sizeBytes: 1048576
+      algBW: "100"
+      busBW: "90"
+      samples: 2

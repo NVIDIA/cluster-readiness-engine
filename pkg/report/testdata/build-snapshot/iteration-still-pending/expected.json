@@ -1,0 +1,5 @@
+{
+  "error": "report snapshot is not ready: source has not reached its final state: Workflow wf has unfinished iterations",
+  "notReady": true,
+  "sourceNotFinal": true
+}

@@ -1,0 +1,5 @@
+{
+  "error": "report snapshot is not ready: source has not reached its final state: category communication/nccl-all-reduce has not observed its Workflow result",
+  "notReady": true,
+  "sourceNotFinal": true
+}

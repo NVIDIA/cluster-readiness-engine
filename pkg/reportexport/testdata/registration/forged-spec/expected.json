@@ -1,0 +1,9 @@
+[
+  {
+    "action": "register",
+    "error": "decode report registration reference: json: cannot unmarshal array into Go value of type reportexport.registrationHint",
+    "cleanupReady": false,
+    "exports": null,
+    "registrations": 0
+  }
+]

@@ -1,0 +1,5 @@
+{
+  "error": "list BandwidthMeasurements: injected read failure: list BandwidthMeasurementList",
+  "notReady": false,
+  "sourceNotFinal": false
+}

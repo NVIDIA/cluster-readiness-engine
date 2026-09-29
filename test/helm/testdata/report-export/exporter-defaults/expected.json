@@ -1,0 +1,294 @@
+{
+  "resources": [
+    {
+      "apiVersion": "v1",
+      "kind": "ServiceAccount",
+      "metadata": {
+        "name": "report-test",
+        "namespace": "nvcre-reports"
+      }
+    },
+    {
+      "apiVersion": "rbac.authorization.k8s.io/v1",
+      "kind": "ClusterRole",
+      "metadata": {
+        "name": "nvcre-reports-report-test"
+      },
+      "rules": [
+        {
+          "apiGroups": [
+            "nvcre.nvidia.com"
+          ],
+          "resources": [
+            "certifications",
+            "workflows",
+            "jobs",
+            "goodputmeasurements",
+            "bandwidthmeasurements"
+          ],
+          "verbs": [
+            "get",
+            "list"
+          ]
+        },
+        {
+          "apiGroups": [
+            "batch"
+          ],
+          "resources": [
+            "jobs"
+          ],
+          "verbs": [
+            "get"
+          ]
+        },
+        {
+          "apiGroups": [
+            ""
+          ],
+          "resources": [
+            "configmaps"
+          ],
+          "verbs": [
+            "get"
+          ]
+        }
+      ]
+    },
+    {
+      "apiVersion": "rbac.authorization.k8s.io/v1",
+      "kind": "ClusterRoleBinding",
+      "metadata": {
+        "name": "nvcre-reports-report-test"
+      },
+      "roleRef": {
+        "apiGroup": "rbac.authorization.k8s.io",
+        "kind": "ClusterRole",
+        "name": "nvcre-reports-report-test"
+      },
+      "subjects": [
+        {
+          "kind": "ServiceAccount",
+          "name": "report-test",
+          "namespace": "nvcre-reports"
+        }
+      ]
+    },
+    {
+      "apiVersion": "rbac.authorization.k8s.io/v1",
+      "kind": "Role",
+      "metadata": {
+        "name": "report-test",
+        "namespace": "nvcre-reports"
+      },
+      "rules": [
+        {
+          "apiGroups": [
+            "nvcre.nvidia.com"
+          ],
+          "resources": [
+            "reportexports"
+          ],
+          "verbs": [
+            "get",
+            "list",
+            "watch",
+            "update",
+            "patch",
+            "delete"
+          ]
+        },
+        {
+          "apiGroups": [
+            "nvcre.nvidia.com"
+          ],
+          "resources": [
+            "reportexports/status",
+            "reportexports/finalizers"
+          ],
+          "verbs": [
+            "get",
+            "update",
+            "patch"
+          ]
+        },
+        {
+          "apiGroups": [
+            ""
+          ],
+          "resources": [
+            "configmaps"
+          ],
+          "verbs": [
+            "get",
+            "list",
+            "watch",
+            "create",
+            "update",
+            "patch",
+            "delete"
+          ]
+        },
+        {
+          "apiGroups": [
+            ""
+          ],
+          "resources": [
+            "secrets"
+          ],
+          "verbs": [
+            "get"
+          ]
+        },
+        {
+          "apiGroups": [
+            "coordination.k8s.io"
+          ],
+          "resources": [
+            "leases"
+          ],
+          "verbs": [
+            "get",
+            "list",
+            "watch",
+            "create",
+            "update",
+            "patch"
+          ]
+        },
+        {
+          "apiGroups": [
+            "",
+            "events.k8s.io"
+          ],
+          "resources": [
+            "events"
+          ],
+          "verbs": [
+            "create",
+            "patch"
+          ]
+        }
+      ]
+    },
+    {
+      "apiVersion": "rbac.authorization.k8s.io/v1",
+      "kind": "RoleBinding",
+      "metadata": {
+        "name": "report-test",
+        "namespace": "nvcre-reports"
+      },
+      "roleRef": {
+        "apiGroup": "rbac.authorization.k8s.io",
+        "kind": "Role",
+        "name": "report-test"
+      },
+      "subjects": [
+        {
+          "kind": "ServiceAccount",
+          "name": "report-test",
+          "namespace": "nvcre-reports"
+        }
+      ]
+    },
+    {
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "report-test",
+        "namespace": "nvcre-reports"
+      },
+      "spec": {
+        "replicas": 1,
+        "selector": {
+          "matchLabels": {
+            "app.kubernetes.io/instance": "report-test",
+            "app.kubernetes.io/name": "nvcre-report-exporter"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/component": "report-exporter",
+              "app.kubernetes.io/instance": "report-test",
+              "app.kubernetes.io/managed-by": "Helm",
+              "app.kubernetes.io/name": "nvcre-report-exporter",
+              "app.kubernetes.io/version": "dev"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "args": [
+                  "--namespace=nvcre-reports",
+                  "--health-probe-bind-address=:8081",
+                  "--metrics-bind-address=:8080",
+                  "--leader-elect"
+                ],
+                "command": [
+                  "/report-exporter"
+                ],
+                "image": "ghcr.io/nvidia/cluster-readiness-engine/manager:dev",
+                "imagePullPolicy": "IfNotPresent",
+                "livenessProbe": {
+                  "httpGet": {
+                    "path": "/healthz",
+                    "port": "health"
+                  },
+                  "initialDelaySeconds": 15,
+                  "periodSeconds": 20
+                },
+                "name": "report-exporter",
+                "ports": [
+                  {
+                    "containerPort": 8081,
+                    "name": "health"
+                  },
+                  {
+                    "containerPort": 8080,
+                    "name": "metrics"
+                  }
+                ],
+                "readinessProbe": {
+                  "httpGet": {
+                    "path": "/readyz",
+                    "port": "health"
+                  },
+                  "initialDelaySeconds": 5,
+                  "periodSeconds": 10
+                },
+                "resources": {
+                  "limits": {
+                    "cpu": "500m",
+                    "memory": "512Mi"
+                  },
+                  "requests": {
+                    "cpu": "10m",
+                    "memory": "256Mi"
+                  }
+                },
+                "securityContext": {
+                  "allowPrivilegeEscalation": false,
+                  "capabilities": {
+                    "drop": [
+                      "ALL"
+                    ]
+                  },
+                  "readOnlyRootFilesystem": true
+                }
+              }
+            ],
+            "securityContext": {
+              "runAsNonRoot": true,
+              "seccompProfile": {
+                "type": "RuntimeDefault"
+              }
+            },
+            "serviceAccountName": "report-test",
+            "terminationGracePeriodSeconds": 30
+          }
+        }
+      }
+    }
+  ]
+}

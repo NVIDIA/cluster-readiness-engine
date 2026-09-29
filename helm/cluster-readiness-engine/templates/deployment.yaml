@@ -45,6 +45,10 @@ spec:
         - --health-probe-bind-address=:8081
         - --max-concurrent-reconciles={{ required "manager.maxConcurrentReconciles is required" .Values.manager.maxConcurrentReconciles }}
         - --measurement-max-concurrent-reconciles={{ required "manager.measurementMaxConcurrentReconciles is required" .Values.manager.measurementMaxConcurrentReconciles }}
+        {{- if .Values.reportExport.enabled }}
+        - {{ printf "--report-namespace=%s" (required "reportExport.namespace is required when report export is enabled" .Values.reportExport.namespace) | quote }}
+        - {{ printf "--report-cluster-id=%s" (required "reportExport.clusterID is required when report export is enabled" .Values.reportExport.clusterID) | quote }}
+        {{- end }}
         command:
         - /manager
         {{- /*

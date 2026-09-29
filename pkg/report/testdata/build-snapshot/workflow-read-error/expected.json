@@ -1,0 +1,5 @@
+{
+  "error": "read Workflow wf: injected read failure: get Workflow burn-in/wf",
+  "notReady": false,
+  "sourceNotFinal": false
+}

@@ -1,0 +1,22 @@
+{
+  "error": "[cr] list Certification before deletion: certifications.nvcre.nvidia.com is forbidden: denied",
+  "deletes": [],
+  "helmCommands": [],
+  "remaining": {
+    "BandwidthMeasurement/gpu-validation/test-bandwidthmeasurements": true,
+    "Certification/gpu-validation/test-certifications": true,
+    "ConfigMap/nvcre-reports/snapshot": true,
+    "CustomResourceDefinition//bandwidthmeasurements.nvcre.nvidia.com": true,
+    "CustomResourceDefinition//certifications.nvcre.nvidia.com": true,
+    "CustomResourceDefinition//jobs.nvcre.nvidia.com": true,
+    "CustomResourceDefinition//reportexportpolicies.nvcre.nvidia.com": true,
+    "CustomResourceDefinition//reportexports.nvcre.nvidia.com": true,
+    "CustomResourceDefinition//workflows.nvcre.nvidia.com": true,
+    "Job/gpu-validation/test-jobs": true,
+    "ReportExport/nvcre-reports/test-reportexports": true,
+    "ReportExportPolicy/nvcre-reports/test-reportexportpolicies": true,
+    "Secret/nvcre-reports/webhook-auth": true,
+    "Workflow/gpu-validation/test-workflows": true
+  },
+  "output": "[cr] Deleting NVCRE custom resources...\n"
+}

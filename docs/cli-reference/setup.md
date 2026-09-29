@@ -136,13 +136,17 @@ Runs three phases in order:
 
 | Phase | What |
 |-------|------|
-| `cr` | All NVCRE custom resource instances (Certifications, Workflows, Jobs) |
-| `helm` | NVCRE Helm release (CRDs, controller, LogProfiles) |
+| `cr` | NVCRE execution resources (including Certifications, Workflows, Jobs); retains ReportExportPolicy and ReportExport |
+| `helm` | NVCRE Helm release (execution CRDs, controller, LogProfiles); retains both reporting CRDs |
 | `deps` | Kubeflow Trainer |
 
 Use `--skip-phases=deps` to keep Kubeflow Trainer.
 
 After all phases complete, `setup reset` prints a **Retained resources** block. Namespaces and the controller pull Secret include manual cleanup commands. The shared JobSet CRD is retained in every ownership mode and is warning-only: deleting it destroys JobSets across all namespaces, so the CLI does not print a deletion command. A Trainer Helm uninstall failure returns nonzero and stops before Trainer CRD cleanup.
+
+ReportExportPolicy and ReportExport resources and CRDs are retained. The [independent report exporter](../how-to-guides/export-reports.md) is a separate Helm release; reset does not uninstall it or delete its reporting namespace, snapshots, or authentication Secrets. Registered Certifications must have a durable snapshot or an explicit cancellation before controlled source cleanup can remove their report data. This does not wait for the receiver. If cleanup is blocked, inspect the corresponding ReportExport instead of removing finalizers manually.
+
+Reset deletes Certifications first and waits for their finalizers before deleting Workflows, Jobs, or measurements. Inventory errors and incomplete deletion stop reset before the controller is uninstalled. Even with `--skip-phases=cr`, Certifications must already be gone before the `helm` or `deps` phase removes their controllers. Stop submitting new Certifications while resetting the installation.
 
 ### Flags
 

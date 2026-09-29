@@ -1,0 +1,9 @@
+[
+  {
+    "action": "register",
+    "error": "report registration reference does not match the certification UID",
+    "cleanupReady": false,
+    "exports": null,
+    "registrations": 0
+  }
+]

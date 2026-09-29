@@ -51,6 +51,8 @@ navigation:
         path: how-to-guides/custom-catalog-entries.md
       - page: Interpret Results
         path: how-to-guides/interpret-results.md
+      - page: Export Reports to a Webhook
+        path: how-to-guides/export-reports.md
 
   - section: CLI Reference
     contents:
@@ -85,6 +87,8 @@ navigation:
         path: api-reference/bandwidth-measurement.md
       - page: LogProfile
         path: api-reference/logprofile.md
+      - page: ReportExportPolicy and ReportExport
+        path: api-reference/report-export.md
       - page: Validation Results
         path: api-reference/validation-results.md
 

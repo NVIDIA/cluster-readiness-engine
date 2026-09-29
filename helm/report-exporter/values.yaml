@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Install this chart as a separate release in a persistent reporting namespace.
+# The main NVCRE chart supplies the ReportExportPolicy and ReportExport CRDs.
+replicas: 1
+image:
+  repository: ghcr.io/nvidia/cluster-readiness-engine/manager
+  tag: ""
+  # Pin the same verified image digest as the NVCRE manager when available.
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+allowHTTP: false
+resources:
+  requests:
+    cpu: 10m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+affinity: {}
+tolerations: []
+nodeSelector: {}
+terminationGracePeriodSeconds: 30

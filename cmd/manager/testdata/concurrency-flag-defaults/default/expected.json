@@ -44,6 +44,14 @@
     "default": "true"
   },
   {
+    "name": "report-cluster-id",
+    "default": ""
+  },
+  {
+    "name": "report-namespace",
+    "default": ""
+  },
+  {
     "name": "webhook-cert-key",
     "default": "tls.key"
   },

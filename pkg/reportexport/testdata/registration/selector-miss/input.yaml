@@ -1,0 +1,8 @@
+{
+  "mode": "selector-miss",
+  "actions": [
+    "register",
+    "delete-source",
+    "collect"
+  ]
+}

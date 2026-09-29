@@ -1,0 +1,9 @@
+chart: exporter
+namespace: custom-reports
+set:
+  - allowHTTP=true
+  - replicas=2
+  - image.repository=registry.example.com/nvcre
+  - image.tag=v9.9.9
+  - image.digest=sha256:735ad1e142a378b0919510bd1fc113cd53ab754bc79b7f0980d647d50a914523
+  - imagePullSecrets[0].name=registry-credentials

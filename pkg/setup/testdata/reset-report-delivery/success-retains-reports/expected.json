@@ -1,0 +1,32 @@
+{
+  "deletes": [
+    "Certification/gpu-validation/test-certifications",
+    "BandwidthMeasurement/gpu-validation/test-bandwidthmeasurements",
+    "Job/gpu-validation/test-jobs",
+    "Workflow/gpu-validation/test-workflows",
+    "CustomResourceDefinition//bandwidthmeasurements.nvcre.nvidia.com",
+    "CustomResourceDefinition//certifications.nvcre.nvidia.com",
+    "CustomResourceDefinition//jobs.nvcre.nvidia.com",
+    "CustomResourceDefinition//workflows.nvcre.nvidia.com"
+  ],
+  "helmCommands": [
+    "uninstall nvcre --namespace nvcre --ignore-not-found --wait --timeout 5m0s --kubeconfig /tmp/reset-test.kubeconfig --kube-context reset-context"
+  ],
+  "remaining": {
+    "BandwidthMeasurement/gpu-validation/test-bandwidthmeasurements": false,
+    "Certification/gpu-validation/test-certifications": false,
+    "ConfigMap/nvcre-reports/snapshot": true,
+    "CustomResourceDefinition//bandwidthmeasurements.nvcre.nvidia.com": false,
+    "CustomResourceDefinition//certifications.nvcre.nvidia.com": false,
+    "CustomResourceDefinition//jobs.nvcre.nvidia.com": false,
+    "CustomResourceDefinition//reportexportpolicies.nvcre.nvidia.com": true,
+    "CustomResourceDefinition//reportexports.nvcre.nvidia.com": true,
+    "CustomResourceDefinition//workflows.nvcre.nvidia.com": false,
+    "Job/gpu-validation/test-jobs": false,
+    "ReportExport/nvcre-reports/test-reportexports": true,
+    "ReportExportPolicy/nvcre-reports/test-reportexportpolicies": true,
+    "Secret/nvcre-reports/webhook-auth": true,
+    "Workflow/gpu-validation/test-workflows": false
+  },
+  "output": "[cr] Deleting NVCRE custom resources...\n  Certification/test-certifications (namespace: gpu-validation) deleted\n  BandwidthMeasurement/test-bandwidthmeasurements (namespace: gpu-validation) deleted\n  Job/test-jobs (namespace: gpu-validation) deleted\n  Workflow/test-workflows (namespace: gpu-validation) deleted\n  All NVCRE custom resources removed.\n[helm] Removing NVCRE Helm release \"nvcre\" from namespace nvcre...\n[helm] Removing NVCRE CRDs...\n  Waiting for CRDs to be fully removed...\n  All NVCRE CRDs removed.\n[deps] Skipped.\n\nRetained resources (not removed by reset):\n  - CRD reportexportpolicies.nvcre.nvidia.com (retained for independent report delivery)\n  - CRD reportexports.nvcre.nvidia.com (retained for independent report delivery)\n\nNVCRE reset successfully.\n"
+}

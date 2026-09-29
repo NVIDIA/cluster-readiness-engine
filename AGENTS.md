@@ -67,7 +67,7 @@ UAT golden files are in `test/uat/testdata/<csp>/<gpu>/nccl/expected_pods.yaml`.
 
 ## Architecture
 
-Kubebuilder-based Kubernetes controller for GPU cluster burn-in certification. Single binary, six reconcilers.
+Kubebuilder-based Kubernetes controller for GPU cluster burn-in certification. The manager orchestrates workload execution; the optional report exporter runs as a separate binary and Deployment.
 
 ### CRD Hierarchy (Certification → Workflow → Job)
 
@@ -83,6 +83,9 @@ Follows the Deployment → ReplicaSet → Pod composition pattern:
 There is no Remediation controller. ADR-061 removed it. NVCRE does not taint, cordon, or patch nodes; it records failed nodes with a reason (`HardwareFailureDetected`, `ThresholdViolation`, or `WorkloadFailed`) in the Certification status.
 
 ### Key Packages
+
+- `pkg/reportexport/` — Durable Certification webhook delivery. The manager freezes matching ReportExportPolicy settings before launching Workflows; the independent exporter reconciles ReportExport snapshots, retries, and retention. Source cleanup waits for durable snapshots, not HTTP delivery (ADR-082).
+- `pkg/report/` — CLI report rendering and the strict `BuildSnapshot` path used by exports. Strict snapshots verify final execution state, settled measurements, source identity, and complete reads before persisting a report.
 
 - `pkg/workload/` — Adapter interface normalizing five training frameworks to `WorkloadPhase` (Running/Succeeded/Failed). `ForSpec()` factory selects adapter based on which `WorkloadSpec` field is set.
 - `pkg/catalog/` — Maps `{domain, variant}` → WorkflowSpec builder via `init()` registration. Adding a category = one new Go file.
@@ -343,4 +346,4 @@ job.Status.Conditions = append(job.Status.Conditions, condition)
 
 ## Design Decisions
 
-Architecture decision records are in `docs/designs/` (ADR-000 through ADR-081). Read these before making significant changes to understand why things are the way they are.
+Architecture decision records are in `docs/designs/` (ADR-000 through ADR-082). Read these before making significant changes to understand why things are the way they are.

@@ -1,0 +1,13 @@
+{
+  "responses": [
+    401
+  ],
+  "actions": [
+    "reconcile",
+    "reconcile",
+    "expire",
+    "reconcile",
+    "manual-retry",
+    "reconcile"
+  ]
+}

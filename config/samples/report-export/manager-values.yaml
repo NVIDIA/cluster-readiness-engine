@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+reportExport:
+  enabled: true
+  namespace: nvcre-reports
+  # Replace with your stable cluster identifier before installation.
+  clusterID: production-helsinki-1

@@ -1,0 +1,19 @@
+{
+  "report": {
+    "name": "cert",
+    "platform": "",
+    "gpu": "",
+    "totalNodes": 0,
+    "categories": [
+      {
+        "domain": "communication",
+        "variant": "nccl-all-reduce",
+        "status": "Pending"
+      }
+    ],
+    "failedNodes": null,
+    "result": "FAILED"
+  },
+  "notReady": false,
+  "sourceNotFinal": false
+}

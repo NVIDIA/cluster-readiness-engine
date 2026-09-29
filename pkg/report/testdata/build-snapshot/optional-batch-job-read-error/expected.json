@@ -1,0 +1,5 @@
+{
+  "error": "read report data: get *v1.Job burn-in/batch: injected read failure: get BatchJob burn-in/batch",
+  "notReady": false,
+  "sourceNotFinal": false
+}

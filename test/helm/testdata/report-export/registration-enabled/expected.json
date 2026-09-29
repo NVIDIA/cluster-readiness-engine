@@ -1,0 +1,85 @@
+{
+  "managerArgs": [
+    "--metrics-bind-address=:8443",
+    "--leader-elect",
+    "--health-probe-bind-address=:8081",
+    "--max-concurrent-reconciles=10",
+    "--measurement-max-concurrent-reconciles=5",
+    "--report-namespace=custom-reports",
+    "--report-cluster-id=production-helsinki-1"
+  ],
+  "resources": [
+    {
+      "apiVersion": "rbac.authorization.k8s.io/v1",
+      "kind": "Role",
+      "metadata": {
+        "name": "report-test-nvcre-report-registration",
+        "namespace": "custom-reports"
+      },
+      "rules": [
+        {
+          "apiGroups": [
+            "nvcre.nvidia.com"
+          ],
+          "resources": [
+            "reportexportpolicies"
+          ],
+          "verbs": [
+            "get",
+            "list",
+            "watch"
+          ]
+        },
+        {
+          "apiGroups": [
+            "nvcre.nvidia.com"
+          ],
+          "resources": [
+            "reportexports"
+          ],
+          "verbs": [
+            "get",
+            "list",
+            "watch",
+            "create",
+            "update",
+            "patch"
+          ]
+        },
+        {
+          "apiGroups": [
+            "nvcre.nvidia.com"
+          ],
+          "resources": [
+            "reportexports/status"
+          ],
+          "verbs": [
+            "get",
+            "update",
+            "patch"
+          ]
+        }
+      ]
+    },
+    {
+      "apiVersion": "rbac.authorization.k8s.io/v1",
+      "kind": "RoleBinding",
+      "metadata": {
+        "name": "report-test-nvcre-report-registration",
+        "namespace": "custom-reports"
+      },
+      "roleRef": {
+        "apiGroup": "rbac.authorization.k8s.io",
+        "kind": "Role",
+        "name": "report-test-nvcre-report-registration"
+      },
+      "subjects": [
+        {
+          "kind": "ServiceAccount",
+          "name": "report-test-nvcre-manager",
+          "namespace": "nvcre"
+        }
+      ]
+    }
+  ]
+}

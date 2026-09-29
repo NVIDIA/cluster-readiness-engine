@@ -5,6 +5,14 @@
 
 nameOverride: nvcre
 
+# Register durable webhook deliveries for matching ReportExportPolicies.
+# Install helm/report-exporter separately in this persistent namespace first.
+reportExport:
+  enabled: false
+  namespace: nvcre-reports
+  # Required when enabled. Keep this identifier stable across controller upgrades.
+  clusterID: ""
+
 manager:
   replicas: 1
   # Maximum number of objects reconciled concurrently by each core controller

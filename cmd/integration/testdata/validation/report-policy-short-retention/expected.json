@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.retention.failed",
+      "message": "Invalid value: \"5s\": failed retention must be between 1h and 365 days"
+    }
+  ]
+}

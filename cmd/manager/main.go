@@ -90,6 +90,7 @@ func newRootCommand() *cobra.Command {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var reportNamespace, reportClusterID string
 	concurrency := controllerConcurrencyOptions{
 		maxConcurrentReconciles:            defaultMaxConcurrentReconciles,
 		measurementMaxConcurrentReconciles: defaultMeasurementMaxConcurrentReconciles,
@@ -104,6 +105,9 @@ func newRootCommand() *cobra.Command {
 		Short:   "NVCRE controller manager",
 		Version: version,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if reportNamespace != "" && reportClusterID == "" {
+				return fmt.Errorf("--report-cluster-id is required when --report-namespace is set")
+			}
 			if err := concurrency.validate(); err != nil {
 				return err
 			}
@@ -226,6 +230,8 @@ func newRootCommand() *cobra.Command {
 			}
 			if err := (&controller.CertificationReconciler{
 				Client:                  mgr.GetClient(),
+				ReportNamespace:         reportNamespace,
+				ReportClusterID:         reportClusterID,
 				Scheme:                  mgr.GetScheme(),
 				Recorder:                mgr.GetEventRecorder("certification-controller"),
 				MaxConcurrentReconciles: concurrency.maxConcurrentReconciles,
@@ -302,6 +308,10 @@ func newRootCommand() *cobra.Command {
 	cmd.Flags().StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	cmd.Flags().StringVar(&reportNamespace, "report-namespace", "",
+		"Management namespace for persistent report policies and deliveries; empty disables new registrations")
+	cmd.Flags().StringVar(&reportClusterID, "report-cluster-id", "",
+		"Stable cluster identifier included in exported reports (required with --report-namespace)")
 
 	cmd.Flags().AddGoFlagSet(flag.CommandLine)
 

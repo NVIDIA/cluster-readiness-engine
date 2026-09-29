@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.source.namespaces",
+      "message": "Invalid value: 0: spec.source.namespaces in body should have at least 1 items"
+    }
+  ]
+}

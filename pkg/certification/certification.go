@@ -1007,11 +1007,16 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 			// wait for the Certification to be fully gone before running reset.
 			if certCreated {
 				_, _ = fmt.Fprintln(out, "[cleanup] Deleting certification...")
-				if err := wc.Delete(cleanupCtx, cfg.cert); err != nil && !apierrors.IsNotFound(err) {
-					_, _ = fmt.Fprintf(out, "[cleanup] Warning: failed to delete certification: %v\n", err)
-					warnings = true
-				} else {
-					waitForDeletion(cleanupCtx, wc, cfg.cert.Name, cfg.cert.Namespace, out)
+				deleteErr := wc.Delete(cleanupCtx, cfg.cert)
+				if deleteErr == nil {
+					deleteErr = waitForDeletion(cleanupCtx, wc, cfg.cert.Name, cfg.cert.Namespace, out)
+				}
+				if deleteErr != nil && !apierrors.IsNotFound(deleteErr) {
+					// Keep the namespace and controller available for finalizers,
+					// including the durable report snapshot barrier.
+					_, _ = fmt.Fprintf(out, "[cleanup] Stopped before namespace deletion and reset: %v\n", deleteErr)
+					pipelineErr = errors.Join(pipelineErr, fmt.Errorf("cleanup certification: %w", deleteErr))
+					return
 				}
 			}
 
@@ -1485,7 +1490,7 @@ func processWatchEvents(
 // The timeout is generous because the controller must cascade-delete all
 // Workflows, Jobs, workloads, and dependencies before the Certification
 // finalizer is removed. The controller needs its RBAC to process this.
-func waitForDeletion(ctx context.Context, c client.Client, name, namespace string, out io.Writer) {
+func waitForDeletion(ctx context.Context, c client.Client, name, namespace string, out io.Writer) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
@@ -1493,17 +1498,18 @@ func waitForDeletion(ctx context.Context, c client.Client, name, namespace strin
 	defer ticker.Stop()
 
 	for {
+		cert := &nvcrev1alpha1.Certification{}
+		if err := c.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, cert); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return fmt.Errorf("check certification deletion: %w", err)
+		}
 		select {
 		case <-ctx.Done():
 			_, _ = fmt.Fprintln(out, "[cleanup] Timed out waiting for deletion.")
-			return
+			return fmt.Errorf("waiting for certification deletion: %w", ctx.Err())
 		case <-ticker.C:
-			cert := &nvcrev1alpha1.Certification{}
-			if err := c.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, cert); err != nil {
-				if apierrors.IsNotFound(err) {
-					return // deleted
-				}
-			}
 		}
 	}
 }

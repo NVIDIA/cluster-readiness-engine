@@ -1,0 +1,31 @@
+{
+  "report": {
+    "name": "cert",
+    "platform": "onprem",
+    "gpu": "h100",
+    "totalNodes": 2,
+    "categories": [
+      {
+        "domain": "communication",
+        "variant": "nccl-all-reduce",
+        "status": "Succeeded",
+        "runtime": "1m 0s",
+        "testScale": "full-scale",
+        "nodesPerJob": 2,
+        "jobs": 1,
+        "bandwidth": [
+          {
+            "size": "1 MB",
+            "algBW": "100 GB/s",
+            "busBW": "90 GB/s",
+            "samples": 2
+          }
+        ]
+      }
+    ],
+    "failedNodes": null,
+    "result": "PASSED"
+  },
+  "notReady": false,
+  "sourceNotFinal": false
+}

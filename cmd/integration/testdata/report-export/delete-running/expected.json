@@ -1,0 +1,15 @@
+{
+  "readyBeforeSnapshot": false,
+  "readyAfterSnapshot": true,
+  "snapshotReady": false,
+  "snapshotImmutable": false,
+  "snapshotPhase": "Skipped",
+  "firstDeliveryPhase": "Skipped",
+  "finalPhase": "Skipped",
+  "reason": "SourceDeletedBeforeCompletion",
+  "attempts": 0,
+  "requests": 0,
+  "sameBody": true,
+  "stableIdentity": true,
+  "rotatedToken": false
+}

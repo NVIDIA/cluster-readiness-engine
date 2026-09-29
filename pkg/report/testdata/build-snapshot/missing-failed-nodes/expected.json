@@ -1,0 +1,5 @@
+{
+  "error": "read failed nodes ConfigMap failed-nodes: configmaps \"failed-nodes\" not found",
+  "notReady": false,
+  "sourceNotFinal": false
+}

@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -44,7 +45,9 @@ const (
 	phaseDeps = "deps"
 	phaseHelm = "helm"
 
-	nvcreAPIGroup = "nvcre.nvidia.com"
+	nvcreAPIGroup             = "nvcre.nvidia.com"
+	reportExportCRDName       = "reportexports." + nvcreAPIGroup
+	reportExportPolicyCRDName = "reportexportpolicies." + nvcreAPIGroup
 
 	trainerAPIGroup = "trainer.kubeflow.org"
 	jobsetAPIGroup  = "jobset.x-k8s.io"
@@ -835,7 +838,11 @@ Phases:
   [deps]  Kubeflow Trainer ` + kubeflowTrainerVersion + `
 
 Shared namespaces and the controller pull secret are intentionally retained,
-as is the shared JobSet CRD. reset prints a "Retained resources" list; entries
+as are the shared JobSet CRD and report-export CRDs and delivery records.
+The independently installed report exporter remains available after reset.
+Certifications must finish controlled deletion before their children or
+controller are removed; snapshot preparation can temporarily block reset.
+reset prints a "Retained resources" list; entries
 that are safe to remove carry a cleanup command, while the JobSet CRD is
 reported as a warning only, because deleting it destroys JobSets in every
 namespace.
@@ -900,7 +907,15 @@ func RunReset(
 		_, _ = fmt.Fprintln(out)
 	}
 
-	// [cr] — Delete all NVCRE custom resource instances while the
+	return runResetPhases(setupPhaseParams{
+		ctx: ctx, c: c, kubeconfig: kubeconfigPath, kubeContext: kubeContext,
+		skip: skip, out: out,
+	})
+}
+
+func runResetPhases(sp setupPhaseParams) error {
+	ctx, c, skip, out := sp.ctx, sp.c, sp.skip, sp.out
+	// [cr] — Delete execution resource instances while the
 	// controller is still alive to process finalizer removal.
 	if skip[phaseCR] {
 		_, _ = fmt.Fprintln(out, "[cr] Skipped.")
@@ -913,9 +928,15 @@ func RunReset(
 	if skip[phaseHelm] {
 		_, _ = fmt.Fprintln(out, "[helm] Skipped.")
 	} else {
+		// Recheck even when [cr] was explicitly skipped. Removing the
+		// controller before a Certification's finalizer completes would bypass
+		// its snapshot barrier and strand the subsequent CRD deletion.
+		if err := ensureCertificationsGone(ctx, c); err != nil {
+			return fmt.Errorf("[helm] refusing to uninstall the controller: %w", err)
+		}
 		if err := uninstallHelmRelease(helmUninstallParams{
-			kubeconfig:  kubeconfigPath,
-			kubeContext: kubeContext,
+			kubeconfig:  sp.kubeconfig,
+			kubeContext: sp.kubeContext,
 			out:         out,
 		}); err != nil {
 			return fmt.Errorf("[helm] %w", err)
@@ -928,13 +949,10 @@ func RunReset(
 		}
 	}
 
-	sp := setupPhaseParams{
-		ctx:         ctx,
-		c:           c,
-		kubeconfig:  kubeconfigPath,
-		kubeContext: kubeContext,
-		skip:        skip,
-		out:         out,
+	if !skip[phaseDeps] {
+		if err := ensureCertificationsGone(ctx, c); err != nil {
+			return fmt.Errorf("[deps] refusing to uninstall workload dependencies: %w", err)
+		}
 	}
 	if err := uninstallDepsPhase(sp); err != nil {
 		return err
@@ -1008,6 +1026,16 @@ func printRetainedResources(
 			cleanup: fmt.Sprintf("kubectl delete secret %s -n %s",
 				pullSecretName, nvcreNamespace),
 		})
+		names, listErr := listCRDNamesByGroup(ctx, c, nvcreAPIGroup)
+		if listErr != nil {
+			record(false, listErr, retainedResource{description: "Report-export CRDs and delivery records"})
+		} else {
+			for _, name := range names {
+				if isReportExportCRD(name) {
+					record(true, nil, retainedResource{description: "CRD " + name + " (retained for independent report delivery)"})
+				}
+			}
+		}
 	}
 
 	// Only mention the Trainer namespace when the deps phase actually ran;
@@ -1260,18 +1288,43 @@ func deleteNVCRECRs(ctx context.Context, c client.Client, out io.Writer) error {
 		return nil
 	}
 
-	// Check if any NVCRE CRs exist at all.
-	if !anyNVCRECRsExist(ctx, c, resources) {
+	// Check if any execution CRs exist. A failed inventory must never be
+	// interpreted as permission to uninstall their controller.
+	exists, err := anyNVCRECRsExist(ctx, c, resources)
+	if err != nil {
+		return err
+	}
+	if !exists {
 		_, _ = fmt.Fprintln(out, "[cr] No NVCRE custom resources found.")
 		return nil
 	}
 
-	// Stage 1: Graceful deletion — delete all NVCRE resources and let
-	// controllers reconcile finalizers/ownership cleanup.
+	// Delete Certifications first and wait for their finalizers to complete.
+	// Deleting their Workflows, Jobs or measurements in the same pass would
+	// destroy report sources while a Certification is waiting for a snapshot.
 	gracefulCtx, gracefulCancel := context.WithTimeout(ctx, crGracefulTimeout)
 	defer gracefulCancel()
 
-	gracefulCascadeDelete(gracefulCtx, c, out, resources)
+	var certifications, remaining []nvcreResource
+	for _, res := range resources {
+		if res.resource == "certifications" {
+			certifications = append(certifications, res)
+		} else {
+			remaining = append(remaining, res)
+		}
+	}
+	if err := gracefulCascadeDelete(gracefulCtx, c, out, certifications); err != nil {
+		return err
+	}
+	if err := waitForAllNVCRECRsGone(gracefulCtx, c, certifications); err != nil {
+		return fmt.Errorf("source Certification deletion did not complete; retain the controller and inspect finalizers and ReportExports: %w", err)
+	}
+	if err := ensureCertificationsGone(gracefulCtx, c); err != nil {
+		return fmt.Errorf("refusing to delete report source resources: %w", err)
+	}
+	if err := gracefulCascadeDelete(gracefulCtx, c, out, remaining); err != nil {
+		return err
+	}
 
 	// Wait for remaining resources to terminate naturally.
 	if err := waitForAllNVCRECRsGone(gracefulCtx, c, resources); err != nil {
@@ -1283,14 +1336,14 @@ func deleteNVCRECRs(ctx context.Context, c client.Client, out io.Writer) error {
 	return nil
 }
 
-// gracefulCascadeDelete deletes all known NVCRE resources.
+// gracefulCascadeDelete requests deletion of the supplied execution resources.
 func gracefulCascadeDelete(
 	ctx context.Context, c client.Client, out io.Writer, resources []nvcreResource,
-) {
+) error {
 	for _, res := range resources {
 		items, err := listNVCRECRs(ctx, c, res)
 		if err != nil {
-			continue // CRD may not exist
+			return fmt.Errorf("list %s before deletion: %w", res.kind, err)
 		}
 		for _, item := range items {
 			name := item.GetName()
@@ -1306,13 +1359,12 @@ func gracefulCascadeDelete(
 			}
 
 			if err := c.Delete(ctx, &item); client.IgnoreNotFound(err) != nil {
-				_, _ = fmt.Fprintf(out, "  Warning: failed to delete %s/%s: %v\n",
-					res.kind, label, err)
-				continue
+				return fmt.Errorf("delete %s/%s: %w", res.kind, label, err)
 			}
 			_, _ = fmt.Fprintf(out, "  %s/%s deleted\n", res.kind, label)
 		}
 	}
+	return nil
 }
 
 // waitForAllNVCRECRsGone polls until no NVCRE CR instances remain.
@@ -1323,7 +1375,11 @@ func waitForAllNVCRECRsGone(
 	defer ticker.Stop()
 
 	for {
-		if !anyNVCRECRsExist(ctx, c, resources) {
+		exists, err := anyNVCRECRsExist(ctx, c, resources)
+		if err != nil {
+			return err
+		}
+		if !exists {
 			return nil
 		}
 		select {
@@ -1352,17 +1408,48 @@ func listNVCRECRs(
 // across all resource types.
 func anyNVCRECRsExist(
 	ctx context.Context, c client.Client, resources []nvcreResource,
-) bool {
+) (bool, error) {
 	for _, res := range resources {
 		items, err := listNVCRECRs(ctx, c, res)
 		if err != nil {
-			continue
+			return false, fmt.Errorf("list %s during reset: %w", res.kind, err)
 		}
 		if len(items) > 0 {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
+}
+
+// ensureCertificationsGone is the last inventory gate before removing an
+// execution controller or its dependencies, including when [cr] was skipped.
+func ensureCertificationsGone(ctx context.Context, c client.Client) error {
+	names, err := listCRDNamesByGroup(ctx, c, nvcreAPIGroup)
+	if err != nil {
+		return fmt.Errorf("inspect Certification CRD: %w", err)
+	}
+	certCRDExists := slices.Contains(names, "certifications."+nvcreAPIGroup)
+	if !certCRDExists {
+		return nil
+	}
+	resources, err := discoverNVCREResources(ctx, c)
+	if err != nil {
+		return fmt.Errorf("discover Certifications before uninstall: %w", err)
+	}
+	for _, res := range resources {
+		if res.resource != "certifications" {
+			continue
+		}
+		items, err := listNVCRECRs(ctx, c, res)
+		if err != nil {
+			return fmt.Errorf("list Certifications before uninstall: %w", err)
+		}
+		if len(items) > 0 {
+			return fmt.Errorf("source Certification %s/%s still exists; complete controlled deletion before uninstalling", items[0].GetNamespace(), items[0].GetName())
+		}
+		return nil
+	}
+	return fmt.Errorf("source Certification CRD has no readable served version; restore its API before uninstalling")
 }
 
 // discoverNVCREResources returns all CRD-backed NVCRE resources for the
@@ -1374,6 +1461,9 @@ func discoverNVCREResources(ctx context.Context, c client.Client) ([]nvcreResour
 	}
 	filtered := resources[:0]
 	for _, res := range resources {
+		if isReportExportCRD(res.resource + "." + nvcreAPIGroup) {
+			continue // Durable delivery has a separate installation and lifetime.
+		}
 		if res.kind == "LogProfile" {
 			continue // LogProfiles are handled by the [logprofiles] phase, not [cr]
 		}
@@ -1465,9 +1555,9 @@ func discoverGroupResources(
 	return resources, nil
 }
 
-// deleteCRDsByGroup deletes all CustomResourceDefinitions belonging to the
-// given API group and waits for them to be fully removed. Helm intentionally
-// never deletes CRDs on `helm uninstall` (to avoid accidental data loss), so
+// deleteCRDsByGroup deletes execution CRDs in the given API group and waits
+// for the selected definitions to be fully removed. Report CRDs survive reset.
+// Helm never deletes CRDs on `helm uninstall` (to avoid accidental data loss), so
 // every phase that installs CRDs via Helm needs this explicit cleanup.
 // phaseTag (e.g. "[helm]", "[deps]") and label (e.g. "NVCRE") are used
 // purely for log message prefixes/wording.
@@ -1476,6 +1566,13 @@ func deleteCRDsByGroup(ctx context.Context, c client.Client, group, phaseTag, la
 	if err != nil {
 		return fmt.Errorf("list CRDs for group %s: %w", group, err)
 	}
+	selected := names[:0]
+	for _, name := range names {
+		if !isReportExportCRD(name) {
+			selected = append(selected, name)
+		}
+	}
+	names = selected
 	if len(names) == 0 {
 		return nil
 	}
@@ -1491,11 +1588,14 @@ func deleteCRDsByGroup(ctx context.Context, c client.Client, group, phaseTag, la
 		}
 	}
 
-	waitForCRDsDeletion(ctx, c, group, label, out)
-	return nil
+	return waitForCRDsDeletion(ctx, c, names, label, out)
 }
 
-func waitForCRDsDeletion(ctx context.Context, c client.Client, group, label string, out io.Writer) {
+func isReportExportCRD(name string) bool {
+	return name == reportExportCRDName || name == reportExportPolicyCRDName
+}
+
+func waitForCRDsDeletion(ctx context.Context, c client.Client, names []string, label string, out io.Writer) error {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
@@ -1505,19 +1605,24 @@ func waitForCRDsDeletion(ctx context.Context, c client.Client, group, label stri
 	defer ticker.Stop()
 
 	for {
-		names, err := listCRDNamesByGroup(ctx, c, group)
-		if err == nil && len(names) == 0 {
-			_, _ = fmt.Fprintf(out, "  All %s CRDs removed.\n", label)
-			return
+		remaining := false
+		for _, name := range names {
+			crd := &unstructured.Unstructured{}
+			crd.SetAPIVersion("apiextensions.k8s.io/v1")
+			crd.SetKind(kindCustomResourceDefinition)
+			if err := c.Get(ctx, client.ObjectKey{Name: name}, crd); err == nil {
+				remaining = true
+			} else if !apierrors.IsNotFound(err) {
+				return fmt.Errorf("check deletion of CRD %s: %w", name, err)
+			}
 		}
-		if err != nil {
-			_, _ = fmt.Fprintf(out,
-				"  Warning: failed to list CRDs for group %s: %v\n", group, err)
+		if !remaining {
+			_, _ = fmt.Fprintf(out, "  All %s CRDs removed.\n", label)
+			return nil
 		}
 		select {
 		case <-ctx.Done():
-			_, _ = fmt.Fprintln(out, "  Warning: timed out waiting for CRD deletion.")
-			return
+			return fmt.Errorf("waiting for %s CRD deletion: %w", label, ctx.Err())
 		case <-ticker.C:
 		}
 	}

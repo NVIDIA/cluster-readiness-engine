@@ -1,0 +1,59 @@
+{
+  "report": {
+    "name": "cert",
+    "platform": "onprem",
+    "gpu": "h100",
+    "totalNodes": 2,
+    "categories": [
+      {
+        "domain": "communication",
+        "variant": "nccl-all-reduce",
+        "status": "Succeeded",
+        "runtime": "1m 0s",
+        "testScale": "diagnose",
+        "nodesPerJob": 2,
+        "jobs": 1,
+        "diagnose": {
+          "stage": "complete",
+          "rounds": 1,
+          "healthyCount": 2,
+          "suspectCount": 0,
+          "maxBW": "90.0 GB/s",
+          "maxBWNodes": [
+            "node-a",
+            "node-b"
+          ],
+          "minBW": "90.0 GB/s",
+          "minBWNodes": [
+            "node-a",
+            "node-b"
+          ],
+          "tests": [
+            {
+              "stage": "unknown",
+              "name": "job",
+              "nodes": [
+                "node-a",
+                "node-b"
+              ],
+              "busBW": "90 GB/s",
+              "passed": true
+            }
+          ]
+        }
+      }
+    ],
+    "failedNodes": null,
+    "result": "PASSED"
+  },
+  "notReady": false,
+  "sourceNotFinal": false,
+  "reads": {
+    "get Certification burn-in/cert": 1,
+    "get Job burn-in/job": 1,
+    "get Workflow burn-in/wf": 1,
+    "list BandwidthMeasurementList": 1,
+    "list GoodputMeasurementList": 1,
+    "list JobList": 1
+  }
+}

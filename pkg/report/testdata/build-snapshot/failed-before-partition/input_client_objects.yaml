@@ -1,0 +1,51 @@
+apiVersion: "nvcre.nvidia.com/v1alpha1"
+kind: "Certification"
+metadata:
+  name: "cert"
+  namespace: "burn-in"
+  uid: "cert-uid"
+  generation: 1
+spec:
+  categories:
+    - domain: "communication"
+      variant: "nccl-all-reduce"
+status:
+  conditions:
+    - type: "Failed"
+      status: "True"
+      observedGeneration: 1
+      reason: "WorkflowFailed"
+      message: "A category failed"
+      lastTransitionTime: "2026-09-30T10:00:00Z"
+  categoryStatuses:
+    - domain: "communication"
+      variant: "nccl-all-reduce"
+      status: "Failed"
+      workflowRef:
+        name: "wf"
+        namespace: "burn-in"
+---
+apiVersion: "nvcre.nvidia.com/v1alpha1"
+kind: "Workflow"
+metadata:
+  name: "wf"
+  namespace: "burn-in"
+  uid: "wf-uid"
+  generation: 1
+  ownerReferences:
+    - apiVersion: "nvcre.nvidia.com/v1alpha1"
+      kind: "Certification"
+      name: "cert"
+      uid: "cert-uid"
+      controller: true
+spec:
+  orchestration:
+    iterations: 1
+status:
+  conditions:
+    - type: "Failed"
+      status: "True"
+      observedGeneration: 1
+      reason: "PartitionError"
+      message: "No nodes available"
+      lastTransitionTime: "2026-09-30T10:00:00Z"

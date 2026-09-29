@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.webhook.timeout",
+      "message": "Invalid value: \"500ms\": timeout must be between 1s and 5m"
+    }
+  ]
+}

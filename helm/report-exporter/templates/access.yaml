@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "reportExporter.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "reportExporter.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "reportExporter.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "reportExporter.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [nvcre.nvidia.com]
+    resources: [reportexports]
+    verbs: [get, list, watch, update, patch, delete]
+  - apiGroups: [nvcre.nvidia.com]
+    resources: [reportexports/status, reportexports/finalizers]
+    verbs: [get, update, patch]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch]
+  - apiGroups: ["", events.k8s.io]
+    resources: [events]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "reportExporter.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "reportExporter.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "reportExporter.name" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "reportExporter.name" . }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "reportExporter.clusterRoleName" . }}
+  labels:
+    {{- include "reportExporter.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [nvcre.nvidia.com]
+    resources: [certifications, workflows, jobs, goodputmeasurements, bandwidthmeasurements]
+    verbs: [get, list]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [get]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "reportExporter.clusterRoleName" . }}
+  labels:
+    {{- include "reportExporter.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "reportExporter.clusterRoleName" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "reportExporter.name" . }}
+    namespace: {{ .Release.Namespace }}

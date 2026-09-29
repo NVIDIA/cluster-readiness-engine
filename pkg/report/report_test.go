@@ -15,9 +15,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"sigs.k8s.io/yaml"
 
@@ -189,19 +189,19 @@ func TestHasCondition(t *testing.T) {
 	}
 
 	t.Run("match true", func(t *testing.T) {
-		assert.True(t, controller.CondIsTrue(conditions, statusSucceeded))
+		assert.True(t, meta.IsStatusConditionTrue(conditions, statusSucceeded))
 	})
 
 	t.Run("exists but false", func(t *testing.T) {
-		assert.False(t, controller.CondIsTrue(conditions, statusFailed))
+		assert.False(t, meta.IsStatusConditionTrue(conditions, statusFailed))
 	})
 
 	t.Run("no match", func(t *testing.T) {
-		assert.False(t, controller.CondIsTrue(conditions, "InProgress"))
+		assert.False(t, meta.IsStatusConditionTrue(conditions, "InProgress"))
 	})
 
 	t.Run("empty list", func(t *testing.T) {
-		assert.False(t, controller.CondIsTrue(nil, statusSucceeded))
+		assert.False(t, meta.IsStatusConditionTrue(nil, statusSucceeded))
 	})
 }
 

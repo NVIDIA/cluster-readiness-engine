@@ -1,0 +1,59 @@
+{
+  "states": [
+    {
+      "action": "reconcile",
+      "phase": "SnapshotReady",
+      "reason": "SnapshotPersisted",
+      "result": "FAILED",
+      "attempts": 0,
+      "cycleAttempts": 0,
+      "snapshotReady": true,
+      "hasSnapshot": true,
+      "retryScheduled": false
+    },
+    {
+      "action": "reconcile",
+      "phase": "Delivered",
+      "reason": "ReceiverAccepted",
+      "result": "FAILED",
+      "attempts": 1,
+      "cycleAttempts": 1,
+      "httpStatus": 202,
+      "snapshotReady": true,
+      "hasSnapshot": true,
+      "retryScheduled": false
+    }
+  ],
+  "requests": [
+    {
+      "reportID": "aac0c5b499012ed291ac47bca5a4b5e22348a58fab173595608bf7a97c8870e1",
+      "digest": "40114919c692e003fa542a89dd7c641bc6878b63d88567d22aba608a5fd8240c",
+      "contentType": "application/json",
+      "tokenVersion": 1,
+      "attemptPersisted": true
+    }
+  ],
+  "envelope": {
+    "schemaVersion": "v1",
+    "reportID": "aac0c5b499012ed291ac47bca5a4b5e22348a58fab173595608bf7a97c8870e1",
+    "source": {
+      "clusterID": "test-cluster",
+      "kind": "Certification",
+      "namespace": "burn-in",
+      "name": "cert",
+      "uid": "source-uid",
+      "reason": "CatalogRejected",
+      "message": "the category could not be started"
+    },
+    "generatedAt": "2026-09-30T01:00:00Z",
+    "report": {
+      "name": "cert",
+      "platform": "",
+      "gpu": "",
+      "totalNodes": 0,
+      "categories": null,
+      "failedNodes": null,
+      "result": "FAILED"
+    }
+  }
+}

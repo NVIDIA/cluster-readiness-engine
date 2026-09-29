@@ -1,0 +1,5 @@
+{
+  "error": "report snapshot is not ready: Certification changed while preparing the report",
+  "notReady": true,
+  "sourceNotFinal": false
+}

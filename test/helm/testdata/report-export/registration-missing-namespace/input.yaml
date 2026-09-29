@@ -1,0 +1,6 @@
+chart: core
+namespace: nvcre
+set:
+  - reportExport.enabled=true
+  - reportExport.clusterID=production-helsinki-1
+  - reportExport.namespace=

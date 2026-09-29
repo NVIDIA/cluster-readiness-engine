@@ -1,0 +1,5 @@
+{
+  "error": "referenced ConfigMap failed-nodes has no failed-nodes data",
+  "notReady": false,
+  "sourceNotFinal": false
+}

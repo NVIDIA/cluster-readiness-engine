@@ -1,0 +1,38 @@
+{
+  "states": [
+    {
+      "action": "reconcile",
+      "phase": "SnapshotReady",
+      "reason": "SnapshotPersisted",
+      "result": "FAILED",
+      "attempts": 0,
+      "cycleAttempts": 0,
+      "snapshotReady": true,
+      "hasSnapshot": true,
+      "retryScheduled": false
+    },
+    {
+      "action": "delete-snapshot",
+      "phase": "SnapshotReady",
+      "reason": "SnapshotPersisted",
+      "result": "FAILED",
+      "attempts": 0,
+      "cycleAttempts": 0,
+      "snapshotReady": true,
+      "hasSnapshot": true,
+      "retryScheduled": false
+    },
+    {
+      "action": "reconcile",
+      "phase": "Failed",
+      "reason": "SnapshotUnavailable",
+      "result": "FAILED",
+      "attempts": 0,
+      "cycleAttempts": 0,
+      "snapshotReady": false,
+      "hasSnapshot": true,
+      "retryScheduled": false
+    }
+  ],
+  "requests": null
+}

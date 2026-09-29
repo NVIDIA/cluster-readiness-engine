@@ -1,0 +1,50 @@
+[
+  {
+    "step": "measurement-pending",
+    "phase": "WaitingForResult",
+    "reason": "SnapshotBuildFailed",
+    "startedAt": "2026-09-30T10:02:00Z",
+    "snapshotReady": false,
+    "cleanupReady": false
+  },
+  {
+    "step": "deadline-after-restart",
+    "phase": "Failed",
+    "reason": "SnapshotBuildFailed",
+    "startedAt": "2026-09-30T10:02:00Z",
+    "snapshotReady": false,
+    "cleanupReady": false
+  },
+  {
+    "step": "manual-retry",
+    "phase": "WaitingForResult",
+    "reason": "RetryRequested",
+    "snapshotReady": false,
+    "cleanupReady": false
+  },
+  {
+    "step": "new-preparation-window",
+    "phase": "WaitingForResult",
+    "reason": "SnapshotBuildFailed",
+    "startedAt": "2026-09-30T10:08:00Z",
+    "snapshotReady": false,
+    "cleanupReady": false
+  },
+  {
+    "step": "within-new-window",
+    "phase": "WaitingForResult",
+    "reason": "SnapshotBuildFailed",
+    "startedAt": "2026-09-30T10:08:00Z",
+    "snapshotReady": false,
+    "cleanupReady": false
+  },
+  {
+    "step": "measurement-completed",
+    "phase": "SnapshotReady",
+    "reason": "SnapshotPersisted",
+    "result": "PASSED",
+    "startedAt": "2026-09-30T10:08:00Z",
+    "snapshotReady": true,
+    "cleanupReady": true
+  }
+]

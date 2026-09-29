@@ -1,0 +1,7 @@
+{
+  "actions": [
+    "reconcile",
+    "delete-snapshot",
+    "reconcile"
+  ]
+}

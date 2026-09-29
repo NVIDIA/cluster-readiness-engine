@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.reportExport.enabled }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "nvcre.resourceName" (dict "suffix" "report-registration" "context" $) }}
+  namespace: {{ required "reportExport.namespace is required when report export is enabled" .Values.reportExport.namespace }}
+  labels:
+    {{- include "nvcre.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [nvcre.nvidia.com]
+    resources: [reportexportpolicies]
+    verbs: [get, list, watch]
+  - apiGroups: [nvcre.nvidia.com]
+    resources: [reportexports]
+    verbs: [get, list, watch, create, update, patch]
+  - apiGroups: [nvcre.nvidia.com]
+    resources: [reportexports/status]
+    verbs: [get, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "nvcre.resourceName" (dict "suffix" "report-registration" "context" $) }}
+  namespace: {{ .Values.reportExport.namespace }}
+  labels:
+    {{- include "nvcre.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "nvcre.resourceName" (dict "suffix" "report-registration" "context" $) }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "nvcre.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

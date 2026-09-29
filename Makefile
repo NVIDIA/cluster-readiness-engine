@@ -16,6 +16,7 @@ IMG ?= $(IMAGE_REGISTRY)/$(IMAGE_REPOSITORY):$(IMAGE_TAG)
 
 # Helm chart directory (used by manifests and helm-* targets).
 HELM_CHART_DIR ?= helm/cluster-readiness-engine
+REPORT_EXPORTER_CHART_DIR ?= helm/report-exporter
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -221,8 +222,13 @@ check-clean-version: ## Verify VERSION is a clean release tag (vX.Y.Z with optio
 
 
 .PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
+build: manifests generate fmt vet ## Build manager and report exporter binaries.
 	go build -ldflags "$(LDFLAGS)" -o bin/manager ./cmd/manager/
+	go build -ldflags "$(LDFLAGS)" -o bin/report-exporter ./cmd/report-exporter/
+
+.PHONY: build-report-exporter
+build-report-exporter: $(LOCALBIN) ## Build the independently deployed report exporter.
+	go build -ldflags "$(LDFLAGS)" -o bin/report-exporter ./cmd/report-exporter/
 
 .PHONY: build-nvcrectl
 build-nvcrectl: $(LOCALBIN) ## Build nvcrectl CLI tool.
@@ -295,9 +301,10 @@ HELM_OCI_REGISTRY ?= oci://ghcr.io/nvidia
 CHART_DIGEST_FILE ?=
 
 .PHONY: helm-lint
-helm-lint: ## Lint the cluster-readiness-engine Helm chart.
+helm-lint: ## Lint the controller and independent report exporter Helm charts.
 	"$(HELM)" dependency build $(HELM_CHART_DIR) --skip-refresh
 	"$(HELM)" lint $(HELM_CHART_DIR)
+	"$(HELM)" lint $(REPORT_EXPORTER_CHART_DIR)
 
 .PHONY: helm-package
 helm-package: helm-lint ## Package the cluster-readiness-engine Helm chart.

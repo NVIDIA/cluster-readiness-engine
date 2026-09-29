@@ -1,0 +1,17 @@
+{
+  "readyBeforeSnapshot": false,
+  "readyAfterSnapshot": true,
+  "snapshotReady": true,
+  "snapshotImmutable": true,
+  "snapshotPhase": "SnapshotReady",
+  "firstDeliveryPhase": "Delivered",
+  "finalPhase": "Delivered",
+  "reason": "ReceiverAccepted",
+  "attempts": 1,
+  "requests": 1,
+  "sameBody": true,
+  "stableIdentity": true,
+  "rotatedToken": false,
+  "reportResult": "FAILED",
+  "sourceReason": "InvalidConfiguration"
+}

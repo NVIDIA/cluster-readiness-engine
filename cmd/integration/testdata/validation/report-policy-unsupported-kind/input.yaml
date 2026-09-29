@@ -1,0 +1,19 @@
+{
+  "apiVersion": "nvcre.nvidia.com/v1alpha1",
+  "kind": "ReportExportPolicy",
+  "metadata": {
+    "name": "report-policy-unsupported-kind",
+    "namespace": "default"
+  },
+  "spec": {
+    "source": {
+      "namespaces": [
+        "default"
+      ],
+      "kind": "WorkloadRun"
+    },
+    "webhook": {
+      "url": "https://receiver.example.test/report"
+    }
+  }
+}

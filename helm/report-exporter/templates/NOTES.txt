@@ -1,0 +1,9 @@
+Report delivery runs independently in namespace {{ .Release.Namespace }}.
+
+Apply the ReportExportPolicy and ReportExport CRDs from the matching main chart before starting this release.
+Configure a ReportExportPolicy in this namespace, then enable reportExport on the main NVCRE chart.
+
+Inspect delivery state:
+  kubectl get reportexports -n {{ .Release.Namespace }}
+
+Keep this release and namespace installed while deliveries are pending. Removing the main NVCRE release does not uninstall this exporter.

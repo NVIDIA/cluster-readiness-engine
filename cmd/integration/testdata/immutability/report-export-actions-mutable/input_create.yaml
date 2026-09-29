@@ -1,0 +1,28 @@
+{
+  "apiVersion": "nvcre.nvidia.com/v1alpha1",
+  "kind": "ReportExport",
+  "metadata": {
+    "name": "report-export-actions-mutable",
+    "namespace": "default"
+  },
+  "spec": {
+    "sourceRef": {
+      "kind": "Certification",
+      "namespace": "default",
+      "name": "run",
+      "uid": "run-uid"
+    },
+    "policyRef": {
+      "name": "policy",
+      "uid": "policy-uid",
+      "generation": 1
+    },
+    "webhook": {
+      "url": "https://receiver.example.test/report"
+    },
+    "retry": {},
+    "retention": {},
+    "clusterID": "test-cluster",
+    "reportID": "test-report"
+  }
+}

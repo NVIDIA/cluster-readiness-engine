@@ -1,0 +1,32 @@
+{
+  "report": {
+    "name": "cert",
+    "platform": "onprem",
+    "gpu": "h100",
+    "totalNodes": 2,
+    "categories": [
+      {
+        "domain": "training",
+        "variant": "nemotron",
+        "status": "Succeeded",
+        "runtime": "1m 0s",
+        "testScale": "full-scale",
+        "nodesPerJob": 2,
+        "jobs": 1,
+        "domains": [
+          {
+            "name": "",
+            "nodeCount": 2,
+            "goodput": "0.90 (90%)",
+            "tflops": "800.0",
+            "stepTime": "1.20s"
+          }
+        ]
+      }
+    ],
+    "failedNodes": null,
+    "result": "PASSED"
+  },
+  "notReady": false,
+  "sourceNotFinal": false
+}

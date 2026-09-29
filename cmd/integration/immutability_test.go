@@ -44,6 +44,7 @@ type transitionResult struct {
 // These have to run against the generated CRDs and the API server rather than
 // a Go validator, because the rules being checked are CEL in the schema and
 // nothing else evaluates them.
+// ReportExport cases freeze delivery inputs while allowing cancel and retryNonce.
 func TestUpdateTransitionValidation(t *testing.T) {
 	suite := &testutil.IntegrationTestSuite{}
 	suite.Environment.CRDDirectoryPaths = []string{nvcreCRDDirectory}

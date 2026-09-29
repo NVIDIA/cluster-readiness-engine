@@ -1,0 +1,16 @@
+{
+  "apiVersion": "nvcre.nvidia.com/v1alpha1",
+  "kind": "ReportExportPolicy",
+  "metadata": {
+    "name": "report-policy-no-namespaces",
+    "namespace": "default"
+  },
+  "spec": {
+    "source": {
+      "namespaces": []
+    },
+    "webhook": {
+      "url": "https://receiver.example.test/report"
+    }
+  }
+}

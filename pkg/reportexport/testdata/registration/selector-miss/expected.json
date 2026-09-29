@@ -1,0 +1,21 @@
+[
+  {
+    "action": "register",
+    "cleanupReady": true,
+    "exports": null,
+    "registrations": 1
+  },
+  {
+    "action": "delete-source",
+    "cleanupReady": true,
+    "exports": null,
+    "registrations": 1
+  },
+  {
+    "action": "collect",
+    "error": "configmaps \"registration-e653c887ed8d624a96f42300cd46390407b4cfb6\" not found",
+    "cleanupReady": false,
+    "exports": null,
+    "registrations": 0
+  }
+]

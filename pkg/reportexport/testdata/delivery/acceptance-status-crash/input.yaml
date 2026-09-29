@@ -1,0 +1,12 @@
+{
+  "responses": [
+    202
+  ],
+  "loseAcceptance": true,
+  "actions": [
+    "reconcile",
+    "reconcile-conflict",
+    "advance",
+    "reconcile"
+  ]
+}

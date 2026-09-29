@@ -1,0 +1,9 @@
+[
+  {
+    "action": "register",
+    "error": "restore the original report namespace configuration before continuing this registered certification",
+    "cleanupReady": false,
+    "exports": null,
+    "registrations": 0
+  }
+]

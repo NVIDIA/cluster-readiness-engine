@@ -1,0 +1,12 @@
+{
+  "responses": [
+    503
+  ],
+  "maxAttempts": 2,
+  "actions": [
+    "reconcile",
+    "reconcile",
+    "advance",
+    "reconcile"
+  ]
+}

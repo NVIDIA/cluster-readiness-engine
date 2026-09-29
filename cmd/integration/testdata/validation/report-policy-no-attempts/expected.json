@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.retry.maxAttempts",
+      "message": "Invalid value: -1: spec.retry.maxAttempts in body should be greater than or equal to 1"
+    }
+  ]
+}

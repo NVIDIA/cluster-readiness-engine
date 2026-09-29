@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: ReportExportPolicy
+metadata:
+  name: platform-reports
+  namespace: nvcre-reports
+spec:
+  source:
+    kind: Certification
+    namespaces: [gpu-validation]
+    selector:
+      matchLabels:
+        reports.example.com/export: "true"
+  webhook:
+    url: https://reports.example.com/api/nvcre
+    bearerTokenSecretRef:
+      name: report-webhook-token
+      key: token
+    timeout: 10s
+  retry:
+    initialBackoff: 10s
+    maxBackoff: 15m
+    maxAttempts: 100
+    maxElapsedTime: 24h
+  retention:
+    succeeded: 168h
+    failed: 720h
+  suspend: false

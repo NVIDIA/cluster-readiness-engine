@@ -1,0 +1,11 @@
+{
+  "actions": [
+    "register",
+    "change-policy",
+    "register",
+    "delete-policy",
+    "lose-annotation",
+    "register",
+    "cancel"
+  ]
+}

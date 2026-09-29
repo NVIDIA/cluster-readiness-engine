@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.webhook.url",
+      "message": "Invalid value: \"file:///tmp/results\": spec.webhook.url in body should match '^https?://[^\\s]+$'"
+    }
+  ]
+}

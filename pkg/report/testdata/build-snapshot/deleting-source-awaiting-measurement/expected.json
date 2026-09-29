@@ -1,0 +1,5 @@
+{
+  "error": "report snapshot is not ready: measurement bw is not complete",
+  "notReady": true,
+  "sourceNotFinal": false
+}

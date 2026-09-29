@@ -1,0 +1,8 @@
+{
+  "running": true,
+  "actions": [
+    "reconcile",
+    "delete-source",
+    "reconcile"
+  ]
+}

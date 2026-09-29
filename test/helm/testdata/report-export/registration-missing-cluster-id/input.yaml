@@ -1,0 +1,4 @@
+chart: core
+namespace: nvcre
+set:
+  - reportExport.enabled=true

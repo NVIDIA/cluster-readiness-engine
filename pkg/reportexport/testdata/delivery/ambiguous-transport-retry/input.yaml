@@ -1,0 +1,12 @@
+{
+  "responses": [
+    0,
+    202
+  ],
+  "actions": [
+    "reconcile",
+    "reconcile",
+    "advance",
+    "reconcile"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.retry",
+      "message": "Invalid value: maxBackoff must not be less than initialBackoff"
+    }
+  ]
+}

@@ -1,0 +1,249 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: reportexportpolicies.nvcre.nvidia.com
+spec:
+  group: nvcre.nvidia.com
+  names:
+    kind: ReportExportPolicy
+    listKind: ReportExportPolicyList
+    plural: reportexportpolicies
+    shortNames:
+    - rep
+    singular: reportexportpolicy
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.webhook.url
+      name: URL
+      type: string
+    - jsonPath: .spec.suspend
+      name: Suspended
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          ReportExportPolicy is configured once by an administrator in the reporting
+          namespace. Policy updates affect subsequently registered exports.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ReportExportPolicySpec defines a persistent subscription
+              to final reports.
+            properties:
+              retention:
+                default: {}
+                description: ReportExportRetention bounds payload retention after
+                  a delivery cycle ends.
+                properties:
+                  failed:
+                    default: 720h
+                    type: string
+                    x-kubernetes-validations:
+                    - message: failed retention must be between 1h and 365 days
+                      rule: duration(self) >= duration('1h') && duration(self) <=
+                        duration('8760h')
+                  succeeded:
+                    default: 168h
+                    type: string
+                    x-kubernetes-validations:
+                    - message: succeeded retention must be between 1h and 365 days
+                      rule: duration(self) >= duration('1h') && duration(self) <=
+                        duration('8760h')
+                type: object
+              retry:
+                default: {}
+                description: ReportExportRetry defines a bounded retry cycle.
+                properties:
+                  initialBackoff:
+                    default: 10s
+                    type: string
+                    x-kubernetes-validations:
+                    - message: initialBackoff must be between 1s and 1h
+                      rule: duration(self) >= duration('1s') && duration(self) <=
+                        duration('1h')
+                  maxAttempts:
+                    default: 100
+                    description: maxAttempts includes the first HTTP attempt in each
+                      retry cycle.
+                    format: int32
+                    maximum: 10000
+                    minimum: 1
+                    type: integer
+                  maxBackoff:
+                    default: 15m
+                    type: string
+                    x-kubernetes-validations:
+                    - message: maxBackoff must be between 1s and 24h
+                      rule: duration(self) >= duration('1s') && duration(self) <=
+                        duration('24h')
+                  maxElapsedTime:
+                    default: 24h
+                    description: maxElapsedTime starts when delivery first attempts
+                      a stored snapshot.
+                    type: string
+                    x-kubernetes-validations:
+                    - message: maxElapsedTime must be between 1s and 30 days
+                      rule: duration(self) >= duration('1s') && duration(self) <=
+                        duration('720h')
+                type: object
+                x-kubernetes-validations:
+                - message: maxBackoff must not be less than initialBackoff
+                  rule: '!has(self.maxBackoff) || !has(self.initialBackoff) || duration(self.maxBackoff)
+                    >= duration(self.initialBackoff)'
+              source:
+                description: ReportExportSourceSelector selects new Certifications
+                  for automatic delivery.
+                properties:
+                  kind:
+                    default: Certification
+                    description: kind is the source kind supported by this version.
+                    enum:
+                    - Certification
+                    type: string
+                  namespaces:
+                    description: namespaces explicitly limits which namespaces may
+                      supply reports.
+                    items:
+                      type: string
+                    maxItems: 64
+                    minItems: 1
+                    type: array
+                    x-kubernetes-list-type: set
+                  selector:
+                    description: |-
+                      selector matches labels on the Certification. Empty matches all sources
+                      in the selected namespaces.
+                    properties:
+                      matchExpressions:
+                        description: matchExpressions is a list of label selector
+                          requirements. The requirements are ANDed.
+                        items:
+                          description: |-
+                            A label selector requirement is a selector that contains values, a key, and an operator that
+                            relates the key and values.
+                          properties:
+                            key:
+                              description: key is the label key that the selector
+                                applies to.
+                              type: string
+                            operator:
+                              description: |-
+                                operator represents a key's relationship to a set of values.
+                                Valid operators are In, NotIn, Exists and DoesNotExist.
+                              type: string
+                            values:
+                              description: |-
+                                values is an array of string values. If the operator is In or NotIn,
+                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                the values array must be empty. This array is replaced during a strategic
+                                merge patch.
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
+                          required:
+                          - key
+                          - operator
+                          type: object
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                          map is equivalent to an element of matchExpressions, whose key field is "key", the
+                          operator is "In", and the values array contains only "value". The requirements are ANDed.
+                        type: object
+                    type: object
+                    x-kubernetes-map-type: atomic
+                required:
+                - namespaces
+                type: object
+              suspend:
+                description: suspend stops new registrations; existing deliveries
+                  continue.
+                type: boolean
+              webhook:
+                description: ReportWebhook describes one HTTP receiver. Credentials
+                  remain in a Secret.
+                properties:
+                  bearerTokenSecretRef:
+                    description: bearerTokenSecretRef selects a token in the policy/export
+                      namespace.
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  timeout:
+                    default: 10s
+                    description: timeout bounds an individual request.
+                    type: string
+                    x-kubernetes-validations:
+                    - message: timeout must be between 1s and 5m
+                      rule: duration(self) >= duration('1s') && duration(self) <=
+                        duration('5m')
+                  url:
+                    description: |-
+                      url is the HTTP POST destination. The exporter requires HTTPS unless its
+                      administrator explicitly enables plain HTTP for development.
+                    maxLength: 2048
+                    minLength: 1
+                    pattern: ^https?://[^\s]+$
+                    type: string
+                required:
+                - url
+                type: object
+            required:
+            - source
+            - webhook
+            type: object
+        required:
+        - metadata
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources: {}

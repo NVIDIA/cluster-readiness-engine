@@ -1,0 +1,19 @@
+{
+  "apiVersion": "nvcre.nvidia.com/v1alpha1",
+  "kind": "ReportExportPolicy",
+  "metadata": {
+    "name": "report-policy-short-timeout",
+    "namespace": "default"
+  },
+  "spec": {
+    "source": {
+      "namespaces": [
+        "default"
+      ]
+    },
+    "webhook": {
+      "url": "https://receiver.example.test/report",
+      "timeout": "500ms"
+    }
+  }
+}

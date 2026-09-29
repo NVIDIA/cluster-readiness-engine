@@ -1,0 +1,5 @@
+{
+  "error": "report snapshot is not ready: source has not reached its final state: Certification is not terminal",
+  "notReady": true,
+  "sourceNotFinal": true
+}

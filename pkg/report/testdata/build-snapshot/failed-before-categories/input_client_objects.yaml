@@ -1,0 +1,19 @@
+apiVersion: "nvcre.nvidia.com/v1alpha1"
+kind: "Certification"
+metadata:
+  name: "cert"
+  namespace: "burn-in"
+  uid: "cert-uid"
+  generation: 1
+spec:
+  categories:
+    - domain: "communication"
+      variant: "nccl-all-reduce"
+status:
+  conditions:
+    - type: "Failed"
+      status: "True"
+      observedGeneration: 1
+      reason: "CategoryNotFound"
+      message: "Unknown category"
+      lastTransitionTime: "2026-09-30T10:00:00Z"

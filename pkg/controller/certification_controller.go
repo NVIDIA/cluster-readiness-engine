@@ -27,6 +27,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/reportexport"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
 
@@ -85,6 +86,11 @@ const (
 // CertificationReconciler reconciles a Certification object
 type CertificationReconciler struct {
 	client.Client
+	// ReportClient bypasses the informer cache: reporting resources and
+	// credentials are restricted to a separate management namespace.
+	ReportClient            client.Client
+	ReportNamespace         string
+	ReportClusterID         string
 	Scheme                  *runtime.Scheme
 	Recorder                events.EventRecorder
 	WorkflowRequeueInterval time.Duration
@@ -122,6 +128,9 @@ func (r *CertificationReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// resulting watch event drives the next one.
 	if added, err := ensureFinalizer(ctx, r.Client, certification, certificationFinalizer); err != nil || added {
 		return ctrl.Result{}, err
+	}
+	if err := reportexport.EnsureRegistered(ctx, r.reportClient(), certification, r.ReportNamespace, r.ReportClusterID); err != nil {
+		return ctrl.Result{}, fmt.Errorf("register report exports: %w", err)
 	}
 
 	// Reconcile the Workflows
@@ -1027,6 +1036,20 @@ func (r *CertificationReconciler) handleDeletion(ctx context.Context, certificat
 	if !controllerutil.ContainsFinalizer(certification, certificationFinalizer) {
 		return ctrl.Result{}, nil
 	}
+	// Deletion can arrive after adding the finalizer but before the next
+	// reconcile registers reports. Finish registration here as well so the
+	// exporter can either persist the final result or acknowledge cancellation.
+	if err := reportexport.EnsureRegistered(ctx, r.reportClient(), certification, r.ReportNamespace, r.ReportClusterID); err != nil {
+		return ctrl.Result{}, fmt.Errorf("register report exports before cleanup: %w", err)
+	}
+	ready, err := reportexport.ReadyForCleanup(ctx, r.reportClient(), certification, r.ReportNamespace)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("check report persistence before cleanup: %w", err)
+	}
+	if !ready {
+		log.Info("Waiting for registered report snapshots before deleting Workflows")
+		return ctrl.Result{RequeueAfter: defaultCertificationRequeueInterval}, nil
+	}
 
 	log.Info("Handling deletion of Certification")
 
@@ -1105,10 +1128,24 @@ func (r *CertificationReconciler) normalf(obj runtime.Object, reason, messageFmt
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *CertificationReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if r.ReportClient == nil {
+		var err error
+		r.ReportClient, err = client.New(mgr.GetConfig(), client.Options{Scheme: mgr.GetScheme()})
+		if err != nil {
+			return fmt.Errorf("create reporting API client: %w", err)
+		}
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nvcrev1alpha1.Certification{}).
 		Owns(&nvcrev1alpha1.Workflow{}).
 		Named("certification").
 		WithOptions(controlleropts.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Complete(r)
+}
+
+func (r *CertificationReconciler) reportClient() client.Client {
+	if r.ReportClient != nil {
+		return r.ReportClient
+	}
+	return r.Client // Direct clients in unit tests do not use an informer cache.
 }

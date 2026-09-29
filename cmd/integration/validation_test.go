@@ -49,6 +49,7 @@ type validationCause struct {
 // pattern caps the name segment after the slash at 63 characters and the CEL
 // rule rejects the reserved kubernetes.io and k8s.io domains (including
 // subdomains) — at every level the field appears (ADR-075).
+// Report export cases also cover API defaulting and policy input bounds (ADR-082).
 func TestCertificationValidation(t *testing.T) {
 	suite := &testutil.IntegrationTestSuite{}
 	suite.Environment.CRDDirectoryPaths = []string{nvcreCRDDirectory}

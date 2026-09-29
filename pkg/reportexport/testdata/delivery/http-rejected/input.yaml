@@ -1,0 +1,7 @@
+{
+  "url": "http://receiver.example.test/",
+  "actions": [
+    "reconcile",
+    "reconcile"
+  ]
+}

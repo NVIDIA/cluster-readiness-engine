@@ -17,6 +17,8 @@ The NVIDIA Cluster Readiness Engine defines the following custom resources under
 | [GoodputMeasurement](./goodput-measurement.md) | Namespaced | Log-based training throughput measurement |
 | [BandwidthMeasurement](./bandwidth-measurement.md) | Namespaced | NCCL bandwidth measurement |
 | [LogProfile](./logprofile.md) | Cluster-scoped | Regex patterns for log parsing |
+| [ReportExportPolicy](./report-export.md#reportexportpolicy) | Namespaced | Select new Certifications and configure durable webhook delivery |
+| [ReportExport](./report-export.md#reportexport) | Namespaced | Immutable report delivery inputs, snapshot reference, and retry status |
 
 ## Field reference
 

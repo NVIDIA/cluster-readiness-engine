@@ -1,0 +1,35 @@
+{
+  "states": [
+    {
+      "action": "reconcile",
+      "phase": "WaitingForResult",
+      "reason": "SourceNotReady",
+      "attempts": 0,
+      "cycleAttempts": 0,
+      "snapshotReady": false,
+      "hasSnapshot": false,
+      "retryScheduled": false
+    },
+    {
+      "action": "delete-source",
+      "phase": "WaitingForResult",
+      "reason": "SourceNotReady",
+      "attempts": 0,
+      "cycleAttempts": 0,
+      "snapshotReady": false,
+      "hasSnapshot": false,
+      "retryScheduled": false
+    },
+    {
+      "action": "reconcile",
+      "phase": "Skipped",
+      "reason": "SourceDeletedBeforeCompletion",
+      "attempts": 0,
+      "cycleAttempts": 0,
+      "snapshotReady": false,
+      "hasSnapshot": false,
+      "retryScheduled": false
+    }
+  ],
+  "requests": null
+}

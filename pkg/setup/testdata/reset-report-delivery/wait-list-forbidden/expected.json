@@ -1,0 +1,24 @@
+{
+  "error": "[cr] source Certification deletion did not complete; retain the controller and inspect finalizers and ReportExports: list Certification during reset: certifications.nvcre.nvidia.com is forbidden: denied",
+  "deletes": [
+    "Certification/gpu-validation/test-certifications"
+  ],
+  "helmCommands": [],
+  "remaining": {
+    "BandwidthMeasurement/gpu-validation/test-bandwidthmeasurements": true,
+    "Certification/gpu-validation/test-certifications": false,
+    "ConfigMap/nvcre-reports/snapshot": true,
+    "CustomResourceDefinition//bandwidthmeasurements.nvcre.nvidia.com": true,
+    "CustomResourceDefinition//certifications.nvcre.nvidia.com": true,
+    "CustomResourceDefinition//jobs.nvcre.nvidia.com": true,
+    "CustomResourceDefinition//reportexportpolicies.nvcre.nvidia.com": true,
+    "CustomResourceDefinition//reportexports.nvcre.nvidia.com": true,
+    "CustomResourceDefinition//workflows.nvcre.nvidia.com": true,
+    "Job/gpu-validation/test-jobs": true,
+    "ReportExport/nvcre-reports/test-reportexports": true,
+    "ReportExportPolicy/nvcre-reports/test-reportexportpolicies": true,
+    "Secret/nvcre-reports/webhook-auth": true,
+    "Workflow/gpu-validation/test-workflows": true
+  },
+  "output": "[cr] Deleting NVCRE custom resources...\n  Certification/test-certifications (namespace: gpu-validation) deleted\n"
+}

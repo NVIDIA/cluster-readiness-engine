@@ -13,6 +13,8 @@ nvcrectl certification report <name>
 nvcrectl workloadrun report <name>
 ```
 
+To receive final Certification reports automatically, configure a [report export policy](./export-reports.md). It delivers the structured JSON report to your HTTP receiver and records delivery status separately from the certification outcome.
+
 ## Report structure
 
 | Section | Contents |

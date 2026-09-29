@@ -1,0 +1,14 @@
+{
+  "responses": [
+    401,
+    202
+  ],
+  "actions": [
+    "reconcile",
+    "reconcile",
+    "rotate-token",
+    "manual-retry",
+    "reconcile",
+    "reconcile"
+  ]
+}

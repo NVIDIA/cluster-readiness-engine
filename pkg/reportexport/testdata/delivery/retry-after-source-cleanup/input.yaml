@@ -1,0 +1,14 @@
+{
+  "responses": [
+    503,
+    202
+  ],
+  "retryAfter": "600",
+  "actions": [
+    "reconcile",
+    "delete-source",
+    "reconcile",
+    "advance",
+    "reconcile"
+  ]
+}
