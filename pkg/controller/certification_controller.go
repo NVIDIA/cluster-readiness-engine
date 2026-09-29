@@ -212,6 +212,13 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 			}
 			return ctrl.Result{}, nil
 		}
+		if _, ok := errors.AsType[*retryableCreateError](err); ok {
+			// The next reconcile can still succeed, so requeue and leave the
+			// status alone rather than taking the terminal path below.
+			log.Info("Workflow creation failed for a retryable reason, will retry",
+				"domain", firstCategory.Domain, "variant", firstCategory.Variant, "cause", err.Error())
+			return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
+		}
 		if _, ok := errors.AsType[*workflowCreateRejectedError](err); ok {
 			return ctrl.Result{}, err
 		}
@@ -312,6 +319,13 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 				return ctrl.Result{}, statusErr
 			}
 			return ctrl.Result{}, nil
+		}
+		if _, ok := errors.AsType[*retryableCreateError](err); ok {
+			// The next reconcile can still succeed, so requeue and leave the
+			// status alone rather than taking the terminal path below.
+			log.Info("Workflow creation failed for a retryable reason, will retry",
+				"domain", category.Domain, "variant", category.Variant, "cause", err.Error())
+			return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 		}
 		if _, ok := errors.AsType[*workflowCreateRejectedError](err); ok {
 			return ctrl.Result{}, err
@@ -645,15 +659,23 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 			// terminal CertificationFailed for the whole run (issue #384).
 			existing := &nvcrev1alpha1.Workflow{}
 			if getErr := r.workflowReader().Get(ctx, client.ObjectKeyFromObject(workflow), existing); getErr != nil {
-				return "", fmt.Errorf("failed to get existing Workflow %s: %w", workflowName, getErr)
+				// Retryable, not terminal. A 5xx or a timeout says nothing about
+				// the holder, and a NotFound here means the holder was deleted
+				// between the Create and this read, which leaves the name free
+				// for the next attempt. Neither should burn the whole run.
+				return "", &retryableCreateError{
+					err: fmt.Errorf("failed to get existing Workflow %s: %w", workflowName, getErr),
+				}
 			}
 			if !metav1.IsControlledBy(existing, certification) {
 				// A foreign holder that is already terminating (e.g. the child of
 				// a same-named Certification that was just deleted) releases the
 				// name shortly: retry with backoff instead of failing terminally.
 				if !existing.DeletionTimestamp.IsZero() {
-					return "", fmt.Errorf("existing Workflow %q in namespace %q is being deleted; retrying",
-						workflowName, certification.Namespace)
+					return "", &retryableCreateError{
+						err: fmt.Errorf("existing Workflow %q in namespace %q is being deleted; retrying",
+							workflowName, certification.Namespace),
+					}
 				}
 				return "", &nameCollisionError{
 					Reason: ReasonWorkflowNameCollision,
@@ -681,6 +703,20 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 
 	return workflowName, nil
 }
+
+// retryableCreateError marks a createWorkflowForCategory failure that a later
+// reconcile can still get past: a live read that failed for its own reasons, or
+// a foreign holder that is already on its way out. Without it both callers send
+// the error to setCertificationFailed(ReasonWorkflowValidationFailed), which is
+// terminal, and no category WorkflowRef was recorded on this path so
+// recoverIfWorkflowStillRunning has nothing to recover from. One 503 would end
+// the run (issue #384).
+type retryableCreateError struct {
+	err error
+}
+
+func (e *retryableCreateError) Error() string { return e.err.Error() }
+func (e *retryableCreateError) Unwrap() error { return e.err }
 
 // workflowCreateRejectedError tells createWorkflowForCategory callers that the
 // Create path already attempted the specific WorkflowFailed status write. The

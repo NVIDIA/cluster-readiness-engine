@@ -80,8 +80,16 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 			// AdoptHolder makes Create report the *second* category's Workflow
 			// name already taken, and places the holder this Certification
 			// already owns on the API server ("api-only") or on both sides
-			// ("both"). Empty leaves that name free.
+			// ("both"). "foreign-terminating" instead puts a holder owned by a
+			// different Certification there, already being deleted. Empty
+			// leaves that name free.
 			AdoptHolder string `yaml:"adoptHolder"`
+			// AdoptReadError fails the live read of the second category's
+			// Workflow with this message and leaves every other live read
+			// alone. That read is the one the adopt path makes after Create
+			// reports the name taken, so this models a 5xx or a timeout
+			// arriving at exactly that point.
+			AdoptReadError string `yaml:"adoptReadError"`
 			// StatusWriteFailures fails that many leading status writes with a
 			// conflict, modelling a write lost to a lagging cache.
 			StatusWriteFailures int `yaml:"statusWriteFailures"`
@@ -149,7 +157,7 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 		// already occupying that name when the case asks for one.
 		secondWorkflowName := (&CertificationReconciler{}).getWorkflowName(certification, categories[1])
 		newHolder := func() *nvcrev1alpha1.Workflow {
-			return &nvcrev1alpha1.Workflow{
+			wf := &nvcrev1alpha1.Workflow{
 				Name: secondWorkflowName, Namespace: testNS,
 				OwnerReferences: []metav1.OwnerReference{{
 					APIVersion: nvcrev1alpha1.GroupVersion.String(),
@@ -159,6 +167,13 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 					Controller: new(true),
 				}},
 			}
+			if input.AdoptHolder == "foreign-terminating" {
+				wf.OwnerReferences[0].UID = "a-different-certification-uid"
+				now := metav1.Now()
+				wf.DeletionTimestamp = &now
+				wf.Finalizers = []string{workflowFinalizer}
+			}
+			return wf
 		}
 
 		cacheObjects := []client.Object{certification, node}
@@ -183,7 +198,7 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 						return apierrors.NewAlreadyExists(
 							schema.GroupResource{
 								Group:    nvcrev1alpha1.GroupVersion.Group,
-								Resource: "workflows",
+								Resource: workflowResourceName,
 							}, obj.GetName())
 					}
 					return cl.Create(ctx, obj, opts...)
@@ -214,6 +229,9 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 					apiReads++
 					if input.APIError != "" {
 						return errors.New(input.APIError)
+					}
+					if input.AdoptReadError != "" && key.Name == secondWorkflowName {
+						return errors.New(input.AdoptReadError)
 					}
 					return c.Get(ctx, key, obj, opts...)
 				},
