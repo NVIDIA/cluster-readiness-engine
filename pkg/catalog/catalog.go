@@ -74,6 +74,11 @@ type BuildConfig struct {
 	// 0 means use template default (30).
 	ExitDurationMins int32
 
+	// StartupStallTimeoutSeconds is the startup-stall window in seconds for the
+	// generated Job. 0 means the catalog entry's default (1200 for the training
+	// entries).
+	StartupStallTimeoutSeconds int32
+
 	// GPUArchitecture is the GPU architecture string (e.g., "h100", "gb200").
 	// Derived from the target nodeSelector's nvidia.com/gpu.product label.
 	// Required — Build returns an error if empty.
