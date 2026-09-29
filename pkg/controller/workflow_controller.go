@@ -101,6 +101,11 @@ type WorkflowReconciler struct {
 // +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainjobs,verbs=get;list;delete
 // +kubebuilder:rbac:groups=resource.k8s.io,resources=resourceclaimtemplates,verbs=get;list;create;update;patch;delete
 // +kubebuilder:rbac:groups=resource.nvidia.com,resources=computedomains,verbs=get;list;create;update;patch;delete
+//
+// GPU architecture fallback for platforms with no nvidia.com/gpu.product
+// label (DRA-only GPU stacks): augmentGPUProductLabels reads productName from
+// gpu.nvidia.com ResourceSlices.
+// +kubebuilder:rbac:groups=resource.k8s.io,resources=resourceslices,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -729,6 +734,7 @@ func discoverTargetNodes(ctx context.Context, reader client.Reader, target *nvcr
 		}
 	}
 	nodes = gpuFiltered
+	augmentGPUProductLabels(ctx, reader, nodes)
 
 	// Sort by name so discovery is reproducible. client.List gives no ordering
 	// guarantee, and callers pick nodes[0] to decide the platform and use slice

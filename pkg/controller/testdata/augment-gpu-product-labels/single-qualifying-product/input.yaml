@@ -1,0 +1,8 @@
+# A single unlabeled node picks up its architecture from the
+# productName attribute on its gpu.nvidia.com ResourceSlice.
+nodes:
+  - name: node1
+resourceSlices:
+  - nodeName: node1
+    driver: gpu.nvidia.com
+    productName: NVIDIA-B200
