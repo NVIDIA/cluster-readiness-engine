@@ -6,6 +6,10 @@
   value: INFO
 - name: NCCL_IB_DISABLE
   value: "1"
+# The PyTorch image bundles an RDMA net plugin, which must not initialize on
+# G4's TCP-only network even when the built-in IB transport is disabled.
+- name: NCCL_NET_PLUGIN
+  value: none
 - name: NCCL_SOCKET_IFNAME
   value: eth0
 # G4 GPU peer-to-peer uses PCIe; Google's guidance differs by machine size.

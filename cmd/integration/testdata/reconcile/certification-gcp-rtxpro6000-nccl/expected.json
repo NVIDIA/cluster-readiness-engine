@@ -119,6 +119,8 @@
                   "-x",
                   "NCCL_IB_DISABLE=1",
                   "-x",
+                  "NCCL_NET_PLUGIN=none",
+                  "-x",
                   "NCCL_SOCKET_IFNAME=eth0",
                   "-x",
                   "NCCL_P2P_LEVEL=PHB",
