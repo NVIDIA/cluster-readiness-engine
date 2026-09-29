@@ -98,7 +98,7 @@ func TestUnresolvedRenderRetainsIntentAndOverrides(t *testing.T) {
 
 	// No --platform, so the overrides stay conditional and unresolved.
 	emitted := captureStdout(t, func() error {
-		return runWorkloadRunRender(path, "yaml", "")
+		return runWorkloadRunRender(path, "yaml", "", "")
 	})
 
 	var workflow nvcrev1alpha1.Workflow

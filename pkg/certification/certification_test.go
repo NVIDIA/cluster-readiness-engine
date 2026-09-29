@@ -130,7 +130,7 @@ func TestCertificationRender(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		workflows, err := renderCertification(cert, "")
+		workflows, err := renderCertification(cert, "", "")
 		if err != nil {
 			return err
 		}
@@ -213,7 +213,7 @@ func TestCertificationRenderErrors(t *testing.T) {
 		if readErr != nil {
 			err = readErr
 		} else {
-			_, err = renderCertification(cert, "")
+			_, err = renderCertification(cert, "", "")
 		}
 
 		type result struct {
@@ -397,6 +397,7 @@ func TestPlatformToProviderID(t *testing.T) {
 // case also records what detection reports for the synthetic render node,
 // which is what override matching actually sees (nscale, for example, is only
 // detected when the node carries the nscale.com/rdmashare allocatable).
+// --gpu-arch is validated the same way against the known architectures.
 func TestRenderPlatformFlag(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "render-platform-flag",
@@ -405,6 +406,7 @@ func TestRenderPlatformFlag(t *testing.T) {
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg struct {
 			Platform string `yaml:"platform"`
+			GPUArch  string `yaml:"gpuArch"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &cfg); err != nil {
 			return err
@@ -421,7 +423,7 @@ func TestRenderPlatformFlag(t *testing.T) {
 
 		configFlags := kubeconfig.NewConfigFlags(true)
 		*configFlags.Namespace = defaultKubeNamespace
-		renderErr := runCertificationRender(certPath, "yaml", false, configFlags, cfg.Platform)
+		renderErr := runCertificationRender(certPath, "yaml", false, configFlags, cfg.Platform, cfg.GPUArch)
 
 		type result struct {
 			Error            string `json:"error"`
@@ -431,7 +433,7 @@ func TestRenderPlatformFlag(t *testing.T) {
 		if renderErr != nil {
 			r.Error = renderErr.Error()
 		} else if cfg.Platform != "" {
-			node := syntheticRenderNode(cfg.Platform, map[string]string{})
+			node := syntheticRenderNode(cfg.Platform, map[string]string{}, "")
 			r.DetectedPlatform = controller.DetectPlatform([]corev1.Node{node})
 		}
 
