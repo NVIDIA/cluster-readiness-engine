@@ -346,12 +346,6 @@
                     }
                   },
                   {
-                    "dependsOn": [
-                      {
-                        "name": "node",
-                        "status": "Ready"
-                      }
-                    ],
                     "name": "launcher",
                     "template": {
                       "metadata": {
@@ -439,6 +433,9 @@
                     }
                   }
                 ],
+                "startupPolicy": {
+                  "startupPolicyOrder": "InOrder"
+                },
                 "successPolicy": {
                   "operator": "All",
                   "targetReplicatedJobs": [

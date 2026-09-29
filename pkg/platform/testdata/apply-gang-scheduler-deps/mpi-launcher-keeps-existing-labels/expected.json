@@ -66,12 +66,6 @@
                 }
               },
               {
-                "dependsOn": [
-                  {
-                    "name": "node",
-                    "status": "Ready"
-                  }
-                ],
                 "name": "launcher",
                 "template": {
                   "metadata": {
@@ -92,6 +86,35 @@
                           {
                             "image": "nvcr.io/nvidia/pytorch:25.01",
                             "name": "node"
+                          }
+                        ],
+                        "initContainers": [
+                          {
+                            "args": [
+                              "\n[ -f /root/.ssh/id_rsa ] || { mkdir -p /root/.ssh \u0026\u0026 chmod 700 /root/.ssh \u0026\u0026 cp /tmp/mpi-ssh-raw/* /root/.ssh/ 2\u003e/dev/null; chmod 600 /root/.ssh/id_rsa 2\u003e/dev/null; }\ni=0\nok=0\nwhile [ $i -lt 240 ]; do\n  ok=1\n  for h in $(awk '{print $1}' /etc/mpi/hostfile 2\u003e/dev/null); do\n    ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 \"$h\" true \u003e/dev/null 2\u003e\u00261 || ok=0\n  done\n  [ \"$ok\" = \"1\" ] \u0026\u0026 break\n  i=$((i+1))\n  sleep 5\ndone\necho \"workers answered sshd after $((i*5))s\"\n[ \"$ok\" = \"1\" ]\n"
+                            ],
+                            "command": [
+                              "sh",
+                              "-c"
+                            ],
+                            "image": "nvcr.io/nvidia/pytorch:25.01",
+                            "name": "wait-for-workers",
+                            "volumeMounts": [
+                              {
+                                "mountPath": "/etc/mpi",
+                                "name": "mpi-hostfile",
+                                "readOnly": true
+                              },
+                              {
+                                "mountPath": "/tmp/mpi-ssh-raw",
+                                "name": "mpi-ssh-auth",
+                                "readOnly": true
+                              },
+                              {
+                                "mountPath": "/root/.ssh",
+                                "name": "ssh-keys"
+                              }
+                            ]
                           }
                         ],
                         "restartPolicy": "OnFailure",

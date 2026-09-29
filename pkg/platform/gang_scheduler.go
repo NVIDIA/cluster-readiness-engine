@@ -19,10 +19,81 @@ const (
 	// defaultGangQueue is the queue used when the user names a scheduler but no queue.
 	defaultGangQueue = "default-queue"
 
-	keyReplicatedJobs   = "replicatedJobs"
+	keyReplicatedJobs = "replicatedJobs"
+	// keyDependsOn is the JobSet gate the launcher carries outside KAI.
+	keyDependsOn        = "dependsOn"
 	keyKind             = "kind"
 	kindTrainingRuntime = "TrainingRuntime"
+
+	// schedulerNameKAI is KAI Scheduler's name. It is the gang scheduler whose
+	// JobSet ordering cannot use the launcher's dependsOn gate: KAI's jobset
+	// grouper maps spec.startupPolicy.startupPolicyOrder == "InOrder" to a root
+	// minSubGroup of 1 and defaults an unset order to "AnyOrder", so a JobSet
+	// whose launcher is dependsOn-gated asks KAI to place a launcher sub-group
+	// that JobSet will not create until the workers are Ready. Measured live on
+	// KAI v0.16.4: the workers stay Pending and the scheduler reports the
+	// unsatisfiable sub-group.
+	schedulerNameKAI = "kai-scheduler"
 )
+
+// isKAIGangScheduler reports whether the runtime opts the workload into KAI
+// Scheduler, which is the scheduler that needs the launcher ordering rewritten
+// from dependsOn to the JobSet startup policy (see schedulerNameKAI).
+func isKAIGangScheduler(cfg RuntimeConfig) bool {
+	return cfg.GangSchedulerName == schedulerNameKAI
+}
+
+// launcherWaitScript is the shell fragment that holds the launcher back until
+// every worker answers sshd. It exists because the JobSet cannot express that
+// barrier under KAI: a dependsOn gate or an InOrder startup policy leaves the
+// launcher sub-group empty, and KAI requires every sub-group of the PodGroup to
+// have pods before it schedules anything (measured live on KAI v0.16.4). The
+// worker list is Trainer's MPI hostfile, whose entries are "<endpoint> slots=<n>".
+func launcherWaitScript() string {
+	return `
+[ -f /root/.ssh/id_rsa ] || { mkdir -p /root/.ssh && chmod 700 /root/.ssh && cp /tmp/mpi-ssh-raw/* /root/.ssh/ 2>/dev/null; chmod 600 /root/.ssh/id_rsa 2>/dev/null; }
+i=0
+ok=0
+while [ $i -lt 240 ]; do
+  ok=1
+  for h in $(awk '{print $1}' ` + mpiHostfilePath + ` 2>/dev/null); do
+    ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 "$h" true >/dev/null 2>&1 || ok=0
+  done
+  [ "$ok" = "1" ] && break
+  i=$((i+1))
+  sleep 5
+done
+echo "workers answered sshd after $((i*5))s"
+[ "$ok" = "1" ]
+`
+}
+
+// launcherWaitMount is the volume mount the wait step needs: Trainer's MPI
+// hostfile, which the Trainer MPI plugin mounts into the launcher pod.
+func launcherWaitMount() map[string]any {
+	return map[string]any{keyName: volumeNameMPIHostfile, keyMountPath: mpiHostfileDir, keyReadOnly: true}
+}
+
+// launcherWaitInitContainer wraps launcherWaitScript for paths that inject the
+// barrier as its own init container (the Certification path renders the runtime
+// from a catalog template, so the script cannot be appended to an existing one).
+func launcherWaitInitContainer(image string) map[string]any {
+	// The wait step needs the same SSH material the launcher uses, so it mounts
+	// the runtime's SSH-key volumes too: the init container that ran before it
+	// leaves the private key in the shared ssh-keys volume, and ssh reads it
+	// from /root/.ssh.
+	return map[string]any{
+		keyName:   "wait-for-workers",
+		keyImage:  image,
+		"command": []string{"sh", "-c"},
+		"args":    []any{launcherWaitScript()},
+		keyVolumeMounts: []any{
+			launcherWaitMount(),
+			map[string]any{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
+			map[string]any{keyName: volumeNameSSHKeys, keyMountPath: "/root/.ssh"},
+		},
+	}
+}
 
 // gangSchedulerQueue returns the effective queue name, defaulting to "default-queue".
 func gangSchedulerQueue(queue string) string {
@@ -51,6 +122,12 @@ func gangSchedulerQueueLabelKey(key string) string {
 // BuildTorchRuntime and BuildMPIRuntime already emit for a WorkloadRun. The
 // pod-level copy keeps queue assignment from depending on the Trainer/JobSet
 // layer propagating template metadata onto the pods.
+//
+// It does not touch JobSet ordering: the runtime that BuildMPIRuntime emits for
+// KAI already omits the launcher gate, because KAI requires every sub-group of
+// the PodGroup to have pods before the group is schedulable — an ordered or
+// gated launcher sub-group is empty until the workers are ready and can never be
+// admitted (measured live on KAI v0.16.4; see schedulerNameKAI).
 //
 // It is a no-op when gs is nil, so a Certification that does not ask for gang
 // scheduling renders byte-identically to before. It is also a no-op when the
@@ -108,6 +185,24 @@ func ApplyGangSchedulerToDependencies(deps []nvcrev1alpha1.DependencySpec, gs *n
 			podLabels[queueKey] = queue
 		}
 
+		if gs.SchedulerName == schedulerNameKAI {
+			// KAI schedules a JobSet only when every sub-group of the PodGroup
+			// has pods, so the launcher may not be gated or ordered behind the
+			// workers: drop any dependsOn gate and hold mpirun back inside the
+			// launcher pod instead (see launcherWaitScript). Runtimes that carry
+			// no gate are left byte-identical.
+			if launcherJob, ok := launcherReplicatedJob(replicatedJobs); ok {
+				if _, gated := launcherJob[keyDependsOn]; gated {
+					delete(launcherJob, keyDependsOn)
+					podSpec := launcherPodSpec(launcherJob)
+					if podSpec != nil {
+						inits, _ := podSpec[keyInitContainers].([]any)
+						podSpec[keyInitContainers] = append(inits, launcherWaitInitContainer(launcherImage(launcherJob)))
+					}
+				}
+			}
+		}
+
 		raw, err := json.Marshal(obj)
 		if err != nil {
 			return fmt.Errorf("marshal dependency %d: %w", i, err)
@@ -115,6 +210,40 @@ func ApplyGangSchedulerToDependencies(deps []nvcrev1alpha1.DependencySpec, gs *n
 		deps[i].Raw = raw
 	}
 	return nil
+}
+
+// launcherReplicatedJob returns the replicated job named "launcher".
+func launcherReplicatedJob(replicatedJobs []any) (map[string]any, bool) {
+	for _, rj := range replicatedJobs {
+		job, ok := rj.(map[string]any)
+		if !ok {
+			continue
+		}
+		if name, _ := job[keyName].(string); name == "launcher" {
+			return job, true
+		}
+	}
+	return nil, false
+}
+
+// launcherPodSpec walks replicatedJobs[].template.spec.template.spec.
+func launcherPodSpec(launcherJob map[string]any) map[string]any {
+	return ensureMap(ensureMap(ensureMap(launcherJob, keyTemplate), keySpec), keyTemplate)[keySpec].(map[string]any)
+}
+
+// launcherImage returns the image of the launcher's first container, which the
+// wait init container reuses so no extra pull is needed.
+func launcherImage(launcherJob map[string]any) string {
+	podSpec := launcherPodSpec(launcherJob)
+	containers, _ := podSpec[keyContainers].([]any)
+	for _, c := range containers {
+		if container, ok := c.(map[string]any); ok {
+			if image, ok := container[keyImage].(string); ok && image != "" {
+				return image
+			}
+		}
+	}
+	return ""
 }
 
 // PreserveSchedulingFields copies the gang-scheduling fields ADR-076 writes
