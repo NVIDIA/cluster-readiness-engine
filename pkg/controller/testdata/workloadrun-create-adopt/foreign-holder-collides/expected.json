@@ -1,0 +1,44 @@
+{
+  "passes": [
+    {
+      "requeueAfter": "0s",
+      "workflowRef": "\u003cnil\u003e"
+    },
+    {
+      "requeueAfter": "0s",
+      "workflowRef": "\u003cnil\u003e"
+    },
+    {
+      "requeueAfter": "0s",
+      "workflowRef": "\u003cnil\u003e"
+    }
+  ],
+  "finalWorkflowRef": "\u003cnil\u003e",
+  "boundToOwnWorkflow": false,
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "Superseded",
+      "message": ""
+    },
+    {
+      "type": "Succeeded",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "Superseded",
+      "message": ""
+    },
+    {
+      "type": "Failed",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "WorkflowNameCollision",
+      "message": "Workflow \"run\" already exists in namespace \"default\" and is not controlled by WorkloadRun \"run\"; refusing to adopt it"
+    }
+  ],
+  "events": [
+    "Warning WorkflowNameCollision Workflow \"run\" already exists in namespace \"default\" and is not controlled by WorkloadRun \"run\"; refusing to adopt it"
+  ]
+}

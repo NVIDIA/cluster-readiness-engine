@@ -1,0 +1,8 @@
+# A cached read that fails for a reason other than NotFound is not a cache miss,
+# so it must surface as-is and never reach the confirming read. Pins the two
+# wrappers apart: this one says "failed to get Job", the live one that
+# api-error-surfaces covers says "failed to confirm Job".
+inCache: false
+inAPI: true
+cacheError: "etcdserver: request timed out"
+passes: 1
