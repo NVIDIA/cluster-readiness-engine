@@ -6,8 +6,10 @@ package gpu
 import "strings"
 
 // ParseProduct extracts the GPU architecture from an nvidia.com/gpu.product label value.
-// It strips the "NVIDIA-" prefix, takes the first segment before any hyphen, and lowercases it.
-// Examples: "NVIDIA-H100-80GB-HBM3" → "h100", "NVIDIA-GB200-NVL72" → "gb200".
+// It strips the "NVIDIA-" prefix and lowercases the product name. RTX PRO 6000
+// keeps its full model name; other products use the first hyphen-separated segment.
+// Examples: "NVIDIA-H100-80GB-HBM3" → "h100", "NVIDIA-GB200-NVL72" → "gb200",
+// and "NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition" → "rtxpro6000".
 // Returns "" if the input is empty.
 func ParseProduct(product string) string {
 	if product == "" {

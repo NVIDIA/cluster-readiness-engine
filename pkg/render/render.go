@@ -50,6 +50,7 @@ func NewWorkflowCommand() *cobra.Command {
 	return cmd
 }
 
+// newRenderCommand configures offline workflow rendering and cluster dry-run validation.
 func newRenderCommand() *cobra.Command {
 	var platform string
 	var gpuArch string
