@@ -115,7 +115,7 @@ func TestWorkloadRunCreateAdopt(t *testing.T) {
 			if getErr := c.Get(ctx, key, current); getErr != nil {
 				return getErr
 			}
-			p := pass{RequeueAfter: result.RequeueAfter.String(), WorkflowRef: "<nil>"}
+			p := pass{RequeueAfter: result.RequeueAfter.String(), WorkflowRef: testNilRef}
 			if err != nil {
 				p.Error = err.Error()
 			}
@@ -148,7 +148,7 @@ func TestWorkloadRunCreateAdopt(t *testing.T) {
 			Conditions  []metav1.Condition `json:"conditions"`
 			Events      []string           `json:"events"`
 		}{
-			Passes: passes, WorkflowRef: "<nil>", BoundToOwn: boundToOwn,
+			Passes: passes, WorkflowRef: testNilRef, BoundToOwn: boundToOwn,
 			Conditions: final.Status.Conditions, Events: []string{},
 		}
 		if final.Status.WorkflowRef != nil {

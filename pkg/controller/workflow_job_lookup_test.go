@@ -58,7 +58,7 @@ func newJobLookupScheme(t *testing.T) *runtime.Scheme {
 // cache, so SetupWithManager supplies the uncached reader when the caller
 // leaves it unset (issue #385).
 func TestWorkflowSetupDefaultsAPIReader(t *testing.T) {
-	mgr, err := ctrl.NewManager(&rest.Config{Host: "https://127.0.0.1:0"}, ctrl.Options{
+	mgr, err := ctrl.NewManager(&rest.Config{Host: testFakeAPIServerHost}, ctrl.Options{
 		Scheme:     newFallbackScheme(t),
 		Metrics:    metricsserver.Options{BindAddress: "0"},
 		Controller: config.Controller{SkipNameValidation: new(true)},
@@ -228,7 +228,7 @@ func TestWorkflowJobLookup(t *testing.T) {
 			p := pass{
 				RequeueAfter: result.RequeueAfter.String(),
 				GroupPhase:   string(g.Phase),
-				JobRef:       "<nil>",
+				JobRef:       testNilRef,
 				Dependencies: len(current.Status.DependencyRefs),
 				ClaimExists:  claimErr == nil,
 			}
@@ -336,7 +336,7 @@ func TestWorkflowCreateOrAdoptJobLookup(t *testing.T) {
 			Error     string `json:"error"`
 			Collision bool   `json:"nameCollision"`
 			JobUID    string `json:"jobUIDAfterCall"`
-		}{Error: "<nil>", JobUID: string(job.UID)}
+		}{Error: testNilRef, JobUID: string(job.UID)}
 		if err != nil {
 			output.Error = err.Error()
 			_, output.Collision = errors.AsType[*nameCollisionError](err)
