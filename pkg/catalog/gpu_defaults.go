@@ -5,9 +5,14 @@ package catalog
 
 import (
 	"fmt"
+	"maps"
+	"slices"
+	"strings"
 	"sync"
 
 	"sigs.k8s.io/yaml"
+
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/gpu"
 )
 
 // NodeDefaults holds per-node hardware counts for a GPU architecture.
@@ -80,6 +85,24 @@ func GPUDefaults(gpuArch, platform string) NodeDefaults {
 		nd.MlnxPerNode = override.MlnxPerNode
 	}
 	return nd
+}
+
+// ParseGPUArchFlag normalizes a --gpu-arch flag value with gpu.ParseProduct,
+// so "gb300", "NVIDIA-GB300" and "NVIDIA GB300" are equivalent, and rejects
+// an architecture gpu-defaults.yaml does not list: GPUDefaults would silently
+// fall back for it and no gpuArchitecture override would match. An empty
+// value is allowed (architecture not specified).
+func ParseGPUArchFlag(value string) (string, error) {
+	arch := gpu.ParseProduct(value)
+	if arch == "" {
+		return "", nil
+	}
+	ensureGPUDefaultsLoaded()
+	if _, ok := gpuDefaults.Defaults[arch]; !ok {
+		return "", fmt.Errorf("invalid --gpu-arch %q: must be one of %s",
+			value, strings.Join(slices.Sorted(maps.Keys(gpuDefaults.Defaults)), ", "))
+	}
+	return arch, nil
 }
 
 // ensureGPUDefaultsLoaded loads entries/_lib/gpu-defaults.yaml on first call

@@ -15,7 +15,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
-	_ "github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -68,7 +68,9 @@ type onpremWorkflow struct {
 // synthetic no-providerID node. The goldens pin the markers the override owns:
 // both tolerations, the optional NIC resource (present only when
 // nicResourceName is set), the portable IB env, and the absence of pinned HCA
-// names. The h100 control case pins that none of it leaks outside GB200/GB300.
+// names. The h100 control case pins that none of it leaks outside GB200/GB300,
+// and the gpu-arch-flag cases pin that --gpu-arch, bare or as a product name,
+// stands in for a missing nvidia.com/gpu.product label.
 func TestCertificationRenderOnPrem(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "certification-render-onprem",
@@ -77,6 +79,7 @@ func TestCertificationRenderOnPrem(t *testing.T) {
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg struct {
 			Platform string `json:"platform"`
+			GPUArch  string `json:"gpuArch"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &cfg); err != nil {
 			return err
@@ -91,11 +94,15 @@ func TestCertificationRenderOnPrem(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		workflows, err := renderCertification(cert, cfg.Platform)
+		gpuArch, err := catalog.ParseGPUArchFlag(cfg.GPUArch)
 		if err != nil {
 			return err
 		}
-		if err := resolveWorkflowsOffline(cert, workflows, cfg.Platform); err != nil {
+		workflows, err := renderCertification(cert, cfg.Platform, gpuArch)
+		if err != nil {
+			return err
+		}
+		if err := resolveWorkflowsOffline(cert, workflows, cfg.Platform, gpuArch); err != nil {
 			return err
 		}
 

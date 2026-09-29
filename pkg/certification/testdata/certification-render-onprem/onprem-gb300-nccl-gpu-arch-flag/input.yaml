@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# --gpu-arch supplies the architecture the nodeSelector does not carry, so the
+# render must match onprem-gb300-nccl-without-nic byte for byte.
+platform: onprem
+gpuArch: gb300
