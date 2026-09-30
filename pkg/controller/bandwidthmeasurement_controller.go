@@ -236,6 +236,9 @@ func (r *BandwidthMeasurementReconciler) collectFinalSample(ctx context.Context,
 	return err
 }
 
+// handleSample reads the current workload logs. Running samples persist
+// provisional status; terminal samples prepare results for the completion
+// write performed by reconcileTerminal.
 func (r *BandwidthMeasurementReconciler) handleSample(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job, terminal bool) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	key := measurement.Namespace + "/" + measurement.Name
