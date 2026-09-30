@@ -57,11 +57,19 @@ if [ -z "$hosts" ]; then
   echo "ERROR: no hosts in ` + mpiHostfilePath + ` (missing, empty, or unreadable); refusing to start mpirun."
   exit 1
 fi
+# With mpi.runLauncherAsNode the hostfile also lists this pod's own endpoint. Probing it would
+# deadlock: its sshd lives in a container that only starts once this init container finishes.
+# So skip our own endpoint and keep probing every worker.
+self=${HOSTNAME:-}
+[ -n "$self" ] || self=$(hostname 2>/dev/null)
 i=0
 ok=0
 while [ $i -lt 240 ]; do
   ok=1
   for h in $hosts; do
+    case "$h" in
+      "$self"|"$self".*) continue ;;
+    esac
     if ! timeout 10 ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 "$h" true >/dev/null 2>&1; then
       ok=0
       # Every tenth attempt, report which host is not answering and why: without

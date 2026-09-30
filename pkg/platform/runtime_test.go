@@ -256,6 +256,11 @@ func TestBuildMPIRuntime_KAIGangScheduler_MovesTheBarrierIntoTheLauncher(t *test
 	if !strings.Contains(script, "no hosts in") {
 		t.Errorf("launcher init does not fail when the hostfile has no hosts:\n%s", script)
 	}
+	// With mpi.runLauncherAsNode the hostfile also lists this pod's own endpoint; probing it
+	// would deadlock against this very init container.
+	if !strings.Contains(script, `case "$h" in`) || !strings.Contains(script, "$self") {
+		t.Errorf("launcher init does not skip its own endpoint in the probe loop:\n%s", script)
+	}
 	if !strings.Contains(script, "/etc/mpi/hostfile") {
 		t.Errorf("launcher init does not read Trainer's hostfile:\n%s", script)
 	}
