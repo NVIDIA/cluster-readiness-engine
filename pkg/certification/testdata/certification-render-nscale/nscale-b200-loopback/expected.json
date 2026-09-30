@@ -34,6 +34,7 @@
     ],
     "trainerEnv": [
       "NCCL_SOCKET_IFNAME=eth0",
+      "NCCL_NET=IB",
       "NCCL_DEBUG=INFO",
       "NCCL_NVLS_ENABLE=1",
       "NCCL_CUMEM_ENABLE=1",
@@ -110,6 +111,7 @@
     ],
     "trainerEnv": [
       "NCCL_SOCKET_IFNAME=eth0",
+      "NCCL_NET=IB",
       "NCCL_DEBUG=INFO",
       "NCCL_NVLS_ENABLE=1",
       "NCCL_CUMEM_ENABLE=1",
