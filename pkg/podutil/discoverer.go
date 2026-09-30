@@ -6,6 +6,7 @@ package podutil
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -14,6 +15,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+// ErrNoPodsFound indicates that a workload has no pod left to inspect. A
+// terminal measurement treats this as a valid no-data outcome, while other
+// discovery errors remain retryable.
+var ErrNoPodsFound = errors.New("no pods found")
 
 // WorkerDiscoverer finds worker pods for training workloads.
 type WorkerDiscoverer struct {
@@ -49,7 +55,7 @@ func (d *WorkerDiscoverer) GetReplicatedJobPod(ctx context.Context, namespace, w
 	}
 
 	if len(podList.Items) == 0 {
-		return nil, fmt.Errorf("no pods found for %s/%s replicatedJob %s", namespace, workloadName, replicatedJobName)
+		return nil, fmt.Errorf("%w for %s/%s replicatedJob %s", ErrNoPodsFound, namespace, workloadName, replicatedJobName)
 	}
 
 	// Sort by completion index and return the first one.

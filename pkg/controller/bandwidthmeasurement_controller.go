@@ -5,6 +5,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -46,6 +47,8 @@ const (
 	// anything, so its result is absent rather than zero.
 	reasonBandwidthNoData = "NoDataCollected"
 )
+
+var errBandwidthNoData = errors.New("bandwidth measurement has no terminal pod")
 
 // BandwidthMeasurementReconciler reconciles a BandwidthMeasurement object.
 type BandwidthMeasurementReconciler struct {
@@ -194,8 +197,13 @@ func (r *BandwidthMeasurementReconciler) reconcileTerminal(
 	job *nvcrev1alpha1.Job,
 	reason, message string,
 ) (ctrl.Result, error) {
-	if err := r.collectFinalSample(ctx, measurement, job); err != nil {
-		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, err
+	finalErr := r.collectFinalSample(ctx, measurement, job)
+	if finalErr != nil && !errors.Is(finalErr, errBandwidthNoData) {
+		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, finalErr
+	}
+	if errors.Is(finalErr, errBandwidthNoData) {
+		reason = reasonBandwidthNoData
+		message = "Terminal worker pod was unavailable; no bandwidth data was collected"
 	}
 
 	result, err := r.handleTerminal(ctx, measurement, reason, message)
@@ -295,6 +303,12 @@ func (r *BandwidthMeasurementReconciler) handleSample(ctx context.Context, measu
 	discoverer := podutil.NewWorkerDiscoverer(r.podReader())
 	pod, err := discoverer.GetReplicatedJobPod(ctx, measurement.Namespace, workloadName, replicatedJobName)
 	if err != nil {
+		if terminal && errors.Is(err, podutil.ErrNoPodsFound) {
+			// The workload is terminal but its pod has already disappeared. Keep
+			// any prior results for metric cleanup, while handleTerminal marks
+			// the measurement non-evaluable as NoDataCollected.
+			return ctrl.Result{}, errBandwidthNoData
+		}
 		if terminal {
 			return ctrl.Result{}, fmt.Errorf("failed to find worker pod for final log parse: %w", err)
 		}
@@ -302,7 +316,7 @@ func (r *BandwidthMeasurementReconciler) handleSample(ctx context.Context, measu
 		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 	}
 
-	if !podutil.IsPodRunning(pod) && pod.Status.Phase != corev1.PodSucceeded {
+	if !podutil.IsPodRunning(pod) && pod.Status.Phase != corev1.PodSucceeded && pod.Status.Phase != corev1.PodFailed {
 		if terminal {
 			return ctrl.Result{}, fmt.Errorf("worker pod is not available for final log parse: phase=%s", pod.Status.Phase)
 		}
@@ -471,10 +485,11 @@ func (r *BandwidthMeasurementReconciler) handleTerminal(ctx context.Context, mea
 	measurement.Status.CompletionTime = &now
 
 	// A measurement that parsed nothing did not measure anything, whatever the
-	// Job did. Reporting JobSucceeded here reads as a successful measurement.
-	if reason == reasonBandwidthJobSucceeded && len(measurement.Status.Results) == 0 {
+	// Job did. Reporting it as a successful measurement would make partial
+	// results look evaluable to threshold consumers.
+	if len(measurement.Status.Results) == 0 {
 		reason = reasonBandwidthNoData
-		message = "Job succeeded but no bandwidth data was parsed; check spec.logProfileRef"
+		message = fmt.Sprintf("%s but no bandwidth data was parsed; check spec.logProfileRef", message)
 	}
 
 	meta.SetStatusCondition(&measurement.Status.Conditions, metav1.Condition{

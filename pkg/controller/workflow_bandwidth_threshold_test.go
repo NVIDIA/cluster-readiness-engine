@@ -24,13 +24,22 @@ func TestIsBelowBandwidthThresholdWaitsForComplete(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, complete := range []bool{false, true} {
-		t.Run(map[bool]string{false: "incomplete", true: "complete"}[complete], func(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		reason string
+		ready  bool
+	}{
+		{name: "incomplete", ready: false},
+		{name: "complete", ready: true},
+		{name: "terminal no data", reason: reasonBandwidthNoData, ready: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			conditions := []metav1.Condition(nil)
-			if complete {
+			if tc.ready || tc.reason != "" {
 				conditions = []metav1.Condition{{
 					Type:   nvcrev1alpha1.BandwidthMeasurementComplete,
 					Status: metav1.ConditionTrue,
+					Reason: tc.reason,
 				}}
 			}
 			bm := &nvcrev1alpha1.BandwidthMeasurement{
@@ -56,7 +65,7 @@ func TestIsBelowBandwidthThresholdWaitsForComplete(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if complete {
+			if tc.ready {
 				if below || pending {
 					t.Fatalf("complete measurement returned below=%v pending=%v", below, pending)
 				}

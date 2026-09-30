@@ -55,9 +55,7 @@ func findJobBandwidthMeasurement(ctx context.Context, c client.Reader, job *nvcr
 func collectJobMeasuredValues(ctx context.Context, c client.Reader, job *nvcrev1alpha1.Job) map[string]float64 {
 	values := make(map[string]float64)
 
-	if bm := findJobBandwidthMeasurement(ctx, c, job); bm != nil &&
-		meta.IsStatusConditionTrue(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete) &&
-		len(bm.Status.Results) > 0 {
+	if bm := findJobBandwidthMeasurement(ctx, c, job); bandwidthMeasurementHasUsableResults(bm) {
 		values["busBandwidthGBps"] = maxBusBandwidth(bm.Status.Results)
 		values["algBandwidthGBps"] = maxAlgBandwidth(bm.Status.Results)
 	}
@@ -82,6 +80,17 @@ func collectJobMeasuredValues(ctx context.Context, c client.Reader, job *nvcrev1
 		}
 	}
 	return values
+}
+
+// bandwidthMeasurementHasUsableResults excludes terminal no-data outcomes.
+// Results may remain in status so terminal cleanup can remove their metrics,
+// but they must not be reused for threshold evaluation.
+func bandwidthMeasurementHasUsableResults(bm *nvcrev1alpha1.BandwidthMeasurement) bool {
+	if bm == nil || !meta.IsStatusConditionTrue(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete) || len(bm.Status.Results) == 0 {
+		return false
+	}
+	condition := meta.FindStatusCondition(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete)
+	return condition != nil && condition.Reason != reasonBandwidthNoData
 }
 
 // isJobAwaitingThresholdEvaluation returns true when a succeeded Job has performance
