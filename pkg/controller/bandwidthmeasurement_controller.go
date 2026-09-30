@@ -171,21 +171,10 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 
 	// Determine Job phase from conditions.
 	if cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
-		// Always do one final log parse. A running sample may have captured only
-		// part of the NCCL size sweep, and the terminal read must bypass the
-		// sample throttle so the largest sizes are not lost.
-		if err := r.collectFinalSample(ctx, measurement, job); err != nil {
-			log.Error(err, "Failed final log parse on Job success")
-		}
-		return r.handleTerminal(ctx, measurement, reasonBandwidthJobSucceeded, "Job succeeded")
+		return r.reconcileTerminal(ctx, measurement, job, reasonBandwidthJobSucceeded, "Job succeeded")
 	}
 	if cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobFailed); cond != nil && cond.Status == metav1.ConditionTrue {
-		// Failed jobs may still have partial bandwidth data, so they get the same
-		// final, unthrottled log read as successful jobs.
-		if err := r.collectFinalSample(ctx, measurement, job); err != nil {
-			log.Error(err, "Failed final log parse on Job failure")
-		}
-		return r.handleTerminal(ctx, measurement, reasonBandwidthJobFailed, "Job failed")
+		return r.reconcileTerminal(ctx, measurement, job, reasonBandwidthJobFailed, "Job failed")
 	}
 	if cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobInProgress); cond != nil && cond.Status == metav1.ConditionTrue {
 		return r.handleRunning(ctx, measurement, job)
@@ -193,6 +182,44 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 
 	// Job hasn't started yet.
 	return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
+}
+
+// reconcileTerminal performs the final unthrottled read before marking a
+// measurement complete. A failed final read leaves the existing partial
+// status non-terminal so the controller retries instead of publishing a
+// partial threshold result.
+func (r *BandwidthMeasurementReconciler) reconcileTerminal(
+	ctx context.Context,
+	measurement *nvcrev1alpha1.BandwidthMeasurement,
+	job *nvcrev1alpha1.Job,
+	reason, message string,
+) (ctrl.Result, error) {
+	if err := r.collectFinalSample(ctx, measurement, job); err != nil {
+		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, err
+	}
+
+	result, err := r.handleTerminal(ctx, measurement, reason, message)
+	if err != nil {
+		return result, err
+	}
+
+	// The terminal status is now durable. Retain the final fetch anchor only
+	// after that write succeeds, so a retry can reread the complete final
+	// window without averaging it into the partial status twice.
+	key := measurement.Namespace + "/" + measurement.Name
+	now := time.Now()
+	r.mu.Lock()
+	if r.lastSample == nil {
+		r.lastSample = make(map[string]time.Time)
+	}
+	if r.lastLogFetch == nil {
+		r.lastLogFetch = make(map[string]time.Time)
+	}
+	r.lastSample[key] = now
+	r.lastLogFetch[key] = now
+	r.mu.Unlock()
+
+	return result, nil
 }
 
 func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job) (ctrl.Result, error) {
@@ -213,22 +240,31 @@ func (r *BandwidthMeasurementReconciler) handleSample(ctx context.Context, measu
 	log := logf.FromContext(ctx)
 	key := measurement.Namespace + "/" + measurement.Name
 
-	// Throttle: skip if sampled recently.
+	// Initialize the per-measurement maps before either sampling path uses
+	// them. Terminal sampling deliberately bypasses the throttle, but still
+	// runs in a fresh reconciler where these maps are nil.
+	r.mu.Lock()
+	if r.lastSample == nil {
+		r.lastSample = make(map[string]time.Time)
+	}
+	if r.lastLogFetch == nil {
+		r.lastLogFetch = make(map[string]time.Time)
+	}
+	// Throttle only ordinary running samples.
 	if !terminal {
-		r.mu.Lock()
-		if r.lastSample == nil {
-			r.lastSample = make(map[string]time.Time)
-		}
 		if last, ok := r.lastSample[key]; ok && time.Since(last) < r.getSampleInterval(measurement) {
 			r.mu.Unlock()
 			return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
 		}
-		r.mu.Unlock()
 	}
+	r.mu.Unlock()
 
 	// Fetch and compile parser from LogProfile.
 	parser, profile, err := r.getOrCreateParser(ctx, measurement.Spec.LogProfileRef)
 	if err != nil {
+		if terminal {
+			return ctrl.Result{}, fmt.Errorf("failed final parser setup: %w", err)
+		}
 		log.Error(err, "Failed to get parser for LogProfile", "logProfile", measurement.Spec.LogProfileRef)
 		r.noteLogProfileUnresolved(ctx, measurement, err)
 		return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
@@ -246,6 +282,9 @@ func (r *BandwidthMeasurementReconciler) handleSample(ctx context.Context, measu
 		workloadName = job.Status.WorkloadRef.Name
 	}
 	if workloadName == "" {
+		if terminal {
+			return ctrl.Result{}, fmt.Errorf("referenced Job has no workloadRef for final log parse")
+		}
 		log.Info("Job has no workloadRef yet, requeueing")
 		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 	}
@@ -253,11 +292,17 @@ func (r *BandwidthMeasurementReconciler) handleSample(ctx context.Context, measu
 	discoverer := podutil.NewWorkerDiscoverer(r.podReader())
 	pod, err := discoverer.GetReplicatedJobPod(ctx, measurement.Namespace, workloadName, replicatedJobName)
 	if err != nil {
+		if terminal {
+			return ctrl.Result{}, fmt.Errorf("failed to find worker pod for final log parse: %w", err)
+		}
 		log.Info("Pod not found yet, requeueing", "replicatedJob", replicatedJobName, "error", err)
 		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 	}
 
 	if !podutil.IsPodRunning(pod) && pod.Status.Phase != corev1.PodSucceeded {
+		if terminal {
+			return ctrl.Result{}, fmt.Errorf("worker pod is not available for final log parse: phase=%s", pod.Status.Phase)
+		}
 		log.Info("Pod not running yet, requeueing", "pod", pod.Name, "phase", pod.Status.Phase)
 		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 	}
@@ -267,6 +312,9 @@ func (r *BandwidthMeasurementReconciler) handleSample(ctx context.Context, measu
 	// contain error messages rather than NCCL output.
 	containerName := profile.Spec.ContainerName
 	if restarts, waiting := podutil.ContainerRestartStatus(pod, containerName); waiting {
+		if terminal {
+			return ctrl.Result{}, fmt.Errorf("worker container is waiting for final log parse: restarts=%d", restarts)
+		}
 		log.Info("Container is waiting (CrashLoopBackOff), skipping log read",
 			"pod", pod.Name, "restarts", restarts)
 		return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
@@ -307,6 +355,9 @@ func (r *BandwidthMeasurementReconciler) handleSample(ctx context.Context, measu
 	fetcher := r.getLogFetcher()
 	lines, err := fetcher.FetchLogs(ctx, measurement.Namespace, pod.Name, opts)
 	if err != nil {
+		if terminal {
+			return ctrl.Result{}, fmt.Errorf("failed final bandwidth log read: %w", err)
+		}
 		log.Error(err, "Failed to fetch logs", "pod", pod.Name)
 		return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
 	}
@@ -373,16 +424,17 @@ func (r *BandwidthMeasurementReconciler) handleSample(ctx context.Context, measu
 		}
 	}
 
-	// Record sample time and advance the log fetch anchor.
+	if terminal {
+		return ctrl.Result{}, nil
+	}
+	// Record sample time and advance the log fetch anchor only after the
+	// running status update succeeded.
 	now := time.Now()
 	r.mu.Lock()
 	r.lastSample[key] = now
 	r.lastLogFetch[key] = now
 	r.mu.Unlock()
 
-	if terminal {
-		return ctrl.Result{}, nil
-	}
 	return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
 }
 
