@@ -1,0 +1,9 @@
+# The Job was replaced under the same name (a group retry): the one this
+# measurement was created for is gone, so it completes instead of measuring the
+# new Job as its own.
+jobCondition: InProgress
+podPhase: Running
+measuredJobUID: uid-earlier
+provisional:
+  - {sizeBytes: 8, algBW: "0.00", busBW: "0.00", samples: 5}
+  - {sizeBytes: 1048576, algBW: "14.00", busBW: "27.00", samples: 5}

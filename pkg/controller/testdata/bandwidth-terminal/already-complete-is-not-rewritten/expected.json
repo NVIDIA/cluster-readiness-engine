@@ -1,0 +1,25 @@
+{
+  "requeue": false,
+  "conditions": [
+    {
+      "type": "Complete",
+      "status": "True",
+      "reason": "JobSucceeded",
+      "message": "Job succeeded"
+    }
+  ],
+  "results": [
+    {
+      "sizeBytes": 8,
+      "algBW": "0.00",
+      "busBW": "0.00",
+      "samples": 5
+    },
+    {
+      "sizeBytes": 1048576,
+      "algBW": "14.00",
+      "busBW": "27.00",
+      "samples": 5
+    }
+  ]
+}

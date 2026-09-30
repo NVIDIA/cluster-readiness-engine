@@ -1,0 +1,18 @@
+{
+  "requeue": false,
+  "conditions": [
+    {
+      "type": "Measuring",
+      "status": "False",
+      "reason": "NoDataCollected",
+      "message": "Job succeeded but no bandwidth data was parsed; check spec.logProfileRef"
+    },
+    {
+      "type": "Complete",
+      "status": "True",
+      "reason": "NoDataCollected",
+      "message": "Job succeeded but no bandwidth data was parsed; check spec.logProfileRef"
+    }
+  ],
+  "completionTime": "2026-09-30T10:05:00Z"
+}

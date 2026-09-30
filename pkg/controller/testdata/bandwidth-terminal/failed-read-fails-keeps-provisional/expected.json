@@ -1,0 +1,32 @@
+{
+  "requeue": false,
+  "conditions": [
+    {
+      "type": "Measuring",
+      "status": "False",
+      "reason": "JobFailed",
+      "message": "Job failed"
+    },
+    {
+      "type": "Complete",
+      "status": "True",
+      "reason": "JobFailed",
+      "message": "Job failed"
+    }
+  ],
+  "results": [
+    {
+      "sizeBytes": 8,
+      "algBW": "0.00",
+      "busBW": "0.00",
+      "samples": 5
+    },
+    {
+      "sizeBytes": 1048576,
+      "algBW": "14.00",
+      "busBW": "27.00",
+      "samples": 5
+    }
+  ],
+  "completionTime": "2026-09-30T10:05:00Z"
+}

@@ -494,6 +494,7 @@ func startManager(
 
 	err = (&controller.BandwidthMeasurementReconciler{
 		Client:     mgr.GetClient(),
+		APIReader:  mgr.GetAPIReader(),
 		Scheme:     mgr.GetScheme(),
 		Recorder:   mgr.GetEventRecorder("bandwidthmeasurement-controller"),
 		LogFetcher: fetcher,
@@ -1371,6 +1372,12 @@ func sanitizeObject(obj client.Object) {
 	// Workflow's UID, which changes every envtest run.
 	if ann := obj.GetAnnotations(); ann["nvcre.nvidia.com/workflow-uid"] != "" {
 		ann["nvcre.nvidia.com/workflow-uid"] = "workflow-uid"
+		obj.SetAnnotations(ann)
+	}
+	// Likewise the job-uid annotation a BandwidthMeasurement records for the
+	// Job it measures.
+	if ann := obj.GetAnnotations(); ann["nvcre.nvidia.com/job-uid"] != "" {
+		ann["nvcre.nvidia.com/job-uid"] = "job-uid"
 		obj.SetAnnotations(ann)
 	}
 

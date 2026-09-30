@@ -1,0 +1,3 @@
+# Nothing was ever parsed and the launcher pod is gone.
+jobCondition: Succeeded
+pendingSince: "2026-01-01T00:00:00Z"
