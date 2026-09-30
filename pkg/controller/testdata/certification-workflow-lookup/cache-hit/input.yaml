@@ -1,0 +1,5 @@
+# The ordinary path: the Workflow is in the cache, still running. No live read
+# is needed and the category stays InProgress.
+inCache: true
+inAPI: true
+reconciles: 2

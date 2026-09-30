@@ -1,0 +1,5 @@
+{
+  "error": "Job \"g0-job\" already exists in namespace \"default\" and is not controlled by Workflow \"wf\"; refusing to adopt it",
+  "nameCollision": true,
+  "jobUIDAfterCall": "job-uid"
+}

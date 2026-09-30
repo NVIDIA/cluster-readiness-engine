@@ -1,0 +1,6 @@
+# The live read fails for a reason that is not NotFound. Nothing is decided on
+# a read that never landed: the error surfaces and the category is untouched.
+inCache: false
+inAPI: true
+apiError: "connection refused"
+reconciles: 1

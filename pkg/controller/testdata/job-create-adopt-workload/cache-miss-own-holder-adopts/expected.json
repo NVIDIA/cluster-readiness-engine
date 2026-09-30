@@ -1,0 +1,8 @@
+{
+  "requeueAfter": "15s",
+  "phase": "InProgress",
+  "reason": "WorkloadAdopted",
+  "workloadRef": "job-workload",
+  "restartCount": 0,
+  "workloadSurvives": true
+}

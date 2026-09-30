@@ -29,7 +29,7 @@ import (
 // same cache, so SetupWithManager supplies the uncached reader when the
 // caller leaves it unset (issue #352).
 func TestWorkloadRunSetupDefaultsAPIReader(t *testing.T) {
-	mgr, err := ctrl.NewManager(&rest.Config{Host: "https://127.0.0.1:0"}, ctrl.Options{
+	mgr, err := ctrl.NewManager(&rest.Config{Host: testFakeAPIServerHost}, ctrl.Options{
 		Scheme:     newWorkflowScheme(t),
 		Metrics:    metricsserver.Options{BindAddress: "0"},
 		Controller: config.Controller{SkipNameValidation: new(true)},

@@ -1,0 +1,4 @@
+# The cache already has the Job. The live reader must never be consulted.
+inCache: true
+inAPI: true
+passes: 2

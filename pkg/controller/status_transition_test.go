@@ -322,7 +322,10 @@ func TestCertificationTransitionEventRequiresSuccessfulStatusWrite(t *testing.T)
 						if remaining > 0 {
 							remaining--
 							return apierrors.NewConflict(
-								schema.GroupResource{Group: nvcrev1alpha1.GroupVersion.Group, Resource: "certifications"},
+								schema.GroupResource{
+									Group:    nvcrev1alpha1.GroupVersion.Group,
+									Resource: testCertificationsResource,
+								},
 								obj.GetName(), errors.New("simulated stale write"))
 						}
 						return c.Status().Update(ctx, obj, opts...)

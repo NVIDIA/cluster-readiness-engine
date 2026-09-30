@@ -60,7 +60,7 @@ func TestIsJobTimedOut(t *testing.T) {
 		if input.HasWorkloadRef {
 			job.Status.WorkloadRef = &nvcrev1alpha1.WorkloadReference{
 				APIVersion: "trainer.kubeflow.org/v1alpha1",
-				Kind:       "TrainJob",
+				Kind:       testKindTrainJob,
 				Name:       "test-workload",
 			}
 		}

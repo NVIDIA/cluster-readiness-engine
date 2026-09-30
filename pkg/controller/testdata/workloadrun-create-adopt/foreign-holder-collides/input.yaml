@@ -1,0 +1,6 @@
+# A live Workflow this run does not own holds the name. Adopting it would
+# mirror a stranger's result, so the run fails with a surfaced reason rather
+# than requeueing in silence, which is the #383 symptom on a different input.
+holder: foreign
+statusWriteFailures: 0
+reconciles: 3
