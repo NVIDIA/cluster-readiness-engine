@@ -1,0 +1,32 @@
+{
+  "visited": [
+    "2026-09-30T10:00:01.100000000Z r01",
+    "2026-09-30T10:00:02.100000000Z r02",
+    "2026-09-30T10:00:03.100000000Z r03",
+    "2026-09-30T10:00:04.100000000Z r04"
+  ],
+  "reads": [
+    {
+      "limitBytes": 70,
+      "lines": 2,
+      "truncated": true
+    },
+    {
+      "since": "2026-09-30T10:00:02Z",
+      "limitBytes": 70,
+      "lines": 2,
+      "truncated": true
+    },
+    {
+      "since": "2026-09-30T10:00:03Z",
+      "limitBytes": 70,
+      "lines": 2,
+      "truncated": true
+    },
+    {
+      "since": "2026-09-30T10:00:04Z",
+      "limitBytes": 70,
+      "lines": 1
+    }
+  ]
+}
