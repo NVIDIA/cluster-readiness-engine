@@ -5,6 +5,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -41,8 +42,12 @@ func TestIsBelowBandwidthThreshold(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		noJob       bool
+		name  string
+		noJob bool
+		// jobOnlyLive leaves the Job out of the cache but on the API server.
+		jobOnlyLive bool
+		// liveErr misses the cache and fails the API server read.
+		liveErr     bool
 		measurement *nvcrev1alpha1.BandwidthMeasurement
 		wantBelow   bool
 		wantPending bool
@@ -51,7 +56,9 @@ func TestIsBelowBandwidthThreshold(t *testing.T) {
 		{name: "no measurement yet", wantPending: true},
 		{name: "provisional results", measurement: bm(currentJobUID, "", "900.00"), wantPending: true},
 		{name: "measurement of an earlier Job with the same name", measurement: bm("uid-earlier", reasonBandwidthJobSucceeded, "900.00"), wantPending: true},
-		{name: "Job not found", noJob: true, measurement: bm(currentJobUID, reasonBandwidthJobSucceeded, "900.00"), wantPending: true},
+		{name: "Job confirmed deleted", noJob: true, measurement: bm(currentJobUID, reasonBandwidthJobSucceeded, "900.00"), wantErr: true},
+		{name: "Job not yet in cache", jobOnlyLive: true, measurement: bm(currentJobUID, reasonBandwidthJobSucceeded, "900.00")},
+		{name: "Job unreadable on the API server", liveErr: true, measurement: bm(currentJobUID, reasonBandwidthJobSucceeded, "100.00"), wantPending: true},
 		{name: "completed without final results", measurement: bm(currentJobUID, reasonBandwidthLogsUnavailable, "900.00"), wantErr: true},
 		{name: "completed with no data", measurement: bm(currentJobUID, reasonBandwidthNoData, ""), wantErr: true},
 		{name: "final and above threshold", measurement: bm(currentJobUID, reasonBandwidthJobSucceeded, "900.00")},
@@ -63,9 +70,10 @@ func TestIsBelowBandwidthThreshold(t *testing.T) {
 	require.NoError(t, nvcrev1alpha1.AddToScheme(scheme))
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			job := &nvcrev1alpha1.Job{Name: "j", Namespace: "ns", UID: currentJobUID}
 			var objs []client.Object
-			if !tt.noJob {
-				objs = append(objs, &nvcrev1alpha1.Job{Name: "j", Namespace: "ns", UID: currentJobUID})
+			if !tt.noJob && !tt.jobOnlyLive && !tt.liveErr {
+				objs = append(objs, job)
 			}
 			if tt.measurement != nil {
 				objs = append(objs, tt.measurement)
@@ -75,12 +83,26 @@ func TestIsBelowBandwidthThreshold(t *testing.T) {
 					return []string{obj.(*nvcrev1alpha1.BandwidthMeasurement).Spec.JobRef.Name}
 				}).
 				WithObjects(objs...).Build()
+			var live client.Reader = c
+			if tt.jobOnlyLive {
+				live = fake.NewClientBuilder().WithScheme(scheme).WithObjects(job).Build()
+			}
+			if tt.liveErr {
+				live = failingReader{}
+			}
 
-			r := &WorkflowReconciler{Client: c, Scheme: scheme}
+			r := &WorkflowReconciler{Client: c, APIReader: live, Scheme: scheme}
 			below, pending, err := r.isBelowBandwidthThreshold(context.Background(), "j", "ns", "value >= 400")
 			require.Equal(t, tt.wantErr, err != nil, "err: %v", err)
 			require.Equal(t, tt.wantPending, pending, "pending")
 			require.Equal(t, tt.wantBelow, below, "below")
 		})
 	}
+}
+
+// failingReader fails every read, as an unreachable API server does.
+type failingReader struct{ client.Reader }
+
+func (failingReader) Get(context.Context, client.ObjectKey, client.Object, ...client.GetOption) error {
+	return errors.New("connection refused")
 }

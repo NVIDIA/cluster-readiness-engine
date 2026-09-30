@@ -46,7 +46,7 @@ Each `BandwidthResult` entry contains:
 |-------------------|---------|---------------------|
 | `JobSucceeded` | Final, from the Job's full log | Yes |
 | `NoDataCollected` | None: the complete log was read and no line matched the `bandwidthResult` pattern | No |
-| `LogsUnavailable` | Provisional, or none: the complete log could not be read, or the Job was deleted or replaced. The condition message gives the cause | No |
+| `LogsUnavailable` | Provisional, or none: the complete log could not be read (for example the launcher pod or its log was gone, no pod matched the `LogProfile`'s worker selection, or the `LogProfile` did not resolve), or the Job was deleted or replaced. The condition message gives the cause | No |
 | `JobFailed` | Final if the log could still be read, otherwise provisional | No; a failed Job is not evaluated |
 
 A threshold on `busBandwidthGBps` or `algBandwidthGBps` is evaluated only against final results. Any other outcome leaves the value unmeasured, and the Job fails validation once its `measurementTimeout` expires. In diagnose mode, the group is treated as failed.
