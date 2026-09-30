@@ -828,6 +828,17 @@ func TestNewRunCommandValidation(t *testing.T) {
 		assert.Contains(t, err.Error(), "either --cert-file or at least one --category")
 	})
 
+	t.Run("negative startup-stall window is rejected, not silently ignored", func(t *testing.T) {
+		cmd := newRunCommand("dev")
+		cmd.SetArgs([]string{
+			testCategoryFlag, testCategoryNCCLAllReduce,
+			"--startup-stall-timeout-seconds", "-1",
+		})
+		err := cmd.Execute()
+		require.Error(t, err, "a negative window would otherwise be dropped and the run would silently use the catalog default")
+		assert.Contains(t, err.Error(), "--startup-stall-timeout-seconds must be at least 1")
+	})
+
 	t.Run("setup wait cleanup are independent flags", func(t *testing.T) {
 		cmd := newRunCommand("dev")
 		for _, flag := range []string{"setup", "wait", "cleanup"} {
