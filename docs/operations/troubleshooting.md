@@ -277,8 +277,10 @@ kubectl get events --field-selector involvedObject.name=<name>
 
 **Solutions:**
 
-- `LogsUnavailable` with an error reading the pod log — the launcher pod or its log was gone or unreachable for the whole retry period. Check that nothing deletes the TrainJob or its pods before thresholds are evaluated, and that the controller can reach the kubelet for `pods/log`.
-- `NoDataCollected` — see [BandwidthMeasurement not reporting results](#bandwidthmeasurement-not-reporting-results).
+- `LogsUnavailable` with an error reading the pod log — the launcher pod or its log was gone or unreachable for the whole retry period. Check that nothing deletes the TrainJob or its pods before thresholds are evaluated, and that the controller can reach the kubelet for `pods/log`. If the log is only slow to become readable, raise `measurementTimeout`; the read is retried for as long as the Job waits (see [BandwidthMeasurement](../api-reference/bandwidth-measurement.md#how-it-works) for where to set it).
+- `LogsUnavailable` because the log cannot be read in full — for example a line longer than 1 MiB. Retrying cannot help; reduce the workload's log output.
+- `LogsUnavailable` because the referenced Job no longer exists — it was deleted, or replaced when its group was retried. The replacement Job gets its own BandwidthMeasurement.
+- `NoDataCollected` — the whole log was read but no line matched the `bandwidthResult` pattern. See [BandwidthMeasurement not reporting results](#bandwidthmeasurement-not-reporting-results).
 
 ## Enable debug logging
 

@@ -49,9 +49,9 @@ const (
 	// anything, so its result is absent rather than zero.
 	reasonBandwidthNoData = "NoDataCollected"
 	noDataMessage         = "Job succeeded but no bandwidth data was parsed; check spec.logProfileRef"
-	// reasonBandwidthLogsUnavailable marks a measurement whose Job succeeded
-	// but whose complete log could not be read, so its results are the
-	// provisional samples and are not used for threshold evaluation.
+	// reasonBandwidthLogsUnavailable marks a measurement whose Job's complete
+	// log could not be read, so it holds at most provisional samples, which
+	// are not used for threshold evaluation.
 	reasonBandwidthLogsUnavailable = "LogsUnavailable"
 	// reasonBandwidthFinalReadPending marks a succeeded Job whose final log read
 	// failed and is being retried within the grace period.
@@ -424,9 +424,10 @@ func (r *BandwidthMeasurementReconciler) noteLogProfileUnresolved(ctx context.Co
 // result is a function of the log alone, whatever the sampling did.
 //
 // When the log cannot be read, the read is retried for finalReadGracePeriod
-// and the measurement then completes as LogsUnavailable (or NoDataCollected if
-// nothing was ever parsed). Threshold evaluation treats both as unmeasured, so
-// a verdict never rests on provisional data.
+// and the measurement then completes as LogsUnavailable, with the read error.
+// NoDataCollected is kept for a log that was read in full and held no rows.
+// Threshold evaluation treats both as unmeasured, so a verdict never rests on
+// provisional data.
 func (r *BandwidthMeasurementReconciler) handleJobSucceeded(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job) (ctrl.Result, error) {
 	anchor := terminalAnchor(job)
 	final, readErr := r.readFinalResults(ctx, measurement, job)
@@ -455,16 +456,20 @@ func (r *BandwidthMeasurementReconciler) handleJobSucceeded(ctx context.Context,
 		return ctrl.Result{RequeueAfter: min(wait, r.getRequeueInterval())}, nil
 	}
 
-	if len(measurement.Status.Results) == 0 {
-		return r.finalizeTerminal(ctx, measurement, anchor, terminalOutcome{
-			reason: reasonBandwidthNoData, message: noDataMessage,
-		})
-	}
+	logf.FromContext(ctx).Info("Final log read failed, completing without final results", "error", readErr)
 	return r.finalizeTerminal(ctx, measurement, anchor, terminalOutcome{
-		reason: reasonBandwidthLogsUnavailable,
-		message: fmt.Sprintf("Job succeeded but its log could not be read in full (%v); "+
-			"results are provisional and are not used for threshold evaluation", readErr),
+		reason:  reasonBandwidthLogsUnavailable,
+		message: fmt.Sprintf("Job succeeded but its log could not be read in full (%v); %s", readErr, withoutFinalResults(measurement)),
 	})
+}
+
+// withoutFinalResults describes what a measurement completing without its
+// final read is left with.
+func withoutFinalResults(measurement *nvcrev1alpha1.BandwidthMeasurement) string {
+	if len(measurement.Status.Results) == 0 {
+		return "no bandwidth data was parsed"
+	}
+	return "results are provisional and are not used for threshold evaluation"
 }
 
 // handleJobFailed makes one best-effort final read without a grace period: the
@@ -514,14 +519,10 @@ func sawJob(measurement *nvcrev1alpha1.BandwidthMeasurement) bool {
 
 // finalizeJobGone completes a measurement whose Job no longer exists.
 func (r *BandwidthMeasurementReconciler) finalizeJobGone(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement) (ctrl.Result, error) {
-	outcome := terminalOutcome{
+	return r.finalizeTerminal(ctx, measurement, time.Now(), terminalOutcome{
 		reason:  reasonBandwidthLogsUnavailable,
-		message: "Referenced Job no longer exists; results are provisional and are not used for threshold evaluation",
-	}
-	if len(measurement.Status.Results) == 0 {
-		outcome = terminalOutcome{reason: reasonBandwidthNoData, message: "Referenced Job no longer exists; no bandwidth data was parsed"}
-	}
-	return r.finalizeTerminal(ctx, measurement, time.Now(), outcome)
+		message: "Referenced Job no longer exists; " + withoutFinalResults(measurement),
+	})
 }
 
 // readFinalResults reads the launcher's current log in full and aggregates
@@ -549,20 +550,21 @@ func (r *BandwidthMeasurementReconciler) readFinalResults(ctx context.Context, m
 		return nil, fmt.Errorf("pod %s has not finished (%s)", pod.Name, pod.Status.Phase)
 	}
 
-	var points []nccl.BandwidthDataPoint
+	// Rows are summed per size as they are read, so memory is bounded by the
+	// number of message sizes rather than the length of the log, and each
+	// average is rounded once, whatever the page boundaries.
+	var agg bandwidthAggregate
 	err = podlogs.ReadAll(ctx, r.getLogFetcher(), measurement.Namespace, pod.Name,
 		podlogs.ReadAllOptions{Container: profile.Spec.ContainerName},
 		func(line string) {
 			if dp, ok := parser.ParseBandwidthLine(line); ok {
-				points = append(points, dp)
+				agg.add(dp)
 			}
 		})
 	if err != nil {
 		return nil, fmt.Errorf("reading log of pod %s: %w", pod.Name, err)
 	}
-	// Aggregating into an empty set averages each size over its rows and
-	// rounds once, so the result does not depend on how rows were batched.
-	return mergeBandwidthResults(nil, points), nil
+	return agg.results(), nil
 }
 
 // terminalOutcome is what a measurement completes with. results replace the
@@ -731,38 +733,28 @@ func (r *BandwidthMeasurementReconciler) getOrCreateParser(ctx context.Context, 
 // For sizes already in existing, the average is updated: newAvg = (oldAvg*oldN + sum(new)) / (oldN + newN).
 // New sizes are appended in the order they appear in the data points.
 func mergeBandwidthResults(existing []nvcrev1alpha1.BandwidthResult, dataPoints []nccl.BandwidthDataPoint) []nvcrev1alpha1.BandwidthResult {
+	var agg bandwidthAggregate
+	for _, dp := range dataPoints {
+		agg.add(dp)
+	}
+	return mergeAggregate(existing, &agg)
+}
+
+// mergeAggregate merges summed rows into existing results; see
+// mergeBandwidthResults.
+func mergeAggregate(existing []nvcrev1alpha1.BandwidthResult, agg *bandwidthAggregate) []nvcrev1alpha1.BandwidthResult {
 	// Index existing results by size for O(1) lookup.
 	idx := make(map[int64]int, len(existing))
 	for i, r := range existing {
 		idx[r.SizeBytes] = i
 	}
 
-	// Accumulate new data points per size.
-	type accumulator struct {
-		sumAlgBW float64
-		sumBusBW float64
-		count    int
-	}
-	var newOrder []int64
-	accum := make(map[int64]*accumulator)
-	for _, dp := range dataPoints {
-		a, ok := accum[dp.SizeBytes]
-		if !ok {
-			a = &accumulator{}
-			accum[dp.SizeBytes] = a
-			newOrder = append(newOrder, dp.SizeBytes)
-		}
-		a.sumAlgBW += dp.AlgBW
-		a.sumBusBW += dp.BusBW
-		a.count++
-	}
-
 	// Deep-copy existing results so we don't mutate the caller's slice.
 	results := make([]nvcrev1alpha1.BandwidthResult, len(existing))
 	copy(results, existing)
 
-	for _, size := range newOrder {
-		a := accum[size]
+	for _, size := range agg.order {
+		a := agg.sums[size]
 		if i, ok := idx[size]; ok {
 			// Merge into existing entry.
 			oldAlg, _ := strconv.ParseFloat(results[i].AlgBW, 64)
@@ -784,6 +776,39 @@ func mergeBandwidthResults(existing []nvcrev1alpha1.BandwidthResult, dataPoints 
 	}
 
 	return results
+}
+
+// bandwidthAggregate sums bandwidth rows per message size, keeping sizes in
+// the order they first appear.
+type bandwidthAggregate struct {
+	order []int64
+	sums  map[int64]*bandwidthSum
+}
+
+type bandwidthSum struct {
+	sumAlgBW float64
+	sumBusBW float64
+	count    int
+}
+
+func (a *bandwidthAggregate) add(dp nccl.BandwidthDataPoint) {
+	if a.sums == nil {
+		a.sums = make(map[int64]*bandwidthSum)
+	}
+	s, ok := a.sums[dp.SizeBytes]
+	if !ok {
+		s = &bandwidthSum{}
+		a.sums[dp.SizeBytes] = s
+		a.order = append(a.order, dp.SizeBytes)
+	}
+	s.sumAlgBW += dp.AlgBW
+	s.sumBusBW += dp.BusBW
+	s.count++
+}
+
+// results averages each size over its rows, rounding once.
+func (a *bandwidthAggregate) results() []nvcrev1alpha1.BandwidthResult {
+	return mergeAggregate(nil, a)
 }
 
 // warnf emits a Warning event if the Recorder is configured. Every
