@@ -19,22 +19,54 @@
       "sampleInterval": "1s"
     },
     "status": {
+      "results": [
+        {
+          "sizeBytes": 8,
+          "algBW": "0.00",
+          "busBW": "0.00",
+          "samples": 2
+        },
+        {
+          "sizeBytes": 65536,
+          "algBW": "1.13",
+          "busBW": "2.18",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 1048576,
+          "algBW": "15.41",
+          "busBW": "29.87",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 1073741824,
+          "algBW": "397.14",
+          "busBW": "769.45",
+          "samples": 1
+        },
+        {
+          "sizeBytes": 17179869184,
+          "algBW": "476.36",
+          "busBW": "922.94",
+          "samples": 1
+        }
+      ],
       "conditions": [
         {
           "type": "Measuring",
           "status": "False",
           "observedGeneration": 1,
           "lastTransitionTime": null,
-          "reason": "NoDataCollected",
-          "message": "Job succeeded but no bandwidth data was parsed; check spec.logProfileRef"
+          "reason": "JobSucceeded",
+          "message": "Job succeeded"
         },
         {
           "type": "Complete",
           "status": "True",
           "observedGeneration": 1,
           "lastTransitionTime": null,
-          "reason": "NoDataCollected",
-          "message": "Job succeeded but no bandwidth data was parsed; check spec.logProfileRef"
+          "reason": "JobSucceeded",
+          "message": "Job succeeded"
         }
       ]
     }

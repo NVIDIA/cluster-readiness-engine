@@ -171,20 +171,19 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 
 	// Determine Job phase from conditions.
 	if cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
-		// Do a final log parse if we don't have results yet.
-		if len(measurement.Status.Results) == 0 {
-			if _, err := r.handleRunning(ctx, measurement, job); err != nil {
-				log.Error(err, "Failed final log parse on Job success")
-			}
+		// Always do one final log parse. A running sample may have captured only
+		// part of the NCCL size sweep, and the terminal read must bypass the
+		// sample throttle so the largest sizes are not lost.
+		if err := r.collectFinalSample(ctx, measurement, job); err != nil {
+			log.Error(err, "Failed final log parse on Job success")
 		}
 		return r.handleTerminal(ctx, measurement, reasonBandwidthJobSucceeded, "Job succeeded")
 	}
 	if cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobFailed); cond != nil && cond.Status == metav1.ConditionTrue {
-		// Attempt final log parse — failed jobs may still have partial bandwidth data.
-		if len(measurement.Status.Results) == 0 {
-			if _, err := r.handleRunning(ctx, measurement, job); err != nil {
-				log.Error(err, "Failed final log parse on Job failure")
-			}
+		// Failed jobs may still have partial bandwidth data, so they get the same
+		// final, unthrottled log read as successful jobs.
+		if err := r.collectFinalSample(ctx, measurement, job); err != nil {
+			log.Error(err, "Failed final log parse on Job failure")
 		}
 		return r.handleTerminal(ctx, measurement, reasonBandwidthJobFailed, "Job failed")
 	}
@@ -197,19 +196,35 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 }
 
 func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job) (ctrl.Result, error) {
+	return r.handleSample(ctx, measurement, job, false)
+}
+
+// collectFinalSample reads the terminal log window without consulting the
+// running sample throttle or writing an intermediate status. The terminal
+// status write in handleTerminal persists the merged results and Complete
+// condition together, so consumers never observe a partially finalized
+// measurement.
+func (r *BandwidthMeasurementReconciler) collectFinalSample(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job) error {
+	_, err := r.handleSample(ctx, measurement, job, true)
+	return err
+}
+
+func (r *BandwidthMeasurementReconciler) handleSample(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job, terminal bool) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	key := measurement.Namespace + "/" + measurement.Name
 
 	// Throttle: skip if sampled recently.
-	r.mu.Lock()
-	if r.lastSample == nil {
-		r.lastSample = make(map[string]time.Time)
-	}
-	if last, ok := r.lastSample[key]; ok && time.Since(last) < r.getSampleInterval(measurement) {
+	if !terminal {
+		r.mu.Lock()
+		if r.lastSample == nil {
+			r.lastSample = make(map[string]time.Time)
+		}
+		if last, ok := r.lastSample[key]; ok && time.Since(last) < r.getSampleInterval(measurement) {
+			r.mu.Unlock()
+			return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
+		}
 		r.mu.Unlock()
-		return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
 	}
-	r.mu.Unlock()
 
 	// Fetch and compile parser from LogProfile.
 	parser, profile, err := r.getOrCreateParser(ctx, measurement.Spec.LogProfileRef)
@@ -326,28 +341,36 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 		measurement.Status.StartTime = &now
 	}
 
-	// Set Measuring condition.
-	meta.SetStatusCondition(&measurement.Status.Conditions, metav1.Condition{
-		Type:               nvcrev1alpha1.BandwidthMeasurementMeasuring,
-		Status:             metav1.ConditionTrue,
-		ObservedGeneration: measurement.Generation,
-		Reason:             reasonBandwidthJobRunning,
-		Message:            "Referenced Job is running, measurement in progress",
-	})
-
-	// Emit Prometheus metrics.
-	jobName := measurement.Spec.JobRef.Name
-	workflow := measurement.Labels["nvcre.nvidia.com/workflow"]
-	ncclTest := measurement.Spec.TestType
-	for _, r := range measurement.Status.Results {
-		algBW, _ := strconv.ParseFloat(r.AlgBW, 64)
-		busBW, _ := strconv.ParseFloat(r.BusBW, 64)
-		recordNCCLBandwidthMetrics(measurement.Namespace, measurement.Name, jobName, workflow,
-			ncclTest, strconv.FormatInt(r.SizeBytes, 10), algBW, busBW)
+	if !terminal {
+		// Set Measuring condition only for ordinary samples. Terminal sampling
+		// is folded into the Complete status write below.
+		meta.SetStatusCondition(&measurement.Status.Conditions, metav1.Condition{
+			Type:               nvcrev1alpha1.BandwidthMeasurementMeasuring,
+			Status:             metav1.ConditionTrue,
+			ObservedGeneration: measurement.Generation,
+			Reason:             reasonBandwidthJobRunning,
+			Message:            "Referenced Job is running, measurement in progress",
+		})
 	}
 
-	if err := r.Status().Update(ctx, measurement); err != nil {
-		return ctrl.Result{}, fmt.Errorf("failed to update BandwidthMeasurement status: %w", err)
+	if !terminal {
+		// Emit Prometheus metrics for running samples. Terminal completion cleans
+		// up the gauges after persisting the final result set.
+		jobName := measurement.Spec.JobRef.Name
+		workflow := measurement.Labels["nvcre.nvidia.com/workflow"]
+		ncclTest := measurement.Spec.TestType
+		for _, r := range measurement.Status.Results {
+			algBW, _ := strconv.ParseFloat(r.AlgBW, 64)
+			busBW, _ := strconv.ParseFloat(r.BusBW, 64)
+			recordNCCLBandwidthMetrics(measurement.Namespace, measurement.Name, jobName, workflow,
+				ncclTest, strconv.FormatInt(r.SizeBytes, 10), algBW, busBW)
+		}
+	}
+
+	if !terminal {
+		if err := r.Status().Update(ctx, measurement); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to update BandwidthMeasurement status: %w", err)
+		}
 	}
 
 	// Record sample time and advance the log fetch anchor.
@@ -357,6 +380,9 @@ func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, meas
 	r.lastLogFetch[key] = now
 	r.mu.Unlock()
 
+	if terminal {
+		return ctrl.Result{}, nil
+	}
 	return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
 }
 

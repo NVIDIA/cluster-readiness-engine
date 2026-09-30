@@ -55,7 +55,9 @@ func findJobBandwidthMeasurement(ctx context.Context, c client.Reader, job *nvcr
 func collectJobMeasuredValues(ctx context.Context, c client.Reader, job *nvcrev1alpha1.Job) map[string]float64 {
 	values := make(map[string]float64)
 
-	if bm := findJobBandwidthMeasurement(ctx, c, job); bm != nil && len(bm.Status.Results) > 0 {
+	if bm := findJobBandwidthMeasurement(ctx, c, job); bm != nil &&
+		meta.IsStatusConditionTrue(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete) &&
+		len(bm.Status.Results) > 0 {
 		values["busBandwidthGBps"] = maxBusBandwidth(bm.Status.Results)
 		values["algBandwidthGBps"] = maxAlgBandwidth(bm.Status.Results)
 	}

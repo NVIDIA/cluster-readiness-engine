@@ -19,10 +19,10 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
-// Goodput-derived threshold values are provisional until the measurement's
-// Complete condition is True (ADR-072): the terminal write freezes them, and
-// evaluating earlier would make pass/fail depend on when the Job controller
-// happened to read. Bandwidth values are not gated. These cases pin the gate.
+// Measurement values are provisional until the measurement's Complete
+// condition is True (ADR-072): the terminal write freezes them, and evaluating
+// earlier would make pass/fail depend on when the Job controller happened to
+// read. These cases pin the gate for both measurement types.
 func TestCollectJobMeasuredValues(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "collect-job-measured-values",
@@ -72,6 +72,12 @@ func TestCollectJobMeasuredValues(t *testing.T) {
 					SizeBytes: 1 << 30, BusBW: in.BusBW, AlgBW: in.AlgBW, Samples: 1,
 				}},
 			},
+		}
+		if in.GoodputComplete {
+			bm.Status.Conditions = []metav1.Condition{{
+				Type: nvcrev1alpha1.BandwidthMeasurementComplete,
+				Status: metav1.ConditionTrue,
+			}}
 		}
 		job := &nvcrev1alpha1.Job{Name: "j", Namespace: "ns"}
 

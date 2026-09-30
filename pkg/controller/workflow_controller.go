@@ -860,7 +860,7 @@ func (r *WorkflowReconciler) isBelowBandwidthThreshold(ctx context.Context, jobN
 	// BandwidthMeasurement, so evaluate the first and ignore any duplicate.
 	bm := &bwList.Items[0]
 
-	if len(bm.Status.Results) == 0 {
+	if !meta.IsStatusConditionTrue(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete) || len(bm.Status.Results) == 0 {
 		return false, true, nil
 	}
 	measured := maxBusBandwidth(bm.Status.Results)
