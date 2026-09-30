@@ -54,38 +54,46 @@ func (p *Parser) ParseBandwidthLogs(lines []string) []BandwidthDataPoint {
 	results := make([]BandwidthDataPoint, 0, len(lines)/4) // most lines are non-data
 
 	for _, line := range lines {
-		// Strip the Kubernetes RFC3339 timestamp prefix if present.
-		// Format: "2026-02-05T15:30:00.123456Z <content>"
-		content := stripK8sTimestamp(line)
-
-		matches := p.regex.FindStringSubmatch(content)
-		if matches == nil {
-			continue
+		if dp, ok := p.ParseBandwidthLine(line); ok {
+			results = append(results, dp)
 		}
-
-		size, err := strconv.ParseInt(matches[p.sizeIdx], 10, 64)
-		if err != nil {
-			continue
-		}
-
-		algBW, err := strconv.ParseFloat(matches[p.algBWIdx], 64)
-		if err != nil {
-			continue
-		}
-
-		busBW, err := strconv.ParseFloat(matches[p.busBWIdx], 64)
-		if err != nil {
-			continue
-		}
-
-		results = append(results, BandwidthDataPoint{
-			SizeBytes: size,
-			AlgBW:     algBW,
-			BusBW:     busBW,
-		})
 	}
 
 	return results
+}
+
+// ParseBandwidthLine parses one log line, reporting false if it is not a
+// bandwidth result row.
+func (p *Parser) ParseBandwidthLine(line string) (BandwidthDataPoint, bool) {
+	// Strip the Kubernetes RFC3339 timestamp prefix if present.
+	// Format: "2026-02-05T15:30:00.123456Z <content>"
+	content := stripK8sTimestamp(line)
+
+	matches := p.regex.FindStringSubmatch(content)
+	if matches == nil {
+		return BandwidthDataPoint{}, false
+	}
+
+	size, err := strconv.ParseInt(matches[p.sizeIdx], 10, 64)
+	if err != nil {
+		return BandwidthDataPoint{}, false
+	}
+
+	algBW, err := strconv.ParseFloat(matches[p.algBWIdx], 64)
+	if err != nil {
+		return BandwidthDataPoint{}, false
+	}
+
+	busBW, err := strconv.ParseFloat(matches[p.busBWIdx], 64)
+	if err != nil {
+		return BandwidthDataPoint{}, false
+	}
+
+	return BandwidthDataPoint{
+		SizeBytes: size,
+		AlgBW:     algBW,
+		BusBW:     busBW,
+	}, true
 }
 
 // namedGroupIndex returns the index of a named capture group in a compiled regex.

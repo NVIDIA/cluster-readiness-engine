@@ -314,6 +314,12 @@ func (r *JobReconciler) reconcileWorkload(ctx context.Context, job *nvcrev1alpha
 	// happens via owner reference cascade when the Certification is deleted.
 	if r.isTerminalState(job) {
 		if isJobAwaitingThresholdEvaluation(job) {
+			// A retried group's Job can finish while the measurement left by
+			// the attempt it replaced is still being deleted; create its own
+			// once that one is gone, or the thresholds wait on nothing.
+			if err := r.ensureBandwidthMeasurement(ctx, job); err != nil {
+				logf.FromContext(ctx).Error(err, "Failed to ensure BandwidthMeasurement")
+			}
 			if r.checkPerformanceThresholds(ctx, job) {
 				return ctrl.Result{RequeueAfter: r.getWorkloadRequeueInterval()}, nil
 			}
@@ -1588,10 +1594,23 @@ func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *nvc
 	log := logf.FromContext(ctx)
 	bmName := naming.Truncate(job.Name+"-bandwidth", naming.MaxK8sNameLen)
 
-	// Check if already exists
 	existing := &nvcrev1alpha1.BandwidthMeasurement{}
 	if err := r.Get(ctx, client.ObjectKey{Namespace: job.Namespace, Name: bmName}, existing); err == nil {
-		return nil // already exists
+		if measuresJob(existing, job) {
+			return nil
+		}
+		// A retried group recreates its Job under the same name, and the
+		// Workflow-owned measurement of the failed attempt outlives it. Left in
+		// place it would stand in for this attempt's measurement, so replace it;
+		// the next reconcile creates the new one once it is gone.
+		if existing.DeletionTimestamp.IsZero() {
+			log.Info("Replacing BandwidthMeasurement of an earlier Job with the same name", "name", bmName)
+			if err := r.Delete(ctx, existing, client.Preconditions{UID: new(existing.UID)}); err != nil &&
+				!apierrors.IsNotFound(err) && !apierrors.IsConflict(err) {
+				return fmt.Errorf("failed to delete stale BandwidthMeasurement: %w", err)
+			}
+		}
+		return nil
 	}
 
 	apiGroup := "nvcre.nvidia.com"
@@ -1602,6 +1621,7 @@ func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *nvc
 			labelManagedBy: managedByValue,
 			labelJobKey:    job.Name,
 		},
+		Annotations: map[string]string{annotationJobUID: string(job.UID)},
 		Spec: nvcrev1alpha1.BandwidthMeasurementSpec{
 			JobRef: corev1.TypedLocalObjectReference{
 				APIGroup: &apiGroup,
@@ -1671,6 +1691,13 @@ func (r *JobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&nvcrev1alpha1.GoodputMeasurement{})
 
 	return b.
+		// BandwidthMeasurements are owned by the Workflow when there is one,
+		// so Owns cannot map them back to the Job; the Job is named in spec.
+		Watches(
+			&nvcrev1alpha1.BandwidthMeasurement{},
+			handler.EnqueueRequestsFromMapFunc(bandwidthMeasurementToJob),
+			builder.WithPredicates(bandwidthCompletedPredicate()),
+		).
 		// Watch Nodes for health changes - maps node events to jobs via pod lookups
 		Watches(
 			&corev1.Node{},

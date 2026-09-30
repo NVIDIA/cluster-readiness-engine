@@ -845,8 +845,9 @@ func buildTolerations(selectors []nvcrev1alpha1.TaintSelector) []corev1.Tolerati
 // hasRunningGroups returns true if any group is in Running phase.
 // isBelowBandwidthThreshold checks if a Job's BandwidthMeasurement peak BusBW
 // fails the given CEL threshold expression. Returns (below, pending, err) where:
-//   - pending=true means to requeue and try again later (BM absent or has no results yet)
-//   - err!=nil means the gate could not be evaluated; the caller should fail closed
+//   - pending=true means to requeue and try again later (BM absent or not yet complete)
+//   - err!=nil means the gate could not be evaluated, including a BM that completed
+//     without final results; the caller should fail closed
 func (r *WorkflowReconciler) isBelowBandwidthThreshold(ctx context.Context, jobName, namespace, expr string) (below bool, pending bool, err error) {
 	var bwList nvcrev1alpha1.BandwidthMeasurementList
 	if listErr := r.List(ctx, &bwList, matchingJobRef(namespace, jobName)...); listErr != nil {
@@ -860,8 +861,15 @@ func (r *WorkflowReconciler) isBelowBandwidthThreshold(ctx context.Context, jobN
 	// BandwidthMeasurement, so evaluate the first and ignore any duplicate.
 	bm := &bwList.Items[0]
 
-	if !bandwidthMeasurementHasUsableResults(bm) {
+	// Results are provisional until the measurement completes from the Job's
+	// full log (issue #404). A measurement that completed without final
+	// results cannot be evaluated; failing the group keeps the gate closed.
+	if !meta.IsStatusConditionTrue(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete) {
 		return false, true, nil
+	}
+	if !bandwidthFinal(bm) {
+		reason := meta.FindStatusCondition(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete).Reason
+		return false, false, fmt.Errorf("BandwidthMeasurement %s completed without final results (%s)", bm.Name, reason)
 	}
 	measured := maxBusBandwidth(bm.Status.Results)
 	passed, evalErr := threshold.Evaluate(measured, expr)

@@ -99,7 +99,11 @@ func TestUnresolvedLogProfile(t *testing.T) {
 			}
 			c := fake.NewClientBuilder().WithScheme(scheme).
 				WithObjects(job, m).WithStatusSubresource(job, m).Build()
-			r := &BandwidthMeasurementReconciler{Client: c, Scheme: scheme, RequeueInterval: time.Second}
+			// No grace period: the final read of a terminal Job cannot succeed
+			// here (no workload, no pod), and the case pins how it completes.
+			r := &BandwidthMeasurementReconciler{
+				Client: c, Scheme: scheme, RequeueInterval: time.Second, FinalReadGracePeriod: -1,
+			}
 			if _, err := r.Reconcile(context.Background(), req); err != nil {
 				return err
 			}

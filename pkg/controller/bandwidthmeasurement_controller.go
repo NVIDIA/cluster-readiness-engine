@@ -20,9 +20,11 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	controlleropts "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -46,9 +48,20 @@ const (
 	// reasonBandwidthNoData marks a measurement that ended without parsing
 	// anything, so its result is absent rather than zero.
 	reasonBandwidthNoData = "NoDataCollected"
-)
+	noDataMessage         = "Job succeeded but no bandwidth data was parsed; check spec.logProfileRef"
+	// reasonBandwidthLogsUnavailable marks a measurement whose Job succeeded
+	// but whose complete log could not be read, so its results are the
+	// provisional samples and are not used for threshold evaluation.
+	reasonBandwidthLogsUnavailable = "LogsUnavailable"
+	// reasonBandwidthFinalReadPending marks a succeeded Job whose final log read
+	// failed and is being retried within the grace period.
+	reasonBandwidthFinalReadPending = "FinalReadPending"
 
-var errBandwidthNoData = errors.New("bandwidth measurement has no terminal pod")
+	// defaultFinalReadGracePeriod bounds how long a failed final log read is
+	// retried. It stays well under the default measurementTimeout (5m), so the
+	// Job sees a completed measurement rather than timing out on a pending one.
+	defaultFinalReadGracePeriod = 2 * time.Minute
+)
 
 // BandwidthMeasurementReconciler reconciles a BandwidthMeasurement object.
 type BandwidthMeasurementReconciler struct {
@@ -69,6 +82,12 @@ type BandwidthMeasurementReconciler struct {
 	// RequeueInterval is the interval between reconcile cycles when polling.
 	// Tests set this to 1s; production uses 15s.
 	RequeueInterval time.Duration
+
+	// FinalReadGracePeriod bounds how long a failed final log read is retried
+	// before the measurement completes without final results. Zero uses
+	// defaultFinalReadGracePeriod; a negative value completes on the first
+	// failed read.
+	FinalReadGracePeriod time.Duration
 
 	mu sync.Mutex
 	// parsers caches compiled parsers by LogProfile name, invalidated by
@@ -115,6 +134,17 @@ func (r *BandwidthMeasurementReconciler) getRequeueInterval() time.Duration {
 		return r.RequeueInterval
 	}
 	return defaultBandwidthMeasurementRequeueInterval
+}
+
+func (r *BandwidthMeasurementReconciler) finalReadGracePeriod() time.Duration {
+	switch {
+	case r.FinalReadGracePeriod > 0:
+		return r.FinalReadGracePeriod
+	case r.FinalReadGracePeriod < 0:
+		return 0
+	default:
+		return defaultFinalReadGracePeriod
+	}
 }
 
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=bandwidthmeasurements,verbs=get;list;watch;create;update;patch;delete
@@ -166,18 +196,22 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 	jobKey := types.NamespacedName{Name: measurement.Spec.JobRef.Name, Namespace: measurement.Namespace}
 	if err := r.Get(ctx, jobKey, job); err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("Referenced Job not found, requeueing", "job", jobKey)
-			return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
+			return r.handleJobNotFound(ctx, measurement, jobKey)
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get referenced Job: %w", err)
 	}
+	if !measuresJob(measurement, job) {
+		// The Job was replaced under the same name (a group retry): the one
+		// this measurement was created for is gone.
+		return r.finalizeJobGone(ctx, measurement)
+	}
 
 	// Determine Job phase from conditions.
-	if cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
-		return r.reconcileTerminal(ctx, measurement, job, reasonBandwidthJobSucceeded, "Job succeeded")
+	if meta.IsStatusConditionTrue(job.Status.Conditions, nvcrev1alpha1.JobSucceeded) {
+		return r.handleJobSucceeded(ctx, measurement, job)
 	}
-	if cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobFailed); cond != nil && cond.Status == metav1.ConditionTrue {
-		return r.reconcileTerminal(ctx, measurement, job, reasonBandwidthJobFailed, "Job failed")
+	if meta.IsStatusConditionTrue(job.Status.Conditions, nvcrev1alpha1.JobFailed) {
+		return r.handleJobFailed(ctx, measurement, job)
 	}
 	if cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobInProgress); cond != nil && cond.Status == metav1.ConditionTrue {
 		return r.handleRunning(ctx, measurement, job)
@@ -187,95 +221,24 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 	return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 }
 
-// reconcileTerminal performs the final unthrottled read before marking a
-// measurement complete. A failed final read leaves the existing partial
-// status non-terminal so the controller retries instead of publishing a
-// partial threshold result.
-func (r *BandwidthMeasurementReconciler) reconcileTerminal(
-	ctx context.Context,
-	measurement *nvcrev1alpha1.BandwidthMeasurement,
-	job *nvcrev1alpha1.Job,
-	reason, message string,
-) (ctrl.Result, error) {
-	finalErr := r.collectFinalSample(ctx, measurement, job)
-	if finalErr != nil && !errors.Is(finalErr, errBandwidthNoData) {
-		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, finalErr
-	}
-	if errors.Is(finalErr, errBandwidthNoData) {
-		reason = reasonBandwidthNoData
-		message = "Terminal worker pod was unavailable; no bandwidth data was collected"
-	}
-
-	result, err := r.handleTerminal(ctx, measurement, reason, message)
-	if err != nil {
-		return result, err
-	}
-
-	// The terminal status is now durable. Retain the final fetch anchor only
-	// after that write succeeds, so a retry can reread the complete final
-	// window without averaging it into the partial status twice.
-	key := measurement.Namespace + "/" + measurement.Name
-	now := time.Now()
-	r.mu.Lock()
-	if r.lastSample == nil {
-		r.lastSample = make(map[string]time.Time)
-	}
-	if r.lastLogFetch == nil {
-		r.lastLogFetch = make(map[string]time.Time)
-	}
-	r.lastSample[key] = now
-	r.lastLogFetch[key] = now
-	r.mu.Unlock()
-
-	return result, nil
-}
-
 func (r *BandwidthMeasurementReconciler) handleRunning(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job) (ctrl.Result, error) {
-	return r.handleSample(ctx, measurement, job, false)
-}
-
-// collectFinalSample reads the terminal log window without consulting the
-// running sample throttle or writing an intermediate status. The terminal
-// status write in handleTerminal persists the merged results and Complete
-// condition together, so consumers never observe a partially finalized
-// measurement.
-func (r *BandwidthMeasurementReconciler) collectFinalSample(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job) error {
-	_, err := r.handleSample(ctx, measurement, job, true)
-	return err
-}
-
-// handleSample reads the current workload logs. Running samples persist
-// provisional status; terminal samples prepare results for the completion
-// write performed by reconcileTerminal.
-func (r *BandwidthMeasurementReconciler) handleSample(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job, terminal bool) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	key := measurement.Namespace + "/" + measurement.Name
 
-	// Initialize the per-measurement maps before either sampling path uses
-	// them. Terminal sampling deliberately bypasses the throttle, but still
-	// runs in a fresh reconciler where these maps are nil.
+	// Throttle: skip if sampled recently.
 	r.mu.Lock()
 	if r.lastSample == nil {
 		r.lastSample = make(map[string]time.Time)
 	}
-	if r.lastLogFetch == nil {
-		r.lastLogFetch = make(map[string]time.Time)
-	}
-	// Throttle only ordinary running samples.
-	if !terminal {
-		if last, ok := r.lastSample[key]; ok && time.Since(last) < r.getSampleInterval(measurement) {
-			r.mu.Unlock()
-			return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
-		}
+	if last, ok := r.lastSample[key]; ok && time.Since(last) < r.getSampleInterval(measurement) {
+		r.mu.Unlock()
+		return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
 	}
 	r.mu.Unlock()
 
 	// Fetch and compile parser from LogProfile.
 	parser, profile, err := r.getOrCreateParser(ctx, measurement.Spec.LogProfileRef)
 	if err != nil {
-		if terminal {
-			return ctrl.Result{}, fmt.Errorf("failed final parser setup: %w", err)
-		}
 		log.Error(err, "Failed to get parser for LogProfile", "logProfile", measurement.Spec.LogProfileRef)
 		r.noteLogProfileUnresolved(ctx, measurement, err)
 		return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
@@ -293,9 +256,6 @@ func (r *BandwidthMeasurementReconciler) handleSample(ctx context.Context, measu
 		workloadName = job.Status.WorkloadRef.Name
 	}
 	if workloadName == "" {
-		if terminal {
-			return ctrl.Result{}, fmt.Errorf("referenced Job has no workloadRef for final log parse")
-		}
 		log.Info("Job has no workloadRef yet, requeueing")
 		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 	}
@@ -303,23 +263,11 @@ func (r *BandwidthMeasurementReconciler) handleSample(ctx context.Context, measu
 	discoverer := podutil.NewWorkerDiscoverer(r.podReader())
 	pod, err := discoverer.GetReplicatedJobPod(ctx, measurement.Namespace, workloadName, replicatedJobName)
 	if err != nil {
-		if terminal && errors.Is(err, podutil.ErrNoPodsFound) {
-			// The workload is terminal but its pod has already disappeared. Keep
-			// any prior results for metric cleanup, while handleTerminal marks
-			// the measurement non-evaluable as NoDataCollected.
-			return ctrl.Result{}, errBandwidthNoData
-		}
-		if terminal {
-			return ctrl.Result{}, fmt.Errorf("failed to find worker pod for final log parse: %w", err)
-		}
 		log.Info("Pod not found yet, requeueing", "replicatedJob", replicatedJobName, "error", err)
 		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 	}
 
-	if !podutil.IsPodRunning(pod) && pod.Status.Phase != corev1.PodSucceeded && pod.Status.Phase != corev1.PodFailed {
-		if terminal {
-			return ctrl.Result{}, fmt.Errorf("worker pod is not available for final log parse: phase=%s", pod.Status.Phase)
-		}
+	if !podutil.IsPodRunning(pod) && pod.Status.Phase != corev1.PodSucceeded {
 		log.Info("Pod not running yet, requeueing", "pod", pod.Name, "phase", pod.Status.Phase)
 		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
 	}
@@ -329,9 +277,6 @@ func (r *BandwidthMeasurementReconciler) handleSample(ctx context.Context, measu
 	// contain error messages rather than NCCL output.
 	containerName := profile.Spec.ContainerName
 	if restarts, waiting := podutil.ContainerRestartStatus(pod, containerName); waiting {
-		if terminal {
-			return ctrl.Result{}, fmt.Errorf("worker container is waiting for final log parse: restarts=%d", restarts)
-		}
 		log.Info("Container is waiting (CrashLoopBackOff), skipping log read",
 			"pod", pod.Name, "restarts", restarts)
 		return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
@@ -372,9 +317,6 @@ func (r *BandwidthMeasurementReconciler) handleSample(ctx context.Context, measu
 	fetcher := r.getLogFetcher()
 	lines, err := fetcher.FetchLogs(ctx, measurement.Namespace, pod.Name, opts)
 	if err != nil {
-		if terminal {
-			return ctrl.Result{}, fmt.Errorf("failed final bandwidth log read: %w", err)
-		}
 		log.Error(err, "Failed to fetch logs", "pod", pod.Name)
 		return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
 	}
@@ -409,43 +351,31 @@ func (r *BandwidthMeasurementReconciler) handleSample(ctx context.Context, measu
 		measurement.Status.StartTime = &now
 	}
 
-	if !terminal {
-		// Set Measuring condition only for ordinary samples. Terminal sampling
-		// is folded into the Complete status write below.
-		meta.SetStatusCondition(&measurement.Status.Conditions, metav1.Condition{
-			Type:               nvcrev1alpha1.BandwidthMeasurementMeasuring,
-			Status:             metav1.ConditionTrue,
-			ObservedGeneration: measurement.Generation,
-			Reason:             reasonBandwidthJobRunning,
-			Message:            "Referenced Job is running, measurement in progress",
-		})
+	// Set Measuring condition.
+	meta.SetStatusCondition(&measurement.Status.Conditions, metav1.Condition{
+		Type:               nvcrev1alpha1.BandwidthMeasurementMeasuring,
+		Status:             metav1.ConditionTrue,
+		ObservedGeneration: measurement.Generation,
+		Reason:             reasonBandwidthJobRunning,
+		Message:            "Referenced Job is running, measurement in progress",
+	})
+
+	// Emit Prometheus metrics.
+	jobName := measurement.Spec.JobRef.Name
+	workflow := measurement.Labels["nvcre.nvidia.com/workflow"]
+	ncclTest := measurement.Spec.TestType
+	for _, r := range measurement.Status.Results {
+		algBW, _ := strconv.ParseFloat(r.AlgBW, 64)
+		busBW, _ := strconv.ParseFloat(r.BusBW, 64)
+		recordNCCLBandwidthMetrics(measurement.Namespace, measurement.Name, jobName, workflow,
+			ncclTest, strconv.FormatInt(r.SizeBytes, 10), algBW, busBW)
 	}
 
-	if !terminal {
-		// Emit Prometheus metrics for running samples. Terminal completion cleans
-		// up the gauges after persisting the final result set.
-		jobName := measurement.Spec.JobRef.Name
-		workflow := measurement.Labels["nvcre.nvidia.com/workflow"]
-		ncclTest := measurement.Spec.TestType
-		for _, r := range measurement.Status.Results {
-			algBW, _ := strconv.ParseFloat(r.AlgBW, 64)
-			busBW, _ := strconv.ParseFloat(r.BusBW, 64)
-			recordNCCLBandwidthMetrics(measurement.Namespace, measurement.Name, jobName, workflow,
-				ncclTest, strconv.FormatInt(r.SizeBytes, 10), algBW, busBW)
-		}
+	if err := r.Status().Update(ctx, measurement); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to update BandwidthMeasurement status: %w", err)
 	}
 
-	if !terminal {
-		if err := r.Status().Update(ctx, measurement); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to update BandwidthMeasurement status: %w", err)
-		}
-	}
-
-	if terminal {
-		return ctrl.Result{}, nil
-	}
-	// Record sample time and advance the log fetch anchor only after the
-	// running status update succeeded.
+	// Record sample time and advance the log fetch anchor.
 	now := time.Now()
 	r.mu.Lock()
 	r.lastSample[key] = now
@@ -480,47 +410,252 @@ func (r *BandwidthMeasurementReconciler) noteLogProfileUnresolved(ctx context.Co
 	}
 }
 
-func (r *BandwidthMeasurementReconciler) handleTerminal(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, reason, message string) (ctrl.Result, error) {
-	now := metav1.Now()
-	measurement.Status.CompletionTime = &now
-
-	// A measurement that parsed nothing did not measure anything, whatever the
-	// Job did. Reporting it as a successful measurement would make partial
-	// results look evaluable to threshold consumers.
-	if len(measurement.Status.Results) == 0 {
-		reason = reasonBandwidthNoData
-		message = fmt.Sprintf("%s but no bandwidth data was parsed; check spec.logProfileRef", message)
+// handleJobSucceeded finalizes the measurement from the launcher's complete
+// log. The samples taken while the Job ran are provisional: they can stop
+// short of the end of the sweep, where the largest message sizes and so the
+// peak bandwidth are printed, and they can count a row twice when read windows
+// overlap. The final read parses every row once and replaces them, so the
+// result is a function of the log alone, whatever the sampling did.
+//
+// When the log cannot be read, the read is retried for finalReadGracePeriod
+// and the measurement then completes as LogsUnavailable (or NoDataCollected if
+// nothing was ever parsed). Threshold evaluation treats both as unmeasured, so
+// a verdict never rests on provisional data.
+func (r *BandwidthMeasurementReconciler) handleJobSucceeded(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job) (ctrl.Result, error) {
+	anchor := terminalAnchor(job)
+	final, readErr := r.readFinalResults(ctx, measurement, job)
+	if readErr == nil {
+		if len(final) == 0 {
+			return r.finalizeTerminal(ctx, measurement, anchor, terminalOutcome{
+				reason: reasonBandwidthNoData, message: noDataMessage, results: final, replace: true,
+			})
+		}
+		return r.finalizeTerminal(ctx, measurement, anchor, terminalOutcome{
+			reason: reasonBandwidthJobSucceeded, message: "Job succeeded", results: final, replace: true,
+		})
 	}
 
-	meta.SetStatusCondition(&measurement.Status.Conditions, metav1.Condition{
-		Type:               nvcrev1alpha1.BandwidthMeasurementMeasuring,
-		Status:             metav1.ConditionFalse,
-		ObservedGeneration: measurement.Generation,
-		Reason:             reason,
-		Message:            message,
-	})
-	meta.SetStatusCondition(&measurement.Status.Conditions, metav1.Condition{
-		Type:               nvcrev1alpha1.BandwidthMeasurementComplete,
-		Status:             metav1.ConditionTrue,
-		ObservedGeneration: measurement.Generation,
-		Reason:             reason,
-		Message:            message,
-	})
+	// A log that cannot be paged fails the same way on every attempt.
+	retryable := !errors.Is(readErr, podlogs.ErrLogUnpageable)
+	pendingSince := finalReadPendingSince(measurement)
+	if pendingSince.IsZero() {
+		pendingSince = time.Now()
+	}
+	if wait := r.finalReadGracePeriod() - time.Since(pendingSince); retryable && wait > 0 {
+		r.warnf(measurement, reasonBandwidthFinalReadPending, "Final log read failed, retrying: %v", readErr)
+		if err := r.markFinalReadPending(ctx, measurement); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{RequeueAfter: min(wait, r.getRequeueInterval())}, nil
+	}
 
-	if err := r.Status().Update(ctx, measurement); err != nil {
+	if len(measurement.Status.Results) == 0 {
+		return r.finalizeTerminal(ctx, measurement, anchor, terminalOutcome{
+			reason: reasonBandwidthNoData, message: noDataMessage,
+		})
+	}
+	return r.finalizeTerminal(ctx, measurement, anchor, terminalOutcome{
+		reason: reasonBandwidthLogsUnavailable,
+		message: fmt.Sprintf("Job succeeded but its log could not be read in full (%v); "+
+			"results are provisional and are not used for threshold evaluation", readErr),
+	})
+}
+
+// handleJobFailed makes one best-effort final read without a grace period: the
+// Workflow deletes a failed Job's workload at once, and a failed Job is never
+// evaluated against thresholds. Failing that, the provisional results stay.
+func (r *BandwidthMeasurementReconciler) handleJobFailed(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job) (ctrl.Result, error) {
+	outcome := terminalOutcome{reason: reasonBandwidthJobFailed, message: "Job failed"}
+	if final, err := r.readFinalResults(ctx, measurement, job); err == nil && len(final) > 0 {
+		outcome.results, outcome.replace = final, true
+	}
+	return r.finalizeTerminal(ctx, measurement, terminalAnchor(job), outcome)
+}
+
+// handleJobNotFound completes a measurement whose Job is gone, once the API
+// server confirms it: an iteration's Jobs are deleted with their workloads, and
+// without this the measurement would requeue for as long as it exists. A cache
+// miss alone is not proof, so without an API reader the measurement waits.
+func (r *BandwidthMeasurementReconciler) handleJobNotFound(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, jobKey types.NamespacedName) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+	if r.APIReader == nil {
+		log.Info("Referenced Job not found, requeueing", "job", jobKey)
+		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
+	}
+	if err := r.APIReader.Get(ctx, jobKey, &nvcrev1alpha1.Job{}); !apierrors.IsNotFound(err) {
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to confirm referenced Job %s: %w", jobKey, err)
+		}
+		log.Info("Referenced Job not yet in cache, requeueing", "job", jobKey)
+		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
+	}
+	// A measurement can be created before its Job, for example by applying
+	// both at once. Only one that has seen its Job knows it is gone.
+	if !sawJob(measurement) {
+		log.Info("Referenced Job does not exist yet, requeueing", "job", jobKey)
+		return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
+	}
+	return r.finalizeJobGone(ctx, measurement)
+}
+
+// sawJob reports whether a measurement shows its Job existed: it was created
+// for a Job instance, or it has measured.
+func sawJob(measurement *nvcrev1alpha1.BandwidthMeasurement) bool {
+	_, created := measurement.Annotations[annotationJobUID]
+	return created || measurement.Status.StartTime != nil || len(measurement.Status.Results) > 0 ||
+		meta.FindStatusCondition(measurement.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementMeasuring) != nil
+}
+
+// finalizeJobGone completes a measurement whose Job no longer exists.
+func (r *BandwidthMeasurementReconciler) finalizeJobGone(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement) (ctrl.Result, error) {
+	outcome := terminalOutcome{
+		reason:  reasonBandwidthLogsUnavailable,
+		message: "Referenced Job no longer exists; results are provisional and are not used for threshold evaluation",
+	}
+	if len(measurement.Status.Results) == 0 {
+		outcome = terminalOutcome{reason: reasonBandwidthNoData, message: "Referenced Job no longer exists; no bandwidth data was parsed"}
+	}
+	return r.finalizeTerminal(ctx, measurement, time.Now(), outcome)
+}
+
+// readFinalResults reads the launcher's current log in full and aggregates
+// every bandwidth row in it, each exactly once.
+func (r *BandwidthMeasurementReconciler) readFinalResults(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job) ([]nvcrev1alpha1.BandwidthResult, error) {
+	if job.Status.WorkloadRef == nil || job.Status.WorkloadRef.Name == "" {
+		return nil, fmt.Errorf("job %s has no workload reference", job.Name)
+	}
+	parser, profile, err := r.getOrCreateParser(ctx, measurement.Spec.LogProfileRef)
+	if err != nil {
+		return nil, err
+	}
+	replicatedJobName := labelNode
+	if profile.Spec.WorkerStrategy != nil && profile.Spec.WorkerStrategy.ReplicatedJobName != "" {
+		replicatedJobName = profile.Spec.WorkerStrategy.ReplicatedJobName
+	}
+	pod, err := podutil.NewWorkerDiscoverer(r.podReader()).GetReplicatedJobPod(
+		ctx, measurement.Namespace, job.Status.WorkloadRef.Name, replicatedJobName)
+	if err != nil {
+		return nil, err
+	}
+	// Only a finished pod's log is final; a pod still running may yet write
+	// the rows the read exists to capture.
+	if pod.Status.Phase != corev1.PodSucceeded && pod.Status.Phase != corev1.PodFailed {
+		return nil, fmt.Errorf("pod %s has not finished (%s)", pod.Name, pod.Status.Phase)
+	}
+
+	var points []nccl.BandwidthDataPoint
+	err = podlogs.ReadAll(ctx, r.getLogFetcher(), measurement.Namespace, pod.Name,
+		podlogs.ReadAllOptions{Container: profile.Spec.ContainerName},
+		func(line string) {
+			if dp, ok := parser.ParseBandwidthLine(line); ok {
+				points = append(points, dp)
+			}
+		})
+	if err != nil {
+		return nil, fmt.Errorf("reading log of pod %s: %w", pod.Name, err)
+	}
+	// Aggregating into an empty set averages each size over its rows and
+	// rounds once, so the result does not depend on how rows were batched.
+	return mergeBandwidthResults(nil, points), nil
+}
+
+// terminalOutcome is what a measurement completes with. results replace the
+// provisional ones only when replace is set.
+type terminalOutcome struct {
+	reason  string
+	message string
+	results []nvcrev1alpha1.BandwidthResult
+	replace bool
+}
+
+// finalizeTerminal writes the terminal status in one update: results,
+// completionTime anchored to the Job's terminal transition, Measuring=False and
+// Complete=True. It is a no-op on a measurement that is already Complete, so a
+// replay from a stale cache cannot overwrite the first terminal write.
+func (r *BandwidthMeasurementReconciler) finalizeTerminal(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement, anchor time.Time, outcome terminalOutcome) (ctrl.Result, error) {
+	provisional := measurement.Status.Results
+	completion := metav1.NewTime(anchor)
+	err := updateStatusWithRetry(ctx, r.Client, measurement, func(m *nvcrev1alpha1.BandwidthMeasurement) bool {
+		if meta.IsStatusConditionTrue(m.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete) {
+			return false
+		}
+		if outcome.replace {
+			m.Status.Results = outcome.results
+		}
+		m.Status.CompletionTime = &completion
+		meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
+			Type:               nvcrev1alpha1.BandwidthMeasurementMeasuring,
+			Status:             metav1.ConditionFalse,
+			ObservedGeneration: m.Generation,
+			Reason:             outcome.reason,
+			Message:            outcome.message,
+		})
+		meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
+			Type:               nvcrev1alpha1.BandwidthMeasurementComplete,
+			Status:             metav1.ConditionTrue,
+			ObservedGeneration: m.Generation,
+			Reason:             outcome.reason,
+			Message:            outcome.message,
+		})
+		return true
+	})
+	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update BandwidthMeasurement status: %w", err)
 	}
 
-	// Clean up NCCL bandwidth gauges so stale values don't persist in Prometheus.
-	jobName := measurement.Spec.JobRef.Name
-	workflow := measurement.Labels["nvcre.nvidia.com/workflow"]
-	sizes := make([]string, 0, len(measurement.Status.Results))
-	for _, r := range measurement.Status.Results {
-		sizes = append(sizes, strconv.FormatInt(r.SizeBytes, 10))
+	// Clean up NCCL bandwidth gauges so stale values don't persist in
+	// Prometheus. Provisional samples can carry sizes the final read does not,
+	// so both sets are cleared.
+	sizes := make([]string, 0, len(provisional)+len(measurement.Status.Results))
+	for _, set := range [][]nvcrev1alpha1.BandwidthResult{provisional, measurement.Status.Results} {
+		for _, res := range set {
+			sizes = append(sizes, strconv.FormatInt(res.SizeBytes, 10))
+		}
 	}
-	cleanupNCCLBandwidthMetrics(measurement.Namespace, measurement.Name, jobName, workflow, measurement.Spec.TestType, sizes)
+	cleanupNCCLBandwidthMetrics(measurement.Namespace, measurement.Name, measurement.Spec.JobRef.Name,
+		measurement.Labels["nvcre.nvidia.com/workflow"], measurement.Spec.TestType, sizes)
+	r.forgetSampling(measurement.Namespace + "/" + measurement.Name)
 
 	return ctrl.Result{}, nil
+}
+
+// finalReadPendingSince returns when the final read first failed, or zero if
+// it has not. It is read from status so the grace period survives a
+// controller restart.
+func finalReadPendingSince(measurement *nvcrev1alpha1.BandwidthMeasurement) time.Time {
+	cond := meta.FindStatusCondition(measurement.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementMeasuring)
+	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != reasonBandwidthFinalReadPending {
+		return time.Time{}
+	}
+	return cond.LastTransitionTime.Time
+}
+
+// markFinalReadPending records the first failed final read. The condition is
+// replaced rather than updated so its transition time is when the wait began,
+// even if Measuring was already False for another reason.
+func (r *BandwidthMeasurementReconciler) markFinalReadPending(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement) error {
+	return updateStatusWithRetry(ctx, r.Client, measurement, func(m *nvcrev1alpha1.BandwidthMeasurement) bool {
+		if !finalReadPendingSince(m).IsZero() {
+			return false
+		}
+		meta.RemoveStatusCondition(&m.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementMeasuring)
+		meta.SetStatusCondition(&m.Status.Conditions, metav1.Condition{
+			Type:               nvcrev1alpha1.BandwidthMeasurementMeasuring,
+			Status:             metav1.ConditionFalse,
+			ObservedGeneration: m.Generation,
+			Reason:             reasonBandwidthFinalReadPending,
+			Message:            "Job succeeded; waiting to read its complete log",
+		})
+		return true
+	})
+}
+
+// forgetSampling drops the in-memory sampling state of a measurement.
+func (r *BandwidthMeasurementReconciler) forgetSampling(key string) {
+	r.mu.Lock()
+	delete(r.lastSample, key)
+	delete(r.lastLogFetch, key)
+	r.mu.Unlock()
 }
 
 func (r *BandwidthMeasurementReconciler) handleDeletion(ctx context.Context, measurement *nvcrev1alpha1.BandwidthMeasurement) (ctrl.Result, error) {
@@ -535,13 +670,7 @@ func (r *BandwidthMeasurementReconciler) handleDeletion(ctx context.Context, mea
 			sizes = append(sizes, strconv.FormatInt(r.SizeBytes, 10))
 		}
 		cleanupNCCLBandwidthMetrics(measurement.Namespace, measurement.Name, jobName, workflow, measurement.Spec.TestType, sizes)
-
-		// Clean up in-memory state for this measurement.
-		key := measurement.Namespace + "/" + measurement.Name
-		r.mu.Lock()
-		delete(r.lastSample, key)
-		delete(r.lastLogFetch, key)
-		r.mu.Unlock()
+		r.forgetSampling(measurement.Namespace + "/" + measurement.Name)
 
 		controllerutil.RemoveFinalizer(measurement, bandwidthMeasurementFinalizer)
 		if err := r.Update(ctx, measurement); err != nil {
@@ -667,6 +796,11 @@ func (r *BandwidthMeasurementReconciler) warnf(obj runtime.Object, reason, messa
 func (r *BandwidthMeasurementReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nvcrev1alpha1.BandwidthMeasurement{}).
+		Watches(
+			&nvcrev1alpha1.Job{},
+			handler.EnqueueRequestsFromMapFunc(r.jobToBandwidthMeasurements),
+			builder.WithPredicates(jobPhaseChangePredicate()),
+		).
 		Named("bandwidthmeasurement").
 		WithOptions(controlleropts.Options{MaxConcurrentReconciles: r.MaxConcurrentReconciles}).
 		Complete(r)

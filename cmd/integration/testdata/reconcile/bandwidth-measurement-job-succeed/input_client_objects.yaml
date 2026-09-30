@@ -84,7 +84,7 @@ spec:
     - name: node
       image: test-image:latest
 status:
-  phase: Running
+  phase: Succeeded
 ---
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: BandwidthMeasurement
