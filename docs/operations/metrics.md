@@ -39,6 +39,19 @@ spec:
 
 The gauge is set for all three status values on each update, ensuring that a transition from `in_progress` to `succeeded` also zeroes out the `in_progress` series. Metrics are cleaned up when a Job is deleted.
 
+## Certification and Workflow status metrics
+
+Certification and Workflow conditions are the operator-facing source of truth (`kubectl get certifications,workflows`). These gauges mirror `nvcre_job_status` so a status panel can show the verdict of a run even when Job series are missing, stale, or wrong.
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `nvcre_certification_status` | Gauge | `namespace`, `certification`, `status` | Current status of Certifications. Value is `1` for the current status, `0` for others. Status values: `in_progress`, `succeeded`, `failed` (mapped from the InProgress / Succeeded / Failed condition types). |
+| `nvcre_workflow_status` | Gauge | `namespace`, `workflow`, `certification`, `status` | Current status of Workflows. Value is `1` for the current status, `0` for others. Same status values as Certification. `certification` is the owning Certification name, or empty for a standalone Workflow. |
+
+Like `nvcre_job_status`, each update sets the current status to `1` and peer statuses to `0`. Series are removed with `DeletePartialMatch` on namespace+name when the object is deleted, so cardinality does not grow with completed runs. Reason strings are not exported as labels.
+
+These gauges do not change how or when `nvcre_job_status` is updated.
+
 ## Hardware failure metrics
 
 | Metric | Type | Labels | Description |
@@ -120,6 +133,25 @@ NCCL bandwidth metrics are cleaned up when a BandwidthMeasurement is deleted.
 | `nvcre_topology_failed_nodes` | Gauge | `namespace`, `workflow`, `topology_key`, `domain`, `node` | Set to `1` for each node that failed burn-in validation. Useful for identifying bad switches, racks, or NVLink cliques from Prometheus. |
 
 ## Example PromQL queries
+
+### Certification and Workflow status
+
+```promql
+# Certifications that have failed
+nvcre_certification_status{status="failed"} == 1
+
+# Currently running Certifications
+nvcre_certification_status{status="in_progress"} == 1
+
+# Certification status breakdown per namespace
+sum by (namespace, status) (nvcre_certification_status == 1)
+
+# Failed Workflows, grouped by owning Certification
+nvcre_workflow_status{status="failed"} == 1
+
+# Workflows still in progress for a Certification
+nvcre_workflow_status{status="in_progress", certification="gpu-cluster-cert"} == 1
+```
 
 ### Job status
 
@@ -243,6 +275,20 @@ spec:
               below the 75% threshold. Check for frequent checkpointing
               or rescheduling overhead.
 
+        # Alert when a Certification has failed
+        - alert: NVCRECertificationFailed
+          expr: |
+            nvcre_certification_status{status="failed"} == 1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "NVCRE Certification {{ $labels.certification }} failed"
+            description: >
+              Certification {{ $labels.certification }} in namespace
+              {{ $labels.namespace }} is Failed. Inspect category status
+              and Workflow conditions for the failing domain/variant.
+
         # Alert when a job appears stuck (in_progress for too long)
         - alert: NVCREJobStuck
           expr: |
@@ -263,7 +309,8 @@ spec:
 
 ## See also
 
+- [Certification API](../api-reference/certification.md) — the resource that emits certification status metrics
 - [Job API](../api-reference/job.md) — the resource that emits job status and hardware failure metrics
 - [GoodputMeasurement API](../api-reference/goodput-measurement.md) and [BandwidthMeasurement API](../api-reference/bandwidth-measurement.md) — the resources that populate goodput and bandwidth metrics
-- [Workflow API](../api-reference/workflow.md) — the resource that populates topology validation metrics
+- [Workflow API](../api-reference/workflow.md) — the resource that emits workflow status and topology validation metrics
 - [Goodput & Bandwidth Measurement](../concepts/goodput-bandwidth.md) — conceptual overview of the goodput formula and its components

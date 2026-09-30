@@ -206,6 +206,176 @@ func TestCleanupJobMetrics(t *testing.T) {
 	})
 }
 
+func TestRecordCertificationStatus(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "record-certification-status",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			Status         string `yaml:"status"`
+			PreviousStatus string `yaml:"previousStatus"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		const testNS = "default"
+		ns, cert := testNS, "cert-"+tc.Name
+
+		if input.PreviousStatus != "" {
+			recordCertificationStatus(ns, cert, input.PreviousStatus)
+		}
+		recordCertificationStatus(ns, cert, input.Status)
+		defer cleanupCertificationMetrics(ns, cert)
+
+		result := map[string]float64{
+			"in_progress": promtest.ToFloat64(certificationStatusGauge.WithLabelValues(ns, cert, "in_progress")),
+			"succeeded":   promtest.ToFloat64(certificationStatusGauge.WithLabelValues(ns, cert, "succeeded")),
+			"failed":      promtest.ToFloat64(certificationStatusGauge.WithLabelValues(ns, cert, "failed")),
+		}
+
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
+func TestCleanupCertificationMetrics(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "cleanup-certification-metrics",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			Status string `yaml:"status"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		const testNS = "default"
+		ns, cert := testNS, "cert-cleanup-"+tc.Name
+
+		baseline := promtest.CollectAndCount(certificationStatusGauge)
+		recordCertificationStatus(ns, cert, input.Status)
+		grew := promtest.CollectAndCount(certificationStatusGauge) > baseline
+		cleanupCertificationMetrics(ns, cert)
+		restored := promtest.CollectAndCount(certificationStatusGauge) == baseline
+
+		data, err := json.MarshalIndent(struct {
+			GrewAfterRecording          bool `json:"grewAfterRecording"`
+			RestoredToBaselineOnCleanup bool `json:"restoredToBaselineOnCleanup"`
+		}{GrewAfterRecording: grew, RestoredToBaselineOnCleanup: restored}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
+func TestRecordWorkflowStatus(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "record-workflow-status",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			Status         string `yaml:"status"`
+			Certification  string `yaml:"certification"`
+			PreviousStatus string `yaml:"previousStatus"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		const testNS = "default"
+		ns, wf, cert := testNS, "wf-"+tc.Name, input.Certification
+
+		if input.PreviousStatus != "" {
+			recordWorkflowStatus(ns, wf, cert, input.PreviousStatus)
+		}
+		recordWorkflowStatus(ns, wf, cert, input.Status)
+		defer cleanupWorkflowStatusMetrics(ns, wf)
+
+		result := map[string]float64{
+			"in_progress": promtest.ToFloat64(workflowStatusGauge.WithLabelValues(ns, wf, cert, "in_progress")),
+			"succeeded":   promtest.ToFloat64(workflowStatusGauge.WithLabelValues(ns, wf, cert, "succeeded")),
+			"failed":      promtest.ToFloat64(workflowStatusGauge.WithLabelValues(ns, wf, cert, "failed")),
+		}
+
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
+func TestCleanupWorkflowStatusMetrics(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "cleanup-workflow-status-metrics",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			Status        string `yaml:"status"`
+			Certification string `yaml:"certification"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		const testNS = "default"
+		ns, wf := testNS, "wf-cleanup-"+tc.Name
+
+		baseline := promtest.CollectAndCount(workflowStatusGauge)
+		recordWorkflowStatus(ns, wf, input.Certification, input.Status)
+		grew := promtest.CollectAndCount(workflowStatusGauge) > baseline
+		cleanupWorkflowStatusMetrics(ns, wf)
+		restored := promtest.CollectAndCount(workflowStatusGauge) == baseline
+
+		data, err := json.MarshalIndent(struct {
+			GrewAfterRecording          bool `json:"grewAfterRecording"`
+			RestoredToBaselineOnCleanup bool `json:"restoredToBaselineOnCleanup"`
+		}{GrewAfterRecording: grew, RestoredToBaselineOnCleanup: restored}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
+func TestMetricStatusFromCondition(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "metric-status-from-condition",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			ConditionType string `yaml:"conditionType"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		data, err := json.MarshalIndent(struct {
+			Status string `json:"status"`
+		}{Status: metricStatusFromCondition(input.ConditionType)}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
 func TestRecordTopologyValidatedNodes(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "record-topology-validated-nodes",

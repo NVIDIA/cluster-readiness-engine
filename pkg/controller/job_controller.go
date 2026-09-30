@@ -1494,17 +1494,7 @@ func (r *JobReconciler) setExclusiveCondition(ctx context.Context, job *nvcrev1a
 	}
 
 	if changed {
-		// Record job status metric
-		var metricStatus string
-		switch conditionType {
-		case nvcrev1alpha1.JobInProgress:
-			metricStatus = "in_progress"
-		case nvcrev1alpha1.JobSucceeded:
-			metricStatus = "succeeded"
-		case nvcrev1alpha1.JobFailed:
-			metricStatus = "failed"
-		}
-		recordJobStatus(job.Namespace, job.Name, job.Labels["nvcre.nvidia.com/workflow"], metricStatus)
+		recordJobStatus(job.Namespace, job.Name, job.Labels["nvcre.nvidia.com/workflow"], metricStatusFromCondition(conditionType))
 		logf.FromContext(ctx).Info("Job status updated", "status", conditionType, "reason", reason)
 	}
 	return nil

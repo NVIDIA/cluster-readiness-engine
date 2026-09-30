@@ -1076,6 +1076,7 @@ func (r *CertificationReconciler) setExclusiveCondition(ctx context.Context, cer
 			transition.Condition.Reason, "%s", transition.Condition.Message)
 	}
 	if changed {
+		recordCertificationStatus(certification.Namespace, certification.Name, metricStatusFromCondition(conditionType))
 		logf.FromContext(ctx).Info("Certification status updated", "status", conditionType, "reason", reason)
 	}
 	return nil
@@ -1180,6 +1181,8 @@ func (r *CertificationReconciler) handleDeletion(ctx context.Context, certificat
 			return ctrl.Result{}, fmt.Errorf("failed to get Workflow %s for deletion: %w", catStatus.WorkflowRef.Name, err)
 		}
 	}
+
+	cleanupCertificationMetrics(certification.Namespace, certification.Name)
 
 	log.Info("Removing finalizer from Certification")
 	controllerutil.RemoveFinalizer(certification, certificationFinalizer)

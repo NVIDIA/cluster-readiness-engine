@@ -45,6 +45,8 @@ The table below highlights the most important metrics. See the [Metrics Referenc
 
 | Metric | Type | What it tells you |
 |--------|------|-------------------|
+| `nvcre_certification_status` | Gauge | Current state of each Certification (in_progress, succeeded, failed) |
+| `nvcre_workflow_status` | Gauge | Current state of each Workflow (in_progress, succeeded, failed) |
 | `nvcre_job_status` | Gauge | Current state of each job (in_progress, succeeded, failed) |
 | `nvcre_job_failed_nodes` | Gauge | Number of nodes with hardware failures per job |
 | `nvcre_hardware_failures_detected_total` | Counter | Cumulative hardware failure detections per node |

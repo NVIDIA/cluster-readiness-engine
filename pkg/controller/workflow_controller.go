@@ -2662,6 +2662,7 @@ func (r *WorkflowReconciler) setExclusiveCondition(ctx context.Context, workflow
 			transition.Condition.Reason, "%s", transition.Condition.Message)
 	}
 	if changed {
+		recordWorkflowStatus(workflow.Namespace, workflow.Name, workflow.Labels[labelCertification], metricStatusFromCondition(conditionType))
 		logf.FromContext(ctx).Info("Workflow status updated", "status", conditionType, "reason", reason)
 	}
 	return nil
@@ -2925,6 +2926,8 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *nvcre
 	if pvPending {
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
+
+	cleanupWorkflowStatusMetrics(workflow.Namespace, workflow.Name)
 
 	// Clean up topology metrics.
 	if orch := workflow.Status.Orchestration; orch != nil {
