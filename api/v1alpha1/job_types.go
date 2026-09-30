@@ -246,6 +246,8 @@ type JobSpec struct {
 	// nodeHealthMonitor configures hardware failure detection for nodes
 	// running this job's pods. When a failure is detected, the job will
 	// be marked with the HardwareFailed condition.
+	// This field is immutable, including its presence: a Job created without it
+	// cannot add it later.
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="nodeHealthMonitor is immutable"
 	NodeHealthMonitor *NodeHealthMonitor `json:"nodeHealthMonitor,omitempty"`
@@ -284,6 +286,8 @@ type JobSpec struct {
 	// When absent, no measurement is created (suitable for non-training jobs).
 	// Manually-created GoodputMeasurements continue to work via the existing
 	// List-based lookup.
+	// This field is immutable, including its presence: a Job created without it
+	// cannot add it later.
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="goodputMeasurement is immutable"
 	GoodputMeasurement *GoodputMeasurementConfig `json:"goodputMeasurement,omitempty"`
@@ -291,6 +295,8 @@ type JobSpec struct {
 	// bandwidthMeasurement configures automatic creation of a BandwidthMeasurement
 	// child resource that tracks NCCL bandwidth metrics by parsing pod logs.
 	// When absent, no measurement is created (suitable for non-NCCL jobs).
+	// This field is immutable, including its presence: a Job created without it
+	// cannot add it later.
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="bandwidthMeasurement is immutable"
 	BandwidthMeasurement *BandwidthMeasurementConfig `json:"bandwidthMeasurement,omitempty"`
