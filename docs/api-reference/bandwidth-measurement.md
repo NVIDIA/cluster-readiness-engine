@@ -51,6 +51,6 @@ Each `BandwidthResult` entry contains:
 
 A threshold on `busBandwidthGBps` or `algBandwidthGBps` is evaluated only against final results. Any other outcome leaves the value unmeasured, and the Job fails validation once its `measurementTimeout` expires. In diagnose mode, the group is treated as failed.
 
-If the final read fails, for example because the launcher pod's log is briefly unreachable, `Measuring` is set to `False` with reason `FinalReadPending` and the read is retried for up to two minutes before the measurement completes as `LogsUnavailable`.
+If the final read fails, for example because the launcher pod's log is briefly unreachable, `Measuring` is set to `False` with reason `FinalReadPending` and the read is retried for as long as the Job waits for measurement data: its `measurementTimeout` (5m by default), and never less than two minutes. After that the measurement completes as `LogsUnavailable`.
 
 The final read covers the container's current log file. If the kubelet rotated the file while the Job ran, which happens only when the container logs more than the node's `containerLogMaxSize` (10Mi by default), rows in the rotated file are not part of the final results.

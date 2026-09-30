@@ -1,0 +1,9 @@
+# The final read has failed for 3 minutes, past the 2-minute floor, but the
+# Job waits 10 minutes for a result: retrying continues.
+jobCondition: Succeeded
+podPhase: Succeeded
+pendingForSeconds: 180
+measurementTimeout: 10m
+provisional:
+  - {sizeBytes: 8, algBW: "0.00", busBW: "0.00", samples: 5}
+  - {sizeBytes: 1048576, algBW: "14.00", busBW: "27.00", samples: 5}

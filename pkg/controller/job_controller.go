@@ -137,11 +137,17 @@ func (r *JobReconciler) getWorkloadRequeueInterval() time.Duration {
 // getMeasurementTimeout returns the effective timeout for waiting on measurement data
 // after a Job has succeeded. Priority: Job.Spec > reconciler field > default (5m).
 func (r *JobReconciler) getMeasurementTimeout(job *nvcrev1alpha1.Job) time.Duration {
+	return measurementTimeoutFor(job, r.MeasurementTimeout)
+}
+
+// measurementTimeoutFor resolves a Job's measurement timeout: its spec, else
+// the configured value, else defaultMeasurementTimeout.
+func measurementTimeoutFor(job *nvcrev1alpha1.Job, configured time.Duration) time.Duration {
 	if job.Spec.MeasurementTimeout != nil && job.Spec.MeasurementTimeout.Duration > 0 {
 		return job.Spec.MeasurementTimeout.Duration
 	}
-	if r.MeasurementTimeout > 0 {
-		return r.MeasurementTimeout
+	if configured > 0 {
+		return configured
 	}
 	return defaultMeasurementTimeout
 }
