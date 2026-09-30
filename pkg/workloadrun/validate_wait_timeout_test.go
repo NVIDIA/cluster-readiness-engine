@@ -68,9 +68,12 @@ func TestValidateWaitTimeout(t *testing.T) {
 }
 
 func TestNewWorkloadRunRunCommandRejectsNonPositiveTimeout(t *testing.T) {
+	// Dummy positional arg to satisfy ExactArgs(1); validation returns before the file is read.
+	const dummyRunFile = "run.yaml"
+
 	t.Run("zero timeout with wait", func(t *testing.T) {
 		cmd := newWorkloadRunRunCommand()
-		cmd.SetArgs([]string{"--wait", "--timeout=0", "run.yaml"})
+		cmd.SetArgs([]string{"--wait", "--timeout=0", dummyRunFile})
 		err := cmd.Execute()
 		require.Error(t, err)
 		assert.Equal(t, "--timeout must be positive, got 0s", err.Error())
@@ -78,7 +81,7 @@ func TestNewWorkloadRunRunCommandRejectsNonPositiveTimeout(t *testing.T) {
 
 	t.Run("negative timeout with wait", func(t *testing.T) {
 		cmd := newWorkloadRunRunCommand()
-		cmd.SetArgs([]string{"--wait", "--timeout=-1s", "run.yaml"})
+		cmd.SetArgs([]string{"--wait", "--timeout=-1s", dummyRunFile})
 		err := cmd.Execute()
 		require.Error(t, err)
 		assert.Equal(t, "--timeout must be positive, got -1s", err.Error())
@@ -86,7 +89,7 @@ func TestNewWorkloadRunRunCommandRejectsNonPositiveTimeout(t *testing.T) {
 
 	t.Run("explicit zero timeout without wait", func(t *testing.T) {
 		cmd := newWorkloadRunRunCommand()
-		cmd.SetArgs([]string{"--timeout=0", "run.yaml"})
+		cmd.SetArgs([]string{"--timeout=0", dummyRunFile})
 		err := cmd.Execute()
 		require.Error(t, err)
 		assert.Equal(t, "--timeout must be positive, got 0s", err.Error())
