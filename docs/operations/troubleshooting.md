@@ -259,6 +259,27 @@ kubectl logs <pod-name> | head -50
 - The workload has not produced output yet — bandwidth results appear only after the NCCL test completes its message-size sweep.
 - The `replicatedJobName` is wrong — for MPI workloads, set `workerStrategy.replicatedJobName: launcher` in the LogProfile since NCCL output goes to the launcher pod.
 
+## Bandwidth threshold fails with MeasurementTimeout
+
+**Symptoms:** A Job succeeded, but `ValidationFailed` is `True` with reason `MeasurementTimeout` for `busBandwidthGBps` or `algBandwidthGBps`, and its BandwidthMeasurement is `Complete` with reason `LogsUnavailable` or `NoDataCollected`.
+
+Bandwidth thresholds are evaluated only against final results, read from the launcher's full log after the Job succeeds. The measurement could not produce them, so the value stays unmeasured and validation fails once `measurementTimeout` expires.
+
+**Diagnosis:**
+
+```bash
+# The Complete condition's message names the cause
+kubectl get bandwidthmeasurement <name> -o jsonpath='{.status.conditions[?(@.type=="Complete")]}'
+
+# Retries of the final read are recorded as Warning events
+kubectl get events --field-selector involvedObject.name=<name>
+```
+
+**Solutions:**
+
+- `LogsUnavailable` with an error reading the pod log — the launcher pod or its log was gone or unreachable for the whole retry period. Check that nothing deletes the TrainJob or its pods before thresholds are evaluated, and that the controller can reach the kubelet for `pods/log`.
+- `NoDataCollected` — see [BandwidthMeasurement not reporting results](#bandwidthmeasurement-not-reporting-results).
+
 ## Enable debug logging
 
 For deeper investigation, enable debug-level logging by adding the flag to the manager container args:
