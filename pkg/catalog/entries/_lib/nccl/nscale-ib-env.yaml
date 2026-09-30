@@ -12,9 +12,15 @@
 # NCCL_SOCKET_IFNAME pins bootstrap to the pod network: NCCL prefers ib*
 # netdevs, and on B200 nodes those are up with only an IPv6 link-local
 # address (no IPoIB), so cross-node bootstrap times out.
+#
+# NCCL_NET=IB makes NCCL fail rather than silently fall back to the Socket
+# transport (over eth0) when the claimed HCAs are unusable; TCP data traffic
+# is never correct on NKS.
 
 - name: NCCL_SOCKET_IFNAME
   value: eth0
+- name: NCCL_NET
+  value: IB
 - name: NCCL_DEBUG
   value: INFO
 - name: NCCL_NVLS_ENABLE
