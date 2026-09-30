@@ -219,6 +219,7 @@ type GoodputMeasurementConfig struct {
 // forbids all three transitions, so a Job cannot drop workloadMetadata and
 // re-add it under a different queue.
 // +kubebuilder:validation:XValidation:rule="has(self.workloadMetadata) == has(oldSelf.workloadMetadata)",message="workloadMetadata cannot be added or removed after creation"
+// +kubebuilder:validation:XValidation:rule="has(self.nodeHealthMonitor) == has(oldSelf.nodeHealthMonitor) && has(self.goodputMeasurement) == has(oldSelf.goodputMeasurement) && has(self.bandwidthMeasurement) == has(oldSelf.bandwidthMeasurement)",message="nodeHealthMonitor, goodputMeasurement, and bandwidthMeasurement cannot be added or removed after creation"
 type JobSpec struct {
 	// workload defines the workload to run.
 	// The workload is created as a child resource of the Job.

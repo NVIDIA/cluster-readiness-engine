@@ -6932,6 +6932,11 @@ spec:
                     x-kubernetes-validations:
                     - message: workloadMetadata cannot be added or removed after creation
                       rule: has(self.workloadMetadata) == has(oldSelf.workloadMetadata)
+                    - message: nodeHealthMonitor, goodputMeasurement, and bandwidthMeasurement
+                        cannot be added or removed after creation
+                      rule: has(self.nodeHealthMonitor) == has(oldSelf.nodeHealthMonitor)
+                        && has(self.goodputMeasurement) == has(oldSelf.goodputMeasurement)
+                        && has(self.bandwidthMeasurement) == has(oldSelf.bandwidthMeasurement)
                 required:
                 - spec
                 type: object
