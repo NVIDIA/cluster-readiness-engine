@@ -857,11 +857,20 @@ func (r *WorkflowReconciler) isBelowBandwidthThreshold(ctx context.Context, jobN
 	// measurement created for this instance of it, not one left by an earlier
 	// Job of the same name.
 	job := &nvcrev1alpha1.Job{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: jobName}, job); err != nil {
-		if apierrors.IsNotFound(err) {
+	key := client.ObjectKey{Namespace: namespace, Name: jobName}
+	if err := r.Get(ctx, key, job); err != nil {
+		// A cache miss is not proof of deletion; confirm before failing the
+		// group. A Job that really is gone can never be evaluated, and
+		// waiting on it would hold the diagnose round forever. Any other
+		// error is transient and must not fail a healthy group.
+		if err := r.jobReader().Get(ctx, key, job); err != nil {
+			if apierrors.IsNotFound(err) {
+				return false, false, fmt.Errorf("job %s no longer exists", jobName)
+			}
+			logf.FromContext(ctx).V(1).Info("Could not read Job for the bandwidth gate, requeueing",
+				"job", jobName, "error", err)
 			return false, true, nil
 		}
-		return false, false, fmt.Errorf("get Job %s: %w", jobName, err)
 	}
 	var bm *nvcrev1alpha1.BandwidthMeasurement
 	for i := range bwList.Items {
