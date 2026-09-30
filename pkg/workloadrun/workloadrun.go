@@ -715,6 +715,9 @@ the WorkloadRun spec before submission. When --node-list is used and the
 number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateWaitTimeout(timeout, doWait, cmd.Flags().Changed("timeout")); err != nil {
+				return err
+			}
 			pullSet := 0
 			for _, v := range []string{workloadRegistry, workloadRegistryUsername, workloadRegistryPassword} {
 				if v != "" {
@@ -746,7 +749,7 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 		"Registry password or API key for workload image pull — creates an imagePullSecret in the WorkloadRun namespace")
 	cmd.Flags().StringVar(&controllerImage, "image", "", "Override controller image")
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Minute,
-		"Wait timeout (on timeout, the WorkloadRun is left running unless --cleanup is set)")
+		"Wait timeout; must be positive (on timeout, the WorkloadRun is left running unless --cleanup is set)")
 	cmd.Flags().StringVar(&resultsFile, "results-file", "",
 		"Write report as JSON to this file path (requires --wait)")
 	cmd.Flags().StringVar(&nameOverride, "name", "",
@@ -762,6 +765,18 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 	configFlags.AddFlags(cmd.Flags())
 
 	return cmd
+}
+
+// validateWaitTimeout rejects a non-positive --timeout when --wait is set or
+// when the user passed --timeout explicitly (issue #409). pflag accepts 0 and
+// negative durations, which would otherwise fire the watch deadline immediately.
+func validateWaitTimeout(timeout time.Duration, wait, explicit bool) error {
+	if wait || explicit {
+		if timeout <= 0 {
+			return fmt.Errorf("--timeout must be positive, got %s", timeout)
+		}
+	}
+	return nil
 }
 
 // wrRunConfig captures the fully-resolved intent for a workloadrun run,
