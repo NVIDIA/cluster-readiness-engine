@@ -247,8 +247,14 @@ func TestBuildMPIRuntime_KAIGangScheduler_MovesTheBarrierIntoTheLauncher(t *test
 	}
 
 	script, mounts := launcherInit(t, dep.Raw)
-	if !strings.Contains(script, "OMPI") && !strings.Contains(script, "ssh -n -o BatchMode=yes") {
-		t.Errorf("launcher init does not wait for the workers' sshd:\n%s", script)
+	if !strings.Contains(script, "ssh -n -o BatchMode=yes") {
+		t.Errorf("launcher init does not probe the workers over ssh:\n%s", script)
+	}
+	if !strings.Contains(script, "timeout 10 ssh") {
+		t.Errorf("ssh probe is not bounded by a hard timeout:\n%s", script)
+	}
+	if !strings.Contains(script, "no hosts in") {
+		t.Errorf("launcher init does not fail when the hostfile has no hosts:\n%s", script)
 	}
 	if !strings.Contains(script, "/etc/mpi/hostfile") {
 		t.Errorf("launcher init does not read Trainer's hostfile:\n%s", script)

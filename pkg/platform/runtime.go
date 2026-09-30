@@ -337,11 +337,10 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	// dials it. The worker list is Trainer's MPI hostfile, mounted into the
 	// launcher pod by the Trainer MPI plugin; its entries are
 	// "<endpoint> slots=<n>".
-	launcherInitScript := `set -e -x
-cp /tmp/mpi-ssh-raw/* /root/.ssh/
-chmod 600 /root/.ssh/id_rsa
-chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys
-`
+	launcherInitScript := "set -x && " +
+		"cp /tmp/mpi-ssh-raw/* /root/.ssh/ && " +
+		"chmod 600 /root/.ssh/id_rsa && " +
+		"chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys"
 	launcherInitMounts := []map[string]any{
 		{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
 		{keyName: volumeNameSSHKeys, keyMountPath: "/root/.ssh"},
@@ -441,11 +440,12 @@ chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys
 		}
 	}
 
-	// The launcher waits for the workers before mpirun dials them, but how that
-	// wait is expressed depends on the scheduler. Everywhere else it is the
-	// JobSet's dependsOn gate; under KAI the same wait is the JobSet startup
-	// policy's InOrder, because a dependsOn-gated launcher is a sub-group KAI
-	// can neither satisfy now nor leave out (see schedulerNameKAI).
+	// The launcher waits for the workers before mpirun dials them. Outside KAI
+	// that wait is the JobSet's dependsOn gate. Under KAI both the gate and any
+	// startup policy are omitted, because KAI refuses to schedule a JobSet whose
+	// PodGroup has an empty sub-group and the ordered launcher sub-group is empty
+	// until the workers are ready; the wait moves into the launcher init
+	// container instead (see schedulerNameKAI and launcherWaitScript).
 	launcherReplicatedJob := map[string]any{
 		keyName: "launcher",
 		keyTemplate: map[string]any{

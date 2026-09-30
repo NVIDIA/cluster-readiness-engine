@@ -52,19 +52,24 @@ func isKAIGangScheduler(cfg RuntimeConfig) bool {
 func launcherWaitScript() string {
 	return `
 [ -f /root/.ssh/id_rsa ] || { mkdir -p /root/.ssh && chmod 700 /root/.ssh && cp /tmp/mpi-ssh-raw/* /root/.ssh/ 2>/dev/null; chmod 600 /root/.ssh/id_rsa 2>/dev/null; }
+hosts=$(awk '{print $1}' ` + mpiHostfilePath + ` 2>/dev/null)
+if [ -z "$hosts" ]; then
+  echo "ERROR: no hosts in ` + mpiHostfilePath + ` (missing, empty, or unreadable); refusing to start mpirun."
+  exit 1
+fi
 i=0
 ok=0
 while [ $i -lt 240 ]; do
   ok=1
-  for h in $(awk '{print $1}' ` + mpiHostfilePath + ` 2>/dev/null); do
-    if ! ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 "$h" true >/dev/null 2>&1; then
+  for h in $hosts; do
+    if ! timeout 10 ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 "$h" true >/dev/null 2>&1; then
       ok=0
       # Every tenth attempt, report which host is not answering and why: without
       # this, a blocked network path and a slow worker look identical and the
       # only signal is a bare 20-minute timeout.
       if [ $((i % 10)) -eq 0 ]; then
         echo "waiting: $h has not answered sshd yet (attempt $((i+1))/240, $(($i*5))s)"
-        ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 "$h" true 2>&1 | head -3 | sed 's/^/  ssh: /'
+        timeout 10 ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 "$h" true 2>&1 | head -3 | sed 's/^/  ssh: /'
       fi
     fi
   done
@@ -199,17 +204,22 @@ func ApplyGangSchedulerToDependencies(deps []nvcrev1alpha1.DependencySpec, gs *n
 			podLabels[queueKey] = queue
 		}
 
-		if gs.SchedulerName == schedulerNameKAI {
-			// KAI schedules a JobSet only when every sub-group of the PodGroup
-			// has pods, so the launcher may not be gated or ordered behind the
-			// workers: drop any dependsOn gate and hold mpirun back inside the
-			// launcher pod instead (see launcherWaitScript). Runtimes that carry
-			// no gate are left byte-identical.
+		if gs.SchedulerName == schedulerNameKAI && hasMPIPolicy(obj) {
+			// KAI schedules a JobSet only when every sub-group of the PodGroup has
+			// pods, so an MPI launcher may not be gated or ordered behind the
+			// workers: the wait moves into the launcher pod (launcherWaitScript).
+			// Only the gate BuildMPIRuntime emits is rewritten — an unrelated
+			// dependency between replicated jobs keeps its meaning — and any
+			// startup policy goes with it, because a JobSet cannot carry both and
+			// an InOrder policy would leave the same empty launcher sub-group.
 			if launcherJob, ok := launcherReplicatedJob(replicatedJobs); ok {
-				if _, gated := launcherJob[keyDependsOn]; gated {
+				if isNodeReadyGate(launcherJob[keyDependsOn]) {
 					delete(launcherJob, keyDependsOn)
+					if jobSetSpec := jobSetSpecOf(obj); jobSetSpec != nil {
+						delete(jobSetSpec, keyStartupPolicy)
+					}
 					podSpec := launcherPodSpec(launcherJob)
-					if podSpec != nil {
+					if podSpec != nil && !hasWaitInitContainer(podSpec) {
 						inits, _ := podSpec[keyInitContainers].([]any)
 						podSpec[keyInitContainers] = append(inits, launcherWaitInitContainer(launcherImage(launcherJob)))
 					}
@@ -224,6 +234,61 @@ func ApplyGangSchedulerToDependencies(deps []nvcrev1alpha1.DependencySpec, gs *n
 		deps[i].Raw = raw
 	}
 	return nil
+}
+
+// keyStartupPolicy is the JobSet field that orders replicated jobs. It is
+// mutually exclusive with a dependsOn gate, so removing one removes the other.
+const keyStartupPolicy = "startupPolicy"
+
+// hasMPIPolicy reports whether a TrainingRuntime dependency runs an MPI workload
+// (its template declares mlPolicy.mpi). Only those have the launcher gate this
+// rewrite understands; a torch runtime that happens to call a replicated job
+// "launcher" is left alone.
+func hasMPIPolicy(obj map[string]any) bool {
+	// mlPolicy is a sibling of the JobSet template on the TrainingRuntime
+	// (spec.mlPolicy), not a field inside it.
+	_, ok := nestedMap(obj, keySpec, "mlPolicy", "mpi")
+	return ok
+}
+
+// isNodeReadyGate reports whether value is exactly the gate BuildMPIRuntime
+// emits: a single dependency on the "node" replicated job reaching Ready. Any
+// other dependency expresses something this rewrite must not reinterpret.
+func isNodeReadyGate(value any) bool {
+	list, ok := value.([]any)
+	if !ok || len(list) != 1 {
+		return false
+	}
+	entry, ok := list[0].(map[string]any)
+	if !ok {
+		return false
+	}
+	name, _ := entry[keyName].(string)
+	status, _ := entry["status"].(string)
+	return name == nodeJobName && status == "Ready"
+}
+
+// jobSetSpecOf returns the JobSet spec inside a TrainingRuntime dependency.
+func jobSetSpecOf(obj map[string]any) map[string]any {
+	spec, ok := nestedMap(obj, keySpec, keyTemplate, keySpec)
+	if !ok {
+		return nil
+	}
+	return spec
+}
+
+// hasWaitInitContainer reports whether the launcher already carries the wait
+// step, so a second pass over the same object cannot inject it twice.
+func hasWaitInitContainer(podSpec map[string]any) bool {
+	inits, _ := podSpec[keyInitContainers].([]any)
+	for _, c := range inits {
+		if container, ok := c.(map[string]any); ok {
+			if name, _ := container[keyName].(string); name == "wait-for-workers" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // launcherReplicatedJob returns the replicated job named "launcher".
