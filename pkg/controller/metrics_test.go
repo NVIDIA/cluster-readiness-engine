@@ -159,11 +159,9 @@ func TestRecordJobStatus(t *testing.T) {
 		recordJobStatus(ns, job, wf, input.Status)
 		defer cleanupJobMetrics(ns, job)
 
-		result := map[string]float64{
-			"in_progress": promtest.ToFloat64(jobStatusGauge.WithLabelValues(ns, job, wf, "in_progress")),
-			"succeeded":   promtest.ToFloat64(jobStatusGauge.WithLabelValues(ns, job, wf, "succeeded")),
-			"failed":      promtest.ToFloat64(jobStatusGauge.WithLabelValues(ns, job, wf, "failed")),
-		}
+		result := exclusiveStatusGaugeValues(func(status string) float64 {
+			return promtest.ToFloat64(jobStatusGauge.WithLabelValues(ns, job, wf, status))
+		})
 
 		data, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
@@ -229,11 +227,9 @@ func TestRecordCertificationStatus(t *testing.T) {
 		recordCertificationStatus(ns, cert, input.Status)
 		defer cleanupCertificationMetrics(ns, cert)
 
-		result := map[string]float64{
-			"in_progress": promtest.ToFloat64(certificationStatusGauge.WithLabelValues(ns, cert, "in_progress")),
-			"succeeded":   promtest.ToFloat64(certificationStatusGauge.WithLabelValues(ns, cert, "succeeded")),
-			"failed":      promtest.ToFloat64(certificationStatusGauge.WithLabelValues(ns, cert, "failed")),
-		}
+		result := exclusiveStatusGaugeValues(func(status string) float64 {
+			return promtest.ToFloat64(certificationStatusGauge.WithLabelValues(ns, cert, status))
+		})
 
 		data, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
@@ -242,6 +238,14 @@ func TestRecordCertificationStatus(t *testing.T) {
 		tc.Actual = string(data) + "\n"
 		return nil
 	})
+}
+
+func exclusiveStatusGaugeValues(read func(status string) float64) map[string]float64 {
+	result := make(map[string]float64, len(exclusiveMetricStatuses))
+	for _, status := range exclusiveMetricStatuses {
+		result[status] = read(status)
+	}
+	return result
 }
 
 func TestCleanupCertificationMetrics(t *testing.T) {
@@ -302,11 +306,9 @@ func TestRecordWorkflowStatus(t *testing.T) {
 		recordWorkflowStatus(ns, wf, cert, input.Status)
 		defer cleanupWorkflowStatusMetrics(ns, wf)
 
-		result := map[string]float64{
-			"in_progress": promtest.ToFloat64(workflowStatusGauge.WithLabelValues(ns, wf, cert, "in_progress")),
-			"succeeded":   promtest.ToFloat64(workflowStatusGauge.WithLabelValues(ns, wf, cert, "succeeded")),
-			"failed":      promtest.ToFloat64(workflowStatusGauge.WithLabelValues(ns, wf, cert, "failed")),
-		}
+		result := exclusiveStatusGaugeValues(func(status string) float64 {
+			return promtest.ToFloat64(workflowStatusGauge.WithLabelValues(ns, wf, cert, status))
+		})
 
 		data, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
