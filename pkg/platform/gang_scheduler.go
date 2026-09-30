@@ -57,14 +57,28 @@ ok=0
 while [ $i -lt 240 ]; do
   ok=1
   for h in $(awk '{print $1}' ` + mpiHostfilePath + ` 2>/dev/null); do
-    ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 "$h" true >/dev/null 2>&1 || ok=0
+    if ! ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 "$h" true >/dev/null 2>&1; then
+      ok=0
+      # Every tenth attempt, report which host is not answering and why: without
+      # this, a blocked network path and a slow worker look identical and the
+      # only signal is a bare 20-minute timeout.
+      if [ $((i % 10)) -eq 0 ]; then
+        echo "waiting: $h has not answered sshd yet (attempt $((i+1))/240, $(($i*5))s)"
+        ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 "$h" true 2>&1 | head -3 | sed 's/^/  ssh: /'
+      fi
+    fi
   done
   [ "$ok" = "1" ] && break
   i=$((i+1))
   sleep 5
 done
+if [ "$ok" != "1" ]; then
+  echo "ERROR: not every worker answered sshd within 20 minutes; refusing to start mpirun."
+  echo "  hostfile: $(cat ` + mpiHostfilePath + ` 2>/dev/null | tr '\n' ' ')"
+  echo "  check that the workers and this launcher share a network policy allowing pod-to-pod port 22"
+  exit 1
+fi
 echo "workers answered sshd after $((i*5))s"
-[ "$ok" = "1" ]
 `
 }
 
