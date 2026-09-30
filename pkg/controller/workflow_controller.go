@@ -853,13 +853,27 @@ func (r *WorkflowReconciler) isBelowBandwidthThreshold(ctx context.Context, jobN
 	if listErr := r.List(ctx, &bwList, matchingJobRef(namespace, jobName)...); listErr != nil {
 		return false, false, fmt.Errorf("list BandwidthMeasurements: %w", listErr)
 	}
-	if len(bwList.Items) == 0 {
-		// No BandwidthMeasurement found for this job yet — requeue and wait for it.
+	// The index constrains the list to this Job's name; keep only a
+	// measurement created for this instance of it, not one left by an earlier
+	// Job of the same name.
+	job := &nvcrev1alpha1.Job{}
+	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: jobName}, job); err != nil {
+		if apierrors.IsNotFound(err) {
+			return false, true, nil
+		}
+		return false, false, fmt.Errorf("get Job %s: %w", jobName, err)
+	}
+	var bm *nvcrev1alpha1.BandwidthMeasurement
+	for i := range bwList.Items {
+		if measuresJob(&bwList.Items[i], job) {
+			bm = &bwList.Items[i]
+			break
+		}
+	}
+	if bm == nil {
+		// No BandwidthMeasurement for this job yet — requeue and wait for it.
 		return false, true, nil
 	}
-	// The index constrains the list to this Job; a Job has at most one
-	// BandwidthMeasurement, so evaluate the first and ignore any duplicate.
-	bm := &bwList.Items[0]
 
 	// Results are provisional until the measurement completes from the Job's
 	// full log (issue #404). A measurement that completed without final

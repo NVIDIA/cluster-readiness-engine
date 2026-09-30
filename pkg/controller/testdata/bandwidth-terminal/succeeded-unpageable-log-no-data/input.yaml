@@ -1,0 +1,7 @@
+# Nothing was ever parsed and the log cannot be paged. The status still says
+# why the read failed, rather than pointing at the LogProfile.
+jobCondition: Succeeded
+podPhase: Succeeded
+logTruncated: true
+log: |
+  a line without a timestamp

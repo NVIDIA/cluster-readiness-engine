@@ -4,6 +4,7 @@
 package podlogs
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -44,8 +45,9 @@ const (
 )
 
 // ErrLogUnpageable is returned when a log cannot be read in full: it outgrew
-// the page bound, one second of output outgrew the largest page, or its lines
-// carry no timestamps to resume from.
+// the page bound, one second of output outgrew the largest page, a line is
+// longer than the scanner accepts, or its lines carry no timestamps to resume
+// from. Retrying fails the same way.
 var ErrLogUnpageable = errors.New("log cannot be read in full")
 
 // ReadAllOptions configures ReadAll.
@@ -107,6 +109,9 @@ func ReadAll(ctx context.Context, fetcher PodLogFetcher, namespace, podName stri
 			read.SinceTime = new(metav1.NewTime(since))
 		}
 		page, err := pager.FetchLogsPage(ctx, namespace, podName, read)
+		if errors.Is(err, bufio.ErrTooLong) {
+			return fmt.Errorf("%w: %w", ErrLogUnpageable, err)
+		}
 		if err != nil {
 			return err
 		}

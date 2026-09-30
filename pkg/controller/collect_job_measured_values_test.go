@@ -92,7 +92,7 @@ func TestCollectJobMeasuredValues(t *testing.T) {
 		if in.BandwidthJobUID != "" {
 			bm.Annotations = map[string]string{annotationJobUID: in.BandwidthJobUID}
 		}
-		job := &nvcrev1alpha1.Job{Name: "j", Namespace: "ns", UID: "uid-current"}
+		job := &nvcrev1alpha1.Job{Name: "j", Namespace: "ns", UID: currentJobUID}
 
 		gmIndex := func(obj client.Object) []string {
 			return []string{obj.(*nvcrev1alpha1.GoodputMeasurement).Spec.JobRef.Name}

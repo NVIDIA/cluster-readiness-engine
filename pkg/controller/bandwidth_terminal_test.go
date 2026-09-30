@@ -50,6 +50,10 @@ type bandwidthTerminalOutput struct {
 	CompletionTime string                          `json:"completionTime,omitempty"`
 }
 
+// currentJobUID is the UID of the fixture Job; a measurement annotated with
+// any other UID was created for an earlier Job of the same name.
+const currentJobUID = "uid-current"
+
 // jobTerminalTime is the fixture Job's terminal transition; completionTime is
 // anchored to it rather than to the reconcile clock.
 var jobTerminalTime = time.Date(2026, 9, 30, 10, 5, 0, 0, time.UTC)
@@ -176,7 +180,7 @@ func bandwidthTerminalMeasurement(in bandwidthTerminalInput) (*nvcrev1alpha1.Ban
 
 func bandwidthTerminalJob(in bandwidthTerminalInput) *nvcrev1alpha1.Job {
 	job := &nvcrev1alpha1.Job{
-		Name: "j", Namespace: "ns", UID: "uid-current",
+		Name: "j", Namespace: "ns", UID: currentJobUID,
 		Status: nvcrev1alpha1.JobStatus{Conditions: []metav1.Condition{{
 			Type: in.JobCondition, Status: metav1.ConditionTrue,
 			Reason: "Test", LastTransitionTime: metav1.NewTime(jobTerminalTime),

@@ -22,6 +22,9 @@ type readAllInput struct {
 	MaxPages  int    `yaml:"maxPages"`
 	Unpaged   bool   `yaml:"unpaged"`
 	Log       string `yaml:"log"`
+	// LongLineBytes appends a timestamped line of that many bytes, too long
+	// for a fixture file.
+	LongLineBytes int `yaml:"longLineBytes"`
 }
 
 type readAllRead struct {
@@ -54,6 +57,9 @@ func TestReadAll(t *testing.T) {
 		}
 
 		kubelet := &kubeletLogs{lines: strings.Split(strings.TrimSuffix(in.Log, "\n"), "\n")}
+		if in.LongLineBytes > 0 {
+			kubelet.lines = append(kubelet.lines, "2026-09-30T10:00:02.100000000Z "+strings.Repeat("x", in.LongLineBytes))
+		}
 		var fetcher PodLogFetcher = kubelet
 		if in.Unpaged {
 			fetcher = unpagedFetcher{kubelet}

@@ -4,13 +4,13 @@
     {
       "type": "Measuring",
       "status": "False",
-      "reason": "NoDataCollected",
+      "reason": "LogsUnavailable",
       "message": "Referenced Job no longer exists; no bandwidth data was parsed"
     },
     {
       "type": "Complete",
       "status": "True",
-      "reason": "NoDataCollected",
+      "reason": "LogsUnavailable",
       "message": "Referenced Job no longer exists; no bandwidth data was parsed"
     }
   ],
