@@ -309,8 +309,8 @@ Once that's confirmed, implementation follows the shape ADR-075 and ADR-058 esta
   certify MNNVL placement that never happened. Full-scale collectives and the loopbacks set no
   topology key and are unaffected.
 - **`dcgm-level4` on NKS depends on the `nvidia-platform/nvidia-dcgm-dra` Service** that NKS
-  ships, not the GPU Operator's `gpu-operator/nvidia-dcgm`. `nvcrectl setup status` still
-  checks only the latter, so on NKS it reports DCGM missing even when `dcgm-level4` can run.
+  ships, not the GPU Operator's `gpu-operator/nvidia-dcgm`. `nvcrectl setup status` accepts
+  either Service.
 - **Training entries inherit `NCCL_SOCKET_IFNAME=eth0`** from `gb200-training-base-env.yaml`
   unchanged, as the on-prem override does; the IB env is appended, not substituted.
 - **Catalog fragment count is roughly flat**: two legacy fragments (`nscale-rdmashare-comm.yaml`,

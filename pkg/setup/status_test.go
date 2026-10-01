@@ -9,9 +9,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io/fs"
 	"strings"
 	"testing"
 
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -46,16 +49,18 @@ func newSetupScheme(t *testing.T) *runtime.Scheme {
 }
 
 func TestCheckDCGM(t *testing.T) {
-	t.Run("present when the gpu-operator service exists", func(t *testing.T) {
-		c := fake.NewClientBuilder().
-			WithScheme(newSetupScheme(t)).
-			WithObjects(&corev1.Service{
-				Name:      dcgmServiceName,
-				Namespace: dcgmServiceNamespace,
-			}).
-			Build()
-		assert.NoError(t, checkDCGM(context.Background(), c))
-	})
+	for _, key := range dcgmServices {
+		t.Run("present when "+key.String()+" exists", func(t *testing.T) {
+			c := fake.NewClientBuilder().
+				WithScheme(newSetupScheme(t)).
+				WithObjects(&corev1.Service{
+					Name:      key.Name,
+					Namespace: key.Namespace,
+				}).
+				Build()
+			assert.NoError(t, checkDCGM(context.Background(), c))
+		})
+	}
 
 	t.Run("absent when no service exists", func(t *testing.T) {
 		c := fake.NewClientBuilder().WithScheme(newSetupScheme(t)).Build()
@@ -66,7 +71,7 @@ func TestCheckDCGM(t *testing.T) {
 		c := fake.NewClientBuilder().
 			WithScheme(newSetupScheme(t)).
 			WithObjects(&corev1.Service{
-				Name:      dcgmServiceName,
+				Name:      dcgmServices[0].Name,
 				Namespace: "default",
 			}).
 			Build()
@@ -79,6 +84,35 @@ func TestCheckDCGM(t *testing.T) {
 		assert.False(t, status.Components.DCGM)
 		assert.False(t, status.dcgmAbsent, "a denied lookup must not print the patch command")
 	})
+
+	t.Run("a denied lookup after a NotFound one is not reported as absent", func(t *testing.T) {
+		c := fake.NewClientBuilder().
+			WithScheme(newSetupScheme(t)).
+			WithInterceptorFuncs(interceptor.Funcs{
+				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey,
+					obj client.Object, opts ...client.GetOption) error {
+					if key == dcgmServices[1] {
+						return apierrors.NewForbidden(
+							schema.GroupResource{Resource: "services"}, key.Name, errors.New("denied"))
+					}
+					return c.Get(ctx, key, obj, opts...)
+				},
+			}).
+			Build()
+		status := collectSetupStatus(context.Background(), c, allDeployedHelmQuery, trainerNotInHelm)
+		assert.False(t, status.Components.DCGM)
+		assert.False(t, status.dcgmAbsent, "a denied lookup must not print the patch command")
+	})
+}
+
+// dcgmServices must name the Services dcgm-level4 actually targets, or the
+// check reports DCGM ready for a host the job never uses.
+func TestDCGMServicesMatchCatalog(t *testing.T) {
+	entry, err := fs.ReadFile(catalog.EntriesFS(), "entries/diagnostics/dcgm-level4.yaml")
+	require.NoError(t, err)
+	for _, key := range dcgmServices {
+		assert.Contains(t, string(entry), fmt.Sprintf("%s.%s.svc:5555", key.Name, key.Namespace))
+	}
 }
 
 // forbiddenServiceClient answers every Service read with a Forbidden error, the
@@ -162,7 +196,7 @@ func TestCollectSetupStatusDCGMIsOptional(t *testing.T) {
 
 	t.Run("ready with dcgm", func(t *testing.T) {
 		withDCGM := append(objs, &corev1.Service{
-			Name: dcgmServiceName, Namespace: dcgmServiceNamespace,
+			Name: dcgmServices[0].Name, Namespace: dcgmServices[0].Namespace,
 		})
 		c := fake.NewClientBuilder().WithScheme(newSetupScheme(t)).WithObjects(withDCGM...).Build()
 		s := collectSetupStatus(context.Background(), c, allDeployedHelmQuery, trainerNotInHelm)
