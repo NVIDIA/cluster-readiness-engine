@@ -18,7 +18,8 @@ import (
 // invalid name must fail with the full list of valid names, and every name
 // platform detection can return must be accepted. Issue #184: nscale is
 // detected by the controller and referenced by catalog overrides, but the
-// hardcoded validator list rejected it.
+// hardcoded validator list rejected it. Cases with gpuArch cover --gpu-arch
+// supplying the architecture a nodeSelector without gpu.product lacks.
 func TestRenderPlatformFlag(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "render-platform-flag",
@@ -27,6 +28,7 @@ func TestRenderPlatformFlag(t *testing.T) {
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg struct {
 			Platform string `yaml:"platform"`
+			GPUArch  string `yaml:"gpuArch"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &cfg); err != nil {
 			return err
@@ -41,7 +43,7 @@ func TestRenderPlatformFlag(t *testing.T) {
 			}
 		}
 
-		renderErr := runWorkloadRunRender(runPath, "yaml", cfg.Platform)
+		renderErr := runWorkloadRunRender(runPath, "yaml", cfg.Platform, cfg.GPUArch)
 
 		type result struct {
 			Error string `json:"error"`

@@ -5,9 +5,9 @@ package gpu
 
 import corev1 "k8s.io/api/core/v1"
 
-// productLabel is the node label that reports the GPU product installed on a
+// ProductLabel is the node label that reports the GPU product installed on a
 // node, e.g. "NVIDIA-H100-80GB-HBM3".
-const productLabel = "nvidia.com/gpu.product"
+const ProductLabel = "nvidia.com/gpu.product"
 
 // MajorityArchitecture returns the GPU architecture reported by the most
 // nodes, parsed from each node's nvidia.com/gpu.product label via
@@ -33,13 +33,13 @@ const productLabel = "nvidia.com/gpu.product"
 func MajorityArchitecture(nodes []corev1.Node) string {
 	counts := map[string]int{}
 	for _, n := range nodes {
-		if arch := ParseProduct(n.Labels[productLabel]); arch != "" {
+		if arch := ParseProduct(n.Labels[ProductLabel]); arch != "" {
 			counts[arch]++
 		}
 	}
 	primary := ""
 	for _, n := range nodes {
-		arch := ParseProduct(n.Labels[productLabel])
+		arch := ParseProduct(n.Labels[ProductLabel])
 		if arch == "" {
 			continue
 		}

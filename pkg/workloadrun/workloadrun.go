@@ -20,7 +20,6 @@ import (
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -95,6 +94,7 @@ func NewCommand() *cobra.Command {
 func newWorkloadRunRenderCommand() *cobra.Command {
 	var outputFormat string
 	var platformFlag string
+	var gpuArchFlag string
 	var dryRun bool
 
 	configFlags := kubeconfig.NewConfigFlags(true)
@@ -107,6 +107,7 @@ func newWorkloadRunRenderCommand() *cobra.Command {
 including auto-generated TrainingRuntime, ConfigMap, platform overrides, and NCCL env vars.
 
 Use --platform to simulate platform-specific overrides offline.
+Use --gpu-arch to set the GPU architecture offline (e.g. a DRA-only GPU stack whose nodes carry no nvidia.com/gpu.product label); it wins over the nodeSelector-derived value when set and is ignored under --dry-run.
 Use --dry-run to discover real nodes from the cluster and apply overrides based on actual platform and GPU.
 Combining --platform with --dry-run overrides the detected platform while still using real nodes.`,
 		Args: cobra.ExactArgs(1),
@@ -114,13 +115,15 @@ Combining --platform with --dry-run overrides the detected platform while still 
 			if dryRun {
 				return runWorkloadRunRenderDryRun(args[0], outputFormat, platformFlag, configFlags)
 			}
-			return runWorkloadRunRender(args[0], outputFormat, platformFlag)
+			return runWorkloadRunRender(args[0], outputFormat, platformFlag, gpuArchFlag)
 		},
 	}
 
 	cmd.Flags().StringVar(&outputFormat, "output", "yaml", "Output format: yaml or json")
 	cmd.Flags().StringVar(&platformFlag, "platform", "",
 		"Simulate platform for override matching ("+platform.NamesList()+")")
+	cmd.Flags().StringVar(&gpuArchFlag, "gpu-arch", "",
+		"GPU architecture for offline render; wins over target.nodeSelector's nvidia.com/gpu.product label")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false,
 		"Connect to cluster, discover real nodes, and render with actual platform/GPU detection")
 	configFlags.AddFlags(cmd.Flags())
@@ -128,8 +131,12 @@ Combining --platform with --dry-run overrides the detected platform while still 
 	return cmd
 }
 
-func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
+func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) error {
 	if err := platform.ValidateFlag(platformFlag); err != nil {
+		return err
+	}
+	gpuArch, err := catalog.ParseGPUArchFlag(gpuArchFlag)
+	if err != nil {
 		return err
 	}
 
@@ -138,14 +145,14 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 		return err
 	}
 
-	// Extract GPU architecture from nodeSelector.
-	var gpuProduct string
-	if run.Spec.Target != nil {
-		gpuProduct = run.Spec.Target.NodeSelector["nvidia.com/gpu.product"]
+	// --gpu-arch wins over the nodeSelector-derived value when set; a
+	// DRA-only platform carries no nvidia.com/gpu.product label on real
+	// nodes, so offline render has no other way to resolve architecture.
+	if gpuArch == "" && run.Spec.Target != nil {
+		gpuArch = gpu.ParseProduct(run.Spec.Target.NodeSelector["nvidia.com/gpu.product"])
 	}
-	gpuArch := gpu.ParseProduct(gpuProduct)
 	if gpuArch == "" {
-		return fmt.Errorf("cannot determine GPU architecture: nvidia.com/gpu.product label required in target.nodeSelector")
+		return fmt.Errorf("cannot determine GPU architecture: pass --gpu-arch or set nvidia.com/gpu.product in target.nodeSelector")
 	}
 
 	// Resolve hardware defaults from the catalog. Platform comes from --platform
@@ -1352,14 +1359,6 @@ func loadSyntheticNodes(platformName, gpuArch string) []corev1.Node {
 		Spec: corev1.NodeSpec{
 			ProviderID: render.SyntheticProviderID(platformName),
 		},
-	}
-	// nscale shares the openstack:// providerID prefix; detection disambiguates
-	// via the rdmashare allocatable (see pkg/render/nodes.go), so the synthetic
-	// node must carry it for node-based detection to resolve to nscale.
-	if platformName == "nscale" {
-		node.Status.Allocatable = corev1.ResourceList{
-			"nscale.com/rdmashare": resource.MustParse("8"),
-		}
 	}
 	return []corev1.Node{node}
 }

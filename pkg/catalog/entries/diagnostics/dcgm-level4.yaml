@@ -109,3 +109,36 @@ overrides:
                     - name: node
                       securityContext:
                         privileged: false
+# --- Nscale NKS (GPU DRA claim; ADR-085) ---
+# GPU-only claim: the pod is hostNetwork, so a dra.net RDMA claim has no pod
+# network namespace to inject into, and level-4 diagnostics are intra-node.
+# The fragment sets no tolerations, so the base tolerate-everything toleration
+# survives. NKS runs the DRA-flavoured DCGM hostengine as
+# nvidia-platform/nvidia-dcgm-dra, not gpu-operator/nvidia-dcgm, so --host is
+# repointed; the test op fails the render if the base args ever move.
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      in: [b200, gb300]
+  dependencies:
+{{ lib "deps/nscale-gpu.yaml" . | indent 2 }}
+  jobTemplatePatch:
+  - op: test
+    path: /spec/workload/trainJob/trainer/args/2
+    value: nvidia-dcgm.gpu-operator.svc:5555
+  - op: replace
+    path: /spec/workload/trainJob/trainer/args/2
+    value: nvidia-dcgm-dra.nvidia-platform.svc:5555
+# --- Nscale + GB300 topology key (ADR-085) ---
+# Nscale runs no GFD, so nvidia.com/gpu.clique from the arch-only block above
+# never exists there; the NVLink domain is published as
+# topology.nks.nscale.com/accelerator-domain instead.
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      equals: gb300
+  orchestration:
+    topology:
+      topologyKey: topology.nks.nscale.com/accelerator-domain

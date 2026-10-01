@@ -220,6 +220,7 @@ The controller's ClusterRole (`nvcre-manager-role`) is scoped to the resource ty
 | `persistentvolumes` | get, list, patch, watch | Checkpoint storage handling |
 | `events` | create, patch | Emit Kubernetes events |
 | `resource.k8s.io` ResourceClaimTemplates | create, delete, get, list, patch, update | RoCE/DRA network resources |
+| `resource.k8s.io` ResourceSlices | get, list, watch | GPU architecture fallback on DRA-only GPU stacks with no `nvidia.com/gpu.product` label |
 | `resource.nvidia.com` ComputeDomains | create, delete, get, list, patch, update | Multi-Node NVLink (MNNVL) domains |
 | `trainer.kubeflow.org` TrainingRuntimes, TrainJobs | create, delete, get, list, patch, update (TrainJobs also watch; `trainjobs/status` get) | Training workloads via Kubeflow Trainer |
 

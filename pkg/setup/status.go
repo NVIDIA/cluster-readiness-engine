@@ -21,12 +21,14 @@ import (
 
 const outputJSON = "json"
 
-// The diagnostics/dcgm-level4 category runs dcgmi against this service. The
-// GPU Operator creates it only when spec.dcgm.enabled is true.
-const (
-	dcgmServiceName      = "nvidia-dcgm"
-	dcgmServiceNamespace = "gpu-operator"
-)
+// The diagnostics/dcgm-level4 category runs dcgmi against one of these
+// Services, the same --host values pkg/catalog/entries/diagnostics/dcgm-level4.yaml
+// renders: the GPU Operator's (created only when spec.dcgm.enabled is true)
+// and the DRA-flavoured hostengine Nscale NKS ships.
+var dcgmServices = []client.ObjectKey{
+	{Namespace: "gpu-operator", Name: "nvidia-dcgm"},
+	{Namespace: "nvidia-platform", Name: "nvidia-dcgm-dra"},
+}
 
 const (
 	// trainerDeploymentName is the Trainer controller Deployment the
@@ -396,16 +398,26 @@ func checkGPUOperator(ctx context.Context, c client.Client) bool {
 	return len(nodeList.Items) > 0
 }
 
-// checkDCGM returns nil if the GPU Operator created the standalone DCGM
-// service. The operator omits it when spec.dcgm.enabled is false, which is the
-// default when dcgmExporter runs its own embedded DCGM. The caller reads the
-// error to tell a missing service apart from a lookup it could not complete.
+// checkDCGM returns nil if any of dcgmServices exists. The GPU Operator omits
+// its Service when spec.dcgm.enabled is false, which is the default when
+// dcgmExporter runs its own embedded DCGM. Otherwise it returns the first
+// lookup error that is not NotFound, so the caller reports the service absent
+// only when every lookup completed and found nothing.
 func checkDCGM(ctx context.Context, c client.Client) error {
-	svc := &unstructured.Unstructured{}
-	svc.SetAPIVersion("v1")
-	svc.SetKind("Service")
-	key := client.ObjectKey{Name: dcgmServiceName, Namespace: dcgmServiceNamespace}
-	return c.Get(ctx, key, svc)
+	var lookupErr error
+	for _, key := range dcgmServices {
+		svc := &unstructured.Unstructured{}
+		svc.SetAPIVersion("v1")
+		svc.SetKind("Service")
+		err := c.Get(ctx, key, svc)
+		if err == nil {
+			return nil
+		}
+		if lookupErr == nil || (apierrors.IsNotFound(lookupErr) && !apierrors.IsNotFound(err)) {
+			lookupErr = err
+		}
+	}
+	return lookupErr
 }
 
 // trainerVersionMismatch reports whether a Trainer version was detected and
@@ -498,7 +510,7 @@ func printSetupStatus(out io.Writer, s *SetupStatus) {
 	if s.dcgmAbsent {
 		_, _ = fmt.Fprintln(out)
 		_, _ = fmt.Fprintf(out, "Note: service %s/%s is missing. Only the diagnostics/dcgm-level4\n",
-			dcgmServiceNamespace, dcgmServiceName)
+			dcgmServices[0].Namespace, dcgmServices[0].Name)
 		_, _ = fmt.Fprintln(out, "      category needs it. Your cluster administrator can add it with:")
 		_, _ = fmt.Fprintln(out, `      kubectl patch clusterpolicy cluster-policy --type=merge \`)
 		_, _ = fmt.Fprintln(out, `        -p '{"spec":{"dcgm":{"enabled":true}}}'`)
