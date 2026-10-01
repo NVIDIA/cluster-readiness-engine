@@ -19,7 +19,7 @@ nvcrectl workloadrun run [flags] <file>
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--wait` | `false` | Block until the workload completes |
-| `--timeout` | `30m` | Timeout for `--wait`. Must be positive. On timeout, the CLI prints a partial report and leaves the WorkloadRun running in the cluster unless `--cleanup` is set |
+| `--timeout` | `30m` | Timeout for `--wait`. Ignored without `--wait`. When `--wait` is set, must be at least `1s`. On timeout, the CLI prints a partial report and leaves the WorkloadRun running in the cluster unless `--cleanup` is set |
 | `--setup` | `false` | Install CRDs, controller, and LogProfiles before creating the WorkloadRun |
 | `--cleanup` | `false` | Delete the WorkloadRun, the namespace (when created by this run), and installed components after completion |
 | `--image` | — | Override controller image |

@@ -1,1 +1,1 @@
---timeout must be positive, got 0s
+--timeout must be at least 1s when --wait is set, got 0s

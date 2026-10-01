@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Tiny positives still fire the watch immediately (issue #409). Reject
+# anything under 1s when --wait is set, before creating a run.
+args:
+  - --wait
+  - --timeout=1ms

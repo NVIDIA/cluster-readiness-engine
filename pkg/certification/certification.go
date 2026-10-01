@@ -650,7 +650,7 @@ Use --wait to watch for completion and print a report.
 Use --cleanup to teardown installed components after completion.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := validateWaitTimeout(timeout, doWait, cmd.Flags().Changed("timeout")); err != nil {
+			if err := kubeconfig.ValidateWaitTimeout(timeout, doWait); err != nil {
 				return err
 			}
 			if certFile != "" && len(categories) > 0 {
@@ -750,26 +750,12 @@ Use --cleanup to teardown installed components after completion.`,
 	cmd.Flags().StringVar(&storageClass, "storage-class", "",
 		"StorageClass for PVC dependencies created by catalog entries")
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Minute,
-		"Timeout for --wait; must be positive (when not set, derived from the selected categories' timeoutPerJob budgets, floored at 30m; on timeout, print a partial report and leave the certification running unless --cleanup is set)")
+		"Timeout for --wait; ignored without --wait; must be at least 1s when --wait is set (when not set, derived from the selected categories' timeoutPerJob budgets, floored at 30m; on timeout, print a partial report and leave the certification running unless --cleanup is set)")
 	cmd.Flags().StringVar(&resultsFile, "results-file", "",
 		"Write certification report as JSON to this file path (requires --wait)")
 	configFlags.AddFlags(cmd.Flags())
 
 	return cmd
-}
-
-// validateWaitTimeout rejects a non-positive --timeout when --wait is set or
-// when the user passed --timeout explicitly (issue #409). pflag accepts 0 and
-// negative durations, which would otherwise cancel the watch immediately.
-// An unset --timeout keeps the 30m default (positive), so derivation in
-// resolveWaitTimeout is unchanged.
-func validateWaitTimeout(timeout time.Duration, wait, explicit bool) error {
-	if wait || explicit {
-		if timeout <= 0 {
-			return fmt.Errorf("--timeout must be positive, got %s", timeout)
-		}
-	}
-	return nil
 }
 
 // ---------------------------------------------------------------------------

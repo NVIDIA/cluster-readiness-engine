@@ -715,7 +715,7 @@ the WorkloadRun spec before submission. When --node-list is used and the
 number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := validateWaitTimeout(timeout, doWait, cmd.Flags().Changed("timeout")); err != nil {
+			if err := kubeconfig.ValidateWaitTimeout(timeout, doWait); err != nil {
 				return err
 			}
 			pullSet := 0
@@ -749,7 +749,7 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 		"Registry password or API key for workload image pull — creates an imagePullSecret in the WorkloadRun namespace")
 	cmd.Flags().StringVar(&controllerImage, "image", "", "Override controller image")
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Minute,
-		"Wait timeout; must be positive (on timeout, the WorkloadRun is left running unless --cleanup is set)")
+		"Timeout for --wait; ignored without --wait; must be at least 1s when --wait is set (on timeout, the WorkloadRun is left running unless --cleanup is set)")
 	cmd.Flags().StringVar(&resultsFile, "results-file", "",
 		"Write report as JSON to this file path (requires --wait)")
 	cmd.Flags().StringVar(&nameOverride, "name", "",
@@ -765,18 +765,6 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 	configFlags.AddFlags(cmd.Flags())
 
 	return cmd
-}
-
-// validateWaitTimeout rejects a non-positive --timeout when --wait is set or
-// when the user passed --timeout explicitly (issue #409). pflag accepts 0 and
-// negative durations, which would otherwise fire the watch deadline immediately.
-func validateWaitTimeout(timeout time.Duration, wait, explicit bool) error {
-	if wait || explicit {
-		if timeout <= 0 {
-			return fmt.Errorf("--timeout must be positive, got %s", timeout)
-		}
-	}
-	return nil
 }
 
 // wrRunConfig captures the fully-resolved intent for a workloadrun run,
@@ -1218,15 +1206,16 @@ func waitForWorkloadRunDeletion(ctx context.Context, c client.Client, name, name
 	}
 }
 
-// workloadRunWaitTimeoutError identifies the CLI watch deadline without
-// changing the existing user-facing error text, mirroring
+// workloadRunWaitTimeoutError identifies the CLI watch deadline, mirroring
 // certificationWaitTimeoutError in pkg/certification.
 type workloadRunWaitTimeoutError struct {
-	name string
+	name    string
+	timeout time.Duration
+	elapsed time.Duration
 }
 
 func (e *workloadRunWaitTimeoutError) Error() string {
-	return fmt.Sprintf("timeout waiting for WorkloadRun %s", e.name)
+	return fmt.Sprintf("WorkloadRun %s did not complete within %s (ran for %s)", e.name, e.timeout, e.elapsed)
 }
 
 func isWorkloadRunWaitTimeout(err error) bool {
@@ -1257,7 +1246,11 @@ func watchWorkloadRun(
 		case <-ctx.Done():
 			return nil, fmt.Errorf("interrupted")
 		case <-deadline:
-			return nil, &workloadRunWaitTimeoutError{name: name}
+			return nil, &workloadRunWaitTimeoutError{
+				name:    name,
+				timeout: timeout,
+				elapsed: time.Since(start).Truncate(time.Second),
+			}
 		case <-heartbeat.C:
 			elapsed := time.Since(start).Truncate(time.Second)
 			_, _ = fmt.Fprintln(out, workloadRunWatchLine(&current, name, elapsed))

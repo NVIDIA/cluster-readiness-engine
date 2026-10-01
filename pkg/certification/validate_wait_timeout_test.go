@@ -5,20 +5,26 @@ package certification
 
 import (
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"sigs.k8s.io/yaml"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
-// TestValidateWaitTimeout covers issue #409: --timeout must be positive when
-// --wait is set or when the flag is passed explicitly. Cases parse flags
-// through the real cobra command so DurationVar's 0 / negative acceptance is
-// in the fixture, not invented in the test.
+func TestRunCommandTimeoutHelp(t *testing.T) {
+	usage := newRunCommand("dev").Flags().Lookup("timeout").Usage
+	assert.Contains(t, usage, "ignored without --wait")
+	assert.Contains(t, usage, "at least 1s")
+}
+
+// TestValidateWaitTimeout drives issue #409 policy through RunE: validate
+// --timeout only when --wait is set, and reject values under 1s. Later
+// pipeline errors (missing --category, no cluster) are treated as acceptance.
 func TestValidateWaitTimeout(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "validate-wait-timeout",
@@ -33,31 +39,24 @@ func TestValidateWaitTimeout(t *testing.T) {
 		}
 
 		cmd := newRunCommand("dev")
-		if err := cmd.ParseFlags(input.Args); err != nil {
-			return err
-		}
-		timeout, err := cmd.Flags().GetDuration("timeout")
-		if err != nil {
-			return err
-		}
-		wait, err := cmd.Flags().GetBool("wait")
-		if err != nil {
+		err := executeDiscardingUsage(cmd, input.Args)
+		if isWaitTimeoutValidationError(err) {
 			return err
 		}
 
-		if !strings.Contains(cmd.Flags().Lookup("timeout").Usage, "positive") {
-			tc.T.Errorf("--timeout help %q does not say the value must be positive",
-				cmd.Flags().Lookup("timeout").Usage)
+		timeout, flagErr := cmd.Flags().GetDuration("timeout")
+		if flagErr != nil {
+			return flagErr
 		}
-
-		if err := validateWaitTimeout(timeout, wait, cmd.Flags().Changed("timeout")); err != nil {
-			return err
+		wait, flagErr := cmd.Flags().GetBool("wait")
+		if flagErr != nil {
+			return flagErr
 		}
 
 		data, err := json.MarshalIndent(map[string]any{
+			"accepted": true,
 			"timeout":  timeout.String(),
 			"wait":     wait,
-			"explicit": cmd.Flags().Changed("timeout"),
 		}, "", "  ")
 		if err != nil {
 			return err
@@ -67,37 +66,13 @@ func TestValidateWaitTimeout(t *testing.T) {
 	})
 }
 
-func TestNewRunCommandRejectsNonPositiveTimeout(t *testing.T) {
-	t.Run("zero timeout with wait", func(t *testing.T) {
-		cmd := newRunCommand("dev")
-		cmd.SetArgs([]string{
-			testCategoryFlag, testCategoryNCCLAllReduce,
-			"--wait", "--timeout=0",
-		})
-		err := cmd.Execute()
-		require.Error(t, err)
-		assert.Equal(t, "--timeout must be positive, got 0s", err.Error())
-	})
+func executeDiscardingUsage(cmd *cobra.Command, args []string) error {
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs(args)
+	return cmd.Execute()
+}
 
-	t.Run("negative timeout with wait", func(t *testing.T) {
-		cmd := newRunCommand("dev")
-		cmd.SetArgs([]string{
-			testCategoryFlag, testCategoryNCCLAllReduce,
-			"--wait", "--timeout=-1s",
-		})
-		err := cmd.Execute()
-		require.Error(t, err)
-		assert.Equal(t, "--timeout must be positive, got -1s", err.Error())
-	})
-
-	t.Run("explicit zero timeout without wait", func(t *testing.T) {
-		cmd := newRunCommand("dev")
-		cmd.SetArgs([]string{
-			testCategoryFlag, testCategoryNCCLAllReduce,
-			"--timeout=0",
-		})
-		err := cmd.Execute()
-		require.Error(t, err)
-		assert.Equal(t, "--timeout must be positive, got 0s", err.Error())
-	})
+func isWaitTimeoutValidationError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "--timeout must be at least")
 }

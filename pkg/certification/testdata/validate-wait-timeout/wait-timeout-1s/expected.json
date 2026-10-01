@@ -1,5 +1,5 @@
 {
   "accepted": true,
-  "timeout": "30m0s",
+  "timeout": "1s",
   "wait": true
 }

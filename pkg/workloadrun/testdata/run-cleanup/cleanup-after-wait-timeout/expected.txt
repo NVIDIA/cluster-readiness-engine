@@ -22,4 +22,4 @@ Result:       RUNNING
   Waiting for namespace wr-cleanup-ns to terminate...
   Namespace wr-cleanup-ns deleted.
 [cleanup] Done.
---- error: timeout waiting for WorkloadRun demo-run
+--- error: WorkloadRun demo-run did not complete within 0s (ran for 0s)
