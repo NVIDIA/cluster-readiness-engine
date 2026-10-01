@@ -1,0 +1,5 @@
+# Lines without timestamps are fine when the log fits in one page.
+pageBytes: 1000
+log: |
+  plain row 01
+  plain row 02

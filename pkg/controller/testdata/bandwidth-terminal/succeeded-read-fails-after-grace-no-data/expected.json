@@ -1,0 +1,18 @@
+{
+  "requeue": false,
+  "conditions": [
+    {
+      "type": "Measuring",
+      "status": "False",
+      "reason": "LogsUnavailable",
+      "message": "Job succeeded but its log could not be read in full (no pods found for ns/w replicatedJob launcher); no bandwidth data was parsed"
+    },
+    {
+      "type": "Complete",
+      "status": "True",
+      "reason": "LogsUnavailable",
+      "message": "Job succeeded but its log could not be read in full (no pods found for ns/w replicatedJob launcher); no bandwidth data was parsed"
+    }
+  ],
+  "completionTime": "2026-09-30T10:05:00Z"
+}

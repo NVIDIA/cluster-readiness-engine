@@ -37,6 +37,11 @@ func NewKubernetesLogFetcher(clientset *kubernetes.Clientset) PodLogFetcher {
 }
 
 func (f *kubernetesLogFetcher) FetchLogs(ctx context.Context, namespace, podName string, opts LogOptions) ([]string, error) {
+	page, err := f.FetchLogsPage(ctx, namespace, podName, opts)
+	return page.Lines, err
+}
+
+func (f *kubernetesLogFetcher) FetchLogsPage(ctx context.Context, namespace, podName string, opts LogOptions) (Page, error) {
 	podLogOpts := &corev1.PodLogOptions{
 		Timestamps: true,
 	}
@@ -60,13 +65,42 @@ func (f *kubernetesLogFetcher) FetchLogs(ctx context.Context, namespace, podName
 	req := f.clientset.CoreV1().Pods(namespace).GetLogs(podName, podLogOpts)
 	stream, err := OpenStream(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("opening log stream: %w", err)
+		return Page{}, fmt.Errorf("opening log stream: %w", err)
 	}
 	defer stream.Close() //nolint:errcheck
 
 	// LimitBytes is enforced by the API server, but a misbehaving or proxied
 	// endpoint could ignore it — bound the client side too.
-	return ScanLines(io.LimitReader(stream, limit))
+	return scanPage(io.LimitReader(stream, limit), limit)
+}
+
+// scanPage scans r into a Page, recording whether the read stopped at limit
+// and whether that cut the final line short.
+func scanPage(r io.Reader, limit int64) (Page, error) {
+	cr := &countingReader{r: r}
+	lines, err := ScanLines(cr)
+	truncated := cr.n >= limit
+	return Page{
+		Lines:       lines,
+		Truncated:   truncated,
+		PartialTail: truncated && cr.n > 0 && cr.last != '\n',
+	}, err
+}
+
+// countingReader counts the bytes read through it and remembers the last one.
+type countingReader struct {
+	r    io.Reader
+	n    int64
+	last byte
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	if n > 0 {
+		c.n += int64(n)
+		c.last = p[n-1]
+	}
+	return n, err
 }
 
 // OpenStream opens a pod log request bounded by DefaultStreamTimeout or the
