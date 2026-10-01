@@ -219,7 +219,9 @@ type GoodputMeasurementConfig struct {
 // forbids all three transitions, so a Job cannot drop workloadMetadata and
 // re-add it under a different queue.
 // +kubebuilder:validation:XValidation:rule="has(self.workloadMetadata) == has(oldSelf.workloadMetadata)",message="workloadMetadata cannot be added or removed after creation"
-// +kubebuilder:validation:XValidation:rule="has(self.nodeHealthMonitor) == has(oldSelf.nodeHealthMonitor) && has(self.goodputMeasurement) == has(oldSelf.goodputMeasurement) && has(self.bandwidthMeasurement) == has(oldSelf.bandwidthMeasurement)",message="nodeHealthMonitor, goodputMeasurement, and bandwidthMeasurement cannot be added or removed after creation"
+// +kubebuilder:validation:XValidation:rule="has(self.nodeHealthMonitor) == has(oldSelf.nodeHealthMonitor)",message="nodeHealthMonitor cannot be added or removed after creation"
+// +kubebuilder:validation:XValidation:rule="has(self.goodputMeasurement) == has(oldSelf.goodputMeasurement)",message="goodputMeasurement cannot be added or removed after creation"
+// +kubebuilder:validation:XValidation:rule="has(self.bandwidthMeasurement) == has(oldSelf.bandwidthMeasurement)",message="bandwidthMeasurement cannot be added or removed after creation"
 type JobSpec struct {
 	// workload defines the workload to run.
 	// The workload is created as a child resource of the Job.
@@ -246,8 +248,8 @@ type JobSpec struct {
 	// nodeHealthMonitor configures hardware failure detection for nodes
 	// running this job's pods. When a failure is detected, the job will
 	// be marked with the HardwareFailed condition.
-	// This field is immutable, including its presence: a Job created without it
-	// cannot add it later.
+	// This field is immutable, including its presence: if omitted when the
+	// containing Job or Workflow job template is created, it cannot be added later.
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="nodeHealthMonitor is immutable"
 	NodeHealthMonitor *NodeHealthMonitor `json:"nodeHealthMonitor,omitempty"`
@@ -286,8 +288,8 @@ type JobSpec struct {
 	// When absent, no measurement is created (suitable for non-training jobs).
 	// Manually-created GoodputMeasurements continue to work via the existing
 	// List-based lookup.
-	// This field is immutable, including its presence: a Job created without it
-	// cannot add it later.
+	// This field is immutable, including its presence: if omitted when the
+	// containing Job or Workflow job template is created, it cannot be added later.
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="goodputMeasurement is immutable"
 	GoodputMeasurement *GoodputMeasurementConfig `json:"goodputMeasurement,omitempty"`
@@ -295,8 +297,8 @@ type JobSpec struct {
 	// bandwidthMeasurement configures automatic creation of a BandwidthMeasurement
 	// child resource that tracks NCCL bandwidth metrics by parsing pod logs.
 	// When absent, no measurement is created (suitable for non-NCCL jobs).
-	// This field is immutable, including its presence: a Job created without it
-	// cannot add it later.
+	// This field is immutable, including its presence: if omitted when the
+	// containing Job or Workflow job template is created, it cannot be added later.
 	// +optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="bandwidthMeasurement is immutable"
 	BandwidthMeasurement *BandwidthMeasurementConfig `json:"bandwidthMeasurement,omitempty"`

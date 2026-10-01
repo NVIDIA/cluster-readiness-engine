@@ -15,6 +15,9 @@ description: CRD reference for the Job resource.
 | `workload` | WorkloadSpec | Required, immutable. Discriminated union selecting the workload framework; exactly one field must be set |
 | `workloadMetadata` | WorkloadMetadata | Optional, immutable. Labels applied to the generated workload object itself (see below) |
 | `workloadMetadata.labels` | map[string]string | Optional. At most 32 entries. Label keys must be valid Kubernetes label keys and values valid Kubernetes label values; `app.kubernetes.io/managed-by` and any key under `nvcre.nvidia.com/` are rejected |
+| `nodeHealthMonitor` | NodeHealthMonitor | Optional, immutable in presence and value. If omitted when the Job is created, it cannot be added later |
+| `goodputMeasurement` | GoodputMeasurementConfig | Optional, immutable in presence and value. If omitted when the Job is created, it cannot be added later |
+| `bandwidthMeasurement` | BandwidthMeasurementConfig | Optional, immutable in presence and value. If omitted when the Job is created, it cannot be added later |
 
 ### Workload object labels
 
@@ -51,6 +54,8 @@ The resulting `TrainJob` carries those three labels plus the two the controller 
 **Limits.** At most 32 labels. Keys follow the Kubernetes qualified-name grammar: an optional DNS-subdomain prefix of at most 253 characters, a `/`, then a name of at most 63 characters. Values follow Kubernetes label-value syntax and may be empty — an empty value is a real label, not a deletion. There is no deletion syntax.
 
 **Immutability.** `workloadMetadata` cannot be added, removed, or changed after the Job is created; all three are rejected by CRD transition rules. A checkpoint restart therefore recreates the workload with the labels it was originally admitted with, so a restart cannot land the workload in a different queue than the one that admitted it. To change the labels, create a new Job (or a new `WorkloadRun`/`Certification`).
+
+The optional `nodeHealthMonitor`, `goodputMeasurement`, and `bandwidthMeasurement` fields have the same compatibility restriction: each field is immutable in both presence and value. A field omitted when the Job is created cannot be added later, and a present field cannot be removed or changed. To change one of these configurations, create a new Job.
 
 ## Status fields
 
