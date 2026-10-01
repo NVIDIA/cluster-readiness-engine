@@ -1,0 +1,8 @@
+# The byte limit cuts a line in half: the partial line is dropped and
+# read whole from the next page.
+pageBytes: 90
+log: |
+  2026-09-30T10:00:01.100000000Z r01
+  2026-09-30T10:00:02.100000000Z r02
+  2026-09-30T10:00:03.100000000Z r03
+  2026-09-30T10:00:04.100000000Z r04

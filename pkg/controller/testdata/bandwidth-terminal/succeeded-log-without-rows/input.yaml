@@ -1,0 +1,6 @@
+# The complete log was read and holds no bandwidth rows.
+jobCondition: Succeeded
+podPhase: Succeeded
+log: |
+  2026-09-30T10:01:00.000000001Z # nThread 1 nGpus 1 minBytes 8 maxBytes 17179869184 step: 2(factor) warmup iters: 5 iters: 20
+  2026-09-30T10:01:00.100000000Z NCCL INFO Using network IB
