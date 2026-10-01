@@ -25,13 +25,14 @@ func TestIsBelowBandwidthThresholdWaitsForComplete(t *testing.T) {
 	}
 
 	for _, tc := range []struct {
-		name   string
-		reason string
-		ready  bool
+		name      string
+		reason    string
+		ready     bool
+		expectErr bool
 	}{
 		{name: "incomplete", ready: false},
-		{name: "complete", ready: true},
-		{name: "terminal no data", reason: reasonBandwidthNoData, ready: false},
+		{name: "complete", reason: reasonBandwidthJobSucceeded, ready: true},
+		{name: "terminal no data", reason: reasonBandwidthNoData, ready: false, expectErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			conditions := []metav1.Condition(nil)
@@ -49,19 +50,26 @@ func TestIsBelowBandwidthThresholdWaitsForComplete(t *testing.T) {
 					JobRef: corev1.TypedLocalObjectReference{Name: "job"},
 				},
 				Status: nvcrev1alpha1.BandwidthMeasurementStatus{
-					Results: []nvcrev1alpha1.BandwidthResult{{BusBW: "980.1"}},
+					Results:    []nvcrev1alpha1.BandwidthResult{{BusBW: "980.1"}},
 					Conditions: conditions,
 				},
 			}
+			job := &nvcrev1alpha1.Job{Name: "job", Namespace: "ns", UID: "uid-current"}
 			index := func(obj client.Object) []string {
 				return []string{obj.(*nvcrev1alpha1.BandwidthMeasurement).Spec.JobRef.Name}
 			}
 			c := fake.NewClientBuilder().WithScheme(scheme).
 				WithIndex(&nvcrev1alpha1.BandwidthMeasurement{}, measurementJobRefIndexField, index).
-				WithObjects(bm).Build()
+				WithObjects(bm, job).Build()
 
 			r := &WorkflowReconciler{Client: c}
 			below, pending, err := r.isBelowBandwidthThreshold(context.Background(), "job", "ns", "value >= 900")
+			if tc.expectErr {
+				if err == nil {
+					t.Fatal("terminal no-data measurement should fail closed")
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}

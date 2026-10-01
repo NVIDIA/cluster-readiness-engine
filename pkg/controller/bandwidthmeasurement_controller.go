@@ -57,9 +57,8 @@ const (
 	// failed and is being retried within the grace period.
 	reasonBandwidthFinalReadPending = "FinalReadPending"
 
-	// defaultFinalReadGracePeriod bounds how long a failed final log read is
-	// retried. It stays well under the default measurementTimeout (5m), so the
-	// Job sees a completed measurement rather than timing out on a pending one.
+	// defaultFinalReadGracePeriod is the least time a failed final log read is
+	// retried; see finalReadGracePeriod.
 	defaultFinalReadGracePeriod = 2 * time.Minute
 )
 
@@ -83,8 +82,9 @@ type BandwidthMeasurementReconciler struct {
 	// Tests set this to 1s; production uses 15s.
 	RequeueInterval time.Duration
 
-	// FinalReadGracePeriod bounds how long a failed final log read is retried
-	// before the measurement completes without final results. Zero uses
+	// FinalReadGracePeriod is the least time a failed final log read is
+	// retried before the measurement completes without final results; the
+	// Job's measurement timeout extends it. Zero uses
 	// defaultFinalReadGracePeriod; a negative value completes on the first
 	// failed read.
 	FinalReadGracePeriod time.Duration
@@ -136,15 +136,21 @@ func (r *BandwidthMeasurementReconciler) getRequeueInterval() time.Duration {
 	return defaultBandwidthMeasurementRequeueInterval
 }
 
-func (r *BandwidthMeasurementReconciler) finalReadGracePeriod() time.Duration {
-	switch {
-	case r.FinalReadGracePeriod > 0:
-		return r.FinalReadGracePeriod
-	case r.FinalReadGracePeriod < 0:
+// finalReadGracePeriod returns how long a failed final read of job's log is
+// retried: FinalReadGracePeriod, extended to the Job's measurement timeout
+// when that is longer. The Job waits that long for a result anyway, and a
+// measurement that gives up sooner cannot be evaluated, so stopping early
+// gains nothing. The floor still bounds the wait for a diagnose round, which
+// has no timeout of its own.
+func (r *BandwidthMeasurementReconciler) finalReadGracePeriod(job *nvcrev1alpha1.Job) time.Duration {
+	if r.FinalReadGracePeriod < 0 {
 		return 0
-	default:
-		return defaultFinalReadGracePeriod
 	}
+	grace := r.FinalReadGracePeriod
+	if grace == 0 {
+		grace = defaultFinalReadGracePeriod
+	}
+	return max(grace, measurementTimeoutFor(job, 0))
 }
 
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=bandwidthmeasurements,verbs=get;list;watch;create;update;patch;delete
@@ -442,7 +448,7 @@ func (r *BandwidthMeasurementReconciler) handleJobSucceeded(ctx context.Context,
 	if pendingSince.IsZero() {
 		pendingSince = time.Now()
 	}
-	if wait := r.finalReadGracePeriod() - time.Since(pendingSince); retryable && wait > 0 {
+	if wait := r.finalReadGracePeriod(job) - time.Since(pendingSince); retryable && wait > 0 {
 		r.warnf(measurement, reasonBandwidthFinalReadPending, "Final log read failed, retrying: %v", readErr)
 		if err := r.markFinalReadPending(ctx, measurement); err != nil {
 			return ctrl.Result{}, err

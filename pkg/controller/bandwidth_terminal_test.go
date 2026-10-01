@@ -34,10 +34,15 @@ type bandwidthTerminalInput struct {
 	Log           *string         `yaml:"log"`
 	// LogTruncated makes the log read report that it stopped at the byte
 	// limit, as a log larger than one page does.
-	LogTruncated    bool                            `yaml:"logTruncated"`
-	Provisional     []nvcrev1alpha1.BandwidthResult `yaml:"provisional"`
-	PendingSince    string                          `yaml:"pendingSince"`
-	AlreadyComplete bool                            `yaml:"alreadyComplete"`
+	LogTruncated bool                            `yaml:"logTruncated"`
+	Provisional  []nvcrev1alpha1.BandwidthResult `yaml:"provisional"`
+	PendingSince string                          `yaml:"pendingSince"`
+	// PendingForSeconds seeds the failed final read that many seconds before
+	// the reconcile, for cases that sit on either side of the grace period.
+	PendingForSeconds int `yaml:"pendingForSeconds"`
+	// MeasurementTimeout sets the Job's spec.measurementTimeout.
+	MeasurementTimeout string `yaml:"measurementTimeout"`
+	AlreadyComplete    bool   `yaml:"alreadyComplete"`
 	// MeasuredJobUID is the UID of the Job the measurement was created for;
 	// the fixture Job's UID is uid-current.
 	MeasuredJobUID string `yaml:"measuredJobUID"`
@@ -88,7 +93,10 @@ func TestBandwidthTerminal(t *testing.T) {
 		objs := []client.Object{m, ncclBandwidthProfile()}
 		statusObjs := []client.Object{m}
 		if in.JobCondition != "" {
-			job := bandwidthTerminalJob(in)
+			job, err := bandwidthTerminalJob(in)
+			if err != nil {
+				return err
+			}
 			objs = append(objs, job)
 			statusObjs = append(statusObjs, job)
 		}
@@ -157,10 +165,13 @@ func bandwidthTerminalMeasurement(in bandwidthTerminalInput) (*nvcrev1alpha1.Ban
 	if in.MeasuredJobUID != "" {
 		m.Annotations = map[string]string{annotationJobUID: in.MeasuredJobUID}
 	}
-	if in.PendingSince != "" {
-		since, err := time.Parse(time.RFC3339, in.PendingSince)
-		if err != nil {
-			return nil, fmt.Errorf("pendingSince: %w", err)
+	if in.PendingSince != "" || in.PendingForSeconds > 0 {
+		since := time.Now().Add(-time.Duration(in.PendingForSeconds) * time.Second)
+		if in.PendingSince != "" {
+			var err error
+			if since, err = time.Parse(time.RFC3339, in.PendingSince); err != nil {
+				return nil, fmt.Errorf("pendingSince: %w", err)
+			}
 		}
 		m.Status.Conditions = append(m.Status.Conditions, metav1.Condition{
 			Type: nvcrev1alpha1.BandwidthMeasurementMeasuring, Status: metav1.ConditionFalse,
@@ -178,7 +189,7 @@ func bandwidthTerminalMeasurement(in bandwidthTerminalInput) (*nvcrev1alpha1.Ban
 	return m, nil
 }
 
-func bandwidthTerminalJob(in bandwidthTerminalInput) *nvcrev1alpha1.Job {
+func bandwidthTerminalJob(in bandwidthTerminalInput) (*nvcrev1alpha1.Job, error) {
 	job := &nvcrev1alpha1.Job{
 		Name: "j", Namespace: "ns", UID: currentJobUID,
 		Status: nvcrev1alpha1.JobStatus{Conditions: []metav1.Condition{{
@@ -189,7 +200,14 @@ func bandwidthTerminalJob(in bandwidthTerminalInput) *nvcrev1alpha1.Job {
 	if !in.NoWorkloadRef {
 		job.Status.WorkloadRef = &nvcrev1alpha1.WorkloadReference{Kind: "TrainJob", Name: "w"}
 	}
-	return job
+	if in.MeasurementTimeout != "" {
+		d, err := time.ParseDuration(in.MeasurementTimeout)
+		if err != nil {
+			return nil, fmt.Errorf("measurementTimeout: %w", err)
+		}
+		job.Spec.MeasurementTimeout = &metav1.Duration{Duration: d}
+	}
+	return job, nil
 }
 
 // ncclBandwidthProfile mirrors the chart's nccl-bandwidth LogProfile.

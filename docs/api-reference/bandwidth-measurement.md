@@ -51,7 +51,7 @@ Each `BandwidthResult` entry contains:
 
 A threshold on `busBandwidthGBps` or `algBandwidthGBps` is evaluated only against final results. Any other outcome leaves the value unmeasured, and the Job fails validation once its `measurementTimeout` expires. In diagnose mode, the group is treated as failed.
 
-If the final read fails, for example because the launcher pod's log is briefly unreachable, `Measuring` is set to `False` with reason `FinalReadPending` and the read is retried for the independent `FinalReadGracePeriod` (two minutes by default). After that the measurement completes as `LogsUnavailable`. A log that can never be read in full, for example one with a line longer than 1 MiB, completes as `LogsUnavailable` at once.
+If the final read fails, for example because the launcher pod's log is briefly unreachable, `Measuring` is set to `False` with reason `FinalReadPending` and the read is retried for as long as the Job waits for measurement data: its `measurementTimeout` (5m by default), and never less than two minutes. After that the measurement completes as `LogsUnavailable`. A log that can never be read in full, for example one with a line longer than 1 MiB, completes as `LogsUnavailable` at once.
 
 Set `measurementTimeout` as a Go duration such as `10m`: `options.measurementTimeout` on a Certification category (or at the top of the Certification spec for every category), `spec.validation.performance.measurementTimeout` on a Workflow, or `spec.measurementTimeout` on a Job.
 
