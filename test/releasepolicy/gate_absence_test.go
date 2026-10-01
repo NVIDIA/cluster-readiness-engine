@@ -128,13 +128,21 @@ func runShell(t *testing.T, dir, script string, env ...string) (string, bool) {
 // darwinARM64 is named because the fixture and two verification cases share it.
 const darwinARM64 = "nvcrectl-darwin-arm64"
 
-// protobufBundle is the minimum JSON the gate's mediaType check accepts.
-// The payload is not verified here; the stub cosign is.
-const protobufBundle = `{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json"}` + "\n"
+// protobufBundle is the minimum JSON the gate's format assertion accepts:
+// protobuf mediaType, verificationMaterial, and an envelope. The payload is
+// not verified here; the stub cosign is.
+const protobufBundle = `{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json",` +
+	`"verificationMaterial":{},"dsseEnvelope":{}}` + "\n"
 
 // legacyBlobBundle is the LocalSignedPayload shape cosign falls back to.
 const legacyBlobBundle = `{"base64Signature":"MEUCIQlegacy",` +
 	`"cert":"-----BEGIN PUBLIC KEY-----\nMFkw\n-----END PUBLIC KEY-----"}` + "\n"
+
+// hybridBlobBundle has the protobuf mediaType *and* LocalSignedPayload keys.
+// mediaType alone is not what cosign branches on; this is the file that
+// used to pass a mediaType-only check and still reach the legacy parser.
+const hybridBlobBundle = `{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json",` +
+	`"base64Signature":"MEUCIQlegacy","cert":"-----BEGIN PUBLIC KEY-----\nMFkw\n-----END PUBLIC KEY-----"}` + "\n"
 
 const installerBundleFile = "installer.sigstore.json"
 
@@ -381,9 +389,12 @@ func TestGateRejectsMissingAssets(t *testing.T) {
 
 	// A zero-length file is the shape a failed upload leaves behind, and it is
 	// the case an existence test rather than a size test would let through.
-	// One per `-s` test in the step. Without the SBOM-binding bundle, relaxing
-	// that line alone to `-e` is silent: a zero-byte bundle passes presence,
-	// then passes verification, and the release ships.
+	// One per `-s` test in the step. The two bundle paths used to pin that
+	// presence check: relaxing `-s` to `-e` let a zero-byte bundle through
+	// and then through verification. With reject_legacy_blob_bundle in
+	// place, that mutation still fails — but on the format assertion, not
+	// on presence. These cases pin the `-s` test rather than the
+	// discriminator, so they must not report a legacy-format error.
 	for _, empty := range []string{
 		"installer",
 		installerBundleFile,
@@ -397,6 +408,10 @@ func TestGateRejectsMissingAssets(t *testing.T) {
 			}
 			if !strings.Contains(out, "::error::") {
 				t.Errorf("the gate failed without saying why\n%s", out)
+			}
+			if strings.Contains(out, "legacy-format bundle") {
+				t.Errorf("the gate fell through presence to the mediaType "+
+					"discriminator; the -s test is not doing the work\n%s", out)
 			}
 		})
 	}
