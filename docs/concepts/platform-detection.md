@@ -71,8 +71,23 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | GB300 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
 | H100 | AWS | EFA | `vpc.amazonaws.com/efa: 32`, no hugepages |
 | H100 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap |
-| RTX PRO 6000 Blackwell | GCP G4 | TCP over `eth0`, PCIe GPU peer-to-peer | Four GPUs per `g4-standard-192` node; `nvidia.com/gpu=present:NoSchedule` toleration; no RDMA resource request |
+| RTX PRO 6000 Blackwell | GCP G4 | TCP over `eth0`, PCIe GPU peer-to-peer | Variable GPU count by G4 machine size; `nvidia.com/gpu=present:NoSchedule` toleration; no RDMA resource request |
 | GB200/GB300 | On-prem | InfiniBand | arm64/GPU taint tolerations, portable IB NCCL env (no HCA pinning), NIC resource auto-detected or set via `nicResourceName`, ComputeDomain |
+
+RTX PRO 6000 defaults to **eight GPUs per node**, including on GCP. The default
+is architecture-based, not machine-shape detection. On smaller G4 nodes, set
+`gpusPerNode` explicitly in the Certification or WorkloadRun to the node's
+allocatable GPU count (for example, `gpusPerNode: 4` for `g4-standard-192`).
+Without that setting, nodes advertising fewer than eight allocatable GPUs are
+excluded by the capacity filter; an all-four-GPU target fails rather than
+silently reducing the request. An explicit smaller request on an eight-GPU
+node tests only the requested GPUs and does not establish full-device coverage.
+
+The NCCL overlay selects `NCCL_P2P_LEVEL=SYS` for eight GPUs and `PHB` for two
+or four GPUs, following [Google's G4 guidance](https://docs.cloud.google.com/compute/docs/accelerator-optimized-machines#g4_series).
+Offline rendering also uses the eight-GPU default and does not validate node
+capacity. Set `gpusPerNode: 4` explicitly when previewing the four-GPU
+configuration. The live controller applies the capacity filter.
 
 The GCP RTX PRO 6000 override sets `NCCL_NET_PLUGIN=none` in addition to
 `NCCL_IB_DISABLE=1`. The PyTorch image includes an external RDMA plugin that

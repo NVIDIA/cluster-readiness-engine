@@ -303,7 +303,7 @@
     gpuArchitecture:
       equals: rtxpro6000
   dependencies:
-{{ lib "deps/gcp-rtxpro6000-runtime-patch-comm.yaml" . | indent 2 }}
+{{ lib "deps/gcp-rtxpro6000-runtime-patch.yaml" . | indent 2 }}
   mpiArgs:
 {{ lib "nccl/gcp-rtxpro6000-tcp-env.yaml" . | toMpiArgs | indent 4 }}
 {{- end }}
@@ -314,7 +314,7 @@
     gpuArchitecture:
       equals: rtxpro6000
   dependencies:
-{{ lib "deps/gcp-rtxpro6000-runtime-patch-training.yaml" . | indent 2 }}
+{{ lib "deps/gcp-rtxpro6000-runtime-patch.yaml" . | indent 2 }}
   jobTemplate:
     spec:
       workload:

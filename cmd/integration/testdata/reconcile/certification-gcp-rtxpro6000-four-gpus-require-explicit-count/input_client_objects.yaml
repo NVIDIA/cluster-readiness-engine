@@ -44,13 +44,12 @@ status:
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
-  name: gcp-nc-rtxpro6000
+  name: gcp-rtx-default4
   namespace: default
 spec:
   target:
     nodeSelector:
       nvidia.com/gpu.product: NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition
-  gpusPerNode: 4
   nodesPerJob: 2
   categories:
     - domain: communication

@@ -48,11 +48,6 @@ defaults:
     mlnxPerNode: 0
 
 platformOverrides:
-  gcp:
-    rtxpro6000:
-      # NKX-15244's G4 test cluster uses g4-standard-192 (4 GPUs per node).
-      # Eight-GPU G4 certifications must set gpusPerNode explicitly.
-      gpusPerNode: 4
   oci:
     l40s:
       gpusPerNode: 4

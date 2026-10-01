@@ -17,9 +17,9 @@ spec:
       effect: NoSchedule
 status:
   capacity:
-    nvidia.com/gpu: "4"
+    nvidia.com/gpu: "8"
   allocatable:
-    nvidia.com/gpu: "4"
+    nvidia.com/gpu: "8"
 ---
 apiVersion: v1
 kind: Node
@@ -37,20 +37,19 @@ spec:
       effect: NoSchedule
 status:
   capacity:
-    nvidia.com/gpu: "4"
+    nvidia.com/gpu: "8"
   allocatable:
-    nvidia.com/gpu: "4"
+    nvidia.com/gpu: "8"
 ---
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
-  name: gcp-nc-rtxpro6000
+  name: gcp-rtx-default8
   namespace: default
 spec:
   target:
     nodeSelector:
       nvidia.com/gpu.product: NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition
-  gpusPerNode: 4
   nodesPerJob: 2
   categories:
     - domain: communication
