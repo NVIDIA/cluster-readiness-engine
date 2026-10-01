@@ -19,20 +19,22 @@ import (
 // GpuInfo.Attributes in cmd/gpu-kubelet-plugin/deviceinfo.go) publishes
 // node-local ResourceSlices (spec.driver gpu.nvidia.com, spec.nodeName set)
 // whose GPU devices carry an unqualified productName string attribute holding
-// the NVML device name, e.g. "NVIDIA GB300". Renaming the driver or the
-// attribute, or qualifying the key as gpu.nvidia.com/productName, silently
-// disables this fallback.
+// the NVML device name, e.g. "NVIDIA GB300". Renaming the driver or an
+// attribute, or qualifying a key as gpu.nvidia.com/<name>, silently disables
+// these fallbacks.
 //
 // Each device also carries a type attribute: gpu, mig, or vfio (v0.5.0).
 // gpu devices and mig devices (CommonAttributesMig, from the parent GPU) carry
 // the NVML name, but vfio passthrough devices (VfioDeviceInfo.GetDevice) carry
 // the go-nvlib nvpci DeviceName PCI-IDs name, e.g. "GH100 [H100 SXM5 80GB]",
 // which parses to the wrong architecture. vfio devices are skipped; any other
-// or missing type is read.
+// or missing type is read. Only gpu devices are whole GPUs, so CountDRAGPUs
+// counts those alone.
 const (
 	gpuResourceSliceDriver = "gpu.nvidia.com"
 	productNameAttribute   = "productName"
 	deviceTypeAttribute    = "type"
+	fullGPUDeviceType      = "gpu"
 	vfioDeviceType         = "vfio"
 
 	// resourceSliceListTimeout bounds the one uncached ResourceSlice List
@@ -106,4 +108,45 @@ func augmentGPUProductLabels(ctx context.Context, reader client.Reader, nodes []
 			nodes[i].Labels[gpu.ProductLabel] = product
 		}
 	}
+}
+
+// CountDRAGPUs returns the number of full GPUs each node publishes in its
+// gpu.nvidia.com ResourceSlices, keyed by node name. MIG and VFIO devices are
+// excluded because they are not whole GPUs. Only the newest generation of
+// each pool counts, since older slices of a pool are stale by the
+// ResourcePool contract.
+//
+// It serves the CLI only, as an observation to compare against the catalog
+// default; rendering still sizes claims from gpu-defaults.yaml. No controller
+// calls it, so it has no unexported twin in workflow_detect_export.go.
+func CountDRAGPUs(ctx context.Context, reader client.Reader) (map[string]int32, error) {
+	var slices resourcev1.ResourceSliceList
+	if err := reader.List(ctx, &slices); err != nil {
+		return nil, err
+	}
+
+	newest := map[string]int64{}
+	for _, rs := range slices.Items {
+		if rs.Spec.Driver != gpuResourceSliceDriver {
+			continue
+		}
+		if g, ok := newest[rs.Spec.Pool.Name]; !ok || rs.Spec.Pool.Generation > g {
+			newest[rs.Spec.Pool.Name] = rs.Spec.Pool.Generation
+		}
+	}
+
+	counts := map[string]int32{}
+	for _, rs := range slices.Items {
+		if rs.Spec.Driver != gpuResourceSliceDriver || rs.Spec.NodeName == nil ||
+			rs.Spec.Pool.Generation < newest[rs.Spec.Pool.Name] {
+			continue
+		}
+		for _, d := range rs.Spec.Devices {
+			if attr, ok := d.Attributes[deviceTypeAttribute]; ok &&
+				attr.StringValue != nil && *attr.StringValue == fullGPUDeviceType {
+				counts[*rs.Spec.NodeName]++
+			}
+		}
+	}
+	return counts, nil
 }
