@@ -553,6 +553,7 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 		NicResourceName: nicResourceName,
 		EnableMNNVL:     enableMNNVL,
 		FrameworkType:   frameworkType,
+		UserEnv:         spec.Env,
 	}
 	wrOverrides := platform.BuildOverrides(overrideCfg)
 	octx := OverrideContext{

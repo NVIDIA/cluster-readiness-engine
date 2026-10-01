@@ -365,6 +365,7 @@ func BuildWorkflowSpec(
 		NicResourceName: derefString(spec.NicResourceName),
 		EnableMNNVL:     enableMNNVL,
 		FrameworkType:   frameworkType,
+		UserEnv:         spec.Env,
 	}
 	wrOverrides := platform.BuildOverrides(overrideCfg)
 	overrides := make([]nvcrev1alpha1.OverrideSpec, 0, len(wrOverrides)+len(spec.Overrides))

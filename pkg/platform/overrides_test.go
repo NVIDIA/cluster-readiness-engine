@@ -13,6 +13,7 @@ import (
 	"text/template"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/yaml"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -95,6 +96,49 @@ func TestBuildOverridesRendersForEveryPlatform(t *testing.T) {
 		tc.Actual = string(b) + "\n"
 		return nil
 	})
+}
+
+func TestBuildOverridesPreservesWorkloadRunUserEnv(t *testing.T) {
+	overrides := BuildOverrides(OverrideConfig{
+		FrameworkType: "torch",
+		UserEnv: []corev1.EnvVar{
+			{Name: "NCCL_DEBUG", Value: "TRACE"},
+			{Name: "USER_ONLY", Value: "kept"},
+		},
+	})
+
+	trainerPatches := 0
+	for _, override := range overrides {
+		if override.JobTemplate == nil {
+			continue
+		}
+		var root map[string]any
+		require.NoError(t, json.Unmarshal(override.JobTemplate.Raw, &root))
+		trainer, ok := nestedOverrideMap(root, "spec", "workload", "trainJob", "trainer")
+		if !ok {
+			continue
+		}
+		trainerPatches++
+		var env []corev1.EnvVar
+		envJSON, err := json.Marshal(trainer["env"])
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(envJSON, &env))
+		assertEnvValue(t, env, "NCCL_DEBUG", "TRACE")
+		assertEnvValue(t, env, "USER_ONLY", "kept")
+	}
+
+	require.NotZero(t, trainerPatches, "expected at least one trainer.env platform override")
+}
+
+func assertEnvValue(t *testing.T, env []corev1.EnvVar, name, want string) {
+	t.Helper()
+	for _, got := range env {
+		if got.Name == name {
+			require.Equal(t, want, got.Value)
+			return
+		}
+	}
+	t.Fatalf("expected %s=%s in trainer env: %#v", name, want, env)
 }
 
 // TestBuildOverridesMPIArgs records every rendered override that carries

@@ -17,6 +17,7 @@ import (
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	sigyaml "sigs.k8s.io/yaml"
@@ -41,6 +42,10 @@ type OverrideConfig struct {
 
 	EnableMNNVL   bool
 	FrameworkType string
+
+	// UserEnv is merged into platform trainer.env patches so WorkloadRun
+	// values retain precedence when Kubeflow Trainer applies the patch.
+	UserEnv []corev1.EnvVar `json:"-" yaml:"-"`
 }
 
 // WorkloadRunOverride extends OverrideSpec with fields that are consumed
@@ -70,7 +75,82 @@ func BuildOverrides(cfg OverrideConfig) []WorkloadRunOverride {
 	if err != nil {
 		panic(fmt.Sprintf("platform: parse overrides: %v", err))
 	}
+	mergeUserEnvIntoTrainerPatches(overrides, cfg.UserEnv)
 	return overrides
+}
+
+// mergeUserEnvIntoTrainerPatches preserves WorkloadRun spec.env values in
+// platform overrides that replace the unnamed Trainer.Env list. Kubeflow
+// Trainer applies trainer.env after the runtime container environment, so a
+// conflicting platform value would otherwise silently win.
+func mergeUserEnvIntoTrainerPatches(overrides []WorkloadRunOverride, userEnv []corev1.EnvVar) {
+	if len(userEnv) == 0 {
+		return
+	}
+
+	for i := range overrides {
+		patch := overrides[i].JobTemplate
+		if patch == nil {
+			continue
+		}
+
+		var root map[string]any
+		if err := json.Unmarshal(patch.Raw, &root); err != nil {
+			panic(fmt.Sprintf("platform: decode jobTemplate override[%d]: %v", i, err))
+		}
+		trainer, ok := nestedOverrideMap(root, "spec", "workload", "trainJob", "trainer")
+		if !ok {
+			continue
+		}
+		rawEnv, ok := trainer["env"]
+		if !ok {
+			continue
+		}
+		envJSON, err := json.Marshal(rawEnv)
+		if err != nil {
+			panic(fmt.Sprintf("platform: encode trainer env override[%d]: %v", i, err))
+		}
+		var patchEnv []corev1.EnvVar
+		if err := json.Unmarshal(envJSON, &patchEnv); err != nil {
+			panic(fmt.Sprintf("platform: decode trainer env override[%d]: %v", i, err))
+		}
+		trainer["env"] = mergeEnvByName(patchEnv, userEnv)
+
+		updated, err := json.Marshal(root)
+		if err != nil {
+			panic(fmt.Sprintf("platform: encode jobTemplate override[%d]: %v", i, err))
+		}
+		overrides[i].JobTemplate.Raw = updated
+	}
+}
+
+func nestedOverrideMap(root map[string]any, path ...string) (map[string]any, bool) {
+	current := root
+	for _, key := range path {
+		value, ok := current[key].(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		current = value
+	}
+	return current, true
+}
+
+func mergeEnvByName(base, user []corev1.EnvVar) []corev1.EnvVar {
+	merged := append([]corev1.EnvVar(nil), base...)
+	indices := make(map[string]int, len(merged))
+	for i, env := range merged {
+		indices[env.Name] = i
+	}
+	for _, env := range user {
+		if index, ok := indices[env.Name]; ok {
+			merged[index] = env
+			continue
+		}
+		indices[env.Name] = len(merged)
+		merged = append(merged, env)
+	}
+	return merged
 }
 
 // renderTemplate renders an embedded YAML template with the given data.
