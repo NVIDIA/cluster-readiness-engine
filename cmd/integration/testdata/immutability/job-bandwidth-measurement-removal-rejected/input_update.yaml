@@ -8,4 +8,6 @@ metadata:
 spec:
   workload:
     trainJob:
-      runtimeRef: {kind: TrainingRuntime, name: test-runtime}
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime

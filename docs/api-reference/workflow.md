@@ -15,14 +15,14 @@ _Fields documented so far:_
 | Field | Type | Description |
 |-------|------|-------------|
 | `jobTemplate.spec.workloadMetadata` | WorkloadMetadata | Optional, immutable. Labels applied to the workload object each generated Job creates. This is a plain `JobSpec` field, so it carries the same admission and transition rules as a direct Job's. See [Job workload object labels](job.md#workload-object-labels) |
-| `jobTemplate.spec.nodeHealthMonitor` | NodeHealthMonitor | Optional, immutable in presence and value. If omitted when the job template is created, it cannot be added later |
-| `jobTemplate.spec.goodputMeasurement` | GoodputMeasurementConfig | Optional, immutable in presence and value. If omitted when the job template is created, it cannot be added later |
-| `jobTemplate.spec.bandwidthMeasurement` | BandwidthMeasurementConfig | Optional, immutable in presence and value. If omitted when the job template is created, it cannot be added later |
+| `jobTemplate.spec.nodeHealthMonitor` | NodeHealthMonitorConfig | Optional, immutable in presence and value. Copied to each generated Job |
+| `jobTemplate.spec.goodputMeasurement` | GoodputMeasurementConfig | Optional, immutable in presence and value. Copied to each generated Job |
+| `jobTemplate.spec.bandwidthMeasurement` | BandwidthMeasurementConfig | Optional, immutable in presence and value. Copied to each generated Job |
 | `gangScheduler` | GangSchedulerSpec | Optional, immutable. The resolved gang-scheduling intent of the WorkloadRun or Certification that generated this Workflow. See [Gang scheduling consistency contract](#gang-scheduling-consistency-contract) |
 
 Because `spec.jobTemplate.spec` is a plain `JobSpec`, its `workloadMetadata` cannot be added, removed, or changed after the Workflow is created. Editing it mid-flight is rejected, so every group and iteration produces Jobs with the same workload labels. Raw `spec.overrides` remain editable; a Job's own metadata becomes immutable at the moment that Job is created.
 
-Because `spec.jobTemplate.spec` is a plain `JobSpec`, its `nodeHealthMonitor`, `goodputMeasurement`, and `bandwidthMeasurement` fields are each immutable in both presence and value. A field omitted when the Workflow job template is created cannot be added later; a present field cannot be removed or changed. To change one of these configurations, create a new Workflow.
+The measurement fields in `spec.jobTemplate.spec` follow the same transition rules: `nodeHealthMonitor`, `goodputMeasurement`, and `bandwidthMeasurement` cannot be added, removed, or changed after the Workflow is created. Other mutable fields in the Job template remain editable.
 
 ## Gang scheduling consistency contract
 

@@ -6,7 +6,10 @@ metadata:
   name: imm-job-bandwidth-remove
   namespace: default
 spec:
-  bandwidthMeasurement: {logProfileRef: test-profile}
+  bandwidthMeasurement:
+    logProfileRef: test-profile
   workload:
     trainJob:
-      runtimeRef: {kind: TrainingRuntime, name: test-runtime}
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
