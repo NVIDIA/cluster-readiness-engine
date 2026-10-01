@@ -104,6 +104,7 @@ func TestBuildOverridesPreservesWorkloadRunUserEnv(t *testing.T) {
 		UserEnv: []corev1.EnvVar{
 			{Name: "NCCL_DEBUG", Value: "TRACE"},
 			{Name: "USER_ONLY", Value: "kept"},
+			{Name: "PET_NNODES", Value: "2"},
 		},
 	})
 
@@ -124,10 +125,20 @@ func TestBuildOverridesPreservesWorkloadRunUserEnv(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, json.Unmarshal(envJSON, &env))
 		assertEnvValue(t, env, "NCCL_DEBUG", "TRACE")
-		assertEnvValue(t, env, "USER_ONLY", "kept")
+		assertNoEnvValue(t, env, "USER_ONLY")
+		assertNoEnvValue(t, env, "PET_NNODES")
 	}
 
 	require.NotZero(t, trainerPatches, "expected at least one trainer.env platform override")
+}
+
+func assertNoEnvValue(t *testing.T, env []corev1.EnvVar, name string) {
+	t.Helper()
+	for _, got := range env {
+		if got.Name == name {
+			t.Fatalf("did not expect %s in trainer env: %#v", name, env)
+		}
+	}
 }
 
 func assertEnvValue(t *testing.T, env []corev1.EnvVar, name, want string) {

@@ -9,6 +9,9 @@ import (
 	"testing"
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
+	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -63,6 +66,84 @@ func TestBuildWorkflowSpec(t *testing.T) {
 		tc.Actual = string(b) + "\n"
 		return nil
 	})
+}
+
+func TestBuildWorkflowSpecPreservesOnlyConflictingTrainerEnv(t *testing.T) {
+	run := &nvcrev1alpha1.WorkloadRun{
+		ObjectMeta: metav1.ObjectMeta{Name: "env-precedence"},
+		Spec: nvcrev1alpha1.WorkloadRunSpec{
+			Image: "nvcr.io/nvidia/pytorch:24.01-py3",
+			Env: []corev1.EnvVar{
+				{Name: "NCCL_DEBUG", Value: "TRACE"},
+				{Name: "USER_ONLY", Value: "kept"},
+				{Name: "PET_NNODES", Value: "2"},
+			},
+			Framework: nvcrev1alpha1.FrameworkSpec{
+				Torch: &nvcrev1alpha1.TorchFramework{Script: "/workspace/train.py"},
+			},
+		},
+	}
+
+	workflow, err := BuildWorkflowSpec(run, 8, 0, false, "torch")
+	require.NoError(t, err)
+
+	var checked bool
+	for _, override := range workflow.Overrides {
+		if override.JobTemplate == nil {
+			continue
+		}
+		var root map[string]any
+		require.NoError(t, json.Unmarshal(override.JobTemplate.Raw, &root))
+		trainer, ok := nestedOverrideMap(root, "spec", "workload", "trainJob", "trainer")
+		if !ok {
+			continue
+		}
+		rawEnv, ok := trainer["env"]
+		if !ok {
+			continue
+		}
+		var env []corev1.EnvVar
+		envJSON, err := json.Marshal(rawEnv)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(envJSON, &env))
+		assertEnvValue(t, env, "NCCL_DEBUG", "TRACE")
+		assertNoEnvValue(t, env, "USER_ONLY")
+		assertNoEnvValue(t, env, "PET_NNODES")
+		checked = true
+	}
+	require.True(t, checked, "expected a generated platform trainer.env override")
+}
+
+func nestedOverrideMap(root map[string]any, path ...string) (map[string]any, bool) {
+	current := root
+	for _, key := range path {
+		value, ok := current[key].(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		current = value
+	}
+	return current, true
+}
+
+func assertEnvValue(t *testing.T, env []corev1.EnvVar, name, want string) {
+	t.Helper()
+	for _, got := range env {
+		if got.Name == name {
+			require.Equal(t, want, got.Value)
+			return
+		}
+	}
+	t.Fatalf("expected %s=%s in trainer env: %#v", name, want, env)
+}
+
+func assertNoEnvValue(t *testing.T, env []corev1.EnvVar, name string) {
+	t.Helper()
+	for _, got := range env {
+		if got.Name == name {
+			t.Fatalf("did not expect %s in trainer env: %#v", name, env)
+		}
+	}
 }
 
 // nodeJobName is the name of both the worker replicatedJob and the workload

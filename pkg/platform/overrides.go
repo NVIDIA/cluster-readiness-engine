@@ -43,8 +43,9 @@ type OverrideConfig struct {
 	EnableMNNVL   bool
 	FrameworkType string
 
-	// UserEnv is merged into platform trainer.env patches so WorkloadRun
-	// values retain precedence when Kubeflow Trainer applies the patch.
+	// UserEnv overrides matching names in platform trainer.env patches so
+	// WorkloadRun values retain precedence when Kubeflow Trainer applies the
+	// patch. User-only variables stay in the runtime container environment.
 	UserEnv []corev1.EnvVar `json:"-" yaml:"-"`
 }
 
@@ -82,7 +83,9 @@ func BuildOverrides(cfg OverrideConfig) []WorkloadRunOverride {
 // mergeUserEnvIntoTrainerPatches preserves WorkloadRun spec.env values in
 // platform overrides that replace the unnamed Trainer.Env list. Kubeflow
 // Trainer applies trainer.env after the runtime container environment, so a
-// conflicting platform value would otherwise silently win.
+// conflicting platform value would otherwise silently win. Only matching
+// names are overridden: user-only values belong to the runtime container and
+// must not be copied into every platform trainer patch.
 func mergeUserEnvIntoTrainerPatches(overrides []WorkloadRunOverride, userEnv []corev1.EnvVar) {
 	if len(userEnv) == 0 {
 		return
@@ -114,7 +117,7 @@ func mergeUserEnvIntoTrainerPatches(overrides []WorkloadRunOverride, userEnv []c
 		if err := json.Unmarshal(envJSON, &patchEnv); err != nil {
 			panic(fmt.Sprintf("platform: decode trainer env override[%d]: %v", i, err))
 		}
-		trainer["env"] = mergeEnvByName(patchEnv, userEnv)
+		trainer["env"] = overrideEnvByName(patchEnv, userEnv)
 
 		updated, err := json.Marshal(root)
 		if err != nil {
@@ -136,21 +139,18 @@ func nestedOverrideMap(root map[string]any, path ...string) (map[string]any, boo
 	return current, true
 }
 
-func mergeEnvByName(base, user []corev1.EnvVar) []corev1.EnvVar {
-	merged := append([]corev1.EnvVar(nil), base...)
-	indices := make(map[string]int, len(merged))
-	for i, env := range merged {
+func overrideEnvByName(base, user []corev1.EnvVar) []corev1.EnvVar {
+	overridden := append([]corev1.EnvVar(nil), base...)
+	indices := make(map[string]int, len(overridden))
+	for i, env := range overridden {
 		indices[env.Name] = i
 	}
 	for _, env := range user {
 		if index, ok := indices[env.Name]; ok {
-			merged[index] = env
-			continue
+			overridden[index] = env
 		}
-		indices[env.Name] = len(merged)
-		merged = append(merged, env)
 	}
-	return merged
+	return overridden
 }
 
 // renderTemplate renders an embedded YAML template with the given data.

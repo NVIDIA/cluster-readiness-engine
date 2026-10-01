@@ -335,6 +335,7 @@ func TestWorkloadRunUserEnvWinsPlatformTrainerEnv(t *testing.T) {
 	userEnv := []corev1.EnvVar{
 		{Name: "NCCL_DEBUG", Value: "TRACE"},
 		{Name: "USER_ONLY", Value: "kept"},
+		{Name: "PET_NNODES", Value: "2"},
 	}
 	platformOverrides := platform.BuildOverrides(platform.OverrideConfig{
 		FrameworkType: "torch",
@@ -366,7 +367,17 @@ func TestWorkloadRunUserEnvWinsPlatformTrainerEnv(t *testing.T) {
 
 	env := spec.JobTemplate.Spec.Workload.TrainJob.Trainer.Env
 	assertTrainerEnvValue(t, env, "NCCL_DEBUG", "TRACE")
-	assertTrainerEnvValue(t, env, "USER_ONLY", "kept")
+	assertNoTrainerEnvValue(t, env, "USER_ONLY")
+	assertNoTrainerEnvValue(t, env, "PET_NNODES")
+}
+
+func assertNoTrainerEnvValue(t *testing.T, env []corev1.EnvVar, name string) {
+	t.Helper()
+	for _, got := range env {
+		if got.Name == name {
+			t.Fatalf("did not expect %s in trainer env: %#v", name, env)
+		}
+	}
 }
 
 func assertTrainerEnvValue(t *testing.T, env []corev1.EnvVar, name, want string) {
