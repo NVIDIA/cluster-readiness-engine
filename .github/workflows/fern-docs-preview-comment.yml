@@ -18,7 +18,10 @@
 # Triggered by workflow_run after "Preview Fern Docs: Build" completes.
 # Downloads the fern/ artifact, builds a preview with DOCS_FERN_TOKEN, and
 # posts a stable :herb: comment on the PR. This workflow never checks out the
-# PR branch directly, keeping secrets isolated from untrusted code.
+# PR branch, keeping secrets isolated from untrusted code: the only thing it
+# checks out is main, for the CLI manifest, and the only thing it takes from
+# the pull request is the docs content the preview renders. Nothing that
+# arrives in the artifact is executed.
 #
 # Required configuration:
 # - Organization secret: DOCS_FERN_TOKEN (from `fern token` for the nvidia Fern org)
@@ -64,8 +67,10 @@ jobs:
     permissions:
       # download-artifact fetches a cross-run artifact with run-id +
       # github-token, which needs actions: read; the :herb: comment needs
-      # pull-requests: write.
+      # pull-requests: write; the main-side checkout of the CLI manifest
+      # needs contents: read.
       actions: read
+      contents: read
       pull-requests: write
     steps:
       - name: Download fern sources and metadata
@@ -81,20 +86,44 @@ jobs:
           echo "pr_number=$(cat preview-metadata/pr_number)" >> "$GITHUB_OUTPUT"
           echo "head_ref=$(cat preview-metadata/head_ref)" >> "$GITHUB_OUTPUT"
 
+      # The CLI must not come from the artifact. Everything under fern/ in
+      # fern-preview was produced by a job that checked out the pull request,
+      # so its package.json and package-lock.json are PR-controlled: npm ci
+      # would run PR-authored lifecycle scripts, and a lockfile entry can name
+      # any tarball the author likes, in the same job that hands
+      # DOCS_FERN_TOKEN to the resulting binary. A lockfile pins a version; it
+      # does not make the file that carries it trustworthy.
+      #
+      # So the manifest and lockfile come from main and land in trusted/,
+      # which nothing in the artifact can reach -- upload-artifact wrote only
+      # fern/, docs/ and preview-metadata/, and this step runs after the
+      # download either way. Only the docs content stays PR-supplied, which is
+      # the whole point of the preview.
+      #
+      # A pull request that bumps the CLI therefore previews with main's
+      # version. fern-docs-ci.yml runs npm ci against the PR's own lockfile
+      # and holds no secrets, so the bump is still exercised there.
+      - name: Checkout trusted CLI manifest
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          path: trusted
+          sparse-checkout: |
+            fern/package.json
+            fern/package-lock.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '20'
+          cache: npm
+          cache-dependency-path: trusted/fern/package-lock.json
 
       - name: Install Fern CLI
-        run: |
-          set -euo pipefail
-          VERSION=$(jq -r .version fern/fern.config.json)
-          if ! [[ "$VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?|latest)$ ]]; then
-            echo "::error::fern.config.json .version '$VERSION' is not a valid semver or 'latest'"
-            exit 1
-          fi
-          npm install -g "fern-api@${VERSION}"
+        working-directory: ./trusted/fern
+        run: npm ci
 
       - name: Generate preview URL
         id: generate-docs
@@ -104,7 +133,13 @@ jobs:
         working-directory: ./fern
         run: |
           set -o pipefail
-          fern generate --docs --preview --id "$HEAD_REF" 2>&1 | tee /tmp/fern-output.log
+          # Called by absolute path, not npx: npx resolves node_modules by
+          # walking up from the working directory, which is the artifact's
+          # fern/, so a pull request that commits its own node_modules/.bin
+          # would be the thing that runs with FERN_TOKEN in scope. The CLI
+          # comes from trusted/; only its input comes from the artifact.
+          "$GITHUB_WORKSPACE/trusted/fern/node_modules/.bin/fern" \
+            generate --docs --preview --id "$HEAD_REF" 2>&1 | tee /tmp/fern-output.log
           URL=$(grep -oP 'Published docs to \K.*(?= \()' /tmp/fern-output.log || true)
           if [ -z "$URL" ]; then
             echo "::error::Failed to generate preview URL. See fern output above."

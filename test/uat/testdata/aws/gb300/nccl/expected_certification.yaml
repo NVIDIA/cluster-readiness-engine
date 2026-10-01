@@ -13,7 +13,6 @@ spec:
   target:
     nodeSelector:
       nvidia.com/gpu.present: "true"
-      nvidia.com/gpu.product: NVIDIA-GB300
 status:
   categoryStatuses:
   - domain: communication

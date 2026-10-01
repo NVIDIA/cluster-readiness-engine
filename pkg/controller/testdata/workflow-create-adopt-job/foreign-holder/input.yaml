@@ -1,0 +1,4 @@
+# A live Job owned by someone else holds the name. Reading live does not soften
+# the collision: it is still terminal.
+holder: foreign
+inCache: false

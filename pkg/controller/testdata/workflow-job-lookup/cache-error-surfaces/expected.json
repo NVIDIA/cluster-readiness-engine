@@ -1,0 +1,14 @@
+{
+  "passes": [
+    {
+      "requeueAfter": "0s",
+      "error": "failed to get Job g0-job: etcdserver: request timed out",
+      "groupPhase": "Running",
+      "jobRef": "g0-job",
+      "trackedDependencies": 1,
+      "claimTemplateExists": true,
+      "inProgressCondition": "True/JobCreated: Created Job for group g0"
+    }
+  ],
+  "apiReads": 0
+}

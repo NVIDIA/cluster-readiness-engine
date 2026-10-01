@@ -1,0 +1,6 @@
+# The defect in #384: the cache has not caught up with a Workflow that exists
+# and is running. The category must stay InProgress and the next category's
+# Workflow must not be started alongside it.
+inCache: false
+inAPI: true
+reconciles: 3

@@ -1,0 +1,11 @@
+# The adopt branch under the same cache lag issue #384 is about. Category 0
+# finishes, so pass 1 moves on and creates category 1's Workflow, and Create
+# reports the name already taken. AlreadyExists proves the holder is on the API
+# server, so the cache returning NotFound for it is lag by definition. Confirm
+# the holder live; reading the cache again would fail the whole Certification
+# over a Workflow this Certification already owns.
+inCache: true
+inAPI: true
+succeeded: true
+adoptHolder: api-only
+reconciles: 2

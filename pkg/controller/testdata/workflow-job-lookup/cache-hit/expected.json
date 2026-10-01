@@ -1,0 +1,21 @@
+{
+  "passes": [
+    {
+      "requeueAfter": "1s",
+      "groupPhase": "Running",
+      "jobRef": "g0-job",
+      "trackedDependencies": 1,
+      "claimTemplateExists": true,
+      "inProgressCondition": "True/JobRunning: Iteration 1/1: 1 groups running"
+    },
+    {
+      "requeueAfter": "1s",
+      "groupPhase": "Running",
+      "jobRef": "g0-job",
+      "trackedDependencies": 1,
+      "claimTemplateExists": true,
+      "inProgressCondition": "True/JobRunning: Iteration 1/1: 1 groups running"
+    }
+  ],
+  "apiReads": 0
+}

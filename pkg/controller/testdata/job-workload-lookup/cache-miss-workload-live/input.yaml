@@ -1,0 +1,8 @@
+# The workload is on the API server and not yet in the cache. Read as proof of
+# deletion this is terminal: the Job is failed over a workload that is still
+# running and still holding GPUs, and with a restart budget it would instead
+# spend a restart and create a second workload under the same name while the
+# first keeps going. Pin that the absence is confirmed live first and the Job
+# waits. Served from the cache instead, this case fails the Job.
+workloadExists: true
+cacheHidesWorkload: true

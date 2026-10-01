@@ -1,0 +1,5 @@
+{
+  "error": "existing Job \"g0-job\" in namespace \"default\" is being deleted; retrying",
+  "nameCollision": false,
+  "jobUIDAfterCall": "job-uid"
+}

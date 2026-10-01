@@ -1,0 +1,21 @@
+{
+  "passes": [
+    {
+      "requeueAfter": "1s",
+      "groupPhase": "Failed",
+      "jobRef": "\u003cnil\u003e",
+      "trackedDependencies": 0,
+      "claimTemplateExists": false,
+      "inProgressCondition": "True/JobRunning: Iteration 1/1: 0 groups running"
+    },
+    {
+      "requeueAfter": "1s",
+      "groupPhase": "Failed",
+      "jobRef": "\u003cnil\u003e",
+      "trackedDependencies": 0,
+      "claimTemplateExists": false,
+      "inProgressCondition": "True/JobRunning: Iteration 1/1: 0 groups running"
+    }
+  ],
+  "apiReads": 1
+}

@@ -1,0 +1,10 @@
+{
+  "name": "nvcre-docs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pins the Fern CLI used to check and publish the NVCRE documentation site. The lockfile is the single source of truth for the version; fern.config.json defers to it with \"version\": \"*\".",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "fern-api": "5.140.0"
+  }
+}

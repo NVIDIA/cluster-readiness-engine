@@ -208,6 +208,7 @@ func newRootCommand() *cobra.Command {
 
 			if err := (&controller.JobReconciler{
 				Client:                  mgr.GetClient(),
+				APIReader:               mgr.GetAPIReader(),
 				Scheme:                  mgr.GetScheme(),
 				Clientset:               clientset,
 				Recorder:                mgr.GetEventRecorder("job-controller"),
@@ -217,6 +218,7 @@ func newRootCommand() *cobra.Command {
 			}
 			if err := (&controller.WorkflowReconciler{
 				Client:                  mgr.GetClient(),
+				APIReader:               mgr.GetAPIReader(),
 				Scheme:                  mgr.GetScheme(),
 				Clientset:               clientset,
 				Recorder:                mgr.GetEventRecorder("workflow-controller"),
@@ -226,6 +228,7 @@ func newRootCommand() *cobra.Command {
 			}
 			if err := (&controller.CertificationReconciler{
 				Client:                  mgr.GetClient(),
+				APIReader:               mgr.GetAPIReader(),
 				Scheme:                  mgr.GetScheme(),
 				Recorder:                mgr.GetEventRecorder("certification-controller"),
 				MaxConcurrentReconciles: concurrency.maxConcurrentReconciles,

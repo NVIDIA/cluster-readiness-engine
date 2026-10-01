@@ -110,16 +110,29 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '20'
+          cache: npm
+          cache-dependency-path: fern/package-lock.json
 
+      # npm ci installs the exact tree in fern/package-lock.json, integrity
+      # hash included. A global 'npm install -g fern-api@<version>' resolves
+      # against the registry at run time and pins nothing.
       - name: Install Fern CLI
-        run: npm install -g fern-api@$(jq -r .version fern/fern.config.json)
+        working-directory: ./fern
+        run: npm ci
 
       # Authored content only. The frozen version content below is a copy of
       # docs/ at a release tag, so checking it here would report every finding
       # twice and fail on pages that can no longer be edited.
+      #
+      # node_modules is excluded for the same reason: the Fern CLI install
+      # above now puts third-party READMEs under fern/, and a dependency
+      # shipping a badge '<img>' would fail this check on a file nobody here
+      # wrote. The exclusion is order-independent, so moving the install does
+      # not silently re-expose it.
       - name: Check MDX safety
         run: |
-          BAD=$(grep -rn '<img\b[^>]*[^/]>\|<img>' docs/ fern/ --include="*.md" --include="*.mdx" || true)
+          BAD=$(grep -rn '<img\b[^>]*[^/]>\|<img>' docs/ fern/ \
+            --include="*.md" --include="*.mdx" --exclude-dir=node_modules || true)
           if [ -n "$BAD" ]; then
             echo "::error::Non-self-closing <img> tags found (MDX requires <img ... />):"
             echo "$BAD"
@@ -134,11 +147,16 @@ jobs:
       - name: Freeze registered version content
         run: ./hack/fern-freeze-versions.sh
 
+      # --no-install makes npx fail loudly if the CLI is missing rather than
+      # silently fetching it from the registry, which would defeat the pin.
       - name: Fern check
-        run: fern check
+        working-directory: ./fern
+        run: npx --no-install fern check
 
       - name: Check MDX validity
-        run: fern docs md check
+        working-directory: ./fern
+        run: npx --no-install fern docs md check
 
       - name: Check broken links
-        run: fern docs broken-links
+        working-directory: ./fern
+        run: npx --no-install fern docs broken-links

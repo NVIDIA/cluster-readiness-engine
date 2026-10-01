@@ -1,0 +1,13 @@
+# The first category succeeds, and creating the second category's Workflow
+# reports the name already taken. The live read that decides who holds it then
+# fails for its own reasons: a timeout here says nothing about the holder, and
+# the name may well be free on the next pass. Pin that this requeues instead of
+# burning the whole Certification, which is what the untyped error did: no
+# category WorkflowRef is recorded on this path, so recoverIfWorkflowStillRunning
+# cannot undo it and one 503 ends the run.
+inCache: true
+inAPI: true
+succeeded: true
+adoptHolder: api-only
+adoptReadError: "etcdserver: request timed out"
+reconciles: 3

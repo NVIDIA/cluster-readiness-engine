@@ -53,9 +53,13 @@ const (
 // WorkflowReconciler reconciles a Workflow object
 type WorkflowReconciler struct {
 	client.Client
-	Scheme             *runtime.Scheme
-	Clientset          *kubernetes.Clientset
-	Recorder           events.EventRecorder
+	Scheme    *runtime.Scheme
+	Clientset *kubernetes.Clientset
+	Recorder  events.EventRecorder
+	// APIReader reads straight from the API server, bypassing the informer
+	// cache, so a Job missing from the cache can be checked against the live
+	// cluster before it is treated as deleted (issue #385).
+	APIReader          client.Reader
 	JobRequeueInterval time.Duration
 	// MaxConcurrentReconciles bounds the number of Workflow objects reconciled concurrently.
 	MaxConcurrentReconciles int
@@ -1213,6 +1217,17 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 	return nil
 }
 
+// jobReader returns the APIReader when available, falling back to r.Client.
+// The fallback is only safe when r.Client has no cache, as with the fake
+// clients in unit tests that call the reconciler directly; SetupWithManager
+// always sets APIReader so a manager-backed reconciler never takes it.
+func (r *WorkflowReconciler) jobReader() client.Reader {
+	if r.APIReader != nil {
+		return r.APIReader
+	}
+	return r.Client
+}
+
 // createOrAdoptJob creates the Job or verifies the existing one belongs to this Workflow.
 func (r *WorkflowReconciler) createOrAdoptJob(ctx context.Context, workflow *nvcrev1alpha1.Workflow, job *nvcrev1alpha1.Job) error {
 	log := logf.FromContext(ctx)
@@ -1224,8 +1239,10 @@ func (r *WorkflowReconciler) createOrAdoptJob(ctx context.Context, workflow *nvc
 		}
 		// Fetch the existing Job and verify it is the one this Workflow created —
 		// a duplicate create caused by cache lag or a crash-retry. A foreign Job
-		// with a colliding name is never adopted.
-		if err := r.Get(ctx, client.ObjectKeyFromObject(job), job); err != nil {
+		// with a colliding name is never adopted. Read live: the holder may have
+		// been created moments ago, and cache lag is the case this is handling,
+		// so a cached read here would just fail the reconcile (issue #385).
+		if err := r.jobReader().Get(ctx, client.ObjectKeyFromObject(job), job); err != nil {
 			return fmt.Errorf("failed to get existing Job %s: %w", jobName, err)
 		}
 		if !metav1.IsControlledBy(job, workflow) {
@@ -1302,22 +1319,40 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 			ns = workflow.Namespace
 		}
 
-		if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: ref.Name}, job); err != nil {
-			if apierrors.IsNotFound(err) {
-				// No pod-drain barrier needed here: the Job finalizer only
-				// unregisters after the workload's pods are gone (bounded by
-				// podDrainGracePeriod), so a NotFound Job implies its pods
-				// have already drained.
-				log.Info("Job was deleted, marking group as failed", "group", g.Name, "job", ref.Name)
-				r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
-				now := metav1.Now()
-				g.Phase = nvcrev1alpha1.GroupFailed
-				g.CompletionTime = &now
-				g.JobRef = nil
-				statusChanged = true
-				continue
+		key := client.ObjectKey{Namespace: ns, Name: ref.Name}
+		if err := r.Get(ctx, key, job); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return ctrl.Result{}, fmt.Errorf("failed to get Job %s: %w", ref.Name, err)
 			}
-			return ctrl.Result{}, fmt.Errorf("failed to get Job %s: %w", ref.Name, err)
+			// A cache miss is not proof of deletion. The Job informer and the
+			// Workflow informer are independent watches: the write that makes
+			// this group readable as Running comes after the Job's Create, so
+			// the first reconcile to arrive here carries no guarantee that the
+			// Job informer has caught up. Confirm against the API server before
+			// acting, because this branch is not reversible (issue #385).
+			if err := r.jobReader().Get(ctx, key, job); err == nil {
+				log.V(1).Info("Job not yet in cache; leaving the group running",
+					"group", g.Name, "job", ref.Name)
+				anyRunning = true
+				continue
+			} else if !apierrors.IsNotFound(err) {
+				return ctrl.Result{}, fmt.Errorf("failed to confirm Job %s: %w", ref.Name, err)
+			}
+			// Confirmed gone. No pod-drain barrier is needed for a Job that
+			// really was deleted: its finalizer only unregisters after the
+			// workload's pods are gone (bounded by podDrainGracePeriod), so the
+			// pods have already drained. That reasoning applies to a confirmed
+			// absence only, which is why the uncached read above is load-bearing
+			// and not a mere optimisation: an unconfirmed cache miss leaves
+			// running pods holding the DRA allocations cleaned up below.
+			log.Info("Job was deleted, marking group as failed", "group", g.Name, "job", ref.Name)
+			r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
+			now := metav1.Now()
+			g.Phase = nvcrev1alpha1.GroupFailed
+			g.CompletionTime = &now
+			g.JobRef = nil
+			statusChanged = true
+			continue
 		}
 
 		// Treat a Job with DeletionTimestamp as deleted — its finalizer will
@@ -2740,11 +2775,25 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *nvcre
 	// there may be completed Jobs from previous iterations that are no longer referenced.
 	// The Job controller's finalizer handles workload (TrainJob) deletion and pod termination.
 	jobList := &nvcrev1alpha1.JobList{}
-	if err := r.List(ctx, jobList,
+	listOpts := []client.ListOption{
 		client.InNamespace(workflow.Namespace),
 		client.MatchingLabels{"nvcre.nvidia.com/workflow": workflow.Name},
-	); err != nil {
+	}
+	if err := r.List(ctx, jobList, listOpts...); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to list Jobs for deletion: %w", err)
+	}
+	// An empty cached list is not proof the Jobs have drained, and everything
+	// below treats it as exactly that: Phase 1 deletes nothing, the wait below
+	// is skipped, and Phase 2 revokes the job-scoped dependencies that back the
+	// workload's DRA allocations. A Workflow deleted shortly after a group's
+	// Job is created is enough to reach it, because the Job informer need not
+	// have caught up. That kills pods still holding those allocations with CUDA
+	// error 719 and skips the pod-drain barrier from #121, which is the same
+	// cache-miss-as-deletion mistake this change removes from the running path.
+	if len(jobList.Items) == 0 {
+		if err := r.jobReader().List(ctx, jobList, listOpts...); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to confirm Jobs for deletion: %w", err)
+		}
 	}
 	for i := range jobList.Items {
 		if jobList.Items[i].DeletionTimestamp.IsZero() {
@@ -3452,6 +3501,11 @@ func (r *WorkflowReconciler) eventf(obj runtime.Object, eventType, reason, messa
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *WorkflowReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Falling back to the cached client would re-read the same stale cache and
+	// fail a group whose Job is running (issue #385).
+	if r.APIReader == nil {
+		r.APIReader = mgr.GetAPIReader()
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nvcrev1alpha1.Workflow{}).
 		Owns(&nvcrev1alpha1.Job{}).
