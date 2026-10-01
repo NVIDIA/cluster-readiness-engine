@@ -48,7 +48,7 @@ Certification and Workflow conditions are the operator-facing source of truth (`
 | `nvcre_certification_status` | Gauge | `namespace`, `certification`, `status` | Current status of Certifications. Value is `1` for the current status, `0` for others. Status values: `in_progress`, `succeeded`, `failed` (mapped from the InProgress / Succeeded / Failed condition types). |
 | `nvcre_workflow_status` | Gauge | `namespace`, `workflow`, `certification`, `status` | Current status of Workflows. Value is `1` for the current status, `0` for others. Same status values as Certification. `certification` is the owning Certification name, or empty for a standalone Workflow. |
 
-Like `nvcre_job_status`, each update sets the current status to `1` and peer statuses to `0`. Series are removed with `DeletePartialMatch` on namespace+name when the object is deleted, so cardinality does not grow with completed runs. Reason strings are not exported as labels.
+Like `nvcre_job_status`, each update sets the current status to `1` and peer statuses to `0`. The controller also refreshes both gauges from the object's persisted InProgress/Succeeded/Failed condition on every reconcile, including terminal objects that do not write status, so the series reappear after a controller restart. Series are removed with `DeletePartialMatch` on namespace+name when the object is deleted, so cardinality does not grow with completed runs. Reason strings are not exported as labels.
 
 These gauges do not change how or when `nvcre_job_status` is updated.
 

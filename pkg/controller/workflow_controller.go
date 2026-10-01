@@ -116,6 +116,10 @@ func (r *WorkflowReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, fmt.Errorf("failed to get Workflow: %w", err)
 	}
 
+	// Republish from persisted conditions so gauges survive a process restart
+	// even when this reconcile does not write status (terminal early return).
+	refreshWorkflowStatusMetrics(workflow)
+
 	// Handle deletion
 	if !workflow.DeletionTimestamp.IsZero() {
 		return r.handleDeletion(ctx, workflow)

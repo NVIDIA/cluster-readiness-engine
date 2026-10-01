@@ -129,6 +129,10 @@ func (r *CertificationReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, fmt.Errorf("failed to get Certification: %w", err)
 	}
 
+	// Republish from persisted conditions so gauges survive a process restart
+	// even when this reconcile does not write status (terminal early return).
+	refreshCertificationStatusMetrics(certification)
+
 	// Handle deletion
 	if !certification.DeletionTimestamp.IsZero() {
 		return r.handleDeletion(ctx, certification)
