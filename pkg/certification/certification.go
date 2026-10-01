@@ -667,6 +667,10 @@ Use --cleanup to teardown installed components after completion.`,
 			if pullSet > 0 && pullSet < 3 {
 				return fmt.Errorf("--workload-registry, --workload-registry-username, and --workload-registry-password must all be set together and non-empty")
 			}
+			if certFile != "" && cmd.Flags().Changed("startup-stall-timeout-seconds") {
+				return fmt.Errorf("--startup-stall-timeout-seconds cannot be used with --cert-file; " +
+					"set it in the Certification YAML")
+			}
 			if cmd.Flags().Changed("startup-stall-timeout-seconds") && startupStallTimeoutSeconds < 1 {
 				return fmt.Errorf("--startup-stall-timeout-seconds must be at least 1 second (got %d); "+
 					"omit the flag to use the catalog entry's default", startupStallTimeoutSeconds)

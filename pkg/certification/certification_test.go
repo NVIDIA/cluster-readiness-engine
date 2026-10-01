@@ -839,6 +839,17 @@ func TestNewRunCommandValidation(t *testing.T) {
 		assert.Contains(t, err.Error(), "--startup-stall-timeout-seconds must be at least 1")
 	})
 
+	t.Run("startup-stall window with cert-file is rejected, not ignored", func(t *testing.T) {
+		cmd := newRunCommand("dev")
+		cmd.SetArgs([]string{
+			"--cert-file", "cert.yaml",
+			"--startup-stall-timeout-seconds", "3600",
+		})
+		err := cmd.Execute()
+		require.Error(t, err, "the file path applies no category options, so the value would be validated and then discarded")
+		assert.Contains(t, err.Error(), "cannot be used with --cert-file")
+	})
+
 	t.Run("setup wait cleanup are independent flags", func(t *testing.T) {
 		cmd := newRunCommand("dev")
 		for _, flag := range []string{"setup", "wait", "cleanup"} {
