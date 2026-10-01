@@ -17,6 +17,16 @@ The controller detects two dimensions at runtime:
 
 On a mixed-architecture target, the detected GPU architecture is the one reported by the most nodes, with ties resolved to the architecture whose earliest node sorts first by name. Nodes missing the `nvidia.com/gpu.product` label do not participate in that vote, so an unlabeled node never outvotes labeled ones; `unknown` is detected only when no target node carries the label. Every path uses the same rule: the Certification, Workflow, and WorkloadRun controllers as well as the `nvcrectl` render, cluster info, and workloadrun commands.
 
+### ResourceSlice fallback (no device plugin/GFD)
+
+Platforms that claim GPUs via Dynamic Resource Allocation instead of a device plugin, such as Nscale NKS, run no NVIDIA GPU Feature Discovery DaemonSet, so no node ever carries the `nvidia.com/gpu.product` label. Before the majority-architecture vote runs, node discovery lists `gpu.nvidia.com` `ResourceSlice` objects cluster-wide and reads each device's `productName` attribute, writing it as the `nvidia.com/gpu.product` label onto the corresponding node's in-memory copy (never persisted back to the API server). The driver reports the space-separated NVML name (`NVIDIA GB300`), so it is sanitized exactly as GPU Feature Discovery writes the label: characters outside `[A-Za-z0-9-_. ]` are dropped and each run of whitespace becomes one hyphen (`NVIDIA-GB300`); identical hardware therefore reports one product in a fleet that mixes both. Every existing label-based consumer — the architecture vote, catalog architecture defaults, NIC detection — is unaffected: they only ever read the label, and simply see it populated from a different source.
+
+The fallback supplies only the product. GPU nodes must still carry `nvidia.com/gpu.present=true`, which the NVIDIA GPU Operator sets: node discovery drops every node without it before the fallback runs. On a cluster whose GPU nodes carry no NVIDIA labels at all, such as one running only the standalone DRA GPU driver, label the GPU nodes `nvidia.com/gpu.present=true` yourself; otherwise node discovery finds no GPU nodes.
+
+This lookup is skipped entirely when every node already carries the label (every non-DRA cluster), and one `ResourceSlice` `List` call covers the whole target set. A missing `resourceslices` RBAC grant, or a driver that publishes no `productName` attribute, degrades to "leave those nodes unlabeled" rather than failing the reconcile — `unknown` architecture is the same outcome an unlabeled node with a device plugin produces today.
+
+Offline `nvcrectl certification render` and `nvcrectl workloadrun render` have no cluster to read `ResourceSlice`s from, so on a label-less platform like Nscale, offline render requires `--gpu-arch` to resolve architecture at all. `--gpu-arch` is ignored under `--dry-run`, which discovers real nodes and runs the same fallback the controllers do.
+
 The live controller writes detection results to `status.orchestration.detectedPlatform` and `status.orchestration.detectedGPUArchitecture` on the Workflow. When using `nvcrectl workflow render` (client-side), these values are also written as annotations (`nvcrectl.nvidia.com/detected-platform`, `nvcrectl.nvidia.com/detected-gpu-architecture`) on the rendered manifest for offline inspection.
 
 ## Override matching
@@ -72,6 +82,7 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | H100 | AWS | EFA | `vpc.amazonaws.com/efa: 32`, no hugepages |
 | H100 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap |
 | GB200/GB300 | On-prem | InfiniBand | arm64/GPU taint tolerations, portable IB NCCL env (no HCA pinning), NIC resource auto-detected or set via `nicResourceName`, ComputeDomain |
+| B200/GB300 | Nscale | InfiniBand | `gpu.nvidia.com`/`rdma.nscale.com` DRA `ResourceClaimTemplate`s (no `nvidia.com/gpu` extended-resource request; `dcgm-level4` claims the GPU only, since it runs `hostNetwork`), portable IB NCCL env (no HCA pinning), arm64/GPU taint tolerations; GB300 additionally gets the ComputeDomain block and uses `topology.nks.nscale.com/accelerator-domain` as the topology key wherever other platforms use `nvidia.com/gpu.clique` (Nscale runs no GFD, so that label never exists). `dcgm-level4` connects to NKS's `nvidia-platform/nvidia-dcgm-dra` DCGM Service instead of `gpu-operator/nvidia-dcgm` |
 
 The live controller tracks which overrides matched in `status.orchestration.appliedOverrides`. When using `nvcrectl workflow render`, the same information is also written to the `nvcrectl.nvidia.com/applied-overrides` annotation on the rendered manifest.
 

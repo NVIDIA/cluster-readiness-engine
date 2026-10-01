@@ -1,0 +1,4 @@
+# GFD drops characters outside [A-Za-z0-9-_. ] and collapses whitespace runs
+# into one hyphen, so doubled, leading, and trailing spaces and stray
+# punctuation must not produce a label GFD would never write.
+input: " NVIDIA  H100 (80GB) HBM3 "

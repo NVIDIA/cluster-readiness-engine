@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Nscale B200 nodes carry no nvidia.com/gpu.product label (ADR-085), so
+# --gpu-arch is required for offline render to resolve architecture at all.
+platform: nscale
+gpuArch: b200

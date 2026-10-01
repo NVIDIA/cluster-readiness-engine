@@ -89,3 +89,5 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 079 | [Declarative Labels for Generated Workload Objects](079-workload-object-labels.md) |
 | 080 | [Phase Transition Events Across the Lifecycle Tiers](080-phase-transition-events.md) |
 | 081 | [Support for Cordoned Node Selection](081-cordoned-node-selection.md) |
+| 082 | [GPU Architecture Fallback from DRA ResourceSlices](082-gpu-architecture-resourceslice-fallback.md) |
+| 085 | [Nscale NKS Support on the DRA Stack](085-nscale-nks-dra-support.md) |
