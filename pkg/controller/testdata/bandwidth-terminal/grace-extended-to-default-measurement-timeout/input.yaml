@@ -1,0 +1,8 @@
+# Without a measurementTimeout the Job waits the default 5 minutes, so a read
+# failing for 3 minutes is still retried.
+jobCondition: Succeeded
+podPhase: Succeeded
+pendingForSeconds: 180
+provisional:
+  - {sizeBytes: 8, algBW: "0.00", busBW: "0.00", samples: 5}
+  - {sizeBytes: 1048576, algBW: "14.00", busBW: "27.00", samples: 5}

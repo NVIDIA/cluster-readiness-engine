@@ -1,0 +1,6 @@
+# A failed Job's workload is deleted at once, so there is no grace period:
+# the provisional samples stay.
+jobCondition: Failed
+provisional:
+  - {sizeBytes: 8, algBW: "0.00", busBW: "0.00", samples: 5}
+  - {sizeBytes: 1048576, algBW: "14.00", busBW: "27.00", samples: 5}

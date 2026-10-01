@@ -1,4 +1,6 @@
-# Control: a measurement that has results is unaffected.
+# The measurement holds a provisional result, but the final read of the Job's
+# log cannot be done (no workload, no pod). It completes as LogsUnavailable:
+# the provisional result is kept for the report but never reaches a verdict.
 measurement: bandwidth
 jobCondition: Succeeded
 logProfileRef: nccl

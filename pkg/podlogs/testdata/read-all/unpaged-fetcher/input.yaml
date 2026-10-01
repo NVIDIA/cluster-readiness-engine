@@ -1,0 +1,7 @@
+# A fetcher without FetchLogsPage is read once.
+pageBytes: 1000
+unpaged: true
+log: |
+  2026-09-30T10:00:01.100000000Z r01
+  2026-09-30T10:00:02.100000000Z r02
+  2026-09-30T10:00:03.100000000Z r03
