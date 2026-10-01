@@ -37,8 +37,10 @@ const (
 )
 
 // isKAIGangScheduler reports whether the runtime opts the workload into KAI
-// Scheduler, which is the scheduler that needs the launcher ordering rewritten
-// from dependsOn to the JobSet startup policy (see schedulerNameKAI).
+// Scheduler. Under KAI the launcher ordering cannot be expressed as a JobSet
+// gate or startup policy at all: this scheduler deletes the launcher's
+// dependsOn gate and any startupPolicy and holds the launcher back inside the
+// pod instead (see launcherWaitScript and schedulerNameKAI).
 func isKAIGangScheduler(cfg RuntimeConfig) bool {
 	return cfg.GangSchedulerName == schedulerNameKAI
 }
@@ -150,11 +152,15 @@ func gangSchedulerQueueLabelKey(key string) string {
 // pod-level copy keeps queue assignment from depending on the Trainer/JobSet
 // layer propagating template metadata onto the pods.
 //
-// It does not touch JobSet ordering: the runtime that BuildMPIRuntime emits for
-// KAI already omits the launcher gate, because KAI requires every sub-group of
-// the PodGroup to have pods before the group is schedulable — an ordered or
-// gated launcher sub-group is empty until the workers are ready and can never be
-// admitted (measured live on KAI v0.16.4; see schedulerNameKAI).
+// For the KAI + MPI shape it also rewrites the JobSet ordering: it deletes the
+// launcher's dependsOn gate together with the JobSet startupPolicy (the two are
+// mutually exclusive) and appends the wait-for-workers init container, because
+// KAI requires every sub-group of the PodGroup to have pods before the group is
+// schedulable — an ordered or gated launcher sub-group is empty until the
+// workers are ready and can never be admitted. The wait therefore lives inside
+// the launcher pod (launcherWaitScript); a dependency between replicated jobs
+// that is not the launcher's node-ready gate keeps its meaning (measured live on
+// KAI v0.16.4; see schedulerNameKAI).
 //
 // It is a no-op when gs is nil, so a Certification that does not ask for gang
 // scheduling renders byte-identically to before. It is also a no-op when the
