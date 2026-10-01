@@ -1,0 +1,8 @@
+# A node with neither allocatable nvidia.com/gpu nor DRA GPUs runs nothing,
+# so it sets the smallest count to 0.
+nodes:
+  - name: n0
+    count: -1
+    draCount: 8
+  - name: n1
+    count: -1

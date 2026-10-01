@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# --gpu-arch resolves the architecture the nodeSelector does not carry.
+platform: onprem
+gpuArch: h100

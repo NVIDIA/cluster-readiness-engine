@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/signal"
 	"strings"
@@ -30,6 +31,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/cluster"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/gpu"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/render"
@@ -104,6 +106,7 @@ func newCertificationRenderCommand() *cobra.Command {
 	var outputFormat string
 	var dryRun bool
 	var platformFlag string
+	var gpuArchFlag string
 
 	configFlags := kubeconfig.NewConfigFlags(true)
 	*configFlags.Namespace = defaultKubeNamespace
@@ -117,7 +120,12 @@ With --dry-run, connects to a cluster, applies overrides per Workflow,
 and validates resolved resources via server-side dry-run.
 
 Use --platform to simulate platform-specific overrides (e.g., EFA volumes
-on AWS) without connecting to a cluster. Valid values: %s.`, platform.NamesList()),
+on AWS) without connecting to a cluster. Valid values: %s.
+
+Use --gpu-arch to set the GPU architecture offline (e.g. a DRA-only GPU
+stack whose nodes carry no nvidia.com/gpu.product label). It wins over the
+nodeSelector-derived value when set and is ignored under --dry-run, which
+always detects from real nodes.`, platform.NamesList()),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -126,7 +134,7 @@ on AWS) without connecting to a cluster. Valid values: %s.`, platform.NamesList(
 						"Usage: nvcrectl certification render [flags] <certification.yaml>",
 				)
 			}
-			return runCertificationRender(args[0], outputFormat, dryRun, configFlags, platformFlag)
+			return runCertificationRender(args[0], outputFormat, dryRun, configFlags, platformFlag, gpuArchFlag)
 		},
 	}
 
@@ -135,16 +143,28 @@ on AWS) without connecting to a cluster. Valid values: %s.`, platform.NamesList(
 		"Connect to cluster, discover real nodes, and validate via server-side dry-run")
 	cmd.Flags().StringVar(&platformFlag, "platform", "",
 		"Simulate platform for override matching ("+platform.NamesList()+")")
+	cmd.Flags().StringVar(&gpuArchFlag, "gpu-arch", "",
+		"GPU architecture for offline render; wins over the target nodeSelector's nvidia.com/gpu.product label")
 	configFlags.AddFlags(cmd.Flags())
 
 	return cmd
 }
 
 func runCertificationRender(certFile, outputFormat string, dryRun bool,
-	configFlags *kubeconfig.ConfigFlags, platformFlag string) error {
+	configFlags *kubeconfig.ConfigFlags, platformFlag, gpuArchFlag string) error {
 	namespace := *configFlags.Namespace
 
 	if err := platform.ValidateFlag(platformFlag); err != nil {
+		return err
+	}
+
+	// --gpu-arch applies offline only, as in workloadrun render: --dry-run
+	// always detects architecture from real nodes.
+	if dryRun {
+		gpuArchFlag = ""
+	}
+	gpuArchOverride, err := catalog.ParseGPUArchFlag(gpuArchFlag)
+	if err != nil {
 		return err
 	}
 
@@ -154,7 +174,11 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 	}
 
 	// When --dry-run, connect early so we can auto-detect GPU architecture
-	// from cluster nodes if not specified in the nodeSelector.
+	// from cluster nodes if not specified in the nodeSelector. The result is
+	// kept in gpuArchOverride, never written back into
+	// cert.Spec.Target.NodeSelector: that is the real API-level selector
+	// discoverTargetNodes uses for every future reconcile of this
+	// Certification.
 	var dryRunClient client.Client
 	var dryRunNodes []corev1.Node
 	if dryRun {
@@ -170,10 +194,7 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 			if gpuErr != nil {
 				return gpuErr
 			}
-			if cert.Spec.Target.NodeSelector == nil {
-				cert.Spec.Target.NodeSelector = make(map[string]string)
-			}
-			cert.Spec.Target.NodeSelector["nvidia.com/gpu.product"] = gpuProduct
+			gpuArchOverride = gpu.ParseProduct(gpuProduct)
 		}
 
 		// Discover the target nodes up front: NIC resource auto-detection
@@ -190,7 +211,7 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 		applyNICDetection(cert, dryRunNodes, platformFlag)
 	}
 
-	workflows, err := renderCertification(cert, platformFlag)
+	workflows, err := renderCertification(cert, platformFlag, gpuArchOverride)
 	if err != nil {
 		return err
 	}
@@ -234,7 +255,7 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 				results: results,
 			})
 		}
-	} else if err := resolveWorkflowsOffline(cert, workflows, platformFlag); err != nil {
+	} else if err := resolveWorkflowsOffline(cert, workflows, platformFlag, gpuArchOverride); err != nil {
 		return err
 	}
 
@@ -270,9 +291,9 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 // The synthetic node lets GPU-architecture-specific overrides (images, env
 // vars) apply even without connecting to a real cluster.
 func resolveWorkflowsOffline(
-	cert *nvcrev1alpha1.Certification, workflows []nvcrev1alpha1.Workflow, platformFlag string,
+	cert *nvcrev1alpha1.Certification, workflows []nvcrev1alpha1.Workflow, platformFlag, gpuArchOverride string,
 ) error {
-	syntheticNodes := []corev1.Node{syntheticRenderNode(platformFlag, cert.Spec.Target.NodeSelector)}
+	syntheticNodes := []corev1.Node{syntheticRenderNode(platformFlag, cert.Spec.Target.NodeSelector, gpuArchOverride)}
 	for i := range workflows {
 		if _, err := render.ResolveWorkflow(&workflows[i], syntheticNodes); err != nil {
 			return fmt.Errorf("resolve overrides for %s: %w", workflows[i].Name, err)
@@ -376,15 +397,24 @@ func applyNICDetection(cert *nvcrev1alpha1.Certification, nodes []corev1.Node, p
 // (from --platform or detected from cluster nodes) is used to resolve
 // platform-specific node defaults like OCI L40s {gpusPerNode: 4, mlnxPerNode: 2}
 // at template-render time. Pass "" to use architecture defaults only.
-func renderCertification(cert *nvcrev1alpha1.Certification, platformName string) ([]nvcrev1alpha1.Workflow, error) {
+//
+// gpuArchOverride, an architecture as returned by gpu.ParseProduct (from
+// --gpu-arch, or detected under --dry-run), wins over the nodeSelector's
+// nvidia.com/gpu.product label when set: offline render has no cluster to fall
+// back to ResourceSlices, so a label-less (DRA-only) platform needs an
+// explicit architecture.
+func renderCertification(cert *nvcrev1alpha1.Certification, platformName, gpuArchOverride string) ([]nvcrev1alpha1.Workflow, error) {
 	if len(cert.Spec.Categories) == 0 {
 		return nil, fmt.Errorf("certification has no categories")
 	}
 
-	gpuArch := catalog.GPUArchFromNodeSelector(cert.Spec.Target.NodeSelector)
+	gpuArch := gpuArchOverride
+	if gpuArch == "" {
+		gpuArch = catalog.GPUArchFromNodeSelector(cert.Spec.Target.NodeSelector)
+	}
 	if gpuArch == "" {
 		return nil, fmt.Errorf(
-			"cannot determine GPU architecture from target nodeSelector" +
+			"cannot determine GPU architecture from target nodeSelector or --gpu-arch" +
 				" (nvidia.com/gpu.product label is required)",
 		)
 	}
@@ -547,27 +577,34 @@ func platformToProviderID(platformName string) string {
 }
 
 // syntheticRenderNode builds the fake node used to resolve overrides when
-// rendering offline. The node carries the Certification's nodeSelector labels
-// plus whatever providerID, labels, and allocatable resources platform
-// detection needs to map the node back to the requested platform.
-func syntheticRenderNode(platformName string, nodeSelector map[string]string) corev1.Node {
-	node := corev1.Node{
-		Labels: nodeSelector,
+// rendering offline. The node carries a defensive copy of the Certification's
+// nodeSelector labels — never the caller's map directly, since gpuArchOverride
+// and the platform-specific branches below mutate it, and the Certification's
+// real Target.NodeSelector must never be corrupted by an offline render — plus
+// whatever providerID and labels platform detection needs to map the node back
+// to the requested platform.
+//
+// gpuArchOverride, an architecture as returned by gpu.ParseProduct (from
+// --gpu-arch), replaces the nodeSelector's nvidia.com/gpu.product label when
+// set, matching renderCertification: offline render has no cluster to read
+// ResourceSlices from, so a DRA-only platform that carries no gpu.product
+// label on real nodes needs an explicit architecture to resolve gpuArchitecture
+// overrides at all.
+func syntheticRenderNode(platformName string, nodeSelector map[string]string, gpuArchOverride string) corev1.Node {
+	labels := make(map[string]string, len(nodeSelector)+1)
+	maps.Copy(labels, nodeSelector)
+	if gpuArchOverride != "" {
+		labels[gpu.ProductLabel] = "NVIDIA-" + gpuArchOverride
 	}
+	node := corev1.Node{Labels: labels}
 	if platformName == "" {
 		return node
 	}
 	node.Spec.ProviderID = platformToProviderID(platformName)
 	switch platformName {
 	case platform.TogetherAI:
-		if node.Labels == nil {
-			node.Labels = map[string]string{}
-		}
 		node.Labels["node-role.together.ai/worker"] = ""
 	case platform.Forge:
-		if node.Labels == nil {
-			node.Labels = map[string]string{}
-		}
 		node.Labels["kubernetes.io/hostname"] = "synthetic-forge-node"
 	case platform.NScale:
 		// Detection maps openstack:// to nscale only when the node also

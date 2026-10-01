@@ -1,0 +1,3 @@
+{
+  "error": "cannot determine GPU architecture: pass --gpu-arch or set nvidia.com/gpu.product in target.nodeSelector"
+}
