@@ -132,9 +132,16 @@ For a controller image mirrored off GHCR, omit `--image-pull-secret`: both its t
    curl -fsS http://<node-ip>:<port>/image.tar | ctr -n k8s.io images import -
    ```
 
-   containerd skips blobs it already has, so importing a derived image onto a node that already carries its base costs only the new layers.
+   The pipeline streams the whole tar to each node, but containerd only stores layers it does not already have, so a derived
+   image costs little extra disk on a node that already carries its base.
 
-4. Reference the preloaded image by the tag the tar was built with (for the controller, the chart's `manager.image.repository`/`manager.image.tag`; for workloads, `spec.image` or `categories[].options.image`) so the kubelet uses the local copy instead of reaching for a registry. Use a tag other than `:latest`, which Kubernetes defaults to `IfNotPresent`; with `:latest` (or no tag) the default is `Always`, so set the rendered container's `imagePullPolicy: IfNotPresent` explicitly.
+4. Reference the preloaded image by an **explicitly tagged** reference — never `:latest`, because `:latest` (and an omitted tag)
+   defaults to `Always`, which sends the kubelet to a registry that this cluster cannot reach; any other tag defaults to
+   `IfNotPresent` and stays on the local copy. Name it in whichever path owns the reference: the controller chart's
+   `manager.image.repository`/`manager.image.tag` (whose pull policy is the chart value `manager.image.pullPolicy`, default
+   `IfNotPresent`), a Certification's `spec.image` or `categories[].options.image` (these replace the image and set no pull policy,
+   so a non-`:latest` tag is what keeps the kubelet local), or a WorkloadRun, which is the path that carries its own
+   `imagePullPolicy`.
 
 This is also the only path that works for an air-gapped workload image derived from a base image the nodes already have — for example the `sshd`-prebaked MPI image recommended in the [FAQ](faq.md#can-mpi-workloads-run-in-air-gapped-or-restricted-egress-clusters).
 
