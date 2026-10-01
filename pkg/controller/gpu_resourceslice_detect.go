@@ -19,12 +19,16 @@ import (
 // GpuInfo.Attributes in cmd/gpu-kubelet-plugin/deviceinfo.go) publishes
 // node-local ResourceSlices (spec.driver gpu.nvidia.com, spec.nodeName set)
 // whose GPU devices carry an unqualified productName string attribute holding
-// the NVML device name, e.g. "NVIDIA GB300". Renaming the driver or the
-// attribute, or qualifying the key as gpu.nvidia.com/productName, silently
-// disables this fallback.
+// the NVML device name, e.g. "NVIDIA GB300", and an unqualified type string
+// attribute that is "gpu" for a full GPU (GpuDeviceType in
+// cmd/gpu-kubelet-plugin/types.go) and "mig", "migdyn" or "vfio" otherwise.
+// Renaming the driver or an attribute, or qualifying a key as
+// gpu.nvidia.com/<name>, silently disables these fallbacks.
 const (
 	gpuResourceSliceDriver = "gpu.nvidia.com"
 	productNameAttribute   = "productName"
+	deviceTypeAttribute    = "type"
+	fullGPUDeviceType      = "gpu"
 
 	// resourceSliceListTimeout bounds the one ResourceSlice List call so a
 	// missing RBAC grant or an out-of-band (non-Helm) install degrades to
@@ -94,4 +98,47 @@ func augmentGPUProductLabels(ctx context.Context, reader client.Reader, nodes []
 			nodes[i].Labels[gpu.ProductLabel] = product
 		}
 	}
+}
+
+// CountDRAGPUs returns the number of full GPUs each node publishes in its
+// gpu.nvidia.com ResourceSlices, keyed by node name. MIG and VFIO devices are
+// excluded because they are not whole GPUs. Only the newest generation of
+// each pool counts, since older slices of a pool are stale by the
+// ResourcePool contract.
+//
+// It serves the CLI only, as an observation to compare against the catalog
+// default; rendering still sizes claims from gpu-defaults.yaml. No controller
+// calls it, so it has no unexported twin in workflow_detect_export.go. The
+// CLI reads through a direct client, so unlike augmentGPUProductLabels the
+// List needs no timeout guarding an informer sync.
+func CountDRAGPUs(ctx context.Context, reader client.Reader) (map[string]int32, error) {
+	var slices resourcev1.ResourceSliceList
+	if err := reader.List(ctx, &slices); err != nil {
+		return nil, err
+	}
+
+	newest := map[string]int64{}
+	for _, rs := range slices.Items {
+		if rs.Spec.Driver != gpuResourceSliceDriver {
+			continue
+		}
+		if g, ok := newest[rs.Spec.Pool.Name]; !ok || rs.Spec.Pool.Generation > g {
+			newest[rs.Spec.Pool.Name] = rs.Spec.Pool.Generation
+		}
+	}
+
+	counts := map[string]int32{}
+	for _, rs := range slices.Items {
+		if rs.Spec.Driver != gpuResourceSliceDriver || rs.Spec.NodeName == nil ||
+			rs.Spec.Pool.Generation < newest[rs.Spec.Pool.Name] {
+			continue
+		}
+		for _, d := range rs.Spec.Devices {
+			if attr, ok := d.Attributes[deviceTypeAttribute]; ok &&
+				attr.StringValue != nil && *attr.StringValue == fullGPUDeviceType {
+				counts[*rs.Spec.NodeName]++
+			}
+		}
+	}
+	return counts, nil
 }

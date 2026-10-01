@@ -25,16 +25,18 @@ NVCRE does not patch nodes (ADR-061), so writing the label back to the Node obje
    - It is never written into `spec.target.nodeSelector`, which is the real API selector for every later reconcile.
 6. **`certification run` needs no change.** `nvcrectl certification run --category` already persists `nvidia.com/gpu.present=true` alone, never the discovered product, so its selector matches DRA-only nodes and the controller detects the architecture through the same fallback.
 7. **RBAC.** The manager role gains `get`, `list`, `watch` on `resource.k8s.io` `resourceslices`.
+8. **`cluster info` counts GPUs from the same slices.** A DRA-only node advertises no allocatable `nvidia.com/gpu`, so `nvcrectl cluster info` falls back to counting the node's `gpu.nvidia.com` devices whose `type` attribute is `gpu`, in the newest generation of each pool. MIG and VFIO devices are not whole GPUs and are excluded. The allocatable wins whenever a node has it. The count is an observation to compare against the catalog default; rendering still sizes claims from `gpu-defaults.yaml`. A failed List prints a warning to stderr and leaves the affected nodes at 0.
 
 ## Implementation
 
 - `pkg/controller/gpu_resourceslice_detect.go`: `augmentGPUProductLabels`, called from `discoverTargetNodes` after the `gpu.present` filter. It documents the driver attribute contract it depends on.
+- `pkg/controller/gpu_resourceslice_detect.go`: `CountDRAGPUs`, called by `nvcrectl cluster info` only when some node lacks allocatable `nvidia.com/gpu`.
 - `pkg/controller/workflow_controller.go`: the `resourceslices` kubebuilder RBAC marker. `make manifests` regenerates `manager-role.yaml`.
 - `pkg/gpu`: `ParseProduct` accepts the space-separated form. `ProductLabelValue` mirrors GFD's sanitization. The label key is exported as `gpu.ProductLabel`.
 - `pkg/catalog/gpu_defaults.go`: `ParseGPUArchFlag` normalizes and validates `--gpu-arch` against the `gpu-defaults.yaml` keys.
 - `pkg/certification/certification.go`: `--gpu-arch` threads through `renderCertification`, `resolveWorkflowsOffline`, and `syntheticRenderNode` as a parameter.
 - `pkg/workloadrun/workloadrun.go`: `--gpu-arch` on offline render.
-- Tests: golden cases under `pkg/controller/testdata/augment-gpu-product-labels/`, `pkg/certification/testdata/{certification-render-onprem,render-platform-flag}/`, `pkg/workloadrun/testdata/render-platform-flag/`, and `pkg/gpu/testdata/{parse-product,product-label-value}/`.
+- Tests: golden cases under `pkg/controller/testdata/augment-gpu-product-labels/`, `pkg/certification/testdata/{certification-render-onprem,render-platform-flag}/`, `pkg/workloadrun/testdata/render-platform-flag/`, `pkg/controller/testdata/count-dra-gpus/`, `pkg/cluster/testdata/build-cluster-info-counts-real-gpus/`, and `pkg/gpu/testdata/{parse-product,product-label-value}/`.
 - Docs: `docs/concepts/platform-detection.md`, the CLI references, and the RBAC table in `docs/operations/deployment.md`.
 
 ## Rationale
@@ -63,6 +65,7 @@ NVCRE does not patch nodes (ADR-061), so writing the label back to the Node obje
 ## Notes
 
 - Driver attribute source: `kubernetes-sigs/dra-driver-nvidia-gpu`, `GpuInfo.Attributes()` in `cmd/gpu-kubelet-plugin/deviceinfo.go`, value from NVML `GetName()`.
+- Device `type` values: the same repository, `GpuDeviceType` and its MIG and VFIO siblings in `cmd/gpu-kubelet-plugin/types.go`.
 - GFD label format: `NVIDIA/k8s-device-plugin`, `sanitise` in `internal/lm/resource.go`, which drops characters outside `[A-Za-z0-9-_. ]` and joins the whitespace-separated fields with hyphens.
 
 ## References

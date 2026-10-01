@@ -1,0 +1,12 @@
+# A slice with no nodeName is not local to any one node, so its devices
+# cannot be attributed to a node's count.
+resourceSlices:
+  - nodeName: node-a
+    driver: gpu.nvidia.com
+    pool: node-a
+    generation: 1
+    devices: [gpu, gpu]
+  - driver: gpu.nvidia.com
+    pool: shared
+    generation: 1
+    devices: [gpu, gpu, gpu, gpu]
