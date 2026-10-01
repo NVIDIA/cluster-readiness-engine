@@ -14,6 +14,9 @@ description: CRD reference for the Job resource.
 |-------|------|-------------|
 | `workload` | WorkloadSpec | Required, immutable. Discriminated union selecting the workload framework; exactly one field must be set |
 | `workloadMetadata` | WorkloadMetadata | Optional, immutable. Labels applied to the generated workload object itself (see below) |
+| `nodeHealthMonitor` | NodeHealthMonitorConfig | Optional, immutable in presence and value. Configures node-health monitoring |
+| `goodputMeasurement` | GoodputMeasurementConfig | Optional, immutable in presence and value. Configures goodput measurement |
+| `bandwidthMeasurement` | BandwidthMeasurementConfig | Optional, immutable in presence and value. Configures bandwidth measurement |
 | `workloadMetadata.labels` | map[string]string | Optional. At most 32 entries. Label keys must be valid Kubernetes label keys and values valid Kubernetes label values; `app.kubernetes.io/managed-by` and any key under `nvcre.nvidia.com/` are rejected |
 
 ### Workload object labels
@@ -51,6 +54,8 @@ The resulting `TrainJob` carries those three labels plus the two the controller 
 **Limits.** At most 32 labels. Keys follow the Kubernetes qualified-name grammar: an optional DNS-subdomain prefix of at most 253 characters, a `/`, then a name of at most 63 characters. Values follow Kubernetes label-value syntax and may be empty — an empty value is a real label, not a deletion. There is no deletion syntax.
 
 **Immutability.** `workloadMetadata` cannot be added, removed, or changed after the Job is created; all three are rejected by CRD transition rules. A checkpoint restart therefore recreates the workload with the labels it was originally admitted with, so a restart cannot land the workload in a different queue than the one that admitted it. To change the labels, create a new Job (or a new `WorkloadRun`/`Certification`).
+
+**Measurement configuration immutability.** `nodeHealthMonitor`, `goodputMeasurement`, and `bandwidthMeasurement` are each immutable in both presence and value. An optional field omitted when the Job is created cannot be added later, and a configured field cannot be removed or changed. Other mutable Job fields remain editable.
 
 ## Status fields
 
