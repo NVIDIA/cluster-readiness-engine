@@ -1627,6 +1627,14 @@
                   "trainer": {
                     "env": [
                       {
+                        "name": "NCCL_SOCKET_IFNAME",
+                        "value": "eth0"
+                      },
+                      {
+                        "name": "NCCL_NET",
+                        "value": "IB"
+                      },
+                      {
                         "name": "NCCL_DEBUG",
                         "value": "INFO"
                       },

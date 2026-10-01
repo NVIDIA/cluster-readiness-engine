@@ -284,6 +284,10 @@
                                     "value": "/mnt/workspace/megatron-lm"
                                   },
                                   {
+                                    "name": "NCCL_NET",
+                                    "value": "IB"
+                                  },
+                                  {
                                     "name": "NCCL_IB_PCI_RELAXED_ORDERING",
                                     "value": "1"
                                   },
