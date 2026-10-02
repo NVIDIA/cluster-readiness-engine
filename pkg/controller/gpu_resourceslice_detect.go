@@ -26,11 +26,9 @@ const (
 	gpuResourceSliceDriver = "gpu.nvidia.com"
 	productNameAttribute   = "productName"
 
-	// resourceSliceListTimeout bounds the one ResourceSlice List call so a
-	// missing RBAC grant or an out-of-band (non-Helm) install degrades to
-	// "log and leave nodes unlabeled" within a few seconds, rather than
-	// risking an indefinite block if the cached client's informer can never
-	// complete its initial sync.
+	// resourceSliceListTimeout bounds the one uncached ResourceSlice List
+	// against a slow API server. A 403 or an unserved resource.k8s.io/v1
+	// fails immediately without it.
 	resourceSliceListTimeout = 5 * time.Second
 )
 

@@ -388,7 +388,7 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	log := logf.FromContext(ctx)
 	target := workflow.Spec.Orchestration.Target
 
-	nodes, cordoned, err := discoverTargetNodes(ctx, r.Client, target)
+	nodes, cordoned, err := discoverTargetNodes(ctx, r.Client, r.APIReader, target)
 	if err != nil {
 		log.Error(err, "Failed to discover target nodes")
 		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonNodeDiscoveryError,
@@ -644,11 +644,17 @@ func (r *WorkflowReconciler) logOverrideResults(ctx context.Context, workflow *n
 // discoverTargetNodes lists and filters nodes based on the target spec.
 // Accepts a client.Reader so it can be called from both the reconciler and CLI tools.
 //
+// sliceReader serves the ResourceSlice fallback List. Reconcilers pass their
+// uncached APIReader, because a cached List starts a cluster-wide informer
+// that never syncs when the grant is missing. A nil sliceReader reads through
+// reader, which is correct only for uncached readers (CLI clients, unit-test
+// fakes).
+//
 // The second return value names the nodes that matched the target but were
 // dropped for being cordoned. Callers that record coverage need it: a cordoned
 // node was targeted and never tested, and without the names the run reports a
 // clean PASSED over a fleet it only partly certified.
-func discoverTargetNodes(ctx context.Context, reader client.Reader, target *nvcrev1alpha1.TargetSpec) ([]corev1.Node, []string, error) {
+func discoverTargetNodes(ctx context.Context, reader, sliceReader client.Reader, target *nvcrev1alpha1.TargetSpec) ([]corev1.Node, []string, error) {
 	nodeList := &corev1.NodeList{}
 	var opts []client.ListOption
 
@@ -734,7 +740,10 @@ func discoverTargetNodes(ctx context.Context, reader client.Reader, target *nvcr
 		}
 	}
 	nodes = gpuFiltered
-	augmentGPUProductLabels(ctx, reader, nodes)
+	if sliceReader == nil {
+		sliceReader = reader
+	}
+	augmentGPUProductLabels(ctx, sliceReader, nodes)
 
 	// Sort by name so discovery is reproducible. client.List gives no ordering
 	// guarantee, and callers pick nodes[0] to decide the platform and use slice

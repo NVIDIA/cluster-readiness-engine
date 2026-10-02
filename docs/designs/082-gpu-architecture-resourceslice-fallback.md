@@ -16,7 +16,7 @@ NVCRE does not patch nodes (ADR-061), so writing the label back to the Node obje
 
 1. **Augment at node discovery.** `discoverTargetNodes`, the single function every controller and CLI path already uses for node discovery, fills `nvidia.com/gpu.product` on the in-memory copy of any target node that lacks it, from the `productName` attribute on that node's `gpu.nvidia.com` ResourceSlice. Nothing is persisted. Consumers keep reading the label and need no change.
 2. **Normalize to the GFD format.** `productName` is sanitized exactly as GFD builds its label: characters outside `[A-Za-z0-9-_. ]` are dropped and each run of whitespace becomes one hyphen, so identical hardware yields byte-identical labels in a fleet that mixes GFD and DRA nodes. `UniformGPUProduct` compares raw label values and would otherwise report `heterogeneous GPUs` for one product.
-3. **Degrade, do not fail.** The lookup is skipped when every node already has the label, costs one `ResourceSlice` List per discovery call, and is bounded by a short timeout. A List error (for example a missing RBAC grant) or a driver that publishes no `productName` is logged and leaves the nodes unlabeled. That is the same `unknown` outcome as before this change, not a new failure mode.
+3. **Degrade, do not fail.** The lookup is skipped when every node already has the label and costs one `ResourceSlice` List per discovery call. The List reads straight from the API server, never through the informer cache, so a missing grant or an unserved API fails fast instead of starting an informer that never syncs, and a short timeout bounds a slow API server. A List error (for example a missing RBAC grant) or a driver that publishes no `productName` is logged and leaves the nodes unlabeled. That is the same `unknown` outcome as before this change, not a new failure mode.
 4. **`nvidia.com/gpu.present` stays mandatory.** Discovery filters on `nvidia.com/gpu.present=true` before the fallback runs, and the controller's Node cache is scoped to that label. The fallback supplies the product, not GPU-node identity. The GPU Operator sets `gpu.present`. A cluster running only the standalone DRA driver must label its GPU nodes itself.
 5. **Offline `--gpu-arch`.** `nvcrectl certification render` and `nvcrectl workloadrun render` have no cluster to read ResourceSlices from, so both gain `--gpu-arch` with one rule:
    - The value is normalized with `gpu.ParseProduct`, so `gb300`, `NVIDIA-GB300`, and `NVIDIA GB300` are equivalent. It is rejected unless `gpu-defaults.yaml` lists the architecture, the same way `--platform` is validated.
@@ -28,8 +28,8 @@ NVCRE does not patch nodes (ADR-061), so writing the label back to the Node obje
 
 ## Implementation
 
-- `pkg/controller/gpu_resourceslice_detect.go`: `augmentGPUProductLabels`, called from `discoverTargetNodes` after the `gpu.present` filter. It documents the driver attribute contract it depends on.
-- `pkg/controller/workflow_controller.go`: the `resourceslices` kubebuilder RBAC marker. `make manifests` regenerates `manager-role.yaml`.
+- `pkg/controller/gpu_resourceslice_detect.go`: `augmentGPUProductLabels`, called from `discoverTargetNodes` after the `gpu.present` filter. Reconcilers pass their uncached `APIReader` for the List; CLI clients are already uncached. It documents the driver attribute contract it depends on.
+- `pkg/controller/workflow_controller.go`: the `resourceslices` kubebuilder RBAC marker documents the grant. `make manifests` runs with `output:rbac:none`, so `manager-role.yaml` is maintained by hand to match.
 - `pkg/gpu`: `ParseProduct` accepts the space-separated form. `ProductLabelValue` mirrors GFD's sanitization. The label key is exported as `gpu.ProductLabel`.
 - `pkg/catalog/gpu_defaults.go`: `ParseGPUArchFlag` normalizes and validates `--gpu-arch` against the `gpu-defaults.yaml` keys.
 - `pkg/certification/certification.go`: `--gpu-arch` threads through `renderCertification`, `resolveWorkflowsOffline`, and `syntheticRenderNode` as a parameter.
@@ -41,7 +41,7 @@ NVCRE does not patch nodes (ADR-061), so writing the label back to the Node obje
 
 - Augmenting at the one shared discovery point keeps a single source of truth. Every consumer, current and future, sees the same label whatever its source. The alternative is a second detection path threaded through each consumer.
 - Matching GFD's format makes the fallback invisible to exact-match consumers. A mixed fleet behaves like a fully GFD-labeled one.
-- Degrading preserves existing behavior on clusters the fallback cannot help. A missing grant costs a log line, not a reconcile failure.
+- Degrading preserves existing behavior on clusters the fallback cannot help. A missing grant costs the controller one fast failed List and a log line per discovery, not a reconcile failure.
 - One `--gpu-arch` rule for both commands, shaped like `--platform`, gives operators a single mental model. Validation turns a typo into an error instead of a plausible render with fallback defaults and no architecture overrides.
 
 ## Consequences
