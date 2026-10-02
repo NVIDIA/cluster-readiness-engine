@@ -46,8 +46,10 @@ const (
 // attribute (DRA-only platforms run no device plugin/GFD DaemonSet to write
 // gpu.product; architecture lives in ResourceSlice attributes instead).
 // The NVML name is sanitized as GFD sanitizes it (gpu.ProductLabelValue): the
-// same hardware must yield byte-identical labels in a mixed GFD/DRA fleet,
-// since UniformGPUProduct compares raw values.
+// same hardware must yield a label byte-identical to an unshared GFD label in
+// a mixed GFD/DRA fleet, since UniformGPUProduct compares raw values. Against a
+// time-sliced GFD label ("-SHARED" suffix) UniformGPUProduct reports
+// heterogeneous; architecture detection is unaffected.
 // Mutates the caller's in-memory Node copies only — never persisted back to
 // the API server. Every existing label-based consumer (detectGPUArchConsistent,
 // DetectGPUArchitecture, UniformGPUProduct, catalog.GPUArchFromNodeSelector,

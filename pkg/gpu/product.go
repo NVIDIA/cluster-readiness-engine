@@ -15,7 +15,9 @@ var productLabelDisallowed = regexp.MustCompile(`[^A-Za-z0-9-_. ]`)
 // nvidia.com/gpu.product label value GFD writes for it, "NVIDIA-GB300". It
 // mirrors sanitise in NVIDIA/k8s-device-plugin internal/lm/resource.go, which
 // owns the format: drop characters outside [A-Za-z0-9-_. ], then join the
-// whitespace-separated fields with hyphens.
+// whitespace-separated fields with hyphens. GFD's resourceLabeler.getProductName
+// in the same file also appends "-SHARED" under time-slicing; that suffix is
+// not modeled here.
 func ProductLabelValue(name string) string {
 	return strings.Join(strings.Fields(productLabelDisallowed.ReplaceAllString(name, "")), "-")
 }
