@@ -1237,6 +1237,9 @@ func watchWorkloadRun(
 	name, namespace string, timeout time.Duration, out io.Writer,
 ) (*nvcrev1alpha1.WorkloadRun, error) {
 	start := time.Now()
+	// Bound status Gets to the wait deadline so a stalled API cannot outlast --timeout.
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	ticker := time.NewTicker(5 * time.Second)
@@ -1262,7 +1265,7 @@ func watchWorkloadRun(
 	// short --timeout still shows that the watch looked.
 	poll := func() (*nvcrev1alpha1.WorkloadRun, error, bool) {
 		key := client.ObjectKey{Name: name, Namespace: namespace}
-		if err := c.Get(ctx, key, &current); err != nil {
+		if err := c.Get(waitCtx, key, &current); err != nil {
 			return nil, nil, false
 		}
 		elapsed := time.Since(start).Truncate(time.Second)

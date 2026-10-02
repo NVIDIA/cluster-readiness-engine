@@ -96,7 +96,7 @@ func TestWatchWorkloadRunImmediateTimeout(t *testing.T) {
 // the ticker, so 1s–4s always expired with a nil run and no [watch] line.
 func TestWatchWorkloadRunPollsBeforeDeadline(t *testing.T) {
 	run := &nvcrev1alpha1.WorkloadRun{
-		ObjectMeta: metav1.ObjectMeta{Name: testWorkloadRunTimeoutRun, Namespace: testWorkloadRunNamespace},
+		ObjectMeta: {Name: testWorkloadRunTimeoutRun, Namespace: testWorkloadRunNamespace},
 		Status: nvcrev1alpha1.WorkloadRunStatus{Conditions: []metav1.Condition{{
 			Type:   nvcrev1alpha1.WorkloadRunSucceeded,
 			Status: metav1.ConditionTrue,
@@ -116,7 +116,7 @@ func TestWatchWorkloadRunPollsBeforeDeadline(t *testing.T) {
 // even when the deadline is shorter than the ticker.
 func TestWatchWorkloadRunPrintsStatusBeforeShortTimeout(t *testing.T) {
 	run := &nvcrev1alpha1.WorkloadRun{
-		ObjectMeta: metav1.ObjectMeta{Name: testWorkloadRunTimeoutRun, Namespace: testWorkloadRunNamespace},
+		ObjectMeta: {Name: testWorkloadRunTimeoutRun, Namespace: testWorkloadRunNamespace},
 	}
 	wc := newWorkloadRunFakeClient(t, run)
 	var out bytes.Buffer
