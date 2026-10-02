@@ -1,0 +1,8 @@
+{
+  "mode": "crd-only",
+  "evidence": [
+    "retained JobSet CRD has no instances and the supported fingerprint scan is clean"
+  ],
+  "installJobSet": true,
+  "manifestCalls": 0
+}

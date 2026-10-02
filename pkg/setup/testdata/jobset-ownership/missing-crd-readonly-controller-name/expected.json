@@ -1,0 +1,8 @@
+{
+  "mode": "absent",
+  "evidence": [
+    "JobSet CRD is absent and the supported fingerprint scan is clean; this does not prove arbitrary controller absence"
+  ],
+  "installJobSet": true,
+  "manifestCalls": 0
+}

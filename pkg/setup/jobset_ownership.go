@@ -499,32 +499,81 @@ func listAllUnstructured(
 	}
 }
 
+// RBAC verbs the ownership scan and the recovery inventory reason about.
+const (
+	rbacVerbGet   = "get"
+	rbacVerbList  = "list"
+	rbacVerbWatch = "watch"
+)
+
+// readOnlyRBACVerbs are the verbs a JobSet API consumer needs to observe
+// JobSets without being able to reconcile them.
+var readOnlyRBACVerbs = []string{rbacVerbGet, rbacVerbList, rbacVerbWatch}
+
+// objectHasJobSetRule reports whether a ClusterRole or webhook configuration
+// carries a JobSet fingerprint rule (ADR-078 decision 1, amended 2026-09-22).
+//
+// A webhook rule matches on the API group alone; admission rules carry no
+// verbs. A ClusterRole rule is judged on its own verbs: a rule limited to
+// get/list/watch on `jobset.x-k8s.io` is a read-only consumer, not a
+// controller fingerprint. GKE's addon-managed `system:clustermetrics` role
+// holds exactly that rule on every recent GKE cluster (issue #367). Any other
+// verb, including `*` or one this function does not recognize, keeps the rule
+// conservative. Rules on other API groups never contribute, so write verbs on
+// unrelated resources do not turn a read-only consumer into a fingerprint.
 func objectHasJobSetRule(object map[string]any, kind string) bool {
-	var rules []any
-	if kind == "ClusterRole" {
-		rules, _, _ = unstructured.NestedSlice(object, "rules")
-	} else {
-		webhooks, _, _ := unstructured.NestedSlice(object, "webhooks")
-		for _, webhook := range webhooks {
-			wm, ok := webhook.(map[string]any)
+	if kind == kindClusterRole {
+		rules, _, _ := unstructured.NestedSlice(object, "rules")
+		for _, rule := range rules {
+			rm, ok := rule.(map[string]any)
 			if !ok {
 				continue
 			}
-			webhookRules, _, _ := unstructured.NestedSlice(wm, "rules")
-			rules = append(rules, webhookRules...)
+			groups, _, _ := unstructured.NestedStringSlice(rm, "apiGroups")
+			if !slices.Contains(groups, jobsetAPIGroup) {
+				continue
+			}
+			verbs, _, _ := unstructured.NestedStringSlice(rm, "verbs")
+			if !rbacVerbsAreReadOnly(verbs) {
+				return true
+			}
 		}
+		return false
 	}
-	for _, rule := range rules {
-		rm, ok := rule.(map[string]any)
+	webhooks, _, _ := unstructured.NestedSlice(object, "webhooks")
+	for _, webhook := range webhooks {
+		wm, ok := webhook.(map[string]any)
 		if !ok {
 			continue
 		}
-		groups, _, _ := unstructured.NestedStringSlice(rm, "apiGroups")
-		if slices.Contains(groups, jobsetAPIGroup) {
-			return true
+		rules, _, _ := unstructured.NestedSlice(wm, "rules")
+		for _, rule := range rules {
+			rm, ok := rule.(map[string]any)
+			if !ok {
+				continue
+			}
+			groups, _, _ := unstructured.NestedStringSlice(rm, "apiGroups")
+			if slices.Contains(groups, jobsetAPIGroup) {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// rbacVerbsAreReadOnly reports whether verbs is a non-empty subset of
+// get/list/watch. An empty list is not read-only: it grants nothing, which
+// no chart renders, so it is treated conservatively rather than ignored.
+func rbacVerbsAreReadOnly(verbs []string) bool {
+	if len(verbs) == 0 {
+		return false
+	}
+	for _, verb := range verbs {
+		if !slices.Contains(readOnlyRBACVerbs, verb) {
+			return false
+		}
+	}
+	return true
 }
 
 func webhookServiceRefs(object map[string]any) []client.ObjectKey {

@@ -1,0 +1,9 @@
+# A Workflow left behind by an earlier WorkloadRun of this name holds it: same
+# kind, same name, different UID. Deleting a WorkloadRun and recreating it is
+# the ordinary way to reach this, and background propagation means the leftover
+# carries no DeletionTimestamp until the garbage collector reaches it. That
+# owner cannot still exist, since this run is what holds the name now, so the
+# name is released shortly and the run waits for it rather than failing.
+holder: predecessor
+statusWriteFailures: 0
+reconciles: 3

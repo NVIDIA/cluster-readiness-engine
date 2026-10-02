@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Both screening jobs succeeded but screen-1's BandwidthMeasurement completed
+# with no data. It can never be evaluated, so the gate fails closed: screen-1 is
+# treated as failed exactly like a bandwidth miss, instead of the diagnose round
+# waiting on it forever (issue #404).
+waitFor:
+  kind: Workflow
+  name: test-diag-nodata
+  namespace: default
+  condition: InProgress
+collect:
+  - kind: Workflow
+    name: test-diag-nodata
+    namespace: default

@@ -1,0 +1,11 @@
+# A verb outside get/list/watch that the scan does not otherwise name. Anything
+# it does not recognise as read-only is treated as write-capable, so a new or
+# unusual verb cannot slip a controller role past the fingerprint.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: missing-crd-unrecognized-verb-role
+rules:
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets]
+    verbs: [get, list, watch, impersonate]

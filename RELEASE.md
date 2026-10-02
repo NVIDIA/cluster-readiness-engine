@@ -66,13 +66,15 @@ people do not tag at the same time.
 
    Sign the tag (`-s`). Pushing the tag is the release trigger.
 5. Watch the `Release` workflow. The GitHub Release is created as a **draft** and is
-   made visible only by the `Verify release` job, after it has verified every published
-   artifact. If that job fails, the release stays a draft — see Troubleshooting.
+   made visible only by the `Verify the published release` job, after it has verified
+   every published artifact. If that job fails, the release stays a draft — see
+   Troubleshooting.
 6. Check the published release, then announce it.
 
-Do not publish a draft release by hand. A draft left behind by a failed `Verify release`
-is a release the pipeline determined it could not verify; publishing it from the UI is
-the one action that bypasses the gate entirely. Re-run the job instead.
+Do not publish a draft release by hand. A draft left behind by a failed `Verify the
+published release` is a release the pipeline determined it could not verify; publishing
+it from the UI is the one action that bypasses the gate entirely. Re-run the job
+instead.
 
 Tags must be clean. `make check-clean-version` refuses to publish a Helm chart when the
 version contains `-dirty`, a `-N-gSHA` suffix, or is `dev`, which is what you get from
@@ -106,7 +108,7 @@ Pushing a `v*` tag runs `.github/workflows/release.yml`, which owns every releas
 | Build CLI Binaries | cross-compiled `nvcrectl` for linux and macOS, amd64 and arm64 |
 | Attest binaries | a Sigstore bundle per binary, per SBOM, for the installer and for `THIRD_PARTY_NOTICES.md`, plus one binding each SBOM to its binary |
 | Create GitHub Release | the GitHub Release as a **draft**, its notes, and the assets below |
-| Verify release | verifies every published artifact, then makes the release visible |
+| Verify the published release | verifies every published artifact, then makes the release visible |
 
 The release builds the container image itself. `.github/workflows/publish.yml` no longer
 runs on tags — it now builds only `main-<sha>` development images, and is pinned to
@@ -140,8 +142,8 @@ Release assets:
 
 The release workflow verifies its own output before anyone can see it. The Build CLI
 Binaries job stamps the binaries with the tag and fails if `nvcrectl --version` does not
-report it exactly. The release is then created as a draft, and the `Verify release` job
-holds it there until it has checked, against the exact signing identity
+report it exactly. The release is then created as a draft, and the `Verify the published
+release` job holds it there until it has checked, against the exact signing identity
 `…/attest.yml@refs/tags/<tag>`:
 
 - every release asset against its Sigstore bundle, and each binary against the bundle
@@ -159,7 +161,7 @@ publication, the release is returned to draft.
 To verify manually, check the signature — not the checksum:
 
 ```bash
-VERSION=v0.4.0
+VERSION=v0.5.0
 BASE="https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${VERSION}"
 curl -fsSLO "${BASE}/nvcrectl-linux-amd64"
 curl -fsSLO "${BASE}/nvcrectl-linux-amd64.sigstore.json"
@@ -208,11 +210,11 @@ fix the cause, and re-run the failed jobs from the Actions tab. Do not delete an
 a tag that has already published artifacts — consumers may have it. Cut the next patch
 version instead.
 
-**`Verify release` failed and the release is stuck as a draft.** This is the designed
-failure mode, not a broken run: the release is withheld precisely because something did
-not verify. Read `release-verification-log` on the run, which records every cosign
-invocation, and fix the cause. Then re-run the failed jobs. Do not publish the draft from
-the UI.
+**`Verify the published release` failed and the release is stuck as a draft.** This is
+the designed failure mode, not a broken run: the release is withheld precisely because
+something did not verify. Read `release-verification-log` on the run, which records
+every cosign invocation, and fix the cause. Then re-run the failed jobs. Do not publish
+the draft from the UI.
 
 The draft is also invisible to `installer`, deliberately. It resolves the newest
 *published* release on every path, and refuses outright when `-v <tag>` names a draft.
@@ -235,11 +237,11 @@ GitHub Release. If the gate failed on the image or the chart rather than on a re
 asset, treat those registry tags as suspect and say so in the follow-up release, because
 `<tag>` remains the newest version in the registry until the next one ships.
 
-**A release already exists for this tag.** The `Require the release to be a draft` step
-fails when the tag already has a *published* release. That is deliberate: the action
-that creates the release honours `draft:` only on creation, so re-running against a
-published tag would upload freshly built, unverified assets into a live release. Cut the
-next patch version instead.
+**A release already exists for this tag.** The `Require any existing release to be a
+draft` step fails when the tag already has a *published* release. That is deliberate:
+the action that creates the release honours `draft:` only on creation, so re-running
+against a published tag would upload freshly built, unverified assets into a live
+release. Cut the next patch version instead.
 
 **`installer` refused: "Signature verification failed".** It checks the binary against
 that release's Sigstore bundle and will not install one it cannot verify. Read the cosign
@@ -270,8 +272,8 @@ Affected published tags today: `v0.2.0`, `v0.2.0-rc.1`, `v0.2.0-rc.2`, and
 this path.
 
 Merging the `main` fix does **not** close [#340](https://github.com/NVIDIA/cluster-readiness-engine/issues/340)
-for those refs. Close the residual gap with both of the following before treating
-the trust gap as closed:
+for those refs. Two controls close the residual gap. The second is already
+satisfied; the first stays load-bearing until the affected tags are out of use:
 
 1. **Operational mitigation (immediate).** *Attest Self-Test* is disabled at the
    repository Actions level (`state: disabled_manually`), so GitHub refuses
@@ -281,9 +283,10 @@ the trust gap as closed:
    reopens until the `v0.2.0` series and `v0.3.0` are out of use. Re-enable only
    for a maintainer smoke run from `main`, then disable again. Do not dispatch
    at a `v*` ref. The `v*` tag ruleset does not block this path.
-2. **Next release (durable for new tags).** Cut the next `v*` release from
-   `main` after the fix lands. New tags carry the guarded workflow. Do not move
-   or rewrite existing tags to pick up the fix.
+2. **Guarded tags (durable for new tags; satisfied).** `v0.4.0` was the first
+   release cut from `main` after the fix landed, so it and every tag after it
+   carry the guarded workflow. Do not move or rewrite existing tags to pick up
+   the fix; the four tags listed above stay reachable until they are out of use.
 
 The acceptance criterion "dispatching at a `v*` ref does not reach `attest.yml`"
 applies to refs that contain the fix; existing vulnerable tags need the

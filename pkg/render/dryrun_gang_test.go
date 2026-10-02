@@ -313,6 +313,93 @@ type dryRunGangResult struct {
 	RuntimeScheduling map[string]string `json:"runtimeScheduling,omitempty"`
 }
 
+// cordonedMonitorSpec builds a resolved WorkflowSpec for a given combination
+// of target and job-template NodeHealthMonitor.
+func cordonedMonitorSpec(targetsCordoned, explicitMonitor bool) *nvcrev1alpha1.WorkflowSpec {
+	jobSpec := nvcrev1alpha1.JobSpec{
+		Workload: nvcrev1alpha1.WorkloadSpec{
+			TrainJob: &trainerv1alpha1.TrainJobSpec{
+				RuntimeRef: trainerv1alpha1.RuntimeRef{
+					Name: "dry-runtime",
+					Kind: new("TrainingRuntime"),
+				},
+				Trainer: &trainerv1alpha1.Trainer{
+					Image:    new("test:latest"),
+					NumNodes: new(int32(1)),
+				},
+			},
+		},
+	}
+	if explicitMonitor {
+		jobSpec.NodeHealthMonitor = &nvcrev1alpha1.NodeHealthMonitor{
+			CEL: &nvcrev1alpha1.CELNodeHealthCheck{
+				Expression: `node.spec.unschedulable == true`,
+			},
+		}
+	}
+
+	target := &nvcrev1alpha1.TargetSpec{
+		NodeSelector: map[string]string{"nvidia.com/gpu.present": "true"},
+	}
+	if targetsCordoned {
+		target.TaintSelectors = []nvcrev1alpha1.TaintSelector{{
+			Key:    "node.kubernetes.io/unschedulable",
+			Effect: "NoSchedule",
+		}}
+	}
+
+	return &nvcrev1alpha1.WorkflowSpec{
+		JobTemplate: nvcrev1alpha1.JobTemplateSpec{Spec: jobSpec},
+		Orchestration: nvcrev1alpha1.OrchestrationSpec{
+			Target:     target,
+			Iterations: 1,
+		},
+	}
+}
+
+// TestDryRunCordonedNodeHealthMonitor checks the NodeHealthMonitor from DryRunCreate
+// against what is generated from createJobForGroup.
+func TestDryRunCordonedNodeHealthMonitor(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "dryrun-cordoned-monitor",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			TargetsCordoned bool `yaml:"targetsCordoned"`
+			ExplicitMonitor bool `yaml:"explicitMonitor"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return fmt.Errorf("parse input.yaml: %w", err)
+		}
+
+		spec := cordonedMonitorSpec(in.TargetsCordoned, in.ExplicitMonitor)
+
+		rec := &recorder{}
+		c := countingClient(t, rec)
+		if _, err := DryRunCreate(context.Background(), c, "default", spec, dryRunNodes()); err != nil {
+			return fmt.Errorf("DryRunCreate: %w", err)
+		}
+
+		var out struct {
+			NodeHealthMonitor *nvcrev1alpha1.NodeHealthMonitor `json:"nodeHealthMonitor"`
+		}
+		for _, obj := range rec.submitted {
+			if job, ok := obj.(*nvcrev1alpha1.Job); ok {
+				out.NodeHealthMonitor = job.Spec.NodeHealthMonitor
+				break
+			}
+		}
+
+		data, err := json.MarshalIndent(out, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
 // stripRuntimeQueueLabels removes the queue label from every level of the
 // spec's runtime dependency, standing in for a runtime that was never given
 // one.

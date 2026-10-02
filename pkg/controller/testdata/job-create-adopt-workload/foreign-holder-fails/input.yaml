@@ -1,0 +1,4 @@
+# A workload owned by a different Job holds the name. Adopting it would mirror
+# a stranger's result into this Job's status, so this is terminal and says so,
+# rather than backing off in silence.
+holder: foreign

@@ -1,0 +1,15 @@
+# The bundled controller from bundled-controller, plus GKE's read-only
+# system:clustermetrics role: the steady state of a GKE cluster that already
+# runs bundled Trainer. The read-only role must neither block nor count as a
+# foreign owner, so the outcome is identical to bundled-controller.
+crdPresent: true
+releaseState: deployed
+releaseManifest: |
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: jobset-controller
+  rules:
+    - apiGroups: [jobset.x-k8s.io]
+      resources: [jobsets]
+      verbs: [create, delete, get, list, patch, update, watch]

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,9 +32,9 @@ import (
 )
 
 // waitingForNodesMessage explains a wait that is otherwise invisible: which
-// selector matched nothing, and how much of the discovery window is left. Note
-// that discoverTargetNodes filters unschedulable nodes before counting, so this
-// covers a cordoned fleet as well as a selector that matches nothing at all.
+// selector matched nothing, and how much of the discovery window is left.
+// When taintSelectors targets the node.kubernetes.io/unschedulable taint,
+// cordoned nodes count.
 func waitingForNodesMessage(cert *nvcrev1alpha1.Certification) string {
 	remaining := max((nodeDiscoveryTimeout - time.Since(cert.CreationTimestamp.Time)).Round(time.Second), 0)
 	sel := "any node"
@@ -44,6 +45,11 @@ func waitingForNodesMessage(cert *nvcrev1alpha1.Certification) string {
 		}
 		sort.Strings(parts)
 		sel = strings.Join(parts, ",")
+	}
+	if TargetsCordonedNodes(&cert.Spec.Target) {
+		return fmt.Sprintf(
+			"No nodes (including unschedulable) match %s; retrying for up to %s more.",
+			sel, remaining)
 	}
 	return fmt.Sprintf(
 		"No schedulable nodes match %s; retrying for up to %s more."+
@@ -80,11 +86,26 @@ const (
 // CertificationReconciler reconciles a Certification object
 type CertificationReconciler struct {
 	client.Client
-	Scheme                  *runtime.Scheme
-	Recorder                events.EventRecorder
+	Scheme   *runtime.Scheme
+	Recorder events.EventRecorder
+	// APIReader reads straight from the API server, bypassing the informer
+	// cache, so a cache miss on a child Workflow can be confirmed against the
+	// live cluster before it is treated as a deletion (issue #384).
+	APIReader               client.Reader
 	WorkflowRequeueInterval time.Duration
 	// MaxConcurrentReconciles bounds the number of Certification objects reconciled concurrently.
 	MaxConcurrentReconciles int
+}
+
+// workflowReader returns the APIReader when available, falling back to
+// r.Client. The fallback is only safe when r.Client has no cache, as with the
+// fake clients in unit tests that call Reconcile directly; SetupWithManager
+// always sets APIReader so a manager-backed reconciler never takes it.
+func (r *CertificationReconciler) workflowReader() client.Reader {
+	if r.APIReader != nil {
+		return r.APIReader
+	}
+	return r.Client
 }
 
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=certifications,verbs=get;list;watch;create;update;patch;delete
@@ -162,16 +183,6 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 		}
 	}
 
-	// Initialize all categories as Pending
-	categoryStatuses := make([]nvcrev1alpha1.CertificationCategoryStatus, 0, len(certification.Spec.Categories))
-	for _, category := range certification.Spec.Categories {
-		categoryStatuses = append(categoryStatuses, nvcrev1alpha1.CertificationCategoryStatus{
-			Domain:  category.Domain,
-			Variant: category.Variant,
-			Status:  categoryStatusPending,
-		})
-	}
-
 	// Create Workflow for the first category
 	if len(certification.Spec.Categories) == 0 {
 		return ctrl.Result{}, fmt.Errorf("certification has no categories")
@@ -201,6 +212,13 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 			}
 			return ctrl.Result{}, nil
 		}
+		if _, ok := errors.AsType[*retryableCreateError](err); ok {
+			// The next reconcile can still succeed, so requeue and leave the
+			// status alone rather than taking the terminal path below.
+			log.Info("Workflow creation failed for a retryable reason, will retry",
+				"domain", firstCategory.Domain, "variant", firstCategory.Variant, "cause", err.Error())
+			return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
+		}
 		if _, ok := errors.AsType[*workflowCreateRejectedError](err); ok {
 			return ctrl.Result{}, err
 		}
@@ -211,15 +229,35 @@ func (r *CertificationReconciler) initializeCategoryStatuses(ctx context.Context
 		return ctrl.Result{}, err
 	}
 
-	categoryStatuses[0].Status = categoryStatusInProgress
-	categoryStatuses[0].WorkflowRef = &nvcrev1alpha1.WorkflowReference{
-		Name:      workflowName,
-		Namespace: certification.Namespace,
+	// Seed the category list inside the status-write callback rather than
+	// before it. A conflict refetches the Certification in place, so a list
+	// assigned out here would be dropped and the Certification would carry a
+	// "Created Workflow" condition with no categories and no workflowRef.
+	// The spec is immutable, so rebuilding from it on each attempt is stable.
+	initCategories := func(c *nvcrev1alpha1.Certification) bool {
+		statuses := make([]nvcrev1alpha1.CertificationCategoryStatus, 0, len(c.Spec.Categories))
+		for _, category := range c.Spec.Categories {
+			statuses = append(statuses, nvcrev1alpha1.CertificationCategoryStatus{
+				Domain:  category.Domain,
+				Variant: category.Variant,
+				Status:  categoryStatusPending,
+			})
+		}
+		statuses[0].Status = categoryStatusInProgress
+		statuses[0].WorkflowRef = &nvcrev1alpha1.WorkflowReference{
+			Name:      workflowName,
+			Namespace: c.Namespace,
+		}
+		if apiequality.Semantic.DeepEqual(c.Status.CategoryStatuses, statuses) {
+			return false
+		}
+		c.Status.CategoryStatuses = statuses
+		return true
 	}
-
-	certification.Status.CategoryStatuses = categoryStatuses
 	if err := r.setCertificationInProgress(ctx, certification, ReasonWorkflowCreated,
-		fmt.Sprintf("Created Workflow for category %s/%s (1 of %d)", firstCategory.Domain, firstCategory.Variant, len(categoryStatuses))); err != nil {
+		fmt.Sprintf("Created Workflow for category %s/%s (1 of %d)",
+			firstCategory.Domain, firstCategory.Variant, len(certification.Spec.Categories)),
+		initCategories); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update Certification status: %w", err)
 	}
 
@@ -282,6 +320,13 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 			}
 			return ctrl.Result{}, nil
 		}
+		if _, ok := errors.AsType[*retryableCreateError](err); ok {
+			// The next reconcile can still succeed, so requeue and leave the
+			// status alone rather than taking the terminal path below.
+			log.Info("Workflow creation failed for a retryable reason, will retry",
+				"domain", category.Domain, "variant", category.Variant, "cause", err.Error())
+			return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
+		}
 		if _, ok := errors.AsType[*workflowCreateRejectedError](err); ok {
 			return ctrl.Result{}, err
 		}
@@ -292,15 +337,16 @@ func (r *CertificationReconciler) processNextCategory(ctx context.Context, certi
 		return ctrl.Result{}, err
 	}
 
-	catStatus.Status = categoryStatusInProgress
-	catStatus.WorkflowRef = &nvcrev1alpha1.WorkflowReference{
-		Name:      workflowName,
-		Namespace: certification.Namespace,
-	}
-
+	startCategory := categoryMutation(activeIdx, func(cs *nvcrev1alpha1.CertificationCategoryStatus) {
+		cs.Status = categoryStatusInProgress
+		cs.WorkflowRef = &nvcrev1alpha1.WorkflowReference{
+			Name:      workflowName,
+			Namespace: certification.Namespace,
+		}
+	})
 	if err := r.setCertificationInProgress(ctx, certification, ReasonWorkflowCreated,
 		fmt.Sprintf("Created Workflow for category %s/%s (%d of %d)", category.Domain, category.Variant,
-			activeIdx+1, len(certification.Status.CategoryStatuses))); err != nil {
+			activeIdx+1, len(certification.Status.CategoryStatuses)), startCategory); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update Certification status: %w", err)
 	}
 
@@ -319,39 +365,62 @@ func (r *CertificationReconciler) checkActiveWorkflow(ctx context.Context, certi
 		ns = certification.Namespace
 	}
 
-	if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: catStatus.WorkflowRef.Name}, workflow); err != nil {
-		if apierrors.IsNotFound(err) {
-			catStatus.Status = categoryStatusFailed
-			if err := r.setCertificationInProgress(ctx, certification, ReasonWorkflowRunning,
-				fmt.Sprintf("Workflow for category %s/%s not found", catStatus.Domain, catStatus.Variant)); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to update Certification status: %w", err)
+	// Every category edit below goes through this so a conflict retry re-applies
+	// it to the refetched Certification instead of dropping it. An empty status
+	// leaves the category's own status alone and mirrors the node refs only.
+	writeCategory := func(status string) func(*nvcrev1alpha1.Certification) bool {
+		return categoryMutation(idx, func(cs *nvcrev1alpha1.CertificationCategoryStatus) {
+			if workflow.Status.SucceededNodesRef != nil {
+				cs.SucceededNodesRef = workflow.Status.SucceededNodesRef.DeepCopy()
 			}
-			return ctrl.Result{RequeueAfter: requeueImmediate}, nil
-		}
-		return ctrl.Result{}, fmt.Errorf("failed to get Workflow %s: %w", catStatus.WorkflowRef.Name, err)
+			if workflow.Status.FailedNodesRef != nil {
+				cs.FailedNodesRef = workflow.Status.FailedNodesRef.DeepCopy()
+			}
+			if status != "" {
+				cs.Status = status
+			}
+		})
 	}
 
-	if workflow.Status.SucceededNodesRef != nil {
-		catStatus.SucceededNodesRef = workflow.Status.SucceededNodesRef
-	}
-	if workflow.Status.FailedNodesRef != nil {
-		catStatus.FailedNodesRef = workflow.Status.FailedNodesRef
+	key := client.ObjectKey{Namespace: ns, Name: catStatus.WorkflowRef.Name}
+	if err := r.Get(ctx, key, workflow); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, fmt.Errorf("failed to get Workflow %s: %w", catStatus.WorkflowRef.Name, err)
+		}
+		// A cache miss is not proof of deletion: the cache can observe the
+		// category's workflowRef before the Workflow it names, and this branch
+		// is terminal for the category. Only a live read decides (issue #384).
+		// While the cache lags, the Owns watch reconciles again once the
+		// Workflow arrives; the requeue is a safety net.
+		if err := r.workflowReader().Get(ctx, key, workflow); err == nil {
+			logf.FromContext(ctx).V(1).Info("Workflow not yet in cache; waiting",
+				"workflow", key.Name, "domain", catStatus.Domain, "variant", catStatus.Variant)
+			return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
+		} else if !apierrors.IsNotFound(err) {
+			return ctrl.Result{}, fmt.Errorf("failed to confirm Workflow %s: %w", key.Name, err)
+		}
+		if err := r.setCertificationInProgress(ctx, certification, ReasonWorkflowRunning,
+			fmt.Sprintf("Workflow for category %s/%s not found", catStatus.Domain, catStatus.Variant),
+			writeCategory(categoryStatusFailed)); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to update Certification status: %w", err)
+		}
+		return ctrl.Result{RequeueAfter: requeueImmediate}, nil
 	}
 
 	// Check for terminal Workflow conditions
 	if cond := meta.FindStatusCondition(workflow.Status.Conditions, nvcrev1alpha1.WorkflowFailed); cond != nil && cond.Status == metav1.ConditionTrue {
-		catStatus.Status = categoryStatusFailed
 		if err := r.setCertificationInProgress(ctx, certification, ReasonWorkflowRunning,
-			fmt.Sprintf("Workflow for category %s/%s failed, advancing to next category", catStatus.Domain, catStatus.Variant)); err != nil {
+			fmt.Sprintf("Workflow for category %s/%s failed, advancing to next category", catStatus.Domain, catStatus.Variant),
+			writeCategory(categoryStatusFailed)); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to update Certification status: %w", err)
 		}
 		return ctrl.Result{RequeueAfter: requeueImmediate}, nil
 	}
 
 	if cond := meta.FindStatusCondition(workflow.Status.Conditions, nvcrev1alpha1.WorkflowSucceeded); cond != nil && cond.Status == metav1.ConditionTrue {
-		catStatus.Status = categoryStatusSucceeded
 		if err := r.setCertificationInProgress(ctx, certification, ReasonWorkflowRunning,
-			fmt.Sprintf("Workflow for category %s/%s succeeded, advancing to next category", catStatus.Domain, catStatus.Variant)); err != nil {
+			fmt.Sprintf("Workflow for category %s/%s succeeded, advancing to next category", catStatus.Domain, catStatus.Variant),
+			writeCategory(categoryStatusSucceeded)); err != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to update Certification status: %w", err)
 		}
 		return ctrl.Result{RequeueAfter: requeueImmediate}, nil
@@ -359,7 +428,7 @@ func (r *CertificationReconciler) checkActiveWorkflow(ctx context.Context, certi
 
 	// Workflow still running
 	if err := r.setCertificationInProgress(ctx, certification, ReasonWorkflowRunning,
-		"Certification in progress"); err != nil {
+		"Certification in progress", writeCategory("")); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update Certification status: %w", err)
 	}
 	return ctrl.Result{RequeueAfter: r.getRequeueInterval()}, nil
@@ -583,17 +652,30 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 			// is the one this Certification created (a duplicate create caused by
 			// cache lag or a crash-retry). A foreign Workflow with the generated
 			// name is never recorded — the finalizer would otherwise delete it.
+			//
+			// Read live. AlreadyExists is proof the object is on the API server,
+			// so a NotFound from the cache here is lag by definition, and it
+			// would surface as an untyped error that both callers turn into a
+			// terminal CertificationFailed for the whole run (issue #384).
 			existing := &nvcrev1alpha1.Workflow{}
-			if getErr := r.Get(ctx, client.ObjectKeyFromObject(workflow), existing); getErr != nil {
-				return "", fmt.Errorf("failed to get existing Workflow %s: %w", workflowName, getErr)
+			if getErr := r.workflowReader().Get(ctx, client.ObjectKeyFromObject(workflow), existing); getErr != nil {
+				// Retryable, not terminal. A 5xx or a timeout says nothing about
+				// the holder, and a NotFound here means the holder was deleted
+				// between the Create and this read, which leaves the name free
+				// for the next attempt. Neither should burn the whole run.
+				return "", &retryableCreateError{
+					err: fmt.Errorf("failed to get existing Workflow %s: %w", workflowName, getErr),
+				}
 			}
 			if !metav1.IsControlledBy(existing, certification) {
 				// A foreign holder that is already terminating (e.g. the child of
 				// a same-named Certification that was just deleted) releases the
 				// name shortly: retry with backoff instead of failing terminally.
 				if !existing.DeletionTimestamp.IsZero() {
-					return "", fmt.Errorf("existing Workflow %q in namespace %q is being deleted; retrying",
-						workflowName, certification.Namespace)
+					return "", &retryableCreateError{
+						err: fmt.Errorf("existing Workflow %q in namespace %q is being deleted; retrying",
+							workflowName, certification.Namespace),
+					}
 				}
 				return "", &nameCollisionError{
 					Reason: ReasonWorkflowNameCollision,
@@ -621,6 +703,20 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 
 	return workflowName, nil
 }
+
+// retryableCreateError marks a createWorkflowForCategory failure that a later
+// reconcile can still get past: a live read that failed for its own reasons, or
+// a foreign holder that is already on its way out. Without it both callers send
+// the error to setCertificationFailed(ReasonWorkflowValidationFailed), which is
+// terminal, and no category WorkflowRef was recorded on this path so
+// recoverIfWorkflowStillRunning has nothing to recover from. One 503 would end
+// the run (issue #384).
+type retryableCreateError struct {
+	err error
+}
+
+func (e *retryableCreateError) Error() string { return e.err.Error() }
+func (e *retryableCreateError) Unwrap() error { return e.err }
 
 // workflowCreateRejectedError tells createWorkflowForCategory callers that the
 // Create path already attempted the specific WorkflowFailed status write. The
@@ -865,8 +961,29 @@ func derefBool(p *bool) bool {
 }
 
 // setCertificationInProgress sets the Certification to InProgress state.
-func (r *CertificationReconciler) setCertificationInProgress(ctx context.Context, certification *nvcrev1alpha1.Certification, reason, message string) error {
-	return r.setExclusiveCondition(ctx, certification, nvcrev1alpha1.CertificationInProgress, reason, message)
+func (r *CertificationReconciler) setCertificationInProgress(ctx context.Context, certification *nvcrev1alpha1.Certification, reason, message string, extra ...func(*nvcrev1alpha1.Certification) bool) error {
+	return r.setExclusiveCondition(ctx, certification, nvcrev1alpha1.CertificationInProgress, reason, message, extra...)
+}
+
+// categoryMutation adapts a per-category edit into a status-write callback.
+//
+// The category is resolved by index against the object the callback is handed,
+// never by a pointer taken beforehand. updateStatusWithRetry refetches the
+// Certification in place on a conflict, which replaces the CategoryStatuses
+// backing array; a pointer into the old array would then address a discarded
+// copy and the edit would be lost with the write reported as successful.
+//
+// Reporting whether anything actually changed keeps a no-op category edit from
+// forcing a write on its own.
+func categoryMutation(idx int, apply func(*nvcrev1alpha1.CertificationCategoryStatus)) func(*nvcrev1alpha1.Certification) bool {
+	return func(c *nvcrev1alpha1.Certification) bool {
+		if idx < 0 || idx >= len(c.Status.CategoryStatuses) {
+			return false
+		}
+		before := c.Status.CategoryStatuses[idx].DeepCopy()
+		apply(&c.Status.CategoryStatuses[idx])
+		return !apiequality.Semantic.DeepEqual(before, &c.Status.CategoryStatuses[idx])
+	}
 }
 
 // recoverIfWorkflowStillRunning checks child Workflows of a terminal Certification.
@@ -901,9 +1018,11 @@ func (r *CertificationReconciler) recoverIfWorkflowStillRunning(ctx context.Cont
 		if !wfTerminal {
 			log.Info("Recovering Certification from stale Failed state — Workflow is still running",
 				"workflow", catStatus.WorkflowRef.Name, "category", catStatus.Domain+"/"+catStatus.Variant)
-			catStatus.Status = categoryStatusInProgress
+			reopen := categoryMutation(i, func(cs *nvcrev1alpha1.CertificationCategoryStatus) {
+				cs.Status = categoryStatusInProgress
+			})
 			if err := r.setCertificationInProgress(ctx, certification, ReasonWorkflowRunning,
-				"Recovered: Workflow still running"); err != nil {
+				"Recovered: Workflow still running", reopen); err != nil {
 				log.Error(err, "Failed to recover Certification to InProgress")
 				return false
 			}
@@ -935,8 +1054,10 @@ func (r *CertificationReconciler) setCertificationFailed(ctx context.Context, ce
 	return r.setExclusiveCondition(ctx, certification, nvcrev1alpha1.CertificationFailed, reason, message)
 }
 
-// setExclusiveCondition sets one condition True and all others False (mutually exclusive).
-func (r *CertificationReconciler) setExclusiveCondition(ctx context.Context, certification *nvcrev1alpha1.Certification, conditionType, reason, message string) error {
+// setExclusiveCondition sets one condition True and all others False (mutually
+// exclusive). Any extra callbacks carry the rest of the status change, so they
+// are applied inside the retry and survive a conflict refetch.
+func (r *CertificationReconciler) setExclusiveCondition(ctx context.Context, certification *nvcrev1alpha1.Certification, conditionType, reason, message string, extra ...func(*nvcrev1alpha1.Certification) bool) error {
 	changed, transition, err := setExclusiveStatusCondition(ctx, r.Client, certification,
 		func(c *nvcrev1alpha1.Certification) *[]metav1.Condition { return &c.Status.Conditions },
 		[]string{
@@ -944,7 +1065,7 @@ func (r *CertificationReconciler) setExclusiveCondition(ctx context.Context, cer
 			nvcrev1alpha1.CertificationSucceeded,
 			nvcrev1alpha1.CertificationFailed,
 		},
-		conditionType, reason, message,
+		conditionType, reason, message, extra...,
 	)
 	if err != nil {
 		return err
@@ -1035,7 +1156,10 @@ func (r *CertificationReconciler) handleDeletion(ctx context.Context, certificat
 			ns = certification.Namespace
 		}
 		workflow := &nvcrev1alpha1.Workflow{}
-		if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: catStatus.WorkflowRef.Name}, workflow); err == nil {
+		// Read live. A cache miss here would skip the delete and still drop the
+		// finalizer, leaving the Workflow behind for the garbage collector to
+		// pick up from the OwnerReference instead of deleting it outright.
+		if err := r.workflowReader().Get(ctx, client.ObjectKey{Namespace: ns, Name: catStatus.WorkflowRef.Name}, workflow); err == nil {
 			// Only delete Workflows this Certification actually created. A
 			// same-named foreign Workflow (a name collision, or a stale ref)
 			// must survive the finalizer.
@@ -1100,6 +1224,11 @@ func (r *CertificationReconciler) normalf(obj runtime.Object, reason, messageFmt
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *CertificationReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Falling back to the cached client would re-read the same stale cache and
+	// burn the category on a Workflow that exists (issue #384).
+	if r.APIReader == nil {
+		r.APIReader = mgr.GetAPIReader()
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nvcrev1alpha1.Certification{}).
 		Owns(&nvcrev1alpha1.Workflow{}).

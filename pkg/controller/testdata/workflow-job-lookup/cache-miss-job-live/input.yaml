@@ -1,0 +1,6 @@
+# Issue #385. The Job is running on the cluster but the Workflow's informer has
+# not caught up. The group must stay Running and keep its DRA dependency; the
+# reconcile requeues until the cache agrees.
+inCache: false
+inAPI: true
+passes: 3

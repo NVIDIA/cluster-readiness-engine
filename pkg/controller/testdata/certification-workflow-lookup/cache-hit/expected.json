@@ -1,0 +1,57 @@
+{
+  "passes": [
+    {
+      "requeueAfter": "15s",
+      "categories": [
+        {
+          "status": "InProgress",
+          "workflowRef": "cert-workflow-0"
+        },
+        {
+          "status": "Pending",
+          "workflowRef": "\u003cnil\u003e"
+        }
+      ],
+      "workflowsInCluster": 1
+    },
+    {
+      "requeueAfter": "15s",
+      "categories": [
+        {
+          "status": "InProgress",
+          "workflowRef": "cert-workflow-0"
+        },
+        {
+          "status": "Pending",
+          "workflowRef": "\u003cnil\u003e"
+        }
+      ],
+      "workflowsInCluster": 1
+    }
+  ],
+  "apiReads": 0,
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "WorkflowRunning",
+      "message": "Certification in progress"
+    },
+    {
+      "type": "Succeeded",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "NotApplicable",
+      "message": ""
+    },
+    {
+      "type": "Failed",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "NotApplicable",
+      "message": ""
+    }
+  ],
+  "events": []
+}

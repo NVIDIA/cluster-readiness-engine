@@ -1,0 +1,62 @@
+{
+  "BandwidthMeasurement/test-bw-final": {
+    "kind": "BandwidthMeasurement",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-bw-final",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/bandwidthmeasurement-finalizer"
+      ]
+    },
+    "spec": {
+      "jobRef": {
+        "apiGroup": "nvcre.nvidia.com",
+        "kind": "Job",
+        "name": "test-bw-final-job"
+      },
+      "logProfileRef": "nccl-final-read-test",
+      "sampleInterval": "1s"
+    },
+    "status": {
+      "results": [
+        {
+          "sizeBytes": 8,
+          "algBW": "0.00",
+          "busBW": "0.00",
+          "samples": 2
+        },
+        {
+          "sizeBytes": 1048576,
+          "algBW": "14.97",
+          "busBW": "28.07",
+          "samples": 2
+        },
+        {
+          "sizeBytes": 17179869184,
+          "algBW": "245.45",
+          "busBW": "460.21",
+          "samples": 2
+        }
+      ],
+      "conditions": [
+        {
+          "type": "Measuring",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobSucceeded",
+          "message": "Job succeeded"
+        },
+        {
+          "type": "Complete",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobSucceeded",
+          "message": "Job succeeded"
+        }
+      ]
+    }
+  }
+}

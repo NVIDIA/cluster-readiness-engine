@@ -1,0 +1,6 @@
+# The CRD is retained and the only JobSet RBAC is a read-only role. Before
+# the 2026-09-22 amendment this was an unverified non-Helm fingerprint; a
+# read-only rule is now no fingerprint at all, so the remaining crd-only
+# inspection (no leftovers, no instances, no release evidence) decides.
+crdPresent: true
+releaseState: not installed

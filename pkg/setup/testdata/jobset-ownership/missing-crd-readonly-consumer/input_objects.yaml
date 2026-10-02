@@ -1,0 +1,11 @@
+# The only JobSet rule is read-only. A consumer that can only observe JobSets
+# is not a controller fingerprint (ADR-078, amended 2026-09-22), so a fresh
+# install proceeds. Before the amendment this object blocked as a leftover.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: renamed-jobset-consumer
+rules:
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets]
+    verbs: [get]

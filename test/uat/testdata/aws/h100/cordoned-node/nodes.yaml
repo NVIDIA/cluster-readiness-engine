@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A Certification can succeed against a cordoned node targeted via a taintSelectors entry for the unschedulable taint.
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: aws-h100-cordoned-node-01
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: aws-h100-cordoned-node-01
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    nvidia.com/gpu.count: "8"
+    nvidia.com/gpu.family: hopper
+    node.kubernetes.io/instance-type: p5.48xlarge
+spec:
+  providerID: "aws:///us-east-1e/i-0000000000000003"
+  unschedulable: true
+  taints:
+    - key: node.kubernetes.io/unschedulable
+      effect: NoSchedule
+status:
+  capacity:
+    cpu: "192"
+    memory: 2052347172Ki
+    nvidia.com/gpu: "8"
+    vpc.amazonaws.com/efa: "32"
+    pods: "100"
+  allocatable:
+    cpu: "192"
+    memory: 2052347172Ki
+    nvidia.com/gpu: "8"
+    vpc.amazonaws.com/efa: "32"
+    pods: "100"
+  conditions:
+  - type: Ready
+    status: "True"
+    reason: KubeletReady
+    message: kubelet is posting ready status
+  phase: Running

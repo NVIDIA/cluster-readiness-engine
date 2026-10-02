@@ -13,4 +13,4 @@ metadata:
 rules:
   - apiGroups: [jobset.x-k8s.io]
     resources: [jobsets]
-    verbs: [create, get, list, watch]
+    verbs: [create, get, list, patch, update, watch]

@@ -1,0 +1,71 @@
+{
+  "passes": [
+    {
+      "requeueAfter": "50ms",
+      "categories": [
+        {
+          "status": "Succeeded",
+          "workflowRef": "cert-workflow-0"
+        },
+        {
+          "status": "Pending",
+          "workflowRef": "\u003cnil\u003e"
+        }
+      ],
+      "workflowsInCluster": 1
+    },
+    {
+      "requeueAfter": "15s",
+      "categories": [
+        {
+          "status": "Succeeded",
+          "workflowRef": "cert-workflow-0"
+        },
+        {
+          "status": "Pending",
+          "workflowRef": "\u003cnil\u003e"
+        }
+      ],
+      "workflowsInCluster": 1
+    },
+    {
+      "requeueAfter": "15s",
+      "categories": [
+        {
+          "status": "Succeeded",
+          "workflowRef": "cert-workflow-0"
+        },
+        {
+          "status": "Pending",
+          "workflowRef": "\u003cnil\u003e"
+        }
+      ],
+      "workflowsInCluster": 1
+    }
+  ],
+  "apiReads": 2,
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "WorkflowRunning",
+      "message": "Workflow for category communication/nccl-all-gather succeeded, advancing to next category"
+    },
+    {
+      "type": "Succeeded",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "NotApplicable",
+      "message": ""
+    },
+    {
+      "type": "Failed",
+      "status": "False",
+      "lastTransitionTime": null,
+      "reason": "NotApplicable",
+      "message": ""
+    }
+  ],
+  "events": []
+}

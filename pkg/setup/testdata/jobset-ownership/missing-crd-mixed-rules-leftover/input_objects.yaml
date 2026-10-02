@@ -1,0 +1,14 @@
+# The first JobSet rule is read-only; a later rule on the same group grants
+# writes. Rules are judged one at a time and any write-capable JobSet rule
+# makes the role a fingerprint, so the read-only rule cannot mask the write.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: missing-crd-mixed-rules-leftover
+rules:
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets]
+    verbs: [get, list, watch]
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets/status]
+    verbs: [get, patch, update]

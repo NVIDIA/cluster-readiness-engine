@@ -598,26 +598,21 @@ Both facts drive the scope decision below.
   client: the current CRD rejects an empty framework before reconciliation.
   An admission golden pins that rejection; do not weaken the CRD to make the
   guard reachable in an Event integration fixture.
-- **Known WorkloadRun lifecycle coverage gap pending #352:** start the success fixture
-  from a persisted InProgress status and an existing Succeeded Workflow, then
-  assert the WorkloadRun's `Normal / WorkflowSucceeded` transition. Creating
-  both resources under the running manager exposes a pre-existing informer
-  ordering race in which the WorkloadRun can observe its new `workflowRef`
-  before the Workflow enters the cache and incorrectly persist
-  `Failed / WorkflowDeleted`. This proves only the terminal success Event,
-  not the required full cache-backed creation-to-success lifecycle. The
-  fake-client recorder test pins helper deduplication, not `Reconcile` or
-  API-level creation coverage, and is not a substitute for that requirement.
-  `workloadrun-mpi` similarly runs its initial reconciliation with the direct
-  API client before starting the manager (`initializeWorkloadRun`), preserving
-  MPI construction checks while asserting only the terminal `WorkflowFailed`
-  Event. It does not accept `WorkflowDeleted` as a valid expected outcome.
-  Neither fixture asserts `Normal / WorkflowCreated`. After that MPI list was
-  reduced to `WorkflowFailed`, no unit or integration test asserts that Event.
-  Restore full lifecycle integration coverage after #352, including
-  `Normal / WorkflowCreated` alongside the creation-to-success assertion; the
-  per-tier InProgress-then-Succeeded requirement below remains outstanding
-  for WorkloadRun.
+- **WorkloadRun lifecycle coverage, restored by #352:** the initial
+  implementation started `workloadrun-event-success` from a persisted
+  InProgress status and ran `workloadrun-mpi`'s first reconciliation before
+  the manager started, because a pre-existing informer ordering race let a
+  WorkloadRun observe its new `workflowRef` before the Workflow entered the
+  cache and persist `Failed / WorkflowDeleted`. #352 fixed the controller: a
+  cache miss is confirmed with an uncached API read before the WorkloadRun
+  fails, and a Workflow the API server still has is waited on instead. Both
+  fixtures again create the WorkloadRun under the running manager.
+  `workloadrun-event-success` asserts `Normal / WorkflowCreated` then
+  `Normal / WorkflowSucceeded`, and `workloadrun-mpi` asserts
+  `Normal / WorkflowCreated` then `Warning / WorkflowFailed`.
+  `workloadrun-workflow-deleted` pins a confirmed deletion against the API
+  server, and the `workloadrun-workflow-lookup` unit goldens pin cache lag,
+  confirmed deletion, a failed live read, and a cache hit.
 - **Checkpoint restart testing-method amendment:** retain the integration
   requirement that restart emits no additional InProgress event, using a
   recorder observer alongside the running manager and the existing Job state
@@ -933,17 +928,15 @@ and at flush time. Dedup must be a property of the emit decision.
   The design index on this branch therefore runs `077` to `080` on purpose;
   the gap is merge ordering, not skipped numbers. Whichever record merges
   later rebases onto the others so the index reads `077 / 078 / 079 / 080`.
-- **Known follow-up:** [Issue #352](https://github.com/NVIDIA/cluster-readiness-engine/issues/352)
-  tracks the pre-existing informer-ordering race in which a WorkloadRun can
+- **Resolved follow-up:** [Issue #352](https://github.com/NVIDIA/cluster-readiness-engine/issues/352)
+  tracked the pre-existing informer-ordering race in which a WorkloadRun could
   mistake a transient Workflow cache miss for deletion and persist
-  `Failed / WorkflowDeleted`. This implementation hardens its Event fixtures
-  but deliberately leaves that controller behavior to the follow-up.
-  **Release prerequisite:** work on #352 immediately after this PR. Do not cut
-  a release containing ADR-080's implementation until both changes have landed
-  and the affected lifecycle fixtures pass repeated race-instrumented runs.
-  Restore the full WorkloadRun creation-to-success integration assertion,
-  including `Normal / WorkflowCreated`, as part of #352. Separate PRs are a scope boundary, not permission to release
-  the misleading `WorkflowDeleted` Warning before the production fix.
+  `Failed / WorkflowDeleted`. ADR-080's implementation made that condition a
+  user-visible Warning, so #352 was a release prerequisite: no release was to
+  contain ADR-080's implementation without it. The fix confirms a cache miss
+  with an uncached API read and restores the full WorkloadRun
+  creation-to-success integration assertion, including
+  `Normal / WorkflowCreated`.
 - `HardwareFailed` and `ValidationFailed` are written by `setJobHardwareFailed`
   and `setJobValidationStatus` through their own `updateStatusWithRetry`
   calls, not through the exclusive-set wrapper. That is why decision 1 gives

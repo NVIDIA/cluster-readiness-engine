@@ -1,0 +1,8 @@
+# The branch issue #384 is about, under a lost status write. Nobody can see the
+# Workflow, the live read confirms it, and the write that burns the category
+# hits a conflict. updateStatusWithRetry refetches the Certification in place,
+# so the category edit only survives if it is applied inside the callback.
+inCache: false
+inAPI: false
+statusWriteFailures: 1
+reconciles: 2

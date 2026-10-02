@@ -1,0 +1,19 @@
+# The provisional samples stopped before the largest message size and
+# over-count the rows they saw. The final read parses the whole log once and
+# replaces them: two cycles per size, averaged and rounded once (issue #404).
+jobCondition: Succeeded
+podPhase: Succeeded
+provisional:
+  - {sizeBytes: 8, algBW: "0.00", busBW: "0.00", samples: 5}
+  - {sizeBytes: 1048576, algBW: "14.00", busBW: "27.00", samples: 5}
+log: |
+  2026-09-30T10:01:00.000000001Z # nThread 1 nGpus 1 minBytes 8 maxBytes 17179869184 step: 2(factor) warmup iters: 5 iters: 20
+  2026-09-30T10:01:00.100000000Z NCCL INFO Using network IB
+  2026-09-30T10:01:01.000000000Z            8             2     float     sum      -1    58.31    0.00    0.00       0    58.40    0.00    0.00       0
+  2026-09-30T10:01:02.000000000Z      1048576        262144     float     sum      -1    70.10   14.96   28.05       0    69.80   15.02   28.16       0
+  2026-09-30T10:01:03.000000000Z  17179869184    4294967296     float     sum      -1  70000.0  245.43  460.18       0  70010.0  245.39  460.10       0
+  2026-09-30T10:01:04.000000000Z            8             2     float     sum      -1    58.10    0.00    0.00       0    58.20    0.00    0.00       0
+  2026-09-30T10:01:05.000000000Z      1048576        262144     float     sum      -1    70.00   14.98   28.09       0    69.90   15.00   28.12       0
+  2026-09-30T10:01:06.000000000Z  17179869184    4294967296     float     sum      -1  69990.0  245.47  460.24       0  70000.0  245.43  460.18       0
+  2026-09-30T10:01:07.000000000Z # Out of bounds values : 0 OK
+  2026-09-30T10:01:07.000000001Z # Avg bus bandwidth    : 162.8

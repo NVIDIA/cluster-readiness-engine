@@ -31,11 +31,13 @@ func TestDiscoverCordonedNodes(t *testing.T) {
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
 			Nodes []struct {
-				Name       string `yaml:"name"`
-				Cordoned   bool   `yaml:"cordoned"`
-				NoGPU      bool   `yaml:"noGPU"`
-				Unlabelled bool   `yaml:"unlabelled"`
+				Name       string         `yaml:"name"`
+				Cordoned   bool           `yaml:"cordoned"`
+				NoGPU      bool           `yaml:"noGPU"`
+				Unlabelled bool           `yaml:"unlabelled"`
+				Taints     []corev1.Taint `yaml:"taints"`
 			} `yaml:"nodes"`
+			Target *nvcrev1alpha1.TargetSpec `yaml:"target"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -55,12 +57,13 @@ func TestDiscoverCordonedNodes(t *testing.T) {
 				}
 			}
 			node.Spec.Unschedulable = n.Cordoned
+			node.Spec.Taints = n.Taints
 			given = append(given, node)
 		}
 
 		nodes, cordoned, err := discoverTargetNodes(context.Background(),
 			unorderedReader{nodes: given},
-			&nvcrev1alpha1.TargetSpec{})
+			input.Target)
 		if err != nil {
 			return err
 		}

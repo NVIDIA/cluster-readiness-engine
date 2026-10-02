@@ -112,3 +112,19 @@ updates:
       docker-images:
         patterns:
           - "*"
+
+  # Raises the Fern CLI in fern/package-lock.json. The docs workflows install
+  # it with `npm ci`, so the lockfile is the only thing that decides which CLI
+  # publishes the site -- without this the pin would simply go stale.
+  - package-ecosystem: npm
+    directory: /fern
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    groups:
+      fern:
+        patterns:
+          - "*"

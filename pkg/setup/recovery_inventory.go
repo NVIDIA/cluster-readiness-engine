@@ -153,7 +153,7 @@ func discoverProtectedResources(sp setupPhaseParams) ([]protectedAPIResource, er
 		}
 		for _, resource := range list.APIResources {
 			if !resource.Namespaced || strings.Contains(resource.Name, "/") ||
-				!containsString(resource.Verbs, "list") || excludedRecoveryResource(gv.Group, resource.Name) {
+				!containsString(resource.Verbs, rbacVerbList) || excludedRecoveryResource(gv.Group, resource.Name) {
 				continue
 			}
 			key := gv.String() + "/" + resource.Name

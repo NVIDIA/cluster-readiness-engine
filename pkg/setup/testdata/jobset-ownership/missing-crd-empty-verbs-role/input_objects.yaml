@@ -1,0 +1,11 @@
+# An empty verb list grants nothing and no chart renders it. It is not a
+# recognised read-only shape, so the rule stays a fingerprint rather than being
+# ignored on the strength of a degenerate input.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: missing-crd-empty-verbs-role
+rules:
+  - apiGroups: [jobset.x-k8s.io]
+    resources: [jobsets]
+    verbs: []

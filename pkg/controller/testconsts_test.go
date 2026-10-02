@@ -10,6 +10,9 @@ package controller
 const (
 	// testJobsResource is the plural resource name used by injected conflicts.
 	testJobsResource = "jobs"
+	// testCertificationsResource is the plural resource name used by injected
+	// Certification status conflicts.
+	testCertificationsResource = "certifications"
 	// testGPUProductLabel is the node label key advertising GPU product.
 	testGPUProductLabel = "nvidia.com/gpu.product"
 	// testGPUProductH100 is a GPU product label value used by fixtures.
@@ -34,4 +37,11 @@ const (
 	testJobName = "job"
 	// testNodeFailureDetail is a per-node failure message used by fixtures.
 	testNodeFailureDetail = "xid"
+	// testFakeAPIServerHost is an unroutable API server host. SetupWithManager
+	// tests build a real manager but never dial, so nothing connects to it.
+	testFakeAPIServerHost = "https://127.0.0.1:0"
+	// testNilRef is how golden files spell an unset object reference.
+	testNilRef = "<nil>"
+	// testKindTrainJob is the workload Kind the Job tier creates.
+	testKindTrainJob = "TrainJob"
 )

@@ -1,0 +1,5 @@
+# The foreign holder is on its way out, so the name frees up shortly. That is a
+# retry, not a collision, and the run must not be failed terminally for it.
+holder: foreign-terminating
+statusWriteFailures: 0
+reconciles: 2

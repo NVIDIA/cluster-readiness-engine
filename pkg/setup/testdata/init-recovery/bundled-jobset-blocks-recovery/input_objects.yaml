@@ -116,7 +116,7 @@ metadata:
 rules:
   - apiGroups: [jobset.x-k8s.io]
     resources: [jobsets]
-    verbs: [get, list, watch]
+    verbs: [create, delete, get, list, patch, update, watch]
 ---
 # A JobSet the bundled controller is reconciling. Uninstalling the Trainer
 # release removes that controller, so this instance blocks recovery even

@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A non-cordoned target must leave an explicit monitor untouched.
+targetsCordoned: false
+explicitMonitor: true

@@ -1,0 +1,8 @@
+{
+  "mode": "unknown",
+  "evidence": [
+    "JobSet-related resources remain: ClusterRole/missing-crd-unrecognized-verb-role"
+  ],
+  "installJobSet": true,
+  "manifestCalls": 0
+}
