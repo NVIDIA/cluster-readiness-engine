@@ -1,4 +1,4 @@
-# ADR-082: Lifecycle Status Metrics Read from the Cache, and the Timeout Write Is Exclusive
+# ADR-086: Lifecycle Status Metrics Read from the Cache, and the Timeout Write Is Exclusive
 
 > **Status:** Proposed
 
@@ -148,6 +148,11 @@ does.
     label. If #414 lands first, reuse its condition-to-label helper.
   - Remove `jobStatusGauge` and `recordJobStatus`, and drop the gauge from
     `cleanupJobMetrics`. The other job-scoped metrics and their cleanup stay.
+- `docs/operations/metrics.md`
+  - In the Job status section, replace "set for all three status values on
+    each update" with "on each scrape", and replace "Metrics are cleaned up
+    when a Job is deleted" for `nvcre_job_status` with the scrape-time rule:
+    the series come from the cache and disappear once the object does.
 - `pkg/controller/job_controller.go`
   - Remove the `recordJobStatus` calls in `setExclusiveCondition` and
     `setJobFailed`.
