@@ -15,7 +15,7 @@ _Fields documented so far:_
 | Field | Type | Description |
 |-------|------|-------------|
 | `jobTemplate.spec.workloadMetadata` | WorkloadMetadata | Optional, immutable. Labels applied to the workload object each generated Job creates. This is a plain `JobSpec` field, so it carries the same admission and transition rules as a direct Job's. See [Job workload object labels](job.md#workload-object-labels) |
-| `jobTemplate.spec.nodeHealthMonitor` | NodeHealthMonitorConfig | Optional, immutable in presence and value. Copied to each generated Job |
+| `jobTemplate.spec.nodeHealthMonitor` | NodeHealthMonitor | Optional, immutable in presence and value. Copied to each generated Job |
 | `jobTemplate.spec.goodputMeasurement` | GoodputMeasurementConfig | Optional, immutable in presence and value. Copied to each generated Job |
 | `jobTemplate.spec.bandwidthMeasurement` | BandwidthMeasurementConfig | Optional, immutable in presence and value. Copied to each generated Job |
 | `gangScheduler` | GangSchedulerSpec | Optional, immutable. The resolved gang-scheduling intent of the WorkloadRun or Certification that generated this Workflow. See [Gang scheduling consistency contract](#gang-scheduling-consistency-contract) |

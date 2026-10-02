@@ -14,7 +14,7 @@ description: CRD reference for the Job resource.
 |-------|------|-------------|
 | `workload` | WorkloadSpec | Required, immutable. Discriminated union selecting the workload framework; exactly one field must be set |
 | `workloadMetadata` | WorkloadMetadata | Optional, immutable. Labels applied to the generated workload object itself (see below) |
-| `nodeHealthMonitor` | NodeHealthMonitorConfig | Optional, immutable in presence and value. Configures node-health monitoring |
+| `nodeHealthMonitor` | NodeHealthMonitor | Optional, immutable in presence and value. Configures node-health monitoring |
 | `goodputMeasurement` | GoodputMeasurementConfig | Optional, immutable in presence and value. Configures goodput measurement |
 | `bandwidthMeasurement` | BandwidthMeasurementConfig | Optional, immutable in presence and value. Configures bandwidth measurement |
 | `workloadMetadata.labels` | map[string]string | Optional. At most 32 entries. Label keys must be valid Kubernetes label keys and values valid Kubernetes label values; `app.kubernetes.io/managed-by` and any key under `nvcre.nvidia.com/` are rejected |
