@@ -129,9 +129,10 @@ func mergeUserEnvIntoTrainerPatches(overrides []WorkloadRunOverride, userEnv []c
 }
 
 // mergeUserEnvIntoRuntimeDependencies preserves WorkloadRun spec.env values
-// when a platform override patches a TrainingRuntime dependency. Kubeflow
-// merges the override dependency after the generated runtime, so matching
-// platform values would otherwise win. Only matching names are replaced.
+// when a platform override patches a TrainingRuntime dependency. Our own
+// mergeOrAppendDependency merges the override object into the generated
+// runtime and replaces the container env list, so matching platform values
+// would otherwise win. Only matching names are replaced.
 func mergeUserEnvIntoRuntimeDependencies(overrides []WorkloadRunOverride, userEnv []corev1.EnvVar) {
 	if len(userEnv) == 0 {
 		return
@@ -144,15 +145,15 @@ func mergeUserEnvIntoRuntimeDependencies(overrides []WorkloadRunOverride, userEn
 			if err := json.Unmarshal(dependency.Raw, &root); err != nil {
 				panic(fmt.Sprintf("platform: decode dependency override[%d][%d]: %v", overrideIndex, dependencyIndex, err))
 			}
-			kind, _ := root["kind"].(string)
+			kind, _ := root[keyKind].(string)
 			if kind != kindTrainingRuntime {
 				continue
 			}
-			runtimeSpec, ok := nestedOverrideMap(root, "spec", "template", "spec")
+			runtimeSpec, ok := nestedOverrideMap(root, keySpec, keyTemplate, keySpec)
 			if !ok {
 				continue
 			}
-			replicatedJobs, ok := runtimeSpec["replicatedJobs"].([]any)
+			replicatedJobs, ok := runtimeSpec[keyReplicatedJobs].([]any)
 			if !ok {
 				continue
 			}
@@ -161,11 +162,11 @@ func mergeUserEnvIntoRuntimeDependencies(overrides []WorkloadRunOverride, userEn
 				if !ok {
 					continue
 				}
-				podSpec, ok := nestedOverrideMap(job, "template", "spec", "template", "spec")
+				podSpec, ok := nestedOverrideMap(job, keyTemplate, keySpec, keyTemplate, keySpec)
 				if !ok {
 					continue
 				}
-				containers, ok := podSpec["containers"].([]any)
+				containers, ok := podSpec[keyContainers].([]any)
 				if !ok {
 					continue
 				}
@@ -174,7 +175,7 @@ func mergeUserEnvIntoRuntimeDependencies(overrides []WorkloadRunOverride, userEn
 					if !ok {
 						continue
 					}
-					rawEnv, ok := container["env"]
+					rawEnv, ok := container[keyEnv]
 					if !ok {
 						continue
 					}
@@ -190,7 +191,7 @@ func mergeUserEnvIntoRuntimeDependencies(overrides []WorkloadRunOverride, userEn
 					if err != nil {
 						panic(fmt.Sprintf("platform: encode dependency env override[%d][%d]: %v", overrideIndex, dependencyIndex, err))
 					}
-					container["env"] = json.RawMessage(updatedEnv)
+					container[keyEnv] = json.RawMessage(updatedEnv)
 				}
 			}
 			updated, err := json.Marshal(root)
