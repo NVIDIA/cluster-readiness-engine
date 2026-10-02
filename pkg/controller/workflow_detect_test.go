@@ -7,10 +7,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
-	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
-	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"sigs.k8s.io/yaml"
@@ -329,66 +326,6 @@ func TestApplyOverridesWithTracking(t *testing.T) {
 		tc.Actual = string(data) + "\n"
 		return nil
 	})
-}
-
-func TestWorkloadRunUserEnvWinsPlatformTrainerEnv(t *testing.T) {
-	userEnv := []corev1.EnvVar{
-		{Name: "NCCL_DEBUG", Value: "TRACE"},
-		{Name: "USER_ONLY", Value: "kept"},
-		{Name: "PET_NNODES", Value: "2"},
-	}
-	platformOverrides := platform.BuildOverrides(platform.OverrideConfig{
-		FrameworkType: "torch",
-		UserEnv:       userEnv,
-	})
-	overrides := make([]nvcrev1alpha1.OverrideSpec, len(platformOverrides))
-	for i := range platformOverrides {
-		overrides[i] = platformOverrides[i].OverrideSpec
-	}
-
-	spec := nvcrev1alpha1.WorkflowSpec{
-		JobTemplate: nvcrev1alpha1.JobTemplateSpec{
-			Spec: nvcrev1alpha1.JobSpec{
-				Workload: nvcrev1alpha1.WorkloadSpec{
-					TrainJob: &trainerv1alpha1.TrainJobSpec{
-						Trainer: &trainerv1alpha1.Trainer{},
-					},
-				},
-			},
-		},
-		Overrides: overrides,
-	}
-
-	_, err := applyOverridesWithTracking(&spec, OverrideContext{
-		Platform:        "gcp",
-		GPUArchitecture: "h100",
-	})
-	require.NoError(t, err)
-
-	env := spec.JobTemplate.Spec.Workload.TrainJob.Trainer.Env
-	assertTrainerEnvValue(t, env, "NCCL_DEBUG", "TRACE")
-	assertNoTrainerEnvValue(t, env, "USER_ONLY")
-	assertNoTrainerEnvValue(t, env, "PET_NNODES")
-}
-
-func assertNoTrainerEnvValue(t *testing.T, env []corev1.EnvVar, name string) {
-	t.Helper()
-	for _, got := range env {
-		if got.Name == name {
-			t.Fatalf("did not expect %s in trainer env: %#v", name, env)
-		}
-	}
-}
-
-func assertTrainerEnvValue(t *testing.T, env []corev1.EnvVar, name, want string) {
-	t.Helper()
-	for _, got := range env {
-		if got.Name == name {
-			require.Equal(t, want, got.Value)
-			return
-		}
-	}
-	t.Fatalf("expected %s=%s in trainer env: %#v", name, want, env)
 }
 
 func TestCountDomains(t *testing.T) {

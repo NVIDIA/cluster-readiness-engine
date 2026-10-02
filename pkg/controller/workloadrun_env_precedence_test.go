@@ -7,6 +7,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -66,4 +67,24 @@ func TestWorkloadRunControllerCarriesUserEnvIntoMatchingPlatformOverride(t *test
 	assertTrainerEnvValue(t, env, "NCCL_DEBUG", "TRACE")
 	assertNoTrainerEnvValue(t, env, "USER_ONLY")
 	assertNoTrainerEnvValue(t, env, "PET_NNODES")
+}
+
+func assertNoTrainerEnvValue(t *testing.T, env []corev1.EnvVar, name string) {
+	t.Helper()
+	for _, got := range env {
+		if got.Name == name {
+			t.Fatalf("did not expect %s in trainer env: %#v", name, env)
+		}
+	}
+}
+
+func assertTrainerEnvValue(t *testing.T, env []corev1.EnvVar, name, want string) {
+	t.Helper()
+	for _, got := range env {
+		if got.Name == name {
+			require.Equal(t, want, got.Value)
+			return
+		}
+	}
+	t.Fatalf("expected %s=%s in trainer env: %#v", name, want, env)
 }
