@@ -25,7 +25,7 @@ The fallback supplies only the product. GPU nodes must still carry `nvidia.com/g
 
 This lookup is skipped entirely when every node already carries the label (every non-DRA cluster), and one `ResourceSlice` `List` call, read directly from the API server rather than the controller cache, covers the whole target set. A missing `resourceslices` RBAC grant, or a driver that publishes no `productName` attribute, degrades to "leave those nodes unlabeled" rather than failing the reconcile — `unknown` architecture is the same outcome an unlabeled node with a device plugin produces today.
 
-Offline `nvcrectl certification render` and `nvcrectl workloadrun render` have no cluster to read `ResourceSlice`s from, so on a label-less platform, offline render requires `--gpu-arch` to resolve architecture at all. `--gpu-arch` is ignored under `--dry-run`, which discovers real nodes and runs the same fallback the controllers do.
+Offline `nvcrectl certification render` and `nvcrectl workloadrun render` have no cluster to read `ResourceSlice`s from, so on a label-less platform, offline render requires `--gpu-arch` to resolve architecture at all. `--gpu-arch` cannot be combined with `--dry-run`, which discovers real nodes and runs the same fallback the controllers do.
 
 The live controller writes detection results to `status.orchestration.detectedPlatform` and `status.orchestration.detectedGPUArchitecture` on the Workflow. When using `nvcrectl workflow render` (client-side), these values are also written as annotations (`nvcrectl.nvidia.com/detected-platform`, `nvcrectl.nvidia.com/detected-gpu-architecture`) on the rendered manifest for offline inspection.
 

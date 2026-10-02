@@ -11,6 +11,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -29,6 +30,7 @@ func TestRenderPlatformFlag(t *testing.T) {
 		var cfg struct {
 			Platform string `yaml:"platform"`
 			GPUArch  string `yaml:"gpuArch"`
+			DryRun   bool   `yaml:"dryRun"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &cfg); err != nil {
 			return err
@@ -43,7 +45,12 @@ func TestRenderPlatformFlag(t *testing.T) {
 			}
 		}
 
-		renderErr := runWorkloadRunRender(runPath, "yaml", cfg.Platform, cfg.GPUArch)
+		var renderErr error
+		if cfg.DryRun {
+			renderErr = runWorkloadRunRenderDryRun(runPath, "yaml", cfg.Platform, cfg.GPUArch, kubeconfig.NewConfigFlags(true))
+		} else {
+			renderErr = runWorkloadRunRender(runPath, "yaml", cfg.Platform, cfg.GPUArch)
+		}
 
 		type result struct {
 			Error string `json:"error"`

@@ -108,13 +108,13 @@ func newWorkloadRunRenderCommand() *cobra.Command {
 including auto-generated TrainingRuntime, ConfigMap, platform overrides, and NCCL env vars.
 
 Use --platform to simulate platform-specific overrides offline.
-Use --gpu-arch to set the GPU architecture offline (e.g. a DRA-only GPU stack whose nodes carry no nvidia.com/gpu.product label); it wins over the nodeSelector-derived value when set and is ignored under --dry-run.
+Use --gpu-arch to set the GPU architecture offline (e.g. a DRA-only GPU stack whose nodes carry no nvidia.com/gpu.product label); it wins over the nodeSelector-derived value when set and cannot be combined with --dry-run, which detects the architecture from real nodes.
 Use --dry-run to discover real nodes from the cluster and apply overrides based on actual platform and GPU.
 Combining --platform with --dry-run overrides the detected platform while still using real nodes.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dryRun {
-				return runWorkloadRunRenderDryRun(args[0], outputFormat, platformFlag, configFlags)
+				return runWorkloadRunRenderDryRun(args[0], outputFormat, platformFlag, gpuArchFlag, configFlags)
 			}
 			return runWorkloadRunRender(args[0], outputFormat, platformFlag, gpuArchFlag)
 		},
@@ -559,8 +559,11 @@ func buildWRCLIConfigMapDep(name string, data map[string]string) nvcrev1alpha1.D
 // catalog defaults, NIC resource detection, MPI override baking, override
 // matching, the printed status, and the recorded annotations.
 func runWorkloadRunRenderDryRun(
-	file, outputFormat, platformFlag string, configFlags *kubeconfig.ConfigFlags,
+	file, outputFormat, platformFlag, gpuArchFlag string, configFlags *kubeconfig.ConfigFlags,
 ) error {
+	if gpuArchFlag != "" {
+		return errors.New("--dry-run detects the GPU architecture from cluster nodes; cannot combine with --gpu-arch")
+	}
 	if err := platform.ValidateFlag(platformFlag); err != nil {
 		return err
 	}

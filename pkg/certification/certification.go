@@ -124,8 +124,8 @@ on AWS) without connecting to a cluster. Valid values: %s.
 
 Use --gpu-arch to set the GPU architecture offline (e.g. a DRA-only GPU
 stack whose nodes carry no nvidia.com/gpu.product label). It wins over the
-nodeSelector-derived value when set and is ignored under --dry-run, which
-always detects from real nodes.`, platform.NamesList()),
+nodeSelector-derived value when set and cannot be combined with --dry-run,
+which detects the architecture from real nodes.`, platform.NamesList()),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -158,10 +158,8 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 		return err
 	}
 
-	// --gpu-arch applies offline only, as in workloadrun render: --dry-run
-	// always detects architecture from real nodes.
-	if dryRun {
-		gpuArchFlag = ""
+	if dryRun && gpuArchFlag != "" {
+		return errors.New("--dry-run detects the GPU architecture from cluster nodes; cannot combine with --gpu-arch")
 	}
 	gpuArchOverride, err := catalog.ParseGPUArchFlag(gpuArchFlag)
 	if err != nil {

@@ -76,7 +76,7 @@ nvcrectl certification render [flags] <cert-file>
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--platform` | auto | Override platform detection (`aws`, `gcp`, `azure`, `oci`, `onprem`, `togetherai`, `mistral`, `forge`, `nscale`) |
-| `--gpu-arch` | none | GPU architecture for offline render, e.g. `gb300` or the product name `NVIDIA-GB300`; an unknown architecture is rejected with the valid list. Use it for a DRA-only GPU stack whose nodes carry no `nvidia.com/gpu.product` label. Wins over the target `nodeSelector`'s label when set; ignored under `--dry-run`, which always detects from real nodes. |
+| `--gpu-arch` | none | GPU architecture for offline render, e.g. `gb300` or the product name `NVIDIA-GB300`; an unknown architecture is rejected with the valid list. Use it for a DRA-only GPU stack whose nodes carry no `nvidia.com/gpu.product` label. Wins over the target `nodeSelector`'s label when set; cannot be combined with `--dry-run`, which detects the architecture from real nodes. |
 | `--dry-run` | `false` | Validate against the live API server without creating resources |
 | `--output` | `yaml` | Output format: `yaml` or `json` |
 

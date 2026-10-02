@@ -407,6 +407,7 @@ func TestRenderPlatformFlag(t *testing.T) {
 		var cfg struct {
 			Platform string `yaml:"platform"`
 			GPUArch  string `yaml:"gpuArch"`
+			DryRun   bool   `yaml:"dryRun"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &cfg); err != nil {
 			return err
@@ -423,7 +424,7 @@ func TestRenderPlatformFlag(t *testing.T) {
 
 		configFlags := kubeconfig.NewConfigFlags(true)
 		*configFlags.Namespace = defaultKubeNamespace
-		renderErr := runCertificationRender(certPath, "yaml", false, configFlags, cfg.Platform, cfg.GPUArch)
+		renderErr := runCertificationRender(certPath, "yaml", cfg.DryRun, configFlags, cfg.Platform, cfg.GPUArch)
 
 		type result struct {
 			Error            string `json:"error"`

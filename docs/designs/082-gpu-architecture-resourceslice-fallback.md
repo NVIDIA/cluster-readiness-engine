@@ -21,7 +21,7 @@ NVCRE does not patch nodes (ADR-061), so writing the label back to the Node obje
 5. **Offline `--gpu-arch`.** `nvcrectl certification render` and `nvcrectl workloadrun render` have no cluster to read ResourceSlices from, so both gain `--gpu-arch` with one rule:
    - The value is normalized with `gpu.ParseProduct`, so `gb300`, `NVIDIA-GB300`, and `NVIDIA GB300` are equivalent. It is rejected unless `gpu-defaults.yaml` lists the architecture, the same way `--platform` is validated.
    - When set, it wins over the `nodeSelector`-derived architecture, matching `--platform`.
-   - It applies offline only. `--dry-run` always detects from real nodes, which the fallback now covers.
+   - It applies offline only and is rejected with `--dry-run`, which detects from real nodes through the fallback. `nvcrectl workflow render` already rejects the same combination.
    - It is never written into `spec.target.nodeSelector`, which is the real API selector for every later reconcile.
 6. **`certification run` needs no change.** `nvcrectl certification run --category` already persists `nvidia.com/gpu.present=true` alone, never the discovered product, so its selector matches DRA-only nodes and the controller detects the architecture through the same fallback.
 7. **RBAC.** The manager role gains `get`, `list`, `watch` on `resource.k8s.io` `resourceslices`.
