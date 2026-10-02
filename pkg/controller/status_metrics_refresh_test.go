@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	promtest "github.com/prometheus/client_golang/prometheus/testutil"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -228,6 +229,131 @@ func TestReconcileRefreshesStatusGaugesWithoutStatusMutation(t *testing.T) {
 			InProgress:      gauges[testMetricStatusInProgress],
 			Succeeded:       gauges[testMetricStatusSucceeded],
 			StatusUnchanged: conditionsEqual(beforeConditions, after),
+		}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
+// After our finalizer is gone, another finalizer can keep a deleting object
+// alive. Reconcile must not republish gauges that handleDeletion already
+// cleaned, or the series leak until process restart.
+func TestReconcileSkipsStatusGaugeRefreshWhileDeleting(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "reconcile-skip-refresh-while-deleting",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input refreshStatusInput
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		ctx := context.Background()
+		scheme := newWorkflowScheme(tc.T.(*testing.T))
+		name := "skip-refresh-" + tc.Name
+		now := metav1.NewTime(time.Now())
+		// Foreign finalizer keeps the object alive after our finalizer is gone,
+		// which is the leak window CodeRabbit flagged.
+		const holdFinalizer = "nvcre.nvidia.com/test-hold"
+
+		var obj client.Object
+		switch input.Kind {
+		case testKindCertification:
+			cert := &nvcrev1alpha1.Certification{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              name,
+					Namespace:         testNS,
+					DeletionTimestamp: &now,
+					Finalizers:        []string{holdFinalizer},
+				},
+			}
+			meta.SetStatusCondition(&cert.Status.Conditions, metav1.Condition{
+				Type:   input.ConditionType,
+				Status: metav1.ConditionTrue,
+				Reason: "AlreadyTerminal",
+			})
+			obj = cert
+		default:
+			wf := &nvcrev1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              name,
+					Namespace:         testNS,
+					DeletionTimestamp: &now,
+					Finalizers:        []string{holdFinalizer},
+					Labels:            map[string]string{labelCertification: input.Certification},
+				},
+			}
+			meta.SetStatusCondition(&wf.Status.Conditions, metav1.Condition{
+				Type:   input.ConditionType,
+				Status: metav1.ConditionTrue,
+				Reason: "AlreadyTerminal",
+			})
+			obj = wf
+		}
+
+		c := fake.NewClientBuilder().WithScheme(scheme).
+			WithObjects(obj).WithStatusSubresource(obj).Build()
+
+		req := ctrl.Request{Name: name, Namespace: testNS}
+		var (
+			err      error
+			baseline int
+		)
+		switch input.Kind {
+		case testKindCertification:
+			baseline = promtest.CollectAndCount(certificationStatusGauge)
+			_, err = (&CertificationReconciler{Client: c, Scheme: scheme}).Reconcile(ctx, req)
+			defer cleanupCertificationMetrics(testNS, name)
+		default:
+			baseline = promtest.CollectAndCount(workflowStatusGauge)
+			_, err = (&WorkflowReconciler{Client: c, Scheme: scheme}).Reconcile(ctx, req)
+			defer cleanupWorkflowStatusMetrics(testNS, name)
+		}
+		if err != nil {
+			return err
+		}
+
+		var (
+			recorded bool
+			gauges   map[string]float64
+		)
+		switch input.Kind {
+		case testKindCertification:
+			recorded = promtest.CollectAndCount(certificationStatusGauge) > baseline
+			if recorded {
+				gauges = exclusiveStatusGaugeValues(func(status string) float64 {
+					return promtest.ToFloat64(certificationStatusGauge.WithLabelValues(testNS, name, status))
+				})
+			} else {
+				cleanupCertificationMetrics(testNS, name)
+				gauges = map[string]float64{}
+			}
+		default:
+			recorded = promtest.CollectAndCount(workflowStatusGauge) > baseline
+			if recorded {
+				gauges = exclusiveStatusGaugeValues(func(status string) float64 {
+					return promtest.ToFloat64(workflowStatusGauge.WithLabelValues(testNS, name, input.Certification, status))
+				})
+			} else {
+				cleanupWorkflowStatusMetrics(testNS, name)
+				gauges = map[string]float64{}
+			}
+		}
+
+		data, err := json.MarshalIndent(struct {
+			Failed     float64 `json:"failed"`
+			InProgress float64 `json:"in_progress"`
+			Succeeded  float64 `json:"succeeded"`
+			Recorded   bool    `json:"recorded"`
+		}{
+			Failed:     gauges[testMetricStatusFailed],
+			InProgress: gauges[testMetricStatusInProgress],
+			Succeeded:  gauges[testMetricStatusSucceeded],
+			Recorded:   recorded,
 		}, "", "  ")
 		if err != nil {
 			return err

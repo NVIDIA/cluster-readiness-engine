@@ -118,7 +118,11 @@ func (r *WorkflowReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	// Republish from persisted conditions so gauges survive a process restart
 	// even when this reconcile does not write status (terminal early return).
-	refreshWorkflowStatusMetrics(workflow)
+	// Skip deleting objects: after our finalizer is removed, another finalizer
+	// can keep the object alive and a refresh would recreate cleaned-up series.
+	if workflow.DeletionTimestamp.IsZero() {
+		refreshWorkflowStatusMetrics(workflow)
+	}
 
 	// Handle deletion
 	if !workflow.DeletionTimestamp.IsZero() {

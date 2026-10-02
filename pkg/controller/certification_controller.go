@@ -131,7 +131,11 @@ func (r *CertificationReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	// Republish from persisted conditions so gauges survive a process restart
 	// even when this reconcile does not write status (terminal early return).
-	refreshCertificationStatusMetrics(certification)
+	// Skip deleting objects: after our finalizer is removed, another finalizer
+	// can keep the object alive and a refresh would recreate cleaned-up series.
+	if certification.DeletionTimestamp.IsZero() {
+		refreshCertificationStatusMetrics(certification)
+	}
 
 	// Handle deletion
 	if !certification.DeletionTimestamp.IsZero() {
