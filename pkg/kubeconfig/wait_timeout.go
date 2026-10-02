@@ -9,9 +9,13 @@ import (
 )
 
 // MinWaitTimeout is the shortest --timeout accepted when --wait is set.
-// Smaller values recreate issue #409: the watch deadline fires before the
-// first status check, the CLI prints a near-empty partial report, and
+// Smaller values recreate issue #409: the deadline fires before a useful
+// status is available, the CLI prints a near-empty partial report, and
 // --cleanup then tears the run down immediately.
+//
+// 1s covers both commands. certification is event-driven (Watch).
+// workloadrun checks status once immediately and then every 5s, so a 1s
+// timeout still observes the WorkloadRun at least once.
 const MinWaitTimeout = time.Second
 
 // ValidateWaitTimeout rejects a --timeout below MinWaitTimeout when --wait

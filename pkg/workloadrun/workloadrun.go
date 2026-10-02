@@ -1224,54 +1224,82 @@ func isWorkloadRunWaitTimeout(err error) bool {
 }
 
 // watchWorkloadRun polls until the WorkloadRun reaches a terminal state.
-// It prints a "[watch]" line on every phase change and a periodic heartbeat
-// (same format and interval as the certification watch) so long runs show
+// It checks status once immediately, then on a 5s ticker, and prints a
+// "[watch]" line on every phase change plus a periodic heartbeat (same
+// format and interval as the certification watch) so long runs show
 // progress instead of going silent until the terminal condition.
+//
+// The immediate check is required because the ticker does not fire until
+// 5s: a --timeout under that (the CLI floor is 1s) would otherwise expire
+// before any status was read (issue #409).
 func watchWorkloadRun(
 	ctx context.Context, c client.WithWatch,
 	name, namespace string, timeout time.Duration, out io.Writer,
 ) (*nvcrev1alpha1.WorkloadRun, error) {
-	deadline := time.After(timeout)
+	start := time.Now()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
 
-	start := time.Now()
 	lastPhase := ""
+	sawStatus := false
 	var current nvcrev1alpha1.WorkloadRun
+
+	timeoutErr := func() error {
+		return &workloadRunWaitTimeoutError{
+			name:    name,
+			timeout: timeout,
+			elapsed: time.Since(start).Truncate(time.Second),
+		}
+	}
+	// poll reads status once. terminal is true when the run has finished
+	// (success or failure). A missing object or a still-running run returns
+	// terminal false so the caller keeps waiting. The first successful Get
+	// always prints a [watch] line (including "Waiting for status...") so a
+	// short --timeout still shows that the watch looked.
+	poll := func() (*nvcrev1alpha1.WorkloadRun, error, bool) {
+		key := client.ObjectKey{Name: name, Namespace: namespace}
+		if err := c.Get(ctx, key, &current); err != nil {
+			return nil, nil, false
+		}
+		elapsed := time.Since(start).Truncate(time.Second)
+		if controller.CondIsTrue(current.Status.Conditions, nvcrev1alpha1.WorkloadRunSucceeded) {
+			_, _ = fmt.Fprintf(out, "[watch] WorkloadRun succeeded. (%s)\n", elapsed)
+			return &current, nil, true
+		}
+		if controller.CondIsTrue(current.Status.Conditions, nvcrev1alpha1.WorkloadRunFailed) {
+			_, _ = fmt.Fprintf(out, "[watch] WorkloadRun failed. (%s)\n", elapsed)
+			msg := controller.CondMessage(current.Status.Conditions, nvcrev1alpha1.WorkloadRunFailed)
+			return &current, fmt.Errorf("WorkloadRun failed: %s", msg), true
+		}
+		phase := workloadRunPhase(&current)
+		if !sawStatus || phase != lastPhase {
+			_, _ = fmt.Fprintln(out, workloadRunWatchLine(&current, name, elapsed))
+			lastPhase = phase
+			sawStatus = true
+		}
+		return nil, nil, false
+	}
+
+	if run, err, done := poll(); done {
+		return run, err
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
 			return nil, fmt.Errorf("interrupted")
-		case <-deadline:
-			return nil, &workloadRunWaitTimeoutError{
-				name:    name,
-				timeout: timeout,
-				elapsed: time.Since(start).Truncate(time.Second),
-			}
+		case <-timer.C:
+			return nil, timeoutErr()
 		case <-heartbeat.C:
 			elapsed := time.Since(start).Truncate(time.Second)
 			_, _ = fmt.Fprintln(out, workloadRunWatchLine(&current, name, elapsed))
 		case <-ticker.C:
-			key := client.ObjectKey{Name: name, Namespace: namespace}
-			if err := c.Get(ctx, key, &current); err != nil {
-				continue
-			}
-			elapsed := time.Since(start).Truncate(time.Second)
-			if controller.CondIsTrue(current.Status.Conditions, nvcrev1alpha1.WorkloadRunSucceeded) {
-				_, _ = fmt.Fprintf(out, "[watch] WorkloadRun succeeded. (%s)\n", elapsed)
-				return &current, nil
-			}
-			if controller.CondIsTrue(current.Status.Conditions, nvcrev1alpha1.WorkloadRunFailed) {
-				_, _ = fmt.Fprintf(out, "[watch] WorkloadRun failed. (%s)\n", elapsed)
-				msg := controller.CondMessage(current.Status.Conditions, nvcrev1alpha1.WorkloadRunFailed)
-				return &current, fmt.Errorf("WorkloadRun failed: %s", msg)
-			}
-			if phase := workloadRunPhase(&current); phase != lastPhase {
-				_, _ = fmt.Fprintln(out, workloadRunWatchLine(&current, name, elapsed))
-				lastPhase = phase
+			if run, err, done := poll(); done {
+				return run, err
 			}
 		}
 	}

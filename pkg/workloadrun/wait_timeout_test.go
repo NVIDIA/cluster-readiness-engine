@@ -91,6 +91,44 @@ func TestWatchWorkloadRunImmediateTimeout(t *testing.T) {
 	assert.Equal(t, "WorkloadRun timeout-run did not complete within 0s (ran for 0s)", err.Error())
 }
 
+// A timeout shorter than the 5s ticker must still observe a WorkloadRun that
+// has already reached a terminal state. Previously the first Get waited for
+// the ticker, so 1s–4s always expired with a nil run and no [watch] line.
+func TestWatchWorkloadRunPollsBeforeDeadline(t *testing.T) {
+	run := &nvcrev1alpha1.WorkloadRun{
+		ObjectMeta: metav1.ObjectMeta{Name: testWorkloadRunTimeoutRun, Namespace: testWorkloadRunNamespace},
+		Status: nvcrev1alpha1.WorkloadRunStatus{Conditions: []metav1.Condition{{
+			Type:   nvcrev1alpha1.WorkloadRunSucceeded,
+			Status: metav1.ConditionTrue,
+		}}},
+	}
+	wc := newWorkloadRunFakeClient(t, run)
+	var out bytes.Buffer
+
+	got, err := watchWorkloadRun(context.Background(), wc, testWorkloadRunTimeoutRun, testWorkloadRunNamespace, time.Millisecond, &out)
+
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Contains(t, out.String(), "[watch] WorkloadRun succeeded.")
+}
+
+// A still-running WorkloadRun prints a [watch] line from the immediate check
+// even when the deadline is shorter than the ticker.
+func TestWatchWorkloadRunPrintsStatusBeforeShortTimeout(t *testing.T) {
+	run := &nvcrev1alpha1.WorkloadRun{
+		ObjectMeta: metav1.ObjectMeta{Name: testWorkloadRunTimeoutRun, Namespace: testWorkloadRunNamespace},
+	}
+	wc := newWorkloadRunFakeClient(t, run)
+	var out bytes.Buffer
+
+	got, err := watchWorkloadRun(context.Background(), wc, testWorkloadRunTimeoutRun, testWorkloadRunNamespace, 20*time.Millisecond, &out)
+
+	assert.Nil(t, got)
+	require.Error(t, err)
+	assert.True(t, isWorkloadRunWaitTimeout(err))
+	assert.Contains(t, out.String(), "[watch] Waiting for status...")
+}
+
 // TestFinishWorkloadRunWaitTimeout covers the wait-timeout reporting path
 // (issue #219): a timed-out watch returns a nil WorkloadRun, so the finish
 // step retrieves the still-live object with a bounded context, prints a
