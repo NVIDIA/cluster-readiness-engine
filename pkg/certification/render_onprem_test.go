@@ -48,8 +48,12 @@ type onpremReplicatedJob struct {
 
 // onpremWorkflow is the per-Workflow projection written to the golden file.
 type onpremWorkflow struct {
-	Workflow        string   `json:"workflow"`
-	DependencyKinds []string `json:"dependencyKinds"`
+	Workflow string `json:"workflow"`
+	// TargetNodeSelector is the emitted orchestration target selector. Offline
+	// render must leave it equal to the certification's own selector: neither
+	// --gpu-arch nor the synthetic render node may leak into it.
+	TargetNodeSelector map[string]string `json:"targetNodeSelector"`
+	DependencyKinds    []string          `json:"dependencyKinds"`
 	// TrainerArgs is the resolved jobTemplate trainer args. For the MPI
 	// collectives this is where the on-prem override's env rides as -x pairs,
 	// and where NCCL_IB_HCA/UCX_NET_DEVICES must NOT appear.
@@ -135,6 +139,9 @@ func projectOnPremOverride(wf *nvcrev1alpha1.Workflow) (onpremWorkflow, error) {
 		TrainerArgs:     []string{},
 		TrainerEnv:      []string{},
 		ReplicatedJobs:  []onpremReplicatedJob{},
+	}
+	if target := wf.Spec.Orchestration.Target; target != nil {
+		out.TargetNodeSelector = target.NodeSelector
 	}
 
 	if tj := wf.Spec.JobTemplate.Spec.Workload.TrainJob; tj != nil && tj.Trainer != nil {

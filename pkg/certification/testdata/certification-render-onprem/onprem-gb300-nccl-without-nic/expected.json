@@ -1,6 +1,9 @@
 [
   {
     "workflow": "onprem-cert-communication-52b66",
+    "targetNodeSelector": {
+      "nvidia.com/gpu.product": "NVIDIA-GB300"
+    },
     "dependencyKinds": [
       "TrainingRuntime",
       "ComputeDomain"

@@ -11,6 +11,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
@@ -45,19 +46,26 @@ func TestRenderPlatformFlag(t *testing.T) {
 			}
 		}
 
-		var renderErr error
-		if cfg.DryRun {
-			renderErr = runWorkloadRunRenderDryRun(runPath, "yaml", cfg.Platform, cfg.GPUArch, kubeconfig.NewConfigFlags(true))
-		} else {
-			renderErr = runWorkloadRunRender(runPath, "yaml", cfg.Platform, cfg.GPUArch)
-		}
+		emitted, renderErr := captureStdout(t, func() error {
+			if cfg.DryRun {
+				return runWorkloadRunRenderDryRun(runPath, "yaml", cfg.Platform, cfg.GPUArch, kubeconfig.NewConfigFlags(true))
+			}
+			return runWorkloadRunRender(runPath, "yaml", cfg.Platform, cfg.GPUArch)
+		})
 
 		type result struct {
-			Error string `json:"error"`
+			Error                   string `json:"error"`
+			DetectedGPUArchitecture string `json:"detectedGPUArchitecture,omitempty"`
 		}
 		var r result
 		if renderErr != nil {
 			r.Error = renderErr.Error()
+		} else {
+			var workflow nvcrev1alpha1.Workflow
+			if err := yaml.Unmarshal([]byte(emitted), &workflow); err != nil {
+				return err
+			}
+			r.DetectedGPUArchitecture = workflow.Annotations["nvcrectl.nvidia.com/detected-gpu-architecture"]
 		}
 
 		data, err := json.MarshalIndent(r, "", "  ")
