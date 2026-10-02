@@ -41,7 +41,7 @@ NVCRE does not patch nodes (ADR-061), so writing the label back to the Node obje
 
 - Augmenting at the one shared discovery point keeps a single source of truth. Every consumer, current and future, sees the same label whatever its source. The alternative is a second detection path threaded through each consumer.
 - Matching GFD's format makes the fallback invisible to exact-match consumers. A mixed fleet behaves like a fully GFD-labeled one.
-- Degrading preserves existing behavior on clusters the fallback cannot help. A missing grant costs the controller one fast failed List and a log line per discovery, not a reconcile failure.
+- Degrading preserves existing behavior on clusters the fallback cannot help. A missing grant costs the controller one fast failed List and a log line per discovery, not a reconcile failure. `nvcrectl` logs to stderr, so the same line reaches a CLI user without touching rendered output on stdout.
 - One `--gpu-arch` rule for both commands, shaped like `--platform`, gives operators a single mental model. Validation turns a typo into an error instead of a plausible render with fallback defaults and no architecture overrides.
 
 ## Consequences
