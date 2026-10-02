@@ -47,7 +47,7 @@ NVCRE does not patch nodes (ADR-061), so writing the label back to the Node obje
 ## Consequences
 
 1. Discovery costs one extra List call on clusters where some target node lacks the label. Clusters where every node is GFD-labeled pay nothing.
-2. The fallback depends on the driver's attribute name and driver name. A rename in the driver silently returns affected clusters to `unknown` architecture. The comment in `gpu_resourceslice_detect.go` names the contract so that breakage is diagnosable.
+2. The fallback depends on the driver name and on the device `productName` and `type` attributes. It skips `vfio` passthrough devices, whose `productName` is a PCI-IDs name such as `GH100 [H100 SXM5 80GB]` that parses to the wrong architecture, so a node whose GPUs are all bound to `vfio-pci` stays unlabeled. A rename in the driver silently returns affected clusters to `unknown` architecture. The comment in `gpu_resourceslice_detect.go` names the contract so that breakage is diagnosable.
 3. The label NVCRE sees can differ from the label on the Node object. `kubectl get node` shows no `gpu.product` on a DRA-only node that NVCRE treats as labeled.
 4. `UniformGPUProduct` sees the fallback product, so `certification run` on a DRA-only or mixed GFD and DRA fleet passes the homogeneity check when every node reports the same product, and still rejects a mixed-architecture fleet before the Certification is created.
 5. Offline `--gpu-arch` accepts only architectures `gpu-defaults.yaml` lists. Supporting new hardware offline means adding its defaults there, which new hardware needs anyway.

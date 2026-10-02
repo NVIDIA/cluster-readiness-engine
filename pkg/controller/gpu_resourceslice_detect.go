@@ -22,9 +22,18 @@ import (
 // the NVML device name, e.g. "NVIDIA GB300". Renaming the driver or the
 // attribute, or qualifying the key as gpu.nvidia.com/productName, silently
 // disables this fallback.
+//
+// Each device also carries a type attribute: gpu, mig, or vfio (v0.5.0).
+// gpu devices and mig devices (CommonAttributesMig, from the parent GPU) carry
+// the NVML name, but vfio passthrough devices (VfioDeviceInfo.GetDevice) carry
+// the go-nvlib nvpci DeviceName PCI-IDs name, e.g. "GH100 [H100 SXM5 80GB]",
+// which parses to the wrong architecture. vfio devices are skipped; any other
+// or missing type is read.
 const (
 	gpuResourceSliceDriver = "gpu.nvidia.com"
 	productNameAttribute   = "productName"
+	deviceTypeAttribute    = "type"
+	vfioDeviceType         = "vfio"
 
 	// resourceSliceListTimeout bounds the one uncached ResourceSlice List
 	// against a slow API server. A 403 or an unserved resource.k8s.io/v1
@@ -74,6 +83,9 @@ func augmentGPUProductLabels(ctx context.Context, reader client.Reader, nodes []
 			continue
 		}
 		for _, d := range rs.Spec.Devices {
+			if t := d.Attributes[deviceTypeAttribute].StringValue; t != nil && *t == vfioDeviceType {
+				continue
+			}
 			if attr, ok := d.Attributes[productNameAttribute]; ok && attr.StringValue != nil {
 				productByNode[*rs.Spec.NodeName] = gpu.ProductLabelValue(*attr.StringValue)
 				break

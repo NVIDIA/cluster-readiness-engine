@@ -1,0 +1,11 @@
+# A GPU bound to vfio-pci publishes only its vfio device, whose productName is
+# a PCI-IDs name that parses to the wrong architecture (gh100), so the node is
+# left unlabeled.
+nodes:
+  - name: node1
+resourceSlices:
+  - nodeName: node1
+    driver: gpu.nvidia.com
+    devices:
+      - type: vfio
+        productName: GH100 [H100 SXM5 80GB]
