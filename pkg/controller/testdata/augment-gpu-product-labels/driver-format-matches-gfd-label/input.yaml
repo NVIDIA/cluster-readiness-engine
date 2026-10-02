@@ -8,4 +8,6 @@ nodes:
 resourceSlices:
   - nodeName: node-dra
     driver: gpu.nvidia.com
-    productName: NVIDIA GB300
+    devices:
+      - type: gpu
+        productName: NVIDIA GB300

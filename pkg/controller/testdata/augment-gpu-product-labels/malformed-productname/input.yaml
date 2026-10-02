@@ -6,4 +6,6 @@ nodes:
 resourceSlices:
   - nodeName: node1
     driver: gpu.nvidia.com
-    malformed: true
+    devices:
+      - type: gpu
+        malformedProductName: true

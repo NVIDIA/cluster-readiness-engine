@@ -8,9 +8,13 @@ nodes:
 resourceSlices:
   - nodeName: node-unlabeled
     driver: gpu.nvidia.com
-    productName: NVIDIA-GB300
+    devices:
+      - type: gpu
+        productName: NVIDIA-GB300
   # A stale/irrelevant slice for the already-labeled node must not overwrite
   # its real label even if present.
   - nodeName: node-labeled
     driver: gpu.nvidia.com
-    productName: NVIDIA-B200
+    devices:
+      - type: gpu
+        productName: NVIDIA-B200

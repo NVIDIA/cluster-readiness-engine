@@ -5,5 +5,7 @@ nodes:
 resourceSlices:
   - nodeName: node1
     driver: gpu.nvidia.com
-    productName: NVIDIA-B200
+    devices:
+      - type: gpu
+        productName: NVIDIA-B200
 listError: true

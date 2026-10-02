@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -63,10 +64,13 @@ func TestAugmentGPUProductLabels(t *testing.T) {
 				GPUProduct string `yaml:"gpuProduct"`
 			} `yaml:"nodes"`
 			ResourceSlices []struct {
-				NodeName    string `yaml:"nodeName"`
-				Driver      string `yaml:"driver"`
-				ProductName string `yaml:"productName"`
-				Malformed   bool   `yaml:"malformed"`
+				NodeName string `yaml:"nodeName"`
+				Driver   string `yaml:"driver"`
+				Devices  []struct {
+					Type                 string `yaml:"type"`
+					ProductName          string `yaml:"productName"`
+					MalformedProductName bool   `yaml:"malformedProductName"`
+				} `yaml:"devices"`
 			} `yaml:"resourceSlices"`
 			ListError bool `yaml:"listError"`
 		}
@@ -86,22 +90,28 @@ func TestAugmentGPUProductLabels(t *testing.T) {
 		slices := make([]resourcev1.ResourceSlice, 0, len(input.ResourceSlices))
 		for _, s := range input.ResourceSlices {
 			nodeName := s.NodeName
-			device := resourcev1.Device{Name: "gpu0"}
-			switch {
-			case s.Malformed:
-				device.Attributes = map[resourcev1.QualifiedName]resourcev1.DeviceAttribute{
-					productNameAttribute: {IntValue: new(int64(1))},
+			devices := make([]resourcev1.Device, 0, len(s.Devices))
+			for i, d := range s.Devices {
+				// Literal keys, not the production constants, so renaming an
+				// attribute in the code breaks these cases instead of silently
+				// following the rename.
+				attrs := map[resourcev1.QualifiedName]resourcev1.DeviceAttribute{}
+				if d.Type != "" {
+					attrs["type"] = resourcev1.DeviceAttribute{StringValue: &d.Type}
 				}
-			case s.ProductName != "":
-				device.Attributes = map[resourcev1.QualifiedName]resourcev1.DeviceAttribute{
-					productNameAttribute: {StringValue: &s.ProductName},
+				switch {
+				case d.MalformedProductName:
+					attrs["productName"] = resourcev1.DeviceAttribute{IntValue: new(int64(1))}
+				case d.ProductName != "":
+					attrs["productName"] = resourcev1.DeviceAttribute{StringValue: &d.ProductName}
 				}
+				devices = append(devices, resourcev1.Device{Name: fmt.Sprintf("dev%d", i), Attributes: attrs})
 			}
 			slices = append(slices, resourcev1.ResourceSlice{
 				Spec: resourcev1.ResourceSliceSpec{
 					Driver:   s.Driver,
 					NodeName: &nodeName,
-					Devices:  []resourcev1.Device{device},
+					Devices:  devices,
 				},
 			})
 		}
