@@ -11,7 +11,6 @@ import (
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/yaml"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -70,7 +69,6 @@ func TestBuildWorkflowSpec(t *testing.T) {
 
 func TestBuildWorkflowSpecPreservesOnlyConflictingTrainerEnv(t *testing.T) {
 	run := &nvcrev1alpha1.WorkloadRun{
-		ObjectMeta: metav1.ObjectMeta{Name: "env-precedence"},
 		Spec: nvcrev1alpha1.WorkloadRunSpec{
 			Image: "nvcr.io/nvidia/pytorch:24.01-py3",
 			Env: []corev1.EnvVar{
@@ -83,6 +81,7 @@ func TestBuildWorkflowSpecPreservesOnlyConflictingTrainerEnv(t *testing.T) {
 			},
 		},
 	}
+	run.Name = "env-precedence"
 
 	workflow, err := BuildWorkflowSpec(run, 8, 0, false, "torch")
 	require.NoError(t, err)

@@ -77,6 +77,7 @@ func BuildOverrides(cfg OverrideConfig) []WorkloadRunOverride {
 		panic(fmt.Sprintf("platform: parse overrides: %v", err))
 	}
 	mergeUserEnvIntoTrainerPatches(overrides, cfg.UserEnv)
+	mergeUserEnvIntoRuntimeDependencies(overrides, cfg.UserEnv)
 	return overrides
 }
 
@@ -124,6 +125,80 @@ func mergeUserEnvIntoTrainerPatches(overrides []WorkloadRunOverride, userEnv []c
 			panic(fmt.Sprintf("platform: encode jobTemplate override[%d]: %v", i, err))
 		}
 		overrides[i].JobTemplate.Raw = updated
+	}
+}
+
+// mergeUserEnvIntoRuntimeDependencies preserves WorkloadRun spec.env values
+// when a platform override patches a TrainingRuntime dependency. Kubeflow
+// merges the override dependency after the generated runtime, so matching
+// platform values would otherwise win. Only matching names are replaced.
+func mergeUserEnvIntoRuntimeDependencies(overrides []WorkloadRunOverride, userEnv []corev1.EnvVar) {
+	if len(userEnv) == 0 {
+		return
+	}
+
+	for overrideIndex := range overrides {
+		for dependencyIndex := range overrides[overrideIndex].Dependencies {
+			dependency := &overrides[overrideIndex].Dependencies[dependencyIndex]
+			var root map[string]any
+			if err := json.Unmarshal(dependency.Raw, &root); err != nil {
+				panic(fmt.Sprintf("platform: decode dependency override[%d][%d]: %v", overrideIndex, dependencyIndex, err))
+			}
+			kind, _ := root["kind"].(string)
+			if kind != kindTrainingRuntime {
+				continue
+			}
+			runtimeSpec, ok := nestedOverrideMap(root, "spec", "template", "spec")
+			if !ok {
+				continue
+			}
+			replicatedJobs, ok := runtimeSpec["replicatedJobs"].([]any)
+			if !ok {
+				continue
+			}
+			for _, rawJob := range replicatedJobs {
+				job, ok := rawJob.(map[string]any)
+				if !ok {
+					continue
+				}
+				podSpec, ok := nestedOverrideMap(job, "template", "spec", "template", "spec")
+				if !ok {
+					continue
+				}
+				containers, ok := podSpec["containers"].([]any)
+				if !ok {
+					continue
+				}
+				for _, rawContainer := range containers {
+					container, ok := rawContainer.(map[string]any)
+					if !ok {
+						continue
+					}
+					rawEnv, ok := container["env"]
+					if !ok {
+						continue
+					}
+					envJSON, err := json.Marshal(rawEnv)
+					if err != nil {
+						panic(fmt.Sprintf("platform: encode dependency env override[%d][%d]: %v", overrideIndex, dependencyIndex, err))
+					}
+					var patchEnv []corev1.EnvVar
+					if err := json.Unmarshal(envJSON, &patchEnv); err != nil {
+						panic(fmt.Sprintf("platform: decode dependency env override[%d][%d]: %v", overrideIndex, dependencyIndex, err))
+					}
+					updatedEnv, err := json.Marshal(overrideEnvByName(patchEnv, userEnv))
+					if err != nil {
+						panic(fmt.Sprintf("platform: encode dependency env override[%d][%d]: %v", overrideIndex, dependencyIndex, err))
+					}
+					container["env"] = json.RawMessage(updatedEnv)
+				}
+			}
+			updated, err := json.Marshal(root)
+			if err != nil {
+				panic(fmt.Sprintf("platform: encode dependency override[%d][%d]: %v", overrideIndex, dependencyIndex, err))
+			}
+			dependency.Raw = updated
+		}
 	}
 }
 
