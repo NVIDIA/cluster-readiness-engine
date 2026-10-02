@@ -1,0 +1,55 @@
+{
+  "Certification/gcp-rtx-default4": {
+    "kind": "Certification",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "gcp-rtx-default4",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.product": "NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition"
+        }
+      },
+      "categories": [
+        {
+          "domain": "communication",
+          "variant": "nccl-all-reduce"
+        }
+      ],
+      "nodesPerJob": 2
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkflowValidationFailed",
+          "message": "communication/nccl-all-reduce: no node can supply the 8 nvidia.com/gpu the workload requests per node; best available is 4 across 2 matching node(s). Lower gpusPerNode or target nodes with more GPUs"
+        }
+      ]
+    }
+  }
+}

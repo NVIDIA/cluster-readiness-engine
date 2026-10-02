@@ -1221,6 +1221,52 @@
               }
             }
           ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "rtxpro6000"
+            },
+            "platform": {
+              "equals": "gcp"
+            }
+          },
+          "dependencies": [
+            {
+              "apiVersion": "trainer.kubeflow.org/v1alpha1",
+              "kind": "TrainingRuntime",
+              "metadata": {
+                "name": "test-mpi-gb300-run-runtime"
+              },
+              "spec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "tolerations": [
+                                  {
+                                    "effect": "NoSchedule",
+                                    "key": "nvidia.com/gpu",
+                                    "operator": "Equal",
+                                    "value": "present"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
         }
       ]
     },
