@@ -49,7 +49,7 @@ func TestCleanupJobMetricsRemovesEveryJobScopedSeries(t *testing.T) {
 			collect prometheus.Collector
 			record  func()
 		}{
-			{"nvcre_job_status", jobStatusGauge, func() { recordJobStatus(ns, job, wf, "in_progress") }},
+			{"nvcre_job_status", jobStatusGauge, func() { recordJobStatus(ns, job, wf, testMetricStatusInProgress) }},
 			{"nvcre_job_failed_nodes", failedNodesGauge, func() { recordHardwareFailure(ns, job, wf, []string{testNodeA}) }},
 			{"nvcre_hardware_failures_detected_total", hardwareFailuresDetectedTotal, func() { recordHardwareFailure(ns, job, wf, []string{testNodeA}) }},
 			{"nvcre_hardware_failed_jobs_total", hardwareFailedJobsTotal, func() { recordFirstHardwareFailure(ns, job, wf) }},

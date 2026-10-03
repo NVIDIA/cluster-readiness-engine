@@ -1,0 +1,31 @@
+{
+  "metrics": [
+    {
+      "name": "nvcre_certification_status",
+      "labels": {
+        "certification": "gpu-cluster-cert",
+        "namespace": "default",
+        "status": "failed"
+      },
+      "value": 0
+    },
+    {
+      "name": "nvcre_certification_status",
+      "labels": {
+        "certification": "gpu-cluster-cert",
+        "namespace": "default",
+        "status": "in_progress"
+      },
+      "value": 1
+    },
+    {
+      "name": "nvcre_certification_status",
+      "labels": {
+        "certification": "gpu-cluster-cert",
+        "namespace": "default",
+        "status": "succeeded"
+      },
+      "value": 0
+    }
+  ]
+}

@@ -201,6 +201,11 @@ func newRootCommand() *cobra.Command {
 				return fmt.Errorf("unable to register field indexes: %w", err)
 			}
 
+			// Certification and Workflow status gauges are built at scrape time
+			// from this manager's cache. Standby replicas emit nothing until
+			// Elected() is closed.
+			controller.SetupStatusMetrics(mgr)
+
 			clientset, err := kubernetes.NewForConfig(mgr.GetConfig())
 			if err != nil {
 				return fmt.Errorf("unable to create kubernetes clientset: %w", err)
