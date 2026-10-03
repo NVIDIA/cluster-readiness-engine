@@ -1,18 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-
-# The rules must not freeze the rest of the spec. An unrelated mutable field
-# changes while the immutable optional fields are carried through untouched.
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Job
 metadata:
-  name: imm-job-present-ok
+  name: imm-job-fields-remove
   namespace: default
 spec:
-  stallMultiplier: 20
-  workloadMetadata:
-    labels:
-      kai.scheduler/queue: queue-a
   nodeHealthMonitor:
     cel:
       expression: "node.spec.unschedulable == true"
