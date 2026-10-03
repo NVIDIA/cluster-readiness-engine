@@ -185,7 +185,7 @@ spec:
       mpirunPath: /usr/local/mpi/bin/mpirun
       binary: /usr/local/bin/all_reduce_perf_mpi
       args: ["-b", "8", "-e", "32G", "-f", "2", "-n", "100"]
-  numNodes: 4
+  numNodes: 2
 EOF
 
   wait_for_success workloadruns.nvcre.nvidia.com/my-workload
