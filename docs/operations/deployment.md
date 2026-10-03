@@ -122,6 +122,29 @@ For a controller image mirrored off GHCR, omit `--image-pull-secret`: both its t
 
   Installing the chart with Helm directly carries the same caveats as bypassing `setup init` below: install Kubeflow Trainer yourself, and re-apply the CRDs on upgrades.
 
+**When no registry is reachable at all.** The mirroring and credential paths above assume the cluster can reach *some* registry. A detached segment may have none, in which case preload the images into each node's container runtime instead of pulling them:
+
+1. Produce or export the image somewhere that has egress — a workstation, or a build Job inside a cluster that has network access.
+2. Serve the exported tar from a pod on the nodes' own network, or copy it to the nodes directly. A pod with `hostNetwork: true` running an HTTP server over the tar is the least invasive option, because the nodes can reach a node IP without any registry or service in between.
+3. Import it on every node that may run the workload:
+
+   ```bash
+   curl -fsS http://<node-ip>:<port>/image.tar | ctr -n k8s.io images import -
+   ```
+
+   The pipeline streams the whole tar to each node, but containerd only stores layers it does not already have, so a derived
+   image costs little extra disk on a node that already carries its base.
+
+4. Reference the preloaded image by an **explicitly tagged** reference — never `:latest`, because `:latest` (and an omitted tag)
+   defaults to `Always`, which sends the kubelet to a registry that this cluster cannot reach; any other tag defaults to
+   `IfNotPresent` and stays on the local copy. Name it in whichever path owns the reference: the controller chart's
+   `manager.image.repository`/`manager.image.tag` (whose pull policy is the chart value `manager.image.pullPolicy`, default
+   `IfNotPresent`), a Certification's `spec.image` or `categories[].options.image` (these replace the image and set no pull policy,
+   so a non-`:latest` tag is what keeps the kubelet local), or a WorkloadRun, which is the path that carries its own
+   `imagePullPolicy`.
+
+This is also the only path that works for an air-gapped workload image derived from a base image the nodes already have — for example the `sshd`-prebaked MPI image recommended in the [FAQ](faq.md#can-mpi-workloads-run-in-air-gapped-or-restricted-egress-clusters).
+
 **Bypass `setup init`.** Install the in-repo chart (`helm/cluster-readiness-engine` in the source tree) directly with `helm install`, setting `manager.image.repository` and `manager.image.tag` to your mirrored image (and `manager.imagePullSecrets` when the mirror needs credentials), and install Kubeflow Trainer manually. Nothing is pulled from a chart registry, but you take on installing the Kubeflow Trainer version this release supports and re-applying the CRDs on upgrades yourself.
 
 ## Resource requirements
