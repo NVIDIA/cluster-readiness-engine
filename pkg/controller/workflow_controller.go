@@ -3449,8 +3449,10 @@ func (r *WorkflowReconciler) cleanupPVForPVC(ctx context.Context, workflow *nvcr
 	log := logf.FromContext(ctx)
 	var pvName string
 
+	// Read the PVC live: a cached read would start a cluster-wide PVC
+	// informer, which the manager role cannot watch (issue #424).
 	pvc := &corev1.PersistentVolumeClaim{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, pvc); err == nil {
+	if err := r.jobReader().Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, pvc); err == nil {
 		pvName = pvc.Spec.VolumeName
 	} else {
 		// PVC already gone; find PV by claimRef.
