@@ -141,7 +141,7 @@ crane() {
   esac
   case " ${STUB_CRANE_ERROR} " in
     *" ${ref} "*)
-      echo "INTERNAL_ERROR: 500" >&2
+      echo "Error: fetching manifest ${ref}: INTERNAL_ERROR: 500" >&2
       return 1
       ;;
   esac
@@ -149,7 +149,7 @@ crane() {
     printf '%%s\n' "${STUB_TAG_DIGEST}"
     return 0
   fi
-  echo "MANIFEST_UNKNOWN: manifest unknown" >&2
+  echo "Error: fetching manifest ${ref}: GET https://ghcr.io/v2/example/manifests/${ref##*:}: MANIFEST_UNKNOWN: manifest unknown" >&2
   return 1
 }
 
@@ -614,16 +614,29 @@ func TestGateRejectsLegacyRegistryTags(t *testing.T) {
 	})
 
 	t.Run("non-404 crane error is fail-closed", func(t *testing.T) {
-		probe := sidecarTag(stubImage, validDigest, "sig")
-		out, failed, log, _ := runRegistryStep(t, imageStep, imageEnv(registryStub{craneError: probe}))
-		if !failed {
-			t.Fatalf("the image gate treated a registry 5xx as a missing sidecar\n%s", out)
-		}
-		if !strings.Contains(out, errInspect) {
-			t.Errorf("want an inspect-failure error, got:\n%s", out)
-		}
-		if logHasVerify(log) {
-			t.Errorf("the image gate called verify after a crane inspect failure:\n%s", log)
+		// Real crane prefixes stderr with the probe ref, so a digest hex
+		// containing "404" sits on the same line as INTERNAL_ERROR: 500.
+		// Grep for a bare "404" would treat that as absence and fail open.
+		for _, tc := range []struct {
+			name string
+			env  []string
+			step string
+		}{
+			{"image", imageEnv(registryStub{craneError: sidecarTag(stubImage, validDigest, "sig")}), imageStep},
+			{"chart", chartEnv(registryStub{craneError: sidecarTag(stubChart, validDigest, "sig")}), chartStep},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				out, failed, log, _ := runRegistryStep(t, tc.step, tc.env)
+				if !failed {
+					t.Fatalf("the %s gate treated a registry 5xx as a missing sidecar\n%s", tc.name, out)
+				}
+				if !strings.Contains(out, errInspect) {
+					t.Errorf("want an inspect-failure error, got:\n%s", out)
+				}
+				if logHasVerify(log) {
+					t.Errorf("the %s gate called verify after a crane inspect failure:\n%s", tc.name, log)
+				}
+			})
 		}
 	})
 }

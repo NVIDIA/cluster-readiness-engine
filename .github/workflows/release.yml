@@ -1162,7 +1162,9 @@ jobs:
           # so a missing line is not evidence of a missing tag. We still run
           # tree (timeout-wrapped via retry) and fail-closed on a hard inspect
           # error. Absence of a sidecar is decided by a positive crane probe
-          # that expects 404 and fails on anything else.
+          # that expects MANIFEST_UNKNOWN / NAME_UNKNOWN and fails on anything
+          # else. Do not grep for a bare "404": crane echoes the probe digest
+          # hex into the same stderr line.
           reject_legacy_registry() {
             local what="$1" ref="$2"
             local image digest hex suffix probe rc err n
@@ -1190,7 +1192,7 @@ jobs:
                   echo "::error::${what} has a legacy-format registry tag; refuse to read it"
                   return 1
                 fi
-                if grep -qiE 'MANIFEST_UNKNOWN|NAME_UNKNOWN|not found|404' <<<"${err}"; then
+                if grep -qE '(MANIFEST_UNKNOWN|NAME_UNKNOWN):' <<<"${err}"; then
                   break
                 fi
                 echo "::warning::crane manifest attempt ${n} failed (exit ${rc}$([[ "${rc}" -eq 124 ]] && echo ', timed out'))" >&2
@@ -1336,7 +1338,8 @@ jobs:
 
           # Same check as the image step: a legacy sha256-<digest>.sig / .att
           # sidecar is refused without calling verify. tree is fail-open on
-          # non-404, so absence is decided by a crane probe that expects 404.
+          # non-404, so absence is decided by a crane probe that expects
+          # MANIFEST_UNKNOWN / NAME_UNKNOWN (not a bare "404" substring).
           reject_legacy_registry() {
             local what="$1" ref="$2"
             local image digest hex suffix probe rc err n
@@ -1364,7 +1367,7 @@ jobs:
                   echo "::error::${what} has a legacy-format registry tag; refuse to read it"
                   return 1
                 fi
-                if grep -qiE 'MANIFEST_UNKNOWN|NAME_UNKNOWN|not found|404' <<<"${err}"; then
+                if grep -qE '(MANIFEST_UNKNOWN|NAME_UNKNOWN):' <<<"${err}"; then
                   break
                 fi
                 echo "::warning::crane manifest attempt ${n} failed (exit ${rc}$([[ "${rc}" -eq 124 ]] && echo ', timed out'))" >&2

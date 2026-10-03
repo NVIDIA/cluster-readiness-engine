@@ -28,8 +28,10 @@ const attestWorkflow = "../../.github/workflows/attest.yml"
 
 // validDigest is a well-formed sha256 digest: the shape every guard below is
 // measured against, so a case fails for the reason it names and not because
-// the digest happened to be malformed too.
-const validDigest = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+// the digest happened to be malformed too. The hex includes the digits 404 so
+// the verify-release crane sidecar probe cannot treat digest digits as a
+// not-found status (real crane echoes the full probe ref into stderr).
+const validDigest = "sha256:404f1e2d1111111111111111111111111111111111111111111111111111111111"
 
 const managerImage = "ghcr.io/nvidia/cluster-readiness-engine/manager"
 
