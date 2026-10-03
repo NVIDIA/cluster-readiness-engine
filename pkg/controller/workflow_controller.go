@@ -116,14 +116,6 @@ func (r *WorkflowReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, fmt.Errorf("failed to get Workflow: %w", err)
 	}
 
-	// Republish from persisted conditions so gauges survive a process restart
-	// even when this reconcile does not write status (terminal early return).
-	// Skip deleting objects: after our finalizer is removed, another finalizer
-	// can keep the object alive and a refresh would recreate cleaned-up series.
-	if workflow.DeletionTimestamp.IsZero() {
-		refreshWorkflowStatusMetrics(workflow)
-	}
-
 	// Handle deletion
 	if !workflow.DeletionTimestamp.IsZero() {
 		return r.handleDeletion(ctx, workflow)
@@ -2670,7 +2662,6 @@ func (r *WorkflowReconciler) setExclusiveCondition(ctx context.Context, workflow
 			transition.Condition.Reason, "%s", transition.Condition.Message)
 	}
 	if changed {
-		recordWorkflowStatus(workflow.Namespace, workflow.Name, workflow.Labels[labelCertification], metricStatusFromCondition(conditionType))
 		logf.FromContext(ctx).Info("Workflow status updated", "status", conditionType, "reason", reason)
 	}
 	return nil
@@ -2934,8 +2925,6 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *nvcre
 	if pvPending {
 		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
 	}
-
-	cleanupWorkflowStatusMetrics(workflow.Namespace, workflow.Name)
 
 	// Clean up topology metrics.
 	if orch := workflow.Status.Orchestration; orch != nil {

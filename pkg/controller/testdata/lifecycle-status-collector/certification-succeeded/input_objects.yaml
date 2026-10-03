@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: gpu-cluster-cert
+  namespace: default
+status:
+  conditions:
+    - type: Succeeded
+      status: "True"
+      reason: AllCategoriesSucceeded
+      message: all categories passed
+    - type: InProgress
+      status: "False"
+      reason: NotApplicable
+    - type: Failed
+      status: "False"
+      reason: NotApplicable

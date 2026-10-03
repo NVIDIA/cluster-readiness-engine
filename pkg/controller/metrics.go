@@ -5,7 +5,6 @@ package controller
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -31,34 +30,13 @@ var (
 	// jobStatusGauge tracks the current status of NVCRE jobs.
 	// Values: 1 for the current status, 0 for other statuses.
 	// Status can be: "in_progress", "succeeded", "failed"
+	// Certification and Workflow status are scrape-time collectors, not gauges.
 	jobStatusGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "nvcre_job_status",
 			Help: "Current status of NVCRE jobs (1 = current status, 0 = not current status)",
 		},
 		[]string{labelNamespace, labelJob, labelWorkflow, labelStatus},
-	)
-
-	// certificationStatusGauge tracks the current status of NVCRE Certifications.
-	// Values: 1 for the current status, 0 for other statuses.
-	// Status can be: "in_progress", "succeeded", "failed"
-	certificationStatusGauge = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "nvcre_certification_status",
-			Help: "Current status of NVCRE Certifications (1 = current status, 0 = not current status)",
-		},
-		[]string{labelNamespace, labelCertificationName, labelStatus},
-	)
-
-	// workflowStatusGauge tracks the current status of NVCRE Workflows.
-	// Values: 1 for the current status, 0 for other statuses.
-	// Status can be: "in_progress", "succeeded", "failed"
-	workflowStatusGauge = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "nvcre_workflow_status",
-			Help: "Current status of NVCRE Workflows (1 = current status, 0 = not current status)",
-		},
-		[]string{labelNamespace, labelWorkflow, labelCertificationName, labelStatus},
 	)
 
 	// hardwareFailedJobsTotal counts the total number of jobs that detected hardware failures.
@@ -262,8 +240,7 @@ func init() {
 	// Register custom metrics with the controller-runtime metrics registry
 	metrics.Registry.MustRegister(
 		jobStatusGauge,
-		certificationStatusGauge,
-		workflowStatusGauge,
+		statusMetrics,
 		hardwareFailedJobsTotal,
 		failedNodesGauge,
 		nodeHealthCheckDuration,
@@ -326,68 +303,6 @@ func metricStatusFromCondition(conditionType string) string {
 // It sets the current status to 1 and all other statuses to 0.
 func recordJobStatus(namespace, jobName, workflow, status string) {
 	recordExclusiveStatus(jobStatusGauge, status, namespace, jobName, workflow)
-}
-
-// recordCertificationStatus updates the certification status gauge.
-// It sets the current status to 1 and all other statuses to 0.
-func recordCertificationStatus(namespace, certification, status string) {
-	recordExclusiveStatus(certificationStatusGauge, status, namespace, certification)
-}
-
-// recordWorkflowStatus updates the workflow status gauge.
-// It sets the current status to 1 and all other statuses to 0.
-// certification may be empty for Workflows not owned by a Certification.
-func recordWorkflowStatus(namespace, workflow, certification, status string) {
-	recordExclusiveStatus(workflowStatusGauge, status, namespace, workflow, certification)
-}
-
-// lifecycleConditionTypes is the exclusive InProgress/Succeeded/Failed set
-// shared by Certification and Workflow (and Job). Terminal types are listed
-// first so a dual-true leftover reports the verdict, not InProgress.
-var lifecycleConditionTypes = []string{
-	nvcrev1alpha1.CertificationSucceeded,
-	nvcrev1alpha1.CertificationFailed,
-	nvcrev1alpha1.CertificationInProgress,
-}
-
-// exclusiveTrueCondition returns the first exclusive lifecycle condition that
-// is True. Empty when none of InProgress/Succeeded/Failed is set.
-func exclusiveTrueCondition(conditions []metav1.Condition) string {
-	for _, t := range lifecycleConditionTypes {
-		if CondIsTrue(conditions, t) {
-			return t
-		}
-	}
-	return ""
-}
-
-// refreshCertificationStatusMetrics republishes nvcre_certification_status
-// from the object's persisted exclusive condition. Used on every reconcile
-// so gauges reappear after a controller restart without a status write.
-// No-op when no exclusive condition is True yet.
-func refreshCertificationStatusMetrics(certification *nvcrev1alpha1.Certification) {
-	if certification == nil {
-		return
-	}
-	cond := exclusiveTrueCondition(certification.Status.Conditions)
-	if cond == "" {
-		return
-	}
-	recordCertificationStatus(certification.Namespace, certification.Name, metricStatusFromCondition(cond))
-}
-
-// refreshWorkflowStatusMetrics republishes nvcre_workflow_status from the
-// object's persisted exclusive condition. Same restart contract as
-// refreshCertificationStatusMetrics.
-func refreshWorkflowStatusMetrics(workflow *nvcrev1alpha1.Workflow) {
-	if workflow == nil {
-		return
-	}
-	cond := exclusiveTrueCondition(workflow.Status.Conditions)
-	if cond == "" {
-		return
-	}
-	recordWorkflowStatus(workflow.Namespace, workflow.Name, workflow.Labels[labelCertification], metricStatusFromCondition(cond))
 }
 
 // recordHardwareFailure increments the hardware failure counters and updates the failed nodes gauge.
@@ -521,25 +436,6 @@ func cleanupJobMetrics(namespace, jobName string) {
 	workloadCreatedTotal.DeletePartialMatch(jobLabels)
 	hardwareFailedJobsTotal.DeletePartialMatch(jobLabels)
 	hardwareFailuresDetectedTotal.DeletePartialMatch(jobLabels)
-}
-
-// cleanupCertificationMetrics removes status series for a deleted Certification.
-// Matching is on namespace+certification so every status peer is dropped.
-func cleanupCertificationMetrics(namespace, certification string) {
-	certificationStatusGauge.DeletePartialMatch(prometheus.Labels{
-		labelNamespace:         namespace,
-		labelCertificationName: certification,
-	})
-}
-
-// cleanupWorkflowStatusMetrics removes status series for a deleted Workflow.
-// Matching is on namespace+workflow so series are dropped even when the
-// certification label was empty (standalone Workflows).
-func cleanupWorkflowStatusMetrics(namespace, workflow string) {
-	workflowStatusGauge.DeletePartialMatch(prometheus.Labels{
-		labelNamespace: namespace,
-		labelWorkflow:  workflow,
-	})
 }
 
 // recordTopologyValidatedNodes sets gauge=1 for each node in the domain.

@@ -46,9 +46,9 @@ Certification and Workflow conditions are the operator-facing source of truth (`
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
 | `nvcre_certification_status` | Gauge | `namespace`, `certification`, `status` | Current status of Certifications. Value is `1` for the current status, `0` for others. Status values: `in_progress`, `succeeded`, `failed` (mapped from the InProgress / Succeeded / Failed condition types). |
-| `nvcre_workflow_status` | Gauge | `namespace`, `workflow`, `certification`, `status` | Current status of Workflows. Value is `1` for the current status, `0` for others. Same status values as Certification. `certification` is the owning Certification name, or empty for a standalone Workflow. |
+| `nvcre_workflow_status` | Gauge | `namespace`, `workflow`, `certification`, `status` | Current status of Workflows. Value is `1` for the current status, `0` for others. Same status values as Certification. `certification` is the value of the Workflow's `nvcre.nvidia.com/certification` label, or empty when that label is absent. |
 
-Like `nvcre_job_status`, each update sets the current status to `1` and peer statuses to `0`. The controller also refreshes both gauges from the object's persisted InProgress/Succeeded/Failed condition on every reconcile, including terminal objects that do not write status, so the series reappear after a controller restart. Series are removed with `DeletePartialMatch` on namespace+name when the object is deleted, so cardinality does not grow with completed runs. Reason strings are not exported as labels.
+These series are built at scrape time from the elected leader's informer cache. Each scrape lists Certifications and Workflows and emits `1` for the true InProgress / Succeeded / Failed condition and `0` for the peers. An object with no phase condition `True` is omitted. Series disappear on the next scrape after the object leaves the cache; a changed `nvcre.nvidia.com/certification` label reports the new value and does not leave old series. Standby replicas emit nothing. Reason strings are not exported as labels.
 
 These gauges do not change how or when `nvcre_job_status` is updated.
 
@@ -146,7 +146,7 @@ nvcre_certification_status{status="in_progress"} == 1
 # Certification status breakdown per namespace
 sum by (namespace, status) (nvcre_certification_status == 1)
 
-# Failed Workflows, grouped by owning Certification
+# Failed Workflows, grouped by nvcre.nvidia.com/certification
 nvcre_workflow_status{status="failed"} == 1
 
 # Workflows still in progress for a Certification

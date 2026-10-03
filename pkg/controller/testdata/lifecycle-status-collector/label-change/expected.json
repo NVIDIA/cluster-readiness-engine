@@ -1,0 +1,66 @@
+{
+  "before": [
+    {
+      "name": "nvcre_workflow_status",
+      "labels": {
+        "certification": "old-cert",
+        "namespace": "default",
+        "status": "failed",
+        "workflow": "train-nccl"
+      },
+      "value": 1
+    },
+    {
+      "name": "nvcre_workflow_status",
+      "labels": {
+        "certification": "old-cert",
+        "namespace": "default",
+        "status": "in_progress",
+        "workflow": "train-nccl"
+      },
+      "value": 0
+    },
+    {
+      "name": "nvcre_workflow_status",
+      "labels": {
+        "certification": "old-cert",
+        "namespace": "default",
+        "status": "succeeded",
+        "workflow": "train-nccl"
+      },
+      "value": 0
+    }
+  ],
+  "after": [
+    {
+      "name": "nvcre_workflow_status",
+      "labels": {
+        "certification": "new-cert",
+        "namespace": "default",
+        "status": "failed",
+        "workflow": "train-nccl"
+      },
+      "value": 1
+    },
+    {
+      "name": "nvcre_workflow_status",
+      "labels": {
+        "certification": "new-cert",
+        "namespace": "default",
+        "status": "in_progress",
+        "workflow": "train-nccl"
+      },
+      "value": 0
+    },
+    {
+      "name": "nvcre_workflow_status",
+      "labels": {
+        "certification": "new-cert",
+        "namespace": "default",
+        "status": "succeeded",
+        "workflow": "train-nccl"
+      },
+      "value": 0
+    }
+  ]
+}

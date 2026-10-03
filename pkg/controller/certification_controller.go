@@ -129,14 +129,6 @@ func (r *CertificationReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, fmt.Errorf("failed to get Certification: %w", err)
 	}
 
-	// Republish from persisted conditions so gauges survive a process restart
-	// even when this reconcile does not write status (terminal early return).
-	// Skip deleting objects: after our finalizer is removed, another finalizer
-	// can keep the object alive and a refresh would recreate cleaned-up series.
-	if certification.DeletionTimestamp.IsZero() {
-		refreshCertificationStatusMetrics(certification)
-	}
-
 	// Handle deletion
 	if !certification.DeletionTimestamp.IsZero() {
 		return r.handleDeletion(ctx, certification)
@@ -1084,7 +1076,6 @@ func (r *CertificationReconciler) setExclusiveCondition(ctx context.Context, cer
 			transition.Condition.Reason, "%s", transition.Condition.Message)
 	}
 	if changed {
-		recordCertificationStatus(certification.Namespace, certification.Name, metricStatusFromCondition(conditionType))
 		logf.FromContext(ctx).Info("Certification status updated", "status", conditionType, "reason", reason)
 	}
 	return nil
@@ -1189,8 +1180,6 @@ func (r *CertificationReconciler) handleDeletion(ctx context.Context, certificat
 			return ctrl.Result{}, fmt.Errorf("failed to get Workflow %s for deletion: %w", catStatus.WorkflowRef.Name, err)
 		}
 	}
-
-	cleanupCertificationMetrics(certification.Namespace, certification.Name)
 
 	log.Info("Removing finalizer from Certification")
 	controllerutil.RemoveFinalizer(certification, certificationFinalizer)

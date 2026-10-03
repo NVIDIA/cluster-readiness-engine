@@ -443,6 +443,7 @@ func startManager(
 	// Register field indexes through the same entry point production uses, so the
 	// harness cannot drift from cmd/manager.
 	require.NoError(t, controller.RegisterFieldIndexes(context.Background(), mgr.GetFieldIndexer()))
+	controller.SetupStatusMetrics(mgr)
 
 	// Register all controllers with short requeue intervals for test speed.
 	jobRecorder := mgr.GetEventRecorder("job-controller")
