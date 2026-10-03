@@ -134,6 +134,14 @@ rules:
   - patch
   - update
 - apiGroups:
+  - resource.k8s.io
+  resources:
+  - resourceslices
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - trainer.kubeflow.org
   resources:
   - trainingruntimes

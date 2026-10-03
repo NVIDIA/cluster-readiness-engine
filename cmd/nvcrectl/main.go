@@ -7,6 +7,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	_ "github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/certification"
@@ -19,6 +21,10 @@ import (
 var version = "dev"
 
 func main() {
+	// Shared controller code logs through controller-runtime, which discards
+	// output and dumps a stack trace after 30s unless a logger is set.
+	// zap writes to stderr, so stdout stays clean for rendered manifests.
+	logf.SetLogger(zap.New(zap.ConsoleEncoder()))
 	if err := newRootCommand().Execute(); err != nil {
 		os.Exit(1)
 	}

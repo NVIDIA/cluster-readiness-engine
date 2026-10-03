@@ -72,7 +72,10 @@ func ApplyWRPreTemplateOverrides(spec *nvcrev1alpha1.WorkloadRunSpec, overrides 
 // the Workflow reconciler records coverage on status; CLI callers want the
 // nodes a run would actually use. Widen this if a CLI ever needs to report what
 // was skipped.
+//
+// reader also serves the ResourceSlice fallback List, which is safe because CLI
+// clients are uncached client.New clients.
 func DiscoverTargetNodes(ctx context.Context, reader client.Reader, target *nvcrev1alpha1.TargetSpec) ([]corev1.Node, error) {
-	nodes, _, err := discoverTargetNodes(ctx, reader, target)
+	nodes, _, err := discoverTargetNodes(ctx, reader, reader, target)
 	return nodes, err
 }

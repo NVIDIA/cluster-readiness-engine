@@ -1,6 +1,9 @@
 [
   {
     "workflow": "onprem-cert-training-nemo-bfd13",
+    "targetNodeSelector": {
+      "nvidia.com/gpu.product": "NVIDIA-GB200"
+    },
     "dependencyKinds": [
       "TrainingRuntime",
       "ConfigMap",
