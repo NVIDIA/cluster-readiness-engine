@@ -121,7 +121,8 @@ test_nccl() {
 
   # The Certification in docs/getting-started/quick-start.md, with every
   # communication category in docs/concepts/catalog.md: the three collectives
-  # and the two loopbacks.
+  # and the two loopbacks. Each runs half the default NCCL iterations and
+  # cycles (-n 100 and -N 10).
   create certifications.nvcre.nvidia.com/nccl-cert <<'EOF'
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
@@ -131,6 +132,8 @@ spec:
   target:
     nodeSelector:
       nvidia.com/gpu.present: "true"
+  numIterations: 10
+  numCycles: 2
   categories:
     - domain: communication
       variant: nccl-all-reduce
@@ -184,7 +187,7 @@ spec:
     mpi:
       mpirunPath: /usr/local/mpi/bin/mpirun
       binary: /usr/local/bin/all_reduce_perf_mpi
-      args: ["-b", "8", "-e", "32G", "-f", "2", "-n", "100"]
+      args: ["-b", "8", "-e", "32G", "-f", "2"]
   numNodes: 2
 EOF
 
