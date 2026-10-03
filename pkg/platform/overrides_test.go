@@ -13,6 +13,7 @@ import (
 	"text/template"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/yaml"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -95,6 +96,125 @@ func TestBuildOverridesRendersForEveryPlatform(t *testing.T) {
 		tc.Actual = string(b) + "\n"
 		return nil
 	})
+}
+
+func TestBuildOverridesPreservesWorkloadRunUserEnv(t *testing.T) {
+	overrides := BuildOverrides(OverrideConfig{
+		FrameworkType: "torch",
+		UserEnv: []corev1.EnvVar{
+			{Name: "NCCL_DEBUG", Value: "TRACE"},
+			{Name: "USER_ONLY", Value: "kept"},
+			{Name: "PET_NNODES", Value: "2"},
+		},
+	})
+
+	trainerPatches := 0
+	for _, override := range overrides {
+		if override.JobTemplate == nil {
+			continue
+		}
+		var root map[string]any
+		require.NoError(t, json.Unmarshal(override.JobTemplate.Raw, &root))
+		trainer, ok := nestedOverrideMap(root, "spec", "workload", "trainJob", "trainer")
+		if !ok {
+			continue
+		}
+		trainerPatches++
+		var env []corev1.EnvVar
+		envJSON, err := json.Marshal(trainer["env"])
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(envJSON, &env))
+		assertEnvValue(t, env, "NCCL_DEBUG", "TRACE")
+		assertNoEnvValue(t, env, "USER_ONLY")
+		assertNoEnvValue(t, env, "PET_NNODES")
+	}
+
+	require.NotZero(t, trainerPatches, "expected at least one trainer.env platform override")
+
+	runtimePatches := 0
+	for _, override := range overrides {
+		for _, dependency := range override.Dependencies {
+			var root map[string]any
+			require.NoError(t, json.Unmarshal(dependency.Raw, &root))
+			kind, _ := root["kind"].(string)
+			if kind != kindTrainingRuntime {
+				continue
+			}
+			runtimeSpec, ok := nestedOverrideMap(root, "spec", "template", "spec")
+			if !ok {
+				continue
+			}
+			replicatedJobs, ok := runtimeSpec["replicatedJobs"].([]any)
+			if !ok {
+				continue
+			}
+			for _, rawJob := range replicatedJobs {
+				job, ok := rawJob.(map[string]any)
+				if !ok {
+					continue
+				}
+				podSpec, ok := nestedOverrideMap(job, "template", "spec", "template", "spec")
+				if !ok {
+					continue
+				}
+				containers, ok := podSpec["containers"].([]any)
+				if !ok {
+					continue
+				}
+				for _, rawContainer := range containers {
+					container, ok := rawContainer.(map[string]any)
+					if !ok {
+						continue
+					}
+					rawEnv, ok := container["env"]
+					if !ok {
+						continue
+					}
+					envJSON, err := json.Marshal(rawEnv)
+					require.NoError(t, err)
+					var env []corev1.EnvVar
+					require.NoError(t, json.Unmarshal(envJSON, &env))
+					if !hasEnvName(env, "NCCL_DEBUG") {
+						continue
+					}
+					assertEnvValue(t, env, "NCCL_DEBUG", "TRACE")
+					assertNoEnvValue(t, env, "USER_ONLY")
+					assertNoEnvValue(t, env, "PET_NNODES")
+					runtimePatches++
+				}
+			}
+		}
+	}
+	require.NotZero(t, runtimePatches, "expected at least one TrainingRuntime container env override")
+}
+
+func hasEnvName(env []corev1.EnvVar, name string) bool {
+	for _, got := range env {
+		if got.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func assertNoEnvValue(t *testing.T, env []corev1.EnvVar, name string) {
+	t.Helper()
+	for _, got := range env {
+		if got.Name == name {
+			t.Fatalf("did not expect %s in trainer env: %#v", name, env)
+		}
+	}
+}
+
+func assertEnvValue(t *testing.T, env []corev1.EnvVar, name, want string) {
+	t.Helper()
+	for _, got := range env {
+		if got.Name == name {
+			require.Equal(t, want, got.Value)
+			return
+		}
+	}
+	t.Fatalf("expected %s=%s in trainer env: %#v", name, want, env)
 }
 
 // TestBuildOverridesMPIArgs records every rendered override that carries
