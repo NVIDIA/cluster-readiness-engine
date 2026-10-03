@@ -18,11 +18,14 @@ kind: ServiceMonitor
 metadata:
   name: nvcre-metrics-monitor
   namespace: nvcre
+  labels:
+    release: prometheus
 spec:
   endpoints:
     - path: /metrics
       port: https
       scheme: https
+      honorLabels: true
       bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
       tlsConfig:
         insecureSkipVerify: true  # Use cert-manager in production
@@ -30,6 +33,10 @@ spec:
     matchLabels:
       control-plane: manager
 ```
+
+`honorLabels: true` (chart default `metrics.serviceMonitor.honorLabels`) keeps the controller's own `namespace` and `job` labels on each series. Without it, Prometheus prefers scrape-target labels and renames the metric labels to `exported_namespace` / `exported_job`, so the PromQL examples below would match the controller Service rather than the Certification Job. Clusters that already built dashboards on `exported_*` can set `metrics.serviceMonitor.honorLabels=false`.
+
+Tune scrape cadence with `metrics.serviceMonitor.interval` and `metrics.serviceMonitor.scrapeTimeout` (empty uses the Prometheus defaults). kube-prometheus-stack users should set `metrics.serviceMonitor.labels.release` to their Prometheus Helm release name (default `prometheus`). See `helm/cluster-readiness-engine/values.yaml` for the full set of knobs.
 
 ## Job status metrics
 
@@ -120,6 +127,8 @@ NCCL bandwidth metrics are cleaned up when a BandwidthMeasurement is deleted.
 | `nvcre_topology_failed_nodes` | Gauge | `namespace`, `workflow`, `topology_key`, `domain`, `node` | Set to `1` for each node that failed burn-in validation. Useful for identifying bad switches, racks, or NVLink cliques from Prometheus. |
 
 ## Example PromQL queries
+
+With the chart default `honorLabels: true`, filters on `namespace` and `job` refer to the Certification Job as documented in the tables above. If you scrape without honoring metric labels, those label names refer to the scrape target instead.
 
 ### Job status
 
