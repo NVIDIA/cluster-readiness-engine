@@ -31,7 +31,7 @@ const attestWorkflow = "../../.github/workflows/attest.yml"
 // the digest happened to be malformed too. The hex includes the digits 404 so
 // the verify-release crane sidecar probe cannot treat digest digits as a
 // not-found status (real crane echoes the full probe ref into stderr).
-const validDigest = "sha256:404f1e2d1111111111111111111111111111111111111111111111111111111111"
+const validDigest = "sha256:404f1e2d11111111111111111111111111111111111111111111111111111111"
 
 const managerImage = "ghcr.io/nvidia/cluster-readiness-engine/manager"
 
