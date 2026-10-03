@@ -2,6 +2,15 @@
 # launcher already carries trainer.kubeflow.org/trainjob-ancestor-step, which
 # Kubeflow Trainer relies on, so the queue label has to be added alongside it
 # rather than replace the map.
+#
+# This case also pins the KAI launcher rewrite: the launcher arrives with
+# dependsOn: node/Ready (the catalog's MPI shape) *and* a startup policy, and
+# comes back with both gone and a wait-for-workers init container added, because
+# KAI requires every sub-group of the PodGroup to have pods before it schedules
+# anything — a gated or ordered launcher sub-group is empty until the workers are
+# ready, so it can never be admitted (measured live on KAI v0.16.4 with both
+# dependsOn and startupPolicy: InOrder). The Run:ai case beside this one keeps its
+# dependsOn, because only KAI has that constraint.
 gangScheduler:
   schedulerName: kai-scheduler
   queue: nccl-queue
@@ -11,8 +20,15 @@ dependencies:
     metadata:
       name: nccl-all-reduce-runtime
     spec:
+      mlPolicy:
+        mpi:
+          mpiImplementation: OpenMPI
+          numProcPerNode: 4
+        numNodes: 1
       template:
         spec:
+          startupPolicy:
+            startupPolicyOrder: InOrder
           replicatedJobs:
             - name: node
               template:
