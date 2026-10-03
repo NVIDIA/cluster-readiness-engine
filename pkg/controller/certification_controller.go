@@ -552,34 +552,35 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 
 	// --- 3. Render templates (entry.Build) ---
 	workflowSpec, buildErr := entry.Build(certification.Spec.Target, catalog.BuildConfig{
-		ImagePullSecrets:   opts.ImagePullSecrets,
-		StorageClassName:   opts.StorageClassName,
-		NodesPerJob:        nodesPerJob,
-		GpusPerNode:        gpusPerNode,
-		MlnxPerNode:        mlnxPerNode,
-		NicResourceName:    nicResourceName,
-		Resources:          opts.Resources,
-		EnableMNNVL:        enableMNNVL,
-		EnableCheckpoint:   derefBool(opts.EnableCheckpoint),
-		MaxSteps:           derefInt32(opts.MaxSteps),
-		ExitDurationMins:   derefInt32(opts.ExitDurationMins),
-		GPUArchitecture:    gpuArch,
-		SaveInterval:       derefInt32(opts.SaveInterval),
-		SaveRetainInterval: derefInt32(opts.SaveRetainInterval),
-		SaveTopK:           derefInt32(opts.SaveTopK),
-		StorageSize:        opts.StorageSize,
-		TestScale:          opts.TestScale,
-		MaxBytes:           opts.MaxBytes,
-		NumIterations:      derefInt32(opts.NumIterations),
-		NumCycles:          derefInt32(opts.NumCycles),
-		Thresholds:         opts.Thresholds,
-		MaxConcurrent:      derefInt32(opts.MaxConcurrent),
-		MinGroupSize:       derefInt32(opts.MinGroupSize),
-		RepeatCount:        derefInt32(opts.RepeatCount),
-		MaxRestarts:        derefInt32(opts.MaxRestarts),
-		TimeoutPerJob:      opts.TimeoutPerJob,
-		MeasurementTimeout: opts.MeasurementTimeout,
-		SourceRepo:         opts.SourceRepo,
+		ImagePullSecrets:           opts.ImagePullSecrets,
+		StorageClassName:           opts.StorageClassName,
+		NodesPerJob:                nodesPerJob,
+		GpusPerNode:                gpusPerNode,
+		MlnxPerNode:                mlnxPerNode,
+		NicResourceName:            nicResourceName,
+		Resources:                  opts.Resources,
+		EnableMNNVL:                enableMNNVL,
+		EnableCheckpoint:           derefBool(opts.EnableCheckpoint),
+		MaxSteps:                   derefInt32(opts.MaxSteps),
+		ExitDurationMins:           derefInt32(opts.ExitDurationMins),
+		StartupStallTimeoutSeconds: derefInt32(opts.StartupStallTimeoutSeconds),
+		GPUArchitecture:            gpuArch,
+		SaveInterval:               derefInt32(opts.SaveInterval),
+		SaveRetainInterval:         derefInt32(opts.SaveRetainInterval),
+		SaveTopK:                   derefInt32(opts.SaveTopK),
+		StorageSize:                opts.StorageSize,
+		TestScale:                  opts.TestScale,
+		MaxBytes:                   opts.MaxBytes,
+		NumIterations:              derefInt32(opts.NumIterations),
+		NumCycles:                  derefInt32(opts.NumCycles),
+		Thresholds:                 opts.Thresholds,
+		MaxConcurrent:              derefInt32(opts.MaxConcurrent),
+		MinGroupSize:               derefInt32(opts.MinGroupSize),
+		RepeatCount:                derefInt32(opts.RepeatCount),
+		MaxRestarts:                derefInt32(opts.MaxRestarts),
+		TimeoutPerJob:              opts.TimeoutPerJob,
+		MeasurementTimeout:         opts.MeasurementTimeout,
+		SourceRepo:                 opts.SourceRepo,
 	})
 	if buildErr != nil {
 		return "", fmt.Errorf("building workflow for %s/%s: %w", category.Domain, category.Variant, buildErr)
@@ -753,6 +754,9 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	}
 	if override.ExitDurationMins != nil {
 		resolved.ExitDurationMins = override.ExitDurationMins
+	}
+	if override.StartupStallTimeoutSeconds != nil {
+		resolved.StartupStallTimeoutSeconds = override.StartupStallTimeoutSeconds
 	}
 	if override.GpusPerNode != nil {
 		resolved.GpusPerNode = override.GpusPerNode

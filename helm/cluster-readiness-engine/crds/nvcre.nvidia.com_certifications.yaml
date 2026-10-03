@@ -372,6 +372,19 @@ spec:
                           maxLength: 2048
                           pattern: ^(https|ssh)://[A-Za-z0-9._~:/@%+-]+$
                           type: string
+                        startupStallTimeoutSeconds:
+                          description: |-
+                            startupStallTimeoutSeconds optionally overrides the startup-stall window
+                            applied to this category's generated Job
+                            (Job.spec.startupStallTimeoutSeconds). It is the budget for the first
+                            parsed training step after the workload starts; when the window elapses
+                            with no parsed step, the Job fails with reason WorkloadStalled. The
+                            override only has an effect when the Job also sets stallMultiplier, which
+                            the training entries do (3). The catalog entry's value (1200 s for
+                            nemotron5-8b/56b) applies when unset.
+                          format: int32
+                          minimum: 1
+                          type: integer
                         storageClassName:
                           description: |-
                             storageClassName is the StorageClass to use for PersistentVolumeClaim
@@ -850,6 +863,19 @@ spec:
                 maxLength: 2048
                 pattern: ^(https|ssh)://[A-Za-z0-9._~:/@%+-]+$
                 type: string
+              startupStallTimeoutSeconds:
+                description: |-
+                  startupStallTimeoutSeconds optionally overrides the startup-stall window
+                  applied to this category's generated Job
+                  (Job.spec.startupStallTimeoutSeconds). It is the budget for the first
+                  parsed training step after the workload starts; when the window elapses
+                  with no parsed step, the Job fails with reason WorkloadStalled. The
+                  override only has an effect when the Job also sets stallMultiplier, which
+                  the training entries do (3). The catalog entry's value (1200 s for
+                  nemotron5-8b/56b) applies when unset.
+                format: int32
+                minimum: 1
+                type: integer
               storageClassName:
                 description: |-
                   storageClassName is the StorageClass to use for PersistentVolumeClaim

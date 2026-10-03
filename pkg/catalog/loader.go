@@ -21,17 +21,21 @@ import (
 
 // Default values for template variables when not specified by the user.
 const (
-	DefaultMaxSteps           = 50
-	DefaultExitDurationMins   = 30
-	DefaultSaveInterval       = 250
-	DefaultSaveRetainInterval = 1000
-	DefaultSaveTopK           = 1
-	DefaultStorageSize        = "10Ti"
-	DefaultTestScale          = nvcrev1alpha1.TestScaleFullScale
-	DefaultMaxBytes           = "16G"
-	DefaultNumIterations      = 100
-	DefaultNumCycles          = 10
-	DefaultMinGroupSize       = 2
+	DefaultMaxSteps         = 50
+	DefaultExitDurationMins = 30
+	// DefaultStartupStallTimeoutSeconds is the entry-level default for the
+	// generated Job's startup-stall window. Templates use:
+	// {{ .StartupStallTimeoutSeconds }}
+	DefaultStartupStallTimeoutSeconds = 1200
+	DefaultSaveInterval               = 250
+	DefaultSaveRetainInterval         = 1000
+	DefaultSaveTopK                   = 1
+	DefaultStorageSize                = "10Ti"
+	DefaultTestScale                  = nvcrev1alpha1.TestScaleFullScale
+	DefaultMaxBytes                   = "16G"
+	DefaultNumIterations              = 100
+	DefaultNumCycles                  = 10
+	DefaultMinGroupSize               = 2
 
 	// Training container resource defaults (DGX-class sizing). Overridable
 	// per value via CategoryOptions.resources (issue #83).
@@ -131,6 +135,11 @@ type TemplateData struct {
 	// ExitDurationMins is the training duration in minutes (always non-zero after defaults).
 	// Templates use: {{ .ExitDurationMins }}
 	ExitDurationMins int32
+
+	// StartupStallTimeoutSeconds is the startup-stall window in seconds for the
+	// generated Job (always non-zero after defaults).
+	// Templates use: {{ .StartupStallTimeoutSeconds }}
+	StartupStallTimeoutSeconds int32
 
 	// GPUArchitecture is the GPU architecture string (e.g., "h100", "gb200").
 	// Templates use: {{ .GPUArchitecture }}
@@ -430,37 +439,41 @@ func loadAndRegisterEntries() error {
 // buildTemplateData creates a TemplateData from BuildConfig, applying defaults for unset fields.
 func buildTemplateData(config BuildConfig, configArch, variant string, meta entryMeta) TemplateData {
 	td := TemplateData{
-		ImagePullSecrets:   config.ImagePullSecrets,
-		NodesPerJob:        config.NodesPerJob,
-		GpusPerNode:        config.GpusPerNode,
-		MlnxPerNode:        config.MlnxPerNode,
-		NicResourceName:    config.NicResourceName,
-		EnableMNNVL:        config.EnableMNNVL,
-		EnableCheckpoint:   config.EnableCheckpoint,
-		MaxSteps:           config.MaxSteps,
-		ExitDurationMins:   config.ExitDurationMins,
-		GPUArchitecture:    config.GPUArchitecture,
-		ConfigArch:         configArch,
-		EntryName:          variant,
-		SaveInterval:       config.SaveInterval,
-		SaveRetainInterval: config.SaveRetainInterval,
-		SaveTopK:           config.SaveTopK,
-		TestScale:          config.TestScale,
-		MaxBytes:           config.MaxBytes,
-		NumIterations:      config.NumIterations,
-		NumCycles:          config.NumCycles,
-		MaxConcurrent:      config.MaxConcurrent,
-		MinGroupSize:       config.MinGroupSize,
-		TimeoutPerJob:      config.TimeoutPerJob,
-		MeasurementTimeout: config.MeasurementTimeout,
-		Thresholds:         config.Thresholds,
-		SourceRepo:         config.SourceRepo,
+		ImagePullSecrets:           config.ImagePullSecrets,
+		NodesPerJob:                config.NodesPerJob,
+		GpusPerNode:                config.GpusPerNode,
+		MlnxPerNode:                config.MlnxPerNode,
+		NicResourceName:            config.NicResourceName,
+		EnableMNNVL:                config.EnableMNNVL,
+		EnableCheckpoint:           config.EnableCheckpoint,
+		MaxSteps:                   config.MaxSteps,
+		ExitDurationMins:           config.ExitDurationMins,
+		StartupStallTimeoutSeconds: config.StartupStallTimeoutSeconds,
+		GPUArchitecture:            config.GPUArchitecture,
+		ConfigArch:                 configArch,
+		EntryName:                  variant,
+		SaveInterval:               config.SaveInterval,
+		SaveRetainInterval:         config.SaveRetainInterval,
+		SaveTopK:                   config.SaveTopK,
+		TestScale:                  config.TestScale,
+		MaxBytes:                   config.MaxBytes,
+		NumIterations:              config.NumIterations,
+		NumCycles:                  config.NumCycles,
+		MaxConcurrent:              config.MaxConcurrent,
+		MinGroupSize:               config.MinGroupSize,
+		TimeoutPerJob:              config.TimeoutPerJob,
+		MeasurementTimeout:         config.MeasurementTimeout,
+		Thresholds:                 config.Thresholds,
+		SourceRepo:                 config.SourceRepo,
 	}
 	if td.MaxSteps == 0 {
 		td.MaxSteps = DefaultMaxSteps
 	}
 	if td.ExitDurationMins == 0 {
 		td.ExitDurationMins = DefaultExitDurationMins
+	}
+	if td.StartupStallTimeoutSeconds == 0 {
+		td.StartupStallTimeoutSeconds = DefaultStartupStallTimeoutSeconds
 	}
 	if td.SaveInterval == 0 {
 		td.SaveInterval = DefaultSaveInterval
