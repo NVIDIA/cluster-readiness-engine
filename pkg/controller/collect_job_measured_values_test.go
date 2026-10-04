@@ -19,10 +19,11 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
-// Goodput-derived threshold values are provisional until the measurement's
-// Complete condition is True (ADR-072): the terminal write freezes them, and
-// evaluating earlier would make pass/fail depend on when the Job controller
-// happened to read. Bandwidth values are not gated. These cases pin the gate.
+// Measured values are provisional until their measurement completes. Goodput
+// freezes in its terminal write (ADR-072); bandwidth completes from the Job's
+// full log, and only a Complete=True/JobSucceeded measurement holds final
+// results (issue #404). Evaluating earlier would make pass/fail depend on when
+// the Job controller happened to read. These cases pin both gates.
 func TestCollectJobMeasuredValues(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "collect-job-measured-values",
@@ -36,6 +37,13 @@ func TestCollectJobMeasuredValues(t *testing.T) {
 			AvgStepTimeSec  string `yaml:"avgStepTimeSec"`
 			BusBW           string `yaml:"busBW"`
 			AlgBW           string `yaml:"algBW"`
+			// BandwidthReason is the reason of the BandwidthMeasurement's
+			// Complete=True condition; empty leaves it incomplete.
+			BandwidthReason string `yaml:"bandwidthReason"`
+			// BandwidthJobUID is the Job UID the BandwidthMeasurement was
+			// created for; empty leaves it unannotated (created before the
+			// annotation existed).
+			BandwidthJobUID string `yaml:"bandwidthJobUID"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
 			return err
@@ -73,7 +81,18 @@ func TestCollectJobMeasuredValues(t *testing.T) {
 				}},
 			},
 		}
-		job := &nvcrev1alpha1.Job{Name: "j", Namespace: "ns"}
+		if in.BandwidthReason != "" {
+			bm.Status.Conditions = []metav1.Condition{{
+				Type:               nvcrev1alpha1.BandwidthMeasurementComplete,
+				Status:             metav1.ConditionTrue,
+				Reason:             in.BandwidthReason,
+				LastTransitionTime: metav1.Now(),
+			}}
+		}
+		if in.BandwidthJobUID != "" {
+			bm.Annotations = map[string]string{annotationJobUID: in.BandwidthJobUID}
+		}
+		job := &nvcrev1alpha1.Job{Name: "j", Namespace: "ns", UID: currentJobUID}
 
 		gmIndex := func(obj client.Object) []string {
 			return []string{obj.(*nvcrev1alpha1.GoodputMeasurement).Spec.JobRef.Name}

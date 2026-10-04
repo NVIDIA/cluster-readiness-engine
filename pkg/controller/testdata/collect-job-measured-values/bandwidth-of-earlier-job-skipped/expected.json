@@ -1,0 +1,5 @@
+{
+  "avgStepTimeSec": 1.25,
+  "avgTFLOPsPerGPU": 512.5,
+  "goodputRatio": 0.88
+}

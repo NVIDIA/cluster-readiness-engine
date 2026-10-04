@@ -1,0 +1,7 @@
+# A truncated page of lines without timestamps has no resume point.
+pageBytes: 30
+log: |
+  plain row 01
+  plain row 02
+  plain row 03
+  plain row 04

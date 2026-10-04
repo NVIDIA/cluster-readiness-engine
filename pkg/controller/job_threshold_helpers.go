@@ -38,16 +38,30 @@ func findJobGoodputMeasurement(ctx context.Context, c client.Reader, job *nvcrev
 }
 
 // findJobBandwidthMeasurement returns the first BandwidthMeasurement in the namespace
-// that references this Job, or nil if none exists.
+// that measures this Job, or nil if none exists.
 func findJobBandwidthMeasurement(ctx context.Context, c client.Reader, job *nvcrev1alpha1.Job) *nvcrev1alpha1.BandwidthMeasurement {
 	var measurements nvcrev1alpha1.BandwidthMeasurementList
 	if err := c.List(ctx, &measurements, matchingJobRef(job.Namespace, job.Name)...); err != nil {
 		return nil
 	}
-	if len(measurements.Items) == 0 {
-		return nil
+	for i := range measurements.Items {
+		if measuresJob(&measurements.Items[i], job) {
+			return &measurements.Items[i]
+		}
 	}
-	return &measurements.Items[0]
+	return nil
+}
+
+// annotationJobUID records the UID of the Job a BandwidthMeasurement was
+// created for. The Job is referenced by name, and a retried group reuses its
+// Job's name.
+const annotationJobUID = "nvcre.nvidia.com/job-uid"
+
+// measuresJob reports whether bm was created for this instance of job. A
+// measurement without the annotation predates it and is taken at its name.
+func measuresJob(bm *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job) bool {
+	uid, ok := bm.Annotations[annotationJobUID]
+	return !ok || uid == string(job.UID)
 }
 
 // collectJobMeasuredValues gathers metric values from BandwidthMeasurement and
@@ -55,7 +69,10 @@ func findJobBandwidthMeasurement(ctx context.Context, c client.Reader, job *nvcr
 func collectJobMeasuredValues(ctx context.Context, c client.Reader, job *nvcrev1alpha1.Job) map[string]float64 {
 	values := make(map[string]float64)
 
-	if bm := findJobBandwidthMeasurement(ctx, c, job); bm != nil && len(bm.Status.Results) > 0 {
+	// Bandwidth values are equally provisional until the BandwidthMeasurement
+	// completes from the Job's full log: a live sample can stop short of the
+	// largest message sizes, where the peak is measured (issue #404).
+	if bm := findJobBandwidthMeasurement(ctx, c, job); bm != nil && bandwidthFinal(bm) {
 		values["busBandwidthGBps"] = maxBusBandwidth(bm.Status.Results)
 		values["algBandwidthGBps"] = maxAlgBandwidth(bm.Status.Results)
 	}
@@ -80,6 +97,16 @@ func collectJobMeasuredValues(ctx context.Context, c client.Reader, job *nvcrev1
 		}
 	}
 	return values
+}
+
+// bandwidthFinal reports whether a BandwidthMeasurement holds final results:
+// Complete from its Job's full log after the Job succeeded. Any other complete
+// measurement (no data, log unreadable, Job failed) is unmeasured for threshold
+// evaluation.
+func bandwidthFinal(bm *nvcrev1alpha1.BandwidthMeasurement) bool {
+	cond := meta.FindStatusCondition(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete)
+	return cond != nil && cond.Status == metav1.ConditionTrue &&
+		cond.Reason == reasonBandwidthJobSucceeded && len(bm.Status.Results) > 0
 }
 
 // isJobAwaitingThresholdEvaluation returns true when a succeeded Job has performance

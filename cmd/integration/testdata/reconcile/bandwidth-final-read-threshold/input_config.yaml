@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Issue #404: the provisional samples stop mid-sweep, below the threshold. The
+# verdict waits for the measurement to complete from the full log, whose peak
+# meets it: ThresholdsMet, not a false ThresholdViolation.
+waitFor:
+  kind: Job
+  name: test-bw-final-threshold
+  namespace: default
+  condition: Succeeded
+collect:
+  - kind: Job
+    name: test-bw-final-threshold
+    namespace: default
+events:
+  - involvedKind: Job
+    involvedName: test-bw-final-threshold
+    namespace: default
+    expect:
+      - {type: Normal, reason: ThresholdsMet}
+      - {type: Normal, reason: WorkloadCompleted}

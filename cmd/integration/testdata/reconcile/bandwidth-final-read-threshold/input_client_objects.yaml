@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: LogProfile
+metadata:
+  name: nccl-final-threshold-test
+spec:
+  timestamp:
+    layout: "2006-01-02T15:04:05.999999999Z"
+  workerStrategy:
+    type: Single
+    replicatedJobName: launcher
+  patterns:
+    bandwidthResult:
+      regex: '^\s*(?P<size>\d+)\s+\d+\s+\w+\s+\w+\s+-?\d+\s+[\d.]+\s+(?P<algBW>[\d.]+)\s+(?P<busBW>[\d.]+)'
+      example: '           8             2     float     sum      -1    58.31    0.00    0.00       0'
+---
+apiVersion: trainer.kubeflow.org/v1alpha1
+kind: TrainJob
+metadata:
+  name: test-bw-final-threshold-workload
+  namespace: default
+spec:
+  runtimeRef:
+    kind: TrainingRuntime
+    name: test-runtime
+  trainer:
+    image: test-image:latest
+    command:
+      - mpirun
+    numNodes: 1
+status:
+  conditions:
+    - type: Complete
+      status: "True"
+      reason: JobCompleted
+      message: "All workers completed"
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-bw-final-threshold
+  namespace: default
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - mpirun
+        numNodes: 1
+  bandwidthMeasurement:
+    logProfileRef: nccl-final-threshold-test
+    testType: all_reduce
+  thresholds:
+    busBandwidthGBps: "value >= 400"
+  # Longer than the harness default so the evaluation waits for the final read
+  # rather than racing it.
+  measurementTimeout: 60s
+status:
+  workloadRef:
+    apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainJob
+    name: test-bw-final-threshold-workload
+    namespace: default
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-bw-final-threshold-workload-launcher-0-0
+  namespace: default
+  labels:
+    jobset.sigs.k8s.io/jobset-name: test-bw-final-threshold-workload
+    jobset.sigs.k8s.io/replicatedjob-name: launcher
+    batch.kubernetes.io/job-completion-index: "0"
+    nvcre.nvidia.com/job: test-bw-final-threshold
+spec:
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Succeeded
+---
+# The last live sample landed mid-sweep: its peak (370 GB/s) is below the
+# threshold. The full log's peak (460 GB/s) is above it.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: BandwidthMeasurement
+metadata:
+  name: test-bw-final-threshold-bandwidth
+  namespace: default
+spec:
+  jobRef:
+    apiGroup: nvcre.nvidia.com
+    kind: Job
+    name: test-bw-final-threshold
+  logProfileRef: nccl-final-threshold-test
+  testType: all_reduce
+status:
+  results:
+    - sizeBytes: 1048576
+      algBW: "15.41"
+      busBW: "29.87"
+      samples: 1
+    - sizeBytes: 4294967296
+      algBW: "245.50"
+      busBW: "370.14"
+      samples: 1

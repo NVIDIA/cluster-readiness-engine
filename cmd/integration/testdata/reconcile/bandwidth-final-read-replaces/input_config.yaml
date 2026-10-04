@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Job has succeeded and the measurement holds provisional samples that
+# stop short of the largest message size. It completes from the launcher's
+# full log instead: every row counted once, two cycles per size averaged and
+# rounded once, the provisional samples replaced (issue #404).
+waitFor:
+  kind: BandwidthMeasurement
+  name: test-bw-final
+  namespace: default
+  condition: Complete
+collect:
+  - kind: BandwidthMeasurement
+    name: test-bw-final
+    namespace: default

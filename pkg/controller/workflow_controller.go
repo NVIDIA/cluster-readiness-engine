@@ -845,23 +845,54 @@ func buildTolerations(selectors []nvcrev1alpha1.TaintSelector) []corev1.Tolerati
 // hasRunningGroups returns true if any group is in Running phase.
 // isBelowBandwidthThreshold checks if a Job's BandwidthMeasurement peak BusBW
 // fails the given CEL threshold expression. Returns (below, pending, err) where:
-//   - pending=true means to requeue and try again later (BM absent or has no results yet)
-//   - err!=nil means the gate could not be evaluated; the caller should fail closed
+//   - pending=true means to requeue and try again later (BM absent or not yet complete)
+//   - err!=nil means the gate could not be evaluated, including a BM that completed
+//     without final results; the caller should fail closed
 func (r *WorkflowReconciler) isBelowBandwidthThreshold(ctx context.Context, jobName, namespace, expr string) (below bool, pending bool, err error) {
 	var bwList nvcrev1alpha1.BandwidthMeasurementList
 	if listErr := r.List(ctx, &bwList, matchingJobRef(namespace, jobName)...); listErr != nil {
 		return false, false, fmt.Errorf("list BandwidthMeasurements: %w", listErr)
 	}
-	if len(bwList.Items) == 0 {
-		// No BandwidthMeasurement found for this job yet — requeue and wait for it.
+	// The index constrains the list to this Job's name; keep only a
+	// measurement created for this instance of it, not one left by an earlier
+	// Job of the same name.
+	job := &nvcrev1alpha1.Job{}
+	key := client.ObjectKey{Namespace: namespace, Name: jobName}
+	if err := r.Get(ctx, key, job); err != nil {
+		// A cache miss is not proof of deletion; confirm before failing the
+		// group. A Job that really is gone can never be evaluated, and
+		// waiting on it would hold the diagnose round forever. Any other
+		// error is transient and must not fail a healthy group.
+		if err := r.jobReader().Get(ctx, key, job); err != nil {
+			if apierrors.IsNotFound(err) {
+				return false, false, fmt.Errorf("job %s no longer exists", jobName)
+			}
+			logf.FromContext(ctx).V(1).Info("Could not read Job for the bandwidth gate, requeueing",
+				"job", jobName, "error", err)
+			return false, true, nil
+		}
+	}
+	var bm *nvcrev1alpha1.BandwidthMeasurement
+	for i := range bwList.Items {
+		if measuresJob(&bwList.Items[i], job) {
+			bm = &bwList.Items[i]
+			break
+		}
+	}
+	if bm == nil {
+		// No BandwidthMeasurement for this job yet — requeue and wait for it.
 		return false, true, nil
 	}
-	// The index constrains the list to this Job; a Job has at most one
-	// BandwidthMeasurement, so evaluate the first and ignore any duplicate.
-	bm := &bwList.Items[0]
 
-	if len(bm.Status.Results) == 0 {
+	// Results are provisional until the measurement completes from the Job's
+	// full log (issue #404). A measurement that completed without final
+	// results cannot be evaluated; failing the group keeps the gate closed.
+	if !meta.IsStatusConditionTrue(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete) {
 		return false, true, nil
+	}
+	if !bandwidthFinal(bm) {
+		reason := meta.FindStatusCondition(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete).Reason
+		return false, false, fmt.Errorf("BandwidthMeasurement %s completed without final results (%s)", bm.Name, reason)
 	}
 	measured := maxBusBandwidth(bm.Status.Results)
 	passed, evalErr := threshold.Evaluate(measured, expr)

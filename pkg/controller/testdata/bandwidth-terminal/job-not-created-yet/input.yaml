@@ -1,0 +1,3 @@
+# No Job, and nothing shows the measurement ever saw one: it may have been
+# created before its Job (both applied at once). It waits for the Job rather
+# than completing.
