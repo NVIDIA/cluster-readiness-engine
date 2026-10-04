@@ -138,10 +138,10 @@ For a controller image mirrored off GHCR, omit `--image-pull-secret`: both its t
 4. Reference the preloaded image by an **explicitly tagged** reference — never `:latest`, because `:latest` (and an omitted tag)
    defaults to `Always`, which sends the kubelet to a registry that this cluster cannot reach; any other tag defaults to
    `IfNotPresent` and stays on the local copy. Name it in whichever path owns the reference: the controller chart's
-   `manager.image.repository`/`manager.image.tag` (whose pull policy is the chart value `manager.image.pullPolicy`, default
-   `IfNotPresent`), a Certification's `spec.image` or `categories[].options.image` (these replace the image and set no pull policy,
-   so a non-`:latest` tag is what keeps the kubelet local), or a WorkloadRun, which is the path that carries its own
-   `imagePullPolicy`.
+   `manager.image.repository`/`manager.image.tag` (or `manager.image.digest` for a digest-pinned image), a Certification's
+   `spec.image` or `categories[].options.image`, or a WorkloadRun's `spec.image`. These paths choose the image, not a pull
+   policy: the chart leaves the manager container's `imagePullPolicy` unset, and Certification and WorkloadRun expose no
+   workload pull-policy field. The API server defaults the omitted policy according to the tag as described above.
 
 This is also the only path that works for an air-gapped workload image derived from a base image the nodes already have — for example the `sshd`-prebaked MPI image recommended in the [FAQ](faq.md#can-mpi-workloads-run-in-air-gapped-or-restricted-egress-clusters).
 
