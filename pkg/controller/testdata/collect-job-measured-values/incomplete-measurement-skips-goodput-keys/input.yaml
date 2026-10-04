@@ -7,3 +7,4 @@ avgTFLOPSPerGPU: "512.5"
 avgStepTimeSec: "1.25"
 busBW: "980.1"
 algBW: "450.2"
+bandwidthReason: JobSucceeded

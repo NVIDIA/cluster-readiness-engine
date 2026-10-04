@@ -294,3 +294,32 @@
             env:
 {{ lib "nccl/onprem-ib-env.yaml" . | indent 12 }}
 {{- end }}
+
+# --- GCP + RTX PRO 6000 (G4 TCP; no physical rack label) ---
+{{- if eq .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: gcp
+    gpuArchitecture:
+      equals: rtxpro6000
+  dependencies:
+{{ lib "deps/gcp-rtxpro6000-runtime-patch.yaml" . | indent 2 }}
+  mpiArgs:
+{{ lib "nccl/gcp-rtxpro6000-tcp-env.yaml" . | toMpiArgs | indent 4 }}
+{{- end }}
+{{- if ne .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: gcp
+    gpuArchitecture:
+      equals: rtxpro6000
+  dependencies:
+{{ lib "deps/gcp-rtxpro6000-runtime-patch.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/gcp-rtxpro6000-tcp-env.yaml" . | indent 12 }}
+{{- end }}

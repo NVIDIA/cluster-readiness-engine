@@ -1,0 +1,32 @@
+{
+  "requeue": false,
+  "conditions": [
+    {
+      "type": "Measuring",
+      "status": "False",
+      "reason": "LogsUnavailable",
+      "message": "Referenced Job no longer exists; results are provisional and are not used for threshold evaluation"
+    },
+    {
+      "type": "Complete",
+      "status": "True",
+      "reason": "LogsUnavailable",
+      "message": "Referenced Job no longer exists; results are provisional and are not used for threshold evaluation"
+    }
+  ],
+  "results": [
+    {
+      "sizeBytes": 8,
+      "algBW": "0.00",
+      "busBW": "0.00",
+      "samples": 5
+    },
+    {
+      "sizeBytes": 1048576,
+      "algBW": "14.00",
+      "busBW": "27.00",
+      "samples": 5
+    }
+  ],
+  "completionTime": "reconcile time"
+}

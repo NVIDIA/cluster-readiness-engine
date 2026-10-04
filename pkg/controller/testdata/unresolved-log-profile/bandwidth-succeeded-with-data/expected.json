@@ -3,14 +3,14 @@
     {
       "type": "Measuring",
       "status": "False",
-      "reason": "JobSucceeded",
-      "message": "Job succeeded"
+      "reason": "LogsUnavailable",
+      "message": "Job succeeded but its log could not be read in full (job j has no workload reference); results are provisional and are not used for threshold evaluation"
     },
     {
       "type": "Complete",
       "status": "True",
-      "reason": "JobSucceeded",
-      "message": "Job succeeded"
+      "reason": "LogsUnavailable",
+      "message": "Job succeeded but its log could not be read in full (job j has no workload reference); results are provisional and are not used for threshold evaluation"
     }
   ],
   "resultCount": 1

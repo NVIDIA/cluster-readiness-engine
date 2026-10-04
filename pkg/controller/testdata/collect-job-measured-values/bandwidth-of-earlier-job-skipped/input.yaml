@@ -1,0 +1,11 @@
+# A retried group recreates its Job under the same name. The failed attempt's
+# BandwidthMeasurement names the Job but was created for an earlier instance of
+# it, so its results are not this attempt's.
+goodputComplete: true
+result: "0.88"
+avgTFLOPSPerGPU: "512.5"
+avgStepTimeSec: "1.25"
+busBW: "980.1"
+algBW: "450.2"
+bandwidthReason: JobSucceeded
+bandwidthJobUID: uid-earlier

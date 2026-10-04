@@ -1,0 +1,12 @@
+{
+  "visited": [
+    "plain row 01",
+    "plain row 02"
+  ],
+  "reads": [
+    {
+      "limitBytes": 1000,
+      "lines": 2
+    }
+  ]
+}

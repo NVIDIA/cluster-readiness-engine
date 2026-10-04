@@ -1,0 +1,7 @@
+# A node not on UTC stamps lines with an offset; the resume point is the
+# same instant.
+pageBytes: 100
+log: |
+  2026-09-30T03:00:01.100000000-07:00 r01
+  2026-09-30T03:00:02.100000000-07:00 r02
+  2026-09-30T03:00:03.100000000-07:00 r03

@@ -1471,6 +1471,84 @@
               }
             }
           }
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "rtxpro6000"
+            },
+            "platform": {
+              "equals": "gcp"
+            }
+          },
+          "jobTemplate": {
+            "spec": {
+              "workload": {
+                "trainJob": {
+                  "trainer": {
+                    "env": [
+                      {
+                        "name": "NCCL_DEBUG",
+                        "value": "INFO"
+                      },
+                      {
+                        "name": "NCCL_IB_DISABLE",
+                        "value": "1"
+                      },
+                      {
+                        "name": "NCCL_NET_PLUGIN",
+                        "value": "none"
+                      },
+                      {
+                        "name": "NCCL_SOCKET_IFNAME",
+                        "value": "eth0"
+                      },
+                      {
+                        "name": "NCCL_P2P_LEVEL",
+                        "value": "SYS"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "dependencies": [
+            {
+              "apiVersion": "trainer.kubeflow.org/v1alpha1",
+              "kind": "TrainingRuntime",
+              "metadata": {
+                "name": "wr-runai-explicit-runtime"
+              },
+              "spec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "tolerations": [
+                                  {
+                                    "effect": "NoSchedule",
+                                    "key": "nvidia.com/gpu",
+                                    "operator": "Equal",
+                                    "value": "present"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
         }
       ],
       "gangScheduler": {
