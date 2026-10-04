@@ -24,6 +24,8 @@ const (
 	keyName           = "name"
 	keyImage          = "image"
 	keyEnv            = "env"
+	keyCommand        = "command"
+	keyArgs           = "args"
 	keyEmptyDir       = "emptyDir"
 	keyContainers     = "containers"
 	keyInitContainers = "initContainers"
@@ -39,6 +41,7 @@ const (
 	volumeNameSSHKeys = "ssh-keys"
 	labelKeyApp       = "app"
 	mpiSSHMountPath   = "/tmp/mpi-ssh-raw"
+	mpiSSHKeyDir      = "/root/.ssh"
 	// mpiHostfileDir/mpiHostfilePath mirror the Kubeflow Trainer MPI plugin's
 	// hostfile contract (constants.MPIHostfileDir / MPIHostfileName): the
 	// plugin mounts a ConfigMap holding "<endpoint> slots=<n>" lines into the
@@ -50,6 +53,7 @@ const (
 	// launcher's wait init container mounts it by name.
 	volumeNameMPIHostfile = "mpi-hostfile"
 	nodeJobName           = "node"
+	launcherJobName       = "launcher"
 	mpiSSHAuthName        = "mpi-ssh-auth"
 	keyReadOnly           = "readOnly"
 )
@@ -292,11 +296,11 @@ func BuildTorchRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	// Worker (node) container: runs sshd
 	workerContainer := map[string]any{
-		keyName:   nodeJobName,
-		keyImage:  cfg.Image,
-		keyEnv:    cfg.Env,
-		"command": []string{"sh", "-c"},
-		"args": []string{
+		keyName:    nodeJobName,
+		keyImage:   cfg.Image,
+		keyEnv:     cfg.Env,
+		keyCommand: []string{"sh", "-c"},
+		keyArgs: []string{
 			"set -x && " +
 				"test -x /usr/sbin/sshd || (apt-get update && apt-get install -y --no-install-recommends openssh-server) && " +
 				"mkdir -p /var/run/sshd && " +
@@ -343,7 +347,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 		"chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys"
 	launcherInitMounts := []map[string]any{
 		{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
-		{keyName: volumeNameSSHKeys, keyMountPath: "/root/.ssh"},
+		{keyName: volumeNameSSHKeys, keyMountPath: mpiSSHKeyDir},
 	}
 	if isKAIGangScheduler(cfg) {
 		launcherInitScript += launcherWaitScript()
@@ -352,8 +356,8 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	launcherInitContainer := map[string]any{
 		keyName:         "fix-ssh-permissions",
 		keyImage:        cfg.Image,
-		"command":       []string{"sh", "-c"},
-		"args":          []string{launcherInitScript},
+		keyCommand:      []string{"sh", "-c"},
+		keyArgs:         []string{launcherInitScript},
 		keyVolumeMounts: launcherInitMounts,
 	}
 
@@ -370,7 +374,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 		},
 		keyVolumeMounts: []map[string]any{
 			{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
-			{keyName: volumeNameSSHKeys, keyMountPath: "/root/.ssh"},
+			{keyName: volumeNameSSHKeys, keyMountPath: mpiSSHKeyDir},
 		},
 	}
 
@@ -447,7 +451,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	// until the workers are ready; the wait moves into the launcher init
 	// container instead (see schedulerNameKAI and launcherWaitScript).
 	launcherReplicatedJob := map[string]any{
-		keyName: "launcher",
+		keyName: launcherJobName,
 		keyTemplate: map[string]any{
 			keyMetadata: map[string]any{
 				keyLabels: launcherJobLabels,
@@ -483,7 +487,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 		},
 		"successPolicy": map[string]any{
 			"operator":             "All",
-			"targetReplicatedJobs": []string{"launcher"},
+			"targetReplicatedJobs": []string{launcherJobName},
 		},
 	}
 

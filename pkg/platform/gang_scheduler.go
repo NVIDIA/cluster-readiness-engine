@@ -112,14 +112,14 @@ func launcherWaitInitContainer(image string) map[string]any {
 	// leaves the private key in the shared ssh-keys volume, and ssh reads it
 	// from /root/.ssh.
 	return map[string]any{
-		keyName:   "wait-for-workers",
-		keyImage:  image,
-		"command": []string{"sh", "-c"},
-		"args":    []any{launcherWaitScript()},
+		keyName:    "wait-for-workers",
+		keyImage:   image,
+		keyCommand: []string{"sh", "-c"},
+		keyArgs:    []any{launcherWaitScript()},
 		keyVolumeMounts: []any{
 			launcherWaitMount(),
 			map[string]any{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
-			map[string]any{keyName: volumeNameSSHKeys, keyMountPath: "/root/.ssh"},
+			map[string]any{keyName: volumeNameSSHKeys, keyMountPath: mpiSSHKeyDir},
 		},
 	}
 }
@@ -312,7 +312,7 @@ func launcherReplicatedJob(replicatedJobs []any) (map[string]any, bool) {
 		if !ok {
 			continue
 		}
-		if name, _ := job[keyName].(string); name == "launcher" {
+		if name, _ := job[keyName].(string); name == launcherJobName {
 			return job, true
 		}
 	}
