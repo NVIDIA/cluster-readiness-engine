@@ -671,9 +671,9 @@ Use --cleanup to teardown installed components after completion.`,
 				return fmt.Errorf("--startup-stall-timeout-seconds cannot be used with --cert-file; " +
 					"set it in the Certification YAML")
 			}
-			if cmd.Flags().Changed("startup-stall-timeout-seconds") && startupStallTimeoutSeconds < 1 {
-				return fmt.Errorf("--startup-stall-timeout-seconds must be at least 1 second (got %d); "+
-					"omit the flag to use the catalog entry's default", startupStallTimeoutSeconds)
+			if cmd.Flags().Changed("startup-stall-timeout-seconds") && startupStallTimeoutSeconds < 0 {
+				return fmt.Errorf("--startup-stall-timeout-seconds must not be negative (got %d); "+
+					"use 0 for the catalog entry's default", startupStallTimeoutSeconds)
 			}
 			if certFile == "" && len(categories) == 0 {
 				return fmt.Errorf("either --cert-file or at least one --category is required\n\n" +

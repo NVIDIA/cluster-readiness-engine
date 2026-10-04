@@ -828,27 +828,43 @@ func TestNewRunCommandValidation(t *testing.T) {
 		assert.Contains(t, err.Error(), "either --cert-file or at least one --category")
 	})
 
-	t.Run("negative startup-stall window is rejected, not silently ignored", func(t *testing.T) {
-		cmd := newRunCommand("dev")
-		cmd.SetArgs([]string{
-			testCategoryFlag, testCategoryNCCLAllReduce,
-			"--startup-stall-timeout-seconds", "-1",
-		})
-		err := cmd.Execute()
-		require.Error(t, err, "a negative window would otherwise be dropped and the run would silently use the catalog default")
-		assert.Contains(t, err.Error(), "--startup-stall-timeout-seconds must be at least 1")
+	t.Run("zero startup-stall window follows omitted input validation", func(t *testing.T) {
+		omitted := newRunCommand("dev")
+		omitted.SetArgs(nil)
+		omittedErr := omitted.Execute()
+		require.Error(t, omittedErr)
+
+		explicitZero := newRunCommand("dev")
+		explicitZero.SetArgs([]string{"--startup-stall-timeout-seconds", "0"})
+		zeroErr := explicitZero.Execute()
+		require.Error(t, zeroErr)
+		assert.Equal(t, omittedErr.Error(), zeroErr.Error())
 	})
 
-	t.Run("startup-stall window with cert-file is rejected, not ignored", func(t *testing.T) {
+	t.Run("negative startup-stall window fails before missing category", func(t *testing.T) {
 		cmd := newRunCommand("dev")
-		cmd.SetArgs([]string{
-			"--cert-file", "cert.yaml",
-			"--startup-stall-timeout-seconds", "3600",
-		})
+		cmd.SetArgs([]string{"--startup-stall-timeout-seconds", "-1"})
 		err := cmd.Execute()
-		require.Error(t, err, "the file path applies no category options, so the value would be validated and then discarded")
-		assert.Contains(t, err.Error(), "cannot be used with --cert-file")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "--startup-stall-timeout-seconds")
+		assert.NotContains(t, err.Error(), "--category")
 	})
+
+	for _, value := range []string{"0", "3600"} {
+		t.Run("cert-file conflicts with startup-stall window "+value, func(t *testing.T) {
+			cmd := newRunCommand("dev")
+			cmd.SetArgs([]string{
+				"--cert-file", filepath.Join(t.TempDir(), "missing.yaml"),
+				"--startup-stall-timeout-seconds", value,
+			})
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "--cert-file")
+			assert.Contains(t, err.Error(), "--startup-stall-timeout-seconds")
+			var pathErr *os.PathError
+			assert.False(t, errors.As(err, &pathErr), "conflicting flags must fail before reading the file")
+		})
+	}
 
 	t.Run("setup wait cleanup are independent flags", func(t *testing.T) {
 		cmd := newRunCommand("dev")

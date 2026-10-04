@@ -33,6 +33,7 @@ nvcrectl certification run --category communication/nccl-all-reduce [flags]
 | `--enable-mnnvl` | `false` | Enable Multi-Node NVLink (`NCCL_MNNVL_ENABLE=1`) |
 | `--max-steps` | `0` | Max training steps for NeMo 4 workloads (0 = catalog default) |
 | `--exit-duration-mins` | `0` | Training duration in minutes for NeMo 6 workloads (0 = catalog default) |
+| `--startup-stall-timeout-seconds` | `0` | Startup-stall window in seconds for training workloads (0 = catalog default; negative values are invalid). Incompatible with `--cert-file`, including explicit 0; set a positive `spec.startupStallTimeoutSeconds` or `spec.categories[].options.startupStallTimeoutSeconds` in the Certification YAML instead. |
 | `--repeat-count` | `0` | Orchestration iterations to repeat tests (0 = catalog default) |
 | `--max-restarts` | `0` | Maximum checkpoint restarts for training workloads (0 = catalog default) |
 | `--storage-class` | — | StorageClass for PVC dependencies created by catalog entries |
