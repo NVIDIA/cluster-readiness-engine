@@ -1,0 +1,22 @@
+{
+  "visited": [
+    "2026-09-30T10:00:01.100000000Z r01",
+    "2026-09-30T10:00:02.100000000Z r02",
+    "2026-09-30T10:00:03.100000000Z r03"
+  ],
+  "reads": [
+    {
+      "limitBytes": 70,
+      "lines": 2,
+      "truncated": true
+    },
+    {
+      "since": "2026-09-30T10:00:02Z",
+      "limitBytes": 70,
+      "lines": 2,
+      "truncated": true
+    }
+  ],
+  "unpageable": true,
+  "error": "log cannot be read in full: more than 2 pages"
+}

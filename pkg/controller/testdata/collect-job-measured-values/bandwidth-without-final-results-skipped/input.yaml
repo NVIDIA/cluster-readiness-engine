@@ -1,0 +1,9 @@
+# A BandwidthMeasurement that completed without reading the Job's full log
+# holds only provisional results. It is unmeasured for threshold evaluation.
+goodputComplete: true
+result: "0.88"
+avgTFLOPSPerGPU: "512.5"
+avgStepTimeSec: "1.25"
+busBW: "980.1"
+algBW: "450.2"
+bandwidthReason: LogsUnavailable

@@ -1,0 +1,8 @@
+# r02 is stamped before r01 (stdout/stderr interleaving). Skipping by
+# timestamp would visit r01 twice; skipping by count does not.
+pageBytes: 80
+log: |
+  2026-09-30T10:00:01.500000000Z r01
+  2026-09-30T10:00:01.300000000Z r02
+  2026-09-30T10:00:02.100000000Z r03
+  2026-09-30T10:00:02.200000000Z r04

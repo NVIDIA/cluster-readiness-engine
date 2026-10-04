@@ -1,0 +1,11 @@
+{
+  "visited": [],
+  "reads": [
+    {
+      "limitBytes": 4194304,
+      "lines": 1
+    }
+  ],
+  "unpageable": true,
+  "error": "log cannot be read in full: scanning log lines: bufio.Scanner: token too long"
+}

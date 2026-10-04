@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Collect resolved objects: the Workflow retains its conditional templates.
+# The Job carries trainer env/MPI rank arguments; the runtime carries GPU tolerations.
+waitFor:
+  kind: Workflow
+  name: test-mpi-gcp-rtxpro6000-run
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: WorkloadRun
+    name: test-mpi-gcp-rtxpro6000-run
+    namespace: default
+  - kind: Job
+    name: test-mpi-gcp-rtxpro6000-run-job
+    namespace: default
+  - kind: TrainingRuntime
+    name: test-mpi-gcp-rtxpro6000-run-runtime-e7132-job
+    namespace: default
