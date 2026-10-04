@@ -42,6 +42,7 @@ const (
 	testCategoryFlag          = "--category"
 	testCertTimeoutCert       = "timeout-cert"
 	testCertNamespace         = "test-ns"
+	testStartupStallFlag      = "--startup-stall-timeout-seconds"
 )
 
 func newCertificationFakeClient(t testing.TB, objects ...client.Object) client.WithWatch {
@@ -835,7 +836,7 @@ func TestNewRunCommandValidation(t *testing.T) {
 		require.Error(t, omittedErr)
 
 		explicitZero := newRunCommand("dev")
-		explicitZero.SetArgs([]string{"--startup-stall-timeout-seconds", "0"})
+		explicitZero.SetArgs([]string{testStartupStallFlag, "0"})
 		zeroErr := explicitZero.Execute()
 		require.Error(t, zeroErr)
 		assert.Equal(t, omittedErr.Error(), zeroErr.Error())
@@ -843,10 +844,10 @@ func TestNewRunCommandValidation(t *testing.T) {
 
 	t.Run("negative startup-stall window fails before missing category", func(t *testing.T) {
 		cmd := newRunCommand("dev")
-		cmd.SetArgs([]string{"--startup-stall-timeout-seconds", "-1"})
+		cmd.SetArgs([]string{testStartupStallFlag, "-1"})
 		err := cmd.Execute()
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "--startup-stall-timeout-seconds")
+		assert.Contains(t, err.Error(), testStartupStallFlag)
 		assert.NotContains(t, err.Error(), "--category")
 	})
 
@@ -855,12 +856,12 @@ func TestNewRunCommandValidation(t *testing.T) {
 			cmd := newRunCommand("dev")
 			cmd.SetArgs([]string{
 				"--cert-file", filepath.Join(t.TempDir(), "missing.yaml"),
-				"--startup-stall-timeout-seconds", value,
+				testStartupStallFlag, value,
 			})
 			err := cmd.Execute()
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "--cert-file")
-			assert.Contains(t, err.Error(), "--startup-stall-timeout-seconds")
+			assert.Contains(t, err.Error(), testStartupStallFlag)
 			var pathErr *os.PathError
 			assert.False(t, errors.As(err, &pathErr), "conflicting flags must fail before reading the file")
 		})

@@ -4,6 +4,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -755,9 +756,8 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	if override.ExitDurationMins != nil {
 		resolved.ExitDurationMins = override.ExitDurationMins
 	}
-	if override.StartupStallTimeoutSeconds != nil {
-		resolved.StartupStallTimeoutSeconds = override.StartupStallTimeoutSeconds
-	}
+	// A non-nil override wins, including a pointer to zero.
+	resolved.StartupStallTimeoutSeconds = cmp.Or(override.StartupStallTimeoutSeconds, resolved.StartupStallTimeoutSeconds)
 	if override.GpusPerNode != nil {
 		resolved.GpusPerNode = override.GpusPerNode
 	}
