@@ -321,7 +321,7 @@ func launcherReplicatedJob(replicatedJobs []any) (map[string]any, bool) {
 
 // launcherPodSpec walks replicatedJobs[].template.spec.template.spec.
 func launcherPodSpec(launcherJob map[string]any) map[string]any {
-	return ensureMap(ensureMap(ensureMap(launcherJob, keyTemplate), keySpec), keyTemplate)[keySpec].(map[string]any)
+	return ensureMap(ensureMap(ensureMap(ensureMap(launcherJob, keyTemplate), keySpec), keyTemplate), keySpec)
 }
 
 // launcherImage returns the image of the launcher's first container, which the
