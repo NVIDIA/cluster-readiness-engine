@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# pflag parses --timeout=0 as a zero duration; reject it instead of watching
+# with an already-expired deadline.
+args:
+  - --wait
+  - --timeout=0
