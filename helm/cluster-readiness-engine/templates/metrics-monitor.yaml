@@ -8,7 +8,9 @@ metadata:
   labels:
     {{- include "nvcre.labels" . | nindent 4 }}
     control-plane: manager
-    release: prometheus
+    {{- with .Values.metrics.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   name: {{ include "nvcre.resourceName" (dict "suffix" "metrics-monitor" "context" $) }}
   namespace: {{ .Release.Namespace }}
 spec:
@@ -16,6 +18,13 @@ spec:
   - path: /metrics
     port: https
     scheme: https
+    honorLabels: {{ .Values.metrics.serviceMonitor.honorLabels }}
+    {{- with .Values.metrics.serviceMonitor.interval }}
+    interval: {{ . }}
+    {{- end }}
+    {{- with .Values.metrics.serviceMonitor.scrapeTimeout }}
+    scrapeTimeout: {{ . }}
+    {{- end }}
     bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
     tlsConfig:
       insecureSkipVerify: true
