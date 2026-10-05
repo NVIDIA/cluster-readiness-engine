@@ -909,12 +909,12 @@
                         "value": "0"
                       },
                       {
-                        "name": "NCCL_ALGO",
-                        "value": "Ring,Tree"
+                        "name": "NCCL_PROTO",
+                        "value": "Simple,LL128"
                       },
                       {
-                        "name": "NCCL_PROTO",
-                        "value": "Simple"
+                        "name": "NCCL_NVLSTREE_MAX_CHUNKSIZE",
+                        "value": "131072"
                       },
                       {
                         "name": "NCCL_MIN_NCHANNELS",

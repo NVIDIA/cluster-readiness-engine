@@ -167,6 +167,8 @@ kubectl get node <gpu-node> -o jsonpath='{.status.allocatable}'
 
 Offline `nvcrectl certification render` has no nodes to inspect, so it renders the default names. With `--dry-run`, detection runs against the real nodes and prints the networks it found, or why it fell back, to stderr.
 
+The TCPXO NCCL plugin also checks the NCCL environment against the `a3plus_guest_config.textproto` that GKE's TCPXO installer puts on each node, and aborts the job on any value the file enforces. The `NCCL_FASTRAK_*` environment NVCRE sets matches the enforced values of current installers, for example `NCCL_PROTO=Simple,LL128`. It also leaves `NCCL_ALGO` unset, as the file recommends. If a job fails with `NCCL WARN NCCL/NET (shim) mismatch enforced`, compare the named variable with that file on the node: `/home/kubernetes/bin/nvidia/lib64/a3plus_guest_config.textproto`, which is mounted in the pod at `/usr/local/nvidia/lib64/`.
+
 <Note>
 Only A3 Mega (`a3-megagpu-8g`) is supported. A3 High (`a3-highgpu-8g`) is also H100, but it uses GPUDirect-TCPX with four GPU NICs, which this override does not configure. Both report `nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3`, so the override cannot tell them apart. The eight-network rule is what flags an A3 High target.
 </Note>
