@@ -21,3 +21,6 @@ parallelism:
   l40:
     tp: 4
     pp: 1
+  rtxpro6000:
+    tp: 4
+    pp: 1

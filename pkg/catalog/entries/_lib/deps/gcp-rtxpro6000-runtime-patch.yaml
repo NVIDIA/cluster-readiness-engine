@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  tolerations:
+                  - key: nvidia.com/gpu
+                    operator: Equal
+                    value: present
+                    effect: NoSchedule
