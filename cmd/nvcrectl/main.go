@@ -13,6 +13,7 @@ import (
 	_ "github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/certification"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/cluster"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/mcp"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/render"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/setup"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/workloadrun"
@@ -40,6 +41,7 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(
 		certification.NewCommand(version),
 		cluster.NewCommand(),
+		mcp.NewCommand(version),
 		render.NewWorkflowCommand(),
 		setup.NewCommand(version),
 		workloadrun.NewCommand(),
