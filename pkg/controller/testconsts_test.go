@@ -50,4 +50,6 @@ const (
 	testNilRef = "<nil>"
 	// testKindTrainJob is the workload Kind the Job tier creates.
 	testKindTrainJob = "TrainJob"
+	// testKindCertification is the Certification kind used by fixtures.
+	testKindCertification = "Certification"
 )

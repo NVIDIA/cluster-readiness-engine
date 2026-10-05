@@ -161,7 +161,7 @@ func TestCertificationWorkflowLookup(t *testing.T) {
 				Name: secondWorkflowName, Namespace: testNS,
 				OwnerReferences: []metav1.OwnerReference{{
 					APIVersion: nvcrev1alpha1.GroupVersion.String(),
-					Kind:       "Certification",
+					Kind:       testKindCertification,
 					Name:       testCertName,
 					UID:        testCertUID,
 					Controller: new(true),

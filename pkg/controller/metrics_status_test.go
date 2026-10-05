@@ -145,7 +145,7 @@ func applyStatusCollectorMutate(ctx context.Context, c client.Client, cfg status
 
 func statusCollectorObject(kind string) (client.Object, error) {
 	switch kind {
-	case "Certification":
+	case testKindCertification:
 		return &nvcrev1alpha1.Certification{}, nil
 	case "Workflow":
 		return &nvcrev1alpha1.Workflow{}, nil
