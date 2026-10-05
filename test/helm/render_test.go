@@ -64,6 +64,41 @@ func TestHelmTemplateRendersConcurrencyArgs(t *testing.T) {
 	})
 }
 
+func TestHelmTemplateRendersServiceMonitor(t *testing.T) {
+	requireHelm(t)
+	chartDir := chartDir(t)
+	requireChartInputs(t, chartDir)
+
+	p := testutil.TestCaseParser{
+		Subdir:         "render-servicemonitor",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			Set []string `yaml:"set"`
+		}
+		if err := syaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		rendered, err := helmTemplate(chartDir, input.Set)
+		if err != nil {
+			return err
+		}
+		view, err := serviceMonitorViewFromRendered(rendered)
+		if err != nil {
+			return err
+		}
+
+		data, err := json.MarshalIndent(view, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
 func requireHelm(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("helm"); err != nil {
@@ -178,6 +213,51 @@ func managerImage(rendered []byte) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("rendered chart has no manager Deployment container")
+}
+
+// serviceMonitorView is the Helm-rendered ServiceMonitor fields that operators
+// actually configure: discovery labels and scrape knobs.
+type serviceMonitorView struct {
+	Labels        map[string]string `json:"labels"`
+	HonorLabels   any               `json:"honorLabels"`
+	Interval      any               `json:"interval,omitempty"`
+	ScrapeTimeout any               `json:"scrapeTimeout,omitempty"`
+}
+
+func serviceMonitorViewFromRendered(rendered []byte) (*serviceMonitorView, error) {
+	dec := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(rendered), 4096)
+	for {
+		var obj unstructured.Unstructured
+		err := dec.Decode(&obj)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("decode helm template output: %w", err)
+		}
+		if obj.GetKind() != "ServiceMonitor" {
+			continue
+		}
+
+		endpoints, found, err := unstructured.NestedSlice(obj.Object, "spec", "endpoints")
+		if err != nil {
+			return nil, fmt.Errorf("serviceMonitor endpoints: %w", err)
+		}
+		if !found || len(endpoints) == 0 {
+			return nil, fmt.Errorf("rendered ServiceMonitor has no endpoints")
+		}
+		ep, ok := endpoints[0].(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("rendered ServiceMonitor endpoint is not a map")
+		}
+		return &serviceMonitorView{
+			Labels:        obj.GetLabels(),
+			HonorLabels:   ep["honorLabels"],
+			Interval:      ep["interval"],
+			ScrapeTimeout: ep["scrapeTimeout"],
+		}, nil
+	}
+	return nil, fmt.Errorf("rendered chart has no ServiceMonitor")
 }
 
 // TestHelmTemplatePinsImageByDigest covers the only image reference that names

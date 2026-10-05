@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+algBW: 397.14
+busBW: 769.45
+messageSizeBytes: "1073741824"
+ncclTest: all_reduce

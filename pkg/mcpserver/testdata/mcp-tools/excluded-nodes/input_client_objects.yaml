@@ -1,0 +1,80 @@
+# A Certification that SUCCEEDED but whose Workflow left targeted nodes
+# untested. report.Build downgrades that to INCOMPLETE (report.go:308), so
+# get_certification_status must report INCOMPLETE too — reporting PASSED here
+# would tell an agent the fleet is certified when two nodes were never tested.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: cert-excluded
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+status:
+  conditions:
+    - type: Succeeded
+      status: "True"
+      reason: AllCategoriesSucceeded
+      message: all certification categories succeeded
+      lastTransitionTime: "2026-08-07T01:00:00Z"
+  categoryStatuses:
+    - domain: communication
+      variant: nccl-all-reduce
+      status: Succeeded
+      workflowRef:
+        name: cert-excluded-communication-nccl-all-reduce
+        namespace: default
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: cert-excluded-communication-nccl-all-reduce
+  namespace: default
+  labels:
+    nvcre.nvidia.com/certification: cert-excluded
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: rt
+          trainer:
+            image: img:latest
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 2
+    nodesPerJob: 2
+    totalGroups: 1
+    currentIteration: 1
+    detectedPlatform: onprem
+    detectedGPUArchitecture: h100
+    excludedNodes:
+      - node003
+      - node004
+    exclusionReason: cordoned
+    groups:
+      - name: group-0
+        nodes:
+          - node001
+          - node002
+        phase: Succeeded
+        startTime: "2026-08-07T00:00:00Z"
+        completionTime: "2026-08-07T00:10:00Z"
+  conditions:
+    - type: Succeeded
+      status: "True"
+      reason: AllGroupsSucceeded
+      message: 1 groups succeeded across 1 iterations
+      lastTransitionTime: "2026-08-07T00:10:00Z"

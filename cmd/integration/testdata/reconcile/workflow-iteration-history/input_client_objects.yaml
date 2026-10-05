@@ -56,6 +56,12 @@ metadata:
     app.kubernetes.io/managed-by: nvcre
     nvcre.nvidia.com/workflow: test-wf-history
     nvcre.nvidia.com/group: group-0
+  # The finalizer the Job controller adds on its first reconcile. Without it the
+  # Workflow can delete this already-Succeeded Job first, the Job controller's
+  # deletion handler never runs, and with no garbage collector in envtest the
+  # TrainJob below is never deleted.
+  finalizers:
+    - nvcre.nvidia.com/finalizer
 spec:
   workload:
     trainJob:

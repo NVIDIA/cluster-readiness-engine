@@ -1,0 +1,12 @@
+# With passthrough enabled the driver publishes devices in map order, so a vfio
+# device can precede the gpu device. The gpu device's NVML name still wins.
+nodes:
+  - name: node1
+resourceSlices:
+  - nodeName: node1
+    driver: gpu.nvidia.com
+    devices:
+      - type: vfio
+        productName: GH100 [H100 SXM5 80GB]
+      - type: gpu
+        productName: NVIDIA H100 80GB HBM3

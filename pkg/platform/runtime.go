@@ -24,6 +24,8 @@ const (
 	keyName           = "name"
 	keyImage          = "image"
 	keyEnv            = "env"
+	keyCommand        = "command"
+	keyArgs           = "args"
 	keyEmptyDir       = "emptyDir"
 	keyContainers     = "containers"
 	keyInitContainers = "initContainers"
@@ -39,9 +41,21 @@ const (
 	volumeNameSSHKeys = "ssh-keys"
 	labelKeyApp       = "app"
 	mpiSSHMountPath   = "/tmp/mpi-ssh-raw"
-	nodeJobName       = "node"
-	mpiSSHAuthName    = "mpi-ssh-auth"
-	keyReadOnly       = "readOnly"
+	mpiSSHKeyDir      = "/root/.ssh"
+	// mpiHostfileDir/mpiHostfilePath mirror the Kubeflow Trainer MPI plugin's
+	// hostfile contract (constants.MPIHostfileDir / MPIHostfileName): the
+	// plugin mounts a ConfigMap holding "<endpoint> slots=<n>" lines into the
+	// launcher pod at this path.
+	mpiHostfileDir  = "/etc/mpi"
+	mpiHostfilePath = "/etc/mpi/hostfile"
+	// volumeNameMPIHostfile is the volume the Trainer MPI plugin adds to the
+	// launcher pod for that ConfigMap (constants.MPIHostfileVolumeName). The
+	// launcher's wait init container mounts it by name.
+	volumeNameMPIHostfile = "mpi-hostfile"
+	nodeJobName           = "node"
+	launcherJobName       = "launcher"
+	mpiSSHAuthName        = "mpi-ssh-auth"
+	keyReadOnly           = "readOnly"
 )
 
 // defaultWorkerResources returns the worker resources block when the user did
@@ -282,11 +296,11 @@ func BuildTorchRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	// Worker (node) container: runs sshd
 	workerContainer := map[string]any{
-		keyName:   nodeJobName,
-		keyImage:  cfg.Image,
-		keyEnv:    cfg.Env,
-		"command": []string{"sh", "-c"},
-		"args": []string{
+		keyName:    nodeJobName,
+		keyImage:   cfg.Image,
+		keyEnv:     cfg.Env,
+		keyCommand: []string{"sh", "-c"},
+		keyArgs: []string{
 			"set -x && " +
 				"test -x /usr/sbin/sshd || (apt-get update && apt-get install -y --no-install-recommends openssh-server) && " +
 				"mkdir -p /var/run/sshd && " +
@@ -321,21 +335,30 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 		workerContainer["resources"] = defaultWorkerResources(cfg.GpusPerNode)
 	}
 
-	// Launcher init container: fix SSH permissions
+	// Launcher init container: fix SSH permissions, and — under KAI, where the
+	// JobSet cannot order the launcher behind the workers (see
+	// isKAIGangScheduler) — wait until every worker answers sshd before mpirun
+	// dials it. The worker list is Trainer's MPI hostfile, mounted into the
+	// launcher pod by the Trainer MPI plugin; its entries are
+	// "<endpoint> slots=<n>".
+	launcherInitScript := "set -x && " +
+		"cp /tmp/mpi-ssh-raw/* /root/.ssh/ && " +
+		"chmod 600 /root/.ssh/id_rsa && " +
+		"chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys"
+	launcherInitMounts := []map[string]any{
+		{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
+		{keyName: volumeNameSSHKeys, keyMountPath: mpiSSHKeyDir},
+	}
+	if isKAIGangScheduler(cfg) {
+		launcherInitScript += launcherWaitScript()
+		launcherInitMounts = append(launcherInitMounts, launcherWaitMount())
+	}
 	launcherInitContainer := map[string]any{
-		keyName:   "fix-ssh-permissions",
-		keyImage:  cfg.Image,
-		"command": []string{"sh", "-c"},
-		"args": []string{
-			"set -x && " +
-				"cp /tmp/mpi-ssh-raw/* /root/.ssh/ && " +
-				"chmod 600 /root/.ssh/id_rsa && " +
-				"chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys",
-		},
-		keyVolumeMounts: []map[string]any{
-			{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
-			{keyName: volumeNameSSHKeys, keyMountPath: "/root/.ssh"},
-		},
+		keyName:         "fix-ssh-permissions",
+		keyImage:        cfg.Image,
+		keyCommand:      []string{"sh", "-c"},
+		keyArgs:         []string{launcherInitScript},
+		keyVolumeMounts: launcherInitMounts,
 	}
 
 	// Launcher container
@@ -351,7 +374,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 		},
 		keyVolumeMounts: []map[string]any{
 			{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
-			{keyName: volumeNameSSHKeys, keyMountPath: "/root/.ssh"},
+			{keyName: volumeNameSSHKeys, keyMountPath: mpiSSHKeyDir},
 		},
 	}
 
@@ -421,6 +444,53 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 		}
 	}
 
+	// The launcher waits for the workers before mpirun dials them. Outside KAI
+	// that wait is the JobSet's dependsOn gate. Under KAI both the gate and any
+	// startup policy are omitted, because KAI refuses to schedule a JobSet whose
+	// PodGroup has an empty sub-group and the ordered launcher sub-group is empty
+	// until the workers are ready; the wait moves into the launcher init
+	// container instead (see schedulerNameKAI and launcherWaitScript).
+	launcherReplicatedJob := map[string]any{
+		keyName: launcherJobName,
+		keyTemplate: map[string]any{
+			keyMetadata: map[string]any{
+				keyLabels: launcherJobLabels,
+			},
+			keySpec: map[string]any{
+				keyTemplate: launcherPodTemplate,
+			},
+		},
+	}
+	// Under KAI the launcher gets no gate at all: KAI requires every sub-group of
+	// the PodGroup to have pods before the group is schedulable, so an ordered or
+	// gated launcher (whose sub-group is empty until the workers are ready) can
+	// never be admitted — measured live on KAI v0.16.4 with both dependsOn and
+	// startupPolicy: InOrder. Without a gate both replicated jobs are created
+	// together, both sub-groups are populated, and the wait-moved-into-the-launcher
+	// barrier above keeps mpirun from dialing a worker before its sshd answers.
+	if !isKAIGangScheduler(cfg) {
+		launcherReplicatedJob["dependsOn"] = []any{
+			map[string]any{
+				keyName:  nodeJobName,
+				"status": "Ready",
+			},
+		}
+	}
+
+	jobSetSpec := map[string]any{
+		"network": map[string]any{
+			"publishNotReadyAddresses": true,
+		},
+		"replicatedJobs": []any{
+			workerReplicatedJob,
+			launcherReplicatedJob,
+		},
+		"successPolicy": map[string]any{
+			"operator":             "All",
+			"targetReplicatedJobs": []string{launcherJobName},
+		},
+	}
+
 	rt := map[string]any{
 		"apiVersion": "trainer.kubeflow.org/v1alpha1",
 		"kind":       "TrainingRuntime",
@@ -441,36 +511,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 				},
 			},
 			keyTemplate: map[string]any{
-				keySpec: map[string]any{
-					"network": map[string]any{
-						"publishNotReadyAddresses": true,
-					},
-					"replicatedJobs": []any{
-						workerReplicatedJob,
-						// Launcher replicatedJob
-						map[string]any{
-							keyName: "launcher",
-							"dependsOn": []any{
-								map[string]any{
-									keyName:  nodeJobName,
-									"status": "Ready",
-								},
-							},
-							keyTemplate: map[string]any{
-								keyMetadata: map[string]any{
-									keyLabels: launcherJobLabels,
-								},
-								keySpec: map[string]any{
-									keyTemplate: launcherPodTemplate,
-								},
-							},
-						},
-					},
-					"successPolicy": map[string]any{
-						"operator":             "All",
-						"targetReplicatedJobs": []string{"launcher"},
-					},
-				},
+				keySpec: jobSetSpec,
 			},
 		},
 	}
