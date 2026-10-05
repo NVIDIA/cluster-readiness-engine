@@ -10,7 +10,7 @@ import (
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
-// Metric labels
+// Metric labels and NCCL metric names.
 const (
 	labelNamespace         = "namespace"
 	labelJob               = "job"
@@ -19,6 +19,15 @@ const (
 	labelMeasurement       = "measurement"
 	labelWorkflow          = "workflow"
 	labelCertificationName = "certification"
+
+	// Canonical NCCL bandwidth metric names. Values are gigabytes per second
+	// (nccl-tests algbw/busbw), not gigabits.
+	metricNCCLAlgBW = "nvcre_nccl_algbw_gbs"
+	metricNCCLBusBW = "nvcre_nccl_busbw_gbs"
+	// Deprecated aliases dual-registered for one minor release. Remove in the
+	// following minor.
+	metricNCCLAlgBWDeprecated = "nvcre_nccl_algbw_gbps"
+	metricNCCLBusBWDeprecated = "nvcre_nccl_busbw_gbps"
 )
 
 // exclusiveMetricStatuses is the 0/1 peer set for nvcre_*_status gauges.
@@ -219,9 +228,12 @@ var (
 
 	ncclBandwidthLabels = []string{labelNamespace, labelMeasurement, labelJob, labelWorkflow, "nccl_test", "message_size_bytes"}
 
+	// Canonical names encode GB/s without saying bits. The previous _gbps
+	// suffix is a Prometheus gigabits-per-second unit; the values have always
+	// been nccl-tests algbw/busbw columns in GB/s.
 	ncclAlgBWGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "nvcre_nccl_algbw_gbps",
+			Name: metricNCCLAlgBW,
 			Help: "NCCL algorithmic bandwidth in GB/s per message size",
 		},
 		ncclBandwidthLabels,
@@ -229,12 +241,40 @@ var (
 
 	ncclBusBWGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "nvcre_nccl_busbw_gbps",
+			Name: metricNCCLBusBW,
 			Help: "NCCL bus bandwidth in GB/s per message size",
 		},
 		ncclBandwidthLabels,
 	)
+
+	// Deprecated _gbps aliases, dual-registered for one minor release so
+	// existing dashboards keep working. Remove in the following minor.
+	ncclAlgBWDeprecatedGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: metricNCCLAlgBWDeprecated,
+			Help: "Deprecated: use " + metricNCCLAlgBW + ". Same GB/s samples; _gbps incorrectly implied gigabits.",
+		},
+		ncclBandwidthLabels,
+	)
+
+	ncclBusBWDeprecatedGauge = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: metricNCCLBusBWDeprecated,
+			Help: "Deprecated: use " + metricNCCLBusBW + ". Same GB/s samples; _gbps incorrectly implied gigabits.",
+		},
+		ncclBandwidthLabels,
+	)
 )
+
+// ncclBandwidthGaugeSets writes and deletes the canonical _gbs gauges and the
+// deprecated _gbps aliases together.
+var ncclBandwidthGaugeSets = []struct {
+	algBW *prometheus.GaugeVec
+	busBW *prometheus.GaugeVec
+}{
+	{ncclAlgBWGauge, ncclBusBWGauge},
+	{ncclAlgBWDeprecatedGauge, ncclBusBWDeprecatedGauge},
+}
 
 func init() {
 	// Register custom metrics with the controller-runtime metrics registry
@@ -263,6 +303,8 @@ func init() {
 		topologyFailedNodesGauge,
 		ncclAlgBWGauge,
 		ncclBusBWGauge,
+		ncclAlgBWDeprecatedGauge,
+		ncclBusBWDeprecatedGauge,
 	)
 }
 
@@ -467,17 +509,22 @@ func cleanupTopologyMetrics(namespace, workflow, topologyKey string, domainNodes
 }
 
 // recordNCCLBandwidthMetrics sets the NCCL bandwidth gauges for a given message size.
+// Canonical _gbs names and deprecated _gbps aliases receive the same samples.
 func recordNCCLBandwidthMetrics(namespace, measurement, job, workflow, ncclTest, messageSizeBytes string, algBW, busBW float64) {
 	labels := []string{namespace, measurement, job, workflow, ncclTest, messageSizeBytes}
-	ncclAlgBWGauge.WithLabelValues(labels...).Set(algBW)
-	ncclBusBWGauge.WithLabelValues(labels...).Set(busBW)
+	for _, g := range ncclBandwidthGaugeSets {
+		g.algBW.WithLabelValues(labels...).Set(algBW)
+		g.busBW.WithLabelValues(labels...).Set(busBW)
+	}
 }
 
 // cleanupNCCLBandwidthMetrics deletes all NCCL bandwidth gauge label sets for the given measurement.
 func cleanupNCCLBandwidthMetrics(namespace, measurement, job, workflow, ncclTest string, messageSizes []string) {
 	for _, size := range messageSizes {
 		labels := []string{namespace, measurement, job, workflow, ncclTest, size}
-		ncclAlgBWGauge.DeleteLabelValues(labels...)
-		ncclBusBWGauge.DeleteLabelValues(labels...)
+		for _, g := range ncclBandwidthGaugeSets {
+			g.algBW.DeleteLabelValues(labels...)
+			g.busBW.DeleteLabelValues(labels...)
+		}
 	}
 }

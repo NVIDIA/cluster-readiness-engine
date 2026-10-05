@@ -1555,6 +1555,8 @@ func collectBandwidthMetrics(t *testing.T, namespace, measurementName string) ma
 	}
 
 	names := []string{
+		"nvcre_nccl_algbw_gbs",
+		"nvcre_nccl_busbw_gbs",
 		"nvcre_nccl_algbw_gbps",
 		"nvcre_nccl_busbw_gbps",
 	}

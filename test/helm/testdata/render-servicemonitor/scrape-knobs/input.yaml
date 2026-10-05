@@ -1,0 +1,3 @@
+set:
+  - metrics.serviceMonitor.interval=30s
+  - metrics.serviceMonitor.scrapeTimeout=10s

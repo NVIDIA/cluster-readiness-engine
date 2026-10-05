@@ -1,0 +1,14 @@
+{
+  "labels": {
+    "app.kubernetes.io/instance": "render-test",
+    "app.kubernetes.io/managed-by": "Helm",
+    "app.kubernetes.io/name": "nvcre",
+    "app.kubernetes.io/version": "dev",
+    "control-plane": "manager",
+    "helm.sh/chart": "cluster-readiness-engine-0.0.0",
+    "release": "prometheus"
+  },
+  "honorLabels": true,
+  "interval": "30s",
+  "scrapeTimeout": "10s"
+}
