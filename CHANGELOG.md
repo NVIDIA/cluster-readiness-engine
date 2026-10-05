@@ -13,6 +13,16 @@ the full pull request list for a release is in its release notes. Pre-release ta
 (`-rc.N`) are not listed here; their changes appear under the stable release that
 followed them.
 
+## [Unreleased]
+
+### Changed
+
+- NCCL bandwidth gauges are now `nvcre_nccl_algbw_gbs` and `nvcre_nccl_busbw_gbs`
+  (gigabytes per second). The previous `_gbps` names incorrectly implied gigabits;
+  values have always been GB/s from nccl-tests. The old names remain dual-registered
+  as deprecated aliases for one minor release and will be removed in the following
+  minor (#408)
+
 ## [0.5.0] - 2026-09-28
 
 ### Added

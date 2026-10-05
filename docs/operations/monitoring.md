@@ -51,8 +51,8 @@ The table below highlights the most important metrics. See the [Metrics Referenc
 | `nvcre_reconcile_duration_seconds` | Histogram | How long each reconcile loop takes |
 | `nvcre_reconcile_total` | Counter | Reconcile attempts by result (success, error, requeue) |
 | `nvcre_goodput_ratio` | Gauge | Training efficiency from 0.0 to 1.0 |
-| `nvcre_nccl_algbw_gbps` | Gauge | NCCL algorithmic bandwidth in GB/s per message size |
-| `nvcre_nccl_busbw_gbps` | Gauge | NCCL bus bandwidth in GB/s per message size |
+| `nvcre_nccl_algbw_gbs` | Gauge | NCCL algorithmic bandwidth in GB/s per message size |
+| `nvcre_nccl_busbw_gbs` | Gauge | NCCL bus bandwidth in GB/s per message size |
 | `nvcre_topology_validated_nodes` | Gauge | Nodes that passed validation per topology domain |
 
 ## Structured logging
