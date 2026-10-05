@@ -1,0 +1,2 @@
+set:
+  - metrics.serviceMonitor.honorLabels=false
