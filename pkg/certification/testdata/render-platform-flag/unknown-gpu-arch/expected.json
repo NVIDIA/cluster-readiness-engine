@@ -1,0 +1,4 @@
+{
+  "error": "invalid --gpu-arch \"gb2OO\": must be one of a100, b200, gb200, gb300, h100, h200, l40, l40s, rtxpro6000",
+  "detectedPlatform": ""
+}

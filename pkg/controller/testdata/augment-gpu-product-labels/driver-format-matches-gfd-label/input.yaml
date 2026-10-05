@@ -1,0 +1,13 @@
+# The DRA driver publishes productName as the space-separated NVML name, where
+# GFD hyphenates it. A mid-migration fleet of identical GB300 nodes must end up
+# with byte-identical labels, or UniformGPUProduct reports two products.
+nodes:
+  - name: node-dra
+  - name: node-gfd
+    gpuProduct: NVIDIA-GB300
+resourceSlices:
+  - nodeName: node-dra
+    driver: gpu.nvidia.com
+    devices:
+      - type: gpu
+        productName: NVIDIA GB300

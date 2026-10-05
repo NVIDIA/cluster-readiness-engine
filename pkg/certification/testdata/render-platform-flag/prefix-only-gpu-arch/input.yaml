@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A non-empty value that normalizes to no architecture must be rejected, not
+# treated as unset and silently replaced by the target nodeSelector's label.
+gpuArch: NVIDIA-

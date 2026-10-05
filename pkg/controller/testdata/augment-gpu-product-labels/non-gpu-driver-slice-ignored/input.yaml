@@ -1,0 +1,11 @@
+# Only gpu.nvidia.com slices describe GPUs. Another driver's slice for the same
+# node is ignored even when one of its devices carries a GPU-looking
+# productName.
+nodes:
+  - name: node1
+resourceSlices:
+  - nodeName: node1
+    driver: roce.networking.k8s.aws
+    devices:
+      - type: gpu
+        productName: NVIDIA-GB300

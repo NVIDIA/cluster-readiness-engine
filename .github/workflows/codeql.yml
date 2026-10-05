@@ -4,6 +4,13 @@
 name: CodeQL
 
 on:
+  # pull_request covers the PRs the push triggers below miss: those opened from
+  # forks, and the Dependabot and docs-automation branches that match neither
+  # 'main' nor 'pull-request/N'. Without it CodeQL annotates no pull request,
+  # which is what OpenSSF Scorecard's SAST check samples for.
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
@@ -16,13 +23,21 @@ permissions:
   contents: read
 
 concurrency:
+  # An in-repo PR now analyzes twice: once for pull_request (ref
+  # refs/pull/N/merge) and once for the copy-pr-bot push to pull-request/N.
+  # Those refs cannot be folded into one concurrency key -- no expression
+  # recovers N from the branch name -- so the duplicate is accepted rather than
+  # papered over. Dropping the push trigger would remove CodeQL from the gated
+  # bot CI, which is the worse trade.
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   analyze:
     name: Analyze Go
-    runs-on: linux-amd64-cpu16
+    # Fork PRs build unvetted code, so route pull_request runs to a
+    # GitHub-hosted runner and keep them off the self-hosted pool.
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'linux-amd64-cpu16' }}
     if: github.repository == 'NVIDIA/cluster-readiness-engine'
     timeout-minutes: 60
     permissions:

@@ -53,9 +53,13 @@ const (
 // WorkflowReconciler reconciles a Workflow object
 type WorkflowReconciler struct {
 	client.Client
-	Scheme             *runtime.Scheme
-	Clientset          *kubernetes.Clientset
-	Recorder           events.EventRecorder
+	Scheme    *runtime.Scheme
+	Clientset *kubernetes.Clientset
+	Recorder  events.EventRecorder
+	// APIReader reads straight from the API server, bypassing the informer
+	// cache, so a Job missing from the cache can be checked against the live
+	// cluster before it is treated as deleted (issue #385).
+	APIReader          client.Reader
 	JobRequeueInterval time.Duration
 	// MaxConcurrentReconciles bounds the number of Workflow objects reconciled concurrently.
 	MaxConcurrentReconciles int
@@ -97,6 +101,11 @@ type WorkflowReconciler struct {
 // +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainjobs,verbs=get;list;delete
 // +kubebuilder:rbac:groups=resource.k8s.io,resources=resourceclaimtemplates,verbs=get;list;create;update;patch;delete
 // +kubebuilder:rbac:groups=resource.nvidia.com,resources=computedomains,verbs=get;list;create;update;patch;delete
+//
+// GPU architecture fallback for platforms with no nvidia.com/gpu.product
+// label (DRA-only GPU stacks): augmentGPUProductLabels reads productName from
+// gpu.nvidia.com ResourceSlices.
+// +kubebuilder:rbac:groups=resource.k8s.io,resources=resourceslices,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -379,7 +388,7 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	log := logf.FromContext(ctx)
 	target := workflow.Spec.Orchestration.Target
 
-	nodes, cordoned, err := discoverTargetNodes(ctx, r.Client, target)
+	nodes, cordoned, err := discoverTargetNodes(ctx, r.Client, r.APIReader, target)
 	if err != nil {
 		log.Error(err, "Failed to discover target nodes")
 		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonNodeDiscoveryError,
@@ -635,11 +644,17 @@ func (r *WorkflowReconciler) logOverrideResults(ctx context.Context, workflow *n
 // discoverTargetNodes lists and filters nodes based on the target spec.
 // Accepts a client.Reader so it can be called from both the reconciler and CLI tools.
 //
+// sliceReader serves the ResourceSlice fallback List. Reconcilers pass their
+// uncached APIReader, because a cached List starts a cluster-wide informer
+// that never syncs when the grant is missing. A nil sliceReader reads through
+// reader, which is correct only for uncached readers (CLI clients, unit-test
+// fakes).
+//
 // The second return value names the nodes that matched the target but were
 // dropped for being cordoned. Callers that record coverage need it: a cordoned
 // node was targeted and never tested, and without the names the run reports a
 // clean PASSED over a fleet it only partly certified.
-func discoverTargetNodes(ctx context.Context, reader client.Reader, target *nvcrev1alpha1.TargetSpec) ([]corev1.Node, []string, error) {
+func discoverTargetNodes(ctx context.Context, reader, sliceReader client.Reader, target *nvcrev1alpha1.TargetSpec) ([]corev1.Node, []string, error) {
 	nodeList := &corev1.NodeList{}
 	var opts []client.ListOption
 
@@ -725,6 +740,10 @@ func discoverTargetNodes(ctx context.Context, reader client.Reader, target *nvcr
 		}
 	}
 	nodes = gpuFiltered
+	if sliceReader == nil {
+		sliceReader = reader
+	}
+	augmentGPUProductLabels(ctx, sliceReader, nodes)
 
 	// Sort by name so discovery is reproducible. client.List gives no ordering
 	// guarantee, and callers pick nodes[0] to decide the platform and use slice
@@ -841,23 +860,54 @@ func buildTolerations(selectors []nvcrev1alpha1.TaintSelector) []corev1.Tolerati
 // hasRunningGroups returns true if any group is in Running phase.
 // isBelowBandwidthThreshold checks if a Job's BandwidthMeasurement peak BusBW
 // fails the given CEL threshold expression. Returns (below, pending, err) where:
-//   - pending=true means to requeue and try again later (BM absent or has no results yet)
-//   - err!=nil means the gate could not be evaluated; the caller should fail closed
+//   - pending=true means to requeue and try again later (BM absent or not yet complete)
+//   - err!=nil means the gate could not be evaluated, including a BM that completed
+//     without final results; the caller should fail closed
 func (r *WorkflowReconciler) isBelowBandwidthThreshold(ctx context.Context, jobName, namespace, expr string) (below bool, pending bool, err error) {
 	var bwList nvcrev1alpha1.BandwidthMeasurementList
 	if listErr := r.List(ctx, &bwList, matchingJobRef(namespace, jobName)...); listErr != nil {
 		return false, false, fmt.Errorf("list BandwidthMeasurements: %w", listErr)
 	}
-	if len(bwList.Items) == 0 {
-		// No BandwidthMeasurement found for this job yet — requeue and wait for it.
+	// The index constrains the list to this Job's name; keep only a
+	// measurement created for this instance of it, not one left by an earlier
+	// Job of the same name.
+	job := &nvcrev1alpha1.Job{}
+	key := client.ObjectKey{Namespace: namespace, Name: jobName}
+	if err := r.Get(ctx, key, job); err != nil {
+		// A cache miss is not proof of deletion; confirm before failing the
+		// group. A Job that really is gone can never be evaluated, and
+		// waiting on it would hold the diagnose round forever. Any other
+		// error is transient and must not fail a healthy group.
+		if err := r.jobReader().Get(ctx, key, job); err != nil {
+			if apierrors.IsNotFound(err) {
+				return false, false, fmt.Errorf("job %s no longer exists", jobName)
+			}
+			logf.FromContext(ctx).V(1).Info("Could not read Job for the bandwidth gate, requeueing",
+				"job", jobName, "error", err)
+			return false, true, nil
+		}
+	}
+	var bm *nvcrev1alpha1.BandwidthMeasurement
+	for i := range bwList.Items {
+		if measuresJob(&bwList.Items[i], job) {
+			bm = &bwList.Items[i]
+			break
+		}
+	}
+	if bm == nil {
+		// No BandwidthMeasurement for this job yet — requeue and wait for it.
 		return false, true, nil
 	}
-	// The index constrains the list to this Job; a Job has at most one
-	// BandwidthMeasurement, so evaluate the first and ignore any duplicate.
-	bm := &bwList.Items[0]
 
-	if len(bm.Status.Results) == 0 {
+	// Results are provisional until the measurement completes from the Job's
+	// full log (issue #404). A measurement that completed without final
+	// results cannot be evaluated; failing the group keeps the gate closed.
+	if !meta.IsStatusConditionTrue(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete) {
 		return false, true, nil
+	}
+	if !bandwidthFinal(bm) {
+		reason := meta.FindStatusCondition(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete).Reason
+		return false, false, fmt.Errorf("BandwidthMeasurement %s completed without final results (%s)", bm.Name, reason)
 	}
 	measured := maxBusBandwidth(bm.Status.Results)
 	passed, evalErr := threshold.Evaluate(measured, expr)
@@ -1245,6 +1295,17 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 	return nil
 }
 
+// jobReader returns the APIReader when available, falling back to r.Client.
+// The fallback is only safe when r.Client has no cache, as with the fake
+// clients in unit tests that call the reconciler directly; SetupWithManager
+// always sets APIReader so a manager-backed reconciler never takes it.
+func (r *WorkflowReconciler) jobReader() client.Reader {
+	if r.APIReader != nil {
+		return r.APIReader
+	}
+	return r.Client
+}
+
 // createOrAdoptJob creates the Job or verifies the existing one belongs to this Workflow.
 func (r *WorkflowReconciler) createOrAdoptJob(ctx context.Context, workflow *nvcrev1alpha1.Workflow, job *nvcrev1alpha1.Job) error {
 	log := logf.FromContext(ctx)
@@ -1256,8 +1317,10 @@ func (r *WorkflowReconciler) createOrAdoptJob(ctx context.Context, workflow *nvc
 		}
 		// Fetch the existing Job and verify it is the one this Workflow created —
 		// a duplicate create caused by cache lag or a crash-retry. A foreign Job
-		// with a colliding name is never adopted.
-		if err := r.Get(ctx, client.ObjectKeyFromObject(job), job); err != nil {
+		// with a colliding name is never adopted. Read live: the holder may have
+		// been created moments ago, and cache lag is the case this is handling,
+		// so a cached read here would just fail the reconcile (issue #385).
+		if err := r.jobReader().Get(ctx, client.ObjectKeyFromObject(job), job); err != nil {
 			return fmt.Errorf("failed to get existing Job %s: %w", jobName, err)
 		}
 		if !metav1.IsControlledBy(job, workflow) {
@@ -1337,22 +1400,40 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 			ns = workflow.Namespace
 		}
 
-		if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: ref.Name}, job); err != nil {
-			if apierrors.IsNotFound(err) {
-				// No pod-drain barrier needed here: the Job finalizer only
-				// unregisters after the workload's pods are gone (bounded by
-				// podDrainGracePeriod), so a NotFound Job implies its pods
-				// have already drained.
-				log.Info("Job was deleted, marking group as failed", "group", g.Name, "job", ref.Name)
-				r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
-				now := metav1.Now()
-				g.Phase = nvcrev1alpha1.GroupFailed
-				g.CompletionTime = &now
-				g.JobRef = nil
-				statusChanged = true
-				continue
+		key := client.ObjectKey{Namespace: ns, Name: ref.Name}
+		if err := r.Get(ctx, key, job); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return ctrl.Result{}, fmt.Errorf("failed to get Job %s: %w", ref.Name, err)
 			}
-			return ctrl.Result{}, fmt.Errorf("failed to get Job %s: %w", ref.Name, err)
+			// A cache miss is not proof of deletion. The Job informer and the
+			// Workflow informer are independent watches: the write that makes
+			// this group readable as Running comes after the Job's Create, so
+			// the first reconcile to arrive here carries no guarantee that the
+			// Job informer has caught up. Confirm against the API server before
+			// acting, because this branch is not reversible (issue #385).
+			if err := r.jobReader().Get(ctx, key, job); err == nil {
+				log.V(1).Info("Job not yet in cache; leaving the group running",
+					"group", g.Name, "job", ref.Name)
+				anyRunning = true
+				continue
+			} else if !apierrors.IsNotFound(err) {
+				return ctrl.Result{}, fmt.Errorf("failed to confirm Job %s: %w", ref.Name, err)
+			}
+			// Confirmed gone. No pod-drain barrier is needed for a Job that
+			// really was deleted: its finalizer only unregisters after the
+			// workload's pods are gone (bounded by podDrainGracePeriod), so the
+			// pods have already drained. That reasoning applies to a confirmed
+			// absence only, which is why the uncached read above is load-bearing
+			// and not a mere optimisation: an unconfirmed cache miss leaves
+			// running pods holding the DRA allocations cleaned up below.
+			log.Info("Job was deleted, marking group as failed", "group", g.Name, "job", ref.Name)
+			r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
+			now := metav1.Now()
+			g.Phase = nvcrev1alpha1.GroupFailed
+			g.CompletionTime = &now
+			g.JobRef = nil
+			statusChanged = true
+			continue
 		}
 
 		// Treat a Job with DeletionTimestamp as deleted — its finalizer will
@@ -2787,11 +2868,25 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *nvcre
 	// there may be completed Jobs from previous iterations that are no longer referenced.
 	// The Job controller's finalizer handles workload (TrainJob) deletion and pod termination.
 	jobList := &nvcrev1alpha1.JobList{}
-	if err := r.List(ctx, jobList,
+	listOpts := []client.ListOption{
 		client.InNamespace(workflow.Namespace),
 		client.MatchingLabels{"nvcre.nvidia.com/workflow": workflow.Name},
-	); err != nil {
+	}
+	if err := r.List(ctx, jobList, listOpts...); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to list Jobs for deletion: %w", err)
+	}
+	// An empty cached list is not proof the Jobs have drained, and everything
+	// below treats it as exactly that: Phase 1 deletes nothing, the wait below
+	// is skipped, and Phase 2 revokes the job-scoped dependencies that back the
+	// workload's DRA allocations. A Workflow deleted shortly after a group's
+	// Job is created is enough to reach it, because the Job informer need not
+	// have caught up. That kills pods still holding those allocations with CUDA
+	// error 719 and skips the pod-drain barrier from #121, which is the same
+	// cache-miss-as-deletion mistake this change removes from the running path.
+	if len(jobList.Items) == 0 {
+		if err := r.jobReader().List(ctx, jobList, listOpts...); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to confirm Jobs for deletion: %w", err)
+		}
 	}
 	for i := range jobList.Items {
 		if jobList.Items[i].DeletionTimestamp.IsZero() {
@@ -3416,8 +3511,10 @@ func (r *WorkflowReconciler) cleanupPVForPVC(ctx context.Context, workflow *nvcr
 	log := logf.FromContext(ctx)
 	var pvName string
 
+	// Read the PVC live: a cached read would start a cluster-wide PVC
+	// informer, which the manager role cannot watch (issue #424).
 	pvc := &corev1.PersistentVolumeClaim{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, pvc); err == nil {
+	if err := r.jobReader().Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, pvc); err == nil {
 		pvName = pvc.Spec.VolumeName
 	} else {
 		// PVC already gone; find PV by claimRef.
@@ -3499,6 +3596,11 @@ func (r *WorkflowReconciler) eventf(obj runtime.Object, eventType, reason, messa
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *WorkflowReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Falling back to the cached client would re-read the same stale cache and
+	// fail a group whose Job is running (issue #385).
+	if r.APIReader == nil {
+		r.APIReader = mgr.GetAPIReader()
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nvcrev1alpha1.Workflow{}).
 		Owns(&nvcrev1alpha1.Job{}).

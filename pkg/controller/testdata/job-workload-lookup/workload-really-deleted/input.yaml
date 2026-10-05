@@ -1,0 +1,4 @@
+# The workload really was deleted out from under the Job. Confirming the
+# absence changes nothing: the Job still fails, with the same reason as before.
+workloadExists: false
+cacheHidesWorkload: false

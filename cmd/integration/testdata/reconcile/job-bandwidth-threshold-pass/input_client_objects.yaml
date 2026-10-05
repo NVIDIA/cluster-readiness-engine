@@ -64,6 +64,19 @@ spec:
   logProfileRef: nccl-bandwidth
   testType: all_reduce
 status:
+  # Finalized from the Job's full log: only such a measurement feeds threshold
+  # evaluation (issue #404).
+  conditions:
+    - type: Measuring
+      status: "False"
+      reason: JobSucceeded
+      message: Job succeeded
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: Complete
+      status: "True"
+      reason: JobSucceeded
+      message: Job succeeded
+      lastTransitionTime: "2026-01-22T10:05:00Z"
   results:
     - sizeBytes: 8
       algBW: "0.00"

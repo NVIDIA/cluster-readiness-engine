@@ -137,6 +137,11 @@ const (
 // Job tier reasons (Job → Workload).
 const (
 	ReasonWorkloadCreated = "WorkloadCreated"
+	// ReasonWorkloadAdopted indicates the Job found the workload it had
+	// already created still on the API server, because the write that records
+	// status.WorkloadRef was lost after the Create succeeded, and took the
+	// reference back rather than treating the name as taken.
+	ReasonWorkloadAdopted = "WorkloadAdopted"
 	// ReasonWorkloadPending indicates the workload exists but has not started
 	// running — e.g. a TrainJob suspended by Kueue while it waits for quota.
 	// The Job stays InProgress; pending time is not counted against

@@ -1,0 +1,7 @@
+# Only a finished pod's log is final: a launcher still running may yet write
+# the rows the final read exists to capture.
+jobCondition: Succeeded
+podPhase: Running
+provisional:
+  - {sizeBytes: 8, algBW: "0.00", busBW: "0.00", samples: 5}
+  - {sizeBytes: 1048576, algBW: "14.00", busBW: "27.00", samples: 5}

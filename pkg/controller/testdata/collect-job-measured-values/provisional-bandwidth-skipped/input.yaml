@@ -1,0 +1,9 @@
+# While the BandwidthMeasurement is not Complete its results are provisional:
+# a live sample can stop short of the largest message sizes (issue #404). The
+# bandwidth keys stay missing, so checkPerformanceThresholds requeues.
+goodputComplete: true
+result: "0.88"
+avgTFLOPSPerGPU: "512.5"
+avgStepTimeSec: "1.25"
+busBW: "980.1"
+algBW: "450.2"

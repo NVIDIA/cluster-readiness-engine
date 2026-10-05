@@ -1,0 +1,9 @@
+# The workload is created and the status write conflicts once.
+# updateStatusWithRetry refetches the Job in place and retries, so a
+# WorkloadRef set on the caller's copy before the callback is dropped on that
+# refetch while the write still reports success. Pin that the reference is
+# persisted anyway: recorded outside the callback, this fixture reports a
+# successful reconcile over a Job with no reference and a live workload, which
+# is precisely the state the AlreadyExists branch has to dig out of.
+holder: ""
+statusWriteFailures: 1

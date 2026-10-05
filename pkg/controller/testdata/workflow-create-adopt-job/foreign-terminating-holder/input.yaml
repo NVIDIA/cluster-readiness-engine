@@ -1,0 +1,4 @@
+# The foreign holder is on its way out, so the name frees up shortly and the
+# reconcile retries rather than failing terminally.
+holder: foreign-terminating
+inCache: false

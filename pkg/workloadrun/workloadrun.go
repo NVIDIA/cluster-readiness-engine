@@ -95,6 +95,7 @@ func NewCommand() *cobra.Command {
 func newWorkloadRunRenderCommand() *cobra.Command {
 	var outputFormat string
 	var platformFlag string
+	var gpuArchFlag string
 	var dryRun bool
 
 	configFlags := kubeconfig.NewConfigFlags(true)
@@ -107,20 +108,23 @@ func newWorkloadRunRenderCommand() *cobra.Command {
 including auto-generated TrainingRuntime, ConfigMap, platform overrides, and NCCL env vars.
 
 Use --platform to simulate platform-specific overrides offline.
+Use --gpu-arch to set the GPU architecture offline (e.g. a DRA-only GPU stack whose nodes carry no nvidia.com/gpu.product label); it wins over the nodeSelector-derived value when set and cannot be combined with --dry-run, which detects the architecture from real nodes.
 Use --dry-run to discover real nodes from the cluster and apply overrides based on actual platform and GPU.
 Combining --platform with --dry-run overrides the detected platform while still using real nodes.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dryRun {
-				return runWorkloadRunRenderDryRun(args[0], outputFormat, platformFlag, configFlags)
+				return runWorkloadRunRenderDryRun(args[0], outputFormat, platformFlag, gpuArchFlag, configFlags)
 			}
-			return runWorkloadRunRender(args[0], outputFormat, platformFlag)
+			return runWorkloadRunRender(args[0], outputFormat, platformFlag, gpuArchFlag)
 		},
 	}
 
 	cmd.Flags().StringVar(&outputFormat, "output", "yaml", "Output format: yaml or json")
 	cmd.Flags().StringVar(&platformFlag, "platform", "",
 		"Simulate platform for override matching ("+platform.NamesList()+")")
+	cmd.Flags().StringVar(&gpuArchFlag, "gpu-arch", "",
+		"GPU architecture for offline render; wins over target.nodeSelector's nvidia.com/gpu.product label")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false,
 		"Connect to cluster, discover real nodes, and render with actual platform/GPU detection")
 	configFlags.AddFlags(cmd.Flags())
@@ -128,8 +132,12 @@ Combining --platform with --dry-run overrides the detected platform while still 
 	return cmd
 }
 
-func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
+func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) error {
 	if err := platform.ValidateFlag(platformFlag); err != nil {
+		return err
+	}
+	gpuArch, err := catalog.ParseGPUArchFlag(gpuArchFlag)
+	if err != nil {
 		return err
 	}
 
@@ -138,14 +146,14 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 		return err
 	}
 
-	// Extract GPU architecture from nodeSelector.
-	var gpuProduct string
-	if run.Spec.Target != nil {
-		gpuProduct = run.Spec.Target.NodeSelector["nvidia.com/gpu.product"]
+	// --gpu-arch wins over the nodeSelector-derived value when set; a
+	// DRA-only platform carries no nvidia.com/gpu.product label on real
+	// nodes, so offline render has no other way to resolve architecture.
+	if gpuArch == "" && run.Spec.Target != nil {
+		gpuArch = gpu.ParseProduct(run.Spec.Target.NodeSelector["nvidia.com/gpu.product"])
 	}
-	gpuArch := gpu.ParseProduct(gpuProduct)
 	if gpuArch == "" {
-		return fmt.Errorf("cannot determine GPU architecture: nvidia.com/gpu.product label required in target.nodeSelector")
+		return fmt.Errorf("cannot determine GPU architecture: pass --gpu-arch or set nvidia.com/gpu.product in target.nodeSelector")
 	}
 
 	// Resolve hardware defaults from the catalog. Platform comes from --platform
@@ -365,6 +373,7 @@ func BuildWorkflowSpec(
 		NicResourceName: derefString(spec.NicResourceName),
 		EnableMNNVL:     enableMNNVL,
 		FrameworkType:   frameworkType,
+		UserEnv:         spec.Env,
 	}
 	wrOverrides := platform.BuildOverrides(overrideCfg)
 	overrides := make([]nvcrev1alpha1.OverrideSpec, 0, len(wrOverrides)+len(spec.Overrides))
@@ -551,8 +560,11 @@ func buildWRCLIConfigMapDep(name string, data map[string]string) nvcrev1alpha1.D
 // catalog defaults, NIC resource detection, MPI override baking, override
 // matching, the printed status, and the recorded annotations.
 func runWorkloadRunRenderDryRun(
-	file, outputFormat, platformFlag string, configFlags *kubeconfig.ConfigFlags,
+	file, outputFormat, platformFlag, gpuArchFlag string, configFlags *kubeconfig.ConfigFlags,
 ) error {
+	if gpuArchFlag != "" {
+		return errors.New("--dry-run detects the GPU architecture from cluster nodes; cannot combine with --gpu-arch")
+	}
 	if err := platform.ValidateFlag(platformFlag); err != nil {
 		return err
 	}
@@ -715,6 +727,9 @@ the WorkloadRun spec before submission. When --node-list is used and the
 number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := kubeconfig.ValidateWaitTimeout(timeout, doWait); err != nil {
+				return err
+			}
 			pullSet := 0
 			for _, v := range []string{workloadRegistry, workloadRegistryUsername, workloadRegistryPassword} {
 				if v != "" {
@@ -746,7 +761,7 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 		"Registry password or API key for workload image pull — creates an imagePullSecret in the WorkloadRun namespace")
 	cmd.Flags().StringVar(&controllerImage, "image", "", "Override controller image")
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Minute,
-		"Wait timeout (on timeout, the WorkloadRun is left running unless --cleanup is set)")
+		"Timeout for --wait; ignored without --wait; must be at least 1s when --wait is set (on timeout, the WorkloadRun is left running unless --cleanup is set)")
 	cmd.Flags().StringVar(&resultsFile, "results-file", "",
 		"Write report as JSON to this file path (requires --wait)")
 	cmd.Flags().StringVar(&nameOverride, "name", "",
@@ -1203,15 +1218,16 @@ func waitForWorkloadRunDeletion(ctx context.Context, c client.Client, name, name
 	}
 }
 
-// workloadRunWaitTimeoutError identifies the CLI watch deadline without
-// changing the existing user-facing error text, mirroring
+// workloadRunWaitTimeoutError identifies the CLI watch deadline, mirroring
 // certificationWaitTimeoutError in pkg/certification.
 type workloadRunWaitTimeoutError struct {
-	name string
+	name    string
+	timeout time.Duration
+	elapsed time.Duration
 }
 
 func (e *workloadRunWaitTimeoutError) Error() string {
-	return fmt.Sprintf("timeout waiting for WorkloadRun %s", e.name)
+	return fmt.Sprintf("WorkloadRun %s did not complete within %s (ran for %s)", e.name, e.timeout, e.elapsed)
 }
 
 func isWorkloadRunWaitTimeout(err error) bool {
@@ -1220,50 +1236,85 @@ func isWorkloadRunWaitTimeout(err error) bool {
 }
 
 // watchWorkloadRun polls until the WorkloadRun reaches a terminal state.
-// It prints a "[watch]" line on every phase change and a periodic heartbeat
-// (same format and interval as the certification watch) so long runs show
+// It checks status once immediately, then on a 5s ticker, and prints a
+// "[watch]" line on every phase change plus a periodic heartbeat (same
+// format and interval as the certification watch) so long runs show
 // progress instead of going silent until the terminal condition.
+//
+// The immediate check is required because the ticker does not fire until
+// 5s: a --timeout under that (the CLI floor is 1s) would otherwise expire
+// before any status was read (issue #409).
 func watchWorkloadRun(
 	ctx context.Context, c client.WithWatch,
 	name, namespace string, timeout time.Duration, out io.Writer,
 ) (*nvcrev1alpha1.WorkloadRun, error) {
-	deadline := time.After(timeout)
+	start := time.Now()
+	// Bound status Gets to the wait deadline so a stalled API cannot outlast --timeout.
+	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
 
-	start := time.Now()
 	lastPhase := ""
+	sawStatus := false
 	var current nvcrev1alpha1.WorkloadRun
+
+	timeoutErr := func() error {
+		return &workloadRunWaitTimeoutError{
+			name:    name,
+			timeout: timeout,
+			elapsed: time.Since(start).Truncate(time.Second),
+		}
+	}
+	// poll reads status once. terminal is true when the run has finished
+	// (success or failure). A missing object or a still-running run returns
+	// terminal false so the caller keeps waiting. The first successful Get
+	// always prints a [watch] line (including "Waiting for status...") so a
+	// short --timeout still shows that the watch looked.
+	poll := func() (*nvcrev1alpha1.WorkloadRun, error, bool) {
+		key := client.ObjectKey{Name: name, Namespace: namespace}
+		if err := c.Get(waitCtx, key, &current); err != nil {
+			return nil, nil, false
+		}
+		elapsed := time.Since(start).Truncate(time.Second)
+		if controller.CondIsTrue(current.Status.Conditions, nvcrev1alpha1.WorkloadRunSucceeded) {
+			_, _ = fmt.Fprintf(out, "[watch] WorkloadRun succeeded. (%s)\n", elapsed)
+			return &current, nil, true
+		}
+		if controller.CondIsTrue(current.Status.Conditions, nvcrev1alpha1.WorkloadRunFailed) {
+			_, _ = fmt.Fprintf(out, "[watch] WorkloadRun failed. (%s)\n", elapsed)
+			msg := controller.CondMessage(current.Status.Conditions, nvcrev1alpha1.WorkloadRunFailed)
+			return &current, fmt.Errorf("WorkloadRun failed: %s", msg), true
+		}
+		phase := workloadRunPhase(&current)
+		if !sawStatus || phase != lastPhase {
+			_, _ = fmt.Fprintln(out, workloadRunWatchLine(&current, name, elapsed))
+			lastPhase = phase
+			sawStatus = true
+		}
+		return nil, nil, false
+	}
+
+	if run, err, done := poll(); done {
+		return run, err
+	}
 
 	for {
 		select {
 		case <-ctx.Done():
 			return nil, fmt.Errorf("interrupted")
-		case <-deadline:
-			return nil, &workloadRunWaitTimeoutError{name: name}
+		case <-timer.C:
+			return nil, timeoutErr()
 		case <-heartbeat.C:
 			elapsed := time.Since(start).Truncate(time.Second)
 			_, _ = fmt.Fprintln(out, workloadRunWatchLine(&current, name, elapsed))
 		case <-ticker.C:
-			key := client.ObjectKey{Name: name, Namespace: namespace}
-			if err := c.Get(ctx, key, &current); err != nil {
-				continue
-			}
-			elapsed := time.Since(start).Truncate(time.Second)
-			if controller.CondIsTrue(current.Status.Conditions, nvcrev1alpha1.WorkloadRunSucceeded) {
-				_, _ = fmt.Fprintf(out, "[watch] WorkloadRun succeeded. (%s)\n", elapsed)
-				return &current, nil
-			}
-			if controller.CondIsTrue(current.Status.Conditions, nvcrev1alpha1.WorkloadRunFailed) {
-				_, _ = fmt.Fprintf(out, "[watch] WorkloadRun failed. (%s)\n", elapsed)
-				msg := controller.CondMessage(current.Status.Conditions, nvcrev1alpha1.WorkloadRunFailed)
-				return &current, fmt.Errorf("WorkloadRun failed: %s", msg)
-			}
-			if phase := workloadRunPhase(&current); phase != lastPhase {
-				_, _ = fmt.Fprintln(out, workloadRunWatchLine(&current, name, elapsed))
-				lastPhase = phase
+			if run, err, done := poll(); done {
+				return run, err
 			}
 		}
 	}

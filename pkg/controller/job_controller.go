@@ -99,6 +99,10 @@ type JobReconciler struct {
 	Clientset      *kubernetes.Clientset
 	NodeDiscoverer *nodemonitor.NodeDiscoverer
 	Recorder       events.EventRecorder
+	// APIReader reads straight from the API server, bypassing the informer
+	// cache, so a workload missing from the cache is confirmed gone before
+	// anything acts on its absence.
+	APIReader client.Reader
 	// MaxConcurrentReconciles bounds the number of Job objects reconciled concurrently.
 	MaxConcurrentReconciles int
 
@@ -116,6 +120,17 @@ type JobReconciler struct {
 	detectorCacheMu sync.Mutex
 }
 
+// workloadReader returns the APIReader when available, falling back to
+// r.Client. The fallback exists for tests that construct the reconciler
+// directly; SetupWithManager always sets APIReader so a manager-backed
+// reconciler never takes it.
+func (r *JobReconciler) workloadReader() client.Reader {
+	if r.APIReader != nil {
+		return r.APIReader
+	}
+	return r.Client
+}
+
 // getWorkloadRequeueInterval returns the effective requeue interval for workload status polling.
 func (r *JobReconciler) getWorkloadRequeueInterval() time.Duration {
 	if r.WorkloadRequeueInterval > 0 {
@@ -127,11 +142,17 @@ func (r *JobReconciler) getWorkloadRequeueInterval() time.Duration {
 // getMeasurementTimeout returns the effective timeout for waiting on measurement data
 // after a Job has succeeded. Priority: Job.Spec > reconciler field > default (5m).
 func (r *JobReconciler) getMeasurementTimeout(job *nvcrev1alpha1.Job) time.Duration {
+	return measurementTimeoutFor(job, r.MeasurementTimeout)
+}
+
+// measurementTimeoutFor resolves a Job's measurement timeout: its spec, else
+// the configured value, else defaultMeasurementTimeout.
+func measurementTimeoutFor(job *nvcrev1alpha1.Job, configured time.Duration) time.Duration {
 	if job.Spec.MeasurementTimeout != nil && job.Spec.MeasurementTimeout.Duration > 0 {
 		return job.Spec.MeasurementTimeout.Duration
 	}
-	if r.MeasurementTimeout > 0 {
-		return r.MeasurementTimeout
+	if configured > 0 {
+		return configured
 	}
 	return defaultMeasurementTimeout
 }
@@ -304,6 +325,12 @@ func (r *JobReconciler) reconcileWorkload(ctx context.Context, job *nvcrev1alpha
 	// happens via owner reference cascade when the Certification is deleted.
 	if r.isTerminalState(job) {
 		if isJobAwaitingThresholdEvaluation(job) {
+			// A retried group's Job can finish while the measurement left by
+			// the attempt it replaced is still being deleted; create its own
+			// once that one is gone, or the thresholds wait on nothing.
+			if err := r.ensureBandwidthMeasurement(ctx, job); err != nil {
+				logf.FromContext(ctx).Error(err, "Failed to ensure BandwidthMeasurement")
+			}
 			if r.checkPerformanceThresholds(ctx, job) {
 				return ctrl.Result{RequeueAfter: r.getWorkloadRequeueInterval()}, nil
 			}
@@ -379,31 +406,88 @@ func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *nvcrev1
 
 	gvk := adapter.GVK()
 	log.Info("Creating workload", "kind", gvk.Kind, "name", workloadName)
-	if err := r.Create(ctx, obj); err != nil {
+	reason := ReasonWorkloadCreated
+	message := fmt.Sprintf("Workload %s/%s created and is starting", gvk.Kind, workloadName)
+	switch createErr := r.Create(ctx, obj); {
+	case createErr == nil:
+		// Record workload creation metric
+		recordWorkloadCreated(job.Namespace, job.Name, job.Labels["nvcre.nvidia.com/workflow"])
+		log.Info("Workload created successfully", "kind", gvk.Kind, "name", workloadName)
+	case apierrors.IsAlreadyExists(createErr):
+		// Creating the workload and recording status.WorkloadRef are two
+		// separate writes, and the reference is what routes every later
+		// reconcile to updateStatusFromWorkload. When the second write is
+		// lost the reference stays nil, so the next pass lands back here and
+		// the name is already taken. Without this branch that is permanent:
+		// the Create fails the same way on every pass, backing off forever
+		// over a workload this Job owns and is running right now.
+		//
+		// AlreadyExists is proof the holder is on the API server, so the read
+		// that decides whose it is bypasses the cache; a NotFound from the
+		// cache there would be lag by definition.
+		existing := adapter.NewObject()
+		if getErr := r.workloadReader().Get(ctx,
+			client.ObjectKey{Namespace: job.Namespace, Name: workloadName}, existing); getErr != nil {
+			// Says nothing about the holder: retry rather than deciding.
+			return ctrl.Result{}, fmt.Errorf("failed to get existing workload %s/%s: %w",
+				gvk.Kind, workloadName, getErr)
+		}
+		if !metav1.IsControlledBy(existing, job) {
+			// A foreign holder that is already terminating releases the name
+			// shortly: retry with backoff instead of failing terminally. The
+			// workload name is derived from the Job name, and this tier's
+			// finalizer deletes the workload and then waits out pod drain, so
+			// a Job recreated under a name its predecessor just released lands
+			// here on nothing worse than timing. Failing is terminal at this
+			// tier, so without this the recreated Job never runs.
+			if !existing.GetDeletionTimestamp().IsZero() {
+				log.Info("Workload name held by a terminating workload; waiting",
+					"kind", gvk.Kind, "name", workloadName)
+				return ctrl.Result{RequeueAfter: r.getWorkloadRequeueInterval()}, nil
+			}
+			// A workload this Job does not own. Adopting it would mirror a
+			// stranger's result into this Job's status, so fail rather than
+			// report on work that is not ours.
+			if statusErr := r.setJobFailed(ctx, job, ReasonWorkloadCreationError,
+				fmt.Sprintf("Workload %s/%s already exists and is not owned by this Job",
+					gvk.Kind, workloadName)); statusErr != nil {
+				log.Error(statusErr, "Failed to update Job status")
+			}
+			return ctrl.Result{}, nil
+		}
+		log.Info("Adopting workload already created by this Job", "kind", gvk.Kind, "name", workloadName)
+		reason = ReasonWorkloadAdopted
+		message = fmt.Sprintf("Workload %s/%s was already created by this Job and has been adopted",
+			gvk.Kind, workloadName)
+	default:
 		// Return the error so controller-runtime applies exponential backoff.
 		// Do not mark the Job as Failed — creation errors are transient
 		// (e.g. webhook denial because TrainingRuntime isn't ready yet).
-		log.Error(err, "Failed to create workload, will retry", "kind", gvk.Kind, "name", workloadName)
+		log.Error(createErr, "Failed to create workload, will retry", "kind", gvk.Kind, "name", workloadName)
 		r.warnf(job, ReasonWorkloadCreationError,
-			"Failed to create %s/%s: %v", gvk.Kind, workloadName, err)
-		return ctrl.Result{}, fmt.Errorf("failed to create workload: %w", err)
+			"Failed to create %s/%s: %v", gvk.Kind, workloadName, createErr)
+		return ctrl.Result{}, fmt.Errorf("failed to create workload: %w", createErr)
 	}
 
-	// Record workload creation metric
-	recordWorkloadCreated(job.Namespace, job.Name, job.Labels["nvcre.nvidia.com/workflow"])
-	log.Info("Workload created successfully", "kind", gvk.Kind, "name", workloadName)
-
-	// Store workload reference in status
-	job.Status.WorkloadRef = &nvcrev1alpha1.WorkloadReference{
-		APIVersion: gvk.GroupVersion().String(),
-		Kind:       gvk.Kind,
-		Name:       workloadName,
-		Namespace:  job.Namespace,
-	}
-
-	// Set initial InProgress status
-	if err := r.setJobInProgress(ctx, job, ReasonWorkloadCreated,
-		fmt.Sprintf("Workload %s/%s created and is starting", gvk.Kind, workloadName)); err != nil {
+	// Set initial InProgress status, recording the workload reference inside
+	// the status-write callback. updateStatusWithRetry refetches the Job in
+	// place on a 409, so a reference set on this copy beforehand is dropped
+	// while the write still reports success — which is exactly the state the
+	// AlreadyExists branch above exists to dig out of.
+	if err := r.setJobInProgress(ctx, job, reason, message,
+		func(j *nvcrev1alpha1.Job) bool {
+			ref := &nvcrev1alpha1.WorkloadReference{
+				APIVersion: gvk.GroupVersion().String(),
+				Kind:       gvk.Kind,
+				Name:       workloadName,
+				Namespace:  job.Namespace,
+			}
+			if j.Status.WorkloadRef != nil && *j.Status.WorkloadRef == *ref {
+				return false
+			}
+			j.Status.WorkloadRef = ref
+			return true
+		}); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to update Job status: %w", err)
 	}
 
@@ -428,6 +512,26 @@ func (r *JobReconciler) updateStatusFromWorkload(ctx context.Context, job *nvcre
 
 	if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: ref.Name}, obj); err != nil {
 		if apierrors.IsNotFound(err) {
+			// A cached NotFound is not proof of deletion, and nothing below is
+			// reversible: restartFromCheckpoint spends a restart out of
+			// maxRestarts and resets the stall state, and its own cached read
+			// would skip the Delete, so the workload it thinks it replaced
+			// keeps running and holding GPUs while a second one is created
+			// under the same name. Without a restart budget the Job is failed
+			// outright. The workload informer is not the one that enqueued
+			// this reconcile, so confirm the absence against the API server
+			// before acting on it.
+			live := adapter.NewObject()
+			if liveErr := r.workloadReader().Get(ctx,
+				client.ObjectKey{Namespace: ns, Name: ref.Name}, live); liveErr == nil {
+				log.Info("Workload missing from cache but present on the API server; waiting",
+					"kind", ref.Kind, "name", ref.Name)
+				return ctrl.Result{RequeueAfter: r.getWorkloadRequeueInterval()}, nil
+			} else if !apierrors.IsNotFound(liveErr) {
+				// A failed read is not an absence. Surface it.
+				return ctrl.Result{}, fmt.Errorf("failed to confirm workload %s/%s: %w",
+					ref.Kind, ref.Name, liveErr)
+			}
 			// Workload was deleted externally — treat as a failure.
 			// Check if we should restart from checkpoint (same as WorkloadFailed).
 			if r.shouldRestart(ctx, job) {
@@ -1697,10 +1801,23 @@ func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *nvc
 	log := logf.FromContext(ctx)
 	bmName := naming.Truncate(job.Name+"-bandwidth", naming.MaxK8sNameLen)
 
-	// Check if already exists
 	existing := &nvcrev1alpha1.BandwidthMeasurement{}
 	if err := r.Get(ctx, client.ObjectKey{Namespace: job.Namespace, Name: bmName}, existing); err == nil {
-		return nil // already exists
+		if measuresJob(existing, job) {
+			return nil
+		}
+		// A retried group recreates its Job under the same name, and the
+		// Workflow-owned measurement of the failed attempt outlives it. Left in
+		// place it would stand in for this attempt's measurement, so replace it;
+		// the next reconcile creates the new one once it is gone.
+		if existing.DeletionTimestamp.IsZero() {
+			log.Info("Replacing BandwidthMeasurement of an earlier Job with the same name", "name", bmName)
+			if err := r.Delete(ctx, existing, client.Preconditions{UID: new(existing.UID)}); err != nil &&
+				!apierrors.IsNotFound(err) && !apierrors.IsConflict(err) {
+				return fmt.Errorf("failed to delete stale BandwidthMeasurement: %w", err)
+			}
+		}
+		return nil
 	}
 
 	apiGroup := "nvcre.nvidia.com"
@@ -1711,6 +1828,7 @@ func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *nvc
 			labelManagedBy: managedByValue,
 			labelJobKey:    job.Name,
 		},
+		Annotations: map[string]string{annotationJobUID: string(job.UID)},
 		Spec: nvcrev1alpha1.BandwidthMeasurementSpec{
 			JobRef: corev1.TypedLocalObjectReference{
 				APIGroup: &apiGroup,
@@ -1767,6 +1885,12 @@ func (r *JobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		r.NodeDiscoverer = nodemonitor.NewNodeDiscoverer(mgr.GetClient())
 	}
 
+	// Default the uncached reader so a manager-backed reconciler can never end
+	// up confirming a cache miss against the same cache.
+	if r.APIReader == nil {
+		r.APIReader = mgr.GetAPIReader()
+	}
+
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&nvcrev1alpha1.Job{}).
 		// Watch owned workload resources for status changes (event-driven reconciliation)
@@ -1774,6 +1898,13 @@ func (r *JobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&nvcrev1alpha1.GoodputMeasurement{})
 
 	return b.
+		// BandwidthMeasurements are owned by the Workflow when there is one,
+		// so Owns cannot map them back to the Job; the Job is named in spec.
+		Watches(
+			&nvcrev1alpha1.BandwidthMeasurement{},
+			handler.EnqueueRequestsFromMapFunc(bandwidthMeasurementToJob),
+			builder.WithPredicates(bandwidthCompletedPredicate()),
+		).
 		// Watch Nodes for health changes - maps node events to jobs via pod lookups
 		Watches(
 			&corev1.Node{},

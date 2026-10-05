@@ -1,0 +1,8 @@
+{
+  "requeueAfter": "0s",
+  "phase": "Failed",
+  "reason": "WorkloadFailed",
+  "workloadRef": "job-workload",
+  "restartCount": 0,
+  "workloadSurvives": false
+}

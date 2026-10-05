@@ -17,6 +17,16 @@ The controller detects two dimensions at runtime:
 
 On a mixed-architecture target, the detected GPU architecture is the one reported by the most nodes, with ties resolved to the architecture whose earliest node sorts first by name. Nodes missing the `nvidia.com/gpu.product` label do not participate in that vote, so an unlabeled node never outvotes labeled ones; `unknown` is detected only when no target node carries the label. Every path uses the same rule: the Certification, Workflow, and WorkloadRun controllers as well as the `nvcrectl` render, cluster info, and workloadrun commands.
 
+### ResourceSlice fallback (no device plugin/GFD)
+
+Platforms that claim GPUs via Dynamic Resource Allocation instead of a device plugin run no NVIDIA GPU Feature Discovery DaemonSet, so no node ever carries the `nvidia.com/gpu.product` label. Before the majority-architecture vote runs, node discovery lists `gpu.nvidia.com` `ResourceSlice` objects cluster-wide and reads each device's `productName` attribute, writing it as the `nvidia.com/gpu.product` label onto the corresponding node's in-memory copy (never persisted back to the API server). The driver reports the space-separated NVML name (`NVIDIA GB300`), so it is sanitized exactly as GPU Feature Discovery writes the label: characters outside `[A-Za-z0-9-_. ]` are dropped and each run of whitespace becomes one hyphen (`NVIDIA-GB300`); identical hardware therefore reports one product in a fleet that mixes both, provided GPU Feature Discovery is not time-slicing (it then appends `-SHARED` to its label, so the products differ while the architecture still matches). Every existing label-based consumer — the architecture vote, catalog architecture defaults, NIC detection — is unaffected: they only ever read the label, and simply see it populated from a different source. Devices of type `vfio` (GPU passthrough) are skipped, because they report a PCI-IDs name rather than the NVML product name.
+
+The fallback supplies only the product. GPU nodes must still carry `nvidia.com/gpu.present=true`, which the NVIDIA GPU Operator sets: node discovery drops every node without it before the fallback runs. On a cluster whose GPU nodes carry no NVIDIA labels at all, such as one running only the standalone DRA GPU driver, label the GPU nodes `nvidia.com/gpu.present=true` yourself; otherwise node discovery finds no GPU nodes.
+
+This lookup is skipped entirely when every node already carries the label (every non-DRA cluster), and one `ResourceSlice` `List` call, read directly from the API server rather than the controller cache, covers the whole target set. A missing `resourceslices` RBAC grant, or a driver that publishes no `productName` attribute, degrades to "leave those nodes unlabeled" rather than failing the reconcile — `unknown` architecture is the same outcome an unlabeled node with a device plugin produces today. The fallback reads `resource.k8s.io/v1` ResourceSlices (Kubernetes 1.34+, the same floor the DRA GPU driver needs); on older servers the `List` fails and nodes stay unlabeled.
+
+Offline `nvcrectl certification render` and `nvcrectl workloadrun render` have no cluster to read `ResourceSlice`s from, so on a label-less platform, offline render requires `--gpu-arch` to resolve architecture at all. `--gpu-arch` cannot be combined with `--dry-run`, which discovers real nodes and runs the same fallback the controllers do.
+
 The live controller writes detection results to `status.orchestration.detectedPlatform` and `status.orchestration.detectedGPUArchitecture` on the Workflow. When using `nvcrectl workflow render` (client-side), these values are also written as annotations (`nvcrectl.nvidia.com/detected-platform`, `nvcrectl.nvidia.com/detected-gpu-architecture`) on the rendered manifest for offline inspection.
 
 ## Override matching
@@ -71,7 +81,27 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | GB300 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
 | H100 | AWS | EFA | `vpc.amazonaws.com/efa: 32`, no hugepages |
 | H100 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap |
+| RTX PRO 6000 Blackwell | GCP G4 | TCP over `eth0`, PCIe GPU peer-to-peer | Variable GPU count by G4 machine size; `nvidia.com/gpu=present:NoSchedule` toleration; no RDMA resource request |
 | GB200/GB300 | On-prem | InfiniBand | arm64/GPU taint tolerations, portable IB NCCL env (no HCA pinning), NIC resource auto-detected or set via `nicResourceName`, ComputeDomain |
+
+RTX PRO 6000 defaults to **eight GPUs per node**, including on GCP. The default
+is architecture-based, not machine-shape detection. On smaller G4 nodes, set
+`gpusPerNode` explicitly in the Certification or WorkloadRun to the node's
+allocatable GPU count (for example, `gpusPerNode: 4` for `g4-standard-192`).
+Without that setting, nodes advertising fewer than eight allocatable GPUs are
+excluded by the capacity filter; an all-four-GPU target fails rather than
+silently reducing the request. An explicit smaller request on an eight-GPU
+node tests only the requested GPUs and does not establish full-device coverage.
+
+The NCCL overlay selects `NCCL_P2P_LEVEL=SYS` for eight GPUs and `PHB` for two
+or four GPUs, following [Google's G4 guidance](https://docs.cloud.google.com/compute/docs/accelerator-optimized-machines#g4_series).
+Offline rendering also uses the eight-GPU default and does not validate node
+capacity. Set `gpusPerNode: 4` explicitly when previewing the four-GPU
+configuration. The live controller applies the capacity filter.
+
+The GCP RTX PRO 6000 override sets `NCCL_NET_PLUGIN=none` in addition to
+`NCCL_IB_DISABLE=1`. The PyTorch image includes an external RDMA plugin that
+otherwise attempts to initialize even on this TCP-only network.
 
 The live controller tracks which overrides matched in `status.orchestration.appliedOverrides`. When using `nvcrectl workflow render`, the same information is also written to the `nvcrectl.nvidia.com/applied-overrides` annotation on the rendered manifest.
 

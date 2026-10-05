@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+run:
+  metadata:
+    name: wr-mpi-rtxpro6000
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:26.01-py3
+    numNodes: 2
+    framework:
+      mpi:
+        binary: /usr/local/bin/all_reduce_perf_mpi
+        mpirunPath: /usr/local/mpi/bin/mpirun
+        mpiArgs: ["--tag-output"]
+platform: gcp
+gpuArch: rtxpro6000
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: mpi

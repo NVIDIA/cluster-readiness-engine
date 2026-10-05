@@ -1,0 +1,10 @@
+# A Workflow owned by a different Certification holds the second category's
+# name and is already being deleted, which is what deleting a Certification and
+# immediately recreating it under the same name leaves behind. The name is
+# released shortly, so this is a wait. The code said so in a comment since #239
+# and still took the terminal path, because the error it returned was untyped.
+inCache: true
+inAPI: true
+succeeded: true
+adoptHolder: foreign-terminating
+reconciles: 3
