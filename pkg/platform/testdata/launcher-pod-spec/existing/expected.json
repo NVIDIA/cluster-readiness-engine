@@ -1,0 +1,28 @@
+{
+  "name": "launcher",
+  "template": {
+    "metadata": {
+      "labels": {
+        "preserved": "job"
+      }
+    },
+    "spec": {
+      "template": {
+        "metadata": {
+          "labels": {
+            "preserved": "pod"
+          }
+        },
+        "spec": {
+          "containers": [
+            {
+              "image": "example/mpi:tag",
+              "name": "launcher"
+            }
+          ],
+          "schedulerName": "kai-scheduler"
+        }
+      }
+    }
+  }
+}

@@ -346,12 +346,6 @@
                     }
                   },
                   {
-                    "dependsOn": [
-                      {
-                        "name": "node",
-                        "status": "Ready"
-                      }
-                    ],
                     "name": "launcher",
                     "template": {
                       "metadata": {
@@ -413,6 +407,33 @@
                                 "image": "public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9",
                                 "name": "fix-ssh-permissions",
                                 "volumeMounts": [
+                                  {
+                                    "mountPath": "/tmp/mpi-ssh-raw",
+                                    "name": "mpi-ssh-auth",
+                                    "readOnly": true
+                                  },
+                                  {
+                                    "mountPath": "/root/.ssh",
+                                    "name": "ssh-keys"
+                                  }
+                                ]
+                              },
+                              {
+                                "args": [
+                                  "\n[ -f /root/.ssh/id_rsa ] || { mkdir -p /root/.ssh \u0026\u0026 chmod 700 /root/.ssh \u0026\u0026 cp /tmp/mpi-ssh-raw/* /root/.ssh/ 2\u003e/dev/null; chmod 600 /root/.ssh/id_rsa 2\u003e/dev/null; }\nhosts=$(awk '{print $1}' /etc/mpi/hostfile 2\u003e/dev/null)\nif [ -z \"$hosts\" ]; then\n  echo \"ERROR: no hosts in /etc/mpi/hostfile (missing, empty, or unreadable); refusing to start mpirun.\"\n  exit 1\nfi\n# With mpi.runLauncherAsNode the hostfile also lists this pod's own endpoint. Probing it would\n# deadlock: its sshd lives in a container that only starts once this init container finishes.\n# So skip our own endpoint and keep probing every worker.\nself=${HOSTNAME:-}\n[ -n \"$self\" ] || self=$(hostname 2\u003e/dev/null)\ni=0\nok=0\nwhile [ $i -lt 240 ]; do\n  ok=1\n  for h in $hosts; do\n    case \"$h\" in\n      \"$self\"|\"$self\".*) continue ;;\n    esac\n    if ! timeout 10 ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 \"$h\" true \u003e/dev/null 2\u003e\u00261; then\n      ok=0\n      # Every tenth attempt, report which host is not answering and why: without\n      # this, a blocked network path and a slow worker look identical and the\n      # only signal is a bare 20-minute timeout.\n      if [ $((i % 10)) -eq 0 ]; then\n        echo \"waiting: $h has not answered sshd yet (attempt $((i+1))/240, $(($i*5))s)\"\n        timeout 10 ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 \"$h\" true 2\u003e\u00261 | head -3 | sed 's/^/  ssh: /'\n      fi\n    fi\n  done\n  [ \"$ok\" = \"1\" ] \u0026\u0026 break\n  i=$((i+1))\n  sleep 5\ndone\nif [ \"$ok\" != \"1\" ]; then\n  echo \"ERROR: not every worker answered sshd within 20 minutes; refusing to start mpirun.\"\n  echo \"  hostfile: $(cat /etc/mpi/hostfile 2\u003e/dev/null | tr '\\n' ' ')\"\n  echo \"  check that the workers and this launcher share a network policy allowing pod-to-pod port 22\"\n  exit 1\nfi\necho \"workers answered sshd after $((i*5))s\"\n"
+                                ],
+                                "command": [
+                                  "sh",
+                                  "-c"
+                                ],
+                                "image": "public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9",
+                                "name": "wait-for-workers",
+                                "volumeMounts": [
+                                  {
+                                    "mountPath": "/etc/mpi",
+                                    "name": "mpi-hostfile",
+                                    "readOnly": true
+                                  },
                                   {
                                     "mountPath": "/tmp/mpi-ssh-raw",
                                     "name": "mpi-ssh-auth",

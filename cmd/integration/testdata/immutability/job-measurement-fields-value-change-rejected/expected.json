@@ -1,0 +1,25 @@
+{
+  "create": {
+    "accepted": true
+  },
+  "update": {
+    "accepted": false,
+    "causes": [
+      {
+        "type": "FieldValueInvalid",
+        "field": "spec.bandwidthMeasurement",
+        "message": "Invalid value: bandwidthMeasurement is immutable"
+      },
+      {
+        "type": "FieldValueInvalid",
+        "field": "spec.goodputMeasurement",
+        "message": "Invalid value: goodputMeasurement is immutable"
+      },
+      {
+        "type": "FieldValueInvalid",
+        "field": "spec.nodeHealthMonitor",
+        "message": "Invalid value: nodeHealthMonitor is immutable"
+      }
+    ]
+  }
+}

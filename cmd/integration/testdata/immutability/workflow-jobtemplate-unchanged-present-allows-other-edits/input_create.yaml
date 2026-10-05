@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # The rules must not freeze the rest of a Workflow. Iterations change while the
-# job template's workloadMetadata is carried through untouched.
+# job template's immutable optional fields are carried through untouched.
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Workflow
 metadata:
@@ -14,6 +14,13 @@ spec:
       workloadMetadata:
         labels:
           kai.scheduler/queue: queue-a
+      nodeHealthMonitor:
+        cel:
+          expression: "node.spec.unschedulable == true"
+      goodputMeasurement:
+        logProfileRef: test-profile
+      bandwidthMeasurement:
+        logProfileRef: test-profile
       workload:
         trainJob:
           runtimeRef:
