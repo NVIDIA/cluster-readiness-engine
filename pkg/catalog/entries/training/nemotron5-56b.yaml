@@ -281,6 +281,7 @@ overrides:
           trainer:
             env:
 {{ lib "nccl/aws-gb200-efa-training-env.yaml" . | indent 12 }}
+{{ lib "nccl/aws-gb200-training-tuning-env.yaml" . | indent 12 }}
 # --- AWS + H100 (8 GPUs, TP=8) ---
 - when:
     platform:

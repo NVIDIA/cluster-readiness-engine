@@ -23,5 +23,7 @@
                     resources:
                       limits:
                         vpc.amazonaws.com/efa: 4
+                        hugepages-2Mi: 10256Mi
                       requests:
                         vpc.amazonaws.com/efa: 4
+                        hugepages-2Mi: 10256Mi
