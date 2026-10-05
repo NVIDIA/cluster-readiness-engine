@@ -73,6 +73,7 @@ func TestBuildWorkflowSpecPreservesOnlyConflictingTrainerEnv(t *testing.T) {
 			Image: "nvcr.io/nvidia/pytorch:24.01-py3",
 			Env: []corev1.EnvVar{
 				{Name: "NCCL_DEBUG", Value: "TRACE"},
+				{Name: "FI_PROVIDER", Value: "user-provider"},
 				{Name: "USER_ONLY", Value: "kept"},
 				{Name: "PET_NNODES", Value: "2"},
 			},
@@ -86,6 +87,18 @@ func TestBuildWorkflowSpecPreservesOnlyConflictingTrainerEnv(t *testing.T) {
 	workflow, err := BuildWorkflowSpec(run, 8, 0, false, "torch")
 	require.NoError(t, err)
 
+	// The contract is per name, not per patch: a platform patch that sets a name
+	// the user also set must carry the user's value, and no patch may carry a
+	// user-only name. Both are checked on every patch below.
+	//
+	// NCCL_DEBUG and FI_PROVIDER are both listed above so the first half cannot
+	// pass vacuously. Every platform fragment used to set NCCL_DEBUG, so naming
+	// it alone happened to exercise every patch; that is incidental, and the AWS
+	// EFA fragment sets FI_PROVIDER and no NCCL_DEBUG. Asserting the union below
+	// keeps the override path covered on both kinds of fragment.
+	wantUserWins := map[string]string{"NCCL_DEBUG": "TRACE", "FI_PROVIDER": "user-provider"}
+
+	seen := map[string]bool{}
 	var checked bool
 	for _, override := range workflow.Overrides {
 		if override.JobTemplate == nil {
@@ -105,12 +118,28 @@ func TestBuildWorkflowSpecPreservesOnlyConflictingTrainerEnv(t *testing.T) {
 		envJSON, err := json.Marshal(rawEnv)
 		require.NoError(t, err)
 		require.NoError(t, json.Unmarshal(envJSON, &env))
-		assertEnvValue(t, env, "NCCL_DEBUG", "TRACE")
+		for _, e := range env {
+			want, conflicts := wantUserWins[e.Name]
+			if !conflicts {
+				continue
+			}
+			require.Equal(t, want, e.Value,
+				"platform patch overwrote the user's %s", e.Name)
+			seen[e.Name] = true
+		}
 		assertNoEnvValue(t, env, "USER_ONLY")
 		assertNoEnvValue(t, env, "PET_NNODES")
 		checked = true
 	}
 	require.True(t, checked, "expected a generated platform trainer.env override")
+
+	// Every conflicting name must have been found on some patch. Without this,
+	// a fragment that stopped emitting a name would silently empty the loop
+	// above and the test would still pass.
+	for name := range wantUserWins {
+		require.True(t, seen[name],
+			"no platform trainer.env patch set %s, so user-env precedence went unchecked for it", name)
+	}
 }
 
 func nestedOverrideMap(root map[string]any, path ...string) (map[string]any, bool) {
