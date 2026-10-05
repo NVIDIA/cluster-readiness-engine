@@ -86,6 +86,10 @@ Key chart values:
 | `pdb.minAvailable` | `1` | Minimum ready controller pods during voluntary eviction; integer or percentage |
 | `metrics.port` | `8443` | Controller metrics port |
 | `metrics.serviceMonitor.enabled` | `true` | Install a `ServiceMonitor` (requires the Prometheus Operator CRDs; set to `false` on clusters without them) |
+| `metrics.serviceMonitor.honorLabels` | `true` | Keep the controller's `namespace`/`job` labels instead of overwriting them with scrape-target labels |
+| `metrics.serviceMonitor.labels` | `{release: prometheus}` | Extra ServiceMonitor labels for Prometheus Operator discovery. Override `release` to match your kube-prometheus-stack Helm release name |
+| `metrics.serviceMonitor.interval` | `""` | Optional scrape interval; empty uses the Prometheus default |
+| `metrics.serviceMonitor.scrapeTimeout` | `""` | Optional scrape timeout; empty uses the Prometheus default |
 
 ### Restricted egress and air-gapped installs
 
@@ -220,6 +224,7 @@ The controller's ClusterRole (`nvcre-manager-role`) is scoped to the resource ty
 | `persistentvolumes` | get, list, patch, watch | Checkpoint storage handling |
 | `events` | create, patch | Emit Kubernetes events |
 | `resource.k8s.io` ResourceClaimTemplates | create, delete, get, list, patch, update | RoCE/DRA network resources |
+| `resource.k8s.io` ResourceSlices | get, list, watch | GPU architecture fallback on DRA-only GPU stacks with no `nvidia.com/gpu.product` label |
 | `resource.nvidia.com` ComputeDomains | create, delete, get, list, patch, update | Multi-Node NVLink (MNNVL) domains |
 | `trainer.kubeflow.org` TrainingRuntimes, TrainJobs | create, delete, get, list, patch, update (TrainJobs also watch; `trainjobs/status` get) | Training workloads via Kubeflow Trainer |
 

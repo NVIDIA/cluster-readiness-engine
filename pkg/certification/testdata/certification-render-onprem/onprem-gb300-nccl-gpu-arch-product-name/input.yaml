@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# --gpu-arch given as a product name normalizes to gb300, so the synthetic node
+# must carry NVIDIA-gb300, not NVIDIA-NVIDIA-GB300, and the render must match
+# onprem-gb300-nccl-without-nic byte for byte.
+platform: onprem
+gpuArch: NVIDIA-GB300

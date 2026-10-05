@@ -18,6 +18,9 @@ import (
 // an explicit --timeout always wins; otherwise the timeout is derived from the
 // selected categories' catalog timeoutPerJob budgets (max across categories,
 // scaled by the queue-time margin), floored at the 30m flag default.
+// --wait timeout validation (1s floor; ignored without --wait) is covered by
+// TestValidateWaitTimeout (issue #409) and must not change this derivation
+// when --timeout is unset.
 func TestResolveWaitTimeout(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "resolve-wait-timeout",

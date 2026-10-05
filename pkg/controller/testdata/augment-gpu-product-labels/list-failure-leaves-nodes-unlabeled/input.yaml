@@ -1,0 +1,11 @@
+# A missing resourceslices RBAC grant (or an out-of-band, non-Helm install)
+# must degrade to "log and leave nodes unlabeled", not fail the reconcile.
+nodes:
+  - name: node1
+resourceSlices:
+  - nodeName: node1
+    driver: gpu.nvidia.com
+    devices:
+      - type: gpu
+        productName: NVIDIA-B200
+listError: true

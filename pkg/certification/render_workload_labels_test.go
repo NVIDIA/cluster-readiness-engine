@@ -62,14 +62,14 @@ func TestCertificationRenderWorkloadLabels(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		workflows, err := renderCertification(cert, cfg.Platform)
+		workflows, err := renderCertification(cert, cfg.Platform, "")
 		if err != nil {
 			return err
 		}
 
 		// A conflict case fails here rather than producing Workflows, so the
 		// error is the result and is recorded as such.
-		if resolveErr := resolveWorkflowsOffline(cert, workflows, cfg.Platform); resolveErr != nil {
+		if resolveErr := resolveWorkflowsOffline(cert, workflows, cfg.Platform, ""); resolveErr != nil {
 			tc.Actual = resolveErr.Error() + "\n"
 			return nil
 		}

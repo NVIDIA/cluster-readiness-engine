@@ -1,0 +1,3 @@
+set:
+  - metrics.serviceMonitor.labels.release=kube-prometheus
+  - metrics.serviceMonitor.labels.team=sre
