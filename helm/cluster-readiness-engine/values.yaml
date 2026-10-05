@@ -49,3 +49,20 @@ metrics:
     # The ServiceMonitor needs the Prometheus Operator CRDs
     # (monitoring.coreos.com/v1). Set to false on clusters without them.
     enabled: true
+    # Keep the controller's own namespace and job labels on each series.
+    # Without this, Prometheus prefers scrape-target labels and renames the
+    # metric labels to exported_namespace / exported_job, so PromQL filters
+    # on namespace/job match the controller Service instead of the Job.
+    # Set to false only if existing dashboards already query exported_*.
+    honorLabels: true
+    # Extra labels on the ServiceMonitor for Prometheus Operator discovery.
+    # kube-prometheus-stack selects ServiceMonitors with
+    # release: <prometheus-helm-release>. The default matches a Prometheus
+    # Helm release named "prometheus". Override or add labels to match your
+    # install.
+    labels:
+      release: prometheus
+    # Optional scrape interval (for example "30s"). Empty uses the Prometheus default.
+    interval: ""
+    # Optional scrape timeout (for example "10s"). Empty uses the Prometheus default.
+    scrapeTimeout: ""

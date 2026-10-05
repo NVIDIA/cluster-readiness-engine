@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# pflag parses negative durations; reject them instead of firing immediately.
+args:
+  - --wait
+  - --timeout=-1s

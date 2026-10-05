@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+	"github.com/prometheus/client_golang/prometheus"
 	promtest "github.com/prometheus/client_golang/prometheus/testutil"
 	"sigs.k8s.io/yaml"
 )
@@ -288,4 +289,142 @@ func TestCleanupTopologyMetrics(t *testing.T) {
 		tc.Actual = string(data) + "\n"
 		return nil
 	})
+}
+
+func TestRecordNCCLBandwidthMetrics(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "record-nccl-bandwidth-metrics",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			AlgBW            float64 `yaml:"algBW"`
+			BusBW            float64 `yaml:"busBW"`
+			MessageSizeBytes string  `yaml:"messageSizeBytes"`
+			NCCLTest         string  `yaml:"ncclTest"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		ns, meas, job, wf := testNS, "bm-"+tc.Name, "job-"+tc.Name, "wf-"+tc.Name
+		recordNCCLBandwidthMetrics(ns, meas, job, wf, input.NCCLTest, input.MessageSizeBytes, input.AlgBW, input.BusBW)
+		defer cleanupNCCLBandwidthMetrics(ns, meas, job, wf, input.NCCLTest, []string{input.MessageSizeBytes})
+
+		registered, values, err := gatherNCCLBandwidth(ns, meas)
+		if err != nil {
+			return err
+		}
+
+		data, err := json.MarshalIndent(struct {
+			Registered []string           `json:"registered"`
+			Values     map[string]float64 `json:"values"`
+		}{Registered: registered, Values: values}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
+func TestCleanupNCCLBandwidthMetrics(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "cleanup-nccl-bandwidth-metrics",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			AlgBW            float64 `yaml:"algBW"`
+			BusBW            float64 `yaml:"busBW"`
+			MessageSizeBytes string  `yaml:"messageSizeBytes"`
+			NCCLTest         string  `yaml:"ncclTest"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		ns, meas, job, wf := testNS, "bm-cleanup-"+tc.Name, "job-cleanup-"+tc.Name, "wf-cleanup-"+tc.Name
+		collectors := []struct {
+			name string
+			c    prometheus.Collector
+		}{
+			{metricNCCLAlgBW, ncclAlgBWGauge},
+			{metricNCCLBusBW, ncclBusBWGauge},
+			{metricNCCLAlgBWDeprecated, ncclAlgBWDeprecatedGauge},
+			{metricNCCLBusBWDeprecated, ncclBusBWDeprecatedGauge},
+		}
+
+		baseline := make(map[string]int, len(collectors))
+		for _, g := range collectors {
+			baseline[g.name] = promtest.CollectAndCount(g.c)
+		}
+
+		recordNCCLBandwidthMetrics(ns, meas, job, wf, input.NCCLTest, input.MessageSizeBytes, input.AlgBW, input.BusBW)
+
+		type seriesResult struct {
+			Name                        string `json:"name"`
+			GrewAfterRecording          bool   `json:"grewAfterRecording"`
+			RestoredToBaselineOnCleanup bool   `json:"restoredToBaselineOnCleanup"`
+		}
+		results := make([]seriesResult, len(collectors))
+		for i, g := range collectors {
+			results[i].Name = g.name
+			results[i].GrewAfterRecording = promtest.CollectAndCount(g.c) > baseline[g.name]
+		}
+
+		cleanupNCCLBandwidthMetrics(ns, meas, job, wf, input.NCCLTest, []string{input.MessageSizeBytes})
+
+		for i, g := range collectors {
+			results[i].RestoredToBaselineOnCleanup = promtest.CollectAndCount(g.c) == baseline[g.name]
+		}
+
+		data, err := json.MarshalIndent(results, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
+// gatherNCCLBandwidth returns sorted family names and per-family gauge values
+// for series matching namespace+measurement. A scratch registry is used so
+// WithLabelValues cannot create extra children while reading.
+func gatherNCCLBandwidth(namespace, measurement string) ([]string, map[string]float64, error) {
+	reg := prometheus.NewRegistry()
+	for _, c := range []prometheus.Collector{
+		ncclAlgBWGauge, ncclBusBWGauge, ncclAlgBWDeprecatedGauge, ncclBusBWDeprecatedGauge,
+	} {
+		if err := reg.Register(c); err != nil {
+			return nil, nil, err
+		}
+	}
+	mfs, err := reg.Gather()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	names := make([]string, 0, len(mfs))
+	values := make(map[string]float64, len(mfs))
+	for _, mf := range mfs {
+		name := mf.GetName()
+		names = append(names, name)
+		for _, m := range mf.GetMetric() {
+			nsMatch, measMatch := false, false
+			for _, lp := range m.GetLabel() {
+				if lp.GetName() == labelNamespace && lp.GetValue() == namespace {
+					nsMatch = true
+				}
+				if lp.GetName() == labelMeasurement && lp.GetValue() == measurement {
+					measMatch = true
+				}
+			}
+			if nsMatch && measMatch {
+				values[name] = m.GetGauge().GetValue()
+			}
+		}
+	}
+	sort.Strings(names)
+	return names, values, nil
 }
