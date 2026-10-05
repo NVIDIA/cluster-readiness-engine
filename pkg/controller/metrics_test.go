@@ -160,11 +160,9 @@ func TestRecordJobStatus(t *testing.T) {
 		recordJobStatus(ns, job, wf, input.Status)
 		defer cleanupJobMetrics(ns, job)
 
-		result := map[string]float64{
-			"in_progress": promtest.ToFloat64(jobStatusGauge.WithLabelValues(ns, job, wf, "in_progress")),
-			"succeeded":   promtest.ToFloat64(jobStatusGauge.WithLabelValues(ns, job, wf, "succeeded")),
-			"failed":      promtest.ToFloat64(jobStatusGauge.WithLabelValues(ns, job, wf, "failed")),
-		}
+		result := exclusiveStatusGaugeValues(func(status string) float64 {
+			return promtest.ToFloat64(jobStatusGauge.WithLabelValues(ns, job, wf, status))
+		})
 
 		data, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
@@ -199,6 +197,38 @@ func TestCleanupJobMetrics(t *testing.T) {
 		data, err := json.MarshalIndent(struct {
 			GaugeCount int `json:"gaugeCount"`
 		}{GaugeCount: count}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
+func exclusiveStatusGaugeValues(read func(status string) float64) map[string]float64 {
+	result := make(map[string]float64, len(exclusiveMetricStatuses))
+	for _, status := range exclusiveMetricStatuses {
+		result[status] = read(status)
+	}
+	return result
+}
+
+func TestMetricStatusFromCondition(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "metric-status-from-condition",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			ConditionType string `yaml:"conditionType"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		data, err := json.MarshalIndent(struct {
+			Status string `json:"status"`
+		}{Status: metricStatusFromCondition(input.ConditionType)}, "", "  ")
 		if err != nil {
 			return err
 		}

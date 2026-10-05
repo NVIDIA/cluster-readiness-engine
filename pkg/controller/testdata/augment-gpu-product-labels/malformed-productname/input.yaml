@@ -1,0 +1,11 @@
+# The device's productName attribute is present but not a string value
+# (e.g. a driver bug), so it must be skipped rather than injecting a bogus
+# label value.
+nodes:
+  - name: node1
+resourceSlices:
+  - nodeName: node1
+    driver: gpu.nvidia.com
+    devices:
+      - type: gpu
+        malformedProductName: true

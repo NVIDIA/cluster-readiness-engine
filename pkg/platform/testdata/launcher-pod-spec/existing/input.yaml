@@ -1,0 +1,14 @@
+name: launcher
+template:
+  metadata:
+    labels:
+      preserved: job
+  spec:
+    template:
+      metadata:
+        labels:
+          preserved: pod
+      spec:
+        containers:
+          - name: launcher
+            image: example/mpi:tag

@@ -23,6 +23,12 @@ const (
 	testNodeA = "node-a"
 	// testMetricGoodputRatio is the goodput ratio metric/result key.
 	testMetricGoodputRatio = "goodputRatio"
+	// testMetricStatusInProgress is the nvcre_*_status gauge value for InProgress.
+	testMetricStatusInProgress = "in_progress"
+	// testMetricStatusSucceeded is the nvcre_*_status gauge value for Succeeded.
+	testMetricStatusSucceeded = "succeeded"
+	// testMetricStatusFailed is the nvcre_*_status gauge value for Failed.
+	testMetricStatusFailed = "failed"
 	// testVariantNCCLAllReduce is a CertificateCategory variant used by fixtures.
 	testVariantNCCLAllReduce = "nccl-all-reduce"
 	// testNS is the namespace used by fixtures.
@@ -44,4 +50,6 @@ const (
 	testNilRef = "<nil>"
 	// testKindTrainJob is the workload Kind the Job tier creates.
 	testKindTrainJob = "TrainJob"
+	// testKindCertification is the Certification kind used by fixtures.
+	testKindCertification = "Certification"
 )

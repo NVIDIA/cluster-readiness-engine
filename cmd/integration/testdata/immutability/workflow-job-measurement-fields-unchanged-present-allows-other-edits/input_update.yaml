@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata: {name: imm-wf-measurements-present, namespace: default}
+spec:
+  jobTemplate:
+    spec:
+      nodeHealthMonitor: {cel: {expression: "node.spec.unschedulable == true"}}
+      goodputMeasurement: {logProfileRef: test-profile}
+      bandwidthMeasurement: {logProfileRef: test-profile}
+      workload: {trainJob: {runtimeRef: {kind: TrainingRuntime, name: test-runtime}}}
+  orchestration: {iterations: 3, target: {nodeSelector: {nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB}}}

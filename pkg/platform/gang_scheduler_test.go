@@ -93,6 +93,27 @@ func TestApplyGangSchedulerToDependencies(t *testing.T) {
 	})
 }
 
+func TestLauncherPodSpec(t *testing.T) {
+	p := &testutil.TestCaseParser{
+		Subdir:         "launcher-pod-spec",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var launcher map[string]any
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &launcher); err != nil {
+			return err
+		}
+		podSpec := launcherPodSpec(launcher)
+		podSpec["schedulerName"] = "kai-scheduler"
+		b, err := json.MarshalIndent(launcher, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
+}
+
 // projectDependency walks the mutated dependency with its own type assertions
 // rather than reusing the production nestedSlice helper, so a bug in that
 // walker cannot hide itself from the golden files.
