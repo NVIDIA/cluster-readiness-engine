@@ -1,0 +1,4 @@
+# No target nodes: nothing can qualify.
+platform: gcp
+gpuArchitecture: h100
+nodes: []

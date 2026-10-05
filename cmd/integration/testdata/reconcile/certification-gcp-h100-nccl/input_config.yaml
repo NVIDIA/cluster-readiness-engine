@@ -14,3 +14,11 @@ collect:
   - kind: Workflow
     name: gcp-nc-h1-communication-n-be79a
     namespace: default
+events:
+  # The nodes advertise no GKE networks, so detection falls back to the
+  # catalog's gpu-nic0..gpu-nic7 and says so with a Warning (issue #432).
+  - involvedKind: Certification
+    involvedName: gcp-nc-h1
+    namespace: default
+    expect:
+      - {type: Warning, reason: GKENetworkDetection}

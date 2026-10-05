@@ -1,0 +1,24 @@
+{
+  "detectionRan": true,
+  "networks": [
+    "vpc8",
+    "vpc7",
+    "vpc6",
+    "vpc5",
+    "vpc4",
+    "vpc3",
+    "vpc2",
+    "vpc1"
+  ],
+  "hostOrdered": true,
+  "shared": [
+    "vpc1",
+    "vpc2",
+    "vpc3",
+    "vpc4",
+    "vpc5",
+    "vpc6",
+    "vpc7",
+    "vpc8"
+  ]
+}

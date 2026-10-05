@@ -81,6 +81,8 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | GB300 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
 | H100 | AWS | EFA | `vpc.amazonaws.com/efa: 32`, no hugepages |
 | H100 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap |
+| H100 | GCP | TCPXO (FastRak) | `tcpxo-daemon` sidecar, `NCCL_FASTRAK_*` env, the 8 GPU NIC networks auto-detected from node allocatable (A3 Mega only, see [GCP H100 clusters](#gcp-h100-clusters)) |
+| GB200/GB300 | GCP | RoCE | `networking.gke.io.networks/rdma-0`..`rdma-3` (fixed network names), ComputeDomain |
 | RTX PRO 6000 Blackwell | GCP G4 | TCP over `eth0`, PCIe GPU peer-to-peer | Variable GPU count by G4 machine size; `nvidia.com/gpu=present:NoSchedule` toleration; no RDMA resource request |
 | GB200/GB300 | On-prem | InfiniBand | arm64/GPU taint tolerations, portable IB NCCL env (no HCA pinning), NIC resource auto-detected or set via `nicResourceName`, ComputeDomain |
 
@@ -145,3 +147,26 @@ spec:
 </Warning>
 
 Diagnostics (`dcgm-level4`) needs no on-prem override: it already tolerates all taints and runs intra-node, so it schedules on tainted arm64 nodes unchanged.
+
+## GCP H100 clusters
+
+On GCP H100, the override runs NCCL over GPUDirect-TCPXO. It adds a `tcpxo-daemon` sidecar, the `NCCL_FASTRAK_*` environment, and a `networking.gke.io/interfaces` pod annotation that attaches the pod to the node's eight GPU NIC networks as `eth1` through `eth8`. GKE looks up each network in that annotation as a `Network` object when the pod is admitted, and rejects the pod if one is missing. The names are chosen by whoever provisions the cluster: AICR names them `<deployment-id>-gpu-nic-0` through `-7`, and Google's samples use `vpc1` through `vpc8`.
+
+So the controller reads the names from the target nodes rather than assuming them. GKE advertises an extended resource `networking.gke.io.networks/<network>` on every node attached to a network:
+
+- **Which networks.** The controller uses the networks advertised on every target node, and only when there are exactly eight of them. It ignores the `<network>.IP` resources and the `default` network.
+- **Which order.** When the nodes' `networking.gke.io/north-interfaces` and `networking.gke.io/nic-info` annotations place each network on a host NIC, and all nodes agree, the pod's `eth1` carries the same network as the host's `eth1`, and so on. Otherwise the names are sorted.
+- **When detection fails.** Detection never guesses. With any count other than eight, the controller renders the default names `gpu-nic0` through `gpu-nic7` and emits a Warning `GKENetworkDetection` event on the Certification listing what it found. Causes include no multi-networking, a network missing from one node, a ninth network on every node, or an A3 High pool. GKE rejects the resulting pods unless the cluster has `Network` objects with those default names.
+
+To see what the nodes advertise, list the networks and a GPU node's allocatable resources:
+
+```bash
+kubectl get networks.networking.gke.io
+kubectl get node <gpu-node> -o jsonpath='{.status.allocatable}'
+```
+
+Offline `nvcrectl certification render` has no nodes to inspect, so it renders the default names. With `--dry-run`, detection runs against the real nodes and prints the networks it found, or why it fell back, to stderr.
+
+<Note>
+Only A3 Mega (`a3-megagpu-8g`) is supported. A3 High (`a3-highgpu-8g`) is also H100, but it uses GPUDirect-TCPX with four GPU NICs, which this override does not configure. Both report `nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3`, so the override cannot tell them apart. The eight-network rule is what flags an A3 High target.
+</Note>

@@ -53,6 +53,12 @@ type BuildConfig struct {
 	// comes from MlnxPerNode.
 	NicResourceName string
 
+	// GKETCPXONetworks are the GKE Network names the GCP H100 TCPXO patch
+	// attaches to the pod as eth1..eth8, in that order. The controller
+	// detects them from node allocatable; empty means the templates render
+	// DefaultGKETCPXONetworks.
+	GKETCPXONetworks []string
+
 	// Resources overrides the CPU and memory of training containers.
 	// Nil (or nil sub-fields) means the training entries keep their
 	// DGX-class defaults (limits: cpu 128 / memory 800Gi; requests:

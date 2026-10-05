@@ -1,15 +1,20 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# KWOK-simulated GCP H100 GPU nodes (a3-highgpu-8g).
+# KWOK-simulated GCP H100 GPU nodes (a3-megagpu-8g, A3 Mega).
 #
 # Key labels for NVCRE detection:
 #   nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3  -> GPU arch "h100"
 #   nvidia.com/gpu.present: "true"                  -> nvcrectl GPU discovery
 #   spec.providerID: "gce://..."                    -> platform "gcp" (workflow_detect.go)
 #
-# Modeled after real GKE a3-highgpu-8g nodes from nodes.yaml.
-# Includes networking.gke.io multi-NIC resources required by TCPXO/FastRak overrides.
+# Modeled after real GKE a3-megagpu-8g nodes, the only H100 shape the TCPXO
+# override supports (A3 High uses TCPX with four NICs). The eight GPU NIC
+# networks carry a provisioner-chosen prefix, as AICR names them
+# ("<deployment-id>-gpu-nic-N"), rather than the catalog's default
+# gpu-nic0..gpu-nic7, so the run exercises network detection: the controller
+# reads them from allocatable and orders them by host NIC using the
+# north-interfaces and nic-info annotations GKE writes (issue #432).
 ---
 apiVersion: v1
 kind: Node
@@ -17,6 +22,8 @@ metadata:
   name: gcp-h100-node-01
   annotations:
     kwok.x-k8s.io/node: fake
+    networking.gke.io/north-interfaces: '[{"network":"nvcre-uat-gpu-nic-0","ipAddress":"192.168.0.3"},{"network":"nvcre-uat-gpu-nic-1","ipAddress":"192.168.16.3"},{"network":"nvcre-uat-gpu-nic-2","ipAddress":"192.168.32.3"},{"network":"nvcre-uat-gpu-nic-3","ipAddress":"192.168.48.3"},{"network":"nvcre-uat-gpu-nic-4","ipAddress":"192.168.64.3"},{"network":"nvcre-uat-gpu-nic-5","ipAddress":"192.168.80.3"},{"network":"nvcre-uat-gpu-nic-6","ipAddress":"192.168.96.3"},{"network":"nvcre-uat-gpu-nic-7","ipAddress":"192.168.112.3"}]'
+    networking.gke.io/nic-info: '[{"birthIP":"10.0.0.15","pciAddress":"0000:00:0c.0","birthName":"eth0"},{"birthIP":"192.168.0.3","pciAddress":"0000:06:00.0","birthName":"eth1"},{"birthIP":"192.168.16.3","pciAddress":"0000:07:00.0","birthName":"eth2"},{"birthIP":"192.168.32.3","pciAddress":"0000:0d:00.0","birthName":"eth3"},{"birthIP":"192.168.48.3","pciAddress":"0000:0e:00.0","birthName":"eth4"},{"birthIP":"192.168.64.3","pciAddress":"0000:86:00.0","birthName":"eth5"},{"birthIP":"192.168.80.3","pciAddress":"0000:87:00.0","birthName":"eth6"},{"birthIP":"192.168.96.3","pciAddress":"0000:8d:00.0","birthName":"eth7"},{"birthIP":"192.168.112.3","pciAddress":"0000:8e:00.0","birthName":"eth8"}]'
   labels:
     kubernetes.io/arch: amd64
     kubernetes.io/hostname: gcp-h100-node-01
@@ -26,7 +33,8 @@ metadata:
     nvidia.com/gpu.count: "8"
     nvidia.com/gpu.family: hopper
     nvidia.com/gpu.machine: Google-Compute-Engine
-    node.kubernetes.io/instance-type: a3-highgpu-8g
+    node.kubernetes.io/instance-type: a3-megagpu-8g
+    cloud.google.com/gke-accelerator: nvidia-h100-mega-80gb
 spec:
   providerID: "gce://nv-dgxck8s-test/us-east5-a/gcp-h100-node-01"
 status:
@@ -34,44 +42,44 @@ status:
     cpu: "208"
     ephemeral-storage: 6238618200Ki
     memory: 1932087948Ki
-    networking.gke.io.networks/gpu-nic0: "1"
-    networking.gke.io.networks/gpu-nic0.IP: "1"
-    networking.gke.io.networks/gpu-nic1: "1"
-    networking.gke.io.networks/gpu-nic1.IP: "1"
-    networking.gke.io.networks/gpu-nic2: "1"
-    networking.gke.io.networks/gpu-nic2.IP: "1"
-    networking.gke.io.networks/gpu-nic3: "1"
-    networking.gke.io.networks/gpu-nic3.IP: "1"
-    networking.gke.io.networks/gpu-nic4: "1"
-    networking.gke.io.networks/gpu-nic4.IP: "1"
-    networking.gke.io.networks/gpu-nic5: "1"
-    networking.gke.io.networks/gpu-nic5.IP: "1"
-    networking.gke.io.networks/gpu-nic6: "1"
-    networking.gke.io.networks/gpu-nic6.IP: "1"
-    networking.gke.io.networks/gpu-nic7: "1"
-    networking.gke.io.networks/gpu-nic7.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-0: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-0.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-1: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-1.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-2: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-2.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-3: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-3.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-4: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-4.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-5: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-5.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-6: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-6.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-7: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-7.IP: "1"
     nvidia.com/gpu: "8"
     pods: "110"
   allocatable:
     cpu: 207410m
     ephemeral-storage: "5642136341201"
     memory: 1885805196Ki
-    networking.gke.io.networks/gpu-nic0: "1"
-    networking.gke.io.networks/gpu-nic0.IP: "1"
-    networking.gke.io.networks/gpu-nic1: "1"
-    networking.gke.io.networks/gpu-nic1.IP: "1"
-    networking.gke.io.networks/gpu-nic2: "1"
-    networking.gke.io.networks/gpu-nic2.IP: "1"
-    networking.gke.io.networks/gpu-nic3: "1"
-    networking.gke.io.networks/gpu-nic3.IP: "1"
-    networking.gke.io.networks/gpu-nic4: "1"
-    networking.gke.io.networks/gpu-nic4.IP: "1"
-    networking.gke.io.networks/gpu-nic5: "1"
-    networking.gke.io.networks/gpu-nic5.IP: "1"
-    networking.gke.io.networks/gpu-nic6: "1"
-    networking.gke.io.networks/gpu-nic6.IP: "1"
-    networking.gke.io.networks/gpu-nic7: "1"
-    networking.gke.io.networks/gpu-nic7.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-0: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-0.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-1: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-1.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-2: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-2.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-3: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-3.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-4: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-4.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-5: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-5.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-6: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-6.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-7: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-7.IP: "1"
     nvidia.com/gpu: "8"
     pods: "110"
   conditions:
@@ -87,6 +95,8 @@ metadata:
   name: gcp-h100-node-02
   annotations:
     kwok.x-k8s.io/node: fake
+    networking.gke.io/north-interfaces: '[{"network":"nvcre-uat-gpu-nic-0","ipAddress":"192.168.0.3"},{"network":"nvcre-uat-gpu-nic-1","ipAddress":"192.168.16.3"},{"network":"nvcre-uat-gpu-nic-2","ipAddress":"192.168.32.3"},{"network":"nvcre-uat-gpu-nic-3","ipAddress":"192.168.48.3"},{"network":"nvcre-uat-gpu-nic-4","ipAddress":"192.168.64.3"},{"network":"nvcre-uat-gpu-nic-5","ipAddress":"192.168.80.3"},{"network":"nvcre-uat-gpu-nic-6","ipAddress":"192.168.96.3"},{"network":"nvcre-uat-gpu-nic-7","ipAddress":"192.168.112.3"}]'
+    networking.gke.io/nic-info: '[{"birthIP":"10.0.0.15","pciAddress":"0000:00:0c.0","birthName":"eth0"},{"birthIP":"192.168.0.3","pciAddress":"0000:06:00.0","birthName":"eth1"},{"birthIP":"192.168.16.3","pciAddress":"0000:07:00.0","birthName":"eth2"},{"birthIP":"192.168.32.3","pciAddress":"0000:0d:00.0","birthName":"eth3"},{"birthIP":"192.168.48.3","pciAddress":"0000:0e:00.0","birthName":"eth4"},{"birthIP":"192.168.64.3","pciAddress":"0000:86:00.0","birthName":"eth5"},{"birthIP":"192.168.80.3","pciAddress":"0000:87:00.0","birthName":"eth6"},{"birthIP":"192.168.96.3","pciAddress":"0000:8d:00.0","birthName":"eth7"},{"birthIP":"192.168.112.3","pciAddress":"0000:8e:00.0","birthName":"eth8"}]'
   labels:
     kubernetes.io/arch: amd64
     kubernetes.io/hostname: gcp-h100-node-02
@@ -96,7 +106,8 @@ metadata:
     nvidia.com/gpu.count: "8"
     nvidia.com/gpu.family: hopper
     nvidia.com/gpu.machine: Google-Compute-Engine
-    node.kubernetes.io/instance-type: a3-highgpu-8g
+    node.kubernetes.io/instance-type: a3-megagpu-8g
+    cloud.google.com/gke-accelerator: nvidia-h100-mega-80gb
 spec:
   providerID: "gce://nv-dgxck8s-test/us-east5-a/gcp-h100-node-02"
 status:
@@ -104,44 +115,44 @@ status:
     cpu: "208"
     ephemeral-storage: 6238618200Ki
     memory: 1932087948Ki
-    networking.gke.io.networks/gpu-nic0: "1"
-    networking.gke.io.networks/gpu-nic0.IP: "1"
-    networking.gke.io.networks/gpu-nic1: "1"
-    networking.gke.io.networks/gpu-nic1.IP: "1"
-    networking.gke.io.networks/gpu-nic2: "1"
-    networking.gke.io.networks/gpu-nic2.IP: "1"
-    networking.gke.io.networks/gpu-nic3: "1"
-    networking.gke.io.networks/gpu-nic3.IP: "1"
-    networking.gke.io.networks/gpu-nic4: "1"
-    networking.gke.io.networks/gpu-nic4.IP: "1"
-    networking.gke.io.networks/gpu-nic5: "1"
-    networking.gke.io.networks/gpu-nic5.IP: "1"
-    networking.gke.io.networks/gpu-nic6: "1"
-    networking.gke.io.networks/gpu-nic6.IP: "1"
-    networking.gke.io.networks/gpu-nic7: "1"
-    networking.gke.io.networks/gpu-nic7.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-0: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-0.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-1: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-1.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-2: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-2.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-3: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-3.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-4: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-4.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-5: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-5.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-6: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-6.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-7: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-7.IP: "1"
     nvidia.com/gpu: "8"
     pods: "110"
   allocatable:
     cpu: 207410m
     ephemeral-storage: "5642136341201"
     memory: 1885805180Ki
-    networking.gke.io.networks/gpu-nic0: "1"
-    networking.gke.io.networks/gpu-nic0.IP: "1"
-    networking.gke.io.networks/gpu-nic1: "1"
-    networking.gke.io.networks/gpu-nic1.IP: "1"
-    networking.gke.io.networks/gpu-nic2: "1"
-    networking.gke.io.networks/gpu-nic2.IP: "1"
-    networking.gke.io.networks/gpu-nic3: "1"
-    networking.gke.io.networks/gpu-nic3.IP: "1"
-    networking.gke.io.networks/gpu-nic4: "1"
-    networking.gke.io.networks/gpu-nic4.IP: "1"
-    networking.gke.io.networks/gpu-nic5: "1"
-    networking.gke.io.networks/gpu-nic5.IP: "1"
-    networking.gke.io.networks/gpu-nic6: "1"
-    networking.gke.io.networks/gpu-nic6.IP: "1"
-    networking.gke.io.networks/gpu-nic7: "1"
-    networking.gke.io.networks/gpu-nic7.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-0: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-0.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-1: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-1.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-2: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-2.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-3: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-3.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-4: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-4.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-5: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-5.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-6: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-6.IP: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-7: "1"
+    networking.gke.io.networks/nvcre-uat-gpu-nic-7.IP: "1"
     nvidia.com/gpu: "8"
     pods: "110"
   conditions:

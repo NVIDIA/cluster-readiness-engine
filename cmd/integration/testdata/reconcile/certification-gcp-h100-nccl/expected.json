@@ -583,5 +583,27 @@
         ]
       }
     }
-  }
+  },
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "WorkflowCreated",
+      "message": "Created Workflow for category communication/nccl-all-reduce (1 of 1)",
+      "involvedObject": {
+        "kind": "Certification",
+        "name": "gcp-nc-h1"
+      },
+      "count": 1
+    },
+    {
+      "type": "Warning",
+      "reason": "GKENetworkDetection",
+      "message": "GKE TCPXO network auto-detection found no networking.gke.io.networks/* resource allocatable on every target node, but TCPXO needs 8 GPU NIC networks per node (a3-megagpu-8g); rendering the default networks gpu-nic0..gpu-nic7 instead; GKE rejects the pods unless Network objects with those names exist.",
+      "involvedObject": {
+        "kind": "Certification",
+        "name": "gcp-nc-h1"
+      },
+      "count": 1
+    }
+  ]
 }
