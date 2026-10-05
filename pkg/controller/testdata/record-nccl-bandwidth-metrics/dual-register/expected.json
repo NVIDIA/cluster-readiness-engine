@@ -1,0 +1,14 @@
+{
+  "registered": [
+    "nvcre_nccl_algbw_gbps",
+    "nvcre_nccl_algbw_gbs",
+    "nvcre_nccl_busbw_gbps",
+    "nvcre_nccl_busbw_gbs"
+  ],
+  "values": {
+    "nvcre_nccl_algbw_gbps": 15.41,
+    "nvcre_nccl_algbw_gbs": 15.41,
+    "nvcre_nccl_busbw_gbps": 29.87,
+    "nvcre_nccl_busbw_gbs": 29.87
+  }
+}

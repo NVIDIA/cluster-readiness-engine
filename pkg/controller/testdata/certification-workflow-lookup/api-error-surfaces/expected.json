@@ -1,0 +1,30 @@
+{
+  "passes": [
+    {
+      "requeueAfter": "0s",
+      "error": "failed to confirm Workflow cert-workflow-0: connection refused",
+      "categories": [
+        {
+          "status": "InProgress",
+          "workflowRef": "cert-workflow-0"
+        },
+        {
+          "status": "Pending",
+          "workflowRef": "\u003cnil\u003e"
+        }
+      ],
+      "workflowsInCluster": 0
+    }
+  ],
+  "apiReads": 1,
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "True",
+      "lastTransitionTime": null,
+      "reason": "WorkflowCreated",
+      "message": "Created Workflow for category 1 of 2"
+    }
+  ],
+  "events": []
+}

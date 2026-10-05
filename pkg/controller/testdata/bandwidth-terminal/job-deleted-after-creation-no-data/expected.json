@@ -1,0 +1,18 @@
+{
+  "requeue": false,
+  "conditions": [
+    {
+      "type": "Measuring",
+      "status": "False",
+      "reason": "LogsUnavailable",
+      "message": "Referenced Job no longer exists; no bandwidth data was parsed"
+    },
+    {
+      "type": "Complete",
+      "status": "True",
+      "reason": "LogsUnavailable",
+      "message": "Referenced Job no longer exists; no bandwidth data was parsed"
+    }
+  ],
+  "completionTime": "reconcile time"
+}

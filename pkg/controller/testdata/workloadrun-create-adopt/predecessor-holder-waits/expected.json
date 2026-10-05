@@ -1,0 +1,20 @@
+{
+  "passes": [
+    {
+      "requeueAfter": "15s",
+      "workflowRef": "\u003cnil\u003e"
+    },
+    {
+      "requeueAfter": "15s",
+      "workflowRef": "\u003cnil\u003e"
+    },
+    {
+      "requeueAfter": "15s",
+      "workflowRef": "\u003cnil\u003e"
+    }
+  ],
+  "finalWorkflowRef": "\u003cnil\u003e",
+  "boundToOwnWorkflow": false,
+  "conditions": null,
+  "events": []
+}

@@ -50,6 +50,7 @@ func NewWorkflowCommand() *cobra.Command {
 	return cmd
 }
 
+// newRenderCommand configures offline workflow rendering and cluster dry-run validation.
 func newRenderCommand() *cobra.Command {
 	var platform string
 	var gpuArch string
@@ -95,7 +96,7 @@ anything.`,
 	}
 
 	cmd.Flags().StringVar(&platform, "platform", "", "Target platform (aws, gcp, azure, oci, mistral, onprem, forge)")
-	cmd.Flags().StringVar(&gpuArch, "gpu-arch", "", "Target GPU architecture (h100, h200, b200, gb200, gb300, a100, l40s, l40; mock templates: h100, gb200, gb300)")
+	cmd.Flags().StringVar(&gpuArch, "gpu-arch", "", "Target GPU architecture (h100, h200, b200, gb200, gb300, a100, l40s, l40, rtxpro6000; mock templates: h100, gb200, gb300, rtxpro6000)")
 	cmd.Flags().StringVar(&nodesFile, "nodes-file", "",
 		"Custom nodes YAML file (mutually exclusive with --platform/--gpu-arch)")
 	cmd.Flags().StringVar(&outputFormat, "output", "yaml", "Output format: yaml or json")
@@ -419,8 +420,11 @@ func DryRunCreate(ctx context.Context, c client.Client, namespace string,
 		Operator: corev1.TolerationOpExists,
 	}})
 
-	// Set default node health monitor if nil.
-	if specCopy.NodeHealthMonitor == nil {
+	// When taintSelectors targets the unschedulable taint, clear NodeHealthMonitor
+	// so the dry-run validates the same Job the controller actually creates.
+	if controller.TargetsCordonedNodes(spec.Orchestration.Target) {
+		specCopy.NodeHealthMonitor = nil
+	} else if specCopy.NodeHealthMonitor == nil {
 		specCopy.NodeHealthMonitor = &nvcrev1alpha1.NodeHealthMonitor{
 			CEL: &nvcrev1alpha1.CELNodeHealthCheck{
 				Expression: `node.spec.unschedulable == true`,

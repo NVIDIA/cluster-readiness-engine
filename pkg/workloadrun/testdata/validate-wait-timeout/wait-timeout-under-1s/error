@@ -1,0 +1,1 @@
+--timeout must be at least 1s when --wait is set, got 1ms

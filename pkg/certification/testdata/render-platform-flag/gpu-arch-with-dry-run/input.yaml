@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# --dry-run detects the architecture from real nodes, so --gpu-arch with it is
+# rejected before the certification file is read or a kubeconfig is loaded, even
+# when the value is not a valid architecture.
+gpuArch: gb2OO
+dryRun: true

@@ -1,0 +1,172 @@
+metadata:
+  annotations:
+    batch.kubernetes.io/job-completion-index: "0"
+    jobset.sigs.k8s.io/global-replicas: "1"
+    jobset.sigs.k8s.io/group-name: default
+    jobset.sigs.k8s.io/group-replicas: "1"
+    jobset.sigs.k8s.io/job-global-index: "0"
+    jobset.sigs.k8s.io/job-group-index: "0"
+    jobset.sigs.k8s.io/job-index: "0"
+    jobset.sigs.k8s.io/jobset-name: aws-h100-cordoned-node-co-9a3eb-job-workload
+    jobset.sigs.k8s.io/replicatedjob-name: node
+    jobset.sigs.k8s.io/replicatedjob-replicas: "1"
+    jobset.sigs.k8s.io/restart-attempt: "0"
+  finalizers:
+  - batch.kubernetes.io/job-tracking
+  generateName: aws-h100-cordoned-node-co-9a3eb-job-workload-node-0-0-
+  labels:
+    batch.kubernetes.io/job-completion-index: "0"
+    batch.kubernetes.io/job-name: aws-h100-cordoned-node-co-9a3eb-job-workload-node-0
+    job-name: aws-h100-cordoned-node-co-9a3eb-job-workload-node-0
+    jobset.sigs.k8s.io/global-replicas: "1"
+    jobset.sigs.k8s.io/group-name: default
+    jobset.sigs.k8s.io/group-replicas: "1"
+    jobset.sigs.k8s.io/job-global-index: "0"
+    jobset.sigs.k8s.io/job-group-index: "0"
+    jobset.sigs.k8s.io/job-index: "0"
+    jobset.sigs.k8s.io/jobset-name: aws-h100-cordoned-node-co-9a3eb-job-workload
+    jobset.sigs.k8s.io/priority: "0"
+    jobset.sigs.k8s.io/replicatedjob-name: node
+    jobset.sigs.k8s.io/replicatedjob-replicas: "1"
+    jobset.sigs.k8s.io/restart-attempt: "0"
+    nvcre.nvidia.com/job: aws-h100-cordoned-node-co-9a3eb-job
+  ownerReferences:
+  - apiVersion: batch/v1
+    blockOwnerDeletion: true
+    controller: true
+    kind: Job
+    name: aws-h100-cordoned-node-co-9a3eb-job-workload-node-0
+    uid: ""
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.io/hostname
+            operator: In
+            values:
+            - aws-h100-cordoned-node-01
+  containers:
+  - args:
+    - -b
+    - "8"
+    - -e
+    - 16G
+    - -f
+    - "2"
+    - -g
+    - "8"
+    - -n
+    - "10"
+    - -N
+    - "2"
+    command:
+    - /opt/nccl-tests/build/all_reduce_perf
+    env:
+    - name: NCCL_DEBUG
+      value: INFO
+    - name: NCCL_SHM_DISABLE
+      value: "1"
+    - name: NCCL_P2P_DISABLE
+      value: "1"
+    - name: FI_EFA_USE_DEVICE_RDMA
+      value: "1"
+    - name: FI_PROVIDER
+      value: efa
+    - name: NCCL_SOCKET_IFNAME
+      value: eth0
+    - name: PATH
+      value: $PATH:/opt/amazon/efa/bin:/usr/bin
+    - name: NCCL_MNNVL_ENABLE
+      value: "0"
+    - name: PET_NNODES
+      value: "1"
+    - name: PET_NPROC_PER_NODE
+      value: "1"
+    - name: PET_NODE_RANK
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
+    - name: PET_MASTER_ADDR
+      value: aws-h100-cordoned-node-co-9a3eb-job-workload-node-0-0.aws-h100-cordoned-node-co-9a3eb-job-workload
+    - name: PET_MASTER_PORT
+      value: "29500"
+    - name: JOB_COMPLETION_INDEX
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: metadata.labels['batch.kubernetes.io/job-completion-index']
+    image: public.ecr.aws/hpc-cloud/nccl-tests:cuda12.8.1-efa1.43.2-ofiv1.16.3-ncclv2.27.7-1-testsv2.16.9
+    imagePullPolicy: IfNotPresent
+    name: node
+    ports:
+    - containerPort: 29500
+      protocol: TCP
+    resources:
+      limits:
+        nvidia.com/gpu: "8"
+        vpc.amazonaws.com/efa: "32"
+      requests:
+        nvidia.com/gpu: "8"
+        vpc.amazonaws.com/efa: "32"
+    securityContext:
+      capabilities:
+        add:
+        - IPC_LOCK
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /dev/shm
+      name: dshm
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access
+      readOnly: true
+  dnsPolicy: ClusterFirst
+  enableServiceLinks: true
+  hostname: aws-h100-cordoned-node-co-9a3eb-job-workload-node-0-0
+  preemptionPolicy: PreemptLowerPriority
+  priority: 0
+  restartPolicy: OnFailure
+  schedulerName: default-scheduler
+  securityContext: {}
+  serviceAccount: default
+  serviceAccountName: default
+  subdomain: aws-h100-cordoned-node-co-9a3eb-job-workload
+  terminationGracePeriodSeconds: 30
+  tolerations:
+  - effect: NoSchedule
+    key: node.kubernetes.io/unschedulable
+    operator: Exists
+  - effect: NoExecute
+    key: node.kubernetes.io/not-ready
+    operator: Exists
+    tolerationSeconds: 300
+  - effect: NoExecute
+    key: node.kubernetes.io/unreachable
+    operator: Exists
+    tolerationSeconds: 300
+  volumes:
+  - emptyDir:
+      medium: Memory
+    name: dshm
+  - name: kube-api-access
+    projected:
+      defaultMode: 420
+      sources:
+      - serviceAccountToken:
+          expirationSeconds: 3607
+          path: token
+      - configMap:
+          items:
+          - key: ca.crt
+            path: ca.crt
+          name: kube-root-ca.crt
+      - downwardAPI:
+          items:
+          - fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+            path: namespace
+status: {}

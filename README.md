@@ -12,7 +12,7 @@ NVCRE is for platform and infrastructure teams that bring up, validate, or resel
 ## Features
 
 - A certification catalog with NCCL communication tests and multi-node training workloads
-- Platform detection (AWS, GCP, Azure, OCI, nscale, TogetherAI, Mistral, Forge, on-prem) and GPU architecture detection (GB200, GB300, H100, H200, B200, A100, L40S, L40)
+- Platform detection (AWS, GCP, Azure, OCI, nscale, TogetherAI, Mistral, Forge, on-prem) and GPU architecture detection (GB200, GB300, H100, H200, B200, A100, L40S, L40, RTX PRO 6000 Blackwell)
 - Goodput measurement parsed from training logs with configurable LogProfile patterns
 - Per-bus bandwidth measurement parsed from NCCL logs
 - Node health monitoring with CEL expressions while workloads run
@@ -251,10 +251,6 @@ NVCRE certifies clusters with burn-in workloads and reports the nodes that fail.
 - [GOVERNANCE.md](GOVERNANCE.md) and [MAINTAINERS.md](MAINTAINERS.md) describe who decides what.
 - [RELEASE.md](RELEASE.md) describes how a release is cut and how to verify one.
 - [SECURITY.md](SECURITY.md) describes how to report a vulnerability.
-
-## Roadmap
-
-- Declarative labels on generated workload objects, so placement systems such as Kueue and KAI Scheduler can select a queue from the workload's metadata, designed in [ADR-079](docs/designs/079-workload-object-labels.md).
 
 ## Community
 

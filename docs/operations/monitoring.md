@@ -20,11 +20,14 @@ kind: ServiceMonitor
 metadata:
   name: nvcre-metrics-monitor
   namespace: nvcre
+  labels:
+    release: prometheus
 spec:
   endpoints:
     - path: /metrics
       port: https
       scheme: https
+      honorLabels: true
       bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
       tlsConfig:
         insecureSkipVerify: true  # Use cert-manager in production
@@ -32,6 +35,8 @@ spec:
     matchLabels:
       control-plane: manager
 ```
+
+`honorLabels: true` (chart default `metrics.serviceMonitor.honorLabels`) keeps the controller's own `namespace` and `job` labels, so the alerts and PromQL examples on this page filter the Certification Job rather than the scrape target. Set `metrics.serviceMonitor.honorLabels=false` only if existing dashboards already query `exported_namespace` / `exported_job`. Override discovery labels with `metrics.serviceMonitor.labels` (default `release: prometheus` for kube-prometheus-stack), and optionally set `metrics.serviceMonitor.interval` / `metrics.serviceMonitor.scrapeTimeout`. The full set of knobs is in `helm/cluster-readiness-engine/values.yaml`; see [Deployment](./deployment.md) for the key-values table.
 
 Verify it is installed:
 
@@ -51,8 +56,8 @@ The table below highlights the most important metrics. See the [Metrics Referenc
 | `nvcre_reconcile_duration_seconds` | Histogram | How long each reconcile loop takes |
 | `nvcre_reconcile_total` | Counter | Reconcile attempts by result (success, error, requeue) |
 | `nvcre_goodput_ratio` | Gauge | Training efficiency from 0.0 to 1.0 |
-| `nvcre_nccl_algbw_gbps` | Gauge | NCCL algorithmic bandwidth in GB/s per message size |
-| `nvcre_nccl_busbw_gbps` | Gauge | NCCL bus bandwidth in GB/s per message size |
+| `nvcre_nccl_algbw_gbs` | Gauge | NCCL algorithmic bandwidth in GB/s per message size |
+| `nvcre_nccl_busbw_gbs` | Gauge | NCCL bus bandwidth in GB/s per message size |
 | `nvcre_topology_validated_nodes` | Gauge | Nodes that passed validation per topology domain |
 
 ## Structured logging

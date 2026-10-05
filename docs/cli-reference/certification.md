@@ -25,7 +25,7 @@ nvcrectl certification run --category communication/nccl-all-reduce [flags]
 | `--setup` | `false` | Install CRDs, controller, and LogProfiles before creating the certification |
 | `--image` | — | Controller image for `--setup` (default: `ghcr.io/nvidia/cluster-readiness-engine/manager:<version>`) |
 | `--wait` | `false` | Block until the certification completes and print a report |
-| `--timeout` | derived | Timeout for `--wait`. When not set, derived from the selected categories' `timeoutPerJob` budgets (max across categories × iterations × 1.5), floored at `30m`; the CLI prints the derived value when the watch starts. An explicit value always wins. On timeout, the CLI prints a partial report and leaves the Certification running unless `--cleanup` is set. |
+| `--timeout` | derived | Timeout for `--wait`. Ignored without `--wait`. When `--wait` is set, must be at least `1s`. When not set, derived from the selected categories' `timeoutPerJob` budgets (max across categories × iterations × 1.5), floored at `30m`; the CLI prints the derived value when the watch starts. An explicit value always wins. On timeout, the CLI prints a partial report and leaves the Certification running unless `--cleanup` is set. |
 | `--cleanup` | `false` | Delete the certification, namespace, and installed components after completion |
 | `--nodes-per-job` | `0` | Nodes per job (0 = auto-select) |
 | `--gpus-per-node` | `0` | GPUs per node (0 = auto-detect from GPU architecture) |
@@ -76,10 +76,11 @@ nvcrectl certification render [flags] <cert-file>
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--platform` | auto | Override platform detection (`aws`, `gcp`, `azure`, `oci`, `onprem`, `togetherai`, `mistral`, `forge`, `nscale`) |
+| `--gpu-arch` | none | GPU architecture for offline render, e.g. `gb300` or the product name `NVIDIA-GB300`; an unknown architecture is rejected with the valid list. Use it for a DRA-only GPU stack whose nodes carry no `nvidia.com/gpu.product` label. Wins over the target `nodeSelector`'s label when set; cannot be combined with `--dry-run`, which detects the architecture from real nodes. |
 | `--dry-run` | `false` | Validate against the live API server without creating resources |
 | `--output` | `yaml` | Output format: `yaml` or `json` |
 
-A Certification that sets `spec.gangScheduler` has that applied to the rendered output too: the scheduler name and the queue label (`gangScheduler.queueLabelKey`, `kai.scheduler/queue` when unset; `runai/queue` on a Run:ai cluster) appear in the rendered manifests on both the Job template and the pod template metadata, so what you inspect matches what the controller creates. There is no flag for it; the field is set in the Certification YAML.
+A Certification that sets `spec.gangScheduler` has that applied to the rendered output too: the scheduler name and the queue label (`gangScheduler.queueLabelKey`, `kai.scheduler/queue` when unset; `runai/queue` on a Run:ai cluster) appear in the rendered manifests on the submitted workload object, on the Job template, and on the pod template metadata, so what you inspect matches what the controller creates. There is no flag for it; the field is set in the Certification YAML.
 
 ## nvcrectl certification report
 

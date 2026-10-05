@@ -1,0 +1,6 @@
+# A line longer than the scanner accepts fails every read the same way, so it
+# is unpageable rather than an error worth retrying.
+pageBytes: 4194304
+longLineBytes: 1100000
+log: |
+  2026-09-30T10:00:01.100000000Z r01

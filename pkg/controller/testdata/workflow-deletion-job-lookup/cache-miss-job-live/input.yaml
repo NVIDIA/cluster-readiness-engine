@@ -1,0 +1,9 @@
+# The Job is on the API server and not yet in the cache, which is what a
+# Workflow deleted shortly after a group's Job is created looks like. The
+# cached List comes back empty, and read as proof of drain it skips Phase 1,
+# skips the wait, and lets Phase 2 revoke the ResourceClaimTemplate under pods
+# that are still running: CUDA error 719, and the pod-drain barrier from #121
+# never gets a chance. Pin that the empty list is confirmed through APIReader
+# first. Served from the cache instead, this case deletes the claim template.
+inCache: false
+inAPI: true

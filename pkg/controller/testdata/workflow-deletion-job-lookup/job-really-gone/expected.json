@@ -1,0 +1,5 @@
+{
+  "requeueAfter": "0s",
+  "jobScopedDependencySurvives": false,
+  "finalizerStillHeld": false
+}

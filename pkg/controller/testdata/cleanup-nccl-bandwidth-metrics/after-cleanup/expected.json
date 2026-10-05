@@ -1,0 +1,22 @@
+[
+  {
+    "name": "nvcre_nccl_algbw_gbs",
+    "grewAfterRecording": true,
+    "restoredToBaselineOnCleanup": true
+  },
+  {
+    "name": "nvcre_nccl_busbw_gbs",
+    "grewAfterRecording": true,
+    "restoredToBaselineOnCleanup": true
+  },
+  {
+    "name": "nvcre_nccl_algbw_gbps",
+    "grewAfterRecording": true,
+    "restoredToBaselineOnCleanup": true
+  },
+  {
+    "name": "nvcre_nccl_busbw_gbps",
+    "grewAfterRecording": true,
+    "restoredToBaselineOnCleanup": true
+  }
+]

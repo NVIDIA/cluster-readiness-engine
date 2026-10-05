@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The same cordoned, tainted node is still excluded when there is no taintSelectors opt-in.
+nodes:
+  - name: node002
+    cordoned: true
+    taints:
+      - key: node.kubernetes.io/unschedulable
+        effect: NoSchedule

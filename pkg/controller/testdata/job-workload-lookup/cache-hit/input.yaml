@@ -1,0 +1,4 @@
+# The ordinary case: the cache sees the workload. The confirming read is never
+# reached, so the Job reports on it exactly as before.
+workloadExists: true
+cacheHidesWorkload: false

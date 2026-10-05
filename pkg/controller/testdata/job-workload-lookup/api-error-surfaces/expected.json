@@ -1,0 +1,9 @@
+{
+  "requeueAfter": "0s",
+  "error": "failed to confirm workload TrainJob/job-workload: etcdserver: request timed out",
+  "phase": "InProgress",
+  "reason": "WorkloadCreated",
+  "workloadRef": "job-workload",
+  "restartCount": 0,
+  "workloadSurvives": true
+}

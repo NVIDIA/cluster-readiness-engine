@@ -1,0 +1,12 @@
+# The workload this Job already created is on the API server but not in the
+# cache, which is the state a Create leaves behind before the informer catches
+# up. status.WorkloadRef is empty because the write that records it was lost,
+# so the reconcile lands back on the create path and the name is taken.
+#
+# Before this change there was no AlreadyExists branch at all, so the Create
+# failed identically on every pass and the Job backed off forever over a
+# workload it owns and is running. Pin both halves: the holder is adopted, and
+# the confirmation uses APIReader, so serving that read from the cache instead
+# turns this into an error.
+holder: own
+cacheHidesWorkload: true

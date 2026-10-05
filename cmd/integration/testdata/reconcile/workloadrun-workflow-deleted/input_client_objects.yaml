@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: deleted-workflow-run
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      deleted-workflow: "true"
+  image: test-image:latest
+  framework:
+    exec:
+      command: [echo, success]
+  numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "True"
+      reason: WorkflowCreated
+      message: Workflow deleted-workflow-run created
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "False"
+      reason: Superseded
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Failed
+      status: "False"
+      reason: Superseded
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+  workflowRef:
+    name: deleted-workflow-run
+    namespace: default

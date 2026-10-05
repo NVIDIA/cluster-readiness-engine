@@ -100,17 +100,6 @@ func TestIntegration(t *testing.T) {
 
 		fakeFetcher := buildFakeLogFetcher(tc)
 		deadline := eventCaseDeadline(cfg)
-		if cfg.InitializeWorkloadRun {
-			// Separate construction from cache-backed mirroring until #352 fixes
-			// the create-to-cache observation race. No creation Event is recorded.
-			require.Equal(tt, "WorkloadRun", cfg.WaitFor.Kind)
-			ctx, stop := contextForDeadline(deadline)
-			r := &controller.WorkloadRunReconciler{Client: suite.Client, Scheme: scheme.Scheme}
-			_, err := r.Reconcile(ctx, ctrl.Request{
-				Name: cfg.WaitFor.Name, Namespace: cfg.WaitFor.Namespace})
-			stop()
-			require.NoError(tt, err)
-		}
 		checkpoint := newCheckpointObservation(tt, suite.Client, cfg)
 		var nodePollRecorder *phaseCountingRecorder
 		var nodePollUID types.UID
@@ -505,6 +494,7 @@ func startManager(
 
 	err = (&controller.BandwidthMeasurementReconciler{
 		Client:     mgr.GetClient(),
+		APIReader:  mgr.GetAPIReader(),
 		Scheme:     mgr.GetScheme(),
 		Recorder:   mgr.GetEventRecorder("bandwidthmeasurement-controller"),
 		LogFetcher: fetcher,
@@ -512,9 +502,10 @@ func startManager(
 	require.NoError(t, err)
 
 	err = (&controller.WorkloadRunReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorder("workloadrun-controller"),
+		Client:    mgr.GetClient(),
+		APIReader: mgr.GetAPIReader(),
+		Scheme:    mgr.GetScheme(),
+		Recorder:  mgr.GetEventRecorder("workloadrun-controller"),
 	}).SetupWithManager(mgr)
 	require.NoError(t, err)
 
@@ -605,7 +596,6 @@ type eventTestStep struct {
 }
 
 type waitConfig struct {
-	InitializeWorkloadRun  bool          `json:"initializeWorkloadRun,omitempty"`
 	VerifyNodePollEvents   bool          `json:"verifyNodePollEvents,omitempty"`
 	VerifyCheckpointEvents bool          `json:"verifyCheckpointEvents,omitempty"`
 	RejectWorkflowCreates  bool          `json:"rejectWorkflowCreates,omitempty"`
@@ -1384,6 +1374,12 @@ func sanitizeObject(obj client.Object) {
 		ann["nvcre.nvidia.com/workflow-uid"] = "workflow-uid"
 		obj.SetAnnotations(ann)
 	}
+	// Likewise the job-uid annotation a BandwidthMeasurement records for the
+	// Job it measures.
+	if ann := obj.GetAnnotations(); ann["nvcre.nvidia.com/job-uid"] != "" {
+		ann["nvcre.nvidia.com/job-uid"] = "job-uid"
+		obj.SetAnnotations(ann)
+	}
 
 	// Clear condition timestamps.
 	switch o := obj.(type) {
@@ -1558,6 +1554,8 @@ func collectBandwidthMetrics(t *testing.T, namespace, measurementName string) ma
 	}
 
 	names := []string{
+		"nvcre_nccl_algbw_gbs",
+		"nvcre_nccl_busbw_gbs",
 		"nvcre_nccl_algbw_gbps",
 		"nvcre_nccl_busbw_gbps",
 	}

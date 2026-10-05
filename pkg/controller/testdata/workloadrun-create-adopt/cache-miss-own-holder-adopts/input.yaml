@@ -1,0 +1,10 @@
+# The run's own Workflow exists on the API server but not in the cache, which
+# is the state a Create leaves behind before the informer catches up. Create
+# returns AlreadyExists, and only a read that bypasses the cache can show the
+# holder is this run's own. Pin that the confirmation uses APIReader: served
+# from the cache instead, this Get answers NotFound and the reconcile errors
+# out rather than adopting.
+holder: own
+cacheHidesWorkflow: true
+statusWriteFailures: 0
+reconciles: 2

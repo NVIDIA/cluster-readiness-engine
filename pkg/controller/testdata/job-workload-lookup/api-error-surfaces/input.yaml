@@ -1,0 +1,7 @@
+# The cache says the workload is gone and the live read fails for its own
+# reasons. A failed read is not an absence: surface it and let the reconcile
+# back off, rather than letting a timeout stand in for a deletion and fail the
+# Job. The Job's status must be untouched.
+workloadExists: true
+cacheHidesWorkload: true
+apiError: "etcdserver: request timed out"
