@@ -1,0 +1,2 @@
+# The DRA driver's productName is the NVML name; GFD hyphenates it.
+input: "NVIDIA GB300"

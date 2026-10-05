@@ -854,6 +854,8 @@ Deferred. It would restore the invariant that only one execution phase is
 It would also flip `InProgress` to `False` and add `ObservedGeneration` on
 every timed-out Job. That is a status-correctness fix unrelated to event
 emission and deserves its own record, dedicated tests, and golden review.
+[ADR-086](086-lifecycle-status-metrics-and-timeout-exclusivity.md) makes the timeout
+write exclusive through the shared condition loop, keeping its direct write.
 
 ### Treat the events as an exactly-once record of transitions
 

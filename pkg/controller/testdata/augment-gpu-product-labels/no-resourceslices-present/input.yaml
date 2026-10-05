@@ -1,0 +1,6 @@
+# No gpu.nvidia.com ResourceSlices exist at all (e.g. a non-DRA cluster with
+# a node whose label just hasn't been applied yet). The node is left
+# unlabeled rather than the reconcile failing.
+nodes:
+  - name: node1
+resourceSlices: []

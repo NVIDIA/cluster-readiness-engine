@@ -19,7 +19,7 @@ nvcrectl workloadrun run [flags] <file>
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--wait` | `false` | Block until the workload completes |
-| `--timeout` | `30m` | Timeout for `--wait`. On timeout, the CLI prints a partial report and leaves the WorkloadRun running in the cluster unless `--cleanup` is set |
+| `--timeout` | `30m` | Timeout for `--wait`. Ignored without `--wait`. When `--wait` is set, must be at least `1s`. The watch checks status once immediately and then every 5s, so a short timeout still observes the WorkloadRun at least once. On timeout, the CLI prints a partial report and leaves the WorkloadRun running in the cluster unless `--cleanup` is set |
 | `--setup` | `false` | Install CRDs, controller, and LogProfiles before creating the WorkloadRun |
 | `--cleanup` | `false` | Delete the WorkloadRun, the namespace (when created by this run), and installed components after completion |
 | `--image` | — | Override controller image |
@@ -67,6 +67,7 @@ nvcrectl workloadrun render [flags] <workloadrun.yaml>
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--platform` | auto | Override platform detection (`aws`, `gcp`, `azure`, `oci`, `onprem`, `togetherai`, `mistral`, `forge`, `nscale`) |
+| `--gpu-arch` | none | GPU architecture for offline render, e.g. `gb300` or the product name `NVIDIA-GB300`; an unknown architecture is rejected with the valid list. Use it for a DRA-only GPU stack whose nodes carry no `nvidia.com/gpu.product` label. Wins over the `target.nodeSelector` label when set; cannot be combined with `--dry-run`, which detects the architecture from real nodes. |
 | `--dry-run` | `false` | Connect to cluster, discover real nodes, and render with actual platform/GPU detection |
 | `--output` | `yaml` | Output format: `yaml` or `json` |
 
