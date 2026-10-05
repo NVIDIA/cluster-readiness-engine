@@ -46,6 +46,19 @@ Tune scrape cadence with `metrics.serviceMonitor.interval` and `metrics.serviceM
 
 The gauge is set for all three status values on each update, ensuring that a transition from `in_progress` to `succeeded` also zeroes out the `in_progress` series. Metrics are cleaned up when a Job is deleted.
 
+## Certification and Workflow status metrics
+
+Certification and Workflow conditions are the operator-facing source of truth (`kubectl get certifications,workflows`). These gauges mirror `nvcre_job_status` so a status panel can show the verdict of a run even when Job series are missing, stale, or wrong.
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `nvcre_certification_status` | Gauge | `namespace`, `certification`, `status` | Current status of Certifications. Value is `1` for the current status, `0` for others. Status values: `in_progress`, `succeeded`, `failed` (mapped from the InProgress / Succeeded / Failed condition types). |
+| `nvcre_workflow_status` | Gauge | `namespace`, `workflow`, `certification`, `status` | Current status of Workflows. Value is `1` for the current status, `0` for others. Same status values as Certification. `certification` is the value of the Workflow's `nvcre.nvidia.com/certification` label, or empty when that label is absent. |
+
+These series are built at scrape time from the elected leader's informer cache. Each scrape lists Certifications and Workflows and emits `1` for the true InProgress / Succeeded / Failed condition and `0` for the peers. An object with no phase condition `True` is omitted. Series disappear on the next scrape after the object leaves the cache; a changed `nvcre.nvidia.com/certification` label reports the new value and does not leave old series. Standby replicas emit nothing. Reason strings are not exported as labels.
+
+These gauges do not change how or when `nvcre_job_status` is updated.
+
 ## Hardware failure metrics
 
 | Metric | Type | Labels | Description |
@@ -131,6 +144,25 @@ NCCL bandwidth metrics are cleaned up when a BandwidthMeasurement is deleted.
 ## Example PromQL queries
 
 With the chart default `honorLabels: true`, filters on `namespace` and `job` refer to the Certification Job as documented in the tables above. If you scrape without honoring metric labels, those label names refer to the scrape target instead.
+
+### Certification and Workflow status
+
+```promql
+# Certifications that have failed
+nvcre_certification_status{status="failed"} == 1
+
+# Currently running Certifications
+nvcre_certification_status{status="in_progress"} == 1
+
+# Certification status breakdown per namespace
+sum by (namespace, status) (nvcre_certification_status == 1)
+
+# Failed Workflows, grouped by nvcre.nvidia.com/certification
+nvcre_workflow_status{status="failed"} == 1
+
+# Workflows still in progress for a Certification
+nvcre_workflow_status{status="in_progress", certification="gpu-cluster-cert"} == 1
+```
 
 ### Job status
 
@@ -256,6 +288,20 @@ spec:
               below the 75% threshold. Check for frequent checkpointing
               or rescheduling overhead.
 
+        # Alert when a Certification has failed
+        - alert: NVCRECertificationFailed
+          expr: |
+            nvcre_certification_status{status="failed"} == 1
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "NVCRE Certification {{ $labels.certification }} failed"
+            description: >
+              Certification {{ $labels.certification }} in namespace
+              {{ $labels.namespace }} is Failed. Inspect category status
+              and Workflow conditions for the failing domain/variant.
+
         # Alert when a job appears stuck (in_progress for too long)
         - alert: NVCREJobStuck
           expr: |
@@ -276,7 +322,8 @@ spec:
 
 ## See also
 
+- [Certification API](../api-reference/certification.md) — the resource that emits certification status metrics
 - [Job API](../api-reference/job.md) — the resource that emits job status and hardware failure metrics
 - [GoodputMeasurement API](../api-reference/goodput-measurement.md) and [BandwidthMeasurement API](../api-reference/bandwidth-measurement.md) — the resources that populate goodput and bandwidth metrics
-- [Workflow API](../api-reference/workflow.md) — the resource that populates topology validation metrics
+- [Workflow API](../api-reference/workflow.md) — the resource that emits workflow status and topology validation metrics
 - [Goodput & Bandwidth Measurement](../concepts/goodput-bandwidth.md) — conceptual overview of the goodput formula and its components

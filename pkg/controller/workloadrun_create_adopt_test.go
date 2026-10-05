@@ -224,7 +224,7 @@ func buildHolder(kind string) *nvcrev1alpha1.Workflow {
 	case strings.HasPrefix(kind, "foreign"):
 		// Nothing to do with this run: a different kind under a different name.
 		owner.APIVersion = nvcrev1alpha1.GroupVersion.String()
-		owner.Kind = "Certification"
+		owner.Kind = testKindCertification
 		owner.Name = "some-other-certification"
 		owner.UID = "an-unrelated-uid"
 	}

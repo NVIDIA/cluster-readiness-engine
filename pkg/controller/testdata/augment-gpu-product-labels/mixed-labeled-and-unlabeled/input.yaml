@@ -1,0 +1,20 @@
+# A node that already carries nvidia.com/gpu.product (e.g. GFD-labeled) keeps
+# its own value; only the unlabeled node is augmented from ResourceSlices.
+# The List call still fires once because at least one node needs it.
+nodes:
+  - name: node-labeled
+    gpuProduct: NVIDIA-H100-80GB-HBM3
+  - name: node-unlabeled
+resourceSlices:
+  - nodeName: node-unlabeled
+    driver: gpu.nvidia.com
+    devices:
+      - type: gpu
+        productName: NVIDIA-GB300
+  # A stale/irrelevant slice for the already-labeled node must not overwrite
+  # its real label even if present.
+  - nodeName: node-labeled
+    driver: gpu.nvidia.com
+    devices:
+      - type: gpu
+        productName: NVIDIA-B200

@@ -95,6 +95,7 @@ func NewCommand() *cobra.Command {
 func newWorkloadRunRenderCommand() *cobra.Command {
 	var outputFormat string
 	var platformFlag string
+	var gpuArchFlag string
 	var dryRun bool
 
 	configFlags := kubeconfig.NewConfigFlags(true)
@@ -107,20 +108,23 @@ func newWorkloadRunRenderCommand() *cobra.Command {
 including auto-generated TrainingRuntime, ConfigMap, platform overrides, and NCCL env vars.
 
 Use --platform to simulate platform-specific overrides offline.
+Use --gpu-arch to set the GPU architecture offline (e.g. a DRA-only GPU stack whose nodes carry no nvidia.com/gpu.product label); it wins over the nodeSelector-derived value when set and cannot be combined with --dry-run, which detects the architecture from real nodes.
 Use --dry-run to discover real nodes from the cluster and apply overrides based on actual platform and GPU.
 Combining --platform with --dry-run overrides the detected platform while still using real nodes.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dryRun {
-				return runWorkloadRunRenderDryRun(args[0], outputFormat, platformFlag, configFlags)
+				return runWorkloadRunRenderDryRun(args[0], outputFormat, platformFlag, gpuArchFlag, configFlags)
 			}
-			return runWorkloadRunRender(args[0], outputFormat, platformFlag)
+			return runWorkloadRunRender(args[0], outputFormat, platformFlag, gpuArchFlag)
 		},
 	}
 
 	cmd.Flags().StringVar(&outputFormat, "output", "yaml", "Output format: yaml or json")
 	cmd.Flags().StringVar(&platformFlag, "platform", "",
 		"Simulate platform for override matching ("+platform.NamesList()+")")
+	cmd.Flags().StringVar(&gpuArchFlag, "gpu-arch", "",
+		"GPU architecture for offline render; wins over target.nodeSelector's nvidia.com/gpu.product label")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false,
 		"Connect to cluster, discover real nodes, and render with actual platform/GPU detection")
 	configFlags.AddFlags(cmd.Flags())
@@ -128,8 +132,12 @@ Combining --platform with --dry-run overrides the detected platform while still 
 	return cmd
 }
 
-func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
+func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) error {
 	if err := platform.ValidateFlag(platformFlag); err != nil {
+		return err
+	}
+	gpuArch, err := catalog.ParseGPUArchFlag(gpuArchFlag)
+	if err != nil {
 		return err
 	}
 
@@ -138,14 +146,14 @@ func runWorkloadRunRender(file, outputFormat, platformFlag string) error {
 		return err
 	}
 
-	// Extract GPU architecture from nodeSelector.
-	var gpuProduct string
-	if run.Spec.Target != nil {
-		gpuProduct = run.Spec.Target.NodeSelector["nvidia.com/gpu.product"]
+	// --gpu-arch wins over the nodeSelector-derived value when set; a
+	// DRA-only platform carries no nvidia.com/gpu.product label on real
+	// nodes, so offline render has no other way to resolve architecture.
+	if gpuArch == "" && run.Spec.Target != nil {
+		gpuArch = gpu.ParseProduct(run.Spec.Target.NodeSelector["nvidia.com/gpu.product"])
 	}
-	gpuArch := gpu.ParseProduct(gpuProduct)
 	if gpuArch == "" {
-		return fmt.Errorf("cannot determine GPU architecture: nvidia.com/gpu.product label required in target.nodeSelector")
+		return fmt.Errorf("cannot determine GPU architecture: pass --gpu-arch or set nvidia.com/gpu.product in target.nodeSelector")
 	}
 
 	// Resolve hardware defaults from the catalog. Platform comes from --platform
@@ -552,8 +560,11 @@ func buildWRCLIConfigMapDep(name string, data map[string]string) nvcrev1alpha1.D
 // catalog defaults, NIC resource detection, MPI override baking, override
 // matching, the printed status, and the recorded annotations.
 func runWorkloadRunRenderDryRun(
-	file, outputFormat, platformFlag string, configFlags *kubeconfig.ConfigFlags,
+	file, outputFormat, platformFlag, gpuArchFlag string, configFlags *kubeconfig.ConfigFlags,
 ) error {
+	if gpuArchFlag != "" {
+		return errors.New("--dry-run detects the GPU architecture from cluster nodes; cannot combine with --gpu-arch")
+	}
 	if err := platform.ValidateFlag(platformFlag); err != nil {
 		return err
 	}
