@@ -103,11 +103,32 @@
           "trainer": {
             "image": "nvcr.io/nvidia/pytorch:25.08-py3",
             "command": [
-              "/bin/bash",
-              "-c"
+              "/bin/bash"
             ],
             "args": [
-              "rm -rf /opt/amazon\nunset NCCL_NET_PLUGIN\nunset NCCL_TUNER_PLUGIN\nunset AWS_OFI_NCCL_VERSION\nexec /bin/bash /config/train.sh"
+              "/config/train.sh"
+            ],
+            "env": [
+              {
+                "name": "FI_PROVIDER",
+                "value": "efa"
+              },
+              {
+                "name": "FI_EFA_USE_DEVICE_RDMA",
+                "value": "1"
+              },
+              {
+                "name": "FI_EFA_FORK_SAFE",
+                "value": "1"
+              },
+              {
+                "name": "NCCL_SOCKET_IFNAME",
+                "value": "eth0"
+              },
+              {
+                "name": "NVTE_FUSED_ATTN",
+                "value": "1"
+              }
             ],
             "numNodes": 8,
             "numProcPerNode": 8
@@ -253,11 +274,32 @@
               "trainer": {
                 "image": "nvcr.io/nvidia/pytorch:25.08-py3",
                 "command": [
-                  "/bin/bash",
-                  "-c"
+                  "/bin/bash"
                 ],
                 "args": [
-                  "rm -rf /opt/amazon\nunset NCCL_NET_PLUGIN\nunset NCCL_TUNER_PLUGIN\nunset AWS_OFI_NCCL_VERSION\nexec /bin/bash /config/train.sh"
+                  "/config/train.sh"
+                ],
+                "env": [
+                  {
+                    "name": "FI_PROVIDER",
+                    "value": "efa"
+                  },
+                  {
+                    "name": "FI_EFA_USE_DEVICE_RDMA",
+                    "value": "1"
+                  },
+                  {
+                    "name": "FI_EFA_FORK_SAFE",
+                    "value": "1"
+                  },
+                  {
+                    "name": "NCCL_SOCKET_IFNAME",
+                    "value": "eth0"
+                  },
+                  {
+                    "name": "NVTE_FUSED_ATTN",
+                    "value": "1"
+                  }
                 ],
                 "numNodes": 8,
                 "numProcPerNode": 8
@@ -447,6 +489,13 @@
                                     "memory": "1200Gi",
                                     "nvidia.com/gpu": "8",
                                     "vpc.amazonaws.com/efa": 32
+                                  }
+                                },
+                                "securityContext": {
+                                  "capabilities": {
+                                    "add": [
+                                      "IPC_LOCK"
+                                    ]
                                   }
                                 },
                                 "volumeMounts": [
