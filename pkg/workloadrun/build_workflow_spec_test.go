@@ -154,17 +154,6 @@ func nestedOverrideMap(root map[string]any, path ...string) (map[string]any, boo
 	return current, true
 }
 
-func assertEnvValue(t *testing.T, env []corev1.EnvVar, name, want string) {
-	t.Helper()
-	for _, got := range env {
-		if got.Name == name {
-			require.Equal(t, want, got.Value)
-			return
-		}
-	}
-	t.Fatalf("expected %s=%s in trainer env: %#v", name, want, env)
-}
-
 func assertNoEnvValue(t *testing.T, env []corev1.EnvVar, name string) {
 	t.Helper()
 	for _, got := range env {
