@@ -1,6 +1,6 @@
 # ADR-084: A Read-Only MCP Server for Certification State
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 
