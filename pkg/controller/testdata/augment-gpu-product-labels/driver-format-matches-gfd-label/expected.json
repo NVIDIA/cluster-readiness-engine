@@ -1,0 +1,10 @@
+[
+  {
+    "name": "node-dra",
+    "gpuProduct": "NVIDIA-GB300"
+  },
+  {
+    "name": "node-gfd",
+    "gpuProduct": "NVIDIA-GB300"
+  }
+]

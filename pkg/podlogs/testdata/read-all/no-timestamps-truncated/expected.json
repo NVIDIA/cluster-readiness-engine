@@ -1,0 +1,13 @@
+{
+  "visited": [],
+  "reads": [
+    {
+      "limitBytes": 30,
+      "lines": 3,
+      "truncated": true,
+      "partialTail": true
+    }
+  ],
+  "unpageable": true,
+  "error": "log cannot be read in full: line without a timestamp in a truncated page"
+}

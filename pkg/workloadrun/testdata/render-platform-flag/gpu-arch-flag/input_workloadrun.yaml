@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No nvidia.com/gpu.product label, as on a DRA-only GPU stack with no GPU
+# Feature Discovery.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: wr-gpu-arch
+  namespace: default
+spec:
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  numNodes: 2
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  framework:
+    torch:
+      script: /workspace/train.py

@@ -1,0 +1,8 @@
+# 35-byte lines; each page ends exactly on a newline. A page that is
+# exactly full reads as truncated, so the last page confirms the end.
+pageBytes: 70
+log: |
+  2026-09-30T10:00:01.100000000Z r01
+  2026-09-30T10:00:02.100000000Z r02
+  2026-09-30T10:00:03.100000000Z r03
+  2026-09-30T10:00:04.100000000Z r04

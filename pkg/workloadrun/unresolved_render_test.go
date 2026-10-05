@@ -97,9 +97,11 @@ func TestUnresolvedRenderRetainsIntentAndOverrides(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte(unresolvedRenderInput), 0o600))
 
 	// No --platform, so the overrides stay conditional and unresolved.
-	emitted := captureStdout(t, func() error {
-		return runWorkloadRunRender(path, "yaml", "")
+	emitted, err := captureStdout(t, func() error {
+		return runWorkloadRunRender(path, "yaml", "", "")
 	})
+	require.NoError(t, err, "rendering without --platform must succeed: "+
+		"unresolved output is a template, not a validated manifest")
 
 	var workflow nvcrev1alpha1.Workflow
 	require.NoError(t, yaml.Unmarshal([]byte(emitted), &workflow),
@@ -162,10 +164,12 @@ func overrideRedirectsQueue(o nvcrev1alpha1.OverrideSpec, queue string) bool {
 	return false
 }
 
-// captureStdout runs fn with os.Stdout redirected and returns what it printed.
+// captureStdout runs fn with os.Stdout redirected and returns what it printed
+// along with fn's error.
 // The render command writes to stdout directly, and its output is the artifact
-// under test here, not a return value.
-func captureStdout(t *testing.T, fn func() error) string {
+// under test here, not a return value. The pipe is drained only after fn
+// returns, so fn must print less than the pipe buffer.
+func captureStdout(t *testing.T, fn func() error) (string, error) {
 	t.Helper()
 
 	r, w, err := os.Pipe()
@@ -181,8 +185,6 @@ func captureStdout(t *testing.T, fn func() error) string {
 	_, copyErr := io.Copy(&buf, r)
 	require.NoError(t, copyErr)
 	require.NoError(t, r.Close())
-	require.NoError(t, runErr, "rendering without --platform must succeed: "+
-		"unresolved output is a template, not a validated manifest")
 
-	return buf.String()
+	return buf.String(), runErr
 }

@@ -1,0 +1,25 @@
+{
+  "requeue": true,
+  "conditions": [
+    {
+      "type": "Measuring",
+      "status": "False",
+      "reason": "FinalReadPending",
+      "message": "Job succeeded; waiting to read its complete log"
+    }
+  ],
+  "results": [
+    {
+      "sizeBytes": 8,
+      "algBW": "0.00",
+      "busBW": "0.00",
+      "samples": 5
+    },
+    {
+      "sizeBytes": 1048576,
+      "algBW": "14.00",
+      "busBW": "27.00",
+      "samples": 5
+    }
+  ]
+}

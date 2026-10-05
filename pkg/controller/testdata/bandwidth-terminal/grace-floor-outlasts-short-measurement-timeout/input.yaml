@@ -1,0 +1,10 @@
+# The Job gives up after 30 seconds, but retrying continues to the 2-minute
+# floor, which bounds a diagnose round that has no timeout of its own. At 3
+# minutes it is over.
+jobCondition: Succeeded
+podPhase: Succeeded
+pendingForSeconds: 180
+measurementTimeout: 30s
+provisional:
+  - {sizeBytes: 8, algBW: "0.00", busBW: "0.00", samples: 5}
+  - {sizeBytes: 1048576, algBW: "14.00", busBW: "27.00", samples: 5}

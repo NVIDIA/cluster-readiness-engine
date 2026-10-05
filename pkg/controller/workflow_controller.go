@@ -101,6 +101,11 @@ type WorkflowReconciler struct {
 // +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainjobs,verbs=get;list;delete
 // +kubebuilder:rbac:groups=resource.k8s.io,resources=resourceclaimtemplates,verbs=get;list;create;update;patch;delete
 // +kubebuilder:rbac:groups=resource.nvidia.com,resources=computedomains,verbs=get;list;create;update;patch;delete
+//
+// GPU architecture fallback for platforms with no nvidia.com/gpu.product
+// label (DRA-only GPU stacks): augmentGPUProductLabels reads productName from
+// gpu.nvidia.com ResourceSlices.
+// +kubebuilder:rbac:groups=resource.k8s.io,resources=resourceslices,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -383,7 +388,7 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	log := logf.FromContext(ctx)
 	target := workflow.Spec.Orchestration.Target
 
-	nodes, cordoned, err := discoverTargetNodes(ctx, r.Client, target)
+	nodes, cordoned, err := discoverTargetNodes(ctx, r.Client, r.APIReader, target)
 	if err != nil {
 		log.Error(err, "Failed to discover target nodes")
 		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonNodeDiscoveryError,
@@ -639,11 +644,17 @@ func (r *WorkflowReconciler) logOverrideResults(ctx context.Context, workflow *n
 // discoverTargetNodes lists and filters nodes based on the target spec.
 // Accepts a client.Reader so it can be called from both the reconciler and CLI tools.
 //
+// sliceReader serves the ResourceSlice fallback List. Reconcilers pass their
+// uncached APIReader, because a cached List starts a cluster-wide informer
+// that never syncs when the grant is missing. A nil sliceReader reads through
+// reader, which is correct only for uncached readers (CLI clients, unit-test
+// fakes).
+//
 // The second return value names the nodes that matched the target but were
 // dropped for being cordoned. Callers that record coverage need it: a cordoned
 // node was targeted and never tested, and without the names the run reports a
 // clean PASSED over a fleet it only partly certified.
-func discoverTargetNodes(ctx context.Context, reader client.Reader, target *nvcrev1alpha1.TargetSpec) ([]corev1.Node, []string, error) {
+func discoverTargetNodes(ctx context.Context, reader, sliceReader client.Reader, target *nvcrev1alpha1.TargetSpec) ([]corev1.Node, []string, error) {
 	nodeList := &corev1.NodeList{}
 	var opts []client.ListOption
 
@@ -729,6 +740,10 @@ func discoverTargetNodes(ctx context.Context, reader client.Reader, target *nvcr
 		}
 	}
 	nodes = gpuFiltered
+	if sliceReader == nil {
+		sliceReader = reader
+	}
+	augmentGPUProductLabels(ctx, sliceReader, nodes)
 
 	// Sort by name so discovery is reproducible. client.List gives no ordering
 	// guarantee, and callers pick nodes[0] to decide the platform and use slice
@@ -845,23 +860,54 @@ func buildTolerations(selectors []nvcrev1alpha1.TaintSelector) []corev1.Tolerati
 // hasRunningGroups returns true if any group is in Running phase.
 // isBelowBandwidthThreshold checks if a Job's BandwidthMeasurement peak BusBW
 // fails the given CEL threshold expression. Returns (below, pending, err) where:
-//   - pending=true means to requeue and try again later (BM absent or has no results yet)
-//   - err!=nil means the gate could not be evaluated; the caller should fail closed
+//   - pending=true means to requeue and try again later (BM absent or not yet complete)
+//   - err!=nil means the gate could not be evaluated, including a BM that completed
+//     without final results; the caller should fail closed
 func (r *WorkflowReconciler) isBelowBandwidthThreshold(ctx context.Context, jobName, namespace, expr string) (below bool, pending bool, err error) {
 	var bwList nvcrev1alpha1.BandwidthMeasurementList
 	if listErr := r.List(ctx, &bwList, matchingJobRef(namespace, jobName)...); listErr != nil {
 		return false, false, fmt.Errorf("list BandwidthMeasurements: %w", listErr)
 	}
-	if len(bwList.Items) == 0 {
-		// No BandwidthMeasurement found for this job yet — requeue and wait for it.
+	// The index constrains the list to this Job's name; keep only a
+	// measurement created for this instance of it, not one left by an earlier
+	// Job of the same name.
+	job := &nvcrev1alpha1.Job{}
+	key := client.ObjectKey{Namespace: namespace, Name: jobName}
+	if err := r.Get(ctx, key, job); err != nil {
+		// A cache miss is not proof of deletion; confirm before failing the
+		// group. A Job that really is gone can never be evaluated, and
+		// waiting on it would hold the diagnose round forever. Any other
+		// error is transient and must not fail a healthy group.
+		if err := r.jobReader().Get(ctx, key, job); err != nil {
+			if apierrors.IsNotFound(err) {
+				return false, false, fmt.Errorf("job %s no longer exists", jobName)
+			}
+			logf.FromContext(ctx).V(1).Info("Could not read Job for the bandwidth gate, requeueing",
+				"job", jobName, "error", err)
+			return false, true, nil
+		}
+	}
+	var bm *nvcrev1alpha1.BandwidthMeasurement
+	for i := range bwList.Items {
+		if measuresJob(&bwList.Items[i], job) {
+			bm = &bwList.Items[i]
+			break
+		}
+	}
+	if bm == nil {
+		// No BandwidthMeasurement for this job yet — requeue and wait for it.
 		return false, true, nil
 	}
-	// The index constrains the list to this Job; a Job has at most one
-	// BandwidthMeasurement, so evaluate the first and ignore any duplicate.
-	bm := &bwList.Items[0]
 
-	if len(bm.Status.Results) == 0 {
+	// Results are provisional until the measurement completes from the Job's
+	// full log (issue #404). A measurement that completed without final
+	// results cannot be evaluated; failing the group keeps the gate closed.
+	if !meta.IsStatusConditionTrue(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete) {
 		return false, true, nil
+	}
+	if !bandwidthFinal(bm) {
+		reason := meta.FindStatusCondition(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete).Reason
+		return false, false, fmt.Errorf("BandwidthMeasurement %s completed without final results (%s)", bm.Name, reason)
 	}
 	measured := maxBusBandwidth(bm.Status.Results)
 	passed, evalErr := threshold.Evaluate(measured, expr)
@@ -3418,8 +3464,10 @@ func (r *WorkflowReconciler) cleanupPVForPVC(ctx context.Context, workflow *nvcr
 	log := logf.FromContext(ctx)
 	var pvName string
 
+	// Read the PVC live: a cached read would start a cluster-wide PVC
+	// informer, which the manager role cannot watch (issue #424).
 	pvc := &corev1.PersistentVolumeClaim{}
-	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, pvc); err == nil {
+	if err := r.jobReader().Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, pvc); err == nil {
 		pvName = pvc.Spec.VolumeName
 	} else {
 		// PVC already gone; find PV by claimRef.

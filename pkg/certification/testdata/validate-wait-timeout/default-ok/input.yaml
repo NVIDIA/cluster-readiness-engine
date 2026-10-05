@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# --wait with the default --timeout (30m, not Changed). Must stay accepted so
+# resolveWaitTimeout can still derive a longer budget.
+args:
+  - --wait

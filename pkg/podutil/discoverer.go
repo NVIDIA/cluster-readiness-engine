@@ -37,7 +37,8 @@ func (d *WorkerDiscoverer) GetWorkerPods(ctx context.Context, namespace, name, w
 	}
 }
 
-// GetReplicatedJobPod finds the first running pod for a specific replicatedJob within a TrainJob's JobSet.
+// GetReplicatedJobPod returns the first pod of a replicatedJob within a TrainJob's JobSet, in the
+// order defined by replicatedJobPodLess, so repeated calls pick the same pod.
 // replicatedJobName is "launcher" for MPI workloads or "node" for torch workloads.
 func (d *WorkerDiscoverer) GetReplicatedJobPod(ctx context.Context, namespace, workloadName, replicatedJobName string) (*corev1.Pod, error) {
 	podList := &corev1.PodList{}
@@ -52,12 +53,58 @@ func (d *WorkerDiscoverer) GetReplicatedJobPod(ctx context.Context, namespace, w
 		return nil, fmt.Errorf("no pods found for %s/%s replicatedJob %s", namespace, workloadName, replicatedJobName)
 	}
 
-	// Sort by completion index and return the first one.
-	sort.Slice(podList.Items, func(i, j int) bool {
-		return getCompletionIndex(&podList.Items[i]) < getCompletionIndex(&podList.Items[j])
+	sort.SliceStable(podList.Items, func(i, j int) bool {
+		return replicatedJobPodLess(&podList.Items[i], &podList.Items[j])
 	})
 
 	return &podList.Items[0], nil
+}
+
+// replicatedJobPodLess orders the pods of one replicatedJob so the first is the
+// same pod on every call: lowest completion index, then the current attempt
+// over a replaced one. A pod the Job recreated after a failure shares its
+// completion index with the failed pod, so the index alone is ambiguous.
+func replicatedJobPodLess(a, b *corev1.Pod) bool {
+	if ia, ib := getCompletionIndex(a), getCompletionIndex(b); ia != ib {
+		return ia < ib
+	}
+	if ra, rb := podPhaseRank(a.Status.Phase), podPhaseRank(b.Status.Phase); ra != rb {
+		return ra < rb
+	}
+	if ra, rb := labelInt(a, jobSetRestartAttemptLabel), labelInt(b, jobSetRestartAttemptLabel); ra != rb {
+		return ra > rb
+	}
+	if !a.CreationTimestamp.Equal(&b.CreationTimestamp) {
+		return b.CreationTimestamp.Before(&a.CreationTimestamp)
+	}
+	return a.Name < b.Name
+}
+
+// jobSetRestartAttemptLabel is the JobSet restart counter; a full JobSet
+// restart recreates every pod under a higher attempt.
+const jobSetRestartAttemptLabel = "jobset.sigs.k8s.io/restart-attempt"
+
+// podPhaseRank prefers a pod that finished cleanly, then one still running,
+// then one that failed.
+func podPhaseRank(phase corev1.PodPhase) int {
+	switch phase {
+	case corev1.PodSucceeded:
+		return 0
+	case corev1.PodRunning:
+		return 1
+	case corev1.PodFailed:
+		return 2
+	default:
+		return 3
+	}
+}
+
+func labelInt(pod *corev1.Pod, key string) int {
+	v, err := strconv.Atoi(pod.Labels[key])
+	if err != nil {
+		return 0
+	}
+	return v
 }
 
 // getTrainJobWorkerPods discovers worker pods for a Kubeflow TrainJob.

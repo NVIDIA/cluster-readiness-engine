@@ -18,11 +18,14 @@ kind: ServiceMonitor
 metadata:
   name: nvcre-metrics-monitor
   namespace: nvcre
+  labels:
+    release: prometheus
 spec:
   endpoints:
     - path: /metrics
       port: https
       scheme: https
+      honorLabels: true
       bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
       tlsConfig:
         insecureSkipVerify: true  # Use cert-manager in production
@@ -30,6 +33,10 @@ spec:
     matchLabels:
       control-plane: manager
 ```
+
+`honorLabels: true` (chart default `metrics.serviceMonitor.honorLabels`) keeps the controller's own `namespace` and `job` labels on each series. Without it, Prometheus prefers scrape-target labels and renames the metric labels to `exported_namespace` / `exported_job`, so the PromQL examples below would match the controller Service rather than the Certification Job. Clusters that already built dashboards on `exported_*` can set `metrics.serviceMonitor.honorLabels=false`.
+
+Tune scrape cadence with `metrics.serviceMonitor.interval` and `metrics.serviceMonitor.scrapeTimeout` (empty uses the Prometheus defaults). kube-prometheus-stack users should set `metrics.serviceMonitor.labels.release` to their Prometheus Helm release name (default `prometheus`). See `helm/cluster-readiness-engine/values.yaml` for the full set of knobs.
 
 ## Job status metrics
 
@@ -99,18 +106,20 @@ Goodput metrics are cleaned up at specific lifecycle events to prevent stale dat
 
 ## NCCL bandwidth metrics
 
-All NCCL bandwidth metrics share the same label set: `namespace`, `measurement`, `job`, `workflow`, `nccl_test`, `message_size_bytes`.
+All NCCL bandwidth metrics share the same label set: `namespace`, `measurement`, `job`, `workflow`, `nccl_test`, `message_size_bytes`. Values are **gigabytes per second** (the nccl-tests `algbw` / `busbw` columns), not gigabits.
 
 | Metric | Type | Description |
 |--------|------|-------------|
-| `nvcre_nccl_algbw_gbps` | Gauge | NCCL algorithmic bandwidth in GB/s per message size |
-| `nvcre_nccl_busbw_gbps` | Gauge | NCCL bus bandwidth in GB/s per message size |
+| `nvcre_nccl_algbw_gbs` | Gauge | NCCL algorithmic bandwidth in GB/s per message size |
+| `nvcre_nccl_busbw_gbs` | Gauge | NCCL bus bandwidth in GB/s per message size |
+| `nvcre_nccl_algbw_gbps` | Gauge | **Deprecated.** Alias of `nvcre_nccl_algbw_gbs`. Dual-registered for one minor release; the `_gbps` suffix incorrectly implied gigabits. |
+| `nvcre_nccl_busbw_gbps` | Gauge | **Deprecated.** Alias of `nvcre_nccl_busbw_gbs`. Dual-registered for one minor release; the `_gbps` suffix incorrectly implied gigabits. |
 
 The `nccl_test` label identifies the collective operation (e.g., `all_reduce`, `all_gather`, `alltoall`). The `message_size_bytes` label tracks results per message size tested.
 
 NCCL bandwidth metrics are cleaned up when a BandwidthMeasurement is deleted.
 
-**Cardinality at scale:** NCCL metrics include a `message_size_bytes` label (typically 20-30 values per test). With 3 test types and 10 concurrent measurements, expect ~600-900 NCCL time series. Goodput metrics produce 10 series per measurement. At 100+ concurrent Jobs, monitor your Prometheus memory and consider increasing `sampleInterval` or limiting concurrent Certifications.
+**Cardinality at scale:** NCCL metrics include a `message_size_bytes` label (typically 20-30 values per test). With 3 test types and 10 concurrent measurements, expect ~600-900 NCCL time series from the canonical `_gbs` names. During the deprecation window the `_gbps` aliases are dual-registered, which doubles that count. Goodput metrics produce 10 series per measurement. At 100+ concurrent Jobs, monitor your Prometheus memory and consider increasing `sampleInterval` or limiting concurrent Certifications.
 
 ## Topology metrics
 
@@ -120,6 +129,8 @@ NCCL bandwidth metrics are cleaned up when a BandwidthMeasurement is deleted.
 | `nvcre_topology_failed_nodes` | Gauge | `namespace`, `workflow`, `topology_key`, `domain`, `node` | Set to `1` for each node that failed burn-in validation. Useful for identifying bad switches, racks, or NVLink cliques from Prometheus. |
 
 ## Example PromQL queries
+
+With the chart default `honorLabels: true`, filters on `namespace` and `job` refer to the Certification Job as documented in the tables above. If you scrape without honoring metric labels, those label names refer to the scrape target instead.
 
 ### Job status
 
@@ -167,14 +178,16 @@ avg(nvcre_goodput_avg_tflops_per_gpu) by (namespace)
 
 ```promql
 # Bus bandwidth for all_reduce across all message sizes
-nvcre_nccl_busbw_gbps{nccl_test="all_reduce"}
+nvcre_nccl_busbw_gbs{nccl_test="all_reduce"}
 
 # Average algorithmic bandwidth per test type
-avg(nvcre_nccl_algbw_gbps) by (nccl_test)
+avg(nvcre_nccl_algbw_gbs) by (nccl_test)
 
 # Compare bandwidth across message sizes for a specific measurement
-nvcre_nccl_algbw_gbps{measurement="nccl-allreduce-bw"}
+nvcre_nccl_algbw_gbs{measurement="nccl-allreduce-bw"}
 ```
+
+The `_gbps` names remain as deprecated aliases for one minor release. New dashboards should query `_gbs`.
 
 ### Reconciliation performance
 

@@ -1,0 +1,3 @@
+{
+  "error": "--dry-run detects the GPU architecture from cluster nodes; cannot combine with --gpu-arch"
+}
