@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Reaches deps/azure-ib-with-topo-a100-comm.yaml, which no other case in this
+# suite renders: the A100 communication block is gated on gpuArchitecture a100,
+# so the H100 cases never load it. Without this case, deleting that fragment's
+# guard leaves the whole suite green.
+#
+# The fragment pairs the NIC request with a topology ConfigMap. Only the
+# resources key is guarded, so the golden pins that the ConfigMap dependency
+# survives at a count of 0 while the mlnxnics request does not.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: azure-a100-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  nodesPerJob: 8
+  enableMNNVL: false
+  mlnxPerNode: 0
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

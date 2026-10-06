@@ -1,0 +1,15 @@
+{
+  "detectionRan": true,
+  "networks": [],
+  "hostOrdered": false,
+  "shared": [
+    "c1-gpu-nic-0",
+    "c1-gpu-nic-1",
+    "c1-gpu-nic-2",
+    "c1-gpu-nic-3",
+    "c1-gpu-nic-4",
+    "c1-gpu-nic-5",
+    "c1-gpu-nic-6"
+  ],
+  "message": "GKE TCPXO network auto-detection found 7 networks allocatable on every target node (c1-gpu-nic-0, c1-gpu-nic-1, c1-gpu-nic-2, c1-gpu-nic-3, c1-gpu-nic-4, c1-gpu-nic-5, c1-gpu-nic-6), but TCPXO needs exactly 8 GPU NIC networks per node (a3-megagpu-8g); rendering the default networks gpu-nic0..gpu-nic7 instead; GKE rejects the pods unless Network objects with those names exist."
+}

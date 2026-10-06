@@ -208,10 +208,17 @@ dependencies:
     train.sh: |
 {{ includeTemplate "configs/train.sh" . | indent 6 }}
 overrides:
-# --- AWS (NCCL plugin cleanup) ---
+# --- AWS + GB300 (NCCL plugin cleanup) ---
+# AWS GB300 uses a RoCE fabric and has no EFA devices, so the AWS-OFI-NCCL
+# plugin shipped in the pytorch image finds no eligible provider and aborts.
+# Scoped to gb300 on purpose: H100 and GB200 on AWS are EFA fabrics, and EFA is
+# reachable only through libfabric via this plugin (NCCL's built-in net_ib does
+# not drive EFA). Stripping it there silently drops NCCL to TCP over eth0.
 - when:
     platform:
       equals: aws
+    gpuArchitecture:
+      equals: gb300
   jobTemplate:
     spec:
       workload:
@@ -267,6 +274,14 @@ overrides:
       equals: gb200
   dependencies:
 {{ lib "deps/aws-gb200-efa-resources-training.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/aws-gb200-efa-training-env.yaml" . | indent 12 }}
+{{ lib "nccl/aws-gb200-training-tuning-env.yaml" . | indent 12 }}
 # --- AWS + H100 (8 GPUs, TP=8) ---
 - when:
     platform:
@@ -275,6 +290,18 @@ overrides:
       equals: h100
   dependencies:
 {{ lib "deps/aws-h100-efa-resources-training.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/aws-h100-efa-training-env.yaml" . | indent 12 }}
+            # Fused attention is disabled in the runtime base env for broad
+            # compatibility; H100 supports it and the kernel is a large win.
+            # Kubeflow upserts trainer env over runtime env by name.
+            - name: NVTE_FUSED_ATTN
+              value: "1"
 # --- GCP + H100 (TCPxo/FastRak) ---
 - when:
     platform:

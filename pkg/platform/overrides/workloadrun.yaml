@@ -47,29 +47,37 @@
     topology:
       topologyKey: kubernetes.azure.com/ppg
 
-# --- AWS (NCCL plugin cleanup) ---
-# The pytorch image ships NCCL_NET_PLUGIN=ofi and /opt/amazon/aws-ofi-nccl
-# for EFA clusters. On RoCE clusters (GB300) there are no EFA providers and the
-# plugin crashes. On EFA clusters (GB200/H100) the built-in IB/RDMA transport
-# works correctly without the plugin. Mirrors the catalog's nemotron training
-# override which applies the same cleanup for all AWS architectures.
+# --- AWS + GB300 (NCCL plugin cleanup) ---
+# The pytorch image ships NCCL_NET_PLUGIN=ofi and /opt/amazon/aws-ofi-nccl.
+# AWS GB300 is a RoCE fabric with no EFA providers, so the plugin finds nothing
+# eligible and crashes. Scoped to gb300 on purpose: H100 and GB200 on AWS are
+# EFA fabrics, and EFA is reachable only through libfabric via this plugin
+# (NCCL's built-in net_ib does not drive EFA). Stripping it there silently drops
+# NCCL to TCP over eth0 while the requested EFA devices sit unused. Mirrors the
+# catalog's nemotron training override.
 - when:
     platform:
       equals: aws
+    gpuArchitecture:
+      equals: gb300
   preCommand:
     - "rm -rf /opt/amazon"
     - "unset NCCL_NET_PLUGIN"
     - "unset NCCL_TUNER_PLUGIN"
     - "unset AWS_OFI_NCCL_VERSION"
 
-# --- AWS + MPI (NCCL plugin via mpirun -x) ---
+# --- AWS + GB300 + MPI (NCCL plugin via mpirun -x) ---
 # For MPI workloads, preCommand unset on the launcher is not forwarded to
 # workers by OpenMPI. Use mpirun -x to explicitly set NCCL_NET_PLUGIN=none
 # on each worker process, overriding the pytorch image default of "ofi".
+# Scoped to gb300 for the same reason as the preCommand block above: on an EFA
+# fabric, NCCL_NET_PLUGIN=none is what forces the socket fallback.
 {{- if eq .FrameworkType "mpi" }}
 - when:
     platform:
       equals: aws
+    gpuArchitecture:
+      equals: gb300
   mpiArgs:
     - "-x"
     - "NCCL_NET_PLUGIN=none"
@@ -103,6 +111,10 @@
 {{- end }}
 
 # --- AWS + GB200 (EFA) ---
+# IPC_LOCK lets the EFA provider pin the memory it registers for RDMA.
+# BuildMPIRuntime already adds the capability; BuildTorchRuntime does not, so
+# setting it here covers the torch path without duplicating it for MPI (the
+# dependency merge matches containers by name and unions nothing).
 - when:
     platform:
       equals: aws
@@ -124,11 +136,43 @@
                   spec:
                     containers:
                     - name: node
+                      securityContext:
+                        capabilities:
+                          add:
+                          - IPC_LOCK
                       resources:
                         limits:
                           vpc.amazonaws.com/efa: 4
                         requests:
                           vpc.amazonaws.com/efa: 4
+
+# --- AWS + GB200 (EFA transport selection) ---
+# Delivered two ways because the two framework paths read env differently.
+# MPI: the launcher's container env does not reach worker processes, so the
+# values ride mpirun -x. Torch: trainer.env, which Kubeflow upserts by name.
+{{- if eq .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: gb200
+  mpiArgs:
+{{ lib "nccl/aws-efa-transport-env.yaml" . | toMpiArgs | indent 4 }}
+{{- end }}
+{{- if ne .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: gb200
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/aws-efa-transport-env.yaml" . | indent 12 }}
+{{- end }}
 
 # --- AWS + GB300 (RoCE) ---
 # Always use the torch variant (claim name "compute-domain") to match
@@ -146,6 +190,7 @@
 {{ lib "deps/gb300-roce-torch.yaml" . | indent 2 }}
 
 # --- AWS + H100 (EFA 32 devices) ---
+# IPC_LOCK as for GB200 above.
 - when:
     platform:
       equals: aws
@@ -167,11 +212,41 @@
                   spec:
                     containers:
                     - name: node
+                      securityContext:
+                        capabilities:
+                          add:
+                          - IPC_LOCK
                       resources:
                         limits:
                           vpc.amazonaws.com/efa: 32
                         requests:
                           vpc.amazonaws.com/efa: 32
+
+# --- AWS + H100 (EFA transport selection) ---
+# Split by framework for the same reason as the GB200 pair above.
+{{- if eq .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: h100
+  mpiArgs:
+{{ lib "nccl/aws-efa-transport-env.yaml" . | toMpiArgs | indent 4 }}
+{{- end }}
+{{- if ne .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: aws
+    gpuArchitecture:
+      equals: h100
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/aws-efa-transport-env.yaml" . | indent 12 }}
+{{- end }}
 
 # --- GCP + H100 (FastRak NCCL env vars) ---
 - when:
@@ -197,10 +272,15 @@
 {{ lib "deps/gcp-gb200-roce-runtime-patch-training.yaml" . | indent 2 }}
 
 # --- Azure (InfiniBand) ---
+# The dependency is gated on mlnxPerNode: its only content is the NIC request,
+# so at 0 it drops out and the override matches with nothing to apply. The
+# "when" block stays either way, mirroring how a lib-sourced dependency that
+# renders empty leaves its catalog override entry in place. See ADR-087.
 - when:
     platform:
       equals: azure
   dependencies:
+{{- if gt (int .MlnxPerNode) 0 }}
   - apiVersion: trainer.kubeflow.org/v1alpha1
     kind: TrainingRuntime
     metadata:
@@ -221,6 +301,7 @@
                           nvidia.com/mlnxnics: {{ .MlnxPerNode }}
                         requests:
                           nvidia.com/mlnxnics: {{ .MlnxPerNode }}
+{{- end }}
 
 # --- TogetherAI (InfiniBand runtime patch) ---
 - when:

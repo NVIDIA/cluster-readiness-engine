@@ -21,6 +21,12 @@ const (
 	// ran (on-prem GB200/GB300 target with nicResourceName unset) and found
 	// zero or multiple qualifying candidates, so nothing was injected.
 	ReasonNICResourceDetection = "NICResourceDetection"
+
+	// ReasonGKENetworkDetection is the Certification tier's Warning event when
+	// GKE TCPXO network auto-detection ran (GCP H100 target) and did not find
+	// exactly the GPU NIC networks TCPXO needs on every target node, so the
+	// catalog's default network names were rendered.
+	ReasonGKENetworkDetection = "GKENetworkDetection"
 )
 
 // requeueImmediate is a short self-requeue delay used to advance a reconciler's

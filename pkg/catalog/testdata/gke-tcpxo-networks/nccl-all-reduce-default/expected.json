@@ -1,0 +1,20 @@
+[
+  [
+    "eth0=default",
+    "eth1=gpu-nic0",
+    "eth2=gpu-nic1",
+    "eth3=gpu-nic2",
+    "eth4=gpu-nic3",
+    "eth5=gpu-nic4",
+    "eth6=gpu-nic5",
+    "eth7=gpu-nic6",
+    "eth8=gpu-nic7"
+  ],
+  [
+    "eth0=default",
+    "rdma0=rdma-0",
+    "rdma1=rdma-1",
+    "rdma2=rdma-2",
+    "rdma3=rdma-3"
+  ]
+]

@@ -25,7 +25,7 @@ newest *stable* release, never a pre-release.
 To know what you are about to run, check it first:
 
 ```bash
-TAG=v0.5.0
+TAG=v0.6.0
 BASE="https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${TAG}"
 ID="https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}"
 ISSUER='https://token.actions.githubusercontent.com'
@@ -134,7 +134,7 @@ not describe, so each platform gets its own.
 Signature and provenance, against the tag:
 
 ```bash
-TAG=v0.5.0
+TAG=v0.6.0
 IMAGE=ghcr.io/nvidia/cluster-readiness-engine/manager
 ID="https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}"
 ISSUER='https://token.actions.githubusercontent.com'
@@ -482,7 +482,7 @@ This environment may not have Docker or Kind. On a machine that does, the intend
 is server-side dry-run so the admission webhook actually runs:
 
 ```shell
-TAG=v0.5.0
+TAG=v0.6.0
 IMAGE=ghcr.io/nvidia/cluster-readiness-engine/manager
 DIGEST="$(crane digest "${IMAGE}:${TAG}")"
 ID="https://github.com/NVIDIA/cluster-readiness-engine/.github/workflows/attest.yml@refs/tags/${TAG}"

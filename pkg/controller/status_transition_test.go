@@ -69,7 +69,7 @@ func TestJobPhaseWritePreservesConcurrentTerminalDecision(t *testing.T) {
 				require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(job), job))
 				recorder := events.NewFakeRecorder(10)
 				r := &JobReconciler{Client: c, Recorder: recorder}
-				recordJobStatus(job.Namespace, job.Name, "", "in_progress")
+				recordJobStatus(job.Namespace, job.Name, "", testMetricStatusInProgress)
 				t.Cleanup(func() { cleanupJobMetrics(job.Namespace, job.Name) })
 				var err error
 				if target == nvcrev1alpha1.JobFailed {
@@ -91,9 +91,9 @@ func TestJobPhaseWritePreservesConcurrentTerminalDecision(t *testing.T) {
 				require.Empty(t, persisted.Status.FailedNodes)
 				// The discarded mutation must not report its requested phase to metrics.
 				// Refreshing metrics from the terminal winner is a separate concern.
-				require.Equal(t, float64(1), promtest.ToFloat64(jobStatusGauge.WithLabelValues(job.Namespace, job.Name, "", "in_progress")))
-				require.Zero(t, promtest.ToFloat64(jobStatusGauge.WithLabelValues(job.Namespace, job.Name, "", "failed")))
-				require.Zero(t, promtest.ToFloat64(jobStatusGauge.WithLabelValues(job.Namespace, job.Name, "", "succeeded")))
+				require.Equal(t, float64(1), promtest.ToFloat64(jobStatusGauge.WithLabelValues(job.Namespace, job.Name, "", testMetricStatusInProgress)))
+				require.Zero(t, promtest.ToFloat64(jobStatusGauge.WithLabelValues(job.Namespace, job.Name, "", testMetricStatusFailed)))
+				require.Zero(t, promtest.ToFloat64(jobStatusGauge.WithLabelValues(job.Namespace, job.Name, "", testMetricStatusSucceeded)))
 			})
 		}
 	}

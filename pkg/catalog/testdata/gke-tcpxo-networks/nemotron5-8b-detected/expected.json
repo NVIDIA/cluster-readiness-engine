@@ -1,0 +1,20 @@
+[
+  [
+    "eth0=default",
+    "eth1=vpc8",
+    "eth2=vpc7",
+    "eth3=vpc6",
+    "eth4=vpc5",
+    "eth5=vpc4",
+    "eth6=vpc3",
+    "eth7=vpc2",
+    "eth8=vpc1"
+  ],
+  [
+    "eth0=default",
+    "rdma0=rdma-0",
+    "rdma1=rdma-1",
+    "rdma2=rdma-2",
+    "rdma3=rdma-3"
+  ]
+]

@@ -946,6 +946,24 @@ jobs:
         with:
           cosign-release: ${{ env.COSIGN_VERSION }}
 
+      # crane probes the legacy sha256-<digest>.sig / .att sidecar tags. Same
+      # pin as attest.yml: download from the project that publishes it and
+      # check a digest recorded here.
+      - name: Install crane
+        env:
+          CRANE_VERSION: v0.20.6
+          CRANE_SHA256: c1d593d01551f2c9a3df5ca0a0be4385a839bd9b86d4a76e18d7b17d16559127
+        run: |
+          set -euo pipefail
+          base="https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}"
+          tarball="go-containerregistry_Linux_x86_64.tar.gz"
+          tmp="$(mktemp -d)"
+          curl -fsSL -o "${tmp}/${tarball}" "${base}/${tarball}"
+          echo "${CRANE_SHA256}  ${tmp}/${tarball}" | sha256sum --check --strict -
+          tar -xzf "${tmp}/${tarball}" -C "${tmp}" crane
+          install -m 0755 "${tmp}/crane" /usr/local/bin/crane
+          crane version
+
       # The identity every check below pins. Exact, never a regexp: a pattern
       # naming no workflow and no ref also accepts a branch build, which is how
       # the pre-epic verification command accepted a main image as a release.
@@ -1012,12 +1030,47 @@ jobs:
           ASSETS="${BINARIES} installer THIRD_PARTY_NOTICES.md"
           for b in ${BINARIES}; do ASSETS="${ASSETS} ${b}.cyclonedx.json"; done
 
+          # Refuse a legacy LocalSignedPayload. cosign verify-blob-attestation
+          # falls back to FetchLocalSignedPayloadFromPath when the file does
+          # not parse as a protobuf bundle; it does not branch on mediaType.
+          # The check below is a format assertion on the bundles we emit, and
+          # defence in depth over the already-patched v3.1.3 verifier
+          # (GHSA-fx35-mq7g-6g98 was a live bypass of --certificate-identity
+          # on the legacy blob path in earlier cosign; v3.1.3 is the fix).
+          # Require protobuf mediaType, verificationMaterial, and an envelope
+          # or messageSignature; refuse the LocalSignedPayload keys. Fail
+          # without calling cosign.
+          reject_legacy_blob_bundle() {
+            local artifact="$1" bundle="$2"
+            if ! jq -e 'type == "object"' "${bundle}" >/dev/null; then
+              echo "::error::${artifact}'s bundle is not JSON; refuse to read it"
+              return 1
+            fi
+            if ! jq -e '
+              (.mediaType // "" | startswith("application/vnd.dev.sigstore.bundle"))
+              and has("verificationMaterial")
+              and (has("dsseEnvelope") or has("messageSignature"))
+              and ([keys[] | select(. == "base64Signature" or . == "cert" or . == "rekorBundle" or . == "RFC3161Timestamp")] | length) == 0
+            ' "${bundle}" >/dev/null; then
+              echo "::error::${artifact} has a legacy-format bundle; refuse to read it"
+              return 1
+            fi
+            return 0
+          }
+
           for a in ${ASSETS}; do
             if [[ ! -s "${a}" ]]; then
               echo "::error::asset ${a} is missing from the release"; failed=1; continue
             fi
             if [[ ! -s "${a}.sigstore.json" ]]; then
               echo "::error::asset ${a} has no signature bundle"; failed=1; continue
+            fi
+            if [[ -e "${a}.sig" ]]; then
+              echo "::error::legacy detached signature ${a}.sig is present; refuse to read it"
+              failed=1; continue
+            fi
+            if ! reject_legacy_blob_bundle "${a}" "${a}.sigstore.json"; then
+              failed=1; continue
             fi
             if retry cosign verify-blob-attestation \
                  --bundle "${a}.sigstore.json" \
@@ -1038,6 +1091,13 @@ jobs:
             bundle="${b}.cyclonedx.sigstore.json"
             if [[ ! -s "${bundle}" ]]; then
               echo "::error::${b} has no bundle binding its SBOM to it"; failed=1; continue
+            fi
+            if [[ -e "${b}.cyclonedx.sig" ]]; then
+              echo "::error::legacy detached signature ${b}.cyclonedx.sig is present; refuse to read it"
+              failed=1; continue
+            fi
+            if ! reject_legacy_blob_bundle "${b}'s SBOM binding" "${bundle}"; then
+              failed=1; continue
             fi
             if retry cosign verify-blob-attestation \
                  --bundle "${bundle}" --type cyclonedx \
@@ -1072,15 +1132,85 @@ jobs:
           failed=0
 
           # Defined per step: each `run:` block is its own shell, so a helper
-          # defined in an earlier step is not in scope here.
+          # defined in an earlier step is not in scope here. Same shape as
+          # attest.yml: a per-call timeout so a stalled GHCR/Rekor response
+          # retries instead of hanging until timeout-minutes kills the job.
           retry() {
-            local n=0
-            until "$@"; do
-              n=$((n + 1))
-              [[ "${n}" -ge 3 ]] && return 1
-              sleep $((n * 5))
+            local n rc
+            for n in 1 2 3; do
+              rc=0
+              timeout --foreground 120s "$@" || rc=$?
+              if [[ "${rc}" -eq 0 ]]; then
+                return 0
+              fi
+              echo "::warning::attempt ${n} failed (exit ${rc}$([[ "${rc}" -eq 124 ]] && echo ', timed out'))" >&2
+              if [[ "${n}" -lt 3 ]]; then
+                sleep $((n * 5))
+              fi
             done
+            return 1
           }
+
+          # Refuse a legacy cosign sidecar (sha256-<digest>.sig / .att).
+          # New-format signatures are OCI referrers; GHCR's tag fallback is
+          # sha256-<hex> with no suffix. cosign verify falls back to reading
+          # the old tags, so seeing one is the condition we fail on -- and
+          # we fail without calling verify.
+          #
+          # cosign tree is fail-open on non-404 attachment fetches (it prints
+          # "No Supply Chain Security Related Artifacts found" and exits 0),
+          # so a missing line is not evidence of a missing tag. We still run
+          # tree (timeout-wrapped via retry) and fail-closed on a hard inspect
+          # error. Absence of a sidecar is decided by a positive crane probe
+          # that expects MANIFEST_UNKNOWN / NAME_UNKNOWN and fails on anything
+          # else. Do not grep for a bare "404": crane echoes the probe digest
+          # hex into the same stderr line.
+          reject_legacy_registry() {
+            local what="$1" ref="$2"
+            local image digest hex suffix probe rc err n
+            if ! retry cosign tree "${ref}" >>verify.log 2>&1; then
+              echo "::error::${what}: could not inspect registry attachments for legacy-format tags"
+              return 1
+            fi
+            if [[ "${ref}" == *@sha256:* ]]; then
+              image="${ref%@*}"
+              digest="${ref#*@}"
+            else
+              if ! digest="$(retry crane digest "${ref}")"; then
+                echo "::error::${what}: could not inspect registry attachments for legacy-format tags"
+                return 1
+              fi
+              image="${ref%:*}"
+            fi
+            hex="${digest#sha256:}"
+            for suffix in sig att; do
+              probe="${image}:sha256-${hex}.${suffix}"
+              for n in 1 2 3; do
+                rc=0
+                err="$(timeout --foreground 120s crane manifest "${probe}" 2>&1 >/dev/null)" || rc=$?
+                if [[ "${rc}" -eq 0 ]]; then
+                  echo "::error::${what} has a legacy-format registry tag; refuse to read it"
+                  return 1
+                fi
+                if grep -qE '(MANIFEST_UNKNOWN|NAME_UNKNOWN):' <<<"${err}"; then
+                  break
+                fi
+                echo "::warning::crane manifest attempt ${n} failed (exit ${rc}$([[ "${rc}" -eq 124 ]] && echo ', timed out'))" >&2
+                if [[ "${n}" -lt 3 ]]; then
+                  sleep $((n * 5))
+                else
+                  echo "::error::${what}: could not inspect registry attachments for legacy-format tags"
+                  return 1
+                fi
+              done
+            done
+            return 0
+          }
+
+          reject_legacy_registry "image index" "${IMAGE}@${INDEX}"
+          reject_legacy_registry "amd64 image" "${IMAGE}@${AMD64}"
+          reject_legacy_registry "arm64 image" "${IMAGE}@${ARM64}"
+          reject_legacy_registry "${IMAGE}:${TAG}" "${IMAGE}:${TAG}"
 
           # if/else rather than `cmd && echo ok || err`: in that form the error
           # branch also runs when the echo fails, which in a gate is a false
@@ -1191,13 +1321,68 @@ jobs:
           failed=0
 
           retry() {
-            local n=0
-            until "$@"; do
-              n=$((n + 1))
-              [[ "${n}" -ge 3 ]] && return 1
-              sleep $((n * 5))
+            local n rc
+            for n in 1 2 3; do
+              rc=0
+              timeout --foreground 120s "$@" || rc=$?
+              if [[ "${rc}" -eq 0 ]]; then
+                return 0
+              fi
+              echo "::warning::attempt ${n} failed (exit ${rc}$([[ "${rc}" -eq 124 ]] && echo ', timed out'))" >&2
+              if [[ "${n}" -lt 3 ]]; then
+                sleep $((n * 5))
+              fi
             done
+            return 1
           }
+
+          # Same check as the image step: a legacy sha256-<digest>.sig / .att
+          # sidecar is refused without calling verify. tree is fail-open on
+          # non-404, so absence is decided by a crane probe that expects
+          # MANIFEST_UNKNOWN / NAME_UNKNOWN (not a bare "404" substring).
+          reject_legacy_registry() {
+            local what="$1" ref="$2"
+            local image digest hex suffix probe rc err n
+            if ! retry cosign tree "${ref}" >>verify.log 2>&1; then
+              echo "::error::${what}: could not inspect registry attachments for legacy-format tags"
+              return 1
+            fi
+            if [[ "${ref}" == *@sha256:* ]]; then
+              image="${ref%@*}"
+              digest="${ref#*@}"
+            else
+              if ! digest="$(retry crane digest "${ref}")"; then
+                echo "::error::${what}: could not inspect registry attachments for legacy-format tags"
+                return 1
+              fi
+              image="${ref%:*}"
+            fi
+            hex="${digest#sha256:}"
+            for suffix in sig att; do
+              probe="${image}:sha256-${hex}.${suffix}"
+              for n in 1 2 3; do
+                rc=0
+                err="$(timeout --foreground 120s crane manifest "${probe}" 2>&1 >/dev/null)" || rc=$?
+                if [[ "${rc}" -eq 0 ]]; then
+                  echo "::error::${what} has a legacy-format registry tag; refuse to read it"
+                  return 1
+                fi
+                if grep -qE '(MANIFEST_UNKNOWN|NAME_UNKNOWN):' <<<"${err}"; then
+                  break
+                fi
+                echo "::warning::crane manifest attempt ${n} failed (exit ${rc}$([[ "${rc}" -eq 124 ]] && echo ', timed out'))" >&2
+                if [[ "${n}" -lt 3 ]]; then
+                  sleep $((n * 5))
+                else
+                  echo "::error::${what}: could not inspect registry attachments for legacy-format tags"
+                  return 1
+                fi
+              done
+            done
+            return 0
+          }
+
+          reject_legacy_registry "Helm chart" "${CHART_NAME}@${CHART_DIGEST}"
 
           if retry cosign verify --certificate-identity "${IDENTITY}" \
                --certificate-oidc-issuer "${OIDC_ISSUER}" \
@@ -1279,6 +1464,28 @@ jobs:
           done
           [[ "$(head -c 2 installer)" == '#!' ]] || { echo "::error::installer is not a shell script"; exit 1; }
           bash -n installer
+
+          # Same format assertion as the asset step: do not fall back to
+          # reading a legacy LocalSignedPayload over the public channel either.
+          reject_legacy_blob_bundle() {
+            local artifact="$1" bundle="$2"
+            if ! jq -e 'type == "object"' "${bundle}" >/dev/null; then
+              echo "::error::${artifact}'s bundle is not JSON; refuse to read it"
+              exit 1
+            fi
+            if ! jq -e '
+              (.mediaType // "" | startswith("application/vnd.dev.sigstore.bundle"))
+              and has("verificationMaterial")
+              and (has("dsseEnvelope") or has("messageSignature"))
+              and ([keys[] | select(. == "base64Signature" or . == "cert" or . == "rekorBundle" or . == "RFC3161Timestamp")] | length) == 0
+            ' "${bundle}" >/dev/null; then
+              echo "::error::${artifact} has a legacy-format bundle; refuse to read it"
+              exit 1
+            fi
+          }
+          reject_legacy_blob_bundle installer installer.sigstore.json
+          reject_legacy_blob_bundle nvcrectl-linux-amd64 nvcrectl-linux-amd64.sigstore.json
+
           retry cosign verify-blob-attestation \
             --bundle installer.sigstore.json \
             --type https://slsa.dev/provenance/v1 \

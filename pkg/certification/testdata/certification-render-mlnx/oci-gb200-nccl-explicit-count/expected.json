@@ -1,0 +1,43 @@
+[
+  {
+    "workflow": "oci-cert-communication-nc-db169",
+    "dependencyKinds": [
+      "TrainingRuntime",
+      "ComputeDomain"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "podAnnotations": {
+          "k8s.v1.cni.cncf.io/networks": "network-operator/sriov-net,network-operator/sriov-net,network-operator/sriov-net,network-operator/sriov-net"
+        },
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/nvidia.com/gpu=4",
+              "limits/nvidia.com/mlnxnics=4",
+              "requests/nvidia.com/gpu=4",
+              "requests/nvidia.com/mlnxnics=4"
+            ]
+          }
+        ]
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "podAnnotations": {},
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/cpu=2",
+              "limits/memory=1Gi"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

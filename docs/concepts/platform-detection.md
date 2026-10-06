@@ -81,8 +81,25 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | GB300 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
 | H100 | AWS | EFA | `vpc.amazonaws.com/efa: 32`, no hugepages |
 | H100 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap |
+| H100 | GCP | TCPXO (FastRak) | `tcpxo-daemon` sidecar, `NCCL_FASTRAK_*` env, the 8 GPU NIC networks auto-detected from node allocatable, CUDA 12 image `pytorch:25.06-py3` for NCCL tests (A3 Mega only, assumes TCPXO plugin v1.0.16 or earlier, see [GCP H100 clusters](#gcp-h100-clusters)) |
+| GB200/GB300 | GCP | RoCE | `networking.gke.io.networks/rdma-0`..`rdma-3` (fixed network names), ComputeDomain |
 | RTX PRO 6000 Blackwell | GCP G4 | TCP over `eth0`, PCIe GPU peer-to-peer | Variable GPU count by G4 machine size; `nvidia.com/gpu=present:NoSchedule` toleration; no RDMA resource request |
 | GB200/GB300 | On-prem | InfiniBand | arm64/GPU taint tolerations, portable IB NCCL env (no HCA pinning), NIC resource auto-detected or set via `nicResourceName`, ComputeDomain |
+| GB200 | OCI | RoCE | No NIC request by default (`mlnxPerNode: 0`); ComputeDomain. Set `mlnxPerNode` to request `nvidia.com/mlnxnics` and the matching `network-operator/sriov-net` attachments |
+| GB300 | OCI | RoCE | `nvidia.com/mlnxnics: 4`, four `network-operator/sriov-net` attachments, ComputeDomain |
+| L40S | OCI | RoCE | `nvidia.com/mlnxnics: 2`, two `network-operator/sriov-net` attachments |
+
+OCI GB200 is the one OCI architecture that requests no NIC by default. The
+shapes do not consistently expose `nvidia.com/mlnxnics`, and the `sriov-net`
+NetworkAttachmentDefinition that the annotation references is not present on a
+stock cluster, so a default request leaves every worker pod Pending on
+`Insufficient nvidia.com/mlnxnics`. Sites running the SR-IOV device plugin set
+`mlnxPerNode` to their own per-node count.
+
+Setting `mlnxPerNode: 0` is a supported opt-out on **any** platform whose
+templates request `nvidia.com/mlnxnics` (Azure, OCI, TogetherAI, Forge): at
+zero, the resource and the network attachment annotation are both omitted
+rather than requested as `"0"`.
 
 RTX PRO 6000 defaults to **eight GPUs per node**, including on GCP. The default
 is architecture-based, not machine-shape detection. On smaller G4 nodes, set
@@ -145,3 +162,67 @@ spec:
 </Warning>
 
 Diagnostics (`dcgm-level4`) needs no on-prem override: it already tolerates all taints and runs intra-node, so it schedules on tainted arm64 nodes unchanged.
+
+## GCP H100 clusters
+
+On GCP H100, the override runs NCCL over GPUDirect-TCPXO. It adds a `tcpxo-daemon` sidecar, the `NCCL_FASTRAK_*` environment, and a `networking.gke.io/interfaces` pod annotation that attaches the pod to the node's eight GPU NIC networks as `eth1` through `eth8`. GKE looks up each network in that annotation as a `Network` object when the pod is admitted, and rejects the pod if one is missing. The names are chosen by whoever provisions the cluster: AICR names them `<deployment-id>-gpu-nic-0` through `-7`, and Google's samples use `vpc1` through `vpc8`.
+
+So the controller reads the names from the target nodes rather than assuming them. GKE advertises an extended resource `networking.gke.io.networks/<network>` on every node attached to a network:
+
+- **Which networks.** The controller uses the networks advertised on every target node, and only when there are exactly eight of them. It ignores the `<network>.IP` resources and the `default` network.
+- **Which order.** When the nodes' `networking.gke.io/north-interfaces` and `networking.gke.io/nic-info` annotations place each network on a host NIC, and all nodes agree, the pod's `eth1` carries the same network as the host's `eth1`, and so on. Otherwise the names are sorted.
+- **When detection fails.** Detection never guesses. With any count other than eight, the controller renders the default names `gpu-nic0` through `gpu-nic7` and emits a Warning `GKENetworkDetection` event on the Certification listing what it found. Causes include no multi-networking, a network missing from one node, a ninth network on every node, or an A3 High pool. GKE rejects the resulting pods unless the cluster has `Network` objects with those default names.
+
+To see what the nodes advertise, list the networks and a GPU node's allocatable resources:
+
+```bash
+kubectl get networks.networking.gke.io
+kubectl get node <gpu-node> -o jsonpath='{.status.allocatable}'
+```
+
+Offline `nvcrectl certification render` has no nodes to inspect, so it renders the default names. With `--dry-run`, detection runs against the real nodes and prints the networks it found, or why it fell back, to stderr.
+
+The TCPXO NCCL plugin comes from the node, not the image. GKE's TCPXO installer puts it in `/home/kubernetes/bin/nvidia`, which the override mounts at `/usr/local/nvidia`. The plugin links a CUDA runtime that it does not bundle, so it loads the one in the workload image and the two major versions must match. The GCP H100 NCCL tests therefore pin `nvcr.io/nvidia/pytorch:25.06-py3` (CUDA 12.9.1) on the workers, the launcher and its init container, instead of the CUDA 13 `pytorch:26.01-py3` the other platforms' NCCL tests use. The training entries still use `pytorch:25.08-py3`, which is CUDA 13, so they hit the mismatch on clusters with plugin v1.0.16 or earlier; on v1.0.17 and later their CUDA major already matches.
+
+**Which CUDA major the cluster needs.** This is a property of the installed TCPXO plugin, not of GCP H100. Google qualifies plugin v1.0.16 and earlier against CUDA 12, and v1.0.17 and later against CUDA 13 (v1.0.17 also requires GPU driver R595 and GKE 1.33.5-gke.1125000 or above). The pinned image assumes **plugin v1.0.16 or earlier**. The controller does not detect the plugin version, so on a cluster running v1.0.17 or later the pin is wrong and NCCL fails to load the plugin. Check what the cluster has:
+
+```bash
+kubectl -n kube-system get daemonset nccl-tcpxo-installer \
+  -o jsonpath='{.spec.template.spec.initContainers[*].image}'
+```
+
+The plugin is the `nccl-plugin-gpudirecttcpx-dev` image in the output.
+
+| Plugin version | CUDA major | What to set |
+|---|---|---|
+| v1.0.16 and earlier | 12 | nothing, the pinned `pytorch:25.06-py3` is already correct |
+| v1.0.17 and later | 13 | `image` on the NCCL categories, for example `nvcr.io/nvidia/pytorch:26.01-py3` |
+
+Set it per category, under `categories[].options.image`, not as the certification-wide `spec.image`. The spec-level field is a default for every category, so it also replaces the image of categories that have nothing to do with TCPXO. `diagnostics/dcgm-level4` runs `dcgmi` out of a DCGM image, and a PyTorch image has no `dcgmi`, so the spec-level form fixes NCCL and breaks diagnostics in the same certification:
+
+```yaml
+categories:
+  - domain: communication
+    variant: nccl-all-reduce
+    options:
+      image: nvcr.io/nvidia/pytorch:26.01-py3   # CUDA 13 plugin
+  - domain: diagnostics
+    variant: dcgm-level4                        # keeps its own DCGM image
+```
+
+Applying Google's published manifest installs the latest plugin, so a cluster built from Google's instructions today gets a CUDA 13 plugin. Clusters provisioned by AICR pin an older plugin and need no change. The CUDA 13 row has not yet been validated on a v1.0.17 cluster.
+
+**Symptom to fix.** Both directions of the mismatch fail at plugin load, and the missing soname names the CUDA major the plugin wants, not the one the image has:
+
+| NCCL log line | Meaning | Fix |
+|---|---|---|
+| `Error loading libnccl-net_internal.so: libcudart.so.12` | plugin wants CUDA 12, image is CUDA 13 | use a CUDA 12 image (the default pin) |
+| `Error loading libnccl-net_internal.so: libcudart.so.13` | plugin wants CUDA 13, image is CUDA 12 | set `categories[].options.image` to a CUDA 13 image |
+
+Whatever image you set, it must also ship the `*_perf_mpi` NCCL test binaries the entries invoke. The `tcpxo-daemon` sidecar keeps its own GCP-provided image either way.
+
+The TCPXO NCCL plugin also checks the NCCL environment against the `a3plus_guest_config.textproto` that GKE's TCPXO installer puts on each node, and aborts the job on any value the file enforces. The `NCCL_FASTRAK_*` environment NVCRE sets matches the enforced values of current installers, for example `NCCL_PROTO=Simple,LL128`. It also leaves `NCCL_ALGO` unset, as the file recommends. If a job fails with `NCCL WARN NCCL/NET (shim) mismatch enforced`, compare the named variable with that file on the node: `/home/kubernetes/bin/nvidia/lib64/a3plus_guest_config.textproto`, which is mounted in the pod at `/usr/local/nvidia/lib64/`.
+
+<Note>
+Only A3 Mega (`a3-megagpu-8g`) is supported. A3 High (`a3-highgpu-8g`) is also H100, but it uses GPUDirect-TCPX with four GPU NICs, which this override does not configure. Both report `nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3`, so the override cannot tell them apart. The eight-network rule is what flags an A3 High target.
+</Note>

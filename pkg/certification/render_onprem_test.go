@@ -102,7 +102,7 @@ func TestCertificationRenderOnPrem(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		workflows, err := renderCertification(cert, cfg.Platform, gpuArch)
+		workflows, err := renderCertification(cert, cfg.Platform, gpuArch, nil)
 		if err != nil {
 			return err
 		}

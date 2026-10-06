@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Reaches deps/azure-h100-ib-training.yaml. Azure keeps four separate mlnxnics
+# fragments split along two axes, architecture (a100 vs h100) and domain
+# (communication vs training), and each is gated on its own pair. A case has to
+# hit each of the four combinations or one fragment's guard goes untested; this
+# is the h100-plus-training corner.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: azure-h100-training-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 8
+  enableMNNVL: false
+  mlnxPerNode: 0
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 50

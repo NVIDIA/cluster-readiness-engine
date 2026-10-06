@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: standalone-nccl
+  namespace: default
+status:
+  conditions:
+    - type: Succeeded
+      status: "True"
+      reason: IterationsComplete
+      message: all iterations passed

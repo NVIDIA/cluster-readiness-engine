@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# EFA transport selection for AWS GB200 torch training.
+#
+# Separate from nccl/aws-gb200-efa-env.yaml for the same reason as the H100
+# training fragment: that file is consumed through `| toMpiArgs`, where a shell
+# expands its "$PATH:..." value. A container env value is not shell-expanded, so
+# reusing it here would set a literal "$PATH:..." and break the bare `torchrun`
+# lookup in configs/train.sh.
+- name: FI_PROVIDER
+  value: efa
+- name: FI_EFA_USE_DEVICE_RDMA
+  value: "1"
+- name: FI_EFA_FORK_SAFE
+  value: "1"
+- name: NCCL_MNNVL_ENABLE
+  value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"

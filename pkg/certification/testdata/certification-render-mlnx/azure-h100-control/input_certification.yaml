@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The unguarded-path control: Azure H100 resolves mlnxPerNode to the h100
+# architecture default of 8 and must be byte-for-byte what it was before the
+# guards went in. Read against azure-h100-explicit-zero, this is the pair that
+# shows the guard turns on at 0 and nowhere else.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: azure-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 8
+  enableMNNVL: false
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

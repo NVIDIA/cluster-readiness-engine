@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Training entries include the same TCPXO patch, so they render the detected
+# networks too. The order given is kept, not re-sorted.
+category: training
+subcategory: nemotron5-8b
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+nodesPerJob: 2
+gpusPerNode: 8
+gkeTCPXONetworks:
+  - vpc8
+  - vpc7
+  - vpc6
+  - vpc5
+  - vpc4
+  - vpc3
+  - vpc2
+  - vpc1

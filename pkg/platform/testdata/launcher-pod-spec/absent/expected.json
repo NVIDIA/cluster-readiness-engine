@@ -1,0 +1,22 @@
+{
+  "name": "launcher",
+  "template": {
+    "metadata": {
+      "labels": {
+        "preserved": "job"
+      }
+    },
+    "spec": {
+      "template": {
+        "metadata": {
+          "labels": {
+            "preserved": "pod"
+          }
+        },
+        "spec": {
+          "schedulerName": "kai-scheduler"
+        }
+      }
+    }
+  }
+}

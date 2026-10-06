@@ -20,6 +20,10 @@
                 spec:
                   containers:
                   - name: node
+                    securityContext:
+                      capabilities:
+                        add:
+                        - IPC_LOCK
                     resources:
                       limits:
                         nvidia.com/gpu: "{{ .GpusPerNode }}"

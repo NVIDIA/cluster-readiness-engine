@@ -2014,6 +2014,9 @@ spec:
                   Used by platforms with InfiniBand or RoCE networking (Azure, OCI, TogetherAI).
                   If not specified, derived from GPU architecture and platform via the
                   catalog's gpu-defaults.yaml.
+                  Setting it to 0 is an opt-out, not a request for zero devices: the Azure
+                  override stops requesting nvidia.com/mlnxnics altogether rather than
+                  emitting a count of zero.
                 format: int32
                 minimum: 0
                 type: integer

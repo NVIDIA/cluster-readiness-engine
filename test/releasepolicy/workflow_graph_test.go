@@ -214,7 +214,7 @@ func workflowCallOutputs(raw []byte, t *testing.T) map[string]any {
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
 		t.Fatalf("parse workflow triggers: %v", err)
 	}
-	for _, key := range []string{"on", "true"} {
+	for _, key := range []string{"on", boolTrue} {
 		trig, ok := doc[key].(map[string]any)
 		if !ok {
 			continue

@@ -15,10 +15,15 @@
   value: "eth0"
 - name: NCCL_CROSS_NIC
   value: "0"
-- name: NCCL_ALGO
-  value: "Ring,Tree"
+# The TCPXO NCCL shim checks this env against the node's
+# a3plus_guest_config.textproto (NCCL_SHIMNET_GUEST_CONFIG_CHECKER_CONFIG_FILE
+# below) and aborts on an ENFORCED mismatch. Current TCPXO installers enforce
+# NCCL_PROTO=Simple,LL128 and NCCL_NVLSTREE_MAX_CHUNKSIZE=131072, and recommend
+# leaving NCCL_ALGO unset so the tuner plugin chooses.
 - name: NCCL_PROTO
-  value: "Simple"
+  value: "Simple,LL128"
+- name: NCCL_NVLSTREE_MAX_CHUNKSIZE
+  value: "131072"
 - name: NCCL_MIN_NCHANNELS
   value: "4"
 - name: NCCL_P2P_NET_CHUNKSIZE

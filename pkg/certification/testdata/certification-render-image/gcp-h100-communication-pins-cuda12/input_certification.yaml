@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No image override. Every GCP H100 communication entry must render the CUDA 12
+# image (nvcr.io/nvidia/pytorch:25.06-py3) on the trainer, the workers, and,
+# for the multi-node MPI entries, the launcher and its fix-ssh-permissions
+# init: the catalog assumes TCPXO plugin v1.0.16 or earlier, whose host-installed
+# NCCL plugin needs CUDA 12 and cannot load in the CUDA 13 base image (v1.0.17+
+# needs a CUDA 13 spec.image instead). tcpxo-daemon keeps its GCP-provided image.
+# This pins the GCP images against a future base-image bump, which no test
+# without real GCP hardware would otherwise catch.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: gcp-cuda12
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 2
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: communication
+      variant: nccl-all-gather
+    - domain: communication
+      variant: nccl-alltoall
+    - domain: communication
+      variant: nccl-loopback
+    - domain: communication
+      variant: nccl-loopback-nvswitch

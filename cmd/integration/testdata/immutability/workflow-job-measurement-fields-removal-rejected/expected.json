@@ -1,0 +1,25 @@
+{
+  "create": {
+    "accepted": true
+  },
+  "update": {
+    "accepted": false,
+    "causes": [
+      {
+        "type": "FieldValueInvalid",
+        "field": "spec.jobTemplate.spec",
+        "message": "Invalid value: bandwidthMeasurement cannot be added or removed after creation"
+      },
+      {
+        "type": "FieldValueInvalid",
+        "field": "spec.jobTemplate.spec",
+        "message": "Invalid value: goodputMeasurement cannot be added or removed after creation"
+      },
+      {
+        "type": "FieldValueInvalid",
+        "field": "spec.jobTemplate.spec",
+        "message": "Invalid value: nodeHealthMonitor cannot be added or removed after creation"
+      }
+    ]
+  }
+}

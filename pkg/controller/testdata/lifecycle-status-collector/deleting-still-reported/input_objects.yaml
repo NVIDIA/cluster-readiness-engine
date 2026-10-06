@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: gpu-cluster-cert
+  namespace: default
+  deletionTimestamp: "2026-10-02T00:00:00Z"
+  finalizers:
+    - nvcre.nvidia.com/certification-finalizer
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: WorkflowFailed
+      message: failed and now deleting

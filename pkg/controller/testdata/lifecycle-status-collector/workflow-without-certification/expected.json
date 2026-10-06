@@ -1,0 +1,34 @@
+{
+  "metrics": [
+    {
+      "name": "nvcre_workflow_status",
+      "labels": {
+        "certification": "",
+        "namespace": "default",
+        "status": "failed",
+        "workflow": "standalone-nccl"
+      },
+      "value": 0
+    },
+    {
+      "name": "nvcre_workflow_status",
+      "labels": {
+        "certification": "",
+        "namespace": "default",
+        "status": "in_progress",
+        "workflow": "standalone-nccl"
+      },
+      "value": 0
+    },
+    {
+      "name": "nvcre_workflow_status",
+      "labels": {
+        "certification": "",
+        "namespace": "default",
+        "status": "succeeded",
+        "workflow": "standalone-nccl"
+      },
+      "value": 1
+    }
+  ]
+}

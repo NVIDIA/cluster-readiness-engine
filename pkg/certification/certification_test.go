@@ -130,7 +130,7 @@ func TestCertificationRender(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		workflows, err := renderCertification(cert, "", "")
+		workflows, err := renderCertification(cert, "", "", nil)
 		if err != nil {
 			return err
 		}
@@ -213,7 +213,7 @@ func TestCertificationRenderErrors(t *testing.T) {
 		if readErr != nil {
 			err = readErr
 		} else {
-			_, err = renderCertification(cert, "", "")
+			_, err = renderCertification(cert, "", "", nil)
 		}
 
 		type result struct {

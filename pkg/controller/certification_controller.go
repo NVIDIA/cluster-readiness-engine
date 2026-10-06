@@ -534,11 +534,19 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		r.normalf(certification, ReasonNICResourceDetection,
 			"%s/%s: %s", category.Domain, category.Variant, nicDetectionMessage(nicDetected))
 	}
-
 	capableNodes, err := dropUnderCapacityNodes(archNodes, category, gpusPerNode)
 	if err != nil {
 		return "", err
 	}
+
+	// The GCP H100 TCPXO patch attaches the pod to the node's GPU NIC networks
+	// by name, and the provisioner chose those names, so they are detected from
+	// the nodes the job can run on: the capable set nodesPerJob is sized from,
+	// which the Workflow filters to again. An under-capacity node never runs
+	// the job, so its networks must not force the fallback. When detection
+	// refuses, the catalog default is rendered, and a Warning says why once
+	// the Workflow is created.
+	gkeNetworks := resolveGKETCPXONetworks(detectedPlatform, gpuArch, capableNodes)
 
 	nodesPerJob, err := resolveNodesPerJob(capableNodes, category, opts, entry, gpusPerNode, gpuArch)
 	if err != nil {
@@ -558,6 +566,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		GpusPerNode:        gpusPerNode,
 		MlnxPerNode:        mlnxPerNode,
 		NicResourceName:    nicResourceName,
+		GKETCPXONetworks:   gkeNetworks.Names,
 		Resources:          opts.Resources,
 		EnableMNNVL:        enableMNNVL,
 		EnableCheckpoint:   derefBool(opts.EnableCheckpoint),
@@ -699,6 +708,12 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 			}
 			return "", &workflowCreateRejectedError{err: errors.Join(createErr, statusErr)}
 		}
+	} else if gkeNetworks.Ran && len(gkeNetworks.Names) == 0 {
+		// Only the reconcile whose Create succeeded warns, so a retry that finds
+		// the Workflow already there does not repeat it. The message carries no
+		// category: the result is the same for every category, so the warnings
+		// fold into one event.
+		r.warnf(certification, ReasonGKENetworkDetection, "%s", gkeNetworkDetectionMessage(gkeNetworks))
 	}
 
 	return workflowName, nil

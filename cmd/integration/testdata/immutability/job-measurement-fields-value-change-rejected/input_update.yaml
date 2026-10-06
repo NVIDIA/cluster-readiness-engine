@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: imm-job-fields-value
+  namespace: default
+spec:
+  nodeHealthMonitor:
+    cel:
+      expression: "node.spec.unschedulable == false"
+  goodputMeasurement:
+    logProfileRef: other-profile
+    sampleInterval: 120s
+  bandwidthMeasurement:
+    logProfileRef: other-profile
+    sampleInterval: 120s
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime

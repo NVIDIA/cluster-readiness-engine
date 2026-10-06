@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# AWS EFA transport selection, shared by the WorkloadRun platform overrides
+# (pkg/platform/overrides/workloadrun.yaml) across H100 and GB200. The values
+# are identical on both architectures.
+#
+# NCCL_DEBUG, NCCL_MNNVL_ENABLE and NCCL_SOCKET_IFNAME stay with the callers:
+# the WorkloadRun controller injects the first two as -x flags on the launcher
+# baseline, and BaseNCCLEnvVars already sets eth0.
+#
+# No PATH or LD_LIBRARY_PATH here. The comm fragments set PATH to "$PATH:..."
+# because they are consumed through `| toMpiArgs` behind a preCommand wrapper,
+# where a shell expands it. Neither WorkloadRun delivery path is shell-expanded:
+# a container env value expands only $(VAR), and the MPI launcher argv is exec'd
+# directly once the preCommand wrapper is gone.
+- name: FI_PROVIDER
+  value: efa
+- name: FI_EFA_USE_DEVICE_RDMA
+  value: "1"
+- name: FI_EFA_FORK_SAFE
+  value: "1"

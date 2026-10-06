@@ -481,6 +481,9 @@
         },
         {
           "when": {
+            "gpuArchitecture": {
+              "equals": "gb300"
+            },
             "platform": {
               "equals": "aws"
             }
@@ -488,6 +491,9 @@
         },
         {
           "when": {
+            "gpuArchitecture": {
+              "equals": "gb300"
+            },
             "platform": {
               "equals": "aws"
             }
@@ -539,6 +545,13 @@
                                       "requests": {
                                         "vpc.amazonaws.com/efa": 4
                                       }
+                                    },
+                                    "securityContext": {
+                                      "capabilities": {
+                                        "add": [
+                                          "IPC_LOCK"
+                                        ]
+                                      }
                                     }
                                   }
                                 ]
@@ -553,6 +566,16 @@
               }
             }
           ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "gb200"
+            },
+            "platform": {
+              "equals": "aws"
+            }
+          }
         },
         {
           "when": {
@@ -678,6 +701,13 @@
                                       "requests": {
                                         "vpc.amazonaws.com/efa": 32
                                       }
+                                    },
+                                    "securityContext": {
+                                      "capabilities": {
+                                        "add": [
+                                          "IPC_LOCK"
+                                        ]
+                                      }
                                     }
                                   }
                                 ]
@@ -692,6 +722,16 @@
               }
             }
           ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "h100"
+            },
+            "platform": {
+              "equals": "aws"
+            }
+          }
         },
         {
           "when": {
@@ -737,12 +777,12 @@
                         "value": "0"
                       },
                       {
-                        "name": "NCCL_ALGO",
-                        "value": "Ring,Tree"
+                        "name": "NCCL_PROTO",
+                        "value": "Simple,LL128"
                       },
                       {
-                        "name": "NCCL_PROTO",
-                        "value": "Simple"
+                        "name": "NCCL_NVLSTREE_MAX_CHUNKSIZE",
+                        "value": "131072"
                       },
                       {
                         "name": "NCCL_MIN_NCHANNELS",
@@ -1316,13 +1356,13 @@
           },
           {
             "index": 4,
-            "when": "platform=aws",
+            "when": "gpuArchitecture=gb300, platform=aws",
             "patches": "none",
             "noOp": true
           },
           {
             "index": 5,
-            "when": "platform=aws",
+            "when": "gpuArchitecture=gb300, platform=aws",
             "patches": "none",
             "noOp": true
           },
@@ -1333,7 +1373,7 @@
             "noOp": true
           },
           {
-            "index": 8,
+            "index": 9,
             "when": "gpuArchitecture=gb300, platform=aws",
             "patches": "2 dependencies"
           }

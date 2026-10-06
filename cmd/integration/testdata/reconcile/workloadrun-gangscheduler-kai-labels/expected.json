@@ -31,11 +31,24 @@
       "trainer": {
         "image": "nvcr.io/nvidia/pytorch:25.08-py3",
         "command": [
-          "/bin/bash",
-          "-c"
+          "torchrun"
         ],
         "args": [
-          "rm -rf /opt/amazon\nunset NCCL_NET_PLUGIN\nunset NCCL_TUNER_PLUGIN\nunset AWS_OFI_NCCL_VERSION\nexec \"torchrun\" \"/workspace/train.py\""
+          "/workspace/train.py"
+        ],
+        "env": [
+          {
+            "name": "FI_PROVIDER",
+            "value": "efa"
+          },
+          {
+            "name": "FI_EFA_USE_DEVICE_RDMA",
+            "value": "1"
+          },
+          {
+            "name": "FI_EFA_FORK_SAFE",
+            "value": "1"
+          }
         ],
         "numNodes": 2,
         "numProcPerNode": 8
@@ -202,6 +215,13 @@
                               "vpc.amazonaws.com/efa": 32
                             }
                           },
+                          "securityContext": {
+                            "capabilities": {
+                              "add": [
+                                "IPC_LOCK"
+                              ]
+                            }
+                          },
                           "volumeMounts": [
                             {
                               "mountPath": "/dev/shm",
@@ -272,11 +292,10 @@
               "trainer": {
                 "image": "nvcr.io/nvidia/pytorch:25.08-py3",
                 "command": [
-                  "/bin/bash",
-                  "-c"
+                  "torchrun"
                 ],
                 "args": [
-                  "rm -rf /opt/amazon\nunset NCCL_NET_PLUGIN\nunset NCCL_TUNER_PLUGIN\nunset AWS_OFI_NCCL_VERSION\nexec \"torchrun\" \"/workspace/train.py\""
+                  "/workspace/train.py"
                 ],
                 "numNodes": 2,
                 "numProcPerNode": 8
@@ -568,6 +587,9 @@
         },
         {
           "when": {
+            "gpuArchitecture": {
+              "equals": "gb300"
+            },
             "platform": {
               "equals": "aws"
             }
@@ -609,6 +631,13 @@
                                       "requests": {
                                         "vpc.amazonaws.com/efa": 4
                                       }
+                                    },
+                                    "securityContext": {
+                                      "capabilities": {
+                                        "add": [
+                                          "IPC_LOCK"
+                                        ]
+                                      }
                                     }
                                   }
                                 ]
@@ -623,6 +652,40 @@
               }
             }
           ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "gb200"
+            },
+            "platform": {
+              "equals": "aws"
+            }
+          },
+          "jobTemplate": {
+            "spec": {
+              "workload": {
+                "trainJob": {
+                  "trainer": {
+                    "env": [
+                      {
+                        "name": "FI_PROVIDER",
+                        "value": "efa"
+                      },
+                      {
+                        "name": "FI_EFA_USE_DEVICE_RDMA",
+                        "value": "1"
+                      },
+                      {
+                        "name": "FI_EFA_FORK_SAFE",
+                        "value": "1"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
         },
         {
           "when": {
@@ -748,6 +811,13 @@
                                       "requests": {
                                         "vpc.amazonaws.com/efa": 32
                                       }
+                                    },
+                                    "securityContext": {
+                                      "capabilities": {
+                                        "add": [
+                                          "IPC_LOCK"
+                                        ]
+                                      }
                                     }
                                   }
                                 ]
@@ -762,6 +832,40 @@
               }
             }
           ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "h100"
+            },
+            "platform": {
+              "equals": "aws"
+            }
+          },
+          "jobTemplate": {
+            "spec": {
+              "workload": {
+                "trainJob": {
+                  "trainer": {
+                    "env": [
+                      {
+                        "name": "FI_PROVIDER",
+                        "value": "efa"
+                      },
+                      {
+                        "name": "FI_EFA_USE_DEVICE_RDMA",
+                        "value": "1"
+                      },
+                      {
+                        "name": "FI_EFA_FORK_SAFE",
+                        "value": "1"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
         },
         {
           "when": {
@@ -807,12 +911,12 @@
                         "value": "0"
                       },
                       {
-                        "name": "NCCL_ALGO",
-                        "value": "Ring,Tree"
+                        "name": "NCCL_PROTO",
+                        "value": "Simple,LL128"
                       },
                       {
-                        "name": "NCCL_PROTO",
-                        "value": "Simple"
+                        "name": "NCCL_NVLSTREE_MAX_CHUNKSIZE",
+                        "value": "131072"
                       },
                       {
                         "name": "NCCL_MIN_NCHANNELS",
@@ -1606,15 +1710,14 @@
         "detectedGPUArchitecture": "h100",
         "appliedOverrides": [
           {
-            "index": 4,
-            "when": "platform=aws",
-            "patches": "none",
-            "noOp": true
-          },
-          {
-            "index": 7,
+            "index": 8,
             "when": "gpuArchitecture=h100, platform=aws",
             "patches": "1 dependencies"
+          },
+          {
+            "index": 9,
+            "when": "gpuArchitecture=h100, platform=aws",
+            "patches": "jobTemplate"
           }
         ],
         "groups": [

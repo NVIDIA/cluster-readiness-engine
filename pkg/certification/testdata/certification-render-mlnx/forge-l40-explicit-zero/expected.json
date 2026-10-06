@@ -1,0 +1,38 @@
+[
+  {
+    "workflow": "forge-l40-cert-communicat-8133a",
+    "dependencyKinds": [
+      "TrainingRuntime"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "podAnnotations": {},
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/nvidia.com/gpu=8",
+              "requests/nvidia.com/gpu=8"
+            ]
+          }
+        ]
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "podAnnotations": {},
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/cpu=2",
+              "limits/memory=1Gi"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

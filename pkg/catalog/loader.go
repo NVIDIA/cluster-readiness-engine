@@ -61,7 +61,23 @@ const (
 	// DefaultTimeoutPerJob is the default timeout for communication jobs.
 	// Prevents pods from running indefinitely on launcher restarts.
 	DefaultTimeoutPerJob = "1h"
+
+	// GKETCPXONICsPerNode is the GPU NIC count TCPXO uses on an
+	// a3-megagpu-8g node, one per GPU. It matches --num_nics and
+	// NCCL_FASTRAK_IFNAME in the GCP H100 TCPXO templates.
+	GKETCPXONICsPerNode = 8
 )
+
+// DefaultGKETCPXONetworks returns the GKE Network names the GCP H100 TCPXO
+// patch renders when none were detected: gpu-nic0 through gpu-nic7, the names
+// the catalog hardcoded before detection existed (issue #432).
+func DefaultGKETCPXONetworks() []string {
+	names := make([]string, GKETCPXONICsPerNode)
+	for i := range names {
+		names[i] = fmt.Sprintf("gpu-nic%d", i)
+	}
+	return names
+}
 
 //go:embed all:entries
 var entriesFS embed.FS
@@ -92,13 +108,22 @@ type TemplateData struct {
 	GpusPerNode int32
 
 	// MlnxPerNode is the Mellanox NIC count per node for IB/RoCE platforms.
-	// 0 means omit nvidia.com/mlnxnics. Templates use: {{ .MlnxPerNode }}
+	// 0 means omit nvidia.com/mlnxnics: templates use
+	// {{- if gt (int .MlnxPerNode) 0 }} around the request (and, on OCI, the
+	// network attachment annotation). Templates use: {{ .MlnxPerNode }}
 	MlnxPerNode int32
 
 	// NicResourceName is the extended resource name of the RDMA NIC devices
 	// for the on-prem GB200/GB300 templates. Empty means omit the NIC resource
 	// block. Templates use: {{- if .NicResourceName }} ... {{ .NicResourceName }}
 	NicResourceName string
+
+	// GKETCPXONetworks are the GKE Network names the GCP H100 TCPXO patch
+	// attaches to the pod as eth1..eth8, in that order (always
+	// GKETCPXONICsPerNode entries at Build time: detected, or
+	// DefaultGKETCPXONetworks). Templates use:
+	// {{ range $i, $n := .GKETCPXONetworks }} ... eth{{ add $i 1 }} ... {{ $n }}
+	GKETCPXONetworks []string
 
 	// TrainingCPULimit is the CPU limit for training containers
 	// (always non-empty after defaults). Templates use: {{ .TrainingCPULimit }}
@@ -264,6 +289,7 @@ func TemplateFuncs() template.FuncMap {
 				return 0
 			}
 		},
+		"add":       func(a, b int) int { return a + b },
 		"mul":       func(a, b int) int { return a * b },
 		"toYaml":    toYaml,
 		"toMpiArgs": toMpiArgs,
@@ -435,6 +461,7 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 		GpusPerNode:        config.GpusPerNode,
 		MlnxPerNode:        config.MlnxPerNode,
 		NicResourceName:    config.NicResourceName,
+		GKETCPXONetworks:   config.GKETCPXONetworks,
 		EnableMNNVL:        config.EnableMNNVL,
 		EnableCheckpoint:   config.EnableCheckpoint,
 		MaxSteps:           config.MaxSteps,
@@ -455,6 +482,9 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 		MeasurementTimeout: config.MeasurementTimeout,
 		Thresholds:         config.Thresholds,
 		SourceRepo:         config.SourceRepo,
+	}
+	if len(td.GKETCPXONetworks) == 0 {
+		td.GKETCPXONetworks = DefaultGKETCPXONetworks()
 	}
 	if td.MaxSteps == 0 {
 		td.MaxSteps = DefaultMaxSteps
