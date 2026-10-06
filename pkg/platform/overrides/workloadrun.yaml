@@ -414,7 +414,18 @@
   dependencies:
 {{ lib "deps/nscale-gpu-rdma.yaml" . | indent 2 }}
 
-# --- Nscale NKS (IB env vars, non-MPI only) ---
+# --- Nscale NKS (IB env vars) ---
+# MPI ranks start under sshd with a fresh environment, so the env rides
+# mpirun -x (as in the catalog collectives); torch inherits trainer env.
+{{- if eq .FrameworkType "mpi" }}
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      in: [b200, gb300]
+  mpiArgs:
+{{ lib "nccl/nscale-ib-env.yaml" . | toMpiArgs | indent 4 }}
+{{- end }}
 {{- if ne .FrameworkType "mpi" }}
 - when:
     platform:

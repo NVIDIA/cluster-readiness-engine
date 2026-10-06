@@ -1,5 +1,5 @@
 # Nscale GB300 (ADR-085): same DRA claim dependency, MPI framework this time
-# so the non-MPI-only IB env block is skipped by the template guard.
+# so the IB env renders as the MPI-only mpiArgs block.
 entryName: test
 nodesPerJob: 2
 gpusPerNode: 4

@@ -1467,6 +1467,19 @@
               }
             }
           ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "in": [
+                "b200",
+                "gb300"
+              ]
+            },
+            "platform": {
+              "equals": "nscale"
+            }
+          }
         }
       ]
     },
