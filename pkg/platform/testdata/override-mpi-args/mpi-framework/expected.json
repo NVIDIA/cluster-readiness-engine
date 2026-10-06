@@ -1,6 +1,9 @@
 [
   {
     "when": {
+      "gpuArchitecture": {
+        "equals": "gb300"
+      },
       "platform": {
         "equals": "aws"
       }
@@ -56,6 +59,42 @@
       "NCCL_CUMEM_ENABLE=1",
       "-x",
       "NCCL_NET_GDR_C2C=1"
+    ]
+  },
+  {
+    "when": {
+      "gpuArchitecture": {
+        "equals": "gb200"
+      },
+      "platform": {
+        "equals": "aws"
+      }
+    },
+    "mpiArgs": [
+      "-x",
+      "FI_PROVIDER=efa",
+      "-x",
+      "FI_EFA_USE_DEVICE_RDMA=1",
+      "-x",
+      "FI_EFA_FORK_SAFE=1"
+    ]
+  },
+  {
+    "when": {
+      "gpuArchitecture": {
+        "equals": "h100"
+      },
+      "platform": {
+        "equals": "aws"
+      }
+    },
+    "mpiArgs": [
+      "-x",
+      "FI_PROVIDER=efa",
+      "-x",
+      "FI_EFA_USE_DEVICE_RDMA=1",
+      "-x",
+      "FI_EFA_FORK_SAFE=1"
     ]
   },
   {

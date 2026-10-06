@@ -34,7 +34,7 @@
   "runtimeVolumes": [
     "dshm"
   ],
-  "overrideCount": 18,
+  "overrideCount": 20,
   "gangSchedulerName": "runai-scheduler",
   "gangSchedulerJobLabels": [
     "app=wr-runai",

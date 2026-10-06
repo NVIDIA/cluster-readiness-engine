@@ -6,16 +6,19 @@ package controller
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
+
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
 // Metric labels and NCCL metric names.
 const (
-	labelNamespace   = "namespace"
-	labelJob         = "job"
-	labelStatus      = "status"
-	labelNode        = "node"
-	labelMeasurement = "measurement"
-	labelWorkflow    = "workflow"
+	labelNamespace         = "namespace"
+	labelJob               = "job"
+	labelStatus            = "status"
+	labelNode              = "node"
+	labelMeasurement       = "measurement"
+	labelWorkflow          = "workflow"
+	labelCertificationName = "certification"
 
 	// Canonical NCCL bandwidth metric names. Values are gigabytes per second
 	// (nccl-tests algbw/busbw), not gigabits.
@@ -27,10 +30,16 @@ const (
 	metricNCCLBusBWDeprecated = "nvcre_nccl_busbw_gbps"
 )
 
+// exclusiveMetricStatuses is the 0/1 peer set for nvcre_*_status gauges.
+// Values are snake_case so PromQL matches nvcre_job_status; they map from the
+// InProgress / Succeeded / Failed condition types used by status helpers.
+var exclusiveMetricStatuses = []string{"in_progress", "succeeded", "failed"}
+
 var (
 	// jobStatusGauge tracks the current status of NVCRE jobs.
 	// Values: 1 for the current status, 0 for other statuses.
 	// Status can be: "in_progress", "succeeded", "failed"
+	// Certification and Workflow status are scrape-time collectors, not gauges.
 	jobStatusGauge = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "nvcre_job_status",
@@ -271,6 +280,7 @@ func init() {
 	// Register custom metrics with the controller-runtime metrics registry
 	metrics.Registry.MustRegister(
 		jobStatusGauge,
+		statusMetrics,
 		hardwareFailedJobsTotal,
 		failedNodesGauge,
 		nodeHealthCheckDuration,
@@ -298,17 +308,43 @@ func init() {
 	)
 }
 
-// recordJobStatus updates the job status gauge for the given job.
-// It sets the current status to 1 and all other statuses to 0.
-func recordJobStatus(namespace, jobName, workflow, status string) {
-	statuses := []string{"in_progress", "succeeded", "failed"}
-	for _, s := range statuses {
+// recordExclusiveStatus sets the current status to 1 and every peer status to 0
+// on a lifecycle gauge. labelValues are the gauge labels excluding status.
+func recordExclusiveStatus(gauge *prometheus.GaugeVec, status string, labelValues ...string) {
+	for _, s := range exclusiveMetricStatuses {
 		value := float64(0)
 		if s == status {
 			value = 1
 		}
-		jobStatusGauge.WithLabelValues(namespace, jobName, workflow, s).Set(value)
+		// Copy labels so append cannot reuse the caller's backing array.
+		labels := make([]string, 0, len(labelValues)+1)
+		labels = append(labels, labelValues...)
+		labels = append(labels, s)
+		gauge.WithLabelValues(labels...).Set(value)
 	}
+}
+
+// metricStatusFromCondition maps a mutually exclusive condition type
+// (InProgress / Succeeded / Failed) to the snake_case status label used by
+// nvcre_*_status gauges. Unknown types return "" so peers are all zeroed.
+func metricStatusFromCondition(conditionType string) string {
+	// Job, Certification, and Workflow share the same condition type names.
+	switch conditionType {
+	case nvcrev1alpha1.JobInProgress:
+		return "in_progress"
+	case nvcrev1alpha1.JobSucceeded:
+		return "succeeded"
+	case nvcrev1alpha1.JobFailed:
+		return "failed"
+	default:
+		return ""
+	}
+}
+
+// recordJobStatus updates the job status gauge for the given job.
+// It sets the current status to 1 and all other statuses to 0.
+func recordJobStatus(namespace, jobName, workflow, status string) {
+	recordExclusiveStatus(jobStatusGauge, status, namespace, jobName, workflow)
 }
 
 // recordHardwareFailure increments the hardware failure counters and updates the failed nodes gauge.

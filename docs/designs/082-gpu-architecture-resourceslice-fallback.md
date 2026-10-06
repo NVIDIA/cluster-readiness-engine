@@ -1,6 +1,6 @@
 # ADR-082: GPU Architecture Fallback from DRA ResourceSlices
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 

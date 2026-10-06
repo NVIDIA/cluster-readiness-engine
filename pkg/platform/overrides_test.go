@@ -103,11 +103,25 @@ func TestBuildOverridesPreservesWorkloadRunUserEnv(t *testing.T) {
 		FrameworkType: "torch",
 		UserEnv: []corev1.EnvVar{
 			{Name: "NCCL_DEBUG", Value: "TRACE"},
+			{Name: "FI_PROVIDER", Value: "user-provider"},
 			{Name: "USER_ONLY", Value: "kept"},
 			{Name: "PET_NNODES", Value: "2"},
 		},
 	})
 
+	// The contract is per name, not per patch: a platform patch that sets a name
+	// the user also set must carry the user's value, and no patch may carry a
+	// user-only name.
+	//
+	// NCCL_DEBUG and FI_PROVIDER are both listed above so the first half cannot
+	// pass vacuously. Every platform fragment used to set NCCL_DEBUG, so naming
+	// it alone happened to exercise every patch; that is incidental, and the AWS
+	// EFA transport fragment sets FI_PROVIDER and no NCCL_DEBUG (the controller
+	// and BaseNCCLEnvVars already supply the latter). Asserting the union keeps
+	// the override path covered on both kinds of fragment.
+	userValues := map[string]string{"NCCL_DEBUG": "TRACE", "FI_PROVIDER": "user-provider"}
+
+	seen := map[string]bool{}
 	trainerPatches := 0
 	for _, override := range overrides {
 		if override.JobTemplate == nil {
@@ -124,12 +138,28 @@ func TestBuildOverridesPreservesWorkloadRunUserEnv(t *testing.T) {
 		envJSON, err := json.Marshal(trainer["env"])
 		require.NoError(t, err)
 		require.NoError(t, json.Unmarshal(envJSON, &env))
-		assertEnvValue(t, env, "NCCL_DEBUG", "TRACE")
+		for _, e := range env {
+			want, conflicts := userValues[e.Name]
+			if !conflicts {
+				continue
+			}
+			require.Equal(t, want, e.Value,
+				"platform patch overwrote the user's %s", e.Name)
+			seen[e.Name] = true
+		}
 		assertNoEnvValue(t, env, "USER_ONLY")
 		assertNoEnvValue(t, env, "PET_NNODES")
 	}
 
 	require.NotZero(t, trainerPatches, "expected at least one trainer.env platform override")
+
+	// Every conflicting name must have been found on some patch. Without this,
+	// a fragment that stopped emitting a name would silently empty the loop
+	// above and the test would still pass.
+	for name := range userValues {
+		require.True(t, seen[name],
+			"no platform trainer.env patch set %s, so user-env precedence went unchecked for it", name)
+	}
 
 	runtimePatches := 0
 	for _, override := range overrides {

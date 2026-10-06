@@ -161,7 +161,7 @@ publication, the release is returned to draft.
 To verify manually, check the signature — not the checksum:
 
 ```bash
-VERSION=v0.5.0
+VERSION=v0.6.0
 BASE="https://github.com/NVIDIA/cluster-readiness-engine/releases/download/${VERSION}"
 curl -fsSLO "${BASE}/nvcrectl-linux-amd64"
 curl -fsSLO "${BASE}/nvcrectl-linux-amd64.sigstore.json"

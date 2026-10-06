@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# GB200 tuning deltas for AWS training, separate from the transport selection
+# in nccl/aws-gb200-efa-training-env.yaml so the fabric fix and the performance
+# knobs stay independently reviewable.
+#
+# Each value here overrides one the runtime base env sets for the broad case
+# (nemotron5-*.yaml and nccl/gb200-training-base-env.yaml). Kubeflow upserts
+# trainer env over runtime env by name, so naming them again is enough; the
+# base does not need editing and other platforms keep their current values.
+#
+# Attention kernels. The base disables fused attention for broad compatibility.
+# GB200 supports both kernels and they are a large win on this model.
+- name: NVTE_FUSED_ATTN
+  value: "1"
+- name: NVTE_FLASH_ATTN
+  value: "1"
+# NVLink SHARP. The base enables it; on GB200 the all-reduce sizes this model
+# produces are better served by the NVLink/EFA path than by NVLS reduction
+# trees, and the GB200 comm entries do not depend on it either.
+- name: NCCL_NVLS_ENABLE
+  value: "0"
+# GPUDirect RDMA up to a PCIe host bridge. Without this NCCL picks its own
+# level from the topology and can stage through host memory on the Grace-
+# Blackwell layout.
+- name: NCCL_NET_GDR_LEVEL
+  value: PHB
+# CUDA work-submission channels. The base pins 1, which is the Hopper-era
+# requirement for ordering tensor-parallel communication overlap. Blackwell
+# does not need that serialization and pays for it.
+- name: CUDA_DEVICE_MAX_CONNECTIONS
+  value: "32"

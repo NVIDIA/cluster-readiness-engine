@@ -16,8 +16,14 @@
                 spec:
                   containers:
                   - name: node
+                    securityContext:
+                      capabilities:
+                        add:
+                        - IPC_LOCK
                     resources:
                       limits:
                         vpc.amazonaws.com/efa: 4
+                        hugepages-2Mi: 10256Mi
                       requests:
                         vpc.amazonaws.com/efa: 4
+                        hugepages-2Mi: 10256Mi

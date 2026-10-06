@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# EFA transport selection for AWS H100 torch training.
+#
+# Separate from nccl/aws-h100-efa-env.yaml because that file is consumed only
+# through `| toMpiArgs`, which emits `mpirun -x` arguments that a shell expands.
+# It sets PATH to "$PATH:..." which is correct there and wrong here: a container
+# env value is not shell-expanded (Kubernetes expands only $(VAR)), so the same
+# line would set a literal "$PATH:..." and break the bare `torchrun` lookup in
+# configs/train.sh. Training fragments therefore never set PATH.
+- name: FI_PROVIDER
+  value: efa
+- name: FI_EFA_USE_DEVICE_RDMA
+  value: "1"
+- name: FI_EFA_FORK_SAFE
+  value: "1"
+- name: NCCL_SOCKET_IFNAME
+  value: eth0

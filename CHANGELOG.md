@@ -15,13 +15,89 @@ followed them.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-05
+
+### Added
+
+- `nvcrectl mcp serve`, a read-only MCP server over stdio with four tools
+  (`list_categories`, `get_certification_status`, `get_certification_report`,
+  `list_failed_nodes`). Every verdict is projected from the same code that backs
+  `nvcrectl certification report`, so the two cannot disagree (#372)
+- `nvcre_certification_status` and `nvcre_workflow_status` gauges, with the same
+  0/1-per-status encoding as `nvcre_job_status`. A scrape-time collector reads them
+  from the manager's informer cache on the elected leader, so no reconciler write is
+  needed to keep them current (#414)
+- GPU architecture is resolved from `gpu.nvidia.com` DRA ResourceSlices when nodes
+  carry no `nvidia.com/gpu.product` label, as on DRA-only stacks that run no GPU
+  Feature Discovery. The manager role gains `get`/`list`/`watch` on `resource.k8s.io`
+  resourceslices; a missing grant degrades to leaving those nodes unlabeled rather
+  than failing the reconcile. `--gpu-arch` supplies the architecture to the offline
+  `render` commands, which have no cluster to read slices from (#379)
+- GCP RTX PRO 6000 Blackwell Server Edition overlays for NCCL all-reduce, all-gather,
+  all-to-all, and Nemotron 5 8B, with an eight-GPU architecture default. Smaller G4
+  node shapes require an explicit `gpusPerNode` (#396)
+- `metrics.serviceMonitor.labels`, `.interval`, and `.scrapeTimeout` Helm values. The
+  ServiceMonitor's discovery label was previously hardcoded to `release: prometheus`
+  and the scrape cadence was not configurable (#413)
+
 ### Changed
 
 - NCCL bandwidth gauges are now `nvcre_nccl_algbw_gbs` and `nvcre_nccl_busbw_gbs`
   (gigabytes per second). The previous `_gbps` names incorrectly implied gigabits;
   values have always been GB/s from nccl-tests. The old names remain dual-registered
   as deprecated aliases for one minor release and will be removed in the following
-  minor (#408)
+  minor (#412)
+- The ServiceMonitor sets `honorLabels: true` by default, so the controller's own
+  `namespace` and `job` labels survive the scrape instead of being renamed to
+  `exported_*`. Dashboards built on `exported_namespace` / `exported_job` should set
+  `metrics.serviceMonitor.honorLabels=false` (#413)
+- `--timeout` is validated only when `--wait` is set, and a value below `1s` is
+  rejected before the run is created. Previously a non-positive or tiny timeout was
+  accepted and cancelled the watch immediately, which looked like a stalled run (#411)
+- `nvcrectl certification run --category` no longer persists the GPU product it
+  detected into `spec.target.nodeSelector`. Only `nvidia.com/gpu.present: "true"` is
+  stored, so node discovery is not tied to what nodes reported at creation time (#378)
+- `nodeHealthMonitor`, `goodputMeasurement`, and `bandwidthMeasurement` on a Job cannot
+  be added or removed after creation. Each was already immutable once set; the
+  presence rule closes the absent-to-present and present-to-absent gap (#402)
+- Under KAI Scheduler the MPI launcher gets no `dependsOn` gate and the JobSet no
+  `startupPolicy`, so both sub-groups are populated and the gang is admitted. The
+  ordering barrier moves into the launcher pod, which waits for every worker to answer
+  sshd. Non-KAI paths render byte-identically (#395)
+
+### Fixed
+
+- AWS H100 and GB200 keep the EFA userspace stack. Two override paths matched
+  `platform: aws` with no GPU guard, so every AWS architecture removed `/opt/amazon`
+  and unset `NCCL_NET_PLUGIN` before the workload started. The EFA devices stayed
+  attached and unused while NCCL fell back to TCP over `eth0`. The cleanup is now
+  scoped to `aws` + `gb300`, which is RoCE and has no EFA devices, and H100 and GB200
+  get `FI_PROVIDER=efa`, `FI_EFA_USE_DEVICE_RDMA=1`, `FI_EFA_FORK_SAFE=1`, and
+  `IPC_LOCK` on both the catalog and WorkloadRun paths (#434)
+- Bandwidth threshold verdicts are judged on the launcher's complete log, read once
+  when the Job ends, rather than on a partial NCCL size sweep. The rows missed were
+  the largest message sizes, where peak bandwidth is measured, so a healthy group
+  could fail `ThresholdViolation` or send adaptive fault isolation down its healthy
+  half (#418)
+- Four controllers treated a cache miss as proof a child was deleted and acted on it
+  destructively. Each tier now confirms absence against an uncached reader first, so a
+  Workflow that is still running and still holding GPUs is not written off (#387, #370)
+- `WorkloadRun.spec.env` values survive platform overrides that set
+  `TrainJob.trainer.env`, restoring the documented user-wins precedence (#422)
+- `cleanupPVForPVC` reads the PVC through the uncached reader. The cached read started
+  a cluster-wide PVC informer the manager role has no `watch` for, so every PVC in the
+  cluster was relisted on a loop after the first cleanup (#425)
+
+### Security
+
+- The release dispatch policy tests exercise the release-tag resolver against a
+  matching tag, a branch ref, and a different tag before crediting its shell guard,
+  and follow local reusable-workflow calls when checking dispatch callers. A guard
+  written as `: # exit 1`, or an attest call hidden one hop away, is no longer
+  accepted (#359)
+- CodeQL analyzes `pull_request`, so fork PRs are scanned; the Fern docs CLI is
+  installed from a lockfile pinned by integrity hash rather than `latest`, which the
+  release publish path resolved at tag time (#393)
 
 ## [0.5.0] - 2026-09-28
 
@@ -166,6 +242,7 @@ failed node with a reason.
 - Certification and WorkloadRun specs are immutable after creation (#240)
 - `spec.env` is passed to MPI containers instead of silently dropped (#230)
 
+[0.6.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.6.0
 [0.5.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.5.0
 [0.4.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.4.0
 [0.3.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.3.0

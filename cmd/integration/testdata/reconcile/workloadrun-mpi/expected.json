@@ -36,11 +36,35 @@
               "trainer": {
                 "image": "nvcr.io/nvidia/pytorch:26.01-py3",
                 "command": [
-                  "/bin/bash",
-                  "-c"
+                  "timeout",
+                  "3600",
+                  "/usr/local/mpi/bin/mpirun"
                 ],
                 "args": [
-                  "rm -rf /opt/amazon\nunset NCCL_NET_PLUGIN\nunset NCCL_TUNER_PLUGIN\nunset AWS_OFI_NCCL_VERSION\nexec \"timeout\" \"3600\" \"/usr/local/mpi/bin/mpirun\" \"-N\" \"4\" \"--allow-run-as-root\" \"--mca\" \"plm_rsh_args\" \"-o StrictHostKeyChecking=no -o ConnectionAttempts=10\" \"-x\" \"NCCL_DEBUG=INFO\" \"-x\" \"NCCL_MNNVL_ENABLE=1\" \"-x\" \"NCCL_NET_PLUGIN=none\" \"--allow-run-as-root\" \"/usr/local/bin/all_reduce_perf_mpi\" \"-b\" \"8\" \"-e\" \"32G\" \"-f\" \"2\""
+                  "-N",
+                  "4",
+                  "--allow-run-as-root",
+                  "--mca",
+                  "plm_rsh_args",
+                  "-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
+                  "-x",
+                  "NCCL_DEBUG=INFO",
+                  "-x",
+                  "NCCL_MNNVL_ENABLE=1",
+                  "-x",
+                  "FI_PROVIDER=efa",
+                  "-x",
+                  "FI_EFA_USE_DEVICE_RDMA=1",
+                  "-x",
+                  "FI_EFA_FORK_SAFE=1",
+                  "--allow-run-as-root",
+                  "/usr/local/bin/all_reduce_perf_mpi",
+                  "-b",
+                  "8",
+                  "-e",
+                  "32G",
+                  "-f",
+                  "2"
                 ],
                 "numNodes": 2,
                 "numProcPerNode": 4
@@ -481,6 +505,9 @@
         },
         {
           "when": {
+            "gpuArchitecture": {
+              "equals": "gb300"
+            },
             "platform": {
               "equals": "aws"
             }
@@ -488,6 +515,9 @@
         },
         {
           "when": {
+            "gpuArchitecture": {
+              "equals": "gb300"
+            },
             "platform": {
               "equals": "aws"
             }
@@ -539,6 +569,13 @@
                                       "requests": {
                                         "vpc.amazonaws.com/efa": 4
                                       }
+                                    },
+                                    "securityContext": {
+                                      "capabilities": {
+                                        "add": [
+                                          "IPC_LOCK"
+                                        ]
+                                      }
                                     }
                                   }
                                 ]
@@ -553,6 +590,16 @@
               }
             }
           ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "gb200"
+            },
+            "platform": {
+              "equals": "aws"
+            }
+          }
         },
         {
           "when": {
@@ -678,6 +725,13 @@
                                       "requests": {
                                         "vpc.amazonaws.com/efa": 32
                                       }
+                                    },
+                                    "securityContext": {
+                                      "capabilities": {
+                                        "add": [
+                                          "IPC_LOCK"
+                                        ]
+                                      }
                                     }
                                   }
                                 ]
@@ -692,6 +746,16 @@
               }
             }
           ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "equals": "h100"
+            },
+            "platform": {
+              "equals": "aws"
+            }
+          }
         },
         {
           "when": {
@@ -1315,21 +1379,15 @@
             "patches": "orchestration"
           },
           {
-            "index": 4,
-            "when": "platform=aws",
-            "patches": "none",
-            "noOp": true
-          },
-          {
-            "index": 5,
-            "when": "platform=aws",
-            "patches": "none",
-            "noOp": true
-          },
-          {
             "index": 7,
             "when": "gpuArchitecture=gb200, platform=aws",
             "patches": "1 dependencies"
+          },
+          {
+            "index": 8,
+            "when": "gpuArchitecture=gb200, platform=aws",
+            "patches": "none",
+            "noOp": true
           }
         ]
       }
