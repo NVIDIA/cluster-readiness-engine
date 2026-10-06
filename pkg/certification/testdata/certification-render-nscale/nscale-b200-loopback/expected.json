@@ -50,7 +50,8 @@
     "orchestration": {
       "topologyKey": "",
       "strictDomain": false,
-      "diagnoseTopologyKey": ""
+      "diagnoseTopologyKey": "",
+      "diagnoseMinGroupSize": 0
     },
     "replicatedJobs": [
       {
@@ -125,7 +126,8 @@
     "orchestration": {
       "topologyKey": "",
       "strictDomain": false,
-      "diagnoseTopologyKey": ""
+      "diagnoseTopologyKey": "",
+      "diagnoseMinGroupSize": 0
     },
     "replicatedJobs": [
       {

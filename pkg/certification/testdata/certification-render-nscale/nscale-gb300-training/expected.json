@@ -27,7 +27,8 @@
     "orchestration": {
       "topologyKey": "topology.nks.nscale.com/accelerator-domain",
       "strictDomain": false,
-      "diagnoseTopologyKey": ""
+      "diagnoseTopologyKey": "",
+      "diagnoseMinGroupSize": 0
     },
     "replicatedJobs": [
       {
@@ -122,7 +123,8 @@
     "orchestration": {
       "topologyKey": "topology.nks.nscale.com/accelerator-domain",
       "strictDomain": false,
-      "diagnoseTopologyKey": ""
+      "diagnoseTopologyKey": "",
+      "diagnoseMinGroupSize": 0
     },
     "replicatedJobs": [
       {

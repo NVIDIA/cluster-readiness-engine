@@ -49,11 +49,14 @@ type nscaleContainer struct {
 
 // nscaleOrchestration pins the topology key an Nscale GB300 override must
 // replace: Nscale runs no GFD, so nvidia.com/gpu.clique never exists there
-// and the NVLink domain is topology.nks.nscale.com/accelerator-domain.
+// and the NVLink domain is topology.nks.nscale.com/accelerator-domain. The
+// diagnose override replaces the whole diagnose object, so it must repeat
+// the base minGroupSize.
 type nscaleOrchestration struct {
-	TopologyKey         string `json:"topologyKey"`
-	StrictDomain        bool   `json:"strictDomain"`
-	DiagnoseTopologyKey string `json:"diagnoseTopologyKey"`
+	TopologyKey          string `json:"topologyKey"`
+	StrictDomain         bool   `json:"strictDomain"`
+	DiagnoseTopologyKey  string `json:"diagnoseTopologyKey"`
+	DiagnoseMinGroupSize int    `json:"diagnoseMinGroupSize"`
 }
 
 type nscaleReplicatedJob struct {
@@ -173,6 +176,7 @@ func projectNScaleOverride(wf *nvcrev1alpha1.Workflow) (nscaleWorkflow, error) {
 	}
 	if diag := wf.Spec.Orchestration.Diagnose; diag != nil {
 		out.Orchestration.DiagnoseTopologyKey = diag.TopologyKey
+		out.Orchestration.DiagnoseMinGroupSize = diag.MinGroupSize
 	}
 
 	for i := range wf.Spec.Dependencies {
