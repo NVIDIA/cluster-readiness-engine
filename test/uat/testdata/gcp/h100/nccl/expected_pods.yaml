@@ -142,7 +142,7 @@ spec:
         fieldRef:
           apiVersion: v1
           fieldPath: metadata.labels['batch.kubernetes.io/job-completion-index']
-    image: nvcr.io/nvidia/pytorch:26.01-py3
+    image: nvcr.io/nvidia/pytorch:25.06-py3
     imagePullPolicy: IfNotPresent
     name: node
     resources:
@@ -183,7 +183,7 @@ spec:
         fieldRef:
           apiVersion: v1
           fieldPath: metadata.labels['batch.kubernetes.io/job-completion-index']
-    image: nvcr.io/nvidia/pytorch:26.01-py3
+    image: nvcr.io/nvidia/pytorch:25.06-py3
     imagePullPolicy: IfNotPresent
     name: fix-ssh-permissions
     resources: {}
@@ -337,7 +337,7 @@ spec:
         fieldRef:
           apiVersion: v1
           fieldPath: metadata.labels['batch.kubernetes.io/job-completion-index']
-    image: nvcr.io/nvidia/pytorch:26.01-py3
+    image: nvcr.io/nvidia/pytorch:25.06-py3
     imagePullPolicy: IfNotPresent
     name: node
     readinessProbe:
@@ -563,7 +563,7 @@ spec:
         fieldRef:
           apiVersion: v1
           fieldPath: metadata.labels['batch.kubernetes.io/job-completion-index']
-    image: nvcr.io/nvidia/pytorch:26.01-py3
+    image: nvcr.io/nvidia/pytorch:25.06-py3
     imagePullPolicy: IfNotPresent
     name: node
     readinessProbe:

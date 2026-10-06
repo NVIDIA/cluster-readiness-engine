@@ -81,7 +81,7 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | GB300 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
 | H100 | AWS | EFA | `vpc.amazonaws.com/efa: 32`, no hugepages |
 | H100 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap |
-| H100 | GCP | TCPXO (FastRak) | `tcpxo-daemon` sidecar, `NCCL_FASTRAK_*` env, the 8 GPU NIC networks auto-detected from node allocatable (A3 Mega only, see [GCP H100 clusters](#gcp-h100-clusters)) |
+| H100 | GCP | TCPXO (FastRak) | `tcpxo-daemon` sidecar, `NCCL_FASTRAK_*` env, the 8 GPU NIC networks auto-detected from node allocatable, CUDA 12 image `pytorch:25.06-py3` for NCCL tests (A3 Mega only, see [GCP H100 clusters](#gcp-h100-clusters)) |
 | GB200/GB300 | GCP | RoCE | `networking.gke.io.networks/rdma-0`..`rdma-3` (fixed network names), ComputeDomain |
 | RTX PRO 6000 Blackwell | GCP G4 | TCP over `eth0`, PCIe GPU peer-to-peer | Variable GPU count by G4 machine size; `nvidia.com/gpu=present:NoSchedule` toleration; no RDMA resource request |
 | GB200/GB300 | On-prem | InfiniBand | arm64/GPU taint tolerations, portable IB NCCL env (no HCA pinning), NIC resource auto-detected or set via `nicResourceName`, ComputeDomain |
@@ -166,6 +166,8 @@ kubectl get node <gpu-node> -o jsonpath='{.status.allocatable}'
 ```
 
 Offline `nvcrectl certification render` has no nodes to inspect, so it renders the default names. With `--dry-run`, detection runs against the real nodes and prints the networks it found, or why it fell back, to stderr.
+
+The TCPXO NCCL plugin comes from the node, not the image. GKE's TCPXO installer puts it in `/home/kubernetes/bin/nvidia`, which the override mounts at `/usr/local/nvidia`. The plugin links the CUDA 12 runtime (`libcudart.so.12`), so it can't load in the CUDA 13 `pytorch:26.01-py3` image the other platforms' NCCL tests use. NCCL then fails with `Error loading libnccl-net_internal.so: libcudart.so.12`. The GCP H100 NCCL tests therefore pin `nvcr.io/nvidia/pytorch:25.06-py3`, the last CUDA 12 NGC PyTorch release, on the workers, the launcher and its init container. If you set `image`, the replacement must also be a CUDA 12 image. The training entries still use `pytorch:25.08-py3`, which is CUDA 13, so on GCP H100 they hit the same limitation.
 
 The TCPXO NCCL plugin also checks the NCCL environment against the `a3plus_guest_config.textproto` that GKE's TCPXO installer puts on each node, and aborts the job on any value the file enforces. The `NCCL_FASTRAK_*` environment NVCRE sets matches the enforced values of current installers, for example `NCCL_PROTO=Simple,LL128`. It also leaves `NCCL_ALGO` unset, as the file recommends. If a job fails with `NCCL WARN NCCL/NET (shim) mismatch enforced`, compare the named variable with that file on the node: `/home/kubernetes/bin/nvidia/lib64/a3plus_guest_config.textproto`, which is mounted in the pod at `/usr/local/nvidia/lib64/`.
 

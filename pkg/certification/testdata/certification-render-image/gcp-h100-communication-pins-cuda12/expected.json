@@ -1,0 +1,144 @@
+[
+  {
+    "workflow": "gcp-cuda12-communication-b87c9",
+    "trainerImage": "nvcr.io/nvidia/pytorch:25.06-py3",
+    "containers": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "kind": "container",
+        "name": "node",
+        "image": "nvcr.io/nvidia/pytorch:25.06-py3"
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "kind": "initContainer",
+        "name": "tcpxo-daemon",
+        "image": "us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.8"
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "kind": "container",
+        "name": "node",
+        "image": "nvcr.io/nvidia/pytorch:25.06-py3"
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "kind": "initContainer",
+        "name": "fix-ssh-permissions",
+        "image": "nvcr.io/nvidia/pytorch:25.06-py3"
+      }
+    ]
+  },
+  {
+    "workflow": "gcp-cuda12-communication-22a24",
+    "trainerImage": "nvcr.io/nvidia/pytorch:25.06-py3",
+    "containers": [
+      {
+        "dependency": "nccl-all-gather-runtime",
+        "replicatedJob": "node",
+        "kind": "container",
+        "name": "node",
+        "image": "nvcr.io/nvidia/pytorch:25.06-py3"
+      },
+      {
+        "dependency": "nccl-all-gather-runtime",
+        "replicatedJob": "node",
+        "kind": "initContainer",
+        "name": "tcpxo-daemon",
+        "image": "us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.8"
+      },
+      {
+        "dependency": "nccl-all-gather-runtime",
+        "replicatedJob": "launcher",
+        "kind": "container",
+        "name": "node",
+        "image": "nvcr.io/nvidia/pytorch:25.06-py3"
+      },
+      {
+        "dependency": "nccl-all-gather-runtime",
+        "replicatedJob": "launcher",
+        "kind": "initContainer",
+        "name": "fix-ssh-permissions",
+        "image": "nvcr.io/nvidia/pytorch:25.06-py3"
+      }
+    ]
+  },
+  {
+    "workflow": "gcp-cuda12-communication-924a0",
+    "trainerImage": "nvcr.io/nvidia/pytorch:25.06-py3",
+    "containers": [
+      {
+        "dependency": "nccl-alltoall-runtime",
+        "replicatedJob": "node",
+        "kind": "container",
+        "name": "node",
+        "image": "nvcr.io/nvidia/pytorch:25.06-py3"
+      },
+      {
+        "dependency": "nccl-alltoall-runtime",
+        "replicatedJob": "node",
+        "kind": "initContainer",
+        "name": "tcpxo-daemon",
+        "image": "us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.8"
+      },
+      {
+        "dependency": "nccl-alltoall-runtime",
+        "replicatedJob": "launcher",
+        "kind": "container",
+        "name": "node",
+        "image": "nvcr.io/nvidia/pytorch:25.06-py3"
+      },
+      {
+        "dependency": "nccl-alltoall-runtime",
+        "replicatedJob": "launcher",
+        "kind": "initContainer",
+        "name": "fix-ssh-permissions",
+        "image": "nvcr.io/nvidia/pytorch:25.06-py3"
+      }
+    ]
+  },
+  {
+    "workflow": "gcp-cuda12-communication-d4921",
+    "trainerImage": "nvcr.io/nvidia/pytorch:25.06-py3",
+    "containers": [
+      {
+        "dependency": "nccl-loopback-runtime",
+        "replicatedJob": "node",
+        "kind": "container",
+        "name": "node",
+        "image": "nvcr.io/nvidia/pytorch:25.06-py3"
+      },
+      {
+        "dependency": "nccl-loopback-runtime",
+        "replicatedJob": "node",
+        "kind": "initContainer",
+        "name": "tcpxo-daemon",
+        "image": "us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.8"
+      }
+    ]
+  },
+  {
+    "workflow": "gcp-cuda12-communication-4d53d",
+    "trainerImage": "nvcr.io/nvidia/pytorch:25.06-py3",
+    "containers": [
+      {
+        "dependency": "nccl-loopback-nvswitch-runtime",
+        "replicatedJob": "node",
+        "kind": "container",
+        "name": "node",
+        "image": "nvcr.io/nvidia/pytorch:25.06-py3"
+      },
+      {
+        "dependency": "nccl-loopback-nvswitch-runtime",
+        "replicatedJob": "node",
+        "kind": "initContainer",
+        "name": "tcpxo-daemon",
+        "image": "us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.8"
+      }
+    ]
+  }
+]

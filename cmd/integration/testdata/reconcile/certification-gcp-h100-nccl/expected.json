@@ -99,7 +99,7 @@
                 "kind": "TrainingRuntime"
               },
               "trainer": {
-                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                "image": "nvcr.io/nvidia/pytorch:25.06-py3",
                 "command": [
                   "timeout",
                   "3600",
@@ -306,7 +306,7 @@
                                   "sh",
                                   "-c"
                                 ],
-                                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                                "image": "nvcr.io/nvidia/pytorch:25.06-py3",
                                 "name": "node",
                                 "readinessProbe": {
                                   "initialDelaySeconds": 5,
@@ -450,7 +450,7 @@
                           "spec": {
                             "containers": [
                               {
-                                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                                "image": "nvcr.io/nvidia/pytorch:25.06-py3",
                                 "name": "node",
                                 "resources": {
                                   "limits": {
@@ -480,7 +480,7 @@
                                   "sh",
                                   "-c"
                                 ],
-                                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                                "image": "nvcr.io/nvidia/pytorch:25.06-py3",
                                 "name": "fix-ssh-permissions",
                                 "volumeMounts": [
                                   {
