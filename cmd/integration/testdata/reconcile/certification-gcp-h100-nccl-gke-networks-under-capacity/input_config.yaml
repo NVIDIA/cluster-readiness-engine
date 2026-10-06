@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: gcp-nc-gke-cap-communicat-1267e
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: gcp-nc-gke-cap
+    namespace: default
+  - kind: Workflow
+    name: gcp-nc-gke-cap-communicat-1267e
+    namespace: default
+events:
+  # Only the Normal WorkflowCreated event: detection succeeded on the capable
+  # nodes, so there is no GKENetworkDetection Warning.
+  - involvedKind: Certification
+    involvedName: gcp-nc-gke-cap
+    namespace: default
+    expect:
+      - {type: Normal, reason: WorkflowCreated}

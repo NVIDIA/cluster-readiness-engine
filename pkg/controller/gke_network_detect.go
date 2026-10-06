@@ -69,11 +69,13 @@ type gkeNetworkDetection struct {
 }
 
 // detectGKETCPXONetworks reads the GPU NIC networks from node allocatable.
-// A network qualifies only when it is allocatable on every node, because a pod
-// attached to a network its node lacks never schedules. The result is used only
-// when exactly GKETCPXONICsPerNode networks qualify: fewer means the nodes are
-// not A3 Mega or are missing networks, and more cannot be told apart from
-// non-GPU networks attached to the same node pool.
+// A network qualifies only when it is allocatable at a positive quantity on
+// every node: GKE injects a limit of one of each attached network into the
+// pod, so a node that lacks the network, or lists it at zero, never schedules
+// it. The result is used only when exactly GKETCPXONICsPerNode networks
+// qualify: fewer means the nodes are not A3 Mega or are missing networks, and
+// more cannot be told apart from non-GPU networks attached to the same node
+// pool.
 //
 // The order follows the host: when every node's annotations place every
 // network on an ethN interface and all nodes agree, networks are ordered by
@@ -86,9 +88,9 @@ func detectGKETCPXONetworks(nodes []corev1.Node) gkeNetworkDetection {
 	}
 	count := map[string]int{}
 	for i := range nodes {
-		for res := range nodes[i].Status.Allocatable {
+		for res, qty := range nodes[i].Status.Allocatable {
 			name, ok := strings.CutPrefix(string(res), gkeNetworkResourcePrefix)
-			if !ok || name == gkeDefaultNetwork || strings.HasSuffix(name, gkeNetworkIPSuffix) {
+			if !ok || name == gkeDefaultNetwork || strings.HasSuffix(name, gkeNetworkIPSuffix) || qty.Sign() <= 0 {
 				continue
 			}
 			count[name]++

@@ -534,16 +534,19 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		r.normalf(certification, ReasonNICResourceDetection,
 			"%s/%s: %s", category.Domain, category.Variant, nicDetectionMessage(nicDetected))
 	}
-	// The GCP H100 TCPXO patch attaches the pod to the node's GPU NIC networks
-	// by name, and the provisioner chose those names, so they are detected from
-	// the same arch-filtered nodes. When detection refuses, the catalog default
-	// is rendered, and a Warning says why once the Workflow is created.
-	gkeNetworks := resolveGKETCPXONetworks(detectedPlatform, gpuArch, archNodes)
-
 	capableNodes, err := dropUnderCapacityNodes(archNodes, category, gpusPerNode)
 	if err != nil {
 		return "", err
 	}
+
+	// The GCP H100 TCPXO patch attaches the pod to the node's GPU NIC networks
+	// by name, and the provisioner chose those names, so they are detected from
+	// the nodes the job can run on: the capable set nodesPerJob is sized from,
+	// which the Workflow filters to again. An under-capacity node never runs
+	// the job, so its networks must not force the fallback. When detection
+	// refuses, the catalog default is rendered, and a Warning says why once
+	// the Workflow is created.
+	gkeNetworks := resolveGKETCPXONetworks(detectedPlatform, gpuArch, capableNodes)
 
 	nodesPerJob, err := resolveNodesPerJob(capableNodes, category, opts, entry, gpusPerNode, gpuArch)
 	if err != nil {
