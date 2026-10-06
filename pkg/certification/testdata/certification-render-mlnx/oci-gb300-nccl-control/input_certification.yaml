@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The control for the sibling architecture on the same platform. OCI GB300 has
+# its own platform override of 4 and must be untouched by the GB200 change: the
+# guard keys on a zero count, not on the platform, so GB300 keeps both the NIC
+# resource and its four sriov-net attachments.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300
+  nodesPerJob: 8
+  enableMNNVL: true
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

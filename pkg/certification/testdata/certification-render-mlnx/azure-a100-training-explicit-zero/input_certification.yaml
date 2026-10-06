@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Reaches deps/azure-a100-ib-training.yaml. The training fragments are a
+# separate pair from the communication ones and are gated on the training
+# domain, so no communication case loads them.
+#
+# This fragment keeps securityContext and volumeMounts on the same container as
+# the guarded resources key, so the golden also pins that the guard cuts at the
+# resources boundary and does not take the rest of the container with it.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: azure-a100-training-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  nodesPerJob: 8
+  enableMNNVL: false
+  mlnxPerNode: 0
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 50

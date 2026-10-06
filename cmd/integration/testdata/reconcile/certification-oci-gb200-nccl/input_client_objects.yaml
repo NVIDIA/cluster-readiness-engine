@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Issue #350 through the controller rather than the CLI: platform and GPU
+# architecture are detected from the node (providerID + gpu.product), not
+# passed as flags, so this pins that the OCI GB200 platform override is what
+# the reconciler resolves too. The golden must carry no nvidia.com/mlnxnics
+# request and no k8s.v1.cni.cncf.io/networks annotation. Compare
+# certification-oci-l40s-nccl, which keeps both at a count of 2.
+apiVersion: v1
+kind: Node
+metadata:
+  name: oci-gb200-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200
+    kubernetes.io/hostname: oci-gb200-node-01
+spec:
+  providerID: "ocid1.instance.oc1.iad.anuwcljt00000000000000000000000000000000000000000000000001"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: oci-gb200-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200
+    kubernetes.io/hostname: oci-gb200-node-02
+spec:
+  providerID: "ocid1.instance.oc1.iad.anuwcljt00000000000000000000000000000000000000000000000002"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-gb200
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

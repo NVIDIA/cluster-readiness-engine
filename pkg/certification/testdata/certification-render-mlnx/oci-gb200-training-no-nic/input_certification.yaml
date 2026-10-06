@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# OCI GB200 training already requested no NIC before this change, because the
+# training entries gate deps/oci-mlnxnics-comm.yaml on l40/l40s and gb300 while
+# the NCCL entries have an ungated "platform: oci" block. The golden pins that
+# the mlnxPerNode: 0 default did not newly introduce a request here, and that
+# the cpu and memory requests next to nvidia.com/gpu survive the guard: those
+# come from the base entry, which the guards must not disturb.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 8
+  enableMNNVL: true
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 50

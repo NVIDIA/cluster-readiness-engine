@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Reaches deps/forge-ib-comm.yaml, the third guard shape and the strictest one.
+# Here nvidia.com/mlnxnics is a sibling of nvidia.com/gpu under both limits and
+# requests, so the guard wraps only the two mlnxnics lines and the parent keys
+# have to survive. On the Azure and OCI fragments mlnxnics is the sole child, so
+# those guards remove the parent instead; a copy of the wrong boundary into this
+# fragment would delete the GPU request along with it.
+#
+# Note the gate is gpuArchitecture l40, not l40s: an L40S certification does not
+# load this fragment at all.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: forge-l40-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-L40
+  nodesPerJob: 8
+  enableMNNVL: false
+  mlnxPerNode: 0
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

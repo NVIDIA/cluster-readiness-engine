@@ -85,6 +85,21 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | GB200/GB300 | GCP | RoCE | `networking.gke.io.networks/rdma-0`..`rdma-3` (fixed network names), ComputeDomain |
 | RTX PRO 6000 Blackwell | GCP G4 | TCP over `eth0`, PCIe GPU peer-to-peer | Variable GPU count by G4 machine size; `nvidia.com/gpu=present:NoSchedule` toleration; no RDMA resource request |
 | GB200/GB300 | On-prem | InfiniBand | arm64/GPU taint tolerations, portable IB NCCL env (no HCA pinning), NIC resource auto-detected or set via `nicResourceName`, ComputeDomain |
+| GB200 | OCI | RoCE | No NIC request by default (`mlnxPerNode: 0`); ComputeDomain. Set `mlnxPerNode` to request `nvidia.com/mlnxnics` and the matching `network-operator/sriov-net` attachments |
+| GB300 | OCI | RoCE | `nvidia.com/mlnxnics: 4`, four `network-operator/sriov-net` attachments, ComputeDomain |
+| L40S | OCI | RoCE | `nvidia.com/mlnxnics: 2`, two `network-operator/sriov-net` attachments |
+
+OCI GB200 is the one OCI architecture that requests no NIC by default. The
+shapes do not consistently expose `nvidia.com/mlnxnics`, and the `sriov-net`
+NetworkAttachmentDefinition that the annotation references is not present on a
+stock cluster, so a default request leaves every worker pod Pending on
+`Insufficient nvidia.com/mlnxnics`. Sites running the SR-IOV device plugin set
+`mlnxPerNode` to their own per-node count.
+
+Setting `mlnxPerNode: 0` is a supported opt-out on **any** platform whose
+templates request `nvidia.com/mlnxnics` (Azure, OCI, TogetherAI, Forge): at
+zero, the resource and the network attachment annotation are both omitted
+rather than requested as `"0"`.
 
 RTX PRO 6000 defaults to **eight GPUs per node**, including on GCP. The default
 is architecture-based, not machine-shape detection. On smaller G4 nodes, set

@@ -28,10 +28,20 @@ type NodeDefaults struct {
 // node shape and is the safest default for unknown hardware.
 const fallbackGpusPerNode int32 = 4
 
+// nodeDefaultsOverride is one platformOverrides entry. Its fields are pointers
+// so an absent field (fall through to the architecture default) is
+// distinguishable from an explicit 0 (a platform that wants none), which a
+// plain int32 cannot express. NodeDefaults keeps value fields: it is the
+// resolved result, where 0 is just a count.
+type nodeDefaultsOverride struct {
+	GpusPerNode *int32 `json:"gpusPerNode" yaml:"gpusPerNode"`
+	MlnxPerNode *int32 `json:"mlnxPerNode" yaml:"mlnxPerNode"`
+}
+
 // gpuDefaultsData is the parsed shape of entries/_lib/gpu-defaults.yaml.
 type gpuDefaultsData struct {
-	Defaults          map[string]NodeDefaults            `json:"defaults" yaml:"defaults"`
-	PlatformOverrides map[string]map[string]NodeDefaults `json:"platformOverrides" yaml:"platformOverrides"`
+	Defaults          map[string]NodeDefaults                    `json:"defaults" yaml:"defaults"`
+	PlatformOverrides map[string]map[string]nodeDefaultsOverride `json:"platformOverrides" yaml:"platformOverrides"`
 }
 
 var (
@@ -56,7 +66,9 @@ func LoadGPUDefaults() error {
 // GPUDefaults returns node hardware defaults for the given GPU architecture
 // and platform. Platform overrides (e.g. OCI L40s) are applied on top of
 // architecture defaults — only fields explicitly set in the platform override
-// take effect; unset fields fall through to the architecture defaults.
+// take effect; unset fields fall through to the architecture defaults. An
+// explicit 0 is a value like any other, so a platform may override an
+// architecture's non-zero mlnxPerNode down to none (e.g. OCI GB200).
 //
 // Unknown architectures get {GpusPerNode: fallbackGpusPerNode, MlnxPerNode: 0}.
 // An empty platform skips override resolution and returns architecture defaults
@@ -78,11 +90,11 @@ func GPUDefaults(gpuArch, platform string) NodeDefaults {
 	if !ok {
 		return nd
 	}
-	if override.GpusPerNode != 0 {
-		nd.GpusPerNode = override.GpusPerNode
+	if override.GpusPerNode != nil {
+		nd.GpusPerNode = *override.GpusPerNode
 	}
-	if override.MlnxPerNode != 0 {
-		nd.MlnxPerNode = override.MlnxPerNode
+	if override.MlnxPerNode != nil {
+		nd.MlnxPerNode = *override.MlnxPerNode
 	}
 	return nd
 }

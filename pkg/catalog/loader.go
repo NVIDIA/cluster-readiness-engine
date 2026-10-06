@@ -108,7 +108,9 @@ type TemplateData struct {
 	GpusPerNode int32
 
 	// MlnxPerNode is the Mellanox NIC count per node for IB/RoCE platforms.
-	// 0 means omit nvidia.com/mlnxnics. Templates use: {{ .MlnxPerNode }}
+	// 0 means omit nvidia.com/mlnxnics: templates use
+	// {{- if gt (int .MlnxPerNode) 0 }} around the request (and, on OCI, the
+	// network attachment annotation). Templates use: {{ .MlnxPerNode }}
 	MlnxPerNode int32
 
 	// NicResourceName is the extended resource name of the RDMA NIC devices

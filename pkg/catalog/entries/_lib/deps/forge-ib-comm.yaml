@@ -1,6 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+# Only the two nvidia.com/mlnxnics lines are gated on mlnxPerNode. limits and
+# requests also carry nvidia.com/gpu, so the parent keys must survive at 0: an
+# empty resources block unmarshals to nil, and the override merge deletes
+# nil-valued keys, which would drop the GPU request too. See ADR-087.
 - apiVersion: trainer.kubeflow.org/v1alpha1
   kind: TrainingRuntime
   metadata:
@@ -22,7 +26,11 @@
                     resources:
                       limits:
                         nvidia.com/gpu: "{{ .GpusPerNode }}"
+{{- if gt (int .MlnxPerNode) 0 }}
                         nvidia.com/mlnxnics: "{{ .MlnxPerNode }}"
+{{- end }}
                       requests:
                         nvidia.com/gpu: "{{ .GpusPerNode }}"
+{{- if gt (int .MlnxPerNode) 0 }}
                         nvidia.com/mlnxnics: "{{ .MlnxPerNode }}"
+{{- end }}

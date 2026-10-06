@@ -92,3 +92,4 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 082 | [GPU Architecture Fallback from DRA ResourceSlices](082-gpu-architecture-resourceslice-fallback.md) |
 | 084 | [A Read-Only MCP Server for Certification State](084-mcp-server.md) |
 | 086 | [Lifecycle Status Metrics Read from the Cache, and the Timeout Write Is Exclusive](086-lifecycle-status-metrics-and-timeout-exclusivity.md) |
+| 087 | [`mlnxPerNode: 0` As a Real Opt-Out, and OCI GB200 NIC Defaults](087-mlnx-per-node-zero-opt-out.md) |

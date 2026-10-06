@@ -1,0 +1,30 @@
+[
+  {
+    "workflow": "azure-h100-training-cert-3f7bd",
+    "dependencyKinds": [
+      "TrainingRuntime",
+      "ConfigMap",
+      "ConfigMap"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nemotron5-8b-runtime",
+        "replicatedJob": "node",
+        "podAnnotations": {},
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/cpu=128",
+              "limits/memory=800Gi",
+              "limits/nvidia.com/gpu=8",
+              "requests/cpu=64",
+              "requests/memory=500Gi",
+              "requests/nvidia.com/gpu=8"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

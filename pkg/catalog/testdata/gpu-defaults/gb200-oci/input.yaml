@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# OCI overrides the gb200 architecture default mlnxPerNode of 8 down to 0.
+# A platform override of 0 only takes effect because platformOverrides parses
+# into pointer fields: with plain int32s, 0 and "absent" are the same value and
+# the override would be discarded. Compare gb200-azure, which has no override
+# entry and keeps the architecture default. See ADR-087.
+gpuArch: gb200
+platform: oci
