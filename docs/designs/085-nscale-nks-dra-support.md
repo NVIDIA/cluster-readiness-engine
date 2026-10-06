@@ -195,6 +195,9 @@ Once that's confirmed, implementation follows the shape ADR-075 and ADR-058 esta
   - `deps/nscale-gpu-rdma.yaml`: two `ResourceClaimTemplate`s — `gpu.nvidia.com` and
     `rdma.nscale.com` — plus the `resourceClaims`/`resources.claims` wiring and the
     `nvidia.com/gpu: null` deletion in the TrainingRuntime, mirroring `deps/gb300-roce-comm.yaml`.
+    The GPU count comes from `gpusPerNode` and the RDMA count from `mlnxPerNode`, the NIC-count
+    knob other IB/RoCE platforms use, with an `nscale`/`gb300` `platformOverrides` entry of 4 in
+    `gpu-defaults.yaml` (Note 3).
     It sets no `mlPolicy`, so it serves MPI and torch entries alike (no `-comm` suffix).
   - `deps/nscale-gpu-rdma-training.yaml`: `lib`-includes the fragment above and adds the IB env
     to the runtime container (merged by name into the base env), because torchrun inherits the
@@ -380,8 +383,9 @@ contribution with real-hardware validation is expected":
 2. **GB300 taints are unconfirmed.** The inspected B200 nodes carry none. GB300 is presumably
    arm64 Grace, like the on-prem GB300 case ADR-075 covers; if NKS GB300 nodes are tainted, the
    Nscale override block needs the same tolerations ADR-075 adds for generic on-prem.
-3. **GB300 RDMA count per node is unconfirmed** — 4 or 8 HCAs; this affects the
-   `rdma.nscale.com` claim's requested count for that architecture specifically.
+3. **GB300 RDMA count per node — resolved.** GB300 NKS nodes advertise 4 `rdma.nscale.com`
+   devices in their ResourceSlices. That count is recorded as the `nscale`/`gb300`
+   `mlnxPerNode` override in `gpu-defaults.yaml`, which sizes the claim.
 4. **`dra.net/state` was `down` on 7 of 8 compute HCAs** on the inspected node (only `ibs5` was
    `up`). Likely unconfigured IPoIB netdevs over an otherwise healthy link, but this should be
    confirmed before any bandwidth figure from that cluster is treated as a baseline.

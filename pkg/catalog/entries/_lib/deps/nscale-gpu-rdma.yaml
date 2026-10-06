@@ -44,10 +44,10 @@
         - name: rdma
           exactly:
             deviceClassName: rdma.nscale.com
-            # One RDMA NIC per GPU on both architectures (confirmed): 8 for
-            # b200, 4 for gb300, matching gpu-defaults.yaml's existing
-            # gpusPerNode values — no new constant needed.
-            count: {{ .GpusPerNode }}
+            # One claim per RDMA NIC, sized from mlnxPerNode: 8 on b200 by
+            # default, 4 on gb300 via the nscale platformOverride, matching
+            # the rdma.nscale.com devices NKS GB300 ResourceSlices advertise.
+            count: {{ .MlnxPerNode }}
 - apiVersion: trainer.kubeflow.org/v1alpha1
   kind: TrainingRuntime
   metadata:

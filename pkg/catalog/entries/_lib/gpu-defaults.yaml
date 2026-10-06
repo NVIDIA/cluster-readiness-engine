@@ -11,6 +11,7 @@
 #                _lib/deps/ that templates the resource guards it on a positive
 #                count, so at 0 it renders neither the resource nor the network
 #                attachment annotation. See ADR-087.
+#                Also sizes the Nscale rdma.nscale.com DRA claim.
 #
 # - platformOverrides: keyed by platform name then GPU architecture. Fields set
 #   here override the architecture defaults when a node's detected platform
@@ -65,4 +66,7 @@ platformOverrides:
       mlnxPerNode: 0
     gb300:
       gpusPerNode: 4
+      mlnxPerNode: 4
+  nscale:
+    gb300:
       mlnxPerNode: 4

@@ -1361,7 +1361,7 @@
                     "requests": [
                       {
                         "exactly": {
-                          "count": 4,
+                          "count": 8,
                           "deviceClassName": "rdma.nscale.com"
                         },
                         "name": "rdma"
