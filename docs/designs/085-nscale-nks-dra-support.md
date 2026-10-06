@@ -151,8 +151,10 @@ separate exercise once this ADR is approved.
     NVLink-domain label NKS publishes. In the collectives the block is wrapped in the same
     `testScale` conditional as the base `orchestration`, because an orchestration override
     replaces the whole `topology`/`diagnose` object and must only be emitted when the base
-    emits one (repeating `strictDomain` and `minGroupSize`). B200 has no arch-only topology
-    key, so nothing changes there; the `fabric-tier-0` mapping in Notes stays future work.
+    emits one (repeating `strictDomain` and `minGroupSize`). On Nscale B200 the intra-rack and
+    diagnose scales inherit the collectives' arch-agnostic `nvidia.com/gpu.clique` key, so
+    partitioning fails there as it does on any platform without GFD; this is pre-existing and
+    equally true on AWS H100. Wiring B200 to `fabric-tier-0` (see Notes) stays future work.
 
 11. **`OrchestrationOverrideSpec` gains an optional `diagnose` field.** Overrides could
     replace `topology` but not `diagnose`, so decision 10 was impossible for the diagnose test
@@ -421,8 +423,9 @@ the leaf group is the finest real topology boundary — analogous to AWS's
 domain, which outranks network locality). Tiers 1 and 2 are explicitly **not** usable as a
 `topologyKey` — recorded here so a future reader doesn't reach for the wrong one. Decision 10
 wires the GB300 → `accelerator-domain` half of this mapping wherever the catalog already sets a
-clique key. Still unwired: a B200 → `fabric-tier-0` key (no entry sets any topology key on B200
-today, so there is nothing to replace), and a GB300 topology block in
+clique key. Still unwired: a B200 → `fabric-tier-0` key (B200's intra-rack and diagnose scales
+inherit the collectives' arch-agnostic `gpu.clique` key, so they fail partitioning on Nscale as
+on any platform without GFD, a pre-existing gap also true on AWS H100), and a GB300 topology block in
 `pkg/platform/overrides/workloadrun.yaml` alongside the AWS/GCP/Azure ones (the WorkloadRun
 GB200/GB300 block sets no clique key). Validation gate: the `accelerator-domain` label must be
 observed on real GB300 NKS nodes before topology-mode results from such a cluster are trusted.
