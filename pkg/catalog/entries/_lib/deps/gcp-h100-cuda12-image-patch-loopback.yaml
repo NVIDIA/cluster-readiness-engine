@@ -3,8 +3,9 @@
 
 # The single-node counterpart of gcp-h100-cuda12-image-patch-comm.yaml: pins the
 # CUDA 12 workload image on the only replicated job. Even single-node, the TCPXO
-# patch and FastRak env make NCCL load GKE's host-installed TCPXO plugin, which
-# links libcudart.so.12. A launcher entry must not appear here: replicated jobs
+# patch and FastRak env make NCCL load GKE's host-installed TCPXO plugin, so the
+# same assumption applies: plugin v1.0.16 or earlier (CUDA 12); v1.0.17+ needs a
+# CUDA 13 spec.image. A launcher entry must not appear here: replicated jobs
 # merge by name, so it would be appended to a runtime that has no launcher.
 - apiVersion: trainer.kubeflow.org/v1alpha1
   kind: TrainingRuntime

@@ -4,8 +4,9 @@
 # No image override. Every GCP H100 communication entry must render the CUDA 12
 # image (nvcr.io/nvidia/pytorch:25.06-py3) on the trainer, the workers, and,
 # for the multi-node MPI entries, the launcher and its fix-ssh-permissions
-# init: GKE's host-installed TCPXO NCCL plugin links libcudart.so.12 and cannot
-# load in the CUDA 13 base image. tcpxo-daemon keeps its GCP-provided image.
+# init: the catalog assumes TCPXO plugin v1.0.16 or earlier, whose host-installed
+# NCCL plugin needs CUDA 12 and cannot load in the CUDA 13 base image (v1.0.17+
+# needs a CUDA 13 spec.image instead). tcpxo-daemon keeps its GCP-provided image.
 # This pins the GCP images against a future base-image bump, which no test
 # without real GCP hardware would otherwise catch.
 apiVersion: nvcre.nvidia.com/v1alpha1

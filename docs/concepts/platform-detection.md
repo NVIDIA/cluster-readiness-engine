@@ -81,7 +81,7 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | GB300 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
 | H100 | AWS | EFA | `vpc.amazonaws.com/efa: 32`, no hugepages |
 | H100 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap |
-| H100 | GCP | TCPXO (FastRak) | `tcpxo-daemon` sidecar, `NCCL_FASTRAK_*` env, the 8 GPU NIC networks auto-detected from node allocatable, CUDA 12 image `pytorch:25.06-py3` for NCCL tests (A3 Mega only, see [GCP H100 clusters](#gcp-h100-clusters)) |
+| H100 | GCP | TCPXO (FastRak) | `tcpxo-daemon` sidecar, `NCCL_FASTRAK_*` env, the 8 GPU NIC networks auto-detected from node allocatable, CUDA 12 image `pytorch:25.06-py3` for NCCL tests (A3 Mega only, assumes TCPXO plugin v1.0.16 or earlier, see [GCP H100 clusters](#gcp-h100-clusters)) |
 | GB200/GB300 | GCP | RoCE | `networking.gke.io.networks/rdma-0`..`rdma-3` (fixed network names), ComputeDomain |
 | RTX PRO 6000 Blackwell | GCP G4 | TCP over `eth0`, PCIe GPU peer-to-peer | Variable GPU count by G4 machine size; `nvidia.com/gpu=present:NoSchedule` toleration; no RDMA resource request |
 | GB200/GB300 | On-prem | InfiniBand | arm64/GPU taint tolerations, portable IB NCCL env (no HCA pinning), NIC resource auto-detected or set via `nicResourceName`, ComputeDomain |
@@ -167,7 +167,32 @@ kubectl get node <gpu-node> -o jsonpath='{.status.allocatable}'
 
 Offline `nvcrectl certification render` has no nodes to inspect, so it renders the default names. With `--dry-run`, detection runs against the real nodes and prints the networks it found, or why it fell back, to stderr.
 
-The TCPXO NCCL plugin comes from the node, not the image. GKE's TCPXO installer puts it in `/home/kubernetes/bin/nvidia`, which the override mounts at `/usr/local/nvidia`. The plugin links the CUDA 12 runtime (`libcudart.so.12`), so it can't load in the CUDA 13 `pytorch:26.01-py3` image the other platforms' NCCL tests use. NCCL then fails with `Error loading libnccl-net_internal.so: libcudart.so.12`. The GCP H100 NCCL tests therefore pin `nvcr.io/nvidia/pytorch:25.06-py3`, the last CUDA 12 NGC PyTorch release, on the workers, the launcher and its init container. If you set `image`, the replacement must also be a CUDA 12 image. The training entries still use `pytorch:25.08-py3`, which is CUDA 13, so on GCP H100 they hit the same limitation.
+The TCPXO NCCL plugin comes from the node, not the image. GKE's TCPXO installer puts it in `/home/kubernetes/bin/nvidia`, which the override mounts at `/usr/local/nvidia`. The plugin links a CUDA runtime that it does not bundle, so it loads the one in the workload image and the two major versions must match. The GCP H100 NCCL tests therefore pin `nvcr.io/nvidia/pytorch:25.06-py3` (CUDA 12.9.1) on the workers, the launcher and its init container, instead of the CUDA 13 `pytorch:26.01-py3` the other platforms' NCCL tests use. The training entries still use `pytorch:25.08-py3`, which is CUDA 13, so they hit the mismatch on clusters with plugin v1.0.16 or earlier; on v1.0.17 and later their CUDA major already matches.
+
+**Which CUDA major the cluster needs.** This is a property of the installed TCPXO plugin, not of GCP H100. Google qualifies plugin v1.0.16 and earlier against CUDA 12, and v1.0.17 and later against CUDA 13 (v1.0.17 also requires GPU driver R595 and GKE 1.33.5-gke.1125000 or above). The pinned image assumes **plugin v1.0.16 or earlier**. The controller does not detect the plugin version, so on a cluster running v1.0.17 or later the pin is wrong and NCCL fails to load the plugin. Check what the cluster has and set `image` to match:
+
+```bash
+kubectl -n kube-system get daemonset nccl-tcpxo-installer \
+  -o jsonpath='{.spec.template.spec.initContainers[*].image}'
+```
+
+The plugin is the `nccl-plugin-gpudirecttcpx-dev` image in the output.
+
+| Plugin version | CUDA major | Set `image` to |
+|---|---|---|
+| v1.0.16 and earlier | 12 | nothing, the pinned `pytorch:25.06-py3` is already correct |
+| v1.0.17 and later | 13 | a CUDA 13 image, for example `nvcr.io/nvidia/pytorch:26.01-py3` |
+
+Applying Google's published manifest installs the latest plugin, so a cluster built from Google's instructions today gets a CUDA 13 plugin. Clusters provisioned by AICR pin an older plugin and need no change. The CUDA 13 row has not yet been validated on a v1.0.17 cluster.
+
+**Symptom to fix.** Both directions of the mismatch fail at plugin load, and the missing soname names the CUDA major the plugin wants, not the one the image has:
+
+| NCCL log line | Meaning | Fix |
+|---|---|---|
+| `Error loading libnccl-net_internal.so: libcudart.so.12` | plugin wants CUDA 12, image is CUDA 13 | use a CUDA 12 image (the default pin) |
+| `Error loading libnccl-net_internal.so: libcudart.so.13` | plugin wants CUDA 13, image is CUDA 12 | set `image` to a CUDA 13 image |
+
+Whatever you set `image` to, it must also ship the `*_perf_mpi` NCCL test binaries the entries invoke. The `tcpxo-daemon` sidecar keeps its own GCP-provided image and is unaffected by `image`.
 
 The TCPXO NCCL plugin also checks the NCCL environment against the `a3plus_guest_config.textproto` that GKE's TCPXO installer puts on each node, and aborts the job on any value the file enforces. The `NCCL_FASTRAK_*` environment NVCRE sets matches the enforced values of current installers, for example `NCCL_PROTO=Simple,LL128`. It also leaves `NCCL_ALGO` unset, as the file recommends. If a job fails with `NCCL WARN NCCL/NET (shim) mismatch enforced`, compare the named variable with that file on the node: `/home/kubernetes/bin/nvidia/lib64/a3plus_guest_config.textproto`, which is mounted in the pod at `/usr/local/nvidia/lib64/`.
 
