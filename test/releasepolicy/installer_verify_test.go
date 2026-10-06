@@ -106,9 +106,9 @@ type verifyCase struct {
 func runVerify(t *testing.T, block string, c verifyCase) (string, bool) {
 	t.Helper()
 
-	skip := "false"
+	skip := boolFalse
 	if c.skipVerify {
-		skip = "true"
+		skip = boolTrue
 	}
 	script := fmt.Sprintf(verifyHarness, skip,
 		c.fetchRC, c.cosignRC, c.cosignRC, c.verifyRC, block)
