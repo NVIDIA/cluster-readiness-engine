@@ -6,6 +6,7 @@ package certification
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -164,9 +165,7 @@ func projectMlnxNIC(wf *nvcrev1alpha1.Workflow) (mlnxWorkflow, error) {
 				PodAnnotations: map[string]string{},
 				Containers:     []mlnxContainer{},
 			}
-			for k, v := range podTemplate.Annotations {
-				projected.PodAnnotations[k] = v
-			}
+			maps.Copy(projected.PodAnnotations, podTemplate.Annotations)
 			for _, c := range podTemplate.Spec.Containers {
 				pc := mlnxContainer{Name: c.Name, Resources: []string{}}
 				for name, qty := range c.Resources.Limits {
