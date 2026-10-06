@@ -15,8 +15,10 @@
 #
 # This pin assumes TCPXO plugin v1.0.16 or earlier (CUDA 12). Google qualifies
 # v1.0.17 and later against CUDA 13, and the controller does not detect the
-# installed version, so clusters on v1.0.17+ must set spec.image to a CUDA 13
-# image. See docs/concepts/platform-detection.md, "GCP H100 clusters".
+# installed version, so clusters on v1.0.17+ must set categories[].options.image
+# to a CUDA 13 image. Per category, not spec.image: the spec-level field defaults
+# every category, including ones with their own image such as dcgm-level4.
+# See docs/concepts/platform-detection.md, "GCP H100 clusters".
 - apiVersion: trainer.kubeflow.org/v1alpha1
   kind: TrainingRuntime
   metadata:
