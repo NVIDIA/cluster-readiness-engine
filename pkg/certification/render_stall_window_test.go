@@ -30,7 +30,7 @@ func TestRenderStartupStallWindow(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		workflows, err := renderCertification(cert, "aws")
+		workflows, err := renderCertification(cert, "aws", "")
 		if err != nil {
 			return err
 		}
