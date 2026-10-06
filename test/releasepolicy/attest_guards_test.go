@@ -75,8 +75,18 @@ const (
 
 // Rejection messages asserted by more than one case.
 const (
-	errDigestMustMatch = "expected_digest must match"
-	errInvalidTag      = "subject_tag is not a valid OCI tag"
+	errDigestMustMatch  = "expected_digest must match"
+	errInvalidTag       = "subject_tag is not a valid OCI tag"
+	errCosignBelowFloor = "below the minimum v3.1.3"
+)
+
+// minCosignVersionGHSA is the first v3 release that patches GHSA-fx35-mq7g-6g98.
+// Hardcoded so lowering the floor in attest.yml cannot update the pin this
+// package asserts against. lastAffectedCosignV3 is the last v3 pin the advisory
+// lists as affected; the regex accepts it and the numeric floor must not.
+const (
+	minCosignVersionGHSA = "v3.1.3"
+	lastAffectedCosignV3 = "v3.1.2"
 )
 
 // workflow is the subset of the workflow schema these tests read.
@@ -135,7 +145,7 @@ func defaultInputs() inputs {
 		inArtifactName:   "",
 		inPredicateName:  "",
 		inPredicateType:  "",
-		inCosignVersion:  "v3.1.3",
+		inCosignVersion:  minCosignVersionGHSA,
 		inCraneVersion:   "v0.20.6",
 		inAllowUntagged:  boolFalse,
 		inEmitProvenance: boolTrue,
@@ -221,6 +231,15 @@ func TestAttestValidationAccepts(t *testing.T) {
 			callerRef:       mainBranchRef,
 			inSubjectTag:    "main-abc1234",
 			inAllowUntagged: boolTrue,
+		},
+		// The GHSA-fx35-mq7g-6g98 floor is v3.1.3. These pins must still
+		// pass: a floor that rejects the default or every newer v3 pin is
+		// not a working floor.
+		"cosign at the GHSA floor": {
+			inCosignVersion: minCosignVersionGHSA,
+		},
+		"newer cosign patch": {
+			inCosignVersion: "v3.1.4",
 		},
 	}
 
@@ -426,6 +445,13 @@ func TestAttestValidationRejects(t *testing.T) {
 		"floating cosign version": {
 			inputs{inCosignVersion: "latest"},
 			"cosign_version must be",
+		},
+		// v3.1.2 matches the vMAJOR.MINOR.PATCH regex and is the last v3
+		// release affected by GHSA-fx35-mq7g-6g98. The numeric floor is
+		// what refuses it; a regex-only check would accept this call.
+		"cosign below the GHSA floor": {
+			inputs{inCosignVersion: lastAffectedCosignV3},
+			errCosignBelowFloor,
 		},
 		"floating crane version": {
 			inputs{inCraneVersion: "main"},
