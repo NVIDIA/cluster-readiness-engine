@@ -503,29 +503,30 @@ func renderCertification(
 		}
 
 		workflowSpec, buildErr := entry.Build(cert.Spec.Target, catalog.BuildConfig{
-			ImagePullSecrets:   opts.ImagePullSecrets,
-			StorageClassName:   opts.StorageClassName,
-			NodesPerJob:        nodesPerJob,
-			GpusPerNode:        gpusPerNode,
-			MlnxPerNode:        mlnxPerNode,
-			NicResourceName:    nicResourceName,
-			GKETCPXONetworks:   gkeTCPXONetworks,
-			Resources:          opts.Resources,
-			EnableMNNVL:        enableMNNVL,
-			EnableCheckpoint:   derefBoolPtr(opts.EnableCheckpoint),
-			MaxSteps:           derefInt32Ptr(opts.MaxSteps),
-			ExitDurationMins:   derefInt32Ptr(opts.ExitDurationMins),
-			GPUArchitecture:    gpuArch,
-			SaveInterval:       derefInt32Ptr(opts.SaveInterval),
-			SaveRetainInterval: derefInt32Ptr(opts.SaveRetainInterval),
-			SaveTopK:           derefInt32Ptr(opts.SaveTopK),
-			StorageSize:        opts.StorageSize,
-			TestScale:          opts.TestScale,
-			MaxBytes:           opts.MaxBytes,
-			NumIterations:      derefInt32Ptr(opts.NumIterations),
-			NumCycles:          derefInt32Ptr(opts.NumCycles),
-			Thresholds:         opts.Thresholds,
-			MaxConcurrent:      derefInt32Ptr(opts.MaxConcurrent),
+			ImagePullSecrets:           opts.ImagePullSecrets,
+			StorageClassName:           opts.StorageClassName,
+			NodesPerJob:                nodesPerJob,
+			GpusPerNode:                gpusPerNode,
+			MlnxPerNode:                mlnxPerNode,
+			NicResourceName:            nicResourceName,
+			GKETCPXONetworks:           gkeTCPXONetworks,
+			Resources:                  opts.Resources,
+			EnableMNNVL:                enableMNNVL,
+			EnableCheckpoint:           derefBoolPtr(opts.EnableCheckpoint),
+			MaxSteps:                   derefInt32Ptr(opts.MaxSteps),
+			ExitDurationMins:           derefInt32Ptr(opts.ExitDurationMins),
+			StartupStallTimeoutSeconds: derefInt32Ptr(opts.StartupStallTimeoutSeconds),
+			GPUArchitecture:            gpuArch,
+			SaveInterval:               derefInt32Ptr(opts.SaveInterval),
+			SaveRetainInterval:         derefInt32Ptr(opts.SaveRetainInterval),
+			SaveTopK:                   derefInt32Ptr(opts.SaveTopK),
+			StorageSize:                opts.StorageSize,
+			TestScale:                  opts.TestScale,
+			MaxBytes:                   opts.MaxBytes,
+			NumIterations:              derefInt32Ptr(opts.NumIterations),
+			NumCycles:                  derefInt32Ptr(opts.NumCycles),
+			Thresholds:                 opts.Thresholds,
+			MaxConcurrent:              derefInt32Ptr(opts.MaxConcurrent),
 			// These five were missing, so render previewed catalog defaults
 			// rather than the user's settings. certification_controller.go
 			// passes all of them, which is why an applied run was correct while
@@ -687,20 +688,21 @@ type certRunConfig struct {
 // categoryRunOpts holds the optional CategoryOptions flags for the --category path.
 // Bool pointers are nil when the user did not pass the flag (use controller default).
 type categoryRunOpts struct {
-	enableCheckpoint *bool
-	maxSteps         int32
-	exitDurationMins int32
-	gpusPerNode      int32
-	enableMNNVL      *bool
-	storageClass     string
-	repeatCount      int32
-	maxRestarts      int32
+	enableCheckpoint           *bool
+	maxSteps                   int32
+	exitDurationMins           int32
+	startupStallTimeoutSeconds int32
+	gpusPerNode                int32
+	enableMNNVL                *bool
+	storageClass               string
+	repeatCount                int32
+	maxRestarts                int32
 }
 
 func newRunCommand(version string) *cobra.Command {
 	var categories []string
 	var name string
-	var nodesPerJob, maxSteps, exitDurationMins, gpusPerNode, repeatCount, maxRestarts int32
+	var nodesPerJob, maxSteps, exitDurationMins, startupStallTimeoutSeconds, gpusPerNode, repeatCount, maxRestarts int32
 	var enableCheckpoint, enableMNNVL bool
 	var storageClass string
 	var doWait, doSetup, doCleanup bool
@@ -746,6 +748,14 @@ Use --cleanup to teardown installed components after completion.`,
 			if pullSet > 0 && pullSet < 3 {
 				return fmt.Errorf("--workload-registry, --workload-registry-username, and --workload-registry-password must all be set together and non-empty")
 			}
+			if certFile != "" && cmd.Flags().Changed("startup-stall-timeout-seconds") {
+				return fmt.Errorf("--startup-stall-timeout-seconds cannot be used with --cert-file; " +
+					"set it in the Certification YAML")
+			}
+			if cmd.Flags().Changed("startup-stall-timeout-seconds") && startupStallTimeoutSeconds < 0 {
+				return fmt.Errorf("--startup-stall-timeout-seconds must not be negative (got %d); "+
+					"use 0 for the catalog entry's default", startupStallTimeoutSeconds)
+			}
 			if certFile == "" && len(categories) == 0 {
 				return fmt.Errorf("either --cert-file or at least one --category is required\n\n" +
 					"Use 'nvcrectl certification list-categories' to see available categories")
@@ -759,12 +769,13 @@ Use --cleanup to teardown installed components after completion.`,
 					doWait, doSetup, doCleanup, timeout, configFlags, os.Stderr)
 			} else {
 				opts := categoryRunOpts{
-					maxSteps:         maxSteps,
-					exitDurationMins: exitDurationMins,
-					gpusPerNode:      gpusPerNode,
-					storageClass:     storageClass,
-					repeatCount:      repeatCount,
-					maxRestarts:      maxRestarts,
+					maxSteps:                   maxSteps,
+					exitDurationMins:           exitDurationMins,
+					startupStallTimeoutSeconds: startupStallTimeoutSeconds,
+					gpusPerNode:                gpusPerNode,
+					storageClass:               storageClass,
+					repeatCount:                repeatCount,
+					maxRestarts:                maxRestarts,
 				}
 				if cmd.Flags().Changed("enable-checkpoint") {
 					opts.enableCheckpoint = &enableCheckpoint
@@ -817,6 +828,8 @@ Use --cleanup to teardown installed components after completion.`,
 		"Max training steps for NeMo 4 workloads (0 = use catalog default)")
 	cmd.Flags().Int32Var(&exitDurationMins, "exit-duration-mins", 0,
 		"Training duration in minutes for NeMo 6 workloads (0 = use catalog default)")
+	cmd.Flags().Int32Var(&startupStallTimeoutSeconds, "startup-stall-timeout-seconds", 0,
+		"Startup-stall window in seconds for training workloads (0 = use catalog default)")
 	cmd.Flags().Int32Var(&gpusPerNode, "gpus-per-node", 0,
 		"GPUs per node (0 = auto-detect from GPU architecture)")
 	cmd.Flags().BoolVar(&enableMNNVL, "enable-mnnvl", false,
@@ -973,6 +986,9 @@ func buildConfigFromFlags(
 	}
 	if opts.exitDurationMins > 0 {
 		cert.Spec.ExitDurationMins = &opts.exitDurationMins
+	}
+	if opts.startupStallTimeoutSeconds > 0 {
+		cert.Spec.StartupStallTimeoutSeconds = &opts.startupStallTimeoutSeconds
 	}
 	if opts.gpusPerNode > 0 {
 		cert.Spec.GpusPerNode = &opts.gpusPerNode
