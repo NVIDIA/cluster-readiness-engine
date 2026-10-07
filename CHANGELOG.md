@@ -21,6 +21,7 @@ followed them.
   on the target nodes and picks the NCCL and training images and the paired
   `tcpxo-daemon` from it: v1.0.15 and v1.0.16 run `pytorch:25.06-py3` (CUDA 12) with
   daemon v1.0.21 and v1.0.22, v1.0.17 runs the CUDA 13 images with daemon v1.0.23.
+  A build suffix is ignored, so a rebuild such as `v1.0.17-1` gets the v1.0.17 images.
   v1.0.15 is the minimum supported release. A newer release renders the latest
   mapping, and an older release or none found renders v1.0.15; each fallback emits a
   Warning `TCPXOPluginDetection` event. `certification render --dry-run` runs the

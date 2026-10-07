@@ -454,10 +454,14 @@ func detectTCPXOPluginVersion(ctx context.Context, reader client.Reader, nodes [
 		_, _ = fmt.Fprintln(os.Stderr, fallbackMessage)
 		return version
 	}
-	profile, _, _ := catalog.TCPXOPluginProfileFor(version)
+	profile, release, _ := catalog.TCPXOPluginProfileFor(version)
+	detected := version
+	if release != version {
+		detected += " (release " + release + ")"
+	}
 	_, _ = fmt.Fprintf(os.Stderr,
 		"Auto-detected TCPXO plugin %s on every target node: NCCL image %s, training image %s, tcpxo-daemon %s\n",
-		version, profile.NCCLImage, profile.TrainingImage, profile.DaemonImage)
+		detected, profile.NCCLImage, profile.TrainingImage, profile.DaemonImage)
 	return version
 }
 

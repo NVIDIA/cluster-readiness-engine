@@ -553,9 +553,9 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	// The GCP H100 workload images and the tcpxo-daemon image follow the
 	// TCPXO plugin release GKE installed, read from the installer pods on the
 	// same capable nodes, since node pools can run different releases. A
-	// cached read that finds no mapped release is confirmed live through
-	// APIReader. When it still finds none, the nearest safe profile is
-	// rendered, and a Warning says why once the Workflow is created.
+	// cached read that finds no release is confirmed live through APIReader.
+	// When no mapped release results, the nearest safe profile is rendered,
+	// and a Warning says why once the Workflow is created.
 	tcpxoPlugin := resolveTCPXOPluginVersion(ctx, r.Client, r.APIReader, detectedPlatform, gpuArch, capableNodes)
 
 	nodesPerJob, err := resolveNodesPerJob(capableNodes, category, opts, entry, gpusPerNode, gpuArch)
@@ -732,7 +732,9 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 // warnGCPH100DetectionFallbacks emits one Warning per GCP H100 detection that
 // ran without an exact result, so a fallback was rendered in its place. The
 // messages carry no category: the result is the same for every category, so
-// the warnings fold into one event each.
+// every category emits the same text. The Certification's resourceVersion
+// advances between categories, so each emission lands as its own event
+// rather than incrementing a series.
 func (r *CertificationReconciler) warnGCPH100DetectionFallbacks(
 	certification *nvcrev1alpha1.Certification, gkeNetworks gkeNetworkDetection, tcpxoPlugin tcpxoPluginDetection,
 ) {

@@ -78,7 +78,7 @@ type TCPXOPluginProfile struct {
 // libcudart.so.12). v1.0.17 is qualified on CUDA 13.2, driver 595.71.05 and
 // GKE 1.33.5-gke.1125000 or later; both CUDA 13 images here are an earlier
 // CUDA 13 minor, which shares the libcudart.so.13 soname. Adding a release is
-// a one-entry edit here; keep the releases contiguous.
+// a one-entry edit here. Keys are vMAJOR.MINOR.PATCH with no build suffix.
 var tcpxoPluginProfiles = map[string]TCPXOPluginProfile{
 	"v1.0.15": {
 		NCCLImage:     pytorchCUDA12Image,
@@ -101,41 +101,57 @@ var tcpxoPluginProfiles = map[string]TCPXOPluginProfile{
 }
 
 // TCPXOPluginProfileFor returns the images to render for a detected plugin
-// release tag, and the mapped release they belong to. exact is true only for
-// a mapped release; otherwise the nearest safe release is used:
+// release tag, and the mapped release they belong to. The tag is placed by
+// its vMAJOR.MINOR.PATCH release, so a build suffix does not change it:
+// Google republishes some releases as a rebuild ("v1.0.13-1" a week after
+// "v1.0.13"), built against the same CUDA major and paired with the same
+// daemon. exact is true when that release is mapped; otherwise the nearest
+// safe release is used:
 //
 //   - newer than every mapped release: the latest mapped one, since a newer
 //     plugin keeps at least the newest CUDA major and daemon generation;
+//   - between mapped releases but not mapped itself: the newest mapped
+//     release older than it, for the same reason;
 //   - older than MinimumTCPXOPluginVersion, empty, or not a
 //     vMAJOR.MINOR.PATCH tag: MinimumTCPXOPluginVersion, the CUDA 12 release
 //     validated on hardware.
 func TCPXOPluginProfileFor(version string) (profile TCPXOPluginProfile, release string, exact bool) {
-	if p, ok := tcpxoPluginProfiles[version]; ok {
-		return p, version, true
+	release = MinimumTCPXOPluginVersion
+	v, ok := parseTCPXOPluginVersion(version)
+	if !ok {
+		return tcpxoPluginProfiles[release], release, false
 	}
-	if order, ok := CompareTCPXOPluginVersion(version); ok && order > 0 {
-		latest := LatestTCPXOPluginVersion()
-		return tcpxoPluginProfiles[latest], latest, false
+	for _, known := range knownTCPXOPluginVersions() {
+		kv, _ := parseTCPXOPluginVersion(known)
+		c := compareTCPXOPluginVersions(kv, v)
+		if c > 0 {
+			break
+		}
+		release, exact = known, c == 0
 	}
-	return tcpxoPluginProfiles[MinimumTCPXOPluginVersion], MinimumTCPXOPluginVersion, false
+	return tcpxoPluginProfiles[release], release, exact
 }
 
-// DefaultTCPXOPluginProfile returns the images rendered when no plugin
-// version is known: offline render, or a detection that found none. It is
-// the MinimumTCPXOPluginVersion profile.
-func DefaultTCPXOPluginProfile() TCPXOPluginProfile {
-	return tcpxoPluginProfiles[MinimumTCPXOPluginVersion]
+// TCPXOPluginRelease returns the vMAJOR.MINOR.PATCH release of a plugin tag,
+// dropping any build suffix ("v1.0.17-1" gives "v1.0.17"), and false when
+// version is not a release tag.
+func TCPXOPluginRelease(version string) (string, bool) {
+	v, ok := parseTCPXOPluginVersion(version)
+	if !ok {
+		return "", false
+	}
+	return fmt.Sprintf("v%d.%d.%d", v[0], v[1], v[2]), true
 }
 
-// LatestTCPXOPluginVersion returns the newest mapped plugin release.
-func LatestTCPXOPluginVersion() string {
-	known := KnownTCPXOPluginVersions()
+// latestTCPXOPluginVersion returns the newest mapped plugin release.
+func latestTCPXOPluginVersion() string {
+	known := knownTCPXOPluginVersions()
 	return known[len(known)-1]
 }
 
-// KnownTCPXOPluginVersions returns the mapped plugin release tags, oldest
+// knownTCPXOPluginVersions returns the mapped plugin release tags, oldest
 // first.
-func KnownTCPXOPluginVersions() []string {
+func knownTCPXOPluginVersions() []string {
 	versions := make([]string, 0, len(tcpxoPluginProfiles))
 	for v := range tcpxoPluginProfiles {
 		versions = append(versions, v)
@@ -150,7 +166,7 @@ func KnownTCPXOPluginVersions() []string {
 
 // CompareTCPXOPluginVersion places version against the mapped releases: -1
 // when older than MinimumTCPXOPluginVersion, +1 when newer than
-// LatestTCPXOPluginVersion, 0 otherwise. ok is false when version is not a
+// latestTCPXOPluginVersion, 0 otherwise. ok is false when version is not a
 // vMAJOR.MINOR.PATCH tag.
 func CompareTCPXOPluginVersion(version string) (order int, ok bool) {
 	v, ok := parseTCPXOPluginVersion(version)
@@ -158,7 +174,7 @@ func CompareTCPXOPluginVersion(version string) (order int, ok bool) {
 		return 0, false
 	}
 	minV, _ := parseTCPXOPluginVersion(MinimumTCPXOPluginVersion)
-	maxV, _ := parseTCPXOPluginVersion(LatestTCPXOPluginVersion())
+	maxV, _ := parseTCPXOPluginVersion(latestTCPXOPluginVersion())
 	switch {
 	case compareTCPXOPluginVersions(v, minV) < 0:
 		return -1, true
@@ -168,8 +184,8 @@ func CompareTCPXOPluginVersion(version string) (order int, ok bool) {
 	return 0, true
 }
 
-// parseTCPXOPluginVersion parses a "vMAJOR.MINOR.PATCH" release tag. Google's
-// older installer tags carry a build suffix ("v1.0.9-1"), which is ignored.
+// parseTCPXOPluginVersion parses a "vMAJOR.MINOR.PATCH" release tag. A build
+// suffix ("v1.0.13-1", a rebuild of v1.0.13) is ignored.
 func parseTCPXOPluginVersion(version string) ([3]int, bool) {
 	var v [3]int
 	var rest string

@@ -29,8 +29,8 @@ type tcpxoPluginImagesInput struct {
 // a detected TCPXO plugin version (issues #438, #439): the workload image
 // whose CUDA major matches the plugin, on every container that runs it and on
 // trainer.image, and the tcpxo-daemon Google pairs with the plugin. An empty
-// version renders DefaultTCPXOPluginProfile, and an unmapped one the nearest
-// safe mapped profile (TCPXOPluginProfileFor).
+// version renders the MinimumTCPXOPluginVersion profile, and an unmapped one
+// the nearest safe mapped profile (TCPXOPluginProfileFor).
 func TestTCPXOPluginImages(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "tcpxo-plugin-images",
@@ -136,7 +136,8 @@ func daemonEntrypoint(args any) string {
 }
 
 // TestTCPXOPluginProfileFor pins which mapped release each detected tag
-// renders: its own when mapped, the latest when newer, the minimum otherwise.
+// renders: its own when mapped, with or without a build suffix, the latest
+// when newer, the minimum otherwise.
 func TestTCPXOPluginProfileFor(t *testing.T) {
 	const latest = "v1.0.17"
 	for _, tt := range []struct {
@@ -144,8 +145,12 @@ func TestTCPXOPluginProfileFor(t *testing.T) {
 		release string
 		exact   bool
 	}{
-		{"v1.0.15", "v1.0.15", true},
+		{MinimumTCPXOPluginVersion, MinimumTCPXOPluginVersion, true},
 		{latest, latest, true},
+		{"v1.0.15-1", MinimumTCPXOPluginVersion, true},
+		{"v1.0.16-2", "v1.0.16", true},
+		{"v1.0.17-1", latest, true},
+		{"v1.0.18-1", latest, false},
 		{"v1.0.18", latest, false},
 		{"v1.1.0", latest, false},
 		{"v2.0.0", latest, false},
@@ -159,6 +164,34 @@ func TestTCPXOPluginProfileFor(t *testing.T) {
 		if release != tt.release || exact != tt.exact {
 			t.Errorf("TCPXOPluginProfileFor(%q) = (%q, %v), want (%q, %v)",
 				tt.version, release, exact, tt.release, tt.exact)
+		}
+	}
+}
+
+// TestTCPXOPluginProfileForUnmappedRelease pins a release inside the mapped
+// range that has no row of its own: it renders the newest mapped release
+// before it, not the minimum, so a gap in the table cannot drop a CUDA 13
+// plugin to the CUDA 12 images.
+func TestTCPXOPluginProfileForUnmappedRelease(t *testing.T) {
+	const minimum, middle = MinimumTCPXOPluginVersion, "v1.0.17"
+	saved := tcpxoPluginProfiles
+	t.Cleanup(func() { tcpxoPluginProfiles = saved })
+	tcpxoPluginProfiles = map[string]TCPXOPluginProfile{
+		minimum:   saved[minimum],
+		middle:    saved[middle],
+		"v1.0.19": saved[middle],
+	}
+	for _, tt := range []struct {
+		version string
+		release string
+	}{
+		{"v1.0.16", minimum},
+		{"v1.0.16-1", minimum},
+		{"v1.0.18", middle},
+		{"v1.0.18-1", middle},
+	} {
+		if _, release, exact := TCPXOPluginProfileFor(tt.version); release != tt.release || exact {
+			t.Errorf("TCPXOPluginProfileFor(%q) = (%q, %v), want (%q, false)", tt.version, release, exact, tt.release)
 		}
 	}
 }

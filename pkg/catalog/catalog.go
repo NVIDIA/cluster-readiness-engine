@@ -62,11 +62,13 @@ type BuildConfig struct {
 	GKETCPXONetworks []string
 
 	// TCPXOPluginVersion is the GKE TCPXO NCCL plugin release installed on
-	// the GCP H100 target nodes, e.g. "v1.0.17". The controller detects it
-	// from the nccl-tcpxo-installer pods; it selects the GCP H100 workload
-	// images and the tcpxo-daemon image (TCPXOPluginProfileFor). A release
-	// newer than every mapped one renders the latest mapped profile; empty,
-	// older or unparseable renders DefaultTCPXOPluginProfile.
+	// the GCP H100 target nodes, e.g. "v1.0.17" or its rebuild "v1.0.17-1".
+	// The controller detects it from the nccl-tcpxo-installer pods; it
+	// selects the GCP H100 workload images and the tcpxo-daemon image
+	// (TCPXOPluginProfileFor), by release, so a build suffix is ignored. An
+	// unmapped release renders the newest mapped profile not newer than it;
+	// empty, older or unparseable renders the MinimumTCPXOPluginVersion
+	// profile.
 	TCPXOPluginVersion string
 
 	// Resources overrides the CPU and memory of training containers.

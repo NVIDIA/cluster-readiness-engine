@@ -184,7 +184,7 @@ Offline `nvcrectl certification render` has no nodes to inspect, so it renders t
 
 The TCPXO NCCL plugin comes from the node, not the image. GKE's TCPXO installer puts it in `/home/kubernetes/bin/nvidia`, which the override mounts at `/usr/local/nvidia`. The plugin links a CUDA runtime that it does not bundle, so it loads the one in the workload image, and the two CUDA major versions must match. Google also pairs each plugin release with one `tcpxo-daemon` release. Both are properties of the installed plugin, not of GCP H100: Google qualifies plugin v1.0.16 and earlier against CUDA 12, and v1.0.17 against CUDA 13.2 (with GPU driver R595 and GKE 1.33.5-gke.1125000 or later).
 
-**Plugin version detection.** The controller reads the plugin release from GKE's `nccl-tcpxo-installer` pods in `kube-system`. The release is the tag of the init container image `nccl-plugin-gpudirecttcpx-dev`, read through an `@sha256` digest if one is appended. The image is matched by that last path segment, so a mirrored registry is still recognized. Google allows upgrading the plugin one node pool at a time, so only the installers on the job's target nodes count, and only Running ones. The release then picks the images:
+**Plugin version detection.** The controller reads the plugin release from GKE's `nccl-tcpxo-installer` pods in `kube-system`. The release is the tag of the init container image `nccl-plugin-gpudirecttcpx-dev`, read through an `@sha256` digest if one is appended. The image is matched by that last path segment, so a mirrored registry is still recognized. Google allows upgrading the plugin one node pool at a time, so only the installers on the job's target nodes count, and only Running ones. Google sometimes republishes a release as a rebuild with a build suffix (`v1.0.13-1` a week after `v1.0.13`). A suffix does not change the release, so `v1.0.17-1` gets the v1.0.17 row, and nodes caught mid-rollout between `v1.0.17` and `v1.0.17-1` agree on v1.0.17. The release then picks the images:
 
 | Plugin version | NCCL test image | Training image | `tcpxo-daemon` |
 |---|---|---|---|
@@ -199,7 +199,8 @@ The images cover the NCCL test workers, launcher and launcher init container, an
 **Supported releases and fallbacks.** v1.0.15 is the minimum supported release. Detection never guesses silently: unless every target node runs one mapped release, the controller renders the nearest safe row and emits a Warning `TCPXOPluginDetection` event on the Certification saying what it found and what it rendered.
 
 - **A release newer than the latest mapped one** renders the latest row, since a newer plugin keeps at least the newest CUDA major. Those images are not validated against the newer release.
-- **A release older than v1.0.15** renders the v1.0.15 row, the only CUDA 12 choice. Upgrade the installer if you can.
+- **A release between mapped ones that has no row of its own** renders the newest row older than it, for the same reason, and is not validated either.
+- **A release older than v1.0.15** renders the v1.0.15 row, since every earlier release is also CUDA 12. Upgrade the installer if you can.
 - **No release at all** (no running installer pod on a target node, nodes on different releases, an untagged or non-release tag, or a failed pod List) renders the v1.0.15 row: the release AICR-provisioned clusters pin, and the one validated on hardware. A cluster built from Google's published manifest gets the latest plugin, which is CUDA 13, so if detection finds nothing there, set the image yourself.
 
 To check the installed release:
