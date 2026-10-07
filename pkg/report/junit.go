@@ -60,6 +60,7 @@ func WriteJUnit(path string, reports []*CertReport) error {
 			return fmt.Errorf("nil certification report")
 		}
 		suite := junitSuite{Name: r.Name}
+		occurrences := make(map[string]int)
 		var seconds float64
 		for _, cat := range r.Categories {
 			data, err := json.MarshalIndent(cat, "", "  ")
@@ -67,6 +68,11 @@ func WriteJUnit(path string, reports []*CertReport) error {
 				return fmt.Errorf("marshal category report: %w", err)
 			}
 			tc := junitCase{Name: cat.Variant, Classname: r.Name + "." + cat.Domain, SystemOut: string(data)}
+			identity := cat.Domain + "/" + cat.Variant
+			occurrences[identity]++
+			if occurrences[identity] > 1 {
+				tc.Name = fmt.Sprintf("%s [%d]", cat.Variant, occurrences[identity])
+			}
 			if duration, err := time.ParseDuration(strings.ReplaceAll(cat.Runtime, " ", "")); err == nil && duration >= 0 {
 				tc.Time = strconv.FormatFloat(duration.Seconds(), 'f', -1, 64)
 				seconds += duration.Seconds()

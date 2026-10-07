@@ -68,5 +68,14 @@
     "excludedNodes": ["node003"],
     "exclusionReason": "1 node has insufficient GPUs",
     "categories": [{"domain": "communication", "variant": "nccl-all-reduce", "status": "Succeeded", "runtime": "2s"}]
+  },
+  {
+    "name": "cert-repeated",
+    "result": "FAILED",
+    "categories": [
+      {"domain": "communication", "variant": "nccl-all-reduce", "status": "Succeeded", "nodesPerJob": 2},
+      {"domain": "communication", "variant": "nccl-all-reduce", "status": "Failed", "nodesPerJob": 4, "failureReason": "4-node bandwidth below threshold"},
+      {"domain": "communication", "variant": "nccl-all-reduce", "status": "Succeeded", "nodesPerJob": 8}
+    ]
   }
 ]
