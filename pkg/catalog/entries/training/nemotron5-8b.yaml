@@ -330,7 +330,7 @@ overrides:
             # Kubeflow upserts trainer env over runtime env by name.
             - name: NVTE_FUSED_ATTN
               value: "1"
-# --- GCP + H100 (TCPxo/FastRak) ---
+# --- GCP + H100 (TCPxo/FastRak, image from the TCPXO plugin version) ---
 - when:
     platform:
       equals: gcp
@@ -338,13 +338,22 @@ overrides:
       equals: h100
   dependencies:
 {{ lib "deps/gcp-h100-tcpxo-runtime-patch.yaml" . | indent 2 }}
+{{ lib "deps/gcp-h100-training-image-patch.yaml" . | indent 2 }}
   jobTemplate:
     spec:
       workload:
         trainJob:
           trainer:
+            image: {{ .GCPH100TrainingImage }}
             env:
 {{ lib "nccl/gcp-h100-fastrak-env.yaml" . | indent 12 }}
+            # GKE mounts the driver at /usr/local/nvidia/lib64 (on
+            # LD_LIBRARY_PATH), but the NGC image's ldconfig cache points
+            # libcuda.so.1 at a CUDA compat path that does not exist in the
+            # pod, and Triton trusts ldconfig over LD_LIBRARY_PATH, so
+            # Megatron's import fails with "libcuda.so cannot found!".
+            - name: TRITON_LIBCUDA_PATH
+              value: /usr/local/nvidia/lib64
 # --- Azure + A100 (InfiniBand) ---
 - when:
     platform:

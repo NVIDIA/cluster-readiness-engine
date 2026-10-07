@@ -223,7 +223,14 @@ type CategoryOptions struct {
 	// platform overrides land the workers on an nccl-tests image that ships
 	// the aws-ofi-nccl (EFA) plugin; setting image replaces that image, and
 	// the operator then owns the EFA OFI plugin being present in the
-	// replacement.
+	// replacement. On GCP H100 the platform overrides pick the NCCL and
+	// training images from the TCPXO NCCL plugin version detected on the
+	// target nodes, because the plugin loads the CUDA runtime from the
+	// workload image; a replacement must have the same CUDA major as the
+	// plugin. Set at the top level, image applies to every category in the
+	// Certification, so on a Certification that mixes workload kinds (for
+	// example NCCL tests with diagnostics/dcgm-level4) set it per category
+	// under categories[].options instead.
 	// +optional
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=512

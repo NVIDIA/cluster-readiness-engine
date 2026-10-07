@@ -15,8 +15,36 @@ followed them.
 
 ## [Unreleased]
 
+### Added
+
+- GCP H100 detects the TCPXO NCCL plugin release from the `nccl-tcpxo-installer` pods
+  on the target nodes and picks the NCCL and training images and the paired
+  `tcpxo-daemon` from it: v1.0.15 and v1.0.16 run `pytorch:25.06-py3` (CUDA 12) with
+  daemon v1.0.21 and v1.0.22, v1.0.17 runs the CUDA 13 images with daemon v1.0.23.
+  v1.0.15 is the minimum supported release. A newer release renders the latest
+  mapping, and an older release or none found renders v1.0.15; each fallback emits a
+  Warning `TCPXOPluginDetection` event. `certification render --dry-run` runs the
+  same detection. Validated on an AICR A3 Mega cluster at plugin v1.0.15 and v1.0.16
+  (#438)
+
+### Changed
+
+- GCP H100 training (`nemotron5-8b`, `nemotron5-56b`) runs the CUDA image that
+  matches the detected TCPXO plugin, so plugin v1.0.15 and v1.0.16 now get
+  `pytorch:25.06-py3` instead of `pytorch:25.08-py3`, which could not load the CUDA 12
+  plugin (#439)
+- The GCP H100 `tcpxo-daemon` follows the detected plugin release instead of the
+  early-2024 `v1.0.8` pin (#438)
+
 ### Fixed
 
+- The GCP H100 `tcpxo-daemon` now gets `NET_ADMIN`. The capability was listed as
+  `CAP_NET_ADMIN`, which containerd drops, so daemon v1.0.21 and later crash-looped
+  on their NIC tuning step; their entrypoint flags now match the release, since
+  they reject `--enforce_kernel_ipv6_support` (#438)
+- GCP H100 training sets `TRITON_LIBCUDA_PATH` to the GKE driver directory. The NGC
+  image's ldconfig cache points `libcuda.so.1` at a CUDA compat path that does not
+  exist on GKE, so Megatron failed at import with `libcuda.so cannot found!` (#439)
 - OCI GB200 workloads no longer request `nvidia.com/mlnxnics` or attach
   `network-operator/sriov-net` by default. The architecture default of 8 applied
   unchanged on OCI, where the shapes do not consistently advertise the resource and

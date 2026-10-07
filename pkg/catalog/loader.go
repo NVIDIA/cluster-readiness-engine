@@ -125,6 +125,18 @@ type TemplateData struct {
 	// {{ range $i, $n := .GKETCPXONetworks }} ... eth{{ add $i 1 }} ... {{ $n }}
 	GKETCPXONetworks []string
 
+	// GCPH100NCCLImage, GCPH100TrainingImage and TCPXODaemonImage are the
+	// images the GCP H100 TCPXO overrides render, selected by the detected
+	// TCPXO plugin version (always non-empty at Build time: from
+	// TCPXOPluginProfileFor, which falls back for unmapped versions). Templates use:
+	// {{ .GCPH100NCCLImage }}, {{ .GCPH100TrainingImage }}, {{ .TCPXODaemonImage }}.
+	// TCPXODaemonArgs are the daemon entrypoint flags for that daemon
+	// release: {{ .TCPXODaemonArgs }}
+	GCPH100NCCLImage     string
+	GCPH100TrainingImage string
+	TCPXODaemonImage     string
+	TCPXODaemonArgs      string
+
 	// TrainingCPULimit is the CPU limit for training containers
 	// (always non-empty after defaults). Templates use: {{ .TrainingCPULimit }}
 	TrainingCPULimit string
@@ -486,6 +498,11 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 	if len(td.GKETCPXONetworks) == 0 {
 		td.GKETCPXONetworks = DefaultGKETCPXONetworks()
 	}
+	tcpxo, _, _ := TCPXOPluginProfileFor(config.TCPXOPluginVersion)
+	td.GCPH100NCCLImage = tcpxo.NCCLImage
+	td.GCPH100TrainingImage = tcpxo.TrainingImage
+	td.TCPXODaemonImage = tcpxo.DaemonImage
+	td.TCPXODaemonArgs = tcpxo.DaemonArgs
 	if td.MaxSteps == 0 {
 		td.MaxSteps = DefaultMaxSteps
 	}

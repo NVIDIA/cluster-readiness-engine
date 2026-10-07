@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A release older than the minimum renders the minimum's profile (v1.0.15),
+# the only CUDA 12 choice.
+category: communication
+subcategory: nccl-all-reduce
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+nodesPerJob: 2
+gpusPerNode: 8
+tcpxoPluginVersion: v1.0.14

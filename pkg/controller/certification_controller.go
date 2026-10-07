@@ -114,6 +114,7 @@ func (r *CertificationReconciler) workflowReader() client.Reader {
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workflows,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workflows/status,verbs=get
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -548,6 +549,14 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	// the Workflow is created.
 	gkeNetworks := resolveGKETCPXONetworks(detectedPlatform, gpuArch, capableNodes)
 
+	// The GCP H100 workload images and the tcpxo-daemon image follow the
+	// TCPXO plugin release GKE installed, read from the installer pods on the
+	// same capable nodes, since node pools can run different releases. A
+	// cached read that finds no mapped release is confirmed live through
+	// APIReader. When it still finds none, the nearest safe profile is
+	// rendered, and a Warning says why once the Workflow is created.
+	tcpxoPlugin := resolveTCPXOPluginVersion(ctx, r.Client, r.APIReader, detectedPlatform, gpuArch, capableNodes)
+
 	nodesPerJob, err := resolveNodesPerJob(capableNodes, category, opts, entry, gpusPerNode, gpuArch)
 	if err != nil {
 		return "", err
@@ -567,6 +576,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		MlnxPerNode:        mlnxPerNode,
 		NicResourceName:    nicResourceName,
 		GKETCPXONetworks:   gkeNetworks.Names,
+		TCPXOPluginVersion: tcpxoPlugin.Version,
 		Resources:          opts.Resources,
 		EnableMNNVL:        enableMNNVL,
 		EnableCheckpoint:   derefBool(opts.EnableCheckpoint),
@@ -708,15 +718,28 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 			}
 			return "", &workflowCreateRejectedError{err: errors.Join(createErr, statusErr)}
 		}
-	} else if gkeNetworks.Ran && len(gkeNetworks.Names) == 0 {
+	} else {
 		// Only the reconcile whose Create succeeded warns, so a retry that finds
-		// the Workflow already there does not repeat it. The message carries no
-		// category: the result is the same for every category, so the warnings
-		// fold into one event.
-		r.warnf(certification, ReasonGKENetworkDetection, "%s", gkeNetworkDetectionMessage(gkeNetworks))
+		// the Workflow already there does not repeat it.
+		r.warnGCPH100DetectionFallbacks(certification, gkeNetworks, tcpxoPlugin)
 	}
 
 	return workflowName, nil
+}
+
+// warnGCPH100DetectionFallbacks emits one Warning per GCP H100 detection that
+// ran without an exact result, so a fallback was rendered in its place. The
+// messages carry no category: the result is the same for every category, so
+// the warnings fold into one event each.
+func (r *CertificationReconciler) warnGCPH100DetectionFallbacks(
+	certification *nvcrev1alpha1.Certification, gkeNetworks gkeNetworkDetection, tcpxoPlugin tcpxoPluginDetection,
+) {
+	if gkeNetworks.Ran && len(gkeNetworks.Names) == 0 {
+		r.warnf(certification, ReasonGKENetworkDetection, "%s", gkeNetworkDetectionMessage(gkeNetworks))
+	}
+	if tcpxoPlugin.Ran && !tcpxoPlugin.Exact {
+		r.warnf(certification, ReasonTCPXOPluginDetection, "%s", tcpxoPluginDetectionMessage(tcpxoPlugin))
+	}
 }
 
 // retryableCreateError marks a createWorkflowForCategory failure that a later

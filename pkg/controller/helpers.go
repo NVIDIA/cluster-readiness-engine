@@ -27,6 +27,13 @@ const (
 	// exactly the GPU NIC networks TCPXO needs on every target node, so the
 	// catalog's default network names were rendered.
 	ReasonGKENetworkDetection = "GKENetworkDetection"
+
+	// ReasonTCPXOPluginDetection is the Certification tier's Warning event
+	// when TCPXO plugin version detection ran (GCP H100 target) and did not
+	// find one mapped plugin release on every target node, so the nearest
+	// safe profile's GCP H100 workload and tcpxo-daemon images were rendered
+	// (the latest mapped release for a newer tag, the minimum otherwise).
+	ReasonTCPXOPluginDetection = "TCPXOPluginDetection"
 )
 
 // requeueImmediate is a short self-requeue delay used to advance a reconciler's

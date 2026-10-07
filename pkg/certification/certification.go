@@ -180,6 +180,7 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 	var dryRunClient client.Client
 	var dryRunNodes []corev1.Node
 	var gkeTCPXONetworks []string
+	var tcpxoPluginVersion string
 	if dryRun {
 		var cErr error
 		dryRunClient, cErr = render.NewK8sClient(configFlags)
@@ -209,9 +210,10 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 		}
 		applyNICDetection(cert, dryRunNodes, platformFlag)
 		gkeTCPXONetworks = detectGKETCPXONetworks(dryRunNodes, platformFlag)
+		tcpxoPluginVersion = detectTCPXOPluginVersion(ctx, dryRunClient, dryRunNodes, platformFlag)
 	}
 
-	workflows, err := renderCertification(cert, platformFlag, gpuArchOverride, gkeTCPXONetworks)
+	workflows, err := renderCertification(cert, platformFlag, gpuArchOverride, gkeTCPXONetworks, tcpxoPluginVersion)
 	if err != nil {
 		return err
 	}
@@ -426,6 +428,39 @@ func detectGKETCPXONetworks(nodes []corev1.Node, platformFlag string) []string {
 	return names
 }
 
+// detectTCPXOPluginVersion resolves the TCPXO plugin release that picks the
+// GCP H100 workload and tcpxo-daemon images for the dry-run render path,
+// mirroring the certification controller: detection runs only for GCP H100
+// targets, and only one release tag on every target node's installer pod is
+// used. An unmapped or missing release prints the note the controller emits
+// as a TCPXOPluginDetection event; the catalog then renders the nearest safe
+// profile for the returned version ("" renders the minimum).
+//
+// The same gate and node-set divergence as detectGKETCPXONetworks applies.
+func detectTCPXOPluginVersion(ctx context.Context, reader client.Reader, nodes []corev1.Node, platformFlag string) string {
+	if len(nodes) == 0 {
+		return ""
+	}
+	platformName := controller.DetectPlatform(nodes)
+	if platformFlag != "" {
+		platformName = platformFlag
+	}
+	version, fallbackMessage, ran := controller.ResolveTCPXOPluginVersion(
+		ctx, reader, platformName, controller.DetectGPUArchitecture(nodes), nodes)
+	if !ran {
+		return ""
+	}
+	if fallbackMessage != "" {
+		_, _ = fmt.Fprintln(os.Stderr, fallbackMessage)
+		return version
+	}
+	profile, _, _ := catalog.TCPXOPluginProfileFor(version)
+	_, _ = fmt.Fprintf(os.Stderr,
+		"Auto-detected TCPXO plugin %s on every target node: NCCL image %s, training image %s, tcpxo-daemon %s\n",
+		version, profile.NCCLImage, profile.TrainingImage, profile.DaemonImage)
+	return version
+}
+
 // renderCertification builds all Workflows that the controller would create
 // from catalog entries for the given Certification. The platform argument
 // (from --platform or detected from cluster nodes) is used to resolve
@@ -439,10 +474,13 @@ func detectGKETCPXONetworks(nodes []corev1.Node, platformFlag string) []string {
 // explicit architecture.
 //
 // gkeTCPXONetworks are the GKE networks detected under --dry-run
-// (detectGKETCPXONetworks). Nil renders the catalog default, which is what an
-// offline render without a cluster always gets.
+// (detectGKETCPXONetworks), and tcpxoPluginVersion is the TCPXO plugin
+// release detected there (detectTCPXOPluginVersion). Nil and "" render the
+// catalog defaults, which is what an offline render without a cluster always
+// gets.
 func renderCertification(
 	cert *nvcrev1alpha1.Certification, platformName, gpuArchOverride string, gkeTCPXONetworks []string,
+	tcpxoPluginVersion string,
 ) ([]nvcrev1alpha1.Workflow, error) {
 	if len(cert.Spec.Categories) == 0 {
 		return nil, fmt.Errorf("certification has no categories")
@@ -510,6 +548,7 @@ func renderCertification(
 			MlnxPerNode:        mlnxPerNode,
 			NicResourceName:    nicResourceName,
 			GKETCPXONetworks:   gkeTCPXONetworks,
+			TCPXOPluginVersion: tcpxoPluginVersion,
 			Resources:          opts.Resources,
 			EnableMNNVL:        enableMNNVL,
 			EnableCheckpoint:   derefBoolPtr(opts.EnableCheckpoint),
