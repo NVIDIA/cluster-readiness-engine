@@ -149,6 +149,8 @@ func statusCollectorObject(kind string) (client.Object, error) {
 		return &nvcrev1alpha1.Certification{}, nil
 	case "Workflow":
 		return &nvcrev1alpha1.Workflow{}, nil
+	case "Job":
+		return &nvcrev1alpha1.Job{}, nil
 	default:
 		return nil, fmt.Errorf("unsupported kind %q", kind)
 	}

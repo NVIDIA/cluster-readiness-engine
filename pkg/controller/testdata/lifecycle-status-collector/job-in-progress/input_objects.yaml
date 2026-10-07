@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: train-nccl-job
+  namespace: default
+  labels:
+    nvcre.nvidia.com/workflow: train-nccl
+status:
+  conditions:
+    - type: InProgress
+      status: "True"
+      reason: WorkloadRunning
+      message: workload is running
+    - type: Succeeded
+      status: "False"
+      reason: NotApplicable
+      message: ""
+    - type: Failed
+      status: "False"
+      reason: NotApplicable
+      message: ""

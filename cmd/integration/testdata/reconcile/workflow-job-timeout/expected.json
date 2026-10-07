@@ -89,5 +89,10 @@
       },
       "count": 1
     }
-  ]
+  ],
+  "jobMetrics": {
+    "nvcre_job_status{status=failed}": 1,
+    "nvcre_job_status{status=in_progress}": 0,
+    "nvcre_job_status{status=succeeded}": 0
+  }
 }

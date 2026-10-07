@@ -17,6 +17,13 @@ followed them.
 
 ### Fixed
 
+- `nvcre_job_status` now reports `failed` for a Job that timed out on
+  `timeoutPerJob`. The gauge was written only by the Job tier, so the Workflow
+  reconciler's timeout write left it at `in_progress` for the rest of the run, and
+  after a controller restart terminal Jobs had no series at all. It is now built at
+  scrape time from the informer cache, like `nvcre_certification_status` and
+  `nvcre_workflow_status`; series of a deleting Job remain until the Job leaves the
+  cache (#401)
 - OCI GB200 workloads no longer request `nvidia.com/mlnxnics` or attach
   `network-operator/sriov-net` by default. The architecture default of 8 applied
   unchanged on OCI, where the shapes do not consistently advertise the resource and

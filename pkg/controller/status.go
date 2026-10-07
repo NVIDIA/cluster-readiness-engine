@@ -142,7 +142,7 @@ func updateStatusWithRetry[T client.Object](
 //
 // Returns whether any attempt required a write and, after a successful final
 // attempt, the exclusive true-type transition. Callers keep status-change
-// logging and metrics off no-op reconciles and emit Events only from the final
+// logging off no-op reconciles and emit Events only from the final
 // transition result.
 func setExclusiveStatusCondition[T client.Object](
 	ctx context.Context,

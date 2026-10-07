@@ -54,6 +54,12 @@ collect:
   - kind: Job
     name: test-workflow-job-timeout-job
     namespace: default
+# Issue #401: the timed-out Job must read failed on nvcre_job_status, not the
+# in_progress the gauge last saw from the Job tier (ADR-086 decision A).
+collectJobMetrics:
+  namespace: default
+  job: test-workflow-job-timeout-job
+  workflow: test-workflow-job-timeout
 events:
   - involvedKind: Job
     involvedName: test-workflow-job-timeout-job

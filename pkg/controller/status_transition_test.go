@@ -9,7 +9,6 @@ import (
 	"errors"
 	"testing"
 
-	promtest "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -69,8 +68,6 @@ func TestJobPhaseWritePreservesConcurrentTerminalDecision(t *testing.T) {
 				require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(job), job))
 				recorder := events.NewFakeRecorder(10)
 				r := &JobReconciler{Client: c, Recorder: recorder}
-				recordJobStatus(job.Namespace, job.Name, "", testMetricStatusInProgress)
-				t.Cleanup(func() { cleanupJobMetrics(job.Namespace, job.Name) })
 				var err error
 				if target == nvcrev1alpha1.JobFailed {
 					err = r.setJobFailed(ctx, job, ReasonWorkloadFailed, "stale deleted-workload observation")
@@ -89,11 +86,6 @@ func TestJobPhaseWritePreservesConcurrentTerminalDecision(t *testing.T) {
 					"preserve the additive timeout shape; exclusivity repair is a separate change")
 				require.Zero(t, persisted.Status.RestartCount)
 				require.Empty(t, persisted.Status.FailedNodes)
-				// The discarded mutation must not report its requested phase to metrics.
-				// Refreshing metrics from the terminal winner is a separate concern.
-				require.Equal(t, float64(1), promtest.ToFloat64(jobStatusGauge.WithLabelValues(job.Namespace, job.Name, "", testMetricStatusInProgress)))
-				require.Zero(t, promtest.ToFloat64(jobStatusGauge.WithLabelValues(job.Namespace, job.Name, "", testMetricStatusFailed)))
-				require.Zero(t, promtest.ToFloat64(jobStatusGauge.WithLabelValues(job.Namespace, job.Name, "", testMetricStatusSucceeded)))
 			})
 		}
 	}
