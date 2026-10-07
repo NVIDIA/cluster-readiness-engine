@@ -148,6 +148,18 @@ type CategoryOptions struct {
 	// +kubebuilder:validation:Minimum=1
 	ExitDurationMins *int32 `json:"exitDurationMins,omitempty"`
 
+	// startupStallTimeoutSeconds optionally overrides the startup-stall window
+	// applied to this category's generated Job
+	// (Job.spec.startupStallTimeoutSeconds). It is the budget for the first
+	// parsed training step after the workload starts; when the window elapses
+	// with no parsed step, the Job fails with reason WorkloadStalled. The
+	// override only has an effect when the Job also sets stallMultiplier, which
+	// the training entries do (3). The catalog entry's value (1200 s for
+	// nemotron5-8b/56b) applies when unset.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	StartupStallTimeoutSeconds *int32 `json:"startupStallTimeoutSeconds,omitempty"`
+
 	// gpusPerNode optionally overrides the number of GPUs per node used by catalog
 	// workloads. If not specified, the controller derives the default from the GPU
 	// architecture in target.nodeSelector (e.g., 4 for GB200/GB300, 8 for H100).
