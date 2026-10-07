@@ -37,6 +37,7 @@ nvcrectl certification run --category communication/nccl-all-reduce [flags]
 | `--max-restarts` | `0` | Maximum checkpoint restarts for training workloads (0 = catalog default) |
 | `--storage-class` | — | StorageClass for PVC dependencies created by catalog entries |
 | `--results-file` | — | Write the certification report as JSON to this path (requires `--wait`) |
+| `--junit-file` | — | Write the certification report as JUnit XML to this path (requires `--wait`) |
 | `--controller-pull-secret` | — | Token for controller registry auth during `--setup` (e.g. GitHub PAT for `ghcr.io`) — separate from workload image credentials |
 | `--workload-registry` | — | Registry server for workload image pull (e.g. `nvcr.io`, `ghcr.io`) — required when `--workload-registry-password` is set |
 | `--workload-registry-username` | — | Registry username for workload image pull (e.g. `$oauthtoken` for NGC) — required when `--workload-registry-password` is set |
@@ -49,7 +50,22 @@ When `--wait` reaches its timeout, the command prints the Certification's curren
 ```bash
 nvcrectl certification run \
   --cert-file certification.yaml \
-  --wait
+  --wait --junit-file results.xml
+```
+
+JUnit output contains one testcase per category, including native failure details
+and runtime when available. Running or incomplete results include error cases;
+they do not appear as a fully passing report. JSON and JUnit output can be
+requested together. A requested JUnit file that cannot be written fails the
+command. Certification exit behavior is otherwise unchanged.
+
+GitLab can consume the file directly:
+
+```yaml
+artifacts:
+  when: always
+  reports:
+    junit: results.xml
 ```
 
 Pull workload images from NGC:
@@ -95,6 +111,7 @@ nvcrectl certification report <name> [<name>...] [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--results-file` | — | Write the report as JSON to this file path |
+| `--junit-file` | — | Write the report as JUnit XML to this file path |
 
 ## nvcrectl certification list-categories
 

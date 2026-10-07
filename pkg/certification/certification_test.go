@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"os"
 	"path/filepath"
@@ -670,10 +671,11 @@ func TestExecuteCertificationRunReportsBeforeCleanup(t *testing.T) {
 		},
 	}
 	var out bytes.Buffer
+	junitFile := filepath.Join(t.TempDir(), "results.xml")
 	cfg := &certRunConfig{
 		cert: cert, namespace: namespace.Name,
 		doWait: true, doCleanup: true, timeout: 0,
-		out: &out, watchClient: wc,
+		out: &out, watchClient: wc, junitFile: junitFile,
 	}
 
 	err := executeCertificationRun(cfg)
@@ -692,6 +694,30 @@ func TestExecuteCertificationRunReportsBeforeCleanup(t *testing.T) {
 
 	gotNamespace := &corev1.Namespace{}
 	require.NoError(t, wc.Get(context.Background(), client.ObjectKeyFromObject(namespace), gotNamespace))
+
+	// The partial native report survives deletion and cannot appear as a pass.
+	data, err := os.ReadFile(junitFile)
+	require.NoError(t, err)
+	var junit struct {
+		Suites []struct {
+			Errors int `xml:"errors,attr"`
+		} `xml:"testsuite"`
+	}
+	require.NoError(t, xml.Unmarshal(data, &junit))
+	require.Len(t, junit.Suites, 1)
+	assert.Positive(t, junit.Suites[0].Errors)
+}
+
+func TestFinishCertificationWaitJUnitWriteError(t *testing.T) {
+	cert := &nvcrev1alpha1.Certification{Name: "test-cert", Namespace: testCertNamespace}
+	wc := newCertificationFakeClient(t, cert)
+	var out bytes.Buffer
+	cfg := &certRunConfig{
+		cert: cert, namespace: cert.Namespace, out: &out,
+		junitFile: filepath.Join(t.TempDir(), "missing", "results.xml"),
+	}
+	err := finishCertificationWait(context.Background(), wc, cfg, cert, nil)
+	require.ErrorContains(t, err, "write JUnit file")
 }
 
 func TestFinishCertificationWaitTerminalAtTimeout(t *testing.T) {

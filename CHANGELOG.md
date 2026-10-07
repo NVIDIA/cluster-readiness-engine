@@ -15,6 +15,11 @@ followed them.
 
 ## [Unreleased]
 
+### Added
+
+- Native JUnit XML certification reports through `--junit-file` on
+  `nvcrectl certification run --wait` and `certification report` (#446).
+
 ### Fixed
 
 - OCI GB200 workloads no longer request `nvidia.com/mlnxnics` or attach

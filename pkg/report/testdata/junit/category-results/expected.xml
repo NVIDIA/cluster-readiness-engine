@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="cert-passed" tests="2" failures="0" errors="0" time="62.5">
+    <testcase name="nccl-all-reduce" classname="cert-passed.communication" time="62">
+      <system-out>{&#xA;  &#34;domain&#34;: &#34;communication&#34;,&#xA;  &#34;variant&#34;: &#34;nccl-all-reduce&#34;,&#xA;  &#34;status&#34;: &#34;Succeeded&#34;,&#xA;  &#34;runtime&#34;: &#34;1m 2s&#34;,&#xA;  &#34;bandwidth&#34;: [&#xA;    {&#xA;      &#34;size&#34;: &#34;128 MB&#34;,&#xA;      &#34;algBW&#34;: &#34;42 GB/s&#34;,&#xA;      &#34;busBW&#34;: &#34;21 GB/s&#34;,&#xA;      &#34;samples&#34;: 1&#xA;    }&#xA;  ]&#xA;}</system-out>
+    </testcase>
+    <testcase name="nemotron5-8b" classname="cert-passed.training" time="0.5">
+      <system-out>{&#xA;  &#34;domain&#34;: &#34;training&#34;,&#xA;  &#34;variant&#34;: &#34;nemotron5-8b&#34;,&#xA;  &#34;status&#34;: &#34;Succeeded&#34;,&#xA;  &#34;runtime&#34;: &#34;500ms&#34;&#xA;}</system-out>
+    </testcase>
+  </testsuite>
+  <testsuite name="cert-failed" tests="1" failures="1" errors="0" time="600">
+    <testcase name="nemotron5-8b" classname="cert-failed.training" time="600">
+      <failure message="1 group failed: &lt;rank-0&gt; &amp; &#34;trainer&#34;">{&#xA;  &#34;domain&#34;: &#34;training&#34;,&#xA;  &#34;variant&#34;: &#34;nemotron5-8b&#34;,&#xA;  &#34;status&#34;: &#34;Failed&#34;,&#xA;  &#34;failureReason&#34;: &#34;1 group failed: \u003crank-0\u003e \u0026 \&#34;trainer\&#34;&#34;,&#xA;  &#34;runtime&#34;: &#34;10m 0s&#34;,&#xA;  &#34;failedGroups&#34;: [&#xA;    {&#xA;      &#34;name&#34;: &#34;group-0&#34;,&#xA;      &#34;nodeCount&#34;: 2,&#xA;      &#34;nodes&#34;: [&#xA;        &#34;node001&#34;,&#xA;        &#34;node002&#34;&#xA;      ],&#xA;      &#34;reason&#34;: &#34;BackoffLimitExceeded — 2 of 2 pods failed&#34;,&#xA;      &#34;failureLog&#34;: {&#xA;        &#34;podName&#34;: &#34;trainer-pod&#34;,&#xA;        &#34;nodeName&#34;: &#34;node001&#34;,&#xA;        &#34;exitCode&#34;: 137,&#xA;        &#34;reason&#34;: &#34;OOMKilled&#34;,&#xA;        &#34;tail&#34;: &#34;trainer initialized\nCUDA out of memory \u003crank-0\u003e \u0026 rank-1&#34;&#xA;      }&#xA;    }&#xA;  ]&#xA;}</failure>
+      <system-out>{&#xA;  &#34;domain&#34;: &#34;training&#34;,&#xA;  &#34;variant&#34;: &#34;nemotron5-8b&#34;,&#xA;  &#34;status&#34;: &#34;Failed&#34;,&#xA;  &#34;failureReason&#34;: &#34;1 group failed: \u003crank-0\u003e \u0026 \&#34;trainer\&#34;&#34;,&#xA;  &#34;runtime&#34;: &#34;10m 0s&#34;,&#xA;  &#34;failedGroups&#34;: [&#xA;    {&#xA;      &#34;name&#34;: &#34;group-0&#34;,&#xA;      &#34;nodeCount&#34;: 2,&#xA;      &#34;nodes&#34;: [&#xA;        &#34;node001&#34;,&#xA;        &#34;node002&#34;&#xA;      ],&#xA;      &#34;reason&#34;: &#34;BackoffLimitExceeded — 2 of 2 pods failed&#34;,&#xA;      &#34;failureLog&#34;: {&#xA;        &#34;podName&#34;: &#34;trainer-pod&#34;,&#xA;        &#34;nodeName&#34;: &#34;node001&#34;,&#xA;        &#34;exitCode&#34;: 137,&#xA;        &#34;reason&#34;: &#34;OOMKilled&#34;,&#xA;        &#34;tail&#34;: &#34;trainer initialized\nCUDA out of memory \u003crank-0\u003e \u0026 rank-1&#34;&#xA;      }&#xA;    }&#xA;  ]&#xA;}</system-out>
+    </testcase>
+  </testsuite>
+  <testsuite name="cert-running" tests="1" failures="0" errors="1" time="0">
+    <testcase name="nccl-all-reduce" classname="cert-running.communication">
+      <error message="Category did not complete: Running">{&#xA;  &#34;domain&#34;: &#34;communication&#34;,&#xA;  &#34;variant&#34;: &#34;nccl-all-reduce&#34;,&#xA;  &#34;status&#34;: &#34;Running&#34;&#xA;}</error>
+      <system-out>{&#xA;  &#34;domain&#34;: &#34;communication&#34;,&#xA;  &#34;variant&#34;: &#34;nccl-all-reduce&#34;,&#xA;  &#34;status&#34;: &#34;Running&#34;&#xA;}</system-out>
+    </testcase>
+  </testsuite>
+  <testsuite name="cert-unknown" tests="1" failures="0" errors="1" time="0">
+    <testcase name="nemotron5-8b" classname="cert-unknown.training">
+      <error message="Category did not complete: Pending">{&#xA;  &#34;domain&#34;: &#34;training&#34;,&#xA;  &#34;variant&#34;: &#34;nemotron5-8b&#34;,&#xA;  &#34;status&#34;: &#34;Pending&#34;&#xA;}</error>
+      <system-out>{&#xA;  &#34;domain&#34;: &#34;training&#34;,&#xA;  &#34;variant&#34;: &#34;nemotron5-8b&#34;,&#xA;  &#34;status&#34;: &#34;Pending&#34;&#xA;}</system-out>
+    </testcase>
+  </testsuite>
+  <testsuite name="cert-empty" tests="1" failures="0" errors="1" time="0">
+    <testcase name="certification" classname="cert-empty">
+      <error message="Certification did not complete: RUNNING">{&#xA;  &#34;name&#34;: &#34;cert-empty&#34;,&#xA;  &#34;platform&#34;: &#34;&#34;,&#xA;  &#34;gpu&#34;: &#34;&#34;,&#xA;  &#34;totalNodes&#34;: 0,&#xA;  &#34;categories&#34;: [],&#xA;  &#34;failedNodes&#34;: null,&#xA;  &#34;result&#34;: &#34;RUNNING&#34;&#xA;}</error>
+      <system-out>{&#xA;  &#34;name&#34;: &#34;cert-empty&#34;,&#xA;  &#34;platform&#34;: &#34;&#34;,&#xA;  &#34;gpu&#34;: &#34;&#34;,&#xA;  &#34;totalNodes&#34;: 0,&#xA;  &#34;categories&#34;: [],&#xA;  &#34;failedNodes&#34;: null,&#xA;  &#34;result&#34;: &#34;RUNNING&#34;&#xA;}</system-out>
+    </testcase>
+  </testsuite>
+  <testsuite name="cert-excluded" tests="2" failures="0" errors="1" time="2">
+    <testcase name="nccl-all-reduce" classname="cert-excluded.communication" time="2">
+      <system-out>{&#xA;  &#34;domain&#34;: &#34;communication&#34;,&#xA;  &#34;variant&#34;: &#34;nccl-all-reduce&#34;,&#xA;  &#34;status&#34;: &#34;Succeeded&#34;,&#xA;  &#34;runtime&#34;: &#34;2s&#34;&#xA;}</system-out>
+    </testcase>
+    <testcase name="certification" classname="cert-excluded">
+      <error message="Certification did not complete: INCOMPLETE">{&#xA;  &#34;name&#34;: &#34;cert-excluded&#34;,&#xA;  &#34;platform&#34;: &#34;&#34;,&#xA;  &#34;gpu&#34;: &#34;&#34;,&#xA;  &#34;totalNodes&#34;: 3,&#xA;  &#34;excludedNodes&#34;: [&#xA;    &#34;node003&#34;&#xA;  ],&#xA;  &#34;exclusionReason&#34;: &#34;1 node has insufficient GPUs&#34;,&#xA;  &#34;categories&#34;: [&#xA;    {&#xA;      &#34;domain&#34;: &#34;communication&#34;,&#xA;      &#34;variant&#34;: &#34;nccl-all-reduce&#34;,&#xA;      &#34;status&#34;: &#34;Succeeded&#34;,&#xA;      &#34;runtime&#34;: &#34;2s&#34;&#xA;    }&#xA;  ],&#xA;  &#34;failedNodes&#34;: null,&#xA;  &#34;result&#34;: &#34;INCOMPLETE&#34;&#xA;}</error>
+      <system-out>{&#xA;  &#34;name&#34;: &#34;cert-excluded&#34;,&#xA;  &#34;platform&#34;: &#34;&#34;,&#xA;  &#34;gpu&#34;: &#34;&#34;,&#xA;  &#34;totalNodes&#34;: 3,&#xA;  &#34;excludedNodes&#34;: [&#xA;    &#34;node003&#34;&#xA;  ],&#xA;  &#34;exclusionReason&#34;: &#34;1 node has insufficient GPUs&#34;,&#xA;  &#34;categories&#34;: [&#xA;    {&#xA;      &#34;domain&#34;: &#34;communication&#34;,&#xA;      &#34;variant&#34;: &#34;nccl-all-reduce&#34;,&#xA;      &#34;status&#34;: &#34;Succeeded&#34;,&#xA;      &#34;runtime&#34;: &#34;2s&#34;&#xA;    }&#xA;  ],&#xA;  &#34;failedNodes&#34;: null,&#xA;  &#34;result&#34;: &#34;INCOMPLETE&#34;&#xA;}</system-out>
+    </testcase>
+  </testsuite>
+</testsuites>
