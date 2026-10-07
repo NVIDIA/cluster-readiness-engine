@@ -14,8 +14,6 @@
       "plm_rsh_args",
       "-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
       "-x",
-      "NCCL_DEBUG=INFO",
-      "-x",
       "NCCL_DEBUG_SUBSYS=NET,INIT",
       "-x",
       "NCCL_NVLS_ENABLE=1",
@@ -28,11 +26,15 @@
       "-x",
       "NCCL_P2P_NET_CHUNKSIZE=2097152",
       "-x",
-      "NCCL_SHM_DISABLE=1",
-      "-x",
-      "NCCL_MNNVL_ENABLE=1",
+      "NCCL_MNNVL_ENABLE=0",
       "-x",
       "NCCL_SOCKET_IFNAME=eth0",
+      "-x",
+      "NCCL_SHM_DISABLE=0",
+      "-x",
+      "CRE_TEST_MARKER",
+      "-x",
+      "NCCL_DEBUG=WARN",
       "/workspace/all_reduce_perf"
     ],
     "numNodes": 2,
@@ -52,9 +54,10 @@
     "NCCL_NET_GDR_C2C=1",
     "NCCL_NET_GDR_LEVEL=PHB",
     "NCCL_P2P_NET_CHUNKSIZE=2097152",
-    "NCCL_SHM_DISABLE=1",
-    "NCCL_MNNVL_ENABLE=1",
-    "NCCL_SOCKET_IFNAME=eth0"
+    "NCCL_MNNVL_ENABLE=0",
+    "NCCL_SOCKET_IFNAME=eth0",
+    "NCCL_SHM_DISABLE=0",
+    "CRE_TEST_MARKER="
   ],
   "launcherEnv": [
     "NCCL_DEBUG=INFO",
@@ -64,9 +67,10 @@
     "NCCL_NET_GDR_C2C=1",
     "NCCL_NET_GDR_LEVEL=PHB",
     "NCCL_P2P_NET_CHUNKSIZE=2097152",
-    "NCCL_SHM_DISABLE=1",
-    "NCCL_MNNVL_ENABLE=1",
-    "NCCL_SOCKET_IFNAME=eth0"
+    "NCCL_MNNVL_ENABLE=0",
+    "NCCL_SOCKET_IFNAME=eth0",
+    "NCCL_SHM_DISABLE=0",
+    "CRE_TEST_MARKER="
   ],
   "workerVolumeMounts": [
     "mpi-ssh-auth at /tmp/mpi-ssh-raw",
