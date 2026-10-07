@@ -1,0 +1,21 @@
+{
+  "requeue": false,
+  "conditions": [
+    {
+      "type": "Measuring",
+      "status": "False",
+      "reason": "LogsUnavailable",
+      "message": "Job succeeded but its log could not be read in full (reading log of pod w-launcher-0-0: no log for pod w-launcher-0-0); no bandwidth data was parsed"
+    },
+    {
+      "type": "Complete",
+      "status": "True",
+      "reason": "LogsUnavailable",
+      "message": "Job succeeded but its log could not be read in full (reading log of pod w-launcher-0-0: no log for pod w-launcher-0-0); no bandwidth data was parsed"
+    }
+  ],
+  "transport": [
+    "IB"
+  ],
+  "completionTime": "2026-09-30T10:05:00Z"
+}

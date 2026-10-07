@@ -1,0 +1,6 @@
+# The final read fails after the grace period. The transport a running sample
+# recorded is kept.
+jobCondition: Succeeded
+podPhase: Succeeded
+provisionalTransport: [IB]
+pendingSince: "2026-01-01T00:00:00Z"

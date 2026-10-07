@@ -94,6 +94,10 @@ type CategoryReport struct {
 	Domains []DomainReport `json:"domains,omitempty"`
 	// Communication bandwidth results (single-group: one row per size).
 	Bandwidth []BandwidthRow `json:"bandwidth,omitempty"`
+	// Transport is the distinct set of NCCL network names recorded on the
+	// category's BandwidthMeasurements (for example "IB" or "Socket").
+	// Omitted when the "Using network" line never appeared.
+	Transport []string `json:"transport,omitempty"`
 	// Per-group bandwidth results (multi-group: one row per group).
 	GroupBandwidth []GroupBandwidthRow `json:"groupBandwidth,omitempty"`
 	// Diagnose results from adaptive fault isolation.
@@ -182,11 +186,12 @@ type FailureLogReport struct {
 
 // GroupBandwidthRow holds bandwidth for a single group in multi-group Workflows.
 type GroupBandwidthRow struct {
-	GroupName string   `json:"groupName"` // e.g., "group-0" or "clique-0 (18 nodes)"
-	Nodes     []string `json:"nodes"`     // node names in the group
-	BusBW     string   `json:"busBW"`     // peak BusBW at largest message size
-	BelowMin  bool     `json:"belowMin"`  // true if below minBusBandwidthGBps threshold
-	Failed    bool     `json:"failed"`    // true if the group's Job failed
+	GroupName string   `json:"groupName"`           // e.g., "group-0" or "clique-0 (18 nodes)"
+	Nodes     []string `json:"nodes"`               // node names in the group
+	BusBW     string   `json:"busBW"`               // peak BusBW at largest message size
+	Transport []string `json:"transport,omitempty"` // NCCL network names for this group
+	BelowMin  bool     `json:"belowMin"`            // true if below minBusBandwidthGBps threshold
+	Failed    bool     `json:"failed"`              // true if the group's Job failed
 }
 
 // ---------------------------------------------------------------------------
@@ -714,6 +719,8 @@ func PopulateCategoryFromWorkflow(
 			cat.GroupBandwidth = buildGroupBandwidthRows(orch, filtered, bwThreshold)
 		}
 
+		cat.Transport = unionTransports(filtered)
+
 		// Show aggregate bandwidth for non-diagnose modes.
 		// Diagnose shows per-stage bandwidth in the diagnosis section.
 		if cat.Diagnose == nil {
@@ -737,6 +744,39 @@ func PopulateCategoryFromWorkflow(
 			}
 		}
 	}
+}
+
+// unionTransports returns the sorted distinct set of NCCL network names
+// recorded across measurements. Empty when none recorded.
+func unionTransports(measurements []nvcrev1alpha1.BandwidthMeasurement) []string {
+	sets := make([][]string, 0, len(measurements))
+	for _, bm := range measurements {
+		sets = append(sets, bm.Status.Transport)
+	}
+	return unionSortedStrings(sets...)
+}
+
+// unionSortedStrings returns the sorted distinct union of string sets.
+func unionSortedStrings(sets ...[]string) []string {
+	seen := make(map[string]struct{})
+	var out []string
+	for _, set := range sets {
+		for _, t := range set {
+			if t == "" {
+				continue
+			}
+			if _, ok := seen[t]; ok {
+				continue
+			}
+			seen[t] = struct{}{}
+			out = append(out, t)
+		}
+	}
+	slices.Sort(out)
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // buildGroupBandwidthRows maps BandwidthMeasurements to groups and returns
@@ -774,9 +814,12 @@ func buildGroupBandwidthRows(
 		if !ok {
 			continue
 		}
-		// Get peak BusBW from the largest message size.
+		// Get peak BusBW from the largest message size. A measurement with
+		// no bandwidth rows still gets a row when it recorded a transport,
+		// so the group and clique output keep it; its BusBW stays empty.
 		peak := peakBandwidthResult(bm.Status.Results)
-		if peak == nil {
+		transport := unionSortedStrings(bm.Status.Transport)
+		if peak == nil && len(transport) == 0 {
 			continue
 		}
 
@@ -790,20 +833,25 @@ func buildGroupBandwidthRows(
 			label = fmt.Sprintf("%s (%d nodes)", gi.name, gi.nodeCount)
 		}
 
-		// Check threshold.
+		// Check threshold. Without a peak there is nothing to compare.
 		belowMin := false
-		if minBusBandwidthGBps != "" {
-			threshold, _ := strconv.ParseFloat(minBusBandwidthGBps, 64)
-			measured, _ := strconv.ParseFloat(peak.BusBW, 64)
-			if threshold > 0 && measured < threshold {
-				belowMin = true
+		var busBW string
+		if peak != nil {
+			busBW = peak.BusBW + " GB/s"
+			if minBusBandwidthGBps != "" {
+				threshold, _ := strconv.ParseFloat(minBusBandwidthGBps, 64)
+				measured, _ := strconv.ParseFloat(peak.BusBW, 64)
+				if threshold > 0 && measured < threshold {
+					belowMin = true
+				}
 			}
 		}
 
 		rows = append(rows, GroupBandwidthRow{
 			GroupName: label,
 			Nodes:     gi.nodes,
-			BusBW:     peak.BusBW + " GB/s",
+			BusBW:     busBW,
+			Transport: transport,
 			BelowMin:  belowMin,
 			Failed:    gi.failed,
 		})
@@ -1372,9 +1420,15 @@ func printCategoryCard(w io.Writer, cat *CategoryReport) {
 		printGroupBandwidth(w, cat.GroupBandwidth)
 	}
 
-	// Aggregate bandwidth results.
-	if len(cat.Bandwidth) > 0 {
+	// NCCL transport and aggregate bandwidth results.
+	if len(cat.Transport) > 0 || len(cat.Bandwidth) > 0 {
 		_, _ = fmt.Fprintf(w, "│%s│\n", pad(boxWidth-2))
+	}
+	if len(cat.Transport) > 0 {
+		trLine := formatTransportLine(cat.Transport)
+		_, _ = fmt.Fprintf(w, "│  %s%s│\n", trLine, pad(boxWidth-4-len(trLine)))
+	}
+	if len(cat.Bandwidth) > 0 {
 		bwHeader := "Bandwidth:"
 		_, _ = fmt.Fprintf(w, "│  %s%s│\n", bwHeader, pad(boxWidth-4-len(bwHeader)))
 		colHeader := fmt.Sprintf("    %-10s %-12s %-12s %s", "Size", "AlgBW", "BusBW", "Samples")
@@ -1439,6 +1493,9 @@ func printGroupBandwidth(w io.Writer, groups []GroupBandwidthRow) {
 		} else {
 			printBoxLine(w, "       no bandwidth data")
 		}
+		if len(gb.Transport) > 0 {
+			printBoxLine(w, "       "+formatTransportLine(gb.Transport))
+		}
 		if gb.Failed || gb.BelowMin {
 			for _, node := range gb.Nodes {
 				printBoxLine(w, "       - "+node)
@@ -1451,12 +1508,18 @@ func printGroupBandwidth(w io.Writer, groups []GroupBandwidthRow) {
 func printCliques(w io.Writer, cliques []CliqueReport, groupBW []GroupBandwidthRow) {
 	_, _ = fmt.Fprintf(w, "│%s│\n", pad(boxWidth-2))
 	cliqueBW := make(map[string]string)
+	cliqueTransport := make(map[string][]string)
 	for _, gb := range groupBW {
 		name := gb.GroupName
 		if idx := strings.Index(name, " ("); idx > 0 {
 			name = name[:idx]
 		}
-		cliqueBW[name] = gb.BusBW
+		// A transport-only row has no BusBW; keep a measured value from
+		// another group in the same clique.
+		if gb.BusBW != "" {
+			cliqueBW[name] = gb.BusBW
+		}
+		cliqueTransport[name] = unionSortedStrings(cliqueTransport[name], gb.Transport)
 	}
 	printBoxLine(w, "Cliques:")
 	for _, cl := range cliques {
@@ -1467,6 +1530,9 @@ func printCliques(w io.Writer, cliques []CliqueReport, groupBW []GroupBandwidthR
 		printBoxLine(w, fmt.Sprintf("    %s  %s  %d/%d nodes", mark, cl.Name, cl.Validated, cl.Total))
 		if bw := cliqueBW[cl.Name]; bw != "" {
 			printBoxLine(w, "       "+bw)
+		}
+		if ts := cliqueTransport[cl.Name]; len(ts) > 0 {
+			printBoxLine(w, "       "+formatTransportLine(ts))
 		}
 	}
 }
@@ -1977,6 +2043,18 @@ func fmtAvg(vals []float64, fn fmtFunc) string {
 		return ""
 	}
 	return fn(a)
+}
+
+// formatTransportLine renders the NCCL network names recorded on a
+// BandwidthMeasurement (for example "Transport: IB, Socket"). Each name is
+// passed through sanitizeTerminalText so control characters cannot break
+// the report box.
+func formatTransportLine(values []string) string {
+	sanitized := make([]string, 0, len(values))
+	for _, v := range values {
+		sanitized = append(sanitized, sanitizeTerminalText(v))
+	}
+	return "Transport: " + strings.Join(sanitized, ", ")
 }
 
 // peakBandwidthResult returns a pointer to the result with the largest
