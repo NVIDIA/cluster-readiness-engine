@@ -15,7 +15,8 @@ import (
 
 // The startup-stall budget must start from actual running, never from time
 // spent suspended in an admission queue (issue #213): the GM anchor is
-// clamped forward to the Job's workloadStartTime, and workloadStartTime alone
+// clamped forward to the Job's workloadStartTime and to its
+// schedulingResumedTime (ADR-083), and workloadStartTime alone
 // is deliberately not an anchor (scheduling and image pulls are bounded by
 // timeoutPerJob, not the stall detector). Fixed absolute times are fine here
 // because startupStallAnchor never reads the wall clock.
@@ -38,7 +39,7 @@ func TestStartupStallAnchor(t *testing.T) {
 		// The controller passes either the persisted status.workloadStartTime
 		// or, on the reconcile that first observes the workload running, the
 		// candidate "now" — the clamp treats both identically.
-		anchor, ok := startupStallAnchor(gm, input.JobStatus.WorkloadStartTime)
+		anchor, ok := startupStallAnchor(gm, input.JobStatus.WorkloadStartTime, input.JobStatus.SchedulingResumedTime)
 		out := map[string]any{"ok": ok}
 		if ok {
 			out["anchor"] = anchor.UTC().Format("2006-01-02T15:04:05Z")
