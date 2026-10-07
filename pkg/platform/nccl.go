@@ -4,6 +4,8 @@
 package platform
 
 import (
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -57,4 +59,23 @@ func MergeEnvVars(base, user []corev1.EnvVar) []corev1.EnvVar {
 	// Append all user vars.
 	merged = append(merged, user...)
 	return merged
+}
+
+// mpiEnvArg renders an env var as an mpirun -x operand. A valueFrom var is
+// forwarded by bare name, which mpirun reads from its own (launcher) env,
+// where Kubernetes has already resolved it.
+func mpiEnvArg(e corev1.EnvVar) string {
+	if e.ValueFrom != nil {
+		return e.Name
+	}
+	return e.Name + "=" + e.Value
+}
+
+// mpiEnvArgName returns the variable name forwarded by a "-x" at args[i].
+func mpiEnvArgName(args []string, i int) (string, bool) {
+	if args[i] != "-x" || i+1 >= len(args) {
+		return "", false
+	}
+	name, _, _ := strings.Cut(args[i+1], "=")
+	return name, true
 }

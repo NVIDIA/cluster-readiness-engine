@@ -427,6 +427,7 @@ func applyPlatformMPIArgs(
 		NicResourceName: derefString(run.Spec.NicResourceName),
 		EnableMNNVL:     enableMNNVL,
 		FrameworkType:   frameworkType,
+		UserEnv:         run.Spec.Env,
 	})
 	octx := controller.OverrideContext{
 		Platform:        platformName,
