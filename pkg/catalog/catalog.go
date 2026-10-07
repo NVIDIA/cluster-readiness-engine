@@ -43,7 +43,9 @@ type BuildConfig struct {
 	GpusPerNode int32
 
 	// MlnxPerNode is the Mellanox NIC count per node, used by IB/RoCE templates
-	// (Azure, OCI, TogetherAI). 0 means the templates omit nvidia.com/mlnxnics.
+	// (Azure, OCI, TogetherAI). 0 means the templates omit nvidia.com/mlnxnics
+	// and, on OCI, the matching k8s.v1.cni.cncf.io/networks annotation: each
+	// such fragment wraps the request in {{ if gt (int .MlnxPerNode) 0 }}.
 	// Resolved from gpu-defaults.yaml + platform overrides + user override.
 	MlnxPerNode int32
 
@@ -52,6 +54,12 @@ type BuildConfig struct {
 	// means the templates omit the NIC resource block. The per-container count
 	// comes from MlnxPerNode.
 	NicResourceName string
+
+	// GKETCPXONetworks are the GKE Network names the GCP H100 TCPXO patch
+	// attaches to the pod as eth1..eth8, in that order. The controller
+	// detects them from node allocatable; empty means the templates render
+	// DefaultGKETCPXONetworks.
+	GKETCPXONetworks []string
 
 	// Resources overrides the CPU and memory of training containers.
 	// Nil (or nil sub-fields) means the training entries keep their

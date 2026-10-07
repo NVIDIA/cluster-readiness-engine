@@ -1,0 +1,41 @@
+[
+  {
+    "workflow": "azure-cert-communication-87a41",
+    "dependencyKinds": [
+      "TrainingRuntime",
+      "ConfigMap"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "podAnnotations": {},
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/nvidia.com/gpu=8",
+              "limits/nvidia.com/mlnxnics=8",
+              "requests/nvidia.com/gpu=8",
+              "requests/nvidia.com/mlnxnics=8"
+            ]
+          }
+        ]
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "podAnnotations": {},
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/cpu=2",
+              "limits/memory=1Gi"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

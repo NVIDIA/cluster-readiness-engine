@@ -48,6 +48,26 @@ func ResolveNICResourceName(
 	return d.Name, refusalMessage, d.Ran
 }
 
+// ResolveGKETCPXONetworks is the exported version of resolveGKETCPXONetworks
+// for use by the CLI dry-run path, so "certification render --dry-run"
+// attaches the same GKE networks a reconcile of the same target would:
+// detection only for GCP H100, and only exactly GKETCPXONICsPerNode networks
+// allocatable on every node are used.
+//
+// names is empty when detection did not run or refused, and the catalog
+// default is rendered. refusalMessage is non-empty exactly when detection ran
+// and refused; it is the same text the controller emits as the
+// GKENetworkDetection event, for the CLI to print to stderr.
+func ResolveGKETCPXONetworks(
+	platformName, gpuArch string, nodes []corev1.Node,
+) (names []string, refusalMessage string, detectionRan bool) {
+	d := resolveGKETCPXONetworks(platformName, gpuArch, nodes)
+	if d.Ran && len(d.Names) == 0 {
+		refusalMessage = gkeNetworkDetectionMessage(d)
+	}
+	return d.Names, refusalMessage, d.Ran
+}
+
 // BuildOverrideContext is the exported version of buildOverrideContext for use by CLI tools.
 func BuildOverrideContext(spec *nvcrev1alpha1.WorkflowSpec, orch *nvcrev1alpha1.OrchestrationStatus, nodes []corev1.Node) OverrideContext {
 	return buildOverrideContext(spec, orch, nodes)

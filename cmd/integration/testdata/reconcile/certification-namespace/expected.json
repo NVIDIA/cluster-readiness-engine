@@ -99,7 +99,7 @@
                 "kind": "TrainingRuntime"
               },
               "trainer": {
-                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                "image": "nvcr.io/nvidia/pytorch:25.06-py3",
                 "command": [
                   "timeout",
                   "3600",
@@ -127,9 +127,9 @@
                   "-x",
                   "NCCL_CROSS_NIC=0",
                   "-x",
-                  "NCCL_ALGO=Ring,Tree",
+                  "NCCL_PROTO=Simple,LL128",
                   "-x",
-                  "NCCL_PROTO=Simple",
+                  "NCCL_NVLSTREE_MAX_CHUNKSIZE=131072",
                   "-x",
                   "NCCL_MIN_NCHANNELS=4",
                   "-x",
@@ -306,7 +306,7 @@
                                   "sh",
                                   "-c"
                                 ],
-                                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                                "image": "nvcr.io/nvidia/pytorch:25.06-py3",
                                 "name": "node",
                                 "readinessProbe": {
                                   "initialDelaySeconds": 5,
@@ -450,7 +450,7 @@
                           "spec": {
                             "containers": [
                               {
-                                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                                "image": "nvcr.io/nvidia/pytorch:25.06-py3",
                                 "name": "node",
                                 "resources": {
                                   "limits": {
@@ -480,7 +480,7 @@
                                   "sh",
                                   "-c"
                                 ],
-                                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                                "image": "nvcr.io/nvidia/pytorch:25.06-py3",
                                 "name": "fix-ssh-permissions",
                                 "volumeMounts": [
                                   {

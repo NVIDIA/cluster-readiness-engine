@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Reaches deps/togetherai-ib-runtime-patch.yaml. Its block is gated on platform
+# alone with no architecture clause, so the Azure and OCI cases never render it.
+#
+# This is the second whole-document guard, alongside the OCI fragment: the
+# fragment exists only to add the NIC request, so at a count of 0 it renders
+# zero bytes and the call site's "dependencies:" key resolves to an empty list.
+#
+# It is a patch, not a new dependency. The TrainingRuntime it emits reuses the
+# base entry's name, so at a non-zero count it merges into the existing runtime
+# rather than appending to dependencyKinds. The golden therefore shows one
+# TrainingRuntime either way, and what the guard changes is the resources list
+# on it: nvidia.com/gpu survives, nvidia.com/mlnxnics is gone.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: togetherai-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 8
+  enableMNNVL: false
+  mlnxPerNode: 0
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

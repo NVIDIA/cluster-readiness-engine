@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# mlnxPerNode: 0 as a user-facing opt-out, on a platform the issue does not
+# mention. Three comments in the codebase promised this behavior before any
+# template implemented it; rendering with 0 used to emit a literal
+# nvidia.com/mlnxnics: "0".
+#
+# This is also the guard-boundary pin. Azure's fragment carries mlnxnics as the
+# only entry under limits and requests, so the guard removes the resources key
+# itself rather than leaving it childless. The golden must still show
+# nvidia.com/gpu: a dangling empty key would unmarshal to nil, and the override
+# merge deletes nil-valued keys, taking the base runtime's GPU request with it.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: azure-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 8
+  enableMNNVL: false
+  mlnxPerNode: 0
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

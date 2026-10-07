@@ -28,7 +28,7 @@
                       - path: /dev/nvidia-uvm
                       - path: /dev/dmabuf_import_helper
                     networking.gke.io/default-interface: eth0
-                    networking.gke.io/interfaces: '[{"interfaceName":"eth0","network":"default"},{"interfaceName":"eth1","network":"gpu-nic0"},{"interfaceName":"eth2","network":"gpu-nic1"},{"interfaceName":"eth3","network":"gpu-nic2"},{"interfaceName":"eth4","network":"gpu-nic3"},{"interfaceName":"eth5","network":"gpu-nic4"},{"interfaceName":"eth6","network":"gpu-nic5"},{"interfaceName":"eth7","network":"gpu-nic6"},{"interfaceName":"eth8","network":"gpu-nic7"}]'
+                    networking.gke.io/interfaces: '[{"interfaceName":"eth0","network":"default"}{{ range $i, $n := .GKETCPXONetworks }},{"interfaceName":"eth{{ add $i 1 }}","network":"{{ $n }}"}{{ end }}]'
                 spec:
                   containers:
                   - name: node

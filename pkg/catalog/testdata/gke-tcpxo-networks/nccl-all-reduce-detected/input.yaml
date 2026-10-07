@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Networks detected on an AICR-provisioned A3 Mega pool render onto eth1..eth8
+# in the order given, after the default network on eth0.
+category: communication
+subcategory: nccl-all-reduce
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+nodesPerJob: 2
+gpusPerNode: 8
+gkeTCPXONetworks:
+  - c1-gpu-nic-0
+  - c1-gpu-nic-1
+  - c1-gpu-nic-2
+  - c1-gpu-nic-3
+  - c1-gpu-nic-4
+  - c1-gpu-nic-5
+  - c1-gpu-nic-6
+  - c1-gpu-nic-7

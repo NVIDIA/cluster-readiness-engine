@@ -1,0 +1,43 @@
+# GB200 on GCP uses the RoCE patch with fixed rdma-N network names, not the
+# TCPXO patch, so detection does not run.
+platform: gcp
+gpuArchitecture: gb200
+nodes:
+  - name: gpu-01
+    allocatable:
+      nvidia.com/gpu: "8"
+      networking.gke.io.networks/c1-gpu-nic-0: "1"
+      networking.gke.io.networks/c1-gpu-nic-0.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-1: "1"
+      networking.gke.io.networks/c1-gpu-nic-1.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-2: "1"
+      networking.gke.io.networks/c1-gpu-nic-2.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-3: "1"
+      networking.gke.io.networks/c1-gpu-nic-3.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-4: "1"
+      networking.gke.io.networks/c1-gpu-nic-4.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-5: "1"
+      networking.gke.io.networks/c1-gpu-nic-5.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-6: "1"
+      networking.gke.io.networks/c1-gpu-nic-6.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-7: "1"
+      networking.gke.io.networks/c1-gpu-nic-7.IP: "1"
+  - name: gpu-02
+    allocatable:
+      nvidia.com/gpu: "8"
+      networking.gke.io.networks/c1-gpu-nic-0: "1"
+      networking.gke.io.networks/c1-gpu-nic-0.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-1: "1"
+      networking.gke.io.networks/c1-gpu-nic-1.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-2: "1"
+      networking.gke.io.networks/c1-gpu-nic-2.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-3: "1"
+      networking.gke.io.networks/c1-gpu-nic-3.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-4: "1"
+      networking.gke.io.networks/c1-gpu-nic-4.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-5: "1"
+      networking.gke.io.networks/c1-gpu-nic-5.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-6: "1"
+      networking.gke.io.networks/c1-gpu-nic-6.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-7: "1"
+      networking.gke.io.networks/c1-gpu-nic-7.IP: "1"

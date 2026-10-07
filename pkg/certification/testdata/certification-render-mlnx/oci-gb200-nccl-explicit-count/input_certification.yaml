@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An OCI GB200 site that does run the SR-IOV device plugin opts back in with
+# spec.mlnxPerNode, which outranks the platform override of 0. The golden must
+# show the NIC resource and exactly four sriov-net attachments: zero is a
+# default, not a ceiling.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 8
+  enableMNNVL: true
+  mlnxPerNode: 4
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

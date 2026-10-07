@@ -1,0 +1,50 @@
+# The host attaches the networks in the opposite order of their names
+# (eth1 carries vpc8). The pod's eth1..eth8 follow the host, not a name sort,
+# so they carry the same networks as the host's eth1..eth8.
+platform: gcp
+gpuArchitecture: h100
+nodes:
+  - name: gpu-01
+    allocatable:
+      nvidia.com/gpu: "8"
+      networking.gke.io.networks/vpc1: "1"
+      networking.gke.io.networks/vpc1.IP: "1"
+      networking.gke.io.networks/vpc2: "1"
+      networking.gke.io.networks/vpc2.IP: "1"
+      networking.gke.io.networks/vpc3: "1"
+      networking.gke.io.networks/vpc3.IP: "1"
+      networking.gke.io.networks/vpc4: "1"
+      networking.gke.io.networks/vpc4.IP: "1"
+      networking.gke.io.networks/vpc5: "1"
+      networking.gke.io.networks/vpc5.IP: "1"
+      networking.gke.io.networks/vpc6: "1"
+      networking.gke.io.networks/vpc6.IP: "1"
+      networking.gke.io.networks/vpc7: "1"
+      networking.gke.io.networks/vpc7.IP: "1"
+      networking.gke.io.networks/vpc8: "1"
+      networking.gke.io.networks/vpc8.IP: "1"
+    annotations:
+      networking.gke.io/north-interfaces: '[{"network":"vpc8","ipAddress":"192.168.0.3"},{"network":"vpc7","ipAddress":"192.168.16.3"},{"network":"vpc6","ipAddress":"192.168.32.3"},{"network":"vpc5","ipAddress":"192.168.48.3"},{"network":"vpc4","ipAddress":"192.168.64.3"},{"network":"vpc3","ipAddress":"192.168.80.3"},{"network":"vpc2","ipAddress":"192.168.96.3"},{"network":"vpc1","ipAddress":"192.168.112.3"}]'
+      networking.gke.io/nic-info: '[{"birthIP":"10.0.0.15","pciAddress":"0000:00:0c.0","birthName":"eth0"},{"birthIP":"192.168.0.3","pciAddress":"0000:06:00.0","birthName":"eth1"},{"birthIP":"192.168.16.3","pciAddress":"0000:07:00.0","birthName":"eth2"},{"birthIP":"192.168.32.3","pciAddress":"0000:0d:00.0","birthName":"eth3"},{"birthIP":"192.168.48.3","pciAddress":"0000:0e:00.0","birthName":"eth4"},{"birthIP":"192.168.64.3","pciAddress":"0000:86:00.0","birthName":"eth5"},{"birthIP":"192.168.80.3","pciAddress":"0000:87:00.0","birthName":"eth6"},{"birthIP":"192.168.96.3","pciAddress":"0000:8d:00.0","birthName":"eth7"},{"birthIP":"192.168.112.3","pciAddress":"0000:8e:00.0","birthName":"eth8"}]'
+  - name: gpu-02
+    allocatable:
+      nvidia.com/gpu: "8"
+      networking.gke.io.networks/vpc1: "1"
+      networking.gke.io.networks/vpc1.IP: "1"
+      networking.gke.io.networks/vpc2: "1"
+      networking.gke.io.networks/vpc2.IP: "1"
+      networking.gke.io.networks/vpc3: "1"
+      networking.gke.io.networks/vpc3.IP: "1"
+      networking.gke.io.networks/vpc4: "1"
+      networking.gke.io.networks/vpc4.IP: "1"
+      networking.gke.io.networks/vpc5: "1"
+      networking.gke.io.networks/vpc5.IP: "1"
+      networking.gke.io.networks/vpc6: "1"
+      networking.gke.io.networks/vpc6.IP: "1"
+      networking.gke.io.networks/vpc7: "1"
+      networking.gke.io.networks/vpc7.IP: "1"
+      networking.gke.io.networks/vpc8: "1"
+      networking.gke.io.networks/vpc8.IP: "1"
+    annotations:
+      networking.gke.io/north-interfaces: '[{"network":"vpc8","ipAddress":"192.168.0.3"},{"network":"vpc7","ipAddress":"192.168.16.3"},{"network":"vpc6","ipAddress":"192.168.32.3"},{"network":"vpc5","ipAddress":"192.168.48.3"},{"network":"vpc4","ipAddress":"192.168.64.3"},{"network":"vpc3","ipAddress":"192.168.80.3"},{"network":"vpc2","ipAddress":"192.168.96.3"},{"network":"vpc1","ipAddress":"192.168.112.3"}]'
+      networking.gke.io/nic-info: '[{"birthIP":"10.0.0.15","pciAddress":"0000:00:0c.0","birthName":"eth0"},{"birthIP":"192.168.0.3","pciAddress":"0000:06:00.0","birthName":"eth1"},{"birthIP":"192.168.16.3","pciAddress":"0000:07:00.0","birthName":"eth2"},{"birthIP":"192.168.32.3","pciAddress":"0000:0d:00.0","birthName":"eth3"},{"birthIP":"192.168.48.3","pciAddress":"0000:0e:00.0","birthName":"eth4"},{"birthIP":"192.168.64.3","pciAddress":"0000:86:00.0","birthName":"eth5"},{"birthIP":"192.168.80.3","pciAddress":"0000:87:00.0","birthName":"eth6"},{"birthIP":"192.168.96.3","pciAddress":"0000:8d:00.0","birthName":"eth7"},{"birthIP":"192.168.112.3","pciAddress":"0000:8e:00.0","birthName":"eth8"}]'

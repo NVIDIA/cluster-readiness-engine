@@ -179,6 +179,7 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 	// Certification.
 	var dryRunClient client.Client
 	var dryRunNodes []corev1.Node
+	var gkeTCPXONetworks []string
 	if dryRun {
 		var cErr error
 		dryRunClient, cErr = render.NewK8sClient(configFlags)
@@ -207,9 +208,10 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 			return fmt.Errorf("discover nodes: %w", nodesErr)
 		}
 		applyNICDetection(cert, dryRunNodes, platformFlag)
+		gkeTCPXONetworks = detectGKETCPXONetworks(dryRunNodes, platformFlag)
 	}
 
-	workflows, err := renderCertification(cert, platformFlag, gpuArchOverride)
+	workflows, err := renderCertification(cert, platformFlag, gpuArchOverride, gkeTCPXONetworks)
 	if err != nil {
 		return err
 	}
@@ -390,6 +392,40 @@ func applyNICDetection(cert *nvcrev1alpha1.Certification, nodes []corev1.Node, p
 	cert.Spec.NicResourceName = &name
 }
 
+// detectGKETCPXONetworks resolves the GKE networks the GCP H100 TCPXO patch
+// attaches for the dry-run render path, mirroring the certification
+// controller: detection runs only for GCP H100 targets, and only exactly
+// catalog.GKETCPXONICsPerNode networks allocatable on every target node are
+// used. Otherwise it prints the note the controller emits as a
+// GKENetworkDetection event and returns nil, so the catalog default renders.
+//
+// platformFlag (--platform) wins over node-based detection for the gate, as
+// in applyNICDetection, and the same divergence applies: this path detects
+// against every discovered target node with the majority architecture, the
+// controller against the arch-filtered set. The two agree on a homogeneous
+// fleet.
+func detectGKETCPXONetworks(nodes []corev1.Node, platformFlag string) []string {
+	if len(nodes) == 0 {
+		return nil
+	}
+	platformName := controller.DetectPlatform(nodes)
+	if platformFlag != "" {
+		platformName = platformFlag
+	}
+	names, refusalMessage, ran := controller.ResolveGKETCPXONetworks(
+		platformName, controller.DetectGPUArchitecture(nodes), nodes)
+	if !ran {
+		return nil
+	}
+	if len(names) == 0 {
+		_, _ = fmt.Fprintln(os.Stderr, refusalMessage)
+		return nil
+	}
+	_, _ = fmt.Fprintf(os.Stderr,
+		"Auto-detected GKE TCPXO networks %s (allocatable on every target node)\n", strings.Join(names, ", "))
+	return names
+}
+
 // renderCertification builds all Workflows that the controller would create
 // from catalog entries for the given Certification. The platform argument
 // (from --platform or detected from cluster nodes) is used to resolve
@@ -401,7 +437,13 @@ func applyNICDetection(cert *nvcrev1alpha1.Certification, nodes []corev1.Node, p
 // nvidia.com/gpu.product label when set: offline render has no cluster to fall
 // back to ResourceSlices, so a label-less (DRA-only) platform needs an
 // explicit architecture.
-func renderCertification(cert *nvcrev1alpha1.Certification, platformName, gpuArchOverride string) ([]nvcrev1alpha1.Workflow, error) {
+//
+// gkeTCPXONetworks are the GKE networks detected under --dry-run
+// (detectGKETCPXONetworks). Nil renders the catalog default, which is what an
+// offline render without a cluster always gets.
+func renderCertification(
+	cert *nvcrev1alpha1.Certification, platformName, gpuArchOverride string, gkeTCPXONetworks []string,
+) ([]nvcrev1alpha1.Workflow, error) {
 	if len(cert.Spec.Categories) == 0 {
 		return nil, fmt.Errorf("certification has no categories")
 	}
@@ -467,6 +509,7 @@ func renderCertification(cert *nvcrev1alpha1.Certification, platformName, gpuArc
 			GpusPerNode:                gpusPerNode,
 			MlnxPerNode:                mlnxPerNode,
 			NicResourceName:            nicResourceName,
+			GKETCPXONetworks:           gkeTCPXONetworks,
 			Resources:                  opts.Resources,
 			EnableMNNVL:                enableMNNVL,
 			EnableCheckpoint:           derefBoolPtr(opts.EnableCheckpoint),

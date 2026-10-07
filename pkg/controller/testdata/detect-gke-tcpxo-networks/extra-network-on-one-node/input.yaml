@@ -1,0 +1,45 @@
+# One node carries a ninth network the other lacks. Only networks on every
+# node count, so exactly eight qualify and detection picks them.
+platform: gcp
+gpuArchitecture: h100
+nodes:
+  - name: gpu-01
+    allocatable:
+      nvidia.com/gpu: "8"
+      networking.gke.io.networks/c1-gpu-nic-0: "1"
+      networking.gke.io.networks/c1-gpu-nic-0.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-1: "1"
+      networking.gke.io.networks/c1-gpu-nic-1.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-2: "1"
+      networking.gke.io.networks/c1-gpu-nic-2.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-3: "1"
+      networking.gke.io.networks/c1-gpu-nic-3.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-4: "1"
+      networking.gke.io.networks/c1-gpu-nic-4.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-5: "1"
+      networking.gke.io.networks/c1-gpu-nic-5.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-6: "1"
+      networking.gke.io.networks/c1-gpu-nic-6.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-7: "1"
+      networking.gke.io.networks/c1-gpu-nic-7.IP: "1"
+      networking.gke.io.networks/c1-gvnic-1: "1"
+      networking.gke.io.networks/c1-gvnic-1.IP: "1"
+  - name: gpu-02
+    allocatable:
+      nvidia.com/gpu: "8"
+      networking.gke.io.networks/c1-gpu-nic-0: "1"
+      networking.gke.io.networks/c1-gpu-nic-0.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-1: "1"
+      networking.gke.io.networks/c1-gpu-nic-1.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-2: "1"
+      networking.gke.io.networks/c1-gpu-nic-2.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-3: "1"
+      networking.gke.io.networks/c1-gpu-nic-3.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-4: "1"
+      networking.gke.io.networks/c1-gpu-nic-4.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-5: "1"
+      networking.gke.io.networks/c1-gpu-nic-5.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-6: "1"
+      networking.gke.io.networks/c1-gpu-nic-6.IP: "1"
+      networking.gke.io.networks/c1-gpu-nic-7: "1"
+      networking.gke.io.networks/c1-gpu-nic-7.IP: "1"

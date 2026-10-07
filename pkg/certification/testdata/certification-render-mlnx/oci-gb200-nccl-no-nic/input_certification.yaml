@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The reproduction from issue #350: OCI GB200 with no mlnxPerNode set. Before
+# the OCI platform override, this inherited the gb200 architecture default of 8
+# and emitted nvidia.com/mlnxnics: "8" plus eight sriov-net attachments, which
+# left every worker pod Pending on a cluster advertising neither. The golden
+# must show no NIC resource and no network annotation.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 8
+  enableMNNVL: true
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

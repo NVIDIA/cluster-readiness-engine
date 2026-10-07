@@ -1,0 +1,30 @@
+[
+  {
+    "workflow": "oci-cert-training-nemotron5-8b",
+    "dependencyKinds": [
+      "TrainingRuntime",
+      "ConfigMap",
+      "ComputeDomain"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nemotron5-8b-runtime",
+        "replicatedJob": "node",
+        "podAnnotations": {},
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/cpu=128",
+              "limits/memory=800Gi",
+              "limits/nvidia.com/gpu=4",
+              "requests/cpu=64",
+              "requests/memory=500Gi",
+              "requests/nvidia.com/gpu=4"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

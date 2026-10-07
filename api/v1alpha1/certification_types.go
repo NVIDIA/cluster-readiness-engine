@@ -171,7 +171,11 @@ type CategoryOptions struct {
 	// mlnxPerNode overrides the auto-detected Mellanox NIC count per node.
 	// Used by platforms with InfiniBand or RoCE networking (Azure, OCI, TogetherAI).
 	// If not specified, derived from GPU architecture and platform via the
-	// catalog's gpu-defaults.yaml (e.g., 8 for most architectures, 2 for OCI L40s).
+	// catalog's gpu-defaults.yaml (e.g., 8 for most architectures, 2 for OCI L40s,
+	// 0 for OCI GB200).
+	// Setting it to 0 is an opt-out, not a request for zero devices: the catalog
+	// stops requesting nvidia.com/mlnxnics altogether, and on OCI it also drops
+	// the k8s.v1.cni.cncf.io/networks annotation naming the sriov-net attachments.
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	MlnxPerNode *int32 `json:"mlnxPerNode,omitempty"`

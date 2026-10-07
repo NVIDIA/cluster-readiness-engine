@@ -78,7 +78,7 @@ nvcrectl certification render [flags] <cert-file>
 |------|---------|-------------|
 | `--platform` | auto | Override platform detection (`aws`, `gcp`, `azure`, `oci`, `onprem`, `togetherai`, `mistral`, `forge`, `nscale`) |
 | `--gpu-arch` | none | GPU architecture for offline render, e.g. `gb300` or the product name `NVIDIA-GB300`; an unknown architecture is rejected with the valid list. Use it for a DRA-only GPU stack whose nodes carry no `nvidia.com/gpu.product` label. Wins over the target `nodeSelector`'s label when set; cannot be combined with `--dry-run`, which detects the architecture from real nodes. |
-| `--dry-run` | `false` | Validate against the live API server without creating resources |
+| `--dry-run` | `false` | Validate against the live API server without creating resources. Also discovers the target nodes, so NIC resource detection (on-prem GB200/GB300) and GKE TCPXO network detection (GCP H100) run as they do in the controller and report what they found on stderr. |
 | `--output` | `yaml` | Output format: `yaml` or `json` |
 
 A Certification that sets `spec.gangScheduler` has that applied to the rendered output too: the scheduler name and the queue label (`gangScheduler.queueLabelKey`, `kai.scheduler/queue` when unset; `runai/queue` on a Run:ai cluster) appear in the rendered manifests on the submitted workload object, on the Job template, and on the pod template metadata, so what you inspect matches what the controller creates. There is no flag for it; the field is set in the Certification YAML.

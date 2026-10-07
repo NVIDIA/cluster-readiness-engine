@@ -15,6 +15,21 @@ followed them.
 
 ## [Unreleased]
 
+### Fixed
+
+- OCI GB200 workloads no longer request `nvidia.com/mlnxnics` or attach
+  `network-operator/sriov-net` by default. The architecture default of 8 applied
+  unchanged on OCI, where the shapes do not consistently advertise the resource and
+  the NetworkAttachmentDefinition is absent on a stock cluster, so every worker pod
+  stayed Pending on `Insufficient nvidia.com/mlnxnics`. Sites running the SR-IOV
+  device plugin set `mlnxPerNode` to their own count (#350)
+- `mlnxPerNode: 0` is now the opt-out the API reference has always described. No
+  template branched on the count, so zero rendered as a literal
+  `nvidia.com/mlnxnics: "0"` request and, on OCI, a null
+  `k8s.v1.cni.cncf.io/networks` annotation. The Azure, OCI, TogetherAI, and Forge
+  templates now drop the request entirely at zero, and a platform default can lower
+  an architecture's count to none (#350)
+
 ## [0.6.0] - 2026-10-05
 
 ### Added

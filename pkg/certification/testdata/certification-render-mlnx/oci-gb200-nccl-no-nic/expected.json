@@ -1,0 +1,39 @@
+[
+  {
+    "workflow": "oci-cert-communication-nc-db169",
+    "dependencyKinds": [
+      "TrainingRuntime",
+      "ComputeDomain"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "podAnnotations": {},
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/nvidia.com/gpu=4",
+              "requests/nvidia.com/gpu=4"
+            ]
+          }
+        ]
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "podAnnotations": {},
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/cpu=2",
+              "limits/memory=1Gi"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

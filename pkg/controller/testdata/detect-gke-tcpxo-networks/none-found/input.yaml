@@ -1,0 +1,11 @@
+# A GCP H100 target whose nodes advertise no GKE network at all (no
+# multi-networking): detection refuses and the default names are rendered.
+platform: gcp
+gpuArchitecture: h100
+nodes:
+  - name: gpu-01
+    allocatable:
+      nvidia.com/gpu: "8"
+  - name: gpu-02
+    allocatable:
+      nvidia.com/gpu: "8"
