@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -54,11 +53,10 @@ func TestJobPhaseWritePreservesConcurrentTerminalDecision(t *testing.T) {
 						if writes == 1 {
 							winner := &nvcrev1alpha1.Job{}
 							require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(obj), winner))
-							// Match Workflow's additive timeout write, without changing exclusivity.
-							meta.SetStatusCondition(&winner.Status.Conditions, metav1.Condition{
-								Type: terminal, Status: metav1.ConditionTrue, Reason: winnerReason,
-								Message: "concurrent terminal decision",
-							})
+							// Match Workflow's exclusive timeout write.
+							applyExclusiveConditions(&winner.Status.Conditions,
+								[]string{nvcrev1alpha1.JobInProgress, nvcrev1alpha1.JobSucceeded, nvcrev1alpha1.JobFailed},
+								terminal, winnerReason, "concurrent terminal decision", winner.Generation)
 							require.NoError(t, c.Status().Update(ctx, winner))
 							return apierrors.NewConflict(schema.GroupResource{Resource: testJobsResource}, obj.GetName(), errSimulatedStatus)
 						}
@@ -82,8 +80,8 @@ func TestJobPhaseWritePreservesConcurrentTerminalDecision(t *testing.T) {
 				require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(job), persisted))
 				require.Equal(t, winnerReason, condReason(persisted.Status.Conditions, terminal))
 				require.True(t, condIsTrue(persisted.Status.Conditions, terminal))
-				require.True(t, condIsTrue(persisted.Status.Conditions, nvcrev1alpha1.JobInProgress),
-					"preserve the additive timeout shape; exclusivity repair is a separate change")
+				require.False(t, condIsTrue(persisted.Status.Conditions, nvcrev1alpha1.JobInProgress),
+					"the terminal winner's exclusive shape survives the discarded retry")
 				require.Zero(t, persisted.Status.RestartCount)
 				require.Empty(t, persisted.Status.FailedNodes)
 			})

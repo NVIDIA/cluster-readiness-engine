@@ -93,6 +93,14 @@ func testTimeoutEventPersistence(t *testing.T, mode string) {
 		require.NoError(t, err)
 		require.Equal(t, nvcrev1alpha1.GroupRunning, current.Status.Orchestration.Groups[0].Phase)
 	}
+	// The timeout write is exclusive (ADR-086 decision B): Failed is the only
+	// phase condition left True.
+	timedOut := &nvcrev1alpha1.Job{}
+	require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(job), timedOut))
+	require.Equal(t, ReasonJobTimedOut, condReason(timedOut.Status.Conditions, nvcrev1alpha1.JobFailed))
+	require.True(t, condIsTrue(timedOut.Status.Conditions, nvcrev1alpha1.JobFailed))
+	require.False(t, condIsTrue(timedOut.Status.Conditions, nvcrev1alpha1.JobInProgress))
+	require.False(t, condIsTrue(timedOut.Status.Conditions, nvcrev1alpha1.JobSucceeded))
 	require.NoError(t, c.Delete(ctx, pod))
 	current := &nvcrev1alpha1.Workflow{}
 	require.NoError(t, c.Get(ctx, client.ObjectKeyFromObject(wf), current))

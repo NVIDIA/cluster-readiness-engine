@@ -24,6 +24,10 @@ followed them.
   scrape time from the informer cache, like `nvcre_certification_status` and
   `nvcre_workflow_status`; series of a deleting Job remain until the Job leaves the
   cache (#401)
+- A Job that times out on `timeoutPerJob` no longer carries `InProgress=True` beside
+  `Failed=True`. The Workflow reconciler's timeout write now sets the same exclusive
+  InProgress / Succeeded / Failed shape as every other Job transition; Jobs that
+  timed out before the upgrade keep their old conditions (#401)
 - OCI GB200 workloads no longer request `nvidia.com/mlnxnics` or attach
   `network-operator/sriov-net` by default. The architecture default of 8 applied
   unchanged on OCI, where the shapes do not consistently advertise the resource and
