@@ -15,6 +15,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	sigyaml "sigs.k8s.io/yaml"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
@@ -137,7 +138,9 @@ Use --topology-key to override.`,
 			var draGPUs map[string]int32
 			if anyNodeLacksGPUResource(nodes) {
 				draGPUs, err = controller.CountDRAGPUs(ctx, c)
-				if err != nil {
+				// A cluster that doesn't serve resource.k8s.io/v1 has no DRA
+				// GPUs to count, so its no-match error is not worth a warning.
+				if err != nil && !meta.IsNoMatchError(err) {
 					// Stderr keeps -o json|yaml output parseable.
 					fmt.Fprintf(os.Stderr,
 						"Warning: could not count GPUs from gpu.nvidia.com ResourceSlices: %v\n", err)

@@ -37,7 +37,7 @@ const (
 	fullGPUDeviceType      = "gpu"
 	vfioDeviceType         = "vfio"
 
-	// resourceSliceListTimeout bounds the one uncached ResourceSlice List
+	// resourceSliceListTimeout bounds each uncached ResourceSlice List
 	// against a slow API server. A 403 or an unserved resource.k8s.io/v1
 	// fails immediately without it.
 	resourceSliceListTimeout = 5 * time.Second
@@ -120,8 +120,11 @@ func augmentGPUProductLabels(ctx context.Context, reader client.Reader, nodes []
 // default; rendering still sizes claims from gpu-defaults.yaml. No controller
 // calls it, so it has no unexported twin in workflow_detect_export.go.
 func CountDRAGPUs(ctx context.Context, reader client.Reader) (map[string]int32, error) {
+	listCtx, cancel := context.WithTimeout(ctx, resourceSliceListTimeout)
+	defer cancel()
+
 	var slices resourcev1.ResourceSliceList
-	if err := reader.List(ctx, &slices); err != nil {
+	if err := reader.List(listCtx, &slices); err != nil {
 		return nil, err
 	}
 
