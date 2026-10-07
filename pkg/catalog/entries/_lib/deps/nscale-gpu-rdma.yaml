@@ -16,6 +16,10 @@
 # Unconditional tolerations match the on-prem GB200/GB300 fragment's own
 # precedent and are harmless on the untainted B200 cluster this design was
 # validated against.
+#
+# The RDMA claim is gated on mlnxPerNode: at 0 the claim template and both
+# references to it are omitted rather than requested as count 0, which the
+# API server rejects. The GPU claim is emitted at any count. See ADR-087.
 
 - apiVersion: resource.k8s.io/v1
   kind: ResourceClaimTemplate
@@ -31,6 +35,7 @@
           exactly:
             deviceClassName: gpu.nvidia.com
             count: {{ .GpusPerNode }}
+{{- if gt (int .MlnxPerNode) 0 }}
 - apiVersion: resource.k8s.io/v1
   kind: ResourceClaimTemplate
   metadata:
@@ -48,6 +53,7 @@
             # default, 4 on gb300 via the nscale platformOverride, matching
             # the rdma.nscale.com devices NKS GB300 ResourceSlices advertise.
             count: {{ .MlnxPerNode }}
+{{- end }}
 - apiVersion: trainer.kubeflow.org/v1alpha1
   kind: TrainingRuntime
   metadata:
@@ -64,8 +70,10 @@
                   resourceClaims:
                   - name: gpu
                     resourceClaimTemplateName: {{ .EntryName }}-gpu
+{{- if gt (int .MlnxPerNode) 0 }}
                   - name: rdma
                     resourceClaimTemplateName: {{ .EntryName }}-rdma
+{{- end }}
                   containers:
                   - name: node
                     resources:
@@ -75,7 +83,9 @@
                         nvidia.com/gpu: null
                       claims:
                       - name: gpu
+{{- if gt (int .MlnxPerNode) 0 }}
                       - name: rdma
+{{- end }}
                   tolerations:
                   - key: kubernetes.io/arch
                     operator: Equal

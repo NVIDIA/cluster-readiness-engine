@@ -100,7 +100,8 @@ stock cluster, so a default request leaves every worker pod Pending on
 Setting `mlnxPerNode: 0` is a supported opt-out on **any** platform whose
 templates request `nvidia.com/mlnxnics` (Azure, OCI, TogetherAI, Forge): at
 zero, the resource and the network attachment annotation are both omitted
-rather than requested as `"0"`.
+rather than requested as `"0"`. On Nscale, which claims its NICs through DRA,
+zero likewise omits the `rdma.nscale.com` claim while keeping the GPU claim.
 
 RTX PRO 6000 defaults to **eight GPUs per node**, including on GCP. The default
 is architecture-based, not machine-shape detection. On smaller G4 nodes, set

@@ -199,7 +199,8 @@ Once that's confirmed, implementation follows the shape ADR-075 and ADR-058 esta
     `nvidia.com/gpu: null` deletion in the TrainingRuntime, mirroring `deps/gb300-roce-comm.yaml`.
     The GPU count comes from `gpusPerNode` and the RDMA count from `mlnxPerNode`, the NIC-count
     knob other IB/RoCE platforms use, with an `nscale`/`gb300` `platformOverrides` entry of 4 in
-    `gpu-defaults.yaml` (Note 3).
+    `gpu-defaults.yaml` (Note 3). At `mlnxPerNode: 0` the RDMA claim and its references are
+    omitted rather than requested as count 0, the ADR-087 opt-out; the GPU claim is unaffected.
     It sets no `mlPolicy`, so it serves MPI and torch entries alike (no `-comm` suffix).
   - `deps/nscale-gpu-rdma-training.yaml`: `lib`-includes the fragment above and adds the IB env
     to the runtime container (merged by name into the base env), because torchrun inherits the
