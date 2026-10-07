@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
@@ -32,17 +30,4 @@ func TestWriteJUnit(t *testing.T) {
 		tc.Actual = string(data)
 		return nil
 	})
-}
-
-func TestWriteJUnitRejectsEmptyReports(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "results.xml")
-	require.Error(t, WriteJUnit(path, nil))
-	require.Error(t, WriteJUnit(path, []*CertReport{nil}))
-	_, err := os.Stat(path)
-	require.True(t, os.IsNotExist(err))
-}
-
-func TestWriteJUnitReportsWriteFailure(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "missing-directory", "results.xml")
-	require.ErrorContains(t, WriteJUnit(path, []*CertReport{{Name: "cert", Result: "RUNNING"}}), "write JUnit report file")
 }

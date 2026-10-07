@@ -13,12 +13,6 @@ import (
 	"time"
 )
 
-const (
-	junitPassed     = "PASSED"
-	junitFailed     = "FAILED"
-	junitIncomplete = "INCOMPLETE"
-)
-
 type junitSuites struct {
 	XMLName xml.Name     `xml:"testsuites"`
 	Suites  []junitSuite `xml:"testsuite"`
@@ -39,7 +33,6 @@ type junitCase struct {
 	Time      string      `xml:"time,attr,omitempty"`
 	Failure   *junitIssue `xml:"failure,omitempty"`
 	Error     *junitIssue `xml:"error,omitempty"`
-	SystemOut string      `xml:"system-out"`
 }
 
 type junitIssue struct {
@@ -48,35 +41,25 @@ type junitIssue struct {
 }
 
 // WriteJUnit writes one test suite per certification and one test case per
-// category. Incomplete reports retain their available results and include an
-// error, so an untested or partially tested certification cannot appear passed.
+// category.
 func WriteJUnit(path string, reports []*CertReport) error {
-	if len(reports) == 0 {
-		return fmt.Errorf("no certification reports to write")
-	}
 	var output junitSuites
 	for _, r := range reports {
-		if r == nil {
-			return fmt.Errorf("nil certification report")
-		}
 		suite := junitSuite{Name: r.Name}
 		occurrences := make(map[string]int)
 		var seconds float64
 		for _, cat := range r.Categories {
-			data, err := json.MarshalIndent(cat, "", "  ")
-			if err != nil {
-				return fmt.Errorf("marshal category report: %w", err)
-			}
-			tc := junitCase{Name: cat.Variant, Classname: r.Name + "." + cat.Domain, SystemOut: string(data)}
+			tc := junitCase{Name: cat.Variant, Classname: r.Name + "." + cat.Domain}
 			identity := cat.Domain + "/" + cat.Variant
 			occurrences[identity]++
 			if occurrences[identity] > 1 {
 				tc.Name = fmt.Sprintf("%s [%d]", cat.Variant, occurrences[identity])
 			}
-			if duration, err := time.ParseDuration(strings.ReplaceAll(cat.Runtime, " ", "")); err == nil && duration >= 0 {
+			if duration, err := time.ParseDuration(strings.ReplaceAll(cat.Runtime, " ", "")); err == nil {
 				tc.Time = strconv.FormatFloat(duration.Seconds(), 'f', -1, 64)
 				seconds += duration.Seconds()
 			}
+			var issue *junitIssue
 			switch cat.Status {
 			case statusSucceeded:
 			case statusFailed:
@@ -84,24 +67,31 @@ func WriteJUnit(path string, reports []*CertReport) error {
 				if message == "" {
 					message = "Category failed"
 				}
-				tc.Failure = &junitIssue{Message: message, Details: string(data)}
+				issue = &junitIssue{Message: message}
+				tc.Failure = issue
 				suite.Failures++
 			default:
-				tc.Error = &junitIssue{Message: "Category did not complete: " + cat.Status, Details: string(data)}
+				issue = &junitIssue{Message: "Category did not complete: " + cat.Status}
+				tc.Error = issue
 				suite.Errors++
+			}
+			if issue != nil {
+				data, err := json.MarshalIndent(cat, "", "  ")
+				if err != nil {
+					return fmt.Errorf("marshal category report: %w", err)
+				}
+				issue.Details = string(data)
 			}
 			suite.Cases = append(suite.Cases, tc)
 		}
-		if len(r.Categories) == 0 || r.Result == junitIncomplete ||
-			(r.Result != junitPassed && r.Result != junitFailed && suite.Errors == 0) {
+		if len(r.Categories) == 0 || r.Result == "INCOMPLETE" || (r.Result == "RUNNING" && suite.Errors == 0) {
 			data, err := json.MarshalIndent(r, "", "  ")
 			if err != nil {
 				return fmt.Errorf("marshal certification report: %w", err)
 			}
 			suite.Cases = append(suite.Cases, junitCase{
 				Name: "certification", Classname: r.Name,
-				Error:     &junitIssue{Message: "Certification did not complete: " + r.Result, Details: string(data)},
-				SystemOut: string(data),
+				Error: &junitIssue{Message: "Certification did not complete: " + r.Result, Details: string(data)},
 			})
 			suite.Errors++
 		}

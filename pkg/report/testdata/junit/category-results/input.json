@@ -57,6 +57,11 @@
     "categories": [{"domain": "training", "variant": "nemotron5-8b", "status": "Pending"}]
   },
   {
+    "name": "cert-finalizing",
+    "result": "RUNNING",
+    "categories": [{"domain": "communication", "variant": "nccl-all-reduce", "status": "Succeeded"}]
+  },
+  {
     "name": "cert-empty",
     "result": "RUNNING",
     "categories": []
