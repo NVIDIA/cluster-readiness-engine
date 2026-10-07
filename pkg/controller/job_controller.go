@@ -494,6 +494,46 @@ func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *nvcrev1
 	return ctrl.Result{RequeueAfter: r.getWorkloadRequeueInterval()}, nil
 }
 
+// handleWorkloadNotFound handles a cache miss on the Job's workload: it
+// confirms the absence against the API server, then restarts from checkpoint
+// or fails the Job.
+func (r *JobReconciler) handleWorkloadNotFound(ctx context.Context, job *nvcrev1alpha1.Job,
+	ref *nvcrev1alpha1.WorkloadReference, adapter workload.Adapter, ns string) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+	// A cached NotFound is not proof of deletion, and nothing below is
+	// reversible: restartFromCheckpoint spends a restart out of
+	// maxRestarts and resets the stall state, and its own cached read
+	// would skip the Delete, so the workload it thinks it replaced
+	// keeps running and holding GPUs while a second one is created
+	// under the same name. Without a restart budget the Job is failed
+	// outright. The workload informer is not the one that enqueued
+	// this reconcile, so confirm the absence against the API server
+	// before acting on it.
+	live := adapter.NewObject()
+	if liveErr := r.workloadReader().Get(ctx,
+		client.ObjectKey{Namespace: ns, Name: ref.Name}, live); liveErr == nil {
+		log.Info("Workload missing from cache but present on the API server; waiting",
+			"kind", ref.Kind, "name", ref.Name)
+		return ctrl.Result{RequeueAfter: r.getWorkloadRequeueInterval()}, nil
+	} else if !apierrors.IsNotFound(liveErr) {
+		// A failed read is not an absence. Surface it.
+		return ctrl.Result{}, fmt.Errorf("failed to confirm workload %s/%s: %w",
+			ref.Kind, ref.Name, liveErr)
+	}
+	// Workload was deleted externally — treat as a failure.
+	// Check if we should restart from checkpoint (same as WorkloadFailed).
+	if r.shouldRestart(ctx, job) {
+		log.Info("Workload deleted externally, restarting from checkpoint",
+			"kind", ref.Kind, "name", ref.Name)
+		return r.restartFromCheckpoint(ctx, job, ref, adapter)
+	}
+	if err := r.setJobFailed(ctx, job, ReasonWorkloadFailed,
+		fmt.Sprintf("Workload %s/%s was deleted", ref.Kind, ref.Name)); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to update Job status: %w", err)
+	}
+	return ctrl.Result{}, nil
+}
+
 // updateStatusFromWorkload updates the Job status based on the workload status conditions
 func (r *JobReconciler) updateStatusFromWorkload(ctx context.Context, job *nvcrev1alpha1.Job) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -512,38 +552,7 @@ func (r *JobReconciler) updateStatusFromWorkload(ctx context.Context, job *nvcre
 
 	if err := r.Get(ctx, client.ObjectKey{Namespace: ns, Name: ref.Name}, obj); err != nil {
 		if apierrors.IsNotFound(err) {
-			// A cached NotFound is not proof of deletion, and nothing below is
-			// reversible: restartFromCheckpoint spends a restart out of
-			// maxRestarts and resets the stall state, and its own cached read
-			// would skip the Delete, so the workload it thinks it replaced
-			// keeps running and holding GPUs while a second one is created
-			// under the same name. Without a restart budget the Job is failed
-			// outright. The workload informer is not the one that enqueued
-			// this reconcile, so confirm the absence against the API server
-			// before acting on it.
-			live := adapter.NewObject()
-			if liveErr := r.workloadReader().Get(ctx,
-				client.ObjectKey{Namespace: ns, Name: ref.Name}, live); liveErr == nil {
-				log.Info("Workload missing from cache but present on the API server; waiting",
-					"kind", ref.Kind, "name", ref.Name)
-				return ctrl.Result{RequeueAfter: r.getWorkloadRequeueInterval()}, nil
-			} else if !apierrors.IsNotFound(liveErr) {
-				// A failed read is not an absence. Surface it.
-				return ctrl.Result{}, fmt.Errorf("failed to confirm workload %s/%s: %w",
-					ref.Kind, ref.Name, liveErr)
-			}
-			// Workload was deleted externally — treat as a failure.
-			// Check if we should restart from checkpoint (same as WorkloadFailed).
-			if r.shouldRestart(ctx, job) {
-				log.Info("Workload deleted externally, restarting from checkpoint",
-					"kind", ref.Kind, "name", ref.Name)
-				return r.restartFromCheckpoint(ctx, job, ref, adapter)
-			}
-			if err := r.setJobFailed(ctx, job, ReasonWorkloadFailed,
-				fmt.Sprintf("Workload %s/%s was deleted", ref.Kind, ref.Name)); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to update Job status: %w", err)
-			}
-			return ctrl.Result{}, nil
+			return r.handleWorkloadNotFound(ctx, job, ref, adapter, ns)
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get workload %s/%s: %w", ref.Kind, ref.Name, err)
 	}

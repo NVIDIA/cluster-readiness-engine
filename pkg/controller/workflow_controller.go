@@ -1370,6 +1370,50 @@ func (r *WorkflowReconciler) setDependencyOwners(ctx context.Context, job *nvcre
 	return nil
 }
 
+// failTimedOutJob marks a Job that exceeded timeoutPerJob as failed and
+// completes its group. It reports whether the group is still draining pods.
+func (r *WorkflowReconciler) failTimedOutJob(
+	ctx context.Context,
+	workflow *nvcrev1alpha1.Workflow,
+	orch *nvcrev1alpha1.OrchestrationStatus,
+	g *nvcrev1alpha1.GroupStatus,
+	job *nvcrev1alpha1.Job,
+) (bool, error) {
+	// Capture logs from running pods BEFORE deleting the workload.
+	// For MPI tests, the launcher pod has the actual NCCL output.
+	r.captureTimeoutLog(ctx, job)
+	// Mark Job as failed. The Job object stays for the report.
+	before := append([]metav1.Condition(nil), job.Status.Conditions...)
+	timeoutMsg := "Job exceeded timeoutPerJob"
+	if job.Status.SchedulingBlockedSince != nil {
+		timeoutMsg = "Job exceeded timeoutPerJob while its pods were unschedulable"
+	}
+	meta.SetStatusCondition(&job.Status.Conditions, metav1.Condition{
+		Type:    nvcrev1alpha1.JobFailed,
+		Status:  metav1.ConditionTrue,
+		Reason:  ReasonJobTimedOut,
+		Message: timeoutMsg,
+	})
+	if err := r.Status().Update(ctx, job); err != nil {
+		return false, fmt.Errorf("failed to update timed-out Job %s status: %w", job.Name, err)
+	}
+	for _, flip := range conditionFlip(before, job.Status.Conditions, []string{nvcrev1alpha1.JobFailed}) {
+		if flip.After.Present && flip.After.Status == metav1.ConditionTrue {
+			r.eventf(job, corev1.EventTypeWarning, flip.Condition.Reason, "%s", flip.Condition.Message)
+		}
+	}
+	// Complete through the same path a re-observed terminal Job
+	// takes: completeTerminalGroup deletes the workload (the Job
+	// object is preserved for the report; only the TrainJob is
+	// removed) and holds the group and its scoped dependencies
+	// behind the pod-drain barrier (issue #121). Routing both the
+	// no-pods and the pods-draining timeout completions through
+	// one path keeps the side effects identical regardless of
+	// drain timing; the ReasonJobTimedOut condition set above
+	// keeps the job from being retried on either pass.
+	return r.completeTerminalGroup(ctx, workflow, orch, g, job, getJobTerminalState(job))
+}
+
 // updateStatusFromJobs checks all running groups and updates their status from their Jobs.
 func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow *nvcrev1alpha1.Workflow) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -1463,39 +1507,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 			if r.isJobTimedOut(workflow, g, job) {
 				log.Info("Job timed out, terminating workload",
 					"group", g.Name, "job", ref.Name)
-				// Capture logs from running pods BEFORE deleting the workload.
-				// For MPI tests, the launcher pod has the actual NCCL output.
-				r.captureTimeoutLog(ctx, job)
-				// Mark Job as failed. The Job object stays for the report.
-				before := append([]metav1.Condition(nil), job.Status.Conditions...)
-				timeoutMsg := "Job exceeded timeoutPerJob"
-				if job.Status.SchedulingBlockedSince != nil {
-					timeoutMsg = "Job exceeded timeoutPerJob while its pods were unschedulable"
-				}
-				meta.SetStatusCondition(&job.Status.Conditions, metav1.Condition{
-					Type:    nvcrev1alpha1.JobFailed,
-					Status:  metav1.ConditionTrue,
-					Reason:  ReasonJobTimedOut,
-					Message: timeoutMsg,
-				})
-				if err := r.Status().Update(ctx, job); err != nil {
-					return ctrl.Result{}, fmt.Errorf("failed to update timed-out Job %s status: %w", ref.Name, err)
-				}
-				for _, flip := range conditionFlip(before, job.Status.Conditions, []string{nvcrev1alpha1.JobFailed}) {
-					if flip.After.Present && flip.After.Status == metav1.ConditionTrue {
-						r.eventf(job, corev1.EventTypeWarning, flip.Condition.Reason, "%s", flip.Condition.Message)
-					}
-				}
-				// Complete through the same path a re-observed terminal Job
-				// takes: completeTerminalGroup deletes the workload (the Job
-				// object is preserved for the report; only the TrainJob is
-				// removed) and holds the group and its scoped dependencies
-				// behind the pod-drain barrier (issue #121). Routing both the
-				// no-pods and the pods-draining timeout completions through
-				// one path keeps the side effects identical regardless of
-				// drain timing; the ReasonJobTimedOut condition set above
-				// keeps the job from being retried on either pass.
-				draining, err := r.completeTerminalGroup(ctx, workflow, orch, g, job, getJobTerminalState(job))
+				draining, err := r.failTimedOutJob(ctx, workflow, orch, g, job)
 				if err != nil {
 					return ctrl.Result{}, err
 				}
