@@ -218,6 +218,11 @@ func (in *CategoryOptions) DeepCopyInto(out *CategoryOptions) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.StartupStallTimeoutSeconds != nil {
+		in, out := &in.StartupStallTimeoutSeconds, &out.StartupStallTimeoutSeconds
+		*out = new(int32)
+		**out = **in
+	}
 	if in.GpusPerNode != nil {
 		in, out := &in.GpusPerNode, &out.GpusPerNode
 		*out = new(int32)

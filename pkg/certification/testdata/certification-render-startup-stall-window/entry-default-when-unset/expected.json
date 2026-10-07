@@ -1,0 +1,4 @@
+{
+  "startupStallTimeoutSeconds": 1200,
+  "stallMultiplier": 3
+}
