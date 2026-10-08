@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Mounts the node's NCCL topology file into worker containers. On OCI GB300
+# the nvidia-tuned NodeWright package installs /etc/nccl/topo.xml on the host;
+# without it NCCL pairs GPUs with the wrong RoCE rails. The file is a
+# prerequisite for certifying OCI GB300, so these entries assume it is present.
+# Unlike the Azure topology deps, the XML is not embedded in a ConfigMap: the
+# host copy matches the node it runs on.
+#
+# Kept separate from deps/oci-mlnxnics-comm.yaml so that file's mlnxPerNode: 0
+# opt-out (ADR-087) stays intact. Both patch the same TrainingRuntime and are
+# merged by name. type: File keeps the pod from starting on a node without the
+# file, rather than letting NCCL fall back to probing and report low bandwidth.
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    volumeMounts:
+                    - name: nccl-topo
+                      mountPath: /etc/nccl/topo.xml
+                      readOnly: true
+                  volumes:
+                  - name: nccl-topo
+                    hostPath:
+                      path: /etc/nccl/topo.xml
+                      type: File

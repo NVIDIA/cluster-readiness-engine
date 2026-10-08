@@ -20,6 +20,10 @@
 # GPU Direct RDMA by default, which fails on this cluster. Only needed when MNNVL
 # is off; with MNNVL enabled this code path is not taken.
 #
+# NCCL_TOPO_FILE: points NCCL at the host topology file that
+# deps/oci-gb300-nccl-topo.yaml mounts. Without it NCCL pairs GPUs with the
+# wrong RoCE rails.
+#
 # NCCL_IB_ADAPTIVE_ROUTING / NCCL_IB_SPLIT_DATA_ON_QPS: RoCE path-spread tuning.
 # Each GB300 node has four 800 Gbps RoCE rails. Untuned, all-reduce plateaued at
 # roughly half the per-node fabric ceiling -- the signature of traffic concentrating
@@ -38,6 +42,8 @@
 - name: NCCL_DMABUF_ENABLE
   value: "0"
 {{- end }}
+- name: NCCL_TOPO_FILE
+  value: /etc/nccl/topo.xml
 - name: NCCL_IB_ADAPTIVE_ROUTING
   value: "1"
 - name: NCCL_IB_SPLIT_DATA_ON_QPS
