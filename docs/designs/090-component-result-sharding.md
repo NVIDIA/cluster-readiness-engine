@@ -8,7 +8,7 @@ A customer runs custom workloads on NVCRE and reports that the workloads themsel
 
 That feature is larger than one record. This ADR settles only the two questions that every other part of it depends on: **where per-component result rows are stored**, and **how they leave the cluster**. A later ADR covers the declaration vocabulary, the ingestion controller, and the verdict rules.
 
-The case this design was proved against is a per-GPU GEMM burn-in: one achieved-TFLOPS number per GPU is the simplest result that cannot be expressed per node, since a node average passes while one thermally throttled GPU drags it. [ADR-091](091-compute-gemm-catalog-entry.md) proposes that entry and is the first producer of the rows described here. The two records are deliberately separate: this one is the storage and egress mechanism, which outlives any single workload, and that one is a catalog entry, which the repository records one per ADR (ADR-016, ADR-018, ADR-057).
+The case this design was proved against is a per-GPU CUTLASS GEMM burn-in: one achieved-TFLOPS number per GPU is the simplest result that cannot be expressed per node, since a node average passes while one thermally throttled GPU drags it. [ADR-091](091-compute-gemm-catalog-entry.md) proposes that entry and is the first producer of the rows described here. The two records are deliberately separate: this one is the storage and egress mechanism, which outlives any single workload, and that one is a catalog entry, which the repository records one per ADR (ADR-016, ADR-018, ADR-057).
 
 These two questions get conflated, so it is worth separating them plainly.
 

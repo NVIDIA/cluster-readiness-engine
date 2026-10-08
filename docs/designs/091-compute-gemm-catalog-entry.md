@@ -1,4 +1,4 @@
-# ADR-091: Per-GPU GEMM Burn-In as a `compute` Catalog Entry
+# ADR-091: CUTLASS GEMM Per-GPU Burn-In as a `compute` Catalog Entry
 
 > **Status:** Proposed
 
@@ -48,7 +48,9 @@ The trainer runs a GEMM harness under `numProcPerNode: 1`, with `nvidia.com/gpu`
 
 **Every GPU on the node is loaded concurrently, for the full duration.** This is a requirement on the harness, not an implementation detail. A harness that walks the devices one at a time would report eight per-GPU numbers that each look fine, because it never puts the chassis under the power and thermal load that makes a marginal GPU fail. Sequential per-device benchmarking is a different test from a burn-in and would not find what this entry exists to find.
 
-The image is not pinned in this record. It needs a container carrying a CUTLASS profiler build or an equivalent harness that reports per-device achieved TFLOPS on stdout, and the tag is chosen and verified at implementation the way ADR-057 pinned the DCGM tag.
+**The harness is the CUTLASS profiler.** `cutlass_profiler` runs the GEMM kernels NVIDIA tunes for each architecture and reports achieved throughput per device, which is both the number this entry needs and a number the vendor stands behind, so a result the customer disputes is checkable against a published tool rather than against something we wrote. That is why the variant is named `cutlass-gemm` and not `gemm`: the harness is part of what the entry certifies, in the same way ADR-057 names DCGM rather than "a diagnostic".
+
+The image tag is not pinned in this record. It needs a container carrying a CUTLASS profiler build that reports per-device achieved TFLOPS on stdout, and the tag is chosen and verified at implementation the way ADR-057 pinned the DCGM tag. An equivalent harness meeting the same per-device reporting contract would satisfy the design, but it would be a different entry under a different variant name rather than a substitution inside this one.
 
 `meta.yaml` carries `timeoutPerJob`, since the catalog-wide 1h default is sized for short runs and a sustained thermal soak is the point of this entry.
 
