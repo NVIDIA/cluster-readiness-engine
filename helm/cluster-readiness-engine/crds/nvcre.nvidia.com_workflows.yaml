@@ -7024,6 +7024,27 @@ spec:
                       Default is 1.
                     minimum: 1
                     type: integer
+                  placement:
+                    description: |-
+                      placement controls whether jobs are pinned to specific nodes.
+                        - "Pinned" (default): all target nodes are partitioned into groups of
+                          nodesPerJob, one job per group, each pinned to its group by a required
+                          kubernetes.io/hostname node affinity.
+                        - "Unpinned": exactly one job of exactly nodesPerJob nodes is created, no
+                          matter how many nodes the target matches. No hostname affinity is set,
+                          so the scheduler places the pods. nodesPerJob (or numNodes) is required
+                          and is never clamped, snapped to a valid config, or auto-selected: a
+                          size that cannot run is an error, not a silent adjustment.
+
+                      In both modes the target selector is carried onto the pods as a node
+                      affinity, so pods can only land on nodes the target matches.
+
+                      Empty means Pinned. Incompatible with diagnose and with
+                      topology.strictDomain.
+                    enum:
+                    - Pinned
+                    - Unpinned
+                    type: string
                   target:
                     description: |-
                       target specifies which nodes to include in the orchestration.
@@ -7114,6 +7135,10 @@ spec:
                       topology configures rack/zone-aware placement.
                       When set, jobs are packed into the minimum number of topology domains.
                       When nil, nodes are grouped by simple chunking (no topology awareness).
+
+                      Ignored when placement is Unpinned, which does not partition. Setting
+                      strictDomain together with placement: Unpinned is rejected, since the two
+                      ask for different numbers of jobs.
                     properties:
                       strictDomain:
                         description: |-
@@ -7282,6 +7307,13 @@ spec:
                           description: iterations overrides the number of times to
                             run all jobs.
                           type: integer
+                        placement:
+                          description: placement overrides whether jobs are pinned
+                            to specific nodes.
+                          enum:
+                          - Pinned
+                          - Unpinned
+                          type: string
                         target:
                           description: target overrides which nodes to include in
                             the orchestration.
@@ -8007,6 +8039,17 @@ spec:
                   exclusionReason:
                     description: exclusionReason explains why excludedNodes were dropped.
                     type: string
+                  gpuProducts:
+                    description: |-
+                      gpuProducts lists the distinct nvidia.com/gpu.product label values of the
+                      nodes that survived discovery, recorded verbatim. detectedGPUArchitecture
+                      is normalized and lossy ("NVIDIA-H100-80GB-HBM3" becomes "h100"), so it
+                      cannot be turned back into a label match. These raw values are what the
+                      job's node affinity uses to keep pods on the architecture the run was
+                      partitioned for.
+                    items:
+                      type: string
+                    type: array
                   groups:
                     description: Group phases are reset to Pending at the start of
                       each new iteration.
@@ -8150,6 +8193,13 @@ spec:
                   nodesPerJob:
                     description: nodesPerJob auto-detected from workload template.
                     type: integer
+                  placement:
+                    description: |-
+                      placement is the resolved placement mode for this run ("Pinned" or
+                      "Unpinned"). Under Unpinned, totalGroups is 1 and nodesPerJob is the size
+                      the user asked for, so totalGroups * nodesPerJob is deliberately less than
+                      totalNodes: the untested nodes are out of scope, not excluded.
+                    type: string
                   totalGroups:
                     description: totalGroups created.
                     type: integer

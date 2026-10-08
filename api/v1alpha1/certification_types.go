@@ -120,10 +120,20 @@ type CategoryResources struct {
 // (or auto-select for nodesPerJob).
 type CategoryOptions struct {
 	// nodesPerJob is the number of nodes per job for multi-node workloads.
-	// When nil at both global and per-category level, the controller auto-selects:
+	//
+	// Under the default placement (Pinned) it is a per-job group size, and every
+	// matching node is covered: N matching nodes produce ceil(N/nodesPerJob)
+	// concurrent jobs. When nil at both global and per-category level, the
+	// controller auto-selects:
 	//   - Entries with per-node-count configs (training): largest config <= matching nodes.
 	//   - All other entries: all matching nodes.
 	// When set, clamped to min(nodesPerJob, matchingNodes).
+	//
+	// Under placement: Unpinned it is the total size of the single job, it is
+	// required, and it is honored exactly. It is never clamped to the available
+	// node count, never snapped to the nearest valid model config, and never
+	// auto-selected: a size that cannot run is a terminal error naming the
+	// constraint that rejected it.
 	// +optional
 	// +kubebuilder:validation:Minimum=1
 	NodesPerJob *int32 `json:"nodesPerJob,omitempty"`
@@ -314,6 +324,23 @@ type CategoryOptions struct {
 	// +optional
 	// +kubebuilder:validation:Enum=intra-node;intra-rack;diagnose;full-scale
 	TestScale string `json:"testScale,omitempty"`
+
+	// placement controls whether the category's jobs are pinned to specific nodes.
+	//   - "Pinned" (default): every matching node is partitioned into groups of
+	//     nodesPerJob and each job is pinned to its group by hostname.
+	//   - "Unpinned": exactly one job of exactly nodesPerJob nodes runs, no
+	//     matter how many nodes the target matches, with no hostname pinning.
+	//     nodesPerJob is required and is honored exactly.
+	//
+	// Set globally on the Certification spec, or per category under options.
+	// Per-category wins. Both placement and nodesPerJob merge the same way, so a
+	// global Unpinned with nodesPerJob on only one category fails for the others.
+	//
+	// Incompatible with testScale: diagnose and testScale: intra-rack, which ask
+	// for a different number of jobs. See ADR-089.
+	// +optional
+	// +kubebuilder:validation:Enum=Pinned;Unpinned
+	Placement string `json:"placement,omitempty"`
 
 	// maxBytes sets the maximum message size for NCCL tests (e.g., "16G", "32G").
 	// Maps to the NCCL perf test `-e` flag. Default: "16G" (GB200/GB300 override: "32G").

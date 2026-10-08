@@ -2061,6 +2061,21 @@ spec:
                     format: int32
                     minimum: 0
                     type: integer
+                  placement:
+                    description: |-
+                      placement controls whether jobs are pinned to specific nodes.
+                        - "Pinned" (default): every target node is partitioned into groups of
+                          numNodes and each job is pinned to its group by hostname.
+                        - "Unpinned": exactly one job of exactly numNodes nodes runs, no matter
+                          how many nodes the target matches, with no hostname pinning. The
+                          scheduler places the pods, constrained to the target by node affinity.
+
+                      Incompatible with testScale: intra-node and intra-rack, which ask for a
+                      different number of jobs. See ADR-089.
+                    enum:
+                    - Pinned
+                    - Unpinned
+                    type: string
                   repeatCount:
                     description: 'repeatCount runs the entire orchestration N times.
                       Default: 1.'
@@ -2072,7 +2087,9 @@ spec:
                       testScale controls the node grouping strategy.
                         - "intra-node": each node tested independently (numNodes=1 per job)
                         - "intra-rack": one job per topology domain (nvidia.com/gpu.clique)
-                        - "full-scale": all nodes in a single group (default)
+                        - "full-scale" (default): every target node is covered by some job, in
+                          groups of numNodes. To run a single job of numNodes and leave the rest
+                          of the fleet untouched, set placement: Unpinned.
                     enum:
                     - intra-node
                     - intra-rack
@@ -2235,6 +2252,13 @@ spec:
                           description: iterations overrides the number of times to
                             run all jobs.
                           type: integer
+                        placement:
+                          description: placement overrides whether jobs are pinned
+                            to specific nodes.
+                          enum:
+                          - Pinned
+                          - Unpinned
+                          type: string
                         target:
                           description: target overrides which nodes to include in
                             the orchestration.
