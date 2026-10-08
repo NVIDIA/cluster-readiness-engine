@@ -1113,6 +1113,13 @@ func TestDetectTestScale(t *testing.T) {
 			} `yaml:"topology"`
 			NodesPerJob        int    `yaml:"nodesPerJob"`
 			RequestedTestScale string `yaml:"requestedTestScale"`
+			// Placement goes on the status, which is where the resolved
+			// post-override value lives and what the function prefers.
+			Placement string `yaml:"placement"`
+			// SpecPlacement goes on the spec instead, which is the only thing a
+			// report generated before the first reconcile has to go on. Kept as
+			// a separate input so a case can exercise one arm without the other.
+			SpecPlacement string `yaml:"specPlacement"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -1130,9 +1137,11 @@ func TestDetectTestScale(t *testing.T) {
 				StrictDomain: input.Topology.StrictDomain,
 			}
 		}
-		if input.NodesPerJob > 0 {
+		wf.Spec.Orchestration.Placement = input.SpecPlacement
+		if input.NodesPerJob > 0 || input.Placement != "" {
 			wf.Status.Orchestration = &nvcrev1alpha1.OrchestrationStatus{
 				NodesPerJob: input.NodesPerJob,
+				Placement:   input.Placement,
 			}
 		}
 

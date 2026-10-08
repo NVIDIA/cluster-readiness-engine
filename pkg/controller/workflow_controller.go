@@ -32,6 +32,7 @@ import (
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/orchestration"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
@@ -61,6 +62,10 @@ type WorkflowReconciler struct {
 	// cluster before it is treated as deleted (issue #385).
 	APIReader          client.Reader
 	JobRequeueInterval time.Duration
+	// NodeDiscoverer answers where a Job's pods were actually placed. Under
+	// Unpinned the controller does not choose the nodes, so this is the only way
+	// to learn which ones ran and to record them on the group.
+	NodeDiscoverer *nodemonitor.NodeDiscoverer
 	// MaxConcurrentReconciles bounds the number of Workflow objects reconciled concurrently.
 	MaxConcurrentReconciles int
 }
@@ -293,7 +298,12 @@ func gpuShortfallDetail(excluded []gpuCapacityExclusion) string {
 // dropped. Causes and remedies are collected separately so that when both
 // filters contributed, the "Set nodesPerJob to N" advice appears once with
 // every applicable remedy after it, not once per cause.
-func notEnoughNodesMessage(needed, found int, gpuArch string, archExcluded []string, capacityExcluded []gpuCapacityExclusion, gpusPerNode int32) string {
+//
+// The remedy differs by placement. Under Pinned, nodesPerJob is a group size and
+// shrinking it to fit the fleet is a reasonable suggestion. Under Unpinned it is
+// the job size the operator deliberately asked for, so telling them to run a
+// smaller job answers a question they did not ask; widen the target instead.
+func notEnoughNodesMessage(placement string, needed, found int, gpuArch string, archExcluded []string, capacityExcluded []gpuCapacityExclusion, gpusPerNode int32) string {
 	msg := fmt.Sprintf("Not enough schedulable nodes: need %d, found %d", needed, found)
 	var causes, remedies []string
 	if len(archExcluded) > 0 {
@@ -309,11 +319,24 @@ func notEnoughNodesMessage(needed, found int, gpuArch string, archExcluded []str
 			len(capacityExcluded), gpusPerNode, gpuShortfallDetail(capacityExcluded)))
 		remedies = append(remedies, "lower gpusPerNode")
 	}
+	sizeRemedy := fmt.Sprintf("Set nodesPerJob to %d", found)
+	if nvcrev1alpha1.IsUnpinned(placement) {
+		sizeRemedy = fmt.Sprintf(
+			"Unpinned runs the requested job size exactly, so make %d qualifying nodes available "+
+				"rather than lowering nodesPerJob", needed)
+	}
 	if len(causes) == 0 {
+		// Under Pinned the bare count is the whole story and has always been the
+		// message, so it stays byte-identical. Under Unpinned the operator asked
+		// for this size deliberately and the interesting part is that the run
+		// refused to shrink to fit, which the count alone does not say.
+		if nvcrev1alpha1.IsUnpinned(placement) {
+			return fmt.Sprintf("%s. %s", msg, sizeRemedy)
+		}
 		return msg
 	}
-	return fmt.Sprintf("%s. %s. Set nodesPerJob to %d, or %s",
-		msg, strings.Join(causes, ". "), found, strings.Join(remedies, ", or "))
+	return fmt.Sprintf("%s. %s. %s, or %s",
+		msg, strings.Join(causes, ". "), sizeRemedy, strings.Join(remedies, ", or "))
 }
 
 // failWorkflowForDependencyError marks the Workflow Failed after
@@ -448,6 +471,11 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	}
 	orch.DetectedGPUArchitecture = gpuArch
 
+	// Record the raw gpu.product values before any later filter narrows the set.
+	// gpuArch above is normalized and lossy, so it cannot be turned back into the
+	// label match the job's node affinity needs.
+	orch.GPUProducts = DistinctGPUProducts(nodes)
+
 	// Record the cordon and architecture exclusions before overrides run, so a
 	// failure in override application still leaves the coverage record behind.
 	// The GPU capacity check below has to read the post-override spec, so the
@@ -470,6 +498,24 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	}
 	orch.AppliedOverrides = applied
 	r.logOverrideResults(ctx, workflow, applied, octx)
+
+	// Resolve placement only now. Overrides can introduce orchestration fields
+	// the user never wrote, and the GB200/GB300 catalog override injects a
+	// topology key, so any placement check has to see the post-override spec.
+	unpinned := nvcrev1alpha1.IsUnpinned(workflow.Spec.Orchestration.Placement)
+	orch.Placement = workflow.Spec.Orchestration.Placement
+	if err := ValidatePlacement(&workflow.Spec.Orchestration); err != nil {
+		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, err.Error(),
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
+			log.Error(statusErr, "Failed to update status")
+		}
+		return ctrl.Result{}, err
+	}
+	if key := IgnoredTopologyKey(&workflow.Spec.Orchestration); key != "" {
+		log.Info("Topology key ignored under Unpinned placement; it only affects partitioning, "+
+			"and Unpinned creates a single job. To confine the job to one domain, "+
+			"name the domain label in target.matchExpressions.", "topologyKey", key)
+	}
 
 	// Drop nodes that cannot supply the workload's per-node GPU request. A node
 	// with fewer allocatable GPUs than the pods ask for is partitioned into a
@@ -545,10 +591,25 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 		return ctrl.Result{}, err
 	}
 	if nodesPerJob < 1 {
+		// "Use every node" is exactly the fleet-wide sweep Unpinned exists to
+		// escape, so it cannot be the fallback here. On the Certification path
+		// resolveNodesPerJob has already rejected a missing size, so this is a
+		// backstop for hand-written Workflows and WorkloadRuns.
+		if unpinned {
+			msg := "orchestration.placement: Unpinned requires an explicit job size, but the workload " +
+				"declares none; set nodesPerJob (Certification) or numNodes (WorkloadRun). " +
+				"Unpinned will not fall back to running one job across all discovered nodes"
+			if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, msg,
+				applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
+				log.Error(statusErr, "Failed to update status")
+			}
+			return ctrl.Result{}, fmt.Errorf("%s", msg)
+		}
 		nodesPerJob = len(nodes)
 	}
 	if nodesPerJob > len(nodes) {
-		msg := notEnoughNodesMessage(nodesPerJob, len(nodes), gpuArch, archExcluded, capacityExcluded, gpusPerNode)
+		msg := notEnoughNodesMessage(workflow.Spec.Orchestration.Placement,
+			nodesPerJob, len(nodes), gpuArch, archExcluded, capacityExcluded, gpusPerNode)
 		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, msg,
 			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
 			log.Error(statusErr, "Failed to update status")
@@ -565,12 +626,20 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 		}
 	}
 
-	// Generate groups based on strategy: diagnose or partition (simple/topology).
+	// Generate groups based on strategy: unpinned, diagnose, or partition.
 	var groups []orchestration.Group
 
-	if workflow.Spec.Orchestration.Diagnose != nil {
+	switch {
+	case unpinned:
+		// One job, no node list. PartitionNodes is not called at all: its contract
+		// is that every input node lands in some group, and opting out of that
+		// coverage guarantee is the whole point of this mode. The scheduler picks
+		// the nodes, so there is nothing to record here; updateStatusFromJobs
+		// backfills the group's nodes once pods are actually placed.
+		groups = []orchestration.Group{{Name: "group-0"}}
+	case workflow.Spec.Orchestration.Diagnose != nil:
 		groups, nodesPerJob, err = initDiagnose(nodeInfos, workflow.Spec.Orchestration.Diagnose, orch)
-	} else {
+	default:
 		// Partition mode: simple chunking or topology-aware.
 		var topologyKey string
 		if workflow.Spec.Orchestration.Topology != nil {
@@ -605,14 +674,23 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	orch.CurrentIteration = 1
 	orch.Groups = buildGroupStatuses(groups, nodeInfos, workflow.Spec.Orchestration.Topology)
 
-	log.Info("Partitioned nodes into groups",
+	log.Info("Grouped nodes for execution",
+		"placement", placementOrDefault(orch.Placement),
 		"totalNodes", orch.TotalNodes,
 		"nodesPerJob", orch.NodesPerJob,
 		"totalGroups", orch.TotalGroups)
 
-	if err := r.setWorkflowInProgress(ctx, workflow, ReasonGroupsPartitioned,
-		fmt.Sprintf("Discovered %d nodes, partitioned into %d groups (%d nodes/job)",
-			orch.TotalNodes, orch.TotalGroups, orch.NodesPerJob)); err != nil {
+	// Say "1 of 18 nodes" rather than "partitioned into 1 groups": under Unpinned
+	// the untested nodes are deliberate scope, and a message that reads like a
+	// partition invites the reader to look for the missing groups.
+	msg := fmt.Sprintf("Discovered %d nodes, partitioned into %d groups (%d nodes/job)",
+		orch.TotalNodes, orch.TotalGroups, orch.NodesPerJob)
+	if unpinned {
+		msg = fmt.Sprintf("Discovered %d nodes, running 1 unpinned job of %d nodes "+
+			"(%d target nodes not exercised)",
+			orch.TotalNodes, orch.NodesPerJob, orch.TotalNodes-orch.NodesPerJob)
+	}
+	if err := r.setWorkflowInProgress(ctx, workflow, ReasonGroupsPartitioned, msg); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -836,8 +914,9 @@ func convertOperator(op corev1.NodeSelectorOperator) (selection.Operator, error)
 	}
 }
 
-// buildTolerations creates tolerations from taint selectors.
-func buildTolerations(selectors []nvcrev1alpha1.TaintSelector) []corev1.Toleration {
+// BuildTolerations creates tolerations from taint selectors. Exported so
+// pkg/render builds the same tolerations the controller does.
+func BuildTolerations(selectors []nvcrev1alpha1.TaintSelector) []corev1.Toleration {
 	tolerations := make([]corev1.Toleration, len(selectors))
 	for i, sel := range selectors {
 		t := corev1.Toleration{
@@ -1195,28 +1274,40 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 		Spec:      *patchedSpec,
 	}
 
-	// Pin to this group's specific nodes via NodeAffinity
+	// Constrain where this job's pods can land.
 	adapter, err := workload.ForSpec(&job.Spec.Workload)
 	if err != nil {
 		return fmt.Errorf("failed to get workload adapter: %w", err)
 	}
 
-	affinity := &corev1.NodeAffinity{
-		RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-			NodeSelectorTerms: []corev1.NodeSelectorTerm{{
-				MatchExpressions: []corev1.NodeSelectorRequirement{{
-					Key:      "kubernetes.io/hostname",
-					Operator: corev1.NodeSelectorOpIn,
-					Values:   group.Nodes,
-				}},
-			}},
-		},
+	placement := workflow.Spec.Orchestration.Placement
+	target := workflow.Spec.Orchestration.Target
+	unpinned := nvcrev1alpha1.IsUnpinned(placement)
+
+	// Pinned jobs get a hostname term for their group. Unpinned jobs get one only
+	// if the target named explicit nodeNames. Both get the target carried onto the
+	// pods, which Pinned never did: the pin masked the gap by landing pods on hosts
+	// the discovery filter had already approved. See ADR-089.
+	var gpuProducts []string
+	if orch != nil {
+		gpuProducts = orch.GPUProducts
 	}
-	adapter.SetNodeAffinity(&job.Spec.Workload, affinity)
+	if affinity := BuildNodeAffinity(
+		PinnedHostnames(placement, group.Nodes, target), target, gpuProducts,
+	); affinity != nil {
+		adapter.SetNodeAffinity(&job.Spec.Workload, affinity)
+	}
 
 	// Override workload numNodes to match the actual group size.
 	// Handles: clamped values, "all nodes" mode, overflow groups, and bisection.
-	adapter.SetNumNodes(&job.Spec.Workload, len(group.Nodes))
+	//
+	// Skipped under Unpinned, where group.Nodes is empty: writing 0 would stop the
+	// job running, and writing anything else would desynchronize the trainer from
+	// the ComputeDomain that GB200/GB300 catalog entries size from the same
+	// templated NodesPerJob. The templated value is already the authoritative one.
+	if !unpinned {
+		adapter.SetNumNodes(&job.Spec.Workload, len(group.Nodes))
+	}
 
 	// Toleration injection precedence (see ADR-063):
 	//   1. If target.taintSelectors is set, inject matching tolerations for all
@@ -1225,9 +1316,14 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 	//      Operator: Exists toleration as a fallback so existing NCCL deployments
 	//      that rely on it keep working.
 	//   3. Otherwise, no controller-injected tolerations.
-	if target := workflow.Spec.Orchestration.Target; target != nil && len(target.TaintSelectors) > 0 {
-		adapter.SetTolerations(&job.Spec.Workload, buildTolerations(target.TaintSelectors))
-	} else if workload.HasLauncherTarget(&job.Spec.Workload) {
+	//
+	// The blanket fallback is dropped under Unpinned. ADR-023 justified it on the
+	// grounds that "workloads are already pinned to specific nodes via
+	// NodeAffinity"; without the pin, tolerating everything would let a job land
+	// on any tainted node with free GPUs.
+	if target != nil && len(target.TaintSelectors) > 0 {
+		adapter.SetTolerations(&job.Spec.Workload, BuildTolerations(target.TaintSelectors))
+	} else if !unpinned && workload.HasLauncherTarget(&job.Spec.Workload) {
 		adapter.SetTolerations(&job.Spec.Workload, []corev1.Toleration{{
 			Operator: corev1.TolerationOpExists,
 		}})
@@ -1265,7 +1361,13 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 	if len(workflow.Spec.JobTemplate.Annotations) > 0 {
 		maps.Copy(annotations, workflow.Spec.JobTemplate.Annotations)
 	}
-	annotations["nvcre.nvidia.com/group-nodes"] = strings.Join(group.Nodes, ",")
+	// Set only when the group has nodes. Under Unpinned it does not, and writing
+	// an empty value would make the annotation present-but-blank, which reads as
+	// "this job ran on no nodes" rather than "ask where the pods actually landed".
+	// groupNodeNames falls back to live pod discovery on the absent key.
+	if len(group.Nodes) > 0 {
+		annotations["nvcre.nvidia.com/group-nodes"] = strings.Join(group.Nodes, ",")
+	}
 	job.SetAnnotations(annotations)
 
 	// Set owner reference so the Job is garbage collected when the Workflow is deleted
@@ -1500,6 +1602,13 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 			continue
 		}
 
+		// Record where the scheduler actually put this job, for modes where the
+		// controller did not choose. Done before the terminal-state handling so a
+		// job that fails is attributed to its nodes rather than to nothing.
+		if r.backfillGroupNodes(ctx, workflow, orch, g, job) {
+			statusChanged = true
+		}
+
 		// Check terminal state
 		ts := getJobTerminalState(job)
 
@@ -1576,6 +1685,52 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 
 	// Requeue to check for more pending groups to launch or iteration completion
 	return ctrl.Result{RequeueAfter: r.getJobRequeueInterval()}, nil
+}
+
+// backfillGroupNodes records the nodes a group's Job actually landed on, and
+// reports whether it changed the group.
+//
+// Only Unpinned needs this. Under Pinned the controller chose the nodes and
+// wrote them at partition time, so g.Nodes is already authoritative and reading
+// live pods could only disagree with it. Under Unpinned the scheduler chose, so
+// the group starts with no nodes and this is the only way the Workflow learns
+// which machines ran: every downstream consumer of placement, from succeeded and
+// failed node accounting to the per-domain topology gauges, reads g.Nodes.
+//
+// The write is gated on a complete placement. A multi-node job is routinely
+// observed with some pods bound and others still Pending, and persisting that
+// prefix would leave a short list that every later read treats as the whole
+// group, since the len(g.Nodes) == 0 guard would stop re-firing. Waiting costs
+// one reconcile and makes a recorded list mean all of it.
+func (r *WorkflowReconciler) backfillGroupNodes(
+	ctx context.Context,
+	workflow *nvcrev1alpha1.Workflow,
+	orch *nvcrev1alpha1.OrchestrationStatus,
+	g *nvcrev1alpha1.GroupStatus,
+	job *nvcrev1alpha1.Job,
+) bool {
+	if !nvcrev1alpha1.IsUnpinned(workflow.Spec.Orchestration.Placement) ||
+		len(g.Nodes) > 0 || r.NodeDiscoverer == nil {
+		return false
+	}
+
+	log := logf.FromContext(ctx)
+	names, err := r.NodeDiscoverer.DiscoverPlacedNodesForJob(ctx, job.Namespace, job.Name)
+	if err != nil {
+		// Attribution is reporting detail, not a reason to fail a running job.
+		// The next reconcile tries again.
+		log.V(1).Info("Could not discover placed nodes yet", "group", g.Name, "job", job.Name, "error", err)
+		return false
+	}
+	if orch.NodesPerJob <= 0 || len(names) != orch.NodesPerJob {
+		log.V(1).Info("Placement not complete yet, leaving the group's nodes unrecorded",
+			"group", g.Name, "job", job.Name, "placed", len(names), "expected", orch.NodesPerJob)
+		return false
+	}
+
+	g.Nodes = names
+	log.Info("Recorded unpinned group placement", "group", g.Name, "job", job.Name, "nodes", names)
+	return true
 }
 
 // completeTerminalGroup finishes a group whose Job reached a terminal state.
@@ -1729,12 +1884,25 @@ func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workfl
 
 		// More iterations to go — reset all group phases to Pending
 		orch.CurrentIteration = orch.CompletedIterations + 1
+		unpinned := nvcrev1alpha1.IsUnpinned(workflow.Spec.Orchestration.Placement)
 		for i := range orch.Groups {
 			orch.Groups[i].Phase = nvcrev1alpha1.GroupPending
 			orch.Groups[i].JobRef = nil
 			orch.Groups[i].StartTime = nil
 			orch.Groups[i].CompletionTime = nil
 			orch.Groups[i].Retries = 0
+			if unpinned {
+				// The next iteration is a new job the scheduler places afresh,
+				// so last iteration's nodes are a guess about this one. Clearing
+				// them also re-arms backfillGroupNodes, which only fires on an
+				// empty list; leaving them would report every iteration as having
+				// run where iteration 1 happened to land. Pinned keeps its nodes
+				// because the controller assigned them and they do not change.
+				//
+				// Empty slice, not nil: nodes is a required CRD field and nil
+				// marshals to null, which the API server rejects.
+				orch.Groups[i].Nodes = []string{}
+			}
 		}
 
 		// The mutations above (CompletedIterations, IterationHistory, group
@@ -2511,9 +2679,17 @@ func buildGroupStatuses(groups []orchestration.Group, nodeInfos []orchestration.
 
 	statuses := make([]nvcrev1alpha1.GroupStatus, len(groups))
 	for i, g := range groups {
+		// GroupStatus.Nodes is a required CRD field, so a nil slice marshals to
+		// null and the API server rejects the whole status update as "Required
+		// value". An unpinned group genuinely has no nodes until the scheduler
+		// places its pods, so normalize to an empty list: present and honest.
+		nodes := g.Nodes
+		if nodes == nil {
+			nodes = []string{}
+		}
 		statuses[i] = nvcrev1alpha1.GroupStatus{
 			Name:     g.Name,
-			Nodes:    g.Nodes,
+			Nodes:    nodes,
 			Domains:  g.Domains,
 			Overflow: g.Overflow,
 			Phase:    nvcrev1alpha1.GroupPending,
@@ -3612,6 +3788,9 @@ func (r *WorkflowReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// fail a group whose Job is running (issue #385).
 	if r.APIReader == nil {
 		r.APIReader = mgr.GetAPIReader()
+	}
+	if r.NodeDiscoverer == nil {
+		r.NodeDiscoverer = nodemonitor.NewNodeDiscoverer(mgr.GetClient())
 	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nvcrev1alpha1.Workflow{}).

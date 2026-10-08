@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Entries without a MaxValidNodes hook (the NCCL variants) must not fall through
+# to the Pinned ceiling. The requested size is returned as-is.
+availableNodes: 18
+nodesPerJob: 3
+placement: Unpinned
+constraint: none

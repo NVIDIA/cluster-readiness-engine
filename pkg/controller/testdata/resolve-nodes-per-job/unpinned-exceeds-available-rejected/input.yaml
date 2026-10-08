@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The clamp. Pinned does min(requested, available) and hands back 4, which is
+# right for a chunk size and wrong for a job size: the operator asked for an
+# 8-node run and would get a 4-node one with nothing saying so.
+#
+# This is also why the Workflow-tier "nodesPerJob > len(nodes)" check never
+# fires on the Certification path. The clamp shrank the number before the
+# Workflow controller ever saw it, so the rejection has to happen here.
+availableNodes: 4
+nodesPerJob: 8
+placement: Unpinned
+constraint: none

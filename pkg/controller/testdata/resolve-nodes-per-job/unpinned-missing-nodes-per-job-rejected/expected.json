@@ -1,0 +1,4 @@
+{
+  "nodesPerJob": 0,
+  "error": "communication/nccl-all-reduce: placement Unpinned requires an explicit nodesPerJob. Unpinned runs one job of the size you ask for and will not fall back to running across all 18 matching nodes; set nodesPerJob globally or on this category"
+}

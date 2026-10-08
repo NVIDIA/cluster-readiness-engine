@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The snap. MaxValidNodes returns the largest valid count at or below the
+# request, so a request for 5 against an even-only constraint silently becomes
+# a 4-node job.
+#
+# Under Unpinned that substitution is invisible and consequential. On GB200 the
+# ComputeDomain is templated from the same number as the trainer, so a size that
+# got adjusted in one place and not the other leaves pods waiting on a DRA
+# allocation that was never sized for them, with nothing naming the cause.
+availableNodes: 8
+nodesPerJob: 5
+placement: Unpinned
+constraint: even

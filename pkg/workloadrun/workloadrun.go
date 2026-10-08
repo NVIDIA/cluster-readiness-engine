@@ -211,6 +211,16 @@ func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) 
 		}
 		workflowSpec.Overrides = nil
 
+		// BuildWorkflowSpec already ran ValidateWRPlacement, but that was the
+		// pre-override spec and it only sees testScale. An override can set
+		// orchestration.topology.strictDomain directly, so the resolved spec
+		// needs the lower-tier check too. Without --platform the overrides stay
+		// conditional and the output is a template, so there is nothing resolved
+		// to check and the controller performs it on the target instead.
+		if err := controller.ValidatePlacement(&workflowSpec.Orchestration); err != nil {
+			return err
+		}
+
 		// The construction-time merge inside BuildWorkflowSpec ran before
 		// these overrides, so it is the resolved spec that has to satisfy
 		// both contracts: the workload labels an override may have rewritten,
@@ -270,6 +280,12 @@ func BuildWorkflowSpec(
 	gpusPerNode, mlnxPerNode int32, enableMNNVL bool, frameworkType string,
 ) (*nvcrev1alpha1.WorkflowSpec, error) {
 	spec := &run.Spec
+
+	// Same check the controller runs, so an offline render refuses the same
+	// specs the cluster would rather than previewing one that cannot run.
+	if err := controller.ValidateWRPlacement(spec.Orchestration); err != nil {
+		return nil, err
+	}
 
 	// Build merged env vars.
 	baseEnv := platform.BaseNCCLEnvVars(enableMNNVL)
@@ -344,6 +360,7 @@ func BuildWorkflowSpec(
 		if spec.Orchestration.RepeatCount != nil {
 			orch.Iterations = int(*spec.Orchestration.RepeatCount)
 		}
+		orch.Placement = spec.Orchestration.Placement
 		switch spec.Orchestration.TestScale {
 		case "intra-rack":
 			// TopologyKey is set by platform override (workloadrun.yaml)
@@ -663,6 +680,12 @@ func runWorkloadRunRenderDryRun(
 		return fmt.Errorf("applying overrides: %w", overrideErr)
 	}
 	workflowSpec.Overrides = nil
+
+	// The resolved-spec half of the placement check; see the note on the same
+	// call in the non-dry-run render path above.
+	if err := controller.ValidatePlacement(&workflowSpec.Orchestration); err != nil {
+		return err
+	}
 
 	// Fail before any dry-run API request, so a conflicting override is
 	// reported as the conflict it is rather than as whatever the API server

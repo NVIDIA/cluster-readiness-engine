@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Door 2 of the four the size can reach a job through: the offline render.
+#
+# renderCertification does not call resolveNodesPerJob. It has its own two-line
+# resolver that defaults an unset size to 1, which under Unpinned would preview
+# a tidy-looking one-node job for a spec the controller rejects outright. That
+# is worse than refusing to preview, because the operator reads the preview as
+# confirmation and submits.
+#
+# placement is set globally here and nodesPerJob is omitted everywhere, so the
+# render must fail and name the category it failed on.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: test-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  placement: Unpinned
+  categories:
+    - domain: training
+      variant: nemotron5-8b

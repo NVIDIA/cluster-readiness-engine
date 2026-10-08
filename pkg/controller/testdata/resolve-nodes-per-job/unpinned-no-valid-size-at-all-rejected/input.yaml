@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# MaxValidNodes returns 0 when nothing at or below the request is valid, so
+# there is no nearest value to suggest. The message has to say that rather than
+# print "the nearest valid value is 0", which reads as a usable answer.
+availableNodes: 8
+nodesPerJob: 2
+placement: Unpinned
+constraint: min4

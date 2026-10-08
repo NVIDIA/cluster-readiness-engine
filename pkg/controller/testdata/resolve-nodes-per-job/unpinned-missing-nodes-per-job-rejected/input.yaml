@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The hole that would have swallowed the whole feature. With nodesPerJob unset
+# the Pinned path sets the ceiling to the available node count and the job takes
+# every matching node, which is precisely the span-the-cluster behavior Unpinned
+# exists to escape. Nothing downstream objects: 18 is a perfectly valid
+# NodesRequired, so the flag would be honored everywhere except where it counts.
+#
+# Reject, naming the field, rather than defaulting to anything.
+availableNodes: 18
+placement: Unpinned
+constraint: none

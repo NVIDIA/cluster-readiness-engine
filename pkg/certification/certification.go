@@ -298,7 +298,7 @@ func resolveWorkflowsOffline(
 	syntheticNodes := []corev1.Node{syntheticRenderNode(platformFlag, cert.Spec.Target.NodeSelector, gpuArchOverride)}
 	for i := range workflows {
 		if _, err := render.ResolveWorkflow(&workflows[i], syntheticNodes); err != nil {
-			return fmt.Errorf("resolve overrides for %s: %w", workflows[i].Name, err)
+			return fmt.Errorf("resolve workflow %s: %w", workflows[i].Name, err)
 		}
 		if err := applyWorkflowTransforms(cert, workflows, i); err != nil {
 			return err
@@ -540,6 +540,17 @@ func renderCertification(
 			nodesPerJob = *opts.NodesPerJob
 		}
 		if nodesPerJob == 0 {
+			// Under Unpinned there is no sensible stand-in. Defaulting to 1 would
+			// preview a one-node job for a spec the controller rejects outright,
+			// which is worse than refusing to preview: the operator would read it
+			// as confirmation and submit.
+			if nvcrev1alpha1.IsUnpinned(opts.Placement) {
+				return nil, fmt.Errorf(
+					"%s/%s: placement Unpinned requires an explicit nodesPerJob. "+
+						"Unpinned runs one job of the size you ask for and will not fall back to "+
+						"running across all matching nodes; set nodesPerJob globally or on this category",
+					cat.Domain, cat.Variant)
+			}
 			// Default to 1 node for offline render when nodesPerJob is not set.
 			nodesPerJob = 1
 		}
@@ -565,6 +576,7 @@ func renderCertification(
 			SaveTopK:                   derefInt32Ptr(opts.SaveTopK),
 			StorageSize:                opts.StorageSize,
 			TestScale:                  opts.TestScale,
+			Placement:                  opts.Placement,
 			MaxBytes:                   opts.MaxBytes,
 			NumIterations:              derefInt32Ptr(opts.NumIterations),
 			NumCycles:                  derefInt32Ptr(opts.NumCycles),
@@ -740,6 +752,7 @@ type categoryRunOpts struct {
 	storageClass               string
 	repeatCount                int32
 	maxRestarts                int32
+	placement                  string
 }
 
 func newRunCommand(version string) *cobra.Command {
@@ -748,6 +761,7 @@ func newRunCommand(version string) *cobra.Command {
 	var nodesPerJob, maxSteps, exitDurationMins, startupStallTimeoutSeconds, gpusPerNode, repeatCount, maxRestarts int32
 	var enableCheckpoint, enableMNNVL bool
 	var storageClass string
+	var placement string
 	var doWait, doSetup, doCleanup bool
 	var certFile string
 	var controllerImage string
@@ -819,6 +833,7 @@ Use --cleanup to teardown installed components after completion.`,
 					storageClass:               storageClass,
 					repeatCount:                repeatCount,
 					maxRestarts:                maxRestarts,
+					placement:                  placement,
 				}
 				if cmd.Flags().Changed("enable-checkpoint") {
 					opts.enableCheckpoint = &enableCheckpoint
@@ -865,6 +880,10 @@ Use --cleanup to teardown installed components after completion.`,
 		"Certification name (default: nvcrectl-<timestamp>)")
 	cmd.Flags().Int32Var(&nodesPerJob, "nodes-per-job", 0,
 		"Number of nodes per job (0 = auto-select: all nodes for non-training, largest config for training)")
+	cmd.Flags().StringVar(&placement, "placement", "",
+		"Node placement mode: Pinned (default) partitions every matching node into jobs of --nodes-per-job; "+
+			"Unpinned runs exactly one job of --nodes-per-job nodes and lets the scheduler choose the hosts "+
+			"(requires --nodes-per-job)")
 	cmd.Flags().BoolVar(&enableCheckpoint, "enable-checkpoint", false,
 		"Enable checkpoint storage for training workloads")
 	cmd.Flags().Int32Var(&maxSteps, "max-steps", 0,
@@ -961,6 +980,29 @@ func deriveWaitTimeout(cert *nvcrev1alpha1.Certification) time.Duration {
 // Config builders — the only place the two input modes diverge
 // ---------------------------------------------------------------------------
 
+// validatePlacementFlags checks --placement and its interaction with
+// --nodes-per-job.
+//
+// The size check is the one that matters. --nodes-per-job defaults to 0 and a
+// 0 is simply omitted from the built spec, so without this an Unpinned run with
+// no size submits a Certification the controller rejects on its first reconcile.
+// The user would see a Failed Certification rather than a flag error, which
+// reads as a cluster problem instead of a typo.
+func validatePlacementFlags(placement string, nodesPerJob int32) error {
+	switch placement {
+	case "", nvcrev1alpha1.PlacementPinned, nvcrev1alpha1.PlacementUnpinned:
+	default:
+		return fmt.Errorf("--placement must be %s or %s, got %q",
+			nvcrev1alpha1.PlacementPinned, nvcrev1alpha1.PlacementUnpinned, placement)
+	}
+	if nvcrev1alpha1.IsUnpinned(placement) && nodesPerJob < 1 {
+		return fmt.Errorf("--placement %s requires --nodes-per-job: Unpinned runs exactly one job "+
+			"of the size you ask for and will not fall back to running across all matching nodes",
+			nvcrev1alpha1.PlacementUnpinned)
+	}
+	return nil
+}
+
 // buildConfigFromFlags builds a certRunConfig from --category CLI flags.
 // Connects to the cluster to discover GPU product.
 func buildConfigFromFlags(
@@ -971,6 +1013,12 @@ func buildConfigFromFlags(
 ) (*certRunConfig, error) {
 	cats, err := parseCategories(categoryStrs)
 	if err != nil {
+		return nil, err
+	}
+	// Validated here, before the cluster client is built, so a bad flag
+	// combination costs a message rather than a Certification that is created
+	// and only then fails server-side on its first reconcile.
+	if err := validatePlacementFlags(opts.placement, nodesPerJob); err != nil {
 		return nil, err
 	}
 
@@ -1020,6 +1068,9 @@ func buildConfigFromFlags(
 	// Apply CategoryOptions from CLI flags.
 	if nodesPerJob > 0 {
 		cert.Spec.NodesPerJob = &nodesPerJob
+	}
+	if opts.placement != "" {
+		cert.Spec.Placement = opts.placement
 	}
 	if opts.enableCheckpoint != nil {
 		cert.Spec.EnableCheckpoint = opts.enableCheckpoint

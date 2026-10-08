@@ -1,0 +1,76 @@
+# Untested nodes under Unpinned are intentional scope, not a coverage failure.
+# The operator asked for one 2-node job against an 18-node target and got it,
+# so this run is PASSED. Putting the 16 untouched nodes into excludedNodes would
+# have turned a correct run INCOMPLETE and buried the cordon and architecture
+# warnings, which are configuration accidents, under sixteen lines of noise.
+#
+# What makes the scope honest instead is the Placement line, which states both
+# numbers: 2 of 18. Without it the reader sees Nodes 18 and Nodes/Job 2 and has
+# no way to tell those are different questions.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: cert-unpinned
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  nodesPerJob: 2
+  placement: Unpinned
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+status:
+  conditions:
+    - type: Succeeded
+      status: "True"
+      reason: AllWorkflowsSucceeded
+      message: All certification categories completed successfully
+      lastTransitionTime: "2026-08-07T00:00:00Z"
+  categoryStatuses:
+    - domain: communication
+      variant: nccl-all-reduce
+      status: Succeeded
+      workflowRef:
+        name: cert-unpinned-communication-nccl-all-reduce
+        namespace: default
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: cert-unpinned-communication-nccl-all-reduce
+  namespace: default
+  labels:
+    nvcre.nvidia.com/certification: cert-unpinned
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: rt
+          trainer:
+            image: img:latest
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    placement: Unpinned
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 18
+    nodesPerJob: 2
+    totalGroups: 1
+    placement: Unpinned
+    detectedPlatform: onprem
+    detectedGPUArchitecture: h100
+  conditions:
+    - type: Succeeded
+      status: "True"
+      reason: AllGroupsSucceeded
+      message: done
+      lastTransitionTime: "2026-08-07T00:00:00Z"

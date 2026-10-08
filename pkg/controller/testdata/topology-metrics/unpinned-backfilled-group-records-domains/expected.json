@@ -1,0 +1,20 @@
+[
+  {
+    "domain": "clique-a",
+    "node": "node-01",
+    "validated": 1,
+    "failed": 0
+  },
+  {
+    "domain": "clique-b",
+    "node": "node-02",
+    "validated": 1,
+    "failed": 0
+  },
+  {
+    "domain": "clique-b",
+    "node": "node-03",
+    "validated": 0,
+    "failed": 0
+  }
+]

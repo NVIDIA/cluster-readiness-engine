@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The auto-select, with the flag off. 18 nodes and no size gives one 18-node
+# chunk, which is today's documented behavior for a whole-cluster sweep. The
+# point of this case is that the Unpinned rejection is narrow: it refuses the
+# auto-select only when the operator opted into a single job.
+availableNodes: 18
+placement: ""
+constraint: none

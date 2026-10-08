@@ -86,7 +86,17 @@ type CategoryReport struct {
 	TestScale     string `json:"testScale,omitempty"`
 	NodesPerJob   int    `json:"nodesPerJob,omitempty"`
 	Jobs          int    `json:"jobs,omitempty"`
-	MNNVL         string `json:"mnnvl,omitempty"` // "Enabled", "Disabled", or "" (unknown)
+	// Placement is the resolved placement mode, recorded only when it is not the
+	// default. Under Pinned the reader can reconcile the other counts themselves,
+	// since Jobs times Nodes/Job equals the target node count. Unpinned breaks
+	// that identity: one job of Nodes/Job runs and the rest of the target is
+	// deliberately untouched, which no other line in the box says.
+	Placement string `json:"placement,omitempty"`
+	// TargetNodes is the number of nodes the target matched, carried alongside
+	// Placement so the scope line can state both numbers rather than leaving the
+	// reader to find the fleet size elsewhere in the report.
+	TargetNodes int    `json:"targetNodes,omitempty"`
+	MNNVL       string `json:"mnnvl,omitempty"` // "Enabled", "Disabled", or "" (unknown)
 	// FailedGroups lists groups that failed with their reason.
 	FailedGroups []FailedGroupReport `json:"failedGroups,omitempty"`
 	// Cliques lists topology domains with node counts and validation status.
@@ -658,6 +668,10 @@ func PopulateCategoryFromWorkflow(
 	if orch != nil {
 		cat.NodesPerJob = orch.NodesPerJob
 		cat.Jobs = orch.TotalGroups
+		if nvcrev1alpha1.IsUnpinned(orch.Placement) {
+			cat.Placement = orch.Placement
+			cat.TargetNodes = orch.TotalNodes
+		}
 	}
 	cat.TestScale = detectTestScale(wf)
 
@@ -1030,6 +1044,25 @@ func buildCliqueReport(wf *nvcrev1alpha1.Workflow, failedNodes []nvcrev1alpha1.F
 const annotationRequestedTestScale = "nvcre.nvidia.com/requested-test-scale"
 
 func detectTestScale(wf *nvcrev1alpha1.Workflow) string {
+	// Unpinned has no test scale, and every value this function could return
+	// would be a claim about coverage that Unpinned explicitly opts out of. A
+	// one-node unpinned job is one job on one node, not "every node tested
+	// independently"; a larger one does not sweep the fleet either. That holds
+	// even when the operator did request a scale, so this precedes the annotation
+	// rather than following it: the request was not honored, and reporting it
+	// would describe a run that did not happen. "" is the documented no-scale
+	// answer and the Placement line carries the real information.
+	//
+	// Status is checked first because it is the resolved, post-override value;
+	// the persisted spec does not show a placement an override introduced. Spec
+	// is the fallback for a Workflow whose status is not populated yet.
+	if orch := wf.Status.Orchestration; orch != nil && orch.Placement != "" {
+		if nvcrev1alpha1.IsUnpinned(orch.Placement) {
+			return ""
+		}
+	} else if nvcrev1alpha1.IsUnpinned(wf.Spec.Orchestration.Placement) {
+		return ""
+	}
 	// What the operator asked for, when the Certification recorded it. The
 	// fallback below infers the scale from what was applied, which is not the
 	// same thing: an entry whose template ignores testScale still partitions one
@@ -1340,6 +1373,17 @@ func printCategoryCard(w io.Writer, cat *CategoryReport) {
 	if cat.Jobs > 0 && !isDiagnose {
 		jobsLine := fmt.Sprintf("Jobs:      %d", cat.Jobs)
 		_, _ = fmt.Fprintf(w, "│  %s%s│\n", jobsLine, pad(boxWidth-4-len(jobsLine)))
+	}
+	// Only Unpinned sets Placement, and it says the one thing the three lines
+	// above cannot: how much of the target was exercised. Under Pinned the
+	// numbers reconcile on their own and the line would be noise.
+	if cat.Placement != "" && !isDiagnose {
+		placementLine := fmt.Sprintf("Placement: %s", cat.Placement)
+		if cat.TargetNodes > 0 && cat.NodesPerJob > 0 && cat.Jobs > 0 {
+			placementLine = fmt.Sprintf("Placement: %s (%d of %d target nodes exercised)",
+				cat.Placement, cat.NodesPerJob*cat.Jobs, cat.TargetNodes)
+		}
+		_, _ = fmt.Fprintf(w, "│  %s%s│\n", placementLine, pad(boxWidth-4-len(placementLine)))
 	}
 	if cat.MNNVL != "" && !isDiagnose {
 		mnnvlLine := fmt.Sprintf("MNNVL:     %s", cat.MNNVL)

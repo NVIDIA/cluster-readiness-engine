@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The happy path, and the one the reviewer actually submits: a size that fits
+# the fleet and satisfies the constraints comes back unchanged, with 16 of the
+# 18 matching nodes deliberately left alone.
+availableNodes: 18
+nodesPerJob: 2
+placement: Unpinned
+constraint: even

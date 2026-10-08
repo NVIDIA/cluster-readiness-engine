@@ -1,0 +1,4 @@
+{
+  "nodesPerJob": 0,
+  "error": "communication/nccl-all-reduce: nodesPerJob is 8 but only 4 node(s) match the target. Under placement Unpinned the requested size is not reduced to fit; widen the target or lower nodesPerJob to 4"
+}

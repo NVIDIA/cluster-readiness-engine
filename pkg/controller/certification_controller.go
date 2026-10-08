@@ -590,6 +590,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		SaveTopK:                   derefInt32(opts.SaveTopK),
 		StorageSize:                opts.StorageSize,
 		TestScale:                  opts.TestScale,
+		Placement:                  opts.Placement,
 		MaxBytes:                   opts.MaxBytes,
 		NumIterations:              derefInt32(opts.NumIterations),
 		NumCycles:                  derefInt32(opts.NumCycles),
@@ -837,6 +838,9 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	if override.TestScale != "" {
 		resolved.TestScale = override.TestScale
 	}
+	if override.Placement != "" {
+		resolved.Placement = override.Placement
+	}
 	if override.MaxBytes != "" {
 		resolved.MaxBytes = override.MaxBytes
 	}
@@ -934,14 +938,26 @@ func dropUnderCapacityNodes(nodes []corev1.Node, cat nvcrev1alpha1.CertificateCa
 }
 
 // resolveNodesPerJob determines the nodesPerJob for a category.
-// When explicitly set, clamps to the largest valid node count <= min(requested, available).
-// Otherwise auto-selects the largest valid node count <= available nodes.
-// "Valid" means satisfying the entry's constraints (minGPUs, TP×PP divisibility).
-// When no constraints are defined, uses all available nodes.
+//
+// Under the default Pinned placement the number is a group size for a sweep that
+// covers the whole target, so the controller is free to pick it: when explicitly
+// set it clamps to the largest valid node count <= min(requested, available),
+// and otherwise auto-selects the largest valid count <= available nodes.
+// "Valid" means satisfying the entry's constraints (minGPUs, TP×PP
+// divisibility). When no constraints are defined, it uses all available nodes.
+//
+// Under Unpinned the number is the job the operator asked for, so none of those
+// adjustments are available: see resolveUnpinnedNodesPerJob. The two modes are
+// kept in one function because every caller resolves a size exactly once, and a
+// second entry point is a second place for a new door to open.
 func resolveNodesPerJob(nodes []corev1.Node, cat nvcrev1alpha1.CertificateCategory, opts nvcrev1alpha1.CategoryOptions, entry *catalog.Entry, gpusPerNode int32, gpuArch string) (int32, error) {
 	n := int32(len(nodes))
 	if n == 0 {
 		return 0, fmt.Errorf("no matching nodes for %s/%s", cat.Domain, cat.Variant)
+	}
+
+	if nvcrev1alpha1.IsUnpinned(opts.Placement) {
+		return resolveUnpinnedNodesPerJob(n, cat, opts, entry, gpusPerNode, gpuArch)
 	}
 
 	ceiling := n
@@ -961,6 +977,77 @@ func resolveNodesPerJob(nodes []corev1.Node, cat nvcrev1alpha1.CertificateCatego
 
 	// No constraints — use all available nodes up to ceiling.
 	return ceiling, nil
+}
+
+// resolveUnpinnedNodesPerJob returns the requested job size unchanged, or an
+// error explaining why it cannot run.
+//
+// The guarantee Unpinned makes is that the size the operator wrote is the size
+// that runs, or the run fails saying why. It is never silently adjusted. That
+// rules out all three adjustments the Pinned path makes, each of which would
+// otherwise fire here and quietly change the job:
+//
+//   - the clamp to the available node count, which turns a request for 8 nodes
+//     on a 4-node fleet into a 4-node job;
+//   - the constraint snap, which turns a request for 6 into a 4 whenever the
+//     entry's TP/PP divisibility rejects 6;
+//   - the auto-select when no size is given, which runs the job across every
+//     matching node and is the fleet-wide behavior Unpinned exists to escape.
+//
+// The adjustments are also load-bearing beyond honesty. On GB200 and GB300 the
+// ComputeDomain dependency is templated from the same NodesPerJob as the
+// trainer, so an adjustment that reached one and not the other would size the
+// DRA channel allocation against a different node count and leave pods Pending
+// with nothing naming the cause.
+func resolveUnpinnedNodesPerJob(
+	available int32,
+	cat nvcrev1alpha1.CertificateCategory,
+	opts nvcrev1alpha1.CategoryOptions,
+	entry *catalog.Entry,
+	gpusPerNode int32,
+	gpuArch string,
+) (int32, error) {
+	if opts.NodesPerJob == nil {
+		return 0, fmt.Errorf(
+			"%s/%s: placement Unpinned requires an explicit nodesPerJob. "+
+				"Unpinned runs one job of the size you ask for and will not fall back to "+
+				"running across all %d matching nodes; set nodesPerJob globally or on this category",
+			cat.Domain, cat.Variant, available)
+	}
+
+	requested := *opts.NodesPerJob
+	if requested < 1 {
+		return 0, fmt.Errorf("%s/%s: nodesPerJob must be at least 1, got %d",
+			cat.Domain, cat.Variant, requested)
+	}
+
+	if requested > available {
+		return 0, fmt.Errorf(
+			"%s/%s: nodesPerJob is %d but only %d node(s) match the target. "+
+				"Under placement Unpinned the requested size is not reduced to fit; "+
+				"widen the target or lower nodesPerJob to %d",
+			cat.Domain, cat.Variant, requested, available, available)
+	}
+
+	if entry != nil && entry.MaxValidNodes != nil {
+		best := entry.MaxValidNodes(requested, gpusPerNode, gpuArch)
+		if best != requested {
+			// best is the largest valid count at or below the request, so it is
+			// the nearest size that would work and is worth naming. 0 means
+			// nothing at or below the request is valid at all.
+			nearest := "none at or below it is"
+			if best > 0 {
+				nearest = fmt.Sprintf("the nearest valid value at or below it is %d", best)
+			}
+			return 0, fmt.Errorf(
+				"%s/%s: nodesPerJob %d does not satisfy the model constraints "+
+					"(gpusPerNode=%d, arch=%s); %s. Under placement Unpinned the requested "+
+					"size is not snapped to a valid one",
+				cat.Domain, cat.Variant, requested, gpusPerNode, gpuArch, nearest)
+		}
+	}
+
+	return requested, nil
 }
 
 // pruneAppliedOverrides removes applied overlays from the spec, keeping
@@ -1153,6 +1240,12 @@ func categoryOptionsSuffix(opts *nvcrev1alpha1.CategoryOptions) string {
 	}
 	if opts.TestScale != "" {
 		parts = append(parts, opts.TestScale)
+	}
+	// Two categories of the same domain and variant that differ only in placement
+	// are different runs and need different Workflow names, or the second would
+	// collide with the first and never be created.
+	if opts.Placement != "" {
+		parts = append(parts, strings.ToLower(opts.Placement))
 	}
 	if opts.EnableCheckpoint != nil && *opts.EnableCheckpoint {
 		parts = append(parts, "ckpt")

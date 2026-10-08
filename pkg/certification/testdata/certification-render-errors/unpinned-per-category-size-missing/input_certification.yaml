@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# placement is global, nodesPerJob is per-category, and only the first category
+# sets it. This pins that the check sits after ResolveOptions and is genuinely
+# per-category rather than a single spec-level test.
+#
+# A Certification-level check could not see this: the spec has a placement and
+# it has a category carrying a size, so anything coarser than per-category
+# would pass the whole document and let nccl-all-reduce through to the
+# default-to-1 path. The error must name communication/nccl-all-reduce, not the
+# training category that is correctly configured.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: test-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  placement: Unpinned
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        nodesPerJob: 2
+    - domain: communication
+      variant: nccl-all-reduce

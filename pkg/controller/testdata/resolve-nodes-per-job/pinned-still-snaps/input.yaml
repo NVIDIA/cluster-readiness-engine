@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The snap, with the flag off. 5 becomes 4 under the even constraint, which is
+# the shipping behavior and stays untouched.
+availableNodes: 8
+nodesPerJob: 5
+placement: ""
+constraint: even

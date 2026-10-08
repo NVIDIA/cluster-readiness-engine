@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Unpinned always produces exactly one group named group-0 at one iteration,
+# which is the shape that already collapses to the bare <workflow>-job name.
+# Pinned a group suffix on it would rename every Job an Unpinned run creates
+# and break every consumer that looks the Job up by the short name.
+workflowName: nemotron-unpinned
+groupName: group-0
+iteration: 1
+iterations: 1
+totalGroups: 1

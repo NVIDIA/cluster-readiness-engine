@@ -165,6 +165,19 @@ func ResolveWorkflowForPlatform(
 		return nil, fmt.Errorf("apply overrides: %w", err)
 	}
 
+	// Placement is checked here and not earlier for the same reason the Workflow
+	// controller checks it after its own override pass: an override can
+	// introduce orchestration fields the user never wrote, so only the resolved
+	// spec is worth validating. Every certification render path reaches this
+	// helper, and the conflicting fields arrive before it does: the catalog
+	// lowers testScale into topology.strictDomain and diagnose at entry.Build()
+	// time (see pkg/catalog/entries/communication/nccl-all-reduce.yaml). Without
+	// this, `certification render` happily previews an Unpinned diagnose run
+	// that the controller rejects on the first reconcile.
+	if err := controller.ValidatePlacement(&workflow.Spec.Orchestration); err != nil {
+		return nil, err
+	}
+
 	// Ordinary offline render does not call DryRunCreate, so this resolution
 	// boundary is its only opportunity to reject overrides that leave the
 	// workload metadata or runtime scheduling inconsistent. Without this
@@ -395,30 +408,44 @@ func DryRunCreate(ctx context.Context, c client.Client, namespace string,
 	if err != nil {
 		return nil, fmt.Errorf("determine nodes required: %w", err)
 	}
-	groupNodes := nodes
-	if len(groupNodes) > nodesRequired {
-		groupNodes = groupNodes[:nodesRequired]
+	placement := spec.Orchestration.Placement
+	// Under Unpinned no group is formed and the scheduler picks the hosts, so
+	// there is no first-N slice to simulate. The dry-run must mirror that, or it
+	// would validate a pinned Job the controller will never create.
+	var nodeNames []string
+	if !nvcrev1alpha1.IsUnpinned(placement) {
+		groupNodes := nodes
+		if len(groupNodes) > nodesRequired {
+			groupNodes = groupNodes[:nodesRequired]
+		}
+		nodeNames = make([]string, len(groupNodes))
+		for i, n := range groupNodes {
+			nodeNames[i] = n.Name
+		}
 	}
-	nodeNames := make([]string, len(groupNodes))
-	for i, n := range groupNodes {
-		nodeNames[i] = n.Name
+	// render has no OrchestrationStatus to read the recorded GPU products from,
+	// so they come from the nodes it just discovered. That is the same set the
+	// controller records at partition time.
+	if affinity := controller.BuildNodeAffinity(
+		controller.PinnedHostnames(placement, nodeNames, spec.Orchestration.Target),
+		spec.Orchestration.Target,
+		controller.DistinctGPUProducts(nodes),
+	); affinity != nil {
+		adapter.SetNodeAffinity(&specCopy.Workload, affinity)
 	}
-	adapter.SetNodeAffinity(&specCopy.Workload, &corev1.NodeAffinity{
-		RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-			NodeSelectorTerms: []corev1.NodeSelectorTerm{{
-				MatchExpressions: []corev1.NodeSelectorRequirement{{
-					Key:      "kubernetes.io/hostname",
-					Operator: corev1.NodeSelectorOpIn,
-					Values:   nodeNames,
-				}},
-			}},
-		},
-	})
 
-	// Set tolerations (tolerate all, same as controller).
-	adapter.SetTolerations(&specCopy.Workload, []corev1.Toleration{{
-		Operator: corev1.TolerationOpExists,
-	}})
+	// Tolerations. Pinned keeps the blanket Exists it has always had, which is
+	// safe there only because the job lands on hosts NVCRE chose. With that pin
+	// gone it would let the job onto any tainted node with free GPUs, so Unpinned
+	// tolerates only what the target explicitly asked for (ADR-089).
+	switch target := spec.Orchestration.Target; {
+	case !nvcrev1alpha1.IsUnpinned(placement):
+		adapter.SetTolerations(&specCopy.Workload, []corev1.Toleration{{
+			Operator: corev1.TolerationOpExists,
+		}})
+	case target != nil && len(target.TaintSelectors) > 0:
+		adapter.SetTolerations(&specCopy.Workload, controller.BuildTolerations(target.TaintSelectors))
+	}
 
 	// When taintSelectors targets the unschedulable taint, clear NodeHealthMonitor
 	// so the dry-run validates the same Job the controller actually creates.

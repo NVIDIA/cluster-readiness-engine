@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The reviewer's entry, on the architecture they are running. nemotron5-8b has
+# the richest orchestration block of the eight entries and carries the GB200
+# override that injects a topology key, so if setting placement in Go were going
+# to disturb a template this is where it would show.
+#
+# numNodes must come back as 2, not 0 and not the fleet size: it is the number
+# the ComputeDomain is sized from as well as the trainer.
+category: training
+subcategory: nemotron5-8b
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+nodesPerJob: 2
+gpusPerNode: 4
+placement: Unpinned
