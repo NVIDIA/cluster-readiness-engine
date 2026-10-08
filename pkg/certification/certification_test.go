@@ -1081,3 +1081,52 @@ func TestReportPathsPreserveDistinctArtifacts(t *testing.T) {
 	require.NoError(t, validateReportPaths(jsonPath, ""))
 	require.NoError(t, validateReportPaths("", xmlPath))
 }
+
+func TestNewRunCommandJUnitRequiresWait(t *testing.T) {
+	const junitFlag = "--junit-file"
+	for _, waitFlag := range []string{"", "--wait=false"} {
+		cmd := newRunCommand("dev")
+		cmd.SilenceUsage, cmd.SilenceErrors = true, true
+		args := []string{testCategoryFlag, testCategoryNCCLAllReduce, junitFlag, "results.xml"}
+		if waitFlag != "" {
+			args = append(args, waitFlag)
+		}
+		cmd.SetArgs(args)
+		require.EqualError(t, cmd.Execute(), "--junit-file requires --wait")
+	}
+	// Valid combinations reach the existing configuration loader unchanged.
+	for _, args := range [][]string{
+		{"--wait", junitFlag, "results.xml"},
+		{"--wait", junitFlag, ""},
+		{},
+	} {
+		missing := filepath.Join(t.TempDir(), "missing-cert.yaml")
+		cmd := newRunCommand("dev")
+		cmd.SilenceUsage, cmd.SilenceErrors = true, true
+		cmd.SetArgs(append(args, "--cert-file", missing))
+		err := cmd.Execute()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), missing)
+		assert.NotContains(t, err.Error(), "requires --wait")
+	}
+}
+
+func TestFinishCertificationWaitReportErrorGuidance(t *testing.T) {
+	for _, timedOut := range []bool{false, true} {
+		cert := &nvcrev1alpha1.Certification{Name: testCertTimeoutCert, Namespace: testCertNamespace}
+		wc := newCertificationFakeClient(t, cert)
+		var out bytes.Buffer
+		cfg := &certRunConfig{cert: cert, namespace: cert.Namespace, out: &out,
+			junitFile: filepath.Join(t.TempDir(), "missing", "results.xml")}
+		waitErr := errors.New("watch disconnected")
+		if timedOut {
+			waitErr = &certificationWaitTimeoutError{timeout: time.Minute, elapsed: time.Minute}
+		}
+		err := finishCertificationWait(context.Background(), wc, cfg, cert, waitErr)
+		require.ErrorIs(t, err, waitErr)
+		var pathErr *os.PathError
+		require.ErrorAs(t, err, &pathErr)
+		assert.Equal(t, timedOut, strings.Contains(out.String(), "Monitor its progress:"))
+		assert.Equal(t, timedOut, strings.Contains(out.String(), "Stop it:"))
+	}
+}

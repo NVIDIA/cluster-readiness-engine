@@ -730,6 +730,9 @@ Use --wait to watch for completion and print a report.
 Use --cleanup to teardown installed components after completion.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if junitFile != "" && !doWait {
+				return fmt.Errorf("--junit-file requires --wait")
+			}
 			if err := kubeconfig.ValidateWaitTimeout(timeout, doWait); err != nil {
 				return err
 			}
@@ -1271,9 +1274,11 @@ func finishCertificationWait(
 		}
 	}
 
+	var reportErr error
 	if finalCert != nil {
-		if err := handleReport(reportCtx, wc, finalCert, cfg.resultsFile, cfg.junitFile, waitErr, cfg.out); err != nil {
-			return errors.Join(waitErr, err)
+		reportErr = handleReport(reportCtx, wc, finalCert, cfg.resultsFile, cfg.junitFile, waitErr, cfg.out)
+		if reportErr != nil && !timedOut {
+			return errors.Join(waitErr, reportErr)
 		}
 		if timedOut && errors.Is(reportCtx.Err(), context.DeadlineExceeded) {
 			_, _ = fmt.Fprintln(cfg.out,
@@ -1313,6 +1318,9 @@ Check its status:
 	// Preserve the timeout as the command result even if the post-timeout Get
 	// observes a terminal Certification. The report shows the freshest state,
 	// while the nonzero exit consistently indicates that the wait deadline elapsed.
+	if reportErr != nil {
+		return errors.Join(waitErr, reportErr)
+	}
 	return waitErr
 }
 
