@@ -39,6 +39,17 @@ followed them.
 
 ### Fixed
 
+- `nvcre_job_status` now reports `failed` for a Job that timed out on
+  `timeoutPerJob`. The gauge was written only by the Job tier, so the Workflow
+  reconciler's timeout write left it at `in_progress` for the rest of the run, and
+  after a controller restart terminal Jobs had no series at all. It is now built at
+  scrape time from the informer cache, like `nvcre_certification_status` and
+  `nvcre_workflow_status`; series of a deleting Job remain until the Job leaves the
+  cache (#401)
+- A Job that times out on `timeoutPerJob` no longer carries `InProgress=True` beside
+  `Failed=True`. The Workflow reconciler's timeout write now sets the same exclusive
+  InProgress / Succeeded / Failed shape as every other Job transition; Jobs that
+  timed out before the upgrade keep their old conditions (#401)
 - The GCP H100 `tcpxo-daemon` now gets `NET_ADMIN`. The capability was listed as
   `CAP_NET_ADMIN`, which containerd drops, so daemon v1.0.21 and later crash-looped
   on their NIC tuning step; their entrypoint flags now match the release, since

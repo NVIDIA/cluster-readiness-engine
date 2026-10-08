@@ -1,5 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-
-status: succeeded
-workflow: my-workflow
+mutate:
+  delete:
+    - kind: Job
+      name: train-nccl-job
+      namespace: default

@@ -1383,17 +1383,18 @@ func (r *WorkflowReconciler) failTimedOutJob(
 	// For MPI tests, the launcher pod has the actual NCCL output.
 	r.captureTimeoutLog(ctx, job)
 	// Mark Job as failed. The Job object stays for the report.
+	// Clear InProgress and Succeeded with the same loop the Job
+	// tier uses, but keep this a single direct update: a conflict
+	// must fail the reconcile rather than overwrite a concurrent
+	// Job-tier verdict (ADR-086 decision B, ADR-080 decision 3).
 	before := append([]metav1.Condition(nil), job.Status.Conditions...)
 	timeoutMsg := "Job exceeded timeoutPerJob"
 	if job.Status.SchedulingBlockedSince != nil {
 		timeoutMsg = "Job exceeded timeoutPerJob while its pods were unschedulable"
 	}
-	meta.SetStatusCondition(&job.Status.Conditions, metav1.Condition{
-		Type:    nvcrev1alpha1.JobFailed,
-		Status:  metav1.ConditionTrue,
-		Reason:  ReasonJobTimedOut,
-		Message: timeoutMsg,
-	})
+	applyExclusiveConditions(&job.Status.Conditions,
+		[]string{nvcrev1alpha1.JobInProgress, nvcrev1alpha1.JobSucceeded, nvcrev1alpha1.JobFailed},
+		nvcrev1alpha1.JobFailed, ReasonJobTimedOut, timeoutMsg, job.Generation)
 	if err := r.Status().Update(ctx, job); err != nil {
 		return false, fmt.Errorf("failed to update timed-out Job %s status: %w", job.Name, err)
 	}
