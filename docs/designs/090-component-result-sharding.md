@@ -45,9 +45,13 @@ ADR-068 already moved node lists off the Workflow CR into compressed ConfigMaps 
 
 **1. Result rows never enter a CR status.** Status carries a sealed count, a total row count, and a label selector value. Rows live in gzipped NDJSON inside ConfigMap `binaryData`, following the ADR-068 precedent.
 
-**2. Shards roll on compressed output bytes.** A counting writer wraps the gzip stream and the writer starts a new shard when the output crosses 768 KiB. There is no row-count bound. A row bound cannot be correct here: validation counts compressed bytes, so any bound derived from a raw row size is wrong by whatever the compression ratio happens to be. An earlier draft of this design carried a 3,674-row bound derived that way, which would have rolled roughly 20x early.
+**2. Shards roll on compressed output bytes.** A counting writer wraps the gzip stream and the writer starts a new shard when the output crosses 768 KiB. There is no row-count bound. A row bound cannot be correct here: validation counts compressed bytes, so any bound derived from a raw row size is wrong by whatever the compression ratio happens to be. An earlier draft of this design carried a 3,674-row bound derived that way, which would have rolled roughly 20x early. The measured ratio spread below is the second reason: it runs from 2.8x to 34x on the same row schema, so a row bound is not merely imprecise, it is wrong by a factor that moves with the corpus.
+
+A single row still has to fit. The roll bound is an aggregate, and a row whose own compressed form exceeds the remaining budget in an empty shard can never be written, so retrying it would hold the Workflow open forever. One row gets 256 KiB of compressed output, a third of the shard bound and three orders of magnitude above the 204 B measured below. A row over that is dropped, counted in `truncation.json` with its component reference, and does not requeue. The row schema ADR sets the raw-field limits that keep producers away from this edge; this is the backstop, not the contract.
 
 **3. Status holds a sealed count and a label selector, not a list of references.** Every shard is labelled; the reader resolves the set by selector and checks it against the sealed count.
+
+**The seal is per Job and per attempt, and the Workflow total is a running sum until the Workflow is terminal.** Shards are produced per Job, so a Workflow-level total alone cannot distinguish "complete so far" from "missing": with 1000 `dcgm-level4` Jobs finishing at different times, a reader polling mid-run sees a smaller number either way. Each Job seals its own shard count and row count on `JobStatus` for the attempt that produced them, before its first shard is created. The Workflow sums the seals of its terminal Jobs and marks the total final only when the Workflow itself reaches a terminal condition. A reader that finds a non-final total knows the run is still producing; a reader that finds a final total can check it. Per-shard index and total annotations are not a substitute: if every shard from one Job fails to write, nothing in the annotation scheme records that the Job owed any rows at all, and only a seal written ahead of the first shard closes that.
 
 **4. `nvcrectl` assembles the bundle.** `--results-file PATH` writes a single document. `--results-bundle DIR` writes `results.json`, `components/*.ndjson`, `truncation.json`, `schema/`, and `manifest.json` last with per-file sha256. The CLI does the shard walk and the gunzip, so the customer never sees a ConfigMap.
 
@@ -61,32 +65,49 @@ Shards are named per Job. Job count comes from the entry's `numNodes`, read by `
 
 | Entry | Jobs | Shards | Size each |
 |---|---|---|---|
-| `diagnostics/dcgm-level4` (`numNodes: 1` hardcoded at `dcgm-level4.yaml:71`) | 1000 | 1000 | ~4.3 KiB |
+| `diagnostics/dcgm-level4` (`numNodes: 1` hardcoded at `dcgm-level4.yaml:71`) | 1000 | 1000 | ~1.6 KiB |
 | `communication/nccl-all-reduce`, `nodesPerJob` unset | 1 | 6 | 768 KiB |
-| `communication/nccl-all-reduce` at `nodesPerJob: 8` | 125 | 125 | ~33 KiB |
-| NVL72 intra-rack P2P | per domain | 1 per domain, 55 domains | ~118 KiB |
+| `communication/nccl-all-reduce` at `nodesPerJob: 8` | 125 | 125 | well under the bound |
+| NVL72 intra-rack P2P | per domain | 1 per domain, 55 domains | well under the bound |
 | `compute/cutlass-gemm` ([ADR-091](091-compute-gemm-catalog-entry.md), `numNodes: 1`) | 1000 | 1000 | well under the bound |
+
+The two NCCL rows and the P2P row are sized by their Job count, which is real, and not by a row count, which is not. Today's parser extracts a message size, an algorithm bandwidth and a bus bandwidth per line (`pkg/nccl/parser.go:77-96`); it produces no per-link rows at all. What a per-link NCCL producer would emit is a question for the row schema ADR, so those three rows claim only that their shards sit under the bound, which follows from the Job count alone. An earlier draft put per-shard byte figures in those cells. They were derived by dividing a raw row estimate by one measured ratio, and the ratio does not transfer between corpora, as the next section shows.
 
 1000 shards or 6, from the same fleet. This is why the sealed count plus selector is the right status shape and a reference list is not: at 69 bytes per reference, 1000 references is 67 KiB of Workflow status, and the Certification controller mirrors category references (`pkg/controller/certification_controller.go:375-380`), so eight categories is 539 KiB on one object. That is over half the status budget to describe data that is not even stored there.
 
 ### Measured sizing
 
-Measured on realistic rows carrying a component reference, a GPU UUID, an AWS node name, a typed value, a unit, and an outcome, compressed at `gzip.BestCompression`, which is what `pkg/controller/compress/gzip.go:18` already uses:
+Rows carry a component reference, a GPU UUID, an AWS private-DNS node name, an index, a sample number, a metric name, a two-decimal float value, a unit, and an outcome, serialized as compact JSON and compressed at `gzip.BestCompression`, which is what `pkg/controller/compress/gzip.go:18` already uses. Compression ratio is a property of the corpus, not of the row schema, so the corpus is stated for every figure. Values are drawn from a narrow band, which is the realistic case for a healthy fleet and the pessimistic one for the order argument.
 
-| Quantity | Value |
-|---|---|
-| Row size | 204 B |
-| gzip ratio, node-major emission order | 18.4x |
-| gzip ratio, rows shuffled | 5.2x |
-| Shard roll bound | 768 KiB of gzip output |
+| Corpus | Rows | Row size | gzip | Ratio | Order gain |
+|---|---|---|---|---|---|
+| 1 node, 8 GPU, one sample each | 8 | 204 B | 415 B | 3.9x | 1.00x |
+| 1 node, 4 GPU, one sample each | 4 | 204 B | 291 B | 2.8x | 1.00x |
+| 1 node, 8 GPU, 25 metrics each | 200 | 200 B | 1.6 KiB | 24.3x | 1.08x |
+| 1 node, 8 GPU, 1 Hz for 30 min | 14,400 | 205 B | 86.4 KiB | 33.4x | 1.20x |
+| 1 node, 8 GPU, 1 Hz for 2 h | 57,600 | 208 B | 343.4 KiB | 34.0x | 1.27x |
+| 1000 nodes, 8 GPU, one sample each | 8,000 | 205 B | 231.5 KiB | 6.9x | 1.15x |
+| 1000 nodes, 8 GPU, 1 Hz for 1 min | 480,000 | 205 B | 3,144.8 KiB | 30.6x | 5.32x |
 
-Emission order is worth 3.5x on every shard, so **(node, componentID, index, name) is a normative emission order**, not a style preference. The writer sorts a Job's rows before emitting.
+Two things fall out, and only one of them was in an earlier draft of this record.
+
+**Row size is stable and the ratio is not.** A row is 200 to 208 B across every shape above, so 204 B is a figure the design can lean on. The ratio spans 2.8x to 34x on the same schema, so it is not. An earlier draft stated a single 18.4x ratio with no corpus attached and derived shard sizes from it; those derived figures are gone from the table above for that reason. Decision 2 never consumes a ratio, because the counting writer measures the bytes gzip actually produced, and the spread here is the empirical case for that choice rather than a row bound.
+
+**Emission order earns its keep at node cardinality, not everywhere.** Sorting by `(node, componentID, index, name)` is worth 5.32x when a shard holds 1000 nodes and 1.00x when it holds one, because on a single-node shard every row shares one node value and the leading key does no work. Two of the rows in the table above are `numNodes: 1` entries, so "every shard" would be false. **(node, componentID, index, name) is still a normative emission order**, on two grounds that hold regardless of node count: it is worth up to 5.32x on the multi-node shards that are the ones at risk of rolling, and it makes shard bytes deterministic for the same input, which the per-file sha256 in the bundle manifest depends on. The writer sorts a Job's rows before emitting.
+
+The generator for this table is committed with the implementation, under `pkg/controller/shard/testdata/`, so the figures can be re-derived rather than taken on trust.
+
+## Implementation
 
 ### What this changes in existing code
 
 **The ConfigMap informer is already unscoped, and this work must fix it.** `CacheOptions()` scopes only `corev1.Node` (`pkg/controller/cache.go:45-54`). `recordNodeResults` writes through the cached client with `controllerutil.CreateOrUpdate` (`pkg/controller/node_results.go:145`), whose Get already runs a cluster-wide ConfigMap informer against a 1Gi controller limit. Adding shards without scoping that informer would make an existing problem considerably worse. The fix is a `ByObject` entry with a label selector.
 
+**Shards are deliberately outside that selector.** The selector matches the node-result ConfigMaps the controller reads back, and shards are not among them: nothing in the controller ever reads a shard, and `nvcrectl` resolves them through its own client. Caching them would put every retained shard's `binaryData` in the controller's heap, growing with retention against the same 1Gi limit the scoping exists to protect. Shards are written with a direct client, and the one read the write path needs, the idempotency check on retry, goes through `mgr.GetAPIReader()` rather than the cache.
+
 **Ordering matters here and is a real hazard.** The existing succeeded-nodes and failed-nodes ConfigMaps carry no labels (`pkg/controller/node_results.go:145-158` sets only the owner reference and `BinaryData`). If the selector lands before those objects are labelled, their cached Gets start returning NotFound. The labels go in first.
+
+**Sorting a Job's rows is bounded by one Job's output, not the run's.** Both the normative emission order and the seal written ahead of the first shard need a Job's rows in hand before the first byte is written. That is per Job, so the bound is the largest single Job's output rather than the fleet's: at `numNodes: 1` it is one node's rows, and at `nodesPerJob` unset it is the whole target, which is the case that needs care. The rows are spooled to a temporary file and sorted there, so the resident set stays proportional to the sort buffer rather than the row count, and the seal comes from the spooled count. This is the one part of the write path whose memory profile does not follow from existing code, and the implementation measures it.
 
 **Shard write failures must not be swallowed.** Every existing `record*Nodes` call site logs and continues:
 
@@ -121,7 +142,7 @@ A single encoder is used for all sizes. An earlier draft dispatched to a streami
 
 ### Bundle integrity
 
-`manifest.json` is written last and carries `formatVersion`, a per-file sha256, and a file count. Two reader rules are normative: a missing manifest means refuse the bundle, with no directory-glob fallback; and a manifest that fails to parse, or whose file count does not match what is on disk, is a hard error rather than a degraded read.
+`manifest.json` is written last and carries `formatVersion`, a per-file sha256, and a file count. Three reader rules are normative: a missing manifest means refuse the bundle, with no directory-glob fallback; a manifest that fails to parse, or whose file count does not match what is on disk, is a hard error rather than a degraded read; and the reader hashes every file the manifest lists and refuses the bundle when a digest does not match. The third rule is what the sha256 is for. A file count and a row count both survive a file being edited in place, so a bundle that passes only those checks is certified as whole on evidence that cannot detect the one thing the digest exists to catch.
 
 The shard reader compares the resolved shard count and the summed row count against the sealed values and refuses to write the manifest on mismatch. It specifically does **not** copy the pattern in `FailedNodesFromRef` (`pkg/report/report.go`), which returns nil on a Get error, on a decode error, and on a nil reference alike, so an unreadable ConfigMap is indistinguishable from nothing-to-report. For the primary evidence path that conflation is not acceptable.
 
@@ -141,7 +162,8 @@ The sealed-count-plus-selector shape falls out of the per-entry shard arithmetic
 - The ConfigMap informer gets scoped, which is an improvement this work pays for rather than a cost it introduces.
 - `WriteJSON` gains its first test coverage. It has none today on any path.
 - Shard write failures now requeue, so a Workflow can be held open by a persistently failing ConfigMap write where previously it would have completed with silently missing data.
-- A CRD change is required: the sealed shard count, total row count and selector value on `WorkflowStatus`, mirrored minimally onto `CategoryStatus`.
+- A CRD change is required: a per-attempt sealed shard count and row count on `JobStatus`, the summed totals and a finality marker plus the selector value on `WorkflowStatus`, mirrored minimally onto `CategoryStatus`.
+- A row that cannot be compressed under 256 KiB is dropped rather than retried. No producer is anywhere near that today, and the alternative is a Workflow held open by a row that can never be written.
 
 ## Alternatives Considered
 
@@ -151,7 +173,9 @@ A sink would buy unattended egress and long-term durability. Both are real, both
 
 **PVC sink.** Rejected on the same reasoning, with an additional cost: it would make every results-producing run depend on a `StorageClassName` the cluster may not have.
 
-**A row-count bound per shard.** Rejected as incorrect, not merely suboptimal. Validation counts compressed bytes; a raw-row bound has no relationship to the thing being enforced.
+**A row-count bound per shard.** Rejected as incorrect, not merely suboptimal. Validation counts compressed bytes; a raw-row bound has no relationship to the thing being enforced, and the measured ratio spread of 2.8x to 34x is how wrong it would be.
+
+**Coalescing a Workflow's shards into fewer objects.** Rejected. A `dcgm-level4` run at 1000 nodes produces 1000 small ConfigMaps, which reads like something to tidy up, but the objects are small, `nvcrectl` resolves them in one paginated list by selector, and the coalescing pass would itself be a read-modify-write across the whole set. That opens a window where a crash mid-rewrite leaves a partial set that looks complete, which is the exact failure the sealed count exists to make impossible. Paying that risk to reduce an object count that nothing is straining against is a bad trade.
 
 **`[]corev1.TypedLocalObjectReference` on status.** Rejected on the per-entry arithmetic above.
 
