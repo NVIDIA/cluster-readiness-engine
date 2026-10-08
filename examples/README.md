@@ -16,7 +16,8 @@ below additionally wait for completion and print the report.
 A WorkloadRun that runs the NCCL all-reduce benchmark and measures per-bus
 bandwidth. `numNodes` is the node count per job group, not the total: NVCRE
 partitions all eligible nodes into groups of that size and runs one job per
-group.
+group. To run a single job of `numNodes` nodes instead, see
+[certification-unpinned.yaml](#certification-unpinnedyaml).
 
 ```bash
 kubectl nvcre workloadrun run examples/nccl-all-reduce.yaml --wait
@@ -30,4 +31,19 @@ available categories with `kubectl nvcre certification list-categories`.
 
 ```bash
 kubectl nvcre certification run --cert-file examples/certification.yaml --wait
+```
+
+## certification-unpinned.yaml
+
+The same shape with `orchestration.placement: Unpinned`, which runs **one** job
+of exactly `nodesPerJob` nodes however many the target matches, instead of
+partitioning the fleet into groups of that size. The remaining target nodes go
+untested, and NVCRE sets no `kubernetes.io/hostname` affinity, so the scheduler
+picks the machines within the target.
+
+`nodesPerJob` is required here. Unpinned honors the size you ask for or fails
+saying why; it is never clamped to fit the fleet or auto-selected.
+
+```bash
+kubectl nvcre certification run --cert-file examples/certification-unpinned.yaml --wait
 ```

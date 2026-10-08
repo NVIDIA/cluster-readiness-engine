@@ -22,7 +22,8 @@ spec:
       binary: /usr/local/bin/all_reduce_perf_mpi
       args: ["-b", "8", "-e", "32G", "-f", "2", "-n", "100"]
       mpirunPath: /usr/local/mpi/bin/mpirun
-  numNodes: 4   # nodes per job group; all eligible nodes are partitioned into 4-node jobs
+  numNodes: 4   # nodes per job group; all eligible nodes are partitioned into 4-node
+                # jobs. For a single 4-node job, add orchestration.placement: Unpinned
   gangScheduler:
     schedulerName: kai-scheduler
     queue: high-priority
@@ -59,8 +60,43 @@ _Fields documented so far:_
 | `workloadMetadata.labels` | map[string]string | Optional. At most 32 entries after merging and after any `gangScheduler` queue label is inserted — exceeding the cap fails rather than dropping labels. When `gangScheduler` is set, the queue label consumes one entry, leaving room for at most 31 user-supplied labels. Keys must be valid Kubernetes label keys and values valid Kubernetes label values; `app.kubernetes.io/managed-by` and any key under `nvcre.nvidia.com/` are rejected |
 | `nicResourceName` | string | Optional. Kubernetes extended resource name of the RDMA NIC devices to request on workload containers for on-prem GB200/GB300 targets, for example `rdma/ib` or `nvidia.com/mlnxnics`. Must be a fully qualified extended resource name (domain, slash, and a name segment of at most 63 characters); the reserved `kubernetes.io` and `k8s.io` domains are rejected. When unset, the controller detects the name automatically: if exactly one candidate resource (`rdma/*` or `nvidia.com/mlnxnics`) is allocatable at the resolved `mlnxPerNode` count on every target node, it is requested; otherwise nothing is requested and a Normal `NICResourceDetection` event on the WorkloadRun explains what was found: no candidate on any node, candidates below the requested count (naming the count), or multiple qualifying candidates. Set the field to override detection or when detection is ambiguous; requesting a resource the nodes do not advertise at the requested count leaves pods permanently Pending. Offline `nvcrectl workloadrun render` (without `--dry-run`) has no cluster to inspect and requires the field. The per-container count always comes from `mlnxPerNode` (GB200/GB300 default to 8; sites running a shared-device plugin should set `mlnxPerNode: 1`, or detection will refuse a pooled resource advertised as 1) |
 | `mlnxPerNode` | int32 | Optional. Overrides the auto-detected Mellanox NIC count per node used by InfiniBand/RoCE platforms and as the `nicResourceName` request count. When unset, derived from GPU architecture and platform via the catalog's `gpu-defaults.yaml`. Setting it to `0` is a supported opt-out rather than a request for zero devices: the Azure override stops requesting `nvidia.com/mlnxnics` altogether instead of emitting a count of zero. See [Architecture-specific resources](../concepts/platform-detection.md#architecture-specific-resources) |
+| `orchestration.placement` | string | Optional, `Pinned` or `Unpinned`. Empty means `Pinned`. Under `Unpinned` the run is a single job of exactly `numNodes` nodes, with no `kubernetes.io/hostname` affinity. Rejected together with `testScale: intra-node` or `intra-rack`, which are explicit requests for a grouping strategy. See [Placement](#placement) |
 
-`numNodes` (shown in the example above) is the number of nodes **per job group**, not a total: the orchestrator partitions all eligible nodes into groups of that size.
+`numNodes` (shown in the example above) is the number of nodes **per job group** under the default `Pinned` placement, not a total: the orchestrator partitions all eligible nodes into groups of that size. Under `placement: Unpinned` it is the total size of the one job that runs.
+
+### `target` vs `numNodes` vs `gpusPerNode`
+
+These three fields are often mistaken for one another. They answer different questions, and the separation is deliberate:
+
+- **`target` says which nodes are eligible.** It is a set predicate, a label selector both the API server and the scheduler can evaluate. The default is every node labelled `nvidia.com/gpu.present: "true"`.
+- **`numNodes` says how many of them to use.** It is a count. A count cannot narrow a set, because it does not say *which* members to drop, so `numNodes` never rewrites `target`. To run against a narrower set, narrow `target` itself with a tighter `nodeSelector`, `matchExpressions`, or an explicit `nodeNames` list.
+- **`gpusPerNode` is a per-node resource request.** It narrows eligibility only indirectly: nodes that cannot supply the requested GPU count are dropped at discovery, and the scheduler enforces the same request again at bind time.
+
+Which nodes the job actually lands on is the scheduler's decision under `Unpinned`, constrained to `target` by the node affinity carried onto every pod.
+
+## Placement
+
+`spec.orchestration.placement` decides how many jobs a WorkloadRun runs and who picks the nodes.
+
+**`Pinned`** is the default. Every eligible node is partitioned into groups of `numNodes`, and each job carries a required `kubernetes.io/hostname` affinity naming its group's machines. A 12-node fleet with `numNodes: 2` runs six jobs.
+
+**`Unpinned`** runs exactly one job of exactly `numNodes` nodes, whatever the target matches, with no hostname affinity. The same fleet runs one two-node job and leaves the other ten untouched.
+
+```yaml
+spec:
+  numNodes: 4
+  orchestration:
+    testScale: full-scale
+    placement: Unpinned
+```
+
+The requested size is honored exactly, or the run fails saying why. It is never clamped to fit the fleet.
+
+`testScale: full-scale` has always been documented as "all nodes in a single group" and has never been implemented as anything but the default chunking. Pairing it with `placement: Unpinned` is what makes a single job actually happen. `intra-node` and `intra-rack` are rejected under `Unpinned`: both name a grouping strategy, which contradicts running one job.
+
+On a contended cluster a multi-node `Unpinned` job hands placement to the scheduler, so some pods can bind while the rest stay Pending. Set `spec.gangScheduler` (KAI or Run:ai) when `numNodes > 1` so the gang schedules whole or not at all.
+
+See [Workflow: Placement](workflow.md#placement) for the full contract, including how `target` reaches the pods in both modes.
 
 ## Workload object labels
 

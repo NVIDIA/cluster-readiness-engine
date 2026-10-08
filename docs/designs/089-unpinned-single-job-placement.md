@@ -231,7 +231,25 @@ exactly that case, and is the reason for the asymmetry in the next section.
 `orch.DetectedGPUArchitecture = gpuArch` (`workflow_controller.go:449`). Diagnose reads
 `g.Nodes[0]` (`:1818-1824`) and accumulates `g.Nodes` into suspects (`:1882`, `:2073`); with
 an empty list it would silently report every node healthy. It is definitionally about
-partitioning. The check is mirrored in `nvcrectl` so offline `render` rejects it too.
+partitioning.
+
+Both rejections are mirrored in `nvcrectl` so offline `render` rejects what a reconcile
+would reject. The mirror sits in `render.ResolveWorkflowForPlatform`, immediately after
+`ApplyOverridesWithTracking`, which is the same post-override boundary the controller uses
+and is reached by every render path: `certification render` with and without `--dry-run`,
+and `workflow render`. `workloadrun render` has its own copy at each of its two override
+sites, because it does not route through that helper.
+
+Placing the mirror after overrides is not a stylistic choice. A conflicting field rarely
+appears in the YAML the operator wrote: the catalog lowers `testScale: intra-rack` into
+`topology.strictDomain` and `testScale: diagnose` into a `diagnose` block at `entry.Build()`
+time (`pkg/catalog/entries/communication/nccl-all-reduce.yaml:167-175`), and an override can
+merge `topology` in later still. A check on the spec as written sees neither.
+
+`ValidateWRPlacement` keeps its separate, earlier call inside `BuildWorkflowSpec` for the
+reason given there: it reads `testScale`, which has been lowered away by the time an
+`OrchestrationSpec` exists. The two checks are complementary rather than redundant, and both
+run on the WorkloadRun render path.
 
 **`strictDomain: true`: reject.** It is set only by an explicit `testScale: intra-rack` and
 means "one group per topology domain", which directly contradicts one job.

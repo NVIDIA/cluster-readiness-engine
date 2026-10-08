@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: gpu-cluster-cert-unpinned
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  # Under Unpinned this is the size of the one job that runs, not a chunk size.
+  # It is required: Unpinned never auto-selects a size, and never shrinks the
+  # job to fit the fleet.
+  nodesPerJob: 8
+  orchestration:
+    placement: Unpinned
+  # Uncomment when your workload images require a pull secret.
+  # imagePullSecrets:
+  #   - name: ngc-secret
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 50
