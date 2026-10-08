@@ -15,10 +15,9 @@
 # default to enabled on GB300 hardware. Explicitly setting it ensures MNNVL-on
 # and MNNVL-off runs are correctly differentiated.
 #
-# NCCL_DMABUF_ENABLE=0 when MNNVL disabled: OCI GB300 nodes return error 524
-# (Unknown error) from mlx5dv_reg_dmabuf_mr. NCCL falls back to DMA-BUF for
-# GPU Direct RDMA by default, which fails on this cluster. Only needed when MNNVL
-# is off; with MNNVL enabled this code path is not taken.
+# NCCL_DMABUF_ENABLE=1: DMA-BUF GPU Direct RDMA is enabled unconditionally. It
+# was previously forced to 0 with MNNVL off because mlx5dv_reg_dmabuf_mr returned
+# error 524 on OCI GB300 nodes; peer memory support is now available there.
 #
 # NCCL_TOPO_FILE: points NCCL at the host topology file that
 # deps/oci-gb300-nccl-topo.yaml mounts. Without it NCCL pairs GPUs with the
@@ -38,10 +37,8 @@
   value: "3"
 - name: NCCL_MNNVL_ENABLE
   value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"
-{{- if not .EnableMNNVL }}
 - name: NCCL_DMABUF_ENABLE
-  value: "0"
-{{- end }}
+  value: "1"
 - name: NCCL_TOPO_FILE
   value: /etc/nccl/topo.xml
 - name: NCCL_IB_ADAPTIVE_ROUTING

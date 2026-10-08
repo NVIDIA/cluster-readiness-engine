@@ -43,6 +43,10 @@ followed them.
   `/etc/nccl/topo.xml` and set `NCCL_TOPO_FILE`, so NCCL pairs each GPU with its own
   RoCE rail. The file comes from the `nvidia-tuned` NodeWright package and is now
   required on OCI GB300: worker pods do not start on a node without it
+- OCI GB300 NCCL communication and nemotron training entries set
+  `NCCL_DMABUF_ENABLE=1` whether or not MNNVL is enabled. It was forced to 0 with
+  MNNVL off as a workaround for a DMA-BUF registration error (`mlx5dv_reg_dmabuf_mr`
+  returning 524) that peer memory support on these nodes now resolves
 - `nvcre_job_status` now reports `failed` for a Job that timed out on
   `timeoutPerJob`. The gauge was written only by the Job tier, so the Workflow
   reconciler's timeout write left it at `in_progress` for the rest of the run, and
