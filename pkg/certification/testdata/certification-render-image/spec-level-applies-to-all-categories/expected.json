@@ -15,7 +15,7 @@
         "replicatedJob": "node",
         "kind": "initContainer",
         "name": "tcpxo-daemon",
-        "image": "us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.8"
+        "image": "us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.21"
       },
       {
         "dependency": "nccl-all-reduce-runtime",
@@ -56,7 +56,7 @@
         "replicatedJob": "node",
         "kind": "initContainer",
         "name": "tcpxo-daemon",
-        "image": "us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.8"
+        "image": "us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.21"
       }
     ]
   }

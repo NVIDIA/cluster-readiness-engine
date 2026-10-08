@@ -1,0 +1,164 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# GCP H100 (A3 Mega) nodes on a cluster built from Google's current TCPXO
+# manifest: the nccl-tcpxo-installer pod on each target node installs plugin
+# v1.0.17, which loads CUDA 13. The controller reads the release from the
+# installer pods and renders the NCCL entries' CUDA 13 image (pytorch:26.01-py3)
+# on every MPI container and trainer.image, with Google's paired tcpxo-daemon
+# v1.0.23 (issue #438). The pinned CUDA 12 image fails to load this plugin.
+apiVersion: v1
+kind: Node
+metadata:
+  name: gcp-h100-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: gcp-h100-node-01
+  annotations:
+    networking.gke.io/north-interfaces: '[{"network":"aicr-uat-gpu-nic-0","ipAddress":"192.168.0.3"},{"network":"aicr-uat-gpu-nic-1","ipAddress":"192.168.16.3"},{"network":"aicr-uat-gpu-nic-2","ipAddress":"192.168.32.3"},{"network":"aicr-uat-gpu-nic-3","ipAddress":"192.168.48.3"},{"network":"aicr-uat-gpu-nic-4","ipAddress":"192.168.64.3"},{"network":"aicr-uat-gpu-nic-5","ipAddress":"192.168.80.3"},{"network":"aicr-uat-gpu-nic-6","ipAddress":"192.168.96.3"},{"network":"aicr-uat-gpu-nic-7","ipAddress":"192.168.112.3"}]'
+    networking.gke.io/nic-info: '[{"birthIP":"10.0.0.15","pciAddress":"0000:00:0c.0","birthName":"eth0"},{"birthIP":"192.168.0.3","pciAddress":"0000:06:00.0","birthName":"eth1"},{"birthIP":"192.168.16.3","pciAddress":"0000:07:00.0","birthName":"eth2"},{"birthIP":"192.168.32.3","pciAddress":"0000:0d:00.0","birthName":"eth3"},{"birthIP":"192.168.48.3","pciAddress":"0000:0e:00.0","birthName":"eth4"},{"birthIP":"192.168.64.3","pciAddress":"0000:86:00.0","birthName":"eth5"},{"birthIP":"192.168.80.3","pciAddress":"0000:87:00.0","birthName":"eth6"},{"birthIP":"192.168.96.3","pciAddress":"0000:8d:00.0","birthName":"eth7"},{"birthIP":"192.168.112.3","pciAddress":"0000:8e:00.0","birthName":"eth8"}]'
+spec:
+  providerID: "gce://my-project/us-central1-c/gcp-h100-node-01"
+status:
+  capacity:
+    nvidia.com/gpu: "8"
+    networking.gke.io.networks/aicr-uat-gpu-nic-0: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-0.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-1: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-1.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-2: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-2.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-3: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-3.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-4: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-4.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-5: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-5.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-6: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-6.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-7: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-7.IP: "1"
+  allocatable:
+    nvidia.com/gpu: "8"
+    networking.gke.io.networks/aicr-uat-gpu-nic-0: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-0.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-1: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-1.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-2: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-2.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-3: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-3.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-4: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-4.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-5: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-5.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-6: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-6.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-7: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-7.IP: "1"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: gcp-h100-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: gcp-h100-node-02
+  annotations:
+    networking.gke.io/north-interfaces: '[{"network":"aicr-uat-gpu-nic-0","ipAddress":"192.168.0.3"},{"network":"aicr-uat-gpu-nic-1","ipAddress":"192.168.16.3"},{"network":"aicr-uat-gpu-nic-2","ipAddress":"192.168.32.3"},{"network":"aicr-uat-gpu-nic-3","ipAddress":"192.168.48.3"},{"network":"aicr-uat-gpu-nic-4","ipAddress":"192.168.64.3"},{"network":"aicr-uat-gpu-nic-5","ipAddress":"192.168.80.3"},{"network":"aicr-uat-gpu-nic-6","ipAddress":"192.168.96.3"},{"network":"aicr-uat-gpu-nic-7","ipAddress":"192.168.112.3"}]'
+    networking.gke.io/nic-info: '[{"birthIP":"10.0.0.15","pciAddress":"0000:00:0c.0","birthName":"eth0"},{"birthIP":"192.168.0.3","pciAddress":"0000:06:00.0","birthName":"eth1"},{"birthIP":"192.168.16.3","pciAddress":"0000:07:00.0","birthName":"eth2"},{"birthIP":"192.168.32.3","pciAddress":"0000:0d:00.0","birthName":"eth3"},{"birthIP":"192.168.48.3","pciAddress":"0000:0e:00.0","birthName":"eth4"},{"birthIP":"192.168.64.3","pciAddress":"0000:86:00.0","birthName":"eth5"},{"birthIP":"192.168.80.3","pciAddress":"0000:87:00.0","birthName":"eth6"},{"birthIP":"192.168.96.3","pciAddress":"0000:8d:00.0","birthName":"eth7"},{"birthIP":"192.168.112.3","pciAddress":"0000:8e:00.0","birthName":"eth8"}]'
+spec:
+  providerID: "gce://my-project/us-central1-c/gcp-h100-node-02"
+status:
+  capacity:
+    nvidia.com/gpu: "8"
+    networking.gke.io.networks/aicr-uat-gpu-nic-0: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-0.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-1: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-1.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-2: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-2.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-3: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-3.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-4: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-4.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-5: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-5.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-6: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-6.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-7: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-7.IP: "1"
+  allocatable:
+    nvidia.com/gpu: "8"
+    networking.gke.io.networks/aicr-uat-gpu-nic-0: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-0.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-1: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-1.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-2: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-2.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-3: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-3.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-4: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-4.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-5: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-5.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-6: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-6.IP: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-7: "1"
+    networking.gke.io.networks/aicr-uat-gpu-nic-7.IP: "1"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nccl-tcpxo-installer-0
+  namespace: kube-system
+  labels:
+    k8s-app: nccl-tcpxo-installer
+spec:
+  nodeName: gcp-h100-node-01
+  initContainers:
+  - name: pre-installation
+    image: ubuntu
+  - name: nccl-tcpxo-installer
+    image: us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/nccl-plugin-gpudirecttcpx-dev:v1.0.17
+  containers:
+  - name: pause
+    image: gke.gcr.io/pause:3.8
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nccl-tcpxo-installer-1
+  namespace: kube-system
+  labels:
+    k8s-app: nccl-tcpxo-installer
+spec:
+  nodeName: gcp-h100-node-02
+  initContainers:
+  - name: pre-installation
+    image: ubuntu
+  - name: nccl-tcpxo-installer
+    image: us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/nccl-plugin-gpudirecttcpx-dev:v1.0.17
+  containers:
+  - name: pause
+    image: gke.gcr.io/pause:3.8
+status:
+  phase: Running
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: gcp-tcpxo17
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  nodesPerJob: 2
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

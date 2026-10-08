@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No target nodes to read: detection ran and refused.
+platform: gcp
+gpuArchitecture: h100
+nodes: []
+pods: []

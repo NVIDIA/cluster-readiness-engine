@@ -6,19 +6,20 @@
 # at /usr/local/nvidia by gcp-h100-tcpxo-runtime-patch.yaml) and it loads the
 # CUDA runtime from the workload image rather than bundling one, so a mismatch
 # fails with "Error loading libnccl-net_internal.so: libcudart.so.<major>".
-# pytorch:25.06-py3 is the last CUDA 12 NGC PyTorch release (CUDA 12.9.1,
-# OpenMPI 4.1.7) and ships the *_perf_mpi binaries. This pins the worker, the
-# launcher, and the launcher's fix-ssh-permissions init so every MPI process
-# runs one image; the override sets trainer.image to match. tcpxo-daemon keeps
-# its GCP-provided image. Single-node entries use
-# gcp-h100-cuda12-image-patch-loopback.yaml, which has no launcher to pin.
+# The image follows the plugin version the controller detects on the target
+# nodes (pkg/catalog/tcpxo.go): pytorch:25.06-py3 (CUDA 12, the last CUDA 12
+# NGC PyTorch release) for v1.0.16 and earlier, the entries' CUDA 13 base
+# image for v1.0.17. Undetected, it renders the CUDA 12 image. This pins the
+# worker, the launcher, and the launcher's fix-ssh-permissions init so every
+# MPI process runs one image; the override sets trainer.image to match.
+# tcpxo-daemon keeps its own image. Single-node entries use
+# gcp-h100-nccl-image-patch-loopback.yaml, which has no launcher to pin.
 #
-# This pin assumes TCPXO plugin v1.0.16 or earlier (CUDA 12). Google qualifies
-# v1.0.17 and later against CUDA 13, and the controller does not detect the
-# installed version, so clusters on v1.0.17+ must set categories[].options.image
-# to a CUDA 13 image. Per category, not spec.image: the spec-level field defaults
-# every category, including ones with their own image such as dcgm-level4.
-# See docs/concepts/platform-detection.md, "GCP H100 clusters".
+# To override the image, set categories[].options.image on the NCCL
+# categories. A top-level spec.image applies to every category in the
+# Certification, including ones such as diagnostics/dcgm-level4 whose command
+# is not in a PyTorch image. See docs/concepts/platform-detection.md,
+# "GCP H100 clusters".
 - apiVersion: trainer.kubeflow.org/v1alpha1
   kind: TrainingRuntime
   metadata:
@@ -34,10 +35,10 @@
                 spec:
                   containers:
                   - name: node
-                    image: nvcr.io/nvidia/pytorch:25.06-py3
+                    image: {{ .GCPH100NCCLImage }}
                   initContainers:
                   - name: fix-ssh-permissions
-                    image: nvcr.io/nvidia/pytorch:25.06-py3
+                    image: {{ .GCPH100NCCLImage }}
         - name: node
           template:
             spec:
@@ -45,4 +46,4 @@
                 spec:
                   containers:
                   - name: node
-                    image: nvcr.io/nvidia/pytorch:25.06-py3
+                    image: {{ .GCPH100NCCLImage }}

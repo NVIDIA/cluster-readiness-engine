@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Plugin v1.0.17 (CUDA 13.2), Google's current manifest: the entries' CUDA 13
+# base image on every MPI container and trainer.image, paired daemon v1.0.23.
+category: communication
+subcategory: nccl-all-reduce
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+nodesPerJob: 2
+gpusPerNode: 8
+tcpxoPluginVersion: v1.0.17

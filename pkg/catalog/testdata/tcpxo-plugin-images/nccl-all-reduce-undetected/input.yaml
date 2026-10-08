@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No detected version (offline render, or detection refused): the v1.0.15
+# profile, the release AICR pins (CUDA 12 image, daemon v1.0.21).
+category: communication
+subcategory: nccl-all-reduce
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+nodesPerJob: 2
+gpusPerNode: 8

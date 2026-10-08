@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# GCP GB200 uses RoCE, not TCPXO: detection does not run.
+platform: gcp
+gpuArchitecture: gb200
+nodes:
+  - gke-a3mega-0
+  - gke-a3mega-1
+pods: []
