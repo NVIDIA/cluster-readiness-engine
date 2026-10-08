@@ -1,0 +1,86 @@
+[
+  {
+    "name": "cert-passed",
+    "result": "PASSED",
+    "categories": [
+      {
+        "domain": "communication",
+        "variant": "nccl-all-reduce",
+        "status": "Succeeded",
+        "runtime": "1m 2s",
+        "bandwidth": [{"size": "128 MB", "algBW": "42 GB/s", "busBW": "21 GB/s", "samples": 1}]
+      },
+      {
+        "domain": "training",
+        "variant": "nemotron5-8b",
+        "status": "Succeeded",
+        "runtime": "500ms"
+      }
+    ]
+  },
+  {
+    "name": "cert-failed",
+    "result": "FAILED",
+    "categories": [
+      {
+        "domain": "training",
+        "variant": "nemotron5-8b",
+        "status": "Failed",
+        "failureReason": "1 group failed: <rank-0> & \"trainer\"",
+        "runtime": "10m 0s",
+        "failedGroups": [
+          {
+            "name": "group-0",
+            "nodeCount": 2,
+            "nodes": ["node001", "node002"],
+            "reason": "BackoffLimitExceeded — 2 of 2 pods failed",
+            "failureLog": {
+              "podName": "trainer-pod",
+              "nodeName": "node001",
+              "exitCode": 137,
+              "reason": "OOMKilled",
+              "tail": "trainer initialized\nCUDA out of memory <rank-0> & rank-1"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "cert-running",
+    "result": "RUNNING",
+    "categories": [{"domain": "communication", "variant": "nccl-all-reduce", "status": "Running"}]
+  },
+  {
+    "name": "cert-unknown",
+    "result": "RUNNING",
+    "categories": [{"domain": "training", "variant": "nemotron5-8b", "status": "Pending"}]
+  },
+  {
+    "name": "cert-finalizing",
+    "result": "RUNNING",
+    "categories": [{"domain": "communication", "variant": "nccl-all-reduce", "status": "Succeeded"}]
+  },
+  {
+    "name": "cert-empty",
+    "result": "RUNNING",
+    "categories": []
+  },
+  {
+    "name": "cert-excluded",
+    "result": "INCOMPLETE",
+    "totalNodes": 3,
+    "excludedNodes": ["node003"],
+    "exclusionReason": "1 node has insufficient GPUs",
+    "categories": [{"domain": "communication", "variant": "nccl-all-reduce", "status": "Succeeded", "runtime": "2s"}]
+  },
+  {
+    "name": "cert-repeated",
+    "result": "FAILED",
+    "categories": [
+      {"domain": "communication", "variant": "nccl-all-reduce", "status": "Succeeded", "nodesPerJob": 2},
+      {"domain": "communication", "variant": "nccl-all-reduce", "status": "Failed", "nodesPerJob": 4, "failureReason": "4-node bandwidth below threshold"},
+      {"domain": "communication", "variant": "nccl-all-reduce", "status": "Succeeded", "nodesPerJob": 8}
+    ]
+  }
+]

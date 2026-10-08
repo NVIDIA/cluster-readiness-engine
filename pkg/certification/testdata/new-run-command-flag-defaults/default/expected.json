@@ -40,6 +40,10 @@
     "default": ""
   },
   {
+    "name": "junit-file",
+    "default": ""
+  },
+  {
     "name": "kubeconfig",
     "default": ""
   },

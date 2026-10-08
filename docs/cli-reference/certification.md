@@ -38,6 +38,7 @@ nvcrectl certification run --category communication/nccl-all-reduce [flags]
 | `--max-restarts` | `0` | Maximum checkpoint restarts for training workloads (0 = catalog default) |
 | `--storage-class` | — | StorageClass for PVC dependencies created by catalog entries |
 | `--results-file` | — | Write the certification report as JSON to this path (requires `--wait`) |
+| `--junit-file` | — | Write the certification report as JUnit XML to this path (requires `--wait`) |
 | `--controller-pull-secret` | — | Token for controller registry auth during `--setup` (e.g. GitHub PAT for `ghcr.io`) — separate from workload image credentials |
 | `--workload-registry` | — | Registry server for workload image pull (e.g. `nvcr.io`, `ghcr.io`) — required when `--workload-registry-password` is set |
 | `--workload-registry-username` | — | Registry username for workload image pull (e.g. `$oauthtoken` for NGC) — required when `--workload-registry-password` is set |
@@ -96,6 +97,7 @@ nvcrectl certification report <name> [<name>...] [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--results-file` | — | Write the report as JSON to this file path |
+| `--junit-file` | — | Write the report as JUnit XML to this file path |
 
 ## nvcrectl certification list-categories
 
