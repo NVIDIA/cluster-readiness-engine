@@ -21,6 +21,18 @@
   },
   {
     "domain": "diagnostics",
+    "variant": "dcgm-level1"
+  },
+  {
+    "domain": "diagnostics",
+    "variant": "dcgm-level2"
+  },
+  {
+    "domain": "diagnostics",
+    "variant": "dcgm-level3"
+  },
+  {
+    "domain": "diagnostics",
     "variant": "dcgm-level4"
   },
   {

@@ -41,7 +41,7 @@ Helm release kubeflow-trainer   ✓ deployed
 Status: not ready — a managed Helm release is unhealthy
   Helm release nvcre (namespace: nvcre) is pending-upgrade — run 'nvcrectl setup init' to repair it
 
-Note: service gpu-operator/nvidia-dcgm is missing. Only the diagnostics/dcgm-level4
-      category needs it. Your cluster administrator can add it with:
+Note: service gpu-operator/nvidia-dcgm is missing. DCGM diagnostics categories
+      need it. Your cluster administrator can add it with:
       kubectl patch clusterpolicy cluster-policy --type=merge \
         -p '{"spec":{"dcgm":{"enabled":true}}}'

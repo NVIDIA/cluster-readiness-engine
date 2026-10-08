@@ -94,7 +94,7 @@ List what the catalog offers:
 kubectl nvcre certification list-categories
 ```
 
-The catalog has eight categories today. `communication/nccl-all-reduce`, `nccl-all-gather`, and `nccl-alltoall` run NCCL performance tests across all target nodes at once. `nccl-loopback` and `nccl-loopback-nvswitch` run one single-node Job per node and isolate per-node problems. `diagnostics/dcgm-level4` runs the deep DCGM diagnostic on each node. `training/nemotron5-8b` and `nemotron5-56b` run real Megatron-LM pretraining and measure goodput. Both have a minimum GPU count: 4 for the 8B model, 32 for the 56B. The total must also divide evenly by the tensor-parallel width, which varies by architecture — it is 8 on A100, so the 8B model needs 8 GPUs there rather than 4.
+The catalog has eleven categories today. `communication/nccl-all-reduce`, `nccl-all-gather`, and `nccl-alltoall` run NCCL performance tests across all target nodes at once. `nccl-loopback` and `nccl-loopback-nvswitch` run one single-node Job per node and isolate per-node problems. `diagnostics/dcgm-level1` through `diagnostics/dcgm-level4` provide progressively deeper DCGM diagnostics on each node. Level 1 checks the deployment and software; level 2 adds GPU memory and PCIe/NVLink checks; levels 3 and 4 add longer hardware diagnostics. `training/nemotron5-8b` and `nemotron5-56b` run real Megatron-LM pretraining and measure goodput. Both have a minimum GPU count: 4 for the 8B model, 32 for the 56B. The total must also divide evenly by the tensor-parallel width, which varies by architecture — it is 8 on A100, so the 8B model needs 8 GPUs there rather than 4.
 
 Start with `nccl-all-reduce`. It works on any node count and finishes in minutes on a healthy cluster:
 
@@ -108,7 +108,15 @@ kubectl nvcre certification run \
 
 You do not need an image pull secret here. The workload images are public.
 
-What happens:
+For a shorter per-node diagnostic, select level 2 instead:
+
+```bash
+kubectl nvcre certification run --category diagnostics/dcgm-level2 --wait
+```
+
+All DCGM levels require the standalone DCGM service and still check software prerequisites, including GPU persistence mode. Levels 1–3 use DCGM's default durations with a `1h` job budget; level 4 retains its extended durations and `2h` budget. See [Catalog](../concepts/catalog.md) for coverage and concurrency options.
+
+For the NCCL command above:
 
 1. The CLI discovers the GPU nodes and prints the detected product.
 2. It creates a namespace named `nvcrectl-<timestamp>` and a Certification in it. **Note both names from the output.** You need them later.

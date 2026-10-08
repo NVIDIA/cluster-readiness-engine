@@ -21,7 +21,7 @@ import (
 
 const outputJSON = "json"
 
-// The diagnostics/dcgm-level4 category runs dcgmi against this service. The
+// The DCGM diagnostics categories run dcgmi against this service. The
 // GPU Operator creates it only when spec.dcgm.enabled is true.
 const (
 	dcgmServiceName      = "nvidia-dcgm"
@@ -97,7 +97,7 @@ type SetupStatusComponents struct {
 	KubeflowTrainer bool `json:"kubeflowTrainer"`
 	LogProfiles     bool `json:"logProfiles"`
 	GPUOperator     bool `json:"gpuOperator"`
-	// DCGM is optional. Only the diagnostics/dcgm-level4 category needs it,
+	// DCGM is optional. Only DCGM diagnostics categories need it,
 	// so it does not count toward Installed.
 	DCGM bool `json:"dcgm"`
 }
@@ -129,7 +129,7 @@ Components checked:
   kubeflowTrainer      Kubeflow Trainer TrainJob CRD and version (supported: ` + kubeflowTrainerVersion + `)
   logProfiles          NVCRE LogProfile resources
   gpuOperator          NVIDIA GPU Operator (nodes with nvidia.com/gpu.present=true)
-  dcgm                 NVIDIA DCGM service (optional; diagnostics/dcgm-level4 only)
+  dcgm                 NVIDIA DCGM service (optional; DCGM diagnostics categories only)
 
 The Helm releases managed by 'setup init' (nvcre and
 kubeflow-trainer) are also checked via the helm CLI.
@@ -497,9 +497,9 @@ func printSetupStatus(out io.Writer, s *SetupStatus) {
 
 	if s.dcgmAbsent {
 		_, _ = fmt.Fprintln(out)
-		_, _ = fmt.Fprintf(out, "Note: service %s/%s is missing. Only the diagnostics/dcgm-level4\n",
+		_, _ = fmt.Fprintf(out, "Note: service %s/%s is missing. DCGM diagnostics categories\n",
 			dcgmServiceNamespace, dcgmServiceName)
-		_, _ = fmt.Fprintln(out, "      category needs it. Your cluster administrator can add it with:")
+		_, _ = fmt.Fprintln(out, "      need it. Your cluster administrator can add it with:")
 		_, _ = fmt.Fprintln(out, `      kubectl patch clusterpolicy cluster-policy --type=merge \`)
 		_, _ = fmt.Fprintln(out, `        -p '{"spec":{"dcgm":{"enabled":true}}}'`)
 	}

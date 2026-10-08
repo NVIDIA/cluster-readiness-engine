@@ -149,7 +149,7 @@ func readyClusterObjects() []client.Object {
 }
 
 // A missing DCGM service must not make the cluster look unready, because only
-// the diagnostics/dcgm-level4 category needs it.
+// DCGM diagnostics categories need it.
 func TestCollectSetupStatusDCGMIsOptional(t *testing.T) {
 	objs := readyClusterObjects()
 

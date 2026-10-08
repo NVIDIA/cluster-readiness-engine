@@ -2,7 +2,7 @@
   "dependencies": [
     {
       "kind": "TrainingRuntime",
-      "name": "dcgm-level4-runtime"
+      "name": "dcgm-level1-runtime"
     }
   ],
   "found": true,
@@ -11,21 +11,15 @@
       "expression": "node.spec.unschedulable == true"
     },
     "trainJob": {
-      "runtimeRef": "dcgm-level4-runtime",
+      "runtimeRef": "dcgm-level1-runtime",
       "trainerArgs": [
         "diag",
         "--host",
         "nvidia-dcgm.gpu-operator.svc:5555",
         "--run",
-        "4",
+        "1",
         "--json",
-        "--verbose",
-        "-p",
-        "targeted_power.test_duration=1200s",
-        "-p",
-        "targeted_stress.test_duration=1200s",
-        "-p",
-        "nvbandwidth.is_allowed=true"
+        "--verbose"
       ],
       "trainerCommand": [
         "dcgmi"
@@ -38,6 +32,6 @@
     "targetNodeSelector": {
       "nvidia.com/gpu.product": "NVIDIA-GB200-NVL72"
     },
-    "timeoutPerJob": "2h0m0s"
+    "timeoutPerJob": "1h0m0s"
   }
 }
