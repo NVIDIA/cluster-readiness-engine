@@ -4,7 +4,7 @@
 jobTemplate:
   spec:
     stallMultiplier: 3
-    startupStallTimeoutSeconds: 1200
+    startupStallTimeoutSeconds: {{ .StartupStallTimeoutSeconds }}
 {{- if .EnableCheckpoint }}
     checkpoint:
       pvcName: nemotron5-8b-pvc

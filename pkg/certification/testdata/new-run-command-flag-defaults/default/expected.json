@@ -80,6 +80,10 @@
     "default": "false"
   },
   {
+    "name": "startup-stall-timeout-seconds",
+    "default": "0"
+  },
+  {
     "name": "storage-class",
     "default": ""
   },
