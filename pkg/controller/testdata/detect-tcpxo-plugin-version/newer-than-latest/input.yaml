@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A release newer than every mapped one is reported, not exact: the catalog
+# renders the latest mapped profile, and the message says it is unvalidated.
+platform: gcp
+gpuArchitecture: h100
+nodes:
+  - gke-a3mega-0
+  - gke-a3mega-1
+pods:
+  - name: nccl-tcpxo-installer-aaaaa
+    nodeName: gke-a3mega-0
+    initImages:
+    - ubuntu
+    - us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/nccl-plugin-gpudirecttcpx-dev:v1.0.18
+    images:
+    - gke.gcr.io/pause:3.8
+  - name: nccl-tcpxo-installer-bbbbb
+    nodeName: gke-a3mega-1
+    initImages:
+    - ubuntu
+    - us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/nccl-plugin-gpudirecttcpx-dev:v1.0.18
+    images:
+    - gke.gcr.io/pause:3.8

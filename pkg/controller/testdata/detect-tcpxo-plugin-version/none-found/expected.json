@@ -1,0 +1,6 @@
+{
+  "detectionRan": true,
+  "version": "",
+  "exact": false,
+  "message": "TCPXO plugin version detection found no running nccl-tcpxo-installer pod (image nccl-plugin-gpudirecttcpx-dev) on 2 of 2 target nodes: gke-a3mega-0, gke-a3mega-1; rendering the images for v1.0.15, the minimum supported release and the one AICR pins (NCCL image nvcr.io/nvidia/pytorch:25.06-py3, training image nvcr.io/nvidia/pytorch:25.06-py3, tcpxo-daemon us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.21). If the plugin is v1.0.17 or later, set categories[].options.image to a CUDA 13 image on the GCP H100 NCCL and training categories."
+}

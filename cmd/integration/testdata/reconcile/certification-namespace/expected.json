@@ -350,7 +350,7 @@
                             "initContainers": [
                               {
                                 "args": [
-                                  "set -ex\nchmod 755 /fts/entrypoint_rxdm_container.sh\n/fts/entrypoint_rxdm_container.sh --num_hops=2 --num_nics=8 --uid= --alsologtostderr --enforce_kernel_ipv6_support=false\n"
+                                  "set -ex\nchmod 755 /fts/entrypoint_rxdm_container.sh\n/fts/entrypoint_rxdm_container.sh --num_hops=2\n"
                                 ],
                                 "command": [
                                   "/bin/sh",
@@ -362,15 +362,15 @@
                                     "value": "/usr/local/nvidia/lib64"
                                   }
                                 ],
-                                "image": "us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.8",
+                                "image": "us-docker.pkg.dev/gce-ai-infra/gpudirect-tcpxo/tcpgpudmarxd-dev:v1.0.21",
                                 "imagePullPolicy": "Always",
                                 "name": "tcpxo-daemon",
                                 "restartPolicy": "Always",
                                 "securityContext": {
                                   "capabilities": {
                                     "add": [
-                                      "CAP_NET_ADMIN",
-                                      "CAP_NET_BIND_SERVICE"
+                                      "NET_ADMIN",
+                                      "NET_BIND_SERVICE"
                                     ]
                                   }
                                 },
