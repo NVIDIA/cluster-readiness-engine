@@ -12,6 +12,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
+// TestWriteJUnit compares native XML with golden reports for category outcomes and incomplete states.
 func TestWriteJUnit(t *testing.T) {
 	p := testutil.TestCaseParser{Subdir: "junit", ExpectedSuffix: ".xml"}
 	p.TestDir(t, func(tc *testutil.TestCase) error {

@@ -659,6 +659,7 @@ func TestFinishCertificationWaitBoundsPostTimeoutReads(t *testing.T) {
 	assert.True(t, wc.sawLiveDeadline)
 }
 
+// TestExecuteCertificationRunReportsBeforeCleanup checks that partial reports survive certification cleanup.
 func TestExecuteCertificationRunReportsBeforeCleanup(t *testing.T) {
 	namespace := &corev1.Namespace{Name: testCertNamespace}
 	wc := newCertificationFakeClient(t, namespace)
@@ -708,6 +709,7 @@ func TestExecuteCertificationRunReportsBeforeCleanup(t *testing.T) {
 	assert.Positive(t, junit.Suites[0].Errors)
 }
 
+// TestFinishCertificationWaitJUnitWriteError checks that JUnit write failures propagate to the caller.
 func TestFinishCertificationWaitJUnitWriteError(t *testing.T) {
 	cert := &nvcrev1alpha1.Certification{Name: "test-cert", Namespace: testCertNamespace}
 	wc := newCertificationFakeClient(t, cert)
@@ -1049,6 +1051,7 @@ func TestCategoryRunOptsWiringIntoCert(t *testing.T) {
 
 }
 
+// TestReportPathsRejectOverwrite checks that both report paths reject collisions without modifying existing data.
 func TestReportPathsRejectOverwrite(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "report")
 	require.NoError(t, os.WriteFile(path, []byte("existing report"), 0600))
@@ -1065,6 +1068,7 @@ func TestReportPathsRejectOverwrite(t *testing.T) {
 	}
 }
 
+// TestReportPathsPreserveDistinctArtifacts checks that separate JSON and XML destinations both receive valid reports.
 func TestReportPathsPreserveDistinctArtifacts(t *testing.T) {
 	dir := t.TempDir()
 	jsonPath, xmlPath := filepath.Join(dir, "report.json"), filepath.Join(dir, "report.xml")
@@ -1082,6 +1086,7 @@ func TestReportPathsPreserveDistinctArtifacts(t *testing.T) {
 	require.NoError(t, validateReportPaths("", xmlPath))
 }
 
+// TestNewRunCommandJUnitRequiresWait checks flag validation before configuration loading.
 func TestNewRunCommandJUnitRequiresWait(t *testing.T) {
 	const junitFlag = "--junit-file"
 	for _, waitFlag := range []string{"", "--wait=false"} {
@@ -1111,6 +1116,7 @@ func TestNewRunCommandJUnitRequiresWait(t *testing.T) {
 	}
 }
 
+// TestFinishCertificationWaitReportErrorGuidance checks timeout guidance and preservation of both errors.
 func TestFinishCertificationWaitReportErrorGuidance(t *testing.T) {
 	for _, timedOut := range []bool{false, true} {
 		cert := &nvcrev1alpha1.Certification{Name: testCertTimeoutCert, Namespace: testCertNamespace}

@@ -41,7 +41,7 @@ type junitIssue struct {
 }
 
 // WriteJUnit writes one test suite per certification and one test case per
-// category.
+// category, or a certification error when no categories are available.
 func WriteJUnit(path string, reports []*CertReport) error {
 	var output junitSuites
 	for _, r := range reports {
@@ -60,8 +60,15 @@ func WriteJUnit(path string, reports []*CertReport) error {
 				seconds += duration.Seconds()
 			}
 			var issue *junitIssue
+			var details any = cat
 			switch cat.Status {
 			case statusSucceeded:
+				if r.Result == "INCOMPLETE" || r.Result == "RUNNING" {
+					issue = &junitIssue{Message: "Certification did not complete: " + r.Result}
+					tc.Error = issue
+					suite.Errors++
+					details = r
+				}
 			case statusFailed:
 				message := cat.FailureReason
 				if message == "" {
@@ -76,7 +83,7 @@ func WriteJUnit(path string, reports []*CertReport) error {
 				suite.Errors++
 			}
 			if issue != nil {
-				data, err := json.MarshalIndent(cat, "", "  ")
+				data, err := json.MarshalIndent(details, "", "  ")
 				if err != nil {
 					return fmt.Errorf("marshal category report: %w", err)
 				}
@@ -84,7 +91,7 @@ func WriteJUnit(path string, reports []*CertReport) error {
 			}
 			suite.Cases = append(suite.Cases, tc)
 		}
-		if len(r.Categories) == 0 || r.Result == "INCOMPLETE" || (r.Result == "RUNNING" && suite.Errors == 0) {
+		if len(r.Categories) == 0 {
 			data, err := json.MarshalIndent(r, "", "  ")
 			if err != nil {
 				return fmt.Errorf("marshal certification report: %w", err)

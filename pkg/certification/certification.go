@@ -699,6 +699,7 @@ type categoryRunOpts struct {
 	maxRestarts      int32
 }
 
+// newRunCommand builds the certification runner and validates report flags before cluster access.
 func newRunCommand(version string) *cobra.Command {
 	var categories []string
 	var name string
@@ -1365,6 +1366,7 @@ func handleReport(
 	return nil
 }
 
+// validateReportPaths prevents JSON and JUnit output from overwriting the same path.
 func validateReportPaths(resultsFile, junitFile string) error {
 	if resultsFile == "" || junitFile == "" {
 		return nil
@@ -1636,6 +1638,7 @@ func waitForDeletion(ctx context.Context, c client.Client, name, namespace strin
 // certification report — regenerate report from a completed certification
 // ---------------------------------------------------------------------------
 
+// newReportCommand builds the command for printing and saving certification reports.
 func newReportCommand() *cobra.Command {
 	var resultsFile, junitFile string
 
@@ -1665,6 +1668,7 @@ Each certification is shown in its own section with categories and summary.`,
 	return cmd
 }
 
+// runReport fetches certifications and writes their requested report artifacts.
 func runReport(names []string, configFlags *kubeconfig.ConfigFlags, resultsFile, junitFile string) error {
 	if err := validateReportPaths(resultsFile, junitFile); err != nil {
 		return err

@@ -19,9 +19,8 @@
       <error message="Category did not complete: Pending">{&#xA;  &#34;domain&#34;: &#34;training&#34;,&#xA;  &#34;variant&#34;: &#34;nemotron5-8b&#34;,&#xA;  &#34;status&#34;: &#34;Pending&#34;&#xA;}</error>
     </testcase>
   </testsuite>
-  <testsuite name="cert-finalizing" tests="2" failures="0" errors="1" time="0">
-    <testcase name="nccl-all-reduce" classname="cert-finalizing.communication"></testcase>
-    <testcase name="certification" classname="cert-finalizing">
+  <testsuite name="cert-finalizing" tests="1" failures="0" errors="1" time="0">
+    <testcase name="nccl-all-reduce" classname="cert-finalizing.communication">
       <error message="Certification did not complete: RUNNING">{&#xA;  &#34;name&#34;: &#34;cert-finalizing&#34;,&#xA;  &#34;platform&#34;: &#34;&#34;,&#xA;  &#34;gpu&#34;: &#34;&#34;,&#xA;  &#34;totalNodes&#34;: 0,&#xA;  &#34;categories&#34;: [&#xA;    {&#xA;      &#34;domain&#34;: &#34;communication&#34;,&#xA;      &#34;variant&#34;: &#34;nccl-all-reduce&#34;,&#xA;      &#34;status&#34;: &#34;Succeeded&#34;&#xA;    }&#xA;  ],&#xA;  &#34;failedNodes&#34;: null,&#xA;  &#34;result&#34;: &#34;RUNNING&#34;&#xA;}</error>
     </testcase>
   </testsuite>
@@ -30,9 +29,8 @@
       <error message="Certification did not complete: RUNNING">{&#xA;  &#34;name&#34;: &#34;cert-empty&#34;,&#xA;  &#34;platform&#34;: &#34;&#34;,&#xA;  &#34;gpu&#34;: &#34;&#34;,&#xA;  &#34;totalNodes&#34;: 0,&#xA;  &#34;categories&#34;: [],&#xA;  &#34;failedNodes&#34;: null,&#xA;  &#34;result&#34;: &#34;RUNNING&#34;&#xA;}</error>
     </testcase>
   </testsuite>
-  <testsuite name="cert-excluded" tests="2" failures="0" errors="1" time="2">
-    <testcase name="nccl-all-reduce" classname="cert-excluded.communication" time="2"></testcase>
-    <testcase name="certification" classname="cert-excluded">
+  <testsuite name="cert-excluded" tests="1" failures="0" errors="1" time="2">
+    <testcase name="nccl-all-reduce" classname="cert-excluded.communication" time="2">
       <error message="Certification did not complete: INCOMPLETE">{&#xA;  &#34;name&#34;: &#34;cert-excluded&#34;,&#xA;  &#34;platform&#34;: &#34;&#34;,&#xA;  &#34;gpu&#34;: &#34;&#34;,&#xA;  &#34;totalNodes&#34;: 3,&#xA;  &#34;excludedNodes&#34;: [&#xA;    &#34;node003&#34;&#xA;  ],&#xA;  &#34;exclusionReason&#34;: &#34;1 node has insufficient GPUs&#34;,&#xA;  &#34;categories&#34;: [&#xA;    {&#xA;      &#34;domain&#34;: &#34;communication&#34;,&#xA;      &#34;variant&#34;: &#34;nccl-all-reduce&#34;,&#xA;      &#34;status&#34;: &#34;Succeeded&#34;,&#xA;      &#34;runtime&#34;: &#34;2s&#34;&#xA;    }&#xA;  ],&#xA;  &#34;failedNodes&#34;: null,&#xA;  &#34;result&#34;: &#34;INCOMPLETE&#34;&#xA;}</error>
     </testcase>
   </testsuite>
