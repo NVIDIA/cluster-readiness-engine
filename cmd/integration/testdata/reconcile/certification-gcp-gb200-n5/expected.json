@@ -143,6 +143,20 @@
                                                 "gen-6fc507-node-07",
                                                 "gen-6fc507-node-08"
                                               ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.present",
+                                              "operator": "In",
+                                              "values": [
+                                                "true"
+                                              ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.product",
+                                              "operator": "In",
+                                              "values": [
+                                                "NVIDIA-GB200-NVL72"
+                                              ]
                                             }
                                           ]
                                         }
@@ -671,6 +685,9 @@
         "currentIteration": 1,
         "detectedPlatform": "gcp",
         "detectedGPUArchitecture": "gb200",
+        "gpuProducts": [
+          "NVIDIA-GB200-NVL72"
+        ],
         "groups": [
           {
             "name": "group-0",

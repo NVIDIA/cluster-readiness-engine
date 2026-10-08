@@ -1367,6 +1367,9 @@
         "totalGroups": 0,
         "detectedPlatform": "aws",
         "detectedGPUArchitecture": "gb200",
+        "gpuProducts": [
+          "NVIDIA-GB200-NVL72"
+        ],
         "appliedOverrides": [
           {
             "index": 0,

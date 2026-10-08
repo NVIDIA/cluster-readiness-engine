@@ -83,6 +83,13 @@
                                             "gpu-node-01",
                                             "gpu-node-02"
                                           ]
+                                        },
+                                        {
+                                          "key": "nvidia.com/gpu.product",
+                                          "operator": "In",
+                                          "values": [
+                                            "NVIDIA-H100-80GB-HBM3"
+                                          ]
                                         }
                                       ]
                                     }
@@ -1706,6 +1713,9 @@
         "currentIteration": 1,
         "detectedPlatform": "aws",
         "detectedGPUArchitecture": "h100",
+        "gpuProducts": [
+          "NVIDIA-H100-80GB-HBM3"
+        ],
         "appliedOverrides": [
           {
             "index": 8,

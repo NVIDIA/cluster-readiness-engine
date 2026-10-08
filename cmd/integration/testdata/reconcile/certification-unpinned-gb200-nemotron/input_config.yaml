@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Eight nodes against a two-node request. Under Pinned this fleet yields four
+# concurrent jobs; the golden should show one.
+generateNodes:
+  count: 8
+  providerID: "aws://us-east-1a/i-0000000000000001"
+  labels:
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+    nvidia.com/gpu.clique: "clique-0"
+#
+# The Certification is named unpin-gb2 rather than anything more descriptive so
+# that <cert>-<domain>-<variant> lands at exactly 31 characters and the Workflow
+# name is readable instead of hashed by naming.Truncate.
+waitFor:
+  kind: Workflow
+  name: unpin-gb2-training-nemotron5-8b
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: unpin-gb2
+    namespace: default
+  - kind: Workflow
+    name: unpin-gb2-training-nemotron5-8b
+    namespace: default
+  - kind: Job
+    name: unpin-gb2-training-nemotron5-8b-job
+    namespace: default

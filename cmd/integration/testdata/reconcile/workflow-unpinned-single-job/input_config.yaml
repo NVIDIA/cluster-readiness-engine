@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Job name is the plain <workflow>-job rather than a group-N-iter-N form,
+# which is itself part of the assertion: getGroupJobName collapses to the short
+# name only when there is a single group and a single iteration.
+#
+# expectAbsent pins the headline behavior directly. Collecting the Workflow and
+# reading totalGroups == 1 from the golden says one group was planned; asserting
+# that a second group's Job was never created says no other job ran.
+waitFor:
+  kind: Workflow
+  name: unpinned-single
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Workflow
+    name: unpinned-single
+    namespace: default
+  - kind: Job
+    name: unpinned-single-job
+    namespace: default
+expectAbsent:
+  - kind: Job
+    name: unpinned-single-group-1-iter-1
+    namespace: default
+  - kind: Job
+    name: unpinned-single-group-2-iter-1
+    namespace: default

@@ -1,0 +1,59 @@
+{
+  "Certification/unpin-ns": {
+    "kind": "Certification",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "unpin-ns",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.present": "true",
+          "nvidia.com/gpu.product": "NVIDIA-GB200-NVL72"
+        }
+      },
+      "categories": [
+        {
+          "domain": "training",
+          "variant": "nemotron5-8b"
+        }
+      ],
+      "placement": "Unpinned"
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkflowValidationFailed",
+          "message": "training/nemotron5-8b: placement Unpinned requires an explicit nodesPerJob. Unpinned runs one job of the size you ask for and will not fall back to running across all 8 matching nodes; set nodesPerJob globally or on this category"
+        }
+      ]
+    }
+  },
+  "expectAbsent": {
+    "Workflow/unpin-ns-training-nemotron5-8b": "notCreated"
+  }
+}

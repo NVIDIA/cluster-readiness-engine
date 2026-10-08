@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Eight nodes so the failure is unambiguous: without the resolveNodesPerJob
+# change this case does not error, it builds one job spanning all eight.
+#
+# resolveUnpinnedNodesPerJob returns a plain error, which lands in
+# createWorkflowForCategory's default branch and becomes Failed with
+# WorkflowValidationFailed. Deliberately not a retryableCreateError: a missing
+# field does not fix itself on the next reconcile, so requeueing would spin
+# forever with no Failed condition for the operator to see.
+generateNodes:
+  count: 8
+  providerID: "aws://us-east-1a/i-0000000000000001"
+  labels:
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+    nvidia.com/gpu.clique: "clique-0"
+waitFor:
+  kind: Certification
+  name: unpin-ns
+  namespace: default
+  condition: Failed
+  reason: WorkflowValidationFailed
+collect:
+  - kind: Certification
+    name: unpin-ns
+    namespace: default
+# The Workflow is never created: the size resolves before entry.Build runs, so
+# the rejection happens while composing the spec rather than after the create.
+expectAbsent:
+  - kind: Workflow
+    name: unpin-ns-training-nemotron5-8b
+    namespace: default

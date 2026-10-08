@@ -47,6 +47,14 @@ spec:
             values:
             - gcp-gb200-node-01
             - gcp-gb200-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
+          - key: nvidia.com/gpu.product
+            operator: In
+            values:
+            - NVIDIA-GB200
   containers:
   - args:
     - -N
@@ -247,6 +255,14 @@ spec:
             values:
             - gcp-gb200-node-01
             - gcp-gb200-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
+          - key: nvidia.com/gpu.product
+            operator: In
+            values:
+            - NVIDIA-GB200
   containers:
   - args:
     - |-
@@ -413,6 +429,14 @@ spec:
             values:
             - gcp-gb200-node-01
             - gcp-gb200-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
+          - key: nvidia.com/gpu.product
+            operator: In
+            values:
+            - NVIDIA-GB200
   containers:
   - args:
     - |-
