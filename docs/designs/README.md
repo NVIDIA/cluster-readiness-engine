@@ -95,3 +95,4 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 086 | [Lifecycle Status Metrics Read from the Cache, and the Timeout Write Is Exclusive](086-lifecycle-status-metrics-and-timeout-exclusivity.md) |
 | 087 | [`mlnxPerNode: 0` As a Real Opt-Out, and OCI GB200 NIC Defaults](087-mlnx-per-node-zero-opt-out.md) |
 | 090 | [Sharded Component Results and the Report Bundle](090-component-result-sharding.md) |
+| 091 | [Per-GPU GEMM Burn-In as a `compute` Catalog Entry](091-compute-gemm-catalog-entry.md) |

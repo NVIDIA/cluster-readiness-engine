@@ -8,6 +8,8 @@ A customer runs custom workloads on NVCRE and reports that the workloads themsel
 
 That feature is larger than one record. This ADR settles only the two questions that every other part of it depends on: **where per-component result rows are stored**, and **how they leave the cluster**. A later ADR covers the declaration vocabulary, the ingestion controller, and the verdict rules.
 
+The case this design was proved against is a per-GPU GEMM burn-in: one achieved-TFLOPS number per GPU is the simplest result that cannot be expressed per node, since a node average passes while one thermally throttled GPU drags it. [ADR-091](091-compute-gemm-catalog-entry.md) proposes that entry and is the first producer of the rows described here. The two records are deliberately separate: this one is the storage and egress mechanism, which outlives any single workload, and that one is a catalog entry, which the repository records one per ADR (ADR-016, ADR-018, ADR-057).
+
 These two questions get conflated, so it is worth separating them plainly.
 
 **Storage is a per-object size problem.** Kubernetes caps an object's size, so a fleet-scale result set does not fit in one object. **Egress is a reachability problem.** The customer runs no Prometheus, so a file is the only way results reach them, and they should not have to walk Workflow to Job to Measurement or decode a ConfigMap to get it.
@@ -63,6 +65,7 @@ Shards are named per Job. Job count comes from the entry's `numNodes`, read by `
 | `communication/nccl-all-reduce`, `nodesPerJob` unset | 1 | 6 | 768 KiB |
 | `communication/nccl-all-reduce` at `nodesPerJob: 8` | 125 | 125 | ~33 KiB |
 | NVL72 intra-rack P2P | per domain | 1 per domain, 55 domains | ~118 KiB |
+| `compute/cutlass-gemm` ([ADR-091](091-compute-gemm-catalog-entry.md), `numNodes: 1`) | 1000 | 1000 | well under the bound |
 
 1000 shards or 6, from the same fleet. This is why the sealed count plus selector is the right status shape and a reference list is not: at 69 bytes per reference, 1000 references is 67 KiB of Workflow status, and the Certification controller mirrors category references (`pkg/controller/certification_controller.go:375-380`), so eight categories is 539 KiB on one object. That is over half the status budget to describe data that is not even stored there.
 
