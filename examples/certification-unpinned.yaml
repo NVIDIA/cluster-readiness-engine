@@ -14,8 +14,7 @@ spec:
   # It is required: Unpinned never auto-selects a size, and never shrinks the
   # job to fit the fleet.
   nodesPerJob: 8
-  orchestration:
-    placement: Unpinned
+  placement: Unpinned
   # Uncomment when your workload images require a pull secret.
   # imagePullSecrets:
   #   - name: ngc-secret

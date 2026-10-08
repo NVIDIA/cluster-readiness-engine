@@ -33,7 +33,7 @@ func placementDryRunSpec(
 ) *nvcrev1alpha1.WorkflowSpec {
 	trainJob := &trainerv1alpha1.TrainJobSpec{
 		RuntimeRef: trainerv1alpha1.RuntimeRef{
-			Name: "dry-runtime",
+			Name: dryRuntimeName,
 			Kind: new("TrainingRuntime"),
 		},
 		Trainer: &trainerv1alpha1.Trainer{
@@ -65,17 +65,18 @@ func placementDryRunSpec(
 // Unpinned it must name none of them, and a fleet exactly the size of the
 // request could not tell those two apart.
 func placementNodes() []corev1.Node {
-	nodes := make([]corev1.Node, 0, 4)
-	for _, name := range []string{"dry-node-01", "dry-node-02", "dry-node-03", "dry-node-04"} {
-		node := corev1.Node{}
-		node.Name = name
-		node.Labels = map[string]string{
-			"kubernetes.io/hostname":   name,
-			"nvidia.com/gpu.product":   "NVIDIA-H100-80GB-HBM3",
-			"nvidia.com/gpu.present":   "true",
-			"nvcre.nvidia.com/testbed": "burnin",
-		}
-		nodes = append(nodes, node)
+	names := []string{dryNodeName, "dry-node-02", "dry-node-03", "dry-node-04"}
+	nodes := make([]corev1.Node, 0, len(names))
+	for _, name := range names {
+		nodes = append(nodes, corev1.Node{
+			Name: name,
+			Labels: map[string]string{
+				"kubernetes.io/hostname":   name,
+				"nvidia.com/gpu.product":   "NVIDIA-H100-80GB-HBM3",
+				"nvidia.com/gpu.present":   "true",
+				"nvcre.nvidia.com/testbed": "burnin",
+			},
+		})
 	}
 	return nodes
 }

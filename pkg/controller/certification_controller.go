@@ -814,9 +814,18 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	if override.EnableMNNVL != nil {
 		resolved.EnableMNNVL = override.EnableMNNVL
 	}
-	if override.Image != "" {
-		resolved.Image = override.Image
-	}
+	// String options take the override whenever it is non-empty. Written with
+	// cmp.Or rather than a branch each: there are eight of them, they are
+	// mutually independent, and spelled as ifs they were most of this
+	// function's cyclomatic complexity for no reader benefit.
+	resolved.Image = cmp.Or(override.Image, resolved.Image)
+	resolved.StorageSize = cmp.Or(override.StorageSize, resolved.StorageSize)
+	resolved.TestScale = cmp.Or(override.TestScale, resolved.TestScale)
+	resolved.Placement = cmp.Or(override.Placement, resolved.Placement)
+	resolved.MaxBytes = cmp.Or(override.MaxBytes, resolved.MaxBytes)
+	resolved.TimeoutPerJob = cmp.Or(override.TimeoutPerJob, resolved.TimeoutPerJob)
+	resolved.MeasurementTimeout = cmp.Or(override.MeasurementTimeout, resolved.MeasurementTimeout)
+	resolved.SourceRepo = cmp.Or(override.SourceRepo, resolved.SourceRepo)
 	if len(override.ImagePullSecrets) > 0 {
 		resolved.ImagePullSecrets = override.ImagePullSecrets
 	}
@@ -831,18 +840,6 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	}
 	if override.SaveTopK != nil {
 		resolved.SaveTopK = override.SaveTopK
-	}
-	if override.StorageSize != "" {
-		resolved.StorageSize = override.StorageSize
-	}
-	if override.TestScale != "" {
-		resolved.TestScale = override.TestScale
-	}
-	if override.Placement != "" {
-		resolved.Placement = override.Placement
-	}
-	if override.MaxBytes != "" {
-		resolved.MaxBytes = override.MaxBytes
 	}
 	if override.NumIterations != nil {
 		resolved.NumIterations = override.NumIterations
@@ -864,15 +861,6 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	}
 	if override.MaxRestarts != nil {
 		resolved.MaxRestarts = override.MaxRestarts
-	}
-	if override.TimeoutPerJob != "" {
-		resolved.TimeoutPerJob = override.TimeoutPerJob
-	}
-	if override.MeasurementTimeout != "" {
-		resolved.MeasurementTimeout = override.MeasurementTimeout
-	}
-	if override.SourceRepo != "" {
-		resolved.SourceRepo = override.SourceRepo
 	}
 	return resolved
 }

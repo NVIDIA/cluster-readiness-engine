@@ -406,6 +406,70 @@ func (r *WorkflowReconciler) enforceGangSchedulingIntent(
 	return err
 }
 
+// shortfallContext carries the filter results discoverAndPartition already
+// computed, so a node shortfall can name what was dropped and why instead of
+// blaming schedulability.
+type shortfallContext struct {
+	gpuArch          string
+	archExcluded     []string
+	capacityExcluded []gpuCapacityExclusion
+	gpusPerNode      int32
+}
+
+// resolveWorkflowJobSize reads the job size the workload declares and checks it
+// against the surviving fleet, recording a Failed condition before returning any
+// error so the caller only has to propagate it.
+func (r *WorkflowReconciler) resolveWorkflowJobSize(
+	ctx context.Context,
+	workflow *nvcrev1alpha1.Workflow,
+	orch *nvcrev1alpha1.OrchestrationStatus,
+	nodes []corev1.Node,
+	sc shortfallContext,
+) (int, error) {
+	log := logf.FromContext(ctx)
+	fail := func(msg string) {
+		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, msg,
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
+			log.Error(statusErr, "Failed to update status")
+		}
+	}
+
+	adapter, err := workload.ForSpec(&workflow.Spec.JobTemplate.Spec.Workload)
+	if err != nil {
+		fail(fmt.Sprintf("Failed to determine workload adapter: %v", err))
+		return 0, err
+	}
+
+	nodesPerJob, err := adapter.NodesRequired(&workflow.Spec.JobTemplate.Spec.Workload)
+	if err != nil {
+		fail(fmt.Sprintf("Failed to detect nodesPerJob: %v", err))
+		return 0, err
+	}
+
+	if nodesPerJob < 1 {
+		// "Use every node" is exactly the fleet-wide sweep Unpinned exists to
+		// escape, so it cannot be the fallback here. On the Certification path
+		// resolveNodesPerJob has already rejected a missing size, so this is a
+		// backstop for hand-written Workflows and WorkloadRuns.
+		if nvcrev1alpha1.IsUnpinned(workflow.Spec.Orchestration.Placement) {
+			msg := "orchestration.placement: Unpinned requires an explicit job size, but the workload " +
+				"declares none; set nodesPerJob (Certification) or numNodes (WorkloadRun). " +
+				"Unpinned will not fall back to running one job across all discovered nodes"
+			fail(msg)
+			return 0, fmt.Errorf("%s", msg)
+		}
+		nodesPerJob = len(nodes)
+	}
+
+	if nodesPerJob > len(nodes) {
+		msg := notEnoughNodesMessage(workflow.Spec.Orchestration.Placement,
+			nodesPerJob, len(nodes), sc.gpuArch, sc.archExcluded, sc.capacityExcluded, sc.gpusPerNode)
+		fail(msg)
+		return 0, fmt.Errorf("%s", msg)
+	}
+	return nodesPerJob, nil
+}
+
 // discoverAndPartition discovers target nodes, auto-detects nodesPerJob, and partitions nodes into groups.
 func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow *nvcrev1alpha1.Workflow, orch *nvcrev1alpha1.OrchestrationStatus) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -570,51 +634,14 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 		return r.failWorkflowForDependencyError(ctx, workflow, orch, err)
 	}
 
-	// Auto-detect nodesPerJob from workload template
-	adapter, err := workload.ForSpec(&workflow.Spec.JobTemplate.Spec.Workload)
+	nodesPerJob, err := r.resolveWorkflowJobSize(ctx, workflow, orch, nodes, shortfallContext{
+		gpuArch:          gpuArch,
+		archExcluded:     archExcluded,
+		capacityExcluded: capacityExcluded,
+		gpusPerNode:      gpusPerNode,
+	})
 	if err != nil {
-		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError,
-			fmt.Sprintf("Failed to determine workload adapter: %v", err),
-			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
-			log.Error(statusErr, "Failed to update status")
-		}
 		return ctrl.Result{}, err
-	}
-
-	nodesPerJob, err := adapter.NodesRequired(&workflow.Spec.JobTemplate.Spec.Workload)
-	if err != nil {
-		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError,
-			fmt.Sprintf("Failed to detect nodesPerJob: %v", err),
-			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
-			log.Error(statusErr, "Failed to update status")
-		}
-		return ctrl.Result{}, err
-	}
-	if nodesPerJob < 1 {
-		// "Use every node" is exactly the fleet-wide sweep Unpinned exists to
-		// escape, so it cannot be the fallback here. On the Certification path
-		// resolveNodesPerJob has already rejected a missing size, so this is a
-		// backstop for hand-written Workflows and WorkloadRuns.
-		if unpinned {
-			msg := "orchestration.placement: Unpinned requires an explicit job size, but the workload " +
-				"declares none; set nodesPerJob (Certification) or numNodes (WorkloadRun). " +
-				"Unpinned will not fall back to running one job across all discovered nodes"
-			if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, msg,
-				applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
-				log.Error(statusErr, "Failed to update status")
-			}
-			return ctrl.Result{}, fmt.Errorf("%s", msg)
-		}
-		nodesPerJob = len(nodes)
-	}
-	if nodesPerJob > len(nodes) {
-		msg := notEnoughNodesMessage(workflow.Spec.Orchestration.Placement,
-			nodesPerJob, len(nodes), gpuArch, archExcluded, capacityExcluded, gpusPerNode)
-		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, msg,
-			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
-			log.Error(statusErr, "Failed to update status")
-		}
-		return ctrl.Result{}, fmt.Errorf("%s", msg)
 	}
 
 	// Build NodeInfo list for partitioning
@@ -1602,15 +1629,17 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 			continue
 		}
 
-		// Record where the scheduler actually put this job, for modes where the
-		// controller did not choose. Done before the terminal-state handling so a
-		// job that fails is attributed to its nodes rather than to nothing.
-		if r.backfillGroupNodes(ctx, workflow, orch, g, job) {
-			statusChanged = true
-		}
-
 		// Check terminal state
 		ts := getJobTerminalState(job)
+
+		// Record where the scheduler actually put this job, for modes where the
+		// controller did not choose. Done before the terminal-state handling
+		// below so a job that fails is attributed to its nodes rather than to
+		// nothing, and told whether the job is terminal because that is the last
+		// chance to record anything: this loop skips groups that are not Running.
+		if r.backfillGroupNodes(ctx, workflow, orch, g, job, ts.terminal) {
+			statusChanged = true
+		}
 
 		if !ts.terminal {
 			if r.isJobTimedOut(workflow, g, job) {
@@ -1697,17 +1726,26 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 // which machines ran: every downstream consumer of placement, from succeeded and
 // failed node accounting to the per-domain topology gauges, reads g.Nodes.
 //
-// The write is gated on a complete placement. A multi-node job is routinely
-// observed with some pods bound and others still Pending, and persisting that
-// prefix would leave a short list that every later read treats as the whole
-// group, since the len(g.Nodes) == 0 guard would stop re-firing. Waiting costs
-// one reconcile and makes a recorded list mean all of it.
+// While the job is still running the write is gated on a complete placement. A
+// multi-node job is routinely observed with some pods bound and others still
+// Pending, and persisting that prefix would leave a short list that every later
+// read treats as the whole group, since the len(g.Nodes) == 0 guard would stop
+// re-firing. Waiting costs one reconcile and makes a recorded list mean all of
+// it.
+//
+// Once the job is terminal that gate has to come off. The caller's loop only
+// visits groups that are still GroupRunning, so a terminal reconcile is the
+// last one that can record anything, and a job that failed with half its pods
+// bound is exactly the case attribution exists for: holding out for a complete
+// list there would attribute the failure to no nodes at all. A partial list
+// beats an empty one, and nothing re-reads it expecting NodesPerJob entries.
 func (r *WorkflowReconciler) backfillGroupNodes(
 	ctx context.Context,
 	workflow *nvcrev1alpha1.Workflow,
 	orch *nvcrev1alpha1.OrchestrationStatus,
 	g *nvcrev1alpha1.GroupStatus,
 	job *nvcrev1alpha1.Job,
+	terminal bool,
 ) bool {
 	if !nvcrev1alpha1.IsUnpinned(workflow.Spec.Orchestration.Placement) ||
 		len(g.Nodes) > 0 || r.NodeDiscoverer == nil {
@@ -1722,7 +1760,10 @@ func (r *WorkflowReconciler) backfillGroupNodes(
 		log.V(1).Info("Could not discover placed nodes yet", "group", g.Name, "job", job.Name, "error", err)
 		return false
 	}
-	if orch.NodesPerJob <= 0 || len(names) != orch.NodesPerJob {
+	if len(names) == 0 {
+		return false
+	}
+	if !terminal && (orch.NodesPerJob <= 0 || len(names) != orch.NodesPerJob) {
 		log.V(1).Info("Placement not complete yet, leaving the group's nodes unrecorded",
 			"group", g.Name, "job", job.Name, "placed", len(names), "expected", orch.NodesPerJob)
 		return false

@@ -83,13 +83,20 @@ land outside the target set entirely.
 
 ## Decision
 
-Add `placement` to `OrchestrationSpec`:
+Add `placement` to `OrchestrationSpec`, which is the Workflow tier:
 
 ```yaml
+# Workflow
 spec:
   orchestration:
     placement: Unpinned   # enum Pinned|Unpinned; empty means Pinned
 ```
+
+Users do not write that path. `CertificationSpec` inlines `CategoryOptions`, so a
+Certification sets `spec.placement` (or `categories[].options.placement`) and the catalog
+lowers it into the Workflow's `orchestration` block. A WorkloadRun sets
+`spec.orchestration.placement`, since `WorkloadRunSpec` does carry an `orchestration`
+field of its own.
 
 `OrchestrationSpec` is the one place both front doors converge: Certification via the
 catalog template's `orchestration:` block, WorkloadRun via `buildWROrchestration`
@@ -125,8 +132,7 @@ spec:
   target:
     nodeSelector: {nvidia.com/gpu.present: "true"}   # 18 nodes match
   nodesPerJob: 2                                     # required under Unpinned
-  orchestration:
-    placement: Unpinned
+  placement: Unpinned
   categories:
     - {domain: training, variant: nemotron5-8b}
 ```

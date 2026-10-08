@@ -95,8 +95,13 @@ type CategoryReport struct {
 	// TargetNodes is the number of nodes the target matched, carried alongside
 	// Placement so the scope line can state both numbers rather than leaving the
 	// reader to find the fleet size elsewhere in the report.
-	TargetNodes int    `json:"targetNodes,omitempty"`
-	MNNVL       string `json:"mnnvl,omitempty"` // "Enabled", "Disabled", or "" (unknown)
+	TargetNodes int `json:"targetNodes,omitempty"`
+	// ExercisedNodes is how many nodes the groups actually landed on, summed
+	// from recorded group placement. Zero until the Workflow controller backfills
+	// it, and zero for a job whose pods never bound, which is why the scope line
+	// falls back to the requested size rather than printing nothing.
+	ExercisedNodes int    `json:"exercisedNodes,omitempty"`
+	MNNVL          string `json:"mnnvl,omitempty"` // "Enabled", "Disabled", or "" (unknown)
 	// FailedGroups lists groups that failed with their reason.
 	FailedGroups []FailedGroupReport `json:"failedGroups,omitempty"`
 	// Cliques lists topology domains with node counts and validation status.
@@ -660,6 +665,20 @@ func buildFailedGroups(
 	return result
 }
 
+// populateCategoryScope records how much of the target a category ran against.
+// Only Unpinned carries it: under Pinned the counts reconcile on their own, so
+// the scope line is omitted and these fields stay zero.
+func populateCategoryScope(cat *CategoryReport, orch *nvcrev1alpha1.OrchestrationStatus) {
+	if !nvcrev1alpha1.IsUnpinned(orch.Placement) {
+		return
+	}
+	cat.Placement = orch.Placement
+	cat.TargetNodes = orch.TotalNodes
+	for i := range orch.Groups {
+		cat.ExercisedNodes += len(orch.Groups[i].Nodes)
+	}
+}
+
 // PopulateCategoryFromWorkflow fills in category metrics from a Workflow and its children.
 func PopulateCategoryFromWorkflow(
 	ctx context.Context, c client.Client, cat *CategoryReport, wf *nvcrev1alpha1.Workflow,
@@ -668,10 +687,7 @@ func PopulateCategoryFromWorkflow(
 	if orch != nil {
 		cat.NodesPerJob = orch.NodesPerJob
 		cat.Jobs = orch.TotalGroups
-		if nvcrev1alpha1.IsUnpinned(orch.Placement) {
-			cat.Placement = orch.Placement
-			cat.TargetNodes = orch.TotalNodes
-		}
+		populateCategoryScope(cat, orch)
 	}
 	cat.TestScale = detectTestScale(wf)
 
@@ -1331,6 +1347,46 @@ func sanitizeTerminalText(s string) string {
 	return b.String()
 }
 
+// printCategoryScope prints the lines describing how much of the fleet the
+// category ran against. A diagnose run has none of them: its groups come from
+// bisection rather than a requested size, so the counts would describe
+// something the operator never asked for.
+func printCategoryScope(w io.Writer, cat *CategoryReport) {
+	if cat.NodesPerJob > 0 {
+		npjLine := fmt.Sprintf("Nodes/Job: %d", cat.NodesPerJob)
+		_, _ = fmt.Fprintf(w, "│  %s%s│\n", npjLine, pad(boxWidth-4-len(npjLine)))
+	}
+	if cat.Jobs > 0 {
+		jobsLine := fmt.Sprintf("Jobs:      %d", cat.Jobs)
+		_, _ = fmt.Fprintf(w, "│  %s%s│\n", jobsLine, pad(boxWidth-4-len(jobsLine)))
+	}
+	// Only Unpinned sets Placement, and it says the one thing the two lines
+	// above cannot: how much of the target was exercised. Under Pinned the
+	// numbers reconcile on their own and the line would be noise.
+	if cat.Placement != "" {
+		placementLine := fmt.Sprintf("Placement: %s", cat.Placement)
+		// Prefer the nodes the groups actually landed on. Jobs times Nodes/Job
+		// is the size that was requested, and the two diverge whenever a job
+		// placed short, so printing the plan would overstate coverage in exactly
+		// the run where the operator most needs the real number. Fall back to it
+		// only while placement is still unrecorded, where it is the best estimate
+		// available and the alternative is dropping both numbers from the line.
+		exercised := cat.ExercisedNodes
+		if exercised == 0 {
+			exercised = cat.NodesPerJob * cat.Jobs
+		}
+		if cat.TargetNodes > 0 && exercised > 0 {
+			placementLine = fmt.Sprintf("Placement: %s (%d of %d target nodes exercised)",
+				cat.Placement, exercised, cat.TargetNodes)
+		}
+		_, _ = fmt.Fprintf(w, "│  %s%s│\n", placementLine, pad(boxWidth-4-len(placementLine)))
+	}
+	if cat.MNNVL != "" {
+		mnnvlLine := fmt.Sprintf("MNNVL:     %s", cat.MNNVL)
+		_, _ = fmt.Fprintf(w, "│  %s%s│\n", mnnvlLine, pad(boxWidth-4-len(mnnvlLine)))
+	}
+}
+
 func printCategoryCard(w io.Writer, cat *CategoryReport) {
 	title := cat.Domain + "/" + cat.Variant
 	printCardTop(w)
@@ -1365,29 +1421,8 @@ func printCategoryCard(w io.Writer, cat *CategoryReport) {
 		tsLine := fmt.Sprintf("Scale:     %s", cat.TestScale)
 		_, _ = fmt.Fprintf(w, "│  %s%s│\n", tsLine, pad(boxWidth-4-len(tsLine)))
 	}
-	isDiagnose := cat.Diagnose != nil
-	if cat.NodesPerJob > 0 && !isDiagnose {
-		npjLine := fmt.Sprintf("Nodes/Job: %d", cat.NodesPerJob)
-		_, _ = fmt.Fprintf(w, "│  %s%s│\n", npjLine, pad(boxWidth-4-len(npjLine)))
-	}
-	if cat.Jobs > 0 && !isDiagnose {
-		jobsLine := fmt.Sprintf("Jobs:      %d", cat.Jobs)
-		_, _ = fmt.Fprintf(w, "│  %s%s│\n", jobsLine, pad(boxWidth-4-len(jobsLine)))
-	}
-	// Only Unpinned sets Placement, and it says the one thing the three lines
-	// above cannot: how much of the target was exercised. Under Pinned the
-	// numbers reconcile on their own and the line would be noise.
-	if cat.Placement != "" && !isDiagnose {
-		placementLine := fmt.Sprintf("Placement: %s", cat.Placement)
-		if cat.TargetNodes > 0 && cat.NodesPerJob > 0 && cat.Jobs > 0 {
-			placementLine = fmt.Sprintf("Placement: %s (%d of %d target nodes exercised)",
-				cat.Placement, cat.NodesPerJob*cat.Jobs, cat.TargetNodes)
-		}
-		_, _ = fmt.Fprintf(w, "│  %s%s│\n", placementLine, pad(boxWidth-4-len(placementLine)))
-	}
-	if cat.MNNVL != "" && !isDiagnose {
-		mnnvlLine := fmt.Sprintf("MNNVL:     %s", cat.MNNVL)
-		_, _ = fmt.Fprintf(w, "│  %s%s│\n", mnnvlLine, pad(boxWidth-4-len(mnnvlLine)))
+	if cat.Diagnose == nil {
+		printCategoryScope(w, cat)
 	}
 
 	// Failed groups with reasons.

@@ -35,7 +35,7 @@ kubectl nvcre certification run --cert-file examples/certification.yaml --wait
 
 ## certification-unpinned.yaml
 
-The same shape with `orchestration.placement: Unpinned`, which runs **one** job
+The same shape with `placement: Unpinned`, which runs **one** job
 of exactly `nodesPerJob` nodes however many the target matches, instead of
 partitioning the fleet into groups of that size. The remaining target nodes go
 untested, and NVCRE sets no `kubernetes.io/hostname` affinity, so the scheduler
