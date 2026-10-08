@@ -12,6 +12,7 @@ import (
 	"maps"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -1330,6 +1331,9 @@ func handleReport(
 	cert *nvcrev1alpha1.Certification, resultsFile, junitFile string,
 	waitErr error, out io.Writer,
 ) error {
+	if err := validateReportPaths(resultsFile, junitFile); err != nil {
+		return err
+	}
 	r := report.Build(ctx, wc, cert)
 	var dest io.Writer = os.Stdout
 	if waitErr != nil {
@@ -1349,6 +1353,24 @@ func handleReport(
 			return fmt.Errorf("write JUnit file: %w", err)
 		}
 		_, _ = fmt.Fprintf(out, "JUnit results written to %s\n", junitFile)
+	}
+	return nil
+}
+
+func validateReportPaths(resultsFile, junitFile string) error {
+	if resultsFile == "" || junitFile == "" {
+		return nil
+	}
+	resultsPath, err := filepath.Abs(resultsFile)
+	if err != nil {
+		return fmt.Errorf("resolve results file path: %w", err)
+	}
+	junitPath, err := filepath.Abs(junitFile)
+	if err != nil {
+		return fmt.Errorf("resolve JUnit file path: %w", err)
+	}
+	if resultsPath == junitPath {
+		return fmt.Errorf("--results-file and --junit-file must use different paths")
 	}
 	return nil
 }
@@ -1636,6 +1658,9 @@ Each certification is shown in its own section with categories and summary.`,
 }
 
 func runReport(names []string, configFlags *kubeconfig.ConfigFlags, resultsFile, junitFile string) error {
+	if err := validateReportPaths(resultsFile, junitFile); err != nil {
+		return err
+	}
 	ctx := context.Background()
 	namespace := *configFlags.Namespace
 

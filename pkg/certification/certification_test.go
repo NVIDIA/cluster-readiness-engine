@@ -1048,3 +1048,36 @@ func TestCategoryRunOptsWiringIntoCert(t *testing.T) {
 	})
 
 }
+
+func TestReportPathsRejectOverwrite(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "report")
+	require.NoError(t, os.WriteFile(path, []byte("existing report"), 0600))
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+	relative, err := filepath.Rel(cwd, path)
+	require.NoError(t, err)
+	for _, junitPath := range []string{path, relative} {
+		require.ErrorContains(t, handleReport(context.Background(), nil, nil, path, junitPath, nil, &bytes.Buffer{}), "must use different paths")
+		require.ErrorContains(t, runReport(nil, nil, path, junitPath), "must use different paths")
+		data, readErr := os.ReadFile(path)
+		require.NoError(t, readErr)
+		assert.Equal(t, "existing report", string(data))
+	}
+}
+
+func TestReportPathsPreserveDistinctArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	jsonPath, xmlPath := filepath.Join(dir, "report.json"), filepath.Join(dir, "report.xml")
+	cert := &nvcrev1alpha1.Certification{Name: testCertTimeoutCert, Namespace: testCertNamespace}
+	wc := newCertificationFakeClient(t, cert)
+	require.NoError(t, handleReport(context.Background(), wc, cert, jsonPath, xmlPath, nil, &bytes.Buffer{}))
+	jsonData, err := os.ReadFile(jsonPath)
+	require.NoError(t, err)
+	assert.True(t, json.Valid(jsonData))
+	xmlData, err := os.ReadFile(xmlPath)
+	require.NoError(t, err)
+	var output any
+	require.NoError(t, xml.Unmarshal(xmlData, &output))
+	require.NoError(t, validateReportPaths(jsonPath, ""))
+	require.NoError(t, validateReportPaths("", xmlPath))
+}
