@@ -14,5 +14,8 @@
       "message": "Job succeeded but no bandwidth data was parsed; check spec.logProfileRef"
     }
   ],
+  "transport": [
+    "IB"
+  ],
   "completionTime": "2026-09-30T10:05:00Z"
 }

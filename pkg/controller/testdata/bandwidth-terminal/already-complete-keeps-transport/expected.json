@@ -1,0 +1,14 @@
+{
+  "requeue": false,
+  "conditions": [
+    {
+      "type": "Complete",
+      "status": "True",
+      "reason": "JobSucceeded",
+      "message": "Job succeeded"
+    }
+  ],
+  "transport": [
+    "Socket"
+  ]
+}

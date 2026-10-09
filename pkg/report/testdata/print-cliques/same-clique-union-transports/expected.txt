@@ -1,0 +1,5 @@
+│                                                                │
+│  Cliques:                                                      │
+│      ✓  clique-0  4/4 nodes                                    │
+│         90.0 GB/s                                              │
+│         Transport: IB, Socket                                  │

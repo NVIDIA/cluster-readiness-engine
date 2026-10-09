@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A measured peak below the threshold is still flagged, with its transport.
+minBusBandwidthGBps: "300"
+groups:
+  - name: group-0
+    nodes: [node-0, node-1]
+    domains: [clique-0]
+    phase: Succeeded
+    jobRef: {name: job-0}
+measurements:
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: job-0}
+    status:
+      transport: [IB]
+      results:
+        - {sizeBytes: 17179869184, algBW: "50.0", busBW: "100.0", samples: 1}

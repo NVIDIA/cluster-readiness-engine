@@ -110,6 +110,13 @@ type LogPatternSet struct {
 	// Well-known captures: size (int, bytes), algBW (float, GB/s), busBW (float, GB/s)
 	// +optional
 	BandwidthResult *EventPattern `json:"bandwidthResult,omitempty"`
+
+	// networkTransport matches NCCL "Using network <name>" lines.
+	// Used by the BandwidthMeasurement controller to record which network
+	// plugin actually carried the collective (for example IB or Socket).
+	// Well-known captures: transport (string)
+	// +optional
+	NetworkTransport *EventPattern `json:"networkTransport,omitempty"`
 }
 
 // EventPattern defines a regex pattern for matching a specific training event.

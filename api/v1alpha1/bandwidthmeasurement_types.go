@@ -24,7 +24,8 @@ type BandwidthMeasurementSpec struct {
 	JobRef corev1.TypedLocalObjectReference `json:"jobRef,omitempty"`
 
 	// logProfileRef is the name of the cluster-scoped LogProfile to use for log parsing.
-	// The LogProfile defines a bandwidthResult regex pattern for extracting NCCL bandwidth data.
+	// The LogProfile defines a bandwidthResult regex pattern for extracting NCCL bandwidth data
+	// and an optional networkTransport pattern for the NCCL network name.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1
 	LogProfileRef string `json:"logProfileRef"`
@@ -61,6 +62,14 @@ type BandwidthMeasurementStatus struct {
 	// Each entry represents the running average of all observed measurements for that size.
 	// +optional
 	Results []BandwidthResult `json:"results,omitempty"`
+
+	// transport is the distinct set of NCCL network names observed in
+	// "NCCL INFO Using network …" log lines (for example "IB" or "Socket").
+	// Empty when that line never appears, which is typical of NVLink-only
+	// single-node runs. Record-only; never used for pass/fail.
+	// +listType=set
+	// +optional
+	Transport []string `json:"transport,omitempty"`
 
 	// startTime is the time when the measurement started (when the referenced Job began running).
 	// +optional
