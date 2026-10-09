@@ -1,0 +1,9 @@
+# A DRA-only GPU stack runs no device plugin, so no node advertises
+# nvidia.com/gpu and the count comes from its gpu.nvidia.com ResourceSlices.
+nodes:
+  - name: n0
+    count: -1
+    draCount: 4
+  - name: n1
+    count: -1
+    draCount: 4

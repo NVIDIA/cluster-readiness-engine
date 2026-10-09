@@ -1,0 +1,192 @@
+[
+  {
+    "workflow": "nscale-cert-training-nemo-fcc32",
+    "dependencyKinds": [
+      "TrainingRuntime/nemotron5-8b-runtime",
+      "ConfigMap/nemotron5-8b-training-config",
+      "ComputeDomain/nemotron5-8b-compute-domain",
+      "ResourceClaimTemplate/nemotron5-8b-gpu",
+      "ResourceClaimTemplate/nemotron5-8b-rdma"
+    ],
+    "claimTemplates": [
+      {
+        "name": "nemotron5-8b-gpu",
+        "deviceClassName": "gpu.nvidia.com",
+        "count": 4
+      },
+      {
+        "name": "nemotron5-8b-rdma",
+        "deviceClassName": "rdma.nscale.com",
+        "count": 4
+      }
+    ],
+    "trainerArgs": [
+      "/config/train.sh"
+    ],
+    "trainerEnv": [],
+    "orchestration": {
+      "topologyKey": "topology.nks.nscale.com/accelerator-domain",
+      "strictDomain": false,
+      "diagnoseTopologyKey": "",
+      "diagnoseMinGroupSize": 0
+    },
+    "replicatedJobs": [
+      {
+        "dependency": "nemotron5-8b-runtime",
+        "resourceClaims": [
+          "compute-domain=nemotron5-8b-channel",
+          "gpu=nemotron5-8b-gpu",
+          "rdma=nemotron5-8b-rdma"
+        ],
+        "tolerations": [
+          "kubernetes.io/arch=arm64:NoSchedule",
+          "nvidia.com/gpu=present:NoSchedule"
+        ],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/cpu=128",
+              "limits/memory=800Gi",
+              "requests/cpu=64",
+              "requests/memory=500Gi"
+            ],
+            "claims": [
+              "compute-domain",
+              "gpu",
+              "rdma"
+            ],
+            "env": [
+              "NVTE_FWD_LAYERNORM_SM_MARGIN=16",
+              "NVTE_BWD_LAYERNORM_SM_MARGIN=16",
+              "NVTE_FUSED_ATTN=0",
+              "TORCHINDUCTOR_WORKER_START=fork",
+              "NCCL_DEBUG=INFO",
+              "NCCL_DEBUG_SUBSYS=NET,INIT,GRAPH,NVLS",
+              "NCCL_SOCKET_IFNAME=eth0",
+              "NCCL_IB_TIMEOUT=19",
+              "NCCL_P2P_NET_CHUNKSIZE=2097152",
+              "NCCL_NVLS_ENABLE=1",
+              "NCCL_CUMEM_ENABLE=1",
+              "NCCL_NET_GDR_C2C=1",
+              "NCCL_MNNVL_ENABLE=1",
+              "CUDA_DEVICE_MAX_CONNECTIONS=1",
+              "TORCH_NCCL_AVOID_RECORD_STREAMS=1",
+              "TORCH_NCCL_HIGH_PRIORITY=1",
+              "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True",
+              "UCX_MEM_MMAP_HOOK_MODE=none",
+              "UCX_MEM_CUDA_HOOK_MODE=none",
+              "UCX_MEM_MALLOC_HOOKS=n",
+              "UCX_ERROR_SIGNALS=",
+              "EXIT_DURATION_MINS=30",
+              "ENABLE_CHECKPOINT=false",
+              "TRAIN_ITERS=50",
+              "SAVE_INTERVAL=250",
+              "SAVE_RETAIN_INTERVAL=1000",
+              "PYTHONPATH=/mnt/workspace/megatron-lm",
+              "NCCL_IB_PCI_RELAXED_ORDERING=1",
+              "SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING=1",
+              "OMPI_MCA_btl_openib_warn_default_gid_prefix=0",
+              "PMIX_MCA_gds=^ds12"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "workflow": "nscale-cert-training-nemo-3ac0d",
+    "dependencyKinds": [
+      "TrainingRuntime/nemotron5-56b-runtime",
+      "ConfigMap/nemotron5-56b-training-config",
+      "ComputeDomain/nemotron5-56b-compute-domain",
+      "ResourceClaimTemplate/nemotron5-56b-gpu",
+      "ResourceClaimTemplate/nemotron5-56b-rdma"
+    ],
+    "claimTemplates": [
+      {
+        "name": "nemotron5-56b-gpu",
+        "deviceClassName": "gpu.nvidia.com",
+        "count": 4
+      },
+      {
+        "name": "nemotron5-56b-rdma",
+        "deviceClassName": "rdma.nscale.com",
+        "count": 4
+      }
+    ],
+    "trainerArgs": [
+      "/config/train.sh"
+    ],
+    "trainerEnv": [],
+    "orchestration": {
+      "topologyKey": "topology.nks.nscale.com/accelerator-domain",
+      "strictDomain": false,
+      "diagnoseTopologyKey": "",
+      "diagnoseMinGroupSize": 0
+    },
+    "replicatedJobs": [
+      {
+        "dependency": "nemotron5-56b-runtime",
+        "resourceClaims": [
+          "compute-domain=nemotron5-56b-channel",
+          "gpu=nemotron5-56b-gpu",
+          "rdma=nemotron5-56b-rdma"
+        ],
+        "tolerations": [
+          "kubernetes.io/arch=arm64:NoSchedule",
+          "nvidia.com/gpu=present:NoSchedule"
+        ],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/cpu=128",
+              "limits/memory=800Gi",
+              "requests/cpu=64",
+              "requests/memory=500Gi"
+            ],
+            "claims": [
+              "compute-domain",
+              "gpu",
+              "rdma"
+            ],
+            "env": [
+              "NVTE_FWD_LAYERNORM_SM_MARGIN=16",
+              "NVTE_BWD_LAYERNORM_SM_MARGIN=16",
+              "NVTE_FUSED_ATTN=0",
+              "TORCHINDUCTOR_WORKER_START=fork",
+              "NCCL_DEBUG=INFO",
+              "NCCL_DEBUG_SUBSYS=NET,INIT,GRAPH,NVLS",
+              "NCCL_SOCKET_IFNAME=eth0",
+              "NCCL_IB_TIMEOUT=19",
+              "NCCL_P2P_NET_CHUNKSIZE=2097152",
+              "NCCL_NVLS_ENABLE=1",
+              "NCCL_CUMEM_ENABLE=1",
+              "NCCL_NET_GDR_C2C=1",
+              "NCCL_MNNVL_ENABLE=1",
+              "CUDA_DEVICE_MAX_CONNECTIONS=1",
+              "TORCH_NCCL_AVOID_RECORD_STREAMS=1",
+              "TORCH_NCCL_HIGH_PRIORITY=1",
+              "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True",
+              "UCX_MEM_MMAP_HOOK_MODE=none",
+              "UCX_MEM_CUDA_HOOK_MODE=none",
+              "UCX_MEM_MALLOC_HOOKS=n",
+              "UCX_ERROR_SIGNALS=",
+              "EXIT_DURATION_MINS=30",
+              "ENABLE_CHECKPOINT=false",
+              "TRAIN_ITERS=50",
+              "SAVE_INTERVAL=250",
+              "SAVE_RETAIN_INTERVAL=1000",
+              "PYTHONPATH=/mnt/workspace/megatron-lm",
+              "NCCL_IB_PCI_RELAXED_ORDERING=1",
+              "SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING=1",
+              "OMPI_MCA_btl_openib_warn_default_gid_prefix=0",
+              "PMIX_MCA_gds=^ds12"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

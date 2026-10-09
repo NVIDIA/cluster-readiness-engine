@@ -50,7 +50,21 @@
                   "-x",
                   "NCCL_DEBUG=INFO",
                   "-x",
+                  "NCCL_NVLS_ENABLE=1",
+                  "-x",
+                  "NCCL_CUMEM_ENABLE=1",
+                  "-x",
+                  "NCCL_NET_GDR_C2C=1",
+                  "-x",
+                  "NCCL_NET_GDR_LEVEL=PHB",
+                  "-x",
+                  "NCCL_P2P_NET_CHUNKSIZE=2097152",
+                  "-x",
+                  "NCCL_SHM_DISABLE=1",
+                  "-x",
                   "NCCL_MNNVL_ENABLE=1",
+                  "-x",
+                  "NCCL_SOCKET_IFNAME=eth0",
                   "-x",
                   "FI_PROVIDER=efa",
                   "-x",
@@ -155,10 +169,6 @@
                                   {
                                     "name": "NCCL_DEBUG",
                                     "value": "INFO"
-                                  },
-                                  {
-                                    "name": "NCCL_DEBUG_SUBSYS",
-                                    "value": "NET,INIT"
                                   },
                                   {
                                     "name": "NCCL_NVLS_ENABLE",
@@ -266,10 +276,6 @@
                                   {
                                     "name": "NCCL_DEBUG",
                                     "value": "INFO"
-                                  },
-                                  {
-                                    "name": "NCCL_DEBUG_SUBSYS",
-                                    "value": "NET,INIT"
                                   },
                                   {
                                     "name": "NCCL_NVLS_ENABLE",
@@ -1331,6 +1337,155 @@
               }
             }
           ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "in": [
+                "b200",
+                "gb300"
+              ]
+            },
+            "platform": {
+              "equals": "nscale"
+            }
+          },
+          "dependencies": [
+            {
+              "apiVersion": "resource.k8s.io/v1",
+              "kind": "ResourceClaimTemplate",
+              "metadata": {
+                "labels": {
+                  "app": "test-mpi-run"
+                },
+                "name": "test-mpi-run-gpu"
+              },
+              "spec": {
+                "spec": {
+                  "devices": {
+                    "requests": [
+                      {
+                        "exactly": {
+                          "count": 4,
+                          "deviceClassName": "gpu.nvidia.com"
+                        },
+                        "name": "gpu"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "apiVersion": "resource.k8s.io/v1",
+              "kind": "ResourceClaimTemplate",
+              "metadata": {
+                "labels": {
+                  "app": "test-mpi-run"
+                },
+                "name": "test-mpi-run-rdma"
+              },
+              "spec": {
+                "spec": {
+                  "devices": {
+                    "requests": [
+                      {
+                        "exactly": {
+                          "count": 8,
+                          "deviceClassName": "rdma.nscale.com"
+                        },
+                        "name": "rdma"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "apiVersion": "trainer.kubeflow.org/v1alpha1",
+              "kind": "TrainingRuntime",
+              "metadata": {
+                "name": "test-mpi-run-runtime"
+              },
+              "spec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "containers": [
+                                  {
+                                    "name": "node",
+                                    "resources": {
+                                      "claims": [
+                                        {
+                                          "name": "gpu"
+                                        },
+                                        {
+                                          "name": "rdma"
+                                        }
+                                      ],
+                                      "limits": {
+                                        "nvidia.com/gpu": null
+                                      },
+                                      "requests": {
+                                        "nvidia.com/gpu": null
+                                      }
+                                    }
+                                  }
+                                ],
+                                "resourceClaims": [
+                                  {
+                                    "name": "gpu",
+                                    "resourceClaimTemplateName": "test-mpi-run-gpu"
+                                  },
+                                  {
+                                    "name": "rdma",
+                                    "resourceClaimTemplateName": "test-mpi-run-rdma"
+                                  }
+                                ],
+                                "tolerations": [
+                                  {
+                                    "effect": "NoSchedule",
+                                    "key": "kubernetes.io/arch",
+                                    "operator": "Equal",
+                                    "value": "arm64"
+                                  },
+                                  {
+                                    "effect": "NoSchedule",
+                                    "key": "nvidia.com/gpu",
+                                    "operator": "Equal",
+                                    "value": "present"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
+              "in": [
+                "b200",
+                "gb300"
+              ]
+            },
+            "platform": {
+              "equals": "nscale"
+            }
+          }
         }
       ]
     },

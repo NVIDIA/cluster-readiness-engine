@@ -1665,8 +1665,8 @@ func CreateImagePullSecret(ctx context.Context, c client.Client, namespace, secr
 // and missing tags (defaults to "latest").
 func parseImage(image string) (name, tag string) {
 	// Handle digest references: registry/repo@sha256:abc123
-	if i := strings.LastIndex(image, "@"); i != -1 {
-		return image[:i], image[i+1:]
+	if name, digest, found := strings.CutLast(image, "@"); found {
+		return name, digest
 	}
 	// Handle tag references: registry/repo:tag
 	// Must distinguish registry port (localhost:5000) from tag separator.

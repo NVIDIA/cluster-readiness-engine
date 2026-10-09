@@ -1,0 +1,46 @@
+metadata:
+  finalizers:
+  - nvcre.nvidia.com/certification-finalizer
+  labels:
+    app.kubernetes.io/created-by: nvcrectl
+    app.kubernetes.io/managed-by: nvcre
+  name: nscale-gb300-nccl
+spec:
+  categories:
+  - domain: communication
+    variant: nccl-all-reduce
+  nodesPerJob: 2
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+status:
+  categoryStatuses:
+  - domain: communication
+    status: Succeeded
+    succeededNodesRef:
+      apiGroup: null
+      kind: ConfigMap
+      name: succeeded-nodes
+    variant: nccl-all-reduce
+    workflowRef:
+      name: nscale-gb300-nccl-communi-4ffa6
+      namespace: default
+  conditions:
+  - lastTransitionTime: null
+    message: ""
+    observedGeneration: 1
+    reason: NotApplicable
+    status: "False"
+    type: InProgress
+  - lastTransitionTime: null
+    message: All certification categories completed successfully
+    observedGeneration: 1
+    reason: AllWorkflowsSucceeded
+    status: "True"
+    type: Succeeded
+  - lastTransitionTime: null
+    message: ""
+    observedGeneration: 1
+    reason: NotApplicable
+    status: "False"
+    type: Failed
