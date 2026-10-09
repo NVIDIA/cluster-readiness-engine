@@ -1,0 +1,192 @@
+[
+  {
+    "workflow": "nscale-cert-communication-96ff5",
+    "dependencyKinds": [
+      "TrainingRuntime/nccl-all-reduce-runtime",
+      "ComputeDomain/nccl-all-reduce-compute-domain",
+      "ResourceClaimTemplate/nccl-all-reduce-gpu"
+    ],
+    "claimTemplates": [
+      {
+        "name": "nccl-all-reduce-gpu",
+        "deviceClassName": "gpu.nvidia.com",
+        "count": 4
+      }
+    ],
+    "trainerArgs": [
+      "-N",
+      "4",
+      "--allow-run-as-root",
+      "--mca",
+      "plm_rsh_args",
+      "-o StrictHostKeyChecking=no",
+      "-x",
+      "NCCL_SOCKET_IFNAME=eth0",
+      "-x",
+      "NCCL_DEBUG=INFO",
+      "-x",
+      "NCCL_NVLS_ENABLE=1",
+      "-x",
+      "NCCL_CUMEM_ENABLE=1",
+      "-x",
+      "NCCL_P2P_NET_CHUNKSIZE=2097152",
+      "-x",
+      "NCCL_MNNVL_ENABLE=1",
+      "-x",
+      "NCCL_IB_PCI_RELAXED_ORDERING=1",
+      "-x",
+      "SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING=1",
+      "-x",
+      "OMPI_MCA_btl_openib_warn_default_gid_prefix=0",
+      "-x",
+      "PMIX_MCA_gds=^ds12",
+      "/usr/local/bin/all_reduce_perf_mpi",
+      "-b",
+      "8",
+      "-e",
+      "16G",
+      "-f",
+      "2",
+      "-n",
+      "100",
+      "-N",
+      "10"
+    ],
+    "trainerEnv": [],
+    "orchestration": {
+      "topologyKey": "",
+      "strictDomain": false,
+      "diagnoseTopologyKey": "",
+      "diagnoseMinGroupSize": 0
+    },
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "resourceClaims": [
+          "compute-domain-channel=nccl-all-reduce-channel",
+          "gpu=nccl-all-reduce-gpu"
+        ],
+        "tolerations": [
+          "kubernetes.io/arch=arm64:NoSchedule",
+          "nvidia.com/gpu=present:NoSchedule"
+        ],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [],
+            "claims": [
+              "compute-domain-channel",
+              "gpu"
+            ],
+            "env": [
+              "NCCL_MNNVL_ENABLE=1"
+            ]
+          }
+        ]
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "resourceClaims": [],
+        "tolerations": [],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/cpu=2",
+              "limits/memory=1Gi"
+            ],
+            "claims": [],
+            "env": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "workflow": "nscale-cert-training-nemo-fcc32",
+    "dependencyKinds": [
+      "TrainingRuntime/nemotron5-8b-runtime",
+      "ConfigMap/nemotron5-8b-training-config",
+      "ComputeDomain/nemotron5-8b-compute-domain",
+      "ResourceClaimTemplate/nemotron5-8b-gpu"
+    ],
+    "claimTemplates": [
+      {
+        "name": "nemotron5-8b-gpu",
+        "deviceClassName": "gpu.nvidia.com",
+        "count": 4
+      }
+    ],
+    "trainerArgs": [
+      "/config/train.sh"
+    ],
+    "trainerEnv": [],
+    "orchestration": {
+      "topologyKey": "topology.nks.nscale.com/accelerator-domain",
+      "strictDomain": false,
+      "diagnoseTopologyKey": "",
+      "diagnoseMinGroupSize": 0
+    },
+    "replicatedJobs": [
+      {
+        "dependency": "nemotron5-8b-runtime",
+        "resourceClaims": [
+          "compute-domain=nemotron5-8b-channel",
+          "gpu=nemotron5-8b-gpu"
+        ],
+        "tolerations": [
+          "kubernetes.io/arch=arm64:NoSchedule",
+          "nvidia.com/gpu=present:NoSchedule"
+        ],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/cpu=128",
+              "limits/memory=800Gi",
+              "requests/cpu=64",
+              "requests/memory=500Gi"
+            ],
+            "claims": [
+              "compute-domain",
+              "gpu"
+            ],
+            "env": [
+              "NVTE_FWD_LAYERNORM_SM_MARGIN=16",
+              "NVTE_BWD_LAYERNORM_SM_MARGIN=16",
+              "NVTE_FUSED_ATTN=0",
+              "TORCHINDUCTOR_WORKER_START=fork",
+              "NCCL_DEBUG=INFO",
+              "NCCL_DEBUG_SUBSYS=NET,INIT,GRAPH,NVLS",
+              "NCCL_SOCKET_IFNAME=eth0",
+              "NCCL_IB_TIMEOUT=19",
+              "NCCL_P2P_NET_CHUNKSIZE=2097152",
+              "NCCL_NVLS_ENABLE=1",
+              "NCCL_CUMEM_ENABLE=1",
+              "NCCL_NET_GDR_C2C=1",
+              "NCCL_MNNVL_ENABLE=1",
+              "CUDA_DEVICE_MAX_CONNECTIONS=1",
+              "TORCH_NCCL_AVOID_RECORD_STREAMS=1",
+              "TORCH_NCCL_HIGH_PRIORITY=1",
+              "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True",
+              "UCX_MEM_MMAP_HOOK_MODE=none",
+              "UCX_MEM_CUDA_HOOK_MODE=none",
+              "UCX_MEM_MALLOC_HOOKS=n",
+              "UCX_ERROR_SIGNALS=",
+              "EXIT_DURATION_MINS=30",
+              "ENABLE_CHECKPOINT=false",
+              "TRAIN_ITERS=50",
+              "SAVE_INTERVAL=250",
+              "SAVE_RETAIN_INTERVAL=1000",
+              "PYTHONPATH=/mnt/workspace/megatron-lm",
+              "NCCL_IB_PCI_RELAXED_ORDERING=1",
+              "SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING=1",
+              "OMPI_MCA_btl_openib_warn_default_gid_prefix=0",
+              "PMIX_MCA_gds=^ds12"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

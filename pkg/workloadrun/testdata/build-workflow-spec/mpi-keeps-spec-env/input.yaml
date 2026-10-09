@@ -4,8 +4,8 @@
 # Before the fix, a torch run received spec.env and an MPI run did not, because
 # BuildMPIRuntime never read the field. The variables now land as container-level
 # env on the launcher and worker containers. Ranks launched on workers through
-# sshd get a fresh environment from sshd and may still need "-x NAME=value" in
-# mpiArgs to see a variable.
+# sshd get a fresh environment from sshd, so trainer.args also forwards the
+# variables to them with mpirun -x.
 #
 # The workerEnv and launcherEnv fields in the expected file are what to read.
 # workerEnv lists "NAME=value" for the worker container of the runtime
@@ -13,8 +13,8 @@
 # the same for the launcher container, which gets env too so that the two MPI
 # containers cannot drift apart again.
 #
-#   torch-run-renders...  workerEnv holds the 10 defaults from BaseNCCLEnvVars
-#   mpi-keeps-spec-env    workerEnv holds those 10 plus the user's variable
+#   torch-run-renders...  workerEnv holds the 9 defaults from BaseNCCLEnvVars
+#   mpi-keeps-spec-env    workerEnv holds those 9 plus the user's variable
 #
 # The variable below is named CRE_TEST_MARKER on purpose. No default sets that
 # name, so the expected file can show whether the user's variable arrived. An

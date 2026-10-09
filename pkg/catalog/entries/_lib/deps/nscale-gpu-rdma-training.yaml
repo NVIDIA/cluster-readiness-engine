@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Training variant of the Nscale NKS DRA fragment (ADR-085). Carries the same
+# gpu.nvidia.com/rdma.nscale.com ResourceClaimTemplates and TrainingRuntime
+# wiring as nscale-gpu-rdma.yaml, plus the portable IB env on the runtime
+# container: torchrun inherits the container env directly (there is no
+# mpirun -x to ride on), and the runtime container's env list merges by name
+# into the base entry's env, so the shared GB200/GB300 training vars keep
+# their place and only the IB-specific vars are appended.
+#
+# Two TrainingRuntime items with the same name in one fragment is deliberate:
+# mergeOrAppendDependency merges each in turn into the base runtime.
+{{ lib "deps/nscale-gpu-rdma.yaml" . }}
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    env:
+{{ lib "nccl/nscale-ib-env.yaml" . | indent 20 }}

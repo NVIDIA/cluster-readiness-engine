@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# dcgm-level4 on GB300: GPU-only claim, and the arch-only gpu.clique topology
+# key replaced by topology.nks.nscale.com/accelerator-domain.
+platform: nscale
+gpuArch: gb300

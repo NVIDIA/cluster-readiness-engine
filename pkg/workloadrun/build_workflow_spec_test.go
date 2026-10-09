@@ -47,11 +47,19 @@ func TestBuildWorkflowSpec(t *testing.T) {
 			MlnxPerNode   int32                     `json:"mlnxPerNode"`
 			EnableMNNVL   bool                      `json:"enableMNNVL"`
 			FrameworkType string                    `json:"frameworkType"`
+			// Platform and GPUArch bake platform mpirun args into the run
+			// first, as "nvcrectl workloadrun render --platform" does.
+			Platform string `json:"platform"`
+			GPUArch  string `json:"gpuArch"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
 		}
 
+		if input.Platform != "" {
+			applyPlatformMPIArgs(&input.Run, input.Platform, input.GPUArch,
+				input.GpusPerNode, input.MlnxPerNode, input.EnableMNNVL, input.FrameworkType)
+		}
 		got, err := BuildWorkflowSpec(&input.Run, input.GpusPerNode, input.MlnxPerNode,
 			input.EnableMNNVL, input.FrameworkType)
 		if err != nil {

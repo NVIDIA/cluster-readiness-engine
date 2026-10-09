@@ -298,22 +298,6 @@ overrides:
 {{ lib "nccl/azure-a100-ib-env.yaml" . | toMpiArgs | indent 12 }}
             - /usr/local/bin/all_gather_perf_mpi
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
-# --- nscale (OpenStack + RoCE) ---
-- when:
-    platform:
-      equals: nscale
-  dependencies:
-{{ lib "deps/nscale-rdmashare-comm.yaml" . | indent 2 }}
-  jobTemplate:
-    spec:
-      workload:
-        trainJob:
-          trainer:
-            args:
-{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
-{{ lib "nccl/nscale-roce-env.yaml" . | toMpiArgs | indent 12 }}
-            - /usr/local/bin/all_gather_perf_mpi
-{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
 # --- OCI (RoCE) ---
 - when:
     platform:
@@ -536,3 +520,71 @@ overrides:
 {{ lib "nccl/gcp-rtxpro6000-tcp-env.yaml" . | toMpiArgs | indent 12 }}
             - /usr/local/bin/all_gather_perf_mpi
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- Nscale NKS (GPU+RDMA DRA claims, InfiniBand; ADR-085) ---
+# Ordered after the GB200/GB300 ComputeDomain block so this block's
+# trainer.args replacement wins; on Nscale GB300 both blocks fire and their
+# dependency claims coexist (different claim names, no collision).
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      in: [b200, gb300]
+  dependencies:
+{{ lib "deps/nscale-gpu-rdma.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/nscale-ib-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_gather_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- Nscale + B200 NCCL tuning (ADR-085) ---
+# Layers QP/channel tuning on top of the Nscale block above, which already
+# contributes the GPU+RDMA claims.
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      equals: b200
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/nscale-ib-env.yaml" . | toMpiArgs | indent 12 }}
+{{ lib "nccl/nscale-b200-ib-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_gather_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- Nscale + GB300 topology key (ADR-085) ---
+# Nscale runs no GFD, so nvidia.com/gpu.clique never exists there; the NVLink
+# domain is published as topology.nks.nscale.com/accelerator-domain. Wrapped
+# in the same testScale conditional as the base orchestration block: an
+# orchestration override replaces the whole topology/diagnose object, so it
+# must only be emitted when the base emits one, and must repeat strictDomain
+# and minGroupSize.
+{{- if eq .TestScale "intra-rack" }}
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      equals: gb300
+  orchestration:
+    topology:
+      topologyKey: topology.nks.nscale.com/accelerator-domain
+      strictDomain: true
+{{- else if eq .TestScale "diagnose" }}
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      equals: gb300
+  orchestration:
+    diagnose:
+      minGroupSize: {{ .MinGroupSize }}
+      topologyKey: topology.nks.nscale.com/accelerator-domain
+{{- end }}
