@@ -367,7 +367,7 @@ overrides:
           trainer:
             env:
 {{ lib "nccl/onprem-ib-env.yaml" . | indent 12 }}
-# --- On-prem + x86 HGX B200/B300 (ADR-092) ---
+# --- On-prem + x86 HGX B200/B300 (ADR-094) ---
 # Deps-only: the GPU taint toleration and the optional NIC resource block
 # (injected only when nicResourceName is set or auto-detected, count from
 # mlnxPerNode). No NCCL environment and no arm64 toleration: an x86 HGX chassis

@@ -30,7 +30,7 @@ A goodput ratio of 1.0 means the job was making continuous progress. Values belo
 
 ## Bandwidth measurement
 
-A `BandwidthMeasurement` resource watches a `Job`'s NCCL log output and computes per-bus bandwidth metrics for collective operations (all-reduce, all-gather, alltoall).
+A `BandwidthMeasurement` resource watches a `Job`'s NCCL log output and computes per-bus bandwidth metrics for collective operations (all-reduce, all-gather, alltoall). When the referenced LogProfile includes a `networkTransport` pattern, the measurement also records which NCCL network was used (`status.transport`, for example `Socket` or `IB`). That field is record-only: it is shown in the certification report and `--results-file` JSON, and it never changes pass/fail.
 
 Samples taken while the Job runs are provisional. When the Job succeeds, the measurement reads the launcher's full log once and replaces them, so the largest message sizes at the end of the sweep, where peak bandwidth is measured, are always included and no row is counted twice.
 

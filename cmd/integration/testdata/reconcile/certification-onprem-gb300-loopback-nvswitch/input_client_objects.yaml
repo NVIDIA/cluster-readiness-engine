@@ -4,7 +4,7 @@
 # On-prem GB300 running the per-node torch entry. The NVL72 comm fragment
 # used to merge mlPolicy.mpi into this torch runtime, which the TrainingRuntime
 # CRD's one-policy CEL rule rejects, and to replace the entry's
-# tolerate-everything toleration. Both are fixed under ADR-092; this case
+# tolerate-everything toleration. Both are fixed under ADR-094; this case
 # creates the merged runtime against envtest so the rule is what pins it.
 apiVersion: v1
 kind: Node

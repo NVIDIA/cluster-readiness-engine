@@ -4,7 +4,7 @@
 # On-prem is the detection fallback: an empty providerID (and no Forge
 # hostname or NKE site label) resolves to "onprem". The product label is the
 # x86 HGX B300 baseboard's (8 GPUs, no multi-node NVLink), not the GB300 NVL72
-# tray; both parse to distinct architectures (ADR-092).
+# tray; both parse to distinct architectures (ADR-094).
 metadata:
   labels:
     nvidia.com/gpu.present: "true"

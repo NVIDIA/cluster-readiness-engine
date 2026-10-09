@@ -504,7 +504,7 @@ func renderCertification(
 	// arrived from the nodeSelector or from dry-run discovery is not, so say
 	// when it is being sized on the Go-side fallback, once per render, with
 	// the text the controller emits as the GPUArchitectureDefaults event
-	// (ADR-092).
+	// (ADR-094).
 	if msg := controller.GPUArchFallbackMessage(gpuArch,
 		catalog.GPUDefaults(gpuArch, platformName), controller.GPUArchFieldHintCertification); msg != "" {
 		_, _ = fmt.Fprintln(os.Stderr, msg)

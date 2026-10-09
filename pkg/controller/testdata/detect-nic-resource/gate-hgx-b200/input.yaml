@@ -1,4 +1,4 @@
-# On-prem x86 HGX B200 joins the gate alongside B300 (ADR-092).
+# On-prem x86 HGX B200 joins the gate alongside B300 (ADR-094).
 platform: onprem
 gpuArchitecture: b200
 mlnxPerNode: 8

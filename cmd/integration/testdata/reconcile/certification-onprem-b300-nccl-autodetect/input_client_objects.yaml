@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# x86 HGX B300 on-prem with a shared RDMA device plugin (ADR-092): the
+# x86 HGX B300 on-prem with a shared RDMA device plugin (ADR-094): the
 # certification sets no nicResourceName, every node advertises exactly one
 # candidate (rdma/rdma_shared_device_a, a pooled resource at 1000) plus an
 # unused pool at 0, so detection picks the live pool at the requested count of

@@ -41,7 +41,7 @@ type onpremReplicatedJob struct {
 	// MLPolicy lists the policy keys set on the runtime (torch, mpi, ...),
 	// sorted. The TrainingRuntime CRD allows exactly one, so a fragment that
 	// merges a second policy into a per-node torch runtime shows up here as
-	// two keys (ADR-092).
+	// two keys (ADR-094).
 	MLPolicy []string `json:"mlPolicy"`
 	// Tolerations renders each toleration in declaration order as
 	// "key=value:effect"; the on-prem override contributes the arm64 and GPU

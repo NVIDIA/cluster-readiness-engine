@@ -1,0 +1,8 @@
+# A failed Job whose log holds a network line but no bandwidth rows keeps its
+# provisional results and still records the transport.
+jobCondition: Failed
+podPhase: Failed
+provisional:
+  - {sizeBytes: 8, algBW: "0.00", busBW: "0.00", samples: 1}
+log: |
+  2026-09-30T10:01:00.100000000Z NCCL INFO Using network Socket

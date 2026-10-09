@@ -24,7 +24,7 @@ const (
 // GPUArchFallbackMessage is the exported version of gpuArchFallbackMessage
 // for the CLI render and cluster-info paths, so every surface that sizes a
 // workflow on an architecture missing from gpu-defaults.yaml prints the same
-// text the controllers emit as the GPUArchitectureDefaults event (ADR-092).
+// text the controllers emit as the GPUArchitectureDefaults event (ADR-094).
 // It returns "" for an empty, unknown, or listed architecture.
 func GPUArchFallbackMessage(gpuArch string, nd catalog.NodeDefaults, fieldHint string) string {
 	return gpuArchFallbackMessage(gpuArch, nd, fieldHint)

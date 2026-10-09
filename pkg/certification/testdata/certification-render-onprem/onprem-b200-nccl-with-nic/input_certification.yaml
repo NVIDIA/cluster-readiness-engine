@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# HGX B200 shares the x86 HGX block with B300 (ADR-092).
+# HGX B200 shares the x86 HGX block with B300 (ADR-094).
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:

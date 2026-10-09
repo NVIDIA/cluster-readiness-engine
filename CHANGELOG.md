@@ -23,7 +23,7 @@ followed them.
   on-prem override for x86 HGX B200/B300 nodes adds the `nvidia.com/gpu` taint
   toleration and makes `nicResourceName` and `mlnxPerNode` request RDMA devices
   on those nodes, with NIC auto-detection widened to match. It sets no NCCL
-  environment. See ADR-092.
+  environment. See ADR-094.
 - A Warning event, reason `GPUArchitectureDefaults`, on the Certification or
   WorkloadRun when the detected GPU architecture is missing from the catalog's
   defaults table and the workflow was sized on the four-GPU fallback. Every
@@ -55,7 +55,7 @@ followed them.
   `mpi` policies, which the API server rejects at dependency creation, and lost the
   entry's tolerate-everything toleration. The platform comm fragments no longer set
   `mlPolicy` (the MPI entries' base runtimes already do) and the loopback entries
-  restore the toleration after each of them. See ADR-092.
+  restore the toleration after each of them. See ADR-094.
 - `nvcre_job_status` now reports `failed` for a Job that timed out on
   `timeoutPerJob`. The gauge was written only by the Job tier, so the Workflow
   reconciler's timeout write left it at `in_progress` for the rest of the run, and

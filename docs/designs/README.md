@@ -96,4 +96,5 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 086 | [Lifecycle Status Metrics Read from the Cache, and the Timeout Write Is Exclusive](086-lifecycle-status-metrics-and-timeout-exclusivity.md) |
 | 087 | [`mlnxPerNode: 0` As a Real Opt-Out, and OCI GB200 NIC Defaults](087-mlnx-per-node-zero-opt-out.md) |
 | 089 | [Unpinned Single-Job Placement](089-unpinned-single-job-placement.md) |
-| 092 | [HGX B300 Architecture Defaults, an On-Prem x86 HGX NIC Override, and a Fallback Event for Unknown Architectures](092-hgx-b300-architecture-and-onprem-nic-override.md) |
+| 092 | [Per-Namespace Write Access for the Controller](092-per-namespace-controller-rbac.md) |
+| 094 | [HGX B300 Architecture Defaults, an On-Prem x86 HGX NIC Override, and a Fallback Event for Unknown Architectures](094-hgx-b300-architecture-and-onprem-nic-override.md) |

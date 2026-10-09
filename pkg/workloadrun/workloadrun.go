@@ -162,7 +162,7 @@ func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) 
 	nd := catalog.GPUDefaults(gpuArch, platformFlag)
 	// --gpu-arch is validated against gpu-defaults.yaml; an architecture from
 	// the nodeSelector is not, so say when it is sized on the fallback
-	// (ADR-092).
+	// (ADR-094).
 	if msg := controller.GPUArchFallbackMessage(gpuArch, nd, controller.GPUArchFieldHintWorkloadRun); msg != "" {
 		_, _ = fmt.Fprintln(os.Stderr, msg)
 	}
@@ -613,7 +613,7 @@ func runWorkloadRunRenderDryRun(
 	gpuArch := controller.DetectGPUArchitecture(nodes)
 	nd := catalog.GPUDefaults(gpuArch, effectivePlatform)
 	// The discovered architecture bypasses --gpu-arch validation, so say when
-	// it is sized on the fallback, as the controller does (ADR-092).
+	// it is sized on the fallback, as the controller does (ADR-094).
 	if msg := controller.GPUArchFallbackMessage(gpuArch, nd, controller.GPUArchFieldHintWorkloadRun); msg != "" {
 		_, _ = fmt.Fprintln(os.Stderr, msg)
 	}

@@ -1,4 +1,4 @@
-# On-prem x86 HGX B300 is inside the widened gate (ADR-092): detection runs
+# On-prem x86 HGX B300 is inside the widened gate (ADR-094): detection runs
 # and the shared-device pool qualifies at the resolved count of 1.
 platform: onprem
 gpuArchitecture: b300

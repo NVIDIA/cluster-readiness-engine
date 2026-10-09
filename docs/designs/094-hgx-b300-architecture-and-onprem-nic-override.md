@@ -1,4 +1,4 @@
-# ADR-092: HGX B300 Architecture Defaults, an On-Prem x86 HGX NIC Override, and a Fallback Event for Unknown Architectures
+# ADR-094: HGX B300 Architecture Defaults, an On-Prem x86 HGX NIC Override, and a Fallback Event for Unknown Architectures
 
 > **Status:** Proposed
 
@@ -107,7 +107,7 @@ All structured output goes through `testutil.TestCaseParser` goldens, per the re
 - **Gate the override on `b300` only.** Rejected: B200 has the identical gap and the identical hardware shape.
 - **Defaults entry only, no override.** Rejected: it fixes the rank count but leaves `nicResourceName` and `mlnxPerNode` documented fields that do nothing on the hardware the customer has, and leaves Certification with no way to request RDMA devices on B300.
 - **Copy the NVL72 comm fragment's `mlPolicy` line.** Rejected: redundant on MPI entries, and it merges a second policy into the torch-based loopback runtimes, which the CRD rejects.
-- **Leave the existing fragments' `mlPolicy` line for a separate fix.** Rejected: the defect makes every on-prem, Mistral, and GCP GB200/GB300 loopback Certification fail at dependency creation, the fix is the same three-line removal in each fragment, and the ADR-092 render projection would otherwise ship a golden that pins the broken merge.
+- **Leave the existing fragments' `mlPolicy` line for a separate fix.** Rejected: the defect makes every on-prem, Mistral, and GCP GB200/GB300 loopback Certification fail at dependency creation, the fix is the same three-line removal in each fragment, and the ADR-094 render projection would otherwise ship a golden that pins the broken merge.
 - **Normal event for the fallback.** Rejected in favour of Warning: the assumed count is wrong on every architecture that has eight GPUs, which is every architecture in the table except GB200/GB300.
 - **Event only, no CLI output.** Rejected: the customer's first run was an offline render, which has no event stream.
 
@@ -117,7 +117,7 @@ All structured output goes through `testutil.TestCaseParser` goldens, per the re
 - **OpenShift.** The customer's cluster is OpenShift. The GPU toleration is harmless where the taint is absent. The MPI launcher's `sshd` failure on OpenShift (`SYS_CHROOT`) is issue #461 and is not addressed here.
 - **`spec.resources` on WorkloadRun remains a valid escape hatch** for any resource the catalog does not know how to request. The override makes the typed fields work; it does not remove the generic path.
 - **Product label variants.** `ParseProduct` takes the first segment before any hyphen or space, so `NVIDIA-B300`, `NVIDIA-B300-SXM6-AC`, a liquid-cooled suffix, and the ResourceSlice form `NVIDIA B300` all resolve to `b300`. `ConfigArch` (`pkg/catalog/catalog.go:255-260`) leaves `b300` unmapped, which is correct: the training entries ship one `configs/train.sh` each, and the architecture only selects a parallelism row.
-- **ADR number.** 090 and 091 are claimed by PR #453; 092 is the next free number.
+- **ADR number.** 090 and 091 are claimed by PR #453, 092 landed as the per-namespace controller RBAC record (#457), and 093 is claimed by the #461 fix; 094 is the next free number.
 
 ## References
 

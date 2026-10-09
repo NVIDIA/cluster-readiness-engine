@@ -521,7 +521,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	}
 	// An architecture missing from gpu-defaults.yaml was just sized on the
 	// Go-side fallback; say so on the Certification instead of running
-	// silently at the wrong rank count (ADR-092). Emitted below, only by the
+	// silently at the wrong rank count (ADR-094). Emitted below, only by the
 	// reconcile whose Create succeeds, like the GCP H100 detection warnings.
 	archFallbackMessage := gpuArchFallbackMessage(gpuArch, nd, gpuArchFieldHintCertification)
 	// The NIC resource name has no architecture default: it depends on the

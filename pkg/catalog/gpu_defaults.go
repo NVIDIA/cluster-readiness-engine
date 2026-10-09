@@ -102,7 +102,7 @@ func GPUDefaults(gpuArch, platform string) NodeDefaults {
 // KnownGPUArch reports whether gpu-defaults.yaml lists the architecture, i.e.
 // whether GPUDefaults resolves it from the table rather than falling back to
 // fallbackGpusPerNode. Callers use it to tell the user when a workflow was
-// sized on the fallback (ADR-092).
+// sized on the fallback (ADR-094).
 func KnownGPUArch(gpuArch string) bool {
 	ensureGPUDefaultsLoaded()
 	_, ok := gpuDefaults.Defaults[gpuArch]

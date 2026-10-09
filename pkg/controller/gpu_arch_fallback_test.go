@@ -15,7 +15,7 @@ import (
 )
 
 // TestGPUArchFallbackMessage pins the GPUArchitectureDefaults event text
-// (ADR-092): an architecture missing from gpu-defaults.yaml names the
+// (ADR-094): an architecture missing from gpu-defaults.yaml names the
 // assumed counts and the caller's fields; a listed architecture, an empty
 // one, and the "unknown" sentinel for unlabeled nodes all stay silent.
 func TestGPUArchFallbackMessage(t *testing.T) {

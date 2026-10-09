@@ -40,7 +40,7 @@ const (
 	// and WorkloadRun tiers emit when the detected GPU architecture is not
 	// listed in the catalog's gpu-defaults.yaml, so the workflow was sized
 	// with the Go-side fallback (four GPUs, no NICs) instead of a known node
-	// shape (ADR-092).
+	// shape (ADR-094).
 	ReasonGPUArchitectureDefaults = "GPUArchitectureDefaults"
 )
 

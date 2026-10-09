@@ -14,7 +14,7 @@ import (
 
 // TestDefaultEnableMNNVL pins which architectures default to multi-node
 // NVLink. HGX B200/B300 have NVSwitch inside the chassis only, so they stay
-// false even though B300 shares a name prefix with GB300 (ADR-092).
+// false even though B300 shares a name prefix with GB300 (ADR-094).
 func TestDefaultEnableMNNVL(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "default-enable-mnnvl",

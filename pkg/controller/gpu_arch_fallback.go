@@ -12,7 +12,7 @@ import (
 // gpuArchFallbackMessage renders the user-facing explanation emitted when the
 // detected GPU architecture is not listed in the catalog's gpu-defaults.yaml,
 // so GPUDefaults sized the workflow on its Go-side fallback instead of a known
-// node shape (ADR-092). It returns "" when the architecture is empty, known,
+// node shape (ADR-094). It returns "" when the architecture is empty, known,
 // or the "unknown" sentinel detection returns for unlabeled nodes (that is a
 // missing label, ADR-082's problem, not a missing table entry), so callers can
 // emit unconditionally. fieldHint names where the caller's users set the

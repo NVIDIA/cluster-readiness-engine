@@ -12,7 +12,7 @@ import (
 )
 
 // NIC resource auto-detection for the on-prem GB200/GB300 override (ADR-075)
-// and the on-prem x86 HGX B200/B300 override (ADR-092).
+// and the on-prem x86 HGX B200/B300 override (ADR-094).
 //
 // The override injects an RDMA NIC resource request only when a resource name
 // is known, and the name depends on the device plugin a site runs, so there is
@@ -34,7 +34,7 @@ const (
 
 // isOnPremNICOverrideTarget reports whether the detected platform/architecture
 // pair is one the on-prem NIC-requesting overrides match: the ADR-075 NVL72
-// block (gb200, gb300) or the ADR-092 x86 HGX block (b200, b300). NIC
+// block (gb200, gb300) or the ADR-094 x86 HGX block (b200, b300). NIC
 // detection is gated on it so no other platform ever sees a detected name or
 // a detection event: nicResourceName is only consumed by those overrides' dep
 // fragments.

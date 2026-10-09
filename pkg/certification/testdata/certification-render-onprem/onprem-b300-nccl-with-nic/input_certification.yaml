@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# x86 HGX B300 on-prem (ADR-092): the product label parses to b300, the HGX
+# x86 HGX B300 on-prem (ADR-094): the product label parses to b300, the HGX
 # block requests the shared-device pool at the configured count, and the
 # per-node nccl-loopback-nvswitch runtime keeps a single torch policy and its
 # tolerate-everything toleration. No NVL72 env, no arm64 toleration.

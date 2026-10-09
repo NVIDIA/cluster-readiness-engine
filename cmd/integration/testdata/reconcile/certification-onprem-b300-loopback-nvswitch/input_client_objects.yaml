@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# x86 HGX B300 on-prem running the per-node torch entry (ADR-092). The HGX
+# x86 HGX B300 on-prem running the per-node torch entry (ADR-094). The HGX
 # comm fragment carries no mlPolicy, so the merged TrainingRuntime keeps a
 # single torch policy and the API server's one-policy CEL rule accepts it;
 # tolerate-all-runtime-patch.yaml restores the entry's tolerate-everything

@@ -143,7 +143,7 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err := r.Create(ctx, workflow); err == nil {
 		// Only the reconcile whose Create succeeded warns, so a retry that
 		// adopts the Workflow it already created does not repeat it
-		// (ADR-092).
+		// (ADR-094).
 		if archFallbackMessage != "" {
 			r.warnf(&run, ReasonGPUArchitectureDefaults, "%s", archFallbackMessage)
 		}
@@ -428,7 +428,7 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 
 // buildWorkflowSpecWithWarning is buildWorkflowSpec plus the
 // GPUArchitectureDefaults message to emit once the Workflow is created, or ""
-// when the detected architecture is listed in gpu-defaults.yaml (ADR-092).
+// when the detected architecture is listed in gpu-defaults.yaml (ADR-094).
 // Reconcile emits it only after a successful Create so a retry does not
 // repeat it; the tests that only need the spec call buildWorkflowSpec.
 func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
@@ -462,7 +462,7 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 		// An architecture missing from gpu-defaults.yaml was just sized on
 		// the Go-side fallback; Reconcile says so on the WorkloadRun once the
 		// Workflow is created instead of running silently at the wrong rank
-		// count (ADR-092).
+		// count (ADR-094).
 		archFallbackMessage = gpuArchFallbackMessage(gpuArch, nd, gpuArchFieldHintWorkloadRun)
 	}
 

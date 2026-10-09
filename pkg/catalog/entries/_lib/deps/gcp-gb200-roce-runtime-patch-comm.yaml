@@ -6,7 +6,7 @@
 # Carries no mlPolicy: the MPI entries' base runtimes already set
 # mlPolicy.mpi.numProcPerNode, and the per-node loopback entries use
 # mlPolicy.torch, which a merged mlPolicy.mpi collides with (the
-# TrainingRuntime CRD allows exactly one policy; ADR-092). Tolerations have
+# TrainingRuntime CRD allows exactly one policy; ADR-094). Tolerations have
 # no merge key, so the list below replaces the base list; the loopback entries
 # append tolerate-all-runtime-patch.yaml after this fragment to restore theirs.
 

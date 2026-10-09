@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# An architecture GFD labels but gpu-defaults.yaml does not list (ADR-092):
+# An architecture GFD labels but gpu-defaults.yaml does not list (ADR-094):
 # the controller sizes the workflow on the four-GPU fallback and says so with
 # a GPUArchitectureDefaults Warning on the Certification. The nodes have eight
 # GPUs, so the under-sized job still schedules and the run proceeds.

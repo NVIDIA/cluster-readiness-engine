@@ -138,6 +138,11 @@ func (in *BandwidthMeasurementStatus) DeepCopyInto(out *BandwidthMeasurementStat
 		*out = make([]BandwidthResult, len(*in))
 		copy(*out, *in)
 	}
+	if in.Transport != nil {
+		in, out := &in.Transport, &out.Transport
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.StartTime != nil {
 		in, out := &in.StartTime, &out.StartTime
 		*out = (*in).DeepCopy()
@@ -1445,6 +1450,11 @@ func (in *LogPatternSet) DeepCopyInto(out *LogPatternSet) {
 	}
 	if in.BandwidthResult != nil {
 		in, out := &in.BandwidthResult, &out.BandwidthResult
+		*out = new(EventPattern)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.NetworkTransport != nil {
+		in, out := &in.NetworkTransport, &out.NetworkTransport
 		*out = new(EventPattern)
 		(*in).DeepCopyInto(*out)
 	}
