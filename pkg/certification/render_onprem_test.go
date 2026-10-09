@@ -11,6 +11,8 @@ import (
 	"sort"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
+
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
 	"sigs.k8s.io/yaml"
 
@@ -38,10 +40,16 @@ type onpremContainer struct {
 type onpremReplicatedJob struct {
 	Dependency    string `json:"dependency"`
 	ReplicatedJob string `json:"replicatedJob"`
-	// Tolerations renders each toleration in declaration order as
-	// "key=value:effect"; the on-prem override contributes the arm64 and GPU
-	// taints, and their absence on a control case is as load-bearing as their
-	// presence on an on-prem one.
+	// MLPolicy lists the policy keys set on the runtime (torch, mpi, ...),
+	// sorted. The TrainingRuntime CRD allows exactly one, so a fragment that
+	// merges a second policy into a per-node torch runtime shows up here as
+	// two keys (ADR-094).
+	MLPolicy []string `json:"mlPolicy"`
+	// Tolerations renders each toleration in declaration order through
+	// formatToleration, so the operator is always visible; the NVL72 on-prem
+	// override contributes the arm64 and GPU taints, the HGX override only the
+	// GPU taint (any value), and their absence on a control case is as
+	// load-bearing as their presence on an on-prem one.
 	Tolerations []string          `json:"tolerations"`
 	Containers  []onpremContainer `json:"containers"`
 }
@@ -65,16 +73,20 @@ type onpremWorkflow struct {
 }
 
 // TestCertificationRenderOnPrem covers the ADR-075 on-prem GB200/GB300
-// override end to end through the same path "nvcrectl certification render
-// --platform onprem" uses: renderCertification resolves catalog templates with
-// the certification's options (including nicResourceName), and
+// override and the ADR-094 on-prem x86 HGX B200/B300 override end to end
+// through the same path "nvcrectl certification render --platform onprem"
+// uses: renderCertification resolves catalog templates with the
+// certification's options (including nicResourceName), and
 // resolveWorkflowsOffline matches the onprem override blocks against a
-// synthetic no-providerID node. The goldens pin the markers the override owns:
-// both tolerations, the optional NIC resource (present only when
-// nicResourceName is set), the portable IB env, and the absence of pinned HCA
-// names. The h100 control case pins that none of it leaks outside GB200/GB300,
-// and the gpu-arch-flag cases pin that --gpu-arch, bare or as a product name,
-// stands in for a missing nvidia.com/gpu.product label.
+// synthetic no-providerID node. The goldens pin the markers the overrides own:
+// the tolerations (arm64 and GPU on NVL72, GPU only on HGX, tolerate-everything
+// kept on the per-node loopback entries), the optional NIC resource (present
+// only when nicResourceName is set and mlnxPerNode is positive), the portable
+// IB env on NVL72 and its absence on HGX, the runtime's single mlPolicy, and
+// the absence of pinned HCA names. The h100 control case pins that none of it
+// leaks outside those four architectures, and the gpu-arch-flag cases pin
+// that --gpu-arch, bare or as a product name, stands in for a missing
+// nvidia.com/gpu.product label.
 func TestCertificationRenderOnPrem(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "certification-render-onprem",
@@ -178,12 +190,12 @@ func projectOnPremOverride(wf *nvcrev1alpha1.Workflow) (onpremWorkflow, error) {
 			projected := onpremReplicatedJob{
 				Dependency:    rt.Name,
 				ReplicatedJob: rj.Name,
+				MLPolicy:      mlPolicyKeys(rt.Spec.MLPolicy),
 				Tolerations:   []string{},
 				Containers:    []onpremContainer{},
 			}
 			for _, tol := range podSpec.Tolerations {
-				projected.Tolerations = append(projected.Tolerations,
-					fmt.Sprintf("%s=%s:%s", tol.Key, tol.Value, tol.Effect))
+				projected.Tolerations = append(projected.Tolerations, formatToleration(tol))
 			}
 			for _, c := range podSpec.Containers {
 				pc := onpremContainer{Name: c.Name, Resources: []string{}, Env: []string{}}
@@ -203,4 +215,37 @@ func projectOnPremOverride(wf *nvcrev1alpha1.Workflow) (onpremWorkflow, error) {
 		}
 	}
 	return out, nil
+}
+
+// formatToleration renders a toleration so the operator is always visible:
+// "key=value:effect" for Equal (the API default when the operator is unset),
+// "key Exists:effect" for a keyed Exists, and "operator=Exists" for the
+// keyless tolerate-everything toleration that tolerate-all-runtime-patch.yaml
+// restores on the per-node entries. A keyed Exists and an Equal with an empty
+// value therefore never collide in the goldens.
+func formatToleration(tol corev1.Toleration) string {
+	switch {
+	case tol.Key == "":
+		return fmt.Sprintf("operator=%s", tol.Operator)
+	case tol.Operator == corev1.TolerationOpExists:
+		return fmt.Sprintf("%s Exists:%s", tol.Key, tol.Effect)
+	default:
+		return fmt.Sprintf("%s=%s:%s", tol.Key, tol.Value, tol.Effect)
+	}
+}
+
+// mlPolicyKeys returns the sorted names of the policies set on an MLPolicy.
+func mlPolicyKeys(p *trainerv1alpha1.MLPolicy) []string {
+	keys := []string{}
+	if p == nil {
+		return keys
+	}
+	if p.Torch != nil {
+		keys = append(keys, "torch")
+	}
+	if p.MPI != nil {
+		keys = append(keys, "mpi")
+	}
+	sort.Strings(keys)
+	return keys
 }

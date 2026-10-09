@@ -50,6 +50,9 @@
       {
         "dependency": "nccl-all-reduce-runtime",
         "replicatedJob": "node",
+        "mlPolicy": [
+          "mpi"
+        ],
         "tolerations": [
           "kubernetes.io/arch=arm64:NoSchedule",
           "nvidia.com/gpu=present:NoSchedule"
@@ -70,7 +73,13 @@
       {
         "dependency": "nccl-all-reduce-runtime",
         "replicatedJob": "launcher",
-        "tolerations": [],
+        "mlPolicy": [
+          "mpi"
+        ],
+        "tolerations": [
+          "kubernetes.io/arch=arm64:NoSchedule",
+          "nvidia.com/gpu=present:NoSchedule"
+        ],
         "containers": [
           {
             "name": "node",

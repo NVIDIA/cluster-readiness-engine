@@ -18,7 +18,8 @@ const (
 
 	// ReasonNICResourceDetection is shared by the Certification and WorkloadRun
 	// tiers: both emit a Normal event under it when NIC resource auto-detection
-	// ran (on-prem GB200/GB300 target with nicResourceName unset) and found
+	// ran (on-prem GB200/GB300 or x86 HGX B200/B300 target with
+	// nicResourceName unset) and found
 	// zero or multiple qualifying candidates, so nothing was injected.
 	ReasonNICResourceDetection = "NICResourceDetection"
 
@@ -34,6 +35,13 @@ const (
 	// safe profile's GCP H100 workload and tcpxo-daemon images were rendered
 	// (the latest mapped release for a newer tag, the minimum otherwise).
 	ReasonTCPXOPluginDetection = "TCPXOPluginDetection"
+
+	// ReasonGPUArchitectureDefaults is the Warning event both the Certification
+	// and WorkloadRun tiers emit when the detected GPU architecture is not
+	// listed in the catalog's gpu-defaults.yaml, so the workflow was sized
+	// with the Go-side fallback (four GPUs, no NICs) instead of a known node
+	// shape (ADR-094).
+	ReasonGPUArchitectureDefaults = "GPUArchitectureDefaults"
 )
 
 // requeueImmediate is a short self-requeue delay used to advance a reconciler's

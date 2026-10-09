@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Tolerates the arm64 and GPU taints on the MPI launcher replicated job of the
+# on-prem GB200/GB300 communication entries (ADR-094, closing a gap left by
+# ADR-075). The launcher needs no GPU, but NVL72 trays are routinely tainted
+# kubernetes.io/arch=arm64:NoSchedule, so on a fleet with no untainted node it
+# would otherwise stay Pending while the node pods run. Same taint values as
+# onprem-gb200-gb300-runtime-patch-comm.yaml. Listed only in the three MPI
+# entries: the per-node loopback entries have no launcher job, and a
+# name-keyed merge would append a bare one.
+
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: launcher
+          template:
+            spec:
+              template:
+                spec:
+                  tolerations:
+                  - key: kubernetes.io/arch
+                    operator: Equal
+                    value: arm64
+                    effect: NoSchedule
+                  - key: nvidia.com/gpu
+                    operator: Equal
+                    value: present
+                    effect: NoSchedule

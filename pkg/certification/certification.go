@@ -344,7 +344,7 @@ func applyWorkflowTransforms(
 // allocatable for the dry-run render path, mirroring the certification
 // controller: the field always wins (a per-category nicResourceName still
 // overrides the injected global via controller.ResolveOptions), detection
-// runs only for on-prem GB200/GB300 targets, and only a single qualifying
+// runs only for on-prem GB200/GB300 and x86 HGX B200/B300 targets, and only a single qualifying
 // candidate (rdma/* or nvidia.com/mlnxnics, allocatable at the resolved
 // mlnxPerNode count on every target node) is used. On zero or multiple
 // candidates it prints the note the controllers emit as a
@@ -524,6 +524,15 @@ func renderCertification(
 		}
 		if opts.MlnxPerNode != nil {
 			mlnxPerNode = *opts.MlnxPerNode
+		}
+		// --gpu-arch is validated against gpu-defaults.yaml; an architecture
+		// that arrived from the nodeSelector or from dry-run discovery is not,
+		// so say when the catalog had no node shape for it, once per category
+		// with the resolved counts, in the text the controller emits as the
+		// GPUArchitectureDefaults event (ADR-094).
+		if msg := controller.GPUArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode,
+			controller.GPUArchFieldHintCertification); msg != "" {
+			_, _ = fmt.Fprintf(os.Stderr, "%s/%s: %s\n", cat.Domain, cat.Variant, msg)
 		}
 		// The NIC resource name has no architecture default: it depends on
 		// the RDMA device plugin the site runs. Offline (no --dry-run) it is

@@ -35,6 +35,9 @@
       {
         "dependency": "nccl-all-reduce-runtime",
         "replicatedJob": "node",
+        "mlPolicy": [
+          "mpi"
+        ],
         "tolerations": [],
         "containers": [
           {
@@ -50,6 +53,9 @@
       {
         "dependency": "nccl-all-reduce-runtime",
         "replicatedJob": "launcher",
+        "mlPolicy": [
+          "mpi"
+        ],
         "tolerations": [],
         "containers": [
           {

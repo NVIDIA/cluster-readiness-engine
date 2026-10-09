@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Tolerates the nvidia.com/gpu taint on the MPI launcher replicated job of the
+# on-prem x86 HGX communication entries (ADR-094). The launcher needs no GPU,
+# but on a fleet where every schedulable node carries the taint it would
+# otherwise stay Pending while the node pods run. Listed only in the three MPI
+# entries: the per-node loopback entries have no launcher job, and a
+# name-keyed merge would append a bare one.
+
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: launcher
+          template:
+            spec:
+              template:
+                spec:
+                  tolerations:
+                  - key: nvidia.com/gpu
+                    operator: Exists
+                    effect: NoSchedule

@@ -489,6 +489,18 @@ overrides:
       in: [gb200, gb300]
   dependencies:
 {{ lib "deps/onprem-gb200-gb300-runtime-patch-training.yaml" . | indent 2 }}
+# --- On-prem + x86 HGX B200/B300 (ADR-094) ---
+# Deps-only: the GPU taint toleration and the optional NIC resource block
+# (injected only when nicResourceName is set or auto-detected, count from
+# mlnxPerNode). No NCCL environment and no arm64 toleration: an x86 HGX chassis
+# is not an NVL72 tray, and the fabric tuning waits on multi-node evidence.
+- when:
+    platform:
+      equals: onprem
+    gpuArchitecture:
+      in: [b200, b300]
+  dependencies:
+{{ lib "deps/onprem-hgx-runtime-patch-training.yaml" . | indent 2 }}
 # --- GCP + RTX PRO 6000 (G4 TCP; 8B training on 4-GPU nodes) ---
 - when:
     platform:

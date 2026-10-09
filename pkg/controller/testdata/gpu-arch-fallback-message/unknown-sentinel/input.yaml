@@ -1,0 +1,6 @@
+# The "unknown" sentinel means unlabeled nodes (ADR-082), not a missing
+# table entry, so it is silent here.
+gpuArch: unknown
+gpusPerNode: 4
+mlnxPerNode: 0
+fieldHint: WorkloadRun

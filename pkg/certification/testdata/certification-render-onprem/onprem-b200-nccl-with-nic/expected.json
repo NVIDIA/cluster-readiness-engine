@@ -1,0 +1,79 @@
+[
+  {
+    "workflow": "onprem-b200-cert-communic-37d09",
+    "targetNodeSelector": {
+      "nvidia.com/gpu.product": "NVIDIA-B200"
+    },
+    "dependencyKinds": [
+      "TrainingRuntime"
+    ],
+    "trainerArgs": [
+      "-N",
+      "8",
+      "--allow-run-as-root",
+      "--mca",
+      "plm_rsh_args",
+      "-o StrictHostKeyChecking=no",
+      "-x",
+      "NCCL_DEBUG=INFO",
+      "-x",
+      "NCCL_MNNVL_ENABLE=0",
+      "/usr/local/bin/all_reduce_perf_mpi",
+      "-b",
+      "8",
+      "-e",
+      "16G",
+      "-f",
+      "2",
+      "-n",
+      "100",
+      "-N",
+      "10"
+    ],
+    "trainerEnv": [],
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "mlPolicy": [
+          "mpi"
+        ],
+        "tolerations": [
+          "nvidia.com/gpu Exists:NoSchedule"
+        ],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/nvidia.com/gpu=8",
+              "limits/rdma/ib=8",
+              "requests/nvidia.com/gpu=8",
+              "requests/rdma/ib=8"
+            ],
+            "env": []
+          }
+        ]
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "mlPolicy": [
+          "mpi"
+        ],
+        "tolerations": [
+          "nvidia.com/gpu Exists:NoSchedule"
+        ],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/cpu=2",
+              "limits/memory=1Gi"
+            ],
+            "env": []
+          }
+        ]
+      }
+    ]
+  }
+]

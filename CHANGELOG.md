@@ -17,6 +17,19 @@ followed them.
 
 ### Added
 
+- The x86 HGX B300 GPU architecture (`b300`, product label `NVIDIA-B300-SXM6-AC`)
+  is in the catalog's GPU defaults table at eight GPUs and eight NICs per node, so
+  it renders at the right rank count and `--gpu-arch b300` is accepted. A new
+  on-prem override for x86 HGX B200/B300 nodes tolerates the `nvidia.com/gpu` taint
+  with any value, on the MPI launcher too, and makes `nicResourceName` and `mlnxPerNode` request RDMA devices
+  on those nodes, with NIC auto-detection widened to match. It sets no NCCL
+  environment. On every on-prem fragment, `nicResourceName` with `mlnxPerNode: 0`
+  now omits the NIC request instead of rendering a count of zero (#464)
+- A Warning event, reason `GPUArchitectureDefaults`, on the Certification or
+  WorkloadRun when the detected GPU architecture is missing from the catalog's
+  defaults table, naming the four-GPU fallback the catalog has for it and the
+  counts the run is actually sized at. Every `nvcrectl` render path and
+  `nvcrectl cluster info` print the same message (#464)
 - GCP H100 detects the TCPXO NCCL plugin release from the `nccl-tcpxo-installer` pods
   on the target nodes and picks the NCCL and training images and the paired
   `tcpxo-daemon` from it: v1.0.15 and v1.0.16 run `pytorch:25.06-py3` (CUDA 12) with
@@ -39,6 +52,15 @@ followed them.
 
 ### Fixed
 
+- `communication/nccl-loopback` and `nccl-loopback-nvswitch` on on-prem GB200/GB300,
+  Mistral GB300, and GCP GB200/GB300 rendered a TrainingRuntime with both `torch` and
+  `mpi` policies, which the API server rejects at dependency creation, and lost the
+  entry's tolerate-everything toleration. The platform comm fragments no longer set
+  `mlPolicy` (the MPI entries' base runtimes already do) and the loopback entries
+  restore the toleration after each of them (#464)
+- The MPI launcher pod of the on-prem GB200/GB300 communication entries had no
+  toleration for the arm64 and GPU taints the node pods tolerate, so on a fleet
+  with no untainted node it stayed Pending; it now tolerates both (#464)
 - `nvcre_job_status` now reports `failed` for a Job that timed out on
   `timeoutPerJob`. The gauge was written only by the Job tier, so the Workflow
   reconciler's timeout write left it at `in_progress` for the rest of the run, and

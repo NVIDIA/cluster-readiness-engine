@@ -88,7 +88,7 @@ Note: platform-specific catalog overrides may still supersede these values. On A
 
 ## Overrides
 
-Catalog entries define a base workload spec. Platform-specific and GPU-specific overrides within the same YAML are applied at render time based on the detected environment. Supported GPU architectures include GB200, GB300, H100, H200, and B200. See [Platform Detection & Overrides](./platform-detection.md) for override semantics.
+Catalog entries define a base workload spec. Platform-specific and GPU-specific overrides within the same YAML are applied at render time based on the detected environment. Supported GPU architectures include GB200, GB300, H100, H200, B200, and B300. See [Platform Detection & Overrides](./platform-detection.md) for override semantics.
 
 ## Adding a custom entry
 

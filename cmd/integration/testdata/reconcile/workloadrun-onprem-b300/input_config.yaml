@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: wr-onprem-b300
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: WorkloadRun
+    name: wr-onprem-b300
+    namespace: default
+  - kind: Workflow
+    name: wr-onprem-b300
+    namespace: default
+  # The Workflow keeps its base spec; the override patches land on the
+  # TrainingRuntime the Workflow controller creates, so that object is the
+  # evidence.
+  - kind: TrainingRuntime
+    name: wr-onprem-b300-runtime-e00b8-job
+    namespace: default
+events:
+  # A listed architecture and a single qualifying NIC candidate: the
+  # projection carries WorkflowCreated and nothing else.
+  - involvedKind: WorkloadRun
+    involvedName: wr-onprem-b300
+    namespace: default
+    expect:
+      - {type: Normal, reason: WorkflowCreated}

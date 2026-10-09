@@ -128,7 +128,12 @@ Use --topology-key to override.`,
 
 			platform := controller.DetectPlatform(nodes)
 			gpuArch := controller.DetectGPUArchitecture(nodes)
-			gpusPerNode := catalog.GPUDefaults(gpuArch, platform).GpusPerNode
+			nd := catalog.GPUDefaults(gpuArch, platform)
+			gpusPerNode := nd.GpusPerNode
+			if msg := controller.GPUArchFallbackMessage(gpuArch, nd.GpusPerNode, nd.MlnxPerNode,
+				controller.GPUArchFieldHintClusterInfo); msg != "" {
+				_, _ = fmt.Fprintln(os.Stderr, msg)
+			}
 
 			// Auto-detect topology key if not specified.
 			if topologyKey == "" {

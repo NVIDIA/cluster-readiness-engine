@@ -17,6 +17,9 @@
       {
         "dependency": "nemotron5-8b-runtime",
         "replicatedJob": "node",
+        "mlPolicy": [
+          "torch"
+        ],
         "tolerations": [
           "kubernetes.io/arch=arm64:NoSchedule",
           "nvidia.com/gpu=present:NoSchedule"

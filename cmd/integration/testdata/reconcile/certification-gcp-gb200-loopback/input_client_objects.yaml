@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# GCP GB200 running the per-node nccl-loopback entry. Same two defects as
+# the on-prem NVL72 fragment, fixed under ADR-094: the GCP GB200 comm fragment
+# carries no mlPolicy and the entry restores tolerate-everything.
+apiVersion: v1
+kind: Node
+metadata:
+  name: gcp-gb200-lb-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: gcp-gb200-lb-node-01
+spec:
+  providerID: "gce://my-project/us-central1-a/gcp-gb200-lb-node-01"
+status:
+  allocatable:
+    nvidia.com/gpu: "4"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: gcp-nc-gb-lb
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+  categories:
+    - domain: communication
+      variant: nccl-loopback

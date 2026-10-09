@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A WorkloadRun on nodes whose product label parses to an architecture
+# gpu-defaults.yaml does not list (ADR-094). The spec sets gpusPerNode, so the
+# run is sized at 8 ranks, and the GPUArchitectureDefaults Warning must still
+# fire, naming the four-GPU fallback the catalog has for h20 and the resolved
+# count of 8 the run actually uses.
+apiVersion: v1
+kind: Node
+metadata:
+  name: onprem-h20-wr-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H20
+    kubernetes.io/hostname: onprem-h20-wr-node-01
+spec:
+  providerID: ""
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: onprem-h20-wr-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H20
+    kubernetes.io/hostname: onprem-h20-wr-node-02
+spec:
+  providerID: ""
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: wr-onprem-h20
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H20
+  image: nvcr.io/nvidia/pytorch:25.08-py3
+  framework:
+    torch:
+      script: /config/train.sh
+  numNodes: 2
+  gpusPerNode: 8
+  config:
+    inline:
+      train.sh: |
+        #!/bin/bash
+        echo "training"
