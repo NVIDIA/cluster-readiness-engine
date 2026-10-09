@@ -1,0 +1,9 @@
+# Nscale B200 (ADR-085): the GPU+RDMA DRA claim dependency and the non-MPI IB
+# env block must both parse without panicking through the WorkloadRun
+# renderer, which has no GPUArchitecture field in OverrideConfig.
+entryName: test
+nodesPerJob: 2
+gpusPerNode: 8
+mlnxPerNode: 8
+enableMNNVL: false
+frameworkType: torch

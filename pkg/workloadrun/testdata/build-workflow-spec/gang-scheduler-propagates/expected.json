@@ -18,7 +18,6 @@
   "validation": null,
   "workerEnv": [
     "NCCL_DEBUG=INFO",
-    "NCCL_DEBUG_SUBSYS=NET,INIT",
     "NCCL_NVLS_ENABLE=1",
     "NCCL_CUMEM_ENABLE=1",
     "NCCL_NET_GDR_C2C=1",
@@ -34,7 +33,7 @@
   "runtimeVolumes": [
     "dshm"
   ],
-  "overrideCount": 20,
+  "overrideCount": 22,
   "gangSchedulerName": "kai-scheduler",
   "gangSchedulerJobLabels": [
     "app=wr-gang",

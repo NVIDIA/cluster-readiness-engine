@@ -1,0 +1,319 @@
+{
+  "Certification/nscale-b2-dcgm": {
+    "kind": "Certification",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "nscale-b2-dcgm",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.present": "true"
+        }
+      },
+      "categories": [
+        {
+          "domain": "diagnostics",
+          "variant": "dcgm-level4"
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkflowRunning",
+          "message": "Certification in progress"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "categoryStatuses": [
+        {
+          "domain": "diagnostics",
+          "variant": "dcgm-level4",
+          "workflowRef": {
+            "name": "nscale-b2-dcgm-diagnostic-e149f",
+            "namespace": "default"
+          },
+          "status": "InProgress"
+        }
+      ]
+    }
+  },
+  "Workflow/nscale-b2-dcgm-diagnostic-e149f": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "nscale-b2-dcgm-diagnostic-e149f",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/category-domain": "diagnostics",
+        "nvcre.nvidia.com/category-variant": "dcgm-level4",
+        "nvcre.nvidia.com/certification": "nscale-b2-dcgm"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
+          "kind": "Certification",
+          "name": "nscale-b2-dcgm",
+          "uid": "",
+          "controller": true,
+          "blockOwnerDeletion": true
+        }
+      ],
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "dcgm-level4-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "nvcr.io/nvidia/cloud-native/dcgm:4.5.2-1-ubuntu22.04",
+                "command": [
+                  "dcgmi"
+                ],
+                "args": [
+                  "diag",
+                  "--host",
+                  "nvidia-dcgm-dra.nvidia-platform.svc:5555",
+                  "--run",
+                  "4",
+                  "--json",
+                  "--verbose",
+                  "-p",
+                  "targeted_power.test_duration=1200s",
+                  "-p",
+                  "targeted_stress.test_duration=1200s",
+                  "-p",
+                  "nvbandwidth.is_allowed=true"
+                ],
+                "numNodes": 1,
+                "numProcPerNode": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          },
+          "nodeHealthMonitor": {
+            "cel": {
+              "expression": "node.spec.unschedulable == true"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {
+          "timeoutPerJob": "2h0m0s"
+        },
+        "iterations": 1
+      },
+      "dependencies": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "metadata": {
+            "labels": {
+              "app": "dcgm-level4"
+            },
+            "name": "dcgm-level4-runtime"
+          },
+          "spec": {
+            "mlPolicy": {
+              "numNodes": 1,
+              "torch": {
+                "numProcPerNode": 1
+              }
+            },
+            "template": {
+              "spec": {
+                "replicatedJobs": [
+                  {
+                    "name": "node",
+                    "template": {
+                      "metadata": {
+                        "labels": {
+                          "trainer.kubeflow.org/trainjob-ancestor-step": "trainer"
+                        }
+                      },
+                      "spec": {
+                        "backoffLimit": 0,
+                        "template": {
+                          "spec": {
+                            "containers": [
+                              {
+                                "image": "nvcr.io/nvidia/cloud-native/dcgm:4.5.2-1-ubuntu22.04",
+                                "name": "node",
+                                "resources": {
+                                  "claims": [
+                                    {
+                                      "name": "gpu"
+                                    }
+                                  ],
+                                  "limits": {},
+                                  "requests": {}
+                                },
+                                "securityContext": {
+                                  "privileged": true
+                                }
+                              }
+                            ],
+                            "dnsPolicy": "ClusterFirstWithHostNet",
+                            "hostNetwork": true,
+                            "resourceClaims": [
+                              {
+                                "name": "gpu",
+                                "resourceClaimTemplateName": "dcgm-level4-gpu"
+                              }
+                            ],
+                            "restartPolicy": "Never",
+                            "tolerations": [
+                              {
+                                "operator": "Exists"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "apiVersion": "resource.k8s.io/v1",
+          "kind": "ResourceClaimTemplate",
+          "metadata": {
+            "labels": {
+              "app": "dcgm-level4"
+            },
+            "name": "dcgm-level4-gpu"
+          },
+          "spec": {
+            "spec": {
+              "devices": {
+                "requests": [
+                  {
+                    "exactly": {
+                      "count": 8,
+                      "deviceClassName": "gpu.nvidia.com"
+                    },
+                    "name": "gpu"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Iteration 1/1: 1 groups running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "dependencyRefs": [
+        {
+          "apiVersion": "resource.k8s.io/v1",
+          "kind": "ResourceClaimTemplate",
+          "name": "dcgm-level4-gpu-e149f-job",
+          "namespace": "default",
+          "scope": "job",
+          "groupName": "group-0",
+          "iteration": 1
+        },
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "name": "dcgm-level4-runtime-e149f-job",
+          "namespace": "default",
+          "scope": "job",
+          "groupName": "group-0",
+          "iteration": 1
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 1,
+        "nodesPerJob": 1,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "detectedPlatform": "nscale",
+        "detectedGPUArchitecture": "b200",
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "nscale-b200-node-01"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "nscale-b2-dcgm-diagnostic-e149f-job",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,226 @@
+[
+  {
+    "workflow": "nscale-cert-communication-5f13c",
+    "dependencyKinds": [
+      "TrainingRuntime/nccl-all-gather-runtime",
+      "ComputeDomain/nccl-all-gather-compute-domain",
+      "ResourceClaimTemplate/nccl-all-gather-gpu",
+      "ResourceClaimTemplate/nccl-all-gather-rdma"
+    ],
+    "claimTemplates": [
+      {
+        "name": "nccl-all-gather-gpu",
+        "deviceClassName": "gpu.nvidia.com",
+        "count": 4
+      },
+      {
+        "name": "nccl-all-gather-rdma",
+        "deviceClassName": "rdma.nscale.com",
+        "count": 4
+      }
+    ],
+    "trainerArgs": [
+      "-N",
+      "4",
+      "--allow-run-as-root",
+      "--mca",
+      "plm_rsh_args",
+      "-o StrictHostKeyChecking=no",
+      "-x",
+      "NCCL_SOCKET_IFNAME=eth0",
+      "-x",
+      "NCCL_DEBUG=INFO",
+      "-x",
+      "NCCL_NVLS_ENABLE=1",
+      "-x",
+      "NCCL_CUMEM_ENABLE=1",
+      "-x",
+      "NCCL_P2P_NET_CHUNKSIZE=2097152",
+      "-x",
+      "NCCL_MNNVL_ENABLE=1",
+      "-x",
+      "NCCL_IB_PCI_RELAXED_ORDERING=1",
+      "-x",
+      "SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING=1",
+      "-x",
+      "OMPI_MCA_btl_openib_warn_default_gid_prefix=0",
+      "-x",
+      "PMIX_MCA_gds=^ds12",
+      "/usr/local/bin/all_gather_perf_mpi",
+      "-b",
+      "8",
+      "-e",
+      "16G",
+      "-f",
+      "2",
+      "-n",
+      "100",
+      "-N",
+      "10"
+    ],
+    "trainerEnv": [],
+    "orchestration": {
+      "topologyKey": "topology.nks.nscale.com/accelerator-domain",
+      "strictDomain": true,
+      "diagnoseTopologyKey": "",
+      "diagnoseMinGroupSize": 0
+    },
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-gather-runtime",
+        "resourceClaims": [
+          "compute-domain-channel=nccl-all-gather-channel",
+          "gpu=nccl-all-gather-gpu",
+          "rdma=nccl-all-gather-rdma"
+        ],
+        "tolerations": [
+          "kubernetes.io/arch=arm64:NoSchedule",
+          "nvidia.com/gpu=present:NoSchedule"
+        ],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [],
+            "claims": [
+              "compute-domain-channel",
+              "gpu",
+              "rdma"
+            ],
+            "env": [
+              "NCCL_MNNVL_ENABLE=1"
+            ]
+          }
+        ]
+      },
+      {
+        "dependency": "nccl-all-gather-runtime",
+        "resourceClaims": [],
+        "tolerations": [],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/cpu=2",
+              "limits/memory=1Gi"
+            ],
+            "claims": [],
+            "env": []
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "workflow": "nscale-cert-communication-81791",
+    "dependencyKinds": [
+      "TrainingRuntime/nccl-alltoall-runtime",
+      "ComputeDomain/nccl-alltoall-compute-domain",
+      "ResourceClaimTemplate/nccl-alltoall-gpu",
+      "ResourceClaimTemplate/nccl-alltoall-rdma"
+    ],
+    "claimTemplates": [
+      {
+        "name": "nccl-alltoall-gpu",
+        "deviceClassName": "gpu.nvidia.com",
+        "count": 4
+      },
+      {
+        "name": "nccl-alltoall-rdma",
+        "deviceClassName": "rdma.nscale.com",
+        "count": 4
+      }
+    ],
+    "trainerArgs": [
+      "-N",
+      "4",
+      "--allow-run-as-root",
+      "--mca",
+      "plm_rsh_args",
+      "-o StrictHostKeyChecking=no",
+      "-x",
+      "NCCL_SOCKET_IFNAME=eth0",
+      "-x",
+      "NCCL_DEBUG=INFO",
+      "-x",
+      "NCCL_NVLS_ENABLE=1",
+      "-x",
+      "NCCL_CUMEM_ENABLE=1",
+      "-x",
+      "NCCL_P2P_NET_CHUNKSIZE=2097152",
+      "-x",
+      "NCCL_MNNVL_ENABLE=1",
+      "-x",
+      "NCCL_IB_PCI_RELAXED_ORDERING=1",
+      "-x",
+      "SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING=1",
+      "-x",
+      "OMPI_MCA_btl_openib_warn_default_gid_prefix=0",
+      "-x",
+      "PMIX_MCA_gds=^ds12",
+      "/usr/local/bin/alltoall_perf_mpi",
+      "-d",
+      "uint8",
+      "-b",
+      "8",
+      "-e",
+      "16G",
+      "-f",
+      "2",
+      "-n",
+      "5",
+      "-N",
+      "1"
+    ],
+    "trainerEnv": [],
+    "orchestration": {
+      "topologyKey": "",
+      "strictDomain": false,
+      "diagnoseTopologyKey": "topology.nks.nscale.com/accelerator-domain",
+      "diagnoseMinGroupSize": 2
+    },
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-alltoall-runtime",
+        "resourceClaims": [
+          "compute-domain-channel=nccl-alltoall-channel",
+          "gpu=nccl-alltoall-gpu",
+          "rdma=nccl-alltoall-rdma"
+        ],
+        "tolerations": [
+          "kubernetes.io/arch=arm64:NoSchedule",
+          "nvidia.com/gpu=present:NoSchedule"
+        ],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [],
+            "claims": [
+              "compute-domain-channel",
+              "gpu",
+              "rdma"
+            ],
+            "env": [
+              "NCCL_MNNVL_ENABLE=1"
+            ]
+          }
+        ]
+      },
+      {
+        "dependency": "nccl-alltoall-runtime",
+        "resourceClaims": [],
+        "tolerations": [],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/cpu=2",
+              "limits/memory=1Gi"
+            ],
+            "claims": [],
+            "env": []
+          }
+        ]
+      }
+    ]
+  }
+]
