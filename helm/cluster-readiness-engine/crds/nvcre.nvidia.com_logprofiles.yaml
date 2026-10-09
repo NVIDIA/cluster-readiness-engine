@@ -318,6 +318,51 @@ spec:
                     required:
                     - regex
                     type: object
+                  networkTransport:
+                    description: |-
+                      networkTransport matches NCCL "Using network <name>" lines.
+                      Used by the BandwidthMeasurement controller to record which network
+                      plugin actually carried the collective (for example IB or Socket).
+                      Well-known captures: transport (string)
+                    properties:
+                      example:
+                        description: |-
+                          example is a sample log line that the regex should match.
+                          Serves as documentation and is validated when the LogProfile is loaded.
+                        type: string
+                      regex:
+                        description: |-
+                          regex is the regular expression with Go named capture groups.
+                          Uses (?P<name>...) syntax to name extracted fields.
+
+                          Well-known capture names used by the goodput calculator:
+                            Common:     timestamp
+                            Training:   globalStep, iteration, epoch, stepTiming, loss, tflops, elapsedTime
+                            Checkpoint: step, path, saveDuration
+
+                          The controller parses named captures into typed values:
+                            int:     globalStep, iteration, epoch, step
+                            float64: stepTiming, loss, tflops, elapsedTime, saveDuration
+                            string:  path
+                            time:    timestamp (parsed using LogProfile.spec.timestamp.layout)
+                        minLength: 1
+                        type: string
+                      units:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          units specifies the unit for duration/timing captures.
+                          The controller normalizes all durations to seconds internally.
+                          Supported values: "s" (seconds), "ms" (milliseconds), "us" (microseconds).
+
+                          Only needed for duration-type captures: stepTiming, elapsedTime, saveDuration.
+                          If a duration capture is not listed here, it defaults to "s" (seconds).
+
+                          Example: {"elapsedTime": "ms"} means the captured value is in milliseconds.
+                        type: object
+                    required:
+                    - regex
+                    type: object
                   trainingStep:
                     description: |-
                       trainingStep matches training iteration log lines.

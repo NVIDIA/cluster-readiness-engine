@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The result is deduped through a map, and Go randomizes map iteration per run.
+# Writing that order straight into GroupStatus.Nodes would give a status field
+# that reshuffles between reconciles and goldens that fail intermittently, which
+# is the worst kind of test failure to chase.
+#
+# Pods are listed in reverse order on purpose, with a duplicate node, so an
+# unsorted or undeduped result cannot accidentally pass.
+namespace: default
+jobName: nccl-job
+pods:
+  - name: worker-0
+    jobLabel: nccl-job
+    nodeName: node-c
+    phase: Running
+  - name: worker-1
+    jobLabel: nccl-job
+    nodeName: node-a
+    phase: Running
+  - name: worker-2
+    jobLabel: nccl-job
+    nodeName: node-c
+    phase: Running
+  - name: worker-3
+    jobLabel: nccl-job
+    nodeName: node-b
+    phase: Running

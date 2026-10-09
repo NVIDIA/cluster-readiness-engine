@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# NCCL QP and channel tuning for Nscale B200 collectives (ADR-085), layered
+# after nscale-ib-env.yaml. Measured with nccl-all-reduce at 4 nodes, it
+# lifts busBW from 336 to 385 GB/s on Ring and from 549 to 580 GB/s with
+# SHARP, matching Slurm burn-in. B200 only: GB300 has not been measured.
+
+- name: NCCL_IB_QPS_PER_CONNECTION
+  value: "8"
+- name: NCCL_MIN_NCHANNELS
+  value: "32"
+- name: NCCL_MIN_CTAS
+  value: "64"

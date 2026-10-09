@@ -21,7 +21,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -179,6 +178,10 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 	// Certification.
 	var dryRunClient client.Client
 	var dryRunNodes []corev1.Node
+	// Names of the nodes whose nvidia.com/gpu.product label discovery synthesized
+	// from ResourceSlices. The affinity build in DryRunCreate needs it, because a
+	// term matching a synthesized value would match nothing on this very cluster.
+	var synthesizedProducts []string
 	var gkeTCPXONetworks []string
 	var tcpxoPluginVersion string
 	if dryRun {
@@ -204,7 +207,8 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 		// (no --dry-run) has no cluster and stays field-only.
 		ctx := context.Background()
 		var nodesErr error
-		dryRunNodes, nodesErr = controller.DiscoverTargetNodes(ctx, dryRunClient, &cert.Spec.Target)
+		dryRunNodes, synthesizedProducts, nodesErr = controller.DiscoverTargetNodesWithSynthesized(
+			ctx, dryRunClient, &cert.Spec.Target)
 		if nodesErr != nil {
 			return fmt.Errorf("discover nodes: %w", nodesErr)
 		}
@@ -230,7 +234,8 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 		nodes := dryRunNodes
 		if len(nodes) == 0 {
 			var nErr error
-			nodes, nErr = controller.DiscoverTargetNodes(ctx, dryRunClient, workflows[0].Spec.Orchestration.Target)
+			nodes, synthesizedProducts, nErr = controller.DiscoverTargetNodesWithSynthesized(
+				ctx, dryRunClient, workflows[0].Spec.Orchestration.Target)
 			if nErr != nil {
 				return fmt.Errorf("discover nodes: %w", nErr)
 			}
@@ -248,7 +253,8 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 				return err
 			}
 
-			results, dryRunErr := render.DryRunCreate(ctx, dryRunClient, namespace, &workflows[i].Spec, nodes)
+			results, dryRunErr := render.DryRunCreate(
+				ctx, dryRunClient, namespace, &workflows[i].Spec, nodes, synthesizedProducts)
 			if dryRunErr != nil {
 				return fmt.Errorf("dry-run workflow %s: %w", workflows[i].Name, dryRunErr)
 			}
@@ -298,7 +304,7 @@ func resolveWorkflowsOffline(
 	syntheticNodes := []corev1.Node{syntheticRenderNode(platformFlag, cert.Spec.Target.NodeSelector, gpuArchOverride)}
 	for i := range workflows {
 		if _, err := render.ResolveWorkflow(&workflows[i], syntheticNodes); err != nil {
-			return fmt.Errorf("resolve overrides for %s: %w", workflows[i].Name, err)
+			return fmt.Errorf("resolve workflow %s: %w", workflows[i].Name, err)
 		}
 		if err := applyWorkflowTransforms(cert, workflows, i); err != nil {
 			return err
@@ -691,12 +697,6 @@ func syntheticRenderNode(platformName string, nodeSelector map[string]string, gp
 		node.Labels["node-role.together.ai/worker"] = ""
 	case platform.Forge:
 		node.Labels["kubernetes.io/hostname"] = "synthetic-forge-node"
-	case platform.NScale:
-		// Detection maps openstack:// to nscale only when the node also
-		// reports the nscale.com/rdmashare allocatable.
-		node.Status.Allocatable = corev1.ResourceList{
-			"nscale.com/rdmashare": resource.MustParse("8"),
-		}
 	}
 	return node
 }
@@ -973,7 +973,6 @@ func buildConfigFromFlags(
 	if err != nil {
 		return nil, err
 	}
-
 	if name == "" {
 		name = generateCertName()
 	}

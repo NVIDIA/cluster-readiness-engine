@@ -445,6 +445,9 @@
         "currentIteration": 1,
         "detectedPlatform": "forge",
         "detectedGPUArchitecture": "l40",
+        "gpuProducts": [
+          "NVIDIA-L40"
+        ],
         "groups": [
           {
             "name": "group-0",

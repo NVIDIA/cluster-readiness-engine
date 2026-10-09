@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The same half-placed 2-node job, now terminal. The one bound node is recorded.
+#
+# The gate reverses here, and that reversal is the point of the case. The
+# caller's loop only visits groups that are still Running, so a terminal
+# reconcile is the last one that can record anything: holding out for a complete
+# list would attribute the failure to no nodes at all, which is exactly the case
+# attribution exists for. A partial list beats an empty one, and nothing
+# re-reads it expecting NodesPerJob entries.
+placement: Unpinned
+nodesPerJob: 2
+terminal: true
+pods:
+  - {name: w-0, nodeName: node-a, phase: Failed}
+  - {name: w-1, nodeName: "", phase: Pending}

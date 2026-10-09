@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Empty means Pinned. There is deliberately no +kubebuilder:default=Pinned on
+# the field, because a non-empty string default would materialize into every
+# existing spec on its next write and move goldens that have nothing to do with
+# this change. So the empty string has to carry the meaning in code, and this
+# case is what pins that it does.
+placement: ""
+iterations: 1
+diagnose:
+  minGroupSize: 2

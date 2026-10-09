@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# matchExpressions is already the pod-spec type, so it appends verbatim. This
+# is also the documented workaround for confining an Unpinned job to one
+# topology domain, which is why it has to survive the translation intact.
+placement: Unpinned
+groupNodes: []
+target:
+  matchExpressions:
+    - key: nvidia.com/gpu.clique
+      operator: In
+      values: ["clique-7"]
+gpuProducts: []

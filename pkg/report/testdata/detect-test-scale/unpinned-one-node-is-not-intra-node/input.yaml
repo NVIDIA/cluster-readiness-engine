@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The inference that would fire without the Unpinned arm, and the reason the arm
+# sits at the top of the function. nodesPerJob 1 means intra-node under the
+# sweep model, which reads as "every node was tested independently". A one-node
+# unpinned job is the exact opposite: one node was tested and the rest of the
+# fleet was deliberately left alone. Reporting the opposite of what happened is
+# worse than reporting nothing.
+placement: Unpinned
+nodesPerJob: 1

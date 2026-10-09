@@ -1,0 +1,178 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A Job driven through a retry whose second attempt lands on different nodes.
+#
+# Under Unpinned the controller does not choose hosts, so a group's node list
+# is learned after the fact from where the pods were bound. That list is only
+# ever written into an empty slot (backfillGroupNodes), which means a retry has
+# to clear it first (resetUnpinnedGroupNodes) or the group keeps reporting the
+# first attempt's placement forever, and a later failure is pinned on hosts
+# that did not run it. This fixture is the end-to-end check for that reset.
+#
+# Four nodes, a 2-node job, one retry. The first attempt's pods are bound to
+# reattr-node-01 and -02 and the harness waits until the Workflow has recorded
+# them before the workload is failed, so the reset has something real to clear.
+# The second attempt's pods are bound to -03 and -04. If the reset is missing,
+# the golden shows the first pair; if attribution is broken, it shows nothing.
+#
+# envtest has no kubelet and no garbage collector, so two things the cluster
+# would do are done by the harness instead, both as label patches in
+# input_config.yaml: the first attempt's pods lose their nvcre.nvidia.com/job
+# label once that attempt has failed, standing in for the GC that removes them
+# with their TrainJob, and the second attempt's pods gain the label once the
+# retried Job is running, standing in for the scheduler binding them. The
+# second pair starts out under a placeholder label so the first attempt cannot
+# see them: the index lookup is by label value, and a running backfill refuses
+# any count other than numNodes.
+#
+# Node names are reattr-node-NN rather than gpu-node-NN. Nodes are
+# cluster-scoped, and these names cannot collide with the gpu-node-NN fleet
+# other cases create under the generic names.
+apiVersion: v1
+kind: Node
+metadata:
+  name: reattr-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    kubernetes.io/hostname: reattr-node-01
+spec:
+  providerID: "aws://us-east-1a/i-0b01"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: reattr-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    kubernetes.io/hostname: reattr-node-02
+spec:
+  providerID: "aws://us-east-1a/i-0b02"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: reattr-node-03
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    kubernetes.io/hostname: reattr-node-03
+spec:
+  providerID: "aws://us-east-1a/i-0b03"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: reattr-node-04
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    kubernetes.io/hostname: reattr-node-04
+spec:
+  providerID: "aws://us-east-1a/i-0b04"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: unpin-reattr
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    placement: Unpinned
+    execution:
+      retryFailedGroups: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+---
+# First attempt, bound to nodes 01 and 02. The Job is the plain <workflow>-job
+# because there is one group and one iteration, and a retry reuses the name.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unpin-reattr-attempt1-worker-0
+  namespace: default
+  labels:
+    nvcre.nvidia.com/job: unpin-reattr-job
+spec:
+  nodeName: reattr-node-01
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unpin-reattr-attempt1-worker-1
+  namespace: default
+  labels:
+    nvcre.nvidia.com/job: unpin-reattr-job
+spec:
+  nodeName: reattr-node-02
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Running
+---
+# Second attempt, bound to nodes 03 and 04. Held under a placeholder label until
+# the retried Job is running; see the header comment.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unpin-reattr-attempt2-worker-0
+  namespace: default
+  labels:
+    nvcre.nvidia.com/job: unpin-reattr-attempt2-not-yet-bound
+spec:
+  nodeName: reattr-node-03
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Running
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unpin-reattr-attempt2-worker-1
+  namespace: default
+  labels:
+    nvcre.nvidia.com/job: unpin-reattr-attempt2-not-yet-bound
+spec:
+  nodeName: reattr-node-04
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Running

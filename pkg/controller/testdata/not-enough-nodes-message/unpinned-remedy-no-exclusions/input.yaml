@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The shortfall with nothing filtered, which is the common Unpinned failure:
+# the operator asked for a job larger than the fleet and no exclusion explains
+# it. The bare count would read as a transient capacity problem and invite
+# waiting, when the actual answer is that Unpinned will not shrink the job to
+# fit. So the remedy prints here too, with no cause clause to attach it to.
+#
+# The Pinned twin is no-exclusions/, which stays a bare count.
+placement: Unpinned
+needed: 4
+found: 2
+gpuArch: h100
+archExcluded: []

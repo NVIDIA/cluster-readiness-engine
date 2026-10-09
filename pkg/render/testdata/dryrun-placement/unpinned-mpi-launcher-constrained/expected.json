@@ -1,0 +1,73 @@
+{
+  "pods": {
+    "launcher": {
+      "nodeAffinity": {
+        "requiredDuringSchedulingIgnoredDuringExecution": {
+          "nodeSelectorTerms": [
+            {
+              "matchExpressions": [
+                {
+                  "key": "nvcre.nvidia.com/testbed",
+                  "operator": "In",
+                  "values": [
+                    "burnin"
+                  ]
+                },
+                {
+                  "key": "nvidia.com/gpu.product",
+                  "operator": "In",
+                  "values": [
+                    "NVIDIA-H100-80GB-HBM3"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "tolerations": [
+        {
+          "key": "nvcre.nvidia.com/dedicated",
+          "operator": "Equal",
+          "value": "burnin",
+          "effect": "NoSchedule"
+        }
+      ]
+    },
+    "node": {
+      "nodeAffinity": {
+        "requiredDuringSchedulingIgnoredDuringExecution": {
+          "nodeSelectorTerms": [
+            {
+              "matchExpressions": [
+                {
+                  "key": "nvcre.nvidia.com/testbed",
+                  "operator": "In",
+                  "values": [
+                    "burnin"
+                  ]
+                },
+                {
+                  "key": "nvidia.com/gpu.product",
+                  "operator": "In",
+                  "values": [
+                    "NVIDIA-H100-80GB-HBM3"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "tolerations": [
+        {
+          "key": "nvcre.nvidia.com/dedicated",
+          "operator": "Equal",
+          "value": "burnin",
+          "effect": "NoSchedule"
+        }
+      ]
+    }
+  },
+  "numNodes": 2
+}

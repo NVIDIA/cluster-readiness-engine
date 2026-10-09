@@ -94,6 +94,13 @@
                                                 "gcp-rtxpro6000-node-01",
                                                 "gcp-rtxpro6000-node-02"
                                               ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.product",
+                                              "operator": "In",
+                                              "values": [
+                                                "NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition"
+                                              ]
                                             }
                                           ]
                                         }
@@ -211,10 +218,6 @@
                             {
                               "name": "NCCL_DEBUG",
                               "value": "INFO"
-                            },
-                            {
-                              "name": "NCCL_DEBUG_SUBSYS",
-                              "value": "NET,INIT"
                             },
                             {
                               "name": "NCCL_NVLS_ENABLE",

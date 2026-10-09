@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A fleet with no gpu.product labels anywhere and no ResourceSlices to fall
+# back on, which is most of the committed testdata. Nothing was synthesized, so
+# the empty list passes straight through and BuildNodeAffinity omits the term
+# rather than emitting an In with no values, which would match no node.
+placement: Pinned
+gpuProducts: []
+synthesizedProducts: []
+archExcluded: []

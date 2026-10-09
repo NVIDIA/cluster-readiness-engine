@@ -16,7 +16,21 @@
       "-x",
       "NCCL_DEBUG=INFO",
       "-x",
+      "NCCL_NVLS_ENABLE=1",
+      "-x",
+      "NCCL_CUMEM_ENABLE=1",
+      "-x",
+      "NCCL_NET_GDR_C2C=1",
+      "-x",
+      "NCCL_NET_GDR_LEVEL=PHB",
+      "-x",
+      "NCCL_P2P_NET_CHUNKSIZE=2097152",
+      "-x",
+      "NCCL_SHM_DISABLE=1",
+      "-x",
       "NCCL_MNNVL_ENABLE=1",
+      "-x",
+      "NCCL_SOCKET_IFNAME=eth0",
       "/workspace/all_reduce_perf"
     ],
     "numNodes": 2,
@@ -30,7 +44,6 @@
   "validation": null,
   "workerEnv": [
     "NCCL_DEBUG=INFO",
-    "NCCL_DEBUG_SUBSYS=NET,INIT",
     "NCCL_NVLS_ENABLE=1",
     "NCCL_CUMEM_ENABLE=1",
     "NCCL_NET_GDR_C2C=1",
@@ -42,7 +55,6 @@
   ],
   "launcherEnv": [
     "NCCL_DEBUG=INFO",
-    "NCCL_DEBUG_SUBSYS=NET,INIT",
     "NCCL_NVLS_ENABLE=1",
     "NCCL_CUMEM_ENABLE=1",
     "NCCL_NET_GDR_C2C=1",
@@ -59,5 +71,5 @@
   "runtimeVolumes": [
     "dshm"
   ],
-  "overrideCount": 19
+  "overrideCount": 21
 }

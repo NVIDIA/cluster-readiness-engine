@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# diagnose isolates faults by bisecting groups of named nodes. It reads
+# g.Nodes[0] and accumulates g.Nodes into its suspect set, so against an
+# Unpinned group with no node list it would walk every node, find nothing, and
+# report the whole fleet healthy. Silently wrong is the worst failure mode a
+# certification tool has, so this rejects.
+placement: Unpinned
+iterations: 1
+diagnose:
+  minGroupSize: 2

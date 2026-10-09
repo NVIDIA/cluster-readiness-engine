@@ -165,6 +165,20 @@
                                                 "gen-b2c56c-node-07",
                                                 "gen-b2c56c-node-08"
                                               ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.present",
+                                              "operator": "In",
+                                              "values": [
+                                                "true"
+                                              ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.product",
+                                              "operator": "In",
+                                              "values": [
+                                                "NVIDIA-H100-80GB-HBM3"
+                                              ]
                                             }
                                           ]
                                         }
@@ -652,6 +666,9 @@
         "currentIteration": 1,
         "detectedPlatform": "aws",
         "detectedGPUArchitecture": "h100",
+        "gpuProducts": [
+          "NVIDIA-H100-80GB-HBM3"
+        ],
         "groups": [
           {
             "name": "group-0",

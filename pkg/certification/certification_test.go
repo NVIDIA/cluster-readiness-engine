@@ -396,8 +396,7 @@ func TestPlatformToProviderID(t *testing.T) {
 // an invalid name must fail with the full list of valid names, and every name
 // platform detection can return must be accepted. For accepted platforms the
 // case also records what detection reports for the synthetic render node,
-// which is what override matching actually sees (nscale, for example, is only
-// detected when the node carries the nscale.com/rdmashare allocatable).
+// which is what override matching actually sees.
 // --gpu-arch is validated the same way against the known architectures.
 func TestRenderPlatformFlag(t *testing.T) {
 	p := testutil.TestCaseParser{

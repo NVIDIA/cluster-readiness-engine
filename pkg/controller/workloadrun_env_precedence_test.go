@@ -6,6 +6,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -135,6 +136,67 @@ func TestWorkloadRunControllerCarriesUserEnvIntoGCPGB200RuntimeDependency(t *tes
 	require.NoError(t, json.Unmarshal(envJSON, &env))
 	assertTrainerEnvValue(t, env, "NCCL_DEBUG", "TRACE")
 	assertTrainerEnvValue(t, env, "USER_ONLY", "kept-on-runtime")
+}
+
+// MPI ranks start under sshd with a fresh environment, so the launcher's -x
+// args alone decide what they see: spec.env must win over both the Nscale IB
+// env the platform forwards (NCCL_IB_PCI_RELAXED_ORDERING=1) and the NCCL
+// defaults (NCCL_SHM_DISABLE=1), and a name both set is forwarded once.
+func TestWorkloadRunControllerForwardsUserEnvToMPIRanks(t *testing.T) {
+	scheme := runtime.NewScheme()
+	require.NoError(t, clientgoscheme.AddToScheme(scheme))
+	require.NoError(t, nvcrev1alpha1.AddToScheme(scheme))
+
+	node := &corev1.Node{
+		Name: "nscale-b200-0",
+		Labels: map[string]string{
+			GPUNodeLabel:        present,
+			testGPUProductLabel: "NVIDIA-B200",
+		},
+		Spec: corev1.NodeSpec{ProviderID: "nscale://nscale-b200-0"},
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(node).Build()
+	run := &nvcrev1alpha1.WorkloadRun{
+		Name: "env-mpi-ranks", Namespace: testNS,
+		Spec: nvcrev1alpha1.WorkloadRunSpec{
+			Image:    workloadRunEnvTestImage,
+			NumNodes: 1,
+			Framework: nvcrev1alpha1.FrameworkSpec{
+				MPI: &nvcrev1alpha1.MPIFramework{
+					Binary:     "/usr/local/bin/all_reduce_perf_mpi",
+					MpirunPath: "/usr/local/mpi/bin/mpirun",
+				},
+			},
+			Env: []corev1.EnvVar{
+				{Name: "NCCL_IB_PCI_RELAXED_ORDERING", Value: "0"},
+				{Name: "NCCL_SHM_DISABLE", Value: "0"},
+			},
+		},
+	}
+
+	r := &WorkloadRunReconciler{Client: c, Scheme: scheme}
+	ws, err := r.buildWorkflowSpec(context.Background(), run)
+	require.NoError(t, err)
+
+	args := ws.JobTemplate.Spec.Workload.TrainJob.Trainer.Args
+	require.Equal(t, []string{"0"}, mpiEnvArgValues(args, "NCCL_IB_PCI_RELAXED_ORDERING"))
+	require.Equal(t, []string{"0"}, mpiEnvArgValues(args, "NCCL_SHM_DISABLE"))
+	require.Equal(t, []string{"INFO"}, mpiEnvArgValues(args, "NCCL_DEBUG"))
+	require.Equal(t, []string{"0"}, mpiEnvArgValues(args, "NCCL_MNNVL_ENABLE"))
+}
+
+// mpiEnvArgValues returns the value of every -x NAME=value operand for name.
+func mpiEnvArgValues(args []string, name string) []string {
+	var values []string
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] != "-x" {
+			continue
+		}
+		if value, ok := strings.CutPrefix(args[i+1], name+"="); ok {
+			values = append(values, value)
+		}
+	}
+	return values
 }
 
 func nestedWorkloadRunMap(root map[string]any, path ...string) (map[string]any, bool) {

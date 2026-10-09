@@ -39,6 +39,25 @@ const (
 	GroupFailed    GroupPhase = "Failed"
 )
 
+// Placement modes for OrchestrationSpec.Placement. See ADR-089.
+const (
+	// PlacementPinned partitions every target node into groups of nodesPerJob
+	// and pins each job to its group by hostname. This is the default, and the
+	// empty string resolves to it.
+	PlacementPinned = "Pinned"
+
+	// PlacementUnpinned creates exactly one job of exactly nodesPerJob nodes and
+	// leaves placement to the scheduler.
+	PlacementUnpinned = "Unpinned"
+)
+
+// IsUnpinned reports whether the placement mode skips partitioning and hostname
+// pinning. The empty string means Pinned, so callers must not compare against
+// PlacementPinned directly.
+func IsUnpinned(placement string) bool {
+	return placement == PlacementUnpinned
+}
+
 // DependencyResourceRef tracks a dependency resource created by a Workflow.
 type DependencyResourceRef struct {
 	// apiVersion of the created resource.
@@ -88,8 +107,31 @@ type OrchestrationSpec struct {
 	// topology configures rack/zone-aware placement.
 	// When set, jobs are packed into the minimum number of topology domains.
 	// When nil, nodes are grouped by simple chunking (no topology awareness).
+	//
+	// Ignored when placement is Unpinned, which does not partition. Setting
+	// strictDomain together with placement: Unpinned is rejected, since the two
+	// ask for different numbers of jobs.
 	// +optional
 	Topology *TopologySpec `json:"topology,omitempty"`
+
+	// placement controls whether jobs are pinned to specific nodes.
+	//   - "Pinned" (default): all target nodes are partitioned into groups of
+	//     nodesPerJob, one job per group, each pinned to its group by a required
+	//     kubernetes.io/hostname node affinity.
+	//   - "Unpinned": exactly one job of exactly nodesPerJob nodes is created, no
+	//     matter how many nodes the target matches. No hostname affinity is set,
+	//     so the scheduler places the pods. nodesPerJob (or numNodes) is required
+	//     and is never clamped, snapped to a valid config, or auto-selected: a
+	//     size that cannot run is an error, not a silent adjustment.
+	//
+	// In both modes the target selector is carried onto the pods as a node
+	// affinity, so pods can only land on nodes the target matches.
+	//
+	// Empty means Pinned. Incompatible with diagnose and with
+	// topology.strictDomain.
+	// +optional
+	// +kubebuilder:validation:Enum=Pinned;Unpinned
+	Placement string `json:"placement,omitempty"`
 
 	// diagnose enables adaptive fault isolation using topology-aware hierarchical
 	// group testing. Stage 1a screens each topology domain in parallel, Stage 1b
@@ -431,6 +473,13 @@ type OrchestrationStatus struct {
 	// totalGroups created.
 	TotalGroups int `json:"totalGroups"`
 
+	// placement is the resolved placement mode for this run ("Pinned" or
+	// "Unpinned"). Under Unpinned, totalGroups is 1 and nodesPerJob is the size
+	// the user asked for, so totalGroups * nodesPerJob is deliberately less than
+	// totalNodes: the untested nodes are out of scope, not excluded.
+	// +optional
+	Placement string `json:"placement,omitempty"`
+
 	// currentIteration is the iteration currently in progress (1-based).
 	// +optional
 	CurrentIteration int `json:"currentIteration,omitempty"`
@@ -455,6 +504,15 @@ type OrchestrationStatus struct {
 	// Examples: "h100", "gb200", "a100", "l40s", "unknown"
 	// +optional
 	DetectedGPUArchitecture string `json:"detectedGPUArchitecture,omitempty"`
+
+	// gpuProducts lists the distinct nvidia.com/gpu.product label values of the
+	// nodes that survived discovery, recorded verbatim. detectedGPUArchitecture
+	// is normalized and lossy ("NVIDIA-H100-80GB-HBM3" becomes "h100"), so it
+	// cannot be turned back into a label match. These raw values are what the
+	// job's node affinity uses to keep pods on the architecture the run was
+	// partitioned for.
+	// +optional
+	GPUProducts []string `json:"gpuProducts,omitempty"`
 
 	// excludedNodes lists nodes that matched the target but were dropped before
 	// scheduling, and exclusionReason says why. A Workflow can succeed while
@@ -708,6 +766,16 @@ type OrchestrationOverrideSpec struct {
 	// topology overrides rack/zone-aware placement configuration.
 	// +optional
 	Topology *TopologySpec `json:"topology,omitempty"`
+
+	// placement overrides whether jobs are pinned to specific nodes.
+	// +optional
+	// +kubebuilder:validation:Enum=Pinned;Unpinned
+	Placement *string `json:"placement,omitempty"`
+	// diagnose overrides the adaptive fault-isolation configuration, so a
+	// platform override can replace the base entry's diagnose topologyKey
+	// the same way it replaces the topology one.
+	// +optional
+	Diagnose *DiagnoseSpec `json:"diagnose,omitempty"`
 
 	// execution overrides how jobs are scheduled across groups.
 	// +optional

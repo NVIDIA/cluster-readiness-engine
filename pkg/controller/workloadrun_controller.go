@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -416,6 +417,10 @@ func NodesPerJobForScale(orch *nvcrev1alpha1.WorkloadOrchestration, numNodes int
 func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcrev1alpha1.WorkloadRun) (*nvcrev1alpha1.WorkflowSpec, error) {
 	spec := &run.Spec
 
+	if err := ValidateWRPlacement(spec.Orchestration); err != nil {
+		return nil, err
+	}
+
 	// Best-effort node discovery for GPU + platform defaults. The Workflow
 	// controller does its own authoritative discovery and will fail if no
 	// nodes match.
@@ -426,7 +431,7 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 	gpuArch := ""
 	// Cordoned nodes are discarded here: this call only detects GPU and platform
 	// defaults, and a WorkloadRun has no coverage verdict to qualify.
-	nodes, _, _ := discoverTargetNodes(ctx, r.Client, r.APIReader, spec.Target)
+	nodes, _, _, _ := discoverTargetNodes(ctx, r.Client, r.APIReader, spec.Target)
 	if len(nodes) > 0 {
 		gpuArch = DetectGPUArchitecture(nodes)
 		detectedPlatform = DetectPlatform(nodes)
@@ -566,7 +571,7 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 	applyWRPreTemplateOverrides(spec, wrOverrides, octx)
 
 	// Build JobTemplate.
-	jobTemplate := r.buildJobTemplate(run, frameworkType, gpusPerNode, enableMNNVL)
+	jobTemplate := r.buildJobTemplate(run, frameworkType, gpusPerNode, mergedEnv)
 
 	// Post-template overrides: modify the built job template before the
 	// Workflow CR is created so changes are stored in well-known fields
@@ -609,11 +614,10 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 }
 
 // buildJobTemplate constructs the JobTemplateSpec for the workload.
-// enableMNNVL is the resolved MNNVL setting (architecture default overridden
-// by spec.enableMNNVL) computed once in buildWorkflowSpec — the same value
-// BaseNCCLEnvVars puts on the runtime container, so the MPI launcher's
-// -x NCCL_MNNVL_ENABLE forwarding never disagrees with the worker env.
-func (r *WorkloadRunReconciler) buildJobTemplate(run *nvcrev1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32, enableMNNVL bool) *nvcrev1alpha1.JobTemplateSpec {
+// env is the merged env buildWorkflowSpec puts on the runtime containers. The
+// MPI launcher forwards the same env with -x, so the ranks (which see only
+// what mpirun forwards) never disagree with the worker env.
+func (r *WorkloadRunReconciler) buildJobTemplate(run *nvcrev1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32, env []corev1.EnvVar) *nvcrev1alpha1.JobTemplateSpec {
 	spec := &run.Spec
 
 	// Build trainer spec based on framework.
@@ -633,24 +637,18 @@ func (r *WorkloadRunReconciler) buildJobTemplate(run *nvcrev1alpha1.WorkloadRun,
 	case FrameworkMPI:
 		mpi := spec.Framework.MPI
 		command = []string{"timeout", "3600", mpi.MpirunPath}
-		baseCount := 10 // fixed args below
-		mpiArgs := make([]string, 0, baseCount+len(mpi.MpiArgs)+1+len(mpi.Args))
-		mpiArgs = append(mpiArgs,
-			"-N", fmt.Sprintf("%d", gpusPerNode),
-			"--allow-run-as-root",
-			"--mca", "plm_rsh_args",
-			"-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
+		args = slices.Concat(
+			[]string{
+				"-N", fmt.Sprintf("%d", gpusPerNode),
+				"--allow-run-as-root",
+				"--mca", "plm_rsh_args",
+				"-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
+			},
+			platform.MPIEnvArgs(env, mpi.MpiArgs),
+			mpi.MpiArgs,
+			[]string{mpi.Binary},
+			mpi.Args,
 		)
-		mpiArgs = append(mpiArgs, "-x", "NCCL_DEBUG=INFO")
-		enableStr := "0"
-		if enableMNNVL {
-			enableStr = "1"
-		}
-		mpiArgs = append(mpiArgs, "-x", fmt.Sprintf("NCCL_MNNVL_ENABLE=%s", enableStr))
-		mpiArgs = append(mpiArgs, mpi.MpiArgs...)
-		mpiArgs = append(mpiArgs, mpi.Binary)
-		mpiArgs = append(mpiArgs, mpi.Args...)
-		args = mpiArgs
 	default: // exec
 		exec := spec.Framework.Exec
 		command = exec.Command
@@ -782,6 +780,10 @@ func buildWROrchestration(spec *nvcrev1alpha1.WorkloadRunSpec) *nvcrev1alpha1.Or
 		if spec.Orchestration.RepeatCount != nil {
 			orch.Iterations = int(*spec.Orchestration.RepeatCount)
 		}
+		// Only readable inside this branch: the whole orchestration block is
+		// optional, and a WorkloadRun without one stays Pinned, which is the
+		// behavior every existing run already has.
+		orch.Placement = spec.Orchestration.Placement
 		switch spec.Orchestration.TestScale {
 		case nvcrev1alpha1.TestScaleIntraNode:
 			// Handled by NodesPerJobForScale in buildWorkflowSpec and

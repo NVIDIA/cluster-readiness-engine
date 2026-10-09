@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Nscale NKS nodes (ADR-085): nscale:// providerID for detection, and no
+# nvidia.com/gpu.product label — Nscale runs no device plugin/GFD DaemonSet,
+# so architecture comes from the productName attribute on each node's
+# gpu.nvidia.com ResourceSlice instead (augmentGPUProductLabels). This case
+# is what confirms the null-survival trace holds through the persisted
+# API-server round trip, not just in-process: the golden's merged
+# TrainingRuntime must show nvidia.com/gpu absent.
+apiVersion: v1
+kind: Node
+metadata:
+  name: nscale-gb300-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: nscale-gb300-node-01
+    kubernetes.io/arch: arm64
+spec:
+  providerID: "nscale://instance/00000000-0000-0000-0000-000000000001"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: nscale-gb300-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: nscale-gb300-node-02
+    kubernetes.io/arch: arm64
+spec:
+  providerID: "nscale://instance/00000000-0000-0000-0000-000000000002"
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: nscale-gb300-node-01-gpu
+spec:
+  driver: gpu.nvidia.com
+  pool:
+    name: nscale-gb300-node-01
+    generation: 1
+    resourceSliceCount: 1
+  nodeName: nscale-gb300-node-01
+  devices:
+  - name: gpu-0
+    attributes:
+      productName:
+        string: NVIDIA-GB300
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: nscale-gb300-node-02-gpu
+spec:
+  driver: gpu.nvidia.com
+  pool:
+    name: nscale-gb300-node-02
+    generation: 1
+    resourceSliceCount: 1
+  nodeName: nscale-gb300-node-02
+  devices:
+  - name: gpu-0
+    attributes:
+      productName:
+        string: NVIDIA-GB300
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: nscale-nc-g3
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

@@ -548,6 +548,9 @@
         "currentIteration": 1,
         "detectedPlatform": "aws",
         "detectedGPUArchitecture": "gb300",
+        "gpuProducts": [
+          "NVIDIA-GB300-NVL72"
+        ],
         "groups": [
           {
             "name": "group-0",

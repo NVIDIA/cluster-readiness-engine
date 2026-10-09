@@ -121,7 +121,7 @@ func TestAugmentGPUProductLabels(t *testing.T) {
 			reader.listErr = errors.New("resourceslices forbidden")
 		}
 
-		nodes, _, err := discoverTargetNodes(context.Background(), reader, nil, &nvcrev1alpha1.TargetSpec{})
+		nodes, _, _, err := discoverTargetNodes(context.Background(), reader, nil, &nvcrev1alpha1.TargetSpec{})
 		if err != nil {
 			return err
 		}
@@ -145,4 +145,71 @@ func TestAugmentGPUProductLabels(t *testing.T) {
 		tc.Actual = string(b) + "\n"
 		return nil
 	})
+}
+
+// TestCountDRAGPUs pins which gpu.nvidia.com ResourceSlice devices count as a
+// node's GPUs. Every device carries productName, as VFIO devices do upstream,
+// so only the type attribute can tell a full GPU apart.
+func TestCountDRAGPUs(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "count-dra-gpus",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			ResourceSlices []struct {
+				NodeName   string   `yaml:"nodeName"`
+				Driver     string   `yaml:"driver"`
+				Pool       string   `yaml:"pool"`
+				Generation int64    `yaml:"generation"`
+				Devices    []string `yaml:"devices"`
+			} `yaml:"resourceSlices"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		productName := "NVIDIA GB300"
+		slices := make([]resourcev1.ResourceSlice, 0, len(input.ResourceSlices))
+		for _, s := range input.ResourceSlices {
+			rs := resourcev1.ResourceSlice{
+				Spec: resourcev1.ResourceSliceSpec{
+					Driver: s.Driver,
+					Pool:   resourcev1.ResourcePool{Name: s.Pool, Generation: s.Generation},
+				},
+			}
+			if s.NodeName != "" {
+				rs.Spec.NodeName = &s.NodeName
+			}
+			for i, deviceType := range s.Devices {
+				rs.Spec.Devices = append(rs.Spec.Devices, resourcev1.Device{
+					Name: fmt.Sprintf("dev%d", i),
+					Attributes: map[resourcev1.QualifiedName]resourcev1.DeviceAttribute{
+						productNameAttribute: {StringValue: &productName},
+						deviceTypeAttribute:  {StringValue: &deviceType},
+					},
+				})
+			}
+			slices = append(slices, rs)
+		}
+
+		counts, err := CountDRAGPUs(context.Background(), resourceSliceReader{slices: slices})
+		if err != nil {
+			return err
+		}
+		b, err := json.MarshalIndent(counts, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
+}
+
+func TestCountDRAGPUsReturnsListError(t *testing.T) {
+	listErr := errors.New("resourceslices forbidden")
+	_, err := CountDRAGPUs(context.Background(), resourceSliceReader{listErr: listErr})
+	if !errors.Is(err, listErr) {
+		t.Fatalf("CountDRAGPUs error = %v, want %v", err, listErr)
+	}
 }
