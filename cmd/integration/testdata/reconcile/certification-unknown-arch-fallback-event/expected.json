@@ -453,7 +453,7 @@
     {
       "type": "Warning",
       "reason": "GPUArchitectureDefaults",
-      "message": "communication/nccl-all-gather: GPU architecture \"h20\" has no entry in the catalog's GPU defaults; the job is sized as gpusPerNode=4 mlnxPerNode=0. If the nodes differ, set spec.gpusPerNode and spec.mlnxPerNode (or categories[].options), and file an issue so the architecture can be added to the catalog.",
+      "message": "communication/nccl-all-gather: GPU architecture \"h20\" has no entry in the catalog's GPU defaults; the job is sized as gpusPerNode=4 mlnxPerNode=0. If the nodes differ, set spec.gpusPerNode and spec.mlnxPerNode (or spec.categories[].options), and file an issue so the architecture can be added to the catalog.",
       "involvedObject": {
         "kind": "Certification",
         "name": "onprem-nc-h20"

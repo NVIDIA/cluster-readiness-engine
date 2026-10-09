@@ -124,7 +124,7 @@ func detectNICResource(nodes []corev1.Node, required int64) (name string, qualif
 // resolveNICResourceName resolves the effective NIC resource name the way
 // every consumer (both controllers and the CLI dry-run paths) must agree on:
 // the user-supplied field always wins; otherwise detection runs only for the
-// on-prem GB200/GB300 target the override matches, and only a single
+// on-prem GB200/GB300 or x86 HGX B200/B300 target the overrides match, and only a single
 // candidate allocatable at the resolved mlnxPerNode count on every node is
 // used. mlnxPerNode must be the caller's fully resolved value (field or
 // catalog default), because that is exactly what the dep fragments request

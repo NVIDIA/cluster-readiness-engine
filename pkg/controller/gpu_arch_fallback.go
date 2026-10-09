@@ -31,6 +31,6 @@ func gpuArchFallbackMessage(gpuArch string, nd catalog.NodeDefaults, fieldHint s
 
 // Field hints for gpuArchFallbackMessage, one per resource kind.
 const (
-	gpuArchFieldHintCertification = "spec.gpusPerNode and spec.mlnxPerNode (or categories[].options)"
+	gpuArchFieldHintCertification = "spec.gpusPerNode and spec.mlnxPerNode (or spec.categories[].options)"
 	gpuArchFieldHintWorkloadRun   = "spec.gpusPerNode and spec.mlnxPerNode"
 )

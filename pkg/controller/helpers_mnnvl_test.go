@@ -3,18 +3,37 @@
 
 package controller
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+
+	"sigs.k8s.io/yaml"
+
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
+)
 
 // TestDefaultEnableMNNVL pins which architectures default to multi-node
-// NVLink. HGX B200/B300 have NVSwitch inside the chassis only, so they must
-// stay false even though B300 shares a name prefix with GB300 (ADR-092).
+// NVLink. HGX B200/B300 have NVSwitch inside the chassis only, so they stay
+// false even though B300 shares a name prefix with GB300 (ADR-092).
 func TestDefaultEnableMNNVL(t *testing.T) {
-	for arch, want := range map[string]bool{
-		"gb200": true, "gb300": true,
-		"b200": false, "b300": false, "": false,
-	} {
-		if got := DefaultEnableMNNVL(arch); got != want {
-			t.Errorf("DefaultEnableMNNVL(%q) = %v, want %v", arch, got, want)
-		}
+	p := testutil.TestCaseParser{
+		Subdir:         "default-enable-mnnvl",
+		ExpectedSuffix: testutil.SuffixJSON,
 	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			GPUArch string `yaml:"gpuArch"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+		b, err := json.MarshalIndent(struct {
+			EnableMNNVL bool `json:"enableMNNVL"`
+		}{DefaultEnableMNNVL(input.GPUArch)}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
 }

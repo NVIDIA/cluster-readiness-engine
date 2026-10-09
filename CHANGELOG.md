@@ -28,7 +28,6 @@ followed them.
   WorkloadRun when the detected GPU architecture is missing from the catalog's
   defaults table and the workflow was sized on the four-GPU fallback. Every
   `nvcrectl` render path and `nvcrectl cluster info` print the same message.
-
 - GCP H100 detects the TCPXO NCCL plugin release from the `nccl-tcpxo-installer` pods
   on the target nodes and picks the NCCL and training images and the paired
   `tcpxo-daemon` from it: v1.0.15 and v1.0.16 run `pytorch:25.06-py3` (CUDA 12) with

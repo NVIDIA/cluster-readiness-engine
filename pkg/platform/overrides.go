@@ -36,7 +36,7 @@ type OverrideConfig struct {
 	MlnxPerNode int32
 
 	// NicResourceName is the extended resource name of the RDMA NIC devices
-	// for the on-prem GB200/GB300 override. Empty means the override omits
+	// for the on-prem GB200/GB300 and HGX B200/B300 overrides. Empty means the override omits
 	// the NIC resource block. The per-container count comes from MlnxPerNode.
 	NicResourceName string
 

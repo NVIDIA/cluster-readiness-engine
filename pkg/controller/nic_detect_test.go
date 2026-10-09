@@ -18,7 +18,7 @@ import (
 // when a name is known, and the name depends on the device plugin a site runs
 // (ADR-075). Detection fills the gap from node allocatable but must never
 // guess. These cases pin the full rule set: the field always wins, the gate
-// (on-prem + gb200/gb300) keeps other platforms untouched, the candidate set
+// (on-prem + gb200/gb300/b200/b300) keeps other platforms untouched, the candidate set
 // is exactly rdma/* plus nvidia.com/mlnxnics, a candidate must be allocatable
 // at the resolved mlnxPerNode count on every node, and anything but exactly
 // one qualifying candidate resolves to "no injection" with the message the

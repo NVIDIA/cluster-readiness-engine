@@ -1,0 +1,3 @@
+# HGX B300 has NVSwitch inside the chassis only; it must stay false even
+# though it shares a name prefix with GB300 (ADR-092).
+gpuArch: "b300"

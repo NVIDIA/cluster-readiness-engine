@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+# TrainingRuntime patch for GCP GB200/GB300 communication entries: the GKE
+# RDMA network resources plus the arm64 taint toleration.
 # Carries no mlPolicy: the MPI entries' base runtimes already set
 # mlPolicy.mpi.numProcPerNode, and the per-node loopback entries use
 # mlPolicy.torch, which a merged mlPolicy.mpi collides with (the

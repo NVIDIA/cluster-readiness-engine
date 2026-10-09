@@ -1,0 +1,2 @@
+# HGX B200: no multi-node NVLink.
+gpuArch: "b200"

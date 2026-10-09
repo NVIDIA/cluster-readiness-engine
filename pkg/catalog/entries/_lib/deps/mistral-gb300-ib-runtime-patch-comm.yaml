@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+# TrainingRuntime patch for Mistral GB300 communication entries (ADR-058):
+# the rdma/ib request plus the arm64 and GPU taint tolerations.
 # Carries no mlPolicy: the MPI entries' base runtimes already set
 # mlPolicy.mpi.numProcPerNode, and the per-node loopback entries use
 # mlPolicy.torch, which a merged mlPolicy.mpi collides with (the

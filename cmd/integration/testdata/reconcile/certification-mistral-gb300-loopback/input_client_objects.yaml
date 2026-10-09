@@ -15,7 +15,7 @@ metadata:
     kubernetes.io/hostname: mistral-gb300-lb-node-01
     kubernetes.io/arch: arm64
 spec:
-  providerID: "metal3://00000000-0000-0000-0000-00000000lb01"
+  providerID: "metal3://00000000-0000-0000-0000-0000000000b1"
 status:
   allocatable:
     nvidia.com/gpu: "4"
