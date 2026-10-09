@@ -10,6 +10,5 @@
     },
     "iterations": 1
   },
-  "numNodes": 4,
-  "maxRestarts": 7
+  "numNodes": 4
 }

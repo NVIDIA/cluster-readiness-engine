@@ -145,7 +145,9 @@
             "nvidia.com/gpu.product": "NVIDIA-A100-SXM4-80GB"
           }
         },
-        "execution": {},
+        "execution": {
+          "timeoutPerJob": "24h0m0s"
+        },
         "iterations": 1
       },
       "dependencies": [

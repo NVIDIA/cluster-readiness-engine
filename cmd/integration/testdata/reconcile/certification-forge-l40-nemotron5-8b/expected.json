@@ -153,7 +153,9 @@
             "nvidia.com/gpu.product": "NVIDIA-L40"
           }
         },
-        "execution": {},
+        "execution": {
+          "timeoutPerJob": "24h0m0s"
+        },
         "iterations": 1
       },
       "dependencies": [

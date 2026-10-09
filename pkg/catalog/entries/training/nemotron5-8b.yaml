@@ -47,6 +47,13 @@ jobTemplate:
       cel:
         expression: "node.spec.unschedulable == true"
 orchestration:
+  # Bounded like every other entry. Without this the Job has no timeout at
+  # all (isJobTimedOut returns false on a nil Execution.TimeoutPerJob), so a
+  # pod held in ContainerCreating, for example by a missing /dev/infiniband
+  # under rdmaDeviceAccess: hostPath, runs until someone notices. The entry
+  # default lives in meta.yaml; spec.timeoutPerJob overrides it.
+  execution:
+    timeoutPerJob: {{ .TimeoutPerJob }}
   iterations: 1
 dependencies:
 {{- if .EnableCheckpoint }}

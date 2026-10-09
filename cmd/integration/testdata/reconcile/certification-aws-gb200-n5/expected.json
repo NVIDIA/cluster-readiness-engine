@@ -377,7 +377,9 @@
         "topology": {
           "topologyKey": "nvidia.com/gpu.clique"
         },
-        "execution": {},
+        "execution": {
+          "timeoutPerJob": "24h0m0s"
+        },
         "iterations": 1
       },
       "dependencies": [

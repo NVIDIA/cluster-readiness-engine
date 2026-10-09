@@ -177,15 +177,14 @@ directory that NCCL would later report as "no devices found". Kubelet retries
 the mount indefinitely, so the pod stays in `ContainerCreating` with a
 `FailedMount` event naming the path.
 
-On the communication entries, `timeoutPerJob` bounds that wait: the Job times
-out after one hour by default and the Workflow reports the failure. The
-training entries render no `timeoutPerJob` at all, so there a missing
-`/dev/infiniband` hangs the Job until you intervene.
-
-Setting `spec.timeoutPerJob` on a training Certification does **not** give you
-a bound today. The value reaches the catalog, but the training entries render
-`execution: {}` and never emit the field, so it is silently discarded. Watch
-for a pod stuck in `ContainerCreating` with a `FailedMount` event instead, and
+`timeoutPerJob` bounds that wait and is the only thing that does. The
+communication entries time the Job out after one hour by default; the
+training entries after 24 hours, a backstop chosen because a healthy training
+run can legitimately exceed an hour. In both cases the Workflow reports the
+failure. Set `spec.timeoutPerJob` (or `categories[].options.timeoutPerJob`)
+to tighten either bound; on a training category that is the difference
+between learning about a missing `/dev/infiniband` in minutes and in a day.
+Watch for a pod stuck in `ContainerCreating` with a `FailedMount` event, and
 try one category before enabling the option across a whole certification.
 
 `startupStallTimeoutSeconds`, which the training entries do set, does **not**

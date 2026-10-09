@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The training entries used to render no execution block at all, so a Job had
+# no timeout and a pod stuck in ContainerCreating ran until someone noticed
+# (issue #403). The bound comes from the entry's meta.yaml, not the catalog-wide
+# 1h default, because a healthy training run can legitimately exceed an hour.
+category:
+  domain: training
+  variant: nemotron5-8b
+nodesPerJob: 4

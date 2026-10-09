@@ -6,10 +6,9 @@
       }
     },
     "execution": {
-      "timeoutPerJob": "24h0m0s"
+      "timeoutPerJob": "7m0s"
     },
     "iterations": 1
   },
-  "numNodes": 4,
-  "maxRestarts": 7
+  "numNodes": 4
 }

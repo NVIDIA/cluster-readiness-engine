@@ -137,7 +137,9 @@
         "topology": {
           "topologyKey": "topology.nks.nscale.com/accelerator-domain"
         },
-        "execution": {},
+        "execution": {
+          "timeoutPerJob": "24h0m0s"
+        },
         "iterations": 1
       },
       "dependencies": [

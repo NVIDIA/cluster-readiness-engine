@@ -44,11 +44,12 @@
 # not terminate on its own.
 #
 # timeoutPerJob is what bounds that wait, and it is the only thing that does.
-# The five communication entries render it (1h by default), so the Job times
-# out and the Workflow reports the failure. The two training entries render
-# only iterations, so a missing /dev/infiniband hangs them until the operator
-# intervenes. That is tracked separately: a default job timeout for a training
-# burn-in needs measured runtimes that the catalog does not have.
+# Every entry renders it: the five communication entries at 1h by default,
+# the two training entries at 24h from their meta.yaml (a backstop against
+# never finishing, since a healthy training run can exceed the catalog-wide
+# 1h). The Job times out and the Workflow reports the failure; an explicit
+# spec.timeoutPerJob tightens either. Expect that long a wait on a training
+# node that lacks the device tree unless you set one.
 #
 # startupStallTimeoutSeconds does NOT cover this, on any entry. The startup
 # stall detector anchors on the GoodputMeasurement (job_controller.go:742-750,
