@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # TrainingRuntime patch for generic on-prem x86 HGX (B200/B300) communication
-# entries (ADR-094). Tolerates the GPU taint and injects the NIC resource block
+# entries (ADR-094). Tolerates the nvidia.com/gpu taint whatever its value
+# (operator Exists: generic on-prem fleets do not agree on "present") and
+# injects the NIC resource block
 # only when nicResourceName is configured (set or auto-detected) and
 # mlnxPerNode is positive (0 is the ADR-087 opt-out); the resource name depends
 # on the RDMA device plugin the site runs, so there is no safe default. The
@@ -44,6 +46,5 @@
 {{- end }}
                   tolerations:
                   - key: nvidia.com/gpu
-                    operator: Equal
-                    value: present
+                    operator: Exists
                     effect: NoSchedule

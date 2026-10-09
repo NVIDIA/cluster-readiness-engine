@@ -39,7 +39,7 @@
           "mpi"
         ],
         "tolerations": [
-          "nvidia.com/gpu=present:NoSchedule"
+          "nvidia.com/gpu Exists:NoSchedule"
         ],
         "containers": [
           {
@@ -58,7 +58,9 @@
         "mlPolicy": [
           "mpi"
         ],
-        "tolerations": [],
+        "tolerations": [
+          "nvidia.com/gpu Exists:NoSchedule"
+        ],
         "containers": [
           {
             "name": "node",

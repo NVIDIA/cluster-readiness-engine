@@ -20,8 +20,8 @@ followed them.
 - The x86 HGX B300 GPU architecture (`b300`, product label `NVIDIA-B300-SXM6-AC`)
   is in the catalog's GPU defaults table at eight GPUs and eight NICs per node, so
   it renders at the right rank count and `--gpu-arch b300` is accepted. A new
-  on-prem override for x86 HGX B200/B300 nodes adds the `nvidia.com/gpu` taint
-  toleration and makes `nicResourceName` and `mlnxPerNode` request RDMA devices
+  on-prem override for x86 HGX B200/B300 nodes tolerates the `nvidia.com/gpu` taint
+  with any value, on the MPI launcher too, and makes `nicResourceName` and `mlnxPerNode` request RDMA devices
   on those nodes, with NIC auto-detection widened to match. It sets no NCCL
   environment. On every on-prem fragment, `nicResourceName` with `mlnxPerNode: 0`
   now omits the NIC request instead of rendering a count of zero (#464)

@@ -11,6 +11,8 @@ import (
 	"sort"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
+
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
 	"sigs.k8s.io/yaml"
 
@@ -43,10 +45,10 @@ type onpremReplicatedJob struct {
 	// merges a second policy into a per-node torch runtime shows up here as
 	// two keys (ADR-094).
 	MLPolicy []string `json:"mlPolicy"`
-	// Tolerations renders each toleration in declaration order as
-	// "key=value:effect", or "operator=Exists" for a keyless one; the NVL72
-	// on-prem override contributes the arm64 and GPU taints, the HGX override
-	// only the GPU taint, and their absence on a control case is as
+	// Tolerations renders each toleration in declaration order through
+	// formatToleration, so the operator is always visible; the NVL72 on-prem
+	// override contributes the arm64 and GPU taints, the HGX override only the
+	// GPU taint (any value), and their absence on a control case is as
 	// load-bearing as their presence on an on-prem one.
 	Tolerations []string          `json:"tolerations"`
 	Containers  []onpremContainer `json:"containers"`
@@ -193,16 +195,7 @@ func projectOnPremOverride(wf *nvcrev1alpha1.Workflow) (onpremWorkflow, error) {
 				Containers:    []onpremContainer{},
 			}
 			for _, tol := range podSpec.Tolerations {
-				if tol.Key == "" {
-					// A keyless toleration matches every taint; the operator is
-					// the whole story (the per-node entries' tolerate-everything
-					// toleration that tolerate-all-runtime-patch.yaml restores).
-					projected.Tolerations = append(projected.Tolerations,
-						fmt.Sprintf("operator=%s", tol.Operator))
-					continue
-				}
-				projected.Tolerations = append(projected.Tolerations,
-					fmt.Sprintf("%s=%s:%s", tol.Key, tol.Value, tol.Effect))
+				projected.Tolerations = append(projected.Tolerations, formatToleration(tol))
 			}
 			for _, c := range podSpec.Containers {
 				pc := onpremContainer{Name: c.Name, Resources: []string{}, Env: []string{}}
@@ -222,6 +215,23 @@ func projectOnPremOverride(wf *nvcrev1alpha1.Workflow) (onpremWorkflow, error) {
 		}
 	}
 	return out, nil
+}
+
+// formatToleration renders a toleration so the operator is always visible:
+// "key=value:effect" for Equal (the API default when the operator is unset),
+// "key Exists:effect" for a keyed Exists, and "operator=Exists" for the
+// keyless tolerate-everything toleration that tolerate-all-runtime-patch.yaml
+// restores on the per-node entries. A keyed Exists and an Equal with an empty
+// value therefore never collide in the goldens.
+func formatToleration(tol corev1.Toleration) string {
+	switch {
+	case tol.Key == "":
+		return fmt.Sprintf("operator=%s", tol.Operator)
+	case tol.Operator == corev1.TolerationOpExists:
+		return fmt.Sprintf("%s Exists:%s", tol.Key, tol.Effect)
+	default:
+		return fmt.Sprintf("%s=%s:%s", tol.Key, tol.Value, tol.Effect)
+	}
 }
 
 // mlPolicyKeys returns the sorted names of the policies set on an MLPolicy.

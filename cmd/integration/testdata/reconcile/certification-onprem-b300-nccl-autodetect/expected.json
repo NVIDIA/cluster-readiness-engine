@@ -287,8 +287,7 @@
                               {
                                 "effect": "NoSchedule",
                                 "key": "nvidia.com/gpu",
-                                "operator": "Equal",
-                                "value": "present"
+                                "operator": "Exists"
                               }
                             ]
                           }
@@ -361,6 +360,13 @@
                               }
                             ],
                             "restartPolicy": "OnFailure",
+                            "tolerations": [
+                              {
+                                "effect": "NoSchedule",
+                                "key": "nvidia.com/gpu",
+                                "operator": "Exists"
+                              }
+                            ],
                             "volumes": [
                               {
                                 "emptyDir": {},

@@ -514,6 +514,7 @@ overrides:
       in: [b200, b300]
   dependencies:
 {{ lib "deps/onprem-hgx-runtime-patch-comm.yaml" . | indent 2 }}
+{{ lib "deps/onprem-hgx-launcher-toleration.yaml" . | indent 2 }}
 # --- GCP + RTX PRO 6000 (G4 TCP over eth0; PCIe P2P within a node) ---
 - when:
     platform:

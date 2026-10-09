@@ -20,7 +20,7 @@
           "torch"
         ],
         "tolerations": [
-          "nvidia.com/gpu=present:NoSchedule"
+          "nvidia.com/gpu Exists:NoSchedule"
         ],
         "containers": [
           {

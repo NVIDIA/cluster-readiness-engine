@@ -120,8 +120,7 @@
                         {
                           "effect": "NoSchedule",
                           "key": "nvidia.com/gpu",
-                          "operator": "Equal",
-                          "value": "present"
+                          "operator": "Exists"
                         }
                       ],
                       "volumes": [
@@ -1533,8 +1532,7 @@
                                   {
                                     "effect": "NoSchedule",
                                     "key": "nvidia.com/gpu",
-                                    "operator": "Equal",
-                                    "value": "present"
+                                    "operator": "Exists"
                                   }
                                 ]
                               }
