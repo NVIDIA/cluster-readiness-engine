@@ -498,6 +498,7 @@ overrides:
       in: [gb200, gb300]
   dependencies:
 {{ lib "deps/onprem-gb200-gb300-runtime-patch-comm.yaml" . | indent 2 }}
+{{ lib "deps/onprem-gb200-gb300-launcher-toleration.yaml" . | indent 2 }}
   jobTemplate:
     spec:
       workload:

@@ -76,7 +76,10 @@
         "mlPolicy": [
           "mpi"
         ],
-        "tolerations": [],
+        "tolerations": [
+          "kubernetes.io/arch=arm64:NoSchedule",
+          "nvidia.com/gpu=present:NoSchedule"
+        ],
         "containers": [
           {
             "name": "node",

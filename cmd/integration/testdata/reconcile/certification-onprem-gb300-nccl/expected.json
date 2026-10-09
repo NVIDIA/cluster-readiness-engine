@@ -399,6 +399,20 @@
                               }
                             ],
                             "restartPolicy": "OnFailure",
+                            "tolerations": [
+                              {
+                                "effect": "NoSchedule",
+                                "key": "kubernetes.io/arch",
+                                "operator": "Equal",
+                                "value": "arm64"
+                              },
+                              {
+                                "effect": "NoSchedule",
+                                "key": "nvidia.com/gpu",
+                                "operator": "Equal",
+                                "value": "present"
+                              }
+                            ],
                             "volumes": [
                               {
                                 "emptyDir": {},
