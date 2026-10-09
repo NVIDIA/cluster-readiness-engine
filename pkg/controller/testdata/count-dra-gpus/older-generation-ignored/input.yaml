@@ -1,0 +1,13 @@
+# While the driver republishes a pool, slices of the previous generation can
+# linger. Only the newest generation describes the node's devices.
+resourceSlices:
+  - nodeName: node-a
+    driver: gpu.nvidia.com
+    pool: node-a
+    generation: 1
+    devices: [gpu, gpu, gpu, gpu]
+  - nodeName: node-a
+    driver: gpu.nvidia.com
+    pool: node-a
+    generation: 2
+    devices: [gpu, gpu]
