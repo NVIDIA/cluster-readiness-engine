@@ -1,0 +1,615 @@
+{
+  "containersScanned": 268,
+  "sshdWorkers": 6,
+  "containers": [
+    {
+      "source": "communication/nccl-all-gather@NVIDIA-GB300",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": true,
+      "capabilitiesAdded": [
+        "IPC_LOCK",
+        "SYS_CHROOT"
+      ],
+      "readinessProbe": {
+        "handlers": [
+          "exec"
+        ],
+        "invokesSSH": true,
+        "dialsLoopback": true,
+        "batchMode": true,
+        "timeoutSeconds": 10
+      }
+    },
+    {
+      "source": "communication/nccl-all-gather@NVIDIA-GB300 override[10] {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": true,
+      "capabilitiesAdded": []
+    },
+    {
+      "source": "communication/nccl-all-gather@NVIDIA-GB300 override[1] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"gcp\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "initContainer": true,
+      "container": "tcpxo-daemon",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "NET_ADMIN",
+        "NET_BIND_SERVICE"
+      ]
+    },
+    {
+      "source": "communication/nccl-all-gather@NVIDIA-H100-80GB-HBM3",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": true,
+      "capabilitiesAdded": [
+        "IPC_LOCK",
+        "SYS_CHROOT"
+      ],
+      "readinessProbe": {
+        "handlers": [
+          "exec"
+        ],
+        "invokesSSH": true,
+        "dialsLoopback": true,
+        "batchMode": true,
+        "timeoutSeconds": 10
+      }
+    },
+    {
+      "source": "communication/nccl-all-gather@NVIDIA-H100-80GB-HBM3 override[10] {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": true,
+      "capabilitiesAdded": []
+    },
+    {
+      "source": "communication/nccl-all-gather@NVIDIA-H100-80GB-HBM3 override[1] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"gcp\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "initContainer": true,
+      "container": "tcpxo-daemon",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "NET_ADMIN",
+        "NET_BIND_SERVICE"
+      ]
+    },
+    {
+      "source": "communication/nccl-all-reduce@NVIDIA-GB300",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": true,
+      "capabilitiesAdded": [
+        "IPC_LOCK",
+        "SYS_CHROOT"
+      ],
+      "readinessProbe": {
+        "handlers": [
+          "exec"
+        ],
+        "invokesSSH": true,
+        "dialsLoopback": true,
+        "batchMode": true,
+        "timeoutSeconds": 10
+      }
+    },
+    {
+      "source": "communication/nccl-all-reduce@NVIDIA-GB300 override[10] {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": true,
+      "capabilitiesAdded": []
+    },
+    {
+      "source": "communication/nccl-all-reduce@NVIDIA-GB300 override[1] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"gcp\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "initContainer": true,
+      "container": "tcpxo-daemon",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "NET_ADMIN",
+        "NET_BIND_SERVICE"
+      ]
+    },
+    {
+      "source": "communication/nccl-all-reduce@NVIDIA-H100-80GB-HBM3",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": true,
+      "capabilitiesAdded": [
+        "IPC_LOCK",
+        "SYS_CHROOT"
+      ],
+      "readinessProbe": {
+        "handlers": [
+          "exec"
+        ],
+        "invokesSSH": true,
+        "dialsLoopback": true,
+        "batchMode": true,
+        "timeoutSeconds": 10
+      }
+    },
+    {
+      "source": "communication/nccl-all-reduce@NVIDIA-H100-80GB-HBM3 override[10] {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": true,
+      "capabilitiesAdded": []
+    },
+    {
+      "source": "communication/nccl-all-reduce@NVIDIA-H100-80GB-HBM3 override[1] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"gcp\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "initContainer": true,
+      "container": "tcpxo-daemon",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "NET_ADMIN",
+        "NET_BIND_SERVICE"
+      ]
+    },
+    {
+      "source": "communication/nccl-alltoall@NVIDIA-GB300",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": true,
+      "capabilitiesAdded": [
+        "IPC_LOCK",
+        "SYS_CHROOT"
+      ],
+      "readinessProbe": {
+        "handlers": [
+          "exec"
+        ],
+        "invokesSSH": true,
+        "dialsLoopback": true,
+        "batchMode": true,
+        "timeoutSeconds": 10
+      }
+    },
+    {
+      "source": "communication/nccl-alltoall@NVIDIA-GB300 override[10] {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": true,
+      "capabilitiesAdded": []
+    },
+    {
+      "source": "communication/nccl-alltoall@NVIDIA-GB300 override[1] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"gcp\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "initContainer": true,
+      "container": "tcpxo-daemon",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "NET_ADMIN",
+        "NET_BIND_SERVICE"
+      ]
+    },
+    {
+      "source": "communication/nccl-alltoall@NVIDIA-H100-80GB-HBM3",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": true,
+      "capabilitiesAdded": [
+        "IPC_LOCK",
+        "SYS_CHROOT"
+      ],
+      "readinessProbe": {
+        "handlers": [
+          "exec"
+        ],
+        "invokesSSH": true,
+        "dialsLoopback": true,
+        "batchMode": true,
+        "timeoutSeconds": 10
+      }
+    },
+    {
+      "source": "communication/nccl-alltoall@NVIDIA-H100-80GB-HBM3 override[10] {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": true,
+      "capabilitiesAdded": []
+    },
+    {
+      "source": "communication/nccl-alltoall@NVIDIA-H100-80GB-HBM3 override[1] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"gcp\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "initContainer": true,
+      "container": "tcpxo-daemon",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "NET_ADMIN",
+        "NET_BIND_SERVICE"
+      ]
+    },
+    {
+      "source": "communication/nccl-loopback-nvswitch@NVIDIA-GB300",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "communication/nccl-loopback-nvswitch@NVIDIA-GB300 override[1] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"gcp\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "initContainer": true,
+      "container": "tcpxo-daemon",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "NET_ADMIN",
+        "NET_BIND_SERVICE"
+      ]
+    },
+    {
+      "source": "communication/nccl-loopback-nvswitch@NVIDIA-H100-80GB-HBM3",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "communication/nccl-loopback-nvswitch@NVIDIA-H100-80GB-HBM3 override[1] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"gcp\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "initContainer": true,
+      "container": "tcpxo-daemon",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "NET_ADMIN",
+        "NET_BIND_SERVICE"
+      ]
+    },
+    {
+      "source": "communication/nccl-loopback@NVIDIA-GB300",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "communication/nccl-loopback@NVIDIA-GB300 override[1] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"gcp\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "initContainer": true,
+      "container": "tcpxo-daemon",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "NET_ADMIN",
+        "NET_BIND_SERVICE"
+      ]
+    },
+    {
+      "source": "communication/nccl-loopback@NVIDIA-H100-80GB-HBM3",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "communication/nccl-loopback@NVIDIA-H100-80GB-HBM3 override[1] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"gcp\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "initContainer": true,
+      "container": "tcpxo-daemon",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "NET_ADMIN",
+        "NET_BIND_SERVICE"
+      ]
+    },
+    {
+      "source": "diagnostics/dcgm-level4@NVIDIA-GB300",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": []
+    },
+    {
+      "source": "diagnostics/dcgm-level4@NVIDIA-H100-80GB-HBM3",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": []
+    },
+    {
+      "source": "training/nemotron5-56b@NVIDIA-GB300",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": []
+    },
+    {
+      "source": "training/nemotron5-56b@NVIDIA-GB300 override[3] {\"gpuArchitecture\":{\"equals\":\"gb200\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-56b@NVIDIA-GB300 override[4] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-56b@NVIDIA-GB300 override[5] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"gcp\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "initContainer": true,
+      "container": "tcpxo-daemon",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "NET_ADMIN",
+        "NET_BIND_SERVICE"
+      ]
+    },
+    {
+      "source": "training/nemotron5-56b@NVIDIA-GB300 override[6] {\"gpuArchitecture\":{\"equals\":\"a100\"},\"platform\":{\"equals\":\"azure\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-56b@NVIDIA-GB300 override[7] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"azure\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-56b@NVIDIA-H100-80GB-HBM3",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": []
+    },
+    {
+      "source": "training/nemotron5-56b@NVIDIA-H100-80GB-HBM3 override[3] {\"gpuArchitecture\":{\"equals\":\"gb200\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-56b@NVIDIA-H100-80GB-HBM3 override[4] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-56b@NVIDIA-H100-80GB-HBM3 override[5] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"gcp\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "initContainer": true,
+      "container": "tcpxo-daemon",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "NET_ADMIN",
+        "NET_BIND_SERVICE"
+      ]
+    },
+    {
+      "source": "training/nemotron5-56b@NVIDIA-H100-80GB-HBM3 override[6] {\"gpuArchitecture\":{\"equals\":\"a100\"},\"platform\":{\"equals\":\"azure\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-56b@NVIDIA-H100-80GB-HBM3 override[7] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"azure\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-GB300",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": []
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-GB300 override[10] {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"azure\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-GB300 override[4] {\"gpuArchitecture\":{\"equals\":\"gb200\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-GB300 override[5] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-GB300 override[6] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"gcp\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "initContainer": true,
+      "container": "tcpxo-daemon",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "NET_ADMIN",
+        "NET_BIND_SERVICE"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-GB300 override[7] {\"gpuArchitecture\":{\"equals\":\"a100\"},\"platform\":{\"equals\":\"azure\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-GB300 override[8] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"azure\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-GB300 override[9] {\"gpuArchitecture\":{\"equals\":\"gb200\"},\"platform\":{\"equals\":\"azure\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-H100-80GB-HBM3",
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": []
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-H100-80GB-HBM3 override[10] {\"gpuArchitecture\":{\"equals\":\"gb300\"},\"platform\":{\"equals\":\"azure\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-H100-80GB-HBM3 override[4] {\"gpuArchitecture\":{\"equals\":\"gb200\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-H100-80GB-HBM3 override[5] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"aws\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-H100-80GB-HBM3 override[6] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"gcp\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "initContainer": true,
+      "container": "tcpxo-daemon",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "NET_ADMIN",
+        "NET_BIND_SERVICE"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-H100-80GB-HBM3 override[7] {\"gpuArchitecture\":{\"equals\":\"a100\"},\"platform\":{\"equals\":\"azure\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-H100-80GB-HBM3 override[8] {\"gpuArchitecture\":{\"equals\":\"h100\"},\"platform\":{\"equals\":\"azure\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    },
+    {
+      "source": "training/nemotron5-8b@NVIDIA-H100-80GB-HBM3 override[9] {\"gpuArchitecture\":{\"equals\":\"gb200\"},\"platform\":{\"equals\":\"azure\"}}",
+      "fragment": true,
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": [
+        "IPC_LOCK"
+      ]
+    }
+  ],
+  "violations": []
+}

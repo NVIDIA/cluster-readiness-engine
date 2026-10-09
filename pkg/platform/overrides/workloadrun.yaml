@@ -112,9 +112,14 @@
 
 # --- AWS + GB200 (EFA) ---
 # IPC_LOCK lets the EFA provider pin the memory it registers for RDMA.
-# BuildMPIRuntime already adds the capability; BuildTorchRuntime does not, so
-# setting it here covers the torch path without duplicating it for MPI (the
-# dependency merge matches containers by name and unions nothing).
+# BuildTorchRuntime does not add it, so it is set here to cover the torch path.
+#
+# This list is a full RESTATEMENT, not an addition: the dependency merge matches
+# containers by name but replaces a plain string slice wholesale, so whatever is
+# written here is the entire capability set the MPI worker ends up with. It must
+# therefore stay in sync with BuildMPIRuntime's list, or the capabilities only it
+# sets are silently dropped on exactly this platform and architecture. SYS_CHROOT
+# is MPI-only because only the MPI worker runs sshd (issue #461).
 - when:
     platform:
       equals: aws
@@ -140,6 +145,9 @@
                         capabilities:
                           add:
                           - IPC_LOCK
+{{- if eq .FrameworkType "mpi" }}
+                          - SYS_CHROOT
+{{- end }}
                       resources:
                         limits:
                           vpc.amazonaws.com/efa: 4
@@ -190,7 +198,7 @@
 {{ lib "deps/gb300-roce-torch.yaml" . | indent 2 }}
 
 # --- AWS + H100 (EFA 32 devices) ---
-# IPC_LOCK as for GB200 above.
+# IPC_LOCK, and the same wholesale-restatement caveat, as for GB200 above.
 - when:
     platform:
       equals: aws
@@ -216,6 +224,9 @@
                         capabilities:
                           add:
                           - IPC_LOCK
+{{- if eq .FrameworkType "mpi" }}
+                          - SYS_CHROOT
+{{- end }}
                       resources:
                         limits:
                           vpc.amazonaws.com/efa: 32

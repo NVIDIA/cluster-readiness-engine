@@ -36,12 +36,12 @@ Failed nodes are recorded in the Certification status with a reason (`HardwareFa
 
 Only when the workload image already contains `/usr/sbin/sshd`. Multi-node MPI workloads (the multi-node NCCL catalog entries and WorkloadRun's `framework.mpi`) start each worker container with a bootstrap command that installs `openssh-server` via `apt-get` unless `/usr/sbin/sshd` is already present (`test -x /usr/sbin/sshd || (apt-get update && apt-get install ...)`). When the image ships `sshd`, the install is a no-op and the workers start with zero package-manager egress. The loopback NCCL entries run single-node and have no sshd bootstrap.
 
-Prebake `sshd` into the workload image:
+Prebake `sshd` into the workload image. The worker's readiness probe opens a loopback SSH session, so the image needs the `ssh` client as well; on Debian and Ubuntu `openssh-server` depends on `openssh-client`, and naming it keeps that true on any base:
 
 ```dockerfile
 FROM <workload base image>
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends openssh-server && \
+    apt-get install -y --no-install-recommends openssh-server openssh-client && \
     rm -rf /var/lib/apt/lists/*
 ```
 

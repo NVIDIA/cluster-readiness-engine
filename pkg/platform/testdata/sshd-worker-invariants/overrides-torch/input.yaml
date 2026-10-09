@@ -1,0 +1,6 @@
+# The same overrides rendered for torch, where no sshd exists: SYS_CHROOT must
+# not appear on any container.
+source: overrides
+frameworkType: torch
+nodesPerJob: 2
+gpusPerNode: 8

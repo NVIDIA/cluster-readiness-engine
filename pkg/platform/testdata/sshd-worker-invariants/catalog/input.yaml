@@ -1,0 +1,11 @@
+# Every registered catalog entry: base dependencies, the base jobTemplate's
+# runtimePatches, and each override's dependencies, jobTemplate and
+# jobTemplatePatch. Entry.Build does not resolve overrides, so the architecture
+# only changes template data; the fragments are walked from spec.overrides
+# because that is where a platform-specific restatement of the worker would
+# live.
+source: catalog
+nodesPerJob: 2
+gpuProducts:
+- NVIDIA-H100-80GB-HBM3
+- NVIDIA-GB300

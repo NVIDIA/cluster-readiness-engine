@@ -1,0 +1,13 @@
+{
+  "containersScanned": 1,
+  "sshdWorkers": 0,
+  "containers": [
+    {
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": false,
+      "capabilitiesAdded": []
+    }
+  ],
+  "violations": []
+}
