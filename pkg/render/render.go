@@ -316,7 +316,8 @@ func renderDryRun(workflowFile string, configFlags *kubeconfig.ConfigFlags) (
 	}
 
 	ctx := context.Background()
-	nodes, err := controller.DiscoverTargetNodes(ctx, c, workflow.Spec.Orchestration.Target)
+	nodes, synthesizedProducts, err := controller.DiscoverTargetNodesWithSynthesized(
+		ctx, c, workflow.Spec.Orchestration.Target)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("discover nodes: %w", err)
 	}
@@ -331,7 +332,7 @@ func renderDryRun(workflowFile string, configFlags *kubeconfig.ConfigFlags) (
 		return nil, nil, nil, err
 	}
 
-	results, err := DryRunCreate(ctx, c, *configFlags.Namespace, &workflow.Spec, nodes)
+	results, err := DryRunCreate(ctx, c, *configFlags.Namespace, &workflow.Spec, nodes, synthesizedProducts)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -378,8 +379,15 @@ func NewK8sWatchClient(cf *kubeconfig.ConfigFlags) (client.WithWatch, error) {
 // first so that we can detect when a workload failure is caused by a missing
 // dependency that would be created at runtime (e.g. a TrainingRuntime referenced
 // by a TrainJob). Such failures are reported as warnings rather than errors.
+//
+// synthesizedProducts comes from the same discovery call that produced nodes
+// (controller.DiscoverTargetNodesWithSynthesized). It names the nodes whose
+// nvidia.com/gpu.product label was filled in from gpu.nvidia.com ResourceSlices
+// rather than read off the stored Node, which the affinity build below has to
+// know about. Pass nil when the caller has no such list; the only cost is that a
+// DRA-only fleet previews a term the reconcile will not emit.
 func DryRunCreate(ctx context.Context, c client.Client, namespace string,
-	spec *nvcrev1alpha1.WorkflowSpec, nodes []corev1.Node) ([]DryRunResult, error) {
+	spec *nvcrev1alpha1.WorkflowSpec, nodes []corev1.Node, synthesizedProducts []string) ([]DryRunResult, error) {
 
 	var results []DryRunResult
 
@@ -425,11 +433,19 @@ func DryRunCreate(ctx context.Context, c client.Client, namespace string,
 	}
 	// render has no OrchestrationStatus to read the recorded GPU products from,
 	// so they come from the nodes it just discovered. That is the same set the
-	// controller records at partition time.
+	// controller records at partition time. synthesizedProducts names the nodes
+	// whose gpu.product label was filled in from ResourceSlices rather than read
+	// off the Node; a term built from one of those matches nothing on a real API
+	// server, so the preview must refuse exactly where the reconcile would.
+	gpuProducts, ok := controller.GPUProductsForRender(placement, nodes, synthesizedProducts)
+	if !ok {
+		return nil, fmt.Errorf("%s",
+			controller.SynthesizedProductsMessage(synthesizedProducts, controller.ArchExcludedForRender(nodes)))
+	}
 	if affinity := controller.BuildNodeAffinity(
 		controller.PinnedHostnames(placement, nodeNames, spec.Orchestration.Target),
 		spec.Orchestration.Target,
-		controller.DistinctGPUProducts(nodes),
+		gpuProducts,
 	); affinity != nil {
 		adapter.SetNodeAffinity(&specCopy.Workload, affinity)
 	}
@@ -437,14 +453,23 @@ func DryRunCreate(ctx context.Context, c client.Client, namespace string,
 	// Tolerations. Pinned keeps the blanket Exists it has always had, which is
 	// safe there only because the job lands on hosts NVCRE chose. With that pin
 	// gone it would let the job onto any tainted node with free GPUs, so Unpinned
-	// tolerates only what the target explicitly asked for (ADR-089).
-	switch target := spec.Orchestration.Target; {
-	case !nvcrev1alpha1.IsUnpinned(placement):
+	// narrows instead: an explicit target.taintSelectors if there is one, else the
+	// named GPU taints (ADR-089).
+	//
+	// Pinned is short-circuited ahead of controller.JobTolerations rather than run
+	// through it, so this path stays byte-identical to what render has always
+	// emitted. It is already broader than the controller there, which gates the
+	// blanket on HasLauncherTarget and lets target.taintSelectors win; narrowing
+	// render to match is a real change to Pinned previews and does not belong in
+	// this one.
+	if !nvcrev1alpha1.IsUnpinned(placement) {
 		adapter.SetTolerations(&specCopy.Workload, []corev1.Toleration{{
 			Operator: corev1.TolerationOpExists,
 		}})
-	case target != nil && len(target.TaintSelectors) > 0:
-		adapter.SetTolerations(&specCopy.Workload, controller.BuildTolerations(target.TaintSelectors))
+	} else if tolerations, apply := controller.JobTolerations(
+		spec.Orchestration.Target, true, workload.HasLauncherTarget(&specCopy.Workload),
+	); apply {
+		adapter.SetTolerations(&specCopy.Workload, tolerations)
 	}
 
 	// When taintSelectors targets the unschedulable taint, clear NodeHealthMonitor

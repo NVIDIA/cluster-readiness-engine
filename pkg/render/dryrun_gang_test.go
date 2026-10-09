@@ -270,7 +270,7 @@ func TestDryRunGangScheduling(t *testing.T) {
 
 		rec := &recorder{}
 		c := countingClient(t, rec)
-		_, err := DryRunCreate(context.Background(), c, "default", spec, dryRunNodes())
+		_, err := DryRunCreate(context.Background(), c, "default", spec, dryRunNodes(), nil)
 		if err != nil {
 			out.Error = err.Error()
 		}
@@ -382,7 +382,7 @@ func TestDryRunCordonedNodeHealthMonitor(t *testing.T) {
 
 		rec := &recorder{}
 		c := countingClient(t, rec)
-		if _, err := DryRunCreate(context.Background(), c, "default", spec, dryRunNodes()); err != nil {
+		if _, err := DryRunCreate(context.Background(), c, "default", spec, dryRunNodes(), nil); err != nil {
 			return fmt.Errorf("DryRunCreate: %w", err)
 		}
 

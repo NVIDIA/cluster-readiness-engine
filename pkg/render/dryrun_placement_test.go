@@ -122,7 +122,7 @@ func TestDryRunPlacement(t *testing.T) {
 
 		rec := &recorder{}
 		c := countingClient(t, rec)
-		if _, err := DryRunCreate(context.Background(), c, "default", spec, placementNodes()); err != nil {
+		if _, err := DryRunCreate(context.Background(), c, "default", spec, placementNodes(), nil); err != nil {
 			return fmt.Errorf("DryRunCreate: %w", err)
 		}
 

@@ -71,6 +71,16 @@ status:
     excludedNodes:
       - node018
     exclusionReason: "node is cordoned (unschedulable)"
+    # Backfilled from live pod placement, as on every succeeded unpinned run.
+    # The exercised count comes from here; the cordoned node is excluded from
+    # the target total above, which is why the line reads 2 of 17 rather than
+    # 2 of 18.
+    groups:
+      - name: group-0
+        nodes:
+          - node001
+          - node002
+        phase: Succeeded
   conditions:
     - type: Succeeded
       status: "True"

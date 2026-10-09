@@ -475,7 +475,7 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	log := logf.FromContext(ctx)
 	target := workflow.Spec.Orchestration.Target
 
-	nodes, cordoned, err := discoverTargetNodes(ctx, r.Client, r.APIReader, target)
+	nodes, cordoned, synthesizedProducts, err := discoverTargetNodes(ctx, r.Client, r.APIReader, target)
 	if err != nil {
 		log.Error(err, "Failed to discover target nodes")
 		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonNodeDiscoveryError,
@@ -535,15 +535,15 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	}
 	orch.DetectedGPUArchitecture = gpuArch
 
-	// Record the raw gpu.product values before any later filter narrows the set.
-	// gpuArch above is normalized and lossy, so it cannot be turned back into the
-	// label match the job's node affinity needs.
-	orch.GPUProducts = DistinctGPUProducts(nodes)
-
-	// Record the cordon and architecture exclusions before overrides run, so a
-	// failure in override application still leaves the coverage record behind.
-	// The GPU capacity check below has to read the post-override spec, so the
-	// summary is recomputed with the full set once that filter has run.
+	// Record the cordon and architecture exclusions before anything that can fail,
+	// so a failure below still leaves the coverage record behind. The GPU capacity
+	// check further down has to read the post-override spec, so the summary is
+	// recomputed with the full set once that filter has run.
+	//
+	// This has to precede the synthesized-product check rather than follow it:
+	// that check fails with applyExclusionRecord(orch.ExcludedNodes, ...), and
+	// reaching it with the fields still unassigned would hand it an empty record
+	// and write nothing.
 	orch.ExcludedNodes, orch.ExclusionReason = exclusionSummary(cordoned, archExcluded, gpuArch, nil, 0)
 
 	// Apply overrides now that platform/gpuArch are known, before computing nodesPerJob.
@@ -568,6 +568,37 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	// topology key, so any placement check has to see the post-override spec.
 	unpinned := nvcrev1alpha1.IsUnpinned(workflow.Spec.Orchestration.Placement)
 	orch.Placement = workflow.Spec.Orchestration.Placement
+
+	// Record the raw gpu.product values before any later filter narrows the set.
+	// gpuArch above is normalized and lossy, so it cannot be turned back into the
+	// label match the job's node affinity needs.
+	//
+	// Resolved here rather than in createJobForGroup because this is the only
+	// place that knows which labels were synthesized: discovery runs once, on the
+	// first reconcile, and createJobForGroup runs later with nothing but status to
+	// read. Recording only the values that are safe to match on keeps the status
+	// field self-describing and leaves createJobForGroup a plain read.
+	//
+	// It has to sit after override application, for the same reason the placement
+	// resolution above does: mergeOrchestration has a Placement arm, so an
+	// override can turn a run Unpinned. Reading the pre-override value would take
+	// the Pinned branch and silently drop the architecture term on a run that has
+	// nothing else holding it to one architecture.
+	//
+	// The assignment sits before the placement validation below, not after, so
+	// that a run rejected for strictDomain or diagnose still records what
+	// discovery found. Those failures are terminal and nothing recomputes the
+	// field afterwards, so reaching them with gpuProducts unassigned would leave
+	// an operator unable to see which architecture the fleet reported.
+	products, safeToMatch := GPUProductsForAffinity(
+		workflow.Spec.Orchestration.Placement, DistinctGPUProducts(nodes), synthesizedProducts, archExcluded)
+	orch.GPUProducts = products
+	if len(synthesizedProducts) > 0 && safeToMatch {
+		log.Info("GPU product labels synthesized from ResourceSlices, omitting the architecture "+
+			"affinity term because the value exists only in memory",
+			"synthesized", synthesizedProducts, "placement", placementOrDefault(orch.Placement))
+	}
+
 	if err := ValidatePlacement(&workflow.Spec.Orchestration); err != nil {
 		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, err.Error(),
 			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
@@ -579,6 +610,19 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 		log.Info("Topology key ignored under Unpinned placement; it only affects partitioning, "+
 			"and Unpinned creates a single job. To confine the job to one domain, "+
 			"name the domain label in target.matchExpressions.", "topologyKey", key)
+	}
+
+	// The refusal itself is reported after ValidatePlacement, so a spec that is
+	// both internally contradictory and unschedulable names the contradiction
+	// first. strictDomain and diagnose are fields the user wrote; a synthesized
+	// product label is a property of the cluster they are running against.
+	if !safeToMatch {
+		msg := SynthesizedProductsMessage(synthesizedProducts, archExcluded)
+		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, msg,
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
+			log.Error(statusErr, "Failed to update status")
+		}
+		return ctrl.Result{}, fmt.Errorf("%s", msg)
 	}
 
 	// Drop nodes that cannot supply the workload's per-node GPU request. A node
@@ -759,7 +803,14 @@ func (r *WorkflowReconciler) logOverrideResults(ctx context.Context, workflow *n
 // dropped for being cordoned. Callers that record coverage need it: a cordoned
 // node was targeted and never tested, and without the names the run reports a
 // clean PASSED over a fleet it only partly certified.
-func discoverTargetNodes(ctx context.Context, reader, sliceReader client.Reader, target *nvcrev1alpha1.TargetSpec) ([]corev1.Node, []string, error) {
+//
+// The third names the nodes whose nvidia.com/gpu.product label was synthesized
+// from ResourceSlice attributes rather than read off the stored Node. Reading
+// that label is safe, but matching on it is not, because it exists only on the
+// returned copies. Callers that build node affinity must consult it.
+func discoverTargetNodes(
+	ctx context.Context, reader, sliceReader client.Reader, target *nvcrev1alpha1.TargetSpec,
+) (nodes []corev1.Node, cordoned, synthesizedProducts []string, err error) {
 	nodeList := &corev1.NodeList{}
 	var opts []client.ListOption
 
@@ -768,10 +819,10 @@ func discoverTargetNodes(ctx context.Context, reader, sliceReader client.Reader,
 	}
 
 	if err := reader.List(ctx, nodeList, opts...); err != nil {
-		return nil, nil, fmt.Errorf("failed to list nodes: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
 
-	nodes := nodeList.Items
+	nodes = nodeList.Items
 
 	// If matchExpressions specified, post-filter nodes against each requirement
 	if target != nil && len(target.MatchExpressions) > 0 {
@@ -822,7 +873,6 @@ func discoverTargetNodes(ctx context.Context, reader, sliceReader client.Reader,
 	//
 	// Only skip cordoned nodes if there does not exist a taintSelectors entry which
 	// targets the node.kubernetes.io/unschedulable taint.
-	var cordoned []string
 	if !TargetsCordonedNodes(target) {
 		var schedulable []corev1.Node
 		for _, n := range nodes {
@@ -848,7 +898,7 @@ func discoverTargetNodes(ctx context.Context, reader, sliceReader client.Reader,
 	if sliceReader == nil {
 		sliceReader = reader
 	}
-	augmentGPUProductLabels(ctx, sliceReader, nodes)
+	synthesizedProducts = augmentGPUProductLabels(ctx, sliceReader, nodes)
 
 	// Sort by name so discovery is reproducible. client.List gives no ordering
 	// guarantee, and callers pick nodes[0] to decide the platform and use slice
@@ -863,8 +913,9 @@ func discoverTargetNodes(ctx context.Context, reader, sliceReader client.Reader,
 	// printed in the report, so an unsorted list would make the same cluster
 	// produce a different report on each reconcile.
 	sort.Strings(cordoned)
+	sort.Strings(synthesizedProducts)
 
-	return nodes, cordoned, nil
+	return nodes, cordoned, synthesizedProducts, nil
 }
 
 // nodeMatchesTaints returns true if the node has ALL of the specified taints.
@@ -1336,24 +1387,19 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 		adapter.SetNumNodes(&job.Spec.Workload, len(group.Nodes))
 	}
 
-	// Toleration injection precedence (see ADR-063):
-	//   1. If target.taintSelectors is set, inject matching tolerations for all
-	//      workload types (training and MPI alike) — explicit opt-in wins.
-	//   2. Otherwise, MPI workloads (launcher + worker) get a blanket
-	//      Operator: Exists toleration as a fallback so existing NCCL deployments
-	//      that rely on it keep working.
-	//   3. Otherwise, no controller-injected tolerations.
+	// Toleration injection precedence (see ADR-063), resolved by JobTolerations.
 	//
-	// The blanket fallback is dropped under Unpinned. ADR-023 justified it on the
-	// grounds that "workloads are already pinned to specific nodes via
-	// NodeAffinity"; without the pin, tolerating everything would let a job land
-	// on any tainted node with free GPUs.
-	if target != nil && len(target.TaintSelectors) > 0 {
-		adapter.SetTolerations(&job.Spec.Workload, BuildTolerations(target.TaintSelectors))
-	} else if !unpinned && workload.HasLauncherTarget(&job.Spec.Workload) {
-		adapter.SetTolerations(&job.Spec.Workload, []corev1.Toleration{{
-			Operator: corev1.TolerationOpExists,
-		}})
+	// Under Unpinned the blanket narrows to the named GPU taints rather than
+	// disappearing. ADR-023 justified Exists on the grounds that "workloads are
+	// already pinned to specific nodes via NodeAffinity"; without the pin it would
+	// let a job onto any tainted node with free GPUs. Tolerating nothing would
+	// leave the launcher unschedulable on the tainted GPU fleets this is meant to
+	// run on, so UnpinnedMPITolerations names the taints the catalog's own runtime
+	// patches already list. See ADR-089.
+	if tolerations, apply := JobTolerations(
+		target, unpinned, workload.HasLauncherTarget(&job.Spec.Workload),
+	); apply {
+		adapter.SetTolerations(&job.Spec.Workload, tolerations)
 	}
 
 	// Disable MNNVL for diagnose stages that require it.
@@ -1601,6 +1647,11 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 			// and not a mere optimisation: an unconfirmed cache miss leaves
 			// running pods holding the DRA allocations cleaned up below.
 			log.Info("Job was deleted, marking group as failed", "group", g.Name, "job", ref.Name)
+			// Attribute the failure before the group leaves Running. This is a
+			// terminal backfill: the pods outlive the Job object for their
+			// termination grace period, so there is usually still something to
+			// read, and this is the last reconcile that visits this group.
+			r.backfillGroupNodes(ctx, workflow, orch, g, ns, ref.Name, true)
 			r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
 			now := metav1.Now()
 			g.Phase = nvcrev1alpha1.GroupFailed
@@ -1621,6 +1672,11 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 				continue
 			}
 			log.Info("Job is being deleted, marking group as failed", "group", g.Name, "job", ref.Name)
+			// Same terminal backfill as the confirmed-deleted branch above. The
+			// drain barrier has already reported the pods gone, so this reads
+			// whatever the informer still holds; an empty answer leaves the
+			// group's nodes empty, which is what it would have been anyway.
+			r.backfillGroupNodes(ctx, workflow, orch, g, job.Namespace, job.Name, true)
 			r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
 			now := metav1.Now()
 			g.Phase = nvcrev1alpha1.GroupFailed
@@ -1638,7 +1694,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		// below so a job that fails is attributed to its nodes rather than to
 		// nothing, and told whether the job is terminal because that is the last
 		// chance to record anything: this loop skips groups that are not Running.
-		if r.backfillGroupNodes(ctx, workflow, orch, g, job, ts.terminal) {
+		if r.backfillGroupNodes(ctx, workflow, orch, g, job.Namespace, job.Name, ts.terminal) {
 			statusChanged = true
 		}
 
@@ -1740,12 +1796,16 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 // bound is exactly the case attribution exists for: holding out for a complete
 // list there would attribute the failure to no nodes at all. A partial list
 // beats an empty one, and nothing re-reads it expecting NodesPerJob entries.
+// It takes the Job's namespace and name rather than the object because two of
+// its three call sites run on a Job that is gone or going: one has only the
+// JobRef left to go on, and neither can wait for a live read. Pods outlive the
+// Job object briefly in both cases, so the lookup still has something to find.
 func (r *WorkflowReconciler) backfillGroupNodes(
 	ctx context.Context,
 	workflow *nvcrev1alpha1.Workflow,
 	orch *nvcrev1alpha1.OrchestrationStatus,
 	g *nvcrev1alpha1.GroupStatus,
-	job *nvcrev1alpha1.Job,
+	jobNamespace, jobName string,
 	terminal bool,
 ) bool {
 	if !nvcrev1alpha1.IsUnpinned(workflow.Spec.Orchestration.Placement) ||
@@ -1754,11 +1814,11 @@ func (r *WorkflowReconciler) backfillGroupNodes(
 	}
 
 	log := logf.FromContext(ctx)
-	names, err := r.NodeDiscoverer.DiscoverPlacedNodesForJob(ctx, job.Namespace, job.Name)
+	names, err := r.NodeDiscoverer.DiscoverPlacedNodesForJob(ctx, jobNamespace, jobName)
 	if err != nil {
 		// Attribution is reporting detail, not a reason to fail a running job.
 		// The next reconcile tries again.
-		log.V(1).Info("Could not discover placed nodes yet", "group", g.Name, "job", job.Name, "error", err)
+		log.V(1).Info("Could not discover placed nodes yet", "group", g.Name, "job", jobName, "error", err)
 		return false
 	}
 	if len(names) == 0 {
@@ -1766,13 +1826,36 @@ func (r *WorkflowReconciler) backfillGroupNodes(
 	}
 	if !terminal && (orch.NodesPerJob <= 0 || len(names) != orch.NodesPerJob) {
 		log.V(1).Info("Placement not complete yet, leaving the group's nodes unrecorded",
-			"group", g.Name, "job", job.Name, "placed", len(names), "expected", orch.NodesPerJob)
+			"group", g.Name, "job", jobName, "placed", len(names), "expected", orch.NodesPerJob)
 		return false
 	}
 
 	g.Nodes = names
-	log.Info("Recorded unpinned group placement", "group", g.Name, "job", job.Name, "nodes", names)
+	log.Info("Recorded unpinned group placement", "group", g.Name, "job", jobName, "nodes", names)
 	return true
+}
+
+// resetUnpinnedGroupNodes clears a group's recorded placement before it runs
+// again, under Unpinned only.
+//
+// Every reset of a group to Pending has to call this. The next job is one the
+// scheduler places afresh, so the previous attempt's nodes are a guess about it,
+// and backfillGroupNodes above only fires on an empty list: a stale list is never
+// corrected, so the group reports having run wherever the first attempt happened
+// to land. The list also reaches the Job through the group-nodes annotation,
+// which groupNodeNames prefers over live pod discovery, so a failure after a
+// retry would be attributed to nodes that ran the attempt before it.
+//
+// Pinned keeps its nodes. The controller assigned them, the job is recreated on
+// the same hosts, and clearing them would lose the only record of the partition.
+//
+// Empty slice rather than nil: nodes is a required CRD field and nil marshals to
+// null, which the API server rejects.
+func resetUnpinnedGroupNodes(placement string, g *nvcrev1alpha1.GroupStatus) {
+	if !nvcrev1alpha1.IsUnpinned(placement) {
+		return
+	}
+	g.Nodes = []string{}
 }
 
 // completeTerminalGroup finishes a group whose Job reached a terminal state.
@@ -1834,6 +1917,7 @@ func (r *WorkflowReconciler) completeTerminalGroup(
 		g.JobRef = nil
 		g.StartTime = nil
 		g.CompletionTime = nil
+		resetUnpinnedGroupNodes(workflow.Spec.Orchestration.Placement, g)
 	case jobFailed:
 		// Clean up job-scoped deps on terminal failure (workload already
 		// deleted and drained above).
@@ -1926,25 +2010,13 @@ func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workfl
 
 		// More iterations to go — reset all group phases to Pending
 		orch.CurrentIteration = orch.CompletedIterations + 1
-		unpinned := nvcrev1alpha1.IsUnpinned(workflow.Spec.Orchestration.Placement)
 		for i := range orch.Groups {
 			orch.Groups[i].Phase = nvcrev1alpha1.GroupPending
 			orch.Groups[i].JobRef = nil
 			orch.Groups[i].StartTime = nil
 			orch.Groups[i].CompletionTime = nil
 			orch.Groups[i].Retries = 0
-			if unpinned {
-				// The next iteration is a new job the scheduler places afresh,
-				// so last iteration's nodes are a guess about this one. Clearing
-				// them also re-arms backfillGroupNodes, which only fires on an
-				// empty list; leaving them would report every iteration as having
-				// run where iteration 1 happened to land. Pinned keeps its nodes
-				// because the controller assigned them and they do not change.
-				//
-				// Empty slice, not nil: nodes is a required CRD field and nil
-				// marshals to null, which the API server rejects.
-				orch.Groups[i].Nodes = []string{}
-			}
+			resetUnpinnedGroupNodes(workflow.Spec.Orchestration.Placement, &orch.Groups[i])
 		}
 
 		// The mutations above (CompletedIterations, IterationHistory, group

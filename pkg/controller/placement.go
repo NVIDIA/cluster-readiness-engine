@@ -6,6 +6,7 @@ package controller
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -183,6 +184,159 @@ func dedupeRequirements(reqs []corev1.NodeSelectorRequirement) []corev1.NodeSele
 	return out
 }
 
+// GPU node taints that NVIDIA's own deployment guidance applies, and that the
+// catalog's runtime patches already tolerate by name wherever an entry bothers
+// to list them (pkg/catalog/entries/_lib/deps/onprem-gb200-gb300-runtime-patch-*.yaml,
+// gcp-gb200-roce-runtime-patch-*.yaml, gcp-h100-tcpxo-runtime-patch.yaml,
+// gcp-rtxpro6000-runtime-patch.yaml, mistral-gb300-ib-runtime-patch-*.yaml). The
+// arm64 taint is what Grace-based NVL72 nodes carry.
+const (
+	gpuPresentTaintKey   = "nvidia.com/gpu"
+	gpuPresentTaintValue = "present"
+	archTaintKey         = "kubernetes.io/arch"
+	archTaintValueARM64  = "arm64"
+)
+
+// UnpinnedMPITolerations is what an MPI job tolerates under Unpinned, in place
+// of the blanket Operator: Exists that Pinned still gets.
+//
+// The blanket cannot carry over. ADR-023 justified it on the grounds that
+// "workloads are already pinned to specific nodes via NodeAffinity", and without
+// the pin it would let a job onto any tainted node with free GPUs, which is the
+// whole class of node an operator taints to keep work off. But tolerating
+// nothing is not the answer either: GPU fleets are routinely tainted to keep
+// non-GPU work off them, and a launcher that tolerates nothing simply never
+// schedules. That is the harder failure to diagnose of the two, because the pods
+// sit Pending with no event naming a toleration.
+//
+// So Unpinned tolerates a named set instead: the two taints the catalog's own
+// runtime patches already list for the platforms that declare any. It is
+// strictly narrower than Exists, so it cannot admit a node the current behavior
+// would have refused, and it covers the taints a GPU fleet actually carries.
+// A fleet taints its nodes some other way should name it in
+// target.taintSelectors, which takes precedence over this.
+func UnpinnedMPITolerations() []corev1.Toleration {
+	return []corev1.Toleration{
+		{
+			Key:      gpuPresentTaintKey,
+			Operator: corev1.TolerationOpEqual,
+			Value:    gpuPresentTaintValue,
+			Effect:   corev1.TaintEffectNoSchedule,
+		},
+		{
+			Key:      archTaintKey,
+			Operator: corev1.TolerationOpEqual,
+			Value:    archTaintValueARM64,
+			Effect:   corev1.TaintEffectNoSchedule,
+		},
+	}
+}
+
+// JobTolerations resolves the toleration precedence for a job's pods (ADR-063),
+// returning apply=false when the controller injects nothing and the workload's
+// own tolerations stand alone.
+//
+// The order is: an explicit target.taintSelectors wins outright; otherwise only
+// MPI workloads get anything, because only they have a launcher that has to
+// co-locate with the tainted GPU nodes its workers run on; otherwise the blanket
+// depends on placement.
+//
+// hasLauncher is workload.HasLauncherTarget. It is passed rather than read here
+// so this stays a pure function over the decision inputs.
+func JobTolerations(
+	target *nvcrev1alpha1.TargetSpec, unpinned, hasLauncher bool,
+) (tolerations []corev1.Toleration, apply bool) {
+	switch {
+	case target != nil && len(target.TaintSelectors) > 0:
+		return BuildTolerations(target.TaintSelectors), true
+	case !hasLauncher:
+		return nil, false
+	case unpinned:
+		return UnpinnedMPITolerations(), true
+	default:
+		return []corev1.Toleration{{Operator: corev1.TolerationOpExists}}, true
+	}
+}
+
+// GPUProductsForAffinity decides whether the recorded gpu.product values can be
+// used as a scheduling constraint.
+//
+// They cannot when discovery synthesized any of them from ResourceSlice
+// attributes (ADR-082's DRA-only fallback, augmentGPUProductLabels). That label
+// is written to the controller's in-memory Node copies and never to the API
+// server, so an affinity term matching it selects no node and every pod stays
+// Pending forever. Reading the label is safe for every other consumer, which is
+// why this is the only place that has to care. The check is on whether anything
+// was synthesized at all, not on which values: with a mixed fleet the recorded
+// list cannot say which of its entries are real.
+//
+// When nothing was synthesized the values are genuine node labels and are
+// returned unchanged. That is the ordinary case, in both placement modes.
+//
+// When something was synthesized, the term has to go. Under Pinned that costs
+// nothing: the hostname list is the output of the architecture filter, so those
+// hosts are already the right architecture and only the bind-time re-check is
+// lost. Under Unpinned the term is the only thing holding the job to one
+// architecture, so dropping it silently could put a job on the wrong GPUs. The
+// caller gets ok=false and is expected to fail the run with an explanation
+// rather than schedule something unsafe. That is reachable only when discovery
+// also excluded nodes for architecture, because with nothing excluded the fleet
+// is uniform and there is no wrong GPU to land on.
+func GPUProductsForAffinity(
+	placement string, gpuProducts, synthesizedProducts, archExcluded []string,
+) (products []string, ok bool) {
+	if len(synthesizedProducts) == 0 {
+		return gpuProducts, true
+	}
+	if !nvcrev1alpha1.IsUnpinned(placement) {
+		return nil, true
+	}
+	if len(archExcluded) == 0 {
+		return nil, true
+	}
+	return nil, false
+}
+
+// GPUProductsForRender is GPUProductsForAffinity for the render path, which has
+// no OrchestrationStatus to read the controller's recorded decision back from
+// and so has to repeat it against its own discovery.
+//
+// It filters to the primary architecture first, exactly as discoverAndPartition
+// does before recording the values. Without that, a preview of a mixed fleet
+// would emit every product it found while the controller emits only the primary,
+// and the dry-run would validate a Job that is strictly more permissive than the
+// one the reconcile creates.
+func GPUProductsForRender(
+	placement string, nodes []corev1.Node, synthesizedProducts []string,
+) (products []string, ok bool) {
+	_, filtered := detectGPUArchConsistent(nodes)
+	return GPUProductsForAffinity(
+		placement, DistinctGPUProducts(filtered), synthesizedProducts, excludedNodeNames(nodes, filtered))
+}
+
+// ArchExcludedForRender names the nodes the render path would drop for running
+// a different GPU architecture, so a refusal can say which nodes an unconstrained
+// job could have landed on.
+func ArchExcludedForRender(nodes []corev1.Node) []string {
+	_, filtered := detectGPUArchConsistent(nodes)
+	return excludedNodeNames(nodes, filtered)
+}
+
+// SynthesizedProductsMessage explains why an Unpinned run cannot be scheduled
+// when its GPU architecture constraint would be built from labels that exist
+// only in the controller's memory.
+func SynthesizedProductsMessage(synthesizedProducts, archExcluded []string) string {
+	return fmt.Sprintf("orchestration.placement: Unpinned cannot constrain this job to a GPU "+
+		"architecture. %d of the target nodes carry no nvidia.com/gpu.product label and their "+
+		"architecture was read from gpu.nvidia.com ResourceSlices instead (%s), so a node affinity "+
+		"built from it would match nothing on the API server. Discovery also excluded %d node(s) "+
+		"for running a different architecture (%s), so without the constraint the job could land on "+
+		"them. Narrow target.nodeSelector or target.matchExpressions to a label the nodes actually "+
+		"carry, or use the default Pinned placement",
+		len(synthesizedProducts), strings.Join(synthesizedProducts, ", "),
+		len(archExcluded), strings.Join(archExcluded, ", "))
+}
+
 // BuildNodeAffinity assembles the job's required node affinity from the group's
 // hostnames and the target.
 //
@@ -194,6 +348,10 @@ func dedupeRequirements(reqs []corev1.NodeSelectorRequirement) []corev1.NodeSele
 //
 // Under Unpinned, hostnames is empty unless the target named explicit nodeNames,
 // and the target terms are the only thing keeping pods inside the target set.
+//
+// gpuProducts must come from GPUProductsForAffinity, not straight off status: a
+// label synthesized from ResourceSlice attributes exists only in memory and
+// would match nothing.
 //
 // Returns nil when there is nothing to constrain, so the caller leaves the pod's
 // affinity untouched rather than writing an empty required term that matches

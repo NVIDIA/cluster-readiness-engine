@@ -68,6 +68,18 @@ status:
     placement: Unpinned
     detectedPlatform: onprem
     detectedGPUArchitecture: h100
+    # The group carries the nodes the pods actually landed on, which is what a
+    # succeeded unpinned run records: updateStatusFromJobs backfills them from
+    # live pod placement while the group is running, so a run cannot reach
+    # Succeeded with the list still empty. The Placement line reads its count
+    # from here rather than from jobs times nodesPerJob, so that a job which
+    # placed short reports what it got instead of what it asked for.
+    groups:
+      - name: group-0
+        nodes:
+          - node001
+          - node002
+        phase: Succeeded
   conditions:
     - type: Succeeded
       status: "True"

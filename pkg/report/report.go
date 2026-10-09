@@ -1347,6 +1347,32 @@ func sanitizeTerminalText(s string) string {
 	return b.String()
 }
 
+// exercisedNodeCount resolves how many nodes an unpinned category ran on, and
+// whether that number is known at all.
+//
+// The recorded placement is the answer whenever there is one. When there is not,
+// the meaning depends on whether the category is still going:
+//
+//   - Still running: the pods have not all bound yet and the backfill has not
+//     fired. The requested size is the best estimate available, and the
+//     alternative is dropping both numbers from the line while the run is in
+//     exactly the state an operator is watching it for.
+//   - Finished: zero is the real answer. A category that reached Succeeded or
+//     Failed with nothing recorded either never bound a pod or lost the record,
+//     and printing the requested size would assert coverage that is at best
+//     unverified and at worst did not happen. Returning known=false drops the
+//     counts and leaves the bare mode, which claims nothing.
+func exercisedNodeCount(cat *CategoryReport) (exercised int, known bool) {
+	if cat.ExercisedNodes > 0 {
+		return cat.ExercisedNodes, true
+	}
+	if cat.Status != statusRunning && cat.Status != statusInProgress {
+		return 0, false
+	}
+	requested := cat.NodesPerJob * cat.Jobs
+	return requested, requested > 0
+}
+
 // printCategoryScope prints the lines describing how much of the fleet the
 // category ran against. A diagnose run has none of them: its groups come from
 // bisection rather than a requested size, so the counts would describe
@@ -1365,17 +1391,7 @@ func printCategoryScope(w io.Writer, cat *CategoryReport) {
 	// numbers reconcile on their own and the line would be noise.
 	if cat.Placement != "" {
 		placementLine := fmt.Sprintf("Placement: %s", cat.Placement)
-		// Prefer the nodes the groups actually landed on. Jobs times Nodes/Job
-		// is the size that was requested, and the two diverge whenever a job
-		// placed short, so printing the plan would overstate coverage in exactly
-		// the run where the operator most needs the real number. Fall back to it
-		// only while placement is still unrecorded, where it is the best estimate
-		// available and the alternative is dropping both numbers from the line.
-		exercised := cat.ExercisedNodes
-		if exercised == 0 {
-			exercised = cat.NodesPerJob * cat.Jobs
-		}
-		if cat.TargetNodes > 0 && exercised > 0 {
+		if exercised, known := exercisedNodeCount(cat); known && cat.TargetNodes > 0 {
 			placementLine = fmt.Sprintf("Placement: %s (%d of %d target nodes exercised)",
 				cat.Placement, exercised, cat.TargetNodes)
 		}

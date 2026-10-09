@@ -109,7 +109,9 @@ Under `Unpinned`:
 2. No `kubernetes.io/hostname` affinity is written.
 3. The requested size is honored exactly, or the run fails. It is never silently adjusted.
 4. `diagnose` and `topology.strictDomain` are rejected. `topology.topologyKey` is ignored.
-5. Tolerations come only from explicit `target.taintSelectors`.
+5. The blanket `Operator: Exists` toleration narrows. An explicit `target.taintSelectors`
+   still wins; the MPI fallback becomes the named GPU taints in
+   `UnpinnedMPITolerations` rather than every taint on the cluster.
 
 And independently of placement, in **both** modes:
 
@@ -311,6 +313,37 @@ For a user who wants an unpinned job confined to one topology domain, the answer
 `target.matchExpressions` naming the domain label, which the target terms below carry onto
 the pods.
 
+#### What ignoring the key actually costs, on a multi-clique fleet
+
+Ignoring `topologyKey` is not free, and the cost should be stated rather than left for a
+reader to find. On GB200 the key is `nvidia.com/gpu.clique` and the greedy packer's purpose
+is to minimize the number of NVLink domains a job spans. Pinned gets that packing. Unpinned
+does not: one group, no domains recorded, and no clique constraint of any kind on the
+created pods. On a fleet split across cliques the scheduler may put a 2-node job's pods in
+different cliques, and a workload running `NCCL_MNNVL_ENABLE=1` then falls back to the
+slower inter-clique path rather than multi-node NVLink.
+
+`cmd/integration/testdata/reconcile/workflow-unpinned-multi-clique/` pins this. Four nodes,
+two cliques of two, the same key, a 2-node job: the Workflow records one group with no
+domains, and the Job's node affinity carries the target terms and nothing else. The
+motivating GB200 fixture cannot show it, because every node there is in `clique-0`.
+
+A required same-clique pod affinity is the obvious counter-proposal and is rejected here,
+for two reasons rather than one. Applied unconditionally it makes any job larger than a
+clique unschedulable, which turns a performance question into an availability one. And
+without gang scheduling it strands partially placed pods: a required pod affinity resolves
+against pods that are already bound, so the first pod picks the clique and the rest wait
+indefinitely if that clique lacks room, with nothing naming the cause. Neither failure mode
+is one a user opting into "let the scheduler place it" would expect.
+
+The mechanism that fits is the same one the rest of this ADR uses for placement intent:
+`target.matchExpressions` on the clique label, which is a set predicate the scheduler
+re-evaluates at bind time and which the target terms carry onto every pod including the MPI
+launcher. It confines the job to one clique by naming it, costs nothing when unset, and
+composes with any `numNodes`. If a future change does want automatic clique confinement, a
+*preferred* pod affinity is the shape to reach for, since it expresses the preference
+without making the larger job unschedulable.
+
 These are Go checks rather than CEL `XValidation` rules. CEL is a reasonable additional
 admission-time guard but cannot be the only one: catalog-built Workflow specs are assembled
 in-process, and an integration test that asserts the rejection must be able to create the
@@ -434,10 +467,10 @@ honesty. Under Pinned, a clamp or a snap flows into both the trainer and the Com
 together, so they stay consistent even when adjusted. Under Unpinned, rejecting is what
 guarantees the two stay equal to the number the user wrote.
 
-### Honoring the size: four doors
+### Honoring the size: five doors
 
-Three mechanisms currently change the requested size, all silent, and all must become errors
-under Unpinned:
+Five mechanisms currently change the requested size, all silent, and all must become errors
+under Unpinned. The first three are on the Certification path:
 
 1. **The clamp.** `resolveNodesPerJob` (`certification_controller.go:904-906`) does
    `ceiling = min(*opts.NodesPerJob, n)`. Ask for 8 on a 4-node fleet and silently get 4.
@@ -452,7 +485,20 @@ under Unpinned:
    behavior being escaped, and it would survive `placement: Unpinned` untouched, since 18 is
    a perfectly valid `NodesRequired` and nothing downstream objects.
 
-The size reaches a job through four doors, and all four need the check:
+The remaining two are on the WorkloadRun path, where `numNodes` plays the same role. Both
+are CLI flags on `nvcrectl workloadrun run`, and both are a sharper version of the same
+problem, because the operator never sees the object that was submitted and so never learns
+the job got smaller:
+
+4. **The `--node-list` clamp.** `applyRunOverrides` lowers `numNodes` to the length of the
+   list when the list is shorter. Correct under Pinned, where naming fewer nodes than a
+   chunk size asks for can never be satisfied, so shrinking beats waiting.
+5. **The `--topology-domain` replacement.** This one does not clamp, it overwrites:
+   `numNodes` becomes the number of nodes the domain turned out to contain, whatever the
+   file asked for. Like the clamp it has a second, discovery-time half that fires on the
+   real count.
+
+The size reaches a job through five doors, and all five need the check:
 
 | Door | Today | Under Unpinned |
 |---|---|---|
@@ -460,10 +506,11 @@ The size reaches a job through four doors, and all four need the check:
 | `certification.go:453-460` (offline render) | defaults to 1 | reject, same message |
 | `certification.go:922-924` (CLI `run`) | omits the field when the flag is 0 | reject before the object is created |
 | `workflow_controller.go:547-549` | falls back to `len(nodes)` | terminal spec error (backstop only) |
+| `workloadrun.go:1630` (`applyRunOverrides`) | `--node-list` clamps, `--topology-domain` overwrites | reject both flags, naming the alternative |
 
-`resolveNodesPerJob` takes a placement argument. Under Pinned all four are unchanged:
-clamping to `min(requested, available)` and `MaxValidNodes` validation remain exactly right
-for a chunk size.
+`resolveNodesPerJob` takes a placement argument. Under Pinned all five are unchanged:
+clamping to `min(requested, available)`, `MaxValidNodes` validation, and both CLI
+adjustments remain exactly right for a chunk size.
 
 The check belongs in `createWorkflowForCategory`, after
 `opts := ResolveOptions(&certification.Spec.CategoryOptions, category.Options)`
@@ -479,6 +526,23 @@ and `buildConfigFromFlags` only sets `cert.Spec.NodesPerJob` when `> 0` (`:922-9
 Certification with a nil field and submit it. The controller rejects it, but only after the
 object exists and a reconcile has run, so the user sees a Failed Certification instead of a
 flag error.
+
+The WorkloadRun door is two halves, and they are closed differently. `applyRunOverrides`
+runs on the spec read from the file and **rejects**: `--node-list` with fewer names than
+`numNodes`, and `--topology-domain` at all. The second half runs after node discovery
+(`workloadrun.go:988`), where the flags' effect depends on numbers only known then, and it
+**skips** rather than rejects. The asymmetry is deliberate: reaching the discovery clamp
+under Unpinned means the flags were already accepted, so the file's `numNodes` was within
+the list, and the right answer there is to leave it alone rather than fail late on a spec
+that was fine. Rejecting in both places would turn a legal `--node-list` of three names for
+a 2-node job into an error the moment discovery returned two live nodes.
+
+`--node-list` itself stays usable under Unpinned. Only the shortfall is refused; a list
+longer than `numNodes` is a narrower target, which is exactly what Unpinned asks the
+operator to use instead of a count. `--topology-domain` has no such reading, because it
+replaces the count unconditionally, so the error names the substitute:
+`target.matchExpressions` on the topology label, which confines placement to the domain and
+leaves `numNodes` alone.
 
 **Error classification.** The new rejections return a plain error, so they land in the
 default branch at `certification_controller.go:225-230`:
@@ -496,24 +560,58 @@ are already pinned to specific nodes via NodeAffinity"
 (`docs/designs/023-catalog-configurability.md:113`). Under Unpinned they are not, so blanket
 Exists plus no host pin would let an MPI job land on any tainted node with free GPUs.
 
-Under Unpinned, only explicit `target.taintSelectors` tolerations are applied, which is
-branch 1 of the existing precedence at `workflow_controller.go:1189-1202`. The MPI fallback
-is dropped. This is a scoped amendment to ADR-023, linked from its Notes; the original
-decision stands for Pinned mode, where its premise still holds.
+So under Unpinned the blanket narrows rather than disappearing. An explicit
+`target.taintSelectors` still wins outright, which is branch 1 of the existing precedence.
+What changes is the fallback branch: instead of `Operator: Exists`, an MPI workload gets the
+named pair in `UnpinnedMPITolerations` (`pkg/controller/placement.go`), the two taints the
+catalog's own runtime patches already list for the platforms that declare any.
+
+Dropping the fallback entirely was the first shape of this amendment and it is wrong in the
+other direction. GPU fleets are routinely tainted to keep non-GPU work off them, so a
+launcher that tolerates nothing simply never schedules, and it fails silently: the pods sit
+Pending with no event naming a toleration. That is the harder of the two failures to
+diagnose. The named pair is strictly narrower than `Exists`, so it cannot admit a node the
+current behavior would have refused, while still covering the taints a real GPU fleet
+carries. A fleet that taints some other way names it in `target.taintSelectors`, which takes
+precedence.
+
+This is a scoped amendment to ADR-023, linked from its Notes; the original decision stands
+for Pinned mode, where its premise still holds.
 
 ### Node attribution from actual placement
 
 With no pin, `GroupStatus.Nodes` is empty at job creation, so it is backfilled from where
 pods actually landed. Two independent write-backs, each in the controller that owns the data.
 
-**`GroupStatus.Nodes`** (Workflow controller). In `updateStatusFromJobs`
-(`workflow_controller.go:1342`), inside the per-group loop, gated on Unpinned and
-`len(g.Nodes) == 0`. A `len(names) == nodesPerJob` guard ensures partial placement does not
-persist an incomplete list that later reads treat as complete. Setting
-`statusChanged = true` routes it through the existing `applyGroups` retry closure, so there
-is no new write path. This requires adding a `NodeDiscoverer` to `WorkflowReconciler` and
-wiring it in `SetupWithManager` the way `job_controller.go:1674` does. The Workflow
-controller already has pod read RBAC (`workflow_controller.go:77`).
+**`GroupStatus.Nodes`** (Workflow controller). `backfillGroupNodes`, called from the
+per-group loop in `updateStatusFromJobs`, gated on Unpinned and `len(g.Nodes) == 0`.
+Setting `statusChanged = true` routes it through the existing `applyGroups` retry closure,
+so there is no new write path. This requires adding a `NodeDiscoverer` to
+`WorkflowReconciler` and wiring it in `SetupWithManager` the way `job_controller.go:1674`
+does. The Workflow controller already has pod read RBAC (`workflow_controller.go:77`).
+
+While the job is still running the write is gated on a complete placement,
+`len(names) == nodesPerJob`, so a prefix of bound pods is not persisted as if it were the
+whole group: the `len(g.Nodes) == 0` guard would stop re-firing and every later read would
+treat the short list as complete. Waiting costs one reconcile.
+
+That gate comes off once the job is terminal. The loop only visits groups that are still
+`GroupRunning`, so a terminal reconcile is the last one that can record anything, and a job
+that failed with half its pods bound is exactly the case attribution exists for. Holding out
+for a complete list there would attribute the failure to no nodes at all. A partial list
+beats an empty one, and nothing re-reads it expecting `NodesPerJob` entries.
+
+Two other branches of the same loop reach `GroupFailed` without passing the status switch:
+a Job confirmed deleted, and a Job carrying a `DeletionTimestamp`. Both `continue` straight
+to the failure, so neither saw the backfill, and an Unpinned job deleted mid-run was
+attributed to nothing at all. Both now call it with `terminal` set, for the same reason the
+gate comes off above: these are the last reconcile that visits the group. Pods outlive the
+Job object for their termination grace period, so there is usually still something to read,
+and an empty answer leaves the nodes empty, which is what they would have been anyway.
+
+This is why `backfillGroupNodes` takes a namespace and name rather than the Job. The
+confirmed-deletion branch has only the `JobRef` left to go on, and neither branch can wait
+for a live read.
 
 **`groupNodeNames`** (Job controller). `createJobForGroup` sets the
 `nvcre.nvidia.com/group-nodes` annotation only when `len(group.Nodes) > 0`, so under
@@ -535,11 +633,23 @@ map-iteration order, which Go randomizes per run. Writing that straight into
 `GroupStatus.Nodes` would produce a status field that reshuffles between reconciles and
 golden files that fail intermittently.
 
-**Iteration reset clears the node list.** `handleIterationComplete`
-(`workflow_controller.go:1671-1679`) resets Phase, JobRef, StartTime, CompletionTime and
-Retries, but not `Nodes`. Under Unpinned, iteration 2 would inherit iteration 1's list and
-the `len(g.Nodes) == 0` guard would never re-fire, so iteration 2's real placement would
-never be recorded. `Nodes = nil` is added to that loop for Unpinned.
+**Every reset to Pending clears the node list.** Two sites return a group to Pending and
+neither cleared `Nodes`: the iteration reset in `handleIterationComplete` and the retry
+reset in `completeTerminalGroup`. Both now call `resetUnpinnedGroupNodes`, which is a no-op
+under Pinned, where the controller assigned the nodes and the job is recreated on the same
+hosts.
+
+Under Unpinned the next job is placed afresh by the scheduler, so the previous attempt's
+nodes are a guess about it, and `backfillGroupNodes` only fires on an empty list: a stale
+list is never corrected. The retry case is the worse of the two, because the list also
+reaches the Job through the `nvcre.nvidia.com/group-nodes` annotation, which `groupNodeNames`
+prefers over live pod discovery. A failure after a retry would be attributed to the nodes
+that ran the attempt before it, and a success would report the nodes that just failed. The
+terminal-backfill above makes this reachable on a first attempt too, since a partially placed
+failure now records a list.
+
+The reset writes an empty slice rather than nil: `nodes` is a required CRD field and nil
+marshals to `null`, which the API server rejects.
 
 ### Coverage reporting
 

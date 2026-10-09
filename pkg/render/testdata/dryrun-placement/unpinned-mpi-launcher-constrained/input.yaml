@@ -11,9 +11,11 @@
 #
 # Tolerations are the other half. Pinned mode's blanket Operator: Exists is safe
 # only because the job lands on hosts NVCRE chose; with the pin gone it would
-# let the launcher onto any tainted node with a free GPU. Under Unpinned only
-# the explicitly requested taintSelector is tolerated, so the golden must carry
-# the dedicated-burnin toleration and nothing broader.
+# let the launcher onto any tainted node with a free GPU. This target names a
+# taintSelector, which is the first arm of controller.JobTolerations and wins
+# outright, so the golden must carry the dedicated-burnin toleration and nothing
+# broader. The fallback arm, where no taintSelector is named, is
+# unpinned-mpi-no-taint-selectors.
 placement: Unpinned
 numNodes: 2
 mpi: true

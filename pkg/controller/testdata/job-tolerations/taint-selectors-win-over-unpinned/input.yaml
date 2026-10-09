@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An explicit target.taintSelectors beats both blankets, and it beats them on a
+# non-MPI workload too: it is the operator naming the taints this run may
+# tolerate, so it is not the controller guessing. A fleet whose GPU taint is
+# neither nvidia.com/gpu nor kubernetes.io/arch has this as its answer under
+# Unpinned.
+unpinned: true
+hasLauncher: false
+target:
+  taintSelectors:
+    - key: my-org/reserved
+      value: burnin
+      effect: NoSchedule

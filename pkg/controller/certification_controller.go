@@ -479,7 +479,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	// Cordoned nodes are discarded here. The Workflow runs the same discovery and
 	// records them on its own status, which is where the report reads coverage
 	// from, so recording them twice would only risk the two disagreeing.
-	nodes, _, err := discoverTargetNodes(ctx, r.Client, r.APIReader, &certification.Spec.Target)
+	nodes, _, _, err := discoverTargetNodes(ctx, r.Client, r.APIReader, &certification.Spec.Target)
 	if err != nil {
 		return "", fmt.Errorf("discovering target nodes: %w", err)
 	}

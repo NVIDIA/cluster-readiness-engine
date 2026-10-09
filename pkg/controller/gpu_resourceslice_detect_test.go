@@ -121,7 +121,7 @@ func TestAugmentGPUProductLabels(t *testing.T) {
 			reader.listErr = errors.New("resourceslices forbidden")
 		}
 
-		nodes, _, err := discoverTargetNodes(context.Background(), reader, nil, &nvcrev1alpha1.TargetSpec{})
+		nodes, _, _, err := discoverTargetNodes(context.Background(), reader, nil, &nvcrev1alpha1.TargetSpec{})
 		if err != nil {
 			return err
 		}

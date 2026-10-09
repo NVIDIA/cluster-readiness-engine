@@ -14,6 +14,11 @@
 # returns "" under Unpinned, because the nearest label it would otherwise reach
 # for is intra-node, which means every node tested independently: the exact
 # opposite of one job. The golden must show no Scale line at all.
+#
+# exercisedNodes matches Jobs times Nodes/Job here, which is what a run that
+# placed in full records. It is set rather than left to the arithmetic on
+# purpose: the two agreeing is a property of this run, not of the report, and a
+# case that omitted it would be asserting the fallback instead.
 domain: training
 variant: nemotron5-8b
 status: Succeeded
@@ -22,3 +27,4 @@ nodesPerJob: 2
 jobs: 1
 placement: Unpinned
 targetNodes: 18
+exercisedNodes: 2

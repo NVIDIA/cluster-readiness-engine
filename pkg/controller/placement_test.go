@@ -140,6 +140,83 @@ func TestBuildGroupStatuses(t *testing.T) {
 	})
 }
 
+// TestJobTolerations pins the toleration precedence, including the two arms
+// that do not depend on placement at all. The Pinned MPI case is the load
+// bearing one: every committed UAT golden records `operator: Exists`, so a
+// change there is a change to every MPI run in the field.
+func TestJobTolerations(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "job-tolerations",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			Unpinned    bool                      `yaml:"unpinned"`
+			HasLauncher bool                      `yaml:"hasLauncher"`
+			Target      *nvcrev1alpha1.TargetSpec `yaml:"target"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		tolerations, apply := JobTolerations(input.Target, input.Unpinned, input.HasLauncher)
+
+		data, err := json.MarshalIndent(struct {
+			Apply       bool                `json:"apply"`
+			Tolerations []corev1.Toleration `json:"tolerations"`
+		}{Apply: apply, Tolerations: tolerations}, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
+// TestGPUProductsForAffinity covers the one place a synthesized gpu.product
+// label is unsafe. Every other consumer reads the label, which is fine; this
+// one turns it into a scheduling constraint, and a value that exists only on an
+// in-memory Node copy matches nothing on the API server.
+//
+// The cases deliberately include a fleet with no gpu.product labels at all,
+// which no other fixture in this package provides.
+func TestGPUProductsForAffinity(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "gpu-products-for-affinity",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			Placement           string   `yaml:"placement"`
+			GPUProducts         []string `yaml:"gpuProducts"`
+			SynthesizedProducts []string `yaml:"synthesizedProducts"`
+			ArchExcluded        []string `yaml:"archExcluded"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+
+		products, ok := GPUProductsForAffinity(
+			input.Placement, input.GPUProducts, input.SynthesizedProducts, input.ArchExcluded)
+
+		result := struct {
+			OK       bool     `json:"ok"`
+			Products []string `json:"products"`
+			Message  string   `json:"message"`
+		}{OK: ok, Products: products}
+		if !ok {
+			result.Message = SynthesizedProductsMessage(input.SynthesizedProducts, input.ArchExcluded)
+		}
+
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(data) + "\n"
+		return nil
+	})
+}
+
 // TestDistinctGPUProducts pins the raw label values carried onto the pods.
 // DetectedGPUArchitecture is normalized and lossy, so these cannot be derived
 // from it; a wrong value here is an affinity term that matches no node.

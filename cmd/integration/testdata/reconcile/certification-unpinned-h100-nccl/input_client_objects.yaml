@@ -13,9 +13,11 @@
 # So this is the plain one. H100, no ComputeDomain, no injected topology, an MPI
 # workload rather than torch. The MPI part is load-bearing: ADR-023 justified the
 # blanket Operator: Exists toleration on the grounds that workloads are pinned to
-# named hosts anyway, which stops being true here, so the golden is what pins
-# that the fallback is dropped under Unpinned and only explicit taintSelectors
-# tolerations survive.
+# named hosts anyway, which stops being true here. The golden is what pins what
+# replaces it: not nothing, which would leave the launcher unschedulable on a
+# tainted GPU fleet, but the named pair in UnpinnedMPITolerations. There is no
+# taintSelectors entry on this target, so this is the fallback arm, and the two
+# tolerations on both replicatedJobs are the whole point of the case.
 #
 # Four nodes against a two-node request, so Pinned would give two jobs.
 apiVersion: v1
