@@ -1,0 +1,3 @@
+rank0:530:530 [0] NCCL INFO Using network Socket
+rank1:529:529 [0] NCCL INFO Using network IB
+rank0:530:530 [0] NCCL INFO Using network Socket
