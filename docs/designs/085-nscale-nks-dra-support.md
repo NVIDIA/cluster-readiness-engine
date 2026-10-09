@@ -172,6 +172,23 @@ separate exercise once this ADR is approved.
     scale without a CRD change. The field mirrors `topology`: nil leaves the base value, non-nil
     replaces it wholesale (`mergeOrchestration`). Workflow and WorkloadRun CRDs regenerate.
 
+12. **Nscale B200 NCCL collectives carry QP and channel tuning.** On Nscale B200,
+    `nccl-all-reduce`, `nccl-all-gather` and `nccl-alltoall` set
+    `NCCL_IB_QPS_PER_CONNECTION=8`, `NCCL_MIN_NCHANNELS=32` and `NCCL_MIN_CTAS=64`
+    (`_lib/nccl/nscale-b200-ib-env.yaml`). Measured with `nccl-all-reduce` at 4 nodes, they
+    lift busBW from 336 to 385 GB/s on Ring and from 549 to 580 GB/s with SHARP, matching
+    Slurm burn-in on the same hardware. That evidence is all-reduce only; applying the
+    profile to all-gather and alltoall is a deliberate choice, not a measurement. The
+    catalog does not pin `NCCL_ALGO`: it certifies the algorithm NCCL picks, which is what
+    users' jobs get. There is no node-count gate; whether the profile changes the
+    single-node NVLS result is checked on hardware. The profile is B200-only because
+    GB300 has not been measured (Note 6), and does not apply to the loopback entries,
+    training or WorkloadRun. It follows the Azure + H100 layering: a `platform: nscale` ×
+    `gpuArchitecture: b200` block after the Nscale block replaces `trainer.args` with the
+    IB env followed by the tuning env, and adds no dependencies, because the Nscale block
+    already supplies the claims. Folding the variables into `nscale-ib-env.yaml` instead
+    would also apply them to GB300, the loopbacks, training and WorkloadRun.
+
 ## Implementation
 
 **This risk is checked first, before any of the above is built**, because it can change
@@ -221,10 +238,12 @@ Once that's confirmed, implementation follows the shape ADR-075 and ADR-058 esta
   - `deps/tolerate-all-runtime-patch.yaml`: platform-neutral patch restoring
     `tolerations: [{operator: Exists}]` (decision 8).
   - `nccl/nscale-ib-env.yaml`: unpinned IB env, mirroring `_lib/nccl/onprem-ib-env.yaml`.
+  - `nccl/nscale-b200-ib-env.yaml`: B200 QP/channel tuning (decision 12).
 - **Per-entry override blocks**, each appended last per decision 5:
   - `nccl-all-reduce`, `nccl-all-gather`, `nccl-alltoall`: `nscale-gpu-rdma.yaml` +
-    `trainer.args` replacement carrying the IB env as `-x` pairs; then the GB300 topology block
-    inside the `testScale` conditional (decision 10).
+    `trainer.args` replacement carrying the IB env as `-x` pairs; then, on B200, a block
+    replacing `trainer.args` with the IB env plus `nscale-b200-ib-env.yaml` (decision 12);
+    then the GB300 topology block inside the `testScale` conditional (decision 10).
   - `nccl-loopback`: `nscale-gpu-rdma.yaml` + `tolerate-all-runtime-patch.yaml`, and
     `trainer.env` replaced by the IB env plus `NCCL_SHM_DISABLE`/`NCCL_P2P_DISABLE`
     re-listed, since lists replace.
@@ -408,6 +427,9 @@ contribution with real-hardware validation is expected":
    confirmed before any bandwidth figure from that cluster is treated as a baseline.
 5. **Kubeflow Trainer / JobSet is not installed on the inspected cluster**, which is a
    deployment prerequisite but gates end-to-end validation of this design.
+6. **GB300 NCCL tuning is deferred until hardware is measured.** GB300 NVL72 runs
+   multi-node collectives over MNNVL inside a rack and reaches IB only between racks, so
+   decision 12's B200 numbers do not carry over.
 
 **Historical citation note.** ADR-075 cites Nscale's allocatable-based detection as precedent
 for its own NIC-resource auto-detection (`075-onprem-gb200-gb300-override.md`, Alternatives

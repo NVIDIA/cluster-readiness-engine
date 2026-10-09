@@ -75,6 +75,12 @@ spec:
     - OMPI_MCA_btl_openib_warn_default_gid_prefix=0
     - -x
     - PMIX_MCA_gds=^ds12
+    - -x
+    - NCCL_IB_QPS_PER_CONNECTION=8
+    - -x
+    - NCCL_MIN_NCHANNELS=32
+    - -x
+    - NCCL_MIN_CTAS=64
     - /usr/local/bin/all_reduce_perf_mpi
     - -b
     - "8"

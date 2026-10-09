@@ -541,6 +541,25 @@ overrides:
 {{ lib "nccl/nscale-ib-env.yaml" . | toMpiArgs | indent 12 }}
             - /usr/local/bin/all_gather_perf_mpi
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- Nscale + B200 NCCL tuning (ADR-085) ---
+# Layers QP/channel tuning on top of the Nscale block above, which already
+# contributes the GPU+RDMA claims.
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      equals: b200
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            args:
+{{ lib "nccl/mpi-leading-args.yaml" . | indent 12 }}
+{{ lib "nccl/nscale-ib-env.yaml" . | toMpiArgs | indent 12 }}
+{{ lib "nccl/nscale-b200-ib-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/all_gather_perf_mpi
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
 # --- Nscale + GB300 topology key (ADR-085) ---
 # Nscale runs no GFD, so nvidia.com/gpu.clique never exists there; the NVLink
 # domain is published as topology.nks.nscale.com/accelerator-domain. Wrapped
