@@ -69,6 +69,32 @@ kubectl logs -n nvcre deploy/nvcre-manager \
 - The `InProgress` condition has reason `WorkloadSchedulingBlocked` — the workload is admitted but its pods cannot be placed (e.g. GPUs held by another tenant). The condition message relays the scheduler's own diagnosis (also shown on the Workflow as reason `JobSchedulingBlocked` and as a `Blocked:` line in `nvcrectl certification report`); blocked time does not count against `timeoutPerJob` or stall detection. Tune with `spec.schedulingStallGraceSeconds` (default 5m).
 - Kubeflow Trainer is not running — confirm its pods are healthy (`kubectl get pods -n kubeflow-system`).
 
+## MPI workers refuse SSH sessions
+
+**Symptoms:** On a release that predates the fix for [#461](https://github.com/NVIDIA/cluster-readiness-engine/issues/461), the `node` pods of a multi-node NCCL category or a WorkloadRun with `framework.mpi` reach `1/1 Running`, the launcher starts, and `mpirun` fails at once with the generic ORTE banner ("ORTE was unable to reliably start one or more daemons"). On a current release the same cluster shows the workers stuck at `0/1` with no launcher pod, and the Job stays `InProgress` until `timeoutPerJob`. In both cases the worker log shows `Server listening on 0.0.0.0 port 22` followed, for every inbound connection, by `fatal: chroot("/run/sshd"): Operation not permitted [preauth]`.
+
+This is the container runtime's default capability set. `sshd` runs every session through privilege separation, which calls `chroot()` before authenticating; that needs `CAP_SYS_CHROOT`. Docker and containerd grant it by default. CRI-O does not, so on OpenShift the listener comes up and every session dies. The MPI worker container now requests `SYS_CHROOT` explicitly, and its readiness probe opens a real loopback SSH session instead of a TCP connect, so a worker in this state stays `NotReady` and the launcher's `dependsOn` gate never releases.
+
+**Diagnosis:**
+
+```bash
+# Workers never become Ready: the probe output names the failure
+kubectl describe pod <node-pod> -n <namespace> | grep -A3 "Readiness probe failed"
+
+# Confirm the chroot failure in the worker log
+kubectl logs <node-pod> -n <namespace> | grep -E "chroot|preauth"
+
+# Confirm the capability was admitted into the pod
+kubectl get pod <node-pod> -n <namespace> \
+  -o jsonpath='{.spec.containers[0].securityContext.capabilities.add}'
+```
+
+**Solutions:**
+
+- The capability list does not include `SYS_CHROOT`: the release predates the fix. Upgrade; the fix is in the catalog NCCL entries, the WorkloadRun MPI builder, and the AWS platform overrides.
+- The pod was rejected at admission with a message naming `SYS_CHROOT`: the SecurityContextConstraints granted to the workload's service account (OpenShift), or the namespace's Pod Security level, does not allow it. Grant an SCC whose `allowedCapabilities` lists both `IPC_LOCK` and `SYS_CHROOT`. Under Pod Security admission only the `privileged` level admits these workers: `baseline` allows `SYS_CHROOT` but not the `IPC_LOCK` they already needed, and `restricted` (like the stock `restricted-v2` SCC) allows neither.
+- The workers are `Ready` but `mpirun` still prints the ORTE banner on a current release: the worker image ships `sshd` without an `ssh` client, so the probe fell back to the listening check and could not see the refused sessions. Prebake `openssh-client` alongside `openssh-server`; the recipe in the [air-gapped FAQ](faq.md#can-mpi-workloads-run-in-air-gapped-or-restricted-egress-clusters) does both, and on Debian and Ubuntu the server package pulls the client in on its own.
+
 ## Workflow stuck without a Job
 
 **Symptoms:** Workflow condition is `InProgress`, but no child Job appears.

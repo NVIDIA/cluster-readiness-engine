@@ -39,6 +39,17 @@ followed them.
 
 ### Fixed
 
+- Multi-node MPI workers (the multi-node NCCL categories and WorkloadRun
+  `framework.mpi`) now request `SYS_CHROOT` alongside `IPC_LOCK`. `sshd` chroots
+  during privilege separation before authenticating, so on CRI-O, which does not
+  grant the capability by default, every SSH session died preauth while the
+  listener stayed up and `mpirun` failed with the generic ORTE banner. The worker
+  readiness probe now opens a real loopback SSH session instead of a TCP connect,
+  so a worker whose `sshd` cannot serve sessions stays `NotReady`, the launcher is
+  not created, and the worker's events name the failure; the Job then waits on
+  `timeoutPerJob`. An image without an `ssh` client keeps the previous listening
+  check. The AWS GB200 and H100 override blocks, which restate the worker's
+  capability list, carry the capability for MPI as well (#461)
 - `nvcre_job_status` now reports `failed` for a Job that timed out on
   `timeoutPerJob`. The gauge was written only by the Job tier, so the Workflow
   reconciler's timeout write left it at `in_progress` for the rest of the run, and

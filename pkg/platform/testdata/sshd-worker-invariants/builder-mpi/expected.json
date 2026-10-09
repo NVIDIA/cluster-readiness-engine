@@ -1,0 +1,25 @@
+{
+  "containersScanned": 3,
+  "sshdWorkers": 1,
+  "containers": [
+    {
+      "replicatedJob": "node",
+      "container": "node",
+      "runsSSHD": true,
+      "capabilitiesAdded": [
+        "IPC_LOCK",
+        "SYS_CHROOT"
+      ],
+      "readinessProbe": {
+        "handlers": [
+          "exec"
+        ],
+        "invokesSSH": true,
+        "dialsLoopback": true,
+        "batchMode": true,
+        "timeoutSeconds": 10
+      }
+    }
+  ],
+  "violations": []
+}
