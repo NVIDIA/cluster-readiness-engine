@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -570,7 +571,7 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 	applyWRPreTemplateOverrides(spec, wrOverrides, octx)
 
 	// Build JobTemplate.
-	jobTemplate := r.buildJobTemplate(run, frameworkType, gpusPerNode, enableMNNVL)
+	jobTemplate := r.buildJobTemplate(run, frameworkType, gpusPerNode, mergedEnv)
 
 	// Post-template overrides: modify the built job template before the
 	// Workflow CR is created so changes are stored in well-known fields
@@ -613,11 +614,10 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 }
 
 // buildJobTemplate constructs the JobTemplateSpec for the workload.
-// enableMNNVL is the resolved MNNVL setting (architecture default overridden
-// by spec.enableMNNVL) computed once in buildWorkflowSpec — the same value
-// BaseNCCLEnvVars puts on the runtime container, so the MPI launcher's
-// -x NCCL_MNNVL_ENABLE forwarding never disagrees with the worker env.
-func (r *WorkloadRunReconciler) buildJobTemplate(run *nvcrev1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32, enableMNNVL bool) *nvcrev1alpha1.JobTemplateSpec {
+// env is the merged env buildWorkflowSpec puts on the runtime containers. The
+// MPI launcher forwards the same env with -x, so the ranks (which see only
+// what mpirun forwards) never disagree with the worker env.
+func (r *WorkloadRunReconciler) buildJobTemplate(run *nvcrev1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32, env []corev1.EnvVar) *nvcrev1alpha1.JobTemplateSpec {
 	spec := &run.Spec
 
 	// Build trainer spec based on framework.
@@ -637,24 +637,18 @@ func (r *WorkloadRunReconciler) buildJobTemplate(run *nvcrev1alpha1.WorkloadRun,
 	case FrameworkMPI:
 		mpi := spec.Framework.MPI
 		command = []string{"timeout", "3600", mpi.MpirunPath}
-		baseCount := 10 // fixed args below
-		mpiArgs := make([]string, 0, baseCount+len(mpi.MpiArgs)+1+len(mpi.Args))
-		mpiArgs = append(mpiArgs,
-			"-N", fmt.Sprintf("%d", gpusPerNode),
-			"--allow-run-as-root",
-			"--mca", "plm_rsh_args",
-			"-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
+		args = slices.Concat(
+			[]string{
+				"-N", fmt.Sprintf("%d", gpusPerNode),
+				"--allow-run-as-root",
+				"--mca", "plm_rsh_args",
+				"-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
+			},
+			platform.MPIEnvArgs(env, mpi.MpiArgs),
+			mpi.MpiArgs,
+			[]string{mpi.Binary},
+			mpi.Args,
 		)
-		mpiArgs = append(mpiArgs, "-x", "NCCL_DEBUG=INFO")
-		enableStr := "0"
-		if enableMNNVL {
-			enableStr = "1"
-		}
-		mpiArgs = append(mpiArgs, "-x", fmt.Sprintf("NCCL_MNNVL_ENABLE=%s", enableStr))
-		mpiArgs = append(mpiArgs, mpi.MpiArgs...)
-		mpiArgs = append(mpiArgs, mpi.Binary)
-		mpiArgs = append(mpiArgs, mpi.Args...)
-		args = mpiArgs
 	default: // exec
 		exec := spec.Framework.Exec
 		command = exec.Command

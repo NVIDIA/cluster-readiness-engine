@@ -43,9 +43,9 @@ type OverrideConfig struct {
 	EnableMNNVL   bool
 	FrameworkType string
 
-	// UserEnv overrides matching names in platform trainer.env patches so
-	// WorkloadRun values retain precedence when Kubeflow Trainer applies the
-	// patch. User-only variables stay in the runtime container environment.
+	// UserEnv overrides matching names in platform trainer.env patches and
+	// mpiArgs -x pairs so WorkloadRun values retain precedence over platform
+	// values. User-only variables stay in the runtime container environment.
 	UserEnv []corev1.EnvVar `json:"-" yaml:"-"`
 }
 
@@ -78,7 +78,31 @@ func BuildOverrides(cfg OverrideConfig) []WorkloadRunOverride {
 	}
 	mergeUserEnvIntoTrainerPatches(overrides, cfg.UserEnv)
 	mergeUserEnvIntoRuntimeDependencies(overrides, cfg.UserEnv)
+	mergeUserEnvIntoMPIArgs(overrides, cfg.UserEnv)
 	return overrides
+}
+
+// mergeUserEnvIntoMPIArgs preserves WorkloadRun spec.env values in platform
+// mpiArgs. MPI ranks see only what mpirun forwards with -x, so a platform pair
+// for a name the user also set would otherwise decide the value at the ranks.
+// Only matching names are replaced, in place.
+func mergeUserEnvIntoMPIArgs(overrides []WorkloadRunOverride, userEnv []corev1.EnvVar) {
+	user := make(map[string]corev1.EnvVar, len(userEnv))
+	for _, env := range userEnv {
+		user[env.Name] = env
+	}
+	for i := range overrides {
+		args := overrides[i].MPIArgs
+		for j := range args {
+			name, ok := mpiEnvArgName(args, j)
+			if !ok {
+				continue
+			}
+			if env, set := user[name]; set {
+				args[j+1] = mpiEnvArg(env)
+			}
+		}
+	}
 }
 
 // mergeUserEnvIntoTrainerPatches preserves WorkloadRun spec.env values in

@@ -99,12 +99,16 @@ spec:
       value: TRACE
 ```
 
-One caveat for MPI runs: the container env reaches `mpirun` on the launcher
-and the `sshd` process on each worker, but `mpirun` starts the ranks on
-workers through SSH, and `sshd` gives every session a fresh, sanitized
-environment — so the MPI ranks themselves may not inherit `spec.env`. A
-variable the ranks must see should be passed as `-x NAME=value` in
-`spec.framework.mpi.mpiArgs`, which forwards it through `mpirun` itself.
+For MPI runs, `mpirun` starts the ranks on workers through SSH, and `sshd`
+gives every session a fresh, sanitized environment, so the ranks do not
+inherit container env. The controller therefore also forwards the merged env
+to the ranks with `mpirun -x NAME=value`: the full set of auto-detected NCCL
+defaults plus `spec.env`, except names a platform override already forwards
+(the platform value then replaces the default). A `valueFrom` variable is
+forwarded as `-x NAME`, which `mpirun` reads from the launcher container's
+env. At the ranks, a `spec.env` value overrides both the defaults and a
+platform-forwarded value, and a `-x NAME=value` you pass in
+`spec.framework.mpi.mpiArgs` overrides `spec.env`.
 
 ## With bandwidth measurement
 

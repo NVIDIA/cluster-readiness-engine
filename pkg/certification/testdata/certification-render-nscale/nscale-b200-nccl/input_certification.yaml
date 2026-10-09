@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The target nodeSelector deliberately carries only nvidia.com/gpu.present,
+# not nvidia.com/gpu.product: real Nscale nodes have no device plugin/GFD
+# DaemonSet to write that label (ADR-085), and --gpu-arch (input.yaml) is
+# what makes offline render possible at all.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: nscale-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  nodesPerJob: 8
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

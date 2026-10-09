@@ -771,6 +771,11 @@ type OrchestrationOverrideSpec struct {
 	// +optional
 	// +kubebuilder:validation:Enum=Pinned;Unpinned
 	Placement *string `json:"placement,omitempty"`
+	// diagnose overrides the adaptive fault-isolation configuration, so a
+	// platform override can replace the base entry's diagnose topologyKey
+	// the same way it replaces the topology one.
+	// +optional
+	Diagnose *DiagnoseSpec `json:"diagnose,omitempty"`
 
 	// execution overrides how jobs are scheduled across groups.
 	// +optional

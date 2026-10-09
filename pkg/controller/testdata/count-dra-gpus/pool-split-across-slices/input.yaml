@@ -1,0 +1,18 @@
+# A driver may split one node's pool across several slices of the same
+# generation. Every slice counts toward the node.
+resourceSlices:
+  - nodeName: node-a
+    driver: gpu.nvidia.com
+    pool: node-a
+    generation: 1
+    devices: [gpu, gpu]
+  - nodeName: node-a
+    driver: gpu.nvidia.com
+    pool: node-a
+    generation: 1
+    devices: [gpu, gpu]
+  - nodeName: node-b
+    driver: gpu.nvidia.com
+    pool: node-b
+    generation: 1
+    devices: [gpu, gpu, gpu, gpu]
