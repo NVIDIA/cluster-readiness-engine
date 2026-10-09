@@ -27,7 +27,7 @@ func TestBuildTolerations(t *testing.T) {
 			return err
 		}
 
-		result := buildTolerations(input.Selectors)
+		result := BuildTolerations(input.Selectors)
 
 		data, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {

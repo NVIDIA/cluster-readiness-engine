@@ -47,6 +47,14 @@ spec:
             values:
             - aws-gb200-node-01
             - aws-gb200-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
+          - key: nvidia.com/gpu.product
+            operator: In
+            values:
+            - NVIDIA-GB200
   containers:
   - args:
     - --allow-run-as-root
@@ -270,6 +278,14 @@ spec:
             values:
             - aws-gb200-node-01
             - aws-gb200-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
+          - key: nvidia.com/gpu.product
+            operator: In
+            values:
+            - NVIDIA-GB200
   containers:
   - args:
     - |-
@@ -434,6 +450,14 @@ spec:
             values:
             - aws-gb200-node-01
             - aws-gb200-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
+          - key: nvidia.com/gpu.product
+            operator: In
+            values:
+            - NVIDIA-GB200
   containers:
   - args:
     - |-

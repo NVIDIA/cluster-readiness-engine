@@ -169,6 +169,9 @@
         "totalGroups": 0,
         "detectedPlatform": "aws",
         "detectedGPUArchitecture": "h100",
+        "gpuProducts": [
+          "NVIDIA-H100-80GB-HBM3"
+        ],
         "appliedOverrides": [
           {
             "index": 0,

@@ -211,6 +211,16 @@ func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) 
 		}
 		workflowSpec.Overrides = nil
 
+		// BuildWorkflowSpec already ran ValidateWRPlacement, but that was the
+		// pre-override spec and it only sees testScale. An override can set
+		// orchestration.topology.strictDomain directly, so the resolved spec
+		// needs the lower-tier check too. Without --platform the overrides stay
+		// conditional and the output is a template, so there is nothing resolved
+		// to check and the controller performs it on the target instead.
+		if err := controller.ValidatePlacement(&workflowSpec.Orchestration); err != nil {
+			return err
+		}
+
 		// The construction-time merge inside BuildWorkflowSpec ran before
 		// these overrides, so it is the resolved spec that has to satisfy
 		// both contracts: the workload labels an override may have rewritten,
@@ -270,6 +280,12 @@ func BuildWorkflowSpec(
 	gpusPerNode, mlnxPerNode int32, enableMNNVL bool, frameworkType string,
 ) (*nvcrev1alpha1.WorkflowSpec, error) {
 	spec := &run.Spec
+
+	// Same check the controller runs, so an offline render refuses the same
+	// specs the cluster would rather than previewing one that cannot run.
+	if err := controller.ValidateWRPlacement(spec.Orchestration); err != nil {
+		return nil, err
+	}
 
 	// Build merged env vars.
 	baseEnv := platform.BaseNCCLEnvVars(enableMNNVL)
@@ -344,6 +360,7 @@ func BuildWorkflowSpec(
 		if spec.Orchestration.RepeatCount != nil {
 			orch.Iterations = int(*spec.Orchestration.RepeatCount)
 		}
+		orch.Placement = spec.Orchestration.Placement
 		switch spec.Orchestration.TestScale {
 		case "intra-rack":
 			// TopologyKey is set by platform override (workloadrun.yaml)
@@ -661,6 +678,12 @@ func runWorkloadRunRenderDryRun(
 	}
 	workflowSpec.Overrides = nil
 
+	// The resolved-spec half of the placement check; see the note on the same
+	// call in the non-dry-run render path above.
+	if err := controller.ValidatePlacement(&workflowSpec.Orchestration); err != nil {
+		return err
+	}
+
 	// Fail before any dry-run API request, so a conflicting override is
 	// reported as the conflict it is rather than as whatever the API server
 	// makes of the inconsistent manifests.
@@ -813,8 +836,10 @@ func runWorkloadRunExecute(
 	}
 
 	// Apply CLI overrides to the WorkloadRun spec.
-	applyRunOverrides(run, nameOverride, nodeList,
-		topologyDomain, topologyKey, testScale)
+	if err := applyRunOverrides(run, nameOverride, nodeList,
+		topologyDomain, topologyKey, testScale); err != nil {
+		return err
+	}
 
 	if namespace != "" {
 		run.Namespace = namespace
@@ -941,14 +966,29 @@ func executeWorkloadRunRun(cfg *wrRunConfig) error {
 	_, _ = fmt.Fprintf(out, "Discovered %d GPU nodes with product: %s\n",
 		len(nodes), gpuProduct)
 
-	// Auto-infer numNodes from target node count.
+	// Auto-infer numNodes from the discovered node count.
 	// --node-list: clamp down if fewer nodes than spec.
 	// --topology-domain: set to discovered count (all nodes in the domain).
-	if cfg.nodeList != "" && run.Spec.NumNodes > int32(len(nodes)) {
-		run.Spec.NumNodes = int32(len(nodes))
-	}
-	if cfg.topologyDomain != "" {
-		run.Spec.NumNodes = int32(len(nodes))
+	//
+	// Both are skipped under Unpinned, where resizing the job is the thing the
+	// mode exists to prevent. This is the discovery-time half of an adjustment
+	// applyRunOverrides already made once on the spec read from the file; it
+	// fires again here because the real node count is only known now.
+	//
+	// The guard is a skip rather than an error. --topology-domain cannot reach
+	// this line under Unpinned at all, since applyRunOverrides rejects the flag
+	// outright, so only the --node-list clamp is live. Reaching it means the
+	// list was accepted, which means it named at least numNodes nodes; the
+	// clamp would only fire if fewer of them turned out to be live GPU nodes,
+	// and quietly shrinking the job for that reason is the behavior being
+	// removed. Leaving numNodes alone lets the run fail on its own terms.
+	if !nvcrev1alpha1.IsUnpinned(placementOf(run)) {
+		if cfg.nodeList != "" && run.Spec.NumNodes > int32(len(nodes)) {
+			run.Spec.NumNodes = int32(len(nodes))
+		}
+		if cfg.topologyDomain != "" {
+			run.Spec.NumNodes = int32(len(nodes))
+		}
 	}
 
 	// Create WorkloadRun.
@@ -1556,16 +1596,46 @@ func buildWorkloadRunReport(
 	return r
 }
 
+// placementOf reads a WorkloadRun's placement through the optional
+// orchestration block, which most runs omit entirely.
+func placementOf(run *nvcrev1alpha1.WorkloadRun) string {
+	if run.Spec.Orchestration == nil {
+		return ""
+	}
+	return run.Spec.Orchestration.Placement
+}
+
 // applyRunOverrides modifies a WorkloadRun based on CLI override flags.
+//
+// Under Unpinned it returns an error rather than resizing the run. The two
+// flags below both rewrite numNodes silently: --node-list clamps it down to the
+// length of the list, and --topology-domain replaces it outright with the
+// domain's node count. Either one breaks the guarantee Unpinned makes, that the
+// size written is the size that runs or the run fails saying why, and it breaks
+// it on the CLI where the operator never sees the object that was submitted.
+//
+// Pinned keeps both. There the count is a chunk size and resizing it is what
+// the sweep is for.
 func applyRunOverrides(
 	run *nvcrev1alpha1.WorkloadRun,
 	nameOverride, nodeList, topologyDomain, topologyKey, testScale string,
-) {
+) error {
 	if nameOverride != "" {
 		run.Name = nameOverride
 	}
+	unpinned := nvcrev1alpha1.IsUnpinned(placementOf(run))
 	if nodeList != "" {
 		names := strings.Split(nodeList, ",")
+		// Checked before anything is written. A rejected flag must not
+		// half-apply: returning with the names on the target and numNodes
+		// untouched would leave a spec matching neither the file nor the flag.
+		if unpinned && int32(len(names)) < run.Spec.NumNodes {
+			return fmt.Errorf(
+				"--node-list names %d node(s) but numNodes is %d. Under "+
+					"orchestration.placement Unpinned the requested size is not reduced to fit; "+
+					"list at least %d nodes or lower numNodes to %d",
+				len(names), run.Spec.NumNodes, run.Spec.NumNodes, len(names))
+		}
 		if run.Spec.Target == nil {
 			run.Spec.Target = &nvcrev1alpha1.TargetSpec{}
 		}
@@ -1575,6 +1645,14 @@ func applyRunOverrides(
 		}
 	}
 	if topologyDomain != "" {
+		if unpinned {
+			return fmt.Errorf(
+				"--topology-domain sets numNodes to the number of nodes in the domain, which "+
+					"would replace the requested %d. Under orchestration.placement Unpinned the "+
+					"requested size is authoritative; confine the job with "+
+					"target.matchExpressions on the topology label instead, which keeps numNodes",
+				run.Spec.NumNodes)
+		}
 		if run.Spec.Target == nil {
 			run.Spec.Target = &nvcrev1alpha1.TargetSpec{}
 		}
@@ -1596,6 +1674,7 @@ func applyRunOverrides(
 		}
 		run.Spec.Orchestration.TestScale = testScale
 	}
+	return nil
 }
 
 // buildNodeResults flattens orchestration groups into per-node pass/fail results.

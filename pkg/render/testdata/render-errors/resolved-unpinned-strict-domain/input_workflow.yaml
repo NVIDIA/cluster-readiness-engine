@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The ordering case, and the reason the check runs after overrides resolve
+# rather than on the spec as written. The base spec is a legal Unpinned run: one
+# job, no topology block at all. The conflict only exists after the aws override
+# merges in strictDomain, which is a field the author of this YAML never wrote
+# and cannot see.
+#
+# A check placed any earlier passes this file and ships the contradiction.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: resolved-unpinned-strict-domain
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: strict-runtime
+          trainer:
+            image: test-image:latest
+            numNodes: 2
+  overrides:
+    - when:
+        platform:
+          equals: aws
+      orchestration:
+        topology:
+          topologyKey: nvidia.com/gpu.clique
+          strictDomain: true
+  orchestration:
+    iterations: 1
+    placement: Unpinned
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"

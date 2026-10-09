@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The headline case for the render path: what the operator is shown must be
+# what the controller will create.
+#
+# The fleet has four nodes and the job wants two, so a dry run that still
+# simulated group-0 would slice the first two and print their hostnames. The
+# golden must carry no kubernetes.io/hostname requirement at all. The target
+# terms must still be there, because dropping the pin is what makes them
+# load-bearing: without them the pods would be constrained by their GPU
+# resource request alone and free to land outside the target entirely.
+placement: Unpinned
+numNodes: 2
+target:
+  nodeSelector:
+    nvcre.nvidia.com/testbed: burnin

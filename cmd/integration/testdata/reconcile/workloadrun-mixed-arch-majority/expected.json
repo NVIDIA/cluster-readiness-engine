@@ -1664,6 +1664,9 @@
         "currentIteration": 1,
         "detectedPlatform": "aws",
         "detectedGPUArchitecture": "h100",
+        "gpuProducts": [
+          "NVIDIA-H100-80GB-HBM3"
+        ],
         "excludedNodes": [
           "gpu-node-01"
         ],

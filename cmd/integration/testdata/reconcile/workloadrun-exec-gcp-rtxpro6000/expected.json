@@ -95,6 +95,13 @@
                                                 "gcp-rtxpro6000-node-01",
                                                 "gcp-rtxpro6000-node-02"
                                               ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.product",
+                                              "operator": "In",
+                                              "values": [
+                                                "NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition"
+                                              ]
                                             }
                                           ]
                                         }

@@ -433,6 +433,9 @@
         "currentIteration": 1,
         "detectedPlatform": "gcp",
         "detectedGPUArchitecture": "rtxpro6000",
+        "gpuProducts": [
+          "NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition"
+        ],
         "groups": [
           {
             "name": "group-0",

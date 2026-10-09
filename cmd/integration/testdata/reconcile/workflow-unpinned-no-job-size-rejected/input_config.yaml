@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Without the guard this case does not error at all: it passes with a single Job
+# spanning all three nodes, which is the bug. expectAbsent is what distinguishes
+# "rejected" from "ran the wrong thing".
+waitFor:
+  kind: Workflow
+  name: unpin-nosize
+  namespace: default
+  condition: Failed
+  reason: PartitionError
+collect:
+  - kind: Workflow
+    name: unpin-nosize
+    namespace: default
+expectAbsent:
+  - kind: Job
+    name: unpin-nosize-job
+    namespace: default

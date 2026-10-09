@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Job is what carries the assertion: its node affinity should name all three
+# hosts from target.nodeNames, not the two the controller would have chosen under
+# Pinned. totalNodes on the Workflow should be 3, since node-04 never passed the
+# nodeNames filter.
+waitFor:
+  kind: Workflow
+  name: unpin-names
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Workflow
+    name: unpin-names
+    namespace: default
+  - kind: Job
+    name: unpin-names-job
+    namespace: default

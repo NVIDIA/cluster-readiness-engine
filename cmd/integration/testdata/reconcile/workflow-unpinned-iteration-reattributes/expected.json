@@ -1,0 +1,122 @@
+{
+  "Workflow/unpin-iterattr": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "unpin-iterattr",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 2
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "placement": "Unpinned",
+        "execution": {},
+        "iterations": 2
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobCompleted",
+          "message": "All 2 iterations completed successfully"
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "succeededNodesRef": {
+        "apiGroup": null,
+        "kind": "ConfigMap",
+        "name": "succeeded-nodes"
+      },
+      "orchestration": {
+        "totalNodes": 4,
+        "nodesPerJob": 2,
+        "totalGroups": 1,
+        "placement": "Unpinned",
+        "currentIteration": 2,
+        "completedIterations": 2,
+        "iterationHistory": [
+          {
+            "iteration": 1,
+            "groups": [
+              {
+                "name": "group-0",
+                "phase": "Succeeded",
+                "jobName": "unpin-iterattr-group-0-iter-1"
+              }
+            ]
+          }
+        ],
+        "detectedPlatform": "aws",
+        "detectedGPUArchitecture": "h100",
+        "gpuProducts": [
+          "NVIDIA-H100-80GB-HBM3"
+        ],
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "iterattr-node-03",
+              "iterattr-node-04"
+            ],
+            "phase": "Succeeded",
+            "jobRef": {
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "unpin-iterattr-group-0-iter-2",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

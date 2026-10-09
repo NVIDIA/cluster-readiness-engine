@@ -47,6 +47,14 @@ spec:
             operator: In
             values:
             - aws-h100-cordoned-node-01
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
+          - key: nvidia.com/gpu.product
+            operator: In
+            values:
+            - NVIDIA-H100-80GB-HBM3
   containers:
   - args:
     - -b

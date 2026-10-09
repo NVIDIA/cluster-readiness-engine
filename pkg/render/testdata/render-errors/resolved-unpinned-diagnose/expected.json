@@ -1,0 +1,3 @@
+{
+  "error": "orchestration.placement: Unpinned is incompatible with orchestration.diagnose: diagnose isolates faults by partitioning nodes into groups and bisecting the failures, which requires the node pinning Unpinned removes; drop one of the two"
+}

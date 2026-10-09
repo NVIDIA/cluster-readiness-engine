@@ -47,6 +47,14 @@ spec:
             values:
             - togetherai-h100-node-01
             - togetherai-h100-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
+          - key: nvidia.com/gpu.product
+            operator: In
+            values:
+            - NVIDIA-H100-80GB-HBM3
   containers:
   - args:
     - -N
@@ -263,6 +271,14 @@ spec:
             values:
             - togetherai-h100-node-01
             - togetherai-h100-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
+          - key: nvidia.com/gpu.product
+            operator: In
+            values:
+            - NVIDIA-H100-80GB-HBM3
   containers:
   - args:
     - |-
@@ -416,6 +432,14 @@ spec:
             values:
             - togetherai-h100-node-01
             - togetherai-h100-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
+          - key: nvidia.com/gpu.product
+            operator: In
+            values:
+            - NVIDIA-H100-80GB-HBM3
   containers:
   - args:
     - |-

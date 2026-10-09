@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The race the retry fixture found. completeTerminalGroup deleted the Job and
+# reset the group to Pending with retries 1; the Job controller has already
+# released the finalizer so the Job is gone. The reconcile started by the Job's
+# deletion is still reading the view from before the reset: group Running on
+# that Job. Without the guard it marks the group Failed and the retry is lost.
+groups:
+  - name: group-0
+    cached: {phase: Running, jobRef: g0-job}
+    live: {phase: Pending, jobRef: "", retries: 1}
+    job: absent

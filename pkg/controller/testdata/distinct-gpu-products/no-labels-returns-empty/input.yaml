@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Much of the existing testdata has no gpu.product labels at all. An empty
+# result here is what makes TargetNodeAffinityTerms omit the term entirely
+# instead of emitting "In []", which matches no node and would leave every pod
+# Pending forever with no error naming the cause.
+nodes:
+  - metadata:
+      name: node-a
+  - metadata:
+      name: node-b

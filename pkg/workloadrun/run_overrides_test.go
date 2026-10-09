@@ -36,15 +36,20 @@ func TestApplyRunOverrides(t *testing.T) {
 		}
 
 		run := input.Run
-		applyRunOverrides(&run, input.NameOverride, input.NodeList,
+		err := applyRunOverrides(&run, input.NameOverride, input.NodeList,
 			input.TopologyDomain, input.TopologyKey, input.TestScale)
 
+		errMsg := ""
+		if err != nil {
+			errMsg = err.Error()
+		}
 		out := struct {
 			Name     string                               `json:"name"`
 			NumNodes int32                                `json:"numNodes"`
 			Target   *nvcrev1alpha1.TargetSpec            `json:"target"`
 			Orch     *nvcrev1alpha1.WorkloadOrchestration `json:"orchestration"`
-		}{run.Name, run.Spec.NumNodes, run.Spec.Target, run.Spec.Orchestration}
+			Error    string                               `json:"error,omitempty"`
+		}{run.Name, run.Spec.NumNodes, run.Spec.Target, run.Spec.Orchestration, errMsg}
 
 		b, err := json.MarshalIndent(out, "", "  ")
 		if err != nil {

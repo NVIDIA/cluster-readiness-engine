@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The headline case. The group carries nodes (discovery found them) but
+# Unpinned discards the hostname pin, leaving the target terms as the only
+# thing keeping pods inside the eligible set. If this ever rendered a nil
+# affinity, pods would be free to land on any node with free GPUs.
+placement: Unpinned
+groupNodes: ["node-a", "node-b"]
+target:
+  nodeSelector:
+    nvidia.com/gpu.present: "true"
+gpuProducts: ["NVIDIA-GB200"]

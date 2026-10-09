@@ -1,0 +1,148 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The same DRA-only mixed fleet as workflow-unpinned-synthesized-product-rejected,
+# node for node, run under the default Pinned placement. That run is refused;
+# this one schedules. Holding the fleet identical is what makes the pair a
+# control: the only variable is the placement field.
+#
+# The asymmetry is the whole point, and it is not a weaker check under Pinned. A
+# synthesized nvidia.com/gpu.product matches nothing on the API server in either
+# mode, so the term has to go either way. Under Pinned the hostname term is the
+# output of the architecture filter, so those two hosts are already gb300 and
+# only the bind-time re-check is lost. Under Unpinned there is no hostname term
+# and nothing else holds the job to one architecture.
+#
+# So the Job created here carries exactly two expressions: the hostname pin
+# naming the two gb300 nodes the partition chose, and the target's gpu.present
+# selector. There is no nvidia.com/gpu.product expression, even though
+# detectedGPUArchitecture reads gb300. A golden that grows a gpu.product term
+# here is the regression this case exists to catch: the run would schedule
+# nothing at all.
+#
+# Node names differ from the Unpinned case because Nodes are cluster-scoped and
+# the two cases must not create the same names.
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: drapin-node-01-gpus
+spec:
+  driver: gpu.nvidia.com
+  nodeName: drapin-node-01
+  pool:
+    name: drapin-node-01
+    generation: 1
+    resourceSliceCount: 1
+  devices:
+    - name: gpu-0
+      attributes:
+        productName:
+          string: NVIDIA GB300
+        type:
+          string: gpu
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: drapin-node-02-gpus
+spec:
+  driver: gpu.nvidia.com
+  nodeName: drapin-node-02
+  pool:
+    name: drapin-node-02
+    generation: 1
+    resourceSliceCount: 1
+  devices:
+    - name: gpu-0
+      attributes:
+        productName:
+          string: NVIDIA GB300
+        type:
+          string: gpu
+---
+# The odd node out. It is dropped by the architecture filter here exactly as it
+# is in the Unpinned case, so excludedNodes and exclusionReason match across the
+# pair and the only difference in outcome is the placement.
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: drapin-node-03-gpus
+spec:
+  driver: gpu.nvidia.com
+  nodeName: drapin-node-03
+  pool:
+    name: drapin-node-03
+    generation: 1
+    resourceSliceCount: 1
+  devices:
+    - name: gpu-0
+      attributes:
+        productName:
+          string: NVIDIA H100 80GB HBM3
+        type:
+          string: gpu
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: drapin-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: drapin-node-01
+spec:
+  providerID: "aws://us-east-1a/i-0e01"
+status:
+  allocatable:
+    nvidia.com/gpu: "4"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: drapin-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: drapin-node-02
+spec:
+  providerID: "aws://us-east-1a/i-0e02"
+status:
+  allocatable:
+    nvidia.com/gpu: "4"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: drapin-node-03
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: drapin-node-03
+spec:
+  providerID: "aws://us-east-1a/i-0e03"
+status:
+  allocatable:
+    nvidia.com/gpu: "4"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: drapin-default
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    # placement is deliberately unset, so this is the default Pinned path.
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"

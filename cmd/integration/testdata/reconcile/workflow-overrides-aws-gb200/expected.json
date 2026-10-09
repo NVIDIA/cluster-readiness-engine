@@ -77,6 +77,20 @@
                                               "values": [
                                                 "aws-gb200-node-01"
                                               ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.present",
+                                              "operator": "In",
+                                              "values": [
+                                                "true"
+                                              ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.product",
+                                              "operator": "In",
+                                              "values": [
+                                                "NVIDIA-GB200-NVL72"
+                                              ]
                                             }
                                           ]
                                         }
@@ -315,6 +329,9 @@
         "currentIteration": 1,
         "detectedPlatform": "aws",
         "detectedGPUArchitecture": "gb200",
+        "gpuProducts": [
+          "NVIDIA-GB200-NVL72"
+        ],
         "appliedOverrides": [
           {
             "index": 0,
