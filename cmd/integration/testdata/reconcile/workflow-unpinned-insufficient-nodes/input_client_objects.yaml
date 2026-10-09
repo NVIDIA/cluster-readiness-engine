@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Asking for four nodes on a two-node fleet. The run fails rather than quietly
+# shrinking to two, which is the other half of the opt-out contract: the size the
+# operator wrote is the size that runs, or the run fails saying why. It is never
+# silently adjusted.
+#
+# The remedy in the message differs by placement, and that is the point of
+# covering it here rather than only in the unit goldens. Under Pinned,
+# nodesPerJob is a group size and "set nodesPerJob to 2" is reasonable advice.
+# Under Unpinned it is the job the operator deliberately asked for, so telling
+# them to run a smaller one answers a question they did not ask; the message
+# says to make four qualifying nodes available instead.
+apiVersion: v1
+kind: Node
+metadata:
+  name: unpin-short-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    kubernetes.io/hostname: unpin-short-node-01
+spec:
+  providerID: "aws://us-east-1a/i-0f01"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: unpin-short-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    kubernetes.io/hostname: unpin-short-node-02
+spec:
+  providerID: "aws://us-east-1a/i-0f02"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: unpin-short
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 4
+  orchestration:
+    iterations: 1
+    placement: Unpinned
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"

@@ -59,7 +59,13 @@ const (
 // ever read the label. One ResourceSlice
 // List call total, skipped entirely when every node already carries the
 // label (every non-DRA cluster).
-func augmentGPUProductLabels(ctx context.Context, reader client.Reader, nodes []corev1.Node) {
+//
+// Returns the names of the nodes whose label it synthesized. Reading the label
+// is safe for every consumer above, but matching on it is not: a synthesized
+// value exists only on these in-memory copies, so a node affinity built from it
+// matches nothing on the API server and leaves every pod Pending. Callers that
+// turn labels into scheduling constraints must consult this list first.
+func augmentGPUProductLabels(ctx context.Context, reader client.Reader, nodes []corev1.Node) []string {
 	needsLookup := false
 	for i := range nodes {
 		if nodes[i].Labels[gpu.ProductLabel] == "" {
@@ -68,7 +74,7 @@ func augmentGPUProductLabels(ctx context.Context, reader client.Reader, nodes []
 		}
 	}
 	if !needsLookup {
-		return
+		return nil
 	}
 
 	listCtx, cancel := context.WithTimeout(ctx, resourceSliceListTimeout)
@@ -78,7 +84,7 @@ func augmentGPUProductLabels(ctx context.Context, reader client.Reader, nodes []
 	if err := reader.List(listCtx, &slices); err != nil {
 		logf.FromContext(ctx).Info("list gpu.nvidia.com resourceslices for architecture fallback failed",
 			"error", err)
-		return
+		return nil
 	}
 
 	productByNode := make(map[string]string, len(nodes))
@@ -97,6 +103,7 @@ func augmentGPUProductLabels(ctx context.Context, reader client.Reader, nodes []
 		}
 	}
 
+	var synthesized []string
 	for i := range nodes {
 		if nodes[i].Labels[gpu.ProductLabel] != "" {
 			continue
@@ -106,8 +113,10 @@ func augmentGPUProductLabels(ctx context.Context, reader client.Reader, nodes []
 				nodes[i].Labels = map[string]string{}
 			}
 			nodes[i].Labels[gpu.ProductLabel] = product
+			synthesized = append(synthesized, nodes[i].Name)
 		}
 	}
+	return synthesized
 }
 
 // CountDRAGPUs returns the number of full GPUs each node publishes in its

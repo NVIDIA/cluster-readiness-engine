@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# retry-resets-after-drain, run unpinned. Everything else about the reset is
+# identical; the node list is the one thing that must differ.
+#
+# Under Pinned the list is the partition the controller assigned, the relaunched
+# job goes back to the same hosts, and clearing it would throw away the only
+# record of the decision. Under Unpinned the scheduler picks afresh, so last
+# attempt's nodes are a guess about the next one. backfillGroupNodes only writes
+# to an empty list, so a stale list is never corrected: the group would report
+# having run wherever the first attempt landed, and the group-nodes annotation
+# would pin a later failure on those nodes.
+#
+# The empty list rather than null matters. nodes is a required CRD field and nil
+# marshals to null, which the API server rejects on the status write.
+retryFailedGroups: 1
+jobFailedReason: WorkloadFailed
+placement: Unpinned
+pods: []

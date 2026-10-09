@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The case that drove the second discoverer into existence. A failed multi-node
+# job leaves Failed and Succeeded pods behind, and those pods still record the
+# node they ran on. The phase-filtered helper sees none of them and reports an
+# empty list, so failed-node attribution comes back blank on precisely the run
+# an operator needs it for.
+#
+# live: empty. placed: both nodes.
+namespace: default
+jobName: nemotron-job
+pods:
+  - name: worker-0
+    jobLabel: nemotron-job
+    nodeName: node-b
+    phase: Failed
+  - name: worker-1
+    jobLabel: nemotron-job
+    nodeName: node-a
+    phase: Succeeded

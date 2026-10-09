@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# nodeSelector is a map and Go randomizes map iteration, so without an explicit
+# sort the rendered pod spec would reshuffle between reconciles. That churns
+# every golden file and makes a server-side apply look like a real change.
+placement: Unpinned
+groupNodes: []
+target:
+  nodeSelector:
+    zone: us-east-1a
+    nvidia.com/gpu.present: "true"
+    pool: burnin
+gpuProducts: []

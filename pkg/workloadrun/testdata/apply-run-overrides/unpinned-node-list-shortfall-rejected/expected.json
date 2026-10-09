@@ -1,0 +1,9 @@
+{
+  "name": "wr",
+  "numNodes": 4,
+  "target": null,
+  "orchestration": {
+    "placement": "Unpinned"
+  },
+  "error": "--node-list names 2 node(s) but numNodes is 4. Under orchestration.placement Unpinned the requested size is not reduced to fit; list at least 4 nodes or lower numNodes to 2"
+}

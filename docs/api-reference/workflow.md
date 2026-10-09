@@ -19,6 +19,7 @@ _Fields documented so far:_
 | `jobTemplate.spec.goodputMeasurement` | GoodputMeasurementConfig | Optional, immutable in presence and value. Copied to each generated Job |
 | `jobTemplate.spec.bandwidthMeasurement` | BandwidthMeasurementConfig | Optional, immutable in presence and value. Copied to each generated Job |
 | `gangScheduler` | GangSchedulerSpec | Optional, immutable. The resolved gang-scheduling intent of the WorkloadRun or Certification that generated this Workflow. See [Gang scheduling consistency contract](#gang-scheduling-consistency-contract) |
+| `orchestration.placement` | string | Optional, `Pinned` or `Unpinned`. Empty means `Pinned`. See [Placement](#placement) |
 
 Because `spec.jobTemplate.spec` is a plain `JobSpec`, its `workloadMetadata` cannot be added, removed, or changed after the Workflow is created. Editing it mid-flight is rejected, so every group and iteration produces Jobs with the same workload labels. Raw `spec.overrides` remain editable; a Job's own metadata becomes immutable at the moment that Job is created.
 
@@ -135,9 +136,30 @@ gangScheduler is configured with queue "team-a" but TrainingRuntime "nccl-runtim
 | `orchestration.totalNodes` | int | Total nodes discovered from the target |
 | `orchestration.nodesPerJob` | int | Nodes per job (auto-detected from workload template) |
 | `orchestration.detectedGPUArchitecture` | string | Detected GPU architecture (e.g. `gb200`) |
+| `orchestration.gpuProducts` | []string | Distinct `nvidia.com/gpu.product` label values of the discovered nodes, as written on the nodes. `detectedGPUArchitecture` is the parsed form and cannot be matched back to a label, so the raw values are recorded here and carried onto every job as a node affinity term |
 | `orchestration.detectedPlatform` | string | Detected cloud platform (e.g. `aws`) |
+| `orchestration.placement` | string | The resolved placement mode for this run, `Pinned` or `Unpinned` |
 | `orchestration.appliedOverrides` | []AppliedOverride | Which spec overrides matched and were applied |
 | `orchestration.groups` | []GroupStatus | Per-group job status for the current iteration |
+
+## Placement
+
+`spec.orchestration.placement` decides how many jobs a Workflow runs and who picks the nodes.
+
+**`Pinned`** is the default and the behavior every Workflow has always had. The discovered target is partitioned into groups of `nodesPerJob`, every node lands in some group, and each job gets a required `kubernetes.io/hostname` node affinity naming its group's machines. A 12-node target with `nodesPerJob: 2` produces six jobs.
+
+**`Unpinned`** runs exactly one job of exactly `nodesPerJob` nodes, no matter how many the target matches, and carries no hostname affinity. The same 12-node target with `nodesPerJob: 2` produces one two-node job and leaves the other ten untouched. The scheduler chooses the machines, constrained to the target by node affinity.
+
+The requested size is honored exactly under `Unpinned`, or the run fails saying why. It is never clamped to fit the fleet, snapped to the nearest size the model constraints allow, or auto-selected when no size is given.
+
+Both modes carry `target.nodeSelector`, `target.matchExpressions`, and the detected GPU products onto every pod as a required node affinity, so the target is enforced by the scheduler at bind time rather than only at discovery time.
+
+Two fields are incompatible with `Unpinned` and fail the Workflow with reason `PartitionError`:
+
+- `orchestration.diagnose`, which is definitionally about subdividing a group to isolate a fault.
+- `orchestration.topology.strictDomain`, which asks for one job per topology domain.
+
+`orchestration.topology.topologyKey` on its own is **ignored**, not rejected. It only feeds the partitioner, which `Unpinned` does not run, and it is injected by catalog overrides on GB200 and GB300 rather than written by the operator. Rejecting it would fail those runs with a message about a field that does not appear in the submitted YAML. To confine an unpinned job to one topology domain, name the domain label in `target.matchExpressions`, which is carried onto the pods.
 
 ## Naming
 

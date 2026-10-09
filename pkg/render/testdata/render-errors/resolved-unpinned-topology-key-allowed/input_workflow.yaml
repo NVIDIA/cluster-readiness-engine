@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The negative control, and the case that would have caught an over-eager
+# version of this check. A bare topologyKey with no strictDomain is exactly what
+# the GB200/GB300 override injects into every Nemotron run
+# (pkg/catalog/entries/training/nemotron5-8b.yaml). The reviewer who asked for
+# Unpinned is running Nemotron on GB200, so rejecting a topology key would fail
+# their spec with a message about a field they never wrote.
+#
+# Unpinned does not partition, so a topology key has nothing to do and is
+# ignored rather than rejected. The expected error is empty: this renders.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: resolved-unpinned-topology-key-allowed
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: topokey-runtime
+          trainer:
+            image: test-image:latest
+            numNodes: 2
+  overrides:
+    - when:
+        platform:
+          equals: aws
+      orchestration:
+        topology:
+          topologyKey: nvidia.com/gpu.clique
+  orchestration:
+    iterations: 1
+    placement: Unpinned
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"

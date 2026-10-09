@@ -473,6 +473,9 @@
         "currentIteration": 1,
         "detectedPlatform": "azure",
         "detectedGPUArchitecture": "a100",
+        "gpuProducts": [
+          "NVIDIA-A100-SXM4-40GB"
+        ],
         "groups": [
           {
             "name": "group-0",

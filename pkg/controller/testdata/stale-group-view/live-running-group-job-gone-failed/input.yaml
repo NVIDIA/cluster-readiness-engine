@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The control: the live Workflow agrees the group is Running on this Job and the
+# Job really is gone, so this is an external deletion and the group fails as it
+# always has.
+groups:
+  - name: group-0
+    cached: {phase: Running, jobRef: g0-job}
+    live: {phase: Running, jobRef: g0-job}
+    job: absent

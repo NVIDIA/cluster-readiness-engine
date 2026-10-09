@@ -857,6 +857,9 @@ func mergeOrchestration(base *nvcrev1alpha1.OrchestrationSpec, override *nvcrev1
 	if override.Topology != nil {
 		base.Topology = override.Topology
 	}
+	if override.Placement != nil {
+		base.Placement = *override.Placement
+	}
 	if override.Diagnose != nil {
 		base.Diagnose = override.Diagnose
 	}

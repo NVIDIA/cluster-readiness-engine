@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Unpinned on the WorkloadRun tier.
+#
+# WorkloadRun is the one front door into OrchestrationSpec.Placement (a
+# Certification has no placement option, see ADR-089): buildWROrchestration
+# reads it off the optional spec.orchestration block, so the Workflow-tier
+# cases, which write the field directly, do not exercise this translation. A
+# WorkloadRun with no orchestration block at all stays Pinned, which is what
+# every existing run in this directory already asserts.
+#
+# numNodes needs no extra validation here: it is already Required with
+# Minimum=1, so the "no size given" hole the Workflow-tier backstop guards
+# cannot open from this tier.
+#
+# testScale: full-scale is set deliberately. Its doc has always claimed "all
+# nodes in a single group" while the switch in buildWROrchestration has no
+# full-scale arm at all, so it falls through to the same partition-everything
+# default as an unset value. Pairing it with Unpinned is the first time that
+# documented behavior is true, and it is also the pairing that must NOT be
+# rejected: ValidateWRPlacement turns away intra-node and intra-rack, which ask
+# for a specific number of jobs, and leaves full-scale alone.
+#
+# Four nodes against a two-node request, so Pinned would give two jobs.
+apiVersion: v1
+kind: Node
+metadata:
+  name: unpin-wr-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: unpin-wr-node-01
+spec:
+  providerID: "aws://us-east-1a/i-0d01"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: unpin-wr-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: unpin-wr-node-02
+spec:
+  providerID: "aws://us-east-1a/i-0d02"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: unpin-wr-node-03
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: unpin-wr-node-03
+spec:
+  providerID: "aws://us-east-1a/i-0d03"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: unpin-wr-node-04
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: unpin-wr-node-04
+spec:
+  providerID: "aws://us-east-1a/i-0d04"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: test-unpinned-run
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  image: nvcr.io/nvidia/pytorch:25.08-py3
+  framework:
+    torch:
+      script: /config/train.sh
+  numNodes: 2
+  orchestration:
+    testScale: full-scale
+    placement: Unpinned
+  config:
+    inline:
+      train.sh: |
+        #!/bin/bash
+        echo "training"

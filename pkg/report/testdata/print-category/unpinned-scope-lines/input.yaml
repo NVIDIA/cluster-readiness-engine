@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The reviewer's run as the report renders it: one job of 2 nodes against an
+# 18-node target.
+#
+# Under Pinned those numbers could not occur. Jobs times Nodes/Job would equal
+# the target count, which is exactly the nine-jobs behavior being fixed. Here
+# the identity breaks and the Placement line is the only thing that says so,
+# spelling out 2 of 18 rather than leaving the reader to notice that 1 x 2 does
+# not reach 18.
+#
+# Scale is empty on purpose rather than omitted from the case. detectTestScale
+# returns "" under Unpinned, because the nearest label it would otherwise reach
+# for is intra-node, which means every node tested independently: the exact
+# opposite of one job. The golden must show no Scale line at all.
+#
+# exercisedNodes matches Jobs times Nodes/Job here, which is what a run that
+# placed in full records. It is set rather than left to the arithmetic on
+# purpose: the two agreeing is a property of this run, not of the report, and a
+# case that omitted it would be asserting the fallback instead.
+domain: training
+variant: nemotron5-8b
+status: Succeeded
+runtime: 5m 0s
+nodesPerJob: 2
+jobs: 1
+placement: Unpinned
+targetNodes: 18
+exercisedNodes: 2

@@ -259,6 +259,20 @@
                                                 "gen-ef821f-node-01",
                                                 "gen-ef821f-node-02"
                                               ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.present",
+                                              "operator": "In",
+                                              "values": [
+                                                "true"
+                                              ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.product",
+                                              "operator": "In",
+                                              "values": [
+                                                "NVIDIA-H100-80GB-HBM3"
+                                              ]
                                             }
                                           ]
                                         }
@@ -927,6 +941,9 @@
         "currentIteration": 1,
         "detectedPlatform": "gcp",
         "detectedGPUArchitecture": "h100",
+        "gpuProducts": [
+          "NVIDIA-H100-80GB-HBM3"
+        ],
         "groups": [
           {
             "name": "group-0",

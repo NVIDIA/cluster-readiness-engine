@@ -6,6 +6,7 @@ package nodemonitor
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -33,7 +34,41 @@ func NewNodeDiscoverer(c client.Client) *NodeDiscoverer {
 // DiscoverNodesForJob finds all nodes running pods associated with an NVCRE Job.
 // It uses a field index on the nvcre.nvidia.com/job label for efficient cache-based lookups.
 // Only returns nodes where pods are Running or Pending (i.e., scheduled).
+//
+// Use this for questions about live health. For questions about where a job ran,
+// including after its pods terminated, use DiscoverPlacedNodesForJob.
 func (d *NodeDiscoverer) DiscoverNodesForJob(ctx context.Context, namespace, jobName string) ([]string, error) {
+	return d.discoverNodes(ctx, namespace, jobName, func(pod *corev1.Pod) bool {
+		return pod.Status.Phase == corev1.PodRunning || pod.Status.Phase == corev1.PodPending
+	})
+}
+
+// DiscoverPlacedNodesForJob finds every node a Job's pods were bound to,
+// whatever phase those pods are now in.
+//
+// This is the attribution question, not the health question, and the two need
+// different filters. A job that fails fast leaves behind Failed pods, and a job
+// whose pods have already been cleaned up to Succeeded leaves those; both still
+// record the node they ran on in spec.nodeName. Filtering to Running or Pending
+// the way DiscoverNodesForJob does would report no nodes in exactly the case
+// attribution exists for, so a failed run would name no failed nodes.
+//
+// A pod that was never bound has no placement to report and is skipped.
+func (d *NodeDiscoverer) DiscoverPlacedNodesForJob(ctx context.Context, namespace, jobName string) ([]string, error) {
+	return d.discoverNodes(ctx, namespace, jobName, func(*corev1.Pod) bool { return true })
+}
+
+// discoverNodes lists a Job's pods and returns the distinct nodes they are bound
+// to, in sorted order. Callers supply the phase filter; the index lookup, the
+// label-selector fallback, the binding check and the dedupe are shared.
+//
+// The result is sorted rather than returned in map order, because callers
+// persist it into status and compare it against goldens. Go randomizes map
+// iteration per run, so an unsorted result would reshuffle a status field
+// between reconciles and make golden comparisons flaky.
+func (d *NodeDiscoverer) discoverNodes(
+	ctx context.Context, namespace, jobName string, keep func(*corev1.Pod) bool,
+) ([]string, error) {
 	podList := &corev1.PodList{}
 
 	// Use field index if available, fall back to label selector
@@ -50,20 +85,20 @@ func (d *NodeDiscoverer) DiscoverNodesForJob(ctx context.Context, namespace, job
 		}
 	}
 
-	// Extract unique node names from scheduled pods
 	nodeSet := make(map[string]struct{})
-	for _, pod := range podList.Items {
-		// Only consider pods that are assigned to a node and are running or pending
-		if pod.Spec.NodeName != "" &&
-			(pod.Status.Phase == corev1.PodRunning || pod.Status.Phase == corev1.PodPending) {
-			nodeSet[pod.Spec.NodeName] = struct{}{}
+	for i := range podList.Items {
+		pod := &podList.Items[i]
+		if pod.Spec.NodeName == "" || !keep(pod) {
+			continue
 		}
+		nodeSet[pod.Spec.NodeName] = struct{}{}
 	}
 
 	nodes := make([]string, 0, len(nodeSet))
 	for nodeName := range nodeSet {
 		nodes = append(nodes, nodeName)
 	}
+	sort.Strings(nodes)
 
 	return nodes, nil
 }

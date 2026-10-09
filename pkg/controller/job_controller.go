@@ -1140,7 +1140,7 @@ func (r *JobReconciler) setJobValidationStatus(ctx context.Context, job *nvcrev1
 		flip = nil
 		before := append([]metav1.Condition(nil), j.Status.Conditions...)
 		if status == metav1.ConditionTrue && len(j.Status.FailedNodes) == 0 {
-			j.Status.FailedNodes = noderesults.NodesWithFailureDetails(groupNodeNames(j), ReasonThresholdViolation, message)
+			j.Status.FailedNodes = noderesults.NodesWithFailureDetails(r.groupNodeNames(ctx, j), ReasonThresholdViolation, message)
 		}
 		c := meta.SetStatusCondition(&j.Status.Conditions, metav1.Condition{
 			Type:               nvcrev1alpha1.JobValidationFailed,
@@ -1276,7 +1276,7 @@ func (r *JobReconciler) setJobFailed(ctx context.Context, job *nvcrev1alpha1.Job
 				c = true
 			}
 			if len(j.Status.FailedNodes) == 0 {
-				j.Status.FailedNodes = noderesults.NodesWithFailureDetails(groupNodeNames(j), ReasonWorkloadFailed, message)
+				j.Status.FailedNodes = noderesults.NodesWithFailureDetails(r.groupNodeNames(ctx, j), ReasonWorkloadFailed, message)
 				c = true
 			}
 			return c
@@ -1650,12 +1650,35 @@ func mergeFailedNodes(existing []nvcrev1alpha1.FailedNode, newNames []string, re
 	return merged, hasNewFailures
 }
 
-// groupNodeNames reads the group-nodes Job annotation and returns the deduped,
-// sorted node names.
-func groupNodeNames(job *nvcrev1alpha1.Job) []string {
+// groupNodeNames returns the deduped, sorted names of the nodes this Job ran on.
+//
+// The group-nodes annotation is the answer whenever the Workflow controller
+// picked the nodes, which it does in every placement mode but Unpinned. Under
+// Unpinned there is nothing to annotate at creation time, because the scheduler
+// has not placed anything yet, so the names are read back off the Job's own pods.
+//
+// The fallback is a live read rather than a cached snapshot on purpose. The
+// alternative is for the Workflow controller to patch the annotation once it
+// observes placement, which makes two controllers write the same object and
+// freezes an answer that is stale as soon as a pod reschedules. Reading at the
+// moment the question is asked, in the controller that owns the question, has
+// neither problem.
+//
+// Returns nil when nothing is known, which is the honest answer for a Job whose
+// pods were never bound: callers record no failed nodes rather than a wrong one.
+func (r *JobReconciler) groupNodeNames(ctx context.Context, job *nvcrev1alpha1.Job) []string {
 	raw := job.Annotations["nvcre.nvidia.com/group-nodes"]
 	if raw == "" {
-		return nil
+		if r.NodeDiscoverer == nil {
+			return nil
+		}
+		names, err := r.NodeDiscoverer.DiscoverPlacedNodesForJob(ctx, job.Namespace, job.Name)
+		if err != nil {
+			logf.FromContext(ctx).V(1).Info("Could not discover nodes for failure attribution",
+				"job", job.Name, "error", err)
+			return nil
+		}
+		return names
 	}
 	parts := strings.Split(raw, ",")
 	seen := make(map[string]struct{}, len(parts))

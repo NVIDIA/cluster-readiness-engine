@@ -33,6 +33,11 @@ const (
 	labelKeyQueue = "kai.scheduler/queue"
 	// configuredQueue is the queue the persisted intent names in these cases.
 	configuredQueue = "queue-a"
+	// dryRuntimeName and dryNodeName are the runtime and the first fleet node
+	// every dry-run case in this package builds against, shared so the gang and
+	// placement cases cannot drift onto different fixtures.
+	dryRuntimeName = "dry-runtime"
+	dryNodeName    = "dry-node-01"
 )
 
 // recorder captures what a dry run actually submits. Counting calls proves a
@@ -174,7 +179,7 @@ func gangDryRunSpec(t *testing.T, runtimeQueue string) *nvcrev1alpha1.WorkflowSp
 				Workload: nvcrev1alpha1.WorkloadSpec{
 					TrainJob: &trainerv1alpha1.TrainJobSpec{
 						RuntimeRef: trainerv1alpha1.RuntimeRef{
-							Name: "dry-runtime",
+							Name: dryRuntimeName,
 							Kind: new("TrainingRuntime"),
 						},
 						Trainer: &trainerv1alpha1.Trainer{
@@ -194,8 +199,8 @@ func gangDryRunSpec(t *testing.T, runtimeQueue string) *nvcrev1alpha1.WorkflowSp
 
 func dryRunNodes() []corev1.Node {
 	return []corev1.Node{{
-		Name:   "dry-node-01",
-		Labels: map[string]string{"kubernetes.io/hostname": "dry-node-01"},
+		Name:   dryNodeName,
+		Labels: map[string]string{"kubernetes.io/hostname": dryNodeName},
 	}}
 }
 
@@ -265,7 +270,7 @@ func TestDryRunGangScheduling(t *testing.T) {
 
 		rec := &recorder{}
 		c := countingClient(t, rec)
-		_, err := DryRunCreate(context.Background(), c, "default", spec, dryRunNodes())
+		_, err := DryRunCreate(context.Background(), c, "default", spec, dryRunNodes(), nil)
 		if err != nil {
 			out.Error = err.Error()
 		}
@@ -320,7 +325,7 @@ func cordonedMonitorSpec(targetsCordoned, explicitMonitor bool) *nvcrev1alpha1.W
 		Workload: nvcrev1alpha1.WorkloadSpec{
 			TrainJob: &trainerv1alpha1.TrainJobSpec{
 				RuntimeRef: trainerv1alpha1.RuntimeRef{
-					Name: "dry-runtime",
+					Name: dryRuntimeName,
 					Kind: new("TrainingRuntime"),
 				},
 				Trainer: &trainerv1alpha1.Trainer{
@@ -377,7 +382,7 @@ func TestDryRunCordonedNodeHealthMonitor(t *testing.T) {
 
 		rec := &recorder{}
 		c := countingClient(t, rec)
-		if _, err := DryRunCreate(context.Background(), c, "default", spec, dryRunNodes()); err != nil {
+		if _, err := DryRunCreate(context.Background(), c, "default", spec, dryRunNodes(), nil); err != nil {
 			return fmt.Errorf("DryRunCreate: %w", err)
 		}
 
