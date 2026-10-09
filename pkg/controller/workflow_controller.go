@@ -1511,6 +1511,16 @@ func (r *WorkflowReconciler) createOrAdoptJob(ctx context.Context, workflow *nvc
 					jobName, workflow.Namespace, workflow.Name),
 			}
 		}
+		// This Workflow's own Job, but on its way out: the retry in
+		// completeTerminalGroup deletes a group's Job and relaunches it under the
+		// same name, and the Job controller holds the old one with a finalizer
+		// until its pods have drained. Adopting it would point the group at a
+		// Job that is about to vanish and fail the group on the next pass, which
+		// discards the retry. The name frees up shortly; retry with backoff.
+		if !job.DeletionTimestamp.IsZero() {
+			return fmt.Errorf("previous Job %q in namespace %q is still being deleted; retrying",
+				jobName, workflow.Namespace)
+		}
 		log.Info("Job already exists and is controlled by this Workflow, proceeding", "name", jobName)
 	}
 	return nil
@@ -1603,6 +1613,19 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 
 	anyRunning := false
 	statusChanged := false
+	// changed names the groups this pass mutated. The tail write merges only
+	// those into whatever the API server holds, so a group this pass did not
+	// touch is never overwritten from a cached view that may be behind.
+	changed := map[string]bool{}
+	markChanged := func(g *nvcrev1alpha1.GroupStatus) {
+		statusChanged = true
+		changed[g.Name] = true
+	}
+	// stale is set when a group's cached state has been superseded on the API
+	// server (see groupViewIsStale). The group is left alone this pass and the
+	// reconcile requeues immediately to read the state the cache has not yet
+	// delivered.
+	stale := false
 	// blockedMsg carries the first running Job's scheduling-blocked diagnosis
 	// up to the Workflow condition (ADR-083).
 	blockedMsg := ""
@@ -1646,6 +1669,12 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 			// absence only, which is why the uncached read above is load-bearing
 			// and not a mere optimisation: an unconfirmed cache miss leaves
 			// running pods holding the DRA allocations cleaned up below.
+			if behind, err := r.groupViewIsStale(ctx, workflow, g, ref.Name); err != nil {
+				return ctrl.Result{}, err
+			} else if behind {
+				stale = true
+				continue
+			}
 			log.Info("Job was deleted, marking group as failed", "group", g.Name, "job", ref.Name)
 			// Attribute the failure before the group leaves Running. This is a
 			// terminal backfill: the pods outlive the Job object for their
@@ -1657,7 +1686,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 			g.Phase = nvcrev1alpha1.GroupFailed
 			g.CompletionTime = &now
 			g.JobRef = nil
-			statusChanged = true
+			markChanged(g)
 			continue
 		}
 
@@ -1667,6 +1696,12 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		// DRA allocations to the workload's pods, and deleting them while
 		// pods are still terminating causes CUDA error 719 (issue #121).
 		if !job.DeletionTimestamp.IsZero() {
+			if behind, err := r.groupViewIsStale(ctx, workflow, g, ref.Name); err != nil {
+				return ctrl.Result{}, err
+			} else if behind {
+				stale = true
+				continue
+			}
 			if shouldWaitForPodDrain(ctx, r.Client, job) {
 				anyRunning = true
 				continue
@@ -1682,7 +1717,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 			g.Phase = nvcrev1alpha1.GroupFailed
 			g.CompletionTime = &now
 			g.JobRef = nil
-			statusChanged = true
+			markChanged(g)
 			continue
 		}
 
@@ -1695,7 +1730,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		// nothing, and told whether the job is terminal because that is the last
 		// chance to record anything: this loop skips groups that are not Running.
 		if r.backfillGroupNodes(ctx, workflow, orch, g, job.Namespace, job.Name, ts.terminal) {
-			statusChanged = true
+			markChanged(g)
 		}
 
 		if !ts.terminal {
@@ -1710,7 +1745,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 					anyRunning = true
 					continue
 				}
-				statusChanged = true
+				markChanged(g)
 				continue
 			}
 			anyRunning = true
@@ -1737,7 +1772,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 			anyRunning = true
 			continue
 		}
-		statusChanged = true
+		markChanged(g)
 	}
 
 	if statusChanged || anyRunning {
@@ -1755,22 +1790,109 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		// and refetches on conflict, so status mutated outside the callback is
 		// dropped on both paths. That left a completed group stuck Running and the
 		// Workflow never finished — a passing run reported as a timeout.
+		//
+		// Only the groups this pass changed are carried over, matched by name.
+		// The others keep whatever the API server has, which matters after a
+		// conflict refetch: this pass started from a cached view, and a group it
+		// did not touch may already have moved on (a retry reset, say). Writing
+		// the whole slice back would put that group where the stale view had
+		// it, Running on a Job that no longer exists, and the next pass would
+		// fail it.
 		want := make([]nvcrev1alpha1.GroupStatus, len(orch.Groups))
 		copy(want, orch.Groups)
 		applyGroups := func(w *nvcrev1alpha1.Workflow) bool {
 			if w.Status.Orchestration == nil || !statusChanged {
 				return false
 			}
-			w.Status.Orchestration.Groups = want
-			return true
+			applied := false
+			for i := range w.Status.Orchestration.Groups {
+				name := w.Status.Orchestration.Groups[i].Name
+				if !changed[name] {
+					continue
+				}
+				for j := range want {
+					if want[j].Name == name {
+						w.Status.Orchestration.Groups[i] = want[j]
+						applied = true
+						break
+					}
+				}
+			}
+			return applied
 		}
 		if err := r.setWorkflowInProgress(ctx, workflow, reason, msg, applyGroups); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
+	if stale {
+		return ctrl.Result{RequeueAfter: requeueImmediate}, nil
+	}
 	// Requeue to check for more pending groups to launch or iteration completion
 	return ctrl.Result{RequeueAfter: r.getJobRequeueInterval()}, nil
+}
+
+// groupViewIsStale reports whether the cached Workflow this reconcile is acting
+// on has already been superseded for the given group: in the Workflow as the API
+// server has it now, the group is no longer Running on jobName in the same
+// iteration and with the same retry count.
+//
+// It guards the two places updateStatusFromJobs fails a group because its Job
+// is gone or going. On a retry, completeTerminalGroup deletes a Running group's
+// Job and moves the group to Pending in the same reconcile. The Job's deletion
+// is a watch event in its own right, and the reconcile it triggers can start
+// before the status write that recorded the reset has reached the informer
+// cache. That reconcile then sees the group still Running on a Job that is
+// being deleted, which is exactly what an external deletion looks like, and
+// fails it. The retry is lost, the Workflow fails, and the Job the fresh state
+// goes on to launch runs to completion with nothing watching it.
+//
+// The iteration reset in handleIterationComplete deletes Jobs too, but only of
+// groups whose terminal phase was already in the cache it read, so no later
+// view can show them Running and neither branch here is reachable for them.
+//
+// Both branches are irreversible, so like the Job existence check above them
+// they confirm against the API server before acting. A live view that no longer
+// has the group Running on this Job means the cached one is behind; the caller
+// leaves the group alone and requeues, and the next reconcile reads the state
+// the reset produced. A failed read is returned as an error so the controller's
+// backoff applies, the same as a failed confirmation of the Job itself. Neither
+// can wedge the Workflow: the cache converges on the live object, and once it
+// has, the group is no longer Running and this path is not entered.
+//
+// Retries and the iteration are compared as well as the Job name, because a
+// relaunched Job carries the same name as the one it replaced.
+func (r *WorkflowReconciler) groupViewIsStale(
+	ctx context.Context, workflow *nvcrev1alpha1.Workflow, g *nvcrev1alpha1.GroupStatus, jobName string,
+) (bool, error) {
+	log := logf.FromContext(ctx)
+	live := &nvcrev1alpha1.Workflow{}
+	// jobReader is the uncached reader; its name predates this second use.
+	if err := r.jobReader().Get(ctx, client.ObjectKeyFromObject(workflow), live); err != nil {
+		return false, fmt.Errorf("failed to confirm group %s against the API server: %w", g.Name, err)
+	}
+	cachedIteration := 0
+	if workflow.Status.Orchestration != nil {
+		cachedIteration = workflow.Status.Orchestration.CurrentIteration
+	}
+	if live.Status.Orchestration != nil {
+		for i := range live.Status.Orchestration.Groups {
+			lg := &live.Status.Orchestration.Groups[i]
+			if lg.Name != g.Name {
+				continue
+			}
+			if lg.Phase == nvcrev1alpha1.GroupRunning && lg.JobRef != nil && lg.JobRef.Name == jobName &&
+				lg.Retries == g.Retries && live.Status.Orchestration.CurrentIteration == cachedIteration {
+				return false, nil
+			}
+			log.V(1).Info("Cached group state is behind the API server; leaving the group alone this pass",
+				"group", g.Name, "job", jobName, "cachedPhase", g.Phase, "livePhase", lg.Phase)
+			return true, nil
+		}
+	}
+	log.V(1).Info("Group is absent from the live Workflow status; leaving it alone this pass",
+		"group", g.Name, "job", jobName)
+	return true, nil
 }
 
 // backfillGroupNodes records the nodes a group's Job actually landed on, and
