@@ -1,0 +1,6 @@
+# The default half of the same change: with nothing set, nccl-loopback picks up
+# the catalog-wide 1h default rather than rendering no bound at all. Reverting
+# the entry to "execution: {}" turns this case red.
+category:
+  domain: communication
+  variant: nccl-loopback

@@ -293,6 +293,34 @@ overrides:
     value:
       name: NCCL_MAX_BYTES
       value: {{ .MaxBytes }}
+# --- OCI + GB200 (RoCE) ---
+# Mirrors the OCI+GB300 block below. Must come AFTER the GB200/GB300
+# ComputeDomain block (which sets the base env via jobTemplate) so that
+# jobTemplatePatch appends to that env array rather than replacing it, which a
+# second jobTemplate would (see ADR-088).
+# Appends OCI GID index vars needed for RoCEv2 connectivity.
+# NCCL_NVLS_ENABLE, NCCL_CUMEM_ENABLE, and NCCL_MNNVL_ENABLE are already set
+# by the GB200/GB300 base override (gb200-env.yaml). As in the GB300 block,
+# NCCL_SHM_DISABLE/NCCL_P2P_DISABLE are intentionally NOT set: this variant
+# exercises the NVLink/NVSwitch fabric.
+- when:
+    platform:
+      equals: oci
+    gpuArchitecture:
+      equals: gb200
+  dependencies:
+{{ lib "deps/oci-mlnxnics-comm.yaml" . | indent 2 }}
+  jobTemplatePatch:
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: UCX_IB_GID_INDEX
+      value: "3"
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: NCCL_IB_GID_INDEX
+      value: "3"
 # --- OCI + GB300 (RoCE) ---
 # Mirrors nccl-loopback's OCI+GB300 block. Must come AFTER the GB200/GB300
 # ComputeDomain block (which sets the base env via jobTemplate) so that
@@ -385,3 +413,7 @@ overrides:
           trainer:
             env:
 {{ lib "nccl/nscale-ib-env.yaml" . | indent 12 }}
+# --- Opt-in host RDMA device access (rdmaDeviceAccess: hostPath; ADR-088) ---
+# Renders nothing unless the option is set. Last in the list so the privileged
+# flag and the /dev/infiniband mount survive every platform patch above.
+{{ lib "overrides/hostpath-rdma.yaml" . }}

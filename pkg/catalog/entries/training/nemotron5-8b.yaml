@@ -427,6 +427,33 @@ overrides:
       equals: gb300
   dependencies:
 {{ lib "deps/gb300-roce-torch.yaml" . | indent 2 }}
+# --- OCI + GB200 (RoCE) ---
+# A missing arm rather than a clobbered one: the OCI block above is scoped to
+# l40/l40s, and the GB200/GB300 block sets only dependencies and orchestration,
+# so OCI GB200 matched nothing that carried RoCE env (see ADR-088).
+# Uses trainer.env (not toMpiArgs) because torchrun inherits the container env
+# directly, with no MPI SSH launch involved. The runtime's node container already
+# carries gb200-training-base-env.yaml (NCCL_MNNVL_ENABLE, NVLS, CUMEM), so
+# only the OCI RoCE profile and the UCX GID index are added here.
+# oci-gb200-roce-env.yaml is a delta over oci-roce-env.yaml, not a replacement:
+# both are listed, and no name is set twice. trainer.env is a server-side map
+# list keyed on name, so a duplicate would make the API server reject the
+# Workflow outright.
+- when:
+    platform:
+      equals: oci
+    gpuArchitecture:
+      equals: gb200
+  dependencies:
+{{ lib "deps/oci-mlnxnics-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/oci-roce-env.yaml" . | indent 12 }}
+{{ lib "nccl/oci-gb200-roce-env.yaml" . | indent 12 }}
 # --- OCI + GB300 (RoCE) ---
 # Adds SR-IOV NIC resources (oci-mlnxnics-comm.yaml) and OCI GB300-specific
 # env vars. Uses trainer.env (not toMpiArgs) because torchrun inherits the
@@ -527,3 +554,7 @@ overrides:
   orchestration:
     topology:
       topologyKey: topology.nks.nscale.com/accelerator-domain
+# --- Opt-in host RDMA device access (rdmaDeviceAccess: hostPath; ADR-088) ---
+# Renders nothing unless the option is set. Last in the list so the privileged
+# flag and the /dev/infiniband mount survive every platform patch above.
+{{ lib "overrides/hostpath-rdma.yaml" . }}

@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The name-collision regression. Comparing the two access models on one cluster
+# means listing the same domain and variant twice, differing only in
+# rdmaDeviceAccess, and that is the one shape the Workflow name has to keep
+# apart: the two render genuinely different pods, one privileged with
+# /dev/infiniband mounted and one not.
+#
+# Before rdmaDeviceAccess was added to categoryOptionsSuffix, both categories
+# resolved to a single Workflow name. The controller's Create for the second
+# returned AlreadyExists, the owner check passed because the first Workflow is
+# owned by the same Certification, and the second category was pointed at the
+# first one's Workflow and given its result. The devicePlugin run never
+# happened and the report showed a verdict for a configuration that was never
+# executed, with no event and no Failed condition.
+#
+# Two distinct "workflow" values in the golden are what pins the fix. Dropping
+# the suffix arm collapses them to one name and turns this red. This also
+# covers the render path specifically: offline render rebuilt the name itself
+# and omitted the suffix entirely, so two categories emitted two documents
+# under one metadata.name and `render | kubectl apply -f -` kept only the last.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-gb200-compare-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 8
+  enableMNNVL: true
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        rdmaDeviceAccess: hostPath
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        rdmaDeviceAccess: devicePlugin

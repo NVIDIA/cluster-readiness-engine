@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The mutation test for the {{- if eq .RDMADeviceAccess "hostPath" }} guard in
+# overrides/hostpath-rdma.yaml, specifically for a guard narrowed rather than
+# deleted.
+#
+# Writing the default explicitly must render exactly what leaving it unset
+# renders: no privileged flag, no mount, no volume. A guard deleted outright is
+# already caught by every case that leaves the field unset, because the
+# fragment's "when" clause is empty and so matches everything. What only this
+# case catches is a guard rewritten to exclude just the explicit default, for
+# example ne .RDMADeviceAccess "devicePlugin": the unset cases take the same
+# branch they did before and stay green, and this one turns red.
+#
+# The categories match oci-gb200-nccl-hostpath so the two goldens are a direct
+# before/after of the same input.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-gb200-hostpath-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 8
+  enableMNNVL: true
+  rdmaDeviceAccess: devicePlugin
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: communication
+      variant: nccl-loopback

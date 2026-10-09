@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The jobTemplatePatch half of issue #456. These two entries are torch, not MPI,
+# so their OCI GB200 arm appends to trainer.env with RFC 6902 rather than
+# setting it: a second jobTemplate would replace the architecture block's env
+# array wholesale, because Kubeflow's Trainer.Env has no patchMergeKey tags.
+#
+# The golden is therefore an ordering pin as much as a content one. The GID
+# vars must appear AFTER NCCL_SHM_DISABLE, NCCL_P2P_DISABLE and the gb200-env
+# set, which is what proves the patch appended rather than replaced. If the arm
+# were placed before the architecture block, the patch would operate on an
+# empty array and the render would fail outright.
+#
+# nccl-loopback-nvswitch is included because it is the one entry that
+# deliberately does NOT carry SHM/P2P disable: it exercises the NVLink fabric.
+# Its golden pins that the GB200 arm added the GID vars without acquiring them.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-gb200-loopback-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 8
+  enableMNNVL: true
+  categories:
+    - domain: communication
+      variant: nccl-loopback
+    - domain: communication
+      variant: nccl-loopback-nvswitch

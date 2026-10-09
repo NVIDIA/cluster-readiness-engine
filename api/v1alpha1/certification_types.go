@@ -35,6 +35,24 @@ const (
 	TestScaleFullScale = "full-scale"
 )
 
+// RDMADeviceAccess values. These mirror the kubebuilder Enum marker on
+// CategoryOptions.RDMADeviceAccess; nvcrectl validates against them too, since
+// the enum marker only binds server-side and the offline render path never
+// reaches an API server.
+const (
+	// RDMADeviceAccessDevicePlugin requests NIC devices as a Kubernetes
+	// extended resource. The default when the field is unset.
+	RDMADeviceAccessDevicePlugin = "devicePlugin"
+
+	// RDMADeviceAccessHostPath mounts the host's /dev/infiniband into the
+	// workload container and runs that container privileged.
+	RDMADeviceAccessHostPath = "hostPath"
+)
+
+// ValidRDMADeviceAccessValues lists the accepted rdmaDeviceAccess values, in
+// the order they are reported in validation errors.
+var ValidRDMADeviceAccessValues = []string{RDMADeviceAccessHostPath, RDMADeviceAccessDevicePlugin}
+
 // WorkflowReference references a Workflow resource created by the Certification.
 type WorkflowReference struct {
 	// name is the name of the Workflow resource.
@@ -209,6 +227,31 @@ type CategoryOptions struct {
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]{0,61}[a-zA-Z0-9])?$`
 	// +kubebuilder:validation:XValidation:rule="!self.contains('kubernetes.io/') && !self.startsWith('k8s.io/') && !self.contains('.k8s.io/')",message="nicResourceName must not use the reserved kubernetes.io or k8s.io domains"
 	NicResourceName *string `json:"nicResourceName,omitempty"`
+
+	// rdmaDeviceAccess selects how workload containers reach the host's RDMA
+	// devices. Leave it unset unless the cluster has no RDMA device plugin.
+	//
+	// "devicePlugin" (the default when unset) requests NIC devices as a
+	// Kubernetes extended resource, which is what grants the container its
+	// device cgroup entries; see mlnxPerNode and nicResourceName.
+	//
+	// "hostPath" mounts the host's /dev/infiniband into the workload
+	// container and runs that container privileged. Both are required
+	// together: kubelet builds the device cgroup allowlist from the
+	// container's requested resources, so a hostPath mount alone makes the
+	// device nodes visible but open() on them still fails with EPERM, and no
+	// capability changes that. Use this on clusters that expose RDMA through
+	// host device nodes rather than through a device plugin. The pod will be
+	// rejected on clusters that enforce a restricted or baseline Pod Security
+	// Standard. A privileged container also runs without the runtime's default
+	// seccomp filter and without AppArmor or SELinux confinement, so a
+	// pod-level seccompProfile no longer constrains it even though the pod spec
+	// still shows it. Some CRI-O runtimes reject a privileged container whose
+	// GPUs come from the NVIDIA device plugin; where that applies, the pods
+	// fail to start.
+	// +optional
+	// +kubebuilder:validation:Enum=hostPath;devicePlugin
+	RDMADeviceAccess string `json:"rdmaDeviceAccess,omitempty"`
 
 	// resources overrides the CPU and memory resources of training workload
 	// containers. Training entries default to DGX-class sizing (limits:

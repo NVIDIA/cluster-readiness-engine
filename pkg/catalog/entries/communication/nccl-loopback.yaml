@@ -102,7 +102,8 @@ jobTemplate:
           numNodes: 1
           numProcPerNode: 1
 orchestration:
-  execution: {}
+  execution:
+    timeoutPerJob: {{ .TimeoutPerJob }}
   iterations: 1
 {{- if .Thresholds }}
 validation:
@@ -321,6 +322,34 @@ overrides:
               value: "1"
             - name: NCCL_MNNVL_ENABLE
               value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"
+# --- OCI + GB200 (RoCE) ---
+# Mirrors the OCI+GB300 block below. Must come AFTER the GB200/GB300
+# ComputeDomain block (which sets the base env via jobTemplate) so that
+# jobTemplatePatch appends to that env array rather than replacing it, which a
+# second jobTemplate would (see ADR-088).
+# Appends OCI GID index vars needed for RoCEv2 connectivity.
+# NCCL_NVLS_ENABLE, NCCL_CUMEM_ENABLE, NCCL_SHM_DISABLE, NCCL_P2P_DISABLE,
+# and NCCL_MNNVL_ENABLE are already set by the GB200/GB300 base override.
+# NCCL_DMABUF_ENABLE is deliberately not appended here: that is a measured
+# GB300 finding, not an OCI platform fact.
+- when:
+    platform:
+      equals: oci
+    gpuArchitecture:
+      equals: gb200
+  dependencies:
+{{ lib "deps/oci-mlnxnics-comm.yaml" . | indent 2 }}
+  jobTemplatePatch:
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: UCX_IB_GID_INDEX
+      value: "3"
+  - op: add
+    path: /spec/workload/trainJob/trainer/env/-
+    value:
+      name: NCCL_IB_GID_INDEX
+      value: "3"
 # --- OCI + GB300 (RoCE) ---
 # Must come AFTER the GB200/GB300 ComputeDomain block (which sets the base env
 # via jobTemplate) so that jobTemplatePatch appends to that env array rather
@@ -448,3 +477,7 @@ overrides:
               value: "1"
             - name: NCCL_P2P_DISABLE
               value: "1"
+# --- Opt-in host RDMA device access (rdmaDeviceAccess: hostPath; ADR-088) ---
+# Renders nothing unless the option is set. Last in the list so the privileged
+# flag and the /dev/infiniband mount survive every platform patch above.
+{{ lib "overrides/hostpath-rdma.yaml" . }}

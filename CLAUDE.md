@@ -248,7 +248,7 @@ spec:
    `LD_LIBRARY_PATH` and `PATH` are **not** EFA markers. GB300 on AWS sets them on purpose (`pkg/catalog/entries/_lib/nccl/aws-gb300-roce-env.yaml`), pointing at `/opt/amazon/openmpi/lib`, which is correct on an AWS instance whatever the interconnect. Do not treat them as leakage.
 
 3. **Resources by architecture**:
-   - GB200: `hugepages-2Mi: 10256Mi`, `vpc.amazonaws.com/efa: 4`, `amazon-efa` hostPath volume
+   - GB200: `hugepages-2Mi: 10256Mi`, `vpc.amazonaws.com/efa: 4`
    - GB300: `roce-channel` resource claim with `roce.networking.k8s.aws`, NO hugepages, NO EFA
    - H100: `vpc.amazonaws.com/efa: 32`, NO hugepages, NO ComputeDomain
 

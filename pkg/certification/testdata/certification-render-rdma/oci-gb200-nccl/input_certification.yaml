@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The MPI half of issue #456. Before ADR-088 the platform: oci block set
+# trainer.args from oci-roce-env.yaml and the later gpuArchitecture
+# in [gb200, gb300] block replaced the whole list, so these workflows launched
+# with NCCL_DEBUG and the GB200 NVLink env and nothing about RoCE.
+#
+# The golden pins the composed arg list: the OCI mpirun MCA flags, then the
+# shared OCI RoCE profile, then gb200-env.yaml, then the GID pair, then the
+# perf binary. It also pins trainer.env, which the MPI launcher reads for its
+# own UCX initialization; mpirun -x reaches the ranks but not rank 0's own
+# process.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-gb200-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 8
+  enableMNNVL: true
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: communication
+      variant: nccl-all-gather
+    - domain: communication
+      variant: nccl-alltoall

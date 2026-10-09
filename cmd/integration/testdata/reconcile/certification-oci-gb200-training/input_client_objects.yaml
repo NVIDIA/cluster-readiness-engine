@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The OCI GB200 training path, which carries its RoCE profile in trainer.env
+# rather than in mpirun -x args (torchrun inherits the container env directly).
+# That makes this the only case that exercises the env array against a real API
+# server, and the API server is the only thing that enforces it: the Workflow
+# CRD declares trainer.env a map list keyed on name
+# (x-kubernetes-list-type: map), so two entries for one name are rejected
+# outright. An offline render cannot see that, and the communication entries
+# cannot stand in for it because their GID vars land in trainer.args, an atomic
+# array where a repeat is legal and mpirun just takes the last value.
+#
+# Platform and architecture are detected from the node (providerID +
+# gpu.product), not passed as flags, so this also pins that the reconciler
+# resolves the OCI GB200 arm the same way the CLI does. Compare
+# certification-oci-gb200-nccl for the communication half of the same arm.
+apiVersion: v1
+kind: Node
+metadata:
+  name: oci-gb200-train-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: oci-gb200-train-01
+spec:
+  providerID: "ocid1.instance.oc1.iad.anuwcljt00000000000000000000000000000000000000000000000011"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: oci-gb200-train-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: oci-gb200-train-02
+spec:
+  providerID: "ocid1.instance.oc1.iad.anuwcljt00000000000000000000000000000000000000000000000012"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-gb200-train
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  enableMNNVL: true
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        nodesPerJob: 2

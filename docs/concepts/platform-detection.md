@@ -75,7 +75,7 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 
 | Architecture | Platform | Interconnect | Key resources |
 |-------------|---------|-------------|--------------|
-| GB200 | AWS | EFA | `hugepages-2Mi`, `vpc.amazonaws.com/efa`, EFA hostPath volume, ComputeDomain |
+| GB200 | AWS | EFA | `hugepages-2Mi`, `vpc.amazonaws.com/efa`, ComputeDomain |
 | GB200 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
 | GB300 | AWS | RoCE | `roce-channel` resource claim (DRA), no hugepages, no EFA |
 | GB300 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
@@ -123,6 +123,76 @@ The GCP RTX PRO 6000 override sets `NCCL_NET_PLUGIN=none` in addition to
 otherwise attempts to initialize even on this TCP-only network.
 
 The live controller tracks which overrides matched in `status.orchestration.appliedOverrides`. When using `nvcrectl workflow render`, the same information is also written to the `nvcrectl.nvidia.com/applied-overrides` annotation on the rendered manifest.
+
+## Host RDMA device access
+
+Requesting no NIC resource leaves the workload with no RDMA access at all.
+That is the right default where the site runs a device plugin and just needs
+to name it, but some clusters expose the Mellanox devices only as host device
+nodes under `/dev/infiniband`, with no SR-IOV policy and no plugin to request.
+OCI GB200 shapes are the common case.
+
+For those, set `rdmaDeviceAccess: hostPath` on the Certification (or on one
+category's `options`). It mounts the host's `/dev/infiniband` into the workload
+container and runs that container privileged:
+
+```yaml
+spec:
+  rdmaDeviceAccess: hostPath
+```
+
+The mount and the privileged flag are one unit rather than two independent
+choices. Kubelet builds a container's device cgroup allowlist from the
+resources it requests, so a `hostPath` mount on its own makes
+`/dev/infiniband/uverbs0` visible while `open()` on it still fails with
+`EPERM`. No capability changes that, including `IPC_LOCK`, which the
+communication entries already grant.
+
+The option applies on every platform and architecture, because how a cluster
+plumbs RDMA is a property of the cluster rather than of its cloud. Leaving it
+unset, or setting it to `devicePlugin`, renders exactly what it rendered
+before: the NIC resource request described above and nothing else. Workload
+pods will be rejected in namespaces that enforce a `restricted` or `baseline`
+[Pod Security Standard](https://kubernetes.io/docs/concepts/security/pod-security-standards/),
+which forbid privileged containers. See
+[ADR-088](../designs/088-oci-gb200-roce-and-rdma-device-access.md).
+
+Some CRI-O runtimes reject a privileged container whose GPUs come from the
+NVIDIA device plugin, on the grounds that the device paths are already present
+on the host. The catalog records one such configuration: the OCI arm of the
+DCGM entry turns `privileged` off for exactly that reason. Every container this
+option patches requests `nvidia.com/gpu`, so if your runtime enforces that
+rule, the pods fail to start rather than running without the mount. Try one
+category before turning the option on for a whole certification.
+
+The value is case-sensitive and is validated by `nvcrectl` as well as by the
+API server, so `rdmaDeviceAccess: HostPath` is an error rather than a render
+that silently omits the mount.
+
+### When a node has no RDMA devices
+
+The volume is declared `type: Directory`, so kubelet refuses to start the pod
+on a node where `/dev/infiniband` does not exist rather than mounting an empty
+directory that NCCL would later report as "no devices found". Kubelet retries
+the mount indefinitely, so the pod stays in `ContainerCreating` with a
+`FailedMount` event naming the path.
+
+On the communication entries, `timeoutPerJob` bounds that wait: the Job times
+out after one hour by default and the Workflow reports the failure. The
+training entries render no `timeoutPerJob` at all, so there a missing
+`/dev/infiniband` hangs the Job until you intervene.
+
+Setting `spec.timeoutPerJob` on a training Certification does **not** give you
+a bound today. The value reaches the catalog, but the training entries render
+`execution: {}` and never emit the field, so it is silently discarded. Watch
+for a pod stuck in `ContainerCreating` with a `FailedMount` event instead, and
+try one category before enabling the option across a whole certification.
+
+`startupStallTimeoutSeconds`, which the training entries do set, does **not**
+cover this case on any entry. Startup-stall detection is anchored on the
+GoodputMeasurement, and the GoodputMeasurement only starts sampling once
+worker-0 reaches `Running`, which a pod held in `ContainerCreating` never
+does.
 
 ## On-prem clusters
 

@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# OCI GB200 RoCE env vars, a delta on top of oci-roce-env.yaml. Always include
+# it after that fragment, never instead of it.
+#
+# OCI exposes RoCEv2, where the routable GID lives at index 3. NCCL and UCX both
+# default to index 0, which is link-local, and the queue pair then fails at
+# connection setup with IBV_WC_REM_ACCESS_ERR. oci-roce-env.yaml already carries
+# NCCL_IB_GID_INDEX for the ranks, so only the UCX variable is added here: UCX
+# reads its own, and the MPI launcher initializes from its container env rather
+# than from the mpirun -x args it passes to the ranks. (The launcher runs no
+# rank of its own: runLauncherAsNode defaults false, so Kubeflow's hostfile
+# lists only the node pod set.)
+#
+# NCCL_IB_GID_INDEX is deliberately not repeated. trainer.env is a
+# server-side map list keyed on name (x-kubernetes-list-type: map in the
+# Workflow CRD), so a second entry for a name the base fragment already set
+# makes the API server reject the whole Workflow. mpirun -x args tolerate the
+# repeat, but there is no reason to carry one shape that is legal in args and
+# fatal in env.
+#
+# Deliberately NOT here, unlike oci-gb300-roce-env.yaml:
+#   - NCCL_MNNVL_ENABLE, already set from gb200-env.yaml (communication) and
+#     gb200-training-base-env.yaml (training).
+#   - NCCL_DMABUF_ENABLE, NCCL_IB_ADAPTIVE_ROUTING and
+#     NCCL_IB_SPLIT_DATA_ON_QPS. Each is a measured GB300 finding tied to that
+#     board's four 800 Gbps rails, not an OCI platform fact. Leaving them unset
+#     keeps GB200 on the NCCL defaults rather than on tuning taken from
+#     different hardware.
+- name: UCX_IB_GID_INDEX
+  value: "3"

@@ -112,6 +112,47 @@
                   "--mca",
                   "plm_rsh_args",
                   "-o StrictHostKeyChecking=no",
+                  "--mca",
+                  "pml",
+                  "ob1",
+                  "--mca",
+                  "btl",
+                  "tcp,self",
+                  "--mca",
+                  "btl_tcp_if_include",
+                  "eth0",
+                  "--mca",
+                  "oob",
+                  "tcp",
+                  "--mca",
+                  "oob_tcp_if_include",
+                  "eth0",
+                  "--mca",
+                  "coll_ucc_enable",
+                  "0",
+                  "--mca",
+                  "coll_hcoll_enable",
+                  "0",
+                  "-x",
+                  "NCCL_DEBUG=INFO",
+                  "-x",
+                  "NCCL_IB_PCI_RELAXED_ORDERING=1",
+                  "-x",
+                  "NCCL_IB_TC=41",
+                  "-x",
+                  "NCCL_IB_SL=0",
+                  "-x",
+                  "NCCL_IB_QPS_PER_CONNECTION=4",
+                  "-x",
+                  "NCCL_IB_GID_INDEX=3",
+                  "-x",
+                  "NCCL_IB_SPLIT_DATA_ON_QPS=0",
+                  "-x",
+                  "NCCL_SOCKET_IFNAME=eth0",
+                  "-x",
+                  "OMPI_MCA_coll_hcoll_enable=0",
+                  "-x",
+                  "OMPI_MCA_orte_keep_fqdn_hostnames=t",
                   "-x",
                   "NCCL_DEBUG=INFO",
                   "-x",
@@ -122,6 +163,8 @@
                   "NCCL_P2P_NET_CHUNKSIZE=2097152",
                   "-x",
                   "NCCL_MNNVL_ENABLE=1",
+                  "-x",
+                  "UCX_IB_GID_INDEX=3",
                   "/usr/local/bin/all_reduce_perf_mpi",
                   "-b",
                   "8",
@@ -133,6 +176,52 @@
                   "100",
                   "-N",
                   "10"
+                ],
+                "env": [
+                  {
+                    "name": "NCCL_DEBUG",
+                    "value": "INFO"
+                  },
+                  {
+                    "name": "NCCL_IB_PCI_RELAXED_ORDERING",
+                    "value": "1"
+                  },
+                  {
+                    "name": "NCCL_IB_TC",
+                    "value": "41"
+                  },
+                  {
+                    "name": "NCCL_IB_SL",
+                    "value": "0"
+                  },
+                  {
+                    "name": "NCCL_IB_QPS_PER_CONNECTION",
+                    "value": "4"
+                  },
+                  {
+                    "name": "NCCL_IB_GID_INDEX",
+                    "value": "3"
+                  },
+                  {
+                    "name": "NCCL_IB_SPLIT_DATA_ON_QPS",
+                    "value": "0"
+                  },
+                  {
+                    "name": "NCCL_SOCKET_IFNAME",
+                    "value": "eth0"
+                  },
+                  {
+                    "name": "OMPI_MCA_coll_hcoll_enable",
+                    "value": "0"
+                  },
+                  {
+                    "name": "OMPI_MCA_orte_keep_fqdn_hostnames",
+                    "value": "t"
+                  },
+                  {
+                    "name": "UCX_IB_GID_INDEX",
+                    "value": "3"
+                  }
                 ],
                 "numNodes": 2,
                 "numProcPerNode": 4
