@@ -39,6 +39,10 @@ followed them.
 
 ### Fixed
 
+- A checkpointed training run no longer stalls on clusters that enforce RBAC. The
+  checkpoint PVC is a job-scoped dependency, and the controller sets the Job as its
+  owner with an Update, which the manager role did not grant on
+  PersistentVolumeClaims. The Workflow retried forever without starting the Job (#463)
 - `nvcre_job_status` now reports `failed` for a Job that timed out on
   `timeoutPerJob`. The gauge was written only by the Job tier, so the Workflow
   reconciler's timeout write left it at `in_progress` for the rest of the run, and
