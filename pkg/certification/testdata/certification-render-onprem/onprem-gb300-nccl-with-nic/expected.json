@@ -131,12 +131,10 @@
         "dependency": "nccl-loopback-nvswitch-runtime",
         "replicatedJob": "node",
         "mlPolicy": [
-          "mpi",
           "torch"
         ],
         "tolerations": [
-          "kubernetes.io/arch=arm64:NoSchedule",
-          "nvidia.com/gpu=present:NoSchedule"
+          "=:"
         ],
         "containers": [
           {

@@ -51,6 +51,12 @@ followed them.
 
 ### Fixed
 
+- `communication/nccl-loopback` and `nccl-loopback-nvswitch` on on-prem GB200/GB300,
+  Mistral GB300, and GCP GB200/GB300 rendered a TrainingRuntime with both `torch` and
+  `mpi` policies, which the API server rejects at dependency creation, and lost the
+  entry's tolerate-everything toleration. The platform comm fragments no longer set
+  `mlPolicy` (the MPI entries' base runtimes already do) and the loopback entries
+  restore the toleration after each of them. See ADR-092.
 - `nvcre_job_status` now reports `failed` for a Job that timed out on
   `timeoutPerJob`. The gauge was written only by the Job tier, so the Workflow
   reconciler's timeout write left it at `in_progress` for the rest of the run, and

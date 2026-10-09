@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Mistral GB300 running the per-node nccl-loopback entry. Same two defects
+# as the on-prem NVL72 fragment, fixed under ADR-092: the Mistral comm
+# fragment carries no mlPolicy and the entry restores tolerate-everything.
+apiVersion: v1
+kind: Node
+metadata:
+  name: mistral-gb300-lb-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB300
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: mistral-gb300-lb-node-01
+    kubernetes.io/arch: arm64
+spec:
+  providerID: "metal3://00000000-0000-0000-0000-00000000lb01"
+status:
+  allocatable:
+    nvidia.com/gpu: "4"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: mistral-nc-g3-lb
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300
+  categories:
+    - domain: communication
+      variant: nccl-loopback
