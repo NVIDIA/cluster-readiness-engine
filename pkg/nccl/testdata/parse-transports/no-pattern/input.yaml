@@ -1,0 +1,2 @@
+regex: '^\s*(?P<size>\d+)\s+\d+\s+\w+\s+\w+\s+-?\d+\s+[\d.]+\s+(?P<algBW>[\d.]+)\s+(?P<busBW>[\d.]+)'
+timestampLayout: "2006-01-02T15:04:05.999999999Z"

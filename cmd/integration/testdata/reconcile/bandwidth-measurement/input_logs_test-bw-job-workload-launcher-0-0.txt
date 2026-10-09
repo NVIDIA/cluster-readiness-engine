@@ -1,5 +1,6 @@
 2026-02-16T10:00:00.000000000Z nccl-node-0:1295:1295 [0] NCCL INFO Bootstrap: Using eth0:10.0.0.1<0>
 2026-02-16T10:00:01.000000000Z nccl-node-0:1295:1295 [0] NCCL INFO NCCL version 2.29.2+cuda13.1
+2026-02-16T10:00:01.500000000Z nccl-node-0:1295:1295 [0] NCCL INFO Using network Socket
 2026-02-16T10:00:02.000000000Z # nccl-tests version 2.17.8
 2026-02-16T10:00:02.000000000Z #                                                              out-of-place                       in-place
 2026-02-16T10:00:02.000000000Z #       size         count      type   redop    root     time   algbw   busbw  #wrong     time   algbw   busbw  #wrong

@@ -160,6 +160,9 @@
           "samples": 1
         }
       ],
+      "transport": [
+        "Socket"
+      ],
       "conditions": [
         {
           "type": "Measuring",

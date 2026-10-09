@@ -6,6 +6,7 @@ package nccl
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -18,6 +19,11 @@ type Parser struct {
 	sizeIdx  int
 	algBWIdx int
 	busBWIdx int
+
+	// transportRegex is optional. LogProfiles that predate networkTransport
+	// still compile; ParseTransports then returns nothing.
+	transportRegex *regexp.Regexp
+	transportIdx   int
 }
 
 // NewParser creates a Parser from a LogProfile's bandwidthResult pattern.
@@ -40,12 +46,27 @@ func NewParser(profile *v1alpha1.LogProfile) (*Parser, error) {
 		return nil, fmt.Errorf("bandwidthResult regex must have named groups: size, algBW, busBW")
 	}
 
-	return &Parser{
+	parser := &Parser{
 		regex:    re,
 		sizeIdx:  sizeIdx,
 		algBWIdx: algBWIdx,
 		busBWIdx: busBWIdx,
-	}, nil
+	}
+
+	if profile.Spec.Patterns.NetworkTransport != nil {
+		tr, err := regexp.Compile(profile.Spec.Patterns.NetworkTransport.Regex)
+		if err != nil {
+			return nil, fmt.Errorf("compiling networkTransport regex: %w", err)
+		}
+		transportIdx := namedGroupIndex(tr, "transport")
+		if transportIdx < 0 {
+			return nil, fmt.Errorf("networkTransport regex must have named group: transport")
+		}
+		parser.transportRegex = tr
+		parser.transportIdx = transportIdx
+	}
+
+	return parser, nil
 }
 
 // ParseBandwidthLogs parses log lines and returns all matched bandwidth data points.
@@ -94,6 +115,52 @@ func (p *Parser) ParseBandwidthLine(line string) (BandwidthDataPoint, bool) {
 		AlgBW:     algBW,
 		BusBW:     busBW,
 	}, true
+}
+
+// ParseTransports returns the distinct, sorted NCCL network names captured
+// from "Using network ..." log lines. Returns nil when the LogProfile has no
+// networkTransport pattern or no line matched.
+func (p *Parser) ParseTransports(lines []string) []string {
+	if p.transportRegex == nil {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	var out []string
+	for _, line := range lines {
+		name, ok := p.ParseTransportLine(line)
+		if !ok {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	slices.Sort(out)
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// ParseTransportLine returns the NCCL network name from one "Using network
+// ..." log line. It reports false when the LogProfile has no networkTransport
+// pattern, the line does not match, or the captured name is blank.
+func (p *Parser) ParseTransportLine(line string) (string, bool) {
+	if p.transportRegex == nil {
+		return "", false
+	}
+	matches := p.transportRegex.FindStringSubmatch(stripK8sTimestamp(line))
+	if matches == nil {
+		return "", false
+	}
+	name := strings.TrimSpace(matches[p.transportIdx])
+	if name == "" {
+		return "", false
+	}
+	return name, true
 }
 
 // namedGroupIndex returns the index of a named capture group in a compiled regex.
