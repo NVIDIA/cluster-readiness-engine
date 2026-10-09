@@ -426,3 +426,26 @@ overrides:
       in: [gb200, gb300]
   dependencies:
 {{ lib "deps/onprem-gb200-gb300-runtime-patch-training.yaml" . | indent 2 }}
+# --- Nscale NKS (GPU+RDMA DRA claims, InfiniBand; ADR-085) ---
+# Deps-only like the on-prem block: torchrun inherits the runtime container
+# env, so the portable IB env rides there (merged by name into the base env)
+# alongside the gpu.nvidia.com/rdma.nscale.com claims.
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      in: [b200, gb300]
+  dependencies:
+{{ lib "deps/nscale-gpu-rdma-training.yaml" . | indent 2 }}
+# --- Nscale + GB300 topology key (ADR-085) ---
+# Nscale runs no GFD, so nvidia.com/gpu.clique from the GB200/GB300 block
+# above never exists there; the NVLink domain is published as
+# topology.nks.nscale.com/accelerator-domain instead.
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      equals: gb300
+  orchestration:
+    topology:
+      topologyKey: topology.nks.nscale.com/accelerator-domain

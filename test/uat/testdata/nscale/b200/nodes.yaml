@@ -1,0 +1,114 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# KWOK-simulated Nscale NKS B200 GPU nodes (ADR-085).
+#
+# Key differences from every other platform's fixtures: Nscale runs no
+# device plugin/GFD DaemonSet, so nodes carry no nvidia.com/gpu.product
+# label and no nvidia.com/gpu allocatable — GPUs and the RDMA NIC are
+# claimed via DRA ResourceClaimTemplates against the gpu.nvidia.com/
+# rdma.nscale.com DeviceClasses (stubbed in test/uat/tilt/dra-stub) instead.
+# Architecture is derived from the productName attribute on each node's
+# gpu.nvidia.com ResourceSlice (augmentGPUProductLabels).
+#
+#   spec.providerID: "nscale://..."          -> platform "nscale"
+#   nvidia.com/gpu.present: "true"           -> nvcrectl GPU discovery
+#   ResourceSlice productName: NVIDIA-B200   -> GPU arch "b200"
+#
+# B200 nodes: 8 GPUs per node, x86_64.
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: nscale-b200-node-01
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: nscale-b200-node-01
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+spec:
+  providerID: "nscale://instance/00000000-0000-0000-0000-000000000101"
+status:
+  capacity:
+    cpu: "192"
+    ephemeral-storage: 21455242Mi
+    memory: 1542553600Ki
+    pods: "1913"
+  allocatable:
+    cpu: 191500m
+    ephemeral-storage: "20246632876505"
+    memory: 1486102528Ki
+    pods: "1913"
+  conditions:
+  - type: Ready
+    status: "True"
+    reason: KubeletReady
+    message: kubelet is posting ready status
+  phase: Running
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: nscale-b200-node-02
+  annotations:
+    kwok.x-k8s.io/node: fake
+  labels:
+    kubernetes.io/arch: amd64
+    kubernetes.io/hostname: nscale-b200-node-02
+    kubernetes.io/os: linux
+    nvidia.com/gpu.present: "true"
+spec:
+  providerID: "nscale://instance/00000000-0000-0000-0000-000000000102"
+status:
+  capacity:
+    cpu: "192"
+    ephemeral-storage: 21455242Mi
+    memory: 1542553600Ki
+    pods: "1913"
+  allocatable:
+    cpu: 191500m
+    ephemeral-storage: "20246632876505"
+    memory: 1486102528Ki
+    pods: "1913"
+  conditions:
+  - type: Ready
+    status: "True"
+    reason: KubeletReady
+    message: kubelet is posting ready status
+  phase: Running
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: nscale-b200-node-01-gpu
+spec:
+  driver: gpu.nvidia.com
+  pool:
+    name: nscale-b200-node-01
+    generation: 1
+    resourceSliceCount: 1
+  nodeName: nscale-b200-node-01
+  devices:
+  - name: gpu-0
+    attributes:
+      productName:
+        string: NVIDIA-B200
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: nscale-b200-node-02-gpu
+spec:
+  driver: gpu.nvidia.com
+  pool:
+    name: nscale-b200-node-02
+    generation: 1
+    resourceSliceCount: 1
+  nodeName: nscale-b200-node-02
+  devices:
+  - name: gpu-0
+    attributes:
+      productName:
+        string: NVIDIA-B200

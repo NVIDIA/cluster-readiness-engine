@@ -50,9 +50,21 @@
               "plm_rsh_args",
               "-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
               "-x",
-              "NCCL_DEBUG=INFO",
+              "NCCL_NVLS_ENABLE=1",
+              "-x",
+              "NCCL_CUMEM_ENABLE=1",
+              "-x",
+              "NCCL_NET_GDR_C2C=1",
+              "-x",
+              "NCCL_NET_GDR_LEVEL=PHB",
+              "-x",
+              "NCCL_P2P_NET_CHUNKSIZE=2097152",
+              "-x",
+              "NCCL_SHM_DISABLE=1",
               "-x",
               "NCCL_MNNVL_ENABLE=0",
+              "-x",
+              "USER_SETTING=preserved",
               "-x",
               "NCCL_DEBUG=INFO",
               "-x",
@@ -268,10 +280,6 @@
                               "value": "INFO"
                             },
                             {
-                              "name": "NCCL_DEBUG_SUBSYS",
-                              "value": "NET,INIT"
-                            },
-                            {
                               "name": "NCCL_NVLS_ENABLE",
                               "value": "1"
                             },
@@ -391,10 +399,6 @@
                             {
                               "name": "NCCL_DEBUG",
                               "value": "INFO"
-                            },
-                            {
-                              "name": "NCCL_DEBUG_SUBSYS",
-                              "value": "NET,INIT"
                             },
                             {
                               "name": "NCCL_NVLS_ENABLE",

@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -20,7 +21,6 @@ import (
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -333,7 +333,7 @@ func BuildWorkflowSpec(
 	}
 
 	// Build JobTemplate.
-	jobTemplate := buildCLIJobTemplate(run, frameworkType, gpusPerNode, enableMNNVL)
+	jobTemplate := buildCLIJobTemplate(run, frameworkType, gpusPerNode, mergedEnv)
 
 	// Build OrchestrationSpec.
 	orch := &nvcrev1alpha1.OrchestrationSpec{
@@ -428,6 +428,7 @@ func applyPlatformMPIArgs(
 		NicResourceName: derefString(run.Spec.NicResourceName),
 		EnableMNNVL:     enableMNNVL,
 		FrameworkType:   frameworkType,
+		UserEnv:         run.Spec.Env,
 	})
 	octx := controller.OverrideContext{
 		Platform:        platformName,
@@ -446,8 +447,10 @@ func validateExecFramework(spec *nvcrev1alpha1.WorkloadRunSpec, name string) err
 	return nil
 }
 
+// buildCLIJobTemplate mirrors the controller's buildJobTemplate. env is the
+// merged env the runtime containers get; MPI forwards it to the ranks with -x.
 func buildCLIJobTemplate(
-	run *nvcrev1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32, enableMNNVL bool,
+	run *nvcrev1alpha1.WorkloadRun, frameworkType string, gpusPerNode int32, env []corev1.EnvVar,
 ) *nvcrev1alpha1.JobTemplateSpec {
 	spec := &run.Spec
 
@@ -466,24 +469,18 @@ func buildCLIJobTemplate(
 	case controller.FrameworkMPI:
 		mpi := spec.Framework.MPI
 		command = []string{"timeout", "3600", mpi.MpirunPath}
-		baseCount := 10 // fixed args below
-		mpiArgs := make([]string, 0, baseCount+len(mpi.MpiArgs)+1+len(mpi.Args))
-		mpiArgs = append(mpiArgs,
-			"-N", fmt.Sprintf("%d", gpusPerNode),
-			"--allow-run-as-root",
-			"--mca", "plm_rsh_args",
-			"-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
-			"-x", "NCCL_DEBUG=INFO",
+		args = slices.Concat(
+			[]string{
+				"-N", fmt.Sprintf("%d", gpusPerNode),
+				"--allow-run-as-root",
+				"--mca", "plm_rsh_args",
+				"-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
+			},
+			platform.MPIEnvArgs(env, mpi.MpiArgs),
+			mpi.MpiArgs,
+			[]string{mpi.Binary},
+			mpi.Args,
 		)
-		enableStr := "0"
-		if enableMNNVL {
-			enableStr = "1"
-		}
-		mpiArgs = append(mpiArgs, "-x", fmt.Sprintf("NCCL_MNNVL_ENABLE=%s", enableStr))
-		mpiArgs = append(mpiArgs, mpi.MpiArgs...)
-		mpiArgs = append(mpiArgs, mpi.Binary)
-		mpiArgs = append(mpiArgs, mpi.Args...)
-		args = mpiArgs
 	default:
 		exec := spec.Framework.Exec
 		command = exec.Command
@@ -1403,14 +1400,6 @@ func loadSyntheticNodes(platformName, gpuArch string) []corev1.Node {
 		Spec: corev1.NodeSpec{
 			ProviderID: render.SyntheticProviderID(platformName),
 		},
-	}
-	// nscale shares the openstack:// providerID prefix; detection disambiguates
-	// via the rdmashare allocatable (see pkg/render/nodes.go), so the synthetic
-	// node must carry it for node-based detection to resolve to nscale.
-	if platformName == "nscale" {
-		node.Status.Allocatable = corev1.ResourceList{
-			"nscale.com/rdmashare": resource.MustParse("8"),
-		}
 	}
 	return []corev1.Node{node}
 }

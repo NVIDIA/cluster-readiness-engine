@@ -1638,6 +1638,11 @@ func (in *OrchestrationOverrideSpec) DeepCopyInto(out *OrchestrationOverrideSpec
 		*out = new(TopologySpec)
 		**out = **in
 	}
+	if in.Diagnose != nil {
+		in, out := &in.Diagnose, &out.Diagnose
+		*out = new(DiagnoseSpec)
+		**out = **in
+	}
 	if in.Execution != nil {
 		in, out := &in.Execution, &out.Execution
 		*out = new(ExecutionSpec)
