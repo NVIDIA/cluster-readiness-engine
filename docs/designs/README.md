@@ -99,4 +99,5 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 090 | [Sharded Component Results and the Report Bundle](090-component-result-sharding.md) |
 | 091 | [CUTLASS GEMM Per-GPU Burn-In as a `compute` Catalog Entry](091-compute-gemm-catalog-entry.md) |
 | 092 | [Per-Namespace Write Access for the Controller](092-per-namespace-controller-rbac.md) |
+| 093 | [MPI Workers Request `SYS_CHROOT`, and Readiness Means a Working SSH Session](093-mpi-worker-sshd-capability-and-session-probe.md) |
 | 094 | [HGX B300 Architecture Defaults, an On-Prem x86 HGX NIC Override, and a Fallback Event for Unknown Architectures](094-hgx-b300-architecture-and-onprem-nic-override.md) |

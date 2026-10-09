@@ -45,9 +45,36 @@ dependencies:
                     image: nvcr.io/nvidia/pytorch:26.01-py3
                     name: node
                     readinessProbe:
+                      # A tcpSocket probe answers "is something listening", not
+                      # "can this worker run a rank". sshd binds port 22 before
+                      # it can serve anything and keeps the listener up however
+                      # badly sessions fail, so a worker that refuses every
+                      # session still reads as Ready and the launcher's
+                      # dependsOn gate releases mpirun against it (issue #461).
+                      # A banner check would not help: OpenSSH greets the client
+                      # before privilege separation chroots, so the probe has to
+                      # open a real session. It dials 127.0.0.1 only, never a
+                      # peer, so workers do not gate on each other, and runs
+                      # under timeout 8 (when present) inside the probe's 10s so
+                      # a hang reports ssh's own error. An image with no ssh
+                      # client falls back to the old listening check via
+                      # /proc/net/tcp (port 22 is :0016, TCP_LISTEN is 0A). The
+                      # 30s period keeps sshd's per-session log lines down once
+                      # the pod is Ready, when nothing consumes the verdict. A
+                      # worker that never passes keeps the launcher gate closed
+                      # until timeoutPerJob.
+                      exec:
+                        command:
+                        - sh
+                        - -c
+                        - |-
+                          command -v ssh >/dev/null 2>&1 || exec grep -q ':0016 [0-9A-F]*:[0-9A-F]* 0A ' /proc/net/tcp /proc/net/tcp6
+                          set -- ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 127.0.0.1 true
+                          command -v timeout >/dev/null 2>&1 && set -- timeout 8 "$@"
+                          exec "$@"
                       initialDelaySeconds: 5
-                      tcpSocket:
-                        port: 22
+                      periodSeconds: 30
+                      timeoutSeconds: 10
                     resources:
                       limits:
                         nvidia.com/gpu: "{{ .GpusPerNode }}"
@@ -57,6 +84,11 @@ dependencies:
                       capabilities:
                         add:
                         - IPC_LOCK
+                        # sshd privilege separation chroots before authenticating
+                        # (mandatory since OpenSSH 7.5). CRI-O drops SYS_CHROOT
+                        # from its default set, so without this the worker listens
+                        # on 22 but kills every session preauth (issue #461).
+                        - SYS_CHROOT
                     volumeMounts:
                     - mountPath: /tmp/mpi-ssh-raw
                       name: mpi-ssh-auth
