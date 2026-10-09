@@ -1,0 +1,26 @@
+# Access the Workflow controller's dependency lifecycle needs on every kind a
+# Workflow can create as a dependency: the kinds in pkg/catalog/entries and
+# pkg/platform/overrides, plus the ConfigMap and PVC the WorkloadRun controller
+# builds. Any of them becomes job-scoped when the Job template references its
+# name, so each needs the full set:
+#   create  createDependencies / createJobDependencies
+#   get     getDependencyObject, setDependencyOwners
+#   update  setDependencyOwners stamps the Job owner on job-scoped dependencies
+#   delete  handleDeletion and scoped-dependency cleanup
+# A new dependency kind belongs here as well as in the chart's manager role.
+required:
+- group: ""
+  resource: configmaps
+  verbs: [create, get, update, delete]
+- group: ""
+  resource: persistentvolumeclaims
+  verbs: [create, get, update, delete]
+- group: trainer.kubeflow.org
+  resource: trainingruntimes
+  verbs: [create, get, update, delete]
+- group: resource.k8s.io
+  resource: resourceclaimtemplates
+  verbs: [create, get, update, delete]
+- group: resource.nvidia.com
+  resource: computedomains
+  verbs: [create, get, update, delete]
