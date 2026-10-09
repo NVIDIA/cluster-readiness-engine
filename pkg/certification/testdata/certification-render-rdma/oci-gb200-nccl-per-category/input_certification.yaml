@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The per-category override arm, which docs/api-reference/certification.md
+# publishes as "also settable per category via
+# categories[].options.rdmaDeviceAccess (per-category wins)". Nothing else in
+# the suite exercises that sentence: every other case sets the field once, at
+# the spec level, where the global value is simply copied through.
+#
+# The global is deliberately the opposite value rather than unset, so the
+# golden distinguishes "the per-category value won" from "the global value was
+# read". With the ResolveOptions arm removed, nccl-all-reduce would render the
+# global hostPath patch and this golden turns red.
+#
+# The two categories are different variants, so they would not collide on a
+# Workflow name under any suffix rule. The same-variant collision is the
+# separate concern of hostpath-vs-deviceplugin-same-variant, which is what pins
+# the categoryOptionsSuffix arm. What this case contributes to naming is
+# narrower: the first category sets the field, so its name carries the rdma
+# token, and the golden pins that the token appears at all.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-gb200-percat-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 8
+  enableMNNVL: true
+  rdmaDeviceAccess: hostPath
+  categories:
+    # Overrides the global back to the default: no privileged flag, no mount,
+    # no volume, even though the spec-level field says hostPath.
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        rdmaDeviceAccess: devicePlugin
+    # Sets nothing, so it inherits the global hostPath.
+    - domain: communication
+      variant: nccl-loopback

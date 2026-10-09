@@ -1,6 +1,6 @@
 [
   {
-    "workflow": "oci-cert-training-nemotron5-8b",
+    "workflow": "oci-cert-training-nemotro-6cb55",
     "dependencyKinds": [
       "TrainingRuntime",
       "ConfigMap",

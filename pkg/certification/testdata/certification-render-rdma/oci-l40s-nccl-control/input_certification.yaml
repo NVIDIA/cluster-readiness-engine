@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The second OCI architecture that already worked, and the one that worked for
+# a different reason: L40S matches no gpuArchitecture block at all, so the
+# platform: oci block was never overwritten and the RoCE env reached it
+# untouched. Its golden pins that the GB200 arm is scoped narrowly enough to
+# leave the unscoped OCI path alone.
+#
+# enableMNNVL is false: L40S has no multi-node NVLink.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-l40s-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-L40S
+  nodesPerJob: 2
+  enableMNNVL: false
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

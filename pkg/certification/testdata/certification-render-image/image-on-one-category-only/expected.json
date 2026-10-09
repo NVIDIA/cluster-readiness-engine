@@ -27,7 +27,7 @@
     ]
   },
   {
-    "workflow": "image-cert-training-nemot-c5620",
+    "workflow": "image-cert-training-nemot-4f168",
     "trainerImage": "nvcr.io/nvidia/pytorch:25.08-py3",
     "containers": [
       {

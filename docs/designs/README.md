@@ -95,5 +95,6 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 085 | [Nscale NKS Support on the DRA Stack](085-nscale-nks-dra-support.md) |
 | 086 | [Lifecycle Status Metrics Read from the Cache, and the Timeout Write Is Exclusive](086-lifecycle-status-metrics-and-timeout-exclusivity.md) |
 | 087 | [`mlnxPerNode: 0` As a Real Opt-Out, and OCI GB200 NIC Defaults](087-mlnx-per-node-zero-opt-out.md) |
+| 088 | [OCI GB200 RoCE Overrides, and `rdmaDeviceAccess` for hostPath RDMA](088-oci-gb200-roce-and-rdma-device-access.md) |
 | 089 | [Unpinned Single-Job Placement](089-unpinned-single-job-placement.md) |
 | 092 | [Per-Namespace Write Access for the Controller](092-per-namespace-controller-rbac.md) |

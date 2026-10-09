@@ -1,0 +1,102 @@
+[
+  {
+    "workflow": "aws-gb200-hostpath-cert-c-158dc",
+    "trainerArgs": [
+      "--allow-run-as-root",
+      "-bind-to",
+      "none",
+      "--mca",
+      "pml",
+      "^cm,ucx",
+      "--mca",
+      "btl",
+      "tcp,self",
+      "--mca",
+      "btl_tcp_if_exclude",
+      "lo,docker0,veth_def_agent",
+      "--mca",
+      "plm_rsh_agent",
+      "ssh",
+      "-x",
+      "LD_LIBRARY_PATH=/opt/amazon/openmpi/lib:/opt/nccl/build/lib:/opt/amazon/efa/lib:/opt/aws-ofi-nccl/install/lib:/usr/local/nvidia/lib:/opt/amazon/ofi-nccl/lib/aarch64-linux-gnu",
+      "-x",
+      "PATH=$PATH:/opt/amazon/efa/bin:/usr/bin",
+      "-x",
+      "NCCL_DEBUG=INFO",
+      "-x",
+      "FI_PROVIDER=efa",
+      "-x",
+      "FI_EFA_USE_DEVICE_RDMA=1",
+      "-x",
+      "FI_EFA_FORK_SAFE=1",
+      "-x",
+      "NCCL_MNNVL_ENABLE=1",
+      "/opt/nccl-tests/build/all_reduce_perf",
+      "-b",
+      "8",
+      "-e",
+      "16G",
+      "-f",
+      "2",
+      "-n",
+      "100",
+      "-N",
+      "10"
+    ],
+    "trainerEnv": [],
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "containers": [
+          {
+            "name": "node",
+            "privileged": true,
+            "capabilities": [
+              "IPC_LOCK"
+            ],
+            "resources": [
+              "limits/hugepages-2Mi=10256Mi",
+              "limits/memory=800Gi",
+              "limits/nvidia.com/gpu=4",
+              "limits/vpc.amazonaws.com/efa=4",
+              "requests/hugepages-2Mi=10256Mi",
+              "requests/memory=800Gi",
+              "requests/nvidia.com/gpu=4",
+              "requests/vpc.amazonaws.com/efa=4"
+            ],
+            "volumeMounts": [
+              "mpi-ssh-auth=/tmp/mpi-ssh-raw:ro",
+              "rdma-devices=/dev/infiniband"
+            ]
+          }
+        ],
+        "volumes": [
+          "rdma-devices=hostPath:/dev/infiniband:Directory"
+        ]
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "containers": [
+          {
+            "name": "node",
+            "privileged": null,
+            "capabilities": [],
+            "resources": [
+              "limits/cpu=2",
+              "limits/memory=1Gi"
+            ],
+            "volumeMounts": [
+              "mpi-ssh-auth=/tmp/mpi-ssh-raw:ro",
+              "ssh-keys=/root/.ssh"
+            ]
+          }
+        ],
+        "volumes": [
+          "ssh-keys=emptyDir:"
+        ]
+      }
+    ]
+  }
+]

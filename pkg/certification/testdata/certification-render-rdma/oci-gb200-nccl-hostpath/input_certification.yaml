@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The reported cluster: OCI GB200 exposing Mellanox devices through host device
+# nodes, with no SR-IOV device plugin and no sriov-net attachment. ADR-087
+# already defaults mlnxPerNode to 0 there so the pods schedule; this is what
+# gives them device access once they do.
+#
+# The golden pins four things that have to hold together:
+#   - privileged: true on the node container. Without it kubelet never adds the
+#     device cgroup entries and open() on /dev/infiniband/uverbs0 returns
+#     EPERM even though the mount makes the node visible.
+#   - the mount and the matching hostPath volume, type Directory so a node with
+#     no RDMA devices fails the pod rather than mounting an empty directory.
+#   - IPC_LOCK still present. The patch merges into a securityContext that
+#     already has it, and mergeMaps recurses rather than replacing.
+#   - the launcher container untouched, with neither the flag nor the mount: it
+#     coordinates over TCP and opens no verbs device.
+#
+# nccl-loopback is included so the torch shape is covered too, which is what
+# proves one shared fragment reaches both worker shapes. Both name the worker
+# replicatedJob "node" and its container "node".
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-gb200-hostpath-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 8
+  enableMNNVL: true
+  rdmaDeviceAccess: hostPath
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: communication
+      variant: nccl-loopback

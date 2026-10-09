@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The regression pin for the architecture that already worked. Overrides apply
+# in document order with no specificity ranking, so the new OCI GB200 arms sit
+# in the same files, between the architecture block and the GB300 arm. An arm
+# placed one position too late, or scoped with "in: [gb200, gb300]" instead of
+# "equals: gb200", would overwrite this golden's trainer.args.
+#
+# It is also the pin for what the GB200 arm deliberately does NOT copy:
+# NCCL_IB_ADAPTIVE_ROUTING and NCCL_IB_SPLIT_DATA_ON_QPS=1 are measured GB300
+# findings tied to that board's four 800 Gbps rails, and must stay here only.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-gb300-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300
+  nodesPerJob: 8
+  enableMNNVL: true
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: communication
+      variant: nccl-loopback

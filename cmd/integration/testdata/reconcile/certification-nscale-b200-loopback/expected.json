@@ -235,7 +235,9 @@
             "nvidia.com/gpu.present": "true"
           }
         },
-        "execution": {},
+        "execution": {
+          "timeoutPerJob": "1h0m0s"
+        },
         "iterations": 1
       },
       "dependencies": [

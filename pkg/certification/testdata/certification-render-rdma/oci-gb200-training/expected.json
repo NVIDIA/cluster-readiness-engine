@@ -1,0 +1,102 @@
+[
+  {
+    "workflow": "oci-gb200-training-cert-t-895e1",
+    "trainerArgs": [
+      "/config/train.sh"
+    ],
+    "trainerEnv": [
+      "NCCL_DEBUG=INFO",
+      "NCCL_IB_PCI_RELAXED_ORDERING=1",
+      "NCCL_IB_TC=41",
+      "NCCL_IB_SL=0",
+      "NCCL_IB_QPS_PER_CONNECTION=4",
+      "NCCL_IB_GID_INDEX=3",
+      "NCCL_IB_SPLIT_DATA_ON_QPS=0",
+      "NCCL_SOCKET_IFNAME=eth0",
+      "OMPI_MCA_coll_hcoll_enable=0",
+      "OMPI_MCA_orte_keep_fqdn_hostnames=t",
+      "UCX_IB_GID_INDEX=3"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nemotron5-8b-runtime",
+        "replicatedJob": "node",
+        "containers": [
+          {
+            "name": "node",
+            "privileged": null,
+            "capabilities": [],
+            "resources": [
+              "limits/cpu=128",
+              "limits/memory=800Gi",
+              "limits/nvidia.com/gpu=4",
+              "requests/cpu=64",
+              "requests/memory=500Gi",
+              "requests/nvidia.com/gpu=4"
+            ],
+            "volumeMounts": [
+              "workspace=/mnt/workspace",
+              "shmem=/dev/shm",
+              "training-config=/config"
+            ]
+          }
+        ],
+        "volumes": [
+          "workspace=emptyDir:Memory",
+          "shmem=emptyDir:Memory",
+          "training-config=configMap:nemotron5-8b-training-config"
+        ]
+      }
+    ]
+  },
+  {
+    "workflow": "oci-gb200-training-cert-t-9d725",
+    "trainerArgs": [
+      "/config/train.sh"
+    ],
+    "trainerEnv": [
+      "NCCL_DEBUG=INFO",
+      "NCCL_IB_PCI_RELAXED_ORDERING=1",
+      "NCCL_IB_TC=41",
+      "NCCL_IB_SL=0",
+      "NCCL_IB_QPS_PER_CONNECTION=4",
+      "NCCL_IB_GID_INDEX=3",
+      "NCCL_IB_SPLIT_DATA_ON_QPS=0",
+      "NCCL_SOCKET_IFNAME=eth0",
+      "OMPI_MCA_coll_hcoll_enable=0",
+      "OMPI_MCA_orte_keep_fqdn_hostnames=t",
+      "UCX_IB_GID_INDEX=3"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nemotron5-56b-runtime",
+        "replicatedJob": "node",
+        "containers": [
+          {
+            "name": "node",
+            "privileged": null,
+            "capabilities": [],
+            "resources": [
+              "limits/cpu=128",
+              "limits/memory=800Gi",
+              "limits/nvidia.com/gpu=4",
+              "requests/cpu=64",
+              "requests/memory=500Gi",
+              "requests/nvidia.com/gpu=4"
+            ],
+            "volumeMounts": [
+              "workspace=/mnt/workspace",
+              "shmem=/dev/shm",
+              "training-config=/config"
+            ]
+          }
+        ],
+        "volumes": [
+          "workspace=emptyDir:Memory",
+          "shmem=emptyDir:Memory",
+          "training-config=configMap:nemotron5-56b-training-config"
+        ]
+      }
+    ]
+  }
+]

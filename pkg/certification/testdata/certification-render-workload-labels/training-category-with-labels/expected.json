@@ -1,6 +1,6 @@
 [
   {
-    "workflow": "labels-cert-training-nemo-7f601",
+    "workflow": "labels-cert-training-nemo-a33aa",
     "labels": {
       "environment": "burn-in",
       "kai.scheduler/queue": "training-queue"

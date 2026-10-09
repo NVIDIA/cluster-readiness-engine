@@ -1,0 +1,184 @@
+[
+  {
+    "workflow": "oci-gb200-hostpath-cert-c-676ef",
+    "trainerArgs": [
+      "-N",
+      "4",
+      "--allow-run-as-root",
+      "--mca",
+      "plm_rsh_args",
+      "-o StrictHostKeyChecking=no",
+      "--mca",
+      "pml",
+      "ob1",
+      "--mca",
+      "btl",
+      "tcp,self",
+      "--mca",
+      "btl_tcp_if_include",
+      "eth0",
+      "--mca",
+      "oob",
+      "tcp",
+      "--mca",
+      "oob_tcp_if_include",
+      "eth0",
+      "--mca",
+      "coll_ucc_enable",
+      "0",
+      "--mca",
+      "coll_hcoll_enable",
+      "0",
+      "-x",
+      "NCCL_DEBUG=INFO",
+      "-x",
+      "NCCL_IB_PCI_RELAXED_ORDERING=1",
+      "-x",
+      "NCCL_IB_TC=41",
+      "-x",
+      "NCCL_IB_SL=0",
+      "-x",
+      "NCCL_IB_QPS_PER_CONNECTION=4",
+      "-x",
+      "NCCL_IB_GID_INDEX=3",
+      "-x",
+      "NCCL_IB_SPLIT_DATA_ON_QPS=0",
+      "-x",
+      "NCCL_SOCKET_IFNAME=eth0",
+      "-x",
+      "OMPI_MCA_coll_hcoll_enable=0",
+      "-x",
+      "OMPI_MCA_orte_keep_fqdn_hostnames=t",
+      "-x",
+      "NCCL_DEBUG=INFO",
+      "-x",
+      "NCCL_NVLS_ENABLE=1",
+      "-x",
+      "NCCL_CUMEM_ENABLE=1",
+      "-x",
+      "NCCL_P2P_NET_CHUNKSIZE=2097152",
+      "-x",
+      "NCCL_MNNVL_ENABLE=1",
+      "-x",
+      "UCX_IB_GID_INDEX=3",
+      "/usr/local/bin/all_reduce_perf_mpi",
+      "-b",
+      "8",
+      "-e",
+      "16G",
+      "-f",
+      "2",
+      "-n",
+      "100",
+      "-N",
+      "10"
+    ],
+    "trainerEnv": [
+      "NCCL_DEBUG=INFO",
+      "NCCL_IB_PCI_RELAXED_ORDERING=1",
+      "NCCL_IB_TC=41",
+      "NCCL_IB_SL=0",
+      "NCCL_IB_QPS_PER_CONNECTION=4",
+      "NCCL_IB_GID_INDEX=3",
+      "NCCL_IB_SPLIT_DATA_ON_QPS=0",
+      "NCCL_SOCKET_IFNAME=eth0",
+      "OMPI_MCA_coll_hcoll_enable=0",
+      "OMPI_MCA_orte_keep_fqdn_hostnames=t",
+      "UCX_IB_GID_INDEX=3"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "containers": [
+          {
+            "name": "node",
+            "privileged": null,
+            "capabilities": [
+              "IPC_LOCK"
+            ],
+            "resources": [
+              "limits/nvidia.com/gpu=4",
+              "requests/nvidia.com/gpu=4"
+            ],
+            "volumeMounts": [
+              "mpi-ssh-auth=/tmp/mpi-ssh-raw:ro"
+            ]
+          }
+        ],
+        "volumes": []
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "containers": [
+          {
+            "name": "node",
+            "privileged": null,
+            "capabilities": [],
+            "resources": [
+              "limits/cpu=2",
+              "limits/memory=1Gi"
+            ],
+            "volumeMounts": [
+              "mpi-ssh-auth=/tmp/mpi-ssh-raw:ro",
+              "ssh-keys=/root/.ssh"
+            ]
+          }
+        ],
+        "volumes": [
+          "ssh-keys=emptyDir:"
+        ]
+      }
+    ]
+  },
+  {
+    "workflow": "oci-gb200-hostpath-cert-c-5162c",
+    "trainerArgs": [
+      "-b",
+      "8",
+      "-e",
+      "16G",
+      "-f",
+      "2",
+      "-g",
+      "4",
+      "-n",
+      "10",
+      "-N",
+      "2"
+    ],
+    "trainerEnv": [
+      "NCCL_SHM_DISABLE=1",
+      "NCCL_P2P_DISABLE=1",
+      "NCCL_DEBUG=INFO",
+      "NCCL_NVLS_ENABLE=1",
+      "NCCL_CUMEM_ENABLE=1",
+      "NCCL_P2P_NET_CHUNKSIZE=2097152",
+      "NCCL_MNNVL_ENABLE=1",
+      "UCX_IB_GID_INDEX=3",
+      "NCCL_IB_GID_INDEX=3"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-loopback-runtime",
+        "replicatedJob": "node",
+        "containers": [
+          {
+            "name": "node",
+            "privileged": null,
+            "capabilities": [
+              "IPC_LOCK"
+            ],
+            "resources": [
+              "limits/nvidia.com/gpu=4",
+              "requests/nvidia.com/gpu=4"
+            ],
+            "volumeMounts": []
+          }
+        ],
+        "volumes": []
+      }
+    ]
+  }
+]

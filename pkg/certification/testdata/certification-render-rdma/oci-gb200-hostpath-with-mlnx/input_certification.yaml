@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# ADR-088 asserts that mlnxPerNode and rdmaDeviceAccess are independent and
+# that a site running both an SR-IOV device plugin and host device nodes gets
+# both. Nothing tested that in either direction: every other rdma case leaves
+# the count at the OCI GB200 default of 0, and no mlnx case sets the new field.
+#
+# This case sets both at once, so the golden shows the NIC resource request and
+# the privileged hostPath patch landing on the same container. The two reach it
+# by different routes (the NIC request through the entry's own mlnx guards, the
+# mount through a dependency patch with an empty "when"), so a change that made
+# either one clobber the other would turn this red while every single-mechanism
+# case stayed green.
+#
+# nicResourceName is deliberately not set: its only template consumers are the
+# on-prem GB200/GB300 runtime patches, so on OCI the request renders under the
+# default nvidia.com/mlnxnics whatever the field says. Setting it here would
+# suggest a coupling that does not exist.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-gb200-both-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 8
+  enableMNNVL: true
+  mlnxPerNode: 2
+  rdmaDeviceAccess: hostPath
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

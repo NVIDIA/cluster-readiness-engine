@@ -443,12 +443,46 @@ overrides:
             - -d
             - uint8
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
+# --- OCI + GB200 (RoCE) ---
+# Must come AFTER the GB200/GB300 base block, whose trainer.args replacement
+# would otherwise discard the OCI block's RoCE env (see ADR-088). Composes the
+# shared OCI RoCE env with gb200-env.yaml, rather than reusing the GB300 arm's
+# board-specific tuning. trainer.env carries the GID index for the MPI
+# launcher, which initializes UCX from its container env, not from the mpirun
+# -x args it passes to the ranks.
+# oci-gb200-roce-env.yaml is a delta over oci-roce-env.yaml, so both are
+# listed under env; the UCX variable comes from the delta and the NCCL one from
+# the shared profile, with no name set twice.
+- when:
+    platform:
+      equals: oci
+    gpuArchitecture:
+      equals: gb200
+  dependencies:
+{{ lib "deps/oci-mlnxnics-comm.yaml" . | indent 2 }}
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          trainer:
+            env:
+{{ lib "nccl/oci-roce-env.yaml" . | indent 12 }}
+{{ lib "nccl/oci-gb200-roce-env.yaml" . | indent 12 }}
+            args:
+{{ lib "nccl/oci-roce-mpirun-args.yaml" . | indent 12 }}
+{{ lib "nccl/oci-roce-env.yaml" . | toMpiArgs | indent 12 }}
+{{ lib "nccl/gb200-env.yaml" . | toMpiArgs | indent 12 }}
+{{ lib "nccl/oci-gb200-roce-env.yaml" . | toMpiArgs | indent 12 }}
+            - /usr/local/bin/alltoall_perf_mpi
+            - -d
+            - uint8
+{{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
 # --- OCI + GB300 (RoCE) ---
 # Must come AFTER the GB200/GB300 base block and AWS+GB300 so this override's
 # trainer.args (atomic replacement) wins. Adds SR-IOV NIC resources via
 # oci-mlnxnics-comm.yaml and sets OCI-specific GID index + MNNVL env vars.
-# trainer.env carries UCX_IB_GID_INDEX for the MPI launcher (rank 0), which
-# initializes UCX from its container env, not from mpirun -x args.
+# trainer.env carries UCX_IB_GID_INDEX for the MPI launcher, which initializes
+# UCX from its container env, not from the mpirun -x args it passes to ranks.
 - when:
     platform:
       equals: oci
@@ -630,3 +664,7 @@ overrides:
       minGroupSize: {{ .MinGroupSize }}
       topologyKey: topology.nks.nscale.com/accelerator-domain
 {{- end }}
+# --- Opt-in host RDMA device access (rdmaDeviceAccess: hostPath; ADR-088) ---
+# Renders nothing unless the option is set. Last in the list so the privileged
+# flag and the /dev/infiniband mount survive every platform patch above.
+{{ lib "overrides/hostpath-rdma.yaml" . }}
