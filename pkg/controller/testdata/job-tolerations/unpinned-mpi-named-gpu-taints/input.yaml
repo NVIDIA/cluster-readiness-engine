@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The case ADR-023's rationale no longer covers. It justified the blanket
+# Operator: Exists on the grounds that "workloads are already pinned to
+# specific nodes via NodeAffinity"; Unpinned removes the pin, so a blanket
+# would let the job onto any tainted node with free GPUs.
+#
+# What replaces it is a named set, not an empty one. A launcher tolerating
+# nothing never schedules on a tainted GPU fleet, and that failure is harder to
+# diagnose than the one it prevents: the pods sit Pending with no event naming
+# a toleration. The two keys here are the only ones that appear across every
+# runtime patch in pkg/catalog/entries/_lib/deps/.
+unpinned: true
+hasLauncher: true

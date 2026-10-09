@@ -1,0 +1,12 @@
+{
+  "live": [
+    "node-a",
+    "node-b",
+    "node-c"
+  ],
+  "placed": [
+    "node-a",
+    "node-b",
+    "node-c"
+  ]
+}

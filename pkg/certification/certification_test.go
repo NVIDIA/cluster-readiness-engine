@@ -42,6 +42,7 @@ const (
 	testCategoryFlag          = "--category"
 	testCertTimeoutCert       = "timeout-cert"
 	testCertNamespace         = "test-ns"
+	testStartupStallFlag      = "--startup-stall-timeout-seconds"
 )
 
 func newCertificationFakeClient(t testing.TB, objects ...client.Object) client.WithWatch {
@@ -130,7 +131,7 @@ func TestCertificationRender(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		workflows, err := renderCertification(cert, "", "", nil)
+		workflows, err := renderCertification(cert, "", "", nil, "")
 		if err != nil {
 			return err
 		}
@@ -213,7 +214,7 @@ func TestCertificationRenderErrors(t *testing.T) {
 		if readErr != nil {
 			err = readErr
 		} else {
-			_, err = renderCertification(cert, "", "", nil)
+			_, err = renderCertification(cert, "", "", nil, "")
 		}
 
 		type result struct {
@@ -395,8 +396,7 @@ func TestPlatformToProviderID(t *testing.T) {
 // an invalid name must fail with the full list of valid names, and every name
 // platform detection can return must be accepted. For accepted platforms the
 // case also records what detection reports for the synthetic render node,
-// which is what override matching actually sees (nscale, for example, is only
-// detected when the node carries the nscale.com/rdmashare allocatable).
+// which is what override matching actually sees.
 // --gpu-arch is validated the same way against the known architectures.
 func TestRenderPlatformFlag(t *testing.T) {
 	p := testutil.TestCaseParser{
@@ -830,6 +830,44 @@ func TestNewRunCommandValidation(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "either --cert-file or at least one --category")
 	})
+
+	t.Run("zero startup-stall window follows omitted input validation", func(t *testing.T) {
+		omitted := newRunCommand("dev")
+		omitted.SetArgs(nil)
+		omittedErr := omitted.Execute()
+		require.Error(t, omittedErr)
+
+		explicitZero := newRunCommand("dev")
+		explicitZero.SetArgs([]string{testStartupStallFlag, "0"})
+		zeroErr := explicitZero.Execute()
+		require.Error(t, zeroErr)
+		assert.Equal(t, omittedErr.Error(), zeroErr.Error())
+	})
+
+	t.Run("negative startup-stall window fails before missing category", func(t *testing.T) {
+		cmd := newRunCommand("dev")
+		cmd.SetArgs([]string{testStartupStallFlag, "-1"})
+		err := cmd.Execute()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), testStartupStallFlag)
+		assert.NotContains(t, err.Error(), "--category")
+	})
+
+	for _, value := range []string{"0", "3600"} {
+		t.Run("cert-file conflicts with startup-stall window "+value, func(t *testing.T) {
+			cmd := newRunCommand("dev")
+			cmd.SetArgs([]string{
+				"--cert-file", filepath.Join(t.TempDir(), "missing.yaml"),
+				testStartupStallFlag, value,
+			})
+			err := cmd.Execute()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "--cert-file")
+			assert.Contains(t, err.Error(), testStartupStallFlag)
+			var pathErr *os.PathError
+			assert.False(t, errors.As(err, &pathErr), "conflicting flags must fail before reading the file")
+		})
+	}
 
 	t.Run("setup wait cleanup are independent flags", func(t *testing.T) {
 		cmd := newRunCommand("dev")

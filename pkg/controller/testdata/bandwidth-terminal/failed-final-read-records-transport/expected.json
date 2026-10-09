@@ -1,0 +1,29 @@
+{
+  "requeue": false,
+  "conditions": [
+    {
+      "type": "Measuring",
+      "status": "False",
+      "reason": "JobFailed",
+      "message": "Job failed"
+    },
+    {
+      "type": "Complete",
+      "status": "True",
+      "reason": "JobFailed",
+      "message": "Job failed"
+    }
+  ],
+  "results": [
+    {
+      "sizeBytes": 8,
+      "algBW": "0.00",
+      "busBW": "0.00",
+      "samples": 1
+    }
+  ],
+  "transport": [
+    "Socket"
+  ],
+  "completionTime": "2026-09-30T10:05:00Z"
+}

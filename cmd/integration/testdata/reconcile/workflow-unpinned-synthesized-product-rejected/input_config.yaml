@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# expectAbsent is what makes the refusal meaningful. Collecting only the failed
+# Workflow would pass just as well if a Job had been created and then abandoned,
+# and a Job that exists with no architecture constraint is precisely the outcome
+# being prevented: its pods would be free to land on the H100 node the run
+# excluded.
+#
+# The golden also records the coverage fields. excludedNodes and exclusionReason
+# must survive onto the terminal status, because discoverAndPartition writes them
+# onto the in-memory orchestration status and then fails, and nothing recomputes
+# them once the Workflow is terminal. Reaching the refusal before that assignment
+# would leave a reader of a failed DRA run unable to see which node was dropped.
+waitFor:
+  kind: Workflow
+  name: dra-unpinned
+  namespace: default
+  condition: Failed
+  reason: PartitionError
+collect:
+  - kind: Workflow
+    name: dra-unpinned
+    namespace: default
+expectAbsent:
+  - kind: Job
+    name: dra-unpinned-job
+    namespace: default

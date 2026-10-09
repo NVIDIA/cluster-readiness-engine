@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Unpinned on a DRA-only fleet that is uniform: discovery excluded nothing for
+# architecture, so every node the scheduler can reach runs the same GPUs. The
+# term is dropped rather than refused, because with no wrong architecture to
+# land on there is nothing for it to prevent.
+#
+# Refusing here instead would make Unpinned unusable on the ordinary DRA-only
+# cluster, which is the opposite of the point.
+placement: Unpinned
+gpuProducts: ["NVIDIA-GB300"]
+synthesizedProducts: ["dra-node-01", "dra-node-02"]
+archExcluded: []

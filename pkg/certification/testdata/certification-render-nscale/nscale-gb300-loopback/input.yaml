@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# GB300 loopback: Nscale claims coexist with the ComputeDomain channel claim,
+# env replaced, tolerate-everything toleration restored.
+platform: nscale
+gpuArch: gb300

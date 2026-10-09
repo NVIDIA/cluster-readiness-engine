@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# intra-rack and diagnose test scales on GB300: both topology keys must be
+# replaced by topology.nks.nscale.com/accelerator-domain (strictDomain kept)
+# while the Nscale and ComputeDomain claims coexist.
+platform: nscale
+gpuArch: gb300

@@ -138,6 +138,11 @@ func (in *BandwidthMeasurementStatus) DeepCopyInto(out *BandwidthMeasurementStat
 		*out = make([]BandwidthResult, len(*in))
 		copy(*out, *in)
 	}
+	if in.Transport != nil {
+		in, out := &in.Transport, &out.Transport
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.StartTime != nil {
 		in, out := &in.StartTime, &out.StartTime
 		*out = (*in).DeepCopy()
@@ -215,6 +220,11 @@ func (in *CategoryOptions) DeepCopyInto(out *CategoryOptions) {
 	}
 	if in.ExitDurationMins != nil {
 		in, out := &in.ExitDurationMins, &out.ExitDurationMins
+		*out = new(int32)
+		**out = **in
+	}
+	if in.StartupStallTimeoutSeconds != nil {
+		in, out := &in.StartupStallTimeoutSeconds, &out.StartupStallTimeoutSeconds
 		*out = new(int32)
 		**out = **in
 	}
@@ -1295,6 +1305,11 @@ func (in *JobSpec) DeepCopyInto(out *JobSpec) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.SchedulingStallGraceSeconds != nil {
+		in, out := &in.SchedulingStallGraceSeconds, &out.SchedulingStallGraceSeconds
+		*out = new(int32)
+		**out = **in
+	}
 	if in.GoodputMeasurement != nil {
 		in, out := &in.GoodputMeasurement, &out.GoodputMeasurement
 		*out = new(GoodputMeasurementConfig)
@@ -1351,6 +1366,14 @@ func (in *JobStatus) DeepCopyInto(out *JobStatus) {
 	}
 	if in.WorkloadStartTime != nil {
 		in, out := &in.WorkloadStartTime, &out.WorkloadStartTime
+		*out = (*in).DeepCopy()
+	}
+	if in.SchedulingBlockedSince != nil {
+		in, out := &in.SchedulingBlockedSince, &out.SchedulingBlockedSince
+		*out = (*in).DeepCopy()
+	}
+	if in.SchedulingResumedTime != nil {
+		in, out := &in.SchedulingResumedTime, &out.SchedulingResumedTime
 		*out = (*in).DeepCopy()
 	}
 	if in.FailureLog != nil {
@@ -1427,6 +1450,11 @@ func (in *LogPatternSet) DeepCopyInto(out *LogPatternSet) {
 	}
 	if in.BandwidthResult != nil {
 		in, out := &in.BandwidthResult, &out.BandwidthResult
+		*out = new(EventPattern)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.NetworkTransport != nil {
+		in, out := &in.NetworkTransport, &out.NetworkTransport
 		*out = new(EventPattern)
 		(*in).DeepCopyInto(*out)
 	}
@@ -1610,6 +1638,16 @@ func (in *OrchestrationOverrideSpec) DeepCopyInto(out *OrchestrationOverrideSpec
 		*out = new(TopologySpec)
 		**out = **in
 	}
+	if in.Placement != nil {
+		in, out := &in.Placement, &out.Placement
+		*out = new(string)
+		**out = **in
+	}
+	if in.Diagnose != nil {
+		in, out := &in.Diagnose, &out.Diagnose
+		*out = new(DiagnoseSpec)
+		**out = **in
+	}
 	if in.Execution != nil {
 		in, out := &in.Execution, &out.Execution
 		*out = new(ExecutionSpec)
@@ -1672,6 +1710,11 @@ func (in *OrchestrationStatus) DeepCopyInto(out *OrchestrationStatus) {
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
+	}
+	if in.GPUProducts != nil {
+		in, out := &in.GPUProducts, &out.GPUProducts
+		*out = make([]string, len(*in))
+		copy(*out, *in)
 	}
 	if in.ExcludedNodes != nil {
 		in, out := &in.ExcludedNodes, &out.ExcludedNodes

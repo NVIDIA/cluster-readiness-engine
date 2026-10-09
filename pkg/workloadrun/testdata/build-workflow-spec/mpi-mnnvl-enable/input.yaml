@@ -1,8 +1,8 @@
 # Regression test for issue #126 (WR-004).
 #
 # When enableMNNVL is true, the CLI MPI mpirun args must include
-# -x NCCL_MNNVL_ENABLE=1 after -x NCCL_DEBUG=INFO, matching the controller
-# behaviour in pkg/controller/workloadrun_controller.go.
+# -x NCCL_MNNVL_ENABLE=1, matching the controller behaviour in
+# pkg/controller/workloadrun_controller.go.
 run:
   metadata:
     name: wr-mpi-mnnvl

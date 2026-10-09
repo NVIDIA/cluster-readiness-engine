@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# strictDomain is the one topology field a user actually asks for: it is set by
+# testScale: intra-rack and means "one job per domain". That is a request for a
+# job count, and it contradicts Unpinned's exactly-one directly. Rejecting the
+# narrow field is what keeps the broad one (topologyKey) usable.
+placement: Unpinned
+iterations: 1
+topology:
+  topologyKey: nvidia.com/gpu.clique
+  strictDomain: true

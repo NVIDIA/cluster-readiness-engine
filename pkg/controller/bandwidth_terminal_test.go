@@ -36,7 +36,9 @@ type bandwidthTerminalInput struct {
 	// limit, as a log larger than one page does.
 	LogTruncated bool                            `yaml:"logTruncated"`
 	Provisional  []nvcrev1alpha1.BandwidthResult `yaml:"provisional"`
-	PendingSince string                          `yaml:"pendingSince"`
+	// ProvisionalTransport seeds the network names a running sample recorded.
+	ProvisionalTransport []string `yaml:"provisionalTransport"`
+	PendingSince         string   `yaml:"pendingSince"`
 	// PendingForSeconds seeds the failed final read that many seconds before
 	// the reconcile, for cases that sit on either side of the grace period.
 	PendingForSeconds int `yaml:"pendingForSeconds"`
@@ -52,6 +54,7 @@ type bandwidthTerminalOutput struct {
 	Requeue        bool                            `json:"requeue"`
 	Conditions     []conditionOut                  `json:"conditions"`
 	Results        []nvcrev1alpha1.BandwidthResult `json:"results,omitempty"`
+	Transport      []string                        `json:"transport,omitempty"`
 	CompletionTime string                          `json:"completionTime,omitempty"`
 }
 
@@ -128,7 +131,9 @@ func TestBandwidthTerminal(t *testing.T) {
 		if err := c.Get(context.Background(), key, got); err != nil {
 			return err
 		}
-		out := bandwidthTerminalOutput{Requeue: res.RequeueAfter > 0, Results: got.Status.Results}
+		out := bandwidthTerminalOutput{
+			Requeue: res.RequeueAfter > 0, Results: got.Status.Results, Transport: got.Status.Transport,
+		}
 		for _, cond := range got.Status.Conditions {
 			out.Conditions = append(out.Conditions, conditionOut{
 				Type: cond.Type, Status: string(cond.Status), Reason: cond.Reason, Message: cond.Message,
@@ -160,7 +165,9 @@ func bandwidthTerminalMeasurement(in bandwidthTerminalInput) (*nvcrev1alpha1.Ban
 			JobRef:        corev1.TypedLocalObjectReference{Name: "j"},
 			LogProfileRef: "nccl-bandwidth",
 		},
-		Status: nvcrev1alpha1.BandwidthMeasurementStatus{Results: in.Provisional},
+		Status: nvcrev1alpha1.BandwidthMeasurementStatus{
+			Results: in.Provisional, Transport: in.ProvisionalTransport,
+		},
 	}
 	if in.MeasuredJobUID != "" {
 		m.Annotations = map[string]string{annotationJobUID: in.MeasuredJobUID}
@@ -220,6 +227,9 @@ func ncclBandwidthProfile() *nvcrev1alpha1.LogProfile {
 			Patterns: nvcrev1alpha1.LogPatternSet{
 				BandwidthResult: &nvcrev1alpha1.EventPattern{
 					Regex: `^\s*(?P<size>\d+)\s+\d+\s+\w+\s+\w+\s+-?\d+\s+[\d.]+\s+(?P<algBW>[\d.]+)\s+(?P<busBW>[\d.]+)`,
+				},
+				NetworkTransport: &nvcrev1alpha1.EventPattern{
+					Regex: `NCCL INFO Using network (?P<transport>.+)`,
 				},
 			},
 		},

@@ -1,0 +1,31 @@
+{
+  "hostnames": [
+    "node-x",
+    "node-y"
+  ],
+  "affinity": {
+    "requiredDuringSchedulingIgnoredDuringExecution": {
+      "nodeSelectorTerms": [
+        {
+          "matchExpressions": [
+            {
+              "key": "kubernetes.io/hostname",
+              "operator": "In",
+              "values": [
+                "node-x",
+                "node-y"
+              ]
+            },
+            {
+              "key": "nvidia.com/gpu.present",
+              "operator": "In",
+              "values": [
+                "true"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

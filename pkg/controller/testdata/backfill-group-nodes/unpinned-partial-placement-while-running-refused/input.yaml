@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# One pod of a 2-node job is bound and the other is not yet. The group records
+# nothing.
+#
+# This is the gate that makes a recorded list mean the whole group. The write
+# fires once, because backfillGroupNodes only writes to an empty list, so a
+# single-node list persisted here would be read as the complete placement for
+# the rest of the run: the group would report having exercised one node, the
+# topology gauges would cover one domain, and a failure would be attributed to
+# one machine out of two. Waiting costs one reconcile.
+placement: Unpinned
+nodesPerJob: 2
+terminal: false
+pods:
+  - {name: w-0, nodeName: node-a, phase: Running}
+  - {name: w-1, nodeName: "", phase: Pending}

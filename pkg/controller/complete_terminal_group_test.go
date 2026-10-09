@@ -34,6 +34,13 @@ import (
 // while their pods drain, and without the exclusion that re-entry would
 // silently re-enable retry of timeouts.
 //
+// The reset also has to clear an unpinned group's recorded placement, which is
+// why groupNodes is in the output. The next job is one the scheduler places
+// afresh, and the backfill only writes to an empty list, so a list left behind
+// here is never corrected: the group would report having run wherever the
+// previous attempt landed, and the group-nodes annotation would attribute a
+// later failure to those same nodes.
+//
 // The Job's WorkloadRef points at a ConfigMap stand-in so "the workload was
 // deleted even while the group is held draining" is observable through the
 // fake client.
@@ -48,6 +55,7 @@ func TestCompleteTerminalGroup(t *testing.T) {
 			GroupRetries      int    `yaml:"groupRetries"`
 			JobFailedReason   string `yaml:"jobFailedReason"`
 			JobSucceeded      bool   `yaml:"jobSucceeded"`
+			Placement         string `yaml:"placement"`
 			Pods              []struct {
 				Name  string `yaml:"name"`
 				Phase string `yaml:"phase"`
@@ -89,18 +97,19 @@ func TestCompleteTerminalGroup(t *testing.T) {
 			Name: "wf", Namespace: ns,
 			Spec: nvcrev1alpha1.WorkflowSpec{
 				Orchestration: nvcrev1alpha1.OrchestrationSpec{
+					Placement: input.Placement,
 					Execution: nvcrev1alpha1.ExecutionSpec{RetryFailedGroups: input.RetryFailedGroups},
 				},
 			},
 			Status: nvcrev1alpha1.WorkflowStatus{
 				DependencyRefs: []nvcrev1alpha1.DependencyResourceRef{{
 					APIVersion: "v1", Kind: kindConfigMap, Name: "dep-cm", Namespace: ns,
-					Scope: labelJob, GroupName: "group-0", Iteration: 1,
+					Scope: labelJob, GroupName: testGroupZero, Iteration: 1,
 				}},
 				Orchestration: &nvcrev1alpha1.OrchestrationStatus{
 					TotalNodes: 1, NodesPerJob: 1, TotalGroups: 1, CurrentIteration: 1,
 					Groups: []nvcrev1alpha1.GroupStatus{{
-						Name:    "group-0",
+						Name:    testGroupZero,
 						Nodes:   []string{testNodeA},
 						Phase:   nvcrev1alpha1.GroupRunning,
 						Retries: input.GroupRetries,
@@ -186,6 +195,7 @@ func TestCompleteTerminalGroup(t *testing.T) {
 			Retries           int      `json:"retries"`
 			HasJobRef         bool     `json:"hasJobRef"`
 			HasCompletionTime bool     `json:"hasCompletionTime"`
+			GroupNodes        []string `json:"groupNodes"`
 			DependencyRefs    []string `json:"dependencyRefs"`
 			DepExists         bool     `json:"depConfigMapExists"`
 			WorkloadExists    bool     `json:"workloadExists"`
@@ -196,6 +206,7 @@ func TestCompleteTerminalGroup(t *testing.T) {
 			Retries:           g.Retries,
 			HasJobRef:         g.JobRef != nil,
 			HasCompletionTime: g.CompletionTime != nil,
+			GroupNodes:        g.Nodes,
 			DependencyRefs:    deps,
 			DepExists:         depExists,
 			WorkloadExists:    workloadExists,

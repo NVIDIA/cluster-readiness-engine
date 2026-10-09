@@ -1,0 +1,107 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An Unpinned Job deleted mid-run, with only part of its placement bound.
+#
+# Review found that the DeletionTimestamp branch attributed the failure only
+# after the pod-drain barrier had passed, and by then the job's Running pods
+# are gone, so a job deleted mid-run failed with nodes: []. The branch now
+# records placement before it waits on the drain. This fixture pins that order
+# with the controller, not a direct call: a 2-node job with one pod bound, the
+# Job deleted while that pod is Running, and the pod removed from the Job's
+# label only after the Workflow has recorded the node.
+#
+# The harness does what the cluster would: the deletion is a real Delete, the
+# Job controller's finalizer holds while the pod is Running, and the pod is
+# detached by dropping the nvcre.nvidia.com/job label, which is what its GC
+# does once the drain completes. If the backfill ran after the drain, the
+# groupNodesRecorded wait in input_config.yaml would never be satisfied.
+#
+# Node names are lostjob-node-NN rather than gpu-node-NN: nodes are
+# cluster-scoped, and these names cannot collide with the fleet other cases
+# create under the generic names.
+apiVersion: v1
+kind: Node
+metadata:
+  name: lostjob-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    kubernetes.io/hostname: lostjob-node-01
+spec:
+  providerID: "aws://us-east-1a/i-0d01"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: lostjob-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    kubernetes.io/hostname: lostjob-node-02
+spec:
+  providerID: "aws://us-east-1a/i-0d02"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: lostjob-node-03
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    kubernetes.io/hostname: lostjob-node-03
+spec:
+  providerID: "aws://us-east-1a/i-0d03"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: unpin-lostjob
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    placement: Unpinned
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+---
+# One of the two workers is bound; the other never scheduled. While the Job is
+# running this partial placement is deliberately not recorded (1 of 2), which
+# is what makes the record after deletion unambiguous.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unpin-lostjob-worker-0
+  namespace: default
+  labels:
+    nvcre.nvidia.com/job: unpin-lostjob-job
+spec:
+  nodeName: lostjob-node-02
+  containers:
+    - name: node
+      image: test-image:latest
+status:
+  phase: Running

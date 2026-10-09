@@ -92,7 +92,7 @@ func TestCertificationRenderGangScheduler(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		workflows, err := renderCertification(cert, cfg.Platform, "", nil)
+		workflows, err := renderCertification(cert, cfg.Platform, "", nil, "")
 		if err != nil {
 			return err
 		}

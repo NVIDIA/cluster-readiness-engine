@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The common collision. A user who pins nvidia.com/gpu.product in their target
+# produces exactly the requirement the gpuProducts term adds, so without the
+# dedupe the pod spec carries the same expression twice. It is harmless to the
+# scheduler and pure noise in every rendered manifest, which is a bad trade.
+#
+# This is the real shape of cmd/integration/testdata/reconcile/certification-aws-gb200-n5.
+placement: ""
+groupNodes: ["node-a"]
+target:
+  nodeSelector:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+gpuProducts: ["NVIDIA-GB200-NVL72"]

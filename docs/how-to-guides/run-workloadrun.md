@@ -44,6 +44,47 @@ spec:
       kubernetes.io/hostname: gpu-node-01
 ```
 
+The target is carried onto every workload pod as a required node affinity, so the scheduler enforces it at bind time, not only when NVCRE picks nodes.
+
+## Running one job instead of a fleet-wide sweep
+
+By default `numNodes` is a group size. NVCRE partitions every node matching the target into groups of that size and runs one job per group, so `numNodes: 2` against 18 eligible nodes runs nine jobs concurrently.
+
+Set `placement: Unpinned` to run a single job of exactly `numNodes` nodes:
+
+```yaml
+spec:
+  numNodes: 8
+  orchestration:
+    placement: Unpinned
+```
+
+The other target nodes go untested, which is the point. Use this when you want to exercise a workload once rather than certify a fleet, or when you do not want NVCRE choosing which machines to use: under `Unpinned` no `kubernetes.io/hostname` affinity is set, so the scheduler places the pods anywhere in the target.
+
+The requested size is honored exactly or the run fails saying why. It is never clamped to fit the fleet.
+
+### Confining an unpinned job to one topology domain
+
+`orchestration.topology.topologyKey` only drives partitioning, so under `Unpinned` it does nothing. To keep a single job inside one domain, name the domain label in the target instead, which does reach the pods:
+
+```yaml
+spec:
+  target:
+    matchExpressions:
+      - key: nvidia.com/gpu.clique
+        operator: In
+        values: ["clique-0"]
+  numNodes: 8
+  orchestration:
+    placement: Unpinned
+```
+
+### Use a gang scheduler for multi-node unpinned jobs
+
+`Pinned` jobs name their nodes, so the group lands on the machines NVCRE chose or not at all. `Unpinned` hands placement to the scheduler, so on a contended cluster some pods can bind while the rest sit Pending indefinitely. Set [`spec.gangScheduler`](#gang-scheduling) whenever `numNodes > 1` under `Unpinned` so the gang schedules whole or not at all.
+
+NVCRE never reports a half-placed job as a complete one, so this costs you a stalled job rather than a false pass.
+
 ## Environment variables
 
 `spec.env` sets container-level environment on the workload containers for
@@ -58,12 +99,16 @@ spec:
       value: TRACE
 ```
 
-One caveat for MPI runs: the container env reaches `mpirun` on the launcher
-and the `sshd` process on each worker, but `mpirun` starts the ranks on
-workers through SSH, and `sshd` gives every session a fresh, sanitized
-environment — so the MPI ranks themselves may not inherit `spec.env`. A
-variable the ranks must see should be passed as `-x NAME=value` in
-`spec.framework.mpi.mpiArgs`, which forwards it through `mpirun` itself.
+For MPI runs, `mpirun` starts the ranks on workers through SSH, and `sshd`
+gives every session a fresh, sanitized environment, so the ranks do not
+inherit container env. The controller therefore also forwards the merged env
+to the ranks with `mpirun -x NAME=value`: the full set of auto-detected NCCL
+defaults plus `spec.env`, except names a platform override already forwards
+(the platform value then replaces the default). A `valueFrom` variable is
+forwarded as `-x NAME`, which `mpirun` reads from the launcher container's
+env. At the ranks, a `spec.env` value overrides both the defaults and a
+platform-forwarded value, and a `-x NAME=value` you pass in
+`spec.framework.mpi.mpiArgs` overrides `spec.env`.
 
 ## With bandwidth measurement
 

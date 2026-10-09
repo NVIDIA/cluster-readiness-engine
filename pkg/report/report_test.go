@@ -51,6 +51,8 @@ const (
 	testVariantNCCLAllReduce = "nccl-all-reduce"
 
 	testTFLOPs800_5 = "800.5"
+
+	testTransportSocket = "Socket"
 )
 
 func TestHumanSize(t *testing.T) {
@@ -339,9 +341,10 @@ func TestPrintReport(t *testing.T) {
 				},
 			},
 			{
-				Domain:  testDomainCommunication,
-				Variant: testVariantNCCLAllReduce,
-				Status:  statusSucceeded,
+				Domain:    testDomainCommunication,
+				Variant:   testVariantNCCLAllReduce,
+				Status:    statusSucceeded,
+				Transport: []string{testTransportSocket},
 				Bandwidth: []BandwidthRow{
 					{Size: "1 MB", AlgBW: "10.5 GB/s", BusBW: "9.8 GB/s", Samples: 100},
 				},
@@ -377,6 +380,7 @@ func TestPrintReport(t *testing.T) {
 
 	// Check bandwidth table.
 	assert.Contains(t, output, "Bandwidth:")
+	assert.Contains(t, output, "Transport: "+testTransportSocket)
 	assert.Contains(t, output, "1 MB")
 	assert.Contains(t, output, "10.5 GB/s")
 
@@ -404,6 +408,32 @@ func TestPrintReportFailed(t *testing.T) {
 	assert.Contains(t, output, "- node-1")
 	assert.Contains(t, output, "- node-2")
 	assert.Contains(t, output, "0/1 passed")
+}
+
+// TestPrintReportBlockedDetail pins that relayed scheduler text on a Running
+// category is sanitized and wrapped to the card width (ADR-083): any principal
+// that can create Events in the namespace controls that text.
+func TestPrintReportBlockedDetail(t *testing.T) {
+	report := &CertReport{
+		Name: "blocked-cert",
+		Categories: []CategoryReport{{
+			Domain: testDomainTraining, Variant: "v1", Status: statusRunning,
+			StatusDetail: "job j scheduling blocked: 0/3 nodes are available:\n\x1b[31m" +
+				strings.Repeat("Insufficient nvidia.com/gpu ", 6),
+		}},
+		Result: "RUNNING",
+	}
+
+	var buf bytes.Buffer
+	Print(&buf, report)
+	output := buf.String()
+
+	assert.Contains(t, output, "Blocked:   job j scheduling blocked")
+	assert.Contains(t, output, `\x1b[31m`)
+	assert.NotContains(t, output, "\x1b[31m")
+	for line := range strings.SplitSeq(strings.TrimSuffix(output, "\n"), "\n") {
+		assert.LessOrEqual(t, displayWidth(line), boxWidth)
+	}
 }
 
 // TestPrintFailureLog covers captured diagnostics and timeout-only reasons.
@@ -633,9 +663,10 @@ func TestPrintCategoryCardTraining(t *testing.T) {
 
 func TestPrintCategoryCardCommunication(t *testing.T) {
 	cat := &CategoryReport{
-		Domain:  testDomainCommunication,
-		Variant: testVariantNCCLAllReduce,
-		Status:  statusSucceeded,
+		Domain:    testDomainCommunication,
+		Variant:   testVariantNCCLAllReduce,
+		Status:    statusSucceeded,
+		Transport: []string{testTransportSocket},
 		Bandwidth: []BandwidthRow{
 			{Size: "1 KB", AlgBW: "0.5 GB/s", BusBW: "0.4 GB/s", Samples: 50},
 			{Size: "1 MB", AlgBW: "10.5 GB/s", BusBW: "9.8 GB/s", Samples: 100},
@@ -647,6 +678,7 @@ func TestPrintCategoryCardCommunication(t *testing.T) {
 	output := buf.String()
 
 	assert.Contains(t, output, "communication/nccl-all-reduce")
+	assert.Contains(t, output, "Transport: "+testTransportSocket)
 	assert.Contains(t, output, "Bandwidth:")
 	assert.Contains(t, output, "Size")
 	assert.Contains(t, output, "AlgBW")
@@ -1087,6 +1119,13 @@ func TestDetectTestScale(t *testing.T) {
 			} `yaml:"topology"`
 			NodesPerJob        int    `yaml:"nodesPerJob"`
 			RequestedTestScale string `yaml:"requestedTestScale"`
+			// Placement goes on the status, which is where the resolved
+			// post-override value lives and what the function prefers.
+			Placement string `yaml:"placement"`
+			// SpecPlacement goes on the spec instead, which is the only thing a
+			// report generated before the first reconcile has to go on. Kept as
+			// a separate input so a case can exercise one arm without the other.
+			SpecPlacement string `yaml:"specPlacement"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -1104,9 +1143,11 @@ func TestDetectTestScale(t *testing.T) {
 				StrictDomain: input.Topology.StrictDomain,
 			}
 		}
-		if input.NodesPerJob > 0 {
+		wf.Spec.Orchestration.Placement = input.SpecPlacement
+		if input.NodesPerJob > 0 || input.Placement != "" {
 			wf.Status.Orchestration = &nvcrev1alpha1.OrchestrationStatus{
 				NodesPerJob: input.NodesPerJob,
+				Placement:   input.Placement,
 			}
 		}
 
@@ -1234,6 +1275,7 @@ func TestBuildGroupBandwidthRowsUnsorted(t *testing.T) {
 				},
 			},
 			Status: nvcrev1alpha1.BandwidthMeasurementStatus{
+				Transport: []string{testTransportSocket},
 				Results: []nvcrev1alpha1.BandwidthResult{
 					// Largest size first — last entry is NOT the peak.
 					{SizeBytes: 17179869184, BusBW: testBusBW350_0},
@@ -1246,6 +1288,7 @@ func TestBuildGroupBandwidthRowsUnsorted(t *testing.T) {
 	rows := buildGroupBandwidthRows(orch, measurements, "")
 	require.Len(t, rows, 1)
 	assert.Equal(t, "350.0 GB/s", rows[0].BusBW)
+	assert.Equal(t, []string{testTransportSocket}, rows[0].Transport)
 }
 
 // fmtDuration formats seconds as "Xm Xs" or "Xs".

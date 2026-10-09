@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Nscale NKS B200 running communication/nccl-loopback (ADR-085): the only
+# Nscale path where the IB env goes through trainer.env list replacement and
+# the tolerate-everything toleration is restored by a trailing runtime patch
+# after the Nscale fragment replaced it. Two nodes give two per-node groups.
+apiVersion: v1
+kind: Node
+metadata:
+  name: nscale-b200-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: nscale-b200-node-01
+    kubernetes.io/arch: amd64
+spec:
+  providerID: "nscale://instance/00000000-0000-0000-0000-000000000001"
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: nscale-b200-node-01-gpu
+spec:
+  driver: gpu.nvidia.com
+  pool:
+    name: nscale-b200-node-01
+    generation: 1
+    resourceSliceCount: 1
+  nodeName: nscale-b200-node-01
+  devices:
+  - name: gpu-0
+    attributes:
+      productName:
+        string: NVIDIA-B200
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: nscale-b200-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: nscale-b200-node-02
+    kubernetes.io/arch: amd64
+spec:
+  providerID: "nscale://instance/00000000-0000-0000-0000-000000000002"
+---
+apiVersion: resource.k8s.io/v1
+kind: ResourceSlice
+metadata:
+  name: nscale-b200-node-02-gpu
+spec:
+  driver: gpu.nvidia.com
+  pool:
+    name: nscale-b200-node-02
+    generation: 1
+    resourceSliceCount: 1
+  nodeName: nscale-b200-node-02
+  devices:
+  - name: gpu-0
+    attributes:
+      productName:
+        string: NVIDIA-B200
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: nscale-b2-lb
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-loopback

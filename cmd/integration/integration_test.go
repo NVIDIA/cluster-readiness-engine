@@ -140,6 +140,14 @@ func TestIntegration(t *testing.T) {
 				}
 				cancelPatch()
 			}
+			for _, del := range step.Deletes {
+				ctx, cancelDelete := contextForDeadline(deadline)
+				obj := getObject(ctx, tt, suite.Client, del)
+				require.NotNil(tt, obj, "step delete: %s/%s not found", del.Kind, del.Name)
+				require.NoError(tt, suite.Client.Delete(ctx, obj),
+					"step delete: failed to delete %s/%s", del.Kind, del.Name)
+				cancelDelete()
+			}
 		}
 		waitForCondition(tt, mgr.GetClient(), cfg, deadline)
 
@@ -580,11 +588,18 @@ func buildFakeLogFetcher(tc *testutil.TestCase) podlogs.PodLogFetcher {
 type conditionWait struct {
 	RestartCount    *int32 `json:"restartCount,omitempty"`
 	FailedNodeCount int    `json:"failedNodeCount,omitempty"`
-	Kind            string `json:"kind"`
-	Name            string `json:"name"`
-	Namespace       string `json:"namespace"`
-	Condition       string `json:"condition"`
-	Reason          string `json:"reason,omitempty"` // optional: wait for specific reason
+	// GroupNodesRecorded additionally requires every group in a Workflow's
+	// orchestration status to carry a non-empty node list. Under Unpinned
+	// placement the list starts empty and is backfilled from where the pods
+	// actually landed, on a later reconcile than the one that set the
+	// condition; a step that must observe the recorded placement before it
+	// changes the cluster waits on this rather than on the condition alone.
+	GroupNodesRecorded bool   `json:"groupNodesRecorded,omitempty"`
+	Kind               string `json:"kind"`
+	Name               string `json:"name"`
+	Namespace          string `json:"namespace"`
+	Condition          string `json:"condition"`
+	Reason             string `json:"reason,omitempty"` // optional: wait for specific reason
 }
 
 type eventTestStep struct {
@@ -594,6 +609,10 @@ type eventTestStep struct {
 		Status bool            `json:"status,omitempty"`
 		Patch  json.RawMessage `json:"patch"`
 	} `json:"patches"`
+	// Deletes removes objects once the step's wait is satisfied, after its
+	// patches. The manager keeps running, so controllers see the deletion as
+	// they would on a cluster: finalizers hold, drain barriers apply.
+	Deletes []collectSpec `json:"deletes,omitempty"`
 }
 
 type waitConfig struct {
@@ -808,6 +827,8 @@ func waitForCondition(t *testing.T, c client.Client, cfg waitConfig, deadline ti
 		Namespace: cfg.WaitFor.Namespace,
 	}
 	rejectUnknownKind(t, spec)
+	require.False(t, cfg.WaitFor.GroupNodesRecorded && spec.Kind != "Workflow",
+		"groupNodesRecorded is only honored on a Workflow wait, got %s/%s", spec.Kind, spec.Name)
 	require.Eventually(t, func() bool {
 		obj, err := readObject(ctx, c, spec)
 		if err != nil {
@@ -825,6 +846,9 @@ func waitForCondition(t *testing.T, c client.Client, cfg waitConfig, deadline ti
 			}
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
 		case *nvcrev1alpha1.Workflow:
+			if cfg.WaitFor.GroupNodesRecorded && !allGroupNodesRecorded(o) {
+				return false
+			}
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
 		case *nvcrev1alpha1.Certification:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
@@ -838,6 +862,20 @@ func waitForCondition(t *testing.T, c client.Client, cfg waitConfig, deadline ti
 		return false
 	}, timeout, interval, "timed out waiting for condition %s on %s/%s",
 		cfg.WaitFor.Condition, cfg.WaitFor.Kind, cfg.WaitFor.Name)
+}
+
+// allGroupNodesRecorded reports whether every orchestration group on the
+// Workflow has at least one node recorded. See conditionWait.GroupNodesRecorded.
+func allGroupNodesRecorded(w *nvcrev1alpha1.Workflow) bool {
+	if w.Status.Orchestration == nil || len(w.Status.Orchestration.Groups) == 0 {
+		return false
+	}
+	for _, g := range w.Status.Orchestration.Groups {
+		if len(g.Nodes) == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // deleteAfterWait deletes the specified resources while the manager is still running,
@@ -1397,6 +1435,12 @@ func sanitizeObject(obj client.Object) {
 		// A pending (e.g. suspended) workload must NOT have it.
 		if o.Status.WorkloadStartTime != nil {
 			o.Status.WorkloadStartTime = &metav1.Time{Time: time.Unix(0, 0).UTC()}
+		}
+		// schedulingBlockedSince is wall clock for the same reason; normalize
+		// to a fixed placeholder so goldens stay deterministic while still
+		// pinning whether a blocked episode is recorded (ADR-083).
+		if o.Status.SchedulingBlockedSince != nil {
+			o.Status.SchedulingBlockedSince = &metav1.Time{Time: time.Unix(0, 0).UTC()}
 		}
 	case *nvcrev1alpha1.Workflow:
 		clearConditionTimestamps(o.Status.Conditions)

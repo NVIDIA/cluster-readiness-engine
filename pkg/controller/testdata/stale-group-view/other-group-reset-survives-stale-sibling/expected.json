@@ -1,0 +1,19 @@
+{
+  "deferred": true,
+  "groups": [
+    {
+      "name": "group-0",
+      "livePhaseAfter": "Pending",
+      "liveJobRefAfter": "",
+      "liveRetriesAfter": 1,
+      "liveHasCompletionTime": false
+    },
+    {
+      "name": "group-1",
+      "livePhaseAfter": "Pending",
+      "liveJobRefAfter": "",
+      "liveRetriesAfter": 1,
+      "liveHasCompletionTime": false
+    }
+  ]
+}

@@ -149,10 +149,25 @@ type WorkloadOrchestration struct {
 	// testScale controls the node grouping strategy.
 	//   - "intra-node": each node tested independently (numNodes=1 per job)
 	//   - "intra-rack": one job per topology domain (nvidia.com/gpu.clique)
-	//   - "full-scale": all nodes in a single group (default)
+	//   - "full-scale" (default): every target node is covered by some job, in
+	//     groups of numNodes. To run a single job of numNodes and leave the rest
+	//     of the fleet untouched, set placement: Unpinned.
 	// +optional
 	// +kubebuilder:validation:Enum=intra-node;intra-rack;full-scale
 	TestScale string `json:"testScale,omitempty"`
+
+	// placement controls whether jobs are pinned to specific nodes.
+	//   - "Pinned" (default): every target node is partitioned into groups of
+	//     numNodes and each job is pinned to its group by hostname.
+	//   - "Unpinned": exactly one job of exactly numNodes nodes runs, no matter
+	//     how many nodes the target matches, with no hostname pinning. The
+	//     scheduler places the pods, constrained to the target by node affinity.
+	//
+	// Incompatible with testScale: intra-node and intra-rack, which ask for a
+	// different number of jobs. See ADR-089.
+	// +optional
+	// +kubebuilder:validation:Enum=Pinned;Unpinned
+	Placement string `json:"placement,omitempty"`
 
 	// repeatCount runs the entire orchestration N times. Default: 1.
 	// +optional

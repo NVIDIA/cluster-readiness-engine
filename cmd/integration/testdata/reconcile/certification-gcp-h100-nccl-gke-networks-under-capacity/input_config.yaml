@@ -15,10 +15,12 @@ collect:
     name: gcp-nc-gke-cap-communicat-1267e
     namespace: default
 events:
-  # Only the Normal WorkflowCreated event: detection succeeded on the capable
-  # nodes, so there is no GKENetworkDetection Warning.
+  # No GKENetworkDetection Warning: detection succeeded on the capable nodes.
+  # The fixture runs no nccl-tcpxo-installer pods, so plugin version detection
+  # warns, naming only the two capable nodes, not the under-capacity one.
   - involvedKind: Certification
     involvedName: gcp-nc-gke-cap
     namespace: default
     expect:
       - {type: Normal, reason: WorkflowCreated}
+      - {type: Warning, reason: TCPXOPluginDetection}

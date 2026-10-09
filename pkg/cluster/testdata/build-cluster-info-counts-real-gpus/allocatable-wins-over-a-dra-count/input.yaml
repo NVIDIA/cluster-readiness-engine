@@ -1,0 +1,9 @@
+# The allocatable is what the scheduler places nvidia.com/gpu requests
+# against, so it wins whenever the node advertises it.
+nodes:
+  - name: n0
+    count: 8
+    draCount: 4
+  - name: n1
+    count: -1
+    draCount: 8

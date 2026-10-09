@@ -120,10 +120,18 @@ type CategoryResources struct {
 // (or auto-select for nodesPerJob).
 type CategoryOptions struct {
 	// nodesPerJob is the number of nodes per job for multi-node workloads.
-	// When nil at both global and per-category level, the controller auto-selects:
+	//
+	// It is a per-job group size, not a total: a Certification always covers
+	// every node its target matches, so N matching nodes produce
+	// ceil(N/nodesPerJob) concurrent jobs. When nil at both global and
+	// per-category level, the controller auto-selects:
 	//   - Entries with per-node-count configs (training): largest config <= matching nodes.
 	//   - All other entries: all matching nodes.
 	// When set, clamped to min(nodesPerJob, matchingNodes).
+	//
+	// To run one job of a chosen size against part of a fleet, use a WorkloadRun
+	// with orchestration.placement: Unpinned. Certification has no such mode by
+	// design: a certification verdict covers everything it targeted. See ADR-089.
 	// +optional
 	// +kubebuilder:validation:Minimum=1
 	NodesPerJob *int32 `json:"nodesPerJob,omitempty"`
@@ -147,6 +155,18 @@ type CategoryOptions struct {
 	// +optional
 	// +kubebuilder:validation:Minimum=1
 	ExitDurationMins *int32 `json:"exitDurationMins,omitempty"`
+
+	// startupStallTimeoutSeconds optionally overrides the startup-stall window
+	// applied to this category's generated Job
+	// (Job.spec.startupStallTimeoutSeconds). It is the budget for the first
+	// parsed training step after the workload starts; when the window elapses
+	// with no parsed step, the Job fails with reason WorkloadStalled. The
+	// override only has an effect when the Job also sets stallMultiplier, which
+	// the training entries do (3). The catalog entry's value (1200 s for
+	// nemotron5-8b/56b) applies when unset.
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	StartupStallTimeoutSeconds *int32 `json:"startupStallTimeoutSeconds,omitempty"`
 
 	// gpusPerNode optionally overrides the number of GPUs per node used by catalog
 	// workloads. If not specified, the controller derives the default from the GPU
@@ -223,7 +243,14 @@ type CategoryOptions struct {
 	// platform overrides land the workers on an nccl-tests image that ships
 	// the aws-ofi-nccl (EFA) plugin; setting image replaces that image, and
 	// the operator then owns the EFA OFI plugin being present in the
-	// replacement.
+	// replacement. On GCP H100 the platform overrides pick the NCCL and
+	// training images from the TCPXO NCCL plugin version detected on the
+	// target nodes, because the plugin loads the CUDA runtime from the
+	// workload image; a replacement must have the same CUDA major as the
+	// plugin. Set at the top level, image applies to every category in the
+	// Certification, so on a Certification that mixes workload kinds (for
+	// example NCCL tests with diagnostics/dcgm-level4) set it per category
+	// under categories[].options instead.
 	// +optional
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=512

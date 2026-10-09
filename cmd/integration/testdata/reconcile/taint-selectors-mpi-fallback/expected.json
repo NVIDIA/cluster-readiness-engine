@@ -84,6 +84,13 @@
                                               "values": [
                                                 "gpu-node-01"
                                               ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.present",
+                                              "operator": "In",
+                                              "values": [
+                                                "true"
+                                              ]
                                             }
                                           ]
                                         }
@@ -118,6 +125,13 @@
                                               "operator": "In",
                                               "values": [
                                                 "gpu-node-01"
+                                              ]
+                                            },
+                                            {
+                                              "key": "nvidia.com/gpu.present",
+                                              "operator": "In",
+                                              "values": [
+                                                "true"
                                               ]
                                             }
                                           ]

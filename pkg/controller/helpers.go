@@ -27,6 +27,13 @@ const (
 	// exactly the GPU NIC networks TCPXO needs on every target node, so the
 	// catalog's default network names were rendered.
 	ReasonGKENetworkDetection = "GKENetworkDetection"
+
+	// ReasonTCPXOPluginDetection is the Certification tier's Warning event
+	// when TCPXO plugin version detection ran (GCP H100 target) and did not
+	// find one mapped plugin release on every target node, so the nearest
+	// safe profile's GCP H100 workload and tcpxo-daemon images were rendered
+	// (the latest mapped release for a newer tag, the minimum otherwise).
+	ReasonTCPXOPluginDetection = "TCPXOPluginDetection"
 )
 
 // requeueImmediate is a short self-requeue delay used to advance a reconciler's
@@ -97,6 +104,11 @@ const (
 	ReasonJobCreationError    = "JobCreationError"
 	ReasonJobValidationFailed = "JobValidationFailed"
 
+	// ReasonJobSchedulingBlocked marks a running Workflow iteration in which
+	// at least one group's Job reports WorkloadSchedulingBlocked. The message
+	// relays that Job's scheduler diagnosis (ADR-083).
+	ReasonJobSchedulingBlocked = "JobSchedulingBlocked"
+
 	// ReasonJobTimedOut marks a Job's Failed condition set by the Workflow when
 	// the Job exceeded timeoutPerJob. Timed-out jobs are never retried.
 	ReasonJobTimedOut = "JobTimedOut"
@@ -153,6 +165,14 @@ const (
 	ReasonWorkloadFailed        = "WorkloadFailed"
 	ReasonWorkloadCreationError = "WorkloadCreationError"
 	ReasonWorkloadStalled       = "WorkloadStalled"
+
+	// ReasonWorkloadSchedulingBlocked indicates the workload is unsuspended
+	// and admitted, but at least one of its pods cannot be scheduled
+	// (PodScheduled=False/Unschedulable). The Job stays InProgress and the
+	// blocked time does not count against timeoutPerJob or stall detection:
+	// the same clock-neutral treatment as WorkloadPending (issue #213).
+	// See ADR-083.
+	ReasonWorkloadSchedulingBlocked = "WorkloadSchedulingBlocked"
 
 	// ReasonMeasurementCreationError indicates a GoodputMeasurement or
 	// BandwidthMeasurement child resource could not be created. Handling is

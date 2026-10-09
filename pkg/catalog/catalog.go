@@ -61,6 +61,16 @@ type BuildConfig struct {
 	// DefaultGKETCPXONetworks.
 	GKETCPXONetworks []string
 
+	// TCPXOPluginVersion is the GKE TCPXO NCCL plugin release installed on
+	// the GCP H100 target nodes, e.g. "v1.0.17" or its rebuild "v1.0.17-1".
+	// The controller detects it from the nccl-tcpxo-installer pods; it
+	// selects the GCP H100 workload images and the tcpxo-daemon image
+	// (TCPXOPluginProfileFor), by release, so a build suffix is ignored. An
+	// unmapped release renders the newest mapped profile not newer than it;
+	// empty, older or unparseable renders the MinimumTCPXOPluginVersion
+	// profile.
+	TCPXOPluginVersion string
+
 	// Resources overrides the CPU and memory of training containers.
 	// Nil (or nil sub-fields) means the training entries keep their
 	// DGX-class defaults (limits: cpu 128 / memory 800Gi; requests:
@@ -81,6 +91,11 @@ type BuildConfig struct {
 	// ExitDurationMins is the training duration in minutes for NeMo 6 workloads.
 	// 0 means use template default (30).
 	ExitDurationMins int32
+
+	// StartupStallTimeoutSeconds is the startup-stall window in seconds for the
+	// generated Job. 0 means the catalog entry's default (1200 for the training
+	// entries).
+	StartupStallTimeoutSeconds int32
 
 	// GPUArchitecture is the GPU architecture string (e.g., "h100", "gb200").
 	// Derived from the target nodeSelector's nvidia.com/gpu.product label.

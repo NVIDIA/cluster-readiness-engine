@@ -33,6 +33,7 @@ nvcrectl certification run --category communication/nccl-all-reduce [flags]
 | `--enable-mnnvl` | `false` | Enable Multi-Node NVLink (`NCCL_MNNVL_ENABLE=1`) |
 | `--max-steps` | `0` | Max training steps for NeMo 4 workloads (0 = catalog default) |
 | `--exit-duration-mins` | `0` | Training duration in minutes for NeMo 6 workloads (0 = catalog default) |
+| `--startup-stall-timeout-seconds` | `0` | Startup-stall window in seconds for training workloads (0 = catalog default; negative values are invalid). Incompatible with `--cert-file`, including explicit 0; set a positive `spec.startupStallTimeoutSeconds` or `spec.categories[].options.startupStallTimeoutSeconds` in the Certification YAML instead. |
 | `--repeat-count` | `0` | Orchestration iterations to repeat tests (0 = catalog default) |
 | `--max-restarts` | `0` | Maximum checkpoint restarts for training workloads (0 = catalog default) |
 | `--storage-class` | — | StorageClass for PVC dependencies created by catalog entries |
@@ -77,7 +78,7 @@ nvcrectl certification render [flags] <cert-file>
 |------|---------|-------------|
 | `--platform` | auto | Override platform detection (`aws`, `gcp`, `azure`, `oci`, `onprem`, `togetherai`, `mistral`, `forge`, `nscale`) |
 | `--gpu-arch` | none | GPU architecture for offline render, e.g. `gb300` or the product name `NVIDIA-GB300`; an unknown architecture is rejected with the valid list. Use it for a DRA-only GPU stack whose nodes carry no `nvidia.com/gpu.product` label. Wins over the target `nodeSelector`'s label when set; cannot be combined with `--dry-run`, which detects the architecture from real nodes. |
-| `--dry-run` | `false` | Validate against the live API server without creating resources. Also discovers the target nodes, so NIC resource detection (on-prem GB200/GB300) and GKE TCPXO network detection (GCP H100) run as they do in the controller and report what they found on stderr. |
+| `--dry-run` | `false` | Validate against the live API server without creating resources. Also discovers the target nodes, so NIC resource detection (on-prem GB200/GB300), GKE TCPXO network detection and TCPXO plugin version detection (GCP H100) run as they do in the controller and report what they found on stderr. Plugin version detection lists `kube-system` pods, so it needs that permission. |
 | `--output` | `yaml` | Output format: `yaml` or `json` |
 
 A Certification that sets `spec.gangScheduler` has that applied to the rendered output too: the scheduler name and the queue label (`gangScheduler.queueLabelKey`, `kai.scheduler/queue` when unset; `runai/queue` on a Run:ai cluster) appear in the rendered manifests on the submitted workload object, on the Job template, and on the pod template metadata, so what you inspect matches what the controller creates. There is no flag for it; the field is set in the Certification YAML.

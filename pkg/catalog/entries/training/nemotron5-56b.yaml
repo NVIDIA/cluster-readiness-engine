@@ -4,7 +4,7 @@
 jobTemplate:
   spec:
     stallMultiplier: 3
-    startupStallTimeoutSeconds: 1200
+    startupStallTimeoutSeconds: {{ .StartupStallTimeoutSeconds }}
 {{- if .EnableCheckpoint }}
     checkpoint:
       pvcName: nemotron5-56b-pvc
@@ -302,7 +302,7 @@ overrides:
             # Kubeflow upserts trainer env over runtime env by name.
             - name: NVTE_FUSED_ATTN
               value: "1"
-# --- GCP + H100 (TCPxo/FastRak) ---
+# --- GCP + H100 (TCPxo/FastRak, image from the TCPXO plugin version) ---
 - when:
     platform:
       equals: gcp
@@ -310,13 +310,22 @@ overrides:
       equals: h100
   dependencies:
 {{ lib "deps/gcp-h100-tcpxo-runtime-patch.yaml" . | indent 2 }}
+{{ lib "deps/gcp-h100-training-image-patch.yaml" . | indent 2 }}
   jobTemplate:
     spec:
       workload:
         trainJob:
           trainer:
+            image: {{ .GCPH100TrainingImage }}
             env:
 {{ lib "nccl/gcp-h100-fastrak-env.yaml" . | indent 12 }}
+            # GKE mounts the driver at /usr/local/nvidia/lib64 (on
+            # LD_LIBRARY_PATH), but the NGC image's ldconfig cache points
+            # libcuda.so.1 at a CUDA compat path that does not exist in the
+            # pod, and Triton trusts ldconfig over LD_LIBRARY_PATH, so
+            # Megatron's import fails with "libcuda.so cannot found!".
+            - name: TRITON_LIBCUDA_PATH
+              value: /usr/local/nvidia/lib64
 # --- Azure + A100 (InfiniBand) ---
 - when:
     platform:
@@ -417,3 +426,26 @@ overrides:
       in: [gb200, gb300]
   dependencies:
 {{ lib "deps/onprem-gb200-gb300-runtime-patch-training.yaml" . | indent 2 }}
+# --- Nscale NKS (GPU+RDMA DRA claims, InfiniBand; ADR-085) ---
+# Deps-only like the on-prem block: torchrun inherits the runtime container
+# env, so the portable IB env rides there (merged by name into the base env)
+# alongside the gpu.nvidia.com/rdma.nscale.com claims.
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      in: [b200, gb300]
+  dependencies:
+{{ lib "deps/nscale-gpu-rdma-training.yaml" . | indent 2 }}
+# --- Nscale + GB300 topology key (ADR-085) ---
+# Nscale runs no GFD, so nvidia.com/gpu.clique from the GB200/GB300 block
+# above never exists there; the NVLink domain is published as
+# topology.nks.nscale.com/accelerator-domain instead.
+- when:
+    platform:
+      equals: nscale
+    gpuArchitecture:
+      equals: gb300
+  orchestration:
+    topology:
+      topologyKey: topology.nks.nscale.com/accelerator-domain

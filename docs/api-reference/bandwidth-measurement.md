@@ -22,6 +22,7 @@ description: CRD reference for the BandwidthMeasurement resource.
 | Field | Type | Description |
 |-------|------|-------------|
 | `results` | []BandwidthResult | Per-message-size average bandwidth. Provisional while the Job runs; final once `Complete` is `True` with reason `JobSucceeded` |
+| `transport` | []string | Distinct NCCL network names from `NCCL INFO Using network ...` (for example `IB`, `Socket`). Empty when that line never appears. Record-only; not used for pass/fail |
 | `startTime` | Time | When measurement started (when the referenced Job began running) |
 | `completionTime` | Time | When the referenced Job reached a terminal state |
 | `conditions` | []Condition | Current state: `Measuring` (in progress) or `Complete` (finished) |
@@ -39,8 +40,9 @@ Each `BandwidthResult` entry contains:
 
 1. While the Job runs, samples the launcher's log at `sampleInterval` and keeps a running average per message size. These results are provisional: they show progress and feed the Prometheus gauges, but no threshold is evaluated against them. `nvcrectl` reports display whatever results the measurement holds.
 2. Applies the `bandwidthResult` regex pattern from the referenced `LogProfile` to extract `size`, `algBW`, and `busBW` capture groups.
-3. When the Job succeeds, reads the launcher's log once more from its first line to its last, counts every result row exactly once, and replaces the provisional results with the per-size averages. The result depends only on the log, not on when samples were taken.
-4. Sets `Complete`. The reason says whether the results are final:
+3. When the LogProfile defines `networkTransport`, records the distinct set of captured `transport` names on `status.transport`. Record-only; never used for pass/fail.
+4. When the Job succeeds, reads the launcher's log once more from its first line to its last, counts every result row exactly once, and replaces the provisional results with the per-size averages. The result depends only on the log, not on when samples were taken.
+5. Sets `Complete`. The reason says whether the results are final:
 
 | `Complete` reason | Results | Used for thresholds |
 |-------------------|---------|---------------------|

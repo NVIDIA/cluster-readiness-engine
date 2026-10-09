@@ -1,0 +1,143 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Four externally driven transitions, each gated on the state it depends on.
+#
+# 1. The first attempt is running and the Workflow has recorded its placement
+#    (groupNodesRecorded). Only then is the workload failed, so the retry's
+#    reset is clearing a real list rather than one that was never written.
+# 2. The Job has failed and attributed the failure to both nodes
+#    (failedNodeCount), which pins that the first attempt's attribution read
+#    the real placement. Only then are its pods released (label removed, as GC
+#    would), which lets the pod-drain barrier pass and the retry proceed.
+# 3. The retried Job, same name, is running again. The second attempt's pods
+#    are bound (label added).
+# 4. The Workflow has recorded the second placement, which can only have come
+#    from the new pods because the reset emptied the list. The workers exit and
+#    the workload is completed.
+#
+# The second attempt's Job is observed through the same name as the first, but
+# the InProgress wait cannot be satisfied by the failed first attempt: its
+# conditions are exclusive, so InProgress went False when Failed went True, and
+# only the new Job brings it back.
+#
+# The golden pins: group-0 nodes are the second pair, retries is 1, the group
+# and Workflow succeeded, and failedNodesRef is set from the first attempt's
+# attribution. A missing reset would leave the first pair in place.
+steps:
+  - waitFor:
+      kind: Workflow
+      name: unpin-reattr
+      namespace: default
+      condition: InProgress
+      reason: JobRunning
+      groupNodesRecorded: true
+    patches:
+      - target:
+          kind: TrainJob
+          name: unpin-reattr-job-workload
+          namespace: default
+        status: true
+        patch:
+          status:
+            conditions:
+              - type: Failed
+                status: "True"
+                reason: TrainJobFailed
+                message: Training job failed
+                lastTransitionTime: "2026-01-22T10:00:00Z"
+  - waitFor:
+      kind: Job
+      name: unpin-reattr-job
+      namespace: default
+      condition: Failed
+      reason: WorkloadFailed
+      failedNodeCount: 2
+    patches:
+      - target:
+          kind: Pod
+          name: unpin-reattr-attempt1-worker-0
+          namespace: default
+        patch:
+          metadata:
+            labels:
+              nvcre.nvidia.com/job: null
+      - target:
+          kind: Pod
+          name: unpin-reattr-attempt1-worker-1
+          namespace: default
+        patch:
+          metadata:
+            labels:
+              nvcre.nvidia.com/job: null
+  - waitFor:
+      kind: Job
+      name: unpin-reattr-job
+      namespace: default
+      condition: InProgress
+      reason: WorkloadRunning
+    patches:
+      - target:
+          kind: Pod
+          name: unpin-reattr-attempt2-worker-0
+          namespace: default
+        patch:
+          metadata:
+            labels:
+              nvcre.nvidia.com/job: unpin-reattr-job
+      - target:
+          kind: Pod
+          name: unpin-reattr-attempt2-worker-1
+          namespace: default
+        patch:
+          metadata:
+            labels:
+              nvcre.nvidia.com/job: unpin-reattr-job
+  - waitFor:
+      kind: Workflow
+      name: unpin-reattr
+      namespace: default
+      condition: InProgress
+      reason: JobRunning
+      groupNodesRecorded: true
+    patches:
+      # The workers exit before the TrainJob reports Complete. A Succeeded pod
+      # still records where it ran, which is what attribution reads.
+      - target:
+          kind: Pod
+          name: unpin-reattr-attempt2-worker-0
+          namespace: default
+        status: true
+        patch:
+          status:
+            phase: Succeeded
+      - target:
+          kind: Pod
+          name: unpin-reattr-attempt2-worker-1
+          namespace: default
+        status: true
+        patch:
+          status:
+            phase: Succeeded
+      - target:
+          kind: TrainJob
+          name: unpin-reattr-job-workload
+          namespace: default
+        status: true
+        patch:
+          status:
+            conditions:
+              - type: Complete
+                status: "True"
+                reason: JobCompleted
+                message: All workers completed
+                lastTransitionTime: "2026-01-22T10:05:00Z"
+waitFor:
+  kind: Workflow
+  name: unpin-reattr
+  namespace: default
+  condition: Succeeded
+collect:
+  - kind: Workflow
+    name: unpin-reattr
+    namespace: default

@@ -1,0 +1,8 @@
+# A completed measurement is not rewritten, so a network line in the log is
+# not merged into its recorded transport.
+jobCondition: Succeeded
+podPhase: Succeeded
+alreadyComplete: true
+provisionalTransport: [Socket]
+log: |
+  2026-09-30T10:01:00.100000000Z NCCL INFO Using network IB
