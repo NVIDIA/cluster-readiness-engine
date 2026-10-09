@@ -21,8 +21,7 @@
 # nothing at all.
 #
 # Node names differ from the Unpinned case because Nodes are cluster-scoped and
-# cleanup is best-effort. A node outliving its case would change how the other
-# case partitions its fleet.
+# the two cases must not create the same names.
 apiVersion: resource.k8s.io/v1
 kind: ResourceSlice
 metadata:

@@ -580,11 +580,18 @@ func buildFakeLogFetcher(tc *testutil.TestCase) podlogs.PodLogFetcher {
 type conditionWait struct {
 	RestartCount    *int32 `json:"restartCount,omitempty"`
 	FailedNodeCount int    `json:"failedNodeCount,omitempty"`
-	Kind            string `json:"kind"`
-	Name            string `json:"name"`
-	Namespace       string `json:"namespace"`
-	Condition       string `json:"condition"`
-	Reason          string `json:"reason,omitempty"` // optional: wait for specific reason
+	// GroupNodesRecorded additionally requires every group in a Workflow's
+	// orchestration status to carry a non-empty node list. Under Unpinned
+	// placement the list starts empty and is backfilled from where the pods
+	// actually landed, on a later reconcile than the one that set the
+	// condition; a step that must observe the recorded placement before it
+	// changes the cluster waits on this rather than on the condition alone.
+	GroupNodesRecorded bool   `json:"groupNodesRecorded,omitempty"`
+	Kind               string `json:"kind"`
+	Name               string `json:"name"`
+	Namespace          string `json:"namespace"`
+	Condition          string `json:"condition"`
+	Reason             string `json:"reason,omitempty"` // optional: wait for specific reason
 }
 
 type eventTestStep struct {
@@ -808,6 +815,8 @@ func waitForCondition(t *testing.T, c client.Client, cfg waitConfig, deadline ti
 		Namespace: cfg.WaitFor.Namespace,
 	}
 	rejectUnknownKind(t, spec)
+	require.False(t, cfg.WaitFor.GroupNodesRecorded && spec.Kind != "Workflow",
+		"groupNodesRecorded is only honored on a Workflow wait, got %s/%s", spec.Kind, spec.Name)
 	require.Eventually(t, func() bool {
 		obj, err := readObject(ctx, c, spec)
 		if err != nil {
@@ -825,6 +834,9 @@ func waitForCondition(t *testing.T, c client.Client, cfg waitConfig, deadline ti
 			}
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
 		case *nvcrev1alpha1.Workflow:
+			if cfg.WaitFor.GroupNodesRecorded && !allGroupNodesRecorded(o) {
+				return false
+			}
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
 		case *nvcrev1alpha1.Certification:
 			return hasConditionWithReason(o.Status.Conditions, cfg.WaitFor.Condition, reason)
@@ -838,6 +850,20 @@ func waitForCondition(t *testing.T, c client.Client, cfg waitConfig, deadline ti
 		return false
 	}, timeout, interval, "timed out waiting for condition %s on %s/%s",
 		cfg.WaitFor.Condition, cfg.WaitFor.Kind, cfg.WaitFor.Name)
+}
+
+// allGroupNodesRecorded reports whether every orchestration group on the
+// Workflow has at least one node recorded. See conditionWait.GroupNodesRecorded.
+func allGroupNodesRecorded(w *nvcrev1alpha1.Workflow) bool {
+	if w.Status.Orchestration == nil || len(w.Status.Orchestration.Groups) == 0 {
+		return false
+	}
+	for _, g := range w.Status.Orchestration.Groups {
+		if len(g.Nodes) == 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // deleteAfterWait deletes the specified resources while the manager is still running,

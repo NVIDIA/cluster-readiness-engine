@@ -17,8 +17,8 @@
 # golden pins both.
 #
 # Names are unpinned-node-NN rather than the usual gpu-node-NN. Nodes are
-# cluster-scoped and cleanup is best-effort, so a node outliving its case would
-# change how other cases group their fleets.
+# cluster-scoped, and these names cannot collide with the gpu-node-NN fleet
+# other cases create under the generic names.
 apiVersion: v1
 kind: Node
 metadata:

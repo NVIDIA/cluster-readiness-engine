@@ -21,9 +21,9 @@
 # asks for it as a set predicate, through target.matchExpressions on the clique
 # label, which is carried onto the pods as a node affinity.
 #
-# Node names are clique-node-NN rather than the usual gpu-node-NN because nodes
-# are cluster-scoped and cleanup is best-effort: a node outliving its case would
-# change how other cases group their fleets.
+# Node names are clique-node-NN rather than the usual gpu-node-NN: nodes are
+# cluster-scoped, and these names cannot collide with the fleet other cases
+# create under the generic names.
 apiVersion: v1
 kind: Node
 metadata:
