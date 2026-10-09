@@ -1,0 +1,43 @@
+{
+  "kind": "Workflow",
+  "apiVersion": "nvcre.nvidia.com/v1alpha1",
+  "metadata": {
+    "name": "test-workflow",
+    "annotations": {
+      "nvcrectl.nvidia.com/applied-overrides": "[{\"index\":0,\"when\":\"gpuArchitecture=in [b200,b300], platform=onprem\",\"patches\":\"jobTemplate\"}]",
+      "nvcrectl.nvidia.com/detected-gpu-architecture": "b300",
+      "nvcrectl.nvidia.com/detected-platform": "onprem"
+    }
+  },
+  "spec": {
+    "jobTemplate": {
+      "spec": {
+        "workload": {
+          "trainJob": {
+            "trainer": {
+              "image": "nvcr.io/nvidia/pytorch:24.12-py3",
+              "command": [
+                "/bin/bash",
+                "-c"
+              ],
+              "args": [
+                "torchrun --nnodes 2"
+              ],
+              "env": [
+                {
+                  "name": "CRE_TEST_HGX_MARKER",
+                  "value": "matched"
+                }
+              ],
+              "numNodes": 2,
+              "numProcPerNode": 4
+            }
+          }
+        }
+      }
+    },
+    "orchestration": {
+      "execution": {}
+    }
+  }
+}

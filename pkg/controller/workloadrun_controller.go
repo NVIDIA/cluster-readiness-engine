@@ -459,11 +459,6 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 		gpusPerNode = nd.GpusPerNode
 		mlnxPerNode = nd.MlnxPerNode
 		enableMNNVL = DefaultEnableMNNVL(gpuArch)
-		// An architecture missing from gpu-defaults.yaml was just sized on
-		// the Go-side fallback; Reconcile says so on the WorkloadRun once the
-		// Workflow is created instead of running silently at the wrong rank
-		// count (ADR-094).
-		archFallbackMessage = gpuArchFallbackMessage(gpuArch, nd, gpuArchFieldHintWorkloadRun)
 	}
 
 	if spec.GpusPerNode != nil {
@@ -472,6 +467,12 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 	if spec.MlnxPerNode != nil {
 		mlnxPerNode = *spec.MlnxPerNode
 	}
+	// An architecture missing from gpu-defaults.yaml had no node shape and
+	// fell back to the Go-side default unless the spec set the counts;
+	// Reconcile says so on the WorkloadRun, with the resolved counts, once the
+	// Workflow is created instead of running silently at the wrong rank count
+	// (ADR-094). With no nodes gpuArch is "" and the message stays empty.
+	archFallbackMessage = gpuArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode, gpuArchFieldHintWorkloadRun)
 	// The NIC resource name has no architecture default: it depends on the
 	// RDMA device plugin the site runs. The field always wins; when it is
 	// unset on the on-prem GB200/GB300 or x86 HGX B200/B300 target the

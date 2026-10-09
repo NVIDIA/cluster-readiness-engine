@@ -500,15 +500,6 @@ func renderCertification(
 	if gpuArch == "" {
 		gpuArch = catalog.GPUArchFromNodeSelector(cert.Spec.Target.NodeSelector)
 	}
-	// --gpu-arch is validated against gpu-defaults.yaml; an architecture that
-	// arrived from the nodeSelector or from dry-run discovery is not, so say
-	// when it is being sized on the Go-side fallback, once per render, with
-	// the text the controller emits as the GPUArchitectureDefaults event
-	// (ADR-094).
-	if msg := controller.GPUArchFallbackMessage(gpuArch,
-		catalog.GPUDefaults(gpuArch, platformName), controller.GPUArchFieldHintCertification); msg != "" {
-		_, _ = fmt.Fprintln(os.Stderr, msg)
-	}
 	if gpuArch == "" {
 		return nil, fmt.Errorf(
 			"cannot determine GPU architecture from target nodeSelector or --gpu-arch" +
@@ -533,6 +524,15 @@ func renderCertification(
 		}
 		if opts.MlnxPerNode != nil {
 			mlnxPerNode = *opts.MlnxPerNode
+		}
+		// --gpu-arch is validated against gpu-defaults.yaml; an architecture
+		// that arrived from the nodeSelector or from dry-run discovery is not,
+		// so say when the catalog had no node shape for it, once per category
+		// with the resolved counts, in the text the controller emits as the
+		// GPUArchitectureDefaults event (ADR-094).
+		if msg := controller.GPUArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode,
+			controller.GPUArchFieldHintCertification); msg != "" {
+			_, _ = fmt.Fprintf(os.Stderr, "%s/%s: %s\n", cat.Domain, cat.Variant, msg)
 		}
 		// The NIC resource name has no architecture default: it depends on
 		// the RDMA device plugin the site runs. Offline (no --dry-run) it is

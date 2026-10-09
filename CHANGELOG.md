@@ -23,11 +23,13 @@ followed them.
   on-prem override for x86 HGX B200/B300 nodes adds the `nvidia.com/gpu` taint
   toleration and makes `nicResourceName` and `mlnxPerNode` request RDMA devices
   on those nodes, with NIC auto-detection widened to match. It sets no NCCL
-  environment. See ADR-094.
+  environment. On every on-prem fragment, `nicResourceName` with `mlnxPerNode: 0`
+  now omits the NIC request instead of rendering a count of zero (#464)
 - A Warning event, reason `GPUArchitectureDefaults`, on the Certification or
   WorkloadRun when the detected GPU architecture is missing from the catalog's
-  defaults table and the workflow was sized on the four-GPU fallback. Every
-  `nvcrectl` render path and `nvcrectl cluster info` print the same message.
+  defaults table, naming the four-GPU fallback the catalog has for it and the
+  counts the run is actually sized at. Every `nvcrectl` render path and
+  `nvcrectl cluster info` print the same message (#464)
 - GCP H100 detects the TCPXO NCCL plugin release from the `nccl-tcpxo-installer` pods
   on the target nodes and picks the NCCL and training images and the paired
   `tcpxo-daemon` from it: v1.0.15 and v1.0.16 run `pytorch:25.06-py3` (CUDA 12) with
@@ -55,7 +57,7 @@ followed them.
   `mpi` policies, which the API server rejects at dependency creation, and lost the
   entry's tolerate-everything toleration. The platform comm fragments no longer set
   `mlPolicy` (the MPI entries' base runtimes already do) and the loopback entries
-  restore the toleration after each of them. See ADR-094.
+  restore the toleration after each of them (#464)
 - `nvcre_job_status` now reports `failed` for a Job that timed out on
   `timeoutPerJob`. The gauge was written only by the Job tier, so the Workflow
   reconciler's timeout write left it at `in_progress` for the rest of the run, and

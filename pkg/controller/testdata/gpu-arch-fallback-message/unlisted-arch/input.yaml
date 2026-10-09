@@ -1,5 +1,6 @@
 # An architecture GFD labels but gpu-defaults.yaml does not list.
 gpuArch: h20
+# Resolved counts equal to the fallback: nothing was overridden.
 gpusPerNode: 4
 mlnxPerNode: 0
 fieldHint: Certification

@@ -44,9 +44,10 @@ type onpremReplicatedJob struct {
 	// two keys (ADR-094).
 	MLPolicy []string `json:"mlPolicy"`
 	// Tolerations renders each toleration in declaration order as
-	// "key=value:effect"; the on-prem override contributes the arm64 and GPU
-	// taints, and their absence on a control case is as load-bearing as their
-	// presence on an on-prem one.
+	// "key=value:effect", or "operator=Exists" for a keyless one; the NVL72
+	// on-prem override contributes the arm64 and GPU taints, the HGX override
+	// only the GPU taint, and their absence on a control case is as
+	// load-bearing as their presence on an on-prem one.
 	Tolerations []string          `json:"tolerations"`
 	Containers  []onpremContainer `json:"containers"`
 }
@@ -70,16 +71,20 @@ type onpremWorkflow struct {
 }
 
 // TestCertificationRenderOnPrem covers the ADR-075 on-prem GB200/GB300
-// override end to end through the same path "nvcrectl certification render
-// --platform onprem" uses: renderCertification resolves catalog templates with
-// the certification's options (including nicResourceName), and
+// override and the ADR-094 on-prem x86 HGX B200/B300 override end to end
+// through the same path "nvcrectl certification render --platform onprem"
+// uses: renderCertification resolves catalog templates with the
+// certification's options (including nicResourceName), and
 // resolveWorkflowsOffline matches the onprem override blocks against a
-// synthetic no-providerID node. The goldens pin the markers the override owns:
-// both tolerations, the optional NIC resource (present only when
-// nicResourceName is set), the portable IB env, and the absence of pinned HCA
-// names. The h100 control case pins that none of it leaks outside GB200/GB300,
-// and the gpu-arch-flag cases pin that --gpu-arch, bare or as a product name,
-// stands in for a missing nvidia.com/gpu.product label.
+// synthetic no-providerID node. The goldens pin the markers the overrides own:
+// the tolerations (arm64 and GPU on NVL72, GPU only on HGX, tolerate-everything
+// kept on the per-node loopback entries), the optional NIC resource (present
+// only when nicResourceName is set and mlnxPerNode is positive), the portable
+// IB env on NVL72 and its absence on HGX, the runtime's single mlPolicy, and
+// the absence of pinned HCA names. The h100 control case pins that none of it
+// leaks outside those four architectures, and the gpu-arch-flag cases pin
+// that --gpu-arch, bare or as a product name, stands in for a missing
+// nvidia.com/gpu.product label.
 func TestCertificationRenderOnPrem(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "certification-render-onprem",
@@ -188,6 +193,14 @@ func projectOnPremOverride(wf *nvcrev1alpha1.Workflow) (onpremWorkflow, error) {
 				Containers:    []onpremContainer{},
 			}
 			for _, tol := range podSpec.Tolerations {
+				if tol.Key == "" {
+					// A keyless toleration matches every taint; the operator is
+					// the whole story (the per-node entries' tolerate-everything
+					// toleration that tolerate-all-runtime-patch.yaml restores).
+					projected.Tolerations = append(projected.Tolerations,
+						fmt.Sprintf("operator=%s", tol.Operator))
+					continue
+				}
 				projected.Tolerations = append(projected.Tolerations,
 					fmt.Sprintf("%s=%s:%s", tol.Key, tol.Value, tol.Effect))
 			}

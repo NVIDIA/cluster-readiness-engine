@@ -10,14 +10,15 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
 // TestGPUArchFallbackMessage pins the GPUArchitectureDefaults event text
 // (ADR-094): an architecture missing from gpu-defaults.yaml names the
-// assumed counts and the caller's fields; a listed architecture, an empty
-// one, and the "unknown" sentinel for unlabeled nodes all stay silent.
+// catalog fallback, the counts the run is actually sized at (the caller's
+// resolved values, so a user override shows up as such), and the caller's
+// fields; a listed architecture, an empty one, and the "unknown" sentinel for
+// unlabeled nodes all stay silent.
 func TestGPUArchFallbackMessage(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "gpu-arch-fallback-message",
@@ -40,10 +41,9 @@ func TestGPUArchFallbackMessage(t *testing.T) {
 		if hint == "" {
 			return fmt.Errorf("unknown fieldHint %q", input.FieldHint)
 		}
-		nd := catalog.NodeDefaults{GpusPerNode: input.GpusPerNode, MlnxPerNode: input.MlnxPerNode}
 		out := struct {
 			Message string `json:"message"`
-		}{Message: gpuArchFallbackMessage(input.GPUArch, nd, hint)}
+		}{Message: gpuArchFallbackMessage(input.GPUArch, input.GpusPerNode, input.MlnxPerNode, hint)}
 		b, err := json.MarshalIndent(out, "", "  ")
 		if err != nil {
 			return err

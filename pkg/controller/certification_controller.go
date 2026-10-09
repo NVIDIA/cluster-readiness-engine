@@ -519,11 +519,12 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	if opts.MlnxPerNode != nil {
 		mlnxPerNode = *opts.MlnxPerNode
 	}
-	// An architecture missing from gpu-defaults.yaml was just sized on the
-	// Go-side fallback; say so on the Certification instead of running
+	// An architecture missing from gpu-defaults.yaml had no node shape and
+	// fell back to the Go-side default unless the options set the counts; say
+	// so on the Certification, with the resolved counts, instead of running
 	// silently at the wrong rank count (ADR-094). Emitted below, only by the
 	// reconcile whose Create succeeds, like the GCP H100 detection warnings.
-	archFallbackMessage := gpuArchFallbackMessage(gpuArch, nd, gpuArchFieldHintCertification)
+	archFallbackMessage := gpuArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode, gpuArchFieldHintCertification)
 	// The NIC resource name has no architecture default: it depends on the
 	// RDMA device plugin the site runs. The field always wins; when it is
 	// unset on the on-prem GB200/GB300 or x86 HGX B200/B300 target the

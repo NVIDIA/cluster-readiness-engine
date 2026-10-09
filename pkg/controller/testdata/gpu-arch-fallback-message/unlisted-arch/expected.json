@@ -1,3 +1,3 @@
 {
-  "message": "GPU architecture \"h20\" has no entry in the catalog's GPU defaults; the job is sized as gpusPerNode=4 mlnxPerNode=0. If the nodes differ, set spec.gpusPerNode and spec.mlnxPerNode (or spec.categories[].options), and file an issue so the architecture can be added to the catalog."
+  "message": "GPU architecture \"h20\" has no entry in the catalog's GPU defaults, which fall back to gpusPerNode=4 mlnxPerNode=0 for it; this run is sized at gpusPerNode=4 mlnxPerNode=0. If the nodes differ, set spec.gpusPerNode and spec.mlnxPerNode (or spec.categories[].options), and file an issue so the architecture can be added to the catalog."
 }

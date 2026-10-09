@@ -1,4 +1,5 @@
 gpuArch: b300x
+# Resolved counts equal to the fallback: nothing was overridden.
 gpusPerNode: 4
 mlnxPerNode: 0
 fieldHint: WorkloadRun

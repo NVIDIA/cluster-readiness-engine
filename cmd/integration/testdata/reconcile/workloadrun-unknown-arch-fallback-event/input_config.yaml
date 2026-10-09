@@ -3,20 +3,26 @@
 
 waitFor:
   kind: Workflow
-  name: onprem-nc-h20-communicati-7bb04
+  name: wr-onprem-h20
   namespace: default
   condition: InProgress
   reason: JobRunning
 collect:
-  - kind: Certification
-    name: onprem-nc-h20
+  - kind: WorkloadRun
+    name: wr-onprem-h20
     namespace: default
   - kind: Workflow
-    name: onprem-nc-h20-communicati-7bb04
+    name: wr-onprem-h20
+    namespace: default
+  # The Workflow keeps its base spec; the override patches land on the
+  # TrainingRuntime the Workflow controller creates, so that object is the
+  # evidence.
+  - kind: TrainingRuntime
+    name: wr-onprem-h20-runtime-59268-job
     namespace: default
 events:
-  - involvedKind: Certification
-    involvedName: onprem-nc-h20
+  - involvedKind: WorkloadRun
+    involvedName: wr-onprem-h20
     namespace: default
     expect:
       - {type: Warning, reason: GPUArchitectureDefaults}

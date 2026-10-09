@@ -134,7 +134,7 @@
           "torch"
         ],
         "tolerations": [
-          "=:"
+          "operator=Exists"
         ],
         "containers": [
           {

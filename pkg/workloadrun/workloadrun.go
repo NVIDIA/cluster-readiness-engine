@@ -160,12 +160,6 @@ func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) 
 	// (used later for override matching); when absent, only architecture defaults
 	// apply at template-render time.
 	nd := catalog.GPUDefaults(gpuArch, platformFlag)
-	// --gpu-arch is validated against gpu-defaults.yaml; an architecture from
-	// the nodeSelector is not, so say when it is sized on the fallback
-	// (ADR-094).
-	if msg := controller.GPUArchFallbackMessage(gpuArch, nd, controller.GPUArchFieldHintWorkloadRun); msg != "" {
-		_, _ = fmt.Fprintln(os.Stderr, msg)
-	}
 	gpusPerNode := nd.GpusPerNode
 	mlnxPerNode := nd.MlnxPerNode
 	if run.Spec.GpusPerNode != nil {
@@ -173,6 +167,13 @@ func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) 
 	}
 	if run.Spec.MlnxPerNode != nil {
 		mlnxPerNode = *run.Spec.MlnxPerNode
+	}
+	// --gpu-arch is validated against gpu-defaults.yaml; an architecture from
+	// the nodeSelector is not, so say when the catalog had no node shape for
+	// it, with the resolved counts (ADR-094).
+	if msg := controller.GPUArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode,
+		controller.GPUArchFieldHintWorkloadRun); msg != "" {
+		_, _ = fmt.Fprintln(os.Stderr, msg)
 	}
 
 	enableMNNVL := controller.DefaultEnableMNNVL(gpuArch)
@@ -612,11 +613,6 @@ func runWorkloadRunRenderDryRun(
 	}
 	gpuArch := controller.DetectGPUArchitecture(nodes)
 	nd := catalog.GPUDefaults(gpuArch, effectivePlatform)
-	// The discovered architecture bypasses --gpu-arch validation, so say when
-	// it is sized on the fallback, as the controller does (ADR-094).
-	if msg := controller.GPUArchFallbackMessage(gpuArch, nd, controller.GPUArchFieldHintWorkloadRun); msg != "" {
-		_, _ = fmt.Fprintln(os.Stderr, msg)
-	}
 	gpusPerNode := nd.GpusPerNode
 	mlnxPerNode := nd.MlnxPerNode
 	if run.Spec.GpusPerNode != nil {
@@ -624,6 +620,13 @@ func runWorkloadRunRenderDryRun(
 	}
 	if run.Spec.MlnxPerNode != nil {
 		mlnxPerNode = *run.Spec.MlnxPerNode
+	}
+	// The discovered architecture bypasses --gpu-arch validation, so say when
+	// the catalog had no node shape for it, with the resolved counts, as the
+	// controller does (ADR-094).
+	if msg := controller.GPUArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode,
+		controller.GPUArchFieldHintWorkloadRun); msg != "" {
+		_, _ = fmt.Fprintln(os.Stderr, msg)
 	}
 	enableMNNVL := controller.DefaultEnableMNNVL(gpuArch)
 	if run.Spec.EnableMNNVL != nil {

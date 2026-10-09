@@ -46,9 +46,7 @@
             "name": "node",
             "resources": [
               "limits/nvidia.com/gpu=8",
-              "limits/rdma/rdma_shared_device_a=1",
-              "requests/nvidia.com/gpu=8",
-              "requests/rdma/rdma_shared_device_a=1"
+              "requests/nvidia.com/gpu=8"
             ],
             "env": []
           }
@@ -67,57 +65,6 @@
             "resources": [
               "limits/cpu=2",
               "limits/memory=1Gi"
-            ],
-            "env": []
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "workflow": "onprem-b300-cert-communic-e0130",
-    "targetNodeSelector": {
-      "nvidia.com/gpu.product": "NVIDIA-B300-SXM6-AC"
-    },
-    "dependencyKinds": [
-      "TrainingRuntime"
-    ],
-    "trainerArgs": [
-      "-b",
-      "8",
-      "-e",
-      "16G",
-      "-f",
-      "2",
-      "-g",
-      "8",
-      "-n",
-      "100",
-      "-N",
-      "10"
-    ],
-    "trainerEnv": [
-      "NCCL_DEBUG=INFO",
-      "NCCL_MNNVL_ENABLE=0"
-    ],
-    "replicatedJobs": [
-      {
-        "dependency": "nccl-loopback-nvswitch-runtime",
-        "replicatedJob": "node",
-        "mlPolicy": [
-          "torch"
-        ],
-        "tolerations": [
-          "operator=Exists"
-        ],
-        "containers": [
-          {
-            "name": "node",
-            "resources": [
-              "limits/nvidia.com/gpu=8",
-              "limits/rdma/rdma_shared_device_a=1",
-              "requests/nvidia.com/gpu=8",
-              "requests/rdma/rdma_shared_device_a=1"
             ],
             "env": []
           }

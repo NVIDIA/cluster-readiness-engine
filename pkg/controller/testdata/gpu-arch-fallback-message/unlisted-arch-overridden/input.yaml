@@ -1,0 +1,6 @@
+# The user set both counts: the message names the fallback the catalog has
+# for an unlisted architecture and the counts the run is actually sized at.
+gpuArch: h20
+gpusPerNode: 8
+mlnxPerNode: 2
+fieldHint: Certification

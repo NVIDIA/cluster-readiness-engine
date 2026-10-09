@@ -26,7 +26,7 @@
             spec:
               template:
                 spec:
-{{- if .NicResourceName }}
+{{- if and .NicResourceName (gt (int .MlnxPerNode) 0) }}
                   containers:
                   - name: node
                     resources:
