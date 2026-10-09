@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The message lists at most five missing nodes, so the event note stays short.
+platform: gcp
+gpuArchitecture: h100
+nodes:
+  - gke-a3mega-0
+  - gke-a3mega-1
+  - gke-a3mega-2
+  - gke-a3mega-3
+  - gke-a3mega-4
+  - gke-a3mega-5
+  - gke-a3mega-6
+  - gke-a3mega-7
+pods: []

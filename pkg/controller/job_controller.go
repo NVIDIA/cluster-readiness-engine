@@ -1290,7 +1290,6 @@ func (r *JobReconciler) setJobFailed(ctx context.Context, job *nvcrev1alpha1.Job
 			transition.Condition.Reason, "%s", transition.Condition.Message)
 	}
 	if changed {
-		recordJobStatus(job.Namespace, job.Name, job.Labels["nvcre.nvidia.com/workflow"], "failed")
 		logf.FromContext(ctx).Info("Job status updated", "status", nvcrev1alpha1.JobFailed, "reason", reason)
 	}
 	return nil
@@ -1704,7 +1703,6 @@ func (r *JobReconciler) setExclusiveCondition(ctx context.Context, job *nvcrev1a
 	}
 
 	if changed {
-		recordJobStatus(job.Namespace, job.Name, job.Labels["nvcre.nvidia.com/workflow"], metricStatusFromCondition(conditionType))
 		logf.FromContext(ctx).Info("Job status updated", "status", conditionType, "reason", reason)
 	}
 	return nil

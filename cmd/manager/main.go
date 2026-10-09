@@ -201,7 +201,7 @@ func newRootCommand() *cobra.Command {
 				return fmt.Errorf("unable to register field indexes: %w", err)
 			}
 
-			// Certification and Workflow status gauges are built at scrape time
+			// Certification, Workflow and Job status gauges are built at scrape time
 			// from this manager's cache. Standby replicas emit nothing until
 			// Elected() is closed.
 			controller.SetupStatusMetrics(mgr)

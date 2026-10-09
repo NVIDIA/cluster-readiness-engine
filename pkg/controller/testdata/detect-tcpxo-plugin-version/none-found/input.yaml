@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No installer on any target node, e.g. the plugin was installed some other
+# way. Every node is listed as missing.
+platform: gcp
+gpuArchitecture: h100
+nodes:
+  - gke-a3mega-0
+  - gke-a3mega-1
+pods: []
