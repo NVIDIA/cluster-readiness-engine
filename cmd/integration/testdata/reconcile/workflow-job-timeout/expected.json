@@ -37,11 +37,11 @@
       "conditions": [
         {
           "type": "InProgress",
-          "status": "True",
+          "status": "False",
           "observedGeneration": 1,
           "lastTransitionTime": null,
-          "reason": "WorkloadRunning",
-          "message": "Workload TrainJob/test-workflow-job-timeout-job-workload is running"
+          "reason": "NotApplicable",
+          "message": ""
         },
         {
           "type": "Succeeded",
@@ -54,6 +54,7 @@
         {
           "type": "Failed",
           "status": "True",
+          "observedGeneration": 1,
           "lastTransitionTime": null,
           "reason": "JobTimedOut",
           "message": "Job exceeded timeoutPerJob"
@@ -89,5 +90,10 @@
       },
       "count": 1
     }
-  ]
+  ],
+  "jobMetrics": {
+    "nvcre_job_status{status=failed}": 1,
+    "nvcre_job_status{status=in_progress}": 0,
+    "nvcre_job_status{status=succeeded}": 0
+  }
 }

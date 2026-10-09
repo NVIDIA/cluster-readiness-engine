@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Training falls back to the CUDA 12 image like the NCCL entries (#439), on
+# the worker, its megatron-clone init, and trainer.image.
+category: training
+subcategory: nemotron5-8b
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+nodesPerJob: 2
+gpusPerNode: 8
