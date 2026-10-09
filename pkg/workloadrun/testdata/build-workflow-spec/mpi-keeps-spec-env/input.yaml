@@ -13,8 +13,8 @@
 # the same for the launcher container, which gets env too so that the two MPI
 # containers cannot drift apart again.
 #
-#   torch-run-renders...  workerEnv holds the 10 defaults from BaseNCCLEnvVars
-#   mpi-keeps-spec-env    workerEnv holds those 10 plus the user's variable
+#   torch-run-renders...  workerEnv holds the 9 defaults from BaseNCCLEnvVars
+#   mpi-keeps-spec-env    workerEnv holds those 9 plus the user's variable
 #
 # The variable below is named CRE_TEST_MARKER on purpose. No default sets that
 # name, so the expected file can show whether the user's variable arrived. An

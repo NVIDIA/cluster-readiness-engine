@@ -14,8 +14,6 @@
       "plm_rsh_args",
       "-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
       "-x",
-      "NCCL_DEBUG_SUBSYS=NET,INIT",
-      "-x",
       "NCCL_NET_GDR_C2C=1",
       "-x",
       "NCCL_NET_GDR_LEVEL=PHB",
@@ -54,7 +52,6 @@
   "validation": null,
   "workerEnv": [
     "NCCL_DEBUG=INFO",
-    "NCCL_DEBUG_SUBSYS=NET,INIT",
     "NCCL_NVLS_ENABLE=1",
     "NCCL_CUMEM_ENABLE=1",
     "NCCL_NET_GDR_C2C=1",
@@ -67,7 +64,6 @@
   ],
   "launcherEnv": [
     "NCCL_DEBUG=INFO",
-    "NCCL_DEBUG_SUBSYS=NET,INIT",
     "NCCL_NVLS_ENABLE=1",
     "NCCL_CUMEM_ENABLE=1",
     "NCCL_NET_GDR_C2C=1",

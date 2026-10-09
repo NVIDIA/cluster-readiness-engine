@@ -133,10 +133,6 @@
                                     "value": "INFO"
                                   },
                                   {
-                                    "name": "NCCL_DEBUG_SUBSYS",
-                                    "value": "NET,INIT"
-                                  },
-                                  {
                                     "name": "NCCL_NVLS_ENABLE",
                                     "value": "1"
                                   },
@@ -242,10 +238,6 @@
                                   {
                                     "name": "NCCL_DEBUG",
                                     "value": "INFO"
-                                  },
-                                  {
-                                    "name": "NCCL_DEBUG_SUBSYS",
-                                    "value": "NET,INIT"
                                   },
                                   {
                                     "name": "NCCL_NVLS_ENABLE",

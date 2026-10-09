@@ -9,9 +9,9 @@
 #                                   NCCL_IB_PCI_RELAXED_ORDERING=1
 #   NCCL_SHM_DISABLE=0              replaces the default NCCL_SHM_DISABLE=1
 #
-# Defaults the platform does not forward (NCCL_DEBUG_SUBSYS, NCCL_NET_GDR_*)
-# are forwarded too. Names both set, such as NCCL_DEBUG and NCCL_MNNVL_ENABLE,
-# appear once, as the platform pair.
+# Defaults the platform does not forward (NCCL_NET_GDR_*) are forwarded too.
+# Names both set, such as NCCL_DEBUG and NCCL_MNNVL_ENABLE, appear once, as
+# the platform pair.
 run:
   metadata:
     name: wr-mpi-nscale

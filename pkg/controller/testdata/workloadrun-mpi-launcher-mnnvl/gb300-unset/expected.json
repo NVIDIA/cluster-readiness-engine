@@ -14,8 +14,6 @@
     "-x",
     "NCCL_DEBUG=INFO",
     "-x",
-    "NCCL_DEBUG_SUBSYS=NET,INIT",
-    "-x",
     "NCCL_NVLS_ENABLE=1",
     "-x",
     "NCCL_CUMEM_ENABLE=1",

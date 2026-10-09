@@ -23,7 +23,6 @@ func BaseNCCLEnvVars(enableMNNVL bool) []corev1.EnvVar {
 
 	return []corev1.EnvVar{
 		{Name: "NCCL_DEBUG", Value: "INFO"},
-		{Name: "NCCL_DEBUG_SUBSYS", Value: "NET,INIT"},
 		{Name: "NCCL_NVLS_ENABLE", Value: "1"},
 		{Name: "NCCL_CUMEM_ENABLE", Value: "1"},
 		{Name: "NCCL_NET_GDR_C2C", Value: "1"},

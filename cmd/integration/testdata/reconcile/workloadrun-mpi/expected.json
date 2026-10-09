@@ -50,8 +50,6 @@
                   "-x",
                   "NCCL_DEBUG=INFO",
                   "-x",
-                  "NCCL_DEBUG_SUBSYS=NET,INIT",
-                  "-x",
                   "NCCL_NVLS_ENABLE=1",
                   "-x",
                   "NCCL_CUMEM_ENABLE=1",
@@ -173,10 +171,6 @@
                                     "value": "INFO"
                                   },
                                   {
-                                    "name": "NCCL_DEBUG_SUBSYS",
-                                    "value": "NET,INIT"
-                                  },
-                                  {
                                     "name": "NCCL_NVLS_ENABLE",
                                     "value": "1"
                                   },
@@ -282,10 +276,6 @@
                                   {
                                     "name": "NCCL_DEBUG",
                                     "value": "INFO"
-                                  },
-                                  {
-                                    "name": "NCCL_DEBUG_SUBSYS",
-                                    "value": "NET,INIT"
                                   },
                                   {
                                     "name": "NCCL_NVLS_ENABLE",
