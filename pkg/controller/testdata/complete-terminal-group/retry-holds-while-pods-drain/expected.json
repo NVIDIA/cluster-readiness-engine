@@ -4,6 +4,9 @@
   "retries": 0,
   "hasJobRef": true,
   "hasCompletionTime": false,
+  "groupNodes": [
+    "node-a"
+  ],
   "dependencyRefs": [
     "ConfigMap/dep-cm"
   ],

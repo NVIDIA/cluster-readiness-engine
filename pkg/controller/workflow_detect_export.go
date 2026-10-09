@@ -119,6 +119,20 @@ func ApplyWRPreTemplateOverrides(spec *nvcrev1alpha1.WorkloadRunSpec, overrides 
 // reader also serves the ResourceSlice fallback List, which is safe because CLI
 // clients are uncached client.New clients.
 func DiscoverTargetNodes(ctx context.Context, reader client.Reader, target *nvcrev1alpha1.TargetSpec) ([]corev1.Node, error) {
-	nodes, _, err := discoverTargetNodes(ctx, reader, reader, target)
+	nodes, _, _, err := discoverTargetNodes(ctx, reader, reader, target)
 	return nodes, err
+}
+
+// DiscoverTargetNodesWithSynthesized is DiscoverTargetNodes plus the names of
+// the nodes whose nvidia.com/gpu.product label was synthesized from
+// ResourceSlice attributes rather than read off the stored Node.
+//
+// render needs the distinction for the same reason the reconciler does: a
+// synthesized label exists only on the returned copies, so an affinity term
+// built from it matches nothing on a real API server.
+func DiscoverTargetNodesWithSynthesized(
+	ctx context.Context, reader client.Reader, target *nvcrev1alpha1.TargetSpec,
+) (nodes []corev1.Node, synthesizedProducts []string, err error) {
+	nodes, _, synthesizedProducts, err = discoverTargetNodes(ctx, reader, reader, target)
+	return nodes, synthesizedProducts, err
 }

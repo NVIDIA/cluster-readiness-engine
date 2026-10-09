@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Products come off one label per surviving node, so duplicates are the norm
+# on a homogeneous fleet. Dedupe and sort, or an 18-node run writes 18 copies
+# of the same string into every pod spec in nondeterministic order.
+placement: Unpinned
+groupNodes: []
+target: null
+gpuProducts: ["NVIDIA-GB200", "NVIDIA-H100-80GB-HBM3", "NVIDIA-GB200", ""]

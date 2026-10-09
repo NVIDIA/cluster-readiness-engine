@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The ordinary case, and the one that must not move: every node carries a real
+# nvidia.com/gpu.product label, so nothing was synthesized and the values are
+# returned verbatim in both placement modes. This is what the ~90 committed
+# goldens recording gpuProducts depend on.
+#
+# archExcluded is non-empty here to prove it is not consulted on this path. A
+# heterogeneous fleet is ordinary, and dropping the term because of it would
+# remove the only thing holding the job to one architecture.
+placement: Unpinned
+gpuProducts: ["NVIDIA-GB200"]
+synthesizedProducts: []
+archExcluded: ["h100-node-01"]

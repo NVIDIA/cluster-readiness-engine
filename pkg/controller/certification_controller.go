@@ -479,7 +479,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	// Cordoned nodes are discarded here. The Workflow runs the same discovery and
 	// records them on its own status, which is where the report reads coverage
 	// from, so recording them twice would only risk the two disagreeing.
-	nodes, _, err := discoverTargetNodes(ctx, r.Client, r.APIReader, &certification.Spec.Target)
+	nodes, _, _, err := discoverTargetNodes(ctx, r.Client, r.APIReader, &certification.Spec.Target)
 	if err != nil {
 		return "", fmt.Errorf("discovering target nodes: %w", err)
 	}
@@ -813,9 +813,17 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	if override.EnableMNNVL != nil {
 		resolved.EnableMNNVL = override.EnableMNNVL
 	}
-	if override.Image != "" {
-		resolved.Image = override.Image
-	}
+	// String options take the override whenever it is non-empty. Written with
+	// cmp.Or rather than a branch each: there are seven of them, they are
+	// mutually independent, and spelled as ifs they were most of this
+	// function's cyclomatic complexity for no reader benefit.
+	resolved.Image = cmp.Or(override.Image, resolved.Image)
+	resolved.StorageSize = cmp.Or(override.StorageSize, resolved.StorageSize)
+	resolved.TestScale = cmp.Or(override.TestScale, resolved.TestScale)
+	resolved.MaxBytes = cmp.Or(override.MaxBytes, resolved.MaxBytes)
+	resolved.TimeoutPerJob = cmp.Or(override.TimeoutPerJob, resolved.TimeoutPerJob)
+	resolved.MeasurementTimeout = cmp.Or(override.MeasurementTimeout, resolved.MeasurementTimeout)
+	resolved.SourceRepo = cmp.Or(override.SourceRepo, resolved.SourceRepo)
 	if len(override.ImagePullSecrets) > 0 {
 		resolved.ImagePullSecrets = override.ImagePullSecrets
 	}
@@ -830,15 +838,6 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	}
 	if override.SaveTopK != nil {
 		resolved.SaveTopK = override.SaveTopK
-	}
-	if override.StorageSize != "" {
-		resolved.StorageSize = override.StorageSize
-	}
-	if override.TestScale != "" {
-		resolved.TestScale = override.TestScale
-	}
-	if override.MaxBytes != "" {
-		resolved.MaxBytes = override.MaxBytes
 	}
 	if override.NumIterations != nil {
 		resolved.NumIterations = override.NumIterations
@@ -860,15 +859,6 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	}
 	if override.MaxRestarts != nil {
 		resolved.MaxRestarts = override.MaxRestarts
-	}
-	if override.TimeoutPerJob != "" {
-		resolved.TimeoutPerJob = override.TimeoutPerJob
-	}
-	if override.MeasurementTimeout != "" {
-		resolved.MeasurementTimeout = override.MeasurementTimeout
-	}
-	if override.SourceRepo != "" {
-		resolved.SourceRepo = override.SourceRepo
 	}
 	return resolved
 }
@@ -934,10 +924,19 @@ func dropUnderCapacityNodes(nodes []corev1.Node, cat nvcrev1alpha1.CertificateCa
 }
 
 // resolveNodesPerJob determines the nodesPerJob for a category.
-// When explicitly set, clamps to the largest valid node count <= min(requested, available).
-// Otherwise auto-selects the largest valid node count <= available nodes.
-// "Valid" means satisfying the entry's constraints (minGPUs, TP×PP divisibility).
-// When no constraints are defined, uses all available nodes.
+//
+// The number is a group size for a sweep that covers the whole target, so the
+// controller is free to pick it: when explicitly set it clamps to the largest
+// valid node count <= min(requested, available), and otherwise auto-selects the
+// largest valid count <= available nodes. "Valid" means satisfying the entry's
+// constraints (minGPUs, TP×PP divisibility). When no constraints are defined,
+// it uses all available nodes.
+//
+// The adjustments are safe here precisely because a Certification covers every
+// targeted node either way: a clamp or a snap changes how the sweep is cut into
+// jobs, not which nodes it reaches. A WorkloadRun with placement Unpinned makes
+// the opposite promise, which is why that mode lives there and not here. See
+// ADR-089.
 func resolveNodesPerJob(nodes []corev1.Node, cat nvcrev1alpha1.CertificateCategory, opts nvcrev1alpha1.CategoryOptions, entry *catalog.Entry, gpusPerNode int32, gpuArch string) (int32, error) {
 	n := int32(len(nodes))
 	if n == 0 {

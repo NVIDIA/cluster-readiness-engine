@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A pod that belongs to a different Job, and nothing else. Terminal.
+#
+# The window between a Job's creation and its first pod is real, and so is a
+# job that fails before any pod exists, so this path has to leave the list
+# empty rather than write one. The foreign pod is what makes the case worth
+# having over a bare empty list: it proves the label selector is doing the
+# filtering, so a job cannot be attributed to a sibling's machines.
+placement: Unpinned
+nodesPerJob: 2
+terminal: true
+pods:
+  - {name: other-w-0, nodeName: node-z, phase: Running, jobLabel: some-other-job}

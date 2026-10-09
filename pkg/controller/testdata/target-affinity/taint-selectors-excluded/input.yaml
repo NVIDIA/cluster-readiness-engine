@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# taintSelectors picks nodes BY taint and is answered by tolerations, not by
+# affinity. Translating it here would produce an affinity on a key that is not
+# a label and match nothing.
+placement: Unpinned
+groupNodes: []
+target:
+  nodeSelector:
+    nvidia.com/gpu.present: "true"
+  taintSelectors:
+    - key: nvidia.com/gpu
+      operator: Exists
+gpuProducts: []

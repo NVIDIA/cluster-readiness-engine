@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The same run as unpinned-scope-lines, except the job placed short: it asked
+# for 2 nodes and only one pod ever bound before the job failed.
+#
+# Jobs times Nodes/Job still reads 2, because that is the size that was
+# requested, and it is the number the scope line would print if it trusted the
+# plan. It would be wrong. One node ran, so one node was exercised, and a report
+# claiming two overstates coverage in exactly the run where the operator is
+# trying to work out what the failure touched.
+#
+# exercisedNodes is summed from the group placement the Workflow controller
+# recorded, so it is ground truth rather than arithmetic, and the line prints it
+# in preference to the product whenever it is set.
+domain: training
+variant: nemotron5-8b
+status: Failed
+runtime: 1m 0s
+nodesPerJob: 2
+jobs: 1
+placement: Unpinned
+targetNodes: 18
+exercisedNodes: 1

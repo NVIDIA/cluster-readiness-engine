@@ -1,0 +1,74 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# strictDomain is rejected while a bare topologyKey is ignored, and the asymmetry
+# is the whole point of this case.
+#
+# strictDomain means "one job per topology domain" and is only ever set by an
+# explicit testScale: intra-rack. A user who wrote it alongside Unpinned asked
+# for two incompatible numbers of jobs, so the controller says so.
+#
+# A bare topologyKey is different: the GB200/GB300 catalog override injects it,
+# and overrides are applied before this check runs, so rejecting it would fail a
+# Nemotron run on GB200 with a message about a field the user never wrote. The
+# workflow-unpinned-multi-clique case pins the accepted side: a topologyKey set
+# alongside Unpinned, with the Workflow building and no clique constraint on
+# the Job.
+apiVersion: v1
+kind: Node
+metadata:
+  name: unpin-strict-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: unpin-strict-node-01
+spec:
+  providerID: "aws://us-east-1a/i-0d01"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: unpin-strict-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: "NVIDIA-H100-80GB-HBM3"
+    nvidia.com/gpu.clique: "clique-0"
+    kubernetes.io/hostname: unpin-strict-node-02
+spec:
+  providerID: "aws://us-east-1a/i-0d02"
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: unpin-strict
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    placement: Unpinned
+    topology:
+      topologyKey: nvidia.com/gpu.clique
+      strictDomain: true
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"

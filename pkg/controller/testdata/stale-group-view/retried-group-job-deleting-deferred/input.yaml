@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Same race, one tick earlier: the Job still exists with its deletionTimestamp
+# set and finalizer held. This is the branch the integration log showed firing
+# ("Job is being deleted, marking group as failed").
+groups:
+  - name: group-0
+    cached: {phase: Running, jobRef: g0-job}
+    live: {phase: Pending, jobRef: "", retries: 1}
+    job: deleting

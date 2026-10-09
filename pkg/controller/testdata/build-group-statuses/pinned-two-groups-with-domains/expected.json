@@ -1,0 +1,29 @@
+[
+  {
+    "name": "group-0",
+    "nodes": [
+      "node-a",
+      "node-b"
+    ],
+    "domains": [
+      "clique-1"
+    ],
+    "phase": "Pending"
+  },
+  {
+    "name": "group-1",
+    "nodes": [
+      "node-c",
+      "node-d"
+    ],
+    "domains": [
+      "clique-1",
+      "clique-2"
+    ],
+    "domainNodeCounts": {
+      "clique-1": 1,
+      "clique-2": 1
+    },
+    "phase": "Pending"
+  }
+]

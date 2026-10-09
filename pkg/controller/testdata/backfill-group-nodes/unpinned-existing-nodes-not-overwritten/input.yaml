@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A group that already recorded node-a, with pods now reporting node-b and
+# node-c. The recorded list stands.
+#
+# The write-once rule is what keeps the status stable: this runs on every
+# reconcile while the group is Running, and a pod that restarts onto a
+# different machine would otherwise rewrite the group's placement underneath
+# every reader of it. It is also why resetUnpinnedGroupNodes has to clear the
+# list on a retry, since nothing else ever will.
+placement: Unpinned
+nodesPerJob: 2
+terminal: false
+existingNodes: [node-a]
+pods:
+  - {name: w-0, nodeName: node-b, phase: Running}
+  - {name: w-1, nodeName: node-c, phase: Running}

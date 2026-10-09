@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A DRA-only fleet under the default placement. augmentGPUProductLabels filled
+# the label in from gpu.nvidia.com ResourceSlices (ADR-082), so the value lives
+# on the controller's in-memory Node copy and nowhere on the API server. An
+# affinity term built from it selects no node and every pod stays Pending.
+#
+# Pinned drops the term and carries on, which costs nothing: the hostname list
+# is itself the output of the architecture filter, so those hosts are already
+# the right GPUs. Only the bind-time re-check is lost, and this is exactly the
+# fleet that never had it.
+placement: Pinned
+gpuProducts: ["NVIDIA-GB300"]
+synthesizedProducts: ["dra-node-01", "dra-node-02"]
+archExcluded: ["b200-node-01"]

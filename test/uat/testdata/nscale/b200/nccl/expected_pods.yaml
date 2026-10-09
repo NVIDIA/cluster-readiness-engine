@@ -47,6 +47,10 @@ spec:
             values:
             - nscale-b200-node-01
             - nscale-b200-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
   containers:
   - args:
     - -N
@@ -269,6 +273,10 @@ spec:
             values:
             - nscale-b200-node-01
             - nscale-b200-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
   containers:
   - args:
     - |-
@@ -424,6 +432,10 @@ spec:
             values:
             - nscale-b200-node-01
             - nscale-b200-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
   containers:
   - args:
     - |-

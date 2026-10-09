@@ -32,6 +32,7 @@ import (
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/nodemonitor"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/orchestration"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
@@ -61,6 +62,10 @@ type WorkflowReconciler struct {
 	// cluster before it is treated as deleted (issue #385).
 	APIReader          client.Reader
 	JobRequeueInterval time.Duration
+	// NodeDiscoverer answers where a Job's pods were actually placed. Under
+	// Unpinned the controller does not choose the nodes, so this is the only way
+	// to learn which ones ran and to record them on the group.
+	NodeDiscoverer *nodemonitor.NodeDiscoverer
 	// MaxConcurrentReconciles bounds the number of Workflow objects reconciled concurrently.
 	MaxConcurrentReconciles int
 }
@@ -293,7 +298,12 @@ func gpuShortfallDetail(excluded []gpuCapacityExclusion) string {
 // dropped. Causes and remedies are collected separately so that when both
 // filters contributed, the "Set nodesPerJob to N" advice appears once with
 // every applicable remedy after it, not once per cause.
-func notEnoughNodesMessage(needed, found int, gpuArch string, archExcluded []string, capacityExcluded []gpuCapacityExclusion, gpusPerNode int32) string {
+//
+// The remedy differs by placement. Under Pinned, nodesPerJob is a group size and
+// shrinking it to fit the fleet is a reasonable suggestion. Under Unpinned it is
+// the job size the operator deliberately asked for, so telling them to run a
+// smaller job answers a question they did not ask; widen the target instead.
+func notEnoughNodesMessage(placement string, needed, found int, gpuArch string, archExcluded []string, capacityExcluded []gpuCapacityExclusion, gpusPerNode int32) string {
 	msg := fmt.Sprintf("Not enough schedulable nodes: need %d, found %d", needed, found)
 	var causes, remedies []string
 	if len(archExcluded) > 0 {
@@ -309,11 +319,24 @@ func notEnoughNodesMessage(needed, found int, gpuArch string, archExcluded []str
 			len(capacityExcluded), gpusPerNode, gpuShortfallDetail(capacityExcluded)))
 		remedies = append(remedies, "lower gpusPerNode")
 	}
+	sizeRemedy := fmt.Sprintf("Set nodesPerJob to %d", found)
+	if nvcrev1alpha1.IsUnpinned(placement) {
+		sizeRemedy = fmt.Sprintf(
+			"Unpinned runs the requested job size exactly, so make %d qualifying nodes available "+
+				"rather than lowering nodesPerJob", needed)
+	}
 	if len(causes) == 0 {
+		// Under Pinned the bare count is the whole story and has always been the
+		// message, so it stays byte-identical. Under Unpinned the operator asked
+		// for this size deliberately and the interesting part is that the run
+		// refused to shrink to fit, which the count alone does not say.
+		if nvcrev1alpha1.IsUnpinned(placement) {
+			return fmt.Sprintf("%s. %s", msg, sizeRemedy)
+		}
 		return msg
 	}
-	return fmt.Sprintf("%s. %s. Set nodesPerJob to %d, or %s",
-		msg, strings.Join(causes, ". "), found, strings.Join(remedies, ", or "))
+	return fmt.Sprintf("%s. %s. %s, or %s",
+		msg, strings.Join(causes, ". "), sizeRemedy, strings.Join(remedies, ", or "))
 }
 
 // failWorkflowForDependencyError marks the Workflow Failed after
@@ -383,12 +406,76 @@ func (r *WorkflowReconciler) enforceGangSchedulingIntent(
 	return err
 }
 
+// shortfallContext carries the filter results discoverAndPartition already
+// computed, so a node shortfall can name what was dropped and why instead of
+// blaming schedulability.
+type shortfallContext struct {
+	gpuArch          string
+	archExcluded     []string
+	capacityExcluded []gpuCapacityExclusion
+	gpusPerNode      int32
+}
+
+// resolveWorkflowJobSize reads the job size the workload declares and checks it
+// against the surviving fleet, recording a Failed condition before returning any
+// error so the caller only has to propagate it.
+func (r *WorkflowReconciler) resolveWorkflowJobSize(
+	ctx context.Context,
+	workflow *nvcrev1alpha1.Workflow,
+	orch *nvcrev1alpha1.OrchestrationStatus,
+	nodes []corev1.Node,
+	sc shortfallContext,
+) (int, error) {
+	log := logf.FromContext(ctx)
+	fail := func(msg string) {
+		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, msg,
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
+			log.Error(statusErr, "Failed to update status")
+		}
+	}
+
+	adapter, err := workload.ForSpec(&workflow.Spec.JobTemplate.Spec.Workload)
+	if err != nil {
+		fail(fmt.Sprintf("Failed to determine workload adapter: %v", err))
+		return 0, err
+	}
+
+	nodesPerJob, err := adapter.NodesRequired(&workflow.Spec.JobTemplate.Spec.Workload)
+	if err != nil {
+		fail(fmt.Sprintf("Failed to detect nodesPerJob: %v", err))
+		return 0, err
+	}
+
+	if nodesPerJob < 1 {
+		// "Use every node" is exactly the fleet-wide sweep Unpinned exists to
+		// escape, so it cannot be the fallback here. A WorkloadRun always carries
+		// a numNodes, so in practice this is the backstop for a hand-written
+		// Workflow whose workload declares no size.
+		if nvcrev1alpha1.IsUnpinned(workflow.Spec.Orchestration.Placement) {
+			msg := "orchestration.placement: Unpinned requires an explicit job size, but the workload " +
+				"declares none; set numNodes on the WorkloadRun, or the workload's numNodes on a Workflow. " +
+				"Unpinned will not fall back to running one job across all discovered nodes"
+			fail(msg)
+			return 0, fmt.Errorf("%s", msg)
+		}
+		nodesPerJob = len(nodes)
+	}
+
+	if nodesPerJob > len(nodes) {
+		msg := notEnoughNodesMessage(workflow.Spec.Orchestration.Placement,
+			nodesPerJob, len(nodes), sc.gpuArch, sc.archExcluded, sc.capacityExcluded, sc.gpusPerNode)
+		fail(msg)
+		return 0, fmt.Errorf("%s", msg)
+	}
+	return nodesPerJob, nil
+}
+
 // discoverAndPartition discovers target nodes, auto-detects nodesPerJob, and partitions nodes into groups.
 func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow *nvcrev1alpha1.Workflow, orch *nvcrev1alpha1.OrchestrationStatus) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	target := workflow.Spec.Orchestration.Target
 
-	nodes, cordoned, err := discoverTargetNodes(ctx, r.Client, r.APIReader, target)
+	nodes, cordoned, synthesizedProducts, err := discoverTargetNodes(ctx, r.Client, r.APIReader, target)
 	if err != nil {
 		log.Error(err, "Failed to discover target nodes")
 		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonNodeDiscoveryError,
@@ -448,10 +535,15 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	}
 	orch.DetectedGPUArchitecture = gpuArch
 
-	// Record the cordon and architecture exclusions before overrides run, so a
-	// failure in override application still leaves the coverage record behind.
-	// The GPU capacity check below has to read the post-override spec, so the
-	// summary is recomputed with the full set once that filter has run.
+	// Record the cordon and architecture exclusions before anything that can fail,
+	// so a failure below still leaves the coverage record behind. The GPU capacity
+	// check further down has to read the post-override spec, so the summary is
+	// recomputed with the full set once that filter has run.
+	//
+	// This has to precede the synthesized-product check rather than follow it:
+	// that check fails with applyExclusionRecord(orch.ExcludedNodes, ...), and
+	// reaching it with the fields still unassigned would hand it an empty record
+	// and write nothing.
 	orch.ExcludedNodes, orch.ExclusionReason = exclusionSummary(cordoned, archExcluded, gpuArch, nil, 0)
 
 	// Apply overrides now that platform/gpuArch are known, before computing nodesPerJob.
@@ -470,6 +562,37 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	}
 	orch.AppliedOverrides = applied
 	r.logOverrideResults(ctx, workflow, applied, octx)
+
+	// Resolve placement only now. Overrides can introduce orchestration fields
+	// the user never wrote, and the GB200/GB300 catalog override injects a
+	// topology key, so any placement check has to see the post-override spec.
+	unpinned := nvcrev1alpha1.IsUnpinned(workflow.Spec.Orchestration.Placement)
+	orch.Placement = workflow.Spec.Orchestration.Placement
+
+	// Record the raw gpu.product values before any later filter narrows the set.
+	// gpuArch above is normalized and lossy, so it cannot be turned back into the
+	// label match the job's node affinity needs.
+	//
+	// Resolved here rather than in createJobForGroup because this is the only
+	// place that knows which labels were synthesized: discovery runs once, on the
+	// first reconcile, and createJobForGroup runs later with nothing but status to
+	// read. Recording only the values that are safe to match on keeps the status
+	// field self-describing and leaves createJobForGroup a plain read.
+	//
+	// It has to sit after override application, for the same reason the placement
+	// resolution above does: mergeOrchestration has a Placement arm, so an
+	// override can turn a run Unpinned. Reading the pre-override value would take
+	// the Pinned branch and silently drop the architecture term on a run that has
+	// nothing else holding it to one architecture.
+	//
+	// The assignment sits before the placement validation below, not after, so
+	// that a run rejected for strictDomain or diagnose still records what
+	// discovery found. Those failures are terminal and nothing recomputes the
+	// field afterwards, so reaching them with gpuProducts unassigned would leave
+	// an operator unable to see which architecture the fleet reported.
+	if err := r.recordGPUProductsAndValidatePlacement(ctx, workflow, orch, nodes, synthesizedProducts, archExcluded); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	// Drop nodes that cannot supply the workload's per-node GPU request. A node
 	// with fewer allocatable GPUs than the pods ask for is partitioned into a
@@ -524,36 +647,14 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 		return r.failWorkflowForDependencyError(ctx, workflow, orch, err)
 	}
 
-	// Auto-detect nodesPerJob from workload template
-	adapter, err := workload.ForSpec(&workflow.Spec.JobTemplate.Spec.Workload)
+	nodesPerJob, err := r.resolveWorkflowJobSize(ctx, workflow, orch, nodes, shortfallContext{
+		gpuArch:          gpuArch,
+		archExcluded:     archExcluded,
+		capacityExcluded: capacityExcluded,
+		gpusPerNode:      gpusPerNode,
+	})
 	if err != nil {
-		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError,
-			fmt.Sprintf("Failed to determine workload adapter: %v", err),
-			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
-			log.Error(statusErr, "Failed to update status")
-		}
 		return ctrl.Result{}, err
-	}
-
-	nodesPerJob, err := adapter.NodesRequired(&workflow.Spec.JobTemplate.Spec.Workload)
-	if err != nil {
-		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError,
-			fmt.Sprintf("Failed to detect nodesPerJob: %v", err),
-			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
-			log.Error(statusErr, "Failed to update status")
-		}
-		return ctrl.Result{}, err
-	}
-	if nodesPerJob < 1 {
-		nodesPerJob = len(nodes)
-	}
-	if nodesPerJob > len(nodes) {
-		msg := notEnoughNodesMessage(nodesPerJob, len(nodes), gpuArch, archExcluded, capacityExcluded, gpusPerNode)
-		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, msg,
-			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
-			log.Error(statusErr, "Failed to update status")
-		}
-		return ctrl.Result{}, fmt.Errorf("%s", msg)
 	}
 
 	// Build NodeInfo list for partitioning
@@ -565,12 +666,111 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 		}
 	}
 
-	// Generate groups based on strategy: diagnose or partition (simple/topology).
-	var groups []orchestration.Group
+	groups, nodesPerJob, err := buildGroups(workflow, orch, nodeInfos, nodesPerJob, unpinned)
+	if err != nil {
+		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError,
+			fmt.Sprintf("Failed to partition nodes: %v", err),
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
+			log.Error(statusErr, "Failed to update status")
+		}
+		return ctrl.Result{}, err
+	}
 
-	if workflow.Spec.Orchestration.Diagnose != nil {
+	// Populate orchestration status
+	orch.TotalNodes = len(nodes)
+	orch.NodesPerJob = nodesPerJob
+	orch.TotalGroups = len(groups)
+	orch.CurrentIteration = 1
+	orch.Groups = buildGroupStatuses(groups, nodeInfos, workflow.Spec.Orchestration.Topology)
+
+	log.Info("Grouped nodes for execution",
+		"placement", placementOrDefault(orch.Placement),
+		"totalNodes", orch.TotalNodes,
+		"nodesPerJob", orch.NodesPerJob,
+		"totalGroups", orch.TotalGroups)
+
+	// Say "1 of 18 nodes" rather than "partitioned into 1 groups": under Unpinned
+	// the untested nodes are deliberate scope, and a message that reads like a
+	// partition invites the reader to look for the missing groups.
+	msg := fmt.Sprintf("Discovered %d nodes, partitioned into %d groups (%d nodes/job)",
+		orch.TotalNodes, orch.TotalGroups, orch.NodesPerJob)
+	if unpinned {
+		msg = fmt.Sprintf("Discovered %d nodes, running 1 unpinned job of %d nodes "+
+			"(%d target nodes not exercised)",
+			orch.TotalNodes, orch.NodesPerJob, orch.TotalNodes-orch.NodesPerJob)
+	}
+	if err := r.setWorkflowInProgress(ctx, workflow, ReasonGroupsPartitioned, msg); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{RequeueAfter: requeueImmediate}, nil
+}
+
+// recordGPUProductsAndValidatePlacement records the gpu.product values that are
+// safe to match on and validates the resolved placement. It writes the Failed
+// condition itself and returns an error when the run cannot proceed.
+func (r *WorkflowReconciler) recordGPUProductsAndValidatePlacement(
+	ctx context.Context, workflow *nvcrev1alpha1.Workflow, orch *nvcrev1alpha1.OrchestrationStatus,
+	nodes []corev1.Node, synthesizedProducts, archExcluded []string,
+) error {
+	log := logf.FromContext(ctx)
+	products, safeToMatch := GPUProductsForAffinity(
+		workflow.Spec.Orchestration.Placement, DistinctGPUProducts(nodes), synthesizedProducts, archExcluded)
+	orch.GPUProducts = products
+	if len(synthesizedProducts) > 0 && safeToMatch {
+		log.Info("GPU product labels synthesized from ResourceSlices, omitting the architecture "+
+			"affinity term because the value exists only in memory",
+			"synthesized", synthesizedProducts, "placement", placementOrDefault(orch.Placement))
+	}
+
+	if err := ValidatePlacement(&workflow.Spec.Orchestration); err != nil {
+		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, err.Error(),
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
+			log.Error(statusErr, "Failed to update status")
+		}
+		return err
+	}
+	if key := IgnoredTopologyKey(&workflow.Spec.Orchestration); key != "" {
+		log.Info("Topology key ignored under Unpinned placement; it only affects partitioning, "+
+			"and Unpinned creates a single job. To confine the job to one domain, "+
+			"name the domain label in target.matchExpressions.", "topologyKey", key)
+	}
+
+	// The refusal itself is reported after ValidatePlacement, so a spec that is
+	// both internally contradictory and unschedulable names the contradiction
+	// first. strictDomain and diagnose are fields the user wrote; a synthesized
+	// product label is a property of the cluster they are running against.
+	if !safeToMatch {
+		msg := SynthesizedProductsMessage(synthesizedProducts, archExcluded)
+		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError, msg,
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
+			log.Error(statusErr, "Failed to update status")
+		}
+		return fmt.Errorf("%s", msg)
+	}
+
+	return nil
+}
+
+// buildGroups generates the groups for the resolved strategy: unpinned,
+// diagnose, or partition. nodesPerJob is returned because diagnose may resize it.
+func buildGroups(
+	workflow *nvcrev1alpha1.Workflow, orch *nvcrev1alpha1.OrchestrationStatus,
+	nodeInfos []orchestration.NodeInfo, nodesPerJob int, unpinned bool,
+) ([]orchestration.Group, int, error) {
+	var groups []orchestration.Group
+	var err error
+	switch {
+	case unpinned:
+		// One job, no node list. PartitionNodes is not called at all: its contract
+		// is that every input node lands in some group, and opting out of that
+		// coverage guarantee is the whole point of this mode. The scheduler picks
+		// the nodes, so there is nothing to record here; updateStatusFromJobs
+		// backfills the group's nodes once pods are actually placed.
+		groups = []orchestration.Group{{Name: "group-0"}}
+	case workflow.Spec.Orchestration.Diagnose != nil:
 		groups, nodesPerJob, err = initDiagnose(nodeInfos, workflow.Spec.Orchestration.Diagnose, orch)
-	} else {
+	default:
 		// Partition mode: simple chunking or topology-aware.
 		var topologyKey string
 		if workflow.Spec.Orchestration.Topology != nil {
@@ -589,34 +789,7 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 			StrictDomain: strictDomain,
 		})
 	}
-	if err != nil {
-		if statusErr := r.setWorkflowFailed(ctx, workflow, ReasonPartitionError,
-			fmt.Sprintf("Failed to partition nodes: %v", err),
-			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); statusErr != nil {
-			log.Error(statusErr, "Failed to update status")
-		}
-		return ctrl.Result{}, err
-	}
-
-	// Populate orchestration status
-	orch.TotalNodes = len(nodes)
-	orch.NodesPerJob = nodesPerJob
-	orch.TotalGroups = len(groups)
-	orch.CurrentIteration = 1
-	orch.Groups = buildGroupStatuses(groups, nodeInfos, workflow.Spec.Orchestration.Topology)
-
-	log.Info("Partitioned nodes into groups",
-		"totalNodes", orch.TotalNodes,
-		"nodesPerJob", orch.NodesPerJob,
-		"totalGroups", orch.TotalGroups)
-
-	if err := r.setWorkflowInProgress(ctx, workflow, ReasonGroupsPartitioned,
-		fmt.Sprintf("Discovered %d nodes, partitioned into %d groups (%d nodes/job)",
-			orch.TotalNodes, orch.TotalGroups, orch.NodesPerJob)); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	return ctrl.Result{RequeueAfter: requeueImmediate}, nil
+	return groups, nodesPerJob, err
 }
 
 func (r *WorkflowReconciler) logOverrideResults(ctx context.Context, workflow *nvcrev1alpha1.Workflow, applied []nvcrev1alpha1.AppliedOverride, octx OverrideContext) {
@@ -654,7 +827,14 @@ func (r *WorkflowReconciler) logOverrideResults(ctx context.Context, workflow *n
 // dropped for being cordoned. Callers that record coverage need it: a cordoned
 // node was targeted and never tested, and without the names the run reports a
 // clean PASSED over a fleet it only partly certified.
-func discoverTargetNodes(ctx context.Context, reader, sliceReader client.Reader, target *nvcrev1alpha1.TargetSpec) ([]corev1.Node, []string, error) {
+//
+// The third names the nodes whose nvidia.com/gpu.product label was synthesized
+// from ResourceSlice attributes rather than read off the stored Node. Reading
+// that label is safe, but matching on it is not, because it exists only on the
+// returned copies. Callers that build node affinity must consult it.
+func discoverTargetNodes(
+	ctx context.Context, reader, sliceReader client.Reader, target *nvcrev1alpha1.TargetSpec,
+) (nodes []corev1.Node, cordoned, synthesizedProducts []string, err error) {
 	nodeList := &corev1.NodeList{}
 	var opts []client.ListOption
 
@@ -663,10 +843,10 @@ func discoverTargetNodes(ctx context.Context, reader, sliceReader client.Reader,
 	}
 
 	if err := reader.List(ctx, nodeList, opts...); err != nil {
-		return nil, nil, fmt.Errorf("failed to list nodes: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
 
-	nodes := nodeList.Items
+	nodes = nodeList.Items
 
 	// If matchExpressions specified, post-filter nodes against each requirement
 	if target != nil && len(target.MatchExpressions) > 0 {
@@ -717,7 +897,6 @@ func discoverTargetNodes(ctx context.Context, reader, sliceReader client.Reader,
 	//
 	// Only skip cordoned nodes if there does not exist a taintSelectors entry which
 	// targets the node.kubernetes.io/unschedulable taint.
-	var cordoned []string
 	if !TargetsCordonedNodes(target) {
 		var schedulable []corev1.Node
 		for _, n := range nodes {
@@ -743,7 +922,7 @@ func discoverTargetNodes(ctx context.Context, reader, sliceReader client.Reader,
 	if sliceReader == nil {
 		sliceReader = reader
 	}
-	augmentGPUProductLabels(ctx, sliceReader, nodes)
+	synthesizedProducts = augmentGPUProductLabels(ctx, sliceReader, nodes)
 
 	// Sort by name so discovery is reproducible. client.List gives no ordering
 	// guarantee, and callers pick nodes[0] to decide the platform and use slice
@@ -758,8 +937,9 @@ func discoverTargetNodes(ctx context.Context, reader, sliceReader client.Reader,
 	// printed in the report, so an unsorted list would make the same cluster
 	// produce a different report on each reconcile.
 	sort.Strings(cordoned)
+	sort.Strings(synthesizedProducts)
 
-	return nodes, cordoned, nil
+	return nodes, cordoned, synthesizedProducts, nil
 }
 
 // nodeMatchesTaints returns true if the node has ALL of the specified taints.
@@ -836,8 +1016,9 @@ func convertOperator(op corev1.NodeSelectorOperator) (selection.Operator, error)
 	}
 }
 
-// buildTolerations creates tolerations from taint selectors.
-func buildTolerations(selectors []nvcrev1alpha1.TaintSelector) []corev1.Toleration {
+// BuildTolerations creates tolerations from taint selectors. Exported so
+// pkg/render builds the same tolerations the controller does.
+func BuildTolerations(selectors []nvcrev1alpha1.TaintSelector) []corev1.Toleration {
 	tolerations := make([]corev1.Toleration, len(selectors))
 	for i, sel := range selectors {
 		t := corev1.Toleration{
@@ -1195,42 +1376,54 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 		Spec:      *patchedSpec,
 	}
 
-	// Pin to this group's specific nodes via NodeAffinity
+	// Constrain where this job's pods can land.
 	adapter, err := workload.ForSpec(&job.Spec.Workload)
 	if err != nil {
 		return fmt.Errorf("failed to get workload adapter: %w", err)
 	}
 
-	affinity := &corev1.NodeAffinity{
-		RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-			NodeSelectorTerms: []corev1.NodeSelectorTerm{{
-				MatchExpressions: []corev1.NodeSelectorRequirement{{
-					Key:      "kubernetes.io/hostname",
-					Operator: corev1.NodeSelectorOpIn,
-					Values:   group.Nodes,
-				}},
-			}},
-		},
+	placement := workflow.Spec.Orchestration.Placement
+	target := workflow.Spec.Orchestration.Target
+	unpinned := nvcrev1alpha1.IsUnpinned(placement)
+
+	// Pinned jobs get a hostname term for their group. Unpinned jobs get one only
+	// if the target named explicit nodeNames. Both get the target carried onto the
+	// pods, which Pinned never did: the pin masked the gap by landing pods on hosts
+	// the discovery filter had already approved. See ADR-089.
+	var gpuProducts []string
+	if orch != nil {
+		gpuProducts = orch.GPUProducts
 	}
-	adapter.SetNodeAffinity(&job.Spec.Workload, affinity)
+	if affinity := BuildNodeAffinity(
+		PinnedHostnames(placement, group.Nodes, target), target, gpuProducts,
+	); affinity != nil {
+		adapter.SetNodeAffinity(&job.Spec.Workload, affinity)
+	}
 
 	// Override workload numNodes to match the actual group size.
 	// Handles: clamped values, "all nodes" mode, overflow groups, and bisection.
-	adapter.SetNumNodes(&job.Spec.Workload, len(group.Nodes))
+	//
+	// Skipped under Unpinned, where group.Nodes is empty: writing 0 would stop the
+	// job running, and writing anything else would desynchronize the trainer from
+	// the ComputeDomain that GB200/GB300 catalog entries size from the same
+	// templated NodesPerJob. The templated value is already the authoritative one.
+	if !unpinned {
+		adapter.SetNumNodes(&job.Spec.Workload, len(group.Nodes))
+	}
 
-	// Toleration injection precedence (see ADR-063):
-	//   1. If target.taintSelectors is set, inject matching tolerations for all
-	//      workload types (training and MPI alike) — explicit opt-in wins.
-	//   2. Otherwise, MPI workloads (launcher + worker) get a blanket
-	//      Operator: Exists toleration as a fallback so existing NCCL deployments
-	//      that rely on it keep working.
-	//   3. Otherwise, no controller-injected tolerations.
-	if target := workflow.Spec.Orchestration.Target; target != nil && len(target.TaintSelectors) > 0 {
-		adapter.SetTolerations(&job.Spec.Workload, buildTolerations(target.TaintSelectors))
-	} else if workload.HasLauncherTarget(&job.Spec.Workload) {
-		adapter.SetTolerations(&job.Spec.Workload, []corev1.Toleration{{
-			Operator: corev1.TolerationOpExists,
-		}})
+	// Toleration injection precedence (see ADR-063), resolved by JobTolerations.
+	//
+	// Under Unpinned the blanket narrows to the named GPU taints rather than
+	// disappearing. ADR-023 justified Exists on the grounds that "workloads are
+	// already pinned to specific nodes via NodeAffinity"; without the pin it would
+	// let a job onto any tainted node with free GPUs. Tolerating nothing would
+	// leave the launcher unschedulable on the tainted GPU fleets this is meant to
+	// run on, so UnpinnedMPITolerations names the taints the catalog's own runtime
+	// patches already list. See ADR-089.
+	if tolerations, apply := JobTolerations(
+		target, unpinned, workload.HasLauncherTarget(&job.Spec.Workload),
+	); apply {
+		adapter.SetTolerations(&job.Spec.Workload, tolerations)
 	}
 
 	// Disable MNNVL for diagnose stages that require it.
@@ -1265,7 +1458,13 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 	if len(workflow.Spec.JobTemplate.Annotations) > 0 {
 		maps.Copy(annotations, workflow.Spec.JobTemplate.Annotations)
 	}
-	annotations["nvcre.nvidia.com/group-nodes"] = strings.Join(group.Nodes, ",")
+	// Set only when the group has nodes. Under Unpinned it does not, and writing
+	// an empty value would make the annotation present-but-blank, which reads as
+	// "this job ran on no nodes" rather than "ask where the pods actually landed".
+	// groupNodeNames falls back to live pod discovery on the absent key.
+	if len(group.Nodes) > 0 {
+		annotations["nvcre.nvidia.com/group-nodes"] = strings.Join(group.Nodes, ",")
+	}
 	job.SetAnnotations(annotations)
 
 	// Set owner reference so the Job is garbage collected when the Workflow is deleted
@@ -1335,6 +1534,16 @@ func (r *WorkflowReconciler) createOrAdoptJob(ctx context.Context, workflow *nvc
 				Message: fmt.Sprintf("Job %q already exists in namespace %q and is not controlled by Workflow %q; refusing to adopt it",
 					jobName, workflow.Namespace, workflow.Name),
 			}
+		}
+		// This Workflow's own Job, but on its way out: the retry in
+		// completeTerminalGroup deletes a group's Job and relaunches it under the
+		// same name, and the Job controller holds the old one with a finalizer
+		// until its pods have drained. Adopting it would point the group at a
+		// Job that is about to vanish and fail the group on the next pass, which
+		// discards the retry. The name frees up shortly; retry with backoff.
+		if !job.DeletionTimestamp.IsZero() {
+			return fmt.Errorf("previous Job %q in namespace %q is still being deleted; retrying",
+				jobName, workflow.Namespace)
 		}
 		log.Info("Job already exists and is controlled by this Workflow, proceeding", "name", jobName)
 	}
@@ -1417,7 +1626,6 @@ func (r *WorkflowReconciler) failTimedOutJob(
 
 // updateStatusFromJobs checks all running groups and updates their status from their Jobs.
 func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow *nvcrev1alpha1.Workflow) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
 	orch := r.ensureOrchestrationStatus(workflow)
 
 	// Stamp the backing PV of owned PVCs as soon as they bind. Job-scoped
@@ -1428,6 +1636,19 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 
 	anyRunning := false
 	statusChanged := false
+	// changed names the groups this pass mutated. The tail write merges only
+	// those into whatever the API server holds, so a group this pass did not
+	// touch is never overwritten from a cached view that may be behind.
+	changed := map[string]bool{}
+	markChanged := func(g *nvcrev1alpha1.GroupStatus) {
+		statusChanged = true
+		changed[g.Name] = true
+	}
+	// stale is set when a group's cached state has been superseded on the API
+	// server (see groupViewIsStale). The group is left alone this pass and the
+	// reconcile requeues immediately to read the state the cache has not yet
+	// delivered.
+	stale := false
 	// blockedMsg carries the first running Job's scheduling-blocked diagnosis
 	// up to the Workflow condition (ADR-083).
 	blockedMsg := ""
@@ -1437,113 +1658,21 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		if g.Phase != nvcrev1alpha1.GroupRunning || g.JobRef == nil {
 			continue
 		}
-
-		ref := g.JobRef
-		job := &nvcrev1alpha1.Job{}
-		ns := ref.Namespace
-		if ns == "" {
-			ns = workflow.Namespace
-		}
-
-		key := client.ObjectKey{Namespace: ns, Name: ref.Name}
-		if err := r.Get(ctx, key, job); err != nil {
-			if !apierrors.IsNotFound(err) {
-				return ctrl.Result{}, fmt.Errorf("failed to get Job %s: %w", ref.Name, err)
-			}
-			// A cache miss is not proof of deletion. The Job informer and the
-			// Workflow informer are independent watches: the write that makes
-			// this group readable as Running comes after the Job's Create, so
-			// the first reconcile to arrive here carries no guarantee that the
-			// Job informer has caught up. Confirm against the API server before
-			// acting, because this branch is not reversible (issue #385).
-			if err := r.jobReader().Get(ctx, key, job); err == nil {
-				log.V(1).Info("Job not yet in cache; leaving the group running",
-					"group", g.Name, "job", ref.Name)
-				anyRunning = true
-				continue
-			} else if !apierrors.IsNotFound(err) {
-				return ctrl.Result{}, fmt.Errorf("failed to confirm Job %s: %w", ref.Name, err)
-			}
-			// Confirmed gone. No pod-drain barrier is needed for a Job that
-			// really was deleted: its finalizer only unregisters after the
-			// workload's pods are gone (bounded by podDrainGracePeriod), so the
-			// pods have already drained. That reasoning applies to a confirmed
-			// absence only, which is why the uncached read above is load-bearing
-			// and not a mere optimisation: an unconfirmed cache miss leaves
-			// running pods holding the DRA allocations cleaned up below.
-			log.Info("Job was deleted, marking group as failed", "group", g.Name, "job", ref.Name)
-			r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
-			now := metav1.Now()
-			g.Phase = nvcrev1alpha1.GroupFailed
-			g.CompletionTime = &now
-			g.JobRef = nil
-			statusChanged = true
-			continue
-		}
-
-		// Treat a Job with DeletionTimestamp as deleted — its finalizer will
-		// clean up the workload, but the Workflow should not wait for it
-		// beyond the pod-drain barrier: the scoped dependencies below provide
-		// DRA allocations to the workload's pods, and deleting them while
-		// pods are still terminating causes CUDA error 719 (issue #121).
-		if !job.DeletionTimestamp.IsZero() {
-			if shouldWaitForPodDrain(ctx, r.Client, job) {
-				anyRunning = true
-				continue
-			}
-			log.Info("Job is being deleted, marking group as failed", "group", g.Name, "job", ref.Name)
-			r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
-			now := metav1.Now()
-			g.Phase = nvcrev1alpha1.GroupFailed
-			g.CompletionTime = &now
-			g.JobRef = nil
-			statusChanged = true
-			continue
-		}
-
-		// Check terminal state
-		ts := getJobTerminalState(job)
-
-		if !ts.terminal {
-			if r.isJobTimedOut(workflow, g, job) {
-				log.Info("Job timed out, terminating workload",
-					"group", g.Name, "job", ref.Name)
-				draining, err := r.failTimedOutJob(ctx, workflow, orch, g, job)
-				if err != nil {
-					return ctrl.Result{}, err
-				}
-				if draining {
-					anyRunning = true
-					continue
-				}
-				statusChanged = true
-				continue
-			}
-			anyRunning = true
-			if blockedMsg == "" {
-				blockedMsg = schedulingBlockedMessage(job)
-			}
-			continue
-		}
-
-		// Keep the group running until the Job controller finishes threshold
-		// evaluation (ValidationFailed=True/False). Measurement collection and
-		// CEL evaluation happen only in the Job controller.
-		if ts.succeeded && isJobAwaitingThresholdEvaluation(job) {
-			log.V(1).Info("Waiting for job threshold evaluation", "group", g.Name, "job", ref.Name)
-			anyRunning = true
-			continue
-		}
-
-		draining, err := r.completeTerminalGroup(ctx, workflow, orch, g, job, ts)
+		outcome, blocked, err := r.observeRunningGroup(ctx, workflow, orch, g)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
-		if draining {
+		switch outcome {
+		case groupStillRunning:
 			anyRunning = true
-			continue
+			if blockedMsg == "" {
+				blockedMsg = blocked
+			}
+		case groupChanged:
+			markChanged(g)
+		case groupViewStale:
+			stale = true
 		}
-		statusChanged = true
 	}
 
 	if statusChanged || anyRunning {
@@ -1561,22 +1690,367 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		// and refetches on conflict, so status mutated outside the callback is
 		// dropped on both paths. That left a completed group stuck Running and the
 		// Workflow never finished — a passing run reported as a timeout.
+		//
+		// Only the groups this pass changed are carried over, matched by name.
+		// The others keep whatever the API server has, which matters after a
+		// conflict refetch: this pass started from a cached view, and a group it
+		// did not touch may already have moved on (a retry reset, say). Writing
+		// the whole slice back would put that group where the stale view had
+		// it, Running on a Job that no longer exists, and the next pass would
+		// fail it.
 		want := make([]nvcrev1alpha1.GroupStatus, len(orch.Groups))
 		copy(want, orch.Groups)
 		applyGroups := func(w *nvcrev1alpha1.Workflow) bool {
 			if w.Status.Orchestration == nil || !statusChanged {
 				return false
 			}
-			w.Status.Orchestration.Groups = want
-			return true
+			applied := false
+			for i := range w.Status.Orchestration.Groups {
+				name := w.Status.Orchestration.Groups[i].Name
+				if !changed[name] {
+					continue
+				}
+				for j := range want {
+					if want[j].Name == name {
+						w.Status.Orchestration.Groups[i] = want[j]
+						applied = true
+						break
+					}
+				}
+			}
+			return applied
 		}
 		if err := r.setWorkflowInProgress(ctx, workflow, reason, msg, applyGroups); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
+	if stale {
+		return ctrl.Result{RequeueAfter: requeueImmediate}, nil
+	}
 	// Requeue to check for more pending groups to launch or iteration completion
 	return ctrl.Result{RequeueAfter: r.getJobRequeueInterval()}, nil
+}
+
+// groupOutcome is what one pass of observeRunningGroup concluded about a group.
+type groupOutcome int
+
+const (
+	// groupStillRunning: the group stays Running and nothing on it changed.
+	groupStillRunning groupOutcome = iota
+	// groupChanged: the group's status was mutated and must be written.
+	groupChanged
+	// groupViewStale: the cached group state has been superseded on the API
+	// server; leave it alone this pass and requeue immediately.
+	groupViewStale
+)
+
+// observeRunningGroup reconciles one Running group against its Job and reports
+// what happened to it. blocked carries the Job's scheduling-blocked diagnosis
+// when the group is still running (ADR-083), and is empty otherwise.
+func (r *WorkflowReconciler) observeRunningGroup(
+	ctx context.Context, workflow *nvcrev1alpha1.Workflow,
+	orch *nvcrev1alpha1.OrchestrationStatus, g *nvcrev1alpha1.GroupStatus,
+) (outcome groupOutcome, blocked string, err error) {
+	log := logf.FromContext(ctx)
+	ref := g.JobRef
+	ns := ref.Namespace
+	if ns == "" {
+		ns = workflow.Namespace
+	}
+	key := client.ObjectKey{Namespace: ns, Name: ref.Name}
+
+	job := &nvcrev1alpha1.Job{}
+	if err := r.Get(ctx, key, job); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return 0, "", fmt.Errorf("failed to get Job %s: %w", ref.Name, err)
+		}
+		return r.observeMissingJob(ctx, workflow, orch, g, key)
+	}
+
+	// Treat a Job with DeletionTimestamp as deleted — its finalizer will
+	// clean up the workload, but the Workflow should not wait for it
+	// beyond the pod-drain barrier: the scoped dependencies below provide
+	// DRA allocations to the workload's pods, and deleting them while
+	// pods are still terminating causes CUDA error 719 (issue #121).
+	if !job.DeletionTimestamp.IsZero() {
+		if behind, err := r.groupViewIsStale(ctx, workflow, g, ref.Name); err != nil {
+			return 0, "", err
+		} else if behind {
+			return groupViewStale, "", nil
+		}
+		// Attribute before the drain wait, not after. The barrier below holds
+		// until the job's Running and Pending pods are gone, and once they are
+		// there is nothing left to read placement from; the Job controller's
+		// finalizer waits on the same drain, so the confirmed-deletion branch
+		// arrives even later. This is the one reconcile that still sees the
+		// pods, so it records what it finds, partial or not (terminal=true),
+		// and the write goes out even though the group stays Running.
+		backfilled := r.backfillGroupNodes(ctx, workflow, orch, g, job.Namespace, job.Name, true)
+		if shouldWaitForPodDrain(ctx, r.Client, job) {
+			if backfilled {
+				return groupChanged, "", nil
+			}
+			return groupStillRunning, "", nil
+		}
+		r.failGroupForLostJob(ctx, workflow, orch, g, key, "Job is being deleted, marking group as failed")
+		return groupChanged, "", nil
+	}
+
+	ts := getJobTerminalState(job)
+
+	// Record where the scheduler actually put this job, for modes where the
+	// controller did not choose. Done before the terminal-state handling
+	// below so a job that fails is attributed to its nodes rather than to
+	// nothing, and told whether the job is terminal because that is the last
+	// chance to record anything: the caller only visits Running groups.
+	backfilled := r.backfillGroupNodes(ctx, workflow, orch, g, job.Namespace, job.Name, ts.terminal)
+
+	if !ts.terminal {
+		if r.isJobTimedOut(workflow, g, job) {
+			log.Info("Job timed out, terminating workload", "group", g.Name, "job", ref.Name)
+			draining, err := r.failTimedOutJob(ctx, workflow, orch, g, job)
+			if err != nil {
+				return 0, "", err
+			}
+			if draining {
+				return groupStillRunning, "", nil
+			}
+			return groupChanged, "", nil
+		}
+		if backfilled {
+			// The write still has to happen; the group just also stays running,
+			// which the caller's tail write covers because it runs whenever
+			// anything changed or anything is running.
+			return groupChanged, schedulingBlockedMessage(job), nil
+		}
+		return groupStillRunning, schedulingBlockedMessage(job), nil
+	}
+
+	// Keep the group running until the Job controller finishes threshold
+	// evaluation (ValidationFailed=True/False). Measurement collection and
+	// CEL evaluation happen only in the Job controller.
+	if ts.succeeded && isJobAwaitingThresholdEvaluation(job) {
+		log.V(1).Info("Waiting for job threshold evaluation", "group", g.Name, "job", ref.Name)
+		if backfilled {
+			return groupChanged, "", nil
+		}
+		return groupStillRunning, "", nil
+	}
+
+	draining, err := r.completeTerminalGroup(ctx, workflow, orch, g, job, ts)
+	if err != nil {
+		return 0, "", err
+	}
+	if draining {
+		if backfilled {
+			return groupChanged, "", nil
+		}
+		return groupStillRunning, "", nil
+	}
+	return groupChanged, "", nil
+}
+
+// observeMissingJob handles a Running group whose Job is not in the cache.
+//
+// A cache miss is not proof of deletion. The Job informer and the Workflow
+// informer are independent watches: the write that makes this group readable
+// as Running comes after the Job's Create, so the first reconcile to arrive
+// here carries no guarantee that the Job informer has caught up. Confirm
+// against the API server before acting, because this branch is not reversible
+// (issue #385).
+//
+// Once the absence is confirmed, no pod-drain barrier is needed: the Job's
+// finalizer only unregisters after the workload's pods are gone (bounded by
+// podDrainGracePeriod), so the pods have already drained. That reasoning
+// applies to a confirmed absence only, which is why the uncached read is
+// load-bearing and not a mere optimisation: an unconfirmed cache miss leaves
+// running pods holding the DRA allocations cleaned up below.
+func (r *WorkflowReconciler) observeMissingJob(
+	ctx context.Context, workflow *nvcrev1alpha1.Workflow,
+	orch *nvcrev1alpha1.OrchestrationStatus, g *nvcrev1alpha1.GroupStatus, key client.ObjectKey,
+) (groupOutcome, string, error) {
+	log := logf.FromContext(ctx)
+	job := &nvcrev1alpha1.Job{}
+	if err := r.jobReader().Get(ctx, key, job); err == nil {
+		log.V(1).Info("Job not yet in cache; leaving the group running", "group", g.Name, "job", key.Name)
+		return groupStillRunning, "", nil
+	} else if !apierrors.IsNotFound(err) {
+		return 0, "", fmt.Errorf("failed to confirm Job %s: %w", key.Name, err)
+	}
+	if behind, err := r.groupViewIsStale(ctx, workflow, g, key.Name); err != nil {
+		return 0, "", err
+	} else if behind {
+		return groupViewStale, "", nil
+	}
+	r.failGroupForLostJob(ctx, workflow, orch, g, key, "Job was deleted, marking group as failed")
+	return groupChanged, "", nil
+}
+
+// failGroupForLostJob moves a Running group to Failed because its Job is gone
+// or going, after a last attempt at attributing the failure. By the time either
+// caller reaches this the pods have usually drained, so the backfill here is a
+// backstop; the DeletionTimestamp branch records placement before its drain
+// wait, and the backfill is a no-op once a list is recorded.
+func (r *WorkflowReconciler) failGroupForLostJob(
+	ctx context.Context, workflow *nvcrev1alpha1.Workflow,
+	orch *nvcrev1alpha1.OrchestrationStatus, g *nvcrev1alpha1.GroupStatus, key client.ObjectKey, why string,
+) {
+	logf.FromContext(ctx).Info(why, "group", g.Name, "job", key.Name)
+	r.backfillGroupNodes(ctx, workflow, orch, g, key.Namespace, key.Name, true)
+	r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
+	now := metav1.Now()
+	g.Phase = nvcrev1alpha1.GroupFailed
+	g.CompletionTime = &now
+	g.JobRef = nil
+}
+
+// groupViewIsStale reports whether the cached Workflow this reconcile is acting
+// on has already been superseded for the given group: in the Workflow as the API
+// server has it now, the group is no longer Running on jobName in the same
+// iteration and with the same retry count.
+//
+// It guards the two places updateStatusFromJobs fails a group because its Job
+// is gone or going. On a retry, completeTerminalGroup deletes a Running group's
+// Job and moves the group to Pending in the same reconcile. The Job's deletion
+// is a watch event in its own right, and the reconcile it triggers can start
+// before the status write that recorded the reset has reached the informer
+// cache. That reconcile then sees the group still Running on a Job that is
+// being deleted, which is exactly what an external deletion looks like, and
+// fails it. The retry is lost, the Workflow fails, and the Job the fresh state
+// goes on to launch runs to completion with nothing watching it.
+//
+// The iteration reset in handleIterationComplete deletes Jobs too, but only of
+// groups whose terminal phase was already in the cache it read, so no later
+// view can show them Running and neither branch here is reachable for them.
+//
+// Both branches are irreversible, so like the Job existence check above them
+// they confirm against the API server before acting. A live view that no longer
+// has the group Running on this Job means the cached one is behind; the caller
+// leaves the group alone and requeues, and the next reconcile reads the state
+// the reset produced. A failed read is returned as an error so the controller's
+// backoff applies, the same as a failed confirmation of the Job itself. Neither
+// can wedge the Workflow: the cache converges on the live object, and once it
+// has, the group is no longer Running and this path is not entered.
+//
+// Retries and the iteration are compared as well as the Job name, because a
+// relaunched Job carries the same name as the one it replaced.
+func (r *WorkflowReconciler) groupViewIsStale(
+	ctx context.Context, workflow *nvcrev1alpha1.Workflow, g *nvcrev1alpha1.GroupStatus, jobName string,
+) (bool, error) {
+	log := logf.FromContext(ctx)
+	live := &nvcrev1alpha1.Workflow{}
+	// jobReader is the uncached reader; its name predates this second use.
+	if err := r.jobReader().Get(ctx, client.ObjectKeyFromObject(workflow), live); err != nil {
+		return false, fmt.Errorf("failed to confirm group %s against the API server: %w", g.Name, err)
+	}
+	cachedIteration := 0
+	if workflow.Status.Orchestration != nil {
+		cachedIteration = workflow.Status.Orchestration.CurrentIteration
+	}
+	if live.Status.Orchestration != nil {
+		for i := range live.Status.Orchestration.Groups {
+			lg := &live.Status.Orchestration.Groups[i]
+			if lg.Name != g.Name {
+				continue
+			}
+			if lg.Phase == nvcrev1alpha1.GroupRunning && lg.JobRef != nil && lg.JobRef.Name == jobName &&
+				lg.Retries == g.Retries && live.Status.Orchestration.CurrentIteration == cachedIteration {
+				return false, nil
+			}
+			log.V(1).Info("Cached group state is behind the API server; leaving the group alone this pass",
+				"group", g.Name, "job", jobName, "cachedPhase", g.Phase, "livePhase", lg.Phase)
+			return true, nil
+		}
+	}
+	log.V(1).Info("Group is absent from the live Workflow status; leaving it alone this pass",
+		"group", g.Name, "job", jobName)
+	return true, nil
+}
+
+// backfillGroupNodes records the nodes a group's Job actually landed on, and
+// reports whether it changed the group.
+//
+// Only Unpinned needs this. Under Pinned the controller chose the nodes and
+// wrote them at partition time, so g.Nodes is already authoritative and reading
+// live pods could only disagree with it. Under Unpinned the scheduler chose, so
+// the group starts with no nodes and this is the only way the Workflow learns
+// which machines ran: every downstream consumer of placement, from succeeded and
+// failed node accounting to the per-domain topology gauges, reads g.Nodes.
+//
+// While the job is still running the write is gated on a complete placement. A
+// multi-node job is routinely observed with some pods bound and others still
+// Pending, and persisting that prefix would leave a short list that every later
+// read treats as the whole group, since the len(g.Nodes) == 0 guard would stop
+// re-firing. Waiting costs one reconcile and makes a recorded list mean all of
+// it.
+//
+// Once the job is terminal that gate has to come off. The caller's loop only
+// visits groups that are still GroupRunning, so a terminal reconcile is the
+// last one that can record anything, and a job that failed with half its pods
+// bound is exactly the case attribution exists for: holding out for a complete
+// list there would attribute the failure to no nodes at all. A partial list
+// beats an empty one, and nothing re-reads it expecting NodesPerJob entries.
+// It takes the Job's namespace and name rather than the object because two of
+// its three call sites run on a Job that is gone or going: one has only the
+// JobRef left to go on, and neither can wait for a live read. Pods outlive the
+// Job object briefly in both cases, so the lookup still has something to find.
+func (r *WorkflowReconciler) backfillGroupNodes(
+	ctx context.Context,
+	workflow *nvcrev1alpha1.Workflow,
+	orch *nvcrev1alpha1.OrchestrationStatus,
+	g *nvcrev1alpha1.GroupStatus,
+	jobNamespace, jobName string,
+	terminal bool,
+) bool {
+	if !nvcrev1alpha1.IsUnpinned(workflow.Spec.Orchestration.Placement) ||
+		len(g.Nodes) > 0 || r.NodeDiscoverer == nil {
+		return false
+	}
+
+	log := logf.FromContext(ctx)
+	names, err := r.NodeDiscoverer.DiscoverPlacedNodesForJob(ctx, jobNamespace, jobName)
+	if err != nil {
+		// Attribution is reporting detail, not a reason to fail a running job.
+		// The next reconcile tries again.
+		log.V(1).Info("Could not discover placed nodes yet", "group", g.Name, "job", jobName, "error", err)
+		return false
+	}
+	if len(names) == 0 {
+		return false
+	}
+	if !terminal && (orch.NodesPerJob <= 0 || len(names) != orch.NodesPerJob) {
+		log.V(1).Info("Placement not complete yet, leaving the group's nodes unrecorded",
+			"group", g.Name, "job", jobName, "placed", len(names), "expected", orch.NodesPerJob)
+		return false
+	}
+
+	g.Nodes = names
+	log.Info("Recorded unpinned group placement", "group", g.Name, "job", jobName, "nodes", names)
+	return true
+}
+
+// resetUnpinnedGroupNodes clears a group's recorded placement before it runs
+// again, under Unpinned only.
+//
+// Every reset of a group to Pending has to call this. The next job is one the
+// scheduler places afresh, so the previous attempt's nodes are a guess about it,
+// and backfillGroupNodes above only fires on an empty list: a stale list is never
+// corrected, so the group reports having run wherever the first attempt happened
+// to land. The list also reaches the Job through the group-nodes annotation,
+// which groupNodeNames prefers over live pod discovery, so a failure after a
+// retry would be attributed to nodes that ran the attempt before it.
+//
+// Pinned keeps its nodes. The controller assigned them, the job is recreated on
+// the same hosts, and clearing them would lose the only record of the partition.
+//
+// Empty slice rather than nil: nodes is a required CRD field and nil marshals to
+// null, which the API server rejects.
+func resetUnpinnedGroupNodes(placement string, g *nvcrev1alpha1.GroupStatus) {
+	if !nvcrev1alpha1.IsUnpinned(placement) {
+		return
+	}
+	g.Nodes = []string{}
 }
 
 // completeTerminalGroup finishes a group whose Job reached a terminal state.
@@ -1638,6 +2112,7 @@ func (r *WorkflowReconciler) completeTerminalGroup(
 		g.JobRef = nil
 		g.StartTime = nil
 		g.CompletionTime = nil
+		resetUnpinnedGroupNodes(workflow.Spec.Orchestration.Placement, g)
 	case jobFailed:
 		// Clean up job-scoped deps on terminal failure (workload already
 		// deleted and drained above).
@@ -1736,6 +2211,7 @@ func (r *WorkflowReconciler) handleIterationComplete(ctx context.Context, workfl
 			orch.Groups[i].StartTime = nil
 			orch.Groups[i].CompletionTime = nil
 			orch.Groups[i].Retries = 0
+			resetUnpinnedGroupNodes(workflow.Spec.Orchestration.Placement, &orch.Groups[i])
 		}
 
 		// The mutations above (CompletedIterations, IterationHistory, group
@@ -2512,9 +2988,17 @@ func buildGroupStatuses(groups []orchestration.Group, nodeInfos []orchestration.
 
 	statuses := make([]nvcrev1alpha1.GroupStatus, len(groups))
 	for i, g := range groups {
+		// GroupStatus.Nodes is a required CRD field, so a nil slice marshals to
+		// null and the API server rejects the whole status update as "Required
+		// value". An unpinned group genuinely has no nodes until the scheduler
+		// places its pods, so normalize to an empty list: present and honest.
+		nodes := g.Nodes
+		if nodes == nil {
+			nodes = []string{}
+		}
 		statuses[i] = nvcrev1alpha1.GroupStatus{
 			Name:     g.Name,
-			Nodes:    g.Nodes,
+			Nodes:    nodes,
 			Domains:  g.Domains,
 			Overflow: g.Overflow,
 			Phase:    nvcrev1alpha1.GroupPending,
@@ -3613,6 +4097,9 @@ func (r *WorkflowReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// fail a group whose Job is running (issue #385).
 	if r.APIReader == nil {
 		r.APIReader = mgr.GetAPIReader()
+	}
+	if r.NodeDiscoverer == nil {
+		r.NodeDiscoverer = nodemonitor.NewNodeDiscoverer(mgr.GetClient())
 	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nvcrev1alpha1.Workflow{}).

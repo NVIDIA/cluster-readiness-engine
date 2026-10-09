@@ -228,10 +228,18 @@ spec:
                         nodesPerJob:
                           description: |-
                             nodesPerJob is the number of nodes per job for multi-node workloads.
-                            When nil at both global and per-category level, the controller auto-selects:
+
+                            It is a per-job group size, not a total: a Certification always covers
+                            every node its target matches, so N matching nodes produce
+                            ceil(N/nodesPerJob) concurrent jobs. When nil at both global and
+                            per-category level, the controller auto-selects:
                               - Entries with per-node-count configs (training): largest config <= matching nodes.
                               - All other entries: all matching nodes.
                             When set, clamped to min(nodesPerJob, matchingNodes).
+
+                            To run one job of a chosen size against part of a fleet, use a WorkloadRun
+                            with orchestration.placement: Unpinned. Certification has no such mode by
+                            design: a certification verdict covers everything it targeted. See ADR-089.
                           format: int32
                           minimum: 1
                           type: integer
@@ -736,10 +744,18 @@ spec:
               nodesPerJob:
                 description: |-
                   nodesPerJob is the number of nodes per job for multi-node workloads.
-                  When nil at both global and per-category level, the controller auto-selects:
+
+                  It is a per-job group size, not a total: a Certification always covers
+                  every node its target matches, so N matching nodes produce
+                  ceil(N/nodesPerJob) concurrent jobs. When nil at both global and
+                  per-category level, the controller auto-selects:
                     - Entries with per-node-count configs (training): largest config <= matching nodes.
                     - All other entries: all matching nodes.
                   When set, clamped to min(nodesPerJob, matchingNodes).
+
+                  To run one job of a chosen size against part of a fleet, use a WorkloadRun
+                  with orchestration.placement: Unpinned. Certification has no such mode by
+                  design: a certification verdict covers everything it targeted. See ADR-089.
                 format: int32
                 minimum: 1
                 type: integer

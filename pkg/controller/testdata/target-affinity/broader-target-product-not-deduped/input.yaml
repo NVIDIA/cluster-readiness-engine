@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The case the dedupe must NOT collapse. The target names two architectures;
+# discovery settled on one. Same key, different value sets, so both survive and
+# AND together down to the narrow one. A "same key wins" dedupe would drop the
+# narrow term and let pods land on an h100 in a job built for gb200.
+placement: Unpinned
+groupNodes: []
+target:
+  matchExpressions:
+    - key: nvidia.com/gpu.product
+      operator: In
+      values: ["NVIDIA-H100-80GB-HBM3", "NVIDIA-GB200-NVL72"]
+gpuProducts: ["NVIDIA-GB200-NVL72"]
