@@ -434,7 +434,7 @@ overrides:
 # --- OCI + GB300 (RoCE) ---
 # Must come AFTER the GB200/GB300 base block and AWS+GB300 so this override's
 # trainer.args (atomic replacement) wins. Adds SR-IOV NIC resources via
-# oci-mlnxnics-comm.yaml, mounts the host NCCL topology file via
+# oci-mlnxnics-comm.yaml, mounts the NCCL topology file via
 # oci-gb300-nccl-topo.yaml, and sets OCI-specific GID index + MNNVL env vars.
 # trainer.env carries UCX_IB_GID_INDEX for the MPI launcher (rank 0), which
 # initializes UCX from its container env, not from mpirun -x args.

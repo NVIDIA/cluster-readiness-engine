@@ -1,17 +1,15 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Mounts the node's NCCL topology file into worker containers. On OCI GB300
-# the nvidia-tuned NodeWright package installs /etc/nccl/topo.xml on the host;
-# without it NCCL pairs GPUs with the wrong RoCE rails. The file is a
-# prerequisite for certifying OCI GB300, so these entries assume it is present.
-# Unlike the Azure topology deps, the XML is not embedded in a ConfigMap: the
-# host copy matches the node it runs on.
+# Ships the OCI GB300 NCCL topology file in a ConfigMap and mounts it at
+# /etc/nccl, where NCCL_TOPO_FILE points. Without it NCCL pairs GPUs with the
+# wrong RoCE rails. The XML is the same file the nvidia-tuned NodeWright
+# package installs on every OCI GB300 node, embedded here so the entries need
+# nothing on the host.
 #
 # Kept separate from deps/oci-mlnxnics-comm.yaml so that file's mlnxPerNode: 0
 # opt-out (ADR-087) stays intact. Both patch the same TrainingRuntime and are
-# merged by name. type: File keeps the pod from starting on a node without the
-# file, rather than letting NCCL fall back to probing and report low bandwidth.
+# merged by name.
 - apiVersion: trainer.kubeflow.org/v1alpha1
   kind: TrainingRuntime
   metadata:
@@ -28,11 +26,16 @@
                   containers:
                   - name: node
                     volumeMounts:
-                    - name: nccl-topo
-                      mountPath: /etc/nccl/topo.xml
-                      readOnly: true
+                    - mountPath: /etc/nccl
+                      name: nccl-topo
                   volumes:
-                  - name: nccl-topo
-                    hostPath:
-                      path: /etc/nccl/topo.xml
-                      type: File
+                  - configMap:
+                      name: {{ .EntryName }}-oci-topo
+                    name: nccl-topo
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: {{ .EntryName }}-oci-topo
+  data:
+    topo.xml: |
+{{ lib "topo/oci-gb300.xml" . | indent 6 }}

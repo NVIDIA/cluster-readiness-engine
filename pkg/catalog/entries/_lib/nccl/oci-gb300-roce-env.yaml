@@ -19,9 +19,9 @@
 # was previously forced to 0 with MNNVL off because mlx5dv_reg_dmabuf_mr returned
 # error 524 on OCI GB300 nodes; peer memory support is now available there.
 #
-# NCCL_TOPO_FILE: points NCCL at the host topology file that
-# deps/oci-gb300-nccl-topo.yaml mounts. Without it NCCL pairs GPUs with the
-# wrong RoCE rails.
+# NCCL_TOPO_FILE: points NCCL at the topology file that
+# deps/oci-gb300-nccl-topo.yaml mounts from a ConfigMap. Without it NCCL pairs
+# GPUs with the wrong RoCE rails.
 #
 # NCCL_IB_ADAPTIVE_ROUTING / NCCL_IB_SPLIT_DATA_ON_QPS: RoCE path-spread tuning.
 # Each GB300 node has four 800 Gbps RoCE rails. Untuned, all-reduce plateaued at
