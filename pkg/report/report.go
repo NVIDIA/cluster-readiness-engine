@@ -1442,25 +1442,31 @@ func printCategoryCard(w io.Writer, cat *CategoryReport) {
 	}
 
 	// NCCL transport and aggregate bandwidth results.
-	if len(cat.Transport) > 0 || len(cat.Bandwidth) > 0 {
+	printTransportAndBandwidth(w, cat.Transport, cat.Bandwidth)
+
+	printCardBottom(w)
+}
+
+// printTransportAndBandwidth prints a category's NCCL transport line and
+// aggregate bandwidth table, preceded by a blank line when either is present.
+func printTransportAndBandwidth(w io.Writer, transport []string, bandwidth []BandwidthRow) {
+	if len(transport) > 0 || len(bandwidth) > 0 {
 		_, _ = fmt.Fprintf(w, "│%s│\n", pad(boxWidth-2))
 	}
-	if len(cat.Transport) > 0 {
-		trLine := formatTransportLine(cat.Transport)
+	if len(transport) > 0 {
+		trLine := formatTransportLine(transport)
 		_, _ = fmt.Fprintf(w, "│  %s%s│\n", trLine, pad(boxWidth-4-len(trLine)))
 	}
-	if len(cat.Bandwidth) > 0 {
+	if len(bandwidth) > 0 {
 		bwHeader := "Bandwidth:"
 		_, _ = fmt.Fprintf(w, "│  %s%s│\n", bwHeader, pad(boxWidth-4-len(bwHeader)))
 		colHeader := fmt.Sprintf("    %-10s %-12s %-12s %s", "Size", "AlgBW", "BusBW", "Samples")
 		_, _ = fmt.Fprintf(w, "│%s%s│\n", colHeader, pad(boxWidth-2-len(colHeader)))
-		for _, bw := range cat.Bandwidth {
+		for _, bw := range bandwidth {
 			row := fmt.Sprintf("    %-10s %-12s %-12s %d", bw.Size, bw.AlgBW, bw.BusBW, bw.Samples)
 			_, _ = fmt.Fprintf(w, "│%s%s│\n", row, pad(boxWidth-2-len(row)))
 		}
 	}
-
-	printCardBottom(w)
 }
 
 // printDomainBox prints a nested domain sub-box within a category card.
