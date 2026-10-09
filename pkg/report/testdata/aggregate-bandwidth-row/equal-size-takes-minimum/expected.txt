@@ -1,0 +1,13 @@
+│                                                                │
+│  Bandwidth:                                                    │
+│    Size       AlgBW        BusBW        Samples                │
+│    1 GB       55.00 GB/s   100.00 GB/s  20                     │
+--- rows ---
+[
+  {
+    "size": "1 GB",
+    "algBW": "55.00 GB/s",
+    "busBW": "100.00 GB/s",
+    "samples": 20
+  }
+]

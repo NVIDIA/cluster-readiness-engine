@@ -9,6 +9,7 @@
 --- rows ---
 [
   {
+    "group": "group-0",
     "groupName": "clique-0 (2 nodes)",
     "nodes": [
       "node-0",
@@ -22,6 +23,7 @@
     "failed": false
   },
   {
+    "group": "group-1",
     "groupName": "clique-1 (2 nodes)",
     "nodes": [
       "node-2",

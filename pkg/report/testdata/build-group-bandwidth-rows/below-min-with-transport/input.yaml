@@ -13,6 +13,8 @@ measurements:
   - spec:
       jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: job-0}
     status:
+      conditions:
+        - {type: Complete, status: "True", reason: JobSucceeded, message: Job succeeded, lastTransitionTime: "2026-10-01T00:00:00Z"}
       transport: [IB]
       results:
         - {sizeBytes: 17179869184, algBW: "50.0", busBW: "100.0", samples: 1}

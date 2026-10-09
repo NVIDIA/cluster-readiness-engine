@@ -97,6 +97,8 @@ nvcrectl certification report <name> [<name>...] [flags]
 |------|---------|-------------|
 | `--results-file` | — | Write the report as JSON to this file path |
 
+Bandwidth from a measurement that is not final (its `Complete` condition reason is anything other than `JobSucceeded`, for example `LogsUnavailable` after its Job was deleted) is shown as `(provisional: <reason>)` with a `?` mark instead of `✓`, carries `provisional: true` and `provisionalReason` in the JSON, and is never shown as passing; clique and category bandwidth show the lowest value across their groups.
+
 ## nvcrectl certification list-categories
 
 Lists all available catalog categories that can be used in a Certification.

@@ -72,7 +72,7 @@ func collectJobMeasuredValues(ctx context.Context, c client.Reader, job *nvcrev1
 	// Bandwidth values are equally provisional until the BandwidthMeasurement
 	// completes from the Job's full log: a live sample can stop short of the
 	// largest message sizes, where the peak is measured (issue #404).
-	if bm := findJobBandwidthMeasurement(ctx, c, job); bm != nil && bandwidthFinal(bm) {
+	if bm := findJobBandwidthMeasurement(ctx, c, job); bm != nil && BandwidthFinal(bm) {
 		values["busBandwidthGBps"] = maxBusBandwidth(bm.Status.Results)
 		values["algBandwidthGBps"] = maxAlgBandwidth(bm.Status.Results)
 	}
@@ -99,11 +99,11 @@ func collectJobMeasuredValues(ctx context.Context, c client.Reader, job *nvcrev1
 	return values
 }
 
-// bandwidthFinal reports whether a BandwidthMeasurement holds final results:
+// BandwidthFinal reports whether a BandwidthMeasurement holds final results:
 // Complete from its Job's full log after the Job succeeded. Any other complete
 // measurement (no data, log unreadable, Job failed) is unmeasured for threshold
-// evaluation.
-func bandwidthFinal(bm *nvcrev1alpha1.BandwidthMeasurement) bool {
+// evaluation. Exported so the report marks the same results as provisional.
+func BandwidthFinal(bm *nvcrev1alpha1.BandwidthMeasurement) bool {
 	cond := meta.FindStatusCondition(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete)
 	return cond != nil && cond.Status == metav1.ConditionTrue &&
 		cond.Reason == reasonBandwidthJobSucceeded && len(bm.Status.Results) > 0
