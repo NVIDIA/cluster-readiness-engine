@@ -58,6 +58,7 @@ The RBAC rules are maintained by hand in `helm/cluster-readiness-engine/template
 | ResourceSlices | get, list, watch | — |
 | PersistentVolumes | get, list, watch, patch | — |
 | Namespaces | get | — |
+| `authorization.k8s.io` SelfSubjectAccessReviews | create | — |
 | Events | create, patch | — |
 | TrainJobs | get, list, watch; `trainjobs/status` get | create, delete, patch, update |
 | ConfigMaps | — | get, create, update, patch, delete |
@@ -93,7 +94,7 @@ Notes on the placement:
 ### Controller
 
 - `cmd/manager/main.go`: `Client: client.Options{Cache: &client.CacheOptions{DisableFor: []client.Object{&corev1.ConfigMap{}, &corev1.PersistentVolumeClaim{}}}}`. The `jobReader()` call in `cleanupPVForPVC` becomes an ordinary `r.Get`, and its #424 comment moves to the `DisableFor` line.
-- Permission check (`pkg/controller/namespace_access.go`): one SelfSubjectAccessReview per (namespace, resource, verb) that the Workflow will need, with results cached for 30 seconds per namespace so a waiting Workflow does not hammer the API server. Creating SelfSubjectAccessReviews needs no grant, because `system:basic-user` allows it for every authenticated identity. The check runs in the Workflow controller, before dependency creation, because every write starts there whether the Workflow came from a Certification, a WorkloadRun, or `kubectl apply`. Certification and WorkloadRun surface the Workflow's condition as they already do.
+- Permission check (`pkg/controller/namespace_access.go`): one SelfSubjectAccessReview per (namespace, resource, verb) that the Workflow will need, with results cached for 30 seconds per namespace so a waiting Workflow does not hammer the API server. `nvcre-manager-role` grants `create` on SelfSubjectAccessReviews explicitly. The default `system:basic-user` binding allows it for every authenticated identity, but an operator can remove that binding, and the role should list everything the controller needs. A review only answers questions about the caller's own permissions, so the grant adds no reach. The check separates a denial from a failure. A review that comes back denied means the binding is missing, so the Workflow waits as decision 4 describes. A review that cannot be created at all (Forbidden, a timeout, an admission webhook error) means the check could not run, so the controller logs a warning and lets the Workflow proceed: the check exists to explain a missing binding early, and if it cannot run, the real writes still fail with Forbidden and are reported as they are today. The check runs in the Workflow controller, before dependency creation, because every write starts there whether the Workflow came from a Certification, a WorkloadRun, or `kubectl apply`. Certification and WorkloadRun surface the Workflow's condition as they already do.
 - New reason constant `reasonJobNamespacePermissionsMissing` on the Workflow tier, following the tier-prefix convention.
 - `handleDeletion` in the Workflow and Job controllers: on Forbidden from a child delete, read the namespace through `APIReader` (a live `get`, see the Namespaces note under Role split); if its `deletionTimestamp` is set, log at V(1), remove the finalizer, and return. If the namespace read itself fails, keep the finalizer and requeue rather than guess.
 
