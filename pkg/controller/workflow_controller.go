@@ -448,12 +448,12 @@ func (r *WorkflowReconciler) resolveWorkflowJobSize(
 
 	if nodesPerJob < 1 {
 		// "Use every node" is exactly the fleet-wide sweep Unpinned exists to
-		// escape, so it cannot be the fallback here. On the Certification path
-		// resolveNodesPerJob has already rejected a missing size, so this is a
-		// backstop for hand-written Workflows and WorkloadRuns.
+		// escape, so it cannot be the fallback here. A WorkloadRun always carries
+		// a numNodes, so in practice this is the backstop for a hand-written
+		// Workflow whose workload declares no size.
 		if nvcrev1alpha1.IsUnpinned(workflow.Spec.Orchestration.Placement) {
 			msg := "orchestration.placement: Unpinned requires an explicit job size, but the workload " +
-				"declares none; set nodesPerJob (Certification) or numNodes (WorkloadRun). " +
+				"declares none; set numNodes on the WorkloadRun, or the workload's numNodes on a Workflow. " +
 				"Unpinned will not fall back to running one job across all discovered nodes"
 			fail(msg)
 			return 0, fmt.Errorf("%s", msg)

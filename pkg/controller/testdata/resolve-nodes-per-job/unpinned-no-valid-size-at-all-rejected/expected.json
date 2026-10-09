@@ -1,4 +1,0 @@
-{
-  "nodesPerJob": 0,
-  "error": "communication/nccl-all-reduce: nodesPerJob 2 does not satisfy the model constraints (gpusPerNode=8, arch=h100); none at or below it is. Under placement Unpinned the requested size is not snapped to a valid one"
-}

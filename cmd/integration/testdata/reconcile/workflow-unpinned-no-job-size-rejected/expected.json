@@ -68,7 +68,7 @@
           "observedGeneration": 1,
           "lastTransitionTime": null,
           "reason": "PartitionError",
-          "message": "orchestration.placement: Unpinned requires an explicit job size, but the workload declares none; set nodesPerJob (Certification) or numNodes (WorkloadRun). Unpinned will not fall back to running one job across all discovered nodes"
+          "message": "orchestration.placement: Unpinned requires an explicit job size, but the workload declares none; set numNodes on the WorkloadRun, or the workload's numNodes on a Workflow. Unpinned will not fall back to running one job across all discovered nodes"
         }
       ],
       "orchestration": {

@@ -168,12 +168,12 @@ func ResolveWorkflowForPlatform(
 	// Placement is checked here and not earlier for the same reason the Workflow
 	// controller checks it after its own override pass: an override can
 	// introduce orchestration fields the user never wrote, so only the resolved
-	// spec is worth validating. Every certification render path reaches this
-	// helper, and the conflicting fields arrive before it does: the catalog
-	// lowers testScale into topology.strictDomain and diagnose at entry.Build()
-	// time (see pkg/catalog/entries/communication/nccl-all-reduce.yaml). Without
-	// this, `certification render` happily previews an Unpinned diagnose run
-	// that the controller rejects on the first reconcile.
+	// spec is worth validating. Every render path reaches this helper, and the
+	// conflicting fields arrive before it does. Only a hand-written Workflow can
+	// carry placement: Unpinned into a render (a Certification has no placement
+	// option, see ADR-089), and without this check `workflow render` would
+	// preview an Unpinned diagnose run that the controller rejects on the first
+	// reconcile.
 	if err := controller.ValidatePlacement(&workflow.Spec.Orchestration); err != nil {
 		return nil, err
 	}

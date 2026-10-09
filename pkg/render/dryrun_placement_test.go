@@ -89,8 +89,9 @@ type podPlacement struct {
 	NodeSelector map[string]string    `json:"nodeSelector,omitempty"`
 }
 
-// TestDryRunPlacement pins what `nvcrectl certification render --dry-run`
-// submits in each placement mode.
+// TestDryRunPlacement pins what a `--dry-run` render of a Workflow submits in
+// each placement mode. The inputs are bare Workflow specs, which is the one
+// render input that can carry placement: Unpinned (see ADR-089).
 //
 // The dry run exists to tell an operator what the controller is about to
 // create, so a divergence here is worse than having no preview: it would

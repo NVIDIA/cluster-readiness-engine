@@ -64,10 +64,6 @@
     "default": "0"
   },
   {
-    "name": "placement",
-    "default": ""
-  },
-  {
     "name": "repeat-count",
     "default": "0"
   },

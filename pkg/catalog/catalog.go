@@ -122,15 +122,6 @@ type BuildConfig struct {
 	// Empty means "full-scale" (default).
 	TestScale string
 
-	// Placement is the node placement mode ("Pinned" or "Unpinned").
-	// Empty means Pinned, the fleet-wide sweep NVCRE has always done.
-	//
-	// Set into the built spec in Go rather than through the entry templates:
-	// every entry would otherwise need the same conditional block, and the
-	// orchestration stanzas differ enough between training and NCCL entries that
-	// eight copies would be eight chances to get the nesting wrong.
-	Placement string
-
 	// MaxBytes is the max message size for NCCL tests (e.g., "16G", "32G").
 	// Empty means use default ("16G").
 	MaxBytes string

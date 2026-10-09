@@ -456,14 +456,6 @@ func loadAndRegisterEntries() error {
 
 				spec.Orchestration.Target = &target
 
-				// Placement is set here rather than in the entry templates so
-				// every entry picks it up identically, whatever shape its own
-				// orchestration block has. An unset value writes nothing, so
-				// existing rendered output is byte for byte unchanged.
-				if config.Placement != "" {
-					spec.Orchestration.Placement = config.Placement
-				}
-
 				// Override repeat count (orchestration iterations) if specified.
 				if config.RepeatCount > 0 {
 					spec.Orchestration.Iterations = int(config.RepeatCount)

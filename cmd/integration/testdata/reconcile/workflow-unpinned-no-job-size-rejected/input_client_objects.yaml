@@ -18,8 +18,9 @@
 # one. The opt-out contract is that the size the operator wrote is the size that
 # runs, and there is no size written here.
 #
-# This is the Workflow-tier backstop. On the Certification path resolveNodesPerJob
-# rejects a missing nodesPerJob earlier, so this guards hand-written Workflows.
+# This is the Workflow-tier backstop. A WorkloadRun always carries a numNodes
+# (Required, Minimum=1) and a Certification has no Unpinned mode at all, so in
+# practice this guards hand-written Workflows.
 apiVersion: v1
 kind: Node
 metadata:

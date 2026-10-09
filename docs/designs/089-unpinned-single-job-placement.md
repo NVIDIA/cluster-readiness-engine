@@ -14,9 +14,9 @@ An 8-GPU Nemotron request against an 18-node cluster produces nine concurrent 2-
 
 1. `discoverTargetNodes` (`pkg/controller/workflow_controller.go:657`) returns every node
    matching the target. The default selector written by `nvcrectl` is
-   `nvidia.com/gpu.present: "true"` (`pkg/certification/certification.go:905-913`), so by
+   `nvidia.com/gpu.present: "true"` (`pkg/certification/certification.go:1014-1019`), so by
    default that is the whole GPU fleet.
-2. `resolveNodesPerJob` (`pkg/controller/certification_controller.go:897-920`) resolves a
+2. `resolveNodesPerJob` (`pkg/controller/certification_controller.go:940`) resolves a
    per-job node count from the entry's `minGPUs` and TP/PP constraints. 8 GPUs on 4-GPU
    nodes gives 2.
 3. The catalog template writes it into the trainer: `numNodes: {{ .NodesPerJob }}`
@@ -92,16 +92,55 @@ spec:
     placement: Unpinned   # enum Pinned|Unpinned; empty means Pinned
 ```
 
-Users do not write that path. `CertificationSpec` inlines `CategoryOptions`, so a
-Certification sets `spec.placement` (or `categories[].options.placement`) and the catalog
-lowers it into the Workflow's `orchestration` block. A WorkloadRun sets
-`spec.orchestration.placement`, since `WorkloadRunSpec` does carry an `orchestration`
-field of its own.
+The user-facing front door is `WorkloadRun`, which carries an `orchestration` block of its
+own and lowers it through `buildWROrchestration`
+(`pkg/controller/workloadrun_controller.go:780`):
 
-`OrchestrationSpec` is the one place both front doors converge: Certification via the
-catalog template's `orchestration:` block, WorkloadRun via `buildWROrchestration`
-(`pkg/controller/workloadrun_controller.go:776-806`). It is also the only orchestration
-input the Workflow controller reads.
+```yaml
+# WorkloadRun
+spec:
+  numNodes: 8
+  orchestration:
+    placement: Unpinned
+```
+
+**Certification deliberately has no placement field at all.** See "Why Certification is
+excluded" below; it is the single most consequential decision in this ADR and the reason
+`CategoryOptions` is untouched.
+
+`OrchestrationSpec` is still where the field lives, because it is the only orchestration
+input the Workflow controller reads and the tier that actually partitions. A hand-written
+Workflow can therefore set it, and `pkg/render` previews it, but nothing in the catalog
+path ever sets it.
+
+### Why Certification is excluded
+
+A Certification's output is a verdict about a fleet. `PartitionNodes` guarantees that every
+node the target matched lands in some group (`pkg/orchestration/partition.go:39-42`), and
+the only things that reduce coverage are the cordon, architecture and capacity filters,
+every one of which forces the report to INCOMPLETE (`pkg/report/report.go:379-381`). That
+invariant is what lets a PASSED certification mean "every node you pointed me at was
+tested."
+
+Unpinned on the Certification tier would be the first and only mechanism by which a
+Certification could report PASSED while deliberately leaving targeted nodes untested. Not a
+filter the operator can fix, not a configuration accident worth warning about: scope they
+asked for, invisible in the verdict. Fixing that by routing intentional scope into
+`ExcludedNodes` is worse, since it buries the real exclusions and downgrades a correct run.
+Fixing it by keying the INCOMPLETE rule on placement means the certification verdict now
+has two meanings depending on a flag.
+
+So the certification verdict keeps its one meaning and the mode lives where the question is
+genuinely different. A WorkloadRun makes no coverage claim: it runs a workload and reports
+whether the workload passed. `buildWorkloadRunReport` (`pkg/workloadrun/workloadrun.go:1546`)
+never populates `ExcludedNodes`, so the INCOMPLETE downgrade is structurally unreachable on
+that path. Nothing has to be special-cased for it to be correct.
+
+The cost is real and worth naming: WorkloadRun has no catalog access, so the TP/PP sizing
+and NCCL tuning in `pkg/catalog/entries/` is reachable only through Certification. An
+operator who wants a single unpinned Nemotron job at a tuned configuration cannot get the
+catalog's tuning today. That is a separate feature, and it is a better one than weakening
+the certification contract to reach it.
 
 Under `Unpinned`:
 
@@ -130,19 +169,23 @@ This is the guarantee the tests pin, stated for users:
 > adjusted.
 
 ```yaml
+# WorkloadRun
 spec:
+  numNodes: 8
+  orchestration:
+    placement: Unpinned
   target:
     nodeSelector: {nvidia.com/gpu.present: "true"}   # 18 nodes match
-  nodesPerJob: 2                                     # required under Unpinned
-  placement: Unpinned
-  categories:
-    - {domain: training, variant: nemotron5-8b}
 ```
 
-One job, 2 nodes, 16 nodes untouched. Today the same spec gives nine jobs.
+One job, 8 nodes, 10 nodes untouched. Today the same spec gives three jobs of 8: two full
+groups and an overflow group that takes the remaining 2 nodes plus 6 borrowed from the
+second, because `PartitionNodes` covers every node (`pkg/orchestration/partition.go:90-112`).
 
-For WorkloadRun, `numNodes` plays the same role and is already `Required` with `Minimum=1`
-(`workloadrun_types.go:192-195`), so nothing extra is needed there.
+`numNodes` is already `Required` with `Minimum=1` (`workloadrun_types.go:207-210`), so the
+"no size given" hole that the Certification path would have had cannot open here. What does
+need closing is the CLI, where two flags rewrite `numNodes` after the file is read; see
+"Honoring the size" below.
 
 ### Why `numNodes` does not, and should not, narrow `target`
 
@@ -195,19 +238,22 @@ behave like a selector.
 
 ### API additions
 
-Seven fields across three files. All optional, so existing specs are unaffected. Both
-`CertificationSpec` and `WorkloadRunSpec` are spec-immutable, which these inherit correctly.
-Only the last two are status fields; the rest are spec.
+Six fields across two files. All optional, so existing specs are unaffected.
+`WorkloadRunSpec` is spec-immutable, which these inherit correctly. Only the last two are
+status fields; the rest are spec.
 
 | # | Location | Field |
 |---|---|---|
 | 1 | `api/v1alpha1/workflow_types.go` | constants `PlacementPinned = "Pinned"`, `PlacementUnpinned = "Unpinned"` |
 | 2 | `OrchestrationSpec` | `Placement string`, enum `Pinned;Unpinned` |
 | 3 | `OrchestrationOverrideSpec` | `Placement *string`, enum, no default |
-| 4 | `CategoryOptions` (`certification_types.go`) | `Placement string` |
-| 5 | `WorkloadOrchestration` (`workloadrun_types.go`) | `Placement string` |
-| 6 | `OrchestrationStatus` | `Placement string` |
-| 7 | `OrchestrationStatus` | `GPUProducts []string` |
+| 4 | `WorkloadOrchestration` (`workloadrun_types.go`) | `Placement string` |
+| 5 | `OrchestrationStatus` | `Placement string` |
+| 6 | `OrchestrationStatus` | `GPUProducts []string` |
+
+`certification_types.go` gains no field. `CategoryOptions.NodesPerJob`'s doc comment is
+updated to say so, since the CRD description is generated from it and a reader looking for
+the mode should be sent to WorkloadRun rather than left to conclude it was forgotten.
 
 **No `+kubebuilder:default=Pinned`.** A string default materializes into every existing
 object's serialized spec on the next write, moving golden files that otherwise would not
@@ -227,11 +273,11 @@ pointer branch after `Topology`. A nil pointer is a no-op, so no existing overri
 moves. This is mandatory rather than optional: any new `OrchestrationSpec` field without a
 pointer twin and a merge arm is silently unoverridable.
 
-Ordering matters. `applyOverridesWithTracking` runs at `workflow_controller.go:460`, before
-`resolveNodesPerJob`'s output is consumed and well before the partition decision at `:568`.
-An override can therefore introduce orchestration fields the user never wrote, and any
-placement check must assume the post-override spec. The GB200 topology-key override is
-exactly that case, and is the reason for the asymmetry in the next section.
+Ordering matters. `applyOverridesWithTracking` runs at `workflow_controller.go:552`, well
+before the partition decision at `:568`. An override can therefore introduce orchestration
+fields the user never wrote, and any placement check must assume the post-override spec.
+The GB200 topology-key override is exactly that case, and is the reason for the asymmetry
+in the next section.
 
 ### Reject diagnose and strictDomain; ignore topologyKey
 
@@ -352,15 +398,15 @@ arises from an override applied after admission.
 
 ### Partition short-circuit
 
-`workflow_controller.go:538-606`:
+`workflow_controller.go:449-468` and the group construction in `discoverAndPartition` (`:474`):
 
-- The `nodesPerJob < 1` fallback to `len(nodes)` at `:547-549` must not apply under
+- The `nodesPerJob < 1` fallback to `len(nodes)` at `:449-461` must not apply under
   Unpinned. That fallback *is* the span-the-cluster behavior. It becomes a terminal spec
   error naming `nodesPerJob` / `numNodes`.
-- The `nodesPerJob > len(nodes)` terminal error at `:550-556` stays. Asking for 16 nodes on
-  a 12-node fleet cannot schedule, and failing here beats pods pending forever. Note it is
-  unreachable on the Certification path, because the clamp described below fires first; it
-  guards WorkloadRun and hand-written Workflows.
+- The `nodesPerJob > len(nodes)` terminal error at `:464-468` stays. Asking for 16 nodes on
+  a 12-node fleet cannot schedule, and failing here beats pods pending forever. Under
+  Unpinned it is the enforcement point for the size guarantee: `numNodes` is never clamped
+  down to fit the fleet, it is reported as an error naming both numbers.
 - A third arm is added **before** the diagnose/partition split at `:568-591`, emitting one
   `Group{Name: "group-0"}` with a nil node list.
 
@@ -419,7 +465,7 @@ groups were built from. When the list is empty (no `nvidia.com/gpu.product` labe
 as in much existing testdata), the term is omitted rather than emitting an empty `In []`,
 which matches nothing and would deadlock scheduling.
 
-**Branching on placement** at `workflow_controller.go:1166-1187`:
+**Branching on placement** at `workflow_controller.go:1373`:
 
 - Pinned: hostname term `In group.Nodes`, plus the target terms, in one `NodeSelectorTerm`.
   `SetNumNodes(spec, len(group.Nodes))` is kept exactly as today.
@@ -448,10 +494,15 @@ size is templated from the same number:
     numNodes: {{ .NodesPerJob }}
 ```
 
-`aws-h100-efa-resources-training.yaml:10` and `gb200-compute-domain-and-dra-comm.yaml:15`
-do the same. These are rendered by the catalog at Certification time from
-`BuildConfig.NodesPerJob`, which under Unpinned is the user's exact requested size. So the
-ComputeDomain is sized correctly for free.
+A WorkloadRun on GB200 or GB300 pulls that same fragment through
+`pkg/platform/overrides/workloadrun.yaml:9-13`, rendered with
+`platform.OverrideConfig.NodesPerJob` (`workloadrun_controller.go:554`). The TrainingRuntime
+the same path builds takes its `mlPolicy.numNodes` from the identical field
+(`pkg/platform/runtime.go:245`). Both read `NodesPerJobForScale(spec.Orchestration,
+spec.NumNodes)` (`:504`, `:404-409`), which returns `spec.NumNodes` unchanged for every
+`testScale` except `intra-node`, and `intra-node` is rejected under Unpinned
+(`pkg/controller/placement.go:66-70`). So the ComputeDomain and the trainer are sized from
+one value, and that value is the size the user wrote.
 
 This is why skipping `SetNumNodes` is not interchangeable with clamping or zeroing it.
 `SetNumNodes` rewrites the trainer's `numNodes`, but nothing rewrites the ComputeDomain's.
@@ -460,74 +511,59 @@ With `group.Nodes == nil`, `len(group.Nodes)` is 0, so `SetNumNodes(spec, 0)` wo
 adjusted value would desynchronize the two: a ComputeDomain sized for N channels against a
 TrainJob asking for a different count, which on GB200 means pods that never get their DRA
 allocation and hang Pending with no error naming the cause. Skipping keeps a single source
-of truth, the templated `NodesPerJob`, for both.
+of truth, `spec.numNodes`, for both.
 
 It is also why rejecting rather than adjusting the size is load-bearing beyond user-facing
-honesty. Under Pinned, a clamp or a snap flows into both the trainer and the ComputeDomain
-together, so they stay consistent even when adjusted. Under Unpinned, rejecting is what
-guarantees the two stay equal to the number the user wrote.
+honesty. Under Pinned, a clamp flows into both the trainer and the ComputeDomain together,
+because both are templated from the same resolved number, so they stay consistent even when
+adjusted. Under Unpinned the clamps are rejections, which is what guarantees the two stay
+equal to the number the user wrote.
 
-### Honoring the size: five doors
+### Honoring the size: three doors
 
-Five mechanisms currently change the requested size, all silent, and all must become errors
-under Unpinned. The first three are on the Certification path:
+`numNodes` is `Required` with `Minimum=1`, so a WorkloadRun always arrives carrying a size.
+Three mechanisms can still change it before a job is created, all silent, and all must
+become errors under Unpinned.
 
-1. **The clamp.** `resolveNodesPerJob` (`certification_controller.go:904-906`) does
-   `ceiling = min(*opts.NodesPerJob, n)`. Ask for 8 on a 4-node fleet and silently get 4.
-   This also means the Workflow-tier `nodesPerJob > len(nodes)` check never fires on the
-   Certification path.
-2. **The constraint snap.** `entry.MaxValidNodes(ceiling, ...)` (`:909-916`) returns the
-   largest *valid* count at or below the ceiling, enforcing minGPUs and TP/PP divisibility.
-   Ask for 6 and silently get 4. Reasonable under the sweep model, wrong when the user named
-   a size.
-3. **The auto-select.** With `nodesPerJob` unset, `ceiling = n` (`:903`) and the job gets
-   **every matching node**. This is the worst one: it is exactly the span-the-cluster
-   behavior being escaped, and it would survive `placement: Unpinned` untouched, since 18 is
-   a perfectly valid `NodesRequired` and nothing downstream objects.
-
-The remaining two are on the WorkloadRun path, where `numNodes` plays the same role. Both
-are CLI flags on `nvcrectl workloadrun run`, and both are a sharper version of the same
+Two are CLI flags on `nvcrectl workloadrun run`. Both are a sharp version of the same
 problem, because the operator never sees the object that was submitted and so never learns
 the job got smaller:
 
-4. **The `--node-list` clamp.** `applyRunOverrides` lowers `numNodes` to the length of the
+1. **The `--node-list` clamp.** `applyRunOverrides` lowers `numNodes` to the length of the
    list when the list is shorter. Correct under Pinned, where naming fewer nodes than a
    chunk size asks for can never be satisfied, so shrinking beats waiting.
-5. **The `--topology-domain` replacement.** This one does not clamp, it overwrites:
+2. **The `--topology-domain` replacement.** This one does not clamp, it overwrites:
    `numNodes` becomes the number of nodes the domain turned out to contain, whatever the
    file asked for. Like the clamp it has a second, discovery-time half that fires on the
    real count.
 
-The size reaches a job through five doors, and all five need the check:
+The third is the Workflow tier, which is a backstop rather than a user-facing door:
+
+3. **The `nodesPerJob < 1` fallback** at `workflow_controller.go:449-461` substitutes
+   `len(nodes)`, which *is* the span-the-cluster behavior. A WorkloadRun cannot reach it,
+   since `numNodes` is required, so this guards hand-written Workflows.
 
 | Door | Today | Under Unpinned |
 |---|---|---|
-| `certification_controller.go:543` | clamp, snap, or auto-select to all nodes | require explicit `nodesPerJob`, reject rather than adjust |
-| `certification.go:453-460` (offline render) | defaults to 1 | reject, same message |
-| `certification.go:922-924` (CLI `run`) | omits the field when the flag is 0 | reject before the object is created |
-| `workflow_controller.go:547-549` | falls back to `len(nodes)` | terminal spec error (backstop only) |
 | `workloadrun.go:1630` (`applyRunOverrides`) | `--node-list` clamps, `--topology-domain` overwrites | reject both flags, naming the alternative |
+| `workloadrun.go:988` (post-discovery) | same two flags, on the live node count | skip the adjustment, do not fail late |
+| `workflow_controller.go:449-461` | falls back to `len(nodes)` | terminal spec error (backstop only) |
 
-`resolveNodesPerJob` takes a placement argument. Under Pinned all five are unchanged:
-clamping to `min(requested, available)`, `MaxValidNodes` validation, and both CLI
-adjustments remain exactly right for a chunk size.
+Under Pinned all three are unchanged: both CLI adjustments and the fallback remain exactly
+right for a chunk size.
 
-The check belongs in `createWorkflowForCategory`, after
-`opts := ResolveOptions(&certification.Spec.CategoryOptions, category.Options)`
-(`certification_controller.go:509`), not at the Certification level. Both `nodesPerJob` and
-`placement` live on `CategoryOptions`, so both arrive already merged global-over-per-category
-and the check is naturally per-category. A cert with `placement: Unpinned` globally and
-`nodesPerJob` set on only one of three categories must fail for the other two, and a
-Certification-level check cannot see that.
+`resolveNodesPerJob` (`certification_controller.go:940`) is **not** on this list and takes no
+placement argument. Its clamp, its `MaxValidNodes` snap and its auto-select are all correct
+for what they are: a group size for a sweep that covers the whole target either way. They
+change how the sweep is cut into jobs, not which nodes it reaches. The reason they would
+have needed rejecting arms in an earlier draft is that the draft put Unpinned on the
+Certification tier; with the mode confined to WorkloadRun, the Certification path keeps
+its behavior. Two edits to it remain from the branch and neither changes a result: the
+`resolveNodesPerJob` doc comment now says why the adjustments are safe on that tier and
+why Unpinned lives elsewhere, and `ResolveOptions` spells its string options with `cmp.Or`
+to stay under the cyclomatic limit.
 
-The CLI door matters on its own: `--nodes-per-job` defaults to 0 (`certification.go:769`)
-and `buildConfigFromFlags` only sets `cert.Spec.NodesPerJob` when `> 0` (`:922-924`), so
-`nvcrectl certification run --placement Unpinned` with no `--nodes-per-job` would build a
-Certification with a nil field and submit it. The controller rejects it, but only after the
-object exists and a reconcile has run, so the user sees a Failed Certification instead of a
-flag error.
-
-The WorkloadRun door is two halves, and they are closed differently. `applyRunOverrides`
+The CLI door is two halves, and they are closed differently. `applyRunOverrides`
 runs on the spec read from the file and **rejects**: `--node-list` with fewer names than
 `numNodes`, and `--topology-domain` at all. The second half runs after node discovery
 (`workloadrun.go:988`), where the flags' effect depends on numbers only known then, and it
@@ -544,14 +580,11 @@ replaces the count unconditionally, so the error names the substitute:
 `target.matchExpressions` on the topology label, which confines placement to the domain and
 leaves `numNodes` alone.
 
-**Error classification.** The new rejections return a plain error, so they land in the
-default branch at `certification_controller.go:225-230`:
-`setCertificationFailed(ReasonWorkflowValidationFailed)` plus `return ctrl.Result{}, err`.
-That is how the existing `no valid node count <= %d satisfies model constraints` error at
-`:911-913` is already handled, so the new ones inherit proven behavior. They are
-deliberately **not** `retryableCreateError` (`:707`): a missing field does not fix itself on
-the next reconcile, and wrapping it that way would requeue silently forever with no Failed
-condition.
+**Error classification.** The CLI rejections surface as a flag error before any object is
+created, which is the whole point of putting them there: a server-side rejection would mean
+the operator sees a Failed WorkloadRun rather than a usage message. The Workflow-tier
+backstop is a terminal spec error, deliberately not a requeue: a missing size does not fix
+itself on the next reconcile, and requeuing would spin silently with no Failed condition.
 
 ### Tolerations
 
@@ -651,6 +684,53 @@ failure now records a list.
 The reset writes an empty slice rather than nil: `nodes` is a required CRD field and nil
 marshals to `null`, which the API server rejects.
 
+**The retry fixture found a race in the retry path itself.** The end-to-end check for the
+reset, `cmd/integration/testdata/reconcile/workflow-unpinned-retry-reattributes/`, drives a
+Job through a retry with the second attempt's pods bound to different nodes. Its first run
+failed with the Workflow `Failed/IterationsFailed` while the retried Job ran to completion
+unobserved. The log showed why: `completeTerminalGroup` deletes the failed Job and resets
+the group to Pending in one reconcile, but the Job's deletion is a watch event of its own,
+and the reconcile it triggered read the Workflow from the informer cache before that status
+write had reached it. It saw a Running group whose Job was being deleted, which is what an
+external deletion looks like, and failed the group. Nothing about this is specific to
+Unpinned, and no integration fixture had exercised `retryFailedGroups` before, which is how
+it went unnoticed.
+
+Three changes close it, all in `workflow_controller.go`.
+
+The two branches in `updateStatusFromJobs` that fail a group because its Job is gone or
+going now call `groupViewIsStale` first, which reads the Workflow through the uncached
+reader and checks that the group is still Running on that Job there, in the same iteration
+and at the same retry count, since a relaunched Job carries the name of the one it
+replaced. A group whose live state has moved on is left alone for the pass and the
+reconcile requeues immediately. This is the same shape as the existing confirmation of the
+Job's absence through `jobReader` (issue #385): both branches are irreversible, so both
+confirm before they act.
+
+The tail write in `updateStatusFromJobs` carries over only the groups the pass changed,
+matched by name, instead of replacing the whole slice. After a conflict refetch the slice
+came from a cached view, and writing it back wholesale would put an untouched group where
+the stale view had it, Running on a Job that no longer exists, which the next pass would
+then fail. The per-group merge is also what lets a deferred group coexist with a sibling
+whose retry reset in the same pass must still be written, because that sibling's Job is
+already gone.
+
+`createOrAdoptJob` no longer adopts this Workflow's own Job when it is terminating. The
+retry relaunches under the same name while the Job controller still holds the old Job's
+finalizer for the pod drain, so a relaunch that collided with it adopted a Job about to
+vanish, and the live view then agreed that the group was Running on it. A terminating own
+Job is now the same retry-with-backoff as a terminating foreign one.
+
+`pkg/controller/testdata/stale-group-view/` pins the first two with a fake client standing
+in for the API server, including the two agreeing-view controls where the group still
+fails and a two-group case where one group's reset is written while its stale sibling is
+not. `workflow-create-adopt-job/own-terminating-holder/` pins the third.
+`workflow-unpinned-iteration-reattributes/` covers the iteration reset the same way as the
+retry fixture. It cannot hit the race: handleIterationComplete deletes the Jobs of groups
+whose terminal phase was already in the cache it read, so no later view shows them Running
+and neither failing branch is reachable for them. The retry is the one path that deletes a
+Running group's Job and changes its phase in the same reconcile.
+
 ### Coverage reporting
 
 Untested nodes are not put into `ExcludedNodes`. `exclusionSummary`
@@ -683,39 +763,29 @@ unconditionally:
 `""`, which the function already documents as "no explicit test scale"; the Placement line
 carries the real information.
 
-`notEnoughNodesMessage` (`workflow_controller.go:288-317`) takes a placement parameter. Its
+`notEnoughNodesMessage` (`workflow_controller.go:306-340`) takes a placement parameter. Its
 remedy, "Set nodesPerJob to %d", tells the user to shrink the job to fit the fleet, which is
-the wrong framing when they asked for that size deliberately. The `archExcluded` and
-`capacityExcluded` cause clauses are unchanged.
+the wrong framing when they asked for that size deliberately: under Unpinned it becomes
+"make N qualifying nodes available rather than lowering nodesPerJob". The `archExcluded`
+and `capacityExcluded` cause clauses are unchanged, and the Pinned message with no causes
+stays byte-identical.
 
-### Catalog and CLI plumbing
+### Catalog plumbing: none
 
-- `Placement string` on `BuildConfig` (`pkg/catalog/catalog.go:98-100`).
-- Set in Go, not in templates. In `loader.go`, next to the existing
-  `spec.Orchestration.Target = &target` at `:411`:
+`pkg/catalog/` is untouched. `BuildConfig` gains no `Placement` field, `loader.go` never
+writes `spec.Orchestration.Placement`, no entry YAML mentions it, `categoryOptionsSuffix`
+needs no new term, and `nvcrectl certification run` grows no `--placement` flag. Every one
+of those appeared in an earlier draft that put the mode on the Certification tier; all of
+them are absent by design now, and their absence is what makes the certification invariant
+hold without a guard.
 
-  ```go
-  if config.Placement != "" {
-      spec.Orchestration.Placement = config.Placement
-  }
-  ```
-
-  This is one line instead of a `{{- if .Placement }}` conditional in each of eight entry
-  YAMLs. It works uniformly whether an entry's orchestration block is a bare `iterations: 1`
-  or a richer NCCL block, and carries no risk of whitespace or conditional-nesting mistakes
-  perturbing rendered output. `TemplateData` needs no new field.
-- `Placement: opts.Placement` in the `BuildConfig` literal
-  (`certification_controller.go:554-583`), the per-category merge in `ResolveOptions`
-  alongside `SourceRepo`, and the offline render path (`pkg/certification/certification.go:466`).
-- `Placement` added to `categoryOptionsSuffix` (`certification_controller.go:1098-1128`), so
-  two categories differing only in placement hash to distinct Workflow names instead of
-  colliding.
-- `--placement` flag on `nvcrectl certification run`.
+The practical consequence is stated once, under "Why Certification is excluded": catalog
+tuning is reachable only through Certification, so an unpinned run cannot have it.
 
 ### WorkloadRun plumbing
 
 - `orch.Placement = spec.Orchestration.Placement` in `buildWROrchestration`
-  (`workloadrun_controller.go:776-806`). The whole `spec.Orchestration` block is optional
+  (`workloadrun_controller.go:780`). The whole `spec.Orchestration` block is optional
   (`:781`), so `placement` is readable only inside that branch. A WorkloadRun with no
   orchestration block stays Pinned, which is the correct default.
 - Unpinned is rejected together with `testScale: intra-node` or `intra-rack`. Both are
@@ -786,6 +856,39 @@ any nodes" is the request being answered.
   already has several grouping modes.
 
 ## Alternatives Considered
+
+### Offer Unpinned on Certification as well
+
+**Rejected**, and this is the decision that shaped everything else. An earlier draft of this
+ADR put `placement` on `CategoryOptions` and threaded it through the catalog, the CLI and
+`resolveNodesPerJob`. It was implemented, and then removed.
+
+The reason is the one in "Why Certification is excluded": a Certification's PASSED verdict
+means "every node you pointed me at was tested", an invariant held jointly by
+`PartitionNodes` covering every target node and by every coverage-reducing filter forcing
+INCOMPLETE. Unpinned on that tier would have been the only way to report PASSED with
+targeted nodes deliberately untested.
+
+Three repairs were considered and all are worse than exclusion:
+
+- **Route untested nodes into `ExcludedNodes`.** Buries the cordon and architecture warnings
+  the field exists for, and downgrades a correct run to INCOMPLETE. Rejected separately
+  below.
+- **Key the INCOMPLETE rule on placement.** The verdict then means two different things
+  depending on a flag, and every consumer of a report has to know which.
+- **Add a coverage line to the report and leave the verdict alone.** Honest, but it puts the
+  scope caveat in prose beside a verdict that still says PASSED, which is exactly the
+  reading failure the invariant exists to prevent.
+
+Removing the tier also deleted a surprising amount of surface: a `CategoryOptions` field, a
+`BuildConfig` field, a `--placement` flag, a `categoryOptionsSuffix` term, the offline-render
+rejection, and the three-way clamp/snap/auto-select rework of `resolveNodesPerJob`. None of
+it is needed, because `numNodes` on a WorkloadRun is already `Required` with `Minimum=1`.
+The honest reading is that the Certification tier was carrying the feature's entire
+complexity budget and none of its value.
+
+The cost is stated in the Decision: catalog tuning is unreachable from WorkloadRun. That is
+a separate feature and a better one than weakening the certification contract to reach it.
 
 ### Make `numNodes` narrow the default `target`
 
@@ -871,11 +974,24 @@ INCOMPLETE.
    the unfiltered discoverer. This residue is not fixable, because the information does not
    exist.
 
-2. **Exclusions still force INCOMPLETE.** Cordon, architecture and capacity exclusions
-   populate `orch.ExcludedNodes` regardless of placement, so an Unpinned run on a
-   heterogeneous or partly-cordoned fleet still reports INCOMPLETE even though the operator
-   made no coverage claim. This is deliberate: the operator should learn the fleet is
-   heterogeneous.
+2. **The INCOMPLETE rule is untouched, and unreachable from Unpinned.** `report.go:379-381`
+   downgrades a PASSED run to INCOMPLETE whenever `ExcludedNodes` is non-empty, with no
+   placement term. That rule is correct as written and stays that way.
+
+   It cannot fire on an unpinned run, by construction rather than by a guard:
+   `buildWorkloadRunReport` (`pkg/workloadrun/workloadrun.go:1546`) builds its `CertReport`
+   from `Title`, `Name`, `Platform`, `GPU`, `FailedNodes`, `Result` and `TotalNodes`, and
+   never sets `ExcludedNodes` at all. Only `Build` populates it, from the first Workflow with
+   non-nil orchestration status, and `Build` runs on Certifications. Confining the mode to
+   WorkloadRun is what resolves this; no placement-keyed rule exists anywhere in the report.
+
+   An earlier draft did put Unpinned on the Certification tier, and there this was a genuine
+   defect rather than a gap: an operator who asked for one 2-node job against an 18-node
+   target got INCOMPLETE if any of the other 16 happened to be cordoned, for a coverage
+   claim they never made. Two secondary problems came with it, and both are gone for the same
+   reason: the `break` at `report.go:369` makes the exclusion set come from whichever
+   category's Workflow is read first, so a mixed cert's verdict would have depended on
+   category order.
 
 3. **Render divergence is inherited, not introduced.** `pkg/render/render.go` discovers its
    own nodes and never runs the architecture, override or GPU-capacity filters, so its
@@ -928,10 +1044,16 @@ INCOMPLETE.
 - ADR-063: Toleration precedence
 - ADR-068: `GroupNodesRef` offload (unimplemented)
 - ADR-081: Support for Cordoned Node Selection (`081-cordoned-node-selection.md`)
-- `pkg/controller/workflow_controller.go:538-606` (partition decision)
-- `pkg/controller/workflow_controller.go:1166-1187` (the pinning seam)
-- `pkg/controller/certification_controller.go:892-920` (`resolveNodesPerJob`)
-- `pkg/orchestration/partition.go:39-42` (the coverage invariant Unpinned opts out of)
-- `pkg/catalog/entries/training/nemotron5-8b.yaml:288-296` (the GB200 topology override)
+- `pkg/controller/workflow_controller.go:449-468`, `:474` (size checks and partition decision)
+- `pkg/controller/workflow_controller.go:1373` (the pinning seam)
+- `pkg/controller/placement.go` (placement helpers: validation, affinity, tolerations)
+- `pkg/controller/workloadrun_controller.go:404-409` (`NodesPerJobForScale`, the one size
+  both the trainer and the ComputeDomain are built from)
+- `pkg/orchestration/partition.go:39-42` (the coverage invariant Unpinned opts out of, and
+  the reason the mode is not offered on Certification)
+- `pkg/workloadrun/workloadrun.go:1546` (`buildWorkloadRunReport`, which never populates
+  `ExcludedNodes`)
+- `pkg/platform/overrides/workloadrun.yaml:9-13` (the GB200/GB300 ComputeDomain override on
+  the WorkloadRun path)
 - `pkg/catalog/entries/_lib/deps/gb200-compute-domain-and-dra-torch.yaml:15` (ComputeDomain
   sizing from `NodesPerJob`)

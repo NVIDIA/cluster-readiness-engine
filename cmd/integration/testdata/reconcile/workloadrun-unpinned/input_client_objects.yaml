@@ -3,15 +3,16 @@
 
 # Unpinned on the WorkloadRun tier.
 #
-# WorkloadRun has its own front door into OrchestrationSpec: buildWROrchestration
-# reads placement off the optional spec.orchestration block rather than from a
-# catalog template, so nothing the Certification cases cover exercises this
-# translation. A WorkloadRun with no orchestration block at all stays Pinned,
-# which is what every existing run in this directory already asserts.
+# WorkloadRun is the one front door into OrchestrationSpec.Placement (a
+# Certification has no placement option, see ADR-089): buildWROrchestration
+# reads it off the optional spec.orchestration block, so the Workflow-tier
+# cases, which write the field directly, do not exercise this translation. A
+# WorkloadRun with no orchestration block at all stays Pinned, which is what
+# every existing run in this directory already asserts.
 #
-# numNodes needs no extra validation here the way nodesPerJob does on the
-# Certification path: it is already Required with Minimum=1, so the "no size
-# given" hole cannot open.
+# numNodes needs no extra validation here: it is already Required with
+# Minimum=1, so the "no size given" hole the Workflow-tier backstop guards
+# cannot open from this tier.
 #
 # testScale: full-scale is set deliberately. Its doc has always claimed "all
 # nodes in a single group" while the switch in buildWROrchestration has no

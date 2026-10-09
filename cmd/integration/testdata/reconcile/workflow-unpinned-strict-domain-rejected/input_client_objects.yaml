@@ -11,7 +11,9 @@
 # A bare topologyKey is different: the GB200/GB300 catalog override injects it,
 # and overrides are applied before this check runs, so rejecting it would fail a
 # Nemotron run on GB200 with a message about a field the user never wrote. The
-# companion certification-unpinned-gb200-nemotron case pins that side.
+# workflow-unpinned-multi-clique case pins the accepted side: a topologyKey set
+# alongside Unpinned, with the Workflow building and no clique constraint on
+# the Job.
 apiVersion: v1
 kind: Node
 metadata:
