@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Pinned half of the propagation fix, and the control for the two Unpinned
+# cases above: same fleet, same target, same size, only placement differs.
+#
+# Before this change target.nodeSelector reached discovery and stopped there,
+# never appearing in a pod spec. Pinning masked that, since the chosen
+# hostnames had already passed the filter. The golden must now show the target
+# requirements AND the hostname requirement together in a single
+# NodeSelectorTerm: terms OR, expressions within a term AND, so a second term
+# would widen the constraint instead of narrowing it and would be a real bug.
+#
+# The hostnames must be the first two of the four, which is what proves the
+# group-0 slice still happens here. Adding the target terms cannot change which
+# nodes are admissible, because every name in that list already satisfies them
+# by construction. The blanket Operator: Exists toleration stays, unchanged.
+placement: Pinned
+numNodes: 2
+target:
+  nodeSelector:
+    nvcre.nvidia.com/testbed: burnin

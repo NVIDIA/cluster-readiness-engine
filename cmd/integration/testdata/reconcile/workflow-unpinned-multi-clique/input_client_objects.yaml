@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A fleet that spans two NVLink cliques, run Unpinned with the topology key set.
+#
+# The motivating GB200 fixture puts all eight of its nodes in clique-0, so it
+# cannot show what Unpinned does when the fleet is actually split. This one can:
+# four nodes, two cliques of two, a 2-node job, and the same
+# nvidia.com/gpu.clique key the GB200 catalog override injects.
+#
+# Under Pinned this exact fleet is what workflow-topology pins: the greedy
+# packer produces one group per clique, each group recording its domain, so a
+# job never straddles a clique boundary. Under Unpinned there is one group, it
+# records no domains, and the created Job carries no clique constraint of any
+# kind. The scheduler is free to put the two pods in different cliques.
+#
+# That is the documented behavior rather than an oversight, and ADR-089 says why
+# a same-clique pod affinity is not added in its place: applied unconditionally
+# it makes any job larger than one clique unschedulable, and without gang
+# scheduling it strands partially placed pods. A user who needs the confinement
+# asks for it as a set predicate, through target.matchExpressions on the clique
+# label, which is carried onto the pods as a node affinity.
+#
+# Node names are clique-node-NN rather than the usual gpu-node-NN: nodes are
+# cluster-scoped, and these names cannot collide with the fleet other cases
+# create under the generic names.
+apiVersion: v1
+kind: Node
+metadata:
+  name: clique-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: clique-node-01
+    nvidia.com/gpu.clique: clique-0
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: clique-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: clique-node-02
+    nvidia.com/gpu.clique: clique-0
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: clique-node-03
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: clique-node-03
+    nvidia.com/gpu.clique: clique-1
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: clique-node-04
+  labels:
+    nvidia.com/gpu.present: "true"
+    kubernetes.io/hostname: clique-node-04
+    nvidia.com/gpu.clique: clique-1
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-wf-unpin-clique
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    placement: Unpinned
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+    # Written here directly, but in the field this arrives from the catalog
+    # override gated on gpuArchitecture in [gb200, gb300], which the operator
+    # never sees in their own YAML. That is why it is ignored rather than
+    # rejected: rejecting it would fail the GB200 Nemotron run that motivated
+    # this mode, with a message about a field they did not write.
+    topology:
+      topologyKey: nvidia.com/gpu.clique

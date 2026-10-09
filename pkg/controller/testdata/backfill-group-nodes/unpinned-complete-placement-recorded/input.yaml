@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The ordinary path. Both pods of a 2-node job are bound, the job is still
+# running, and the group records the pair.
+#
+# The pods are listed out of order so the golden also pins that the result is
+# sorted. DiscoverPlacedNodesForJob dedupes through a map, and Go randomizes map
+# iteration per run, so an unsorted result would reshuffle a status field
+# between reconciles.
+placement: Unpinned
+nodesPerJob: 2
+terminal: false
+pods:
+  - {name: w-1, nodeName: node-b, phase: Running}
+  - {name: w-0, nodeName: node-a, phase: Running}

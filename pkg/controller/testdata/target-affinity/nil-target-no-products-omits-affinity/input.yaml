@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Nothing to constrain means leave the pod's affinity untouched. Writing an
+# empty required NodeSelectorTerm instead would match every node, which reads
+# as a constraint while being the opposite of one.
+placement: Unpinned
+groupNodes: []
+target: null
+gpuProducts: []

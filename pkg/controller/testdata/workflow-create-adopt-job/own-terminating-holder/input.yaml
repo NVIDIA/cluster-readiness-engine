@@ -1,0 +1,6 @@
+# This Workflow's own previous Job, deleted by a retry and still held by its
+# finalizer while its pods drain. Adopting it would point the group at a Job
+# about to vanish and fail the group on the next pass, losing the retry. The
+# name frees up shortly, so the reconcile retries rather than adopting.
+holder: own-terminating
+inCache: false

@@ -47,6 +47,10 @@ spec:
             values:
             - nscale-gb300-node-01
             - nscale-gb300-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
   containers:
   - args:
     - -N
@@ -263,6 +267,10 @@ spec:
             values:
             - nscale-gb300-node-01
             - nscale-gb300-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
   containers:
   - args:
     - |-
@@ -423,6 +431,10 @@ spec:
             values:
             - nscale-gb300-node-01
             - nscale-gb300-node-02
+          - key: nvidia.com/gpu.present
+            operator: In
+            values:
+            - "true"
   containers:
   - args:
     - |-

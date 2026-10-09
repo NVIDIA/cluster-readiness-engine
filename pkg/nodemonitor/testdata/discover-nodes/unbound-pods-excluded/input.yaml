@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A Pending pod the scheduler has not bound yet has no placement to report. It
+# must contribute nothing rather than an empty node name, which would otherwise
+# become an empty string in a node list and eventually an empty value in an
+# affinity term.
+#
+# This is also the residual attribution gap stated in ADR-089: a job that fails
+# before any pod is bound has nowhere to attribute the failure to, and
+# FailureLog.NodeName is the only remaining signal.
+namespace: default
+jobName: nccl-job
+pods:
+  - name: worker-0
+    jobLabel: nccl-job
+    nodeName: node-a
+    phase: Running
+  - name: worker-1
+    jobLabel: nccl-job
+    nodeName: ""
+    phase: Pending

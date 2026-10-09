@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Wait on the Workflow rather than the WorkloadRun, as workloadrun-intra-node
+# does: JobRunning only appears once every group's Job is launched, so the
+# collected orchestration status is deterministic rather than caught mid-launch.
+#
+# The Workflow takes the WorkloadRun's own name, and the Job collapses to
+# <workflow>-job because getGroupJobName shortens whenever there is one group
+# and one iteration. That the short name resolves at all is part of the
+# assertion: under Pinned this fleet would produce two groups and the Job would
+# be test-unpinned-run-group-0-iter-1.
+waitFor:
+  kind: Workflow
+  name: test-unpinned-run
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: WorkloadRun
+    name: test-unpinned-run
+    namespace: default
+  - kind: Workflow
+    name: test-unpinned-run
+    namespace: default
+  - kind: Job
+    name: test-unpinned-run-job
+    namespace: default
+expectAbsent:
+  - kind: Job
+    name: test-unpinned-run-group-1-iter-1
+    namespace: default

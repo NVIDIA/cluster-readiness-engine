@@ -1638,6 +1638,11 @@ func (in *OrchestrationOverrideSpec) DeepCopyInto(out *OrchestrationOverrideSpec
 		*out = new(TopologySpec)
 		**out = **in
 	}
+	if in.Placement != nil {
+		in, out := &in.Placement, &out.Placement
+		*out = new(string)
+		**out = **in
+	}
 	if in.Diagnose != nil {
 		in, out := &in.Diagnose, &out.Diagnose
 		*out = new(DiagnoseSpec)
@@ -1705,6 +1710,11 @@ func (in *OrchestrationStatus) DeepCopyInto(out *OrchestrationStatus) {
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
+	}
+	if in.GPUProducts != nil {
+		in, out := &in.GPUProducts, &out.GPUProducts
+		*out = make([]string, len(*in))
+		copy(*out, *in)
 	}
 	if in.ExcludedNodes != nil {
 		in, out := &in.ExcludedNodes, &out.ExcludedNodes

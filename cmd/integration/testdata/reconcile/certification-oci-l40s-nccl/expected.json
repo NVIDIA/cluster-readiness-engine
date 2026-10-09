@@ -440,6 +440,9 @@
         "currentIteration": 1,
         "detectedPlatform": "oci",
         "detectedGPUArchitecture": "l40s",
+        "gpuProducts": [
+          "NVIDIA-L40S"
+        ],
         "groups": [
           {
             "name": "group-0",

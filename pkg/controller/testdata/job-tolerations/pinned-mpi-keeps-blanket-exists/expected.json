@@ -1,0 +1,8 @@
+{
+  "apply": true,
+  "tolerations": [
+    {
+      "operator": "Exists"
+    }
+  ]
+}

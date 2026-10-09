@@ -494,6 +494,9 @@
         "currentIteration": 1,
         "detectedPlatform": "mistral",
         "detectedGPUArchitecture": "gb300",
+        "gpuProducts": [
+          "NVIDIA-GB300"
+        ],
         "groups": [
           {
             "name": "group-0",

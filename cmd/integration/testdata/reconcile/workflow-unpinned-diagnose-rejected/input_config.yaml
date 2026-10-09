@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# expectAbsent is the real assertion. Reaching Failed/PartitionError would also
+# happen if the controller created the job first and only then gave up, which is
+# the opposite of what the check is for: validation runs before any API write.
+waitFor:
+  kind: Workflow
+  name: unpin-diagnose
+  namespace: default
+  condition: Failed
+  reason: PartitionError
+collect:
+  - kind: Workflow
+    name: unpin-diagnose
+    namespace: default
+expectAbsent:
+  - kind: Job
+    name: unpin-diagnose-job
+    namespace: default

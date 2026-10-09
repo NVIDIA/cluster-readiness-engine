@@ -120,10 +120,18 @@ type CategoryResources struct {
 // (or auto-select for nodesPerJob).
 type CategoryOptions struct {
 	// nodesPerJob is the number of nodes per job for multi-node workloads.
-	// When nil at both global and per-category level, the controller auto-selects:
+	//
+	// It is a per-job group size, not a total: a Certification always covers
+	// every node its target matches, so N matching nodes produce
+	// ceil(N/nodesPerJob) concurrent jobs. When nil at both global and
+	// per-category level, the controller auto-selects:
 	//   - Entries with per-node-count configs (training): largest config <= matching nodes.
 	//   - All other entries: all matching nodes.
 	// When set, clamped to min(nodesPerJob, matchingNodes).
+	//
+	// To run one job of a chosen size against part of a fleet, use a WorkloadRun
+	// with orchestration.placement: Unpinned. Certification has no such mode by
+	// design: a certification verdict covers everything it targeted. See ADR-089.
 	// +optional
 	// +kubebuilder:validation:Minimum=1
 	NodesPerJob *int32 `json:"nodesPerJob,omitempty"`

@@ -417,6 +417,10 @@ func NodesPerJobForScale(orch *nvcrev1alpha1.WorkloadOrchestration, numNodes int
 func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcrev1alpha1.WorkloadRun) (*nvcrev1alpha1.WorkflowSpec, error) {
 	spec := &run.Spec
 
+	if err := ValidateWRPlacement(spec.Orchestration); err != nil {
+		return nil, err
+	}
+
 	// Best-effort node discovery for GPU + platform defaults. The Workflow
 	// controller does its own authoritative discovery and will fail if no
 	// nodes match.
@@ -427,7 +431,7 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 	gpuArch := ""
 	// Cordoned nodes are discarded here: this call only detects GPU and platform
 	// defaults, and a WorkloadRun has no coverage verdict to qualify.
-	nodes, _, _ := discoverTargetNodes(ctx, r.Client, r.APIReader, spec.Target)
+	nodes, _, _, _ := discoverTargetNodes(ctx, r.Client, r.APIReader, spec.Target)
 	if len(nodes) > 0 {
 		gpuArch = DetectGPUArchitecture(nodes)
 		detectedPlatform = DetectPlatform(nodes)
@@ -776,6 +780,10 @@ func buildWROrchestration(spec *nvcrev1alpha1.WorkloadRunSpec) *nvcrev1alpha1.Or
 		if spec.Orchestration.RepeatCount != nil {
 			orch.Iterations = int(*spec.Orchestration.RepeatCount)
 		}
+		// Only readable inside this branch: the whole orchestration block is
+		// optional, and a WorkloadRun without one stays Pinned, which is the
+		// behavior every existing run already has.
+		orch.Placement = spec.Orchestration.Placement
 		switch spec.Orchestration.TestScale {
 		case nvcrev1alpha1.TestScaleIntraNode:
 			// Handled by NodesPerJobForScale in buildWorkflowSpec and

@@ -1,0 +1,17 @@
+{
+  "apply": true,
+  "tolerations": [
+    {
+      "key": "nvidia.com/gpu",
+      "operator": "Equal",
+      "value": "present",
+      "effect": "NoSchedule"
+    },
+    {
+      "key": "kubernetes.io/arch",
+      "operator": "Equal",
+      "value": "arm64",
+      "effect": "NoSchedule"
+    }
+  ]
+}

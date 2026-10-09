@@ -490,6 +490,9 @@
         "currentIteration": 1,
         "detectedPlatform": "gcp",
         "detectedGPUArchitecture": "gb300",
+        "gpuProducts": [
+          "NVIDIA-GB300-NVL72"
+        ],
         "groups": [
           {
             "name": "group-0",

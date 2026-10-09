@@ -115,6 +115,23 @@ adapter.SetTolerations(&job.Spec.Workload, []corev1.Toleration{{
 ### Make health expression configurable in CertificationSpec
 **Rejected** because: The default expression (`node.spec.unschedulable == true`) is correct for all current use cases. Adding a configurable field increases API complexity for no practical benefit. Users with custom health checks can always create Workflows directly.
 
+## Notes
+
+### Amended by ADR-089 for unpinned placement
+
+The wildcard `Operator: Exists` toleration is justified above as "equally safe given the
+NodeAffinity pinning". That premise does not hold under
+[ADR-089](089-unpinned-single-job-placement.md), which adds an opt-in
+`orchestration.placement: Unpinned` mode with no `kubernetes.io/hostname` affinity. Blanket
+Exists plus no host pin would let an MPI job land on any tainted node with free GPUs.
+
+Under `placement: Unpinned` the wildcard narrows rather than disappearing. An explicit
+`target.taintSelectors` still wins outright; the MPI fallback becomes the named pair in
+`UnpinnedMPITolerations` instead of `Operator: Exists`. Tolerating nothing at all would
+leave the launcher unschedulable on a tainted GPU fleet, which fails silently with pods
+Pending and no event naming a toleration. The decision above stands unchanged for the
+default `Pinned` mode, where pinning still backs it.
+
 ## References
 
 - ADR-010: Certification Catalog (`pkg/catalog/`)

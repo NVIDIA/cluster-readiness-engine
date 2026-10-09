@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A failed job whose pods have already terminated. Both nodes are still
+# recorded.
+#
+# This pins the choice of DiscoverPlacedNodesForJob over DiscoverNodesForJob.
+# The latter keeps only Running and Pending pods, which answers the health
+# question; by the time a failure reconciles, its pods are Failed or Succeeded
+# and that filter would report no nodes at all. spec.nodeName survives the
+# phase change, so the placement is still there to read.
+placement: Unpinned
+nodesPerJob: 2
+terminal: true
+pods:
+  - {name: w-0, nodeName: node-a, phase: Failed}
+  - {name: w-1, nodeName: node-b, phase: Succeeded}
