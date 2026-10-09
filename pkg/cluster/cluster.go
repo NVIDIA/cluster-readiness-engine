@@ -15,6 +15,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/kubeconfig"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	sigyaml "sigs.k8s.io/yaml"
 
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
@@ -60,8 +61,9 @@ type ClusterInfo struct {
 // NodeInfo describes a single GPU node.
 type NodeInfo struct {
 	Name string `json:"name"`
-	// GPUs is the node's allocatable nvidia.com/gpu count. It is 0 when the
-	// device plugin has not advertised the resource yet.
+	// GPUs is the node's allocatable nvidia.com/gpu count or, on a node
+	// without that resource, the full GPUs it publishes as gpu.nvidia.com DRA
+	// devices. It is 0 when neither source reports any.
 	GPUs  int32  `json:"gpus"`
 	Ready bool   `json:"ready"`
 	Rack  string `json:"rack,omitempty"`
@@ -133,7 +135,19 @@ Use --topology-key to override.`,
 				topologyKey = DefaultTopologyKey(platform)
 			}
 
-			info := buildClusterInfo(nodes, platform, gpuArch, gpuProduct, gpusPerNode, topologyKey)
+			var draGPUs map[string]int32
+			if anyNodeLacksGPUResource(nodes) {
+				draGPUs, err = controller.CountDRAGPUs(ctx, c)
+				// A cluster that doesn't serve resource.k8s.io/v1 has no DRA
+				// GPUs to count, so its no-match error is not worth a warning.
+				if err != nil && !meta.IsNoMatchError(err) {
+					// Stderr keeps -o json|yaml output parseable.
+					fmt.Fprintf(os.Stderr,
+						"Warning: could not count GPUs from gpu.nvidia.com ResourceSlices: %v\n", err)
+				}
+			}
+
+			info := buildClusterInfo(nodes, draGPUs, platform, gpuArch, gpuProduct, gpusPerNode, topologyKey)
 
 			switch output {
 			case outputJSON:
@@ -169,9 +183,10 @@ func DefaultTopologyKey(plat string) string {
 	}
 }
 
-// buildClusterInfo constructs a ClusterInfo from discovered nodes.
+// buildClusterInfo constructs a ClusterInfo from discovered nodes. draGPUs
+// holds per-node DRA GPU counts for nodes without allocatable nvidia.com/gpu.
 func buildClusterInfo(
-	nodes []corev1.Node, platform, gpuArch, gpuProduct string,
+	nodes []corev1.Node, draGPUs map[string]int32, platform, gpuArch, gpuProduct string,
 	gpusPerNode int32, topologyKey string,
 ) ClusterInfo {
 	info := ClusterInfo{
@@ -185,7 +200,7 @@ func buildClusterInfo(
 	// Build per-node info and collect topology domains.
 	rackNodes := map[string][]string{}
 	for i, n := range nodes {
-		count := nodeGPUCount(n)
+		count := nodeGPUCount(n, draGPUs)
 		ni := NodeInfo{
 			Name:  n.Name,
 			GPUs:  count,
@@ -231,15 +246,27 @@ func buildClusterInfo(
 	return info
 }
 
-// nodeGPUCount returns the node's allocatable nvidia.com/gpu count. It returns
-// 0 when the resource is absent, which is what the scheduler sees: a node
-// labelled gpu.present=true still runs nothing until the device plugin
-// advertises the resource. It also returns 0 for a count it cannot represent,
-// so a value the API server accepted never wraps to a negative one.
-func nodeGPUCount(n corev1.Node) int32 {
+// anyNodeLacksGPUResource reports whether some node has no allocatable
+// nvidia.com/gpu, so device-plugin clusters skip the ResourceSlice List.
+func anyNodeLacksGPUResource(nodes []corev1.Node) bool {
+	for i := range nodes {
+		if _, ok := nodes[i].Status.Allocatable[resourceNvidiaGPU]; !ok {
+			return true
+		}
+	}
+	return false
+}
+
+// nodeGPUCount returns the node's allocatable nvidia.com/gpu count. When the
+// resource is absent it falls back to the node's DRA GPU count in draGPUs,
+// since a DRA-only GPU stack runs no device plugin to advertise it; a node
+// with neither reports 0, which is what the scheduler sees. It also returns 0
+// for an allocatable count it cannot represent, so a value the API server
+// accepted never wraps to a negative one.
+func nodeGPUCount(n corev1.Node, draGPUs map[string]int32) int32 {
 	q, ok := n.Status.Allocatable[resourceNvidiaGPU]
 	if !ok {
-		return 0
+		return draGPUs[n.Name]
 	}
 	count, ok := q.AsInt64()
 	if !ok || count < 0 || count > math.MaxInt32 {
@@ -311,8 +338,9 @@ func printClusterTable(info ClusterInfo) error {
 		}
 	}
 	if info.GpusPerNode == 0 {
-		fmt.Println("\nAt least one selected node reports 0 allocatable nvidia.com/gpu, so")
-		fmt.Println("nothing schedules on it. If you expect GPUs there, check the GPU Operator.")
+		fmt.Println("\nAt least one selected node reports 0 GPUs (from allocatable nvidia.com/gpu")
+		fmt.Println("or gpu.nvidia.com DRA devices), so nothing schedules on it. If you expect")
+		fmt.Println("GPUs there, check the GPU Operator or the NVIDIA DRA driver.")
 	}
 
 	if info.Topology != nil && len(info.Topology.Racks) > 0 {
