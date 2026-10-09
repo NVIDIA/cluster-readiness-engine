@@ -1779,13 +1779,20 @@ func (r *WorkflowReconciler) observeRunningGroup(
 		} else if behind {
 			return groupViewStale, "", nil
 		}
+		// Attribute before the drain wait, not after. The barrier below holds
+		// until the job's Running and Pending pods are gone, and once they are
+		// there is nothing left to read placement from; the Job controller's
+		// finalizer waits on the same drain, so the confirmed-deletion branch
+		// arrives even later. This is the one reconcile that still sees the
+		// pods, so it records what it finds, partial or not (terminal=true),
+		// and the write goes out even though the group stays Running.
+		backfilled := r.backfillGroupNodes(ctx, workflow, orch, g, job.Namespace, job.Name, true)
 		if shouldWaitForPodDrain(ctx, r.Client, job) {
+			if backfilled {
+				return groupChanged, "", nil
+			}
 			return groupStillRunning, "", nil
 		}
-		// Same terminal backfill as the confirmed-deleted branch. The drain
-		// barrier has already reported the pods gone, so this reads whatever
-		// the informer still holds; an empty answer leaves the group's nodes
-		// empty, which is what it would have been anyway.
 		r.failGroupForLostJob(ctx, workflow, orch, g, key, "Job is being deleted, marking group as failed")
 		return groupChanged, "", nil
 	}
@@ -1881,10 +1888,10 @@ func (r *WorkflowReconciler) observeMissingJob(
 }
 
 // failGroupForLostJob moves a Running group to Failed because its Job is gone
-// or going, after attributing the failure. The backfill is terminal: the pods
-// outlive the Job object for their termination grace period, so there is
-// usually still something to read, and this is the last reconcile that visits
-// this group.
+// or going, after a last attempt at attributing the failure. By the time either
+// caller reaches this the pods have usually drained, so the backfill here is a
+// backstop; the DeletionTimestamp branch records placement before its drain
+// wait, and the backfill is a no-op once a list is recorded.
 func (r *WorkflowReconciler) failGroupForLostJob(
 	ctx context.Context, workflow *nvcrev1alpha1.Workflow,
 	orch *nvcrev1alpha1.OrchestrationStatus, g *nvcrev1alpha1.GroupStatus, key client.ObjectKey, why string,

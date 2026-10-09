@@ -140,6 +140,14 @@ func TestIntegration(t *testing.T) {
 				}
 				cancelPatch()
 			}
+			for _, del := range step.Deletes {
+				ctx, cancelDelete := contextForDeadline(deadline)
+				obj := getObject(ctx, tt, suite.Client, del)
+				require.NotNil(tt, obj, "step delete: %s/%s not found", del.Kind, del.Name)
+				require.NoError(tt, suite.Client.Delete(ctx, obj),
+					"step delete: failed to delete %s/%s", del.Kind, del.Name)
+				cancelDelete()
+			}
 		}
 		waitForCondition(tt, mgr.GetClient(), cfg, deadline)
 
@@ -601,6 +609,10 @@ type eventTestStep struct {
 		Status bool            `json:"status,omitempty"`
 		Patch  json.RawMessage `json:"patch"`
 	} `json:"patches"`
+	// Deletes removes objects once the step's wait is satisfied, after its
+	// patches. The manager keeps running, so controllers see the deletion as
+	// they would on a cluster: finalizers hold, drain barriers apply.
+	Deletes []collectSpec `json:"deletes,omitempty"`
 }
 
 type waitConfig struct {

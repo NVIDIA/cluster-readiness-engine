@@ -635,12 +635,22 @@ for a complete list there would attribute the failure to no nodes at all. A part
 beats an empty one, and nothing re-reads it expecting `NodesPerJob` entries.
 
 Two other branches of the same loop reach `GroupFailed` without passing the status switch:
-a Job confirmed deleted, and a Job carrying a `DeletionTimestamp`. Both `continue` straight
-to the failure, so neither saw the backfill, and an Unpinned job deleted mid-run was
-attributed to nothing at all. Both now call it with `terminal` set, for the same reason the
-gate comes off above: these are the last reconcile that visits the group. Pods outlive the
-Job object for their termination grace period, so there is usually still something to read,
-and an empty answer leaves the nodes empty, which is what they would have been anyway.
+a Job confirmed deleted, and a Job carrying a `DeletionTimestamp`. Both used to go straight
+to the failure without the backfill, so an Unpinned job deleted mid-run was attributed to
+nothing at all. Running the backfill at the point of failure is not enough on its own,
+because of where that point sits: the `DeletionTimestamp` branch fails the group only after
+the pod-drain barrier passes, and the barrier passes once the job's Running and Pending pods
+are gone, which is exactly when there is nothing left to read placement from. The Job
+controller's finalizer waits on the same drain, so the confirmed-deletion branch arrives
+later still.
+
+So the `DeletionTimestamp` branch records placement first, with `terminal` set, and only then
+waits on the drain. That is the one reconcile that still sees the pods, and the write goes
+out even though the group stays Running behind the barrier. Both branches run the backfill
+again as a backstop before failing the group, which is a no-op once a list is recorded.
+`workflow-unpinned-deleted-job-attributed/` pins the order with the controller: a 2-node job
+with one pod bound, the Job deleted while that pod is Running, and the record checked before
+the pod is detached. A backfill placed after the drain never satisfies that wait.
 
 This is why `backfillGroupNodes` takes a namespace and name rather than the Job. The
 confirmed-deletion branch has only the `JobRef` left to go on, and neither branch can wait
