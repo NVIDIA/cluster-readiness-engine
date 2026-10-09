@@ -57,6 +57,7 @@ The RBAC rules are maintained by hand in `helm/cluster-readiness-engine/template
 | LogProfiles, nodes, pods | get, list, watch | — |
 | ResourceSlices | get, list, watch | — |
 | PersistentVolumes | get, list, watch, patch | — |
+| Namespaces | get | — |
 | Events | create, patch | — |
 | TrainJobs | get, list, watch; `trainjobs/status` get | create, delete, patch, update |
 | ConfigMaps | — | get, create, update, patch, delete |
@@ -67,6 +68,7 @@ The RBAC rules are maintained by hand in `helm/cluster-readiness-engine/template
 Notes on the placement:
 
 - **PersistentVolumes** are cluster-scoped, so no RoleBinding can grant them. `patch` stays cluster-wide (see Consequences).
+- **Namespaces** are new to the role. `handleDeletion` reads the run namespace to tell whether it is terminating (decision 5), and Namespaces are cluster-scoped, so the run-namespace binding cannot grant that read. Only `get` is added: the read goes through the uncached `APIReader`, because a cached read would start a cluster-wide Namespace informer and need `list` and `watch` as well, the failure mode of issue #424.
 - **Events** stay cluster-wide because the controller must be able to report a missing binding in the namespace that lacks it.
 - **TrainJob reads** stay cluster-wide because `Owns()` needs a cluster-wide watch. Reading TrainJobs everywhere exposes little.
 - **NVCRE CRD writes** stay cluster-wide. A controller that writes its own API types in any namespace is the conventional shape, and the risk is confined to NVCRE objects.
@@ -93,7 +95,7 @@ Notes on the placement:
 - `cmd/manager/main.go`: `Client: client.Options{Cache: &client.CacheOptions{DisableFor: []client.Object{&corev1.ConfigMap{}, &corev1.PersistentVolumeClaim{}}}}`. The `jobReader()` call in `cleanupPVForPVC` becomes an ordinary `r.Get`, and its #424 comment moves to the `DisableFor` line.
 - Permission check (`pkg/controller/namespace_access.go`): one SelfSubjectAccessReview per (namespace, resource, verb) that the Workflow will need, with results cached for 30 seconds per namespace so a waiting Workflow does not hammer the API server. Creating SelfSubjectAccessReviews needs no grant, because `system:basic-user` allows it for every authenticated identity. The check runs in the Workflow controller, before dependency creation, because every write starts there whether the Workflow came from a Certification, a WorkloadRun, or `kubectl apply`. Certification and WorkloadRun surface the Workflow's condition as they already do.
 - New reason constant `reasonJobNamespacePermissionsMissing` on the Workflow tier, following the tier-prefix convention.
-- `handleDeletion` in the Workflow and Job controllers: on Forbidden from a child delete, read the namespace; if its `deletionTimestamp` is set, log at V(1), remove the finalizer, and return.
+- `handleDeletion` in the Workflow and Job controllers: on Forbidden from a child delete, read the namespace through `APIReader` (a live `get`, see the Namespaces note under Role split); if its `deletionTimestamp` is set, log at V(1), remove the finalizer, and return. If the namespace read itself fails, keep the finalizer and requeue rather than guess.
 
 ### Documentation
 
@@ -137,6 +139,7 @@ Notes on the placement:
 ## Consequences
 
 - In `namespaced` mode the controller cannot write ConfigMaps, PVCs, TrainJobs, TrainingRuntimes, ResourceClaimTemplates or ComputeDomains, or read pod logs, in any namespace without a binding. It can no longer read ConfigMaps anywhere it is not bound.
+- **The controller gains `get` on Namespaces**, a permission it does not hold today. It exposes namespace metadata (labels, annotations, phase) and nothing inside the namespace.
 - **PersistentVolume `patch` stays cluster-wide.** The code patches only PVs that carry the Workflow's UID annotation (`pkg/controller/workflow_controller.go:3489-3512`), but RBAC does not enforce that, so the controller can still switch any PV's reclaim policy to `Delete`. Enforcing it needs a ValidatingAdmissionPolicy and is left out of this record (see Notes).
 - **Users who skip `nvcrectl` carry one extra manifest per namespace**, or one Helm value per long-lived namespace. Their runs wait with a named reason until it exists.
 - **`nvcrectl` needs permission to create RoleBindings** in the run namespace. A cluster admin has it. A user with less needs `bind` on `nvcre-run-role`, or admin rights in the namespace.
