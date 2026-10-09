@@ -80,18 +80,12 @@
     "workflow": "nscale-cert-communication-cbf6a",
     "dependencyKinds": [
       "TrainingRuntime/nccl-loopback-nvswitch-runtime",
-      "ResourceClaimTemplate/nccl-loopback-nvswitch-gpu",
-      "ResourceClaimTemplate/nccl-loopback-nvswitch-rdma"
+      "ResourceClaimTemplate/nccl-loopback-nvswitch-gpu"
     ],
     "claimTemplates": [
       {
         "name": "nccl-loopback-nvswitch-gpu",
         "deviceClassName": "gpu.nvidia.com",
-        "count": 8
-      },
-      {
-        "name": "nccl-loopback-nvswitch-rdma",
-        "deviceClassName": "rdma.nscale.com",
         "count": 8
       }
     ],
@@ -131,8 +125,7 @@
       {
         "dependency": "nccl-loopback-nvswitch-runtime",
         "resourceClaims": [
-          "gpu=nccl-loopback-nvswitch-gpu",
-          "rdma=nccl-loopback-nvswitch-rdma"
+          "gpu=nccl-loopback-nvswitch-gpu"
         ],
         "tolerations": [
           "operator=Exists"
@@ -142,8 +135,7 @@
             "name": "node",
             "resources": [],
             "claims": [
-              "gpu",
-              "rdma"
+              "gpu"
             ],
             "env": []
           }

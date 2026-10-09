@@ -132,15 +132,19 @@ separate exercise once this ADR is approved.
    `nccl-loopback-nvswitch` and `dcgm-level4` tolerate every taint in their base runtime
    (`tolerations: [{operator: Exists}]`). Toleration lists carry no `name`, so `mergeMaps`
    replaces them wholesale, and the shared fragment's arm64/GPU tolerations would silently
-   narrow what those entries tolerate. The loopback blocks therefore list a trailing
+   narrow what those entries tolerate. The `nccl-loopback` block therefore lists a trailing
    `deps/tolerate-all-runtime-patch.yaml` after the Nscale fragment, restoring the base
-   toleration (a strict superset of the keyed ones); `dcgm-level4` uses a fragment that sets
-   no tolerations at all.
+   toleration (a strict superset of the keyed ones); `nccl-loopback-nvswitch` and
+   `dcgm-level4` use a fragment that sets no tolerations at all (decision 9).
 
-9. **`dcgm-level4` claims the GPU only, and points `--host` at the NKS DCGM Service.**
-   The dcgm pod runs `hostNetwork`, so an `rdma.nscale.com` (`dra.net`) claim has no pod
-   network namespace to move a netdev into, and level-4 diagnostics are intra-node. A GPU-only
-   fragment (`deps/nscale-gpu.yaml`) avoids allocating an RDMA device nothing can use. NKS
+9. **Entries that use no NIC claim the GPU only, and `dcgm-level4` points `--host` at
+   the NKS DCGM Service.** The dcgm pod runs `hostNetwork`, so an `rdma.nscale.com`
+   (`dra.net`) claim has no pod network namespace to move a netdev into, and level-4
+   diagnostics are intra-node. `nccl-loopback-nvswitch` exercises NVLink/NVSwitch only, so
+   claiming the rail NICs would block concurrent NIC users and add DraNet's NIC-move timing
+   to pod start for nothing. Both use a GPU-only fragment (`deps/nscale-gpu.yaml`).
+   `nccl-loopback` keeps the RDMA claim: with SHM and P2P disabled its traffic crosses the
+   NIC. NKS
    runs the DRA-flavoured DCGM hostengine as `nvidia-platform/nvidia-dcgm-dra` rather than the
    GPU Operator's `gpu-operator/nvidia-dcgm`, so the Nscale block's `jobTemplatePatch` replaces
    the `--host` value with `nvidia-dcgm-dra.nvidia-platform.svc:5555`. A leading `test` op
@@ -212,7 +216,8 @@ Once that's confirmed, implementation follows the shape ADR-075 and ADR-058 esta
   - `deps/nscale-gpu-rdma-training.yaml`: `lib`-includes the fragment above and adds the IB env
     to the runtime container (merged by name into the base env), because torchrun inherits the
     container env and has no `mpirun -x` to ride on — the same split ADR-075 used.
-  - `deps/nscale-gpu.yaml`: GPU-only claim for `dcgm-level4` (decision 9), no tolerations.
+  - `deps/nscale-gpu.yaml`: GPU-only claim for `dcgm-level4` and `nccl-loopback-nvswitch`
+    (decision 9), no tolerations.
   - `deps/tolerate-all-runtime-patch.yaml`: platform-neutral patch restoring
     `tolerations: [{operator: Exists}]` (decision 8).
   - `nccl/nscale-ib-env.yaml`: unpinned IB env, mirroring `_lib/nccl/onprem-ib-env.yaml`.
@@ -220,9 +225,10 @@ Once that's confirmed, implementation follows the shape ADR-075 and ADR-058 esta
   - `nccl-all-reduce`, `nccl-all-gather`, `nccl-alltoall`: `nscale-gpu-rdma.yaml` +
     `trainer.args` replacement carrying the IB env as `-x` pairs; then the GB300 topology block
     inside the `testScale` conditional (decision 10).
-  - `nccl-loopback`, `nccl-loopback-nvswitch`: `nscale-gpu-rdma.yaml` +
-    `tolerate-all-runtime-patch.yaml`, and `trainer.env` replaced by the IB env (plus
-    `NCCL_SHM_DISABLE`/`NCCL_P2P_DISABLE` re-listed on `nccl-loopback` only, since lists replace).
+  - `nccl-loopback`: `nscale-gpu-rdma.yaml` + `tolerate-all-runtime-patch.yaml`, and
+    `trainer.env` replaced by the IB env plus `NCCL_SHM_DISABLE`/`NCCL_P2P_DISABLE`
+    re-listed, since lists replace.
+  - `nccl-loopback-nvswitch`: `nscale-gpu.yaml`, and `trainer.env` replaced by the IB env.
   - `dcgm-level4`: `nscale-gpu.yaml` and the `--host` patch; then the GB300 topology block.
   - `nemotron5-8b`, `nemotron5-56b`: deps-only `nscale-gpu-rdma-training.yaml`; then the GB300
     topology block.
@@ -252,8 +258,9 @@ Once that's confirmed, implementation follows the shape ADR-075 and ADR-058 esta
   covering every entry on both architectures — `nscale-{b200,gb300}-nccl` (all-reduce),
   `-nccl-scales` (all-gather at `intra-rack` and alltoall at `diagnose`, pinning the topology
   and diagnose keys: `gpu.clique` on B200 as the control, `accelerator-domain` on GB300),
-  `-loopback` (both loopback variants: replaced `trainer.env`, restored tolerate-everything
-  toleration), `-dcgm` (GPU-only claim, `--host` repointed at `nvidia-dcgm-dra`) and `-training` (both Nemotron
+  `-loopback` (both loopback variants: replaced `trainer.env`; the restored
+  tolerate-everything toleration on `nccl-loopback`, the GPU-only claim on
+  `nccl-loopback-nvswitch`), `-dcgm` (GPU-only claim, `--host` repointed at `nvidia-dcgm-dra`) and `-training` (both Nemotron
   entries: IB env in the runtime container env, cpu/memory surviving the GPU null,
   ComputeDomain + gpu/rdma claims on GB300). The projection records trainer args and env,
   runtime container env, tolerations, claims and the orchestration keys.

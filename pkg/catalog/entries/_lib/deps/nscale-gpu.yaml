@@ -1,10 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# GPU-only DRA claim for Nscale NKS (ADR-085), used by diagnostics/dcgm-level4.
-# The dcgm pod runs hostNetwork, so an rdma.nscale.com (dra.net) claim would
-# have no pod network namespace to move a netdev into, and level-4
-# diagnostics (including nvbandwidth) are intra-node; only the GPU is claimed.
+# GPU-only DRA claim for Nscale NKS (ADR-085), for entries that use no NIC.
+# diagnostics/dcgm-level4 runs hostNetwork, so an rdma.nscale.com (dra.net)
+# claim would have no pod network namespace to move a netdev into, and
+# level-4 diagnostics (including nvbandwidth) are intra-node.
+# communication/nccl-loopback-nvswitch exercises NVLink only, so claiming the
+# rail NICs would block concurrent NIC users for no benefit.
 # Unlike nscale-gpu-rdma.yaml this fragment sets no tolerations: the base
 # entry's tolerate-everything toleration (operator: Exists) already covers
 # the arm64 and GPU taints, and an unnamed toleration list here would replace
