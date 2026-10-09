@@ -1,0 +1,13 @@
+# MIG partitions and VFIO passthrough devices are not whole GPUs a pod can
+# claim as nvidia.com/gpu, so only type "gpu" counts.
+resourceSlices:
+  - nodeName: node-a
+    driver: gpu.nvidia.com
+    pool: node-a
+    generation: 1
+    devices: [gpu, mig, migdyn, vfio]
+  - nodeName: node-b
+    driver: gpu.nvidia.com
+    pool: node-b
+    generation: 1
+    devices: [vfio, vfio]

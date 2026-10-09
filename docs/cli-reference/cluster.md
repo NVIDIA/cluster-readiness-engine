@@ -10,6 +10,8 @@ description: Inspect GPU nodes, platform detection, and network topology.
 
 Discovers GPU nodes in the cluster and reports the detected platform, GPU architecture, per-node GPU count, and network topology (rack/T1 leaf switch grouping).
 
+A node's GPU count is its allocatable `nvidia.com/gpu`. On a DRA-only GPU stack, where no node advertises that resource, the count is the number of full GPUs the node publishes in its `gpu.nvidia.com` ResourceSlices.
+
 ```bash
 nvcrectl cluster info [flags]
 ```
