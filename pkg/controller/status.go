@@ -134,6 +134,37 @@ func updateStatusWithRetry[T client.Object](
 	})
 }
 
+// applyExclusiveConditions sets conditionType to True and every other type in
+// allTypes to False / NotApplicable, each with generation as its
+// ObservedGeneration. It only mutates conditions and reports whether any
+// changed, so a writer that must not retry (the Workflow timeout write) gets the
+// same exclusive shape as setExclusiveStatusConditionUnless (ADR-086 decision B).
+func applyExclusiveConditions(conditions *[]metav1.Condition, allTypes []string, conditionType, reason, message string, generation int64) bool {
+	changed := false
+	for _, ct := range allTypes {
+		status := metav1.ConditionFalse
+		condReason := ReasonNotApplicable
+		condMessage := ""
+
+		if ct == conditionType {
+			status = metav1.ConditionTrue
+			condReason = reason
+			condMessage = message
+		}
+
+		if meta.SetStatusCondition(conditions, metav1.Condition{
+			Type:               ct,
+			Status:             status,
+			Reason:             condReason,
+			Message:            condMessage,
+			ObservedGeneration: generation,
+		}) {
+			changed = true
+		}
+	}
+	return changed
+}
+
 // setExclusiveStatusCondition sets conditionType to True and every other type in
 // allTypes to False, so the tier's lifecycle conditions stay mutually exclusive.
 //
@@ -142,7 +173,7 @@ func updateStatusWithRetry[T client.Object](
 //
 // Returns whether any attempt required a write and, after a successful final
 // attempt, the exclusive true-type transition. Callers keep status-change
-// logging and metrics off no-op reconciles and emit Events only from the final
+// logging off no-op reconciles and emit Events only from the final
 // transition result.
 func setExclusiveStatusCondition[T client.Object](
 	ctx context.Context,
@@ -190,26 +221,8 @@ func setExclusiveStatusConditionUnless[T client.Object](
 				changed = true
 			}
 		}
-		for _, ct := range allTypes {
-			status := metav1.ConditionFalse
-			condReason := ReasonNotApplicable
-			condMessage := ""
-
-			if ct == conditionType {
-				status = metav1.ConditionTrue
-				condReason = reason
-				condMessage = message
-			}
-
-			if meta.SetStatusCondition(conditions(o), metav1.Condition{
-				Type:               ct,
-				Status:             status,
-				Reason:             condReason,
-				Message:            condMessage,
-				ObservedGeneration: o.GetGeneration(),
-			}) {
-				changed = true
-			}
+		if applyExclusiveConditions(conditions(o), allTypes, conditionType, reason, message, o.GetGeneration()) {
+			changed = true
 		}
 		wrote = wrote || changed
 		if !changed {
