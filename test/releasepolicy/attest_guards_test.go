@@ -77,6 +77,7 @@ const (
 const (
 	errDigestMustMatch  = "expected_digest must match"
 	errInvalidTag       = "subject_tag is not a valid OCI tag"
+	errCosignShape      = "cosign_version must be"
 	errCosignBelowFloor = "below the minimum v3.1.3"
 )
 
@@ -444,7 +445,7 @@ func TestAttestValidationRejects(t *testing.T) {
 		// floating value would let the on-registry layout drift.
 		"floating cosign version": {
 			inputs{inCosignVersion: "latest"},
-			"cosign_version must be",
+			errCosignShape,
 		},
 		// v3.1.2 matches the vMAJOR.MINOR.PATCH regex and is the last v3
 		// release affected by GHSA-fx35-mq7g-6g98. The numeric floor is
@@ -452,6 +453,22 @@ func TestAttestValidationRejects(t *testing.T) {
 		"cosign below the GHSA floor": {
 			inputs{inCosignVersion: lastAffectedCosignV3},
 			errCosignBelowFloor,
+		},
+		// Each component is bounded to six digits so the numeric floor can
+		// always evaluate it. Without the bound, `[ -lt ]` errors on a value
+		// bash cannot hold, the `if` reads that as false, and the pin passes.
+		// These catch a later loosening of the regex.
+		"cosign major too large to compare": {
+			inputs{inCosignVersion: "v99999999999999999999.0.0"},
+			errCosignShape,
+		},
+		"cosign minor too large to compare": {
+			inputs{inCosignVersion: "v3.99999999999999999999.0"},
+			errCosignShape,
+		},
+		"cosign patch too large to compare": {
+			inputs{inCosignVersion: "v3.1.99999999999999999999"},
+			errCosignShape,
 		},
 		"floating crane version": {
 			inputs{inCraneVersion: "main"},

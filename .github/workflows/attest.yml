@@ -216,7 +216,11 @@ jobs:
           [[ "${IN_EXPECTED_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]] \
             || fail "expected_digest must match sha256:<64 lowercase hex>"
 
-          [[ "${IN_COSIGN_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+          # Each component is capped at six digits so the integer comparisons
+          # below can always evaluate it. An out-of-range value would make
+          # the test builtin error out, which an if reads as false, and the
+          # floor would fail open.
+          [[ "${IN_COSIGN_VERSION}" =~ ^v[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}$ ]] \
             || fail "cosign_version must be vMAJOR.MINOR.PATCH"
           # The regex accepts any vMAJOR.MINOR.PATCH, including v3.1.2, the last
           # v3 release affected by GHSA-fx35-mq7g-6g98 (legacy-bundle
