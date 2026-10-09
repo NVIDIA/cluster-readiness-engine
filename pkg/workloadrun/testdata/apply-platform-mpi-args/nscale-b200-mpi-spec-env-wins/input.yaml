@@ -3,9 +3,10 @@
 
 # spec.env must win over the Nscale IB env the platform forwards with -x.
 # Ranks see only what mpirun forwards, so the platform pairs carry the user's
-# values: NCCL_NET=Socket replaces the platform's NCCL_NET=IB, and NCCL_DEBUG,
-# set through valueFrom, is forwarded by bare name for mpirun to read from
-# the launcher env. The other platform pairs are untouched.
+# values: NCCL_IB_PCI_RELAXED_ORDERING=0 replaces the platform's
+# NCCL_IB_PCI_RELAXED_ORDERING=1, and NCCL_DEBUG, set through valueFrom, is
+# forwarded by bare name for mpirun to read from the launcher env. The other
+# platform pairs are untouched.
 run:
   metadata:
     name: wr-mpi-nscale-b200
@@ -14,8 +15,8 @@ run:
     image: nvcr.io/nvidia/pytorch:26.01-py3
     numNodes: 2
     env:
-      - name: NCCL_NET
-        value: Socket
+      - name: NCCL_IB_PCI_RELAXED_ORDERING
+        value: "0"
       - name: NCCL_DEBUG
         valueFrom:
           configMapKeyRef:

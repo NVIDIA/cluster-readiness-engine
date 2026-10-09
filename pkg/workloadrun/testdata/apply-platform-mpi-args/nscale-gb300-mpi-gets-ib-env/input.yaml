@@ -3,7 +3,8 @@
 
 # ADR-085: an MPI WorkloadRun on Nscale GB300 must receive the IB NCCL env
 # as -x pairs ahead of the user's own mpiArgs. Ranks start under sshd with a
-# fresh environment, so NCCL_NET=IB reaches them only through mpirun -x.
+# fresh environment, so NCCL_IB_PCI_RELAXED_ORDERING=1 reaches them only
+# through mpirun -x.
 run:
   metadata:
     name: wr-mpi-nscale-gb300

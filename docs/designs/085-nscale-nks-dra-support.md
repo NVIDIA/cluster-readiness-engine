@@ -89,6 +89,13 @@ separate exercise once this ADR is approved.
    `onprem-ib-env.yaml` shape instead: fabric-portable NCCL/OMPI hygiene vars, no
    `NCCL_IB_HCA`/`UCX_NET_DEVICES` pin, and NCCL's documented auto-detection fills the gap.
 
+   `NCCL_NET` is left unset. Pinning it to `IB` selects NCCL's built-in IB transport, which
+   drops the HPC-X plugin's CollNet and with it SHARP: 4-node all-reduce busBW was 336 GB/s
+   pinned and 549 GB/s unset. The retained trade-off is that a run whose HCAs are unusable
+   falls back to NCCL's Socket transport over `eth0` rather than failing. Such a run lands
+   far below any sensible busBW threshold, and recording the transport NCCL chose in
+   `BandwidthMeasurement`, so a Socket fallback fails explicitly, is future work.
+
 5. **Scope the new blocks to `platform: nscale` × `gpuArchitecture`, ordered after the
    arch-only GB200/GB300 ComputeDomain block, in all eight catalog entries.** Not only the
    three MPI collectives: the two loopback variants, `dcgm-level4` and both Nemotron training

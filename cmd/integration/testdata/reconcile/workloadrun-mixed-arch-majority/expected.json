@@ -1570,10 +1570,6 @@
                         "value": "eth0"
                       },
                       {
-                        "name": "NCCL_NET",
-                        "value": "IB"
-                      },
-                      {
                         "name": "NCCL_DEBUG",
                         "value": "INFO"
                       },

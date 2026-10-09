@@ -140,8 +140,8 @@ func TestWorkloadRunControllerCarriesUserEnvIntoGCPGB200RuntimeDependency(t *tes
 
 // MPI ranks start under sshd with a fresh environment, so the launcher's -x
 // args alone decide what they see: spec.env must win over both the Nscale IB
-// env the platform forwards (NCCL_NET=IB) and the NCCL defaults
-// (NCCL_SHM_DISABLE=1), and a name both set is forwarded once.
+// env the platform forwards (NCCL_IB_PCI_RELAXED_ORDERING=1) and the NCCL
+// defaults (NCCL_SHM_DISABLE=1), and a name both set is forwarded once.
 func TestWorkloadRunControllerForwardsUserEnvToMPIRanks(t *testing.T) {
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
@@ -168,7 +168,7 @@ func TestWorkloadRunControllerForwardsUserEnvToMPIRanks(t *testing.T) {
 				},
 			},
 			Env: []corev1.EnvVar{
-				{Name: "NCCL_NET", Value: "Socket"},
+				{Name: "NCCL_IB_PCI_RELAXED_ORDERING", Value: "0"},
 				{Name: "NCCL_SHM_DISABLE", Value: "0"},
 			},
 		},
@@ -179,7 +179,7 @@ func TestWorkloadRunControllerForwardsUserEnvToMPIRanks(t *testing.T) {
 	require.NoError(t, err)
 
 	args := ws.JobTemplate.Spec.Workload.TrainJob.Trainer.Args
-	require.Equal(t, []string{"Socket"}, mpiEnvArgValues(args, "NCCL_NET"))
+	require.Equal(t, []string{"0"}, mpiEnvArgValues(args, "NCCL_IB_PCI_RELAXED_ORDERING"))
 	require.Equal(t, []string{"0"}, mpiEnvArgValues(args, "NCCL_SHM_DISABLE"))
 	require.Equal(t, []string{"INFO"}, mpiEnvArgValues(args, "NCCL_DEBUG"))
 	require.Equal(t, []string{"0"}, mpiEnvArgValues(args, "NCCL_MNNVL_ENABLE"))

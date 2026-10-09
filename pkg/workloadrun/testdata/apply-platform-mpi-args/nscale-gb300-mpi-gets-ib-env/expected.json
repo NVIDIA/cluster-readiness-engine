@@ -3,8 +3,6 @@
     "-x",
     "NCCL_SOCKET_IFNAME=eth0",
     "-x",
-    "NCCL_NET=IB",
-    "-x",
     "NCCL_DEBUG=INFO",
     "-x",
     "NCCL_NVLS_ENABLE=1",
