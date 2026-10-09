@@ -1,0 +1,3 @@
+{
+  "message": "GPU architecture \"b300x\" has no entry in the catalog's GPU defaults; the job is sized as gpusPerNode=4 mlnxPerNode=0. If the nodes differ, set spec.gpusPerNode and spec.mlnxPerNode, and file an issue so the architecture can be added to the catalog."
+}

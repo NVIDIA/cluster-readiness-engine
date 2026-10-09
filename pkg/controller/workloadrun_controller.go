@@ -108,7 +108,7 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	workflowSpec, buildErr := r.buildWorkflowSpec(ctx, &run)
+	workflowSpec, archFallbackMessage, buildErr := r.buildWorkflowSpecWithWarning(ctx, &run)
 	if buildErr != nil {
 		// The spec is immutable, so this cannot succeed on a later reconcile;
 		// fail the WorkloadRun rather than retrying forever. Record it the way
@@ -140,7 +140,14 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, fmt.Errorf("setting owner reference: %w", err)
 	}
 
-	if err := r.Create(ctx, workflow); err != nil {
+	if err := r.Create(ctx, workflow); err == nil {
+		// Only the reconcile whose Create succeeded warns, so a retry that
+		// adopts the Workflow it already created does not repeat it
+		// (ADR-092).
+		if archFallbackMessage != "" {
+			r.warnf(&run, ReasonGPUArchitectureDefaults, "%s", archFallbackMessage)
+		}
+	} else {
 		if !apierrors.IsAlreadyExists(err) {
 			// One event per failed Create attempt. This path is only reached
 			// while status.workflowRef is unset.
@@ -415,10 +422,22 @@ func NodesPerJobForScale(orch *nvcrev1alpha1.WorkloadOrchestration, numNodes int
 // example when workloadMetadata names the gang scheduler's queue key with a
 // different queue than gangScheduler configures.
 func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcrev1alpha1.WorkloadRun) (*nvcrev1alpha1.WorkflowSpec, error) {
+	ws, _, err := r.buildWorkflowSpecWithWarning(ctx, run)
+	return ws, err
+}
+
+// buildWorkflowSpecWithWarning is buildWorkflowSpec plus the
+// GPUArchitectureDefaults message to emit once the Workflow is created, or ""
+// when the detected architecture is listed in gpu-defaults.yaml (ADR-092).
+// Reconcile emits it only after a successful Create so a retry does not
+// repeat it; the tests that only need the spec call buildWorkflowSpec.
+func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
+	ctx context.Context, run *nvcrev1alpha1.WorkloadRun,
+) (*nvcrev1alpha1.WorkflowSpec, string, error) {
 	spec := &run.Spec
 
 	if err := ValidateWRPlacement(spec.Orchestration); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// Best-effort node discovery for GPU + platform defaults. The Workflow
@@ -429,6 +448,7 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 	enableMNNVL := false
 	detectedPlatform := ""
 	gpuArch := ""
+	archFallbackMessage := ""
 	// Cordoned nodes are discarded here: this call only detects GPU and platform
 	// defaults, and a WorkloadRun has no coverage verdict to qualify.
 	nodes, _, _, _ := discoverTargetNodes(ctx, r.Client, r.APIReader, spec.Target)
@@ -439,6 +459,11 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 		gpusPerNode = nd.GpusPerNode
 		mlnxPerNode = nd.MlnxPerNode
 		enableMNNVL = DefaultEnableMNNVL(gpuArch)
+		// An architecture missing from gpu-defaults.yaml was just sized on
+		// the Go-side fallback; Reconcile says so on the WorkloadRun once the
+		// Workflow is created instead of running silently at the wrong rank
+		// count (ADR-092).
+		archFallbackMessage = gpuArchFallbackMessage(gpuArch, nd, gpuArchFieldHintWorkloadRun)
 	}
 
 	if spec.GpusPerNode != nil {
@@ -449,7 +474,8 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 	}
 	// The NIC resource name has no architecture default: it depends on the
 	// RDMA device plugin the site runs. The field always wins; when it is
-	// unset on the on-prem GB200/GB300 target the override matches, detection
+	// unset on the on-prem GB200/GB300 or x86 HGX B200/B300 target the
+	// overrides match, detection
 	// fills the gap from node allocatable, but only when exactly one
 	// candidate (rdma/* or nvidia.com/mlnxnics) is allocatable at the
 	// resolved mlnxPerNode count — the amount the templates will request per
@@ -607,10 +633,10 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 
 	if err := platform.ApplyWorkloadRunScheduling(
 		workflowSpec, spec.GangScheduler, spec.WorkloadMetadata); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return workflowSpec, nil
+	return workflowSpec, archFallbackMessage, nil
 }
 
 // buildJobTemplate constructs the JobTemplateSpec for the workload.

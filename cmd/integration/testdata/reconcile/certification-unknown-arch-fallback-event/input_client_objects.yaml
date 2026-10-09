@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An architecture GFD labels but gpu-defaults.yaml does not list (ADR-092):
+# the controller sizes the workflow on the four-GPU fallback and says so with
+# a GPUArchitectureDefaults Warning on the Certification. The nodes have eight
+# GPUs, so the under-sized job still schedules and the run proceeds.
+apiVersion: v1
+kind: Node
+metadata:
+  name: onprem-h20-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H20
+    kubernetes.io/hostname: onprem-h20-node-01
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: onprem-h20-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H20
+    kubernetes.io/hostname: onprem-h20-node-02
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: onprem-nc-h20
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H20
+  categories:
+    - domain: communication
+      variant: nccl-all-gather

@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: onprem-nc-h20-communicati-7bb04
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: onprem-nc-h20
+    namespace: default
+  - kind: Workflow
+    name: onprem-nc-h20-communicati-7bb04
+    namespace: default
+events:
+  - involvedKind: Certification
+    involvedName: onprem-nc-h20
+    namespace: default
+    expect:
+      - {type: Warning, reason: GPUArchitectureDefaults}

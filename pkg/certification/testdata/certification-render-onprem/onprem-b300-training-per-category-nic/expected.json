@@ -1,0 +1,72 @@
+[
+  {
+    "workflow": "onprem-b300-train-trainin-b8f33",
+    "targetNodeSelector": {
+      "nvidia.com/gpu.product": "NVIDIA-B300-SXM6-AC"
+    },
+    "dependencyKinds": [
+      "TrainingRuntime",
+      "ConfigMap"
+    ],
+    "trainerArgs": [
+      "/config/train.sh"
+    ],
+    "trainerEnv": [],
+    "replicatedJobs": [
+      {
+        "dependency": "nemotron5-8b-runtime",
+        "replicatedJob": "node",
+        "mlPolicy": [
+          "torch"
+        ],
+        "tolerations": [
+          "nvidia.com/gpu=present:NoSchedule"
+        ],
+        "containers": [
+          {
+            "name": "node",
+            "resources": [
+              "limits/cpu=128",
+              "limits/memory=800Gi",
+              "limits/nvidia.com/gpu=8",
+              "limits/rdma/rdma_shared_device_a=1",
+              "requests/cpu=64",
+              "requests/memory=500Gi",
+              "requests/nvidia.com/gpu=8",
+              "requests/rdma/rdma_shared_device_a=1"
+            ],
+            "env": [
+              "NVTE_FWD_LAYERNORM_SM_MARGIN=16",
+              "NVTE_BWD_LAYERNORM_SM_MARGIN=16",
+              "NVTE_FUSED_ATTN=0",
+              "TORCHINDUCTOR_WORKER_START=fork",
+              "NCCL_DEBUG=INFO",
+              "NCCL_DEBUG_SUBSYS=NET,INIT,GRAPH,NVLS",
+              "NCCL_SOCKET_IFNAME=eth0",
+              "NCCL_IB_TIMEOUT=19",
+              "NCCL_P2P_NET_CHUNKSIZE=2097152",
+              "NCCL_NVLS_ENABLE=1",
+              "NCCL_CUMEM_ENABLE=1",
+              "NCCL_NET_GDR_C2C=1",
+              "NCCL_MNNVL_ENABLE=0",
+              "CUDA_DEVICE_MAX_CONNECTIONS=1",
+              "TORCH_NCCL_AVOID_RECORD_STREAMS=1",
+              "TORCH_NCCL_HIGH_PRIORITY=1",
+              "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True",
+              "UCX_MEM_MMAP_HOOK_MODE=none",
+              "UCX_MEM_CUDA_HOOK_MODE=none",
+              "UCX_MEM_MALLOC_HOOKS=n",
+              "UCX_ERROR_SIGNALS=",
+              "EXIT_DURATION_MINS=30",
+              "ENABLE_CHECKPOINT=false",
+              "TRAIN_ITERS=10",
+              "SAVE_INTERVAL=250",
+              "SAVE_RETAIN_INTERVAL=1000",
+              "PYTHONPATH=/mnt/workspace/megatron-lm"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

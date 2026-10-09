@@ -160,6 +160,12 @@ func runWorkloadRunRender(file, outputFormat, platformFlag, gpuArchFlag string) 
 	// (used later for override matching); when absent, only architecture defaults
 	// apply at template-render time.
 	nd := catalog.GPUDefaults(gpuArch, platformFlag)
+	// --gpu-arch is validated against gpu-defaults.yaml; an architecture from
+	// the nodeSelector is not, so say when it is sized on the fallback
+	// (ADR-092).
+	if msg := controller.GPUArchFallbackMessage(gpuArch, nd, controller.GPUArchFieldHintWorkloadRun); msg != "" {
+		_, _ = fmt.Fprintln(os.Stderr, msg)
+	}
 	gpusPerNode := nd.GpusPerNode
 	mlnxPerNode := nd.MlnxPerNode
 	if run.Spec.GpusPerNode != nil {
@@ -606,6 +612,11 @@ func runWorkloadRunRenderDryRun(
 	}
 	gpuArch := controller.DetectGPUArchitecture(nodes)
 	nd := catalog.GPUDefaults(gpuArch, effectivePlatform)
+	// The discovered architecture bypasses --gpu-arch validation, so say when
+	// it is sized on the fallback, as the controller does (ADR-092).
+	if msg := controller.GPUArchFallbackMessage(gpuArch, nd, controller.GPUArchFieldHintWorkloadRun); msg != "" {
+		_, _ = fmt.Fprintln(os.Stderr, msg)
+	}
 	gpusPerNode := nd.GpusPerNode
 	mlnxPerNode := nd.MlnxPerNode
 	if run.Spec.GpusPerNode != nil {
@@ -639,7 +650,7 @@ func runWorkloadRunRenderDryRun(
 
 	// NIC resource auto-detection (ADR-075), mirroring the WorkloadRun
 	// controller: the field always wins; when it is unset on an on-prem
-	// GB200/GB300 target, the single candidate (rdma/* or
+	// GB200/GB300 or x86 HGX B200/B300 target, the single candidate (rdma/* or
 	// nvidia.com/mlnxnics) allocatable at the resolved mlnxPerNode count on
 	// every discovered node is used. On zero or multiple candidates nothing
 	// is injected and the note below matches the controllers'

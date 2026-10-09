@@ -38,6 +38,11 @@ type onpremContainer struct {
 type onpremReplicatedJob struct {
 	Dependency    string `json:"dependency"`
 	ReplicatedJob string `json:"replicatedJob"`
+	// MLPolicy lists the policy keys set on the runtime (torch, mpi, ...),
+	// sorted. The TrainingRuntime CRD allows exactly one, so a fragment that
+	// merges a second policy into a per-node torch runtime shows up here as
+	// two keys (ADR-092).
+	MLPolicy []string `json:"mlPolicy"`
 	// Tolerations renders each toleration in declaration order as
 	// "key=value:effect"; the on-prem override contributes the arm64 and GPU
 	// taints, and their absence on a control case is as load-bearing as their
@@ -178,6 +183,7 @@ func projectOnPremOverride(wf *nvcrev1alpha1.Workflow) (onpremWorkflow, error) {
 			projected := onpremReplicatedJob{
 				Dependency:    rt.Name,
 				ReplicatedJob: rj.Name,
+				MLPolicy:      mlPolicyKeys(rt.Spec.MLPolicy),
 				Tolerations:   []string{},
 				Containers:    []onpremContainer{},
 			}
@@ -203,4 +209,20 @@ func projectOnPremOverride(wf *nvcrev1alpha1.Workflow) (onpremWorkflow, error) {
 		}
 	}
 	return out, nil
+}
+
+// mlPolicyKeys returns the sorted names of the policies set on an MLPolicy.
+func mlPolicyKeys(p *trainerv1alpha1.MLPolicy) []string {
+	keys := []string{}
+	if p == nil {
+		return keys
+	}
+	if p.Torch != nil {
+		keys = append(keys, "torch")
+	}
+	if p.MPI != nil {
+		keys = append(keys, "mpi")
+	}
+	sort.Strings(keys)
+	return keys
 }

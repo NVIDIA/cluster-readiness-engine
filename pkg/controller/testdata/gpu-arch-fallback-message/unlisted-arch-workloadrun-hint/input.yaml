@@ -1,0 +1,4 @@
+gpuArch: b300x
+gpusPerNode: 4
+mlnxPerNode: 0
+fieldHint: WorkloadRun

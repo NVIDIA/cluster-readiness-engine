@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# x86 HGX B300 on-prem running the per-node torch entry (ADR-092). The HGX
+# comm fragment carries no mlPolicy, so the merged TrainingRuntime keeps a
+# single torch policy and the API server's one-policy CEL rule accepts it;
+# tolerate-all-runtime-patch.yaml restores the entry's tolerate-everything
+# toleration after the HGX fragment replaced the list. nicResourceName is set
+# explicitly here; detection is covered by the autodetect sibling.
+apiVersion: v1
+kind: Node
+metadata:
+  name: onprem-b300-lb-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-B300-SXM6-AC
+    kubernetes.io/hostname: onprem-b300-lb-node-01
+    kubernetes.io/arch: amd64
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+    rdma/rdma_shared_device_a: "1000"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: onprem-nc-b3-lb
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-B300-SXM6-AC
+  nicResourceName: rdma/rdma_shared_device_a
+  mlnxPerNode: 1
+  categories:
+    - domain: communication
+      variant: nccl-loopback-nvswitch

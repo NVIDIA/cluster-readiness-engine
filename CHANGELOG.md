@@ -17,6 +17,18 @@ followed them.
 
 ### Added
 
+- The x86 HGX B300 GPU architecture (`b300`, product label `NVIDIA-B300-SXM6-AC`)
+  is in the catalog's GPU defaults table at eight GPUs and eight NICs per node, so
+  it renders at the right rank count and `--gpu-arch b300` is accepted. A new
+  on-prem override for x86 HGX B200/B300 nodes adds the `nvidia.com/gpu` taint
+  toleration and makes `nicResourceName` and `mlnxPerNode` request RDMA devices
+  on those nodes, with NIC auto-detection widened to match. It sets no NCCL
+  environment. See ADR-092.
+- A Warning event, reason `GPUArchitectureDefaults`, on the Certification or
+  WorkloadRun when the detected GPU architecture is missing from the catalog's
+  defaults table and the workflow was sized on the four-GPU fallback. Every
+  `nvcrectl` render path and `nvcrectl cluster info` print the same message.
+
 - GCP H100 detects the TCPXO NCCL plugin release from the `nccl-tcpxo-installer` pods
   on the target nodes and picks the NCCL and training images and the paired
   `tcpxo-daemon` from it: v1.0.15 and v1.0.16 run `pytorch:25.06-py3` (CUDA 12) with

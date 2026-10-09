@@ -37,6 +37,11 @@ defaults:
   b200:
     gpusPerNode: 8
     mlnxPerNode: 8
+  b300:
+    # x86 HGX B300: 8-GPU air-cooled baseboard, NVSwitch inside the chassis.
+    # Not GB300 (the arm64 NVL72 tray); see ADR-092.
+    gpusPerNode: 8
+    mlnxPerNode: 8
   h200:
     gpusPerNode: 8
     mlnxPerNode: 8

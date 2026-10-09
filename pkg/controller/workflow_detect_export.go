@@ -10,8 +10,25 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
 )
+
+// Exported field hints for GPUArchFallbackMessage, one per CLI surface.
+const (
+	GPUArchFieldHintCertification = gpuArchFieldHintCertification
+	GPUArchFieldHintWorkloadRun   = gpuArchFieldHintWorkloadRun
+	GPUArchFieldHintClusterInfo   = "gpusPerNode and mlnxPerNode on the Certification or WorkloadRun"
+)
+
+// GPUArchFallbackMessage is the exported version of gpuArchFallbackMessage
+// for the CLI render and cluster-info paths, so every surface that sizes a
+// workflow on an architecture missing from gpu-defaults.yaml prints the same
+// text the controllers emit as the GPUArchitectureDefaults event (ADR-092).
+// It returns "" for an empty, unknown, or listed architecture.
+func GPUArchFallbackMessage(gpuArch string, nd catalog.NodeDefaults, fieldHint string) string {
+	return gpuArchFallbackMessage(gpuArch, nd, fieldHint)
+}
 
 // DetectPlatform is the exported version of detectPlatform for use by CLI tools.
 func DetectPlatform(nodes []corev1.Node) string {
@@ -31,7 +48,7 @@ func DetectGPUArchitecture(nodes []corev1.Node) string {
 // for use by the CLI dry-run paths, so "certification render --dry-run" and
 // "workloadrun render --dry-run" resolve the NIC resource exactly as a
 // reconcile of the same target would: field wins, detection only for on-prem
-// GB200/GB300, and only a single candidate allocatable at the resolved
+// GB200/GB300 and x86 HGX B200/B300, and only a single candidate allocatable at the resolved
 // mlnxPerNode count on every node is used. mlnxPerNode must be the caller's
 // fully resolved value (field or catalog default).
 //

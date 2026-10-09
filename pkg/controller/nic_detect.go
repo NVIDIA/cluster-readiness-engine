@@ -11,7 +11,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// NIC resource auto-detection for the on-prem GB200/GB300 override (ADR-075).
+// NIC resource auto-detection for the on-prem GB200/GB300 override (ADR-075)
+// and the on-prem x86 HGX B200/B300 override (ADR-092).
 //
 // The override injects an RDMA NIC resource request only when a resource name
 // is known, and the name depends on the device plugin a site runs, so there is
@@ -31,12 +32,21 @@ const (
 	nicResourceMlnxNics = "nvidia.com/mlnxnics"
 )
 
-// isOnPremNVL72 reports whether the detected platform/architecture pair is
-// the one the ADR-075 on-prem GB200/GB300 override matches. NIC detection is
-// gated on it so no other platform ever sees a detected name or a detection
-// event: nicResourceName is only consumed by that override's dep fragments.
-func isOnPremNVL72(platformName, gpuArch string) bool {
-	return platformName == platformOnPrem && (gpuArch == "gb200" || gpuArch == "gb300")
+// isOnPremNICOverrideTarget reports whether the detected platform/architecture
+// pair is one the on-prem NIC-requesting overrides match: the ADR-075 NVL72
+// block (gb200, gb300) or the ADR-092 x86 HGX block (b200, b300). NIC
+// detection is gated on it so no other platform ever sees a detected name or
+// a detection event: nicResourceName is only consumed by those overrides' dep
+// fragments.
+func isOnPremNICOverrideTarget(platformName, gpuArch string) bool {
+	if platformName != platformOnPrem {
+		return false
+	}
+	switch gpuArch {
+	case "gb200", "gb300", "b200", "b300":
+		return true
+	}
+	return false
 }
 
 // nicDetection is the outcome of one NIC resource auto-detection pass, as
@@ -56,7 +66,7 @@ type nicDetection struct {
 	// Required is the per-container request count candidates were qualified
 	// against: the resolved mlnxPerNode, floored at one.
 	Required int64
-	// Ran is true only when the field was unset and the on-prem GB200/GB300
+	// Ran is true only when the field was unset and the on-prem NIC override
 	// gate matched, which is exactly when a zero-or-ambiguous result
 	// (Name == "") should be surfaced to the user via nicDetectionMessage.
 	Ran bool
@@ -126,7 +136,7 @@ func resolveNICResourceName(
 	if field != nil {
 		return nicDetection{Name: *field}
 	}
-	if !isOnPremNVL72(platformName, gpuArch) {
+	if !isOnPremNICOverrideTarget(platformName, gpuArch) {
 		return nicDetection{}
 	}
 	required := max(int64(mlnxPerNode), 1)

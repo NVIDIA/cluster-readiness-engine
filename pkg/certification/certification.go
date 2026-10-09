@@ -344,7 +344,7 @@ func applyWorkflowTransforms(
 // allocatable for the dry-run render path, mirroring the certification
 // controller: the field always wins (a per-category nicResourceName still
 // overrides the injected global via controller.ResolveOptions), detection
-// runs only for on-prem GB200/GB300 targets, and only a single qualifying
+// runs only for on-prem GB200/GB300 and x86 HGX B200/B300 targets, and only a single qualifying
 // candidate (rdma/* or nvidia.com/mlnxnics, allocatable at the resolved
 // mlnxPerNode count on every target node) is used. On zero or multiple
 // candidates it prints the note the controllers emit as a
@@ -499,6 +499,15 @@ func renderCertification(
 	gpuArch := gpuArchOverride
 	if gpuArch == "" {
 		gpuArch = catalog.GPUArchFromNodeSelector(cert.Spec.Target.NodeSelector)
+	}
+	// --gpu-arch is validated against gpu-defaults.yaml; an architecture that
+	// arrived from the nodeSelector or from dry-run discovery is not, so say
+	// when it is being sized on the Go-side fallback, once per render, with
+	// the text the controller emits as the GPUArchitectureDefaults event
+	// (ADR-092).
+	if msg := controller.GPUArchFallbackMessage(gpuArch,
+		catalog.GPUDefaults(gpuArch, platformName), controller.GPUArchFieldHintCertification); msg != "" {
+		_, _ = fmt.Fprintln(os.Stderr, msg)
 	}
 	if gpuArch == "" {
 		return nil, fmt.Errorf(

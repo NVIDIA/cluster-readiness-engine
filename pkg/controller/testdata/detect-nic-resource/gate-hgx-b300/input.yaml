@@ -1,0 +1,14 @@
+# On-prem x86 HGX B300 is inside the widened gate (ADR-092): detection runs
+# and the shared-device pool qualifies at the resolved count of 1.
+platform: onprem
+gpuArchitecture: b300
+mlnxPerNode: 1
+nodes:
+  - name: node-01
+    allocatable:
+      rdma/rdma_shared_device_a: "1000"
+      rdma/rdmashared: "0"
+  - name: node-02
+    allocatable:
+      rdma/rdma_shared_device_a: "1000"
+      rdma/rdmashared: "0"

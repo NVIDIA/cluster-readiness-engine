@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# TrainingRuntime patch for generic on-prem x86 HGX (B200/B300) communication
+# entries (ADR-092). Tolerates the GPU taint and injects the NIC resource block
+# only when nicResourceName is configured (set or auto-detected); the resource
+# name depends on the RDMA device plugin the site runs, so there is no safe
+# default. The per-container count comes from mlnxPerNode. Deliberately carries
+# no NCCL environment and no arm64 toleration: those belong to the NVL72
+# fragment (onprem-gb200-gb300-runtime-patch-comm.yaml), not to an x86 chassis.
+# Carries no mlPolicy either: the MPI entries' base runtimes already set
+# mlPolicy.mpi.numProcPerNode, and the per-node loopback entries use
+# mlPolicy.torch, which a merged mlPolicy.mpi would collide with (the
+# TrainingRuntime CRD allows exactly one policy). Tolerations have no merge
+# key, so this list replaces the base list; the loopback entries append
+# tolerate-all-runtime-patch.yaml after this fragment to restore theirs.
+
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+{{- if .NicResourceName }}
+                  containers:
+                  - name: node
+                    resources:
+                      limits:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        {{ .NicResourceName }}: "{{ .MlnxPerNode }}"
+                      requests:
+                        nvidia.com/gpu: "{{ .GpusPerNode }}"
+                        {{ .NicResourceName }}: "{{ .MlnxPerNode }}"
+{{- end }}
+                  tolerations:
+                  - key: nvidia.com/gpu
+                    operator: Equal
+                    value: present
+                    effect: NoSchedule

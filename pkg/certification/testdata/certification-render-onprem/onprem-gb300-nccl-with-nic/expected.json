@@ -50,6 +50,9 @@
       {
         "dependency": "nccl-all-reduce-runtime",
         "replicatedJob": "node",
+        "mlPolicy": [
+          "mpi"
+        ],
         "tolerations": [
           "kubernetes.io/arch=arm64:NoSchedule",
           "nvidia.com/gpu=present:NoSchedule"
@@ -72,6 +75,9 @@
       {
         "dependency": "nccl-all-reduce-runtime",
         "replicatedJob": "launcher",
+        "mlPolicy": [
+          "mpi"
+        ],
         "tolerations": [],
         "containers": [
           {
@@ -124,6 +130,10 @@
       {
         "dependency": "nccl-loopback-nvswitch-runtime",
         "replicatedJob": "node",
+        "mlPolicy": [
+          "mpi",
+          "torch"
+        ],
         "tolerations": [
           "kubernetes.io/arch=arm64:NoSchedule",
           "nvidia.com/gpu=present:NoSchedule"

@@ -1,0 +1,5 @@
+# A listed architecture never produces a message.
+gpuArch: b300
+gpusPerNode: 8
+mlnxPerNode: 8
+fieldHint: Certification

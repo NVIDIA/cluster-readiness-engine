@@ -519,9 +519,15 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	if opts.MlnxPerNode != nil {
 		mlnxPerNode = *opts.MlnxPerNode
 	}
+	// An architecture missing from gpu-defaults.yaml was just sized on the
+	// Go-side fallback; say so on the Certification instead of running
+	// silently at the wrong rank count (ADR-092). Emitted below, only by the
+	// reconcile whose Create succeeds, like the GCP H100 detection warnings.
+	archFallbackMessage := gpuArchFallbackMessage(gpuArch, nd, gpuArchFieldHintCertification)
 	// The NIC resource name has no architecture default: it depends on the
 	// RDMA device plugin the site runs. The field always wins; when it is
-	// unset on the on-prem GB200/GB300 target the override matches, detection
+	// unset on the on-prem GB200/GB300 or x86 HGX B200/B300 target the
+	// overrides match, detection
 	// fills the gap from node allocatable, but only when exactly one
 	// candidate (rdma/* or nvidia.com/mlnxnics) is allocatable at the
 	// resolved mlnxPerNode count — the amount the templates will request per
@@ -724,6 +730,10 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		// Only the reconcile whose Create succeeded warns, so a retry that finds
 		// the Workflow already there does not repeat it.
 		r.warnGCPH100DetectionFallbacks(certification, gkeNetworks, tcpxoPlugin)
+		if archFallbackMessage != "" {
+			r.warnf(certification, ReasonGPUArchitectureDefaults,
+				"%s/%s: %s", category.Domain, category.Variant, archFallbackMessage)
+		}
 	}
 
 	return workflowName, nil

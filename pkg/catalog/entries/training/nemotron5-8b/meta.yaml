@@ -9,6 +9,9 @@ parallelism:
   b200:
     tp: 1
     pp: 1
+  b300:
+    tp: 1
+    pp: 1
   h100:
     tp: 2
     pp: 1
