@@ -243,7 +243,7 @@ The controller's ClusterRole (`nvcre-manager-role`) is scoped to the resource ty
 | `nodes`, `pods` | get, list, watch | Discover nodes for scheduling and health checks; track workload pod placement |
 | `pods/log` | get | Read training logs for goodput and bandwidth measurement |
 | `configmaps` | full lifecycle | Workflow dependencies and failed-node result records |
-| `persistentvolumeclaims` | create, delete, get, list | Checkpoint storage dependencies |
+| `persistentvolumeclaims` | create, delete, get, list, update | Checkpoint storage dependencies; `update` sets the Job owner reference on a job-scoped checkpoint PVC |
 | `persistentvolumes` | get, list, patch, watch | Checkpoint storage handling |
 | `events` | create, patch | Emit Kubernetes events |
 | `resource.k8s.io` ResourceClaimTemplates | create, delete, get, list, patch, update | RoCE/DRA network resources |

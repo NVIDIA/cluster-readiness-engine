@@ -101,7 +101,14 @@ type WorkflowReconciler struct {
 // pkg/platform/overrides/ requires a matching grant below, otherwise dependency
 // creation fails with a Forbidden error surfaced on the Workflow's
 // DependencyCreationError condition.
-// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;create;delete
+//
+// Each dependency kind (PVCs, TrainingRuntimes, ResourceClaimTemplates and
+// ComputeDomains below, ConfigMaps above) needs update as well as create, get
+// and delete: a dependency becomes job-scoped when the Job template references
+// its name (for example a checkpoint PVC named by spec.checkpoint.pvcName), and
+// setDependencyOwners stamps the Job owner reference on job-scoped dependencies
+// with Update. test/helm's manager-role-dependency-access case checks the chart.
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;create;update;delete
 // +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainingruntimes,verbs=get;list;create;update;patch;delete
 // +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainjobs,verbs=get;list;delete
 // +kubebuilder:rbac:groups=resource.k8s.io,resources=resourceclaimtemplates,verbs=get;list;create;update;patch;delete
