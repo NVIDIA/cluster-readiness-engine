@@ -104,12 +104,12 @@ func TestCompleteTerminalGroup(t *testing.T) {
 			Status: nvcrev1alpha1.WorkflowStatus{
 				DependencyRefs: []nvcrev1alpha1.DependencyResourceRef{{
 					APIVersion: "v1", Kind: kindConfigMap, Name: "dep-cm", Namespace: ns,
-					Scope: labelJob, GroupName: "group-0", Iteration: 1,
+					Scope: labelJob, GroupName: testGroupZero, Iteration: 1,
 				}},
 				Orchestration: &nvcrev1alpha1.OrchestrationStatus{
 					TotalNodes: 1, NodesPerJob: 1, TotalGroups: 1, CurrentIteration: 1,
 					Groups: []nvcrev1alpha1.GroupStatus{{
-						Name:    "group-0",
+						Name:    testGroupZero,
 						Nodes:   []string{testNodeA},
 						Phase:   nvcrev1alpha1.GroupRunning,
 						Retries: input.GroupRetries,

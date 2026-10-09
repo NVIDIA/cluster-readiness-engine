@@ -71,7 +71,7 @@ func TestBackfillGroupNodes(t *testing.T) {
 		}
 		orch := &nvcrev1alpha1.OrchestrationStatus{NodesPerJob: input.NodesPerJob}
 		g := &nvcrev1alpha1.GroupStatus{
-			Name:  "group-0",
+			Name:  testGroupZero,
 			Nodes: input.ExistingNodes,
 			Phase: nvcrev1alpha1.GroupRunning,
 		}

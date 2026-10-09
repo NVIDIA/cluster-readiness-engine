@@ -39,6 +39,9 @@ const (
 	testWorkflowName = "wf"
 	// testGroupName is the orchestration group name used by those fixtures.
 	testGroupName = "g0"
+	// testGroupZero is the controller's default first group name, used by the
+	// fixtures that run the real naming.
+	testGroupZero = "group-0"
 	// testGroupJobName is the Job that group runs.
 	testGroupJobName = "g0-job"
 	// testClaimTemplateName is the group's job-scoped DRA dependency, the one
