@@ -1841,13 +1841,19 @@ func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *nvc
 	}
 
 	apiGroup := "nvcre.nvidia.com"
+	labels := map[string]string{
+		labelManagedBy: managedByValue,
+		labelJobKey:    job.Name,
+	}
+	// Bandwidth metrics use the measurement's workflow label for both recording
+	// and deletion, after the Job may already have been removed.
+	if workflow := job.Labels[labelWorkflowTracking]; workflow != "" {
+		labels[labelWorkflowTracking] = workflow
+	}
 	bm := &nvcrev1alpha1.BandwidthMeasurement{
-		Name:      bmName,
-		Namespace: job.Namespace,
-		Labels: map[string]string{
-			labelManagedBy: managedByValue,
-			labelJobKey:    job.Name,
-		},
+		Name:        bmName,
+		Namespace:   job.Namespace,
+		Labels:      labels,
 		Annotations: map[string]string{annotationJobUID: string(job.UID)},
 		Spec: nvcrev1alpha1.BandwidthMeasurementSpec{
 			JobRef: corev1.TypedLocalObjectReference{
