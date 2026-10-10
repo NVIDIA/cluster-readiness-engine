@@ -97,3 +97,4 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 087 | [`mlnxPerNode: 0` As a Real Opt-Out, and OCI GB200 NIC Defaults](087-mlnx-per-node-zero-opt-out.md) |
 | 089 | [Unpinned Single-Job Placement](089-unpinned-single-job-placement.md) |
 | 092 | [Per-Namespace Write Access for the Controller](092-per-namespace-controller-rbac.md) |
+| 093 | [Preserve Category Identity in Certification Watch Output](093-certification-watch-category-identity.md) |

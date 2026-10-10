@@ -555,12 +555,49 @@ func TestProcessWatchEventsContextDoneDuringActiveWatch(t *testing.T) {
 
 	cert, done, err := processWatchEvents(
 		ctx, newCertificationFakeClient(t), watcher, time.Now(),
-		map[string]string{}, heartbeat, &out,
+		map[int]categoryWatchStatus{}, heartbeat, &out,
 	)
 
 	assert.Nil(t, cert)
 	assert.True(t, done)
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestProcessWatchEventsKeepsDuplicateCategoryStatusesSeparate(t *testing.T) {
+	const inProgressStatus = "InProgress"
+
+	watcher := watch.NewRaceFreeFake()
+	defer watcher.Stop()
+	heartbeat := time.NewTicker(time.Hour)
+	defer heartbeat.Stop()
+	var out bytes.Buffer
+	lastStatuses := map[int]categoryWatchStatus{}
+
+	cert := &nvcrev1alpha1.Certification{
+		Status: nvcrev1alpha1.CertificationStatus{
+			CategoryStatuses: []nvcrev1alpha1.CertificationCategoryStatus{
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: inProgressStatus},
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: inProgressStatus},
+			},
+			Conditions: []metav1.Condition{{
+				Type: nvcrev1alpha1.CertificationSucceeded, Status: metav1.ConditionTrue,
+			}},
+		},
+	}
+	watcher.Add(cert)
+
+	result, done, err := processWatchEvents(
+		context.Background(), newCertificationFakeClient(t), watcher, time.Now(),
+		lastStatuses, heartbeat, &out,
+	)
+
+	require.Same(t, cert, result)
+	assert.True(t, done)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, strings.Count(out.String(), "communication/nccl-all-reduce [category 1]: InProgress"))
+	assert.Equal(t, 1, strings.Count(out.String(), "communication/nccl-all-reduce [category 2]: InProgress"))
+	assert.Equal(t, inProgressStatus, lastStatuses[0].status)
+	assert.Equal(t, inProgressStatus, lastStatuses[1].status)
 }
 
 func TestFinishCertificationWaitTimeout(t *testing.T) {
