@@ -1487,7 +1487,7 @@ func watchCertification(
 	_, _ = fmt.Fprintln(out, "[watch] Watching certification progress...")
 
 	start := time.Now()
-	lastStatuses := map[string]string{}
+	lastStatuses := map[int]categoryWatchStatus{}
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
 
@@ -1521,10 +1521,9 @@ func watchCertification(
 }
 
 // categoryWatchLabels returns one display label per entry in
-// cert.Status.CategoryStatuses. Labels are "domain/variant"; when the
-// certification contains two or more categories with the same domain/variant,
-// an "(MNNVL Enabled)"/"(MNNVL Disabled)" suffix — matching the report's
-// MNNVL label — disambiguates the duplicates.
+// cert.Status.CategoryStatuses. Labels are "domain/variant"; duplicate labels
+// are disambiguated with the MNNVL setting and, if needed, the category's
+// one-based position in the Certification spec.
 func categoryWatchLabels(cert *nvcrev1alpha1.Certification) []string {
 	counts := map[string]int{}
 	for _, cs := range cert.Status.CategoryStatuses {
@@ -1540,7 +1539,23 @@ func categoryWatchLabels(cert *nvcrev1alpha1.Certification) []string {
 		}
 		labels[i] = key
 	}
+
+	labelCounts := map[string]int{}
+	for _, label := range labels {
+		labelCounts[label]++
+	}
+	for i, label := range labels {
+		if labelCounts[label] > 1 {
+			labels[i] = fmt.Sprintf("%s [category %d]", label, i+1)
+		}
+	}
+
 	return labels
+}
+
+type categoryWatchStatus struct {
+	label  string
+	status string
 }
 
 // processWatchEvents handles events from a single watch session.
@@ -1548,7 +1563,7 @@ func categoryWatchLabels(cert *nvcrev1alpha1.Certification) []string {
 // when the watch channel closes and should be reconnected.
 func processWatchEvents(
 	ctx context.Context, c client.Client, watcher watch.Interface, start time.Time,
-	lastStatuses map[string]string, heartbeat *time.Ticker, out io.Writer,
+	lastStatuses map[int]categoryWatchStatus, heartbeat *time.Ticker, out io.Writer,
 ) (*nvcrev1alpha1.Certification, bool, error) {
 	events := watcher.ResultChan()
 	for {
@@ -1573,11 +1588,10 @@ func processWatchEvents(
 			// Print category status changes.
 			labels := categoryWatchLabels(cert)
 			for i, cs := range cert.Status.CategoryStatuses {
-				key := labels[i]
-				if cs.Status != lastStatuses[key] {
+				if current, ok := lastStatuses[i]; !ok || cs.Status != current.status {
 					_, _ = fmt.Fprintf(out, "[watch] %s: %s (%s)\n",
-						key, cs.Status, elapsed)
-					lastStatuses[key] = cs.Status
+						labels[i], cs.Status, elapsed)
+					lastStatuses[i] = categoryWatchStatus{label: labels[i], status: cs.Status}
 				}
 			}
 
@@ -1602,15 +1616,10 @@ func processWatchEvents(
 
 		case <-heartbeat.C:
 			elapsed := time.Since(start).Truncate(time.Second)
-			for _, cs := range lastStatuses {
-				if cs == "InProgress" {
-					for key, status := range lastStatuses {
-						if status == "InProgress" {
-							_, _ = fmt.Fprintf(out, "[watch] %s: %s (%s)\n",
-								key, status, elapsed)
-						}
-					}
-					break
+			for i := 0; i < len(lastStatuses); i++ {
+				if status, ok := lastStatuses[i]; ok && status.status == "InProgress" {
+					_, _ = fmt.Fprintf(out, "[watch] %s: %s (%s)\n",
+						status.label, status.status, elapsed)
 				}
 			}
 			if len(lastStatuses) == 0 {
