@@ -1,8 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# A measured peak below the threshold is still flagged, with its transport.
-busBandwidthThreshold: "value >= 300"
+# "value <= 200" is an upper bound, not a minimum. A peak above it violates
+# the threshold but is not below a minimum, so it is not LOW.
+busBandwidthThreshold: "value <= 200"
 groups:
   - name: group-0
     nodes: [node-0, node-1]
@@ -15,6 +16,5 @@ measurements:
     status:
       conditions:
         - {type: Complete, status: "True", reason: JobSucceeded, message: Job succeeded, lastTransitionTime: "2026-10-01T00:00:00Z"}
-      transport: [IB]
       results:
-        - {sizeBytes: 17179869184, algBW: "50.0", busBW: "100.0", samples: 1}
+        - {sizeBytes: 17179869184, algBW: "150.0", busBW: "300.0", samples: 1}

@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# clique-a failed and one of its groups also holds provisional results. The
+# failure mark wins over the provisional mark; clique-b is final and passes.
+cliques:
+  - name: clique-a
+    total: 4
+    validated: 2
+    passed: false
+  - name: clique-b
+    total: 2
+    validated: 2
+    passed: true
+groups:
+  - group: group-0
+    groupName: "clique-a (2 nodes)"
+    nodes: [n0, n1]
+    busBW: "380.00 GB/s"
+    provisional: true
+    provisionalReason: LogsUnavailable
+  - group: group-1
+    groupName: "clique-a (2 nodes)"
+    nodes: [n2, n3]
+    failed: true
+  - group: group-2
+    groupName: "clique-b (2 nodes)"
+    nodes: [n4, n5]
+    busBW: "400.00 GB/s"
