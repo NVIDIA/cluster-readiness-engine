@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"slices"
 	"sort"
@@ -28,6 +29,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/noderesults"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/numstr"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/threshold"
 )
 
 const (
@@ -220,7 +222,7 @@ type GroupBandwidthRow struct {
 	Nodes     []string `json:"nodes"`               // node names in the group
 	BusBW     string   `json:"busBW"`               // peak BusBW at largest message size
 	Transport []string `json:"transport,omitempty"` // NCCL network names for this group
-	BelowMin  bool     `json:"belowMin"`            // true if below minBusBandwidthGBps threshold
+	BelowMin  bool     `json:"belowMin"`            // true if BusBW is below the busBandwidthGBps minimum
 	Failed    bool     `json:"failed"`              // true if the group's Job failed
 	// Provisional and ProvisionalReason mark a row taken from a measurement
 	// that is not final, as on DiagnoseTestRow.
@@ -890,7 +892,7 @@ func unionSortedStrings(sets ...[]string) []string {
 func buildGroupBandwidthRows(
 	orch *nvcrev1alpha1.OrchestrationStatus,
 	measurements []nvcrev1alpha1.BandwidthMeasurement,
-	minBusBandwidthGBps string,
+	busBWThreshold string,
 ) []GroupBandwidthRow {
 	// Map job name → measurement. The first measurement for a Job wins.
 	byJob := make(map[string]*nvcrev1alpha1.BandwidthMeasurement, len(measurements))
@@ -910,7 +912,7 @@ func buildGroupBandwidthRows(
 		if g.JobRef != nil {
 			bm = byJob[g.JobRef.Name]
 		}
-		if row, ok := groupBandwidthRow(g, bm, minBusBandwidthGBps); ok {
+		if row, ok := groupBandwidthRow(g, bm, busBWThreshold); ok {
 			seen[g.Name] = true
 			rows = append(rows, row)
 		}
@@ -923,7 +925,7 @@ func buildGroupBandwidthRows(
 // and clique output keep it; its BusBW stays empty. A failed group always gets
 // a row. Any other group without data is skipped (ok is false).
 func groupBandwidthRow(
-	g nvcrev1alpha1.GroupStatus, bm *nvcrev1alpha1.BandwidthMeasurement, minBusBandwidthGBps string,
+	g nvcrev1alpha1.GroupStatus, bm *nvcrev1alpha1.BandwidthMeasurement, busBWThreshold string,
 ) (GroupBandwidthRow, bool) {
 	row := GroupBandwidthRow{
 		Group:     g.Name,
@@ -943,7 +945,7 @@ func groupBandwidthRow(
 	}
 	if peak != nil {
 		row.BusBW = peak.BusBW + " GB/s"
-		row.BelowMin = busBWBelowMin(peak.BusBW, minBusBandwidthGBps)
+		row.BelowMin = busBWBelowMin(peak.BusBW, busBWThreshold)
 	}
 	return row, true
 }
@@ -961,15 +963,27 @@ func groupBandwidthLabel(g nvcrev1alpha1.GroupStatus) string {
 	}
 }
 
-// busBWBelowMin reports whether a measured BusBW is below the
-// minBusBandwidthGBps threshold. An empty or non-positive threshold never is.
-func busBWBelowMin(busBW, minBusBandwidthGBps string) bool {
-	if minBusBandwidthGBps == "" {
+// busBWBelowMin reports whether a measured BusBW is below the minimum set by
+// the busBandwidthGBps threshold, a CEL expression such as "value >= 300".
+// The expression is evaluated with threshold.Evaluate, as the controller does,
+// so the report and the threshold gate agree. It is below the minimum when the
+// expression fails for the measured value but passes for a larger one, so an
+// upper bound (e.g. "value <= 500") or a range never marks a row LOW. An empty
+// or invalid expression, or an unparsable BusBW, never is.
+func busBWBelowMin(busBW, busBWThreshold string) bool {
+	if busBWThreshold == "" {
 		return false
 	}
-	threshold, _ := strconv.ParseFloat(minBusBandwidthGBps, 64)
-	measured, _ := strconv.ParseFloat(busBW, 64)
-	return threshold > 0 && measured < threshold
+	measured, err := strconv.ParseFloat(busBW, 64)
+	if err != nil {
+		return false
+	}
+	passed, err := threshold.Evaluate(measured, busBWThreshold)
+	if err != nil || passed {
+		return false
+	}
+	passedHigher, err := threshold.Evaluate(math.MaxFloat64, busBWThreshold)
+	return err == nil && passedHigher
 }
 
 // buildDomainReports groups GoodputMeasurements by topology domain.

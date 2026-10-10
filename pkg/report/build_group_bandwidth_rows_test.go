@@ -16,7 +16,9 @@ import (
 
 // TestBuildGroupBandwidthRows pins which measurements become group rows and
 // how they render. A measurement with a transport but no bandwidth rows keeps
-// its row, with an empty BusBW, so the group output does not lose it.
+// its row, with an empty BusBW, so the group output does not lose it. The
+// busBandwidthThreshold input is the Workflow's busBandwidthGBps CEL
+// expression, and a case with cliques also renders the clique output.
 func TestBuildGroupBandwidthRows(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "build-group-bandwidth-rows",
@@ -24,18 +26,22 @@ func TestBuildGroupBandwidthRows(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
-			Groups              []nvcrev1alpha1.GroupStatus          `json:"groups"`
-			Measurements        []nvcrev1alpha1.BandwidthMeasurement `json:"measurements"`
-			MinBusBandwidthGBps string                               `json:"minBusBandwidthGBps"`
+			Groups                []nvcrev1alpha1.GroupStatus          `json:"groups"`
+			Measurements          []nvcrev1alpha1.BandwidthMeasurement `json:"measurements"`
+			BusBandwidthThreshold string                               `json:"busBandwidthThreshold"`
+			Cliques               []CliqueReport                       `json:"cliques"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
 			return err
 		}
 		orch := &nvcrev1alpha1.OrchestrationStatus{Groups: in.Groups}
-		rows := buildGroupBandwidthRows(orch, in.Measurements, in.MinBusBandwidthGBps)
+		rows := buildGroupBandwidthRows(orch, in.Measurements, in.BusBandwidthThreshold)
 
 		var buf bytes.Buffer
 		printGroupBandwidth(&buf, rows)
+		if len(in.Cliques) > 0 {
+			printCliques(&buf, in.Cliques, rows)
+		}
 		buf.WriteString("--- rows ---\n")
 		data, err := json.MarshalIndent(rows, "", "  ")
 		if err != nil {

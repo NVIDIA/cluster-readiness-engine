@@ -1,31 +1,38 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# group-0 finished with a transport but no bandwidth rows. It keeps its row
-# with an empty BusBW and is not judged against the threshold.
+# Two groups in clique-a under "value >= 300". group-0 at 150 GB/s is below
+# the minimum and group-1 at 390 GB/s is not. The group row and the clique
+# are both LOW, and the clique shows the minimum BusBW.
 busBandwidthThreshold: "value >= 300"
+cliques:
+  - name: clique-a
+    total: 4
+    validated: 4
+    passed: true
 groups:
   - name: group-0
     nodes: [node-0, node-1]
-    domains: [clique-0]
+    domains: [clique-a]
     phase: Succeeded
     jobRef: {name: job-0}
   - name: group-1
     nodes: [node-2, node-3]
-    domains: [clique-1]
+    domains: [clique-a]
     phase: Succeeded
     jobRef: {name: job-1}
 measurements:
   - spec:
       jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: job-0}
     status:
-      transport: [IB]
+      conditions:
+        - {type: Complete, status: "True", reason: JobSucceeded, message: Job succeeded, lastTransitionTime: "2026-10-01T00:00:00Z"}
+      results:
+        - {sizeBytes: 17179869184, algBW: "75.0", busBW: "150.0", samples: 1}
   - spec:
       jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: job-1}
     status:
       conditions:
         - {type: Complete, status: "True", reason: JobSucceeded, message: Job succeeded, lastTransitionTime: "2026-10-01T00:00:00Z"}
-      transport: [Socket]
       results:
-        - {sizeBytes: 1024, algBW: "0.50", busBW: "1.0", samples: 1}
-        - {sizeBytes: 17179869184, algBW: "180.0", busBW: "350.0", samples: 1}
+        - {sizeBytes: 17179869184, algBW: "195.0", busBW: "390.0", samples: 1}

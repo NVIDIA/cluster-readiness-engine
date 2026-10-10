@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# group-0 finished with a transport but no bandwidth rows. It keeps its row
-# with an empty BusBW and is not judged against the threshold.
+# A peak BusBW below the CEL threshold "value >= 300" is marked LOW. The
+# report evaluates the expression the way the controller does.
 busBandwidthThreshold: "value >= 300"
 groups:
   - name: group-0
@@ -10,22 +10,11 @@ groups:
     domains: [clique-0]
     phase: Succeeded
     jobRef: {name: job-0}
-  - name: group-1
-    nodes: [node-2, node-3]
-    domains: [clique-1]
-    phase: Succeeded
-    jobRef: {name: job-1}
 measurements:
   - spec:
       jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: job-0}
     status:
-      transport: [IB]
-  - spec:
-      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: job-1}
-    status:
       conditions:
         - {type: Complete, status: "True", reason: JobSucceeded, message: Job succeeded, lastTransitionTime: "2026-10-01T00:00:00Z"}
-      transport: [Socket]
       results:
-        - {sizeBytes: 1024, algBW: "0.50", busBW: "1.0", samples: 1}
-        - {sizeBytes: 17179869184, algBW: "180.0", busBW: "350.0", samples: 1}
+        - {sizeBytes: 17179869184, algBW: "150.0", busBW: "150.0", samples: 1}
