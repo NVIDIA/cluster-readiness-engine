@@ -39,6 +39,15 @@ followed them.
 
 ### Fixed
 
+- OCI GB300 NCCL communication and nemotron training entries ship an NCCL
+  topology file in a ConfigMap and set `NCCL_TOPO_FILE`, so NCCL pairs each GPU with
+  its own RoCE rail. The XML is the one the `nvidia-tuned` NodeWright package
+  installs, embedded so nothing is required on the host (#458)
+- OCI GB300 entries no longer force `NCCL_DMABUF_ENABLE=0` with MNNVL off, so
+  NCCL's default of DMA-BUF enabled applies. The override worked around a DMA-BUF
+  registration error (`mlx5dv_reg_dmabuf_mr` returning 524) on misconfigured nodes;
+  a node that still hits it can set `NCCL_DMABUF_ENABLE=0` on the Workflow or
+  WorkloadRun (#458)
 - `nvcre_job_status` now reports `failed` for a Job that timed out on
   `timeoutPerJob`. The gauge was written only by the Job tier, so the Workflow
   reconciler's timeout write left it at `in_progress` for the rest of the run, and

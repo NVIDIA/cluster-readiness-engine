@@ -368,8 +368,9 @@ overrides:
 # Adds SR-IOV NIC resources (oci-mlnxnics-comm.yaml) and OCI GB300-specific
 # env vars. Uses trainer.env (not toMpiArgs) because torchrun inherits the
 # container env directly — no MPI SSH launch involved.
-# NCCL_MNNVL_ENABLE and NCCL_DMABUF_ENABLE are conditioned on EnableMNNVL
-# via the template; see oci-gb300-roce-env.yaml for the reasoning.
+# NCCL_MNNVL_ENABLE is conditioned on EnableMNNVL via the template; the
+# NCCL topology file comes from oci-gb300-nccl-topo.yaml. See
+# oci-gb300-roce-env.yaml for the reasoning.
 - when:
     platform:
       equals: oci
@@ -377,6 +378,7 @@ overrides:
       equals: gb300
   dependencies:
 {{ lib "deps/oci-mlnxnics-comm.yaml" . | indent 2 }}
+{{ lib "deps/oci-gb300-nccl-topo.yaml" . | indent 2 }}
   jobTemplate:
     spec:
       workload:

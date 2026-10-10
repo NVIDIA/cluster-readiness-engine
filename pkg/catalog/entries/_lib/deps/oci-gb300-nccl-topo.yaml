@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Ships the OCI GB300 NCCL topology file in a ConfigMap and mounts it at
+# /etc/nccl, where NCCL_TOPO_FILE points. Without it NCCL pairs GPUs with the
+# wrong RoCE rails. The XML is the same file the nvidia-tuned NodeWright
+# package installs on every OCI GB300 node, embedded here so the entries need
+# nothing on the host.
+#
+# Kept separate from deps/oci-mlnxnics-comm.yaml so that file's mlnxPerNode: 0
+# opt-out (ADR-087) stays intact. Both patch the same TrainingRuntime and are
+# merged by name.
+- apiVersion: trainer.kubeflow.org/v1alpha1
+  kind: TrainingRuntime
+  metadata:
+    name: {{ .EntryName }}-runtime
+  spec:
+    template:
+      spec:
+        replicatedJobs:
+        - name: node
+          template:
+            spec:
+              template:
+                spec:
+                  containers:
+                  - name: node
+                    volumeMounts:
+                    - mountPath: /etc/nccl
+                      name: nccl-topo
+                  volumes:
+                  - configMap:
+                      name: {{ .EntryName }}-oci-topo
+                    name: nccl-topo
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: {{ .EntryName }}-oci-topo
+  data:
+    topo.xml: |
+{{ lib "topo/oci-gb300.xml" . | indent 6 }}

@@ -42,7 +42,15 @@ ConfigMaps follow the existing dependency lifecycle (`cleanup: auto`) and are au
 | **aws** | EFA | `/opt/amazon-efa-ofi/openmpi/bin/mpirun` | `FI_EFA_USE_DEVICE_RDMA=1`, `NCCL_MNNVL_ENABLE=0` | p5.48xlarge topo XML |
 | **gcp** | FastRak/TCPXO | (unchanged) | `NCCL_ALGO`, `NCCL_FASTRAK_*` (20+ vars), `NCCL_TUNER_PLUGIN` | No (uses tuner plugin) |
 | **azure** | InfiniBand | (unchanged) | `NCCL_IB_PCI_RELAXED_ORDERING=1`, `NCCL_TOPO_FILE`, `NCCL_SOCKET_IFNAME` | NDv5 topo XML |
-| **oci** | RoCE | (unchanged) | `NCCL_IB_TC=41`, `NCCL_IB_SL=0`, `NCCL_IB_QPS_PER_CONNECTION=4`, `NCCL_IB_GID_INDEX=3` | No |
+| **oci** | RoCE | (unchanged) | `NCCL_IB_TC=41`, `NCCL_IB_SL=0`, `NCCL_IB_QPS_PER_CONNECTION=4`, `NCCL_IB_GID_INDEX=3` | GB300 only: topo XML from `nvidia-tuned` (see below) |
+
+### OCI GB300 topology file
+
+Without a topology file, NCCL on OCI GB300 pairs GPUs with the wrong RoCE rails and bus bandwidth falls well short of the fabric. The OCI+GB300 override ships one the same way Azure does: `_lib/deps/oci-gb300-nccl-topo.yaml` builds a ConfigMap from `_lib/topo/oci-gb300.xml` and mounts it at `/etc/nccl`, and `NCCL_TOPO_FILE=/etc/nccl/topo.xml` is set in both `trainer.env` and the MPI args.
+
+The XML is a verbatim copy of `profiles/service/oci/nccl-topo-gb300.xml` from the `nvidia-tuned` NodeWright package, which installs that same file on every OCI GB300 node. Embedding it instead of mounting the host copy means the entries do not depend on how the node was provisioned or on the package's configurable install path. If the package's file changes, copy it again.
+
+The dependency is separate from the NIC dependency so the `mlnxPerNode: 0` opt-out (ADR-087) is unaffected.
 
 ### Azure A100
 
