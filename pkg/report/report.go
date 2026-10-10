@@ -773,11 +773,15 @@ func PopulateCategoryFromWorkflow(
 		}
 
 		// Diagnose mode: show per-job results across all stages.
-		if cat.Diagnose != nil && len(filtered) > 0 {
-			cat.Diagnose.Tests = buildDiagnoseTests(ctx, c, wf, filtered)
-			computeDiagnoseMinMax(cat.Diagnose)
-		} else if len(filtered) > 1 && orch != nil && orch.TotalGroups > 1 {
-			// Multi-group: show per-group peak bandwidth.
+		if cat.Diagnose != nil {
+			if len(filtered) > 0 {
+				cat.Diagnose.Tests = buildDiagnoseTests(ctx, c, wf, filtered)
+				computeDiagnoseMinMax(cat.Diagnose)
+			}
+		} else if orch != nil && orch.TotalGroups > 1 {
+			// Multi-group: show per-group peak bandwidth. Chosen from the
+			// orchestration state, not the measurement count, so a failed
+			// group still gets its row when few or no measurements exist.
 			var bwThreshold string
 			if v := wf.Spec.Validation; v != nil && v.Performance != nil &&
 				v.Performance.Thresholds != nil {
@@ -1743,12 +1747,16 @@ func printCliques(w io.Writer, cliques []CliqueReport, groupBW []GroupBandwidthR
 	bwByClique := aggregateCliqueBandwidth(groupBW)
 	printBoxLine(w, "Cliques:")
 	for _, cl := range cliques {
+		cb := bwByClique[cl.Name]
 		mark := markPass
-		if !cl.Passed {
+		switch {
+		case !cl.Passed:
 			mark = markFail
+		case cb != nil && cb.provisional:
+			// A provisional result is never shown as passing.
+			mark = markProvisional
 		}
 		printBoxLine(w, fmt.Sprintf("    %s  %s  %d/%d nodes", mark, cl.Name, cl.Validated, cl.Total))
-		cb := bwByClique[cl.Name]
 		if cb == nil {
 			continue
 		}

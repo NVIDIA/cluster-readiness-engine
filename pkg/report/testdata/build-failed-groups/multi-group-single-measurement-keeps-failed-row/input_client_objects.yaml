@@ -1,0 +1,165 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A two-group communication Workflow where group-1 failed before it produced a
+# BandwidthMeasurement, so only group-0 has one. The per-group bandwidth rows
+# are chosen from the orchestration state, not the measurement count, so the
+# failed group still appears in groupBandwidth and in the bandwidth display.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: cert-multi
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: WorkflowsFailed
+      message: 1 of 1 certification categories failed
+      lastTransitionTime: "2026-10-01T01:00:00Z"
+  categoryStatuses:
+    - domain: communication
+      variant: nccl-all-reduce
+      status: Failed
+      workflowRef:
+        name: cert-multi-communication
+        namespace: default
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: cert-multi-communication
+  namespace: default
+  labels:
+    nvcre.nvidia.com/certification: cert-multi
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: rt
+          trainer:
+            image: img:latest
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 4
+    nodesPerJob: 2
+    totalGroups: 2
+    currentIteration: 1
+    detectedPlatform: onprem
+    detectedGPUArchitecture: h100
+    groups:
+      - name: group-0
+        nodes: [node001, node002]
+        phase: Succeeded
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: cert-multi-communication-job-group-0
+          namespace: default
+        startTime: "2026-10-01T00:00:00Z"
+        completionTime: "2026-10-01T00:10:00Z"
+      - name: group-1
+        nodes: [node003, node004]
+        phase: Failed
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: cert-multi-communication-job-group-1
+          namespace: default
+        startTime: "2026-10-01T00:00:00Z"
+        completionTime: "2026-10-01T00:05:00Z"
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: GroupsFailed
+      message: 1 groups failed across 1 iterations
+      lastTransitionTime: "2026-10-01T00:10:00Z"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: cert-multi-communication-job-group-0
+  namespace: default
+  labels:
+    nvcre.nvidia.com/workflow: cert-multi-communication
+    nvcre.nvidia.com/group: group-0
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: rt
+      trainer:
+        image: img:latest
+        numNodes: 2
+status:
+  conditions:
+    - type: Succeeded
+      status: "True"
+      reason: WorkloadCompleted
+      message: Workload completed
+      lastTransitionTime: "2026-10-01T00:10:00Z"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: cert-multi-communication-job-group-1
+  namespace: default
+  labels:
+    nvcre.nvidia.com/workflow: cert-multi-communication
+    nvcre.nvidia.com/group: group-1
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: rt
+      trainer:
+        image: img:latest
+        numNodes: 2
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: WorkloadFailed
+      message: NCCL init failed on node003
+      lastTransitionTime: "2026-10-01T00:05:00Z"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: BandwidthMeasurement
+metadata:
+  name: cert-multi-communication-job-group-0
+  namespace: default
+spec:
+  jobRef:
+    apiGroup: nvcre.nvidia.com
+    kind: Job
+    name: cert-multi-communication-job-group-0
+status:
+  conditions:
+    - type: Complete
+      status: "True"
+      reason: JobSucceeded
+      message: Job succeeded
+      lastTransitionTime: "2026-10-01T00:10:00Z"
+  results:
+    - sizeBytes: 1073741824
+      algBW: "400.00"
+      busBW: "400.00"
+      samples: 1

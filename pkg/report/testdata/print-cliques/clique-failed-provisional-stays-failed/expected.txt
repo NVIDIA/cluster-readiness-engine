@@ -1,0 +1,6 @@
+│                                                                │
+│  Cliques:                                                      │
+│      ✗  clique-a  2/4 nodes                                    │
+│         380.00 GB/s (provisional: LogsUnavailable)             │
+│      ✓  clique-b  2/2 nodes                                    │
+│         400.00 GB/s                                            │
