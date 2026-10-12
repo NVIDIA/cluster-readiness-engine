@@ -61,6 +61,11 @@ followed them.
 - The MPI launcher pod of the on-prem GB200/GB300 communication entries had no
   toleration for the arm64 and GPU taints the node pods tolerate, so on a fleet
   with no untainted node it stayed Pending; it now tolerates both (#464)
+- OCI GB300 NCCL communication and nemotron training entries ship an NCCL
+  topology file and set `NCCL_TOPO_FILE`, so NCCL pairs each GPU with its own RoCE
+  rail at the full rail speed (#458)
+- OCI GB300 entries no longer force `NCCL_DMABUF_ENABLE=0` with MNNVL off, so
+  DMA-BUF GPU Direct RDMA is used over RoCE (#458)
 - `nvcre_job_status` now reports `failed` for a Job that timed out on
   `timeoutPerJob`. The gauge was written only by the Job tier, so the Workflow
   reconciler's timeout write left it at `in_progress` for the rest of the run, and
