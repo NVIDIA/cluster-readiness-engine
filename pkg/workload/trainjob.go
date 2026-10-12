@@ -6,6 +6,7 @@ package workload
 import (
 	"fmt"
 	"maps"
+	"slices"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -339,9 +340,12 @@ func EnsureLauncherTarget(trainJobSpec *trainerv1alpha1.TrainJobSpec) {
 	getOrCreateReplicatedJobPatch(trainJobSpec, LauncherJobName)
 }
 
-// SetImagePullSecrets applies imagePullSecrets to every replicated job
-// registered in RuntimePatches (allTargetJobs), the same way SetNodeAffinity
-// and SetTolerations do. MPI call sites must register the launcher with
+// SetImagePullSecrets applies imagePullSecrets to the node job and to every
+// other replicated job registered in RuntimePatches (allTargetJobs), the same
+// way SetNodeAffinity and SetTolerations pick their targets. The node job is
+// always included: every runtime has one, it is where the workload runs, and
+// a spec that registers only the launcher must not lose the secrets its
+// workers always had. MPI call sites must register the launcher with
 // EnsureLauncherTarget before calling this, or only the node job gets the
 // secrets. Until now only the node job ever got them, so an MPI launcher
 // pulling from a private registry failed at image pull while the workers
@@ -350,7 +354,11 @@ func SetImagePullSecrets(trainJobSpec *trainerv1alpha1.TrainJobSpec, secrets []c
 	if trainJobSpec == nil || len(secrets) == 0 {
 		return
 	}
-	for _, target := range allTargetJobs(trainJobSpec.RuntimePatches) {
+	targets := allTargetJobs(trainJobSpec.RuntimePatches)
+	if !slices.Contains(targets, NodeJobName) {
+		targets = append([]string{NodeJobName}, targets...)
+	}
+	for _, target := range targets {
 		podSpec := ensurePodSpecPatch(trainJobSpec, target)
 		podSpec.ImagePullSecrets = secrets
 	}
