@@ -600,6 +600,52 @@ func TestProcessWatchEventsKeepsDuplicateCategoryStatusesSeparate(t *testing.T) 
 	assert.Equal(t, inProgressStatus, lastStatuses[1].status)
 }
 
+func TestProcessWatchEventsHeartbeatShowsOnlyInProgressCategoriesInOrder(t *testing.T) {
+	watcher := watch.NewRaceFreeFake()
+	defer watcher.Stop()
+	heartbeat := time.NewTicker(10 * time.Millisecond)
+	defer heartbeat.Stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	var out bytes.Buffer
+	lastStatuses := map[int]categoryWatchStatus{}
+	cert := &nvcrev1alpha1.Certification{
+		Status: nvcrev1alpha1.CertificationStatus{
+			CategoryStatuses: []nvcrev1alpha1.CertificationCategoryStatus{
+				{Domain: "communication", Variant: "nccl-all-reduce", Status: "InProgress"},
+				{Domain: "training", Variant: "nemotron5-8b", Status: "Pending"},
+			},
+		},
+	}
+	type watchResult struct {
+		cert *nvcrev1alpha1.Certification
+		done bool
+		err  error
+	}
+	resultCh := make(chan watchResult, 1)
+	watchClient := newCertificationFakeClient(t)
+	go func() {
+		result, done, err := processWatchEvents(
+			ctx, watchClient, watcher, time.Now(),
+			lastStatuses, heartbeat, &out,
+		)
+		resultCh <- watchResult{cert: result, done: done, err: err}
+	}()
+	watcher.Add(cert)
+	result := <-resultCh
+	assert.Nil(t, result.cert)
+	assert.True(t, result.done)
+	assert.ErrorIs(t, result.err, context.DeadlineExceeded)
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	require.GreaterOrEqual(t, len(lines), 3)
+	assert.Contains(t, lines[0], "communication/nccl-all-reduce: InProgress")
+	assert.Contains(t, lines[1], "training/nemotron5-8b: Pending")
+	for _, line := range lines[2:] {
+		assert.Contains(t, line, "communication/nccl-all-reduce: InProgress")
+		assert.NotContains(t, line, "training/nemotron5-8b")
+	}
+}
+
 func TestFinishCertificationWaitTimeout(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "finish-certification-wait-timeout",
