@@ -55,12 +55,24 @@ func TestHelmManagerRoleGrantsDependencyAccess(t *testing.T) {
 		var input struct {
 			Required []requiredAccess `json:"required"`
 		}
-		if err := syaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+		if err := syaml.UnmarshalStrict([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
+		}
+		// The golden is the residue, so an input that declares nothing produces
+		// the same {"missing": []} as an input every verb satisfies. Without
+		// these checks the case would pass with no assertions after a typo in
+		// the top-level key or a dropped verbs list, which is the drift it
+		// exists to catch.
+		if len(input.Required) == 0 {
+			return fmt.Errorf("input.yaml declares no required access")
 		}
 
 		missing := []string{}
 		for _, req := range input.Required {
+			if len(req.Verbs) == 0 {
+				return fmt.Errorf("input.yaml entry %s declares no verbs",
+					qualifiedResource(req.Group, req.Resource))
+			}
 			for _, verb := range req.Verbs {
 				if !rulesAllow(rules, req.Group, req.Resource, verb) {
 					missing = append(missing, verb+" "+qualifiedResource(req.Group, req.Resource))
