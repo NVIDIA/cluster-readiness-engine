@@ -95,7 +95,8 @@
             "name": "node",
             "privileged": true,
             "capabilities": [
-              "IPC_LOCK"
+              "IPC_LOCK",
+              "SYS_CHROOT"
             ],
             "resources": [
               "limits/nvidia.com/gpu=4",
@@ -231,7 +232,8 @@
             "name": "node",
             "privileged": null,
             "capabilities": [
-              "IPC_LOCK"
+              "IPC_LOCK",
+              "SYS_CHROOT"
             ],
             "resources": [
               "limits/nvidia.com/gpu=4",

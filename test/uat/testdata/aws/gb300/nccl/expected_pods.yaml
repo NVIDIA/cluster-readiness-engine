@@ -338,13 +338,20 @@ spec:
     imagePullPolicy: Always
     name: node
     readinessProbe:
+      exec:
+        command:
+        - sh
+        - -c
+        - |-
+          command -v ssh >/dev/null 2>&1 || exec grep -q ':0016 [0-9A-F]*:[0-9A-F]* 0A ' /proc/net/tcp /proc/net/tcp6
+          set -- ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 127.0.0.1 true
+          command -v timeout >/dev/null 2>&1 && set -- timeout 8 "$@"
+          exec "$@"
       failureThreshold: 3
       initialDelaySeconds: 5
-      periodSeconds: 10
+      periodSeconds: 30
       successThreshold: 1
-      tcpSocket:
-        port: 22
-      timeoutSeconds: 1
+      timeoutSeconds: 10
     resources:
       claims:
       - name: compute-domain-channel
@@ -357,6 +364,7 @@ spec:
       capabilities:
         add:
         - IPC_LOCK
+        - SYS_CHROOT
     terminationMessagePath: /dev/termination-log
     terminationMessagePolicy: File
     volumeMounts:
@@ -509,13 +517,20 @@ spec:
     imagePullPolicy: Always
     name: node
     readinessProbe:
+      exec:
+        command:
+        - sh
+        - -c
+        - |-
+          command -v ssh >/dev/null 2>&1 || exec grep -q ':0016 [0-9A-F]*:[0-9A-F]* 0A ' /proc/net/tcp /proc/net/tcp6
+          set -- ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 127.0.0.1 true
+          command -v timeout >/dev/null 2>&1 && set -- timeout 8 "$@"
+          exec "$@"
       failureThreshold: 3
       initialDelaySeconds: 5
-      periodSeconds: 10
+      periodSeconds: 30
       successThreshold: 1
-      tcpSocket:
-        port: 22
-      timeoutSeconds: 1
+      timeoutSeconds: 10
     resources:
       claims:
       - name: compute-domain-channel
@@ -528,6 +543,7 @@ spec:
       capabilities:
         add:
         - IPC_LOCK
+        - SYS_CHROOT
     terminationMessagePath: /dev/termination-log
     terminationMessagePolicy: File
     volumeMounts:

@@ -99,6 +99,16 @@ func GPUDefaults(gpuArch, platform string) NodeDefaults {
 	return nd
 }
 
+// KnownGPUArch reports whether gpu-defaults.yaml lists the architecture, i.e.
+// whether GPUDefaults resolves it from the table rather than falling back to
+// fallbackGpusPerNode. Callers use it to tell the user when a workflow was
+// sized on the fallback (ADR-094).
+func KnownGPUArch(gpuArch string) bool {
+	ensureGPUDefaultsLoaded()
+	_, ok := gpuDefaults.Defaults[gpuArch]
+	return ok
+}
+
 // ParseGPUArchFlag normalizes a --gpu-arch flag value with gpu.ParseProduct,
 // so "gb300", "NVIDIA-GB300" and "NVIDIA GB300" are equivalent, and rejects
 // an architecture gpu-defaults.yaml does not list: GPUDefaults would silently

@@ -118,7 +118,7 @@ type TemplateData struct {
 	MlnxPerNode int32
 
 	// NicResourceName is the extended resource name of the RDMA NIC devices
-	// for the on-prem GB200/GB300 templates. Empty means omit the NIC resource
+	// for the on-prem GB200/GB300 and HGX B200/B300 templates. Empty means omit the NIC resource
 	// block. Templates use: {{- if .NicResourceName }} ... {{ .NicResourceName }}
 	NicResourceName string
 

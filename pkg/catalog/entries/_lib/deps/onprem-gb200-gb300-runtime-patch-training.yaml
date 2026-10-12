@@ -5,7 +5,8 @@
 # WorkloadRuns (ADR-075). Carries the portable IB env (torchrun and exec
 # workloads inherit the container env directly), tolerates the arm64 and GPU
 # taints common on NVL72 deployments, and injects the NIC resource block only
-# when nicResourceName is configured; the resource name depends on the RDMA
+# when nicResourceName is configured and mlnxPerNode is positive (0 is the
+# ADR-087 opt-out); the resource name depends on the RDMA
 # device plugin the site runs, so there is no safe default. The per-container
 # count comes from mlnxPerNode.
 
@@ -24,7 +25,7 @@
                 spec:
                   containers:
                   - name: node
-{{- if .NicResourceName }}
+{{- if and .NicResourceName (gt (int .MlnxPerNode) 0) }}
                     resources:
                       limits:
                         {{ .NicResourceName }}: "{{ .MlnxPerNode }}"

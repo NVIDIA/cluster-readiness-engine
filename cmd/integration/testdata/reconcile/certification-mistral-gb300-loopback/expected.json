@@ -1,0 +1,424 @@
+{
+  "Certification/mistral-nc-g3-lb": {
+    "kind": "Certification",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "mistral-nc-g3-lb",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.product": "NVIDIA-GB300"
+        }
+      },
+      "categories": [
+        {
+          "domain": "communication",
+          "variant": "nccl-loopback"
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkflowRunning",
+          "message": "Certification in progress"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "categoryStatuses": [
+        {
+          "domain": "communication",
+          "variant": "nccl-loopback",
+          "workflowRef": {
+            "name": "mistral-nc-g3-lb-communic-69e4f",
+            "namespace": "default"
+          },
+          "status": "InProgress"
+        }
+      ]
+    }
+  },
+  "Workflow/mistral-nc-g3-lb-communic-69e4f": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "mistral-nc-g3-lb-communic-69e4f",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/category-domain": "communication",
+        "nvcre.nvidia.com/category-variant": "nccl-loopback",
+        "nvcre.nvidia.com/certification": "mistral-nc-g3-lb"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
+          "kind": "Certification",
+          "name": "mistral-nc-g3-lb",
+          "uid": "",
+          "controller": true,
+          "blockOwnerDeletion": true
+        }
+      ],
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "nccl-loopback-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                "command": [
+                  "/usr/local/bin/all_reduce_perf_mpi"
+                ],
+                "args": [
+                  "-b",
+                  "8",
+                  "-e",
+                  "16G",
+                  "-f",
+                  "2",
+                  "-g",
+                  "4",
+                  "-n",
+                  "10",
+                  "-N",
+                  "2"
+                ],
+                "env": [
+                  {
+                    "name": "NCCL_DEBUG",
+                    "value": "INFO"
+                  },
+                  {
+                    "name": "NCCL_MNNVL_ENABLE",
+                    "value": "1"
+                  },
+                  {
+                    "name": "NCCL_IB_HCA",
+                    "value": "mlx5_0:1,mlx5_1:1,mlx5_2:1,mlx5_3:1"
+                  },
+                  {
+                    "name": "NCCL_IB_PCI_RELAXED_ORDERING",
+                    "value": "1"
+                  },
+                  {
+                    "name": "UCX_NET_DEVICES",
+                    "value": "mlx5_0:1,mlx5_1:1,mlx5_2:1,mlx5_3:1"
+                  },
+                  {
+                    "name": "SHARP_COLL_ENABLE_PCI_RELAXED_ORDERING",
+                    "value": "1"
+                  },
+                  {
+                    "name": "OMPI_MCA_btl_openib_warn_default_gid_prefix",
+                    "value": "0"
+                  },
+                  {
+                    "name": "PMIX_MCA_gds",
+                    "value": "^ds12"
+                  },
+                  {
+                    "name": "CUDA_CACHE_DISABLE",
+                    "value": "1"
+                  },
+                  {
+                    "name": "NCCL_DMABUF_ENABLE",
+                    "value": "0"
+                  },
+                  {
+                    "name": "NCCL_SHM_DISABLE",
+                    "value": "1"
+                  },
+                  {
+                    "name": "NCCL_P2P_DISABLE",
+                    "value": "1"
+                  }
+                ],
+                "numNodes": 1,
+                "numProcPerNode": 1
+              },
+              "runtimePatches": [
+                {
+                  "manager": "nvcre.nvidia.com/catalog",
+                  "trainingRuntimeSpec": {
+                    "template": {
+                      "spec": {
+                        "replicatedJobs": [
+                          {
+                            "name": "node",
+                            "template": {
+                              "spec": {
+                                "template": {
+                                  "spec": {
+                                    "volumes": [
+                                      {
+                                        "name": "dshm",
+                                        "emptyDir": {
+                                          "medium": "Memory"
+                                        }
+                                      }
+                                    ],
+                                    "containers": [
+                                      {
+                                        "name": "node",
+                                        "volumeMounts": [
+                                          {
+                                            "name": "dshm",
+                                            "mountPath": "/dev/shm"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ],
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          },
+          "nodeHealthMonitor": {
+            "cel": {
+              "expression": "node.spec.unschedulable == true"
+            }
+          },
+          "bandwidthMeasurement": {
+            "logProfileRef": "nccl-loopback",
+            "sampleInterval": "30s",
+            "testType": "loopback_all_reduce"
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.product": "NVIDIA-GB300"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      },
+      "dependencies": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "metadata": {
+            "labels": {
+              "app": "nccl-loopback"
+            },
+            "name": "nccl-loopback-runtime"
+          },
+          "spec": {
+            "mlPolicy": {
+              "numNodes": 1,
+              "torch": {
+                "numProcPerNode": 1
+              }
+            },
+            "template": {
+              "spec": {
+                "replicatedJobs": [
+                  {
+                    "name": "node",
+                    "template": {
+                      "metadata": {
+                        "labels": {
+                          "trainer.kubeflow.org/trainjob-ancestor-step": "trainer"
+                        }
+                      },
+                      "spec": {
+                        "template": {
+                          "spec": {
+                            "containers": [
+                              {
+                                "env": [
+                                  {
+                                    "name": "NCCL_MNNVL_ENABLE",
+                                    "value": "1"
+                                  }
+                                ],
+                                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                                "name": "node",
+                                "resources": {
+                                  "claims": [
+                                    {
+                                      "name": "compute-domain-channel"
+                                    }
+                                  ],
+                                  "limits": {
+                                    "nvidia.com/gpu": "4",
+                                    "rdma/ib": "1"
+                                  },
+                                  "requests": {
+                                    "nvidia.com/gpu": "4",
+                                    "rdma/ib": "1"
+                                  }
+                                },
+                                "securityContext": {
+                                  "capabilities": {
+                                    "add": [
+                                      "IPC_LOCK"
+                                    ]
+                                  }
+                                }
+                              }
+                            ],
+                            "resourceClaims": [
+                              {
+                                "name": "compute-domain-channel",
+                                "resourceClaimTemplateName": "nccl-loopback-channel"
+                              }
+                            ],
+                            "restartPolicy": "OnFailure",
+                            "tolerations": [
+                              {
+                                "operator": "Exists"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "apiVersion": "resource.nvidia.com/v1beta1",
+          "kind": "ComputeDomain",
+          "metadata": {
+            "labels": {
+              "app": "nccl-loopback"
+            },
+            "name": "nccl-loopback-compute-domain"
+          },
+          "spec": {
+            "channel": {
+              "allocationMode": "Single",
+              "resourceClaimTemplate": {
+                "name": "nccl-loopback-channel"
+              }
+            },
+            "numNodes": 1
+          }
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Iteration 1/1: 1 groups running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "dependencyRefs": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "name": "nccl-loopback-runtime-69e4f-job",
+          "namespace": "default",
+          "scope": "job",
+          "groupName": "group-0",
+          "iteration": 1
+        },
+        {
+          "apiVersion": "resource.nvidia.com/v1beta1",
+          "kind": "ComputeDomain",
+          "name": "nccl-loopback-compute-domain-69e4f-job",
+          "namespace": "default",
+          "scope": "job",
+          "groupName": "group-0",
+          "iteration": 1
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 1,
+        "nodesPerJob": 1,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "detectedPlatform": "mistral",
+        "detectedGPUArchitecture": "gb300",
+        "gpuProducts": [
+          "NVIDIA-GB300"
+        ],
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "mistral-gb300-lb-node-01"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "mistral-nc-g3-lb-communic-69e4f-job",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
