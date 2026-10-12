@@ -124,7 +124,7 @@ go test ./test/releasepolicy/ -run TestAttestValidationRejects -v
 
 ## Critical Pitfalls
 
-- **After modifying `*_types.go`**: Must run `make manifests generate` before anything else compiles (stale deepcopy). `make manifests` writes CRDs directly to `helm/cluster-readiness-engine/crds/` and RBAC to `helm/cluster-readiness-engine/templates/`.
+- **After modifying `*_types.go`**: Must run `make manifests generate` before anything else compiles (stale deepcopy). `make manifests` writes CRDs directly to `helm/cluster-readiness-engine/crds/`. It writes no RBAC: controller-gen runs with `output:rbac:none`, so `helm/cluster-readiness-engine/templates/manager-role.yaml` is maintained by hand and the `+kubebuilder:rbac` markers only document it. A new or widened marker must be mirrored into that file in the same change, or the grant never reaches a cluster.
 - **Blank imports required**: `pkg/catalog` must be blank-imported in `cmd/nvcrectl/main.go` and test suites to trigger `init()` registration.
 - **envtest has no GC controller**: Cascade deletion via OwnerReference won't work in tests. Controllers must explicitly delete child resources in `handleDeletion()`.
 - **`runtime.RawExtension` with `json:",inline"`**: Loses sibling fields during marshal/unmarshal. Requires custom `MarshalJSON`/`UnmarshalJSON` on the parent struct (see `api/v1alpha1/dependency_json.go`).

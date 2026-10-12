@@ -251,7 +251,7 @@ The controller's ClusterRole (`nvcre-manager-role`) is scoped to the resource ty
 | `resource.nvidia.com` ComputeDomains | create, delete, get, list, patch, update | Multi-Node NVLink (MNNVL) domains |
 | `trainer.kubeflow.org` TrainingRuntimes, TrainJobs | create, delete, get, list, patch, update (TrainJobs also watch; `trainjobs/status` get) | Training workloads via Kubeflow Trainer |
 
-The Workflow dependency system creates supporting resources (ConfigMaps, PVCs, ComputeDomains, TrainingRuntimes) before workloads start, so the role includes create/delete on exactly those types. Inspect the full ClusterRole:
+The Workflow dependency system creates supporting resources (ConfigMaps, PVCs, ComputeDomains, TrainingRuntimes, ResourceClaimTemplates) before workloads start, so the role includes create/delete on each dependency kind the catalog and platform overrides can render. Inspect the full ClusterRole:
 
 ```bash
 kubectl get clusterrole nvcre-manager-role -o yaml
