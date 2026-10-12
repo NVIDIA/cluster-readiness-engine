@@ -555,7 +555,7 @@ func TestProcessWatchEventsContextDoneDuringActiveWatch(t *testing.T) {
 
 	cert, done, err := processWatchEvents(
 		ctx, newCertificationFakeClient(t), watcher, time.Now(),
-		map[int]categoryWatchStatus{}, heartbeat, &out,
+		map[int]categoryWatchStatus{}, heartbeat.C, &out,
 	)
 
 	assert.Nil(t, cert)
@@ -588,7 +588,7 @@ func TestProcessWatchEventsKeepsDuplicateCategoryStatusesSeparate(t *testing.T) 
 
 	result, done, err := processWatchEvents(
 		context.Background(), newCertificationFakeClient(t), watcher, time.Now(),
-		lastStatuses, heartbeat, &out,
+		lastStatuses, heartbeat.C, &out,
 	)
 
 	require.Same(t, cert, result)
@@ -603,11 +603,10 @@ func TestProcessWatchEventsKeepsDuplicateCategoryStatusesSeparate(t *testing.T) 
 func TestProcessWatchEventsHeartbeatShowsOnlyInProgressCategoriesInOrder(t *testing.T) {
 	watcher := watch.NewRaceFreeFake()
 	defer watcher.Stop()
-	heartbeat := time.NewTicker(10 * time.Millisecond)
-	defer heartbeat.Stop()
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	var out bytes.Buffer
+	heartbeat := make(chan time.Time, 1)
+	out := &watchEventWriter{writes: make(chan string, 4)}
 	lastStatuses := map[int]categoryWatchStatus{}
 	cert := &nvcrev1alpha1.Certification{
 		Status: nvcrev1alpha1.CertificationStatus{
@@ -624,26 +623,37 @@ func TestProcessWatchEventsHeartbeatShowsOnlyInProgressCategoriesInOrder(t *test
 	}
 	resultCh := make(chan watchResult, 1)
 	watchClient := newCertificationFakeClient(t)
+	watcher.Add(cert)
 	go func() {
 		result, done, err := processWatchEvents(
 			ctx, watchClient, watcher, time.Now(),
-			lastStatuses, heartbeat, &out,
+			lastStatuses, heartbeat, out,
 		)
 		resultCh <- watchResult{cert: result, done: done, err: err}
 	}()
-	watcher.Add(cert)
+	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce: InProgress")
+	assert.Contains(t, <-out.writes, "training/nemotron5-8b: Pending")
+	heartbeat <- time.Now()
+	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce: InProgress")
+	cancel()
 	result := <-resultCh
 	assert.Nil(t, result.cert)
 	assert.True(t, result.done)
-	assert.ErrorIs(t, result.err, context.DeadlineExceeded)
-	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	require.GreaterOrEqual(t, len(lines), 3)
-	assert.Contains(t, lines[0], "communication/nccl-all-reduce: InProgress")
-	assert.Contains(t, lines[1], "training/nemotron5-8b: Pending")
-	for _, line := range lines[2:] {
-		assert.Contains(t, line, "communication/nccl-all-reduce: InProgress")
-		assert.NotContains(t, line, "training/nemotron5-8b")
-	}
+	assert.ErrorIs(t, result.err, context.Canceled)
+	assert.NotContains(t, out.String(), "Waiting for status...")
+	assert.Equal(t, 2, strings.Count(out.String(), "communication/nccl-all-reduce: InProgress"))
+	assert.Equal(t, 1, strings.Count(out.String(), "training/nemotron5-8b: Pending"))
+}
+
+type watchEventWriter struct {
+	bytes.Buffer
+	writes chan string
+}
+
+func (w *watchEventWriter) Write(p []byte) (int, error) {
+	n, err := w.Buffer.Write(p)
+	w.writes <- string(p)
+	return n, err
 }
 
 func TestFinishCertificationWaitTimeout(t *testing.T) {

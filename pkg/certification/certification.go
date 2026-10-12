@@ -1514,7 +1514,7 @@ func watchCertification(
 			return nil, fmt.Errorf("start watch: %w", err)
 		}
 
-		cert, done, watchErr := processWatchEvents(ctx, wc, watcher, start, lastStatuses, heartbeat, out)
+		cert, done, watchErr := processWatchEvents(ctx, wc, watcher, start, lastStatuses, heartbeat.C, out)
 		watcher.Stop()
 		if done {
 			if cert == nil && ctx.Err() != nil {
@@ -1572,7 +1572,7 @@ type categoryWatchStatus struct {
 // when the watch channel closes and should be reconnected.
 func processWatchEvents(
 	ctx context.Context, c client.Client, watcher watch.Interface, start time.Time,
-	lastStatuses map[int]categoryWatchStatus, heartbeat *time.Ticker, out io.Writer,
+	lastStatuses map[int]categoryWatchStatus, heartbeat <-chan time.Time, out io.Writer,
 ) (*nvcrev1alpha1.Certification, bool, error) {
 	events := watcher.ResultChan()
 	for {
@@ -1623,7 +1623,7 @@ func processWatchEvents(
 		case <-ctx.Done():
 			return nil, true, ctx.Err()
 
-		case <-heartbeat.C:
+		case <-heartbeat:
 			elapsed := time.Since(start).Truncate(time.Second)
 			for i := 0; i < len(lastStatuses); i++ {
 				if status, ok := lastStatuses[i]; ok && status.status == "InProgress" {
