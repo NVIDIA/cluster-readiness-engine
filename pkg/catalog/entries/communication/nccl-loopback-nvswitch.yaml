@@ -322,13 +322,6 @@ overrides:
     value:
       name: NCCL_IB_GID_INDEX
       value: "3"
-{{- if not .EnableMNNVL }}
-  - op: add
-    path: /spec/workload/trainJob/trainer/env/-
-    value:
-      name: NCCL_DMABUF_ENABLE
-      value: "0"
-{{- end }}
 # --- Mistral + GB300 (InfiniBand) ---
 - when:
     platform:
