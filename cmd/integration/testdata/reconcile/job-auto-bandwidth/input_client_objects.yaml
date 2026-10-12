@@ -36,6 +36,8 @@ kind: Job
 metadata:
   name: test-auto-bandwidth
   namespace: default
+  labels:
+    nvcre.nvidia.com/workflow: test-auto-bandwidth-wf
 spec:
   workload:
     trainJob:
