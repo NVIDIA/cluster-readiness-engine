@@ -40,7 +40,7 @@ Configures how to parse `(?P<timestamp>...)` named captures from log lines.
 
 ### `spec.patterns`
 
-A `LogPatternSet` — a named struct (not a list) with 8 optional fields, each an `EventPattern`. Each pattern uses Go named capture groups `(?P<name>...)`.
+A `LogPatternSet` — a named struct (not a list) with 9 optional fields, each an `EventPattern`. Each pattern uses Go named capture groups `(?P<name>...)`.
 
 | Field | Captures | Description |
 |-------|----------|-------------|
@@ -52,6 +52,7 @@ A `LogPatternSet` — a named struct (not a list) with 8 optional fields, each a
 | `applicationStart` | `timestamp` | Application framework start marker |
 | `warmupStep` | — | Warmup/startup iteration marker (presence of match is sufficient) |
 | `bandwidthResult` | `size`, `algBW`, `busBW` | NCCL bandwidth test result lines (used by `BandwidthMeasurement`) |
+| `networkTransport` | `transport` | NCCL `Using network <name>` lines (used by `BandwidthMeasurement`; record-only) |
 
 Each `EventPattern` has:
 
@@ -78,7 +79,7 @@ The following LogProfiles are installed by the Helm chart:
 |------|-----------|
 | `megatron-training` | Megatron-LM training logs |
 | `megatron-bridge` | Megatron bridge logs |
-| `nccl-bandwidth` | NCCL test output (bandwidth results) |
+| `nccl-bandwidth` | NCCL test output (bandwidth results and network transport) |
 | `nccl-loopback` | NCCL loopback test output |
 
 ## Scope

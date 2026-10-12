@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Two groups map to the same clique name after stripping " (N nodes)".
+# Transports must be unioned, not overwritten by the last group.
+cliques:
+  - name: clique-0
+    total: 4
+    validated: 4
+    passed: true
+groups:
+  - groupName: "clique-0 (2 nodes)"
+    busBW: "100.0 GB/s"
+    transport:
+      - Socket
+  - groupName: "clique-0 (2 nodes)"
+    busBW: "90.0 GB/s"
+    transport:
+      - IB

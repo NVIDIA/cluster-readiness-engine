@@ -1,0 +1,8 @@
+# A running sample recorded Socket. The final read sees IB too, and the two
+# are unioned rather than the final read replacing what was recorded.
+jobCondition: Succeeded
+podPhase: Succeeded
+provisionalTransport: [Socket]
+log: |
+  2026-09-30T10:01:00.100000000Z NCCL INFO Using network IB
+  2026-09-30T10:01:01.000000000Z            8             2     float     sum      -1    58.31    0.00    0.00       0    58.40    0.00    0.00       0

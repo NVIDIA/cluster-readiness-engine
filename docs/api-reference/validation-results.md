@@ -594,6 +594,7 @@ Catalog variant names evolve between releases. The training entry used during th
       "nodesPerJob": 4,
       "jobs": 1,
       "mnnvl": "Enabled",
+      "transport": ["Socket"],
       "bandwidth": [
         { "size": "16 GB", "algBW": "470.68 GB/s", "busBW": "882.51 GB/s", "samples": 65 }
       ]
@@ -632,6 +633,8 @@ Each entry in `categories`:
 | `jobs` | int | Number of jobs run |
 | `mnnvl` | string | `Enabled`, `Disabled`, or omitted when unknown |
 | `bandwidth` | []object | NCCL results per message size: `size`, `algBW`, `busBW`, `samples` |
+| `transport` | []string | Distinct NCCL network names recorded on the category's BandwidthMeasurements (for example `IB`, `Socket`). Omitted when the `Using network` line never appeared |
+| `groupBandwidth` | []object | Per-group peak bandwidth: `groupName`, `nodes`, `busBW`, `transport` (optional), `belowMin`, `failed` |
 | `domains` | []object | Training results per topology domain: `name`, `nodeCount`, `goodput`, `tflops`, `stepTime` |
 | `failedGroups` | []object | Failed orchestration groups: `name`, `nodeCount`, `nodes`, `reason`, and `failureLog` when the Job captured one |
 | `iterations` | []object | Per-iteration results: `number`, `status`, `duration` |

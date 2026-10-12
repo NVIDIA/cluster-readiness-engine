@@ -1,0 +1,37 @@
+│                                                                │
+│  Bandwidth by group:                                           │
+│      ✓  clique-0 (2 nodes)                                     │
+│         no bandwidth data                                      │
+│         Transport: IB                                          │
+│      ✓  clique-1 (2 nodes)                                     │
+│         350.0 GB/s                                             │
+│         Transport: Socket                                      │
+--- rows ---
+[
+  {
+    "groupName": "clique-0 (2 nodes)",
+    "nodes": [
+      "node-0",
+      "node-1"
+    ],
+    "busBW": "",
+    "transport": [
+      "IB"
+    ],
+    "belowMin": false,
+    "failed": false
+  },
+  {
+    "groupName": "clique-1 (2 nodes)",
+    "nodes": [
+      "node-2",
+      "node-3"
+    ],
+    "busBW": "350.0 GB/s",
+    "transport": [
+      "Socket"
+    ],
+    "belowMin": false,
+    "failed": false
+  }
+]

@@ -1,0 +1,4 @@
+│                                                                │
+│  Bandwidth by group:                                           │
+--- rows ---
+null

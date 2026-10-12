@@ -25,6 +25,11 @@ const testTimestampLayout = "2006-01-02T15:04:05.999999999Z"
 // fixtures below.
 const testBusBWRegex = `^\s*(?P<size>\d+)\s+\d+\s+\w+\s+\w+\s+-?\d+\s+[\d.]+\s+(?P<algBW>[\d.]+)\s+(?P<busBW>[\d.]+)`
 
+// testTransportRegex is the shipped nccl-bandwidth networkTransport pattern.
+const testTransportRegex = `NCCL INFO Using network (?P<transport>.+)`
+
+const testProfileNCCLBandwidth = "nccl-bandwidth"
+
 // The lines below cover an NCCL INFO line, a two-line table header, data
 // lines with a K8s timestamp prefix (both "Z" and offset-free variants), and
 // a raw data line with no timestamp prefix at all, to prove the parser skips
@@ -77,6 +82,57 @@ func TestParseBandwidthLogs(t *testing.T) {
 		}
 
 		b, err := json.MarshalIndent(out, "", "  ")
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b) + "\n"
+		return nil
+	})
+}
+
+func TestParseTransports(t *testing.T) {
+	p := testutil.TestCaseParser{
+		Subdir:         "parse-transports",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var in struct {
+			Regex           string `yaml:"regex"`
+			TransportRegex  string `yaml:"transportRegex"`
+			TimestampLayout string `yaml:"timestampLayout"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
+			return err
+		}
+
+		profile := &v1alpha1.LogProfile{
+			Name: testProfileNCCLBandwidth,
+			Spec: v1alpha1.LogProfileSpec{
+				Timestamp: v1alpha1.TimestampSpec{Layout: in.TimestampLayout},
+				Patterns: v1alpha1.LogPatternSet{
+					BandwidthResult: &v1alpha1.EventPattern{
+						Regex: in.Regex,
+					},
+				},
+			},
+		}
+		if in.TransportRegex != "" {
+			profile.Spec.Patterns.NetworkTransport = &v1alpha1.EventPattern{
+				Regex: in.TransportRegex,
+			}
+		}
+
+		parser, err := NewParser(profile)
+		if err != nil {
+			return fmt.Errorf("NewParser: %w", err)
+		}
+
+		lines := strings.Split(strings.TrimRight(tc.Inputs["input_log.txt"], "\n"), "\n")
+		got := parser.ParseTransports(lines)
+
+		b, err := json.MarshalIndent(struct {
+			Transport []string `json:"transport"`
+		}{Transport: got}, "", "  ")
 		if err != nil {
 			return err
 		}
@@ -190,12 +246,15 @@ func TestParseRealA100AllReduce2NodeLog(t *testing.T) {
 	}
 
 	profile := &v1alpha1.LogProfile{
-		Name: "nccl-bandwidth",
+		Name: testProfileNCCLBandwidth,
 		Spec: v1alpha1.LogProfileSpec{
 			Timestamp: v1alpha1.TimestampSpec{Layout: testTimestampLayout},
 			Patterns: v1alpha1.LogPatternSet{
 				BandwidthResult: &v1alpha1.EventPattern{
 					Regex: testBusBWRegex,
+				},
+				NetworkTransport: &v1alpha1.EventPattern{
+					Regex: testTransportRegex,
 				},
 			},
 		},
@@ -206,7 +265,8 @@ func TestParseRealA100AllReduce2NodeLog(t *testing.T) {
 		t.Fatalf("NewParser: %v", err)
 	}
 
-	results := parser.ParseBandwidthLogs(strings.Split(string(raw), "\n"))
+	lines := strings.Split(string(raw), "\n")
+	results := parser.ParseBandwidthLogs(lines)
 
 	// The run measured 24 message sizes, from 8 bytes to 64 MiB.
 	if len(results) != 24 {
@@ -225,6 +285,11 @@ func TestParseRealA100AllReduce2NodeLog(t *testing.T) {
 	if last.AlgBW <= 0 {
 		t.Errorf("last algBW = %f, want a value above 0", last.AlgBW)
 	}
+
+	transports := parser.ParseTransports(lines)
+	if len(transports) != 1 || transports[0] != "Socket" {
+		t.Errorf("transport = %v, want [Socket]", transports)
+	}
 }
 
 func TestNewParserMissingPattern(t *testing.T) {
@@ -239,6 +304,50 @@ func TestNewParserMissingPattern(t *testing.T) {
 	_, err := NewParser(profile)
 	if err == nil {
 		t.Fatal("expected error for missing bandwidthResult pattern")
+	}
+}
+
+func TestNewParserMissingTransportGroup(t *testing.T) {
+	profile := &v1alpha1.LogProfile{
+		Name: testProfileNCCLBandwidth,
+		Spec: v1alpha1.LogProfileSpec{
+			Timestamp: v1alpha1.TimestampSpec{Layout: testTimestampLayout},
+			Patterns: v1alpha1.LogPatternSet{
+				BandwidthResult: &v1alpha1.EventPattern{
+					Regex: testBusBWRegex,
+				},
+				NetworkTransport: &v1alpha1.EventPattern{
+					Regex: `NCCL INFO Using network (.+)`,
+				},
+			},
+		},
+	}
+
+	_, err := NewParser(profile)
+	if err == nil {
+		t.Fatal("expected error for missing transport named group")
+	}
+}
+
+func TestParseTransportsWithoutPattern(t *testing.T) {
+	profile := &v1alpha1.LogProfile{
+		Name: testProfileNCCLBandwidth,
+		Spec: v1alpha1.LogProfileSpec{
+			Timestamp: v1alpha1.TimestampSpec{Layout: testTimestampLayout},
+			Patterns: v1alpha1.LogPatternSet{
+				BandwidthResult: &v1alpha1.EventPattern{
+					Regex: testBusBWRegex,
+				},
+			},
+		},
+	}
+
+	parser, err := NewParser(profile)
+	if err != nil {
+		t.Fatalf("NewParser: %v", err)
+	}
+	if got := parser.ParseTransports([]string{"NCCL INFO Using network Socket"}); got != nil {
+		t.Errorf("ParseTransports without pattern = %v, want nil", got)
 	}
 }
 
@@ -266,4 +375,52 @@ func TestStripK8sTimestamp(t *testing.T) {
 		tc.Actual = string(b) + "\n"
 		return nil
 	})
+}
+
+// TestParseTransportLine covers the per-line parse the controller's final log
+// read uses, so it records the same names ParseTransports does.
+func TestParseTransportLine(t *testing.T) {
+	newParser := func(withTransport bool) *Parser {
+		profile := &v1alpha1.LogProfile{
+			Name: testProfileNCCLBandwidth,
+			Spec: v1alpha1.LogProfileSpec{
+				Timestamp: v1alpha1.TimestampSpec{Layout: testTimestampLayout},
+				Patterns: v1alpha1.LogPatternSet{
+					BandwidthResult: &v1alpha1.EventPattern{Regex: testBusBWRegex},
+				},
+			},
+		}
+		if withTransport {
+			profile.Spec.Patterns.NetworkTransport = &v1alpha1.EventPattern{Regex: testTransportRegex}
+		}
+		parser, err := NewParser(profile)
+		if err != nil {
+			t.Fatalf("NewParser: %v", err)
+		}
+		return parser
+	}
+	withPattern := newParser(true)
+
+	cases := []struct {
+		name   string
+		parser *Parser
+		line   string
+		want   string
+		wantOK bool
+	}{
+		{"timestamped", withPattern, "2026-09-30T10:01:00.1Z host:1:1 [0] NCCL INFO Using network IB", "IB", true},
+		{"untimestamped", withPattern, "NCCL INFO Using network Socket", "Socket", true},
+		{"trailing space trimmed", withPattern, "NCCL INFO Using network IB  ", "IB", true},
+		{"blank name", withPattern, "NCCL INFO Using network  ", "", false},
+		{"no match", withPattern, "NCCL INFO Bootstrap : Using eth0", "", false},
+		{"no pattern", newParser(false), "NCCL INFO Using network IB", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := tc.parser.ParseTransportLine(tc.line)
+			if got != tc.want || ok != tc.wantOK {
+				t.Errorf("ParseTransportLine(%q) = (%q, %v), want (%q, %v)", tc.line, got, ok, tc.want, tc.wantOK)
+			}
+		})
+	}
 }
