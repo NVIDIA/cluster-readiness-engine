@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Every registered entry on GB200 with one Certification pull secret. The
+# golden shows the secret on every pod set each base TrainingRuntime declares:
+# node everywhere, plus launcher on the three MPI communication entries.
+# Before this change the five communication entries and dcgm-level4 rendered
+# no runtimePatches imagePullSecrets at all; only the two training entries did,
+# so a Certification against a private registry ran those six categories with
+# no pull secret on any pod. 8 nodes x 4 GPUs clears the training minGPUs, so
+# all eight entries build.
+gpuProducts:
+- NVIDIA-GB200-NVL72
+nodesPerJob: 8
+imagePullSecrets:
+- name: cert-pull-secret

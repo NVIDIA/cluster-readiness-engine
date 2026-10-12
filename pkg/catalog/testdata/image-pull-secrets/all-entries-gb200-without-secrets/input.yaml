@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The same entries and product with no pull secret configured. The golden
+# shows an empty list on every pod set: the guarded blocks render nothing, so
+# the MPI entries keep their bare launcher entry (the Workflow controller's
+# launcher pinning keys on it) and dcgm-level4 and the training entries render
+# no runtimePatches at all. Before this change the five communication entries
+# and dcgm-level4 carried nothing in either case, so this golden also pins that
+# the fix is guarded rather than unconditional.
+gpuProducts:
+- NVIDIA-GB200-NVL72
+nodesPerJob: 8
+imagePullSecrets: []

@@ -1,0 +1,89 @@
+{
+  "entries": [
+    {
+      "entry": "communication/nccl-all-gather@NVIDIA-GB200-NVL72",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": []
+        },
+        {
+          "name": "launcher",
+          "imagePullSecrets": []
+        }
+      ]
+    },
+    {
+      "entry": "communication/nccl-all-reduce@NVIDIA-GB200-NVL72",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": []
+        },
+        {
+          "name": "launcher",
+          "imagePullSecrets": []
+        }
+      ]
+    },
+    {
+      "entry": "communication/nccl-alltoall@NVIDIA-GB200-NVL72",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": []
+        },
+        {
+          "name": "launcher",
+          "imagePullSecrets": []
+        }
+      ]
+    },
+    {
+      "entry": "communication/nccl-loopback-nvswitch@NVIDIA-GB200-NVL72",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": []
+        }
+      ]
+    },
+    {
+      "entry": "communication/nccl-loopback@NVIDIA-GB200-NVL72",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": []
+        }
+      ]
+    },
+    {
+      "entry": "diagnostics/dcgm-level4@NVIDIA-GB200-NVL72",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": []
+        }
+      ]
+    },
+    {
+      "entry": "training/nemotron5-56b@NVIDIA-GB200-NVL72",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": []
+        }
+      ]
+    },
+    {
+      "entry": "training/nemotron5-8b@NVIDIA-GB200-NVL72",
+      "replicatedJobs": [
+        {
+          "name": "node",
+          "imagePullSecrets": []
+        }
+      ]
+    }
+  ],
+  "violations": []
+}
