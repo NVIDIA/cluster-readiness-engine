@@ -1845,8 +1845,8 @@ func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *nvc
 		labelManagedBy: managedByValue,
 		labelJobKey:    job.Name,
 	}
-	// Bandwidth metrics use the measurement's workflow label for both recording
-	// and deletion, after the Job may already have been removed.
+	// Capture the workflow once so recording and cleanup use the same label after
+	// the Job may already have been removed.
 	if workflow := job.Labels[labelWorkflowTracking]; workflow != "" {
 		labels[labelWorkflowTracking] = workflow
 	}

@@ -30,6 +30,11 @@ followed them.
 
 ### Changed
 
+- NCCL bandwidth metrics now include the Job's `workflow` label. This changes
+  Prometheus series identity, so queries matching an absent or empty `workflow`
+  label will not match new measurements. Measurements created before this change
+  retain the empty label until they are removed.
+
 - GCP H100 training (`nemotron5-8b`, `nemotron5-56b`) runs the CUDA image that
   matches the detected TCPXO plugin, so plugin v1.0.15 and v1.0.16 now get
   `pytorch:25.06-py3` instead of `pytorch:25.08-py3`, which could not load the CUDA 12
