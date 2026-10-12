@@ -20,6 +20,12 @@
 # nccl-loopback is included so the torch shape is covered too, which is what
 # proves one shared fragment reaches both worker shapes. Both name the worker
 # replicatedJob "node" and its container "node".
+#
+# Coverage-wise this case is a subset of oci-gb200-hostpath-all-entries, which
+# renders all seven entries under the same spec. It exists because it shares
+# its Certification name with oci-gb200-nccl-device-plugin, so the two goldens
+# diff as a direct before/after of one input with only rdmaDeviceAccess
+# changed. That is a review convenience, not extra coverage.
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:

@@ -157,6 +157,14 @@ pods will be rejected in namespaces that enforce a `restricted` or `baseline`
 which forbid privileged containers. See
 [ADR-088](../designs/088-oci-gb200-roce-and-rdma-device-access.md).
 
+A privileged container is root-equivalent on the node. It runs without the
+runtime's default seccomp filter and without AppArmor or SELinux confinement,
+so the pod-level `seccompProfile: RuntimeDefault` the training entries set no
+longer constrains the worker container even though the pod spec still shows
+it. The `/dev/infiniband` mount names the devices the workload uses; it is not
+what limits access. Treat the option as granting the workload root on the
+node, because that is what `privileged: true` does.
+
 Some CRI-O runtimes reject a privileged container whose GPUs come from the
 NVIDIA device plugin, on the grounds that the device paths are already present
 on the host. The catalog records one such configuration: the OCI arm of the

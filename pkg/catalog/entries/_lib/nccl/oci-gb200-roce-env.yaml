@@ -23,10 +23,10 @@
 # Deliberately NOT here, unlike oci-gb300-roce-env.yaml:
 #   - NCCL_MNNVL_ENABLE, already set from gb200-env.yaml (communication) and
 #     gb200-training-base-env.yaml (training).
-#   - NCCL_DMABUF_ENABLE, NCCL_IB_ADAPTIVE_ROUTING and
-#     NCCL_IB_SPLIT_DATA_ON_QPS. Each is a measured GB300 finding tied to that
-#     board's four 800 Gbps rails, not an OCI platform fact. Leaving them unset
-#     keeps GB200 on the NCCL defaults rather than on tuning taken from
+#   - NCCL_TOPO_FILE, NCCL_IB_ADAPTIVE_ROUTING and NCCL_IB_SPLIT_DATA_ON_QPS.
+#     Each is a measured GB300 finding tied to that board's four 800 Gbps
+#     rails and its topology file, not an OCI platform fact. Leaving them
+#     unset keeps GB200 on the NCCL defaults rather than on tuning taken from
 #     different hardware.
 - name: UCX_IB_GID_INDEX
   value: "3"
