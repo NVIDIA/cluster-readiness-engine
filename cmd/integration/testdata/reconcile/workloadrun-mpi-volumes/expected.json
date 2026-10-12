@@ -91,10 +91,36 @@
                       "spec": {
                         "replicatedJobs": [
                           {
-                            "name": "node"
+                            "name": "node",
+                            "template": {
+                              "spec": {
+                                "template": {
+                                  "spec": {
+                                    "imagePullSecrets": [
+                                      {
+                                        "name": "my-pull-secret"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
                           },
                           {
-                            "name": "launcher"
+                            "name": "launcher",
+                            "template": {
+                              "spec": {
+                                "template": {
+                                  "spec": {
+                                    "imagePullSecrets": [
+                                      {
+                                        "name": "my-pull-secret"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
                           }
                         ]
                       }
@@ -1711,6 +1737,11 @@
           "run_nccl.sh": "#!/bin/sh\nexec /usr/local/bin/all_reduce_perf_mpi \"$@\"\n"
         }
       },
+      "imagePullSecrets": [
+        {
+          "name": "my-pull-secret"
+        }
+      ],
       "volumes": [
         {
           "name": "ib-dev",

@@ -76,5 +76,13 @@
     "ib-dev",
     "config-volume"
   ],
-  "overrideCount": 22
+  "overrideCount": 22,
+  "imagePullSecretsByJob": {
+    "launcher": [
+      "my-pull-secret"
+    ],
+    "node": [
+      "my-pull-secret"
+    ]
+  }
 }

@@ -117,9 +117,15 @@ followed them.
   `spec.config`, and `spec.initContainers` were silently dropped: the rendered
   TrainingRuntime carried none of them while `torch` and `exec` honoured them, so an
   NCCL run that reached its RDMA devices through `hostPath` mounts came up without
-  them and a binary shipped in `spec.config` was not reachable at `/config`. They
-  now land on the MPI worker pods, where the ranks run; the launcher pod is
-  unchanged (#455)
+  them and a binary shipped in `spec.config` was not reachable at `/config`. They now
+  land on the MPI worker pods, where the ranks run; the launcher pod is unchanged. A
+  new `mpi` WorkloadRun that already set any of them now mounts them, so a volume
+  that cannot attach, such as a `ReadWriteOnce` claim across nodes, holds the pods in
+  `ContainerCreating` where it used to be ignored; existing objects are unaffected
+  because `spec` is immutable and the Workflow is never rebuilt (#455)
+- The MPI launcher pod of a WorkloadRun received no `spec.imagePullSecrets`; only the
+  worker pods did, so a launcher pulling from a private registry failed at image pull
+  while the workers started. It now gets the same secrets as the workers (#455)
 
 ## [0.6.0] - 2026-10-05
 

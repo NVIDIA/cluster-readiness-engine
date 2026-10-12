@@ -1,0 +1,12 @@
+[
+  {
+    "imagePullSecrets": [
+      {
+        "name": "a"
+      }
+    ],
+    "targetJobs": [
+      "node"
+    ]
+  }
+]

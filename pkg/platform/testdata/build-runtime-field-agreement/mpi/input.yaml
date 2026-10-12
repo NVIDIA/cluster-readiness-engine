@@ -1,0 +1,10 @@
+# Every RuntimeConfig field rendered through BuildMPIRuntime. The expected
+# file shows the split between the two replicated jobs: Image, Env and the
+# gang scheduler fields reach both the node (worker) and launcher jobs, while
+# Volumes, VolumeMounts, InitContainers and Resources reach the node job only
+# (issue #455 was the first three being dropped here entirely; the launcher is
+# left alone on purpose, see BuildMPIRuntime). NodesPerJob is the one recorded
+# exception: the runtime writes a fixed mlPolicy.numNodes of 1 as its default
+# and the TrainJob's trainer.numNodes scales the workers, so its sentinel
+# appears nowhere and the golden carries the reason instead.
+frameworkType: mpi

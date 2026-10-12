@@ -133,8 +133,6 @@ type RuntimeConfig struct {
 	InitContainers []corev1.Container
 	// Resources overrides GPU/memory/CPU resources.
 	Resources *corev1.ResourceRequirements
-	// ImagePullSecrets for container pull.
-	ImagePullSecrets []corev1.LocalObjectReference
 	// GangSchedulerName is the scheduler name to inject into pod specs (e.g. "kai-scheduler").
 	// Empty means no gang scheduler is configured.
 	GangSchedulerName string

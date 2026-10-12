@@ -1,0 +1,11 @@
+# Every RuntimeConfig field rendered through BuildTorchRuntime. The expected
+# file lists, per field, which part of the runtime the field's sentinel landed
+# in: EntryName in the metadata and the node job's app label, NodesPerJob in
+# the mlPolicy, and everything else on the single node job. GpusPerNode shows
+# only on the node job, as its GPU request: the builder also writes it as
+# mlPolicy.torch.numProcPerNode, but the pinned Trainer API has no such field
+# (TorchMLPolicySource is empty), so the typed round-trip drops it as the API
+# server would and torchrun's process count comes from the TrainJob's
+# trainer.numProcPerNode instead. No field is excepted on torch; an empty
+# foundIn here would fail the case.
+frameworkType: torch

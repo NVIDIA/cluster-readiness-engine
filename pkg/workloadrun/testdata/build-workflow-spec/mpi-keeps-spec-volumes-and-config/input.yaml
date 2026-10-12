@@ -14,6 +14,12 @@
 #
 # Compare with mpi-keeps-spec-env, whose workerVolumeMounts and runtimeVolumes
 # hold only the built-ins because that run sets none of these fields.
+#
+# imagePullSecretsByJob must list my-pull-secret under both launcher and node.
+# Pull secrets are applied on the TrainJob's runtimePatches for every
+# registered replicated job, and an MPI run registers the launcher before they
+# are applied. Before this fix only node carried it, so the launcher pod failed
+# at image pull against a private registry while the workers started.
 run:
   metadata:
     name: wr-mpi-volumes
@@ -21,6 +27,7 @@ run:
   spec:
     image: nvcr.io/nvidia/pytorch:24.01-py3
     numNodes: 2
+    imagePullSecrets: [{name: my-pull-secret}]
     framework:
       mpi:
         binary: /config/run_nccl.sh

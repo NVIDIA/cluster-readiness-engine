@@ -67,6 +67,7 @@ _Fields documented so far:_
 | `config.inline` | map[string]string | Optional. Filename to content. The controller creates a ConfigMap named `<workloadrun-name>-config` from the map, renders it as a dependency of the generated Workflow, and mounts it at `/config` |
 | `config.configMapRef` | LocalObjectReference | Optional. Name of an existing ConfigMap in the same namespace to mount at `/config`. Nothing is created; the ConfigMap must exist before the workload pods start |
 | `initContainers` | []Container | Optional. Init containers run before the workload container, as given. On `torch` and `exec` they run in the node pod; on `mpi` they run in the worker pods, where `mpirun` starts the ranks, and not in the launcher pod, which only runs `mpirun` and keeps its own built-in init container |
+| `imagePullSecrets` | []LocalObjectReference | Optional. Pull secrets for every pod the run creates: the node pods on every framework and, on `mpi`, the launcher pod as well. They are applied through the generated TrainJob rather than the runtime |
 
 `numNodes` (shown in the example above) is the number of nodes **per job group** under the default `Pinned` placement, not a total: the orchestrator partitions all eligible nodes into groups of that size. Under `placement: Unpinned` it is the total size of the one job that runs.
 

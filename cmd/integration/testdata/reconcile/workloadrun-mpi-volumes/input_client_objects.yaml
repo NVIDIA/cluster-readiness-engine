@@ -42,6 +42,7 @@ spec:
       args: ["-b", "8", "-e", "32G", "-f", "2"]
       mpiArgs: ["--allow-run-as-root"]
   numNodes: 2
+  imagePullSecrets: [{name: my-pull-secret}]
   volumes:
     - name: ib-dev
       hostPath:

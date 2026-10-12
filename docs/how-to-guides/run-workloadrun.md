@@ -35,6 +35,8 @@ nvcrectl workloadrun run \
   --wait my-workload.yaml
 ```
 
+The `--workload-registry` flags create a pull secret and add it to the run's `spec.imagePullSecrets`. Every pod the run creates uses it; on `mpi` that includes the launcher pod as well as the workers.
+
 ## Targeting specific nodes
 
 ```yaml

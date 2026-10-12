@@ -322,16 +322,15 @@ func BuildWorkflowSpec(
 
 	// Build runtime dependency.
 	rtCfg := platform.RuntimeConfig{
-		EntryName:        run.Name,
-		Image:            spec.Image,
-		NodesPerJob:      controller.NodesPerJobForScale(spec.Orchestration, spec.NumNodes),
-		GpusPerNode:      gpusPerNode,
-		Env:              mergedEnv,
-		Volumes:          volumes,
-		VolumeMounts:     volumeMounts,
-		InitContainers:   spec.InitContainers,
-		Resources:        spec.Resources,
-		ImagePullSecrets: spec.ImagePullSecrets,
+		EntryName:      run.Name,
+		Image:          spec.Image,
+		NodesPerJob:    controller.NodesPerJobForScale(spec.Orchestration, spec.NumNodes),
+		GpusPerNode:    gpusPerNode,
+		Env:            mergedEnv,
+		Volumes:        volumes,
+		VolumeMounts:   volumeMounts,
+		InitContainers: spec.InitContainers,
+		Resources:      spec.Resources,
 	}
 	if spec.GangScheduler != nil {
 		rtCfg.GangSchedulerName = spec.GangScheduler.SchedulerName
@@ -525,14 +524,16 @@ func buildCLIJobTemplate(
 		},
 	}
 
-	workload.SetImagePullSecrets(trainJobSpec, spec.ImagePullSecrets)
-
 	// MPI runs have a launcher replicated job that must be pinned and
-	// tolerated like the workers — mirrors buildJobTemplate in the
-	// controller reconcile path (issue #175 UAT).
+	// tolerated like the workers; mirrors buildJobTemplate in the
+	// controller reconcile path (issue #175 UAT). Pull secrets are applied
+	// to every registered job, so the launcher has to be registered before
+	// SetImagePullSecrets runs.
 	if frameworkType == controller.FrameworkMPI {
 		workload.EnsureLauncherTarget(trainJobSpec)
 	}
+
+	workload.SetImagePullSecrets(trainJobSpec, spec.ImagePullSecrets)
 
 	jobSpec := nvcrev1alpha1.JobSpec{
 		Workload: nvcrev1alpha1.WorkloadSpec{

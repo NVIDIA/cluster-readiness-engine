@@ -88,16 +88,11 @@ func TestBuildRuntimeWorkloadFields(t *testing.T) {
 			return err
 		}
 
-		cfg := RuntimeConfig{
-			EntryName:         "test-run",
-			Image:             "nvcr.io/test:latest",
-			NodesPerJob:       2,
-			GpusPerNode:       8,
-			Volumes:           in.Volumes,
-			VolumeMounts:      in.VolumeMounts,
-			InitContainers:    in.InitContainers,
-			GangSchedulerName: in.GangSchedulerName,
-		}
+		cfg := baseRuntimeConfig()
+		cfg.Volumes = in.Volumes
+		cfg.VolumeMounts = in.VolumeMounts
+		cfg.InitContainers = in.InitContainers
+		cfg.GangSchedulerName = in.GangSchedulerName
 		var dep nvcrev1alpha1.DependencySpec
 		switch in.FrameworkType {
 		case wfFrameworkMPI:
