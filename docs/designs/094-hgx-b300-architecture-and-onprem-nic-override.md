@@ -1,6 +1,6 @@
 # ADR-094: HGX B300 Architecture Defaults, an On-Prem x86 HGX NIC Override, and a Fallback Event for Unknown Architectures
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 
