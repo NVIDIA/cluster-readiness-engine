@@ -1,0 +1,98 @@
+[
+  {
+    "workflow": "oci-gb200-loopback-cert-c-7a405",
+    "trainerArgs": [
+      "-b",
+      "8",
+      "-e",
+      "16G",
+      "-f",
+      "2",
+      "-g",
+      "4",
+      "-n",
+      "10",
+      "-N",
+      "2"
+    ],
+    "trainerEnv": [
+      "NCCL_SHM_DISABLE=1",
+      "NCCL_P2P_DISABLE=1",
+      "NCCL_DEBUG=INFO",
+      "NCCL_NVLS_ENABLE=1",
+      "NCCL_CUMEM_ENABLE=1",
+      "NCCL_P2P_NET_CHUNKSIZE=2097152",
+      "NCCL_MNNVL_ENABLE=1",
+      "UCX_IB_GID_INDEX=3",
+      "NCCL_IB_GID_INDEX=3"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-loopback-runtime",
+        "replicatedJob": "node",
+        "containers": [
+          {
+            "name": "node",
+            "privileged": null,
+            "capabilities": [
+              "IPC_LOCK"
+            ],
+            "resources": [
+              "limits/nvidia.com/gpu=4",
+              "requests/nvidia.com/gpu=4"
+            ],
+            "volumeMounts": []
+          }
+        ],
+        "volumes": []
+      }
+    ]
+  },
+  {
+    "workflow": "oci-gb200-loopback-cert-c-be0cd",
+    "trainerArgs": [
+      "-b",
+      "8",
+      "-e",
+      "16G",
+      "-f",
+      "2",
+      "-g",
+      "4",
+      "-n",
+      "100",
+      "-N",
+      "10"
+    ],
+    "trainerEnv": [
+      "NCCL_DEBUG=INFO",
+      "NCCL_NVLS_ENABLE=1",
+      "NCCL_CUMEM_ENABLE=1",
+      "NCCL_P2P_NET_CHUNKSIZE=2097152",
+      "NCCL_MNNVL_ENABLE=1",
+      "UCX_IB_GID_INDEX=3",
+      "NCCL_IB_GID_INDEX=3"
+    ],
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-loopback-nvswitch-runtime",
+        "replicatedJob": "node",
+        "containers": [
+          {
+            "name": "node",
+            "privileged": null,
+            "capabilities": [
+              "IPC_LOCK"
+            ],
+            "resources": [
+              "limits/nvidia.com/gpu=4",
+              "requests/nvidia.com/gpu=4"
+            ],
+            "volumeMounts": []
+          }
+        ],
+        "volumes": []
+      }
+    ]
+  }
+]

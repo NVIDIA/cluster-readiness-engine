@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A wrong-case rdmaDeviceAccess at the spec level. The kubebuilder Enum marker
+# only binds server-side, so without this check offline render would exit 0 and
+# emit no mount and no privileged flag: an operator previewing a hostPath cert
+# would get a clean manifest and the same EPERM the option exists to fix.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: test-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  rdmaDeviceAccess: HostPath
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

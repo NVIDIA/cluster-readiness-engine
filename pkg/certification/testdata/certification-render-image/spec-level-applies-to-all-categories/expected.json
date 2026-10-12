@@ -34,7 +34,7 @@
     ]
   },
   {
-    "workflow": "image-cert-training-nemot-c5620",
+    "workflow": "image-cert-training-nemot-4f168",
     "trainerImage": "registry.example.com/prebaked/workload:v1",
     "containers": [
       {

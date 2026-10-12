@@ -519,9 +519,16 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 	if opts.MlnxPerNode != nil {
 		mlnxPerNode = *opts.MlnxPerNode
 	}
+	// An architecture missing from gpu-defaults.yaml had no node shape and
+	// fell back to the Go-side default unless the options set the counts; say
+	// so on the Certification, with the resolved counts, instead of running
+	// silently at the wrong rank count (ADR-094). Emitted below, only by the
+	// reconcile whose Create succeeds, like the GCP H100 detection warnings.
+	archFallbackMessage := gpuArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode, gpuArchFieldHintCertification)
 	// The NIC resource name has no architecture default: it depends on the
 	// RDMA device plugin the site runs. The field always wins; when it is
-	// unset on the on-prem GB200/GB300 target the override matches, detection
+	// unset on the on-prem GB200/GB300 or x86 HGX B200/B300 target the
+	// overrides match, detection
 	// fills the gap from node allocatable, but only when exactly one
 	// candidate (rdma/* or nvidia.com/mlnxnics) is allocatable at the
 	// resolved mlnxPerNode count — the amount the templates will request per
@@ -576,6 +583,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		GpusPerNode:                gpusPerNode,
 		MlnxPerNode:                mlnxPerNode,
 		NicResourceName:            nicResourceName,
+		RDMADeviceAccess:           opts.RDMADeviceAccess,
 		GKETCPXONetworks:           gkeNetworks.Names,
 		TCPXOPluginVersion:         tcpxoPlugin.Version,
 		Resources:                  opts.Resources,
@@ -724,6 +732,10 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		// Only the reconcile whose Create succeeded warns, so a retry that finds
 		// the Workflow already there does not repeat it.
 		r.warnGCPH100DetectionFallbacks(certification, gkeNetworks, tcpxoPlugin)
+		if archFallbackMessage != "" {
+			r.warnf(certification, ReasonGPUArchitectureDefaults,
+				"%s/%s: %s", category.Domain, category.Variant, archFallbackMessage)
+		}
 	}
 
 	return workflowName, nil
@@ -806,6 +818,9 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	}
 	if override.NicResourceName != nil {
 		resolved.NicResourceName = override.NicResourceName
+	}
+	if override.RDMADeviceAccess != "" {
+		resolved.RDMADeviceAccess = override.RDMADeviceAccess
 	}
 	if override.Resources != nil {
 		resolved.Resources = override.Resources
@@ -1128,7 +1143,16 @@ func (r *CertificationReconciler) setExclusiveCondition(ctx context.Context, cer
 // When per-category options are set, a deterministic suffix is appended so that
 // duplicate domain/variant entries with different options get unique Workflows.
 func (r *CertificationReconciler) getWorkflowName(certification *nvcrev1alpha1.Certification, category nvcrev1alpha1.CertificateCategory) string {
-	raw := fmt.Sprintf("%s-%s-%s", certification.Name, category.Domain, category.Variant)
+	return WorkflowName(certification.Name, category)
+}
+
+// WorkflowName is the single naming rule for the Workflow a category creates.
+// Offline `nvcrectl certification render` calls it too: when the two paths
+// disagree, render previews a Workflow under a name the controller never
+// creates, and two categories whose options differ render documents with the
+// same metadata.name, so `render | kubectl apply -f -` keeps only the last.
+func WorkflowName(certName string, category nvcrev1alpha1.CertificateCategory) string {
+	raw := fmt.Sprintf("%s-%s-%s", certName, category.Domain, category.Variant)
 	if opts := category.Options; opts != nil {
 		raw += categoryOptionsSuffix(opts)
 	}
@@ -1165,10 +1189,33 @@ func categoryOptionsSuffix(opts *nvcrev1alpha1.CategoryOptions) string {
 	if opts.GpusPerNode != nil {
 		parts = append(parts, fmt.Sprintf("g%d", *opts.GpusPerNode))
 	}
+	// Two categories of one domain and variant differing only in
+	// rdmaDeviceAccess run genuinely different pods: one privileged with
+	// /dev/infiniband mounted, one not. Without a token here they would share
+	// a Workflow name, and the second category would adopt the first's
+	// Workflow and report its result for a configuration that never ran.
+	if opts.RDMADeviceAccess != "" {
+		parts = append(parts, rdmaDeviceAccessToken(opts.RDMADeviceAccess))
+	}
 	if len(parts) == 0 {
 		return ""
 	}
 	return "-" + strings.Join(parts, "-")
+}
+
+// rdmaDeviceAccessToken shortens an rdmaDeviceAccess value into a name-safe
+// token. Any value outside the enum is rejected before it reaches here by the
+// CRD on the controller path and by readCertification on the CLI path, so the
+// default arm only guards against a value added to the enum without a token.
+func rdmaDeviceAccessToken(value string) string {
+	switch value {
+	case nvcrev1alpha1.RDMADeviceAccessHostPath:
+		return "hostrdma"
+	case nvcrev1alpha1.RDMADeviceAccessDevicePlugin:
+		return "dprdma"
+	default:
+		return strings.ToLower(value)
+	}
 }
 
 // getRequeueInterval returns the configured requeue interval or the default.

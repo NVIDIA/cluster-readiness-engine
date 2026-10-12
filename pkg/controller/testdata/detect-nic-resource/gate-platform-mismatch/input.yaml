@@ -1,4 +1,4 @@
-# Detection only runs where the on-prem GB200/GB300 override applies: an AWS
+# Detection only runs where the on-prem GB200/GB300 or HGX B200/B300 overrides apply: an AWS
 # target never detects (and never emits the event), even with a clean single
 # candidate on every node.
 platform: aws

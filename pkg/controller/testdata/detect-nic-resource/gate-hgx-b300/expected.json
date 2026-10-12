@@ -1,0 +1,7 @@
+{
+  "name": "rdma/rdma_shared_device_a",
+  "detectionRan": true,
+  "candidates": [
+    "rdma/rdma_shared_device_a"
+  ]
+}

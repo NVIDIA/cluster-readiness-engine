@@ -87,7 +87,9 @@ overrides:
       in: [a100]
 # --- OCI (DGXC / CRI-O) ---
 # CRI-O rejects privileged containers with device plugin GPU injection
-# (device paths already exist on host). Replace privileged with SYS_ADMIN.
+# (device paths already exist on host), so privileged is turned off here. No
+# capability is added in its place: the device plugin already supplies the GPU
+# device cgroup entries DCGM needs, and SYS_ADMIN would not add any.
 - when:
     platform:
       equals: oci

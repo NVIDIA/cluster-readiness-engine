@@ -309,10 +309,16 @@
                                 "image": "nvcr.io/nvidia/pytorch:25.06-py3",
                                 "name": "node",
                                 "readinessProbe": {
+                                  "exec": {
+                                    "command": [
+                                      "sh",
+                                      "-c",
+                                      "command -v ssh \u003e/dev/null 2\u003e\u00261 || exec grep -q ':0016 [0-9A-F]*:[0-9A-F]* 0A ' /proc/net/tcp /proc/net/tcp6\nset -- ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 127.0.0.1 true\ncommand -v timeout \u003e/dev/null 2\u003e\u00261 \u0026\u0026 set -- timeout 8 \"$@\"\nexec \"$@\""
+                                    ]
+                                  },
                                   "initialDelaySeconds": 5,
-                                  "tcpSocket": {
-                                    "port": 22
-                                  }
+                                  "periodSeconds": 30,
+                                  "timeoutSeconds": 10
                                 },
                                 "resources": {
                                   "limits": {
@@ -325,7 +331,8 @@
                                 "securityContext": {
                                   "capabilities": {
                                     "add": [
-                                      "IPC_LOCK"
+                                      "IPC_LOCK",
+                                      "SYS_CHROOT"
                                     ]
                                   }
                                 },

@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# HGX B200 shares the x86 HGX block with B300 (ADR-094).
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: onprem-b200-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-B200
+  nodesPerJob: 2
+  nicResourceName: rdma/ib
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

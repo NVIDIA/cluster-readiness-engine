@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Opt-in host RDMA device access, for clusters that expose the Mellanox devices
+# through host device nodes instead of through an SR-IOV device plugin.
+#
+# The whole document is gated on rdmaDeviceAccess, so at "devicePlugin" and at
+# the unset default it renders empty and the call site contributes no override
+# at all. See ADR-088.
+#
+# The mount and the privileged flag are one unit, not two choices: kubelet
+# builds the container's device cgroup allowlist from its requested resources,
+# so a hostPath mount alone leaves /dev/infiniband/uverbs0 visible but makes
+# open() on it fail with EPERM. No capability substitutes; IPC_LOCK, which the
+# base entries already grant, does not.
+#
+# privileged also drops the runtime's confinement: the container runs without
+# the runtime's default seccomp filter and without AppArmor or SELinux
+# confinement, so the pod-level seccompProfile: RuntimeDefault the training
+# entries set no longer constrains it in practice, even though the manifest
+# still shows it. That is part of what rdmaDeviceAccess: hostPath asserts, and
+# why it is opt-in.
+#
+# A CRI-O runtime may refuse the combination outright. dcgm-level4.yaml turns
+# privileged off on OCI with the note that CRI-O rejects privileged containers
+# under device-plugin GPU injection, and every container patched here requests
+# nvidia.com/gpu. Where that rule is enforced the pods fail to start, which is
+# loud rather than silent, but it is the reason this is opt-in per category.
+#
+# The "when" clause is deliberately empty, which matches every platform and
+# architecture. The access model is a property of how the cluster plumbs RDMA,
+# not of its cloud or its board, and an opt-in that silently did nothing
+# outside one platform would be worse than one that renders where it is asked
+# to.
+#
+# Scoped to the "node" replicated job's "node" container, which is the worker
+# every consuming entry runs its ranks on. The MPI launcher is left alone: it
+# coordinates over TCP and opens no verbs device.
+#
+# type: Directory, not DirectoryOrCreate, so a node with no RDMA devices never
+# starts the pod rather than mounting an empty directory that NCCL reports as
+# "no devices found" after scheduling. Kubelet retries the mount, so the pod
+# sits in ContainerCreating with a FailedMount event naming the path; it does
+# not terminate on its own.
+#
+# timeoutPerJob is what bounds that wait, and it is the only thing that does.
+# Every entry renders it: the five communication entries at 1h by default,
+# the two training entries at 24h from their meta.yaml (a backstop against
+# never finishing, since a healthy training run can exceed the catalog-wide
+# 1h). The Job times out and the Workflow reports the failure; an explicit
+# spec.timeoutPerJob tightens either. Expect that long a wait on a training
+# node that lacks the device tree unless you set one.
+#
+# startupStallTimeoutSeconds does NOT cover this, on any entry. The startup
+# stall detector anchors on the GoodputMeasurement (job_controller.go:742-750,
+# startupStallAnchor at :1004-1020), and the GM only stamps status.startTime
+# after podutil.IsPodRunning(worker-0) passes
+# (goodputmeasurement_controller.go:488-491, :558-560). A pod held in
+# ContainerCreating never reaches Running, so the anchor never exists and the
+# detector never arms. Scheduling-stall detection is out too: it skips any pod
+# that already has a nodeName (job_controller.go:880), and a pod failing a
+# mount has been scheduled.
+{{- if eq .RDMADeviceAccess "hostPath" }}
+- when: {}
+  dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: {{ .EntryName }}-runtime
+    spec:
+      template:
+        spec:
+          replicatedJobs:
+          - name: node
+            template:
+              spec:
+                template:
+                  spec:
+                    containers:
+                    - name: node
+                      securityContext:
+                        privileged: true
+                      volumeMounts:
+                      - name: rdma-devices
+                        mountPath: /dev/infiniband
+                    volumes:
+                    - name: rdma-devices
+                      hostPath:
+                        path: /dev/infiniband
+                        type: Directory
+{{- end }}

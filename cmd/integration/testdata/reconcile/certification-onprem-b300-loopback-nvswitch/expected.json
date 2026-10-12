@@ -1,0 +1,343 @@
+{
+  "Certification/onprem-nc-b3-lb": {
+    "kind": "Certification",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "onprem-nc-b3-lb",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.product": "NVIDIA-B300-SXM6-AC"
+        }
+      },
+      "categories": [
+        {
+          "domain": "communication",
+          "variant": "nccl-loopback-nvswitch"
+        }
+      ],
+      "mlnxPerNode": 1,
+      "nicResourceName": "rdma/rdma_shared_device_a"
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkflowRunning",
+          "message": "Certification in progress"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "categoryStatuses": [
+        {
+          "domain": "communication",
+          "variant": "nccl-loopback-nvswitch",
+          "workflowRef": {
+            "name": "onprem-nc-b3-lb-communica-edc95",
+            "namespace": "default"
+          },
+          "status": "InProgress"
+        }
+      ]
+    }
+  },
+  "Workflow/onprem-nc-b3-lb-communica-edc95": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "onprem-nc-b3-lb-communica-edc95",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/category-domain": "communication",
+        "nvcre.nvidia.com/category-variant": "nccl-loopback-nvswitch",
+        "nvcre.nvidia.com/certification": "onprem-nc-b3-lb"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
+          "kind": "Certification",
+          "name": "onprem-nc-b3-lb",
+          "uid": "",
+          "controller": true,
+          "blockOwnerDeletion": true
+        }
+      ],
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "nccl-loopback-nvswitch-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                "command": [
+                  "/usr/local/bin/all_reduce_perf_mpi"
+                ],
+                "args": [
+                  "-b",
+                  "8",
+                  "-e",
+                  "16G",
+                  "-f",
+                  "2",
+                  "-g",
+                  "8",
+                  "-n",
+                  "100",
+                  "-N",
+                  "10"
+                ],
+                "env": [
+                  {
+                    "name": "NCCL_DEBUG",
+                    "value": "INFO"
+                  },
+                  {
+                    "name": "NCCL_MNNVL_ENABLE",
+                    "value": "0"
+                  }
+                ],
+                "numNodes": 1,
+                "numProcPerNode": 1
+              },
+              "runtimePatches": [
+                {
+                  "manager": "nvcre.nvidia.com/catalog",
+                  "trainingRuntimeSpec": {
+                    "template": {
+                      "spec": {
+                        "replicatedJobs": [
+                          {
+                            "name": "node",
+                            "template": {
+                              "spec": {
+                                "template": {
+                                  "spec": {
+                                    "volumes": [
+                                      {
+                                        "name": "dshm",
+                                        "emptyDir": {
+                                          "medium": "Memory"
+                                        }
+                                      }
+                                    ],
+                                    "containers": [
+                                      {
+                                        "name": "node",
+                                        "volumeMounts": [
+                                          {
+                                            "name": "dshm",
+                                            "mountPath": "/dev/shm"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ],
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          },
+          "nodeHealthMonitor": {
+            "cel": {
+              "expression": "node.spec.unschedulable == true"
+            }
+          },
+          "bandwidthMeasurement": {
+            "logProfileRef": "nccl-loopback",
+            "sampleInterval": "30s",
+            "testType": "loopback_all_reduce"
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.product": "NVIDIA-B300-SXM6-AC"
+          }
+        },
+        "execution": {
+          "timeoutPerJob": "1h0m0s"
+        },
+        "iterations": 1
+      },
+      "dependencies": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "metadata": {
+            "labels": {
+              "app": "nccl-loopback-nvswitch"
+            },
+            "name": "nccl-loopback-nvswitch-runtime"
+          },
+          "spec": {
+            "mlPolicy": {
+              "numNodes": 1,
+              "torch": {
+                "numProcPerNode": 1
+              }
+            },
+            "template": {
+              "spec": {
+                "replicatedJobs": [
+                  {
+                    "name": "node",
+                    "template": {
+                      "metadata": {
+                        "labels": {
+                          "trainer.kubeflow.org/trainjob-ancestor-step": "trainer"
+                        }
+                      },
+                      "spec": {
+                        "template": {
+                          "spec": {
+                            "containers": [
+                              {
+                                "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+                                "name": "node",
+                                "resources": {
+                                  "limits": {
+                                    "nvidia.com/gpu": "8",
+                                    "rdma/rdma_shared_device_a": "1"
+                                  },
+                                  "requests": {
+                                    "nvidia.com/gpu": "8",
+                                    "rdma/rdma_shared_device_a": "1"
+                                  }
+                                },
+                                "securityContext": {
+                                  "capabilities": {
+                                    "add": [
+                                      "IPC_LOCK"
+                                    ]
+                                  }
+                                }
+                              }
+                            ],
+                            "restartPolicy": "OnFailure",
+                            "tolerations": [
+                              {
+                                "operator": "Exists"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Iteration 1/1: 1 groups running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "dependencyRefs": [
+        {
+          "apiVersion": "trainer.kubeflow.org/v1alpha1",
+          "kind": "TrainingRuntime",
+          "name": "nccl-loopback-nvswitch-runtime-edc95-job",
+          "namespace": "default",
+          "scope": "job",
+          "groupName": "group-0",
+          "iteration": 1
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 1,
+        "nodesPerJob": 1,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "detectedPlatform": "onprem",
+        "detectedGPUArchitecture": "b300",
+        "gpuProducts": [
+          "NVIDIA-B300-SXM6-AC"
+        ],
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "onprem-b300-lb-node-01"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "onprem-nc-b3-lb-communica-edc95-job",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

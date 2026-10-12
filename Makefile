@@ -85,7 +85,7 @@ test: setup-envtest ## Run unit and integration tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	go test -v $$(go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./... | grep -v /cmd/integration)
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
-	go test ./cmd/integration/ -v -timeout 300s -count=1
+	go test ./cmd/integration/ -v -timeout 600s -count=1
 
 .PHONY: test-ci
 test-ci: setup-envtest gotestsum gocover-cobertura ## Run tests with JUnit XML and coverage reports for CI.
@@ -96,14 +96,14 @@ test-ci: setup-envtest gotestsum gocover-cobertura ## Run tests with JUnit XML a
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	"$(GOTESTSUM)" --junitfile integration-report.xml -- \
 		-coverprofile=cover-integration.out -covermode=atomic \
-		./cmd/integration/ -timeout 300s -count=1
+		./cmd/integration/ -timeout 600s -count=1
 	go tool cover -func=cover-unit.out
 	"$(GOCOVER_COBERTURA)" < cover-unit.out > coverage.xml
 
 .PHONY: test-integration
 test-integration: fmt vet setup-envtest ## Run integration tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
-	go test ./cmd/integration/ -v -timeout 300s -count=1
+	go test ./cmd/integration/ -v -timeout 600s -count=1
 
 ##@ UAT Tests (Kind + KWOK + Tilt + e2e-framework)
 

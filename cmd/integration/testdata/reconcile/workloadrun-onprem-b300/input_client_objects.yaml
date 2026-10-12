@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A torch WorkloadRun on two on-prem HGX B300 nodes (ADR-094). The HGX block
+# in the WorkloadRun override matrix must match: the rendered TrainingRuntime
+# carries the GPU-taint toleration and, with no nicResourceName set, the NIC
+# request detection picks from the shared-device pool at the requested count
+# of 1 (the unused rdma/rdmashared pool is at 0 and does not qualify). b300 is
+# a listed architecture, so numProcPerNode is 8 and no GPUArchitectureDefaults
+# warning is emitted.
+apiVersion: v1
+kind: Node
+metadata:
+  name: onprem-b300-wr-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-B300-SXM6-AC
+    kubernetes.io/hostname: onprem-b300-wr-node-01
+spec:
+  providerID: ""
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+    rdma/rdma_shared_device_a: "1000"
+    rdma/rdmashared: "0"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: onprem-b300-wr-node-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-B300-SXM6-AC
+    kubernetes.io/hostname: onprem-b300-wr-node-02
+spec:
+  providerID: ""
+status:
+  allocatable:
+    nvidia.com/gpu: "8"
+    rdma/rdma_shared_device_a: "1000"
+    rdma/rdmashared: "0"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: wr-onprem-b300
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-B300-SXM6-AC
+  image: nvcr.io/nvidia/pytorch:25.08-py3
+  framework:
+    torch:
+      script: /config/train.sh
+  numNodes: 2
+  mlnxPerNode: 1
+  config:
+    inline:
+      train.sh: |
+        #!/bin/bash
+        echo "training"

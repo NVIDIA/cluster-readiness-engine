@@ -1580,6 +1580,54 @@
         {
           "when": {
             "gpuArchitecture": {
+              "in": [
+                "b200",
+                "b300"
+              ]
+            },
+            "platform": {
+              "equals": "onprem"
+            }
+          },
+          "dependencies": [
+            {
+              "apiVersion": "trainer.kubeflow.org/v1alpha1",
+              "kind": "TrainingRuntime",
+              "metadata": {
+                "name": "wr-kai-labels-runtime"
+              },
+              "spec": {
+                "template": {
+                  "spec": {
+                    "replicatedJobs": [
+                      {
+                        "name": "node",
+                        "template": {
+                          "spec": {
+                            "template": {
+                              "spec": {
+                                "tolerations": [
+                                  {
+                                    "effect": "NoSchedule",
+                                    "key": "nvidia.com/gpu",
+                                    "operator": "Exists"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "when": {
+            "gpuArchitecture": {
               "equals": "rtxpro6000"
             },
             "platform": {

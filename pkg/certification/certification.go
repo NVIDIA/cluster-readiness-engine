@@ -12,6 +12,7 @@ import (
 	"maps"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -31,7 +32,6 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/cluster"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/gpu"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/render"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/report"
@@ -344,7 +344,7 @@ func applyWorkflowTransforms(
 // allocatable for the dry-run render path, mirroring the certification
 // controller: the field always wins (a per-category nicResourceName still
 // overrides the injected global via controller.ResolveOptions), detection
-// runs only for on-prem GB200/GB300 targets, and only a single qualifying
+// runs only for on-prem GB200/GB300 and x86 HGX B200/B300 targets, and only a single qualifying
 // candidate (rdma/* or nvidia.com/mlnxnics, allocatable at the resolved
 // mlnxPerNode count on every target node) is used. On zero or multiple
 // candidates it prints the note the controllers emit as a
@@ -525,6 +525,15 @@ func renderCertification(
 		if opts.MlnxPerNode != nil {
 			mlnxPerNode = *opts.MlnxPerNode
 		}
+		// --gpu-arch is validated against gpu-defaults.yaml; an architecture
+		// that arrived from the nodeSelector or from dry-run discovery is not,
+		// so say when the catalog had no node shape for it, once per category
+		// with the resolved counts, in the text the controller emits as the
+		// GPUArchitectureDefaults event (ADR-094).
+		if msg := controller.GPUArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode,
+			controller.GPUArchFieldHintCertification); msg != "" {
+			_, _ = fmt.Fprintf(os.Stderr, "%s/%s: %s\n", cat.Domain, cat.Variant, msg)
+		}
 		// The NIC resource name has no architecture default: it depends on
 		// the RDMA device plugin the site runs. Offline (no --dry-run) it is
 		// only ever user-supplied; on the dry-run path applyNICDetection has
@@ -557,6 +566,7 @@ func renderCertification(
 			GpusPerNode:                gpusPerNode,
 			MlnxPerNode:                mlnxPerNode,
 			NicResourceName:            nicResourceName,
+			RDMADeviceAccess:           opts.RDMADeviceAccess,
 			GKETCPXONetworks:           gkeTCPXONetworks,
 			TCPXOPluginVersion:         tcpxoPluginVersion,
 			Resources:                  opts.Resources,
@@ -591,10 +601,13 @@ func renderCertification(
 			return nil, fmt.Errorf("building workflow for %s/%s: %w", cat.Domain, cat.Variant, buildErr)
 		}
 
-		workflowName := naming.Truncate(
-			fmt.Sprintf("%s-%s-%s", cert.Name, cat.Domain, cat.Variant),
-			naming.MaxWorkflowNameLen,
-		)
+		// The controller's rule, not a copy of it. Rebuilding the name here
+		// is how render drifted from the controller before: it dropped the
+		// per-category options suffix, so a Certification with per-category
+		// options previewed under a name the controller never creates, and
+		// two categories differing only in options rendered two documents
+		// with one metadata.name.
+		workflowName := controller.WorkflowName(cert.Name, cat)
 
 		workflow := nvcrev1alpha1.Workflow{
 			APIVersion: nvcreAPIVersion,
@@ -659,7 +672,38 @@ func readCertification(path string) (*nvcrev1alpha1.Certification, error) {
 				cert.Name, cat.Domain, cat.Variant, err)
 		}
 	}
+
+	// Reject an out-of-enum rdmaDeviceAccess here for the same reason. The
+	// kubebuilder Enum marker only binds server-side, and offline render never
+	// reaches an API server, so a wrong-case "HostPath" would otherwise render
+	// cleanly with no mount and no privileged flag, handing an operator a
+	// manifest that looks right and still fails with EPERM on the cluster.
+	if err := validateRDMADeviceAccess(cert.Spec.RDMADeviceAccess); err != nil {
+		return nil, fmt.Errorf("certification %s: %w", cert.Name, err)
+	}
+	for _, cat := range cert.Spec.Categories {
+		if cat.Options == nil {
+			continue
+		}
+		if err := validateRDMADeviceAccess(cat.Options.RDMADeviceAccess); err != nil {
+			return nil, fmt.Errorf("certification %s: category %s/%s: %w",
+				cert.Name, cat.Domain, cat.Variant, err)
+		}
+	}
 	return &cert, nil
+}
+
+// validateRDMADeviceAccess rejects any non-empty rdmaDeviceAccess that is not
+// one of the enum values. Empty means unset, which is the devicePlugin default.
+func validateRDMADeviceAccess(value string) error {
+	if value == "" {
+		return nil
+	}
+	if slices.Contains(nvcrev1alpha1.ValidRDMADeviceAccessValues, value) {
+		return nil
+	}
+	return fmt.Errorf("invalid rdmaDeviceAccess %q; valid values: [%s]",
+		value, strings.Join(nvcrev1alpha1.ValidRDMADeviceAccessValues, ", "))
 }
 
 // platformToProviderID is now syntheticProviderID in run_common.go.

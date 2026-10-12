@@ -1,6 +1,6 @@
 [
   {
-    "workflow": "azure-a100-training-cert-a4ba9",
+    "workflow": "azure-a100-training-cert-d9b11",
     "dependencyKinds": [
       "TrainingRuntime",
       "ConfigMap",

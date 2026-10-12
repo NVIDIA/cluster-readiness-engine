@@ -23,7 +23,7 @@ go test ./pkg/workload/ -run TestAdapterForSpec -v
 Run a single integration test case:
 ```bash
 KUBEBUILDER_ASSETS="$(bin/setup-envtest use -p path)" \
-  go test ./cmd/integration/ -v -timeout 300s -count=1 -run TestIntegration/reconcile/job-checkpoint-restart
+  go test ./cmd/integration/ -v -timeout 600s -count=1 -run TestIntegration/reconcile/job-checkpoint-restart
 ```
 
 Update golden files after intentional changes. Unit and integration golden files regenerate separately:
@@ -124,7 +124,7 @@ go test ./test/releasepolicy/ -run TestAttestValidationRejects -v
 
 ## Critical Pitfalls
 
-- **After modifying `*_types.go`**: Must run `make manifests generate` before anything else compiles (stale deepcopy). `make manifests` writes CRDs directly to `helm/cluster-readiness-engine/crds/` and RBAC to `helm/cluster-readiness-engine/templates/`.
+- **After modifying `*_types.go`**: Must run `make manifests generate` before anything else compiles (stale deepcopy). `make manifests` writes CRDs directly to `helm/cluster-readiness-engine/crds/`. It writes no RBAC: controller-gen runs with `output:rbac:none`, so `helm/cluster-readiness-engine/templates/manager-role.yaml` is maintained by hand and the `+kubebuilder:rbac` markers only document it. A new or widened marker must be mirrored into that file in the same change, or the grant never reaches a cluster.
 - **Blank imports required**: `pkg/catalog` must be blank-imported in `cmd/nvcrectl/main.go` and test suites to trigger `init()` registration.
 - **envtest has no GC controller**: Cascade deletion via OwnerReference won't work in tests. Controllers must explicitly delete child resources in `handleDeletion()`.
 - **`runtime.RawExtension` with `json:",inline"`**: Loses sibling fields during marshal/unmarshal. Requires custom `MarshalJSON`/`UnmarshalJSON` on the parent struct (see `api/v1alpha1/dependency_json.go`).
@@ -248,7 +248,7 @@ spec:
    `LD_LIBRARY_PATH` and `PATH` are **not** EFA markers. GB300 on AWS sets them on purpose (`pkg/catalog/entries/_lib/nccl/aws-gb300-roce-env.yaml`), pointing at `/opt/amazon/openmpi/lib`, which is correct on an AWS instance whatever the interconnect. Do not treat them as leakage.
 
 3. **Resources by architecture**:
-   - GB200: `hugepages-2Mi: 10256Mi`, `vpc.amazonaws.com/efa: 4`, `amazon-efa` hostPath volume
+   - GB200: `hugepages-2Mi: 10256Mi`, `vpc.amazonaws.com/efa: 4`
    - GB300: `roce-channel` resource claim with `roce.networking.k8s.aws`, NO hugepages, NO EFA
    - H100: `vpc.amazonaws.com/efa: 32`, NO hugepages, NO ComputeDomain
 

@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Enum marker is case-sensitive, and "HostPath" is the spelling an operator
+# reaches for. Nothing exercised the marker before this case: without it, a
+# weakened or deleted Enum would let the wrong case through and the workload
+# would render with no mount and no privileged flag, failing with EPERM on the
+# cluster for the operator who set the field to avoid exactly that.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-rdma-badcase
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  rdmaDeviceAccess: HostPath
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

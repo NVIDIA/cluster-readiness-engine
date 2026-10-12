@@ -36,7 +36,7 @@ spec:
 nvcrectl certification run --cert-file gb200-cert.yaml --wait
 ```
 
-The controller auto-detects AWS + GB200 and applies EFA-specific resources (`hugepages-2Mi`, `vpc.amazonaws.com/efa: 4`, EFA hostPath volume) automatically.
+The controller auto-detects AWS + GB200 and applies EFA-specific resources (`hugepages-2Mi`, `vpc.amazonaws.com/efa: 4`) automatically.
 
 ### GB300 (RoCE interconnect)
 

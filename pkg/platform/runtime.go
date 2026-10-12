@@ -273,10 +273,88 @@ func BuildTorchRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	}
 }
 
+// sshdProbeCommand is the worker's readiness check: a real loopback SSH
+// session, not a TCP connect.
+//
+// A tcpSocket probe on port 22 answers "is something listening", which is not
+// the question the launcher's dependsOn gate is asking. sshd binds the port
+// before it can serve anything and keeps the listener up no matter how badly
+// individual sessions fail, so every way a worker can accept connections and
+// still refuse work reads as Ready: unreadable host keys, authorized_keys
+// written with the wrong mode, and the issue #461 case, where privilege
+// separation cannot chroot and sshd kills each session preauth. The gate then
+// releases mpirun against workers that refuse every orted, and the only symptom
+// is the generic ORTE banner.
+//
+// A banner-level check would not close this. OpenSSH writes its version string
+// in kex_exchange_identification, before privsep_preauth forks and chroots
+// (sshd.c; sshd-session.c from 9.8), so a worker failing exactly the way #461
+// fails still greets a prober. The chroot is on the path to authentication, so
+// authentication is the earliest point that can observe it: the probe has to
+// open a real session.
+//
+// When coreutils `timeout` is present the session runs under `timeout 8`,
+// inside the probe's own 10s budget, so a hung connection is reported with
+// ssh's stderr rather than the kubelet's generic "command timed out", and the
+// probe stays bounded on a kubelet whose ExecProbeTimeout gate is off. Without
+// `timeout` the same ssh runs bare and the kubelet's timeoutSeconds is the
+// bound; neither helper's absence turns a healthy worker into a failing one.
+//
+// It dials 127.0.0.1, never a peer, so the probe reports on this worker alone.
+// Probing other workers would couple their readiness together and deadlock on
+// whichever starts first. `true` runs under the user's login shell, so the
+// session is exercised end to end rather than stopping at authentication.
+//
+// The `command -v ssh` guard keeps the probe honest on an image that ships sshd
+// without the client. Every image NVCRE renders today has both (on Debian and
+// Ubuntu openssh-server depends on openssh-client, and the fallback path
+// installs it), but a user-supplied image in a WorkloadRun need not, and a
+// probe that fails because the prober is missing would report a healthy worker
+// as broken forever. The fallback reads /proc/net/tcp directly, which needs
+// nothing but grep: a listening socket on port 22 has a local address ending
+// in :0016 (22 in hex) and state 0A (TCP_LISTEN). That is the same question
+// the old tcpSocket probe asked, so such a worker keeps exactly what it had.
+const sshdProbeCommand = `command -v ssh >/dev/null 2>&1 || exec grep -q ':0016 [0-9A-F]*:[0-9A-F]* 0A ' /proc/net/tcp /proc/net/tcp6
+set -- ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 127.0.0.1 true
+command -v timeout >/dev/null 2>&1 && set -- timeout 8 "$@"
+exec "$@"`
+
+// sshdReadinessProbe returns the probe block for a container running sshd.
+//
+// timeoutSeconds is 10 so the 8s `timeout` around ssh expires first; the
+// field's default of 1s would fail a healthy worker under load.
+//
+// periodSeconds is 30 rather than the default 10 because the probe keeps
+// running for the pod's whole life while nothing consumes its verdict after
+// the launcher's dependsOn gate has fired, and sshd -e logs every accepted
+// session into the worker's log. Thirty seconds keeps that to two sessions a
+// minute. The cost is up to 30s of added gate latency on an image that
+// installs openssh-server at start; a prebaked image passes the first probe
+// at 5s. failureThreshold keeps its default: readiness starts out failed and
+// flips on the first success, so the threshold never delays a worker becoming
+// Ready, and after the gate nothing depends on the Ready-to-NotReady edge
+// (JobSet publishes not-ready addresses, so DNS does not either).
+//
+// A worker that never passes this probe never releases the gate, so the
+// launcher is never created and the Job stays InProgress until timeoutPerJob.
+// The worker's own events carry the reason (`Readiness probe failed` with
+// ssh's stderr), which is the trade this probe makes: a slower terminal
+// failure in exchange for a direct diagnosis instead of the ORTE banner.
+func sshdReadinessProbe() map[string]any {
+	return map[string]any{
+		"initialDelaySeconds": 5,
+		"periodSeconds":       30,
+		"timeoutSeconds":      10,
+		"exec": map[string]any{
+			keyCommand: []string{"sh", "-c", sshdProbeCommand},
+		},
+	}
+}
+
 // BuildMPIRuntime creates TrainingRuntime dependencies for MPI-based workloads.
 // Generates:
 // - A runtime with MPI mlPolicy and launcher+node replicatedJobs
-// - Worker nodes with sshd, IPC_LOCK, readiness probe, and cfg.Env
+// - Worker nodes with sshd, capabilities, an SSH readiness probe, and cfg.Env
 // - Launcher with mpirun, SSH key setup, and cfg.Env
 //
 // The worker's openssh-server install is guarded by `test -x /usr/sbin/sshd`,
@@ -312,15 +390,18 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 				"chmod 644 /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys && " +
 				"/usr/sbin/sshd -De",
 		},
-		"readinessProbe": map[string]any{
-			"initialDelaySeconds": 5,
-			"tcpSocket": map[string]any{
-				"port": 22,
-			},
-		},
+		"readinessProbe": sshdReadinessProbe(),
 		"securityContext": map[string]any{
 			"capabilities": map[string]any{
-				"add": []string{"IPC_LOCK"},
+				// SYS_CHROOT is what sshd needs, not what the workload needs.
+				// OpenSSH has made privilege separation mandatory since 7.5, so
+				// every inbound session chroots to the compiled-in PRIVSEP_PATH
+				// before authenticating. Docker and containerd grant SYS_CHROOT
+				// in their default set, which is why this went unnoticed; CRI-O
+				// dropped it from default_capabilities, so on OpenShift the
+				// chroot returns EPERM and sshd kills the session preauth while
+				// the listener stays up (issue #461).
+				"add": []string{"IPC_LOCK", "SYS_CHROOT"},
 			},
 		},
 		keyVolumeMounts: []map[string]any{
