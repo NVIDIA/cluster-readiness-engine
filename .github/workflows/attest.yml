@@ -125,7 +125,9 @@ on:
         type: boolean
         default: false
       cosign_version:
-        description: 'Pinned cosign version. Governs the emitted bundle format.'
+        description: >-
+          Pinned cosign version. Governs the emitted bundle format. Must be at
+          least v3.1.3, the first v3 release that patches GHSA-fx35-mq7g-6g98.
         required: false
         type: string
         default: 'v3.1.3'
@@ -214,8 +216,27 @@ jobs:
           [[ "${IN_EXPECTED_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]] \
             || fail "expected_digest must match sha256:<64 lowercase hex>"
 
-          [[ "${IN_COSIGN_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+          # Each component is capped at six digits so the integer comparisons
+          # below can always evaluate it. An out-of-range value would make
+          # the test builtin error out, which an if reads as false, and the
+          # floor would fail open.
+          [[ "${IN_COSIGN_VERSION}" =~ ^v[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}$ ]] \
             || fail "cosign_version must be vMAJOR.MINOR.PATCH"
+          # The regex accepts any vMAJOR.MINOR.PATCH, including v3.1.2, the last
+          # v3 release affected by GHSA-fx35-mq7g-6g98 (legacy-bundle
+          # verification bypass). Compare the three integers. v3.1.3 is the
+          # first fixed v3 release; v2.6.5 also patches the advisory but this
+          # workflow pins the v3 line, so anything older than v3.1.3 is refused.
+          cosign_rest="${IN_COSIGN_VERSION#v}"
+          cosign_maj="${cosign_rest%%.*}"
+          cosign_rest="${cosign_rest#*.}"
+          cosign_min="${cosign_rest%%.*}"
+          cosign_pat="${cosign_rest#*.}"
+          if [ "${cosign_maj}" -lt 3 ] ||
+             { [ "${cosign_maj}" -eq 3 ] && [ "${cosign_min}" -lt 1 ]; } ||
+             { [ "${cosign_maj}" -eq 3 ] && [ "${cosign_min}" -eq 1 ] && [ "${cosign_pat}" -lt 3 ]; }; then
+            fail "cosign_version ${IN_COSIGN_VERSION} is below the minimum v3.1.3 (GHSA-fx35-mq7g-6g98)"
+          fi
           [[ "${IN_CRANE_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
             || fail "crane_version must be vMAJOR.MINOR.PATCH"
 
