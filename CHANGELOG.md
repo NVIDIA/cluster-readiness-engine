@@ -158,6 +158,11 @@ followed them.
 
 ### Changed
 
+- NCCL bandwidth metrics now include the Job's `workflow` label. This changes
+  Prometheus series identity, so queries matching an absent or empty `workflow`
+  label will not match new measurements. Measurements created before this change
+  retain the empty label until they are removed.
+
 - The GCP H100 NCCL entries (`nccl-all-reduce`, `nccl-all-gather`, `nccl-alltoall`,
   `nccl-loopback`, `nccl-loopback-nvswitch`) and training entries (`nemotron5-8b`,
   `nemotron5-56b`) run the CUDA image that matches the detected TCPXO plugin, so plugin
