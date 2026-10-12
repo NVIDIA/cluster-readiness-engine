@@ -189,11 +189,11 @@ type CategoryOptions struct {
 	MlnxPerNode *int32 `json:"mlnxPerNode,omitempty"`
 
 	// nicResourceName sets the Kubernetes extended resource name of the RDMA
-	// NIC devices requested on workload containers for on-prem GB200/GB300
-	// targets (e.g., "rdma/ib", "nvidia.com/mlnxnics"); the name depends on
-	// the RDMA device plugin the site runs, and the per-container count
-	// comes from mlnxPerNode. When unset, the controller auto-detects the
-	// name on on-prem GB200/GB300 targets: a single candidate resource
+	// NIC devices requested on workload containers for on-prem GB200/GB300 and
+	// x86 HGX B200/B300 targets (e.g., "rdma/ib", "nvidia.com/mlnxnics"); the
+	// name depends on the RDMA device plugin the site runs, and the
+	// per-container count comes from mlnxPerNode. When unset, the controller
+	// auto-detects the name on those targets: a single candidate resource
 	// (rdma/* or nvidia.com/mlnxnics) allocatable at the resolved
 	// mlnxPerNode count on every target node is requested; zero or several
 	// qualifying candidates inject nothing and emit a NICResourceDetection

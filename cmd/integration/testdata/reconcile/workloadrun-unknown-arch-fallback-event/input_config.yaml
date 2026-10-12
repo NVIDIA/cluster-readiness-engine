@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: wr-onprem-h20
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: WorkloadRun
+    name: wr-onprem-h20
+    namespace: default
+  - kind: Workflow
+    name: wr-onprem-h20
+    namespace: default
+  # The Workflow keeps its base spec; the override patches land on the
+  # TrainingRuntime the Workflow controller creates, so that object is the
+  # evidence.
+  - kind: TrainingRuntime
+    name: wr-onprem-h20-runtime-59268-job
+    namespace: default
+events:
+  - involvedKind: WorkloadRun
+    involvedName: wr-onprem-h20
+    namespace: default
+    expect:
+      - {type: Warning, reason: GPUArchitectureDefaults}
+      - {type: Normal, reason: WorkflowCreated}

@@ -17,6 +17,19 @@ followed them.
 
 ### Added
 
+- The x86 HGX B300 GPU architecture (`b300`, product label `NVIDIA-B300-SXM6-AC`)
+  is in the catalog's GPU defaults table at eight GPUs and eight NICs per node, so
+  it renders at the right rank count and `--gpu-arch b300` is accepted. A new
+  on-prem override for x86 HGX B200/B300 nodes tolerates the `nvidia.com/gpu` taint
+  with any value, on the MPI launcher too, and makes `nicResourceName` and `mlnxPerNode` request RDMA devices
+  on those nodes, with NIC auto-detection widened to match. It sets no NCCL
+  environment. On every on-prem fragment, `nicResourceName` with `mlnxPerNode: 0`
+  now omits the NIC request instead of rendering a count of zero (#464)
+- A Warning event, reason `GPUArchitectureDefaults`, on the Certification or
+  WorkloadRun when the detected GPU architecture is missing from the catalog's
+  defaults table, naming the four-GPU fallback the catalog has for it and the
+  counts the run is actually sized at. Every `nvcrectl` render path and
+  `nvcrectl cluster info` print the same message (#464)
 - GCP H100 detects the TCPXO NCCL plugin release from the `nccl-tcpxo-installer` pods
   on the target nodes and picks the NCCL and training images and the paired
   `tcpxo-daemon` from it: v1.0.15 and v1.0.16 run `pytorch:25.06-py3` (CUDA 12) with
@@ -39,6 +52,37 @@ followed them.
 
 ### Fixed
 
+- `communication/nccl-loopback` and `nccl-loopback-nvswitch` on on-prem GB200/GB300,
+  Mistral GB300, and GCP GB200/GB300 rendered a TrainingRuntime with both `torch` and
+  `mpi` policies, which the API server rejects at dependency creation, and lost the
+  entry's tolerate-everything toleration. The platform comm fragments no longer set
+  `mlPolicy` (the MPI entries' base runtimes already do) and the loopback entries
+  restore the toleration after each of them (#464)
+- The MPI launcher pod of the on-prem GB200/GB300 communication entries had no
+  toleration for the arm64 and GPU taints the node pods tolerate, so on a fleet
+  with no untainted node it stayed Pending; it now tolerates both (#464)
+- OCI GB300 NCCL communication and nemotron training entries ship an NCCL
+  topology file and set `NCCL_TOPO_FILE`, so NCCL pairs each GPU with its own RoCE
+  rail at the full rail speed (#458)
+- OCI GB300 entries no longer force `NCCL_DMABUF_ENABLE=0` with MNNVL off, so
+  DMA-BUF GPU Direct RDMA is used over RoCE (#458)
+- A Certification with a checkpointed training run now completes on clusters that
+  enforce RBAC. The checkpoint PVC is a job-scoped dependency, and the controller
+  sets the Job as its owner with an Update, which the manager role did not grant on
+  PersistentVolumeClaims. The Job and its TrainJob were created and kept running,
+  but the Workflow never marked the group Running, so it never observed the Job and
+  the run never completed (#463)
+- Multi-node MPI workers (the multi-node NCCL categories and WorkloadRun
+  `framework.mpi`) now request `SYS_CHROOT` alongside `IPC_LOCK`. `sshd` chroots
+  during privilege separation before authenticating, so on CRI-O, which does not
+  grant the capability by default, every SSH session died preauth while the
+  listener stayed up and `mpirun` failed with the generic ORTE banner. The worker
+  readiness probe now opens a real loopback SSH session instead of a TCP connect,
+  so a worker whose `sshd` cannot serve sessions stays `NotReady`, the launcher is
+  not created, and the worker's events name the failure; the Job then waits on
+  `timeoutPerJob`. An image without an `ssh` client keeps the previous listening
+  check. The AWS GB200 and H100 override blocks, which restate the worker's
+  capability list, carry the capability for MPI as well (#461)
 - `nvcre_job_status` now reports `failed` for a Job that timed out on
   `timeoutPerJob`. The gauge was written only by the Job tier, so the Workflow
   reconciler's timeout write left it at `in_progress` for the rest of the run, and

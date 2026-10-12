@@ -50,7 +50,7 @@ type BuildConfig struct {
 	MlnxPerNode int32
 
 	// NicResourceName is the extended resource name of the RDMA NIC devices
-	// requested by the on-prem GB200/GB300 templates (e.g., "rdma/ib"). Empty
+	// requested by the on-prem GB200/GB300 and HGX B200/B300 templates (e.g., "rdma/ib"). Empty
 	// means the templates omit the NIC resource block. The per-container count
 	// comes from MlnxPerNode.
 	NicResourceName string

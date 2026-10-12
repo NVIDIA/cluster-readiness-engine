@@ -26,6 +26,11 @@ import (
 //go:embed overrides/*.yaml
 var overridesFS embed.FS
 
+// OverridesFS returns the embedded platform overrides filesystem, which
+// declares dependencies of its own. Exported so test/helm can derive the set of
+// dependency kinds the manager role has to grant, rather than restating it.
+func OverridesFS() embed.FS { return overridesFS }
+
 // OverrideConfig holds template data for rendering platform overrides.
 // Field names match the catalog template data shape so _lib/ fragments
 // can be rendered directly without mapping.
@@ -36,7 +41,7 @@ type OverrideConfig struct {
 	MlnxPerNode int32
 
 	// NicResourceName is the extended resource name of the RDMA NIC devices
-	// for the on-prem GB200/GB300 override. Empty means the override omits
+	// for the on-prem GB200/GB300 and HGX B200/B300 overrides. Empty means the override omits
 	// the NIC resource block. The per-container count comes from MlnxPerNode.
 	NicResourceName string
 

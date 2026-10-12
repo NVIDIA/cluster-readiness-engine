@@ -1,0 +1,5 @@
+# No architecture at all: the callers error out elsewhere.
+gpuArch: ""
+gpusPerNode: 4
+mlnxPerNode: 0
+fieldHint: Certification
