@@ -27,6 +27,9 @@
 #     Each is a measured GB300 finding tied to that board's four 800 Gbps
 #     rails and its topology file, not an OCI platform fact. Leaving them
 #     unset keeps GB200 on the NCCL defaults rather than on tuning taken from
-#     different hardware.
+#     different hardware. The topology file in particular (topo/oci-gb300.xml)
+#     describes a GB300 node, sm 103 with SR-IOV rail VFs; a GB200 file would
+#     have to be captured on a GB200 shape, so the GB200 arm mounts none and
+#     NCCL auto-detects, as it did before.
 - name: UCX_IB_GID_INDEX
   value: "3"
