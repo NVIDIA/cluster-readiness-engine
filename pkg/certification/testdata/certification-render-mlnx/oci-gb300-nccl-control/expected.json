@@ -3,7 +3,8 @@
     "workflow": "oci-cert-communication-nc-db169",
     "dependencyKinds": [
       "TrainingRuntime",
-      "ComputeDomain"
+      "ComputeDomain",
+      "ConfigMap"
     ],
     "replicatedJobs": [
       {
