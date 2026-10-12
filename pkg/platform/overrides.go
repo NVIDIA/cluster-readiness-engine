@@ -26,6 +26,11 @@ import (
 //go:embed overrides/*.yaml
 var overridesFS embed.FS
 
+// OverridesFS returns the embedded platform overrides filesystem, which
+// declares dependencies of its own. Exported so test/helm can derive the set of
+// dependency kinds the manager role has to grant, rather than restating it.
+func OverridesFS() embed.FS { return overridesFS }
+
 // OverrideConfig holds template data for rendering platform overrides.
 // Field names match the catalog template data shape so _lib/ fragments
 // can be rendered directly without mapping.

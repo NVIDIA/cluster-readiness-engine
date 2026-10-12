@@ -66,6 +66,12 @@ followed them.
   rail at the full rail speed (#458)
 - OCI GB300 entries no longer force `NCCL_DMABUF_ENABLE=0` with MNNVL off, so
   DMA-BUF GPU Direct RDMA is used over RoCE (#458)
+- A Certification with a checkpointed training run now completes on clusters that
+  enforce RBAC. The checkpoint PVC is a job-scoped dependency, and the controller
+  sets the Job as its owner with an Update, which the manager role did not grant on
+  PersistentVolumeClaims. The Job and its TrainJob were created and kept running,
+  but the Workflow never marked the group Running, so it never observed the Job and
+  the run never completed (#463)
 - `nvcre_job_status` now reports `failed` for a Job that timed out on
   `timeoutPerJob`. The gauge was written only by the Job tier, so the Workflow
   reconciler's timeout write left it at `in_progress` for the rest of the run, and
