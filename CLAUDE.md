@@ -23,7 +23,7 @@ go test ./pkg/workload/ -run TestAdapterForSpec -v
 Run a single integration test case:
 ```bash
 KUBEBUILDER_ASSETS="$(bin/setup-envtest use -p path)" \
-  go test ./cmd/integration/ -v -timeout 300s -count=1 -run TestIntegration/reconcile/job-checkpoint-restart
+  go test ./cmd/integration/ -v -timeout 600s -count=1 -run TestIntegration/reconcile/job-checkpoint-restart
 ```
 
 Update golden files after intentional changes. Unit and integration golden files regenerate separately:

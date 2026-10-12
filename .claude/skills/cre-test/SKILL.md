@@ -65,7 +65,7 @@ go test ./pkg/workload/ -run TestAdapterForSpec -v
 
 # Single integration test case
 KUBEBUILDER_ASSETS="$(bin/setup-envtest use -p path)" \
-  go test ./cmd/integration/ -v -timeout 300s -count=1 \
+  go test ./cmd/integration/ -v -timeout 600s -count=1 \
   -run TestIntegration/reconcile/job-checkpoint-restart
 ```
 
@@ -88,7 +88,7 @@ TESTUTIL_UPDATE_EXPECTED=true make test-integration   # integration goldens
 Or for a specific integration case:
 ```bash
 TESTUTIL_UPDATE_EXPECTED=true KUBEBUILDER_ASSETS="$(bin/setup-envtest use -p path)" \
-  go test ./cmd/integration/ -v -timeout 300s -count=1 \
+  go test ./cmd/integration/ -v -timeout 600s -count=1 \
   -run TestIntegration/reconcile/<case-name>
 ```
 

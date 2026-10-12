@@ -15,7 +15,7 @@ also excluded.
 | `golang.org/x/text` | v0.42.0 | BSD-3-Clause | https://github.com/golang/text/blob/v0.42.0/LICENSE |
 | `github.com/evanphx/json-patch/v5` | v5.9.11 | BSD-3-Clause | https://github.com/evanphx/json-patch/blob/v5.9.11/LICENSE |
 | `github.com/google/cel-go` | v0.31.0 | Apache-2.0, BSD-3-Clause | https://github.com/google/cel-go/blob/v0.31.0/LICENSE |
-| `github.com/modelcontextprotocol/go-sdk` | v1.7.0 | Apache-2.0, MIT | https://github.com/modelcontextprotocol/go-sdk/blob/v1.7.0/LICENSE |
+| `github.com/modelcontextprotocol/go-sdk` | v1.8.0 | Apache-2.0, MIT | https://github.com/modelcontextprotocol/go-sdk/blob/v1.8.0/LICENSE |
 | `github.com/kubeflow/trainer/v2` | v2.2.1 | Apache-2.0 | https://github.com/kubeflow/trainer/blob/v2.2.1/LICENSE |
 | `github.com/prometheus/client_golang` | v1.24.1 | Apache-2.0 | https://github.com/prometheus/client_golang/blob/v1.24.1/LICENSE |
 | `github.com/spf13/cobra` | v1.10.2 | Apache-2.0 | https://github.com/spf13/cobra/blob/v1.10.2/LICENSE.txt |
@@ -2376,9 +2376,9 @@ Apache license:
 
 ### github.com/modelcontextprotocol/go-sdk
 
-* Version: v1.7.0
+* Version: v1.8.0
 * License: Apache-2.0, MIT
-* Source: https://github.com/modelcontextprotocol/go-sdk/blob/v1.7.0/LICENSE
+* Source: https://github.com/modelcontextprotocol/go-sdk/blob/v1.8.0/LICENSE
 
 #### LICENSE
 
