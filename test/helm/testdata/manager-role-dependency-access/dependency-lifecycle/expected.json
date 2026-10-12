@@ -1,3 +1,25 @@
 {
+  "granted": [
+    "create configmaps",
+    "get configmaps",
+    "update configmaps",
+    "delete configmaps",
+    "create persistentvolumeclaims",
+    "get persistentvolumeclaims",
+    "update persistentvolumeclaims",
+    "delete persistentvolumeclaims",
+    "create trainingruntimes.trainer.kubeflow.org",
+    "get trainingruntimes.trainer.kubeflow.org",
+    "update trainingruntimes.trainer.kubeflow.org",
+    "delete trainingruntimes.trainer.kubeflow.org",
+    "create resourceclaimtemplates.resource.k8s.io",
+    "get resourceclaimtemplates.resource.k8s.io",
+    "update resourceclaimtemplates.resource.k8s.io",
+    "delete resourceclaimtemplates.resource.k8s.io",
+    "create computedomains.resource.nvidia.com",
+    "get computedomains.resource.nvidia.com",
+    "update computedomains.resource.nvidia.com",
+    "delete computedomains.resource.nvidia.com"
+  ],
   "missing": []
 }
