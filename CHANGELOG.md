@@ -113,6 +113,13 @@ followed them.
   `k8s.v1.cni.cncf.io/networks` annotation. The Azure, OCI, TogetherAI, and Forge
   templates now drop the request entirely at zero, and a platform default can lower
   an architecture's count to none (#350)
+- On the `mpi` framework a WorkloadRun's `spec.volumes`, `spec.volumeMounts`,
+  `spec.config`, and `spec.initContainers` were silently dropped: the rendered
+  TrainingRuntime carried none of them while `torch` and `exec` honoured them, so an
+  NCCL run that reached its RDMA devices through `hostPath` mounts came up without
+  them and a binary shipped in `spec.config` was not reachable at `/config`. They
+  now land on the MPI worker pods, where the ranks run; the launcher pod is
+  unchanged (#455)
 
 ## [0.6.0] - 2026-10-05
 

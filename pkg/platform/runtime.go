@@ -122,11 +122,14 @@ type RuntimeConfig struct {
 	GpusPerNode int32
 	// Env is the merged env vars (base NCCL + user).
 	Env []corev1.EnvVar
-	// Volumes are additional volumes.
+	// Volumes are additional volumes on the workload pods, which on MPI are
+	// the worker pods (the launcher is not touched).
 	Volumes []corev1.Volume
-	// VolumeMounts are additional volume mounts.
+	// VolumeMounts are additional volume mounts on the workload container of
+	// the workload pods, which on MPI are the worker pods.
 	VolumeMounts []corev1.VolumeMount
-	// InitContainers are user-provided init containers.
+	// InitContainers are user-provided init containers on the workload pods,
+	// which on MPI are the worker pods.
 	InitContainers []corev1.Container
 	// Resources overrides GPU/memory/CPU resources.
 	Resources *corev1.ResourceRequirements
@@ -371,8 +374,34 @@ func sshdReadinessProbe() map[string]any {
 // launched through it may not inherit them. A variable that must reach the
 // ranks should be passed as "-x NAME=value" in mpiArgs, which forwards it
 // through mpirun itself.
+//
+// cfg.Volumes, cfg.VolumeMounts and cfg.InitContainers go on the worker pod
+// and its "node" container only, after the built-in mpi-ssh-auth and dshm
+// entries, the same way BuildTorchRuntime emits them (issue #455: they used
+// to be dropped here, so spec.volumes, spec.volumeMounts, spec.config and
+// spec.initContainers were a silent no-op on the mpi framework). The launcher
+// is left alone on purpose. The ranks run on the worker (mpirun on the
+// launcher starts them there over ssh; runLauncherAsNode is off, so the
+// launcher hosts no rank), and the launcher is a coordinator with fixed
+// resources (cpu 2, memory 1Gi, no GPU; spec.resources never applies to it),
+// so a hugepages emptyDir there would fail at volume setup on the kubelet,
+// which refuses the medium without a hugepages request on the pod, and a
+// ReadWriteOnce PVC could not attach on a second node. This matches the
+// catalog precedent in
+// pkg/catalog/entries/_lib/overrides/hostpath-rdma.yaml and ADR-088, which
+// scope the RDMA hostPath mount to the node container. Env is different: the
+// launcher's own MPI initialisation reads it, so it stays on both containers.
 func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
-	// Worker (node) container: runs sshd
+	// Worker (node) container: runs sshd. Volume mounts: SSH auth + shared
+	// memory + user-provided, in that order.
+	workerMounts := make([]any, 0, 2+len(cfg.VolumeMounts))
+	workerMounts = append(workerMounts,
+		map[string]any{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
+		map[string]any{keyName: volumeNameDSHM, keyMountPath: "/dev/shm"},
+	)
+	for _, m := range cfg.VolumeMounts {
+		workerMounts = append(workerMounts, m)
+	}
 	workerContainer := map[string]any{
 		keyName:    nodeJobName,
 		keyImage:   cfg.Image,
@@ -404,10 +433,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 				"add": []string{"IPC_LOCK", "SYS_CHROOT"},
 			},
 		},
-		keyVolumeMounts: []map[string]any{
-			{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
-			{keyName: volumeNameDSHM, keyMountPath: "/dev/shm"},
-		},
+		keyVolumeMounts: workerMounts,
 	}
 
 	if cfg.Resources != nil {
@@ -459,17 +485,27 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 		},
 	}
 
+	// Worker pod volumes: shared memory + user-provided.
+	workerVolumes := make([]any, 0, 1+len(cfg.Volumes))
+	workerVolumes = append(workerVolumes, map[string]any{
+		keyName: volumeNameDSHM,
+		keyEmptyDir: map[string]any{
+			"medium": "Memory",
+		},
+	})
+	for _, v := range cfg.Volumes {
+		workerVolumes = append(workerVolumes, v)
+	}
+
 	workerPodSpec := map[string]any{
 		keyContainers:   []any{workerContainer},
 		"restartPolicy": "OnFailure",
-		keyVolumes: []any{
-			map[string]any{
-				keyName: volumeNameDSHM,
-				keyEmptyDir: map[string]any{
-					"medium": "Memory",
-				},
-			},
-		},
+		keyVolumes:      workerVolumes,
+	}
+	// User init containers run on the worker pod, where the ranks run; the
+	// launcher keeps only its own fix-ssh-permissions init container.
+	if len(cfg.InitContainers) > 0 {
+		workerPodSpec[keyInitContainers] = cfg.InitContainers
 	}
 	workerJobLabels := map[string]any{}
 	workerPodLabels := map[string]any{}

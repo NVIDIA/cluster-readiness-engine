@@ -1,0 +1,20 @@
+# The same input as mpi-worker-gets-volumes-and-mounts on the torch framework,
+# so the three frameworks can be read side by side. BuildTorchRuntime always
+# honoured spec.volumes and spec.volumeMounts; the expected file shows the
+# shape the MPI worker now matches, minus the mpi-ssh-auth mount that only
+# the sshd worker needs.
+frameworkType: torch
+volumes:
+  - name: ib-dev
+    hostPath:
+      path: /dev/infiniband
+      type: Directory
+  - name: ib-sys
+    hostPath:
+      path: /sys/class/infiniband
+      type: Directory
+volumeMounts:
+  - name: ib-dev
+    mountPath: /dev/infiniband
+  - name: ib-sys
+    mountPath: /sys/class/infiniband

@@ -110,6 +110,60 @@ env. At the ranks, a `spec.env` value overrides both the defaults and a
 platform-forwarded value, and a `-x NAME=value` you pass in
 `spec.framework.mpi.mpiArgs` overrides `spec.env`.
 
+## Volumes, config files, and init containers
+
+`spec.volumes`, `spec.volumeMounts`, `spec.config`, and `spec.initContainers`
+apply to every framework. On `torch` and `exec` they land on the node pods,
+where the workload container runs. On MPI they land on the worker pods, where
+`mpirun` starts the ranks over SSH; the launcher pod is left unchanged because
+it only runs `mpirun`, so a PersistentVolumeClaim, a hugepages emptyDir, or an
+init container you add is never attached to it.
+
+A memory-backed `/dev/shm` volume is always provided, so you do not need to
+declare one. `spec.config` is mounted at `/config` with mode 0755, so scripts
+you ship through `config.inline` are executable as-is; with
+`config.configMapRef` the named ConfigMap is mounted the same way and nothing
+is created.
+
+```yaml
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: nccl-from-pvc
+spec:
+  image: nvcr.io/nvidia/pytorch:26.01-py3
+  framework:
+    mpi:
+      mpirunPath: /usr/local/mpi/bin/mpirun
+      binary: /config/run_nccl.sh
+  numNodes: 4
+  config:
+    inline:
+      run_nccl.sh: |
+        #!/bin/sh
+        exec /usr/local/bin/all_reduce_perf_mpi -b 8 -e 32G -f 2 -n 100
+  volumes:
+    - name: datasets
+      persistentVolumeClaim:
+        claimName: nccl-datasets
+  volumeMounts:
+    - name: datasets
+      mountPath: /data
+  initContainers:
+    - name: list-data
+      image: nvcr.io/nvidia/pytorch:26.01-py3
+      command: ["ls", "-l", "/data"]
+      volumeMounts:
+        - name: datasets
+          mountPath: /data
+```
+
+The claim must be `ReadWriteMany` (or `ReadOnlyMany`, mounted read-only)
+whenever more than one worker pod mounts it at the same time. Under the
+default placement that is any run against more than one eligible node, since
+every job group runs concurrently with one worker per node; under
+`placement: Unpinned` it is any `numNodes` greater than one.
+
 ## With bandwidth measurement
 
 ```yaml

@@ -1,0 +1,44 @@
+# Issue #455: BuildMPIRuntime now puts spec.volumes, spec.volumeMounts and the
+# config-volume that spec.config adds on the MPI worker, the same way
+# BuildTorchRuntime always has. Before the fix an MPI run rendered only the two
+# built-in mounts and the dshm volume, whatever the spec asked for, while the
+# ConfigMap dependency was still created; the binary at /config/run_nccl.sh
+# then failed at pod start with no file to run.
+#
+# Three fields in the expected file are what to read. workerVolumeMounts must
+# list the user's ib-dev mount and config-volume at /config after the two
+# built-ins (mpi-ssh-auth and dshm). runtimeVolumes must list ib-dev and
+# config-volume after dshm. dependencyKinds must include ConfigMap, which is
+# the other half of spec.config and was never missing; it is here so a reader
+# can see the volume now reaches the pod that the ConfigMap was created for.
+#
+# Compare with mpi-keeps-spec-env, whose workerVolumeMounts and runtimeVolumes
+# hold only the built-ins because that run sets none of these fields.
+run:
+  metadata:
+    name: wr-mpi-volumes
+    namespace: default
+  spec:
+    image: nvcr.io/nvidia/pytorch:24.01-py3
+    numNodes: 2
+    framework:
+      mpi:
+        binary: /config/run_nccl.sh
+        mpirunPath: /usr/local/mpi/bin/mpirun
+    volumes:
+      - name: ib-dev
+        hostPath:
+          path: /dev/infiniband
+          type: Directory
+    volumeMounts:
+      - name: ib-dev
+        mountPath: /dev/infiniband
+    config:
+      inline:
+        run_nccl.sh: |
+          #!/bin/sh
+          exec /usr/local/bin/all_reduce_perf_mpi "$@"
+gpusPerNode: 8
+mlnxPerNode: 0
+enableMNNVL: false
+frameworkType: mpi

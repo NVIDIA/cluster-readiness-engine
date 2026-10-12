@@ -1,0 +1,46 @@
+{
+  "userItemsChecked": 4,
+  "replicatedJobs": [
+    {
+      "replicatedJob": "node",
+      "volumes": [
+        "dshm: emptyDir medium=Memory",
+        "config-volume: configMap wr-mpi-config"
+      ],
+      "containers": [
+        {
+          "name": "node",
+          "volumeMounts": [
+            "mpi-ssh-auth at /tmp/mpi-ssh-raw (ro)",
+            "dshm at /dev/shm",
+            "config-volume at /config"
+          ]
+        }
+      ]
+    },
+    {
+      "replicatedJob": "launcher",
+      "volumes": [
+        "ssh-keys: emptyDir"
+      ],
+      "containers": [
+        {
+          "name": "fix-ssh-permissions",
+          "init": true,
+          "volumeMounts": [
+            "mpi-ssh-auth at /tmp/mpi-ssh-raw (ro)",
+            "ssh-keys at /root/.ssh"
+          ]
+        },
+        {
+          "name": "node",
+          "volumeMounts": [
+            "mpi-ssh-auth at /tmp/mpi-ssh-raw (ro)",
+            "ssh-keys at /root/.ssh"
+          ]
+        }
+      ]
+    }
+  ],
+  "violations": []
+}

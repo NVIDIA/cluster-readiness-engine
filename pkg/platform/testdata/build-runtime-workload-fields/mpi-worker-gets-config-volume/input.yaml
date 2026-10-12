@@ -1,0 +1,16 @@
+# The shape both call sites (the WorkloadRun controller and the nvcrectl
+# render path) build for spec.config: a ConfigMap volume named config-volume
+# with defaultMode 0755 and a mount at /config. spec.config was documented as
+# a workload-level field, and on mpi it was a silent no-op along with the
+# other three (issue #455). The expected file shows config-volume after dshm
+# on the worker pod and the /config mount after the built-ins on the node
+# container, and nothing on the launcher.
+frameworkType: mpi
+volumes:
+  - name: config-volume
+    configMap:
+      name: wr-mpi-config
+      defaultMode: 0755
+volumeMounts:
+  - name: config-volume
+    mountPath: /config
