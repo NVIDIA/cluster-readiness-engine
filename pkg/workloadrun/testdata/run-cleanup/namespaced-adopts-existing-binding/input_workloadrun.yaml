@@ -1,0 +1,14 @@
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: demo-run
+  namespace: wr-cleanup-ns
+spec:
+  image: nvcr.io/nvidia/pytorch:24.01-py3
+  numNodes: 1
+  framework:
+    exec:
+      command: ["nvidia-smi"]
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"

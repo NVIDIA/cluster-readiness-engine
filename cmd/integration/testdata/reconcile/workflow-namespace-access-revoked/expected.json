@@ -1,0 +1,127 @@
+{
+  "Workflow/wf-access-revoked": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "wf-access-revoked",
+      "namespace": "access-revoked",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      },
+      "dependencies": [
+        {
+          "apiVersion": "v1",
+          "data": {
+            "hosts": "gpu-node"
+          },
+          "kind": "ConfigMap",
+          "metadata": {
+            "name": "hostfile"
+          }
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "NamespaceAccess",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NamespacePermissionsMissing",
+          "message": "ServiceAccount nvcre/nvcre-manager cannot create configmaps, delete configmaps, get configmaps, update configmaps, get pods/log, create trainjobs.trainer.kubeflow.org, delete trainjobs.trainer.kubeflow.org in namespace \"access-revoked\". Bind ClusterRole nvcre-run-role to it there with RoleBinding nvcre-manager-run: nvcrectl rbac print --namespace access-revoked | kubectl apply -f -"
+        },
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NamespacePermissionsMissing",
+          "message": "ServiceAccount nvcre/nvcre-manager cannot create configmaps, delete configmaps, get configmaps, update configmaps, get pods/log, create trainjobs.trainer.kubeflow.org, delete trainjobs.trainer.kubeflow.org in namespace \"access-revoked\". Bind ClusterRole nvcre-run-role to it there with RoleBinding nvcre-manager-run: nvcrectl rbac print --namespace access-revoked | kubectl apply -f -"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 0,
+        "nodesPerJob": 0,
+        "totalGroups": 0,
+        "detectedPlatform": "onprem",
+        "detectedGPUArchitecture": "unknown"
+      }
+    }
+  },
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "NamespacePermissionsMissing",
+      "message": "ServiceAccount nvcre/nvcre-manager cannot create configmaps, delete configmaps, get configmaps, update configmaps in namespace \"access-revoked\". Bind ClusterRole nvcre-run-role to it there with RoleBinding nvcre-manager-run: nvcrectl rbac print --namespace access-revoked | kubectl apply -f -",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "wf-access-revoked"
+      },
+      "count": 1
+    },
+    {
+      "type": "Warning",
+      "reason": "NamespaceAccessDenied",
+      "message": "ServiceAccount nvcre/nvcre-manager cannot create configmaps, delete configmaps, get configmaps, update configmaps in namespace \"access-revoked\". Bind ClusterRole nvcre-run-role to it there with RoleBinding nvcre-manager-run: nvcrectl rbac print --namespace access-revoked | kubectl apply -f -",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "wf-access-revoked"
+      },
+      "count": 1
+    }
+  ],
+  "expectAbsent": {
+    "ConfigMap/hostfile": "notCreated"
+  }
+}

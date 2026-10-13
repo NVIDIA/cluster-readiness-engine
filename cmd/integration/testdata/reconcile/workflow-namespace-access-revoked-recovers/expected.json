@@ -1,0 +1,152 @@
+{
+  "Workflow/wf-revoked-recovers": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "wf-revoked-recovers",
+      "namespace": "access-revoked-recovers",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobCompleted",
+          "message": "All 1 iterations completed successfully"
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "NamespaceAccess",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NamespaceAccessGranted",
+          "message": "ServiceAccount nvcre/nvcre-manager has the write access it needs"
+        }
+      ],
+      "succeededNodesRef": {
+        "apiGroup": null,
+        "kind": "ConfigMap",
+        "name": "succeeded-nodes"
+      },
+      "orchestration": {
+        "totalNodes": 1,
+        "nodesPerJob": 1,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "completedIterations": 1,
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "gpu-node-01"
+            ],
+            "phase": "Succeeded",
+            "jobRef": {
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "wf-revoked-recovers-job",
+              "namespace": "access-revoked-recovers"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "JobCompleted",
+      "message": "All 1 iterations completed successfully",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "wf-revoked-recovers"
+      },
+      "count": 1
+    },
+    {
+      "type": "Normal",
+      "reason": "JobRunning",
+      "message": "Iteration 1/1: 0 groups running",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "wf-revoked-recovers"
+      },
+      "count": 1
+    },
+    {
+      "type": "Normal",
+      "reason": "NamespaceAccessGranted",
+      "message": "ServiceAccount nvcre/nvcre-manager has the write access it needs",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "wf-revoked-recovers"
+      },
+      "count": 1
+    },
+    {
+      "type": "Warning",
+      "reason": "NamespaceAccessDenied",
+      "message": "ServiceAccount nvcre/nvcre-manager cannot create configmaps, get configmaps, update configmaps in namespace \"access-revoked-recovers\". Bind ClusterRole nvcre-run-role to it there with RoleBinding nvcre-manager-run: nvcrectl rbac print --namespace access-revoked-recovers | kubectl apply -f -",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "wf-revoked-recovers"
+      },
+      "count": 1
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The checkpoint PVC is job-scoped, so it is created at launch, not at
+# discovery. Its create is forbidden although a fresh access review allows it,
+# as when an admission policy or ResourceQuota rejects it. The Workflow fails
+# with DependencyCreationError at once, instead of retrying with the group
+# Pending, where neither timeoutPerJob nor the access timeout runs (ADR-092).
+rejectDependencyCreates: true
+waitFor:
+  kind: Workflow
+  name: wf-launch-rejected
+  namespace: launch-admission-rejected
+  condition: Failed
+  reason: DependencyCreationError
+collect:
+  - kind: Workflow
+    name: wf-launch-rejected
+    namespace: launch-admission-rejected
+expectAbsent:
+  - kind: PersistentVolumeClaim
+    name: my-pvc-aeab9-group-0-iter-1
+    namespace: launch-admission-rejected

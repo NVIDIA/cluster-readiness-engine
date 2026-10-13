@@ -1,0 +1,8 @@
+# rbac.scope: namespaced and a namespace that already existed (default, for
+# workloadrun run without -n): nvcrectl refuses to make it a standing grant,
+# prints the RoleBinding, and submits nothing.
+rbacScope: namespaced
+namespaceExists: true
+expectRunExists: false
+expectNamespaceExists: true
+expectBinding: false

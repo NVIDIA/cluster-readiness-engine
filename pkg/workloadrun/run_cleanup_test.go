@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -23,14 +24,33 @@ import (
 	"sigs.k8s.io/yaml"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/rbac"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
+
+// chartRBACObjects returns the cluster-scoped RBAC objects the chart installs
+// for an rbac.scope, which is what EnsureRunBinding reads to decide whether a
+// run namespace needs a binding.
+func chartRBACObjects(scope string) []client.Object {
+	roleRef := rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: rbac.RunRoleName}
+	switch scope {
+	case "cluster":
+		return []client.Object{
+			&rbacv1.ClusterRole{Name: rbac.RunRoleName},
+			&rbacv1.ClusterRoleBinding{Name: rbac.ClusterModeRunBindingName, RoleRef: roleRef},
+		}
+	case "namespaced":
+		return []client.Object{&rbacv1.ClusterRole{Name: rbac.RunRoleName}}
+	}
+	return nil
+}
 
 func newWorkloadRunFakeClient(t testing.TB, objects ...client.Object) client.WithWatch {
 	t.Helper()
 	scheme := runtime.NewScheme()
 	require.NoError(t, nvcrev1alpha1.AddToScheme(scheme))
 	require.NoError(t, corev1.AddToScheme(scheme))
+	require.NoError(t, rbacv1.AddToScheme(scheme))
 	return fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()
 }
 
@@ -46,6 +66,20 @@ func (c wrDeleteErrorClient) Delete(ctx context.Context, obj client.Object, opts
 		return c.err
 	}
 	return c.WithWatch.Delete(ctx, obj, opts...)
+}
+
+// wrCreateErrorClient rejects the WorkloadRun create, as an admission policy
+// would, to exercise the rollback of what the run set up before it.
+type wrCreateErrorClient struct {
+	client.WithWatch
+	err error
+}
+
+func (c wrCreateErrorClient) Create(ctx context.Context, obj client.Object, opts ...client.CreateOption) error {
+	if run, ok := obj.(*nvcrev1alpha1.WorkloadRun); ok && run.Name != "other-run" {
+		return c.err
+	}
+	return c.WithWatch.Create(ctx, obj, opts...)
 }
 
 // wrCompletingClient marks a WorkloadRun as Succeeded at creation time,
@@ -123,6 +157,23 @@ func TestExecuteWorkloadRunRunCleanup(t *testing.T) {
 			CompleteOnCreate      bool   `json:"completeOnCreate"`
 			ExpectRunExists       bool   `json:"expectRunExists"`
 			ExpectNamespaceExists bool   `json:"expectNamespaceExists"`
+			// RBACScope seeds the chart's RBAC objects (ADR-092): "cluster"
+			// or "namespaced". Empty seeds none, as for a chart from before
+			// the role split.
+			RBACScope        string `json:"rbacScope"`
+			GrantRunAccess   bool   `json:"grantRunAccess"`
+			BindingPreexists bool   `json:"bindingPreexists"`
+			// NoGPUNodes leaves the cluster without GPU nodes, so the run
+			// fails at node discovery, before anything is submitted.
+			NoGPUNodes bool `json:"noGPUNodes"`
+			// OtherRun puts another WorkloadRun in the namespace, one that
+			// adopted the binding this run creates.
+			OtherRun bool `json:"otherRun"`
+			// CreateError rejects this run's WorkloadRun create.
+			CreateError string `json:"createError"`
+			// ExpectBinding is whether the run namespace's nvcre-manager-run
+			// RoleBinding exists once the command returns.
+			ExpectBinding bool `json:"expectBinding"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input_config.yaml"]), &input); err != nil {
 			return err
@@ -140,6 +191,14 @@ func TestExecuteWorkloadRunRunCleanup(t *testing.T) {
 				"nvidia.com/gpu.product": "NVIDIA-H100-80GB-HBM3",
 			}}
 		objects := []client.Object{node}
+		if input.NoGPUNodes {
+			objects = nil
+		}
+		if input.OtherRun {
+			other := run.DeepCopy()
+			other.Name = "other-run"
+			objects = append(objects, other)
+		}
 		if input.NamespaceExists {
 			objects = append(objects, &corev1.Namespace{
 				Name: run.Namespace,
@@ -148,10 +207,17 @@ func TestExecuteWorkloadRunRunCleanup(t *testing.T) {
 		if input.RunPreexists {
 			objects = append(objects, run.DeepCopy())
 		}
+		objects = append(objects, chartRBACObjects(input.RBACScope)...)
+		if input.BindingPreexists {
+			objects = append(objects, rbac.RunBinding(run.Namespace, rbac.DefaultServiceAccount()))
+		}
 
 		var wc = newWorkloadRunFakeClient(tc.T, objects...)
 		if input.CompleteOnCreate {
 			wc = wrCompletingClient{WithWatch: wc}
+		}
+		if input.CreateError != "" {
+			wc = wrCreateErrorClient{WithWatch: wc, err: errors.New(input.CreateError)}
 		}
 		if input.DeleteError != "" {
 			wc = wrDeleteErrorClient{WithWatch: wc, err: errors.New(input.DeleteError)}
@@ -159,12 +225,13 @@ func TestExecuteWorkloadRunRunCleanup(t *testing.T) {
 
 		var out bytes.Buffer
 		cfg := &wrRunConfig{
-			run:         &run,
-			doWait:      input.DoWait,
-			doCleanup:   input.DoCleanup,
-			timeout:     time.Duration(input.TimeoutSeconds) * time.Second,
-			out:         &out,
-			watchClient: wc,
+			run:            &run,
+			doWait:         input.DoWait,
+			doCleanup:      input.DoCleanup,
+			grantRunAccess: input.GrantRunAccess,
+			timeout:        time.Duration(input.TimeoutSeconds) * time.Second,
+			out:            &out,
+			watchClient:    wc,
 		}
 
 		execErr := executeWorkloadRunRun(cfg)
@@ -187,6 +254,14 @@ func TestExecuteWorkloadRunRunCleanup(t *testing.T) {
 		} else {
 			assert.True(tc.T, apierrors.IsNotFound(nsErr),
 				"expected namespace to be deleted, got: %v", nsErr)
+		}
+		bindingErr := wc.Get(context.Background(),
+			client.ObjectKey{Name: rbac.RunBindingName, Namespace: run.Namespace}, &rbacv1.RoleBinding{})
+		if input.ExpectBinding {
+			assert.NoError(tc.T, bindingErr, "expected the run RoleBinding to exist")
+		} else {
+			assert.True(tc.T, apierrors.IsNotFound(bindingErr),
+				"expected no run RoleBinding, got: %v", bindingErr)
 		}
 
 		actual := out.String()

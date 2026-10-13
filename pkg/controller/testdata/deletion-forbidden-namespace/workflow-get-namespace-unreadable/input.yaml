@@ -1,0 +1,5 @@
+# The namespace cannot be read, so whether it is terminating is unknown: keep
+# the finalizer and retry rather than guess.
+owner: workflow-finalizer
+forbid: get
+namespace: unreadable

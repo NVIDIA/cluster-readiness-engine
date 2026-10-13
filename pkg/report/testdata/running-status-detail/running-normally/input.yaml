@@ -1,0 +1,4 @@
+# Progress, including right after a wait ended, is not a blocked state.
+conditions:
+- {type: InProgress, status: "True", reason: JobRunning, message: "Iteration 1/1: 1 groups running", lastTransitionTime: "2026-10-13T12:00:00Z"}
+- {type: NamespaceAccess, status: "True", reason: NamespaceAccessGranted, message: "granted", lastTransitionTime: "2026-10-13T12:00:00Z"}

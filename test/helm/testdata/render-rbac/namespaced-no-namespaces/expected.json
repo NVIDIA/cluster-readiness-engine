@@ -1,0 +1,13 @@
+{
+  "managerEnv": [
+    {
+      "name": "POD_NAMESPACE",
+      "fieldPath": "metadata.namespace"
+    },
+    {
+      "name": "SERVICE_ACCOUNT_NAME",
+      "fieldPath": "spec.serviceAccountName"
+    }
+  ],
+  "runRoleBindings": []
+}

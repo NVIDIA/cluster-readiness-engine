@@ -1,0 +1,5 @@
+# The dependency read is forbidden in a terminating namespace: the dependency
+# is left to the namespace controller and the finalizer is removed.
+owner: workflow-finalizer
+forbid: get
+namespace: terminating

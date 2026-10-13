@@ -1,0 +1,3 @@
+{
+  "statusDetail": "ServiceAccount nvcre/nvcre-manager cannot create configmaps in namespace \"team-a\""
+}

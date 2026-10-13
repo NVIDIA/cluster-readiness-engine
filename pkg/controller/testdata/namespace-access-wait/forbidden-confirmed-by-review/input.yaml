@@ -1,0 +1,6 @@
+# A write was forbidden and a fresh review confirms the denial: the binding
+# went away mid-run, so the Workflow waits instead of failing.
+call: forbidden
+inProgress: JobRunning
+denied:
+- {resource: configmaps, verb: create}

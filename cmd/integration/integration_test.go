@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	crconfig "sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -107,7 +109,7 @@ func TestIntegration(t *testing.T) {
 			nodePollRecorder = &phaseCountingRecorder{inProgress: make(map[types.UID]int)}
 		}
 		mgr, cancel, stopped := startManager(tt, suite.Config, fakeFetcher, deadline,
-			cfg.RejectWorkflowCreates, checkpoint, nodePollRecorder)
+			cfg.RejectWorkflowCreates, checkpoint, nodePollRecorder, cfg)
 
 		// Ensure cleanup always runs, even on test failure/timeout.
 		// Without this, a timed-out test leaks objects (e.g., cluster-scoped
@@ -430,6 +432,7 @@ func startManager(
 	t *testing.T, cfg *rest.Config, fetcher podlogs.PodLogFetcher, deadline time.Time, rejectWorkflowCreates bool,
 	checkpoint *checkpointObservation,
 	nodePollRecorder *phaseCountingRecorder,
+	caseCfg waitConfig,
 ) (ctrl.Manager, context.CancelFunc, <-chan struct{}) {
 	t.Helper()
 
@@ -439,8 +442,11 @@ func startManager(
 			BindAddress: "0", // Disable metrics server — tests read from the global registry directly.
 		},
 		// Use production's cache configuration so the harness exercises the same
-		// informer scoping (notably: only GPU-labelled Nodes are cached).
-		Cache: controller.CacheOptions(),
+		// informer scoping (notably: only GPU-labelled Nodes are cached), and
+		// production's client configuration, which reads ConfigMaps and PVCs
+		// live (ADR-092).
+		Cache:  controller.CacheOptions(),
+		Client: controller.ClientOptions(),
 		Controller: crconfig.Controller{
 			SkipNameValidation:      func() *bool { v := true; return &v }(),
 			MaxConcurrentReconciles: 5, // Prevent stale objects from blocking the reconcile queue.
@@ -459,8 +465,12 @@ func startManager(
 		checkpoint.recorder.EventRecorder = jobRecorder
 		jobRecorder = checkpoint.recorder
 	}
+	jobClient := mgr.GetClient()
+	if caseCfg.RejectWorkloadCreates {
+		jobClient = &workloadCreateRejectingClient{Client: jobClient}
+	}
 	err = (&controller.JobReconciler{
-		Client:                  mgr.GetClient(),
+		Client:                  jobClient,
 		Scheme:                  mgr.GetScheme(),
 		Recorder:                jobRecorder,
 		WorkloadRequeueInterval: 1 * time.Second,
@@ -468,11 +478,24 @@ func startManager(
 	}).SetupWithManager(mgr)
 	require.NoError(t, err)
 
+	workflowClient := mgr.GetClient()
+	if caseCfg.RejectDependencyCreates {
+		workflowClient = &dependencyCreateRejectingClient{Client: workflowClient}
+	}
+	if caseCfg.RejectNodeResultWrites {
+		workflowClient = &nodeResultWriteRejectingClient{Client: workflowClient, reader: mgr.GetAPIReader()}
+	}
 	err = (&controller.WorkflowReconciler{
-		Client:             mgr.GetClient(),
+		Client:             workflowClient,
 		Scheme:             mgr.GetScheme(),
 		Recorder:           mgr.GetEventRecorder("workflow-controller"),
 		JobRequeueInterval: 1 * time.Second,
+		AccessReviewer: &labelAccessReviewer{
+			reader:  mgr.GetAPIReader(),
+			real:    controller.NewAccessReviewer(mgr.GetClient()),
+			revoked: map[string]bool{},
+		},
+		NamespaceAccessTimeout: time.Duration(caseCfg.NamespaceAccessTimeoutSeconds) * time.Second,
 	}).SetupWithManager(mgr)
 	require.NoError(t, err)
 
@@ -616,10 +639,27 @@ type eventTestStep struct {
 }
 
 type waitConfig struct {
-	VerifyNodePollEvents   bool          `json:"verifyNodePollEvents,omitempty"`
-	VerifyCheckpointEvents bool          `json:"verifyCheckpointEvents,omitempty"`
-	RejectWorkflowCreates  bool          `json:"rejectWorkflowCreates,omitempty"`
-	WaitFor                conditionWait `json:"waitFor"`
+	VerifyNodePollEvents   bool `json:"verifyNodePollEvents,omitempty"`
+	VerifyCheckpointEvents bool `json:"verifyCheckpointEvents,omitempty"`
+	RejectWorkflowCreates  bool `json:"rejectWorkflowCreates,omitempty"`
+	// RejectDependencyCreates makes the Workflow controller's dependency
+	// creates fail with Forbidden, as an admission policy or a removed
+	// RoleBinding would (ADR-092). Whether the Workflow then waits or fails
+	// depends on what the access review says about the namespace.
+	RejectDependencyCreates bool `json:"rejectDependencyCreates,omitempty"`
+	// RejectNodeResultWrites makes the Workflow controller's node-result
+	// ConfigMap writes fail with Forbidden while the namespace is labelled
+	// revoked-after-check, as they would once its access is revoked mid-run.
+	// A step that removes the label restores access.
+	RejectNodeResultWrites bool `json:"rejectNodeResultWrites,omitempty"`
+	// RejectWorkloadCreates makes the Job controller's TrainJob creates fail
+	// with Forbidden, as they would once the binding is removed between the
+	// Job's creation and its TrainJob's.
+	RejectWorkloadCreates bool `json:"rejectWorkloadCreates,omitempty"`
+	// NamespaceAccessTimeoutSeconds sets the Workflow controller's
+	// --namespace-access-timeout. Zero uses the default.
+	NamespaceAccessTimeoutSeconds int           `json:"namespaceAccessTimeoutSeconds,omitempty"`
+	WaitFor                       conditionWait `json:"waitFor"`
 	// Steps drive external changes only after observing the preceding state.
 	// All waits and writes share the event case's original deadline.
 	Steps                   []eventTestStep              `json:"steps,omitempty"`
@@ -673,6 +713,158 @@ func (c *workflowCreateRejectingClient) Create(
 			obj.GetName(), fmt.Errorf("injected Workflow Create rejection"))
 	}
 	return c.Client.Create(ctx, obj, opts...)
+}
+
+// Inject only the dependency Create failure, with the status code an admission
+// rejection or a missing RoleBinding produces. Dependencies are created as
+// unstructured objects; node-result ConfigMaps are typed and unaffected.
+type dependencyCreateRejectingClient struct{ client.Client }
+
+func (c *dependencyCreateRejectingClient) Create(
+	ctx context.Context, obj client.Object, opts ...client.CreateOption,
+) error {
+	if u, ok := obj.(*unstructured.Unstructured); ok {
+		gvk := u.GroupVersionKind()
+		return apierrors.NewForbidden(
+			schema.GroupResource{Group: gvk.Group, Resource: strings.ToLower(gvk.Kind) + "s"},
+			obj.GetName(), fmt.Errorf("injected dependency Create rejection"))
+	}
+	return c.Client.Create(ctx, obj, opts...)
+}
+
+// Inject only the node-result ConfigMap writes' failure, while the namespace
+// is labelled revoked-after-check. Dependencies are unstructured, so a typed
+// ConfigMap here is always a node-result record.
+type nodeResultWriteRejectingClient struct {
+	client.Client
+	reader client.Reader
+}
+
+func (c *nodeResultWriteRejectingClient) revoked(ctx context.Context, obj client.Object) bool {
+	if _, ok := obj.(*corev1.ConfigMap); !ok {
+		return false
+	}
+	ns := &corev1.Namespace{}
+	if err := c.reader.Get(ctx, client.ObjectKey{Name: obj.GetNamespace()}, ns); err != nil {
+		return false
+	}
+	return ns.Labels[accessLabel] == accessRevokedAfterCheck
+}
+
+func (c *nodeResultWriteRejectingClient) Create(
+	ctx context.Context, obj client.Object, opts ...client.CreateOption,
+) error {
+	if c.revoked(ctx, obj) {
+		return nodeResultsForbidden(obj)
+	}
+	return c.Client.Create(ctx, obj, opts...)
+}
+
+func (c *nodeResultWriteRejectingClient) Update(
+	ctx context.Context, obj client.Object, opts ...client.UpdateOption,
+) error {
+	if c.revoked(ctx, obj) {
+		return nodeResultsForbidden(obj)
+	}
+	return c.Client.Update(ctx, obj, opts...)
+}
+
+func nodeResultsForbidden(obj client.Object) error {
+	return apierrors.NewForbidden(schema.GroupResource{Resource: "configmaps"}, obj.GetName(),
+		fmt.Errorf("injected node-result write rejection"))
+}
+
+// Inject only the TrainJob create failure.
+type workloadCreateRejectingClient struct{ client.Client }
+
+func (c *workloadCreateRejectingClient) Create(
+	ctx context.Context, obj client.Object, opts ...client.CreateOption,
+) error {
+	if _, ok := obj.(*trainerv1alpha1.TrainJob); ok {
+		return apierrors.NewForbidden(schema.GroupResource{Group: trainerv1alpha1.GroupVersion.Group, Resource: "trainjobs"},
+			obj.GetName(), fmt.Errorf("injected TrainJob Create rejection"))
+	}
+	return c.Client.Create(ctx, obj, opts...)
+}
+
+// accessLabel sets how the injected AccessReviewer answers for a namespace.
+// envtest does not enforce RBAC, so the cases that need a denial label their
+// namespace instead (ADR-092).
+const accessLabel = "test.nvcre.nvidia.com/access"
+
+// accessRevokedAfterCheck is the accessLabel value for access revoked between
+// the check and a write; see labelAccessReviewer.
+const accessRevokedAfterCheck = "revoked-after-check"
+
+// labelAccessReviewer answers from the reviewed namespace's accessLabel:
+//
+//	denied               every check is denied
+//	error                the review cannot be created
+//	revoked-after-check  allowed until a fresh review, denied from then on:
+//	                     a binding removed between the check and a write,
+//	                     where the fresh review also replaces the cached answer.
+//	                     Removing the label restores access: the next review
+//	                     clears the revocation.
+//
+// Unlabelled namespaces get real SelfSubjectAccessReviews from envtest, which
+// allow everything, so every other case still runs the production reviewer.
+type labelAccessReviewer struct {
+	reader client.Reader
+	real   controller.AccessReviewer
+
+	mu      sync.Mutex
+	revoked map[string]bool
+}
+
+func (r *labelAccessReviewer) Review(
+	ctx context.Context, namespace string, checks []controller.AccessCheck, fresh bool,
+) ([]controller.AccessCheck, error) {
+	ns := &corev1.Namespace{}
+	if err := r.reader.Get(ctx, client.ObjectKey{Name: namespace}, ns); err != nil {
+		return nil, err
+	}
+	if ns.Labels[accessLabel] != accessRevokedAfterCheck {
+		r.mu.Lock()
+		delete(r.revoked, namespace)
+		r.mu.Unlock()
+	}
+	switch ns.Labels[accessLabel] {
+	case "denied":
+		return checks, nil
+	case "error":
+		return nil, errors.New("injected: SelfSubjectAccessReview could not be created")
+	case accessRevokedAfterCheck:
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if fresh {
+			r.revoked[namespace] = true
+		}
+		if r.revoked[namespace] {
+			return checks, nil
+		}
+		return nil, nil
+	}
+	return r.real.Review(ctx, namespace, checks, fresh)
+}
+
+// CachedDenials answers without a review or an API read, as the
+// production reviewer does: a namespace revoked by a fresh review stays
+// denied, and any other defers to the real reviewer's cache. A namespace
+// labelled denied or error never gets this far, because the check before
+// discovery waits on it first.
+func (r *labelAccessReviewer) CachedDenials(
+	namespace string, checks []controller.AccessCheck,
+) []controller.AccessCheck {
+	r.mu.Lock()
+	revoked := r.revoked[namespace]
+	r.mu.Unlock()
+	if revoked {
+		return checks
+	}
+	if cached, ok := r.real.(controller.CachedAccessReviewer); ok {
+		return cached.CachedDenials(namespace, checks)
+	}
+	return nil
 }
 
 type eventCollectionSpec struct {
@@ -1145,6 +1337,17 @@ func readObject(ctx context.Context, c client.Client, spec collectSpec) (client.
 	}
 	if err := c.Get(ctx, key, obj); err != nil {
 		return nil, err
+	}
+	// A typed read that bypasses the informer cache comes back without
+	// apiVersion and kind; ConfigMaps and PVCs always do (ClientOptions,
+	// ADR-092). Restore them from the scheme so the golden records the same
+	// object either way.
+	if obj.GetObjectKind().GroupVersionKind().Empty() {
+		gvk, err := apiutil.GVKForObject(obj, c.Scheme())
+		if err != nil {
+			return nil, err
+		}
+		obj.GetObjectKind().SetGroupVersionKind(gvk)
 	}
 	return obj, nil
 }

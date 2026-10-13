@@ -36,6 +36,10 @@
     "default": "0"
   },
   {
+    "name": "grant-run-access",
+    "default": "false"
+  },
+  {
     "name": "image",
     "default": ""
   },

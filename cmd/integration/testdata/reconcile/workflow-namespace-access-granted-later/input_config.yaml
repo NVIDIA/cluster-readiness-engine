@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The RoleBinding lands after the Workflow, as a GitOps sync or
+# kubectl apply -f dir/ can order them: the Workflow waits, then proceeds on
+# its own once access is granted, with NamespaceAccess flipped to True.
+generateNodes:
+  count: 1
+steps:
+  - waitFor:
+      kind: Workflow
+      name: wf-access-granted-later
+      namespace: access-granted-later
+      condition: InProgress
+      reason: NamespacePermissionsMissing
+    patches:
+      - target:
+          kind: Namespace
+          name: access-granted-later
+        patch: {"metadata": {"labels": {"test.nvcre.nvidia.com/access": null}}}
+waitFor:
+  kind: Workflow
+  name: wf-access-granted-later
+  namespace: access-granted-later
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Workflow
+    name: wf-access-granted-later
+    namespace: access-granted-later
+  - kind: ConfigMap
+    name: hostfile
+    namespace: access-granted-later
+events:
+  - involvedKind: Workflow
+    involvedName: wf-access-granted-later
+    namespace: access-granted-later
+    expect:
+      - {type: Warning, reason: NamespaceAccessDenied}
+      - {type: Normal, reason: NamespaceAccessGranted}

@@ -1,0 +1,8 @@
+# The cause changes mid-wait: the reason follows it and the new Warning is
+# emitted, but the clock keeps running from when the wait began.
+call: gate
+inProgress: NamespaceAccessCheckFailed
+waiting: 3m
+waitingReason: NamespaceAccessCheckFailed
+denied:
+- {resource: configmaps, verb: create}

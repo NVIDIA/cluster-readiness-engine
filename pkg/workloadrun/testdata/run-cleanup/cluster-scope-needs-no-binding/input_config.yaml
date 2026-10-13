@@ -1,0 +1,7 @@
+# rbac.scope: cluster already grants every namespace, so nvcrectl neither asks
+# for --grant-run-access nor creates a binding, and prints nothing about it.
+rbacScope: cluster
+namespaceExists: true
+expectRunExists: true
+expectNamespaceExists: true
+expectBinding: false

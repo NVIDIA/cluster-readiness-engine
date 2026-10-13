@@ -1,0 +1,5 @@
+# The wait for a RoleBinding shows on the category, so certification run
+# --wait says why nothing is happening.
+conditions:
+- {type: InProgress, status: "True", reason: NamespacePermissionsMissing, message: "ServiceAccount nvcre/nvcre-manager cannot create configmaps in namespace \"team-a\"", lastTransitionTime: "2026-10-13T12:00:00Z"}
+- {type: NamespaceAccess, status: "False", reason: NamespacePermissionsMissing, message: "same", lastTransitionTime: "2026-10-13T12:00:00Z"}

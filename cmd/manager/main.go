@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -33,6 +34,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/rbac"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -48,6 +50,33 @@ const (
 	defaultMaxConcurrentReconciles            = 10
 	defaultMeasurementMaxConcurrentReconciles = 5
 )
+
+// The chart sets these from the downward API, so the RoleBinding a waiting
+// Workflow asks for names the ServiceAccount this controller actually runs as.
+const (
+	envPodNamespace       = "POD_NAMESPACE"
+	envServiceAccountName = "SERVICE_ACCOUNT_NAME"
+)
+
+// controllerServiceAccount returns the ServiceAccount the manager runs as, from
+// the environment, with defaults for any field it does not set.
+func controllerServiceAccount(getenv func(string) string) rbac.ServiceAccount {
+	sa := rbac.DefaultServiceAccount()
+	if ns := getenv(envPodNamespace); ns != "" {
+		sa.Namespace = ns
+	}
+	if name := getenv(envServiceAccountName); name != "" {
+		sa.Name = name
+	}
+	return sa
+}
+
+func validateNamespaceAccessTimeout(d time.Duration) error {
+	if d <= 0 {
+		return fmt.Errorf("--namespace-access-timeout must be greater than 0, got %s", d)
+	}
+	return nil
+}
 
 type controllerConcurrencyOptions struct {
 	maxConcurrentReconciles            int
@@ -90,6 +119,7 @@ func newRootCommand() *cobra.Command {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	namespaceAccessTimeout := controller.DefaultNamespaceAccessTimeout
 	concurrency := controllerConcurrencyOptions{
 		maxConcurrentReconciles:            defaultMaxConcurrentReconciles,
 		measurementMaxConcurrentReconciles: defaultMeasurementMaxConcurrentReconciles,
@@ -105,6 +135,9 @@ func newRootCommand() *cobra.Command {
 		Version: version,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := concurrency.validate(); err != nil {
+				return err
+			}
+			if err := validateNamespaceAccessTimeout(namespaceAccessTimeout); err != nil {
 				return err
 			}
 
@@ -176,6 +209,7 @@ func newRootCommand() *cobra.Command {
 				WebhookServer:          webhookServer,
 				HealthProbeBindAddress: probeAddr,
 				Cache:                  controller.CacheOptions(),
+				Client:                 controller.ClientOptions(),
 				LeaderElection:         enableLeaderElection,
 				LeaderElectionID:       "240fe9c6.nvidia.com",
 				// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
@@ -228,6 +262,8 @@ func newRootCommand() *cobra.Command {
 				Clientset:               clientset,
 				Recorder:                mgr.GetEventRecorder("workflow-controller"),
 				MaxConcurrentReconciles: concurrency.maxConcurrentReconciles,
+				NamespaceAccessTimeout:  namespaceAccessTimeout,
+				ServiceAccount:          controllerServiceAccount(os.Getenv),
 			}).SetupWithManager(mgr); err != nil {
 				return fmt.Errorf("unable to create controller Workflow: %w", err)
 			}
@@ -297,6 +333,10 @@ func newRootCommand() *cobra.Command {
 	cmd.Flags().IntVar(&concurrency.measurementMaxConcurrentReconciles, "measurement-max-concurrent-reconciles",
 		defaultMeasurementMaxConcurrentReconciles,
 		"Maximum number of concurrent reconciles for GoodputMeasurement and BandwidthMeasurement controllers.")
+	cmd.Flags().DurationVar(&namespaceAccessTimeout, "namespace-access-timeout",
+		controller.DefaultNamespaceAccessTimeout,
+		"How long a Workflow waits for the controller's write access in its namespace before it fails. "+
+			"Applies with rbac.scope: namespaced, where each run namespace needs a RoleBinding.")
 	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	cmd.Flags().StringVar(&webhookCertPath, "webhook-cert-path", "",

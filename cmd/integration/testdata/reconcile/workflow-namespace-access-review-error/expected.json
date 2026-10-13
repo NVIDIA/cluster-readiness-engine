@@ -1,0 +1,125 @@
+{
+  "Workflow/wf-access-review-error": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "wf-access-review-error",
+      "namespace": "access-review-error",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      },
+      "dependencies": [
+        {
+          "apiVersion": "v1",
+          "data": {
+            "hosts": "gpu-node"
+          },
+          "kind": "ConfigMap",
+          "metadata": {
+            "name": "hostfile"
+          }
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "NamespaceAccess",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NamespaceAccessCheckFailed",
+          "message": "Could not check the controller's access in namespace \"access-review-error\": injected: SelfSubjectAccessReview could not be created"
+        },
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NamespaceAccessCheckFailed",
+          "message": "Could not check the controller's access in namespace \"access-review-error\": injected: SelfSubjectAccessReview could not be created"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 0,
+        "nodesPerJob": 0,
+        "totalGroups": 0
+      }
+    }
+  },
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "NamespaceAccessCheckFailed",
+      "message": "Could not check the controller's access in namespace \"access-review-error\": injected: SelfSubjectAccessReview could not be created",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "wf-access-review-error"
+      },
+      "count": 1
+    },
+    {
+      "type": "Warning",
+      "reason": "NamespaceAccessReviewError",
+      "message": "Could not check the controller's access in namespace \"access-review-error\": injected: SelfSubjectAccessReview could not be created",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "wf-access-review-error"
+      },
+      "count": 1
+    }
+  ],
+  "expectAbsent": {
+    "ConfigMap/hostfile": "notCreated"
+  }
+}

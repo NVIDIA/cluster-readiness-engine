@@ -10,7 +10,9 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	gzip "github.com/NVIDIA/cluster-readiness-engine/pkg/controller/compress"
@@ -118,6 +120,25 @@ type nodeResultsTarget[T any] struct {
 	// empty) and returns the re-encoded bytes.
 	merge  func(existing []byte, newEntries []T) ([]byte, error)
 	setRef func(*nvcrev1alpha1.Workflow, *corev1.TypedLocalObjectReference)
+}
+
+// nodeResultsWriteError decides what a failed node-result write does to the
+// pass that made it. A Forbidden write is returned: the controller has lost
+// its access in the namespace (ADR-092), and going on would write a terminal
+// status without the results. Every caller writes status only after this, so
+// returning first leaves the persisted state untouched, and reconcileJob turns
+// the error into a wait for access. Any other failure is logged and the pass
+// goes on, as before: the results are best effort, and a retry would repeat
+// in-memory transitions the pass already made.
+func nodeResultsWriteError(ctx context.Context, err error, msg string) error {
+	if err == nil {
+		return nil
+	}
+	if apierrors.IsForbidden(err) {
+		return err
+	}
+	logf.FromContext(ctx).Error(err, msg)
+	return nil
 }
 
 // recordNodeResults merges entries into the Workflow's node-result ConfigMap,

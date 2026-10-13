@@ -1,0 +1,2 @@
+conditions:
+- {type: InProgress, status: "True", reason: NamespaceAccessCheckFailed, message: "Could not check the controller's access in namespace \"team-a\": timeout", lastTransitionTime: "2026-10-13T12:00:00Z"}

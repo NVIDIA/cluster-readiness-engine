@@ -1,0 +1,8 @@
+# Past --namespace-access-timeout: the Workflow fails with the same reason,
+# and the message carries the RoleBinding to apply.
+call: gate
+inProgress: NamespacePermissionsMissing
+waiting: 11m
+waitingReason: NamespacePermissionsMissing
+denied:
+- {resource: configmaps, verb: create}

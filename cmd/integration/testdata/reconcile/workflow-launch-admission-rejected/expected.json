@@ -1,0 +1,127 @@
+{
+  "Workflow/wf-launch-rejected": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "wf-launch-rejected",
+      "namespace": "launch-admission-rejected",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 2
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          },
+          "checkpoint": {
+            "pvcName": "my-pvc"
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      },
+      "dependencies": [
+        {
+          "apiVersion": "v1",
+          "kind": "PersistentVolumeClaim",
+          "metadata": {
+            "name": "my-pvc",
+            "namespace": "launch-admission-rejected"
+          },
+          "spec": {
+            "accessModes": [
+              "ReadWriteOnce"
+            ],
+            "resources": {
+              "requests": {
+                "storage": "10Gi"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "DependencyCreationError",
+          "message": "Failed to create dependency: failed to ensure job dependencies for group group-0: failed to create dependency v1/PersistentVolumeClaim my-pvc-aeab9-group-0-iter-1: persistentvolumeclaims \"my-pvc-aeab9-group-0-iter-1\" is forbidden: injected dependency Create rejection"
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 4,
+        "nodesPerJob": 2,
+        "totalGroups": 2,
+        "currentIteration": 1,
+        "detectedPlatform": "onprem",
+        "detectedGPUArchitecture": "unknown",
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "gpu-node-01",
+              "gpu-node-02"
+            ],
+            "phase": "Pending"
+          },
+          {
+            "name": "group-1",
+            "nodes": [
+              "gpu-node-03",
+              "gpu-node-04"
+            ],
+            "phase": "Pending"
+          }
+        ]
+      }
+    }
+  },
+  "expectAbsent": {
+    "PersistentVolumeClaim/my-pvc-aeab9-group-0-iter-1": "notCreated"
+  }
+}

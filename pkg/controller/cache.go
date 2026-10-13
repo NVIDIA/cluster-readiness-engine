@@ -52,3 +52,28 @@ func CacheOptions() cache.Options {
 		},
 	}
 }
+
+// ClientOptions returns the manager client configuration.
+//
+// ConfigMaps and PersistentVolumeClaims are read straight from the API server,
+// never through the informer cache (ADR-092). A cached read of either starts a
+// cluster-wide informer, which needs list and watch on that type in every
+// namespace. The controller's write access is granted one namespace at a time,
+// so under rbac.scope: namespaced that informer cannot list, and the manager
+// loops on `Failed to watch ... forbidden` (issue #424, where a cached PVC read
+// did exactly this). The ConfigMap informer also held every ConfigMap in the
+// cluster in the controller's memory. Both types are read a handful of times
+// per Workflow, so a live read costs little.
+//
+// PersistentVolumes stay cached: they are cluster-scoped, the role keeps list
+// and watch on them, and findPVByClaimRef needs the cached claimRef index.
+func ClientOptions() client.Options {
+	return client.Options{
+		Cache: &client.CacheOptions{
+			DisableFor: []client.Object{
+				&corev1.ConfigMap{},
+				&corev1.PersistentVolumeClaim{},
+			},
+		},
+	}
+}

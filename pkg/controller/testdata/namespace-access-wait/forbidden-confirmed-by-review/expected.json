@@ -1,0 +1,37 @@
+{
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "True",
+      "reason": "NamespacePermissionsMissing",
+      "message": "ServiceAccount nvcre/nvcre-manager cannot create configmaps in namespace \"default\". Bind ClusterRole nvcre-run-role to it there with RoleBinding nvcre-manager-run: nvcrectl rbac print --namespace default | kubectl apply -f -"
+    },
+    {
+      "type": "NamespaceAccess",
+      "status": "False",
+      "reason": "NamespacePermissionsMissing",
+      "message": "ServiceAccount nvcre/nvcre-manager cannot create configmaps in namespace \"default\". Bind ClusterRole nvcre-run-role to it there with RoleBinding nvcre-manager-run: nvcrectl rbac print --namespace default | kubectl apply -f -",
+      "since": "0s"
+    },
+    {
+      "type": "Succeeded",
+      "status": "False",
+      "reason": "NotApplicable",
+      "message": ""
+    },
+    {
+      "type": "Failed",
+      "status": "False",
+      "reason": "NotApplicable",
+      "message": ""
+    }
+  ],
+  "events": [
+    "Warning NamespaceAccessDenied ServiceAccount nvcre/nvcre-manager cannot create configmaps in namespace \"default\". Bind ClusterRole nvcre-run-role to it there with RoleBinding nvcre-manager-run: nvcrectl rbac print --namespace default | kubectl apply -f -"
+  ],
+  "requeueAfter": "15s",
+  "reviewsAskFresh": [
+    true
+  ],
+  "stop": true
+}

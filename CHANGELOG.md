@@ -15,6 +15,75 @@ followed them.
 
 ## [Unreleased]
 
+### Deprecated
+
+- The chart's `rbac.scope` default becomes `namespaced` in the next minor release.
+  Under `namespaced`, the controller writes only in namespaces with a RoleBinding to
+  `nvcre-run-role`: `nvcrectl certification run` and `workloadrun run` create it in
+  the namespaces they create, and Certifications or Workflows applied with `kubectl`
+  or GitOps need it applied beside them (`nvcrectl rbac print`) or listed in
+  `rbac.runNamespaces`. To keep today's grant, set `rbac.scope: cluster` explicitly
+  (`nvcrectl setup init --rbac-scope cluster`, or `--set rbac.scope=cluster` with Helm);
+  later `setup init` runs keep it
+  ([ADR-092](docs/designs/092-per-namespace-controller-rbac.md), #143).
+
+### Added
+
+- Chart value `rbac.scope` decides where the controller may write. `cluster`, the
+  default, keeps the grant earlier releases made. `namespaced` grants every write to a
+  namespaced resource outside NVCRE's API group (ConfigMaps, PVCs, TrainJobs,
+  TrainingRuntimes, ResourceClaimTemplates, ComputeDomains, pod logs) only in
+  namespaces with a RoleBinding `nvcre-manager-run` to the new ClusterRole
+  `nvcre-run-role`. `rbac.runNamespaces` renders that binding for long-lived
+  namespaces. `nvcrectl setup init` keeps both from the installed release when it
+  re-runs, and its new `--rbac-scope` flag sets the scope.
+- A Workflow checks the controller's access in its namespace with
+  SelfSubjectAccessReviews before writing anything there. Without access it stays
+  `InProgress` with reason `NamespacePermissionsMissing` (or
+  `NamespaceAccessCheckFailed` when the review cannot run), emits a Warning naming the
+  RoleBinding to create, and proceeds on its own once the binding exists. The wait is
+  clocked on a new `NamespaceAccess` condition and bounded by the controller flag
+  `--namespace-access-timeout` (chart value `manager.namespaceAccessTimeout`, default
+  `10m`), after which the Workflow fails with the RoleBinding in its message.
+  `certification run --wait` and `certification report` show the wait on the
+  category.
+- `nvcrectl certification run` and `nvcrectl workloadrun run` grant the controller
+  access in a namespace they create. In a namespace that already existed, such as
+  `default` for `workloadrun run` without `-n`, they stop and print the binding unless
+  `--grant-run-access` is passed; `--cleanup` deletes a binding they created once the
+  run is gone. Under `rbac.scope: cluster` nothing changes.
+- `nvcrectl rbac print --namespace <ns>` writes the RoleBinding for runs that do not
+  go through `nvcrectl`.
+
+### Changed
+
+- The controller's permissions are split between `nvcre-manager-role`, still bound
+  cluster-wide, and `nvcre-run-role`. Under the default `rbac.scope: cluster` the
+  union is today's grant, except that `list` is dropped on PVCs, TrainingRuntimes,
+  ResourceClaimTemplates and ComputeDomains and `list` and `watch` on ConfigMaps, which
+  the controller never used, and `get` on Namespaces and `create` on
+  SelfSubjectAccessReviews are added.
+- The controller reads ConfigMaps and PVCs from the API server instead of its
+  informer cache, so it no longer watches, or holds in memory, every ConfigMap in the
+  cluster.
+- A dependency create rejected with `Forbidden` while a fresh access review allows
+  it, as from an admission policy, webhook or ResourceQuota, still fails the Workflow
+  with `DependencyCreationError` at once. A rejection the review confirms as a missing
+  binding waits instead.
+
+### Fixed
+
+- A Workflow or Job finalizer no longer holds a terminating namespace when the
+  controller's access there is already gone: a child read or delete that is forbidden
+  in a terminating namespace is left to the namespace controller.
+- A job-scoped dependency, or a group's Job, rejected by an admission policy, webhook
+  or ResourceQuota now fails the Workflow with `DependencyCreationError` or
+  `JobCreationError`. It was retried indefinitely with the group Pending, where no
+  timeout applied.
+- A Workflow whose node-result ConfigMap write is forbidden no longer reports
+  `Succeeded` or `Failed` without its results. It waits for access with
+  `NamespacePermissionsMissing` like any other forbidden write.
+
 ## [0.7.0] - 2026-10-12
 
 ### Added
