@@ -411,6 +411,7 @@ overrides:
       in: [gb200, gb300]
   dependencies:
 {{ lib "deps/gcp-gb200-roce-runtime-patch-comm.yaml" . | indent 2 }}
+{{ lib "deps/gcp-gb200-gb300-launcher-toleration.yaml" . | indent 2 }}
   jobTemplate:
     spec:
       workload:
@@ -515,6 +516,7 @@ overrides:
       equals: gb300
   dependencies:
 {{ lib "deps/mistral-gb300-ib-runtime-patch-comm.yaml" . | indent 2 }}
+{{ lib "deps/mistral-gb300-launcher-toleration.yaml" . | indent 2 }}
   jobTemplate:
     spec:
       workload:
