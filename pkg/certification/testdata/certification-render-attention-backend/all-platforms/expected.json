@@ -1,722 +1,1442 @@
 [
   {
-    "target": "nemotron5-56b/aws/a100",
+    "target": "nemotron5-56b/aws/a100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/aws/a100/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/aws/h100",
+    "target": "nemotron5-56b/aws/b200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/aws/b200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/aws/b300/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/aws/b300/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/aws/gb200/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/aws/gb200/n8",
     "backend": "auto"
   },
   {
-    "target": "nemotron5-56b/aws/h200",
+    "target": "nemotron5-56b/aws/gb300/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/aws/gb300/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/aws/l40",
-    "backend": "flash"
+    "target": "nemotron5-56b/aws/h100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/aws/l40s",
-    "backend": "flash"
-  },
-  {
-    "target": "nemotron5-56b/aws/b200",
-    "backend": "flash"
-  },
-  {
-    "target": "nemotron5-56b/aws/b300",
-    "backend": "flash"
-  },
-  {
-    "target": "nemotron5-56b/aws/gb200",
+    "target": "nemotron5-56b/aws/h100/n8",
     "backend": "auto"
   },
   {
-    "target": "nemotron5-56b/aws/gb300",
+    "target": "nemotron5-56b/aws/h200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/aws/h200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/aws/l40/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/aws/l40/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/aws/l40s/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/aws/l40s/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/aws/rtxpro6000/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/aws/rtxpro6000/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/gcp/a100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/gcp/a100/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/gcp/b200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/gcp/b200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/gcp/b300/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/gcp/b300/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/gcp/gb200/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/gcp/gb200/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/gcp/gb300/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/aws/rtxpro6000",
+    "target": "nemotron5-56b/gcp/gb300/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/gcp/h100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/gcp/a100",
+    "target": "nemotron5-56b/gcp/h100/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/gcp/h100",
+    "target": "nemotron5-56b/gcp/h200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/gcp/h200/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/gcp/l40/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/gcp/h200",
+    "target": "nemotron5-56b/gcp/l40/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/gcp/l40s/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/gcp/l40",
+    "target": "nemotron5-56b/gcp/l40s/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/gcp/l40s",
+    "target": "nemotron5-56b/gcp/rtxpro6000/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/gcp/rtxpro6000/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/gcp/b200",
+    "target": "nemotron5-56b/azure/a100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/azure/a100/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/azure/b200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/gcp/b300",
+    "target": "nemotron5-56b/azure/b200/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/azure/b300/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/gcp/gb200",
+    "target": "nemotron5-56b/azure/b300/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/gcp/gb300",
+    "target": "nemotron5-56b/azure/gb200/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/azure/gb200/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/azure/gb300/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/gcp/rtxpro6000",
+    "target": "nemotron5-56b/azure/gb300/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/azure/h100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/azure/a100",
+    "target": "nemotron5-56b/azure/h100/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/azure/h100",
+    "target": "nemotron5-56b/azure/h200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/azure/h200/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/azure/l40/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/azure/h200",
+    "target": "nemotron5-56b/azure/l40/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/azure/l40s/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/azure/l40",
+    "target": "nemotron5-56b/azure/l40s/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/azure/l40s",
+    "target": "nemotron5-56b/azure/rtxpro6000/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/azure/rtxpro6000/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/oci/a100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/azure/b200",
+    "target": "nemotron5-56b/oci/a100/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/oci/b200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/azure/b300",
+    "target": "nemotron5-56b/oci/b200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/azure/gb200",
+    "target": "nemotron5-56b/oci/b300/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/oci/b300/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/oci/gb200/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/azure/gb300",
+    "target": "nemotron5-56b/oci/gb200/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/oci/gb300/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/azure/rtxpro6000",
+    "target": "nemotron5-56b/oci/gb300/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/oci/a100",
+    "target": "nemotron5-56b/oci/h100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/oci/h100/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/oci/h200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/oci/h100",
+    "target": "nemotron5-56b/oci/h200/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/oci/l40/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/oci/h200",
+    "target": "nemotron5-56b/oci/l40/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/oci/l40",
+    "target": "nemotron5-56b/oci/l40s/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/oci/l40s/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/oci/rtxpro6000/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/oci/l40s",
+    "target": "nemotron5-56b/oci/rtxpro6000/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/onprem/a100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/oci/b200",
+    "target": "nemotron5-56b/onprem/a100/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/oci/b300",
+    "target": "nemotron5-56b/onprem/b200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/onprem/b200/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/onprem/b300/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/oci/gb200",
+    "target": "nemotron5-56b/onprem/b300/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/onprem/gb200/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/oci/gb300",
+    "target": "nemotron5-56b/onprem/gb200/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/onprem/gb300/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/oci/rtxpro6000",
+    "target": "nemotron5-56b/onprem/gb300/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/onprem/a100",
+    "target": "nemotron5-56b/onprem/h100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/onprem/h100/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/onprem/h200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/onprem/h100",
+    "target": "nemotron5-56b/onprem/h200/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/onprem/l40/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/onprem/h200",
+    "target": "nemotron5-56b/onprem/l40/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/onprem/l40",
+    "target": "nemotron5-56b/onprem/l40s/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/onprem/l40s/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/onprem/rtxpro6000/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/onprem/l40s",
+    "target": "nemotron5-56b/onprem/rtxpro6000/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/togetherai/a100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/onprem/b200",
+    "target": "nemotron5-56b/togetherai/a100/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/onprem/b300",
+    "target": "nemotron5-56b/togetherai/b200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/togetherai/b200/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/togetherai/b300/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/onprem/gb200",
+    "target": "nemotron5-56b/togetherai/b300/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/togetherai/gb200/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/onprem/gb300",
+    "target": "nemotron5-56b/togetherai/gb200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/onprem/rtxpro6000",
+    "target": "nemotron5-56b/togetherai/gb300/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/togetherai/gb300/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/togetherai/h100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/togetherai/a100",
+    "target": "nemotron5-56b/togetherai/h100/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/togetherai/h200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/togetherai/h100",
+    "target": "nemotron5-56b/togetherai/h200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/togetherai/h200",
+    "target": "nemotron5-56b/togetherai/l40/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/togetherai/l40/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/togetherai/l40s/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/togetherai/l40",
+    "target": "nemotron5-56b/togetherai/l40s/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/togetherai/rtxpro6000/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/togetherai/l40s",
+    "target": "nemotron5-56b/togetherai/rtxpro6000/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/togetherai/b200",
+    "target": "nemotron5-56b/mistral/a100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/mistral/a100/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/mistral/b200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/togetherai/b300",
+    "target": "nemotron5-56b/mistral/b200/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/mistral/b300/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/togetherai/gb200",
+    "target": "nemotron5-56b/mistral/b300/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/togetherai/gb300",
+    "target": "nemotron5-56b/mistral/gb200/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/mistral/gb200/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/mistral/gb300/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/togetherai/rtxpro6000",
+    "target": "nemotron5-56b/mistral/gb300/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/mistral/h100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/mistral/a100",
+    "target": "nemotron5-56b/mistral/h100/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/mistral/h100",
+    "target": "nemotron5-56b/mistral/h200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/mistral/h200/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/mistral/l40/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/mistral/h200",
+    "target": "nemotron5-56b/mistral/l40/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/mistral/l40s/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/mistral/l40",
+    "target": "nemotron5-56b/mistral/l40s/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/mistral/l40s",
+    "target": "nemotron5-56b/mistral/rtxpro6000/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/mistral/rtxpro6000/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/forge/a100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/mistral/b200",
+    "target": "nemotron5-56b/forge/a100/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/forge/b200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/mistral/b300",
+    "target": "nemotron5-56b/forge/b200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/mistral/gb200",
+    "target": "nemotron5-56b/forge/b300/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/forge/b300/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/forge/gb200/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/mistral/gb300",
+    "target": "nemotron5-56b/forge/gb200/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/forge/gb300/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/mistral/rtxpro6000",
+    "target": "nemotron5-56b/forge/gb300/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/forge/a100",
+    "target": "nemotron5-56b/forge/h100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/forge/h100/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/forge/h200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/forge/h100",
+    "target": "nemotron5-56b/forge/h200/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/forge/l40/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/forge/h200",
+    "target": "nemotron5-56b/forge/l40/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/forge/l40",
+    "target": "nemotron5-56b/forge/l40s/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/forge/l40s/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/forge/rtxpro6000/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/forge/l40s",
+    "target": "nemotron5-56b/forge/rtxpro6000/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/nscale/a100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/forge/b200",
+    "target": "nemotron5-56b/nscale/a100/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/forge/b300",
+    "target": "nemotron5-56b/nscale/b200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/nscale/b200/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/nscale/b300/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/forge/gb200",
+    "target": "nemotron5-56b/nscale/b300/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/nscale/gb200/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/forge/gb300",
+    "target": "nemotron5-56b/nscale/gb200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/forge/rtxpro6000",
+    "target": "nemotron5-56b/nscale/gb300/n1",
+    "skipped": "4 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/nscale/gb300/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/nscale/h100/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/nscale/a100",
+    "target": "nemotron5-56b/nscale/h100/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/nscale/h200/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/nscale/h100",
+    "target": "nemotron5-56b/nscale/h200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/nscale/h200",
+    "target": "nemotron5-56b/nscale/l40/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
+  },
+  {
+    "target": "nemotron5-56b/nscale/l40/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/nscale/l40s/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/nscale/l40",
+    "target": "nemotron5-56b/nscale/l40s/n8",
     "backend": "flash"
+  },
+  {
+    "target": "nemotron5-56b/nscale/rtxpro6000/n1",
+    "skipped": "8 GPUs is below minGPUs 32"
   },
   {
-    "target": "nemotron5-56b/nscale/l40s",
+    "target": "nemotron5-56b/nscale/rtxpro6000/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/nscale/b200",
+    "target": "nemotron5-8b/aws/a100/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/nscale/b300",
+    "target": "nemotron5-8b/aws/a100/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/nscale/gb200",
+    "target": "nemotron5-8b/aws/b200/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/nscale/gb300",
+    "target": "nemotron5-8b/aws/b200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-56b/nscale/rtxpro6000",
+    "target": "nemotron5-8b/aws/b300/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/aws/a100",
+    "target": "nemotron5-8b/aws/b300/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/aws/h100",
+    "target": "nemotron5-8b/aws/gb200/n1",
     "backend": "auto"
   },
   {
-    "target": "nemotron5-8b/aws/h200",
-    "backend": "flash"
-  },
-  {
-    "target": "nemotron5-8b/aws/l40",
-    "backend": "flash"
-  },
-  {
-    "target": "nemotron5-8b/aws/l40s",
-    "backend": "flash"
-  },
-  {
-    "target": "nemotron5-8b/aws/b200",
-    "backend": "flash"
-  },
-  {
-    "target": "nemotron5-8b/aws/b300",
-    "backend": "flash"
-  },
-  {
-    "target": "nemotron5-8b/aws/gb200",
+    "target": "nemotron5-8b/aws/gb200/n8",
     "backend": "auto"
   },
   {
-    "target": "nemotron5-8b/aws/gb300",
+    "target": "nemotron5-8b/aws/gb300/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/aws/rtxpro6000",
+    "target": "nemotron5-8b/aws/gb300/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/gcp/a100",
+    "target": "nemotron5-8b/aws/h100/n1",
+    "backend": "auto"
+  },
+  {
+    "target": "nemotron5-8b/aws/h100/n8",
+    "backend": "auto"
+  },
+  {
+    "target": "nemotron5-8b/aws/h200/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/aws/h200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/aws/l40/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/aws/l40/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/aws/l40s/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/aws/l40s/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/aws/rtxpro6000/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/aws/rtxpro6000/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/a100/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/a100/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/b200/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/b200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/b300/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/b300/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/gb200/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/gb200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/gb300/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/gb300/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/h100/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/h100/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/h200/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/h200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/l40/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/l40/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/l40s/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/l40s/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/rtxpro6000/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/gcp/rtxpro6000/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/a100/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/a100/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/b200/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/b200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/b300/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/b300/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/gb200/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/gb200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/gb300/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/gb300/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/h100/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/h100/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/h200/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/h200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/l40/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/l40/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/l40s/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/l40s/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/rtxpro6000/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/azure/rtxpro6000/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/a100/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/a100/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/b200/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/b200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/b300/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/b300/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/gb200/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/gb200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/gb300/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/gb300/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/h100/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/h100/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/h200/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/h200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/l40/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/l40/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/l40s/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/l40s/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/rtxpro6000/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/oci/rtxpro6000/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/a100/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/a100/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/b200/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/b200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/b300/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/b300/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/gb200/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/gb200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/gb300/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/gb300/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/h100/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/h100/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/h200/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/h200/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/l40/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/l40/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/l40s/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/l40s/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/rtxpro6000/n1",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/onprem/rtxpro6000/n8",
+    "backend": "flash"
+  },
+  {
+    "target": "nemotron5-8b/togetherai/a100/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/gcp/h100",
+    "target": "nemotron5-8b/togetherai/a100/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/gcp/h200",
+    "target": "nemotron5-8b/togetherai/b200/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/gcp/l40",
+    "target": "nemotron5-8b/togetherai/b200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/gcp/l40s",
+    "target": "nemotron5-8b/togetherai/b300/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/gcp/b200",
+    "target": "nemotron5-8b/togetherai/b300/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/gcp/b300",
+    "target": "nemotron5-8b/togetherai/gb200/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/gcp/gb200",
+    "target": "nemotron5-8b/togetherai/gb200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/gcp/gb300",
+    "target": "nemotron5-8b/togetherai/gb300/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/gcp/rtxpro6000",
+    "target": "nemotron5-8b/togetherai/gb300/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/azure/a100",
+    "target": "nemotron5-8b/togetherai/h100/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/azure/h100",
+    "target": "nemotron5-8b/togetherai/h100/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/azure/h200",
+    "target": "nemotron5-8b/togetherai/h200/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/azure/l40",
+    "target": "nemotron5-8b/togetherai/h200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/azure/l40s",
+    "target": "nemotron5-8b/togetherai/l40/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/azure/b200",
+    "target": "nemotron5-8b/togetherai/l40/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/azure/b300",
+    "target": "nemotron5-8b/togetherai/l40s/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/azure/gb200",
+    "target": "nemotron5-8b/togetherai/l40s/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/azure/gb300",
+    "target": "nemotron5-8b/togetherai/rtxpro6000/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/azure/rtxpro6000",
+    "target": "nemotron5-8b/togetherai/rtxpro6000/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/oci/a100",
+    "target": "nemotron5-8b/mistral/a100/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/oci/h100",
+    "target": "nemotron5-8b/mistral/a100/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/oci/h200",
+    "target": "nemotron5-8b/mistral/b200/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/oci/l40",
+    "target": "nemotron5-8b/mistral/b200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/oci/l40s",
+    "target": "nemotron5-8b/mistral/b300/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/oci/b200",
+    "target": "nemotron5-8b/mistral/b300/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/oci/b300",
+    "target": "nemotron5-8b/mistral/gb200/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/oci/gb200",
+    "target": "nemotron5-8b/mistral/gb200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/oci/gb300",
+    "target": "nemotron5-8b/mistral/gb300/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/oci/rtxpro6000",
+    "target": "nemotron5-8b/mistral/gb300/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/onprem/a100",
+    "target": "nemotron5-8b/mistral/h100/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/onprem/h100",
+    "target": "nemotron5-8b/mistral/h100/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/onprem/h200",
+    "target": "nemotron5-8b/mistral/h200/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/onprem/l40",
+    "target": "nemotron5-8b/mistral/h200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/onprem/l40s",
+    "target": "nemotron5-8b/mistral/l40/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/onprem/b200",
+    "target": "nemotron5-8b/mistral/l40/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/onprem/b300",
+    "target": "nemotron5-8b/mistral/l40s/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/onprem/gb200",
+    "target": "nemotron5-8b/mistral/l40s/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/onprem/gb300",
+    "target": "nemotron5-8b/mistral/rtxpro6000/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/onprem/rtxpro6000",
+    "target": "nemotron5-8b/mistral/rtxpro6000/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/togetherai/a100",
+    "target": "nemotron5-8b/forge/a100/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/togetherai/h100",
+    "target": "nemotron5-8b/forge/a100/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/togetherai/h200",
+    "target": "nemotron5-8b/forge/b200/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/togetherai/l40",
+    "target": "nemotron5-8b/forge/b200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/togetherai/l40s",
+    "target": "nemotron5-8b/forge/b300/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/togetherai/b200",
+    "target": "nemotron5-8b/forge/b300/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/togetherai/b300",
+    "target": "nemotron5-8b/forge/gb200/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/togetherai/gb200",
+    "target": "nemotron5-8b/forge/gb200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/togetherai/gb300",
+    "target": "nemotron5-8b/forge/gb300/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/togetherai/rtxpro6000",
+    "target": "nemotron5-8b/forge/gb300/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/mistral/a100",
+    "target": "nemotron5-8b/forge/h100/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/mistral/h100",
+    "target": "nemotron5-8b/forge/h100/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/mistral/h200",
+    "target": "nemotron5-8b/forge/h200/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/mistral/l40",
+    "target": "nemotron5-8b/forge/h200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/mistral/l40s",
+    "target": "nemotron5-8b/forge/l40/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/mistral/b200",
+    "target": "nemotron5-8b/forge/l40/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/mistral/b300",
+    "target": "nemotron5-8b/forge/l40s/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/mistral/gb200",
+    "target": "nemotron5-8b/forge/l40s/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/mistral/gb300",
+    "target": "nemotron5-8b/forge/rtxpro6000/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/mistral/rtxpro6000",
+    "target": "nemotron5-8b/forge/rtxpro6000/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/forge/a100",
+    "target": "nemotron5-8b/nscale/a100/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/forge/h100",
+    "target": "nemotron5-8b/nscale/a100/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/forge/h200",
+    "target": "nemotron5-8b/nscale/b200/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/forge/l40",
+    "target": "nemotron5-8b/nscale/b200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/forge/l40s",
+    "target": "nemotron5-8b/nscale/b300/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/forge/b200",
+    "target": "nemotron5-8b/nscale/b300/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/forge/b300",
+    "target": "nemotron5-8b/nscale/gb200/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/forge/gb200",
+    "target": "nemotron5-8b/nscale/gb200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/forge/gb300",
+    "target": "nemotron5-8b/nscale/gb300/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/forge/rtxpro6000",
+    "target": "nemotron5-8b/nscale/gb300/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/nscale/a100",
+    "target": "nemotron5-8b/nscale/h100/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/nscale/h100",
+    "target": "nemotron5-8b/nscale/h100/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/nscale/h200",
+    "target": "nemotron5-8b/nscale/h200/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/nscale/l40",
+    "target": "nemotron5-8b/nscale/h200/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/nscale/l40s",
+    "target": "nemotron5-8b/nscale/l40/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/nscale/b200",
+    "target": "nemotron5-8b/nscale/l40/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/nscale/b300",
+    "target": "nemotron5-8b/nscale/l40s/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/nscale/gb200",
+    "target": "nemotron5-8b/nscale/l40s/n8",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/nscale/gb300",
+    "target": "nemotron5-8b/nscale/rtxpro6000/n1",
     "backend": "flash"
   },
   {
-    "target": "nemotron5-8b/nscale/rtxpro6000",
+    "target": "nemotron5-8b/nscale/rtxpro6000/n8",
     "backend": "flash"
   }
 ]

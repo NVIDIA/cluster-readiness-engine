@@ -47,8 +47,10 @@ var (
 // attentionBackendResult is one rendered training Workflow: the backend
 // train.sh resolves to under the Workflow's effective env, and the NVTE
 // attention variables that env sets (absent when unset, as megatron wants).
+// Skipped names why a combination was not rendered at all.
 type attentionBackendResult struct {
 	Target  string            `json:"target"`
+	Skipped string            `json:"skipped,omitempty"`
 	Backend string            `json:"backend,omitempty"`
 	NVTE    map[string]string `json:"nvte,omitempty"`
 }
@@ -59,12 +61,16 @@ type attentionBackendResult struct {
 // rank before the first step. The reconcile goldens stored that conflict as
 // expected output, and no CI lane runs pretrain_gpt.py, so nothing failed.
 //
-// Every training entry is rendered for every platform in platform.Names()
-// crossed with the input's GPU architectures, through the same path as
-// "nvcrectl certification render". A combination whose effective env
-// contradicts its backend fails the test outright, independent of the golden.
-// So does one that fails to render: recording the error in the golden would let
-// a regeneration accept a target this guard never checked.
+// Every training entry is rendered for every platform in platform.Names(),
+// every architecture in gpu-defaults.yaml, and every nodesPerJob in the input,
+// through the same path as "nvcrectl certification render". The architectures
+// come from catalog.KnownGPUArchs rather than the input, so a new one is swept
+// as soon as it is defined. A combination whose effective env contradicts its
+// backend fails the test outright, independent of the golden. So does one that
+// fails to render: recording the error in the golden would let a regeneration
+// accept a target this guard never checked. The one exception is a node count
+// below the entry's minGPUs, which is decided from meta.yaml before rendering
+// and recorded as skipped, so any other build error still fails.
 // The golden pins which backend each combination resolves to, so changing a
 // platform's kernel choice is a reviewed diff.
 func TestCertificationRenderAttentionBackend(t *testing.T) {
@@ -74,16 +80,20 @@ func TestCertificationRenderAttentionBackend(t *testing.T) {
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var cfg struct {
-			GPUArchs    []string `json:"gpuArchs"`
-			NodesPerJob int32    `json:"nodesPerJob"`
+			NodesPerJob []int32 `json:"nodesPerJob"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &cfg); err != nil {
 			return err
 		}
-		for _, arch := range cfg.GPUArchs {
-			if !catalog.KnownGPUArch(arch) {
-				return fmt.Errorf("gpuArchs lists %q, which gpu-defaults.yaml does not define", arch)
-			}
+		if len(cfg.NodesPerJob) == 0 {
+			return errors.New("input.yaml lists no nodesPerJob")
+		}
+		if err := catalog.LoadGPUDefaults(); err != nil {
+			return err
+		}
+		archs := catalog.KnownGPUArchs()
+		if len(archs) == 0 {
+			return errors.New("gpu-defaults.yaml defines no architectures")
 		}
 
 		var results []attentionBackendResult
@@ -92,17 +102,28 @@ func TestCertificationRenderAttentionBackend(t *testing.T) {
 			if cat.Domain != "training" {
 				continue
 			}
+			minGPUs := catalog.Lookup(cat.Domain, cat.Variant).MinGPUs
 			for _, platformName := range platform.Names() {
-				for _, arch := range cfg.GPUArchs {
-					target := fmt.Sprintf("%s/%s/%s", cat.Variant, platformName, arch)
-					res, err := renderAttentionBackend(cat, platformName, arch, cfg.NodesPerJob)
-					if err != nil {
-						return fmt.Errorf("%s: render: %w", target, err)
-					}
-					res.Target = target
-					results = append(results, res)
-					if err := checkAttentionBackend(res); err != nil {
-						conflicts = append(conflicts, fmt.Errorf("%s: %w", target, err))
+				for _, arch := range archs {
+					gpusPerNode := catalog.GPUDefaults(arch, platformName).GpusPerNode
+					for _, nodes := range cfg.NodesPerJob {
+						target := fmt.Sprintf("%s/%s/%s/n%d", cat.Variant, platformName, arch, nodes)
+						if total := nodes * gpusPerNode; total < minGPUs {
+							results = append(results, attentionBackendResult{
+								Target:  target,
+								Skipped: fmt.Sprintf("%d GPUs is below minGPUs %d", total, minGPUs),
+							})
+							continue
+						}
+						res, err := renderAttentionBackend(cat, platformName, arch, nodes)
+						if err != nil {
+							return fmt.Errorf("%s: render: %w", target, err)
+						}
+						res.Target = target
+						results = append(results, res)
+						if err := checkAttentionBackend(res); err != nil {
+							conflicts = append(conflicts, fmt.Errorf("%s: %w", target, err))
+						}
 					}
 				}
 			}
