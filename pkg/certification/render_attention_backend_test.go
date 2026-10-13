@@ -48,10 +48,9 @@ var (
 // train.sh resolves to under the Workflow's effective env, and the NVTE
 // attention variables that env sets (absent when unset, as megatron wants).
 type attentionBackendResult struct {
-	Target      string            `json:"target"`
-	Backend     string            `json:"backend,omitempty"`
-	NVTE        map[string]string `json:"nvte,omitempty"`
-	RenderError string            `json:"renderError,omitempty"`
+	Target  string            `json:"target"`
+	Backend string            `json:"backend,omitempty"`
+	NVTE    map[string]string `json:"nvte,omitempty"`
 }
 
 // TestCertificationRenderAttentionBackend guards issue #486: on AWS H100 the
@@ -64,6 +63,8 @@ type attentionBackendResult struct {
 // crossed with the input's GPU architectures, through the same path as
 // "nvcrectl certification render". A combination whose effective env
 // contradicts its backend fails the test outright, independent of the golden.
+// So does one that fails to render: recording the error in the golden would let
+// a regeneration accept a target this guard never checked.
 // The golden pins which backend each combination resolves to, so changing a
 // platform's kernel choice is a reviewed diff.
 func TestCertificationRenderAttentionBackend(t *testing.T) {
@@ -96,8 +97,7 @@ func TestCertificationRenderAttentionBackend(t *testing.T) {
 					target := fmt.Sprintf("%s/%s/%s", cat.Variant, platformName, arch)
 					res, err := renderAttentionBackend(cat, platformName, arch, cfg.NodesPerJob)
 					if err != nil {
-						results = append(results, attentionBackendResult{Target: target, RenderError: err.Error()})
-						continue
+						return fmt.Errorf("%s: render: %w", target, err)
 					}
 					res.Target = target
 					results = append(results, res)
@@ -120,6 +120,9 @@ func TestCertificationRenderAttentionBackend(t *testing.T) {
 	})
 }
 
+// renderAttentionBackend renders one training category for one platform and
+// GPU architecture the way "nvcrectl certification render" does, then projects
+// the resolved Workflow's attention backend and NVTE attention env.
 func renderAttentionBackend(
 	cat catalog.CategoryInfo, platformName, arch string, nodesPerJob int32,
 ) (attentionBackendResult, error) {
@@ -239,6 +242,9 @@ func resolveShellWord(word string, env map[string]string) (string, error) {
 	return m[2], nil
 }
 
+// checkAttentionBackend reports every NVTE attention variable whose value
+// contradicts what megatron requires for the resolved backend. An unset
+// variable never conflicts, since megatron sets it itself.
 func checkAttentionBackend(res attentionBackendResult) error {
 	if res.Backend == "" {
 		if len(res.NVTE) > 0 {
