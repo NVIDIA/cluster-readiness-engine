@@ -80,9 +80,11 @@ followed them.
   or ResourceQuota now fails the Workflow with `DependencyCreationError` or
   `JobCreationError`. It was retried indefinitely with the group Pending, where no
   timeout applied.
-- A Workflow whose node-result ConfigMap write is forbidden no longer reports
-  `Succeeded` or `Failed` without its results. It waits for access with
-  `NamespacePermissionsMissing` like any other forbidden write.
+- A Workflow whose node-result ConfigMap write is forbidden because the controller
+  lost its access no longer reports `Succeeded` or `Failed` without its results. It
+  waits for access with `NamespacePermissionsMissing` like any other forbidden write.
+  A write an admission policy or ResourceQuota rejects stays best effort, as before,
+  and now leaves a `NodeResultsWriteRejected` Warning on the Workflow.
 
 ## [0.7.0] - 2026-10-12
 

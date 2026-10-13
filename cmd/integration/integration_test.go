@@ -13,6 +13,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -649,8 +650,9 @@ type waitConfig struct {
 	RejectDependencyCreates bool `json:"rejectDependencyCreates,omitempty"`
 	// RejectNodeResultWrites makes the Workflow controller's node-result
 	// ConfigMap writes fail with Forbidden while the namespace is labelled
-	// revoked-after-check, as they would once its access is revoked mid-run.
-	// A step that removes the label restores access.
+	// revoked-after-check, as they would once its access is revoked mid-run
+	// (a step that removes the label restores access), or node-results-rejected,
+	// as an admission policy or ResourceQuota would with access granted.
 	RejectNodeResultWrites bool `json:"rejectNodeResultWrites,omitempty"`
 	// RejectWorkloadCreates makes the Job controller's TrainJob creates fail
 	// with Forbidden, as they would once the binding is removed between the
@@ -748,7 +750,11 @@ func (c *nodeResultWriteRejectingClient) revoked(ctx context.Context, obj client
 	if err := c.reader.Get(ctx, client.ObjectKey{Name: obj.GetNamespace()}, ns); err != nil {
 		return false
 	}
-	return ns.Labels[accessLabel] == accessRevokedAfterCheck
+	switch ns.Labels[accessLabel] {
+	case accessRevokedAfterCheck, accessNodeResultsRejected:
+		return true
+	}
+	return false
 }
 
 func (c *nodeResultWriteRejectingClient) Create(
@@ -795,6 +801,11 @@ const accessLabel = "test.nvcre.nvidia.com/access"
 // accessRevokedAfterCheck is the accessLabel value for access revoked between
 // the check and a write; see labelAccessReviewer.
 const accessRevokedAfterCheck = "revoked-after-check"
+
+// accessNodeResultsRejected is the accessLabel value for node-result writes an
+// admission policy or ResourceQuota rejects while access stays granted: the
+// reviewer answers as for an unlabelled namespace.
+const accessNodeResultsRejected = "node-results-rejected"
 
 // labelAccessReviewer answers from the reviewed namespace's accessLabel:
 //
@@ -1500,7 +1511,7 @@ func listEventProjections(
 		rows = append(rows, eventProjection{
 			Type:    event.Type,
 			Reason:  event.Reason,
-			Message: event.Note,
+			Message: nodeResultsNameRE.ReplaceAllString(event.Note, "$1"),
 			InvolvedObject: involvedObjectProjection{
 				Kind: event.Regarding.Kind,
 				Name: event.Regarding.Name,
@@ -1511,6 +1522,11 @@ func listEventProjections(
 	slices.SortFunc(rows, compareEventProjections)
 	return rows, nil
 }
+
+// nodeResultsNameRE matches a node-result ConfigMap name, which ends in a
+// prefix of the Workflow's random UID. Event messages that name one are
+// normalized to the bare prefix, as sanitizeNodeResultsRef does for status.
+var nodeResultsNameRE = regexp.MustCompile(`\b((?:succeeded|failed)-nodes)-[0-9a-f]{8}\b`)
 
 func compareEventProjections(a, b eventProjection) int {
 	return cmp.Or(

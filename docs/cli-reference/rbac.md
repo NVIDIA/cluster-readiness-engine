@@ -14,7 +14,7 @@ Writes the RoleBinding that grants the controller write access in one run namesp
 nvcrectl rbac print --namespace <run-namespace> [flags]
 ```
 
-The binding is needed only when the chart is installed with `rbac.scope: namespaced` ([ADR-092](../designs/092-per-namespace-controller-rbac.md)). Without it, a Workflow in that namespace waits with reason `NamespacePermissionsMissing` until the binding exists, then fails after `manager.namespaceAccessTimeout`. `nvcrectl certification run` and `nvcrectl workloadrun run` create the binding themselves in namespaces they create; this command is for runs that do not go through `nvcrectl`, and for namespaces that already exist. See [RBAC requirements](../operations/deployment.md#rbac-requirements).
+The binding is needed only when the chart is installed with `rbac.scope: namespaced` ([ADR-092](../designs/092-per-namespace-controller-rbac.md)). Without it, a Workflow in that namespace waits with reason `NamespacePermissionsMissing` and resumes on its own once the binding exists, or fails if `manager.namespaceAccessTimeout` (default 10 minutes) runs out first. `nvcrectl certification run` and `nvcrectl workloadrun run` create the binding themselves in namespaces they create; this command is for runs that do not go through `nvcrectl`, and for namespaces that already exist. See [RBAC requirements](../operations/deployment.md#rbac-requirements).
 
 Nothing is read from the cluster. The manifest is built by the same code `nvcrectl` uses when it creates the binding, so the role and binding names cannot drift between the two.
 

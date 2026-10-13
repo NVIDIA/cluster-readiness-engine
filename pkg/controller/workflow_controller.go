@@ -2252,7 +2252,7 @@ func (r *WorkflowReconciler) completeTerminalGroup(
 	g.CompletionTime = &now
 
 	if len(job.Status.FailedNodes) > 0 {
-		if err := nodeResultsWriteError(ctx, r.recordFailedNodes(ctx, workflow, job.Status.FailedNodes),
+		if err := r.nodeResultsWriteError(ctx, workflow, r.recordFailedNodes(ctx, workflow, job.Status.FailedNodes),
 			"Failed to record failed nodes to ConfigMap"); err != nil {
 			return false, err
 		}
@@ -2537,11 +2537,11 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 		msg := fmt.Sprintf("Diagnosis complete: %d faulty nodes confirmed", len(confirmedFaulty))
 		log.Info(msg)
 
-		if err := nodeResultsWriteError(ctx, r.recordFailedNodes(ctx, workflow, noderesults.NodesWithFailureDetails(confirmedFaulty, ReasonWorkloadFailed, msg)),
+		if err := r.nodeResultsWriteError(ctx, workflow, r.recordFailedNodes(ctx, workflow, noderesults.NodesWithFailureDetails(confirmedFaulty, ReasonWorkloadFailed, msg)),
 			"Failed to record failed nodes to ConfigMap"); err != nil {
 			return ctrl.Result{}, err
 		}
-		if err := nodeResultsWriteError(ctx, r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)),
+		if err := r.nodeResultsWriteError(ctx, workflow, r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)),
 			"Failed to record succeeded nodes to ConfigMap"); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -2791,11 +2791,11 @@ func (r *WorkflowReconciler) diagnoseNextGroups(
 		groups := orchestration.BuildConfirmationGroups(diag.SuspectNodes, diag.HealthyNodes)
 		if len(groups) == 0 {
 			msg := fmt.Sprintf("No healthy reference node; %d suspects marked failed", len(diag.SuspectNodes))
-			if err := nodeResultsWriteError(ctx, r.recordFailedNodes(ctx, workflow, noderesults.NodesWithFailureDetails(diag.SuspectNodes, ReasonWorkloadFailed, msg)),
+			if err := r.nodeResultsWriteError(ctx, workflow, r.recordFailedNodes(ctx, workflow, noderesults.NodesWithFailureDetails(diag.SuspectNodes, ReasonWorkloadFailed, msg)),
 				"Failed to record failed nodes to ConfigMap"); err != nil {
 				return ctrl.Result{}, err
 			}
-			if err := nodeResultsWriteError(ctx, r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)),
+			if err := r.nodeResultsWriteError(ctx, workflow, r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)),
 				"Failed to record succeeded nodes to ConfigMap"); err != nil {
 				return ctrl.Result{}, err
 			}
@@ -2852,7 +2852,7 @@ func (r *WorkflowReconciler) diagnoseDone(
 	logf.FromContext(ctx).Info(msg, "round", diag.Round,
 		"healthy", len(diag.HealthyNodes), "suspects", len(diag.SuspectNodes))
 
-	if err := nodeResultsWriteError(ctx, r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)),
+	if err := r.nodeResultsWriteError(ctx, workflow, r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)),
 		"Failed to record succeeded nodes to ConfigMap"); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -2941,7 +2941,7 @@ func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *nvcre
 			msg += "; hardware failures occurred on one or more nodes"
 		}
 
-		if err := nodeResultsWriteError(ctx, r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)),
+		if err := r.nodeResultsWriteError(ctx, workflow, r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)),
 			"Failed to record succeeded nodes to ConfigMap"); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -2969,7 +2969,7 @@ func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *nvcre
 
 	msg := fmt.Sprintf("All %d iterations completed successfully", totalIter)
 
-	if err := nodeResultsWriteError(ctx, r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)),
+	if err := r.nodeResultsWriteError(ctx, workflow, r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)),
 		"Failed to record succeeded nodes to ConfigMap"); err != nil {
 		return ctrl.Result{}, err
 	}

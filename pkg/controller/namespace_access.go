@@ -552,8 +552,9 @@ func (r *WorkflowReconciler) awaitAccessOnForbidden(
 // timeout and backoff, in this pass. That holds whether the fresh review was
 // denied or could not run: failed reviews are not cached, so leaving the wait
 // to a later pass's cached-denial check would retry the write forever with no
-// wait recorded. If the fresh review allows the write, admission or quota
-// rejected it, and the error is returned as it is.
+// wait recorded. A node-result write arrives already classified by
+// nodeResultsWriteError, which handles an admission or quota rejection itself;
+// any other Forbidden the fresh review allows is returned as it is.
 func (r *WorkflowReconciler) requeueAfterForbiddenWrite(
 	ctx context.Context, workflow *nvcrev1alpha1.Workflow,
 ) func(ctrl.Result, error) (ctrl.Result, error) {
@@ -561,7 +562,12 @@ func (r *WorkflowReconciler) requeueAfterForbiddenWrite(
 		if err == nil || r.AccessReviewer == nil || !apierrors.IsForbidden(err) {
 			return result, err
 		}
-		access := r.reviewNamespaceAccess(ctx, workflow, true).forWrite(err)
+		var access namespaceAccessResult
+		if denied, ok := errors.AsType[*accessDeniedWriteError](err); ok {
+			access = denied.access
+		} else {
+			access = r.reviewNamespaceAccess(ctx, workflow, true).forWrite(err)
+		}
 		if access.granted() {
 			return result, err
 		}

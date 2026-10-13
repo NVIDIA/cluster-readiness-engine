@@ -169,6 +169,11 @@ const (
 	// wait that begins mid-run makes no transition at all.
 	ReasonNamespaceAccessDenied      = "NamespaceAccessDenied"
 	ReasonNamespaceAccessReviewError = "NamespaceAccessReviewError"
+	// ReasonNodeResultsWriteRejected is the Warning event emitted when a
+	// node-result ConfigMap write is rejected although the controller has
+	// access, by an admission policy or ResourceQuota. The Workflow goes on
+	// without the record, as before ADR-092, but no longer only in the log.
+	ReasonNodeResultsWriteRejected = "NodeResultsWriteRejected"
 
 	// ReasonGangSchedulingConflict marks a Workflow whose resolved Job template
 	// is invalid after overrides. This includes workload metadata that fails

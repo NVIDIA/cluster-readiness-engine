@@ -20,6 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -210,25 +211,56 @@ func TestSSARReviewerCachedDenials(t *testing.T) {
 	require.Equal(t, 2, calls, "CachedDenials never reviews")
 }
 
-// TestNodeResultsWriteError pins which node-result write failures end a pass:
-// only Forbidden, which reconcileJob turns into a wait for access. Anything
-// else stays best effort, logged and dropped, as before ADR-092.
+// TestNodeResultsWriteError pins which node-result write failures end a pass.
+// Only a Forbidden the controller's own access explains does: a review that
+// denies it or cannot run, carried to requeueAfterForbiddenWrite so it is not
+// reviewed twice. A Forbidden the review allows, from an admission policy or
+// ResourceQuota, and every other failure stay best effort as before ADR-092;
+// the admission case also leaves a Warning event.
 func TestNodeResultsWriteError(t *testing.T) {
 	forbidden := apierrors.NewForbidden(schema.GroupResource{Resource: resourceConfigMaps}, "results",
 		errors.New("injected"))
 	for _, tc := range []struct {
-		name string
-		err  error
-		want error
+		name        string
+		err         error
+		denied      []AccessCheck
+		reviewErr   error
+		nilReviewer bool
+		wantEnds    bool
+		wantEvent   bool
 	}{
 		{name: "write succeeded"},
-		{name: "forbidden ends the pass", err: forbidden, want: forbidden},
 		{name: "other failure is dropped", err: errors.New("etcd request too large")},
-		{name: "conflict is dropped", err: apierrors.NewConflict(schema.GroupResource{Resource: resourceConfigMaps},
-			"results", errors.New("injected"))},
+		{name: "denied forbidden ends the pass", err: forbidden,
+			denied: []AccessCheck{{Resource: resourceConfigMaps, Verb: verbCreate}}, wantEnds: true},
+		{name: "unreviewable forbidden ends the pass", err: forbidden, reviewErr: errors.New("timeout"), wantEnds: true},
+		{name: "admission forbidden is dropped with a warning", err: forbidden, wantEvent: true},
+		{name: "forbidden on another resource counts as admission", err: forbidden,
+			denied: []AccessCheck{{Resource: "pods", Subresource: "log", Verb: verbGet}}, wantEvent: true},
+		{name: "no reviewer is best effort", err: forbidden, nilReviewer: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, nodeResultsWriteError(context.Background(), tc.err, "record"))
+			recorder := events.NewFakeRecorder(10)
+			r := &WorkflowReconciler{Recorder: recorder}
+			if !tc.nilReviewer {
+				r.AccessReviewer = &fakeAccessReviewer{denied: tc.denied, err: tc.reviewErr}
+			}
+			workflow := &nvcrev1alpha1.Workflow{Name: testWorkflowName, Namespace: testNS}
+			err := r.nodeResultsWriteError(context.Background(), workflow, tc.err, "record")
+			if !tc.wantEnds {
+				require.NoError(t, err)
+			} else {
+				denied, ok := errors.AsType[*accessDeniedWriteError](err)
+				require.True(t, ok, "expected the review's answer to travel with the error, got %v", err)
+				require.ErrorIs(t, err, forbidden)
+				require.False(t, denied.access.granted())
+			}
+			if tc.wantEvent {
+				require.Len(t, recorder.Events, 1)
+				require.Contains(t, <-recorder.Events, "Warning "+ReasonNodeResultsWriteRejected)
+			} else {
+				require.Empty(t, recorder.Events)
+			}
 		})
 	}
 }
@@ -266,6 +298,11 @@ func TestRequeueAfterForbiddenWrite(t *testing.T) {
 		{name: "no error"},
 		{name: "other error passes through", err: other, wantErr: other},
 		{name: "allowed keeps the error", err: forbidden, wantErr: forbidden, wantReviews: []bool{true}},
+		{name: "a classified node-result write is not reviewed again",
+			err: &accessDeniedWriteError{err: forbidden, access: namespaceAccessResult{
+				denied: map[string][]AccessCheck{testNS: deny}}},
+			wantResult: ctrl.Result{RequeueAfter: defaultWorkflowRequeueInterval},
+			wantTrue:   ReasonNamespacePermissionsMissing},
 		{name: "no reviewer keeps the error", err: forbidden, nilReviewer: true, wantErr: forbidden},
 		{name: "confirmed denial waits now", err: forbidden, denied: deny,
 			wantResult: ctrl.Result{RequeueAfter: defaultWorkflowRequeueInterval}, wantReviews: []bool{true},
