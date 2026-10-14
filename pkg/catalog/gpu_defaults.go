@@ -109,6 +109,12 @@ func KnownGPUArch(gpuArch string) bool {
 	return ok
 }
 
+// KnownGPUArchs returns every architecture gpu-defaults.yaml lists, sorted.
+func KnownGPUArchs() []string {
+	ensureGPUDefaultsLoaded()
+	return slices.Sorted(maps.Keys(gpuDefaults.Defaults))
+}
+
 // ParseGPUArchFlag normalizes a --gpu-arch flag value with gpu.ParseProduct,
 // so "gb300", "NVIDIA-GB300" and "NVIDIA GB300" are equivalent, and rejects
 // an architecture gpu-defaults.yaml does not list: GPUDefaults would silently
@@ -120,10 +126,9 @@ func ParseGPUArchFlag(value string) (string, error) {
 		return "", nil
 	}
 	arch := gpu.ParseProduct(value)
-	ensureGPUDefaultsLoaded()
-	if _, ok := gpuDefaults.Defaults[arch]; !ok {
+	if !KnownGPUArch(arch) {
 		return "", fmt.Errorf("invalid --gpu-arch %q: must be one of %s",
-			value, strings.Join(slices.Sorted(maps.Keys(gpuDefaults.Defaults)), ", "))
+			value, strings.Join(KnownGPUArchs(), ", "))
 	}
 	return arch, nil
 }
