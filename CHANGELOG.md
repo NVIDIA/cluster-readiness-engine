@@ -85,6 +85,34 @@ followed them.
   waits for access with `NamespacePermissionsMissing` like any other forbidden write.
   A write an admission policy or ResourceQuota rejects stays best effort, as before,
   and now leaves a `NodeResultsWriteRejected` Warning on the Workflow.
+- On the `mpi` framework a WorkloadRun's `spec.volumes`, `spec.volumeMounts`,
+  `spec.config`, and `spec.initContainers` were silently dropped: the rendered
+  TrainingRuntime carried none of them while `torch` and `exec` honoured them, so an
+  NCCL run that reached its RDMA devices through `hostPath` mounts came up without
+  them and a binary shipped in `spec.config` was not reachable at `/config`. They now
+  land on the MPI worker pods, where the ranks run, and `spec.config` is also mounted
+  read-only on the launcher pod, where `mpirun` runs; the launcher is otherwise
+  unchanged. A new `mpi` WorkloadRun that already set any of them now mounts them, so
+  a volume that cannot attach, such as a `ReadWriteOnce` claim across nodes, holds the
+  pods in `ContainerCreating` where it used to be ignored; existing objects are
+  unaffected because `spec` is immutable and the Workflow is never rebuilt. Under KAI
+  the launcher's wait for the workers' `sshd` now names slow worker start-up (image
+  pull, volume attach, init containers) alongside network policy when it gives up
+  (#483)
+- A WorkloadRun whose `spec.volumes` or `spec.volumeMounts` reuse a built-in volume
+  name or mount path (`dshm`, `config-volume`, `/dev/shm`, `/config` with
+  `spec.config`, on `mpi` `mpi-ssh-auth`, `/tmp/mpi-ssh-raw` and `/root/.ssh`, and
+  on `torch` and `exec` `kubeflow-trainer-token` and
+  `/var/run/secrets/kubeflow/trainer`, the SSH and token directories together with
+  every path below them), or whose `spec.initContainers` take the
+  workload container's name `node`, now fails with `BuildFailed` naming the entry,
+  and `nvcrectl workloadrun render` refuses it. A volume named `mpi-ssh-auth` or
+  `kubeflow-trainer-token` used to be silently replaced by the one Kubeflow Trainer
+  upserts under that name, and the other collisions surfaced only at pod creation
+  (#483)
+- The MPI launcher pod of a WorkloadRun received no `spec.imagePullSecrets`; only the
+  worker pods did, so a launcher pulling from a private registry failed at image pull
+  while the workers started. It now gets the same secrets as the workers (#483)
 
 ## [0.7.0] - 2026-10-12
 

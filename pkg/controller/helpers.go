@@ -8,6 +8,8 @@ import (
 
 	meta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
 )
 
 // --- Shared reason constants (all tiers) ---
@@ -220,11 +222,12 @@ const (
 	ReasonHardwareFailureDetected = "HardwareFailureDetected"
 )
 
-// Framework type constants for WorkloadRun.
+// Framework type constants for WorkloadRun, shared with pkg/platform so the
+// builders and ValidateWorkloadVolumes read the names this package selects by.
 const (
-	FrameworkTorch = "torch"
-	FrameworkMPI   = "mpi"
-	FrameworkExec  = "exec"
+	FrameworkTorch = platform.FrameworkTorch
+	FrameworkMPI   = platform.FrameworkMPI
+	FrameworkExec  = platform.FrameworkExec
 )
 
 // --- Shared name-collision error ---

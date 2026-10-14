@@ -1,0 +1,10 @@
+# The token directory's subtree rule also compares whole path segments, on exec
+# as on torch: a sibling that merely shares the prefix is not below it and
+# passes.
+framework: exec
+volumes:
+  - name: scratch
+    emptyDir: {}
+volumeMounts:
+  - name: scratch
+    mountPath: /var/run/secrets/kubeflow/trainer-x

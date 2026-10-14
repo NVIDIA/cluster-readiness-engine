@@ -76,7 +76,7 @@ spec:
           --nnodes $PET_NNODES \
           --nproc-per-node $PET_NPROC_PER_NODE \
           ${MEGATRON_PATH}/pretrain_gpt.py \
-          --attention-backend flash \
+          --attention-backend ${ATTENTION_BACKEND:-flash} \
           --distributed-timeout-minutes 230 \
           --use-mcore-models \
           --no-mmap-bin-files \
@@ -174,8 +174,6 @@ spec:
       value: "16"
     - name: NVTE_BWD_LAYERNORM_SM_MARGIN
       value: "16"
-    - name: NVTE_FUSED_ATTN
-      value: "0"
     - name: TORCHINDUCTOR_WORKER_START
       value: fork
     - name: CUDA_DEVICE_MAX_CONNECTIONS
@@ -223,6 +221,7 @@ Key fields:
 - **`numNodes: 16`** — the number of nodes **per job group**, not a total. The orchestrator partitions **all** eligible GPU nodes into groups of this size and creates one job per group: `numNodes: 16` on a 16-node cluster creates a single 16-node job, while `numNodes: 4` on the same cluster would create four 4-node jobs that certify the nodes in parallel. Set it to your full cluster size for a single full-scale run.
 - **`resources`** — optional. When omitted, NVCRE auto-sets only `nvidia.com/gpu: <gpusPerNode>` (both limits and requests); it does not guess memory or CPU. Set the block explicitly, as here, if you need CPU pinning or memory sizing.
 - **`TP` in `train.sh`** — tensor parallelism: 4 for GB200/GB300, 8 for H100.
+- **`ATTENTION_BACKEND`** — selects the attention kernel through `--attention-backend` (`flash` by default; `auto` lets Transformer Engine choose per shape). Megatron derives `NVTE_FLASH_ATTN`, `NVTE_FUSED_ATTN`, and `NVTE_UNFUSED_ATTN` from that flag and fails every rank at startup if one is already set to a conflicting value, so set `ATTENTION_BACKEND` in `env` rather than any `NVTE_*_ATTN` variable. On AWS H100 and GB200, the training certification categories set `ATTENTION_BACKEND=auto`; to match them, add it to `env`.
 - **No `target` needed** — NVCRE auto-discovers all GPU nodes. See [Run a WorkloadRun](./run-workloadrun.md) to target specific nodes.
 - **`megatron-clone` init container**: clones Megatron-LM from GitHub at pod start. WorkloadRun specs are user-authored, so neither the Certification `sourceRepo` option nor the catalog entries' three-way source resolution applies to this manifest; on air-gapped or restricted-egress clusters, bake the source into the workload image and replace the clone with a copy from the image, or edit the clone URL in the init container to point at an internal mirror. See [Training categories: Megatron-LM source](../operations/deployment.md#training-categories-megatron-lm-source).
 - **`goodputMeasurement`** — parses training logs with the built-in `megatron-training` LogProfile to compute goodput, TFLOPs/GPU, and step time for the report.

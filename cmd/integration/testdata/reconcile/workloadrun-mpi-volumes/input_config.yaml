@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: WorkloadRun
+  name: test-mpi-volumes-run
+  namespace: default
+  condition: Failed
+collect:
+  - kind: WorkloadRun
+    name: test-mpi-volumes-run
+    namespace: default
+  - kind: Workflow
+    name: test-mpi-volumes-run
+    namespace: default
+events:
+  - involvedKind: WorkloadRun
+    involvedName: test-mpi-volumes-run
+    namespace: default
+    expect:
+      - {type: Normal, reason: WorkflowCreated}
+      - {type: Warning, reason: WorkflowFailed}

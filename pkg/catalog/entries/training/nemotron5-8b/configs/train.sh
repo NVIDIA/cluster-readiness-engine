@@ -43,11 +43,16 @@ GBS=${GLOBAL_BATCH_SIZE:-{{ $gbs }}}
 
 echo "TOTAL_GPUS=${TOTAL_GPUS} GBS=${GBS} MBS=${MBS} TP=${TP} PP=${PP}"
 
+# ATTENTION_BACKEND picks the attention kernel. Megatron derives
+# NVTE_FLASH_ATTN, NVTE_FUSED_ATTN and NVTE_UNFUSED_ATTN from
+# --attention-backend and refuses to start when one of them is already set
+# to a conflicting value, so platforms select a kernel through this variable
+# and never set the NVTE_*_ATTN variables directly.
 exec torchrun \
   --nnodes $PET_NNODES \
   --nproc-per-node $PET_NPROC_PER_NODE \
   ${MEGATRON_PATH}/pretrain_gpt.py \
-  --attention-backend flash \
+  --attention-backend ${ATTENTION_BACKEND:-flash} \
   --distributed-timeout-minutes 60 \
   --use-mcore-models \
   --no-mmap-bin-files \

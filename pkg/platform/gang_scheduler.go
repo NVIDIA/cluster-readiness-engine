@@ -90,7 +90,9 @@ done
 if [ "$ok" != "1" ]; then
   echo "ERROR: not every worker answered sshd within 20 minutes; refusing to start mpirun."
   echo "  hostfile: $(cat ` + mpiHostfilePath + ` 2>/dev/null | tr '\n' ' ')"
-  echo "  check that the workers and this launcher share a network policy allowing pod-to-pod port 22"
+  echo "  check that the workers and this launcher share a network policy allowing pod-to-pod port 22,"
+  echo "  and that every worker has started sshd: a worker still pulling its image, attaching a volume"
+  echo "  or running an init container has not; its pod events carry the cause"
   exit 1
 fi
 echo "workers answered sshd after $((i*5))s"

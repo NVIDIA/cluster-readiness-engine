@@ -1,0 +1,24 @@
+{
+  "userItemsChecked": 4,
+  "replicatedJobs": [
+    {
+      "replicatedJob": "node",
+      "volumes": [
+        "dshm: emptyDir medium=Memory",
+        "ib-dev: hostPath /dev/infiniband type=Directory",
+        "ib-sys: hostPath /sys/class/infiniband type=Directory"
+      ],
+      "containers": [
+        {
+          "name": "node",
+          "volumeMounts": [
+            "dshm at /dev/shm",
+            "ib-dev at /dev/infiniband",
+            "ib-sys at /sys/class/infiniband"
+          ]
+        }
+      ]
+    }
+  ],
+  "violations": []
+}

@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A TrainJob with no runtimePatches has only the default node target, so the
+# secrets land on the node job and nothing else. This is what every non-MPI
+# WorkloadRun looks like.
+imagePullSecrets:
+  - name: a
+spec:
+  trainJob: {}

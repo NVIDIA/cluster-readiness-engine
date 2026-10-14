@@ -1,0 +1,94 @@
+{
+  "fields": [
+    {
+      "field": "EntryName",
+      "sentinel": "agree-sentinel-entry",
+      "foundIn": [
+        "metadata"
+      ]
+    },
+    {
+      "field": "Image",
+      "sentinel": "agree.example.com/image:sentinel",
+      "foundIn": [
+        "job:node",
+        "job:launcher"
+      ]
+    },
+    {
+      "field": "NodesPerJob",
+      "sentinel": "4242",
+      "foundIn": [],
+      "exception": "BuildMPIRuntime writes a fixed mlPolicy.numNodes of 1 as the runtime default; the worker replicatedJob is scaled by the TrainJob's trainer.numNodes, which both call sites set from NodesPerJobForScale"
+    },
+    {
+      "field": "GpusPerNode",
+      "sentinel": "1337",
+      "foundIn": [
+        "mlPolicy",
+        "job:node"
+      ]
+    },
+    {
+      "field": "Env",
+      "sentinel": "AGREE_SENTINEL_ENV",
+      "foundIn": [
+        "job:node",
+        "job:launcher"
+      ]
+    },
+    {
+      "field": "Volumes",
+      "sentinel": "agree-sentinel-volume",
+      "foundIn": [
+        "job:node"
+      ]
+    },
+    {
+      "field": "VolumeMounts",
+      "sentinel": "agree-sentinel-mount",
+      "foundIn": [
+        "job:node"
+      ]
+    },
+    {
+      "field": "InitContainers",
+      "sentinel": "agree-sentinel-init",
+      "foundIn": [
+        "job:node"
+      ]
+    },
+    {
+      "field": "Resources",
+      "sentinel": "4321Gi",
+      "foundIn": [
+        "job:node"
+      ]
+    },
+    {
+      "field": "GangSchedulerName",
+      "sentinel": "agree-sentinel-scheduler",
+      "foundIn": [
+        "job:node",
+        "job:launcher"
+      ]
+    },
+    {
+      "field": "GangSchedulerQueue",
+      "sentinel": "agree-sentinel-queue",
+      "foundIn": [
+        "job:node",
+        "job:launcher"
+      ]
+    },
+    {
+      "field": "GangSchedulerQueueLabelKey",
+      "sentinel": "agree.example.com/queue",
+      "foundIn": [
+        "job:node",
+        "job:launcher"
+      ]
+    }
+  ],
+  "violations": []
+}

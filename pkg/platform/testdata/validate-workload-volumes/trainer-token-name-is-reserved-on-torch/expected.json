@@ -1,0 +1,3 @@
+{
+  "error": "spec.volumes[0].name: \"kubeflow-trainer-token\" is reserved on the torch framework: Kubeflow Trainer's TrainJobStatus plugin replaces a volume of that name with its status token on the node pod; rename the volume"
+}

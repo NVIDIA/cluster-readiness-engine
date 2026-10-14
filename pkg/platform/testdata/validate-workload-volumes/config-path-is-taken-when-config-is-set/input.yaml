@@ -1,0 +1,12 @@
+# With spec.config set, /config is where the ConfigMap is mounted. The
+# trailing slash shows the comparison is on the cleaned path, since the
+# kubelet mounts /config/ and /config over the same directory.
+framework: mpi
+hasConfig: true
+volumes:
+  - name: params
+    configMap:
+      name: params
+volumeMounts:
+  - name: params
+    mountPath: /config/

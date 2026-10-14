@@ -139,8 +139,6 @@ dependencies:
                       value: "16"
                     - name: NVTE_BWD_LAYERNORM_SM_MARGIN
                       value: "16"
-                    - name: NVTE_FUSED_ATTN
-                      value: "0"
                     - name: TORCHINDUCTOR_WORKER_START
                       value: fork
 {{ lib "nccl/gb200-training-base-env.yaml" . | indent 20 }}
@@ -304,11 +302,11 @@ overrides:
           trainer:
             env:
 {{ lib "nccl/aws-h100-efa-training-env.yaml" . | indent 12 }}
-            # Fused attention is disabled in the runtime base env for broad
-            # compatibility; H100 supports it and the kernel is a large win.
-            # Kubeflow upserts trainer env over runtime env by name.
-            - name: NVTE_FUSED_ATTN
-              value: "1"
+            # train.sh defaults to the flash attention backend for broad
+            # compatibility. H100 also supports fused attention and the kernel
+            # is a large win, so let Transformer Engine choose per shape.
+            - name: ATTENTION_BACKEND
+              value: auto
 # --- GCP + H100 (TCPxo/FastRak, image from the TCPXO plugin version) ---
 - when:
     platform:
