@@ -600,19 +600,88 @@ func TestProcessWatchEventsKeepsDuplicateCategoryStatusesSeparate(t *testing.T) 
 	assert.Equal(t, inProgressStatus, lastStatuses[1].status)
 }
 
+func TestProcessWatchEventsPrintsOnlyDuplicateCategoryTransitions(t *testing.T) {
+	watcher := watch.NewRaceFreeFake()
+	defer watcher.Stop()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	heartbeat := time.NewTicker(time.Hour)
+	defer heartbeat.Stop()
+	out := &watchEventWriter{writes: make(chan string, 8)}
+	lastStatuses := map[int]categoryWatchStatus{}
+	cert := &nvcrev1alpha1.Certification{
+		Spec: nvcrev1alpha1.CertificationSpec{
+			Categories: []nvcrev1alpha1.CertificateCategory{
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce},
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce},
+			},
+		},
+		Status: nvcrev1alpha1.CertificationStatus{
+			CategoryStatuses: []nvcrev1alpha1.CertificationCategoryStatus{
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: "InProgress"},
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: "InProgress"},
+			},
+		},
+	}
+	type watchResult struct {
+		cert *nvcrev1alpha1.Certification
+		done bool
+		err  error
+	}
+	resultCh := make(chan watchResult, 1)
+	watcher.Add(cert)
+	go func() {
+		result, done, err := processWatchEvents(
+			ctx, newCertificationFakeClient(t), watcher, time.Now(),
+			lastStatuses, heartbeat.C, out,
+		)
+		resultCh <- watchResult{cert: result, done: done, err: err}
+	}()
+
+	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce [category 1]: InProgress")
+	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce [category 2]: InProgress")
+	changed := cert.DeepCopy()
+	changed.Status.CategoryStatuses[0].Status = "Succeeded"
+	watcher.Modify(changed)
+	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce [category 1]: Succeeded")
+
+	watcher.Modify(changed.DeepCopy())
+	terminal := changed.DeepCopy()
+	terminal.Status.Conditions = []metav1.Condition{{
+		Type: nvcrev1alpha1.CertificationSucceeded, Status: metav1.ConditionTrue,
+	}}
+	watcher.Modify(terminal)
+	assert.Contains(t, <-out.writes, "Certification succeeded.")
+
+	result := <-resultCh
+	assert.Same(t, terminal, result.cert)
+	assert.True(t, result.done)
+	assert.NoError(t, result.err)
+	assert.Equal(t, 1, strings.Count(out.String(), "communication/nccl-all-reduce [category 1]: Succeeded"))
+	assert.Equal(t, 1, strings.Count(out.String(), "communication/nccl-all-reduce [category 2]: InProgress"))
+}
+
 func TestProcessWatchEventsHeartbeatShowsOnlyInProgressCategoriesInOrder(t *testing.T) {
 	watcher := watch.NewRaceFreeFake()
 	defer watcher.Stop()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	heartbeat := make(chan time.Time, 1)
-	out := &watchEventWriter{writes: make(chan string, 4)}
+	out := &watchEventWriter{writes: make(chan string, 8)}
 	lastStatuses := map[int]categoryWatchStatus{}
 	cert := &nvcrev1alpha1.Certification{
+		Spec: nvcrev1alpha1.CertificationSpec{
+			Categories: []nvcrev1alpha1.CertificateCategory{
+				{Domain: "communication", Variant: "nccl-all-reduce"},
+				{Domain: "communication", Variant: "nccl-all-reduce"},
+				{Domain: "training", Variant: "nemotron5-8b"},
+			},
+		},
 		Status: nvcrev1alpha1.CertificationStatus{
 			CategoryStatuses: []nvcrev1alpha1.CertificationCategoryStatus{
 				{Domain: "communication", Variant: "nccl-all-reduce", Status: "InProgress"},
-				{Domain: "training", Variant: "nemotron5-8b", Status: "Pending"},
+				{Domain: "communication", Variant: "nccl-all-reduce", Status: "InProgress"},
+				{Domain: "training", Variant: "nemotron5-8b", Status: "InProgress"},
 			},
 		},
 	}
@@ -631,18 +700,22 @@ func TestProcessWatchEventsHeartbeatShowsOnlyInProgressCategoriesInOrder(t *test
 		)
 		resultCh <- watchResult{cert: result, done: done, err: err}
 	}()
-	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce: InProgress")
-	assert.Contains(t, <-out.writes, "training/nemotron5-8b: Pending")
+	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce [category 1]: InProgress")
+	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce [category 2]: InProgress")
+	assert.Contains(t, <-out.writes, "training/nemotron5-8b: InProgress")
 	heartbeat <- time.Now()
-	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce: InProgress")
+	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce [category 1]: InProgress")
+	assert.Contains(t, <-out.writes, "communication/nccl-all-reduce [category 2]: InProgress")
+	assert.Contains(t, <-out.writes, "training/nemotron5-8b: InProgress")
 	cancel()
 	result := <-resultCh
 	assert.Nil(t, result.cert)
 	assert.True(t, result.done)
 	assert.ErrorIs(t, result.err, context.Canceled)
 	assert.NotContains(t, out.String(), "Waiting for status...")
-	assert.Equal(t, 2, strings.Count(out.String(), "communication/nccl-all-reduce: InProgress"))
-	assert.Equal(t, 1, strings.Count(out.String(), "training/nemotron5-8b: Pending"))
+	assert.Equal(t, 2, strings.Count(out.String(), "communication/nccl-all-reduce [category 1]: InProgress"))
+	assert.Equal(t, 2, strings.Count(out.String(), "communication/nccl-all-reduce [category 2]: InProgress"))
+	assert.Equal(t, 2, strings.Count(out.String(), "training/nemotron5-8b: InProgress"))
 }
 
 type watchEventWriter struct {
