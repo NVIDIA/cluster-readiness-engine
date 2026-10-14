@@ -74,13 +74,13 @@ func EnsureRunBinding(ctx context.Context, c client.Client, namespace string, op
 	// warning: if a binding is missing, the controller's wait says so.
 	unknown := need == bindingNeedUnknown
 
-	sa := controllerServiceAccount(ctx, c)
+	sa, saResolved := controllerServiceAccount(ctx, c)
 	key := client.ObjectKey{Namespace: namespace, Name: rbac.RunBindingName}
 
 	existing := &rbacv1.RoleBinding{}
 	switch err := c.Get(ctx, key, existing); {
 	case err == nil:
-		gone, err := adoptRunBinding(ctx, c, existing, sa, out)
+		gone, err := adoptRunBinding(ctx, c, existing, sa, saResolved, out)
 		if !gone {
 			return false, err
 		}
@@ -110,6 +110,24 @@ func EnsureRunBinding(ctx context.Context, c client.Client, namespace string, op
 			namespace, namespace, manifest)
 	}
 
+	// Never create a binding for a guessed ServiceAccount: on a release
+	// installed under another name it would grant the wrong subject while
+	// reporting success. With the scope unknown the binding may not be needed
+	// at all, so submit and let a missing binding show as the controller's
+	// wait, which names the right account; otherwise stop and say how.
+	if !saResolved {
+		if unknown {
+			warnScopeUnknown(namespace, out)
+			return false, nil
+		}
+		return false, fmt.Errorf("cannot read ClusterRoleBinding %s to find the controller's ServiceAccount, so "+
+			"nvcrectl will not guess the subject of RoleBinding %s/%s. Ask a cluster admin for get on "+
+			"clusterrolebindings/%s, or to apply the binding with the controller's ServiceAccount:\n\n"+
+			"  nvcrectl rbac print --namespace %s --controller-namespace <namespace> --service-account <name> "+
+			"| kubectl apply -f -",
+			rbac.ManagerRoleBindingName, namespace, rbac.RunBindingName, rbac.ManagerRoleBindingName, namespace)
+	}
+
 	binding := rbac.RunBinding(namespace, sa)
 	binding.Labels = map[string]string{rbac.ManagedByLabel: managedByNvcrectl}
 	if err := c.Create(ctx, binding); err != nil {
@@ -118,7 +136,7 @@ func EnsureRunBinding(ctx context.Context, c client.Client, namespace string, op
 			if err := c.Get(ctx, key, existing); err != nil {
 				return false, fmt.Errorf("read RoleBinding %s/%s: %w", namespace, rbac.RunBindingName, err)
 			}
-			gone, err := adoptRunBinding(ctx, c, existing, sa, out)
+			gone, err := adoptRunBinding(ctx, c, existing, sa, saResolved, out)
 			if gone {
 				return false, fmt.Errorf("RoleBinding %s/%s was deleted while it was being adopted; run again",
 					namespace, rbac.RunBindingName)
@@ -295,6 +313,16 @@ func runBindingNeeded(ctx context.Context, c client.Client) (runBindingNeed, err
 	return bindingNeedUnknown, nil
 }
 
+// grantsRunRoleToSomeServiceAccount reports whether binding binds
+// nvcre-run-role to a single ServiceAccount, whichever it is.
+func grantsRunRoleToSomeServiceAccount(binding *rbacv1.RoleBinding) bool {
+	if len(binding.Subjects) != 1 || binding.Subjects[0].Kind != rbacv1.ServiceAccountKind {
+		return false
+	}
+	s := binding.Subjects[0]
+	return rbac.GrantsRunRole(binding, rbac.ServiceAccount{Namespace: s.Namespace, Name: s.Name})
+}
+
 // warnScopeUnknown explains a submission made without knowing whether the
 // controller has access in the namespace.
 func warnScopeUnknown(namespace string, out io.Writer) {
@@ -307,24 +335,31 @@ func warnScopeUnknown(namespace string, out io.Writer) {
 
 // controllerServiceAccount reads the controller's ServiceAccount from the
 // subject of the chart's nvcre-manager-rolebinding, so a release installed
-// under another name is still bound correctly. It falls back to the
-// ServiceAccount `nvcrectl setup init` installs when the binding cannot be
-// read.
-func controllerServiceAccount(ctx context.Context, c client.Client) rbac.ServiceAccount {
+// under another name is still bound correctly. It reports whether it could:
+// when the binding cannot be read it returns the ServiceAccount `nvcrectl
+// setup init` installs, which is only a guess, and a binding nvcrectl creates
+// must not be given a guessed subject.
+func controllerServiceAccount(ctx context.Context, c client.Client) (rbac.ServiceAccount, bool) {
 	crb := &rbacv1.ClusterRoleBinding{}
 	if err := c.Get(ctx, client.ObjectKey{Name: rbac.ManagerRoleBindingName}, crb); err == nil {
 		for _, s := range crb.Subjects {
 			if s.Kind == rbacv1.ServiceAccountKind && s.Name != "" && s.Namespace != "" {
-				return rbac.ServiceAccount{Namespace: s.Namespace, Name: s.Name}
+				return rbac.ServiceAccount{Namespace: s.Namespace, Name: s.Name}, true
 			}
 		}
 	}
-	return rbac.DefaultServiceAccount()
+	return rbac.DefaultServiceAccount(), false
 }
 
 func adoptRunBinding(
-	ctx context.Context, c client.Client, existing *rbacv1.RoleBinding, sa rbac.ServiceAccount, out io.Writer,
+	ctx context.Context, c client.Client, existing *rbacv1.RoleBinding, sa rbac.ServiceAccount, saResolved bool,
+	out io.Writer,
 ) (gone bool, err error) {
+	// With the ServiceAccount unresolved only the role can be checked: the
+	// subject would be compared against a guess.
+	if !saResolved && grantsRunRoleToSomeServiceAccount(existing) {
+		sa = rbac.ServiceAccount{Namespace: existing.Subjects[0].Namespace, Name: existing.Subjects[0].Name}
+	}
 	if !rbac.GrantsRunRole(existing, sa) {
 		return false, fmt.Errorf("RoleBinding %s/%s exists but does not bind ClusterRole %s to ServiceAccount %s; "+
 			"fix or delete it (nvcrectl rbac print --namespace %s shows the expected binding)",
@@ -344,9 +379,18 @@ func adoptRunBinding(
 		case apierrors.IsNotFound(err):
 			return true, nil
 		case apierrors.IsForbidden(err):
-			_, _ = fmt.Fprintf(out, "[rbac] Warning: cannot mark RoleBinding %s/%s as in use (%v); the run that "+
-				"created it may delete it during its cleanup before this run is submitted.\n",
-				existing.Namespace, existing.Name, err)
+			// The default edit role cannot modify RoleBindings, so stopping
+			// here would lock ordinary users out of a shared namespace for as
+			// long as an nvcrectl-created binding exists, mostly to guard
+			// against a cleanup that never comes. Submit unmarked instead: if
+			// the creating run's cleanup does delete it first, this run's
+			// Workflow waits with NamespacePermissionsMissing and fails at the
+			// access timeout naming the binding, so the loss is loud.
+			_, _ = fmt.Fprintf(out, "[rbac] Warning: cannot mark RoleBinding %s/%s as in use (%v); if the run "+
+				"that created it is cleaning up now, it may delete the binding before this run is submitted, "+
+				"and this run would then wait for access. A binding listed in the chart's rbac.runNamespaces "+
+				"or applied by hand (nvcrectl rbac print --namespace %s) is never deleted by a run's cleanup.\n",
+				existing.Namespace, existing.Name, err, existing.Namespace)
 		default:
 			return false, fmt.Errorf("mark RoleBinding %s/%s as in use: %w", existing.Namespace, existing.Name, err)
 		}

@@ -33,6 +33,14 @@ import (
 // run namespace needs a binding.
 func chartRBACObjects(scope string) []client.Object {
 	roleRef := rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: rbac.RunRoleName}
+	sa := rbac.DefaultServiceAccount()
+	// The chart's binding of nvcre-manager-role, whose subject names the
+	// controller's ServiceAccount.
+	managerBinding := &rbacv1.ClusterRoleBinding{
+		Name:     rbac.ManagerRoleBindingName,
+		RoleRef:  rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: "nvcre-manager-role"},
+		Subjects: []rbacv1.Subject{{Kind: rbacv1.ServiceAccountKind, Name: sa.Name, Namespace: sa.Namespace}},
+	}
 	switch scope {
 	case "cluster":
 		return []client.Object{
@@ -40,7 +48,7 @@ func chartRBACObjects(scope string) []client.Object {
 			&rbacv1.ClusterRoleBinding{Name: rbac.ClusterModeRunBindingName, RoleRef: roleRef},
 		}
 	case "namespaced":
-		return []client.Object{&rbacv1.ClusterRole{Name: rbac.RunRoleName}}
+		return []client.Object{&rbacv1.ClusterRole{Name: rbac.RunRoleName}, managerBinding}
 	}
 	return nil
 }

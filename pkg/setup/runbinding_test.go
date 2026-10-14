@@ -31,6 +31,13 @@ func runRole() *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{Name: rbac.RunRoleName}
 }
 
+// namespacedChart is what the chart installs under rbac.scope: namespaced:
+// the run role and the manager binding that names the controller's
+// ServiceAccount, with no cluster-wide run binding.
+func namespacedChart() []client.Object {
+	return []client.Object{runRole(), managerBinding(rbac.DefaultServiceAccount())}
+}
+
 func clusterModeBinding() *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
 		Name:    rbac.ClusterModeRunBindingName,
@@ -82,6 +89,7 @@ func TestEnsureRunBinding(t *testing.T) {
 		// for the RoleBinding create.
 		getErr    map[string]error
 		createErr error
+		patchErr  error
 
 		wantCreated bool
 		wantErr     []string
@@ -109,7 +117,7 @@ func TestEnsureRunBinding(t *testing.T) {
 		},
 		{
 			name:    "existing namespace is refused without --grant-run-access",
-			objects: []client.Object{runRole()},
+			objects: namespacedChart(),
 			wantErr: []string{
 				`namespace "team-a", which already existed`,
 				"--grant-run-access",
@@ -119,7 +127,7 @@ func TestEnsureRunBinding(t *testing.T) {
 		},
 		{
 			name:        "existing namespace with --grant-run-access",
-			objects:     []client.Object{runRole()},
+			objects:     namespacedChart(),
 			opts:        RunBindingOptions{Grant: true},
 			wantCreated: true,
 			wantOut:     []string{"Created RoleBinding", "stays until the run object is gone"},
@@ -136,14 +144,14 @@ func TestEnsureRunBinding(t *testing.T) {
 		},
 		{
 			name:        "binding for another subject is refused",
-			objects:     []client.Object{runRole(), mismatched},
+			objects:     append(namespacedChart(), mismatched),
 			opts:        RunBindingOptions{NamespaceCreated: true},
 			wantErr:     []string{"does not bind ClusterRole nvcre-run-role to ServiceAccount nvcre/nvcre-manager"},
 			wantBinding: &rbac.ServiceAccount{Namespace: "elsewhere", Name: "someone-else"},
 		},
 		{
 			name:      "forbidden create names the missing permission",
-			objects:   []client.Object{runRole()},
+			objects:   namespacedChart(),
 			opts:      RunBindingOptions{NamespaceCreated: true},
 			createErr: forbidden("rolebindings"),
 			wantErr:   []string{"the bind verb on clusterroles/nvcre-run-role", "kind: RoleBinding"},
@@ -155,7 +163,7 @@ func TestEnsureRunBinding(t *testing.T) {
 		},
 		{
 			name:    "unreadable cluster-mode binding with a readable role submits with a warning",
-			objects: []client.Object{runRole()},
+			objects: namespacedChart(),
 			getErr:  map[string]error{testKindCRB: forbidden("clusterrolebindings")},
 			wantOut: []string{warnedUnknownScope},
 		},
@@ -167,11 +175,22 @@ func TestEnsureRunBinding(t *testing.T) {
 			wantOut:   []string{warnedUnknownScope},
 		},
 		{
-			name:        "unreadable cluster RBAC in a namespace this run created still gets a binding",
-			opts:        RunBindingOptions{NamespaceCreated: true},
-			getErr:      unreadableClusterRBAC(),
-			wantCreated: true,
-			wantOut:     []string{"Created RoleBinding team-a/nvcre-manager-run"},
+			name:    "unreadable cluster RBAC in a namespace this run created submits without a guessed subject",
+			opts:    RunBindingOptions{NamespaceCreated: true},
+			getErr:  unreadableClusterRBAC(),
+			wantOut: []string{warnedUnknownScope},
+		},
+		{
+			name:    "unresolvable ServiceAccount with the binding known to be needed stops",
+			objects: []client.Object{runRole()},
+			opts:    RunBindingOptions{NamespaceCreated: true},
+			wantErr: []string{"will not guess the subject", "--service-account <name>"},
+		},
+		{
+			name:        "an nvcrectl binding that cannot be marked is used with a warning",
+			objects:     append(namespacedChart(), nvcrectlBinding(time.Time{})),
+			patchErr:    forbidden("rolebindings"),
+			wantOut:     []string{"cannot mark RoleBinding", "Using existing RoleBinding"},
 			wantBinding: new(rbac.DefaultServiceAccount()),
 			wantLabel:   true,
 		},
@@ -200,6 +219,12 @@ func TestEnsureRunBinding(t *testing.T) {
 							return tc.createErr
 						}
 						return c.Create(ctx, obj, opts...)
+					},
+					Patch: func(ctx context.Context, c client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+						if tc.patchErr != nil {
+							return tc.patchErr
+						}
+						return c.Patch(ctx, obj, patch, opts...)
 					},
 				}).Build()
 
@@ -291,7 +316,7 @@ func TestEnsureRunBindingMarksAdoption(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := fake.NewClientBuilder().WithScheme(newRunBindingScheme(t)).
-				WithObjects(runRole(), tc.existing).Build()
+				WithObjects(append(namespacedChart(), tc.existing)...).Build()
 			var out bytes.Buffer
 			created, err := EnsureRunBinding(ctx, c, runNS, RunBindingOptions{}, &out)
 			require.NoError(t, err)
@@ -310,7 +335,7 @@ func TestEnsureRunBindingMarksAdoption(t *testing.T) {
 func TestEnsureRunBindingAdoptionRace(t *testing.T) {
 	ctx := context.Background()
 	c := fake.NewClientBuilder().WithScheme(newRunBindingScheme(t)).
-		WithObjects(runRole(), nvcrectlBinding(time.Time{})).
+		WithObjects(append(namespacedChart(), nvcrectlBinding(time.Time{}))...).
 		WithInterceptorFuncs(interceptor.Funcs{
 			Patch: func(ctx context.Context, c client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
 				// The creator's cleanup deletes it first.
