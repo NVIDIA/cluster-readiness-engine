@@ -50,8 +50,11 @@ followed them.
 - `nvcrectl certification run` and `nvcrectl workloadrun run` grant the controller
   access in a namespace they create. In a namespace that already existed, such as
   `default` for `workloadrun run` without `-n`, they stop and print the binding unless
-  `--grant-run-access` is passed; `--cleanup` deletes a binding they created once the
-  run is gone. Under `rbac.scope: cluster` nothing changes.
+  `--grant-run-access` is passed. When the scope cannot be determined from
+  cluster-scoped RBAC, they submit with a warning; a missing grant surfaces as the
+  Workflow's access wait. `--cleanup` deletes a binding they created once the run is
+  gone, unless another run uses it or recently adopted it. Under
+  `rbac.scope: cluster` nothing changes.
 - `nvcrectl rbac print --namespace <ns>` writes the RoleBinding for runs that do not
   go through `nvcrectl`.
 

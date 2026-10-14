@@ -134,6 +134,10 @@ func EnsureRunBinding(ctx context.Context, c client.Client, namespace string, op
 		if apierrors.IsAlreadyExists(err) {
 			// Created concurrently, by another run or by the user.
 			if err := c.Get(ctx, key, existing); err != nil {
+				if apierrors.IsForbidden(err) && unknown {
+					warnScopeUnknown(namespace, out)
+					return false, nil
+				}
 				return false, fmt.Errorf("read RoleBinding %s/%s: %w", namespace, rbac.RunBindingName, err)
 			}
 			gone, err := adoptRunBinding(ctx, c, existing, sa, saResolved, out)
@@ -187,7 +191,9 @@ func DeleteRunBinding(ctx context.Context, c client.Client, namespace string, ou
 // other run is still in the namespace: a later run adopts the binding rather
 // than creating its own, so deleting it would take that run's access away,
 // mid-run or in its finalizers. If the other runs cannot be listed, it is kept
-// too.
+// too, as is one another run adopted within the adoption lease, with a
+// warning: the adopter does not release it, so if its run never comes the
+// binding is left for the user to delete.
 func ReleaseRunBinding(ctx context.Context, c client.Client, namespace string, runGone bool, runKind string, out io.Writer) bool {
 	if !runGone {
 		_, _ = fmt.Fprintf(out, "[cleanup] Warning: keeping RoleBinding %s/%s because the %s is not gone yet; "+
@@ -211,10 +217,10 @@ func ReleaseRunBinding(ctx context.Context, c client.Client, namespace string, r
 	// between EnsureRunBinding and its create. The mark covers that window.
 	if adoptedAt, err := time.Parse(time.RFC3339Nano, binding.Annotations[runBindingAdoptedAtAnnotation]); err == nil &&
 		time.Since(adoptedAt) < runBindingAdoptionLease {
-		_, _ = fmt.Fprintf(out, "[cleanup] Keeping RoleBinding %s/%s: another nvcrectl run adopted it at %s and "+
-			"may still be submitting. Delete it once no run is left in the namespace.\n",
-			namespace, rbac.RunBindingName, adoptedAt.Format(time.RFC3339))
-		return false
+		_, _ = fmt.Fprintf(out, "[cleanup] Warning: keeping RoleBinding %s/%s: another nvcrectl run adopted it at %s "+
+			"and may still be submitting. Delete it once no Certification, WorkloadRun or Workflow is left in the "+
+			"namespace.\n", namespace, rbac.RunBindingName, adoptedAt.Format(time.RFC3339))
+		return true
 	}
 	others, err := runsInNamespace(ctx, c, namespace)
 	if err != nil {
@@ -356,11 +362,18 @@ func adoptRunBinding(
 	out io.Writer,
 ) (gone bool, err error) {
 	// With the ServiceAccount unresolved only the role can be checked: the
-	// subject would be compared against a guess.
-	if !saResolved && grantsRunRoleToSomeServiceAccount(existing) {
+	// subject would be compared against a guess. A binding for the wrong
+	// account shows as the controller's wait, which names the right one, and
+	// the account it grants is printed below.
+	if !saResolved {
+		if !grantsRunRoleToSomeServiceAccount(existing) {
+			return false, fmt.Errorf("RoleBinding %s/%s exists but does not bind ClusterRole %s to a single "+
+				"ServiceAccount; fix or delete it (nvcrectl rbac print --namespace %s --controller-namespace "+
+				"<namespace> --service-account <name> shows the expected binding)",
+				existing.Namespace, existing.Name, rbac.RunRoleName, existing.Namespace)
+		}
 		sa = rbac.ServiceAccount{Namespace: existing.Subjects[0].Namespace, Name: existing.Subjects[0].Name}
-	}
-	if !rbac.GrantsRunRole(existing, sa) {
+	} else if !rbac.GrantsRunRole(existing, sa) {
 		return false, fmt.Errorf("RoleBinding %s/%s exists but does not bind ClusterRole %s to ServiceAccount %s; "+
 			"fix or delete it (nvcrectl rbac print --namespace %s shows the expected binding)",
 			existing.Namespace, existing.Name, rbac.RunRoleName, sa, existing.Namespace)
@@ -395,6 +408,7 @@ func adoptRunBinding(
 			return false, fmt.Errorf("mark RoleBinding %s/%s as in use: %w", existing.Namespace, existing.Name, err)
 		}
 	}
-	_, _ = fmt.Fprintf(out, "[rbac] Using existing RoleBinding %s/%s.\n", existing.Namespace, existing.Name)
+	_, _ = fmt.Fprintf(out, "[rbac] Using existing RoleBinding %s/%s (grants ServiceAccount %s).\n",
+		existing.Namespace, existing.Name, sa)
 	return false, nil
 }

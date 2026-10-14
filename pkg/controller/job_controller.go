@@ -1939,6 +1939,13 @@ func (r *JobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&nvcrev1alpha1.GoodputMeasurement{})
 
 	return b.
+		// A restored namespace grant wakes Jobs whose workload creates may
+		// otherwise remain under the error rate limiter's delayed retry.
+		Watches(
+			&nvcrev1alpha1.Workflow{},
+			handler.EnqueueRequestsFromMapFunc(namespaceAccessToJobs),
+			builder.WithPredicates(namespaceAccessGrantedPredicate()),
+		).
 		// BandwidthMeasurements are owned by the Workflow when there is one,
 		// so Owns cannot map them back to the Job; the Job is named in spec.
 		Watches(

@@ -181,10 +181,53 @@ func TestEnsureRunBinding(t *testing.T) {
 			wantOut: []string{warnedUnknownScope},
 		},
 		{
+			name:        "unknown scope and an unreadable existing binding submit with a warning",
+			objects:     append(namespacedChart(), rbac.RunBinding(runNS, rbac.DefaultServiceAccount())),
+			opts:        RunBindingOptions{Grant: true},
+			getErr:      map[string]error{kindClusterRole: forbidden("clusterroles"), "RoleBinding": forbidden("rolebindings")},
+			wantOut:     []string{warnedUnknownScope},
+			wantBinding: new(rbac.DefaultServiceAccount()),
+		},
+		{
+			name:        "known namespaced scope and an unreadable existing binding still stop",
+			objects:     append(namespacedChart(), rbac.RunBinding(runNS, rbac.DefaultServiceAccount())),
+			opts:        RunBindingOptions{Grant: true},
+			getErr:      map[string]error{"RoleBinding": forbidden("rolebindings")},
+			wantErr:     []string{"read RoleBinding team-a/nvcre-manager-run"},
+			wantBinding: new(rbac.DefaultServiceAccount()),
+		},
+		{
 			name:    "unresolvable ServiceAccount with the binding known to be needed stops",
 			objects: []client.Object{runRole()},
 			opts:    RunBindingOptions{NamespaceCreated: true},
 			wantErr: []string{"will not guess the subject", "--service-account <name>"},
+		},
+		{
+			name:    "unresolvable ServiceAccount with known namespaced scope adopts an existing binding and names its account",
+			objects: []client.Object{runRole(), rbac.RunBinding(runNS, customSA)},
+			wantOut: []string{
+				"Using existing RoleBinding team-a/nvcre-manager-run (grants ServiceAccount platform/readiness-manager)",
+			},
+			wantBinding: &customSA,
+		},
+		{
+			name:    "unresolvable ServiceAccount with unknown scope adopts an existing binding and names its account",
+			objects: []client.Object{runRole(), rbac.RunBinding(runNS, customSA)},
+			getErr:  unreadableClusterRBAC(),
+			wantOut: []string{
+				"Using existing RoleBinding team-a/nvcre-manager-run (grants ServiceAccount platform/readiness-manager)",
+			},
+			wantBinding: &customSA,
+		},
+		{
+			name: "unresolvable ServiceAccount refuses a binding with no single ServiceAccount subject",
+			objects: []client.Object{runRole(), func() client.Object {
+				b := rbac.RunBinding(runNS, customSA)
+				b.Subjects = []rbacv1.Subject{{Kind: rbacv1.UserKind, Name: "someone"}}
+				return b
+			}()},
+			wantErr:     []string{"does not bind ClusterRole nvcre-run-role to a single ServiceAccount"},
+			wantBinding: &rbac.ServiceAccount{Name: "someone"},
 		},
 		{
 			name:        "an nvcrectl binding that cannot be marked is used with a warning",
@@ -199,34 +242,38 @@ func TestEnsureRunBinding(t *testing.T) {
 			ctx := context.Background()
 			scheme := runtime.NewScheme()
 			require.NoError(t, clientgoscheme.AddToScheme(scheme))
-			c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tc.objects...).
-				WithInterceptorFuncs(interceptor.Funcs{
-					Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
-						switch obj.(type) {
-						case *rbacv1.ClusterRoleBinding:
-							if err := tc.getErr[testKindCRB]; err != nil {
-								return err
-							}
-						case *rbacv1.ClusterRole:
-							if err := tc.getErr[kindClusterRole]; err != nil {
-								return err
-							}
+			backing := fake.NewClientBuilder().WithScheme(scheme).WithObjects(tc.objects...).Build()
+			c := interceptor.NewClient(backing, interceptor.Funcs{
+				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					switch obj.(type) {
+					case *rbacv1.RoleBinding:
+						if err := tc.getErr["RoleBinding"]; err != nil {
+							return err
 						}
-						return c.Get(ctx, key, obj, opts...)
-					},
-					Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
-						if tc.createErr != nil {
-							return tc.createErr
+					case *rbacv1.ClusterRoleBinding:
+						if err := tc.getErr[testKindCRB]; err != nil {
+							return err
 						}
-						return c.Create(ctx, obj, opts...)
-					},
-					Patch: func(ctx context.Context, c client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
-						if tc.patchErr != nil {
-							return tc.patchErr
+					case *rbacv1.ClusterRole:
+						if err := tc.getErr[kindClusterRole]; err != nil {
+							return err
 						}
-						return c.Patch(ctx, obj, patch, opts...)
-					},
-				}).Build()
+					}
+					return c.Get(ctx, key, obj, opts...)
+				},
+				Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+					if tc.createErr != nil {
+						return tc.createErr
+					}
+					return c.Create(ctx, obj, opts...)
+				},
+				Patch: func(ctx context.Context, c client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+					if tc.patchErr != nil {
+						return tc.patchErr
+					}
+					return c.Patch(ctx, obj, patch, opts...)
+				},
+			})
 
 			var out bytes.Buffer
 			created, err := EnsureRunBinding(ctx, c, runNS, tc.opts, &out)
@@ -247,7 +294,7 @@ func TestEnsureRunBinding(t *testing.T) {
 			}
 
 			got := &rbacv1.RoleBinding{}
-			err = c.Get(ctx, client.ObjectKey{Namespace: runNS, Name: rbac.RunBindingName}, got)
+			err = backing.Get(ctx, client.ObjectKey{Namespace: runNS, Name: rbac.RunBindingName}, got)
 			if tc.wantBinding == nil {
 				require.True(t, apierrors.IsNotFound(err), "namespace must have no binding, got %v", err)
 				return
@@ -370,8 +417,8 @@ func TestReleaseRunBinding(t *testing.T) {
 			wantDeleted: true, wantOut: "Deleting RoleBinding"},
 		{name: "kept while the run is not gone", binding: nvcrectlBinding(time.Time{}),
 			wantWarn: true, wantOut: "is not gone yet"},
-		{name: "kept after a recent adoption", binding: nvcrectlBinding(time.Now().Add(-10 * time.Second)), runGone: true,
-			wantOut: "another nvcrectl run adopted it"},
+		{name: "kept with a warning after a recent adoption", binding: nvcrectlBinding(time.Now().Add(-10 * time.Second)),
+			runGone: true, wantWarn: true, wantOut: "another nvcrectl run adopted it"},
 		{name: "deleted once the adoption lease ran out", binding: nvcrectlBinding(time.Now().Add(-runBindingAdoptionLease - time.Minute)),
 			runGone: true, wantDeleted: true},
 		{name: "kept when an adoption lands during cleanup", binding: nvcrectlBinding(time.Time{}), runGone: true,

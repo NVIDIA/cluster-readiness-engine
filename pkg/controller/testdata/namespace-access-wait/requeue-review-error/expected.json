@@ -1,0 +1,38 @@
+{
+  "conditions": [
+    {
+      "type": "NamespaceAccess",
+      "status": "False",
+      "reason": "NamespaceAccessCheckFailed",
+      "message": "Could not check the controller's access in namespace \"default\": connection refused",
+      "since": "0s"
+    },
+    {
+      "type": "InProgress",
+      "status": "True",
+      "reason": "NamespaceAccessCheckFailed",
+      "message": "Could not check the controller's access in namespace \"default\": connection refused"
+    },
+    {
+      "type": "Succeeded",
+      "status": "False",
+      "reason": "NotApplicable",
+      "message": ""
+    },
+    {
+      "type": "Failed",
+      "status": "False",
+      "reason": "NotApplicable",
+      "message": ""
+    }
+  ],
+  "events": [
+    "Normal NamespaceAccessCheckFailed Could not check the controller's access in namespace \"default\": connection refused",
+    "Warning NamespaceAccessReviewError Could not check the controller's access in namespace \"default\": connection refused"
+  ],
+  "orchestrationPersisted": false,
+  "requeueAfter": "15s",
+  "reviewsAskFresh": [
+    true
+  ]
+}

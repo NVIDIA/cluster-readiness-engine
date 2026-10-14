@@ -1,0 +1,4 @@
+# As denied-recovers, but the review of b's forbidden write cannot run, so the
+# wait records NamespaceAccessCheckFailed. a's retry must survive it the same way.
+recover: true
+reviewError: "review unavailable"

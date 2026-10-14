@@ -154,7 +154,7 @@ helm get values nvcre -n nvcre -a | grep -A2 '^rbac:'
 
 - The binding exists but names another ServiceAccount: the release was installed under another name or namespace. Compare the subject with `kubectl get clusterrolebinding nvcre-manager-rolebinding -o yaml` and print the binding with `--service-account` and `--controller-namespace`.
 - `NamespaceAccessCheckFailed` for any other reason: the reviews themselves fail, usually because the API server or an admission webhook is struggling. The Workflow keeps rechecking, backing off to once every two minutes, and resumes on its own once reviews succeed again.
-- `NamespaceAccessCheckFailed` with `selfsubjectaccessreviews ... is forbidden`: the controller's `nvcre-manager-role` lacks `create` on `selfsubjectaccessreviews`, usually because the chart's CRDs and templates are from an older release. Upgrade the release.
+- `NamespaceAccessCheckFailed` with `selfsubjectaccessreviews ... is forbidden`: Kubernetes normally grants these reviews to authenticated identities, including ServiceAccounts, through `system:basic-user`. This error means that default grant was removed or narrowed and the controller has no other grant. Check the `system:basic-user` role and binding, and `nvcre-manager-role`. Upgrading the NVCRE release adds an explicit `create` grant on `selfsubjectaccessreviews` to `nvcre-manager-role`; an older chart alone does not cause this error.
 - For a long-lived namespace, list it in `rbac.runNamespaces` so the chart keeps the binding.
 - The Workflow already failed after the timeout: apply the binding and run again. A failed Workflow does not retry.
 

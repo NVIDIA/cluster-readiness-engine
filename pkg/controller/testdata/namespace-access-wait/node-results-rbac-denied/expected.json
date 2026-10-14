@@ -1,0 +1,18 @@
+{
+  "carriedDenials": {
+    "default": [
+      {
+        "group": "",
+        "resource": "configmaps",
+        "verb": "create"
+      }
+    ]
+  },
+  "endsPass": true,
+  "error": "configmaps \"node-results\" is forbidden: injected",
+  "events": [],
+  "originalForbiddenPreserved": true,
+  "reviewsAskFresh": [
+    true
+  ]
+}

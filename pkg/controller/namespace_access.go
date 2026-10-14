@@ -544,8 +544,8 @@ func (r *WorkflowReconciler) awaitAccessOnForbidden(
 
 // requeueAfterForbiddenWrite handles a pass that ended on a Forbidden write it
 // could not leave half done, such as node results written before a terminal
-// status. Such a pass returns before writing status, and the in-memory object
-// carries transitions that must not be persisted (a counted iteration, an
+// status. The in-memory object carries unfinished transitions that must not
+// be persisted (a counted iteration, an
 // advanced diagnose stage), so the wait is not written from it. It is written
 // from a copy of the Workflow loaded fresh from the API server instead, which
 // holds only the persisted state, so the wait starts its clock, and its

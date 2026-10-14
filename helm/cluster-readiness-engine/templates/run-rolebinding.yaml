@@ -13,8 +13,17 @@
               The chart does not create the namespaces, and does not look them
               up: lookup returns nothing under helm template.
 */}}
-{{- $scope := .Values.rbac.scope }}
-{{- if eq $scope "cluster" }}
+{{- $rbac := .Values.rbac | default dict }}
+{{- $scope := $rbac.scope }}
+{{- /*
+  An unset scope fails rather than falling back to the default: "rbac: null"
+  or an empty value removes the chart's default, and a fallback here would
+  pick a grant the user did not ask for and duplicate the default from
+  values.yaml.
+*/}}
+{{- if not $scope }}
+{{- fail "rbac.scope is not set: \"rbac: null\" or an empty value removes the chart's default. Set rbac.scope to \"cluster\" or \"namespaced\"." }}
+{{- else if eq $scope "cluster" }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -31,7 +40,7 @@ subjects:
   name: {{ include "nvcre.serviceAccountName" . }}
   namespace: {{ .Release.Namespace }}
 {{- else if eq $scope "namespaced" }}
-{{- range $namespace := (.Values.rbac.runNamespaces | default list | uniq) }}
+{{- range $namespace := ($rbac.runNamespaces | default list | uniq) }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

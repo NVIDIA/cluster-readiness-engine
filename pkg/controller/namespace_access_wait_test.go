@@ -16,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/events"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/yaml"
@@ -45,10 +46,12 @@ func TestNamespaceAccessWait(t *testing.T) {
 	p := testutil.TestCaseParser{Subdir: "namespace-access-wait", ExpectedSuffix: testutil.SuffixJSON}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			// Call is gate (the check before writing) or forbidden (a write
-			// that failed with WriteError).
+			// Call selects the gate, forbidden-write handling, or node-result
+			// classification. requeue uses an in-memory unsaved transition.
 			Call       string `json:"call"`
 			WriteError string `json:"writeError"`
+			NoReviewer bool   `json:"noReviewer"`
+			Classified bool   `json:"classified"`
 			// Denied and ReviewError are the reviewer's answer.
 			Denied      []AccessCheck `json:"denied"`
 			ReviewError string        `json:"reviewError"`
@@ -108,6 +111,9 @@ func TestNamespaceAccessWait(t *testing.T) {
 			Client: c, Scheme: scheme, Recorder: recorder,
 			AccessReviewer: reviewer, now: func() time.Time { return now },
 		}
+		if input.NoReviewer {
+			r.AccessReviewer = nil
+		}
 		if input.ServiceAccount != "" {
 			ns, name, _ := strings.Cut(input.ServiceAccount, "/")
 			r.ServiceAccount = rbac.ServiceAccount{Namespace: ns, Name: name}
@@ -124,13 +130,23 @@ func TestNamespaceAccessWait(t *testing.T) {
 			res, w, err := r.gateNamespaceAccess(ctx, workflow)
 			stop, result.RequeueAfter, callErr = w, res.RequeueAfter, err
 		case "forbidden":
-			var writeErr = errors.New(input.WriteError)
-			if input.WriteError == "" {
-				writeErr = apierrors.NewForbidden(schema.GroupResource{Resource: resourceConfigMaps}, "node-results",
-					errors.New("injected"))
-			}
+			writeErr := namespaceAccessTestWriteError(input.WriteError)
 			res, w, err := r.awaitAccessOnForbidden(ctx, workflow, writeErr)
 			stop, result.RequeueAfter, callErr = w, res.RequeueAfter, err
+		case "requeue":
+			writeErr := namespaceAccessTestWriteError(input.WriteError)
+			if input.Classified {
+				writeErr = &accessDeniedWriteError{err: writeErr, access: namespaceAccessResult{
+					denied:         map[string][]AccessCheck{testNS: input.Denied},
+					serviceAccount: r.controllerServiceAccount(),
+				}}
+			}
+			inMemory := workflow.DeepCopy()
+			inMemory.Status.Orchestration = &nvcrev1alpha1.OrchestrationStatus{CompletedIterations: 1}
+			res, err := r.requeueAfterForbiddenWrite(ctx, inMemory)(ctrl.Result{}, writeErr)
+			result.RequeueAfter, callErr = res.RequeueAfter, err
+		case "node-results":
+			callErr = r.nodeResultsWriteError(ctx, workflow, namespaceAccessTestWriteError(input.WriteError), "record")
 		default:
 			return fmt.Errorf("unknown call %q", input.Call)
 		}
@@ -168,6 +184,23 @@ func TestNamespaceAccessWait(t *testing.T) {
 			"events":          emitted,
 			"reviewsAskFresh": reviewer.fresh,
 		}
+		if input.Call == "requeue" {
+			delete(output, "stop")
+			output["orchestrationPersisted"] = got.Status.Orchestration != nil
+		}
+		if input.Call == "node-results" {
+			delete(output, "stop")
+			delete(output, "requeueAfter")
+			delete(output, "conditions")
+			output["endsPass"] = callErr != nil
+			if denied, ok := errors.AsType[*accessDeniedWriteError](callErr); ok {
+				output["originalForbiddenPreserved"] = apierrors.IsForbidden(callErr)
+				output["carriedDenials"] = denied.access.denied
+				if denied.access.reviewErr != nil {
+					output["carriedReviewError"] = denied.access.reviewErr.Error()
+				}
+			}
+		}
 		if callErr != nil {
 			output["error"] = callErr.Error()
 		}
@@ -178,4 +211,15 @@ func TestNamespaceAccessWait(t *testing.T) {
 		tc.Actual = string(data) + "\n"
 		return nil
 	})
+}
+
+func namespaceAccessTestWriteError(value string) error {
+	switch value {
+	case "no-error":
+		return nil
+	case "", "forbidden":
+		return apierrors.NewForbidden(schema.GroupResource{Resource: resourceConfigMaps}, "node-results", errors.New("injected"))
+	default:
+		return errors.New(value)
+	}
 }

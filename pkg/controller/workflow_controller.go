@@ -283,8 +283,8 @@ func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *nvcrev1
 	}
 
 	// Observing groups and completing an iteration write node results. A
-	// forbidden write ends its pass before any status is written, and
-	// requeueAfterForbiddenWrite records the wait from the persisted Workflow
+	// forbidden write holds back its unfinished transition; earlier completed
+	// groups are persisted before requeueAfterForbiddenWrite records the wait
 	// (ADR-092). This check catches a denial already cached, before the
 	// writes are attempted. It consults cached denials only, so a running
 	// Workflow pays nothing for it.
@@ -1816,6 +1816,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 	// blockedMsg carries the first running Job's scheduling-blocked diagnosis
 	// up to the Workflow condition (ADR-083).
 	blockedMsg := ""
+	var accessWriteErr error
 
 	for i := range orch.Groups {
 		g := &orch.Groups[i]
@@ -1824,6 +1825,13 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		}
 		outcome, blocked, err := r.observeRunningGroup(ctx, workflow, orch, g)
 		if err != nil {
+			if _, denied := errors.AsType[*accessDeniedWriteError](err); denied {
+				// Earlier groups may already have deleted their Jobs for a retry.
+				// Persist their completed transitions before recording the wait;
+				// this group's unfinished transition is not in changed.
+				accessWriteErr = err
+				break
+			}
 			return ctrl.Result{}, err
 		}
 		switch outcome {
@@ -1839,7 +1847,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		}
 	}
 
-	if statusChanged || anyRunning {
+	if statusChanged || (anyRunning && accessWriteErr == nil) {
 		runningCount := countRunningGroups(orch)
 		msg := fmt.Sprintf("Iteration %d/%d: %d groups running",
 			orch.CurrentIteration, effectiveIterations(workflow.Spec.Orchestration), runningCount)
@@ -1884,11 +1892,30 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 			}
 			return applied
 		}
-		if err := r.setWorkflowInProgress(ctx, workflow, reason, msg, applyGroups); err != nil {
+		statusTarget := workflow
+		if accessWriteErr != nil {
+			// applyGroups protects untouched groups after a conflict refetch,
+			// but the first attempt would otherwise write the rejected group's
+			// in-memory mutations too. Start from persisted status here.
+			statusTarget = &nvcrev1alpha1.Workflow{}
+			if err := r.jobReader().Get(ctx, client.ObjectKeyFromObject(workflow), statusTarget); err != nil {
+				return ctrl.Result{}, fmt.Errorf("reload Workflow to preserve completed groups before the access wait: %w", err)
+			}
+		}
+		// A group that completed this pass may have written node results and
+		// pointed the Workflow at them. Carry those refs like the groups, so a
+		// conflict refetch or the reload above does not drop them while the
+		// ConfigMap they name survives. A denied write never sets a ref.
+		if err := r.setWorkflowInProgress(ctx, statusTarget, reason, msg, applyGroups,
+			applySucceededNodesRef(workflow.Status.SucceededNodesRef),
+			applyFailedNodesRef(workflow.Status.FailedNodesRef)); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
+	if accessWriteErr != nil {
+		return ctrl.Result{}, accessWriteErr
+	}
 	if stale {
 		return ctrl.Result{RequeueAfter: requeueImmediate}, nil
 	}
