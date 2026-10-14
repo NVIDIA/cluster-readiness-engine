@@ -1,0 +1,11 @@
+# /root/.ssh is where the worker writes its keys before starting sshd; a
+# read-only or foreign mount there breaks the copy. Trailing slash again, to
+# show the cleaned path is compared.
+framework: mpi
+volumes:
+  - name: keys
+    secret:
+      secretName: other-keys
+volumeMounts:
+  - name: keys
+    mountPath: /root/.ssh/

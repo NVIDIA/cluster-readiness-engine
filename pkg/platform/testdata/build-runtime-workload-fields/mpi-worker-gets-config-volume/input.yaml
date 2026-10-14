@@ -4,7 +4,10 @@
 # a workload-level field, and on mpi it was a silent no-op along with the
 # other three (issue #455). The expected file shows config-volume after dshm
 # on the worker pod and the /config mount after the built-ins on the node
-# container, and nothing on the launcher.
+# container. The launcher pod carries the same volume, mounted read-only at
+# /config on its node container and not on its init container: mpirun runs
+# there, so a rankfile or the binary under /config has to be visible to it.
+# It is the only user-level volume the launcher gets.
 frameworkType: mpi
 volumes:
   - name: config-volume

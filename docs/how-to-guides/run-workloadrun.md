@@ -117,15 +117,34 @@ platform-forwarded value, and a `-x NAME=value` you pass in
 `spec.volumes`, `spec.volumeMounts`, `spec.config`, and `spec.initContainers`
 apply to every framework. On `torch` and `exec` they land on the node pods,
 where the workload container runs. On MPI they land on the worker pods, where
-`mpirun` starts the ranks over SSH; the launcher pod is left unchanged because
-it only runs `mpirun`, so a PersistentVolumeClaim, a hugepages emptyDir, or an
-init container you add is never attached to it.
+`mpirun` starts the ranks over SSH. The launcher pod, which only runs
+`mpirun`, gets none of your volumes, mounts, or init containers: a
+PersistentVolumeClaim, a hugepages emptyDir, or a data-staging init container
+is never attached to it. The one exception is `spec.config`, which is also
+mounted read-only at `/config` on the launcher, so a binary, rankfile,
+appfile, or MCA parameter file you ship there is visible to `mpirun` itself
+as well as to the ranks.
 
 A memory-backed `/dev/shm` volume is always provided, so you do not need to
 declare one. `spec.config` is mounted at `/config` with mode 0755, so scripts
 you ship through `config.inline` are executable as-is; with
 `config.configMapRef` the named ConfigMap is mounted the same way and nothing
 is created.
+
+The built-in volumes take the names `dshm` and `config-volume` and the paths
+`/dev/shm` and, when `spec.config` is set, `/config`. On MPI the name
+`mpi-ssh-auth` and the paths `/tmp/mpi-ssh-raw` and `/root/.ssh` are taken
+too, by the SSH key Secret Kubeflow Trainer injects and by the worker's `sshd`
+setup; on `torch` and `exec` the name `kubeflow-trainer-token` and the path
+`/var/run/secrets/kubeflow/trainer` are taken by the token Trainer's status
+plugin injects when it is enabled. In every pod the workload container is
+named `node`, so an init container cannot take that name, and a mount may
+name `config-volume` only when `spec.config` creates it. A WorkloadRun that
+reuses one of them fails with a `Failed` condition, reason `BuildFailed`, whose
+message names the field, before any Workflow is created, and
+`nvcrectl workloadrun render` refuses it the same way. Without that check a
+volume named `mpi-ssh-auth` or `kubeflow-trainer-token` would be silently
+replaced by Trainer's own, since Trainer upserts those volumes by name.
 
 ```yaml
 apiVersion: nvcre.nvidia.com/v1alpha1
@@ -165,6 +184,88 @@ whenever more than one worker pod mounts it at the same time. Under the
 default placement that is any run against more than one eligible node, since
 every job group runs concurrently with one worker per node; under
 `placement: Unpinned` it is any `numNodes` greater than one.
+
+### Host RDMA devices on MPI
+
+A cluster that exposes its RDMA devices as host device nodes instead of
+through a device plugin needs the devices mounted and the worker container
+privileged. The kubelet builds a container's device cgroup allowlist from its
+requested resources, so a `hostPath` mount of `/dev/infiniband` on its own
+leaves the devices visible but makes `open()` on them fail with `EPERM`.
+WorkloadRun has no field for that, so set it with an override on the
+generated TrainingRuntime, which is named `<workloadrun-name>-runtime`. The
+`dependencies` entry below merges into it (containers merge by name, so the
+built-in mounts stay) and sets `privileged` on the worker `node` container
+only:
+
+```yaml
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: nccl-hostpath-rdma
+spec:
+  image: nvcr.io/nvidia/pytorch:26.01-py3
+  framework:
+    mpi:
+      mpirunPath: /usr/local/mpi/bin/mpirun
+      binary: /usr/local/bin/all_reduce_perf_mpi
+      args: ["-b", "8", "-e", "32G", "-f", "2"]
+  numNodes: 2
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  volumes:
+    - name: ib-dev
+      hostPath:
+        path: /dev/infiniband
+        type: Directory
+  volumeMounts:
+    - name: ib-dev
+      mountPath: /dev/infiniband
+  overrides:
+    - when: {}
+      dependencies:
+        - apiVersion: trainer.kubeflow.org/v1alpha1
+          kind: TrainingRuntime
+          metadata:
+            name: nccl-hostpath-rdma-runtime
+          spec:
+            template:
+              spec:
+                replicatedJobs:
+                  - name: node
+                    template:
+                      spec:
+                        template:
+                          spec:
+                            containers:
+                              - name: node
+                                securityContext:
+                                  privileged: true
+```
+
+`privileged` also drops the runtime's default seccomp, AppArmor, and SELinux
+confinement for that container, and a CRI-O runtime may refuse a privileged
+container that requests `nvidia.com/gpu`. That is the same trade the
+catalog's `rdmaDeviceAccess: hostPath` makes for a Certification; see
+[ADR-088](../designs/088-oci-gb200-roce-and-rdma-device-access.md). `type: Directory`
+keeps a node without the device tree from starting the pod over an empty
+directory; such a pod stays in `ContainerCreating` with a `FailedMount` event
+until `spec.timeoutPerJob`.
+
+### Worker start-up under KAI
+
+Under a KAI gang scheduler the launcher cannot be gated on worker readiness,
+so its init container probes every worker's `sshd` itself, for up to 20
+minutes. Anything that delays a worker's start now delays that probe: a slow
+image pull, a volume that is slow to attach, a `hostPath` directory missing on
+a node, or an init container that stages data. Past the limit the init
+container exits with `not every worker answered sshd within 20 minutes` and
+points at the worker pods, whose events carry the actual cause; the pod then
+restarts the init container and waits again. Each restart counts toward the
+launcher Job's `backoffLimit`, 6 unless an override sets one, after which the
+launcher Job fails. Outside KAI the launcher is only created once every worker
+is Ready, and the Job waits until `spec.timeoutPerJob`.
 
 ## With bandwidth measurement
 

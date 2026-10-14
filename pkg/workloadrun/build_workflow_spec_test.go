@@ -30,6 +30,10 @@ import (
 // records line for line. If these cases recorded it again, then every edit to
 // pkg/platform/overrides/workloadrun.yaml or to the catalog _lib files it reads
 // would fail all of them, even though none of those edits touch this package.
+//
+// A case with an error file in place of expected.json pins a spec the builder
+// refuses before it renders anything, and the message it refuses it with, so
+// that the render path turns away the same specs as the controller.
 func TestBuildWorkflowSpec(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "build-workflow-spec",

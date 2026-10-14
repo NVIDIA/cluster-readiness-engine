@@ -1,0 +1,3 @@
+{
+  "error": "spec.volumes[0].name: \"config-volume\" is reserved: spec.config is mounted through a volume of that name; rename the volume"
+}

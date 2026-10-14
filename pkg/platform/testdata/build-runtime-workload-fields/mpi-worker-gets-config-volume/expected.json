@@ -21,7 +21,8 @@
     {
       "replicatedJob": "launcher",
       "volumes": [
-        "ssh-keys: emptyDir"
+        "ssh-keys: emptyDir",
+        "config-volume: configMap wr-mpi-config"
       ],
       "containers": [
         {
@@ -36,7 +37,8 @@
           "name": "node",
           "volumeMounts": [
             "mpi-ssh-auth at /tmp/mpi-ssh-raw (ro)",
-            "ssh-keys at /root/.ssh"
+            "ssh-keys at /root/.ssh",
+            "config-volume at /config (ro)"
           ]
         }
       ]

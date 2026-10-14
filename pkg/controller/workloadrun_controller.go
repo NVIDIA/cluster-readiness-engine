@@ -501,6 +501,16 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 		frameworkType = "mpi"
 	}
 
+	// A user volume, mount or init container that reuses a built-in name or
+	// path is refused here, before the Workflow exists, with the checks the
+	// render path runs.
+	if err := platform.ValidateWorkloadVolumes(spec.Volumes, spec.VolumeMounts, frameworkType, spec.Config != nil); err != nil {
+		return nil, "", err
+	}
+	if err := platform.ValidateWorkloadInitContainers(spec.InitContainers); err != nil {
+		return nil, "", err
+	}
+
 	// Build merged env vars.
 	baseEnv := platform.BaseNCCLEnvVars(enableMNNVL)
 	mergedEnv := platform.MergeEnvVars(baseEnv, spec.Env)
@@ -514,15 +524,15 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 			configMapName = spec.Config.ConfigMapRef.Name
 		}
 		volumes = append(volumes, corev1.Volume{
-			Name: "config-volume",
+			Name: platform.ConfigVolumeName,
 			ConfigMap: &corev1.ConfigMapVolumeSource{
 				Name:        configMapName,
 				DefaultMode: func() *int32 { m := int32(0755); return &m }(),
 			},
 		})
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      "config-volume",
-			MountPath: "/config",
+			Name:      platform.ConfigVolumeName,
+			MountPath: platform.ConfigMountPath,
 		})
 	}
 

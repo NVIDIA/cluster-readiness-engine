@@ -1,0 +1,9 @@
+# /tmp/mpi-ssh-raw is where Trainer mounts the SSH key Secret on the worker
+# and where the worker's start-up script copies the keys from.
+framework: mpi
+volumes:
+  - name: scratch
+    emptyDir: {}
+volumeMounts:
+  - name: scratch
+    mountPath: /tmp/mpi-ssh-raw

@@ -1,0 +1,3 @@
+{
+  "error": "spec.volumeMounts[0].mountPath: \"/var/run/secrets/kubeflow/trainer/\" is reserved on the exec framework: Kubeflow Trainer's TrainJobStatus plugin mounts its status token there on the node container; choose another path"
+}

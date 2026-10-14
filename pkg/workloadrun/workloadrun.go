@@ -293,6 +293,12 @@ func BuildWorkflowSpec(
 	if err := controller.ValidateWRPlacement(spec.Orchestration); err != nil {
 		return nil, err
 	}
+	if err := platform.ValidateWorkloadVolumes(spec.Volumes, spec.VolumeMounts, frameworkType, spec.Config != nil); err != nil {
+		return nil, err
+	}
+	if err := platform.ValidateWorkloadInitContainers(spec.InitContainers); err != nil {
+		return nil, err
+	}
 
 	// Build merged env vars.
 	baseEnv := platform.BaseNCCLEnvVars(enableMNNVL)
@@ -308,15 +314,15 @@ func BuildWorkflowSpec(
 		}
 		defaultMode := int32(0755)
 		volumes = append(volumes, corev1.Volume{
-			Name: "config-volume",
+			Name: platform.ConfigVolumeName,
 			ConfigMap: &corev1.ConfigMapVolumeSource{
 				Name:        configMapName,
 				DefaultMode: &defaultMode,
 			},
 		})
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      "config-volume",
-			MountPath: "/config",
+			Name:      platform.ConfigVolumeName,
+			MountPath: platform.ConfigMountPath,
 		})
 	}
 

@@ -1,0 +1,11 @@
+# On mpi the job carrying the "trainer" ancestor label is the launcher, so the
+# TrainJobStatus token lands there, and user volumes never reach the launcher:
+# the worker pod has nothing of that name or path, and both stay available.
+framework: mpi
+volumes:
+  - name: kubeflow-trainer-token
+    secret:
+      secretName: my-token
+volumeMounts:
+  - name: kubeflow-trainer-token
+    mountPath: /var/run/secrets/kubeflow/trainer

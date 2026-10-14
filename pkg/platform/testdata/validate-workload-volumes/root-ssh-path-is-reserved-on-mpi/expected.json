@@ -1,0 +1,3 @@
+{
+  "error": "spec.volumeMounts[0].mountPath: \"/root/.ssh/\" is reserved on the mpi framework: the worker writes its SSH keys there before starting sshd; choose another path"
+}

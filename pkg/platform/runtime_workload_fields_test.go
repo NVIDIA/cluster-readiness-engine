@@ -70,9 +70,11 @@ type workloadFieldsProjection struct {
 // BuildTorchRuntime (and BuildExecRuntime through it) always honoured the three
 // fields. BuildMPIRuntime never read them, so on the mpi framework all of
 // them, and spec.config with them, rendered as a silent no-op (issue #455).
-// The fix puts them on the worker pod and its "node" container only, after the
+// The fix puts them on the worker pod and its "node" container, after the
 // built-in mounts and volumes; the launcher is a coordinator with fixed
-// resources and hosts no rank, so it is left exactly as it was.
+// resources and hosts no rank, so it gets none of them, except that the
+// spec.config volume is also mounted read-only on its container, where mpirun
+// runs and reads whatever mpiArgs name under /config.
 //
 // It is a projection golden, not a verbatim one: each case renders one
 // builder, projects every replicatedJob's volumes and containers, and computes
@@ -261,7 +263,7 @@ func workerPlacementViolations(in workloadFieldsInput, pod corev1.PodSpec) (int,
 			}
 		}
 		dshmMountAt := slices.IndexFunc(node.VolumeMounts, func(m corev1.VolumeMount) bool {
-			return m.Name == volumeNameDSHM && m.MountPath == "/dev/shm"
+			return m.Name == volumeNameDSHM && m.MountPath == dshmMountPath
 		})
 		if dshmMountAt < 0 {
 			violations = append(violations, where+": built-in mount "+volumeNameDSHM+" at /dev/shm is missing")
@@ -303,9 +305,15 @@ func workerPlacementViolations(in workloadFieldsInput, pod corev1.PodSpec) (int,
 }
 
 // launcherPlacementViolations checks the "launcher" replicatedJob (mpi only):
-// none of the user's entries may appear on it. This pins the worker-only
-// decision: the launcher hosts no rank and has fixed resources, so a user
-// volume there could fail validation or attachment without helping the run.
+// none of the user's entries may appear on it, with one exception. The
+// spec.config volume (ConfigVolumeName) must be on the launcher pod and
+// mounted read-only, at the same path, on its "node" container, where mpirun
+// runs, and on no other container of it. Every other user volume, mount and
+// init container must be absent. This pins both decisions: user volumes stay
+// off the launcher (it hosts no rank and has fixed resources, so a volume
+// there could fail validation or attachment without helping the run), and
+// spec.config reaches it (a rankfile or the binary under /config has to be
+// visible to mpirun).
 func launcherPlacementViolations(in workloadFieldsInput, pod corev1.PodSpec) (int, []string) {
 	const where = launcherJobName
 	var violations []string
@@ -317,7 +325,11 @@ func launcherPlacementViolations(in workloadFieldsInput, pod corev1.PodSpec) (in
 	}
 	for _, v := range in.Volumes {
 		checked++
-		if slices.Contains(volumeNames, v.Name) {
+		present := slices.Contains(volumeNames, v.Name)
+		switch {
+		case v.Name == ConfigVolumeName && !present:
+			violations = append(violations, where+": config volume "+v.Name+" is missing from the launcher pod")
+		case v.Name != ConfigVolumeName && present:
 			violations = append(violations, where+": user volume "+v.Name+" leaked onto the launcher pod")
 		}
 	}
@@ -325,9 +337,26 @@ func launcherPlacementViolations(in workloadFieldsInput, pod corev1.PodSpec) (in
 	all := append(slices.Clone(pod.InitContainers), pod.Containers...)
 	for _, m := range in.VolumeMounts {
 		checked++
+		// The one user-level mount the launcher must carry is the config
+		// volume at ConfigMountPath, read-only, on its node container. Any
+		// other mount, a second mount of the config volume at another path
+		// included, must not reach the launcher at all.
+		isConfigMount := m.Name == ConfigVolumeName && m.MountPath == ConfigMountPath
 		for _, c := range all {
-			if slices.ContainsFunc(c.VolumeMounts, func(cm corev1.VolumeMount) bool { return cm.Name == m.Name }) {
-				violations = append(violations, where+"/"+c.Name+": user mount "+m.Name+" leaked onto the launcher")
+			at := slices.IndexFunc(c.VolumeMounts, func(cm corev1.VolumeMount) bool {
+				return cm.Name == m.Name && cm.MountPath == m.MountPath
+			})
+			if isConfigMount && c.Name == nodeJobName {
+				switch {
+				case at < 0:
+					violations = append(violations, where+"/"+c.Name+": config mount "+m.Name+" at "+m.MountPath+" is missing")
+				case !c.VolumeMounts[at].ReadOnly:
+					violations = append(violations, where+"/"+c.Name+": config mount must be read-only, got "+describeMount(c.VolumeMounts[at]))
+				}
+				continue
+			}
+			if at >= 0 {
+				violations = append(violations, where+"/"+c.Name+": user mount "+describeMount(m)+" leaked onto the launcher")
 			}
 		}
 	}

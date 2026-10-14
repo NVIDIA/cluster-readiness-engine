@@ -71,7 +71,6 @@
                   "FI_EFA_USE_DEVICE_RDMA=1",
                   "-x",
                   "FI_EFA_FORK_SAFE=1",
-                  "--allow-run-as-root",
                   "/config/run_nccl.sh",
                   "-b",
                   "8",
@@ -412,6 +411,11 @@
                                   {
                                     "mountPath": "/root/.ssh",
                                     "name": "ssh-keys"
+                                  },
+                                  {
+                                    "mountPath": "/config",
+                                    "name": "config-volume",
+                                    "readOnly": true
                                   }
                                 ]
                               }
@@ -445,6 +449,13 @@
                               {
                                 "emptyDir": {},
                                 "name": "ssh-keys"
+                              },
+                              {
+                                "configMap": {
+                                  "defaultMode": 493,
+                                  "name": "test-mpi-volumes-run-config"
+                                },
+                                "name": "config-volume"
                               }
                             ]
                           }
@@ -1723,9 +1734,6 @@
             "32G",
             "-f",
             "2"
-          ],
-          "mpiArgs": [
-            "--allow-run-as-root"
           ],
           "mpiImplementation": "OpenMPI",
           "mpirunPath": "/usr/local/mpi/bin/mpirun"

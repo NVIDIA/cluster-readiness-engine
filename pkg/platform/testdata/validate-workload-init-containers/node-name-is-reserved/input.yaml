@@ -1,0 +1,8 @@
+# The workload container is named node on every framework, and a pod's
+# container names are unique across its init and regular containers, so this
+# init container would be refused at pod creation, after the Workflow and the
+# Job exist, with nothing on the WorkloadRun to say why.
+initContainers:
+  - name: node
+    image: busybox:1.36
+    command: ["sh", "-c", "echo staging"]

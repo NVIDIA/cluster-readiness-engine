@@ -6,6 +6,8 @@ package platform
 import (
 	"encoding/json"
 	"fmt"
+	"path"
+	"slices"
 	"strconv"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
@@ -56,6 +58,26 @@ const (
 	launcherJobName       = "launcher"
 	mpiSSHAuthName        = "mpi-ssh-auth"
 	keyReadOnly           = "readOnly"
+	// dshmMountPath is where the built-in memory-backed dshm volume is mounted
+	// on every workload container.
+	dshmMountPath = "/dev/shm"
+	// trainerStatusVolumeName and trainerStatusMountPath are the projected
+	// service-account token Kubeflow Trainer's TrainJobStatus plugin upserts,
+	// by volume name and by mount path, on the replicated job that carries the
+	// "trainer" ancestor label: the node job on torch and exec, the launcher on
+	// mpi. The plugin sits behind Trainer's TrainJobStatus feature gate (alpha
+	// and off by default in v2.2.1); where it is on, a user volume or mount
+	// with that name or path is replaced without an error.
+	trainerStatusVolumeName = "kubeflow-trainer-token"
+	trainerStatusMountPath  = "/var/run/secrets/kubeflow/trainer"
+)
+
+// Names both WorkloadRun call sites (the controller and the nvcrectl render
+// path) give the spec.config volume and its mount. Exported so the call sites,
+// BuildMPIRuntime and ValidateWorkloadVolumes agree on them.
+const (
+	ConfigVolumeName = "config-volume"
+	ConfigMountPath  = "/config"
 )
 
 // defaultWorkerResources returns the worker resources block when the user did
@@ -181,7 +203,7 @@ func BuildTorchRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 
 	// Volume mounts: shared memory + user-provided.
 	mounts := make([]corev1.VolumeMount, 0, 1+len(cfg.VolumeMounts))
-	mounts = append(mounts, corev1.VolumeMount{Name: volumeNameDSHM, MountPath: "/dev/shm"})
+	mounts = append(mounts, corev1.VolumeMount{Name: volumeNameDSHM, MountPath: dshmMountPath})
 	mounts = append(mounts, cfg.VolumeMounts...)
 	container[keyVolumeMounts] = mounts
 
@@ -374,20 +396,28 @@ func sshdReadinessProbe() map[string]any {
 // through mpirun itself.
 //
 // cfg.Volumes, cfg.VolumeMounts and cfg.InitContainers go on the worker pod
-// and its "node" container only, after the built-in mpi-ssh-auth and dshm
-// entries, the same way BuildTorchRuntime emits them (issue #455: they used
-// to be dropped here, so spec.volumes, spec.volumeMounts, spec.config and
+// and its "node" container, after the built-in mpi-ssh-auth and dshm entries,
+// the same way BuildTorchRuntime emits them (issue #455: they used to be
+// dropped here, so spec.volumes, spec.volumeMounts, spec.config and
 // spec.initContainers were a silent no-op on the mpi framework). The launcher
-// is left alone on purpose. The ranks run on the worker (mpirun on the
-// launcher starts them there over ssh; runLauncherAsNode is off, so the
-// launcher hosts no rank), and the launcher is a coordinator with fixed
-// resources (cpu 2, memory 1Gi, no GPU; spec.resources never applies to it),
-// so a hugepages emptyDir there would fail at volume setup on the kubelet,
-// which refuses the medium without a hugepages request on the pod, and a
-// ReadWriteOnce PVC could not attach on a second node. This matches the
+// gets none of them, with one exception below. The ranks run on the worker
+// (mpirun on the launcher starts them there over ssh; runLauncherAsNode is
+// off, so the launcher hosts no rank), and the launcher is a coordinator with
+// fixed resources (cpu 2, memory 1Gi, no GPU; spec.resources never applies to
+// it), so a hugepages emptyDir there would fail at volume setup on the
+// kubelet, which refuses the medium without a hugepages request on the pod,
+// and a ReadWriteOnce PVC could not attach on a second node. This matches the
 // catalog precedent in
 // pkg/catalog/entries/_lib/overrides/hostpath-rdma.yaml and ADR-088, which
-// scope the RDMA hostPath mount to the node container. Env is different: the
+// scope the RDMA hostPath mount to the node container.
+//
+// The exception is the spec.config volume (ConfigVolumeName), which the
+// launcher container also mounts, read-only. mpirun runs on the launcher, so
+// a rankfile, an appfile or an MCA parameter file under /config that mpiArgs
+// names is only usable if the launcher sees it, and a binary under /config is
+// then present where mpirun resolves it instead of relying on mpirun not
+// checking for it locally. None of the reasons above apply to a ConfigMap,
+// which mounts on any node and requests nothing. Env is different again: the
 // launcher's own MPI initialisation reads it, so it stays on both containers.
 func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	// Worker (node) container: runs sshd. Volume mounts: SSH auth + shared
@@ -395,7 +425,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	workerMounts := make([]any, 0, 2+len(cfg.VolumeMounts))
 	workerMounts = append(workerMounts,
 		map[string]any{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
-		map[string]any{keyName: volumeNameDSHM, keyMountPath: "/dev/shm"},
+		map[string]any{keyName: volumeNameDSHM, keyMountPath: dshmMountPath},
 	)
 	for _, m := range cfg.VolumeMounts {
 		workerMounts = append(workerMounts, m)
@@ -466,7 +496,24 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 		keyVolumeMounts: launcherInitMounts,
 	}
 
-	// Launcher container
+	// Launcher container. Its mounts and the launcher pod's volumes are the
+	// built-in SSH material plus, when spec.config is set, the config volume
+	// read-only: mpirun runs here, so a file under /config that mpiArgs names
+	// (a rankfile, an appfile, an MCA parameter file) or the binary itself has
+	// to be visible to it. Every other user volume stays on the worker (see the
+	// function comment).
+	launcherMounts := []any{
+		map[string]any{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
+		map[string]any{keyName: volumeNameSSHKeys, keyMountPath: mpiSSHKeyDir},
+	}
+	launcherVolumes := []any{
+		map[string]any{keyName: volumeNameSSHKeys, keyEmptyDir: map[string]any{}},
+	}
+	if configVolume, configMount, ok := configVolumeAndMount(cfg); ok {
+		configMount.ReadOnly = true
+		launcherMounts = append(launcherMounts, configMount)
+		launcherVolumes = append(launcherVolumes, configVolume)
+	}
 	launcherContainer := map[string]any{
 		keyName:  nodeJobName,
 		keyImage: cfg.Image,
@@ -477,10 +524,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 				"memory": "1Gi",
 			},
 		},
-		keyVolumeMounts: []map[string]any{
-			{keyName: mpiSSHAuthName, keyMountPath: mpiSSHMountPath, keyReadOnly: true},
-			{keyName: volumeNameSSHKeys, keyMountPath: mpiSSHKeyDir},
-		},
+		keyVolumeMounts: launcherMounts,
 	}
 
 	// Worker pod volumes: shared memory + user-provided.
@@ -538,9 +582,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 		"initContainers": []any{launcherInitContainer},
 		keyContainers:    []any{launcherContainer},
 		"restartPolicy":  "OnFailure",
-		keyVolumes: []any{
-			map[string]any{keyName: volumeNameSSHKeys, keyEmptyDir: map[string]any{}},
-		},
+		keyVolumes:       launcherVolumes,
 	}
 	launcherJobLabels := map[string]any{
 		"trainer.kubeflow.org/trainjob-ancestor-step": "trainer",
@@ -635,6 +677,25 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	return nvcrev1alpha1.DependencySpec{
 		Raw: data,
 	}
+}
+
+// configVolumeAndMount returns the spec.config volume and its mount from the
+// user-level lists when both are present: the volume named ConfigVolumeName
+// and the mount of it at ConfigMountPath. The call sites append the two
+// together, so one without the other never comes from spec.config. A user
+// volume that merely shares the name is refused by ValidateWorkloadVolumes
+// before any builder runs, and the mount is matched on its path as well, so a
+// user mount that names the config volume at a second path is never the one
+// the launcher copies.
+func configVolumeAndMount(cfg RuntimeConfig) (corev1.Volume, corev1.VolumeMount, bool) {
+	vi := slices.IndexFunc(cfg.Volumes, func(v corev1.Volume) bool { return v.Name == ConfigVolumeName })
+	mi := slices.IndexFunc(cfg.VolumeMounts, func(m corev1.VolumeMount) bool {
+		return m.Name == ConfigVolumeName && path.Clean(m.MountPath) == ConfigMountPath
+	})
+	if vi < 0 || mi < 0 {
+		return corev1.Volume{}, corev1.VolumeMount{}, false
+	}
+	return cfg.Volumes[vi], cfg.VolumeMounts[mi], true
 }
 
 // BuildExecRuntime creates a TrainingRuntime dependency for arbitrary command execution.
