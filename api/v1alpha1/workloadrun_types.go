@@ -283,7 +283,8 @@ type WorkloadRunSpec struct {
 	// container gets none of them. The paths /dev/shm, /config when config is
 	// set, on mpi /tmp/mpi-ssh-raw and /root/.ssh, and on torch and exec
 	// /var/run/secrets/kubeflow/trainer, are reserved for the built-in mounts
-	// and rejected, as is a mount that names config-volume when config is not
+	// and rejected, the SSH and token directories together with every path
+	// below them, as is a mount that names config-volume when config is not
 	// set.
 	// +optional
 	VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`

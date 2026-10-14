@@ -35,7 +35,8 @@ followed them.
   name or mount path (`dshm`, `config-volume`, `/dev/shm`, `/config` with
   `spec.config`, on `mpi` `mpi-ssh-auth`, `/tmp/mpi-ssh-raw` and `/root/.ssh`, and
   on `torch` and `exec` `kubeflow-trainer-token` and
-  `/var/run/secrets/kubeflow/trainer`), or whose `spec.initContainers` take the
+  `/var/run/secrets/kubeflow/trainer`, the SSH and token directories together with
+  every path below them), or whose `spec.initContainers` take the
   workload container's name `node`, now fails with `BuildFailed` naming the entry,
   and `nvcrectl workloadrun render` refuses it. A volume named `mpi-ssh-auth` or
   `kubeflow-trainer-token` used to be silently replaced by the one Kubeflow Trainer

@@ -137,8 +137,12 @@ The built-in volumes take the names `dshm` and `config-volume` and the paths
 too, by the SSH key Secret Kubeflow Trainer injects and by the worker's `sshd`
 setup; on `torch` and `exec` the name `kubeflow-trainer-token` and the path
 `/var/run/secrets/kubeflow/trainer` are taken by the token Trainer's status
-plugin injects when it is enabled. In every pod the workload container is
-named `node`, so an init container cannot take that name, and a mount may
+plugin injects when it is enabled. Those three directories are taken together
+with every path below them, since a mount at `/root/.ssh/authorized_keys`
+hides that file as surely as one at `/root/.ssh`; `/dev/shm` and `/config`
+are taken exactly, so nothing below them is refused. In every pod the
+workload container is named `node`, so an init container cannot take that
+name, and a mount may
 name `config-volume` only when `spec.config` creates it. A WorkloadRun that
 reuses one of them fails with a `Failed` condition, reason `BuildFailed`, whose
 message names the field, before any Workflow is created, and
