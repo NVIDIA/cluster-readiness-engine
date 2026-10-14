@@ -1048,9 +1048,15 @@ func executeWorkloadRunRun(cfg *wrRunConfig) error {
 		// namespace has nothing to serve and must not stay as a standing grant,
 		// unless another run adopted it in the meantime. ReleaseRunBinding
 		// keeps it then, like cleanup does, and this run no longer owns it.
+		// It gets its own context: an interrupt cancels ctx, which is often why
+		// the create failed. If the release could not complete, this run keeps
+		// ownership so --cleanup tries again.
 		if createdRunBinding {
-			setup.ReleaseRunBinding(ctx, wc, run.Namespace, true, "WorkloadRun", out)
-			createdRunBinding = false
+			releaseCtx, releaseCancel := context.WithTimeout(context.Background(), setup.RunBindingRollbackTimeout)
+			if !setup.ReleaseRunBinding(releaseCtx, wc, run.Namespace, true, "WorkloadRun", out) {
+				createdRunBinding = false
+			}
+			releaseCancel()
 		}
 		return fmt.Errorf("create WorkloadRun: %w", err)
 	}

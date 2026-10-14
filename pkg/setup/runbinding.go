@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -16,6 +17,20 @@ import (
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/rbac"
 )
+
+// runBindingAdoptedAtAnnotation marks an nvcrectl-created RoleBinding that
+// another nvcrectl run adopted, with the time it did.
+const runBindingAdoptedAtAnnotation = "nvcre.nvidia.com/run-binding-adopted-at"
+
+// runBindingAdoptionLease is how long after an adoption cleanup keeps the
+// binding even though the adopter's run object is not visible yet. Adopting
+// is the last step before the create, so the real window is milliseconds.
+const runBindingAdoptionLease = 2 * time.Minute
+
+// RunBindingRollbackTimeout bounds releasing a binding after a failed submit.
+// The release runs on its own context, because an interrupt that cancelled
+// the submit would otherwise cancel the release too.
+const RunBindingRollbackTimeout = 30 * time.Second
 
 // RunBindingOptions says how a run namespace came to be and what the user
 // allowed, which together decide whether EnsureRunBinding may create a
@@ -65,7 +80,12 @@ func EnsureRunBinding(ctx context.Context, c client.Client, namespace string, op
 	existing := &rbacv1.RoleBinding{}
 	switch err := c.Get(ctx, key, existing); {
 	case err == nil:
-		return false, adoptRunBinding(existing, sa, out)
+		gone, err := adoptRunBinding(ctx, c, existing, sa, out)
+		if !gone {
+			return false, err
+		}
+		// Another run's cleanup released it between the read and the
+		// adoption: grant access afresh below, where this run may.
 	case apierrors.IsNotFound(err), apierrors.IsForbidden(err):
 		// Forbidden: the create below either succeeds or explains itself.
 	default:
@@ -98,7 +118,12 @@ func EnsureRunBinding(ctx context.Context, c client.Client, namespace string, op
 			if err := c.Get(ctx, key, existing); err != nil {
 				return false, fmt.Errorf("read RoleBinding %s/%s: %w", namespace, rbac.RunBindingName, err)
 			}
-			return false, adoptRunBinding(existing, sa, out)
+			gone, err := adoptRunBinding(ctx, c, existing, sa, out)
+			if gone {
+				return false, fmt.Errorf("RoleBinding %s/%s was deleted while it was being adopted; run again",
+					namespace, rbac.RunBindingName)
+			}
+			return false, err
 		}
 		if apierrors.IsForbidden(err) && unknown {
 			warnScopeUnknown(namespace, out)
@@ -152,6 +177,27 @@ func ReleaseRunBinding(ctx context.Context, c client.Client, namespace string, r
 			namespace, rbac.RunBindingName, runKind, runKind)
 		return true
 	}
+	// Read the binding before listing runs. Its resourceVersion is the
+	// precondition for the delete below, so an adoption landing after this
+	// read makes the delete conflict instead of revoking the adopter.
+	binding := &rbacv1.RoleBinding{}
+	switch err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: rbac.RunBindingName}, binding); {
+	case apierrors.IsNotFound(err):
+		return false
+	case err != nil:
+		_, _ = fmt.Fprintf(out, "[cleanup] Warning: keeping RoleBinding %s/%s because it could not be read: %v\n",
+			namespace, rbac.RunBindingName, err)
+		return true
+	}
+	// An adoption before this read is not a run object yet: the adopter is
+	// between EnsureRunBinding and its create. The mark covers that window.
+	if adoptedAt, err := time.Parse(time.RFC3339Nano, binding.Annotations[runBindingAdoptedAtAnnotation]); err == nil &&
+		time.Since(adoptedAt) < runBindingAdoptionLease {
+		_, _ = fmt.Fprintf(out, "[cleanup] Keeping RoleBinding %s/%s: another nvcrectl run adopted it at %s and "+
+			"may still be submitting. Delete it once no run is left in the namespace.\n",
+			namespace, rbac.RunBindingName, adoptedAt.Format(time.RFC3339))
+		return false
+	}
 	others, err := runsInNamespace(ctx, c, namespace)
 	if err != nil {
 		_, _ = fmt.Fprintf(out, "[cleanup] Warning: keeping RoleBinding %s/%s because other runs in the namespace "+
@@ -164,11 +210,18 @@ func ReleaseRunBinding(ctx context.Context, c client.Client, namespace string, r
 			namespace, rbac.RunBindingName, strings.Join(others, ", "))
 		return false
 	}
-	if err := DeleteRunBinding(ctx, c, namespace, out); err != nil {
-		_, _ = fmt.Fprintf(out, "[cleanup] Warning: %v\n", err)
-		return true
+	_, _ = fmt.Fprintf(out, "[cleanup] Deleting RoleBinding %s/%s...\n", namespace, rbac.RunBindingName)
+	err = c.Delete(ctx, binding, client.Preconditions{UID: &binding.UID, ResourceVersion: &binding.ResourceVersion})
+	switch {
+	case err == nil, apierrors.IsNotFound(err):
+		return false
+	case apierrors.IsConflict(err):
+		_, _ = fmt.Fprintf(out, "[cleanup] Keeping RoleBinding %s/%s: another run adopted it during cleanup.\n",
+			namespace, rbac.RunBindingName)
+		return false
 	}
-	return false
+	_, _ = fmt.Fprintf(out, "[cleanup] Warning: delete RoleBinding %s/%s: %v\n", namespace, rbac.RunBindingName, err)
+	return true
 }
 
 // runsInNamespace lists the NVCRE objects in namespace that may still need the
@@ -269,12 +322,35 @@ func controllerServiceAccount(ctx context.Context, c client.Client) rbac.Service
 	return rbac.DefaultServiceAccount()
 }
 
-func adoptRunBinding(existing *rbacv1.RoleBinding, sa rbac.ServiceAccount, out io.Writer) error {
+func adoptRunBinding(
+	ctx context.Context, c client.Client, existing *rbacv1.RoleBinding, sa rbac.ServiceAccount, out io.Writer,
+) (gone bool, err error) {
 	if !rbac.GrantsRunRole(existing, sa) {
-		return fmt.Errorf("RoleBinding %s/%s exists but does not bind ClusterRole %s to ServiceAccount %s; "+
+		return false, fmt.Errorf("RoleBinding %s/%s exists but does not bind ClusterRole %s to ServiceAccount %s; "+
 			"fix or delete it (nvcrectl rbac print --namespace %s shows the expected binding)",
 			existing.Namespace, existing.Name, rbac.RunRoleName, sa, existing.Namespace)
 	}
+	// Only a binding nvcrectl created is ever released by a run's cleanup, so
+	// only such a binding is marked: the mark tells that cleanup this run is
+	// about to submit under it (see ReleaseRunBinding).
+	if existing.Labels[rbac.ManagedByLabel] == managedByNvcrectl {
+		patch := client.MergeFrom(existing.DeepCopy())
+		if existing.Annotations == nil {
+			existing.Annotations = map[string]string{}
+		}
+		existing.Annotations[runBindingAdoptedAtAnnotation] = time.Now().UTC().Format(time.RFC3339Nano)
+		switch err := c.Patch(ctx, existing, patch); {
+		case err == nil:
+		case apierrors.IsNotFound(err):
+			return true, nil
+		case apierrors.IsForbidden(err):
+			_, _ = fmt.Fprintf(out, "[rbac] Warning: cannot mark RoleBinding %s/%s as in use (%v); the run that "+
+				"created it may delete it during its cleanup before this run is submitted.\n",
+				existing.Namespace, existing.Name, err)
+		default:
+			return false, fmt.Errorf("mark RoleBinding %s/%s as in use: %w", existing.Namespace, existing.Name, err)
+		}
+	}
 	_, _ = fmt.Fprintf(out, "[rbac] Using existing RoleBinding %s/%s.\n", existing.Namespace, existing.Name)
-	return nil
+	return false, nil
 }

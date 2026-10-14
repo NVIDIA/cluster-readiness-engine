@@ -9,6 +9,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -20,6 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
+	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/rbac"
 )
 
@@ -252,4 +254,123 @@ func TestDeleteRunBinding(t *testing.T) {
 	require.True(t, apierrors.IsNotFound(err))
 	// Already gone is not an error: cleanup may run twice.
 	require.NoError(t, DeleteRunBinding(ctx, c, runNS, &out))
+}
+
+// nvcrectlBinding is a run binding nvcrectl created, optionally adopted by
+// another run at adoptedAt.
+func nvcrectlBinding(adoptedAt time.Time) *rbacv1.RoleBinding {
+	b := rbac.RunBinding(runNS, rbac.DefaultServiceAccount())
+	b.Labels = map[string]string{rbac.ManagedByLabel: managedByNvcrectl}
+	if !adoptedAt.IsZero() {
+		b.Annotations = map[string]string{runBindingAdoptedAtAnnotation: adoptedAt.UTC().Format(time.RFC3339Nano)}
+	}
+	return b
+}
+
+func newRunBindingScheme(t *testing.T) *runtime.Scheme {
+	t.Helper()
+	scheme := runtime.NewScheme()
+	require.NoError(t, clientgoscheme.AddToScheme(scheme))
+	require.NoError(t, nvcrev1alpha1.AddToScheme(scheme))
+	return scheme
+}
+
+// TestEnsureRunBindingMarksAdoption pins the mark a run leaves on a binding it
+// adopts, so that the cleanup of the run that created it does not delete it
+// before this run is submitted. Only nvcrectl's own bindings are marked;
+// others are never released, and are left untouched.
+func TestEnsureRunBindingMarksAdoption(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name     string
+		existing *rbacv1.RoleBinding
+		wantMark bool
+	}{
+		{name: "nvcrectl binding is marked", existing: nvcrectlBinding(time.Time{}), wantMark: true},
+		{name: "foreign binding is not touched", existing: rbac.RunBinding(runNS, rbac.DefaultServiceAccount())},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := fake.NewClientBuilder().WithScheme(newRunBindingScheme(t)).
+				WithObjects(runRole(), tc.existing).Build()
+			var out bytes.Buffer
+			created, err := EnsureRunBinding(ctx, c, runNS, RunBindingOptions{}, &out)
+			require.NoError(t, err)
+			require.False(t, created)
+			got := &rbacv1.RoleBinding{}
+			require.NoError(t, c.Get(ctx, client.ObjectKey{Namespace: runNS, Name: rbac.RunBindingName}, got))
+			_, marked := got.Annotations[runBindingAdoptedAtAnnotation]
+			require.Equal(t, tc.wantMark, marked)
+		})
+	}
+}
+
+// TestEnsureRunBindingAdoptionRace covers a binding released by its creator's
+// cleanup between this run's read and its mark: the run grants access afresh
+// where it may, instead of submitting with no binding.
+func TestEnsureRunBindingAdoptionRace(t *testing.T) {
+	ctx := context.Background()
+	c := fake.NewClientBuilder().WithScheme(newRunBindingScheme(t)).
+		WithObjects(runRole(), nvcrectlBinding(time.Time{})).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Patch: func(ctx context.Context, c client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+				// The creator's cleanup deletes it first.
+				require.NoError(t, c.Delete(ctx, obj))
+				return apierrors.NewNotFound(schema.GroupResource{Group: rbacv1.GroupName, Resource: "rolebindings"}, obj.GetName())
+			},
+		}).Build()
+	var out bytes.Buffer
+	created, err := EnsureRunBinding(ctx, c, runNS, RunBindingOptions{NamespaceCreated: true}, &out)
+	require.NoError(t, err)
+	require.True(t, created, "the binding must be granted afresh")
+	require.Contains(t, out.String(), "Created RoleBinding")
+}
+
+// TestReleaseRunBinding pins when cleanup deletes the binding a run created:
+// only when the run is gone, no other run is in the namespace, no other run
+// adopted it recently, and it is unchanged since cleanup read it.
+func TestReleaseRunBinding(t *testing.T) {
+	ctx := context.Background()
+	conflict := apierrors.NewConflict(schema.GroupResource{Group: rbacv1.GroupName, Resource: "rolebindings"},
+		rbac.RunBindingName, errors.New("resourceVersion changed"))
+	for _, tc := range []struct {
+		name        string
+		binding     *rbacv1.RoleBinding
+		runGone     bool
+		deleteErr   error
+		wantWarn    bool
+		wantDeleted bool
+		wantOut     string
+	}{
+		{name: "deleted when nothing else uses it", binding: nvcrectlBinding(time.Time{}), runGone: true,
+			wantDeleted: true, wantOut: "Deleting RoleBinding"},
+		{name: "kept while the run is not gone", binding: nvcrectlBinding(time.Time{}),
+			wantWarn: true, wantOut: "is not gone yet"},
+		{name: "kept after a recent adoption", binding: nvcrectlBinding(time.Now().Add(-10 * time.Second)), runGone: true,
+			wantOut: "another nvcrectl run adopted it"},
+		{name: "deleted once the adoption lease ran out", binding: nvcrectlBinding(time.Now().Add(-runBindingAdoptionLease - time.Minute)),
+			runGone: true, wantDeleted: true},
+		{name: "kept when an adoption lands during cleanup", binding: nvcrectlBinding(time.Time{}), runGone: true,
+			deleteErr: conflict, wantOut: "adopted it during cleanup"},
+		{name: "already gone", runGone: true, wantDeleted: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			builder := fake.NewClientBuilder().WithScheme(newRunBindingScheme(t))
+			if tc.binding != nil {
+				builder = builder.WithObjects(tc.binding)
+			}
+			c := builder.WithInterceptorFuncs(interceptor.Funcs{
+				Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+					if tc.deleteErr != nil {
+						return tc.deleteErr
+					}
+					return c.Delete(ctx, obj, opts...)
+				},
+			}).Build()
+			var out bytes.Buffer
+			require.Equal(t, tc.wantWarn, ReleaseRunBinding(ctx, c, runNS, tc.runGone, "WorkloadRun", &out))
+			require.Contains(t, out.String(), tc.wantOut)
+			err := c.Get(ctx, client.ObjectKey{Namespace: runNS, Name: rbac.RunBindingName}, &rbacv1.RoleBinding{})
+			require.Equal(t, tc.wantDeleted, apierrors.IsNotFound(err), "binding state: %v", err)
+		})
+	}
 }
