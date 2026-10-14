@@ -73,7 +73,7 @@ func collectJobMeasuredValues(ctx context.Context, c client.Reader, job *nvcrev1
 	// completes from the Job's full log: a live sample can stop short of the
 	// largest message sizes, where the peak is measured (issue #404).
 	if bm := findJobBandwidthMeasurement(ctx, c, job); bm != nil && BandwidthFinal(bm) {
-		values["busBandwidthGBps"] = maxBusBandwidth(bm.Status.Results)
+		values["busBandwidthGBps"] = MaxBusBandwidth(bm.Status.Results)
 		values["algBandwidthGBps"] = maxAlgBandwidth(bm.Status.Results)
 	}
 

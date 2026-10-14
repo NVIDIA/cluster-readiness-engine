@@ -8,7 +8,7 @@
 │         390.0 GB/s                                             │
 │                                                                │
 │  Cliques:                                                      │
-│      ✓  clique-a  4/4 nodes                                    │
+│      ✗  clique-a  4/4 nodes                                    │
 │         150.0 GB/s  LOW                                        │
 --- rows ---
 [

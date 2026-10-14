@@ -778,10 +778,13 @@ func PopulateCategoryFromWorkflow(
 				cat.Diagnose.Tests = buildDiagnoseTests(ctx, c, wf, filtered)
 				computeDiagnoseMinMax(cat.Diagnose)
 			}
-		} else if orch != nil && orch.TotalGroups > 1 {
+		} else if orch != nil && orch.TotalGroups > 1 &&
+			(wf.Spec.JobTemplate.Spec.BandwidthMeasurement != nil || len(filtered) > 0) {
 			// Multi-group: show per-group peak bandwidth. Chosen from the
 			// orchestration state, not the measurement count, so a failed
 			// group still gets its row when few or no measurements exist.
+			// Only for workflows that measure bandwidth, so a category such
+			// as training never shows an empty group bandwidth section.
 			var bwThreshold string
 			if v := wf.Spec.Validation; v != nil && v.Performance != nil &&
 				v.Performance.Thresholds != nil {
@@ -948,8 +951,14 @@ func groupBandwidthRow(
 		return row, false
 	}
 	if peak != nil {
+		// Display the largest-size BusBW, but judge LOW on the maximum
+		// across message sizes, the value the threshold gate evaluates.
+		// A provisional row is never judged; it shows as "?".
 		row.BusBW = peak.BusBW + " GB/s"
-		row.BelowMin = busBWBelowMin(peak.BusBW, busBWThreshold)
+		if !row.Provisional {
+			gated := strconv.FormatFloat(controller.MaxBusBandwidth(bm.Status.Results), 'f', -1, 64)
+			row.BelowMin = busBWBelowMin(gated, busBWThreshold)
+		}
 	}
 	return row, true
 }
@@ -1751,6 +1760,9 @@ func printCliques(w io.Writer, cliques []CliqueReport, groupBW []GroupBandwidthR
 		mark := markPass
 		switch {
 		case !cl.Passed:
+			mark = markFail
+		case cb != nil && cb.low:
+			// A clique below the bandwidth minimum is never shown as passing.
 			mark = markFail
 		case cb != nil && cb.provisional:
 			// A provisional result is never shown as passing.
