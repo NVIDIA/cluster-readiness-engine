@@ -107,7 +107,7 @@ These are the versions and flags proven locally (see Notes).
 | `cluster-info` | `h100`, `gb200` | `nvcrectl cluster info` resolves `onprem` and the architecture from GFD-written labels |
 | `nccl-all-reduce-pass` | `h100` | Certification `Succeeded`; BandwidthMeasurement `Complete/JobSucceeded` with the replayed rows and transport |
 | `nccl-all-reduce-workload-failed` | `h100` | Stub exits non-zero, Job `Failed/WorkloadFailed` |
-| `nccl-all-reduce-threshold` | `h100` | `busBandwidthGBps` above the replayed value; `ValidationFailed` and `ThresholdViolation` |
+| `nccl-all-reduce-threshold` | `h100` | `options.thresholds.busBandwidthGBps` set to a minimum above the replayed value (for example `value >= 1` against the replayed 0.03 GB/s); `ValidationFailed` and `ThresholdViolation` |
 | `nccl-all-reduce-no-data` | `h100` | Stub prints no rows; `NoDataCollected` and no verdict |
 | `gb200-computedomain-pass` | `gb200` | ComputeDomain `Ready` before workers `Running`; Certification `Succeeded`; no claims, templates or ComputeDomains left |
 | `gb200-delete-mid-run` | `gb200` | ComputeDomain outlives every non-terminal worker pod; NVCRE logs the drain deferral; nothing left afterwards |
