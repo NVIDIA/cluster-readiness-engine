@@ -1,6 +1,6 @@
 [
   {
-    "workflow": "onprem-b300-train-trainin-b8f33",
+    "workflow": "onprem-b300-train-trainin-f998f",
     "targetNodeSelector": {
       "nvidia.com/gpu.product": "NVIDIA-B300-SXM6-AC"
     },
@@ -38,7 +38,6 @@
             "env": [
               "NVTE_FWD_LAYERNORM_SM_MARGIN=16",
               "NVTE_BWD_LAYERNORM_SM_MARGIN=16",
-              "NVTE_FUSED_ATTN=0",
               "TORCHINDUCTOR_WORKER_START=fork",
               "NCCL_DEBUG=INFO",
               "NCCL_DEBUG_SUBSYS=NET,INIT,GRAPH,NVLS",

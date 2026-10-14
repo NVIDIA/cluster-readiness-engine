@@ -1,0 +1,10 @@
+# nccl-loopback rendered a bare "execution: {}", so it was the one
+# communication entry with no timeoutPerJob at all: a user's 45m was dropped
+# and the Job had no wall-clock bound. That matters for rdmaDeviceAccess:
+# hostPath, where a node missing /dev/infiniband holds the pod in
+# ContainerCreating forever and timeoutPerJob is the only thing that ends it
+# (ADR-088). The entry now renders {{ .TimeoutPerJob }} like its four siblings.
+category:
+  domain: communication
+  variant: nccl-loopback
+timeoutPerJob: 45m

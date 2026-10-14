@@ -10,12 +10,13 @@
 # trainer env over runtime env by name, so naming them again is enough; the
 # base does not need editing and other platforms keep their current values.
 #
-# Attention kernels. The base disables fused attention for broad compatibility.
-# GB200 supports both kernels and they are a large win on this model.
-- name: NVTE_FUSED_ATTN
-  value: "1"
-- name: NVTE_FLASH_ATTN
-  value: "1"
+# Attention kernels. train.sh defaults to the flash backend for broad
+# compatibility. GB200 supports both flash and fused attention and they are a
+# large win on this model, so let Transformer Engine choose per shape. This
+# goes through train.sh rather than NVTE_*_ATTN, which megatron derives from
+# --attention-backend and refuses to start on when they conflict.
+- name: ATTENTION_BACKEND
+  value: auto
 # NVLink SHARP. The base enables it; on GB200 the all-reduce sizes this model
 # produces are better served by the NVLink/EFA path than by NVLS reduction
 # trees, and the GB200 comm entries do not depend on it either.

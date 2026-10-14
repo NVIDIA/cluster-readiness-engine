@@ -1,6 +1,15 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+# timeoutPerJob is a backstop against never finishing, not a performance
+# bound. Training runs are long and their length depends on maxSteps and
+# hardware, so the catalog-wide 1h default would cut healthy runs short;
+# 24h mirrors DefaultWorkloadRunTimeoutPerJob, which exists for the same
+# reason. Without any value the Job never times out (issue #403), which
+# matters most under rdmaDeviceAccess: hostPath, where a node missing
+# /dev/infiniband holds the pod in ContainerCreating indefinitely.
+# An explicit spec.timeoutPerJob still overrides this value.
+timeoutPerJob: "24h"
 minGPUs: 32
 parallelism:
   default:

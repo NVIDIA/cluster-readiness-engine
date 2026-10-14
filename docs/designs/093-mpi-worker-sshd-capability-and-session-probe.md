@@ -1,6 +1,6 @@
 # ADR-093: MPI Workers Request `SYS_CHROOT`, and Readiness Means a Working SSH Session
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 

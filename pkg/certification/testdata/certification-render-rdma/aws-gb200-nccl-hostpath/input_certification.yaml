@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The opt-in's "when" clause is deliberately empty, which matchesWhen treats as
+# matching everything. That is the intended scope: how a cluster plumbs RDMA is
+# a property of the cluster, not of its cloud, and a toggle that silently did
+# nothing outside OCI would be a trap. This golden is what pins that reading, so
+# a later narrowing of the clause to a platform has to change a test rather than
+# pass quietly.
+#
+# It also pins non-interference in the other direction. The golden's trainerArgs
+# are AWS's own EFA mpirun line, which must survive the patch verbatim: the
+# opt-in adds a dependency patch and must not disturb the jobTemplate at all.
+# AWS GB200 is also the one configuration whose patched "node" container carries
+# a rich resources block (hugepages-2Mi, vpc.amazonaws.com/efa, nvidia.com/gpu,
+# memory), so this is the case that pins the dependency merge recursing into the
+# container rather than replacing it. The mlnx suite does not cover it: no mlnx
+# case is AWS and none sets rdmaDeviceAccess.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: aws-gb200-hostpath-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 8
+  enableMNNVL: true
+  rdmaDeviceAccess: hostPath
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

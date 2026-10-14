@@ -258,6 +258,33 @@ spec:
                           format: int32
                           minimum: 1
                           type: integer
+                        rdmaDeviceAccess:
+                          description: |-
+                            rdmaDeviceAccess selects how workload containers reach the host's RDMA
+                            devices. Leave it unset unless the cluster has no RDMA device plugin.
+
+                            "devicePlugin" (the default when unset) requests NIC devices as a
+                            Kubernetes extended resource, which is what grants the container its
+                            device cgroup entries; see mlnxPerNode and nicResourceName.
+
+                            "hostPath" mounts the host's /dev/infiniband into the workload
+                            container and runs that container privileged. Both are required
+                            together: kubelet builds the device cgroup allowlist from the
+                            container's requested resources, so a hostPath mount alone makes the
+                            device nodes visible but open() on them still fails with EPERM, and no
+                            capability changes that. Use this on clusters that expose RDMA through
+                            host device nodes rather than through a device plugin. The pod will be
+                            rejected on clusters that enforce a restricted or baseline Pod Security
+                            Standard. A privileged container also runs without the runtime's default
+                            seccomp filter and without AppArmor or SELinux confinement, so a
+                            pod-level seccompProfile no longer constrains it even though the pod spec
+                            still shows it. Some CRI-O runtimes reject a privileged container whose
+                            GPUs come from the NVIDIA device plugin; where that applies, the pods
+                            fail to start.
+                          enum:
+                          - hostPath
+                          - devicePlugin
+                          type: string
                         repeatCount:
                           description: |-
                             repeatCount sets the number of orchestration iterations for the Workflow.
@@ -774,6 +801,33 @@ spec:
                 format: int32
                 minimum: 1
                 type: integer
+              rdmaDeviceAccess:
+                description: |-
+                  rdmaDeviceAccess selects how workload containers reach the host's RDMA
+                  devices. Leave it unset unless the cluster has no RDMA device plugin.
+
+                  "devicePlugin" (the default when unset) requests NIC devices as a
+                  Kubernetes extended resource, which is what grants the container its
+                  device cgroup entries; see mlnxPerNode and nicResourceName.
+
+                  "hostPath" mounts the host's /dev/infiniband into the workload
+                  container and runs that container privileged. Both are required
+                  together: kubelet builds the device cgroup allowlist from the
+                  container's requested resources, so a hostPath mount alone makes the
+                  device nodes visible but open() on them still fails with EPERM, and no
+                  capability changes that. Use this on clusters that expose RDMA through
+                  host device nodes rather than through a device plugin. The pod will be
+                  rejected on clusters that enforce a restricted or baseline Pod Security
+                  Standard. A privileged container also runs without the runtime's default
+                  seccomp filter and without AppArmor or SELinux confinement, so a
+                  pod-level seccompProfile no longer constrains it even though the pod spec
+                  still shows it. Some CRI-O runtimes reject a privileged container whose
+                  GPUs come from the NVIDIA device plugin; where that applies, the pods
+                  fail to start.
+                enum:
+                - hostPath
+                - devicePlugin
+                type: string
               repeatCount:
                 description: |-
                   repeatCount sets the number of orchestration iterations for the Workflow.

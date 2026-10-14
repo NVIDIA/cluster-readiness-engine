@@ -7,8 +7,11 @@
 # GID index 3: OCI uses RoCEv2 which requires GID index 3. Without this, UCX
 # defaults to GID index 0 (link-local/IB mode) causing IBV_WC_REM_ACCESS_ERR
 # (vendor err 129 on mlx5_x). Both UCX_IB_GID_INDEX and NCCL_IB_GID_INDEX are
-# required — the MPI launcher runs rank 0 and initializes UCX from its container
-# env (not from mpirun -x args), so the container env must also carry the GID index.
+# required: the MPI launcher initializes UCX from its own container env, not
+# from the mpirun -x args it passes to the ranks, so the container env must
+# also carry the GID index. (The launcher runs no rank of its own:
+# runLauncherAsNode defaults false, so Kubeflow's hostfile lists only the node
+# pod set.)
 #
 # NCCL_MNNVL_ENABLE: the OCI+GB300 override replaces the full mpirun args from
 # the GB200/GB300 base override, which would otherwise drop this var and let NCCL
