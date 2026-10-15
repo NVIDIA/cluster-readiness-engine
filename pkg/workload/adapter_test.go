@@ -288,6 +288,39 @@ func TestEnsureLauncherTarget(t *testing.T) {
 	})
 }
 
+// TestSetImagePullSecrets verifies that SetImagePullSecrets patches every
+// replicated job registered in the controller-owned RuntimePatch, so an MPI
+// launcher registered by EnsureLauncherTarget receives the same pull secrets
+// as the workers. The node-only case pins the pre-registration default, and
+// the empty case pins the early return (issue #455 follow-up on PR #483).
+func TestSetImagePullSecrets(t *testing.T) {
+	p := &testutil.TestCaseParser{
+		Subdir:         "set-image-pull-secrets",
+		ExpectedSuffix: testutil.SuffixJSON,
+	}
+	p.TestDir(t, func(tc *testutil.TestCase) error {
+		var input struct {
+			ImagePullSecrets []corev1.LocalObjectReference `yaml:"imagePullSecrets"`
+			RegisterLauncher bool                          `yaml:"registerLauncher"`
+			Spec             nvcrev1alpha1.WorkloadSpec    `yaml:"spec"`
+		}
+		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
+			return err
+		}
+		if input.RegisterLauncher {
+			EnsureLauncherTarget(input.Spec.TrainJob)
+		}
+		SetImagePullSecrets(input.Spec.TrainJob, input.ImagePullSecrets)
+
+		b, err := trainJobRuntimePatchesToJSON(input.Spec.TrainJob.RuntimePatches)
+		if err != nil {
+			return err
+		}
+		tc.Actual = string(b)
+		return nil
+	})
+}
+
 func TestHasLauncherTarget(t *testing.T) {
 	p := &testutil.TestCaseParser{
 		Subdir:         "has-launcher-target",
@@ -344,6 +377,9 @@ func trainJobRuntimePatchesToJSON(patches []trainerv1alpha1.RuntimePatch) ([]byt
 					}
 					if len(podTemplate.Spec.Tolerations) > 0 {
 						entry["tolerations"] = podTemplate.Spec.Tolerations
+					}
+					if len(podTemplate.Spec.ImagePullSecrets) > 0 {
+						entry["imagePullSecrets"] = podTemplate.Spec.ImagePullSecrets
 					}
 				}
 			}

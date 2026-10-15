@@ -1,0 +1,9 @@
+# With spec.config set, a second mount of config-volume at another path is a
+# legitimate way to put the same files somewhere else on the worker, so it is
+# accepted. The launcher copies only the mount at /config (see
+# build-runtime-workload-fields/mpi-launcher-copies-only-the-config-mount).
+framework: mpi
+hasConfig: true
+volumeMounts:
+  - name: config-volume
+    mountPath: /opt/cfg

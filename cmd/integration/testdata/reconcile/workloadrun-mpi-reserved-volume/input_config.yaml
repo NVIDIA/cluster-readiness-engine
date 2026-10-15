@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The Failed condition must name the reserved volume, and the Workflow must
+# not exist: the collision is detected while composing the Workflow spec,
+# before anything is submitted.
+waitFor:
+  kind: WorkloadRun
+  name: wr-mpi-reserved-volume
+  namespace: default
+  condition: Failed
+  reason: BuildFailed
+collect:
+  - kind: WorkloadRun
+    name: wr-mpi-reserved-volume
+    namespace: default
+expectAbsent:
+  - kind: Workflow
+    name: wr-mpi-reserved-volume
+    namespace: default

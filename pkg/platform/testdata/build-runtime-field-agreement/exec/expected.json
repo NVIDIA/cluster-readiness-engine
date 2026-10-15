@@ -1,0 +1,90 @@
+{
+  "fields": [
+    {
+      "field": "EntryName",
+      "sentinel": "agree-sentinel-entry",
+      "foundIn": [
+        "metadata",
+        "job:node"
+      ]
+    },
+    {
+      "field": "Image",
+      "sentinel": "agree.example.com/image:sentinel",
+      "foundIn": [
+        "job:node"
+      ]
+    },
+    {
+      "field": "NodesPerJob",
+      "sentinel": "4242",
+      "foundIn": [
+        "mlPolicy"
+      ]
+    },
+    {
+      "field": "GpusPerNode",
+      "sentinel": "1337",
+      "foundIn": [
+        "job:node"
+      ]
+    },
+    {
+      "field": "Env",
+      "sentinel": "AGREE_SENTINEL_ENV",
+      "foundIn": [
+        "job:node"
+      ]
+    },
+    {
+      "field": "Volumes",
+      "sentinel": "agree-sentinel-volume",
+      "foundIn": [
+        "job:node"
+      ]
+    },
+    {
+      "field": "VolumeMounts",
+      "sentinel": "agree-sentinel-mount",
+      "foundIn": [
+        "job:node"
+      ]
+    },
+    {
+      "field": "InitContainers",
+      "sentinel": "agree-sentinel-init",
+      "foundIn": [
+        "job:node"
+      ]
+    },
+    {
+      "field": "Resources",
+      "sentinel": "4321Gi",
+      "foundIn": [
+        "job:node"
+      ]
+    },
+    {
+      "field": "GangSchedulerName",
+      "sentinel": "agree-sentinel-scheduler",
+      "foundIn": [
+        "job:node"
+      ]
+    },
+    {
+      "field": "GangSchedulerQueue",
+      "sentinel": "agree-sentinel-queue",
+      "foundIn": [
+        "job:node"
+      ]
+    },
+    {
+      "field": "GangSchedulerQueueLabelKey",
+      "sentinel": "agree.example.com/queue",
+      "foundIn": [
+        "job:node"
+      ]
+    }
+  ],
+  "violations": []
+}

@@ -1,0 +1,8 @@
+# No user fields at all. This pins the built-in shape of both MPI pods so the
+# cases above can be diffed against it: two mounts and one volume on the
+# worker, the fix-ssh-permissions init container and ssh-keys volume on the
+# launcher. With nothing to look for, userItemsChecked is 0 by design; the
+# value is there so a reader can see this case is a baseline and not a check
+# that passed vacuously. The fix for issue #455 appends to the built-ins and
+# must not change this output.
+frameworkType: mpi

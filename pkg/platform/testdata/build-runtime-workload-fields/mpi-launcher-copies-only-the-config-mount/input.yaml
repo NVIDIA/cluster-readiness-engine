@@ -1,0 +1,18 @@
+# spec.config together with a second, user-supplied mount of the same
+# config-volume at /opt/cfg, listed first the way both call sites order user
+# mounts ahead of the /config mount they append. The worker gets both mounts.
+# The launcher copies the mount at /config only, matched on its path as well
+# as its name, so the user's /opt/cfg mount never displaces it there: the
+# expected file shows config-volume at /config (ro) on the launcher's node
+# container and no /opt/cfg mount anywhere on the launcher.
+frameworkType: mpi
+volumes:
+  - name: config-volume
+    configMap:
+      name: wr-mpi-config
+      defaultMode: 0755
+volumeMounts:
+  - name: config-volume
+    mountPath: /opt/cfg
+  - name: config-volume
+    mountPath: /config

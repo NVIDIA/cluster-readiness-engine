@@ -1,0 +1,11 @@
+# Any other name is accepted, including fix-ssh-permissions and
+# wait-for-workers, the MPI launcher's own init containers: user init
+# containers run on the worker pod and never share a pod with them.
+initContainers:
+  - name: stage-data
+    image: busybox:1.36
+    command: ["sh", "-c", "echo staging"]
+  - name: fix-ssh-permissions
+    image: busybox:1.36
+  - name: wait-for-workers
+    image: busybox:1.36

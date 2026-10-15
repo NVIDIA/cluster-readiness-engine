@@ -1,0 +1,29 @@
+{
+  "userItemsChecked": 3,
+  "replicatedJobs": [
+    {
+      "replicatedJob": "node",
+      "volumes": [
+        "dshm: emptyDir medium=Memory",
+        "scratch: emptyDir"
+      ],
+      "containers": [
+        {
+          "name": "prepare",
+          "init": true,
+          "volumeMounts": [
+            "scratch at /scratch"
+          ]
+        },
+        {
+          "name": "node",
+          "volumeMounts": [
+            "dshm at /dev/shm",
+            "scratch at /scratch"
+          ]
+        }
+      ]
+    }
+  ],
+  "violations": []
+}

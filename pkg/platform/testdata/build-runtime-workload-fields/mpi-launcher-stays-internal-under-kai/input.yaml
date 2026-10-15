@@ -1,0 +1,23 @@
+# The same volumes and mounts as mpi-worker-gets-volumes-and-mounts, rendered
+# under the KAI gang scheduler. Under KAI the launcher's fix-ssh-permissions
+# init container gains the mpi-hostfile mount so it can wait for the workers,
+# which is the one place the launcher's mount list changes with configuration.
+# This case shows that change does not pull the user's entries along: the
+# launcher's volumes and mounts stay the built-in set and the worker still
+# gets the user's entries after its built-ins.
+frameworkType: mpi
+gangSchedulerName: kai-scheduler
+volumes:
+  - name: ib-dev
+    hostPath:
+      path: /dev/infiniband
+      type: Directory
+  - name: ib-sys
+    hostPath:
+      path: /sys/class/infiniband
+      type: Directory
+volumeMounts:
+  - name: ib-dev
+    mountPath: /dev/infiniband
+  - name: ib-sys
+    mountPath: /sys/class/infiniband

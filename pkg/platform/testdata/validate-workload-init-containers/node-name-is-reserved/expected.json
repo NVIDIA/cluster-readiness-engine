@@ -1,0 +1,3 @@
+{
+  "error": "spec.initContainers[0].name: \"node\" is reserved: the workload container has that name and a pod's container names must be unique; rename the init container"
+}

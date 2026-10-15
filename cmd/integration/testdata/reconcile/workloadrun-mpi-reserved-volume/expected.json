@@ -1,0 +1,68 @@
+{
+  "WorkloadRun/wr-mpi-reserved-volume": {
+    "kind": "WorkloadRun",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "wr-mpi-reserved-volume",
+      "namespace": "default"
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.product": "NVIDIA-GB200-NVL72"
+        }
+      },
+      "image": "nvcr.io/nvidia/pytorch:26.01-py3",
+      "framework": {
+        "mpi": {
+          "binary": "/usr/local/bin/all_reduce_perf_mpi",
+          "mpiImplementation": "OpenMPI",
+          "mpirunPath": "/usr/local/mpi/bin/mpirun"
+        }
+      },
+      "numNodes": 1,
+      "volumes": [
+        {
+          "name": "mpi-ssh-auth",
+          "secret": {
+            "secretName": "my-ssh-keys"
+          }
+        }
+      ],
+      "volumeMounts": [
+        {
+          "name": "mpi-ssh-auth",
+          "mountPath": "/etc/my-ssh-keys"
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "Superseded",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "Superseded",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "lastTransitionTime": null,
+          "reason": "BuildFailed",
+          "message": "workloadrun wr-mpi-reserved-volume: spec.volumes[0].name: \"mpi-ssh-auth\" is reserved on the mpi framework: Kubeflow Trainer replaces a volume of that name with its SSH key Secret on every worker and launcher pod; rename the volume"
+        }
+      ]
+    }
+  },
+  "expectAbsent": {
+    "Workflow/wr-mpi-reserved-volume": "notCreated"
+  }
+}

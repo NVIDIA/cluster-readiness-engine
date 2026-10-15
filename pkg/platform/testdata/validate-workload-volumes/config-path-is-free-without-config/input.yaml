@@ -1,0 +1,10 @@
+# Without spec.config nothing is mounted at /config, so a user who mounts
+# their own ConfigMap there keeps that path.
+framework: torch
+volumes:
+  - name: params
+    configMap:
+      name: params
+volumeMounts:
+  - name: params
+    mountPath: /config

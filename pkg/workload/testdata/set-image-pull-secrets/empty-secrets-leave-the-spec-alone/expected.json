@@ -1,0 +1,12 @@
+[
+  {
+    "targetJobs": [
+      "node"
+    ]
+  },
+  {
+    "targetJobs": [
+      "launcher"
+    ]
+  }
+]

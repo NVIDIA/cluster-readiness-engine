@@ -1,0 +1,6 @@
+# Every RuntimeConfig field rendered through BuildExecRuntime. Exec delegates
+# to BuildTorchRuntime (the command is injected through the TrainJob trainer,
+# not the runtime), so the expected file is the torch one and this case pins
+# that the delegation stays complete: a field exec stopped forwarding would
+# show up as an empty foundIn and fail before the golden is compared.
+frameworkType: exec

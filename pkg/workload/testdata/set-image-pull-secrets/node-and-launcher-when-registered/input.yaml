@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An MPI WorkloadRun registers the launcher with EnsureLauncherTarget before
+# applying pull secrets, so both the node and launcher jobs must carry the same
+# list. Before this fix only the node job did, and a launcher pulling from a
+# private registry failed at image pull (issue #455 follow-up on PR #483).
+imagePullSecrets:
+  - name: a
+registerLauncher: true
+spec:
+  trainJob: {}

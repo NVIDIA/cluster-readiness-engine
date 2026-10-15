@@ -1,0 +1,11 @@
+# A mount that names config-volume without spec.config refers to a volume
+# nothing creates (a user volume of that name is refused separately), so the
+# pod would be rejected at creation for a dangling mount. Refused up front
+# with a message that says what creates the volume.
+framework: torch
+volumes:
+  - name: data
+    emptyDir: {}
+volumeMounts:
+  - name: config-volume
+    mountPath: /opt/cfg
