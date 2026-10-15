@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Attempt 1 fails with one retry left. Attempt 1's Job and its copy (stamped
+# attempt=1) are retired, and attempt 2 launches under its own name with a copy
+# stamped attempt=2.
+retryFailedGroups: 2
+groupA:
+  phase: Running
+  retries: 1
+oldJob: failed
+dep: previous
+depTracked: true
+passes: 4

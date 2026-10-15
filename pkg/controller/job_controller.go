@@ -1759,7 +1759,19 @@ func (r *JobReconciler) getWorkloadName(job *nvcrev1alpha1.Job) string {
 
 // getGoodputMeasurementName returns the name of the auto-created GoodputMeasurement for a given Job
 func (r *JobReconciler) getGoodputMeasurementName(job *nvcrev1alpha1.Job) string {
-	return naming.Truncate(job.Name+"-goodput", naming.MaxK8sNameLen)
+	return goodputMeasurementName(job.Name)
+}
+
+// goodputMeasurementName is the name of the GoodputMeasurement the Job
+// controller creates for the Job named jobName.
+func goodputMeasurementName(jobName string) string {
+	return naming.Truncate(jobName+"-goodput", naming.MaxK8sNameLen)
+}
+
+// bandwidthMeasurementName is the name of the BandwidthMeasurement the Job
+// controller creates for the Job named jobName.
+func bandwidthMeasurementName(jobName string) string {
+	return naming.Truncate(jobName+"-bandwidth", naming.MaxK8sNameLen)
 }
 
 // getOwnerWorkflow returns the parent Workflow for a Job by looking up its OwnerReference.
@@ -1840,7 +1852,7 @@ func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *nvc
 	}
 
 	log := logf.FromContext(ctx)
-	bmName := naming.Truncate(job.Name+"-bandwidth", naming.MaxK8sNameLen)
+	bmName := bandwidthMeasurementName(job.Name)
 
 	existing := &nvcrev1alpha1.BandwidthMeasurement{}
 	if err := r.Get(ctx, client.ObjectKey{Namespace: job.Namespace, Name: bmName}, existing); err == nil {

@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A workflow-scoped dependency carries no attempt on either side: adopted, as
+# before attempts were recorded.
+holder: owned

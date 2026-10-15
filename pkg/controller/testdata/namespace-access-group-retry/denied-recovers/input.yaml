@@ -1,4 +1,4 @@
-# Group a's Job failed and is retried (its Job deleted) before group b's
-# node-result write is denied. The wait must keep a's retry and leave b Running.
+# Group a's Job failed and its retry is recorded (the Job kept until the next
+# attempt retires it) before group b's node-result write is denied. The wait must keep a's retry and leave b Running.
 # Once access returns, b's write succeeds and b is retried too.
 recover: true

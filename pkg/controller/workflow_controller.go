@@ -1358,6 +1358,26 @@ func (r *WorkflowReconciler) launchPendingGroups(ctx context.Context, workflow *
 	maxConcurrent := workflow.Spec.Orchestration.Execution.MaxConcurrent
 	running := countRunningGroups(orch)
 
+	// Retire every retried group's earlier attempts first, whether or not the
+	// group can launch this pass. Retiring takes no concurrency slot, and a
+	// group held back by maxConcurrent or a node overlap would otherwise keep
+	// its failed Job and job-scoped dependencies (a ComputeDomain on its nodes,
+	// say) alive until it got one. A retried group launches only once its
+	// earlier attempts are gone.
+	refsAtStart := slices.Clone(workflow.Status.DependencyRefs)
+	retired := make(map[string]bool, len(orch.Groups))
+	for i := range orch.Groups {
+		g := &orch.Groups[i]
+		if g.Phase != nvcrev1alpha1.GroupPending {
+			continue
+		}
+		ready, err := r.retirePreviousAttempts(ctx, workflow, g, orch)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		retired[g.Name] = ready
+	}
+
 	launched := false
 	for i := range orch.Groups {
 		g := &orch.Groups[i]
@@ -1377,10 +1397,27 @@ func (r *WorkflowReconciler) launchPendingGroups(ctx context.Context, workflow *
 			continue
 		}
 
+		if !retired[g.Name] {
+			continue
+		}
+
+		refsBefore := len(workflow.Status.DependencyRefs)
 		if err := r.createJobForGroup(ctx, workflow, g, orch); err != nil {
 			if errors.Is(err, errDependencyNotReady) {
 				logf.FromContext(ctx).Info("Waiting for ComputeDomain controller to create channel templates", "group", g.Name)
 				return ctrl.Result{RequeueAfter: r.getJobRequeueInterval()}, nil
+			}
+			// A holder from the previous attempt appeared after the retirement
+			// check. Leave the group Pending for the next pass to retire it.
+			// The refs this attempt recorded are dropped rather than written
+			// with the other groups' launches: a recorded ref makes the next
+			// launch skip creating the group's copies, and this set is
+			// incomplete. The next pass adopts the ones that exist.
+			if errors.Is(err, errPreviousAttemptRetiring) {
+				logf.FromContext(ctx).Info("Waiting for the previous attempt's objects to be deleted",
+					"group", g.Name, "reason", err.Error())
+				workflow.Status.DependencyRefs = workflow.Status.DependencyRefs[:refsBefore]
+				continue
 			}
 			// A name collision with a foreign Job or dependency is terminal:
 			// retrying cannot succeed while the foreign object holds the name,
@@ -1451,6 +1488,22 @@ func (r *WorkflowReconciler) launchPendingGroups(ctx context.Context, workflow *
 				orch.CurrentIteration, effectiveIterations(workflow.Spec.Orchestration), running)); err != nil {
 			return ctrl.Result{}, err
 		}
+	} else if dropped := droppedDependencyRefs(refsAtStart, workflow.Status.DependencyRefs); len(dropped) > 0 {
+		// Retirement confirmed some copies gone but nothing launched to carry
+		// the refs' removal, as when a retried group waits for a slot. Write it
+		// on its own so status stops naming objects that no longer exist. The
+		// refs are already gone from the in-memory status, so the first attempt
+		// writes it as is; a conflict refetch re-applies the removal.
+		remove, first := removeDependencyRefs(dropped), true
+		if err := updateStatusWithRetry(ctx, r.Client, workflow, func(w *nvcrev1alpha1.Workflow) bool {
+			if first {
+				first = false
+				return true
+			}
+			return remove(w)
+		}); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{RequeueAfter: r.getJobRequeueInterval()}, nil
@@ -1477,19 +1530,9 @@ func (r *WorkflowReconciler) failLaunchRejected(ctx context.Context, workflow *n
 func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nvcrev1alpha1.Workflow, group *nvcrev1alpha1.GroupStatus, orch *nvcrev1alpha1.OrchestrationStatus) error {
 	log := logf.FromContext(ctx)
 
-	jobName := r.getGroupJobName(workflow, group.Name, orch.CurrentIteration)
+	jobName := r.getGroupJobName(workflow, group.Name, orch.CurrentIteration, group.Retries)
 
-	specCopy := workflow.Spec.JobTemplate.Spec.DeepCopy()
-
-	// Propagate performance thresholds and measurement timeout from ValidationSpec to Job spec.
-	if v := workflow.Spec.Validation; v != nil && v.Performance != nil {
-		if v.Performance.Thresholds != nil && len(v.Performance.Thresholds.Thresholds) > 0 {
-			specCopy.Thresholds = v.Performance.Thresholds.Thresholds
-		}
-		if v.Performance.MeasurementTimeout != nil {
-			specCopy.MeasurementTimeout = v.Performance.MeasurementTimeout
-		}
-	}
+	specCopy := groupJobSpec(workflow)
 
 	// Work out the per-job dependency copies and the spec that references
 	// them, without writing anything yet.
@@ -1658,6 +1701,23 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 	return nil
 }
 
+// groupJobSpec returns a copy of the Job spec every group's Job starts from: the
+// template, with the performance thresholds and measurement timeout from the
+// Workflow's ValidationSpec. Launching and retiring both prepare job-scoped
+// dependencies from it, so they agree on which copies a group has.
+func groupJobSpec(workflow *nvcrev1alpha1.Workflow) *nvcrev1alpha1.JobSpec {
+	spec := workflow.Spec.JobTemplate.Spec.DeepCopy()
+	if v := workflow.Spec.Validation; v != nil && v.Performance != nil {
+		if v.Performance.Thresholds != nil && len(v.Performance.Thresholds.Thresholds) > 0 {
+			spec.Thresholds = v.Performance.Thresholds.Thresholds
+		}
+		if v.Performance.MeasurementTimeout != nil {
+			spec.MeasurementTimeout = v.Performance.MeasurementTimeout
+		}
+	}
+	return spec
+}
+
 // jobReader returns the APIReader when available, falling back to r.Client.
 // The fallback is only safe when r.Client has no cache, as with the fake
 // clients in unit tests that call the reconciler directly; SetupWithManager
@@ -1699,12 +1759,13 @@ func (r *WorkflowReconciler) createOrAdoptJob(ctx context.Context, workflow *nvc
 					jobName, workflow.Namespace, workflow.Name),
 			}
 		}
-		// This Workflow's own Job, but on its way out: the retry in
-		// completeTerminalGroup deletes a group's Job and relaunches it under the
-		// same name, and the Job controller holds the old one with a finalizer
-		// until its pods have drained. Adopting it would point the group at a
-		// Job that is about to vanish and fail the group on the next pass, which
-		// discards the retry. The name frees up shortly; retry with backoff.
+		// This Workflow's own Job, but on its way out. Each retry attempt has its
+		// own name (getGroupJobName), so this is not a previous attempt being
+		// retired; something else deleted this attempt's Job, and the Job
+		// controller holds it with a finalizer until its pods have drained.
+		// Adopting it would point the group at a Job that is about to vanish and
+		// fail the group on the next pass. The name frees up shortly; retry with
+		// backoff.
 		if !job.DeletionTimestamp.IsZero() {
 			return fmt.Errorf("previous Job %q in namespace %q is still being deleted; retrying",
 				jobName, workflow.Namespace)
@@ -1744,14 +1805,15 @@ func (r *WorkflowReconciler) setDependencyOwners(ctx context.Context, job *nvcre
 }
 
 // failTimedOutJob marks a Job that exceeded timeoutPerJob as failed and
-// completes its group. It reports whether the group is still draining pods.
+// completes its group, reporting the outcome completeTerminalGroup reached:
+// groupStillRunning while the group's pods drain.
 func (r *WorkflowReconciler) failTimedOutJob(
 	ctx context.Context,
 	workflow *nvcrev1alpha1.Workflow,
 	orch *nvcrev1alpha1.OrchestrationStatus,
 	g *nvcrev1alpha1.GroupStatus,
 	job *nvcrev1alpha1.Job,
-) (bool, error) {
+) (groupOutcome, error) {
 	// Capture logs from running pods BEFORE deleting the workload.
 	// For MPI tests, the launcher pod has the actual NCCL output.
 	r.captureTimeoutLog(ctx, job)
@@ -1769,7 +1831,7 @@ func (r *WorkflowReconciler) failTimedOutJob(
 		[]string{nvcrev1alpha1.JobInProgress, nvcrev1alpha1.JobSucceeded, nvcrev1alpha1.JobFailed},
 		nvcrev1alpha1.JobFailed, ReasonJobTimedOut, timeoutMsg, job.Generation)
 	if err := r.Status().Update(ctx, job); err != nil {
-		return false, fmt.Errorf("failed to update timed-out Job %s status: %w", job.Name, err)
+		return 0, fmt.Errorf("failed to update timed-out Job %s status: %w", job.Name, err)
 	}
 	for _, flip := range conditionFlip(before, job.Status.Conditions, []string{nvcrev1alpha1.JobFailed}) {
 		if flip.After.Present && flip.After.Status == metav1.ConditionTrue {
@@ -1817,11 +1879,10 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 	// up to the Workflow condition (ADR-083).
 	blockedMsg := ""
 	var accessWriteErr error
-	// A group retried or finished this pass deletes its job-scoped
-	// dependencies and drops their refs in memory. The tail write carries
-	// those removals, as it carries the groups: launching skips creating a
-	// group's dependencies while refs for it remain, so a stale ref would
-	// relaunch the group against objects that no longer exist.
+	// A group that finished this pass deletes its job-scoped dependencies and
+	// drops their refs in memory. The tail write carries those removals, as it
+	// carries the groups. (A retried group deletes nothing here; its refs stay
+	// until retirePreviousAttempts confirms the copies are gone.)
 	refsBefore := slices.Clone(workflow.Status.DependencyRefs)
 
 	for i := range orch.Groups {
@@ -1832,9 +1893,9 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		outcome, blocked, err := r.observeRunningGroup(ctx, workflow, orch, g)
 		if err != nil {
 			if _, denied := errors.AsType[*accessDeniedWriteError](err); denied {
-				// Earlier groups may already have deleted their Jobs for a retry.
-				// Persist their completed transitions before recording the wait;
-				// this group's unfinished transition is not in changed.
+				// Earlier groups may already have completed or recorded a retry.
+				// Persist their transitions before recording the wait; this
+				// group's unfinished transition is not in changed.
 				accessWriteErr = err
 				break
 			}
@@ -2007,14 +2068,11 @@ func (r *WorkflowReconciler) observeRunningGroup(
 	if !ts.terminal {
 		if r.isJobTimedOut(workflow, g, job) {
 			log.Info("Job timed out, terminating workload", "group", g.Name, "job", ref.Name)
-			draining, err := r.failTimedOutJob(ctx, workflow, orch, g, job)
+			outcome, err = r.failTimedOutJob(ctx, workflow, orch, g, job)
 			if err != nil {
 				return 0, "", err
 			}
-			if draining {
-				return groupStillRunning, "", nil
-			}
-			return groupChanged, "", nil
+			return outcome, "", nil
 		}
 		if backfilled {
 			// The write still has to happen; the group just also stays running,
@@ -2036,17 +2094,14 @@ func (r *WorkflowReconciler) observeRunningGroup(
 		return groupStillRunning, "", nil
 	}
 
-	draining, err := r.completeTerminalGroup(ctx, workflow, orch, g, job, ts)
+	outcome, err = r.completeTerminalGroup(ctx, workflow, orch, g, job, ts)
 	if err != nil {
 		return 0, "", err
 	}
-	if draining {
-		if backfilled {
-			return groupChanged, "", nil
-		}
-		return groupStillRunning, "", nil
+	if outcome == groupStillRunning && backfilled {
+		return groupChanged, "", nil
 	}
-	return groupChanged, "", nil
+	return outcome, "", nil
 }
 
 // observeMissingJob handles a Running group whose Job is not in the cache.
@@ -2109,14 +2164,15 @@ func (r *WorkflowReconciler) failGroupForLostJob(
 // iteration and with the same retry count.
 //
 // It guards the two places updateStatusFromJobs fails a group because its Job
-// is gone or going. On a retry, completeTerminalGroup deletes a Running group's
-// Job and moves the group to Pending in the same reconcile. The Job's deletion
-// is a watch event in its own right, and the reconcile it triggers can start
-// before the status write that recorded the reset has reached the informer
-// cache. That reconcile then sees the group still Running on a Job that is
-// being deleted, which is exactly what an external deletion looks like, and
-// fails it. The retry is lost, the Workflow fails, and the Job the fresh state
-// goes on to launch runs to completion with nothing watching it.
+// is gone or going, and the retry decision in completeTerminalGroup. A retry
+// moves a Running group to Pending, and retirePreviousAttempts deletes the
+// failed attempt's Job on a later pass. The Job's deletion is a watch event in
+// its own right, and the reconcile it triggers can start before the status
+// write that recorded the retry has reached the informer cache. That reconcile
+// then sees the group still Running on a Job that is being deleted, which is
+// exactly what an external deletion looks like, and fails it; or, seeing the
+// failed Job before its deletion, decides the retry a second time. Either way
+// the retry budget is miscounted.
 //
 // The iteration reset in handleIterationComplete deletes Jobs too, but only of
 // groups whose terminal phase was already in the cache it read, so no later
@@ -2131,8 +2187,9 @@ func (r *WorkflowReconciler) failGroupForLostJob(
 // can wedge the Workflow: the cache converges on the live object, and once it
 // has, the group is no longer Running and this path is not entered.
 //
-// Retries and the iteration are compared as well as the Job name, because a
-// relaunched Job carries the same name as the one it replaced.
+// Retries and the iteration are compared as well as the Job name. Attempts and
+// iterations already have distinct Job names, so this does not depend on the
+// naming scheme to tell them apart.
 func (r *WorkflowReconciler) groupViewIsStale(
 	ctx context.Context, workflow *nvcrev1alpha1.Workflow, g *nvcrev1alpha1.GroupStatus, jobName string,
 ) (bool, error) {
@@ -2253,15 +2310,17 @@ func resetUnpinnedGroupNodes(placement string, g *nvcrev1alpha1.GroupStatus) {
 
 // completeTerminalGroup finishes a group whose Job reached a terminal state.
 // On failure it terminates the workload first and holds the group open —
-// draining=true, no phase change, no dependency cleanup — until the workload's
+// groupStillRunning, no phase change, no dependency cleanup — until the workload's
 // pods are gone (the pod-drain barrier, issue #121): the job-scoped
 // dependencies provide DRA allocations (ComputeDomain channels) to those pods,
 // and deleting them while pods are still terminating kills every pod process
 // with CUDA error 719. The Job keeps its terminal conditions, so the next
 // reconcile re-enters here and retries the check; podDrainGracePeriod bounds
 // the wait. Once drained (or on success, whose pods have already exited) it
-// cleans up job-scoped dependencies and moves the group to its final phase, or
-// resets it to Pending for a retry.
+// cleans up job-scoped dependencies and moves the group to its final phase
+// (groupChanged). A retry instead resets the group to Pending and leaves the
+// Job and its dependencies for retirePreviousAttempts, or reports
+// groupViewStale when the API server has already moved the group on.
 func (r *WorkflowReconciler) completeTerminalGroup(
 	ctx context.Context,
 	workflow *nvcrev1alpha1.Workflow,
@@ -2269,7 +2328,7 @@ func (r *WorkflowReconciler) completeTerminalGroup(
 	g *nvcrev1alpha1.GroupStatus,
 	job *nvcrev1alpha1.Job,
 	ts jobTerminalState,
-) (draining bool, err error) {
+) (groupOutcome, error) {
 	log := logf.FromContext(ctx)
 	jobFailed := ts.failed || ts.hwFailed || ts.validationFailed
 
@@ -2278,7 +2337,25 @@ func (r *WorkflowReconciler) completeTerminalGroup(
 		// before the retry/terminal decision so pods start draining either way.
 		r.deleteWorkloadForJob(ctx, job)
 		if shouldWaitForPodDrain(ctx, r.Client, job) {
-			return true, nil
+			return groupStillRunning, nil
+		}
+	}
+
+	// Retry unless the budget is spent. Timed-out jobs are excluded: the
+	// timeout path terminates them for good, and without the exclusion a
+	// timed-out job re-entering here during the pod-drain wait would be retried.
+	retryLimit := workflow.Spec.Orchestration.Execution.RetryFailedGroups
+	retry := jobFailed && retryLimit > 0 && g.Retries < retryLimit && !isJobTimedOutFailure(job)
+
+	// Spending a retry is decided from this group's cached state, so confirm it
+	// before touching anything: if the API server already has the group past
+	// this attempt (the transition below was written, and the cache has not
+	// caught up), deciding again would spend a second retry on the same failure.
+	if retry {
+		if behind, err := r.groupViewIsStale(ctx, workflow, g, job.Name); err != nil {
+			return 0, err
+		} else if behind {
+			return groupViewStale, nil
 		}
 	}
 
@@ -2288,24 +2365,22 @@ func (r *WorkflowReconciler) completeTerminalGroup(
 	if len(job.Status.FailedNodes) > 0 {
 		if err := r.nodeResultsWriteError(ctx, workflow, r.recordFailedNodes(ctx, workflow, job.Status.FailedNodes),
 			"Failed to record failed nodes to ConfigMap"); err != nil {
-			return false, err
+			return 0, err
 		}
 	}
 
-	retryLimit := workflow.Spec.Orchestration.Execution.RetryFailedGroups
 	switch {
-	case jobFailed && retryLimit > 0 && g.Retries < retryLimit && !isJobTimedOutFailure(job):
-		// Retry. Timed-out jobs are excluded: the timeout path terminates them
-		// for good, and without the exclusion a timed-out job re-entering here
-		// during the pod-drain wait would be retried.
+	case retry:
 		log.Info("Retrying failed group", "group", g.Name, "retry", g.Retries+1, "limit", retryLimit)
-		// The workload is already deleted and its pods have drained (barrier
-		// above). Delete the failed Job BEFORE cleaning up deps (ADR-053 ordering).
-		if err := r.Delete(ctx, job); err != nil && !apierrors.IsNotFound(err) {
-			return false, fmt.Errorf("failed to delete Job %s for retry: %w", job.Name, err)
-		}
-		// Clean up job-scoped deps after Job deletion
-		r.cleanupScopedDependencies(ctx, workflow, "job", g.Name, orch.CurrentIteration)
+		// Record the retry and delete nothing. The failed Job and its job-scoped
+		// dependencies stay until the transition is written, and are retired by
+		// retirePreviousAttempts before the next attempt launches. Deleting them
+		// here, ahead of the write, lost the retry whenever the write did not
+		// happen: a later group's error, a failed status update or a restart left
+		// the group Running on a Job that was gone, and the next pass failed it
+		// with retry budget unused (issue #389). Until the write lands, the group
+		// is still Running on this failed Job, so the next pass reaches the same
+		// decision, once.
 		g.Retries++
 		g.Phase = nvcrev1alpha1.GroupPending
 		g.JobRef = nil
@@ -2326,7 +2401,7 @@ func (r *WorkflowReconciler) completeTerminalGroup(
 	}
 
 	log.Info("Group job completed", "group", g.Name, "phase", g.Phase, "job", job.Name)
-	return false, nil
+	return groupChanged, nil
 }
 
 type jobTerminalState struct {
@@ -3474,14 +3549,25 @@ func (r *WorkflowReconciler) setExclusiveCondition(ctx context.Context, workflow
 	return nil
 }
 
-// getGroupJobName returns the name for a Job created for a specific group and iteration.
-func (r *WorkflowReconciler) getGroupJobName(workflow *nvcrev1alpha1.Workflow, groupName string, iteration int) string {
+// getGroupJobName returns the name for a Job created for a specific group,
+// iteration and retry attempt.
+//
+// Each attempt gets its own name, so a retried group never shares a name with
+// the attempt it replaces: the previous attempt's Job can be retired after the
+// retry is recorded, and nothing (a cached read, an adoption on AlreadyExists,
+// a measurement looked up by Job name) can mistake one attempt for the other.
+// Attempt 0 keeps the name it had before attempts were indexed. Truncate hashes
+// the full raw name, so attempts stay distinct after truncation.
+func (r *WorkflowReconciler) getGroupJobName(workflow *nvcrev1alpha1.Workflow, groupName string, iteration, attempt int) string {
 	var raw string
 	isDiagnose := workflow.Spec.Orchestration.Diagnose != nil
 	if !isDiagnose && !hasMultipleIterations(workflow.Spec.Orchestration) && workflow.Status.Orchestration != nil && workflow.Status.Orchestration.TotalGroups <= 1 {
 		raw = workflow.Name + "-job"
 	} else {
 		raw = fmt.Sprintf("%s-%s-iter-%d", workflow.Name, groupName, iteration)
+	}
+	if attempt > 0 {
+		raw = fmt.Sprintf("%s-retry-%d", raw, attempt)
 	}
 	return naming.Truncate(raw, naming.MaxJobNameLen)
 }
@@ -4180,6 +4266,17 @@ func (r *WorkflowReconciler) createDependencyResource(ctx context.Context, owner
 				Message: fmt.Sprintf("dependency %s %q already exists and is not owned by Workflow %q; refusing to adopt it",
 					obj.GetKind(), location, workflow.Name),
 			}
+		}
+		// This Workflow's own object, but not one this create can stand in
+		// for. Job-scoped copies keep their names across a group's retries,
+		// so the holder may be the previous attempt's copy, on its way out
+		// or not yet retired. Binding the new attempt to it would hand its
+		// pods an object that is about to vanish (a ComputeDomain mid-
+		// deletion, say). Workflow-scoped dependencies carry no attempt, so
+		// for them only the terminating case applies.
+		if existing.GetDeletionTimestamp() != nil || dependencyAttempt(existing) != dependencyAttempt(obj) {
+			return nil, false, fmt.Errorf("dependency %s %q is being deleted or belongs to a previous attempt: %w",
+				obj.GetKind(), obj.GetName(), errPreviousAttemptRetiring)
 		}
 		log.Info("Dependency resource already exists and is owned by this Workflow, proceeding", "name", obj.GetName())
 		created = false

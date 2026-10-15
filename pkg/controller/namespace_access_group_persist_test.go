@@ -24,9 +24,11 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/testutil"
 )
 
-// The first group deletes its failed Job for a retry before a later group's
+// The first group records a retry for its failed Job before a later group's
 // node-result write is forbidden. The first retry must survive the access wait,
-// while the unfinished second transition must not be persisted.
+// while the unfinished second transition must not be persisted. Recording a
+// retry deletes nothing (issue #389), so the first group's Job and dependency
+// are still there; retirePreviousAttempts removes them before the next launch.
 func TestNamespaceAccessPreservesEarlierGroupRetry(t *testing.T) {
 	p := testutil.TestCaseParser{Subdir: "namespace-access-group-retry"}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
@@ -39,8 +41,8 @@ func TestNamespaceAccessPreservesEarlierGroupRetry(t *testing.T) {
 			// ConfigMap is the one forbidden.
 			FirstRecordsFailedNodes bool `json:"firstRecordsFailedNodes"`
 			// JobScopedDependencies gives each group a job-scoped dependency.
-			// The first group's retry deletes its own, and the removal of its
-			// ref must be persisted with the retry.
+			// The first group's retry keeps its own, and its ref, until the
+			// next attempt's launch retires them.
 			JobScopedDependencies bool `json:"jobScopedDependencies"`
 		}
 		if err := yaml.UnmarshalStrict([]byte(tc.Inputs["input.yaml"]), &input); err != nil {

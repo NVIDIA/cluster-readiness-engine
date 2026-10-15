@@ -1,0 +1,7 @@
+# Each group has a job-scoped dependency. Group a's retry is recorded before
+# group b's node-result write is denied. Recording a retry deletes nothing, so
+# a's dependency and its ref survive the wait alongside a's retry; they are
+# retired, and the ref dropped once the copy is gone, before a's next attempt
+# launches. Once access returns, b's retry keeps b's the same way.
+recover: true
+jobScopedDependencies: true

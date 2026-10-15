@@ -20,8 +20,9 @@
 # would do are done by the harness instead, both as label patches in
 # input_config.yaml: the first attempt's pods lose their nvcre.nvidia.com/job
 # label once that attempt has failed, standing in for the GC that removes them
-# with their TrainJob, and the second attempt's pods gain the label once the
-# retried Job is running, standing in for the scheduler binding them. The
+# with their TrainJob, and the second attempt's pods gain the retried Job's
+# label (unpin-reattr-job-retry-1) once it is running, standing in for the
+# scheduler binding them. The
 # second pair starts out under a placeholder label so the first attempt cannot
 # see them: the index lookup is by label value, and a running backfill refuses
 # any count other than numNodes.
