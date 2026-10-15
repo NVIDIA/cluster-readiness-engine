@@ -115,9 +115,48 @@ kubectl get workflows.nvcre.nvidia.com <name> \
 
 **Solutions:**
 
-- Dependency creation failed — check controller logs for RBAC errors when creating ConfigMaps, PVCs, or other dependency resources.
+- The InProgress reason is `NamespacePermissionsMissing` or `NamespaceAccessCheckFailed` — the controller has no write access in the namespace yet. See [Workflow waits with NamespacePermissionsMissing](#workflow-waits-with-namespacepermissionsmissing).
+- The Workflow failed with `DependencyCreationError` and a `forbidden` message — an admission policy, webhook or ResourceQuota rejected the dependency. The controller checked that its own RBAC allows the write before failing, so the rejection's message names the policy that blocked it.
 - Target nodes do not match — verify the Workflow's `nodeSelector` or `nodeNames` matches existing nodes (`kubectl get nodes -l <selector>`).
 - The Workflow spec is invalid — look for validation errors in the controller logs.
+
+## Workflow waits with NamespacePermissionsMissing
+
+**Symptoms:** a Workflow, or the Certification category above it, stays `InProgress` with reason `NamespacePermissionsMissing` or `NamespaceAccessCheckFailed`. Nothing is created in the namespace. `kubectl describe` shows a `NamespaceAccessDenied` or `NamespaceAccessReviewError` Warning, and `certification run --wait` shows the same message on the category's `Blocked:` line. After `manager.namespaceAccessTimeout` (default 10 minutes) the Workflow fails with the same reason.
+
+**Cause:** the chart is installed with `rbac.scope: namespaced`, and the namespace has no RoleBinding granting `nvcre-run-role` to the controller ([ADR-092](../designs/092-per-namespace-controller-rbac.md)). Before it writes anything, the controller checks its own access with SelfSubjectAccessReviews. A denied review means the binding is missing (`NamespacePermissionsMissing`). A review that could not be created at all means the check could not run (`NamespaceAccessCheckFailed`); an unanswered check is never treated as permission.
+
+**Diagnosis:**
+
+```bash
+# The message names the ServiceAccount and every permission it lacks
+kubectl get workflows.nvcre.nvidia.com <name> -n <namespace> \
+  -o jsonpath='{.status.conditions[?(@.type=="NamespaceAccess")]}' | jq .
+
+# Is there a binding, and does it name the right ServiceAccount?
+kubectl get rolebinding nvcre-manager-run -n <namespace> -o yaml
+
+# Ask the API server what the controller may do there
+kubectl auth can-i create configmaps -n <namespace> \
+  --as=system:serviceaccount:nvcre:nvcre-manager
+
+# Which scope is the chart installed with?
+helm get values nvcre -n nvcre -a | grep -A2 '^rbac:'
+```
+
+**Solutions:**
+
+- Apply the binding. The Workflow resumes on its own within a minute, and its `NamespaceAccess` condition turns `True`:
+
+  ```bash
+  nvcrectl rbac print --namespace <namespace> | kubectl apply -f -
+  ```
+
+- The binding exists but names another ServiceAccount: the release was installed under another name or namespace. Compare the subject with `kubectl get clusterrolebinding nvcre-manager-rolebinding -o yaml` and print the binding with `--service-account` and `--controller-namespace`.
+- `NamespaceAccessCheckFailed` for any other reason: the reviews themselves fail, usually because the API server or an admission webhook is struggling. The Workflow keeps rechecking, backing off to once every two minutes, and resumes on its own once reviews succeed again.
+- `NamespaceAccessCheckFailed` with `selfsubjectaccessreviews ... is forbidden`: Kubernetes normally grants these reviews to authenticated identities, including ServiceAccounts, through `system:basic-user`. This error means that default grant was removed or narrowed and the controller has no other grant. Check the `system:basic-user` role and binding, and `nvcre-manager-role`. Upgrading the NVCRE release adds an explicit `create` grant on `selfsubjectaccessreviews` to `nvcre-manager-role`; an older chart alone does not cause this error.
+- For a long-lived namespace, list it in `rbac.runNamespaces` so the chart keeps the binding.
+- The Workflow already failed after the timeout: apply the binding and run again. A failed Workflow does not retry.
 
 ## Workflow cleanup or deletion pauses on terminating pods
 

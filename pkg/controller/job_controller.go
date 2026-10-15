@@ -5,6 +5,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -160,8 +161,14 @@ func measurementTimeoutFor(job *nvcrev1alpha1.Job, configured time.Duration) tim
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs/finalizers,verbs=update
-// +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainjobs,verbs=get;list;watch;create;update;patch;delete
+//
+// TrainJob reads stay in nvcre-manager-role, cluster-wide, because Owns()
+// watches them across all namespaces. Writes are in nvcre-run-role, granted
+// per run namespace (ADR-092).
+// +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainjobs,verbs=get;list;watch
 // +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainjobs/status,verbs=get
+// +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainjobs,verbs=create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 
@@ -313,6 +320,20 @@ func (r *JobReconciler) deleteWorkloadByRef(ctx context.Context, job *nvcrev1alp
 	}
 
 	if err := r.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
+		// Forbidden in a terminating namespace: the RoleBinding that granted
+		// the delete may be gone already, and the namespace controller
+		// deletes the workload anyway. Retrying would hold this finalizer,
+		// the Workflow's that waits on it, and the namespace (ADR-092
+		// decision 5). A failed namespace read keeps the finalizer instead.
+		skip, nsErr := forbiddenInTerminatingNamespace(ctx, r.workloadReader(), ns, err)
+		if nsErr != nil {
+			return errors.Join(fmt.Errorf("failed to delete workload %s/%s: %w", ref.Kind, ref.Name, err), nsErr)
+		}
+		if skip {
+			logf.FromContext(ctx).V(1).Info("Leaving workload to the terminating namespace",
+				"kind", ref.Kind, "name", ref.Name, "error", err.Error())
+			return nil
+		}
 		return fmt.Errorf("failed to delete workload %s/%s: %w", ref.Kind, ref.Name, err)
 	}
 	return nil
@@ -1918,6 +1939,13 @@ func (r *JobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&nvcrev1alpha1.GoodputMeasurement{})
 
 	return b.
+		// A restored namespace grant wakes Jobs whose workload creates may
+		// otherwise remain under the error rate limiter's delayed retry.
+		Watches(
+			&nvcrev1alpha1.Workflow{},
+			handler.EnqueueRequestsFromMapFunc(namespaceAccessToJobs),
+			builder.WithPredicates(namespaceAccessGrantedPredicate()),
+		).
 		// BandwidthMeasurements are owned by the Workflow when there is one,
 		// so Owns cannot map them back to the Job; the Job is named in spec.
 		Watches(

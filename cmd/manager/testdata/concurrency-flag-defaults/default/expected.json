@@ -44,6 +44,10 @@
     "default": "true"
   },
   {
+    "name": "namespace-access-timeout",
+    "default": "10m0s"
+  },
+  {
     "name": "webhook-cert-key",
     "default": "tls.key"
   },

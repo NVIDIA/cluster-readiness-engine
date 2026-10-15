@@ -1,0 +1,6 @@
+# A write was forbidden and the fresh review cannot run: it cannot tell a
+# missing binding from an admission rejection, so the Workflow waits with
+# NamespaceAccessCheckFailed rather than guess.
+call: forbidden
+inProgress: GroupsPartitioned
+reviewError: 'the server is currently unable to handle the request'

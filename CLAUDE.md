@@ -124,13 +124,13 @@ go test ./test/releasepolicy/ -run TestAttestValidationRejects -v
 
 ## Critical Pitfalls
 
-- **After modifying `*_types.go`**: Must run `make manifests generate` before anything else compiles (stale deepcopy). `make manifests` writes CRDs directly to `helm/cluster-readiness-engine/crds/`. It writes no RBAC: controller-gen runs with `output:rbac:none`, so `helm/cluster-readiness-engine/templates/manager-role.yaml` is maintained by hand and the `+kubebuilder:rbac` markers only document it. A new or widened marker must be mirrored into that file in the same change, or the grant never reaches a cluster.
+- **After modifying `*_types.go`**: Must run `make manifests generate` before anything else compiles (stale deepcopy). `make manifests` writes CRDs directly to `helm/cluster-readiness-engine/crds/`. It writes no RBAC: controller-gen runs with `output:rbac:none`, so the controller's two ClusterRoles are maintained by hand and the `+kubebuilder:rbac` markers only document them (ADR-092). `helm/cluster-readiness-engine/templates/manager-role.yaml` (`nvcre-manager-role`, bound cluster-wide) holds reads, cluster-scoped writes, NVCRE's own CRDs and events. `templates/run-role.yaml` (`nvcre-run-role`, bound per `rbac.scope`) holds every write to a namespaced resource outside NVCRE's API group, plus `pods/log`. A new or widened marker must be mirrored into the right file in the same change, or the grant never reaches a cluster; a new dependency kind goes in `run-role.yaml`, which `test/helm` checks against the catalog.
 - **Blank imports required**: `pkg/catalog` must be blank-imported in `cmd/nvcrectl/main.go` and test suites to trigger `init()` registration.
 - **envtest has no GC controller**: Cascade deletion via OwnerReference won't work in tests. Controllers must explicitly delete child resources in `handleDeletion()`.
 - **`runtime.RawExtension` with `json:",inline"`**: Loses sibling fields during marshal/unmarshal. Requires custom `MarshalJSON`/`UnmarshalJSON` on the parent struct (see `api/v1alpha1/dependency_json.go`).
 - **Test timeout is 10s**: If requeue interval > 10s, status update tests will time out.
 - **`Trainer.NumProcPerNode`** is `*intstr.IntOrString` — use `intstr.FromInt32()`, not `*int32`.
-- **Never edit auto-generated files**: `helm/cluster-readiness-engine/crds/*.yaml`, `helm/cluster-readiness-engine/templates/role*.yaml`, `helm/cluster-readiness-engine/templates/*_role*.yaml`, `helm/cluster-readiness-engine/templates/service_account.yaml`, `**/zz_generated.*.go`, `PROJECT`.
+- **Never edit auto-generated files**: `helm/cluster-readiness-engine/crds/*.yaml`, `**/zz_generated.*.go`, `PROJECT`. The chart's RBAC templates (`manager-role.yaml`, `run-role.yaml`, the bindings and the per-CRD admin, editor and viewer roles) and `serviceaccount.yaml` are not generated: `make manifests` writes no RBAC.
 - **Never remove scaffold markers**: `// +kubebuilder:scaffold:*` comments are used by the CLI.
 
 ## Development Workflow (MANDATORY)
@@ -310,7 +310,7 @@ Nothing in CI inspects commit authorship, so these rules hold by convention. The
 
 **Never do**:
 - Never commit credentials, secrets, API keys, or tokens. Do not write them to code, tests, logs, or documentation. Use environment variables and Kubernetes Secrets instead.
-- Never edit auto-generated files: `helm/cluster-readiness-engine/crds/*.yaml`, the generated `role*.yaml` and `service_account.yaml` templates, `**/zz_generated.*.go`, and `PROJECT`.
+- Never edit auto-generated files: `helm/cluster-readiness-engine/crds/*.yaml`, `**/zz_generated.*.go`, and `PROJECT`. The chart's RBAC templates are maintained by hand.
 - Never remove `// +kubebuilder:scaffold:*` markers.
 - Never create git tags. The user creates tags.
 - Never push to `main`.

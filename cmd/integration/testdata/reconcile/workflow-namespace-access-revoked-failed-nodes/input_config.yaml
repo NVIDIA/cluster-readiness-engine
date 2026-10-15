@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The group's Job failed with failed nodes, and the controller's access in the
+# namespace was revoked before it recorded them: the failed-nodes ConfigMap
+# write is forbidden as the group completes. The pass ends before marking the
+# group, so it stays Running in status, and the Workflow waits for access
+# instead of failing without its failed-node record (ADR-092).
+rejectNodeResultWrites: true
+waitFor:
+  kind: Workflow
+  name: wf-revoked-failed-nodes
+  namespace: access-revoked-failed-nodes
+  condition: InProgress
+  reason: NamespacePermissionsMissing
+collect:
+  - kind: Workflow
+    name: wf-revoked-failed-nodes
+    namespace: access-revoked-failed-nodes

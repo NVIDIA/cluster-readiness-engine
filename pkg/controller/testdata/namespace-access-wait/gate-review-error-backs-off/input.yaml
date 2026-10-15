@@ -1,0 +1,8 @@
+# Reviews have failed for a minute: the API server or a webhook is likely
+# under strain, and failed reviews are not cached, so the wait backs off. The
+# requeue grows with the time waited instead of the 15s a denial gets.
+call: gate
+inProgress: NamespaceAccessCheckFailed
+waiting: 1m
+waitingReason: NamespaceAccessCheckFailed
+reviewError: 'the server is currently unable to handle the request'

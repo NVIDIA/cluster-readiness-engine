@@ -1,0 +1,37 @@
+{
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "False",
+      "reason": "NotApplicable",
+      "message": ""
+    },
+    {
+      "type": "NamespaceAccess",
+      "status": "False",
+      "reason": "NamespacePermissionsMissing",
+      "message": "ServiceAccount nvcre/nvcre-manager cannot create configmaps in namespace \"default\". Bind ClusterRole nvcre-run-role to it there with RoleBinding nvcre-manager-run: nvcrectl rbac print --namespace default | kubectl apply -f -",
+      "since": "11m0s"
+    },
+    {
+      "type": "Succeeded",
+      "status": "False",
+      "reason": "NotApplicable",
+      "message": ""
+    },
+    {
+      "type": "Failed",
+      "status": "True",
+      "reason": "NamespacePermissionsMissing",
+      "message": "Waited longer than the namespace access timeout (10m0s) for write access. ServiceAccount nvcre/nvcre-manager cannot create configmaps in namespace \"default\". Apply this RoleBinding, then run again:\napiVersion: rbac.authorization.k8s.io/v1\nkind: RoleBinding\nmetadata:\n  name: nvcre-manager-run\n  namespace: default\nroleRef:\n  apiGroup: rbac.authorization.k8s.io\n  kind: ClusterRole\n  name: nvcre-run-role\nsubjects:\n- kind: ServiceAccount\n  name: nvcre-manager\n  namespace: nvcre\n"
+    }
+  ],
+  "events": [
+    "Warning NamespacePermissionsMissing Waited longer than the namespace access timeout (10m0s) for write access. ServiceAccount nvcre/nvcre-manager cannot create configmaps in namespace \"default\". Apply this RoleBinding, then run again:\napiVersion: rbac.authorization.k8s.io/v1\nkind: RoleBinding\nmetadata:\n  name: nvcre-manager-run\n  namespace: default\nroleRef:\n  apiGroup: rbac.authorization.k8s.io\n  kind: ClusterRole\n  name: nvcre-run-role\nsubjects:\n- kind: ServiceAccount\n  name: nvcre-manager\n  namespace: nvcre\n"
+  ],
+  "requeueAfter": "0s",
+  "reviewsAskFresh": [
+    false
+  ],
+  "stop": true
+}

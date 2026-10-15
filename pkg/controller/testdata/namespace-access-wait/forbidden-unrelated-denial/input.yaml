@@ -1,0 +1,8 @@
+# A ConfigMap write was forbidden, and the fresh review denies something else
+# (pod logs, in a narrower custom Role) but allows ConfigMaps. That denial did
+# not cause this rejection: admission or quota did, so the caller's error path
+# runs and the policy's message reaches the status at once.
+call: forbidden
+inProgress: GroupsPartitioned
+denied:
+- {resource: pods, subresource: log, verb: get}

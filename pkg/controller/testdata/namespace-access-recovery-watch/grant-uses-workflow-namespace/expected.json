@@ -1,0 +1,9 @@
+{
+  "create": false,
+  "delete": false,
+  "generic": false,
+  "requests": [
+    "default/waiting-job"
+  ],
+  "update": true
+}

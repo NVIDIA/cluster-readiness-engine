@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# ADR-092 decision 4: in a namespace where the controller has no write access
+# (rbac.scope: namespaced and no RoleBinding), the Workflow waits before
+# writing anything: InProgress with NamespacePermissionsMissing, the wait
+# clocked on NamespaceAccess=False, and a Warning naming the binding to create.
+# The access review is injected through the namespace's label, since envtest
+# does not enforce RBAC.
+generateNodes:
+  count: 1
+waitFor:
+  kind: Workflow
+  name: wf-access-denied
+  namespace: access-denied
+  condition: InProgress
+  reason: NamespacePermissionsMissing
+collect:
+  - kind: Workflow
+    name: wf-access-denied
+    namespace: access-denied
+expectAbsent:
+  - kind: ConfigMap
+    name: hostfile
+    namespace: access-denied
+events:
+  - involvedKind: Workflow
+    involvedName: wf-access-denied
+    namespace: access-denied
+    expect:
+      - {type: Normal, reason: NamespacePermissionsMissing}
+      - {type: Warning, reason: NamespaceAccessDenied}

@@ -1,0 +1,184 @@
+{
+  "ConfigMap/hostfile": {
+    "kind": "ConfigMap",
+    "apiVersion": "v1",
+    "metadata": {
+      "name": "hostfile",
+      "namespace": "access-granted-later",
+      "labels": {
+        "nvcre.nvidia.com/workflow": "wf-access-granted-later"
+      },
+      "annotations": {
+        "nvcre.nvidia.com/workflow-uid": "workflow-uid"
+      },
+      "ownerReferences": [
+        {
+          "apiVersion": "nvcre.nvidia.com/v1alpha1",
+          "kind": "Workflow",
+          "name": "wf-access-granted-later",
+          "uid": ""
+        }
+      ]
+    },
+    "data": {
+      "hosts": "gpu-node"
+    }
+  },
+  "Workflow/wf-access-granted-later": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "wf-access-granted-later",
+      "namespace": "access-granted-later",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      },
+      "dependencies": [
+        {
+          "apiVersion": "v1",
+          "data": {
+            "hosts": "gpu-node"
+          },
+          "kind": "ConfigMap",
+          "metadata": {
+            "name": "hostfile"
+          }
+        }
+      ]
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "NamespaceAccess",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NamespaceAccessGranted",
+          "message": "ServiceAccount nvcre/nvcre-manager has the write access it needs"
+        },
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobRunning",
+          "message": "Iteration 1/1: 1 groups running"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "dependencyRefs": [
+        {
+          "apiVersion": "v1",
+          "kind": "ConfigMap",
+          "name": "hostfile",
+          "namespace": "access-granted-later",
+          "scope": "workflow"
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 1,
+        "nodesPerJob": 1,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "detectedPlatform": "onprem",
+        "detectedGPUArchitecture": "unknown",
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "gen-c53fe4-node-01"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "wf-access-granted-later-job",
+              "namespace": "access-granted-later"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "NamespaceAccessGranted",
+      "message": "ServiceAccount nvcre/nvcre-manager has the write access it needs",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "wf-access-granted-later"
+      },
+      "count": 1
+    },
+    {
+      "type": "Normal",
+      "reason": "NamespacePermissionsMissing",
+      "message": "ServiceAccount nvcre/nvcre-manager cannot create configmaps, delete configmaps, get configmaps, update configmaps, get pods/log, create trainjobs.trainer.kubeflow.org, delete trainjobs.trainer.kubeflow.org in namespace \"access-granted-later\". Bind ClusterRole nvcre-run-role to it there with RoleBinding nvcre-manager-run: nvcrectl rbac print --namespace access-granted-later | kubectl apply -f -",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "wf-access-granted-later"
+      },
+      "count": 1
+    },
+    {
+      "type": "Warning",
+      "reason": "NamespaceAccessDenied",
+      "message": "ServiceAccount nvcre/nvcre-manager cannot create configmaps, delete configmaps, get configmaps, update configmaps, get pods/log, create trainjobs.trainer.kubeflow.org, delete trainjobs.trainer.kubeflow.org in namespace \"access-granted-later\". Bind ClusterRole nvcre-run-role to it there with RoleBinding nvcre-manager-run: nvcrectl rbac print --namespace access-granted-later | kubectl apply -f -",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "wf-access-granted-later"
+      },
+      "count": 1
+    }
+  ]
+}

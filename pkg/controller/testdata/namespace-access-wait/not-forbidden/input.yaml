@@ -1,0 +1,4 @@
+# Any other error is not about access and is never reviewed.
+call: forbidden
+inProgress: GroupsPartitioned
+writeError: connection refused

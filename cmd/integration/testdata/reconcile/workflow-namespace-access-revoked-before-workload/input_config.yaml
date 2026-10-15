@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The access check passed and the Workflow created its Job, then the binding
+# was removed before the Job created its TrainJob. The Job controller retries
+# the forbidden create without writing status, and the Workflow sets no
+# timeoutPerJob, so nothing else bounds it. While a running group has no
+# TrainJob, the Workflow runs the full access check, finds the denial, and
+# waits with NamespacePermissionsMissing under the access timeout (ADR-092).
+rejectWorkloadCreates: true
+waitFor:
+  kind: Workflow
+  name: wf-revoked-workload
+  namespace: access-revoked-workload
+  condition: InProgress
+  reason: NamespacePermissionsMissing
+collect:
+  - kind: Workflow
+    name: wf-revoked-workload
+    namespace: access-revoked-workload
+expectAbsent:
+  - kind: TrainJob
+    name: wf-revoked-workload-job
+    namespace: access-revoked-workload

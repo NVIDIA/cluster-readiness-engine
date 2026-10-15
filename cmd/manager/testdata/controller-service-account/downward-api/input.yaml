@@ -1,0 +1,4 @@
+# What the chart sets for release "readiness" in namespace "platform".
+env:
+  POD_NAMESPACE: platform
+  SERVICE_ACCOUNT_NAME: readiness-manager

@@ -1,0 +1,25 @@
+{
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "True",
+      "reason": "NamespacePermissionsMissing",
+      "message": "already running"
+    },
+    {
+      "type": "NamespaceAccess",
+      "status": "True",
+      "reason": "NamespaceAccessGranted",
+      "message": "ServiceAccount nvcre/nvcre-manager has the write access it needs",
+      "since": "0s"
+    }
+  ],
+  "events": [
+    "Normal NamespaceAccessGranted ServiceAccount nvcre/nvcre-manager has the write access it needs"
+  ],
+  "requeueAfter": "50ms",
+  "reviewsAskFresh": [
+    false
+  ],
+  "stop": true
+}

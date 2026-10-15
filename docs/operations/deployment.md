@@ -82,6 +82,9 @@ Key chart values:
 | `manager.imagePullSecrets` | `[]` | Pull secrets for the controller image |
 | `manager.resources` | `10m/500m` CPU, `1Gi/1Gi` memory | Controller resource requests/limits |
 | `manager.affinity` | `{}` | Replace the complete controller affinity; when empty, the chart prefers spreading replicas across nodes |
+| `manager.namespaceAccessTimeout` | `10m` | How long a Workflow waits for the controller's write access in its namespace before it fails with `NamespacePermissionsMissing`. See [RBAC requirements](#rbac-requirements) |
+| `rbac.scope` | `cluster` | Where the controller may write: `cluster` grants every namespace, `namespaced` only namespaces with a RoleBinding. See [RBAC requirements](#rbac-requirements) |
+| `rbac.runNamespaces` | `[]` | Long-lived run namespaces to bind under `rbac.scope: namespaced`. Each must already exist |
 | `pdb.enabled` | `false` | Create a controller PodDisruptionBudget |
 | `pdb.minAvailable` | `1` | Minimum ready controller pods during voluntary eviction; integer or percentage |
 | `metrics.port` | `8443` | Controller metrics port |
@@ -234,28 +237,87 @@ More generally, voluntary eviction of a healthy controller pod is blocked while 
 
 ## RBAC requirements
 
-The controller's ClusterRole (`nvcre-manager-role`) is scoped to the resource types NVCRE actually manages — there are no wildcard rules. Review these before deploying to locked-down clusters:
+The controller's permissions are split between two ClusterRoles, and neither has wildcard rules ([ADR-092](../designs/092-per-namespace-controller-rbac.md)):
 
-| Resource | Verbs | Purpose |
-|----------|-------|---------|
-| `nvcre.nvidia.com/*` (Certifications, Workflows, Jobs, GoodputMeasurements, BandwidthMeasurements, WorkloadRuns) + `/status`, `/finalizers` | full lifecycle | Reconcile the CRD hierarchy |
-| `nvcre.nvidia.com` LogProfiles | get, list, watch | Read log-parsing profiles |
-| `nodes`, `pods` | get, list, watch | Discover nodes for scheduling and health checks; track workload pod placement |
-| `pods/log` | get | Read training logs for goodput and bandwidth measurement |
-| `configmaps` | full lifecycle | Workflow dependencies and failed-node result records |
-| `persistentvolumeclaims` | create, delete, get, list, update | Checkpoint storage dependencies; `update` sets the Job owner reference on a job-scoped checkpoint PVC |
-| `persistentvolumes` | get, list, patch, watch | Checkpoint storage handling |
-| `events` | create, patch | Emit Kubernetes events |
-| `resource.k8s.io` ResourceClaimTemplates | create, delete, get, list, patch, update | RoCE/DRA network resources |
-| `resource.k8s.io` ResourceSlices | get, list, watch | GPU architecture fallback on DRA-only GPU stacks with no `nvidia.com/gpu.product` label |
-| `resource.nvidia.com` ComputeDomains | create, delete, get, list, patch, update | Multi-Node NVLink (MNNVL) domains |
-| `trainer.kubeflow.org` TrainingRuntimes, TrainJobs | create, delete, get, list, patch, update (TrainJobs also watch; `trainjobs/status` get) | Training workloads via Kubeflow Trainer |
+- **`nvcre-manager-role`** is always bound cluster-wide. It holds reads, cluster-scoped writes, writes to NVCRE's own CRDs, and event creation.
+- **`nvcre-run-role`** holds every write to a namespaced resource outside NVCRE's API group, plus pod log reads. `rbac.scope` decides where it is bound.
 
-The Workflow dependency system creates supporting resources (ConfigMaps, PVCs, ComputeDomains, TrainingRuntimes, ResourceClaimTemplates) before workloads start, so the role includes create/delete on each dependency kind the catalog and platform overrides can render. Inspect the full ClusterRole:
+| Resource | `nvcre-manager-role` (cluster-wide) | `nvcre-run-role` (per `rbac.scope`) | Purpose |
+|----------|-------------------------------------|-------------------------------------|---------|
+| `nvcre.nvidia.com/*` (Certifications, Workflows, Jobs, GoodputMeasurements, BandwidthMeasurements, WorkloadRuns) + `/status`, `/finalizers` | full lifecycle | — | Reconcile the CRD hierarchy |
+| `nvcre.nvidia.com` LogProfiles | get, list, watch | — | Read log-parsing profiles |
+| `nodes`, `pods` | get, list, watch | — | Discover nodes for scheduling and health checks; track workload pod placement |
+| `persistentvolumes` | get, list, patch, watch | — | Reclaim the volumes of checkpoint PVCs the Workflow created |
+| `namespaces` | get | — | Tell whether a run namespace is terminating during teardown |
+| `authorization.k8s.io` SelfSubjectAccessReviews | create | — | Check the controller's own access in a run namespace before writing there |
+| `events` | create, patch | — | Emit Kubernetes events, including in a namespace that lacks the RoleBinding |
+| `resource.k8s.io` ResourceSlices | get, list, watch | — | GPU architecture fallback on DRA-only GPU stacks with no `nvidia.com/gpu.product` label |
+| `trainer.kubeflow.org` TrainJobs | get, list, watch; `trainjobs/status` get | create, delete, patch, update | Training workloads via Kubeflow Trainer |
+| `configmaps` | — | create, delete, get, patch, update | Workflow dependencies and node-result records |
+| `persistentvolumeclaims` | — | create, delete, get, update | Checkpoint storage dependencies; `update` sets the Job owner reference on a job-scoped checkpoint PVC |
+| `trainer.kubeflow.org` TrainingRuntimes | — | create, delete, get, patch, update | Training runtime dependencies |
+| `resource.k8s.io` ResourceClaimTemplates | — | create, delete, get, patch, update | RoCE/DRA network resources |
+| `resource.nvidia.com` ComputeDomains | — | create, delete, get, patch, update | Multi-Node NVLink (MNNVL) domains |
+| `pods/log` | — | get | Read training logs for goodput and bandwidth measurement |
+
+The Workflow dependency system creates supporting resources (ConfigMaps, PVCs, ComputeDomains, TrainingRuntimes, ResourceClaimTemplates) before workloads start, so the run role includes create/delete on each dependency kind the catalog and platform overrides can render. The controller reads ConfigMaps and PVCs straight from the API server rather than caching them, so neither role lists or watches them. Inspect both roles:
 
 ```bash
-kubectl get clusterrole nvcre-manager-role -o yaml
+kubectl get clusterrole nvcre-manager-role nvcre-run-role -o yaml
 ```
+
+### Choosing `rbac.scope`
+
+| `rbac.scope` | Where the controller can write | What a run needs |
+|--------------|--------------------------------|------------------|
+| `cluster` (default) | Every namespace, through the ClusterRoleBinding `nvcre-run-rolebinding`. This is the grant earlier releases made. | Nothing |
+| `namespaced` | Only namespaces with a RoleBinding `nvcre-manager-run` to `nvcre-run-role` | A RoleBinding in the run namespace |
+
+**The default becomes `namespaced` in the next minor release.** Under `cluster`, the controller can overwrite any ConfigMap in the cluster (including `kube-system/aws-auth` on EKS), delete any PVC, and read any pod's logs. `namespaced` confines that to the namespaces runs actually use. Switch before the default flips if you apply Certifications or Workflows with `kubectl` or GitOps, and add the bindings below first.
+
+Under `namespaced`, a run namespace gets its RoleBinding in one of three ways:
+
+- **`nvcrectl`** creates it in a namespace it creates itself: the generated `nvcrectl-<timestamp>` namespace of `certification run`, or any `-n` namespace that did not exist yet. Deleting the namespace removes the binding with it. In a namespace that already existed, including `default` (where `workloadrun run` lands without `-n`), `nvcrectl` stops before submitting anything and prints the binding, so a shared namespace never becomes a standing grant by accident. Pass `--grant-run-access` to create it there on purpose; `--cleanup` deletes it once the run is gone, unless another Certification, WorkloadRun or Workflow is still in the namespace. If you cannot read the cluster-scoped `nvcre-run-rolebinding` and `nvcre-run-role`, `nvcrectl` cannot tell which scope is installed; it then submits with a warning instead of stopping, and a missing binding shows up as the controller's wait. Creating the binding takes the user's own permissions: every permission in `nvcre-run-role` within the namespace (a namespace admin has them), or `bind` on `clusterroles/nvcre-run-role`.
+- **`rbac.runNamespaces`** lists long-lived run namespaces, such as GitOps or Run:ai project namespaces, and the chart renders one RoleBinding per entry. The chart does not create these namespaces; a listed namespace that does not exist fails the install with `NotFound`.
+- **You** apply the binding next to your Certification or Workflow; see [Running without nvcrectl](#running-without-nvcrectl).
+
+A Workflow in a namespace without the binding does not fail at once. It stays `InProgress` with reason `NamespacePermissionsMissing`, emits a `NamespaceAccessDenied` Warning naming the binding, and proceeds on its own when the binding appears, so a GitOps sync that applies the Certification before the RoleBinding still runs. If the binding has not appeared after `manager.namespaceAccessTimeout` (default 10 minutes), the Workflow fails with the same reason and the RoleBinding manifest in its message. See [Troubleshooting](./troubleshooting.md#workflow-waits-with-namespacepermissionsmissing).
+
+**`nvcrectl setup init` keeps `rbac.*`.** Re-running it carries the installed release's `rbac.scope` and `rbac.runNamespaces` into the upgrade; every other chart value returns to its default, as before. Pass `--rbac-scope cluster|namespaced` to change the scope:
+
+```bash
+nvcrectl setup init --rbac-scope namespaced
+```
+
+`init` stops rather than upgrading if it cannot read the installed release's values, since upgrading without them would reset the scope. If you manage the release with Helm directly, `helm upgrade` with any `--set` or `-f` and without `--reuse-values` or `--reset-then-reuse-values` drops `rbac.*` back to the defaults the same way.
+
+### Running without nvcrectl
+
+Print the RoleBinding for a namespace and apply it, or commit it next to the Certification:
+
+```bash
+nvcrectl rbac print --namespace <run-namespace> | kubectl apply -f -
+```
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nvcre-manager-run
+  namespace: <run-namespace>
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nvcre-run-role
+subjects:
+- kind: ServiceAccount
+  name: nvcre-manager
+  namespace: nvcre
+```
+
+The subject is the controller's ServiceAccount. `nvcrectl setup init` installs it as `nvcre-manager` in namespace `nvcre`. A Helm release with another name or namespace has another ServiceAccount; pass `--service-account` and `--controller-namespace` to `nvcrectl rbac print`, or copy the subject from `kubectl get clusterrolebinding nvcre-manager-rolebinding -o yaml`. A waiting Workflow's message names the ServiceAccount it needs.
+
+Delete the binding only after the Certification or WorkloadRun that needed it is fully deleted: the controller's finalizers write in the namespace until then. If the namespace itself is being deleted, the finalizers do not wait for the binding.
 
 ## Cluster scope and tenancy model
 
@@ -442,7 +504,7 @@ Use this checklist before going live. Each item addresses a specific risk surfac
 | Item | Status | What to verify |
 |------|--------|----------------|
 | **Network policy** | Required | Restrict egress to the Kubernetes API server and DNS only. No NetworkPolicy ships with the chart — add one for your environment. |
-| **RBAC audit** | Required | Run `kubectl get clusterrole nvcre-manager-role -o yaml` and verify the permissions match your security requirements. |
+| **RBAC audit** | Required | Run `kubectl get clusterrole nvcre-manager-role nvcre-run-role -o yaml` and verify the permissions match your security requirements. Set `rbac.scope: namespaced` so the controller writes only in namespaces that have a RoleBinding; see [Choosing `rbac.scope`](#choosing-rbacscope). |
 | **TLS for metrics** | Recommended | The default ServiceMonitor uses `insecureSkipVerify: true`. Configure cert-manager to issue a serving certificate for the controller's metrics endpoint. |
 | **Controller node affinity** | Recommended | Schedule the controller on infrastructure nodes, not GPU nodes, using `manager.affinity`. This value replaces the chart's complete default affinity, so include pod anti-affinity in the override when running multiple replicas. |
 | **Image provenance** | Recommended | Verify the image signature and its SLSA provenance against the exact signing identity before deploying, then pin what you verified with `--set manager.image.digest=sha256:...` rather than deploying by tag — a tag can be repointed after you check it. The provenance names the commit, ref and workflow that built it. See [Verifying release artifacts](./verifying-artifacts.md). Scan images with your vulnerability tooling before deployment. |

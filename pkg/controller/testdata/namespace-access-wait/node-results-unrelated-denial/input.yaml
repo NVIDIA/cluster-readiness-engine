@@ -1,0 +1,6 @@
+# A node-result write is forbidden, but the only denial the review finds is on
+# pods/log. The review is narrowed to the resource the error names, so the
+# write counts as an admission rejection and the pass goes on.
+call: node-results
+denied:
+- {resource: pods, subresource: log, verb: get}

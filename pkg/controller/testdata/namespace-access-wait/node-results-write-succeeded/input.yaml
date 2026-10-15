@@ -1,0 +1,3 @@
+# The node-result write succeeds: nothing is reviewed and the pass goes on.
+call: node-results
+writeError: no-error

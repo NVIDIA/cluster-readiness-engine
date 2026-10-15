@@ -1,0 +1,8 @@
+# Still denied four minutes in: the clock keeps its start and nothing is
+# emitted again.
+call: gate
+inProgress: NamespacePermissionsMissing
+waiting: 4m
+waitingReason: NamespacePermissionsMissing
+denied:
+- {resource: configmaps, verb: create}
