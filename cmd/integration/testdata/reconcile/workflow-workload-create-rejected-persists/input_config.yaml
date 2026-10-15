@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Issue #488: a rejection that outlasts the workload creation deadline (3s
+# here, 10m by default) with no timeoutPerJob. The Job fails with
+# WorkloadCreationError and the Workflow fails, but no failed nodes are
+# recorded on either: the rejection says nothing about gpu-node-01.
+rejectWorkloadCreatesWhile:
+  kind: ConfigMap
+  name: reject-workload-creates-persists
+  namespace: default
+workloadCreationDeadlineSeconds: 3
+steps:
+  - waitFor:
+      kind: Workflow
+      name: test-wf-create-rejected-persists
+      namespace: default
+      condition: InProgress
+      reason: JobSchedulingBlocked
+waitFor:
+  kind: Workflow
+  name: test-wf-create-rejected-persists
+  namespace: default
+  condition: Failed
+collect:
+  - kind: Job
+    name: test-wf-create-rejected-persists-job
+    namespace: default
+  - kind: Workflow
+    name: test-wf-create-rejected-persists
+    namespace: default
+events:
+  - involvedKind: Job
+    involvedName: test-wf-create-rejected-persists-job
+    namespace: default
+    expect:
+      - {type: Warning, reason: WorkloadCreationRejected}
+      - {type: Warning, reason: WorkloadCreationError}
+timeoutSeconds: 60

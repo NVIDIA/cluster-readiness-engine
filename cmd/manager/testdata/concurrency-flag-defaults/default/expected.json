@@ -60,6 +60,10 @@
     "default": ""
   },
   {
+    "name": "workload-creation-deadline",
+    "default": "10m0s"
+  },
+  {
     "name": "zap-devel",
     "default": "true"
   },
