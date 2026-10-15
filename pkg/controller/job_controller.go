@@ -349,6 +349,9 @@ func (r *JobReconciler) reconcileWorkload(ctx context.Context, job *nvcrev1alpha
 			// A retried group's Job can finish while the measurement left by
 			// the attempt it replaced is still being deleted; create its own
 			// once that one is gone, or the thresholds wait on nothing.
+			if err := r.ensureGoodputMeasurement(ctx, job); err != nil {
+				logf.FromContext(ctx).Error(err, "Failed to ensure GoodputMeasurement")
+			}
 			if err := r.ensureBandwidthMeasurement(ctx, job); err != nil {
 				logf.FromContext(ctx).Error(err, "Failed to ensure BandwidthMeasurement")
 			}
@@ -728,8 +731,8 @@ func (r *JobReconciler) shouldRestart(ctx context.Context, job *nvcrev1alpha1.Jo
 	return r.hasCheckpoint(ctx, job)
 }
 
-// hasCheckpoint returns true if there is a GoodputMeasurement for this Job that has recorded
-// at least one checkpoint step (LastCheckpointStep > 0).
+// hasCheckpoint returns true if there is a GoodputMeasurement for this Job instance that has
+// recorded at least one checkpoint step (LastCheckpointStep > 0).
 func (r *JobReconciler) hasCheckpoint(ctx context.Context, job *nvcrev1alpha1.Job) bool {
 	log := logf.FromContext(ctx)
 	var measurements nvcrev1alpha1.GoodputMeasurementList
@@ -738,6 +741,11 @@ func (r *JobReconciler) hasCheckpoint(ctx context.Context, job *nvcrev1alpha1.Jo
 		return false
 	}
 	for _, m := range measurements.Items {
+		// An earlier attempt's measurement can outlive it while its delete
+		// waits on the finalizer; its checkpoints are not this attempt's.
+		if !measuresJob(&m, job) {
+			continue
+		}
 		if m.Status.LastCheckpointStep > 0 {
 			return true
 		}
@@ -1786,10 +1794,25 @@ func (r *JobReconciler) ensureGoodputMeasurement(ctx context.Context, job *nvcre
 	log := logf.FromContext(ctx)
 	gmName := r.getGoodputMeasurementName(job)
 
-	// Check if already exists
 	existing := &nvcrev1alpha1.GoodputMeasurement{}
 	if err := r.Get(ctx, client.ObjectKey{Namespace: job.Namespace, Name: gmName}, existing); err == nil {
-		return nil // already exists
+		if measuresJob(existing, job) {
+			return nil
+		}
+		// A retried group recreates its Job under the same name, and the
+		// Workflow-owned measurement of the failed attempt outlives it. The
+		// GoodputMeasurement controller never re-measures a Complete one, so
+		// left in place it would stand in for this attempt in thresholds and
+		// stall detection. Replace it, as ensureBandwidthMeasurement does; the
+		// next reconcile creates the new one once it is gone.
+		if existing.DeletionTimestamp.IsZero() {
+			log.Info("Replacing GoodputMeasurement of an earlier Job with the same name", "name", gmName)
+			if err := r.Delete(ctx, existing, client.Preconditions{UID: new(existing.UID)}); err != nil &&
+				!apierrors.IsNotFound(err) && !apierrors.IsConflict(err) {
+				return fmt.Errorf("failed to delete stale GoodputMeasurement: %w", err)
+			}
+		}
+		return nil
 	}
 
 	apiGroup := "nvcre.nvidia.com"
@@ -1800,6 +1823,7 @@ func (r *JobReconciler) ensureGoodputMeasurement(ctx context.Context, job *nvcre
 			labelManagedBy: managedByValue,
 			labelJobKey:    job.Name,
 		},
+		Annotations: map[string]string{annotationJobUID: string(job.UID)},
 		Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 			JobRef: corev1.TypedLocalObjectReference{
 				APIGroup: &apiGroup,
