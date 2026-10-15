@@ -1,0 +1,9 @@
+# A binding someone else created (Helm rbac.runNamespaces, or by hand) is used
+# as is and never deleted, even with --cleanup.
+rbacScope: namespaced
+namespaceExists: true
+bindingPreexists: true
+doCleanup: true
+expectRunExists: false
+expectNamespaceExists: true
+expectBinding: true

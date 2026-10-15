@@ -1,0 +1,7 @@
+# A pass ends on a node-result write already classified as denied. The wait is
+# recorded from the review the error carries, without asking again, and the
+# unsaved in-memory iteration is not persisted.
+call: requeue
+classified: true
+denied:
+- {resource: configmaps, verb: create}

@@ -1,0 +1,23 @@
+{
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "True",
+      "reason": "JobCreated",
+      "message": "already running"
+    },
+    {
+      "type": "NamespaceAccess",
+      "status": "True",
+      "reason": "NamespaceAccessGranted",
+      "message": "granted",
+      "since": "1h0m0s"
+    }
+  ],
+  "events": [],
+  "requeueAfter": "0s",
+  "reviewsAskFresh": [
+    false
+  ],
+  "stop": false
+}

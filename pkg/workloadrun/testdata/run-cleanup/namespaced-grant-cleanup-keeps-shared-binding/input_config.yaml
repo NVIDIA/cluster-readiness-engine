@@ -1,0 +1,11 @@
+# This run created the binding with --grant-run-access, and another WorkloadRun
+# in the namespace still runs under it. --cleanup deletes this run but keeps
+# the binding, since deleting it would take the other run's access away.
+rbacScope: namespaced
+namespaceExists: true
+grantRunAccess: true
+doCleanup: true
+otherRun: true
+expectRunExists: false
+expectNamespaceExists: true
+expectBinding: true

@@ -1,0 +1,37 @@
+{
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "True",
+      "reason": "NamespaceAccessCheckFailed",
+      "message": "Could not check the controller's access in namespace \"default\": the server is currently unable to handle the request"
+    },
+    {
+      "type": "NamespaceAccess",
+      "status": "False",
+      "reason": "NamespaceAccessCheckFailed",
+      "message": "Could not check the controller's access in namespace \"default\": the server is currently unable to handle the request",
+      "since": "0s"
+    },
+    {
+      "type": "Succeeded",
+      "status": "False",
+      "reason": "NotApplicable",
+      "message": ""
+    },
+    {
+      "type": "Failed",
+      "status": "False",
+      "reason": "NotApplicable",
+      "message": ""
+    }
+  ],
+  "events": [
+    "Warning NamespaceAccessReviewError Could not check the controller's access in namespace \"default\": the server is currently unable to handle the request"
+  ],
+  "requeueAfter": "15s",
+  "reviewsAskFresh": [
+    true
+  ],
+  "stop": true
+}

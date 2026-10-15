@@ -68,6 +68,8 @@ navigation:
         path: cli-reference/workflow.md
       - page: mcp
         path: cli-reference/mcp.md
+      - page: rbac
+        path: cli-reference/rbac.md
 
   - section: API Reference
     contents:

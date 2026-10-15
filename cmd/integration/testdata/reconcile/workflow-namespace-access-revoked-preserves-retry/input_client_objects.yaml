@@ -1,0 +1,122 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: access-retry
+  labels:
+    test.nvcre.nvidia.com/access: revoked-after-check
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: wf-retry-denied
+  namespace: access-retry
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command: [python, train.py]
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    execution:
+      retryFailedGroups: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 2
+    nodesPerJob: 1
+    totalGroups: 2
+    currentIteration: 1
+    groups:
+      - name: group-0
+        nodes: [gpu-node-01]
+        phase: Running
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: wf-retry-denied-job-a
+          namespace: access-retry
+      - name: group-1
+        nodes: [gpu-node-02]
+        phase: Running
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: wf-retry-denied-job-b
+          namespace: access-retry
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: wf-retry-denied-job-a
+  namespace: access-retry
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: wf-retry-denied
+    nvcre.nvidia.com/group: group-0
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command: [python, train.py]
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: WorkloadFailed
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Failed
+      status: "True"
+      reason: WorkloadFailed
+      message: Workload failed
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: wf-retry-denied-job-b
+  namespace: access-retry
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: wf-retry-denied
+    nvcre.nvidia.com/group: group-1
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command: [python, train.py]
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: WorkloadFailed
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Failed
+      status: "True"
+      reason: WorkloadFailed
+      message: Workload failed
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+  failedNodes:
+    - name: gpu-node-02
+      reason: HardwareFailureDetected

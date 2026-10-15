@@ -1,0 +1,117 @@
+{
+  "Workflow/wf-retry-denied": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "wf-retry-denied",
+      "namespace": "access-retry",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {
+          "retryFailedGroups": 1
+        },
+        "iterations": 1
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NamespacePermissionsMissing",
+          "message": "ServiceAccount nvcre/nvcre-manager cannot create configmaps, get configmaps, update configmaps, get pods/log, create trainjobs.trainer.kubeflow.org, delete trainjobs.trainer.kubeflow.org in namespace \"access-retry\". Bind ClusterRole nvcre-run-role to it there with RoleBinding nvcre-manager-run: nvcrectl rbac print --namespace access-retry | kubectl apply -f -"
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "NamespaceAccess",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NamespacePermissionsMissing",
+          "message": "ServiceAccount nvcre/nvcre-manager cannot create configmaps, get configmaps, update configmaps, get pods/log, create trainjobs.trainer.kubeflow.org, delete trainjobs.trainer.kubeflow.org in namespace \"access-retry\". Bind ClusterRole nvcre-run-role to it there with RoleBinding nvcre-manager-run: nvcrectl rbac print --namespace access-retry | kubectl apply -f -"
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 2,
+        "nodesPerJob": 1,
+        "totalGroups": 2,
+        "currentIteration": 1,
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "gpu-node-01"
+            ],
+            "phase": "Pending",
+            "retries": 1
+          },
+          {
+            "name": "group-1",
+            "nodes": [
+              "gpu-node-02"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "wf-retry-denied-job-b",
+              "namespace": "access-retry"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "expectAbsent": {
+    "Job/wf-retry-denied-job-a": "notCreated"
+  }
+}

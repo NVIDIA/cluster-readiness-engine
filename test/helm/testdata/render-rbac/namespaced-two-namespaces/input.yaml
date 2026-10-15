@@ -1,0 +1,4 @@
+# One RoleBinding per listed namespace, and no cluster-wide grant.
+set:
+- rbac.scope=namespaced
+- rbac.runNamespaces={team-a,team-b}

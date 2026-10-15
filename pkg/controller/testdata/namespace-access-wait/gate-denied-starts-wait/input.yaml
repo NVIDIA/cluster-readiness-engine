@@ -1,0 +1,7 @@
+# A new Workflow without access: it goes InProgress with the reason, its
+# NamespaceAccess clock starts, and a Warning names the binding to create next
+# to the Normal transition event.
+call: gate
+denied:
+- {resource: configmaps, verb: create}
+- {group: trainer.kubeflow.org, resource: trainjobs, verb: create}

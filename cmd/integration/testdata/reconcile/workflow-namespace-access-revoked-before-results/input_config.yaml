@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The group's Job has succeeded, but the controller's access in the namespace
+# was revoked before the Workflow recorded its results: the succeeded-nodes
+# ConfigMap write is forbidden, and a fresh access review confirms it. The
+# Workflow must not report Succeeded without its results. The pass ends before
+# writing any status, and the next one waits for access with
+# NamespacePermissionsMissing (ADR-092).
+rejectNodeResultWrites: true
+waitFor:
+  kind: Workflow
+  name: wf-revoked-results
+  namespace: access-revoked-results
+  condition: InProgress
+  reason: NamespacePermissionsMissing
+collect:
+  - kind: Workflow
+    name: wf-revoked-results
+    namespace: access-revoked-results

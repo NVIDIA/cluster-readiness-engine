@@ -1,0 +1,48 @@
+{
+  "managerEnv": [
+    {
+      "name": "POD_NAMESPACE",
+      "fieldPath": "metadata.namespace"
+    },
+    {
+      "name": "SERVICE_ACCOUNT_NAME",
+      "fieldPath": "spec.serviceAccountName"
+    }
+  ],
+  "runRoleBindings": [
+    {
+      "kind": "RoleBinding",
+      "name": "nvcre-manager-run",
+      "namespace": "team-a",
+      "roleRef": {
+        "apiGroup": "rbac.authorization.k8s.io",
+        "kind": "ClusterRole",
+        "name": "nvcre-run-role"
+      },
+      "subjects": [
+        {
+          "kind": "ServiceAccount",
+          "name": "render-test-nvcre-manager",
+          "namespace": "default"
+        }
+      ]
+    },
+    {
+      "kind": "RoleBinding",
+      "name": "nvcre-manager-run",
+      "namespace": "team-b",
+      "roleRef": {
+        "apiGroup": "rbac.authorization.k8s.io",
+        "kind": "ClusterRole",
+        "name": "nvcre-run-role"
+      },
+      "subjects": [
+        {
+          "kind": "ServiceAccount",
+          "name": "render-test-nvcre-manager",
+          "namespace": "default"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+{{- /*
+  How nvcre-run-role is granted (ADR-092).
+
+  cluster:    one ClusterRoleBinding, so the controller can write in every
+              namespace. This is the grant earlier releases made through
+              nvcre-manager-role, and the default for this release.
+  namespaced: one RoleBinding per rbac.runNamespaces entry. Other namespaces
+              get their binding from nvcrectl, which creates it in the
+              namespaces it runs in, or from the user (nvcrectl rbac print).
+              The chart does not create the namespaces, and does not look them
+              up: lookup returns nothing under helm template.
+*/}}
+{{- $rbac := .Values.rbac | default dict }}
+{{- $scope := $rbac.scope }}
+{{- /*
+  An unset scope fails rather than falling back to the default: "rbac: null"
+  or an empty value removes the chart's default, and a fallback here would
+  pick a grant the user did not ask for and duplicate the default from
+  values.yaml.
+*/}}
+{{- if not $scope }}
+{{- fail "rbac.scope is not set: \"rbac: null\" or an empty value removes the chart's default. Set rbac.scope to \"cluster\" or \"namespaced\"." }}
+{{- else if eq $scope "cluster" }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    {{- include "nvcre.labels" . | nindent 4 }}
+  name: nvcre-run-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nvcre-run-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "nvcre.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+{{- else if eq $scope "namespaced" }}
+{{- range $namespace := ($rbac.runNamespaces | default list | uniq) }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    {{- include "nvcre.labels" $ | nindent 4 }}
+  name: nvcre-manager-run
+  namespace: {{ required "rbac.runNamespaces entries must be non-empty namespace names" $namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: nvcre-run-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "nvcre.serviceAccountName" $ }}
+  namespace: {{ $.Release.Namespace }}
+{{- end }}
+{{- else }}
+{{- fail (printf "rbac.scope must be \"cluster\" or \"namespaced\", got %q" (toString $scope)) }}
+{{- end }}

@@ -1,0 +1,6 @@
+# The binding landed: NamespaceAccess flips True so a later wait starts its
+# own clock. The InProgress reason is left for the next step to replace.
+call: gate
+inProgress: NamespacePermissionsMissing
+waiting: 2m
+waitingReason: NamespacePermissionsMissing

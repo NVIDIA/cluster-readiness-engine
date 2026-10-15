@@ -1,0 +1,9 @@
+# A running group's jobRef has no namespace: the Job is woken in the
+# Workflow's namespace.
+oldStatus: "False"
+newStatus: "True"
+groups:
+- name: group-0
+  phase: Running
+  nodes: []
+  jobRef: {name: waiting-job}

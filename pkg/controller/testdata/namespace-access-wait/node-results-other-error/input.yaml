@@ -1,0 +1,4 @@
+# A node-result write fails for a reason other than Forbidden. It is logged and
+# skipped, as before ADR-092, and nothing is reviewed.
+call: node-results
+writeError: "etcd request too large"

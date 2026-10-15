@@ -1,0 +1,38 @@
+{
+  "conditions": [
+    {
+      "type": "NamespaceAccess",
+      "status": "False",
+      "reason": "NamespaceAccessCheckFailed",
+      "message": "Could not check the controller's access in namespace \"default\": selfsubjectaccessreviews.authorization.k8s.io is forbidden: no create",
+      "since": "0s"
+    },
+    {
+      "type": "InProgress",
+      "status": "True",
+      "reason": "NamespaceAccessCheckFailed",
+      "message": "Could not check the controller's access in namespace \"default\": selfsubjectaccessreviews.authorization.k8s.io is forbidden: no create"
+    },
+    {
+      "type": "Succeeded",
+      "status": "False",
+      "reason": "NotApplicable",
+      "message": ""
+    },
+    {
+      "type": "Failed",
+      "status": "False",
+      "reason": "NotApplicable",
+      "message": ""
+    }
+  ],
+  "events": [
+    "Normal NamespaceAccessCheckFailed Could not check the controller's access in namespace \"default\": selfsubjectaccessreviews.authorization.k8s.io is forbidden: no create",
+    "Warning NamespaceAccessReviewError Could not check the controller's access in namespace \"default\": selfsubjectaccessreviews.authorization.k8s.io is forbidden: no create"
+  ],
+  "requeueAfter": "15s",
+  "reviewsAskFresh": [
+    false
+  ],
+  "stop": true
+}

@@ -1,0 +1,98 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: access-revoked-failed-nodes
+  labels:
+    test.nvcre.nvidia.com/access: revoked-after-check
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: wf-revoked-failed-nodes
+  namespace: access-revoked-failed-nodes
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 1
+    nodesPerJob: 1
+    totalGroups: 1
+    currentIteration: 1
+    groups:
+      - name: group-0
+        nodes:
+          - gpu-node-01
+        phase: Running
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: wf-revoked-failed-nodes-job
+          namespace: access-revoked-failed-nodes
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: wf-revoked-failed-nodes-job
+  namespace: access-revoked-failed-nodes
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: wf-revoked-failed-nodes
+    nvcre.nvidia.com/group: group-0
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: WorkloadCompleted
+      message: "Workload has completed"
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Failed
+      status: "True"
+      reason: WorkloadFailed
+      message: "Workload failed due to hardware failure"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: HardwareFailed
+      status: "True"
+      reason: NodeHealthCheckFailed
+      message: "Hardware failure detected on nodes: node-gpu-01, node-gpu-02"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+  failedNodes:
+    - name: node-gpu-01
+      reason: HardwareFailureDetected
+    - name: node-gpu-02
+      reason: HardwareFailureDetected

@@ -1,0 +1,4 @@
+# A pass ends on a Forbidden write and the review cannot run. The wait starts at
+# once with NamespaceAccessCheckFailed.
+call: requeue
+reviewError: "connection refused"

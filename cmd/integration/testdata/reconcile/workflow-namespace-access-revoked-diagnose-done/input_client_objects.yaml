@@ -1,0 +1,110 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: access-revoked-diagnose
+  labels:
+    test.nvcre.nvidia.com/access: revoked-after-check
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: revoked-diag-a1
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.clique: clique-a
+    kubernetes.io/hostname: revoked-diag-a1
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: revoked-diag-a2
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.clique: clique-a
+    kubernetes.io/hostname: revoked-diag-a2
+---
+# Diagnose over a single clique whose intra-screening passed: with one
+# healthy domain there is nothing to screen between domains, so the round
+# ends in diagnoseDone, which records the succeeded nodes.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: wf-revoked-diagnose
+  namespace: access-revoked-diagnose
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - mpirun
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+    diagnose:
+      minGroupSize: 2
+      topologyKey: nvidia.com/gpu.clique
+status:
+  orchestration:
+    totalNodes: 2
+    nodesPerJob: 2
+    totalGroups: 1
+    currentIteration: 1
+    detectedPlatform: onprem
+    detectedGPUArchitecture: unknown
+    diagnose:
+      stage: intra-screening
+      round: 0
+    groups:
+      - name: screen-0
+        nodes: [revoked-diag-a1, revoked-diag-a2]
+        domains: [clique-a]
+        phase: Running
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: wf-revoked-diagnose-screen-0-iter-1
+          namespace: access-revoked-diagnose
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: wf-revoked-diagnose-screen-0-iter-1
+  namespace: access-revoked-diagnose
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: wf-revoked-diagnose
+    nvcre.nvidia.com/group: screen-0
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - mpirun
+        numNodes: 2
+status:
+  conditions:
+    - type: Succeeded
+      status: "True"
+      reason: WorkloadCompleted
+      message: "Workload completed"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: Failed
+      status: "False"
+      reason: NotApplicable
+      lastTransitionTime: "2026-01-22T10:00:00Z"

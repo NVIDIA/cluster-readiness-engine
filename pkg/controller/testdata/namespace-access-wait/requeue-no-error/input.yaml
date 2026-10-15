@@ -1,0 +1,3 @@
+# A pass that ends without an error passes its result through untouched.
+call: requeue
+writeError: no-error

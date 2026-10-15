@@ -45,8 +45,22 @@ spec:
         - --health-probe-bind-address=:8081
         - --max-concurrent-reconciles={{ required "manager.maxConcurrentReconciles is required" .Values.manager.maxConcurrentReconciles }}
         - --measurement-max-concurrent-reconciles={{ required "manager.measurementMaxConcurrentReconciles is required" .Values.manager.measurementMaxConcurrentReconciles }}
+        - --namespace-access-timeout={{ required "manager.namespaceAccessTimeout is required" .Values.manager.namespaceAccessTimeout }}
         command:
         - /manager
+        {{- /*
+          The controller names its own ServiceAccount in the RoleBinding a
+          waiting Workflow asks for, and the name depends on the release.
+        */}}
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: SERVICE_ACCOUNT_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.serviceAccountName
         {{- /*
           A digest wins over a tag. Verification is digest-addressed, so an
           operator who checked a signature and then deployed by tag deployed

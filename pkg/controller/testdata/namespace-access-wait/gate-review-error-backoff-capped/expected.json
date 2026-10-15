@@ -1,0 +1,35 @@
+{
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "True",
+      "reason": "NamespaceAccessCheckFailed",
+      "message": "Could not check the controller's access in namespace \"default\": the server is currently unable to handle the request"
+    },
+    {
+      "type": "NamespaceAccess",
+      "status": "False",
+      "reason": "NamespaceAccessCheckFailed",
+      "message": "Could not check the controller's access in namespace \"default\": the server is currently unable to handle the request",
+      "since": "6m0s"
+    },
+    {
+      "type": "Succeeded",
+      "status": "False",
+      "reason": "NotApplicable",
+      "message": ""
+    },
+    {
+      "type": "Failed",
+      "status": "False",
+      "reason": "NotApplicable",
+      "message": ""
+    }
+  ],
+  "events": [],
+  "requeueAfter": "2m0s",
+  "reviewsAskFresh": [
+    false
+  ],
+  "stop": true
+}

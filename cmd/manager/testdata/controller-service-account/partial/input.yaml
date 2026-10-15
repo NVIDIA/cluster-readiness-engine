@@ -1,0 +1,2 @@
+env:
+  POD_NAMESPACE: platform

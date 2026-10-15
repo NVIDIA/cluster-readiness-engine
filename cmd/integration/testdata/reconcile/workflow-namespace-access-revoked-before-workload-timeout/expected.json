@@ -1,0 +1,104 @@
+{
+  "Workflow/wf-revoked-workload-timeout": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "wf-revoked-workload-timeout",
+      "namespace": "access-revoked-workload-timeout",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "NamespaceAccess",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NamespacePermissionsMissing",
+          "message": "ServiceAccount nvcre/nvcre-manager cannot create configmaps, get configmaps, update configmaps, get pods/log, create trainjobs.trainer.kubeflow.org, delete trainjobs.trainer.kubeflow.org in namespace \"access-revoked-workload-timeout\". Bind ClusterRole nvcre-run-role to it there with RoleBinding nvcre-manager-run: nvcrectl rbac print --namespace access-revoked-workload-timeout | kubectl apply -f -"
+        },
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NamespacePermissionsMissing",
+          "message": "Waited longer than the namespace access timeout (2s) for write access. ServiceAccount nvcre/nvcre-manager cannot create configmaps, get configmaps, update configmaps, get pods/log, create trainjobs.trainer.kubeflow.org, delete trainjobs.trainer.kubeflow.org in namespace \"access-revoked-workload-timeout\". Apply this RoleBinding, then run again:\napiVersion: rbac.authorization.k8s.io/v1\nkind: RoleBinding\nmetadata:\n  name: nvcre-manager-run\n  namespace: access-revoked-workload-timeout\nroleRef:\n  apiGroup: rbac.authorization.k8s.io\n  kind: ClusterRole\n  name: nvcre-run-role\nsubjects:\n- kind: ServiceAccount\n  name: nvcre-manager\n  namespace: nvcre\n"
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 1,
+        "nodesPerJob": 1,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "gpu-node-01"
+            ],
+            "phase": "Running",
+            "jobRef": {
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "wf-revoked-workload-timeout-job",
+              "namespace": "access-revoked-workload-timeout"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

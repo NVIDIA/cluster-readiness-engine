@@ -30,6 +30,9 @@ const (
 	helmFlagNamespace = "--namespace"
 	helmFlagVersion   = "--version"
 	helmFlagSet       = "--set"
+	helmFlagSetJSON   = "--set-json"
+	helmFlagOutput    = "-o"
+	helmSubcommandGet = "get"
 	helmFlagWait      = "--wait"
 	helmFlagTimeout   = "--timeout"
 )
@@ -114,7 +117,9 @@ type helmInstallParams struct {
 	// chartRef is the NVCRE chart location; empty means helmChartOCI.
 	chartRef       string
 	pullSecretName string
-	out            io.Writer
+	// rbacScope is --rbac-scope; empty keeps the installed release's value.
+	rbacScope string
+	out       io.Writer
 }
 
 // installHelmRelease installs or upgrades NVCRE via the helm CLI, after
@@ -161,8 +166,14 @@ func installHelmRelease(p helmInstallParams) (string, error) {
 		return "", err
 	}
 
+	rbacArgs, err := releaseRBACArgs(helmPath, p.kubeconfig, p.kubeContext, p.rbacScope, p.out)
+	if err != nil {
+		return "", err
+	}
+
 	imageName, imageTag := parseImage(p.image)
 	args := nvcreHelmUpgradeArgs(p.chartRef, chartVersion, imageName, imageTag, p.pullSecretName)
+	args = append(args, rbacArgs...)
 	args = appendKubeconfigArgs(args, p.kubeconfig, p.kubeContext)
 
 	_, _ = fmt.Fprintf(p.out,
@@ -349,7 +360,7 @@ func helmReleaseState(helmPath, release, namespace, kubeconfig, kubeContext stri
 func helmReleaseStateAndVersion(
 	helmPath, release, namespace, kubeconfig, kubeContext string,
 ) (string, string, error) {
-	args := []string{"status", release, helmFlagNamespace, namespace, "-o", "json"}
+	args := []string{"status", release, helmFlagNamespace, namespace, helmFlagOutput, outputJSON}
 	args = appendKubeconfigArgs(args, kubeconfig, kubeContext)
 
 	var stdout, stderr bytes.Buffer
@@ -387,7 +398,7 @@ func helmReleaseStateAndVersion(
 // returns the installed chart version, or "" when it cannot be determined.
 // Used only when `helm status` stripped the chart metadata from its payload.
 func helmReleaseMetadataVersion(helmPath, release, namespace, kubeconfig, kubeContext string) string {
-	args := []string{"get", "metadata", release, helmFlagNamespace, namespace, "-o", "json"}
+	args := []string{helmSubcommandGet, "metadata", release, helmFlagNamespace, namespace, helmFlagOutput, outputJSON}
 	args = appendKubeconfigArgs(args, kubeconfig, kubeContext)
 
 	var stdout bytes.Buffer

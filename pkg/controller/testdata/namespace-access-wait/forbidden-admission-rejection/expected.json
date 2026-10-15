@@ -1,0 +1,16 @@
+{
+  "conditions": [
+    {
+      "type": "InProgress",
+      "status": "True",
+      "reason": "GroupsPartitioned",
+      "message": "already running"
+    }
+  ],
+  "events": [],
+  "requeueAfter": "0s",
+  "reviewsAskFresh": [
+    true
+  ],
+  "stop": false
+}

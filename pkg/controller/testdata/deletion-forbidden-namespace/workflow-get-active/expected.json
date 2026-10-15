@@ -1,0 +1,5 @@
+{
+  "requeueAfter": "0s",
+  "error": "children \"child\" is forbidden: injected: no RoleBinding in this namespace",
+  "finalizerStillHeld": true
+}

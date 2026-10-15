@@ -744,7 +744,7 @@ func runWorkloadRunRenderDryRun(
 // --- run ---
 
 func newWorkloadRunRunCommand() *cobra.Command {
-	var doWait, doSetup, doCleanup bool
+	var doWait, doSetup, doCleanup, grantRunAccess bool
 	var controllerPullSecret string
 	var workloadRegistry, workloadRegistryUsername, workloadRegistryPassword string
 	var controllerImage string
@@ -782,7 +782,7 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 			}
 			return runWorkloadRunExecute(args[0], *configFlags.Namespace,
 				workloadRegistry, workloadRegistryUsername, workloadRegistryPassword,
-				controllerImage, controllerPullSecret, doWait, doSetup, doCleanup, timeout,
+				controllerImage, controllerPullSecret, doWait, doSetup, doCleanup, grantRunAccess, timeout,
 				resultsFile, configFlags,
 				nameOverride, nodeList, topologyDomain, topologyKey, testScale)
 		},
@@ -792,6 +792,9 @@ number of nodes is less than spec.numNodes, numNodes is automatically clamped.`,
 	cmd.Flags().BoolVar(&doSetup, "setup", false, "Install CRDs, controller, LogProfiles before creating")
 	cmd.Flags().BoolVar(&doCleanup, "cleanup", false,
 		"Delete the WorkloadRun, the namespace (when created by this run), and installed components after completion")
+	cmd.Flags().BoolVar(&grantRunAccess, "grant-run-access", false,
+		"With the chart's rbac.scope: namespaced, create the RoleBinding that grants the controller write access "+
+			"in a namespace that already existed, such as default (namespaces this run creates are granted automatically)")
 	cmd.Flags().StringVar(&controllerPullSecret, "controller-pull-secret", "",
 		"Token for controller registry authentication during --setup (e.g. GitHub PAT for ghcr.io) — separate from workload image credentials")
 	cmd.Flags().StringVar(&workloadRegistry, "workload-registry", "",
@@ -833,6 +836,7 @@ type wrRunConfig struct {
 	doWait                   bool   // --wait: watch + report
 	doSetup                  bool   // --setup: runInit before create
 	doCleanup                bool   // --cleanup: delete run/ns + runReset after
+	grantRunAccess           bool   // --grant-run-access: bind the controller in a namespace that already existed
 	timeout                  time.Duration
 	resultsFile              string // --results-file: path to write JSON report
 	configFlags              *kubeconfig.ConfigFlags
@@ -845,7 +849,7 @@ type wrRunConfig struct {
 
 func runWorkloadRunExecute(
 	file, namespace, workloadRegistry, workloadRegistryUsername, workloadRegistryPassword, controllerImage, controllerPullSecret string,
-	doWait, doSetup, doCleanup bool, timeout time.Duration,
+	doWait, doSetup, doCleanup, grantRunAccess bool, timeout time.Duration,
 	resultsFile string, configFlags *kubeconfig.ConfigFlags,
 	nameOverride, nodeList, topologyDomain,
 	topologyKey, testScale string,
@@ -879,6 +883,7 @@ func runWorkloadRunExecute(
 		doWait:                   doWait,
 		doSetup:                  doSetup,
 		doCleanup:                doCleanup,
+		grantRunAccess:           grantRunAccess,
 		timeout:                  timeout,
 		resultsFile:              resultsFile,
 		configFlags:              configFlags,
@@ -914,10 +919,14 @@ func executeWorkloadRunRun(cfg *wrRunConfig) error {
 	// certification run --cleanup semantics.
 	runCreated := false
 	createdNamespace := ""
+	// createdRunBinding is a RoleBinding this run created in a namespace it
+	// did not create. Deleting the namespace cannot remove it, so cleanup
+	// does, once the WorkloadRun is gone.
+	createdRunBinding := false
 
 	if cfg.doCleanup {
 		defer func() {
-			runWorkloadRunCleanup(wc, cfg, runCreated, createdNamespace)
+			runWorkloadRunCleanup(wc, cfg, runCreated, createdNamespace, createdRunBinding)
 		}()
 	}
 
@@ -925,7 +934,7 @@ func executeWorkloadRunRun(cfg *wrRunConfig) error {
 	if cfg.doSetup {
 		_, _ = fmt.Fprintln(out, "Installing NVCRE components...")
 		if initErr := setup.RunInit("", cfg.controllerImage, cfg.controllerPullSecret, "",
-			true, cfg.configFlags, "", "", "", os.Stdin, out); initErr != nil {
+			true, cfg.configFlags, "", "", "", "", os.Stdin, out); initErr != nil {
 			return fmt.Errorf("setup: %w", initErr)
 		}
 		_, _ = fmt.Fprintln(out, "Setup complete.")
@@ -1012,6 +1021,20 @@ func executeWorkloadRunRun(cfg *wrRunConfig) error {
 		}
 	}
 
+	// Grant the controller write access in the namespace (ADR-092). This is
+	// the last step before the run object is created, so a failure anywhere
+	// earlier (pull secret, node discovery) leaves no standing grant behind,
+	// and the only later failure, the create, rolls it back below.
+	bindingCreated, err := setup.EnsureRunBinding(ctx, wc, run.Namespace,
+		setup.RunBindingOptions{NamespaceCreated: wasNamespaceCreated, Grant: cfg.grantRunAccess}, out)
+	if err != nil {
+		if wasCreatedByUs {
+			_ = wc.Delete(ctx, &corev1.Secret{Name: setup.WorkloadPullSecretName(run.Name), Namespace: run.Namespace})
+		}
+		return err
+	}
+	createdRunBinding = bindingCreated && !wasNamespaceCreated
+
 	// Create WorkloadRun.
 	if err := wc.Create(ctx, run); err != nil {
 		// Only delete the secret on rollback if we actually created it —
@@ -1020,6 +1043,20 @@ func executeWorkloadRunRun(cfg *wrRunConfig) error {
 			pullSec := &corev1.Secret{
 				Name: setup.WorkloadPullSecretName(run.Name), Namespace: run.Namespace}
 			_ = wc.Delete(ctx, pullSec)
+		}
+		// Nothing was submitted, so a binding this run added to an existing
+		// namespace has nothing to serve and must not stay as a standing grant,
+		// unless another run uses or adopted it in the meantime. ReleaseRunBinding
+		// keeps it then, like cleanup does, and this run no longer owns it.
+		// It gets its own context: an interrupt cancels ctx, which is often why
+		// the create failed. If the release could not complete, this run keeps
+		// ownership so --cleanup tries again.
+		if createdRunBinding {
+			releaseCtx, releaseCancel := context.WithTimeout(context.Background(), setup.RunBindingRollbackTimeout)
+			if _, retry := setup.ReleaseRunBinding(releaseCtx, wc, run.Namespace, true, "WorkloadRun", out); !retry {
+				createdRunBinding = false
+			}
+			releaseCancel()
 		}
 		return fmt.Errorf("create WorkloadRun: %w", err)
 	}
@@ -1154,7 +1191,7 @@ const postTimeoutReportTimeout = 30 * time.Second
 // run created it) and wait for the cascade, delete the namespace (only when
 // this run created it), then reset installed components when --setup was
 // given. Failures are reported as warnings; cleanup never aborts.
-func runWorkloadRunCleanup(wc client.Client, cfg *wrRunConfig, runCreated bool, createdNamespace string) {
+func runWorkloadRunCleanup(wc client.Client, cfg *wrRunConfig, runCreated bool, createdNamespace string, createdRunBinding bool) {
 	out := cfg.out
 	run := cfg.run
 
@@ -1169,13 +1206,22 @@ func runWorkloadRunCleanup(wc client.Client, cfg *wrRunConfig, runCreated bool, 
 	// Workflow, whose finalizer deletes Jobs, workloads, and dependencies.
 	// The controller needs its RBAC and Deployment to process that cascade,
 	// so we MUST wait for it to complete before running reset.
+	runGone := !runCreated
 	if runCreated {
 		_, _ = fmt.Fprintln(out, "[cleanup] Deleting WorkloadRun...")
 		if err := wc.Delete(cleanupCtx, run); err != nil && !apierrors.IsNotFound(err) {
 			_, _ = fmt.Fprintf(out, "[cleanup] Warning: failed to delete WorkloadRun: %v\n", err)
 			warnings = true
 		} else {
-			waitForWorkloadRunDeletion(cleanupCtx, wc, run.Name, run.Namespace, out)
+			runGone = waitForWorkloadRunDeletion(cleanupCtx, wc, run.Name, run.Namespace, out)
+		}
+	}
+
+	// The Workflow's finalizer writes in the namespace until the cascade is
+	// done, so the binding goes only after it.
+	if createdRunBinding {
+		if warned, _ := setup.ReleaseRunBinding(cleanupCtx, wc, run.Namespace, runGone, "WorkloadRun", out); warned {
+			warnings = true
 		}
 	}
 
@@ -1240,7 +1286,8 @@ func setPullSecretOwnerReference(ctx context.Context, wc client.Client, run *nvc
 var wrDeletionPollInterval = 2 * time.Second
 
 // waitForWorkloadRunDeletion waits for a deleted WorkloadRun and its child
-// Workflow (same name, per the WorkloadRun controller) to be fully gone.
+// Workflow (same name, per the WorkloadRun controller) to be fully gone, and
+// reports whether they are.
 // The WorkloadRun itself has no finalizer, so it disappears quickly; the
 // cascade that matters is the owned Workflow, whose finalizer deletes Jobs,
 // workloads, and dependency resources. The timeout is generous because the
@@ -1251,7 +1298,7 @@ var wrDeletionPollInterval = 2 * time.Second
 // flight creates the Workflow after both Gets observed NotFound. The residual
 // risk is sub-second against the poll interval and only matters when
 // --setup --cleanup resets the controller immediately afterwards.
-func waitForWorkloadRunDeletion(ctx context.Context, c client.Client, name, namespace string, out io.Writer) {
+func waitForWorkloadRunDeletion(ctx context.Context, c client.Client, name, namespace string, out io.Writer) bool {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
@@ -1262,7 +1309,7 @@ func waitForWorkloadRunDeletion(ctx context.Context, c client.Client, name, name
 		select {
 		case <-ctx.Done():
 			_, _ = fmt.Fprintln(out, "[cleanup] Timed out waiting for deletion.")
-			return
+			return false
 		case <-ticker.C:
 			run := &nvcrev1alpha1.WorkloadRun{}
 			if err := c.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, run); err == nil || !apierrors.IsNotFound(err) {
@@ -1270,7 +1317,7 @@ func waitForWorkloadRunDeletion(ctx context.Context, c client.Client, name, name
 			}
 			workflow := &nvcrev1alpha1.Workflow{}
 			if err := c.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, workflow); apierrors.IsNotFound(err) {
-				return // fully cascaded
+				return true // fully cascaded
 			}
 		}
 	}

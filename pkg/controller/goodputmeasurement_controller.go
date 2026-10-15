@@ -84,6 +84,9 @@ func (r *GoodputMeasurementReconciler) getLogFetcher() podlogs.PodLogFetcher {
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs,verbs=get;list;watch
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=logprofiles,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+//
+// Pod logs are read only in run namespaces, so the grant is in nvcre-run-role
+// rather than cluster-wide (ADR-092).
 // +kubebuilder:rbac:groups="",resources=pods/log,verbs=get
 
 // Reconcile is part of the main kubernetes reconciliation loop.
