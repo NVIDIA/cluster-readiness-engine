@@ -1817,6 +1817,12 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 	// up to the Workflow condition (ADR-083).
 	blockedMsg := ""
 	var accessWriteErr error
+	// A group retried or finished this pass deletes its job-scoped
+	// dependencies and drops their refs in memory. The tail write carries
+	// those removals, as it carries the groups: launching skips creating a
+	// group's dependencies while refs for it remain, so a stale ref would
+	// relaunch the group against objects that no longer exist.
+	refsBefore := slices.Clone(workflow.Status.DependencyRefs)
 
 	for i := range orch.Groups {
 		g := &orch.Groups[i]
@@ -1908,7 +1914,8 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		// ConfigMap they name survives. A denied write never sets a ref.
 		if err := r.setWorkflowInProgress(ctx, statusTarget, reason, msg, applyGroups,
 			applySucceededNodesRef(workflow.Status.SucceededNodesRef),
-			applyFailedNodesRef(workflow.Status.FailedNodesRef)); err != nil {
+			applyFailedNodesRef(workflow.Status.FailedNodesRef),
+			removeDependencyRefs(droppedDependencyRefs(refsBefore, workflow.Status.DependencyRefs))); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -3369,6 +3376,48 @@ func applyOrchestration(orch *nvcrev1alpha1.OrchestrationStatus) func(*nvcrev1al
 	want := orch.DeepCopy()
 	return func(w *nvcrev1alpha1.Workflow) bool {
 		w.Status.Orchestration = want.DeepCopy()
+		return true
+	}
+}
+
+// droppedDependencyRefs returns the refs in before that after no longer holds.
+func droppedDependencyRefs(before, after []nvcrev1alpha1.DependencyResourceRef) []nvcrev1alpha1.DependencyResourceRef {
+	kept := make(map[string]bool, len(after))
+	for _, ref := range after {
+		kept[scopedDependencyRefKey(ref)] = true
+	}
+	var dropped []nvcrev1alpha1.DependencyResourceRef
+	for _, ref := range before {
+		if !kept[scopedDependencyRefKey(ref)] {
+			dropped = append(dropped, ref)
+		}
+	}
+	return dropped
+}
+
+// removeDependencyRefs returns an extra func that removes the given
+// dependency refs inside the updateStatusWithRetry closure, the counterpart of
+// applyDependencyRefs for refs whose objects this pass deleted. Without it the
+// removal is lost when the write starts from a refetched or reloaded object.
+func removeDependencyRefs(refs []nvcrev1alpha1.DependencyResourceRef) func(*nvcrev1alpha1.Workflow) bool {
+	if len(refs) == 0 {
+		return nil
+	}
+	drop := make(map[string]bool, len(refs))
+	for _, ref := range refs {
+		drop[scopedDependencyRefKey(ref)] = true
+	}
+	return func(w *nvcrev1alpha1.Workflow) bool {
+		kept := w.Status.DependencyRefs[:0:0]
+		for _, ref := range w.Status.DependencyRefs {
+			if !drop[scopedDependencyRefKey(ref)] {
+				kept = append(kept, ref)
+			}
+		}
+		if len(kept) == len(w.Status.DependencyRefs) {
+			return false
+		}
+		w.Status.DependencyRefs = kept
 		return true
 	}
 }

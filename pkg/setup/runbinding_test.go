@@ -399,7 +399,9 @@ func TestEnsureRunBindingAdoptionRace(t *testing.T) {
 
 // TestReleaseRunBinding pins when cleanup deletes the binding a run created:
 // only when the run is gone, no other run is in the namespace, no other run
-// adopted it recently, and it is unchanged since cleanup read it.
+// adopted it recently, and it is unchanged since cleanup read it. It also pins
+// when the run keeps ownership for a later retry: only when the release could
+// not complete, never when another run uses or adopted the binding.
 func TestReleaseRunBinding(t *testing.T) {
 	ctx := context.Background()
 	conflict := apierrors.NewConflict(schema.GroupResource{Group: rbacv1.GroupName, Resource: "rolebindings"},
@@ -410,19 +412,22 @@ func TestReleaseRunBinding(t *testing.T) {
 		runGone     bool
 		deleteErr   error
 		wantWarn    bool
+		wantRetry   bool
 		wantDeleted bool
 		wantOut     string
 	}{
 		{name: "deleted when nothing else uses it", binding: nvcrectlBinding(time.Time{}), runGone: true,
 			wantDeleted: true, wantOut: "Deleting RoleBinding"},
 		{name: "kept while the run is not gone", binding: nvcrectlBinding(time.Time{}),
-			wantWarn: true, wantOut: "is not gone yet"},
+			wantWarn: true, wantRetry: true, wantOut: "is not gone yet"},
 		{name: "kept with a warning after a recent adoption", binding: nvcrectlBinding(time.Now().Add(-10 * time.Second)),
 			runGone: true, wantWarn: true, wantOut: "another nvcrectl run adopted it"},
 		{name: "deleted once the adoption lease ran out", binding: nvcrectlBinding(time.Now().Add(-runBindingAdoptionLease - time.Minute)),
 			runGone: true, wantDeleted: true},
 		{name: "kept when an adoption lands during cleanup", binding: nvcrectlBinding(time.Time{}), runGone: true,
 			deleteErr: conflict, wantOut: "adopted it during cleanup"},
+		{name: "kept for a retry when the delete fails", binding: nvcrectlBinding(time.Time{}), runGone: true,
+			deleteErr: errors.New("connection refused"), wantWarn: true, wantRetry: true, wantOut: "Warning: delete RoleBinding"},
 		{name: "already gone", runGone: true, wantDeleted: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -439,7 +444,9 @@ func TestReleaseRunBinding(t *testing.T) {
 				},
 			}).Build()
 			var out bytes.Buffer
-			require.Equal(t, tc.wantWarn, ReleaseRunBinding(ctx, c, runNS, tc.runGone, "WorkloadRun", &out))
+			warned, retry := ReleaseRunBinding(ctx, c, runNS, tc.runGone, "WorkloadRun", &out)
+			require.Equal(t, tc.wantWarn, warned)
+			require.Equal(t, tc.wantRetry, retry)
 			require.Contains(t, out.String(), tc.wantOut)
 			err := c.Get(ctx, client.ObjectKey{Namespace: runNS, Name: rbac.RunBindingName}, &rbacv1.RoleBinding{})
 			require.Equal(t, tc.wantDeleted, apierrors.IsNotFound(err), "binding state: %v", err)

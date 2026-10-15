@@ -1,0 +1,8 @@
+# Each group has a job-scoped dependency. Group a's retry deletes its own and
+# drops its ref before group b's node-result write is denied. The wait must
+# persist that removal with a's retry: launching skips creating a group's
+# dependencies while refs for it remain, so a stale ref would relaunch a
+# against an object that no longer exists. Once access returns, b's retry
+# drops b's ref too.
+recover: true
+jobScopedDependencies: true

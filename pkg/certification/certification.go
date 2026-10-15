@@ -1256,14 +1256,14 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 		}
 		// Nothing was submitted, so a binding this run added to an existing
 		// namespace has nothing to serve and must not stay as a standing grant,
-		// unless another run adopted it in the meantime. ReleaseRunBinding
+		// unless another run uses or adopted it in the meantime. ReleaseRunBinding
 		// keeps it then, like cleanup does, and this run no longer owns it.
 		// It gets its own context: an interrupt cancels ctx, which is often why
 		// the create failed. If the release could not complete, this run keeps
 		// ownership so --cleanup tries again.
 		if createdRunBinding {
 			releaseCtx, releaseCancel := context.WithTimeout(context.Background(), setup.RunBindingRollbackTimeout)
-			if !setup.ReleaseRunBinding(releaseCtx, wc, cfg.namespace, true, "certification", out) {
+			if _, retry := setup.ReleaseRunBinding(releaseCtx, wc, cfg.namespace, true, "certification", out); !retry {
 				createdRunBinding = false
 			}
 			releaseCancel()
@@ -1679,8 +1679,10 @@ func runCertificationCleanup(wc client.Client, cfg *certRunConfig, certCreated b
 
 	// The controller's finalizers write in the namespace until the
 	// Certification is gone, so the binding goes only after it.
-	if createdRunBinding && setup.ReleaseRunBinding(cleanupCtx, wc, cfg.namespace, certGone, "certification", out) {
-		warnings = true
+	if createdRunBinding {
+		if warned, _ := setup.ReleaseRunBinding(cleanupCtx, wc, cfg.namespace, certGone, "certification", out); warned {
+			warnings = true
+		}
 	}
 
 	// Note: the workload pull secret is owned by the Certification and

@@ -184,8 +184,10 @@ func DeleteRunBinding(ctx context.Context, c client.Client, namespace string, ou
 }
 
 // ReleaseRunBinding deletes, during cleanup, a RoleBinding EnsureRunBinding
-// created in a namespace the run did not create, and reports whether it
-// printed a warning. runGone says whether the run object (runKind) is fully
+// created in a namespace the run did not create. It reports whether it
+// printed a warning, and whether the run should keep owning the binding
+// because the release could not complete, so a later --cleanup tries again.
+// runGone says whether the run object (runKind) is fully
 // deleted: until it is, its finalizers write in the namespace and need the
 // binding, so it is kept with a warning instead. It is also kept while any
 // other run is still in the namespace: a later run adopts the binding rather
@@ -193,13 +195,16 @@ func DeleteRunBinding(ctx context.Context, c client.Client, namespace string, ou
 // mid-run or in its finalizers. If the other runs cannot be listed, it is kept
 // too, as is one another run adopted within the adoption lease, with a
 // warning: the adopter does not release it, so if its run never comes the
-// binding is left for the user to delete.
-func ReleaseRunBinding(ctx context.Context, c client.Client, namespace string, runGone bool, runKind string, out io.Writer) bool {
+// binding is left for the user to delete. Once another run uses or adopted the
+// binding, retrying is pointless and the caller gives up ownership.
+func ReleaseRunBinding(
+	ctx context.Context, c client.Client, namespace string, runGone bool, runKind string, out io.Writer,
+) (warned, retry bool) {
 	if !runGone {
 		_, _ = fmt.Fprintf(out, "[cleanup] Warning: keeping RoleBinding %s/%s because the %s is not gone yet; "+
 			"the controller still needs it there. Delete the binding once the %s is deleted.\n",
 			namespace, rbac.RunBindingName, runKind, runKind)
-		return true
+		return true, true
 	}
 	// Read the binding before listing runs. Its resourceVersion is the
 	// precondition for the delete below, so an adoption landing after this
@@ -207,11 +212,11 @@ func ReleaseRunBinding(ctx context.Context, c client.Client, namespace string, r
 	binding := &rbacv1.RoleBinding{}
 	switch err := c.Get(ctx, client.ObjectKey{Namespace: namespace, Name: rbac.RunBindingName}, binding); {
 	case apierrors.IsNotFound(err):
-		return false
+		return false, false
 	case err != nil:
 		_, _ = fmt.Fprintf(out, "[cleanup] Warning: keeping RoleBinding %s/%s because it could not be read: %v\n",
 			namespace, rbac.RunBindingName, err)
-		return true
+		return true, true
 	}
 	// An adoption before this read is not a run object yet: the adopter is
 	// between EnsureRunBinding and its create. The mark covers that window.
@@ -220,32 +225,32 @@ func ReleaseRunBinding(ctx context.Context, c client.Client, namespace string, r
 		_, _ = fmt.Fprintf(out, "[cleanup] Warning: keeping RoleBinding %s/%s: another nvcrectl run adopted it at %s "+
 			"and may still be submitting. Delete it once no Certification, WorkloadRun or Workflow is left in the "+
 			"namespace.\n", namespace, rbac.RunBindingName, adoptedAt.Format(time.RFC3339))
-		return true
+		return true, false
 	}
 	others, err := runsInNamespace(ctx, c, namespace)
 	if err != nil {
 		_, _ = fmt.Fprintf(out, "[cleanup] Warning: keeping RoleBinding %s/%s because other runs in the namespace "+
 			"could not be listed: %v. Delete it once no Certification, WorkloadRun or Workflow is left there.\n",
 			namespace, rbac.RunBindingName, err)
-		return true
+		return true, true
 	}
 	if len(others) > 0 {
 		_, _ = fmt.Fprintf(out, "[cleanup] Keeping RoleBinding %s/%s, still used by %s. Delete it once those are gone.\n",
 			namespace, rbac.RunBindingName, strings.Join(others, ", "))
-		return false
+		return false, false
 	}
 	_, _ = fmt.Fprintf(out, "[cleanup] Deleting RoleBinding %s/%s...\n", namespace, rbac.RunBindingName)
 	err = c.Delete(ctx, binding, client.Preconditions{UID: &binding.UID, ResourceVersion: &binding.ResourceVersion})
 	switch {
 	case err == nil, apierrors.IsNotFound(err):
-		return false
+		return false, false
 	case apierrors.IsConflict(err):
 		_, _ = fmt.Fprintf(out, "[cleanup] Keeping RoleBinding %s/%s: another run adopted it during cleanup.\n",
 			namespace, rbac.RunBindingName)
-		return false
+		return false, false
 	}
 	_, _ = fmt.Fprintf(out, "[cleanup] Warning: delete RoleBinding %s/%s: %v\n", namespace, rbac.RunBindingName, err)
-	return true
+	return true, true
 }
 
 // runsInNamespace lists the NVCRE objects in namespace that may still need the

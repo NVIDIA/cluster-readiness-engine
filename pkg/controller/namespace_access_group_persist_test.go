@@ -38,6 +38,10 @@ func TestNamespaceAccessPreservesEarlierGroupRetry(t *testing.T) {
 			// the Workflow at it, and the second group's update of the same
 			// ConfigMap is the one forbidden.
 			FirstRecordsFailedNodes bool `json:"firstRecordsFailedNodes"`
+			// JobScopedDependencies gives each group a job-scoped dependency.
+			// The first group's retry deletes its own, and the removal of its
+			// ref must be persisted with the retry.
+			JobScopedDependencies bool `json:"jobScopedDependencies"`
 		}
 		if err := yaml.UnmarshalStrict([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -56,8 +60,20 @@ func TestNamespaceAccessPreservesEarlierGroupRetry(t *testing.T) {
 		if input.FirstRecordsFailedNodes {
 			first.Status.FailedNodes = []nvcrev1alpha1.FailedNode{{Name: "node-a", Reason: "WorkloadFailed"}}
 		}
+		objects := []client.Object{workflow, first, second}
+		if input.JobScopedDependencies {
+			for _, group := range []string{"a", "b"} {
+				dep := &corev1.ConfigMap{Name: "dep-" + group, Namespace: testNS,
+					Labels: map[string]string{labelWorkflowTracking: testWorkflowName}}
+				objects = append(objects, dep)
+				workflow.Status.DependencyRefs = append(workflow.Status.DependencyRefs, nvcrev1alpha1.DependencyResourceRef{
+					APIVersion: "v1", Kind: kindConfigMap, Name: dep.Name, Namespace: testNS,
+					Scope: scopeJob, GroupName: group, Iteration: 1,
+				})
+			}
+		}
 		rejectWrites := true
-		c := fake.NewClientBuilder().WithScheme(newFallbackScheme(t)).WithObjects(workflow, first, second).
+		c := fake.NewClientBuilder().WithScheme(newFallbackScheme(t)).WithObjects(objects...).
 			WithStatusSubresource(workflow, first, second).
 			WithIndex(&corev1.Pod{}, nodemonitor.PodNVCREJobIndexField, func(client.Object) []string { return nil }).
 			WithInterceptorFuncs(interceptor.Funcs{Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
@@ -88,6 +104,11 @@ func TestNamespaceAccessPreservesEarlierGroupRetry(t *testing.T) {
 			return err
 		}
 		output := map[string]any{"waiting": retryGroupView(stored), "firstJobDeleted": apierrors.IsNotFound(c.Get(ctx, client.ObjectKeyFromObject(first), &nvcrev1alpha1.Job{}))}
+		if input.JobScopedDependencies {
+			output["waitingDependencyRefs"] = dependencyRefNames(stored)
+			output["firstDependencyDeleted"] = apierrors.IsNotFound(c.Get(ctx,
+				client.ObjectKey{Namespace: testNS, Name: "dep-a"}, &corev1.ConfigMap{}))
+		}
 		if input.Recover {
 			rejectWrites = false
 			reviewer.denied = nil
@@ -102,6 +123,9 @@ func TestNamespaceAccessPreservesEarlierGroupRetry(t *testing.T) {
 				return err
 			}
 			output["afterRecovery"] = retryGroupView(stored)
+			if input.JobScopedDependencies {
+				output["afterRecoveryDependencyRefs"] = dependencyRefNames(stored)
+			}
 		}
 		data, err := json.MarshalIndent(output, "", "  ")
 		if err != nil {
@@ -110,6 +134,14 @@ func TestNamespaceAccessPreservesEarlierGroupRetry(t *testing.T) {
 		tc.Actual = string(data) + "\n"
 		return nil
 	})
+}
+
+func dependencyRefNames(workflow *nvcrev1alpha1.Workflow) []string {
+	names := make([]string, 0, len(workflow.Status.DependencyRefs))
+	for _, ref := range workflow.Status.DependencyRefs {
+		names = append(names, ref.Name)
+	}
+	return names
 }
 
 func retryGroupView(workflow *nvcrev1alpha1.Workflow) map[string]any {

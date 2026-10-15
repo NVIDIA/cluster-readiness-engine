@@ -1046,14 +1046,14 @@ func executeWorkloadRunRun(cfg *wrRunConfig) error {
 		}
 		// Nothing was submitted, so a binding this run added to an existing
 		// namespace has nothing to serve and must not stay as a standing grant,
-		// unless another run adopted it in the meantime. ReleaseRunBinding
+		// unless another run uses or adopted it in the meantime. ReleaseRunBinding
 		// keeps it then, like cleanup does, and this run no longer owns it.
 		// It gets its own context: an interrupt cancels ctx, which is often why
 		// the create failed. If the release could not complete, this run keeps
 		// ownership so --cleanup tries again.
 		if createdRunBinding {
 			releaseCtx, releaseCancel := context.WithTimeout(context.Background(), setup.RunBindingRollbackTimeout)
-			if !setup.ReleaseRunBinding(releaseCtx, wc, run.Namespace, true, "WorkloadRun", out) {
+			if _, retry := setup.ReleaseRunBinding(releaseCtx, wc, run.Namespace, true, "WorkloadRun", out); !retry {
 				createdRunBinding = false
 			}
 			releaseCancel()
@@ -1219,8 +1219,10 @@ func runWorkloadRunCleanup(wc client.Client, cfg *wrRunConfig, runCreated bool, 
 
 	// The Workflow's finalizer writes in the namespace until the cascade is
 	// done, so the binding goes only after it.
-	if createdRunBinding && setup.ReleaseRunBinding(cleanupCtx, wc, run.Namespace, runGone, "WorkloadRun", out) {
-		warnings = true
+	if createdRunBinding {
+		if warned, _ := setup.ReleaseRunBinding(cleanupCtx, wc, run.Namespace, runGone, "WorkloadRun", out); warned {
+			warnings = true
+		}
 	}
 
 	// Note: the workload pull secret is owned by the WorkloadRun and will be
