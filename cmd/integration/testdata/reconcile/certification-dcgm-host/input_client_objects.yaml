@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# dcgmHost points dcgm-level4 at a DCGM Service outside gpu-operator (issue
+# #428). The spec-level value is a decoy: the per-category value must win, so
+# the Workflow's --host proves both the option merge and the controller's
+# pass-through into the catalog build.
+apiVersion: v1
+kind: Node
+metadata:
+  name: aws-a100-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-A100-SXM4-40GB
+    kubernetes.io/hostname: aws-a100-node-01
+spec:
+  providerID: "aws://us-east-1a/i-0000000000000001"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: aws-a100-dcgm-host
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-40GB
+  dcgmHost: spec-level.example.svc:5555
+  categories:
+    - domain: diagnostics
+      variant: dcgm-level4
+      options:
+        dcgmHost: nvidia-dcgm.gpu-system.svc:5555

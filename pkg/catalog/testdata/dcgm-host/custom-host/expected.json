@@ -1,0 +1,18 @@
+{
+  "trainerArgs": [
+    "diag",
+    "--host",
+    "nvidia-dcgm.gpu-system.svc:5555",
+    "--run",
+    "4",
+    "--json",
+    "--verbose",
+    "-p",
+    "targeted_power.test_duration=1200s",
+    "-p",
+    "targeted_stress.test_duration=1200s",
+    "-p",
+    "nvbandwidth.is_allowed=true"
+  ],
+  "jobTemplatePatchPlatforms": []
+}
