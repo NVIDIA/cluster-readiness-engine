@@ -37,6 +37,8 @@ import (
 
 const (
 	testDomainCommunication   = "communication"
+	testDomainTraining        = "training"
+	testStatusInProgress      = "InProgress"
 	testVariantNCCLAllReduce  = "nccl-all-reduce"
 	testCategoryNCCLAllReduce = testDomainCommunication + "/" + testVariantNCCLAllReduce
 	testCategoryFlag          = "--category"
@@ -564,8 +566,6 @@ func TestProcessWatchEventsContextDoneDuringActiveWatch(t *testing.T) {
 }
 
 func TestProcessWatchEventsKeepsDuplicateCategoryStatusesSeparate(t *testing.T) {
-	const inProgressStatus = "InProgress"
-
 	watcher := watch.NewRaceFreeFake()
 	defer watcher.Stop()
 	heartbeat := time.NewTicker(time.Hour)
@@ -576,8 +576,8 @@ func TestProcessWatchEventsKeepsDuplicateCategoryStatusesSeparate(t *testing.T) 
 	cert := &nvcrev1alpha1.Certification{
 		Status: nvcrev1alpha1.CertificationStatus{
 			CategoryStatuses: []nvcrev1alpha1.CertificationCategoryStatus{
-				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: inProgressStatus},
-				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: inProgressStatus},
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: testStatusInProgress},
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: testStatusInProgress},
 			},
 			Conditions: []metav1.Condition{{
 				Type: nvcrev1alpha1.CertificationSucceeded, Status: metav1.ConditionTrue,
@@ -596,8 +596,8 @@ func TestProcessWatchEventsKeepsDuplicateCategoryStatusesSeparate(t *testing.T) 
 	assert.NoError(t, err)
 	assert.Equal(t, 1, strings.Count(out.String(), "communication/nccl-all-reduce [category 1]: InProgress"))
 	assert.Equal(t, 1, strings.Count(out.String(), "communication/nccl-all-reduce [category 2]: InProgress"))
-	assert.Equal(t, inProgressStatus, lastStatuses[0].status)
-	assert.Equal(t, inProgressStatus, lastStatuses[1].status)
+	assert.Equal(t, testStatusInProgress, lastStatuses[0].status)
+	assert.Equal(t, testStatusInProgress, lastStatuses[1].status)
 }
 
 func TestProcessWatchEventsPrintsOnlyDuplicateCategoryTransitions(t *testing.T) {
@@ -618,8 +618,8 @@ func TestProcessWatchEventsPrintsOnlyDuplicateCategoryTransitions(t *testing.T) 
 		},
 		Status: nvcrev1alpha1.CertificationStatus{
 			CategoryStatuses: []nvcrev1alpha1.CertificationCategoryStatus{
-				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: "InProgress"},
-				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: "InProgress"},
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: testStatusInProgress},
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: testStatusInProgress},
 			},
 		},
 	}
@@ -672,16 +672,16 @@ func TestProcessWatchEventsHeartbeatShowsOnlyInProgressCategoriesInOrder(t *test
 	cert := &nvcrev1alpha1.Certification{
 		Spec: nvcrev1alpha1.CertificationSpec{
 			Categories: []nvcrev1alpha1.CertificateCategory{
-				{Domain: "communication", Variant: "nccl-all-reduce"},
-				{Domain: "communication", Variant: "nccl-all-reduce"},
-				{Domain: "training", Variant: "nemotron5-8b"},
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce},
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce},
+				{Domain: testDomainTraining, Variant: "nemotron5-8b"},
 			},
 		},
 		Status: nvcrev1alpha1.CertificationStatus{
 			CategoryStatuses: []nvcrev1alpha1.CertificationCategoryStatus{
-				{Domain: "communication", Variant: "nccl-all-reduce", Status: "InProgress"},
-				{Domain: "communication", Variant: "nccl-all-reduce", Status: "InProgress"},
-				{Domain: "training", Variant: "nemotron5-8b", Status: "InProgress"},
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: testStatusInProgress},
+				{Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: testStatusInProgress},
+				{Domain: testDomainTraining, Variant: "nemotron5-8b", Status: testStatusInProgress},
 			},
 		},
 	}
@@ -757,7 +757,7 @@ func TestFinishCertificationWaitTimeout(t *testing.T) {
 			},
 			Status: nvcrev1alpha1.CertificationStatus{
 				CategoryStatuses: []nvcrev1alpha1.CertificationCategoryStatus{{
-					Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: "InProgress",
+					Domain: testDomainCommunication, Variant: testVariantNCCLAllReduce, Status: testStatusInProgress,
 				}},
 			},
 		}
