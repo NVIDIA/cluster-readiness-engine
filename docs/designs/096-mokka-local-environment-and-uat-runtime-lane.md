@@ -12,7 +12,7 @@ NVCRE certifies GPU clusters, and until now nobody could run a Certification end
 
 Three consequences follow, and recent history shows each one.
 
-**Fixtures encode our assumptions, so they cannot catch our assumptions being wrong.** The Nscale UAT fixture (`test/uat/testdata/nscale/b200/nodes.yaml`, ResourceSlices from line 83) publishes one device per node with `productName: NVIDIA-B200` and no `type` attribute. NVCRE's own code expects what the real NVIDIA DRA driver writes: a space-separated product name (`pkg/gpu/product.go:29`) and a `type` attribute, which `CountDRAGPUs` filters on (`pkg/controller/gpu_resourceslice_detect.go:131`, `:158`). Against that fixture `nvcrectl cluster info` counts zero GPUs, which is the bug #419 fixed after it was found on a real Nscale cluster. The UAT lane cannot catch it coming back. Several recent PRs say the same thing in other words: #487 records that the reconcile goldens had captured the bug as expected output, and #454 found that hostname pinning in the goldens had masked a missing node selector.
+**Fixtures encode our assumptions, so they cannot catch our assumptions being wrong.** The Nscale UAT fixture (`test/uat/testdata/nscale/b200/nodes.yaml`, ResourceSlices from line 83) publishes one device per node with no `type` attribute, on nodes with no allocatable `nvidia.com/gpu`. That routes `nvcrectl cluster info` to `CountDRAGPUs`, which counts only devices whose `type` is `gpu` (`pkg/controller/gpu_resourceslice_detect.go:156-159`), as the real NVIDIA DRA driver writes them. The architecture-label path still works against the fixture, because it skips only `vfio` devices (`:96-101`). Against that fixture `cluster info` counts zero GPUs, which is the bug #419 fixed after it was found on a real Nscale cluster. The UAT lane cannot catch it coming back. Several recent PRs say the same thing in other words: #487 records that the reconcile goldens had captured the bug as expected output, and #454 found that hostname pinning in the goldens had masked a missing node selector.
 
 **The riskiest external interaction NVCRE has, the ComputeDomain lifecycle on GB200 and GB300, has never been exercised against the real controller off hardware.** Two defects in that area were found on real machines. #235 (`18cf77a4`) deleted the ComputeDomain under live worker pods and every rank died with CUDA error 719; the fix is the drain barrier in `pkg/controller/pod_drain.go`. The requeue at `pkg/controller/workflow_deps.go:689` exists because pods that reference a channel template the ComputeDomain controller has not created yet stay stuck permanently. The stub reproduces neither the timing nor the teardown.
 
@@ -49,7 +49,7 @@ Three consequences follow, and recent history shows each one.
 
 6. **The runtime lane asserts behaviour, not pod specs.** Terminal status and reason, detected platform and architecture, BandwidthMeasurement results and transport, lifecycle ordering (ComputeDomain `Ready` before workers run; ComputeDomain outlives every non-terminal worker pod on failure and deletion paths), and that no ResourceClaims, ResourceClaimTemplates or ComputeDomains remain afterwards. Pod-spec goldens stay with the render lane.
 
-7. **CI runs the lane nightly and on demand, then per PR once it is stable.** On demand means a PR label. Promotion to per-PR is a follow-up decision based on measured wall-clock time and flake rate.
+7. **CI runs the lane nightly and on demand, then per PR once it is stable.** On demand means `workflow_dispatch` by a maintainer, against `main` or a `pull-request/N` branch, which exists only after a maintainer has vetted the PR. The lane adds no `pull_request` trigger and no label gate: it runs on self-hosted `linux-amd64-cpu32` runners, and a label would not keep unvetted fork code off them. Promotion to per-PR means adding the `pull-request/N` push trigger the render lane already uses, decided on measured wall-clock time and flake rate.
 
 8. **No CRD, controller or catalog change.** This ADR adds test infrastructure, make targets, a stub image and a documentation page.
 
@@ -119,7 +119,7 @@ A `docs/how-to-guides/` page, "Run NVCRE locally without GPUs", registered in `d
 
 ### CI
 
-A `uat-mokka` job in `.github/workflows/e2e-uat.yml` running one profile per matrix entry on the existing `linux-amd64-cpu32` runners, nightly and on a PR label. The Mokka image is published for `linux/amd64` and `linux/arm64`; the stub and IMEX-shim images are built in the job.
+A `uat-mokka` job in `.github/workflows/e2e-uat.yml` running one profile per matrix entry on the existing self-hosted `linux-amd64-cpu32` runners, triggered by the nightly `schedule` and by `workflow_dispatch`. It never runs on `pull_request` events, for the same reason `codeql.yml` routes those to `ubuntu-latest`: fork PRs build unvetted code. Later, per-PR runs come from the `pull-request/N` push trigger, which copy-pr-bot creates only for vetted PRs. The Mokka image is published for `linux/amd64` and `linux/arm64`; the stub and IMEX-shim images are built in the job.
 
 ### Testing plan
 
@@ -203,13 +203,14 @@ KWOK nodes run no kubelet, so Mokka's DaemonSet, the device plugin and the DRA d
 
 **Local proof environment:** macOS on arm64; Docker Desktop with 14 CPUs and 7.7 GiB; Kind 0.33 with Kubernetes 1.37 and containerd 2.3.4; Helm 4.3. Both profiles used one control-plane node and two workers.
 
-**The success path does not run the drain barrier, and that is intended.** On success, `pkg/controller/workflow_controller.go:2085` deletes scoped dependencies without the barrier, which guards only the failure, timeout, retry and deletion paths. In the GB200 run the ComputeDomain was deleted in the same second JobSet killed the MPI workers. That is safe because the ranks have exited and the workers run only `sshd`. A torch-based ComputeDomain entry should be checked against the same reasoning when one exists.
+**The success path does not run the drain barrier, and that is intended.** On success, the `default:` arm of `pkg/controller/workflow_controller.go` calls `cleanupScopedDependencies` (`:2131`) without the barrier, which guards only the failure, timeout, retry and deletion paths (compare `:2085-2089`, where the failure branch calls it). In the GB200 run the ComputeDomain was deleted in the same second JobSet killed the MPI workers. That is safe for the MPI entries because the ranks have exited and the workers run only `sshd`. The argument does not carry over to the torch entries, which already use a ComputeDomain: both training entries include `_lib/deps/gb200-compute-domain-and-dra-torch.yaml` for `gpuArchitecture: in: [gb200, gb300]` (`nemotron5-8b.yaml:298`, `nemotron5-56b.yaml:270`) and set `mlPolicy.torch` (`:86`). There the node pods are the ranks and run no `sshd`, so the success path has to be checked separately; it is in the findings below.
 
 **GFD's clique label reflects the profile, not the topology overlay.** GFD is not injected by Mokka's NRI plugin, so it reads the profile default and labelled both GB200 workers `nvidia.com/gpu.clique=00000000-0000-0000-0000-000000000001.0` rather than the overlay's UUID. That is consistent across components and harmless for one-clique tests. Multi-clique topology tests need GFD to see the overlay, or the clique labels set from the overlay.
 
 **Findings to file separately:**
 
 - A launcher that hangs before producing output is not detected until `timeoutPerJob`.
+- The success-path ComputeDomain cleanup for the torch entries (`nemotron5-8b`, `nemotron5-56b` on GB200/GB300). If the group can reach `Succeeded` while any node pod is still running a rank, the ComputeDomain is deleted under it. The runtime lane's `gb200` profile can test this once a training stub exists.
 - Mokka profiles give every node the same GPU UUIDs. NVCRE does not key on UUIDs today; anything that does would be misled. Mokka's control-plane mode may give per-node identity (unverified).
 - Mokka's `h100` profile carries `nvidia.com/gpu.clique`. Whether real HGX H100 nodes do should be checked before H100 topology tests rely on it.
 
