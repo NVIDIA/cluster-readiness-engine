@@ -447,7 +447,7 @@ type CategoryOptions struct {
 
 	// dcgmHost is the DCGM hostengine address the diagnostics/dcgm-level4
 	// category passes to `dcgmi diag --host`, as host[:port] where host is a
-	// DNS name or an IPv4 address (for example
+	// DNS name or an IPv4 address and port is 1-65535 (for example
 	// "nvidia-dcgm.gpu-system.svc:5555"). When unset, the category connects
 	// to the GPU Operator's nvidia-dcgm.gpu-operator.svc:5555 (on Nscale NKS,
 	// nvidia-dcgm-dra.nvidia-platform.svc:5555); when set, it replaces that
@@ -459,7 +459,7 @@ type CategoryOptions struct {
 	// the diagnostics on another node's GPUs. Other categories ignore it.
 	// +optional
 	// +kubebuilder:validation:MaxLength=259
-	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?$`
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?(\.[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$`
 	DCGMHost string `json:"dcgmHost,omitempty"`
 
 	// workloadMetadata sets labels on the workload object each category's Job
