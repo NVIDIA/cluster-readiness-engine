@@ -1,6 +1,6 @@
 # ADR-096: Mokka GPU Simulation for Local Development and a UAT Runtime Lane
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 

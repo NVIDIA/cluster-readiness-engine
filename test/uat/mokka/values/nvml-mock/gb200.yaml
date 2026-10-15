@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# nvml-mock values for the gb200 profile (ADR-096). GPUs are allocated by the
+# device plugin; ComputeDomains by the DRA driver (values/dra-driver.yaml).
+# setup.sh adds a topology overlay that puts the cluster's sgpu workers in one
+# NVLink clique, because the node names depend on the cluster name.
+gpu:
+  profile: gb200
+nodeSelector:
+  mokka.nvidia.com/type: sgpu
+imex:
+  mockChannels:
+    enabled: true

@@ -172,3 +172,152 @@ jobs:
       - name: Cleanup Kind cluster
         if: always()
         run: make cleanup-test-uat
+
+  # UAT runtime lane (ADR-096): real pods on Mokka-simulated GPUs. It runs on
+  # the nightly schedule and on maintainer-dispatched runs only, never on a
+  # push, so it builds only main or a pull-request/N branch a maintainer chose
+  # to run. Per-PR runs come later by dropping the event check below, once
+  # wall-clock time and flake rate are measured.
+  uat-mokka:
+    name: UAT runtime (Mokka, ${{ matrix.profile }})
+    runs-on: linux-amd64-cpu32
+    if: >-
+      github.repository == 'NVIDIA/cluster-readiness-engine' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [h100, gb200, gb300]
+    env:
+      PROFILE: ${{ matrix.profile }}
+      MOKKA_CLUSTER: nvcre-mokka
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          docker system prune -f
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.19.2
+
+      - name: Install UAT tools
+        uses: ./.github/actions/install-uat-tools
+
+      - name: Prep system for Kind
+        run: |
+          sudo systemctl stop apparmor || true
+          sudo systemctl disable apparmor || true
+          sudo modprobe br_netfilter || true
+          sudo sysctl -w net.ipv6.conf.all.forwarding=1
+          sudo sysctl -w net.ipv4.ip_forward=1
+          sudo sysctl -w net.bridge.bridge-nf-call-ip6tables=1
+          sudo sysctl -w net.bridge.bridge-nf-call-iptables=1
+          sudo sysctl -w fs.inotify.max_user_watches=524288
+          sudo sysctl -w fs.inotify.max_user_instances=1024
+          sudo systemctl restart docker
+
+      - name: Bring up the Mokka cluster
+        run: make setup-test-uat-mokka
+
+      - name: Run the UAT runtime lane
+        run: make test-uat-mokka-run
+
+      - name: Export Kind logs
+        if: always()
+        run: |
+          mkdir -p /tmp/kind-logs
+          kind export logs /tmp/kind-logs --name "${MOKKA_CLUSTER}" || true
+
+      - name: Collect debug artifacts
+        if: failure()
+        run: |
+          mkdir -p /tmp/debug-artifacts
+          ctx="kind-${MOKKA_CLUSTER}"
+          kubectl --context "${ctx}" get all,resourceclaims,resourceclaimtemplates,computedomains --all-namespaces > /tmp/debug-artifacts/all-resources.txt 2>&1 || true
+          kubectl --context "${ctx}" get events --all-namespaces --sort-by='.lastTimestamp' > /tmp/debug-artifacts/events.txt || true
+          kubectl --context "${ctx}" describe nodes > /tmp/debug-artifacts/nodes.txt || true
+          kubectl --context "${ctx}" logs -n nvcre -l app.kubernetes.io/name=nvcre --all-containers=true --prefix --tail=1000 > /tmp/debug-artifacts/nvcre-logs.txt || true
+          df -h > /tmp/debug-artifacts/disk-usage.txt || true
+
+      - name: Upload Kind logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: uat-mokka-${{ matrix.profile }}-kind-logs-${{ github.run_id }}
+          path: /tmp/kind-logs/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload debug artifacts
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: uat-mokka-${{ matrix.profile }}-debug-${{ github.run_id }}
+          path: /tmp/debug-artifacts/
+          retention-days: 7
+
+      - name: Cleanup Kind cluster
+        if: always()
+        run: make cleanup-test-uat-mokka
+
+  # The nightly run exists to catch drift no pull request touched, so a red
+  # nightly that only the Actions tab shows defeats it: GitHub emails only the
+  # person who last edited the cron line. Post failed or cancelled scheduled
+  # runs to the team channel, through the same webhook vuln-scan-images.yml
+  # uses. Passing runs stay silent, so the channel only hears what needs
+  # acting on. Push and dispatched runs are watched by whoever started them.
+  notify-failure:
+    name: Report a failed nightly UAT
+    needs: [setup-lifecycle, uat, uat-mokka]
+    if: >-
+      always() && github.repository == 'NVIDIA/cluster-readiness-engine' &&
+      github.event_name == 'schedule' &&
+      (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Notify Slack that the nightly UAT failed
+        env:
+          WEBHOOK: ${{ secrets.SLACK_WEBHOOK_PATH }}
+          SETUP: ${{ needs.setup-lifecycle.result }}
+          RENDER: ${{ needs.uat.result }}
+          RUNTIME: ${{ needs.uat-mokka.result }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${WEBHOOK}" ]]; then
+            echo "::notice::SLACK_WEBHOOK_PATH is not set; skipping the failure notification."
+            exit 0
+          fi
+          url="${WEBHOOK}"
+          [[ "${url}" == https://* ]] || url="https://hooks.slack.com/${WEBHOOK#/}"
+
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          text="$(printf '*NVCRE nightly UAT failed* on main at %s\n\nsetup lifecycle: %s\nrender lane (KWOK): %s\nruntime lane (Mokka): %s\n\n<%s|Full run> (Kind logs and debug artifacts are attached to it)' \
+                   "${GITHUB_SHA:0:8}" "${SETUP}" "${RENDER}" "${RUNTIME}" "${run_url}")"
+
+          # shellcheck disable=SC2016  # $t is a jq variable, not a shell one
+          jq -n --arg t "${text}" '{text: $t}' > payload.json
+          # Retried and time-bounded: a single 429 or 5xx would drop the alert,
+          # and the next chance is a day later.
+          code="$(curl -sS -o resp.txt -w '%{http_code}' -X POST -H 'Content-type: application/json' \
+                    --retry 3 --retry-delay 5 --retry-all-errors --max-time 30 \
+                    --data @payload.json "${url}" || echo 000)"
+          if [[ "${code}" != "200" ]]; then
+            echo "::error::Slack returned ${code}: $(cat resp.txt)"
+            exit 1
+          fi
+          echo "posted the failure notice to Slack"

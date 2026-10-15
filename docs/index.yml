@@ -37,6 +37,8 @@ navigation:
     contents:
       - page: Certify a Cluster
         path: how-to-guides/certify-a-cluster.md
+      - page: Run NVCRE Locally Without GPUs
+        path: how-to-guides/run-locally-without-gpus.md
       - page: Run a WorkloadRun
         path: how-to-guides/run-workloadrun.md
       - page: Run Nemotron 5 Training

@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# One control plane and two simulated GPU workers, shared by every profile.
+# nvml-mock, the device plugin, GFD and the DRA kubelet plugin all select on
+# mokka.nvidia.com/type=sgpu, so nothing GPU-shaped lands on the control plane,
+# which is where the NVCRE manager runs (test/uat/tilt/nvcre-values.yaml).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+  - role: worker
+    labels:
+      mokka.nvidia.com/type: sgpu
+  - role: worker
+    labels:
+      mokka.nvidia.com/type: sgpu

@@ -65,6 +65,18 @@ UAT golden files are in `test/uat/testdata/<csp>/<gpu>/nccl/expected_pods.yaml`.
 
 **Note**: If `tilt-uat-ci` fails with Kubeflow Trainer timeout, retry — it's a race condition on first deploy. The second run typically succeeds since Kubeflow is already running.
 
+### Mokka (simulated GPUs on Kind, ADR-096)
+
+KWOK nodes never run a pod. Mokka simulates NVML on real Kind workers, so the real device plugin, GFD and DRA driver run, and NVCRE's pods actually schedule, bootstrap MPI and log. Workloads use the stub image `nvcre-nccl-stub:<pass|fail|empty|slow>` through `spec.image`, because there is no CUDA.
+
+```bash
+make mokka-up PROFILE=h100        # or b200, gb200, gb300; cluster nvcre-mokka
+make tilt-mokka PROFILE=gb200     # same, with controller hot reload on Tilt port 10351
+make mokka-down
+```
+
+Everything lives in `test/uat/mokka/`; `setup.sh` is the single recipe and pins every version. A cluster holds one profile: `mokka-down` before switching, or set `MOKKA_CLUSTER`. The user guide is `docs/how-to-guides/run-locally-without-gpus.md`.
+
 ## Architecture
 
 Kubebuilder-based Kubernetes controller for GPU cluster burn-in certification. Single binary, six reconcilers.

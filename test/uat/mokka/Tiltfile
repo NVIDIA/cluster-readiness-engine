@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Tiltfile for the Mokka environment (ADR-096).
+#
+# `make tilt-mokka` runs setup.sh's cluster, infra and stub phases first, so
+# the simulated GPUs are already in place. Tilt owns only NVCRE: any change to
+# the controller's sources rebuilds the image, reloads it into Kind and
+# restarts the manager. setup.sh reads PROFILE, MOKKA_CLUSTER and IMG from the
+# environment make passes through.
+#
+# Usage:
+#   make tilt-mokka PROFILE=gb200
+
+local_resource('nvcre',
+    cmd='bash setup.sh nvcre',
+    deps=[
+        '../../../api',
+        '../../../cmd',
+        '../../../pkg',
+        '../../../go.mod',
+        '../../../go.sum',
+        '../../../Dockerfile',
+        '../../../helm/cluster-readiness-engine',
+    ],
+    # Tests and fixtures are not in the image; editing them should not
+    # restart the controller.
+    ignore=['../../../**/*_test.go', '../../../**/testdata'],
+    labels=['nvcre'])

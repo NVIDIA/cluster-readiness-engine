@@ -1,0 +1,9 @@
+#!/bin/bash
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Kind's containerd gives containers an RLIMIT_NOFILE of 1073741816. OpenMPI 4.1
+# closes every descriptor up to that limit when it forks, so an unwrapped
+# mpirun spins at full CPU and never launches a rank. Lower the limit first.
+ulimit -n 1048576
+exec /usr/bin/mpirun "$@"

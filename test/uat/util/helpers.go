@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build uat
+//go:build uat || uat_mokka
 
 // Package util provides shared helpers for UAT tests.
 package util
