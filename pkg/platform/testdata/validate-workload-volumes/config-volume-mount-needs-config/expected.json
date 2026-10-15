@@ -1,0 +1,3 @@
+{
+  "error": "spec.volumeMounts[0].name: \"config-volume\" names the volume spec.config creates, and spec.config is not set; set spec.config or mount another volume"
+}

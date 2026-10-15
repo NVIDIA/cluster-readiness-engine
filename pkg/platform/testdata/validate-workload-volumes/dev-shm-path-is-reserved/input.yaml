@@ -1,0 +1,11 @@
+# A user mount at /dev/shm would sit on top of the built-in dshm mount, which
+# every builder adds first; Kubernetes rejects two mounts at one path only at
+# pod creation, after the Workflow and the Job exist.
+framework: torch
+volumes:
+  - name: bigshm
+    emptyDir:
+      medium: Memory
+volumeMounts:
+  - name: bigshm
+    mountPath: /dev/shm

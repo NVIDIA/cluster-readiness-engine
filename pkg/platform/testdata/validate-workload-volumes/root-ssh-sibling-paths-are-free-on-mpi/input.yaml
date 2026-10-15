@@ -1,0 +1,13 @@
+# The subtree rule compares whole path segments: a path that merely starts
+# with the reserved directory's name is a sibling, not a descendant, and passes.
+framework: mpi
+volumes:
+  - name: extra
+    emptyDir: {}
+  - name: backup
+    emptyDir: {}
+volumeMounts:
+  - name: extra
+    mountPath: /root/.ssh-extra
+  - name: backup
+    mountPath: /tmp/mpi-ssh-raw.bak

@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A WorkloadRun on the mpi framework whose spec.volumes reuses mpi-ssh-auth,
+# the name of the SSH key volume the Kubeflow Trainer MPI plugin upserts on
+# every worker and launcher pod. Left alone, the user's Secret would be
+# silently replaced by the generated SSH keys and their mount would hold
+# those keys. The controller must fail the WorkloadRun with BuildFailed
+# naming the field, before any Workflow exists.
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+    kubernetes.io/hostname: gpu-node-01
+  annotations: {}
+spec:
+  providerID: "aws://us-east-1a/i-0123456789abcdef0"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: wr-mpi-reserved-volume
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200-NVL72
+  image: nvcr.io/nvidia/pytorch:26.01-py3
+  framework:
+    mpi:
+      mpirunPath: /usr/local/mpi/bin/mpirun
+      binary: /usr/local/bin/all_reduce_perf_mpi
+  numNodes: 1
+  volumes:
+    - name: mpi-ssh-auth
+      secret:
+        secretName: my-ssh-keys
+  volumeMounts:
+    - name: mpi-ssh-auth
+      mountPath: /etc/my-ssh-keys

@@ -1,0 +1,11 @@
+# dshm is the built-in memory-backed /dev/shm volume every builder creates, so
+# a user volume of that name is a duplicate on torch as much as on mpi.
+framework: torch
+volumes:
+  - name: dshm
+    emptyDir:
+      medium: Memory
+      sizeLimit: 64Gi
+volumeMounts:
+  - name: dshm
+    mountPath: /shm

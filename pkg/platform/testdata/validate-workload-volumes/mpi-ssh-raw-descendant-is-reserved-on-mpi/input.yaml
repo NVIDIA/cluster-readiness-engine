@@ -1,0 +1,9 @@
+# The same holds below /tmp/mpi-ssh-raw: a mount over one of the Secret's keys
+# hides the file the worker's start-up script copies into /root/.ssh.
+framework: mpi
+volumes:
+  - name: scratch
+    emptyDir: {}
+volumeMounts:
+  - name: scratch
+    mountPath: /tmp/mpi-ssh-raw/id_rsa

@@ -1,0 +1,9 @@
+# Below the token directory on torch, a mount at the token file's own path
+# hides the projected token the TrainJobStatus plugin reads.
+framework: torch
+volumes:
+  - name: scratch
+    emptyDir: {}
+volumeMounts:
+  - name: scratch
+    mountPath: /var/run/secrets/kubeflow/trainer/token

@@ -1,0 +1,13 @@
+# Kubeflow Trainer's TrainJobStatus plugin, when its feature gate is on,
+# upserts a projected service-account token volume named
+# kubeflow-trainer-token by name on the pod whose job carries the "trainer"
+# ancestor label: the node pod on torch (and exec). This Secret would be
+# silently replaced by the token and /etc/token would hold it.
+framework: torch
+volumes:
+  - name: kubeflow-trainer-token
+    secret:
+      secretName: my-token
+volumeMounts:
+  - name: kubeflow-trainer-token
+    mountPath: /etc/token

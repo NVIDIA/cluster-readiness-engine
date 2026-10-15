@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A WorkloadRun on the torch framework whose spec.initContainers entry is
+# named node, the workload container's name on every framework. Kubernetes
+# requires a pod's container names to be unique across its init and regular
+# containers, so left alone the pod would be refused at creation, after the
+# Workflow and the Job exist, with nothing on the WorkloadRun to say why. The
+# controller must fail the WorkloadRun with BuildFailed naming the field,
+# before any Workflow exists.
+apiVersion: v1
+kind: Node
+metadata:
+  name: gpu-node-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+    kubernetes.io/hostname: gpu-node-01
+  annotations: {}
+spec:
+  providerID: "aws://us-east-1a/i-0123456789abcdef0"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: wr-torch-reserved-init-container
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-H100-80GB-HBM3
+  image: nvcr.io/nvidia/pytorch:26.01-py3
+  framework:
+    torch:
+      script: /config/train.sh
+  numNodes: 1
+  config:
+    inline:
+      train.sh: |
+        #!/bin/bash
+        echo "training"
+  initContainers:
+    - name: node
+      image: busybox:1.36
+      command: ["sh", "-c", "echo staging"]

@@ -1,0 +1,17 @@
+# The same input as mpi-worker-gets-init-containers on the torch framework.
+# BuildTorchRuntime always put spec.initContainers on the node pod; the
+# expected file is the reference shape the MPI worker now matches.
+frameworkType: torch
+volumes:
+  - name: scratch
+    emptyDir: {}
+volumeMounts:
+  - name: scratch
+    mountPath: /scratch
+initContainers:
+  - name: prepare
+    image: busybox:1.36
+    command: ["sh", "-c", "true"]
+    volumeMounts:
+      - name: scratch
+        mountPath: /scratch

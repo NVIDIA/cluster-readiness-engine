@@ -1,0 +1,3 @@
+{
+  "error": "spec.volumes[0].name: \"mpi-ssh-auth\" is reserved on the mpi framework: Kubeflow Trainer replaces a volume of that name with its SSH key Secret on every worker and launcher pod; rename the volume"
+}
