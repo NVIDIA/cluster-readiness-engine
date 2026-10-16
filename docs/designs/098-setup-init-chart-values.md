@@ -47,7 +47,9 @@ It does not change:
 
 ## Decision
 
-1. **`setup init` takes chart values for the NVCRE release.** It gains three repeatable flags, `--values`/`-f <file>`, `--set key=value` and `--set-json key=json`. They have Helm's syntax and Helm's precedence: values files apply in the order given, `--set-json` overrides them, and `--set` overrides both. They are passed to Helm as given, so `--set-json` needs Helm 3.10 or later, as it would with Helm directly. They apply to the NVCRE release only, not to Kubeflow Trainer. Giving any of them, or `--reset-values` (decision 2), with `--skip-phases` including `helm` is an error, since the phase that would use them does not run.
+1. **`setup init` takes chart values for the NVCRE release.** It gains three repeatable flags, `--values`/`-f <file>`, `--set key=value` and `--set-json key=json`. They have Helm's syntax and Helm's precedence: values files apply in the order given, `--set-json` overrides them, and `--set` overrides both. They are passed to Helm as given, so `--set-json` needs Helm 3.10 or later, as it would with Helm directly. Two forms Helm accepts for `--values` are limited, because `setup init` runs Helm more than once (Implementation, "Values files are read once"):
+   - `-f -` (stdin) is accepted only with `--auto-approve`.
+   - An `http://` or `https://` URL is rejected; download the file first. They apply to the NVCRE release only, not to Kubeflow Trainer. Giving any of them, or `--reset-values` (decision 2), with `--skip-phases` including `helm` is an error, since the phase that would use them does not run.
 
 2. **`setup init` keeps the values set on the installed release.** This supersedes ADR-092's "every other value returns to its default" contract. Each value is resolved in this order, lowest first:
 
@@ -108,7 +110,15 @@ Decisions 3 to 5 need the operator's values as data. To get them, nvcrectl rende
 
 An operator's `--set-json` needs Helm 3.10 or later. On an older Helm, the probe fails with Helm's own error during preflight, before anything changes.
 
-The probe's output is used only to detect conflicts, to decide the image and to build the pull-secret list. The upgrade receives the operator's original flags unchanged, so Helm's own merge semantics, including `null` removing a chart default, apply exactly as the operator wrote them.
+The probe's output is used only to detect conflicts, to decide the image and to build the pull-secret list. The upgrade receives the operator's `--set` and `--set-json` strings unchanged and a copy of each values file, in the order given, so Helm's own merge semantics, including `null` removing a chart default, apply exactly as the operator wrote them.
+
+### Values files are read once
+
+Helm runs up to three times on one `setup init`: the probe twice, then the upgrade. A values source that can be read only once would reach the first run and leave the later ones with nothing. Examples are stdin (`-f -`), process substitution (`/dev/fd/N`) and a named pipe. A regular file could also change between the probe and the upgrade. So before Helm runs at all, nvcrectl reads each `--values` argument once and writes a copy to the temporary directory, with mode 0600. Every Helm run receives the copies, so the probe and the upgrade see the same bytes.
+
+Two forms Helm accepts are limited, and both are rejected during validation, before anything is read or installed:
+- **`-` (stdin) without `--auto-approve`.** Without `--auto-approve`, stdin is the input for the confirmation prompt (`pkg/setup/setup.go:233`) and for the deps recovery prompt (`:547`). With `--auto-approve`, stdin is read once like any other source.
+- **An `http://` or `https://` URL.** Copying it once would mean nvcrectl fetching it with its own HTTP client, which would not behave like Helm's getters (proxies, TLS, credentials). Passing it through would fetch it up to three times, and the copies could differ. The error says to download the file first.
 
 ### Building the upgrade
 
@@ -116,7 +126,7 @@ The probe's output is used only to detect conflicts, to decide the image and to 
 
 1. The fixed arguments, as today: release, chart, namespace, `--create-namespace`, `--version`, `--wait`, `--timeout`.
 2. `-f <kept values>`, when the installed release has any. This is a temporary file written with mode 0600 and removed when Helm returns. It holds the release's values minus `manager.image`, and with `--reset-values`, only `rbac.scope` and `rbac.runNamespaces`.
-3. The operator's `--values`, `--set-json` and `--set` flags, in the order given.
+3. The operator's flags in the order given: a `-f` per values file, pointing at its copy, then the `--set-json` and `--set` strings unchanged.
 4. nvcrectl's own values:
    - the image values from decision 4, when it sets them
    - `--set manager.imagePullSecrets[<i>].name=…` for each entry of the list from decision 5, when `--image-pull-secret` is given
@@ -155,7 +165,7 @@ An operator's own `--set-json` needs Helm 3.10 or later, as it would with Helm d
 ### Documentation
 
 - **`docs/cli-reference/setup.md`:**
-  - document the new flags
+  - document the new flags, including that `-f -` needs `--auto-approve` and that URLs must be downloaded first
   - add a "Values across runs" section covering decisions 2 to 5
   - replace "Every other chart value returns to its default on each run."
   - state the Helm requirement: 3.8 or later, and 3.10 or later for an operator's own `--set-json`
@@ -182,6 +192,12 @@ An operator's own `--set-json` needs Helm 3.10 or later, as it would with Helm d
   - with `--reset-values`, only `rbac.*` kept
   - an unreadable release (error)
 - **Conflicts:** `--image` with `--set manager.image.tag`, with `-f` setting `manager.image.repository`, and with `--set-json manager={…}` containing an image (all rejected); `--rbac-scope` with `--set rbac.scope` (rejected); `--set rbac.scope` alone (allowed); the value flags or `--reset-values` with `--skip-phases=helm` (rejected).
+- **Values files:**
+  - a source that can be read once (a named pipe), reaching the probe and the upgrade with the same content
+  - `-f -` with `--auto-approve`, given to every Helm run
+  - `-f -` without `--auto-approve` (rejected)
+  - an `https://` URL (rejected)
+  - the copies are written with mode 0600 and removed afterwards
 - **Image:** operator-set (nvcrectl sets nothing), `--image repo:tag`, `--image repo@sha256:…` (sets `digest`, not `tag`), the CLI default, and a digest in the installed release that is not kept.
 - **Pull secrets:**
   - each combination of flag, operator list and kept list, including an operator list that already holds `nvcrectl-pull-secret`
@@ -256,6 +272,10 @@ An operator's own `--set-json` needs Helm 3.10 or later, as it would with Helm d
 ### Detect the Helm version and choose `--set-json` or `--set`
 
 **Rejected.** It would mean a version check and two code paths to test, producing the same list. Writing by index works everywhere.
+
+### Pass values files to Helm as given
+
+**Rejected.** Helm runs more than once on each `setup init`, so stdin, process substitution and named pipes would reach only the first run, and a file edited during the run could differ between the probe and the upgrade.
 
 ### Parse `--set` in Go
 
