@@ -35,15 +35,18 @@ import (
 // and record the retry after, so any of those left the group Running on a
 // Job that was gone, and the next pass failed it with retry budget unused.
 //
-// Each case runs a sequence of passes, each the two steps a Workflow
-// reconcile takes for a running orchestration: observe the Running groups,
-// then launch the Pending ones. The fake client plays the API server, faults
-// are injected on chosen passes, and the golden records what the API server
-// holds after every pass, so it reads as the timeline of one retry.
+// Each case runs a sequence of passes, each one Workflow reconcile
+// (reconcileJob), so a pass takes the branch production would: observe the
+// Running groups while any group runs, launch the Pending ones only once none
+// does. The fake client plays the API server, faults are injected on chosen
+// passes, and the golden records what the API server holds after every pass,
+// so it reads as the timeline of one retry.
 //
 // Group a is the one that fails. Group b, when present, keeps running and is
-// where the later-group error is injected. Group a's job-scoped dependency is
-// a ConfigMap the job template names, so it is copied per group and attempt.
+// where the later-group error is injected; while it runs, group a cannot
+// launch, and its failed attempt must still be retired. Group a's job-scoped
+// dependency is a ConfigMap the job template names, so it is copied per group
+// and attempt.
 func TestDurableGroupRetry(t *testing.T) {
 	p := testutil.TestCaseParser{Subdir: "durable-group-retry", ExpectedSuffix: testutil.SuffixJSON}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
@@ -246,23 +249,14 @@ func TestDurableGroupRetry(t *testing.T) {
 	})
 }
 
-// durableRetryPass runs what one Workflow reconcile does for a running
-// orchestration, each step from a fresh read: observe Running groups, then
-// launch Pending ones. It stops at the first error, as Reconcile does.
+// durableRetryPass runs one Workflow reconcile from a fresh read, through the
+// same dispatch production takes.
 func durableRetryPass(ctx context.Context, r *WorkflowReconciler, key client.ObjectKey) error {
 	wf := &nvcrev1alpha1.Workflow{}
 	if err := r.Get(ctx, key, wf); err != nil {
 		return err
 	}
-	if r.hasRunningGroups(wf.Status.Orchestration) {
-		if _, err := r.updateStatusFromJobs(ctx, wf); err != nil {
-			return err
-		}
-		if err := r.Get(ctx, key, wf); err != nil {
-			return err
-		}
-	}
-	_, err := r.launchPendingGroups(ctx, wf, wf.Status.Orchestration)
+	_, err := r.reconcileJob(ctx, wf)
 	return err
 }
 

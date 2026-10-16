@@ -53,8 +53,8 @@ func findJobBandwidthMeasurement(ctx context.Context, c client.Reader, job *nvcr
 }
 
 // annotationJobUID records the UID of the Job a BandwidthMeasurement was
-// created for. The Job is referenced by name, and a retried group reuses its
-// Job's name.
+// created for. The Job is referenced by name, and a Job can be replaced under
+// its name (see ensureBandwidthMeasurement).
 const annotationJobUID = "nvcre.nvidia.com/job-uid"
 
 // measuresJob reports whether bm was created for this instance of job. A

@@ -1359,23 +1359,16 @@ func (r *WorkflowReconciler) launchPendingGroups(ctx context.Context, workflow *
 	running := countRunningGroups(orch)
 
 	// Retire every retried group's earlier attempts first, whether or not the
-	// group can launch this pass. Retiring takes no concurrency slot, and a
-	// group held back by maxConcurrent or a node overlap would otherwise keep
-	// its failed Job and job-scoped dependencies (a ComputeDomain on its nodes,
-	// say) alive until it got one. A retried group launches only once its
-	// earlier attempts are gone.
+	// group can launch this pass. Retiring takes no concurrency slot, so a
+	// group held back by maxConcurrent or a node overlap with a group launched
+	// earlier in this pass still releases its failed Job and job-scoped
+	// dependencies. (While other groups are running, this function is not
+	// reached; updateStatusFromJobs retires instead.) A retried group launches
+	// only once its earlier attempts are gone.
 	refsAtStart := slices.Clone(workflow.Status.DependencyRefs)
-	retired := make(map[string]bool, len(orch.Groups))
-	for i := range orch.Groups {
-		g := &orch.Groups[i]
-		if g.Phase != nvcrev1alpha1.GroupPending {
-			continue
-		}
-		ready, err := r.retirePreviousAttempts(ctx, workflow, g, orch)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		retired[g.Name] = ready
+	retired, err := r.retirePendingGroups(ctx, workflow, orch)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	launched := false
@@ -1490,18 +1483,10 @@ func (r *WorkflowReconciler) launchPendingGroups(ctx context.Context, workflow *
 		}
 	} else if dropped := droppedDependencyRefs(refsAtStart, workflow.Status.DependencyRefs); len(dropped) > 0 {
 		// Retirement confirmed some copies gone but nothing launched to carry
-		// the refs' removal, as when a retried group waits for a slot. Write it
-		// on its own so status stops naming objects that no longer exist. The
-		// refs are already gone from the in-memory status, so the first attempt
-		// writes it as is; a conflict refetch re-applies the removal.
-		remove, first := removeDependencyRefs(dropped), true
-		if err := updateStatusWithRetry(ctx, r.Client, workflow, func(w *nvcrev1alpha1.Workflow) bool {
-			if first {
-				first = false
-				return true
-			}
-			return remove(w)
-		}); err != nil {
+		// the refs' removal, as when a retried group is still retiring or
+		// waits for a slot. Write it on its own so status stops naming objects
+		// that no longer exist.
+		if err := updateStatusWithRetry(ctx, r.Client, workflow, removeDroppedDependencyRefs(dropped)); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -1850,7 +1835,9 @@ func (r *WorkflowReconciler) failTimedOutJob(
 	return r.completeTerminalGroup(ctx, workflow, orch, g, job, getJobTerminalState(job))
 }
 
-// updateStatusFromJobs checks all running groups and updates their status from their Jobs.
+// updateStatusFromJobs checks all running groups and updates their status from
+// their Jobs. It also retires the earlier attempts of retried groups that are
+// waiting to launch.
 func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow *nvcrev1alpha1.Workflow) (ctrl.Result, error) {
 	orch := r.ensureOrchestrationStatus(workflow)
 
@@ -1880,10 +1867,22 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 	blockedMsg := ""
 	var accessWriteErr error
 	// A group that finished this pass deletes its job-scoped dependencies and
-	// drops their refs in memory. The tail write carries those removals, as it
-	// carries the groups. (A retried group deletes nothing here; its refs stay
-	// until retirePreviousAttempts confirms the copies are gone.)
+	// drops their refs in memory, and retirement below drops the refs of
+	// copies it confirmed gone. The tail write carries those removals, as it
+	// carries the groups. (A group this pass retries deletes nothing; its refs
+	// stay until retirePreviousAttempts confirms the copies are gone.)
 	refsBefore := slices.Clone(workflow.Status.DependencyRefs)
+
+	// A retried group cannot launch while any group is running, and this is
+	// the only branch a reconcile takes until then. Retire its earlier
+	// attempts here, so the failed Job and its job-scoped dependencies (a
+	// ComputeDomain on the group's nodes, say) do not outlive the slowest
+	// sibling. This runs before the groups are observed, so it sees only
+	// groups that were Pending in the status this pass read: their retry is
+	// already written. A group this pass retries is retired on a later pass.
+	if _, err := r.retirePendingGroups(ctx, workflow, orch); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	for i := range orch.Groups {
 		g := &orch.Groups[i]
@@ -1914,7 +1913,8 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		}
 	}
 
-	if statusChanged || (anyRunning && accessWriteErr == nil) {
+	droppedRefs := droppedDependencyRefs(refsBefore, workflow.Status.DependencyRefs)
+	if statusChanged || len(droppedRefs) > 0 || (anyRunning && accessWriteErr == nil) {
 		runningCount := countRunningGroups(orch)
 		msg := fmt.Sprintf("Iteration %d/%d: %d groups running",
 			orch.CurrentIteration, effectiveIterations(workflow.Spec.Orchestration), runningCount)
@@ -1976,7 +1976,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		if err := r.setWorkflowInProgress(ctx, statusTarget, reason, msg, applyGroups,
 			applySucceededNodesRef(workflow.Status.SucceededNodesRef),
 			applyFailedNodesRef(workflow.Status.FailedNodesRef),
-			removeDependencyRefs(droppedDependencyRefs(refsBefore, workflow.Status.DependencyRefs))); err != nil {
+			removeDroppedDependencyRefs(droppedRefs)); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -3497,6 +3497,27 @@ func removeDependencyRefs(refs []nvcrev1alpha1.DependencyResourceRef) func(*nvcr
 	}
 }
 
+// removeDroppedDependencyRefs is removeDependencyRefs for refs already dropped
+// from the status being written. On that object the removal finds nothing left
+// to remove and would report no change, skipping a write whose only purpose is
+// the removal. So the first attempt reports a change; the removal is still
+// applied on every attempt, for a write that starts from a refetched or
+// reloaded object.
+func removeDroppedDependencyRefs(refs []nvcrev1alpha1.DependencyResourceRef) func(*nvcrev1alpha1.Workflow) bool {
+	if len(refs) == 0 {
+		return nil
+	}
+	remove, first := removeDependencyRefs(refs), true
+	return func(w *nvcrev1alpha1.Workflow) bool {
+		changed := remove(w)
+		if first {
+			first = false
+			return true
+		}
+		return changed
+	}
+}
+
 // applyDependencyRefs returns an extra func for setWorkflowFailed that
 // re-applies the given dependency refs inside the updateStatusWithRetry
 // closure. Refs appended to workflow.Status.DependencyRefs in memory (e.g.
@@ -4175,9 +4196,12 @@ func (r *WorkflowReconciler) hasPVCDependency(workflow *nvcrev1alpha1.Workflow, 
 // If an optional pre-built unstructured object is provided, it is used instead of
 // unmarshaling from dep.Raw (used for job-scoped deps with suffixed names).
 // The owner parameter sets an owner reference on the resource for GC cascading.
-// Pass nil to skip owner reference (e.g. for job-scoped deps that get the Job as owner later).
+// Pass nil for a job-scoped copy, which gets its Job as owner later
+// (setDependencyOwners); a nil owner is also what marks the create as
+// job-scoped, so an existing holder is checked against the group attempt.
 func (r *WorkflowReconciler) createDependencyResource(ctx context.Context, owner client.Object, workflow *nvcrev1alpha1.Workflow, dep nvcrev1alpha1.DependencySpec, prebuilt ...*unstructured.Unstructured) (*nvcrev1alpha1.DependencyResourceRef, bool, error) {
 	log := logf.FromContext(ctx)
+	jobScoped := owner == nil
 
 	var obj *unstructured.Unstructured
 	if len(prebuilt) > 0 && prebuilt[0] != nil {
@@ -4267,14 +4291,18 @@ func (r *WorkflowReconciler) createDependencyResource(ctx context.Context, owner
 					obj.GetKind(), location, workflow.Name),
 			}
 		}
-		// This Workflow's own object, but not one this create can stand in
-		// for. Job-scoped copies keep their names across a group's retries,
-		// so the holder may be the previous attempt's copy, on its way out
-		// or not yet retired. Binding the new attempt to it would hand its
-		// pods an object that is about to vanish (a ComputeDomain mid-
-		// deletion, say). Workflow-scoped dependencies carry no attempt, so
-		// for them only the terminating case applies.
-		if existing.GetDeletionTimestamp() != nil || dependencyAttempt(existing) != dependencyAttempt(obj) {
+		// This Workflow's own job-scoped copy, but not one this create can
+		// stand in for. Copies keep their names across a group's retries, so
+		// the holder may be the previous attempt's copy, on its way out or
+		// not yet retired. Binding the new attempt to it would hand its pods
+		// an object that is about to vanish (a ComputeDomain mid-deletion,
+		// say). The launch waits for retirement instead.
+		//
+		// Workflow-scoped dependencies are created once, not per attempt, and
+		// are adopted as they always were, even while terminating: their
+		// caller has no retirement to wait on, and treats any error other
+		// than a name collision as a failure of the Workflow.
+		if jobScoped && (existing.GetDeletionTimestamp() != nil || dependencyAttempt(existing) != dependencyAttempt(obj)) {
 			return nil, false, fmt.Errorf("dependency %s %q is being deleted or belongs to a previous attempt: %w",
 				obj.GetKind(), obj.GetName(), errPreviousAttemptRetiring)
 		}

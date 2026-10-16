@@ -22,18 +22,22 @@ import (
 )
 
 // createDependencyResource adopts an existing holder of the name only when it
-// is the object this create stands for: this Workflow's, and created for the
-// same group attempt. Job-scoped copies keep their names across a group's
-// retries, so a holder can be the previous attempt's copy, possibly mid-
-// deletion. Adopting that would bind the new attempt to an object that is about
-// to vanish (issue #389); the create reports errPreviousAttemptRetiring and the
-// launch waits instead.
+// is the object this create stands for: this Workflow's, and, for a job-scoped
+// copy, created for the same group attempt. Job-scoped copies keep their names
+// across a group's retries, so a holder can be the previous attempt's copy,
+// possibly mid-deletion. Adopting that would bind the new attempt to an object
+// that is about to vanish (issue #389); the create reports
+// errPreviousAttemptRetiring and the launch waits instead. A workflow-scoped
+// dependency has no attempt and nothing to wait on, and is adopted as before.
 func TestCreateDependencyAdopt(t *testing.T) {
 	p := testutil.TestCaseParser{Subdir: "create-dependency-adopt", ExpectedSuffix: testutil.SuffixJSON}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var in struct {
 			// Holder is the existing object: absent, owned, or foreign.
 			Holder string `json:"holder"`
+			// WorkflowScoped creates a workflow-scoped dependency, with the
+			// Workflow as owner, instead of a job-scoped copy, which has none.
+			WorkflowScoped bool `json:"workflowScoped"`
 			// HolderAttempt and Attempt are the group attempts the holder and
 			// the object being created are for; 0 leaves them unannotated.
 			HolderAttempt int  `json:"holderAttempt"`
@@ -71,7 +75,11 @@ func TestCreateDependencyAdopt(t *testing.T) {
 		if in.Attempt > 0 {
 			obj.SetAnnotations(map[string]string{annotationGroupAttempt: strconv.Itoa(in.Attempt)})
 		}
-		ref, created, err := r.createDependencyResource(context.Background(), nil, workflow, nvcrev1alpha1.DependencySpec{}, obj)
+		var owner client.Object
+		if in.WorkflowScoped {
+			owner = workflow
+		}
+		ref, created, err := r.createDependencyResource(context.Background(), owner, workflow, nvcrev1alpha1.DependencySpec{}, obj)
 
 		out := map[string]any{"created": created, "recorded": ref != nil}
 		if err != nil {

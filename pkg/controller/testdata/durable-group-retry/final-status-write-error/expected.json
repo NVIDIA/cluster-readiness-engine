@@ -38,8 +38,30 @@
         "retries": 1
       }
     ],
-    "jobs": [],
+    "jobs": [
+      "wf-job"
+    ],
     "pass": 2
+  },
+  {
+    "dependencies": [
+      "dep-cm-5947a-job"
+    ],
+    "dependencyRefs": [
+      "dep-cm-5947a-job"
+    ],
+    "failedNodes": [
+      "node-a:WorkloadFailed"
+    ],
+    "groups": [
+      {
+        "name": "a",
+        "phase": "Pending",
+        "retries": 1
+      }
+    ],
+    "jobs": [],
+    "pass": 3
   },
   {
     "dependencies": [],
@@ -57,7 +79,7 @@
       }
     ],
     "jobs": [],
-    "pass": 3
+    "pass": 4
   },
   {
     "dependencies": [
@@ -80,6 +102,6 @@
     "jobs": [
       "wf-job-retry-1"
     ],
-    "pass": 4
+    "pass": 5
   }
 ]

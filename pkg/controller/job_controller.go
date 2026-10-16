@@ -346,9 +346,10 @@ func (r *JobReconciler) reconcileWorkload(ctx context.Context, job *nvcrev1alpha
 	// happens via owner reference cascade when the Certification is deleted.
 	if r.isTerminalState(job) {
 		if isJobAwaitingThresholdEvaluation(job) {
-			// A retried group's Job can finish while the measurement left by
-			// the attempt it replaced is still being deleted; create its own
-			// once that one is gone, or the thresholds wait on nothing.
+			// A Job can finish while the measurement of an earlier Job of the
+			// same name (see ensureBandwidthMeasurement) is still being
+			// deleted; create its own once that one is gone, or the thresholds
+			// wait on nothing.
 			if err := r.ensureBandwidthMeasurement(ctx, job); err != nil {
 				logf.FromContext(ctx).Error(err, "Failed to ensure BandwidthMeasurement")
 			}
@@ -1859,10 +1860,16 @@ func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *nvc
 		if measuresJob(existing, job) {
 			return nil
 		}
-		// A retried group recreates its Job under the same name, and the
-		// Workflow-owned measurement of the failed attempt outlives it. Left in
-		// place it would stand in for this attempt's measurement, so replace it;
-		// the next reconcile creates the new one once it is gone.
+		// The measurement of an earlier Job of the same name. The Workflow
+		// owns measurements, so they outlive their Job. A group retry no
+		// longer causes this: each attempt's Job has its own name
+		// (getGroupJobName), and retirePreviousAttempts deletes the earlier
+		// attempts' measurements. A Job can still be replaced under its name,
+		// as when a controller from before attempt-indexed names relaunched a
+		// retried group, or a Workflow is recreated under the same name before
+		// its old measurements are collected. Left in place the measurement
+		// would stand in for this Job's, so replace it; the next reconcile
+		// creates the new one once it is gone.
 		if existing.DeletionTimestamp.IsZero() {
 			log.Info("Replacing BandwidthMeasurement of an earlier Job with the same name", "name", bmName)
 			if err := r.Delete(ctx, existing, client.Preconditions{UID: new(existing.UID)}); err != nil &&

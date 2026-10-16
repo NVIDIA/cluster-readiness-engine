@@ -52,12 +52,15 @@
       }
     ],
     "jobs": [
+      "wf-a-iter-1",
       "wf-b-iter-1"
     ],
     "pass": 2
   },
   {
-    "dependencies": [],
+    "dependencies": [
+      "dep-cm-5947a-a-iter-1"
+    ],
     "dependencyRefs": [
       "dep-cm-5947a-a-iter-1"
     ],
@@ -83,9 +86,7 @@
     "pass": 3
   },
   {
-    "dependencies": [
-      "dep-cm-5947a-a-iter-1 attempt=1"
-    ],
+    "dependencies": [],
     "dependencyRefs": [
       "dep-cm-5947a-a-iter-1"
     ],
@@ -94,9 +95,8 @@
     ],
     "groups": [
       {
-        "jobRef": "wf-a-iter-1-retry-1",
         "name": "a",
-        "phase": "Running",
+        "phase": "Pending",
         "retries": 1
       },
       {
@@ -107,26 +107,20 @@
       }
     ],
     "jobs": [
-      "wf-a-iter-1-retry-1",
       "wf-b-iter-1"
     ],
     "pass": 4
   },
   {
-    "dependencies": [
-      "dep-cm-5947a-a-iter-1 attempt=1"
-    ],
-    "dependencyRefs": [
-      "dep-cm-5947a-a-iter-1"
-    ],
+    "dependencies": [],
+    "dependencyRefs": [],
     "failedNodes": [
       "node-a:WorkloadFailed"
     ],
     "groups": [
       {
-        "jobRef": "wf-a-iter-1-retry-1",
         "name": "a",
-        "phase": "Running",
+        "phase": "Pending",
         "retries": 1
       },
       {
@@ -137,7 +131,6 @@
       }
     ],
     "jobs": [
-      "wf-a-iter-1-retry-1",
       "wf-b-iter-1"
     ],
     "pass": 5

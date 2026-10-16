@@ -19,6 +19,7 @@
     "hasFailedNodesRef": true,
     "namespaceAccessReason": "NamespaceAccessGranted"
   },
+  "afterRecoveryFirstJobDeleted": true,
   "firstJobDeleted": false,
   "waiting": {
     "groups": [

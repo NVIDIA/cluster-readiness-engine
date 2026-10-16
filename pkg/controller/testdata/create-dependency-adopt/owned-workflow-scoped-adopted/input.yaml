@@ -4,3 +4,4 @@
 # A workflow-scoped dependency carries no attempt on either side: adopted, as
 # before attempts were recorded.
 holder: owned
+workflowScoped: true

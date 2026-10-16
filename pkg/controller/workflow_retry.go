@@ -25,16 +25,49 @@ import (
 // written. If the write never happens, the group is still Running on a failed
 // Job that still exists, and the next pass reaches the same decision once.
 //
-// retirePreviousAttempts runs before the next attempt launches, from a state
-// that is already durable: the group is Pending with the new retry count. It
-// removes what earlier attempts left behind and holds the launch until the
-// API server confirms it is gone. Every step is a live read followed by an
-// idempotent delete, so an interruption anywhere is resumed by the next pass.
+// retirePreviousAttempts runs on every pass from the one after the retry is
+// recorded until the next attempt launches, from a state that is already
+// durable: the group is Pending with the new retry count. It removes what
+// earlier attempts left behind and holds the launch until the API server
+// confirms it is gone. Every step is a live read followed by an idempotent
+// delete, so an interruption anywhere is resumed by the next pass.
+//
+// It runs from both branches of the reconcile. A Pending group launches only
+// once no group is running, which can take as long as the longest sibling, so
+// updateStatusFromJobs retires while siblings run, releasing the failed Job and
+// its job-scoped dependencies (a ComputeDomain on the group's nodes, say) then
+// rather than when the group can launch. launchPendingGroups retires too, and
+// is the one that holds the launch until retirement is done.
 //
 // Earlier attempts are identified without anything in the CRD. Each attempt's
 // Job has its own name (getGroupJobName), and job-scoped dependency copies,
 // which keep their names across attempts, record the attempt they were
 // created for in annotationGroupAttempt.
+
+// retirePendingGroups runs retirePreviousAttempts for every Pending group and
+// reports, by group name, which may launch. A group that has never been retried
+// has nothing to retire and may launch at once.
+//
+// Only groups already Pending in the status the caller read are retired, so
+// their retry is already written. A group the same pass moves to Pending is
+// retired on a later pass, once that write has landed.
+func (r *WorkflowReconciler) retirePendingGroups(
+	ctx context.Context, workflow *nvcrev1alpha1.Workflow, orch *nvcrev1alpha1.OrchestrationStatus,
+) (map[string]bool, error) {
+	ready := make(map[string]bool, len(orch.Groups))
+	for i := range orch.Groups {
+		g := &orch.Groups[i]
+		if g.Phase != nvcrev1alpha1.GroupPending {
+			continue
+		}
+		ok, err := r.retirePreviousAttempts(ctx, workflow, g, orch)
+		if err != nil {
+			return nil, err
+		}
+		ready[g.Name] = ok
+	}
+	return ready, nil
+}
 
 // retirePreviousAttempts reports whether a Pending group's next attempt may
 // launch. It deletes earlier attempts' Jobs, then their job-scoped
@@ -46,8 +79,8 @@ import (
 //
 // Dependency refs are dropped from workflow.Status only when the object is
 // confirmed gone, not when its delete is issued, so a pass that stops partway
-// leaves the next one something to find. The caller persists the refs with the
-// launch.
+// leaves the next one something to find. The caller persists the removal with
+// its status write.
 func (r *WorkflowReconciler) retirePreviousAttempts(
 	ctx context.Context, workflow *nvcrev1alpha1.Workflow,
 	g *nvcrev1alpha1.GroupStatus, orch *nvcrev1alpha1.OrchestrationStatus,
@@ -172,11 +205,10 @@ func (r *WorkflowReconciler) retirePreviousDependencies(
 	ownsRef := func(ref nvcrev1alpha1.DependencyResourceRef) bool {
 		return ref.Scope == scopeJob && ref.GroupName == g.Name && ref.Iteration == orch.CurrentIteration
 	}
-	var others, candidates []nvcrev1alpha1.DependencyResourceRef
+	var candidates []nvcrev1alpha1.DependencyResourceRef
 	tracked := map[string]bool{}
 	for _, ref := range workflow.Status.DependencyRefs {
 		if !ownsRef(ref) {
-			others = append(others, ref)
 			continue
 		}
 		candidates = append(candidates, ref)
@@ -232,8 +264,30 @@ func (r *WorkflowReconciler) retirePreviousDependencies(
 			keep = append(keep, ref)
 		}
 	}
-	// keep was built in reverse; restore creation order for the next pass.
-	workflow.Status.DependencyRefs = append(others, reverseDependencyRefs(keep)...)
+	// Drop the group's refs that were not kept, and leave every other ref
+	// where it was: refs are in creation order, which the cleanup paths delete
+	// in reverse, and this runs on every pass while the group waits. A copy
+	// found by name and tracked from now on goes at the end. keep was built in
+	// reverse; restore creation order for those.
+	kept := make(map[string]bool, len(keep))
+	for _, ref := range keep {
+		kept[scopedDependencyRefKey(ref)] = true
+	}
+	refs := make([]nvcrev1alpha1.DependencyResourceRef, 0, len(workflow.Status.DependencyRefs)+len(keep))
+	for _, ref := range workflow.Status.DependencyRefs {
+		key := scopedDependencyRefKey(ref)
+		if ownsRef(ref) && !kept[key] {
+			continue
+		}
+		refs = append(refs, ref)
+		delete(kept, key)
+	}
+	for _, ref := range reverseDependencyRefs(keep) {
+		if kept[scopedDependencyRefKey(ref)] {
+			refs = append(refs, ref)
+		}
+	}
+	workflow.Status.DependencyRefs = refs
 	return left, nil
 }
 

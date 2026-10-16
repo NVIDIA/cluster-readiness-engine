@@ -28,7 +28,10 @@ import (
 // node-result write is forbidden. The first retry must survive the access wait,
 // while the unfinished second transition must not be persisted. Recording a
 // retry deletes nothing (issue #389), so the first group's Job and dependency
-// are still there; retirePreviousAttempts removes them before the next launch.
+// are still there. Once access returns, the recovery pass starts with the first
+// group Pending and the second still Running, and retires the first group's
+// failed Job then, without waiting for the second group to finish. Its
+// dependency and ref follow on later passes (see TestDurableGroupRetry).
 func TestNamespaceAccessPreservesEarlierGroupRetry(t *testing.T) {
 	p := testutil.TestCaseParser{Subdir: "namespace-access-group-retry"}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
@@ -51,13 +54,19 @@ func TestNamespaceAccessPreservesEarlierGroupRetry(t *testing.T) {
 		ctx := context.Background()
 		workflow := &nvcrev1alpha1.Workflow{Name: testWorkflowName, Namespace: testNS}
 		workflow.Spec.Orchestration.Execution.RetryFailedGroups = 1
-		workflow.Status.Orchestration = &nvcrev1alpha1.OrchestrationStatus{CurrentIteration: 1, Groups: []nvcrev1alpha1.GroupStatus{
-			{Name: "a", Phase: nvcrev1alpha1.GroupRunning, Nodes: []string{"node-a"}, JobRef: &nvcrev1alpha1.WorkloadReference{Name: "a-job", Namespace: testNS}},
-			{Name: "b", Phase: nvcrev1alpha1.GroupRunning, Nodes: []string{"retry-node-b"}, JobRef: &nvcrev1alpha1.WorkloadReference{Name: "b-job", Namespace: testNS}},
-		}}
-		first := &nvcrev1alpha1.Job{Name: "a-job", Namespace: testNS, Status: nvcrev1alpha1.JobStatus{Conditions: []metav1.Condition{{Type: nvcrev1alpha1.JobFailed, Status: metav1.ConditionTrue, Reason: ReasonWorkloadFailed}}}}
+		workflow.Status.Orchestration = &nvcrev1alpha1.OrchestrationStatus{CurrentIteration: 1, TotalGroups: 2}
+		// The Jobs carry the names and owner a launch gives them, so retiring
+		// the failed attempt finds them.
+		jobName := func(group string) string { return (&WorkflowReconciler{}).getGroupJobName(workflow, group, 1, 0) }
+		workflow.Status.Orchestration.Groups = []nvcrev1alpha1.GroupStatus{
+			{Name: "a", Phase: nvcrev1alpha1.GroupRunning, Nodes: []string{"node-a"}, JobRef: &nvcrev1alpha1.WorkloadReference{Name: jobName("a"), Namespace: testNS}},
+			{Name: "b", Phase: nvcrev1alpha1.GroupRunning, Nodes: []string{"retry-node-b"}, JobRef: &nvcrev1alpha1.WorkloadReference{Name: jobName("b"), Namespace: testNS}},
+		}
+		first := &nvcrev1alpha1.Job{Name: jobName("a"), Namespace: testNS,
+			OwnerReferences: []metav1.OwnerReference{*metav1.NewControllerRef(workflow, nvcrev1alpha1.GroupVersion.WithKind("Workflow"))},
+			Status:          nvcrev1alpha1.JobStatus{Conditions: []metav1.Condition{{Type: nvcrev1alpha1.JobFailed, Status: metav1.ConditionTrue, Reason: ReasonWorkloadFailed}}}}
 		second := first.DeepCopy()
-		second.Name = "b-job"
+		second.Name = jobName("b")
 		second.Status.FailedNodes = []nvcrev1alpha1.FailedNode{{Name: "retry-node-b", Reason: "WorkloadFailed"}}
 		if input.FirstRecordsFailedNodes {
 			first.Status.FailedNodes = []nvcrev1alpha1.FailedNode{{Name: "node-a", Reason: "WorkloadFailed"}}
@@ -125,8 +134,11 @@ func TestNamespaceAccessPreservesEarlierGroupRetry(t *testing.T) {
 				return err
 			}
 			output["afterRecovery"] = retryGroupView(stored)
+			output["afterRecoveryFirstJobDeleted"] = apierrors.IsNotFound(c.Get(ctx, client.ObjectKeyFromObject(first), &nvcrev1alpha1.Job{}))
 			if input.JobScopedDependencies {
 				output["afterRecoveryDependencyRefs"] = dependencyRefNames(stored)
+				output["afterRecoveryFirstDependencyDeleted"] = apierrors.IsNotFound(c.Get(ctx,
+					client.ObjectKey{Namespace: testNS, Name: "dep-a"}, &corev1.ConfigMap{}))
 			}
 		}
 		data, err := json.MarshalIndent(output, "", "  ")

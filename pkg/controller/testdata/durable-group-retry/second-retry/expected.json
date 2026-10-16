@@ -16,11 +16,15 @@
         "retries": 2
       }
     ],
-    "jobs": [],
+    "jobs": [
+      "wf-job-retry-1"
+    ],
     "pass": 1
   },
   {
-    "dependencies": [],
+    "dependencies": [
+      "dep-cm-5947a-job attempt=1"
+    ],
     "dependencyRefs": [
       "dep-cm-5947a-job"
     ],
@@ -38,9 +42,7 @@
     "pass": 2
   },
   {
-    "dependencies": [
-      "dep-cm-5947a-job attempt=2"
-    ],
+    "dependencies": [],
     "dependencyRefs": [
       "dep-cm-5947a-job"
     ],
@@ -49,15 +51,12 @@
     ],
     "groups": [
       {
-        "jobRef": "wf-job-retry-2",
         "name": "a",
-        "phase": "Running",
+        "phase": "Pending",
         "retries": 2
       }
     ],
-    "jobs": [
-      "wf-job-retry-2"
-    ],
+    "jobs": [],
     "pass": 3
   },
   {

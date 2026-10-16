@@ -4,10 +4,11 @@
 # Issue #389 gap 4, first mode. Group a's Job has failed with retry budget
 # left, and on pass 1 reading group b's Job fails, which ends the pass before
 # anything is written. Nothing of group a's was deleted on that pass, so pass 2
-# finds the same failed Job and records the retry, once. Only then is the
-# failed attempt retired: its Job on pass 2, its dependency copy on pass 3.
-# Pass 4 launches attempt 1 under its own name, with a fresh copy stamped
-# attempt=1. The group never goes Failed, and the failed node is recorded once.
+# finds the same failed Job and records the retry, once, deleting nothing. Only
+# then is the failed attempt retired. Group b is still running, so a cannot
+# launch, and the retirement happens anyway: its Job on pass 3, its dependency
+# copy on pass 4, and the copy's ref, once the copy is confirmed gone, on pass
+# 5. The group never goes Failed, and the failed node is recorded once.
 retryFailedGroups: 1
 groupB: true
 groupA:

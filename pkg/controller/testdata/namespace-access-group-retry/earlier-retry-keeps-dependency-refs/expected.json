@@ -23,6 +23,8 @@
     "dep-a",
     "dep-b"
   ],
+  "afterRecoveryFirstDependencyDeleted": false,
+  "afterRecoveryFirstJobDeleted": true,
   "firstDependencyDeleted": false,
   "firstJobDeleted": false,
   "waiting": {

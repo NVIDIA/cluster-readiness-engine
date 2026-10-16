@@ -4,8 +4,9 @@
 # Issue #389 gap 4, second mode. Every group was observed, but the Workflow
 # status write that would record the retry fails on pass 1. Collecting loop
 # errors would not have saved this one; deleting nothing before the write does.
-# Pass 2 records the retry from the same failed Job, and the retirement and
-# launch follow as usual.
+# Pass 2 records the retry from the same failed Job, deleting nothing, and the
+# retirement and launch follow as usual: the Job on pass 3, the dependency copy
+# on pass 4, attempt 1 on pass 5.
 retryFailedGroups: 1
 groupA:
   phase: Running
@@ -14,4 +15,4 @@ oldJob: failed
 dep: previous
 depTracked: true
 statusWriteErrorPasses: [1]
-passes: 4
+passes: 5

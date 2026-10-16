@@ -209,8 +209,9 @@ func (r *BandwidthMeasurementReconciler) reconcileMeasurement(ctx context.Contex
 		return ctrl.Result{}, fmt.Errorf("failed to get referenced Job: %w", err)
 	}
 	if !measuresJob(measurement, job) {
-		// The Job was replaced under the same name (a group retry): the one
-		// this measurement was created for is gone.
+		// The Job was replaced under the same name (see
+		// ensureBandwidthMeasurement): the one this measurement was created
+		// for is gone.
 		return r.finalizeJobGone(ctx, measurement)
 	}
 
