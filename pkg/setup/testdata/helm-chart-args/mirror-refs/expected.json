@@ -9,15 +9,11 @@
     "--create-namespace",
     "--version",
     "0.2.0",
-    "--set",
-    "manager.image.repository=registry.example.com/mirror/manager",
-    "--set",
-    "manager.image.tag=v0.2.0",
     "--wait",
     "--timeout",
     "5m0s",
-    "--set",
-    "manager.imagePullSecrets[0].name=nvcrectl-pull-secret"
+    "-f",
+    "/tmp/nvcrectl-values-1/values.json"
   ],
   "nvcreShowCRDsArgs": [
     "show",

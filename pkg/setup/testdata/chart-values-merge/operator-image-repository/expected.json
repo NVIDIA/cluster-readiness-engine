@@ -1,0 +1,13 @@
+{
+  "values": {
+    "manager": {
+      "image": {
+        "repository": "registry.example.com/mirror/manager"
+      }
+    }
+  },
+  "image": "registry.example.com/mirror/manager:<chart appVersion>",
+  "summary": [
+    "[preflight] Controller image: registry.example.com/mirror/manager:<chart appVersion> (this run)"
+  ]
+}

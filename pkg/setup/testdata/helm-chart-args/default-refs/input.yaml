@@ -3,6 +3,6 @@
 chartRef: ""
 trainerChartRef: ""
 chartVersion: "0.2.0"
-imageName: "ghcr.io/nvidia/cluster-readiness-engine/manager"
-imageTag: "v0.2.0"
-pullSecretName: ""
+# Every value reaches the upgrade through one -f file (ADR-098); nvcrectl
+# adds no --set or --set-json of its own.
+valuesFile: "/tmp/nvcrectl-values-1/values.json"

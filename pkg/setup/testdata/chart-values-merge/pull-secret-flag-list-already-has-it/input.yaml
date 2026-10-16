@@ -1,0 +1,8 @@
+# A list that already holds nvcrectl-pull-secret is left as it is.
+operator:
+  manager:
+    imagePullSecrets:
+      - name: nvcrectl-pull-secret
+      - name: mirror-pull-secret
+options:
+  pullSecret: true

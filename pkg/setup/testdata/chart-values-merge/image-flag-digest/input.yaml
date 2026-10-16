@@ -1,0 +1,4 @@
+# --image repo@sha256:... sets the repository and the digest, not the tag, so
+# the chart renders repo@digest.
+options:
+  image: ghcr.io/nvidia/cluster-readiness-engine/manager@sha256:735ad1e142a378b0919510bd1fc113cd53ab754bc79b7f0980d647d50a914523

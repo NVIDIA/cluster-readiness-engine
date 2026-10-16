@@ -1,0 +1,17 @@
+{
+  "values": {
+    "manager": {
+      "image": {
+        "pullPolicy": "Always",
+        "repository": "registry.example.com/mirror/manager",
+        "tag": "v0.8.0"
+      }
+    }
+  },
+  "image": "registry.example.com/mirror/manager:v0.8.0",
+  "summary": [
+    "[preflight] Values for release \"nvcre\" (paths only; values are not printed):",
+    "  manager.image.pullPolicy  (this run)",
+    "[preflight] Controller image: registry.example.com/mirror/manager:v0.8.0 (--image)"
+  ]
+}

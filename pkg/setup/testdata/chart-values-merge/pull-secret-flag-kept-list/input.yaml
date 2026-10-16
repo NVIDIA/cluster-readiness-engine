@@ -1,0 +1,8 @@
+# --image-pull-secret adds nvcrectl-pull-secret after a kept list instead of
+# overwriting index 0.
+release:
+  manager:
+    imagePullSecrets:
+      - name: mirror-pull-secret
+options:
+  pullSecret: true

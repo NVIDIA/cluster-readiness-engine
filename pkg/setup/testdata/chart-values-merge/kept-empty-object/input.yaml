@@ -1,0 +1,4 @@
+# An empty object is a value of its own: it is kept and listed by its path.
+release:
+  manager:
+    affinity: {}

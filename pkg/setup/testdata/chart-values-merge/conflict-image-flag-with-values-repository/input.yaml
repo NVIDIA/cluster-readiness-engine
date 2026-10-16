@@ -1,0 +1,7 @@
+# --image with a values file setting manager.image.repository is rejected.
+operator:
+  manager:
+    image:
+      repository: registry.example.com/mirror/manager
+options:
+  image: registry.example.com/mirror/manager:v0.8.0

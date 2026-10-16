@@ -1,0 +1,73 @@
+[
+  {
+    "args": [
+      "--rbac-scope",
+      "namespaced",
+      "--set",
+      "rbac.runNamespaces={team-a}"
+    ],
+    "summary": [
+      "[preflight] Values for release \"nvcre\" (paths only; values are not printed):",
+      "  rbac.runNamespaces  (this run)",
+      "[preflight] rbac.scope: namespaced (--rbac-scope)",
+      "[preflight] Controller image: ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0 (CLI version)"
+    ],
+    "helmCalls": [
+      "get values nvcre --namespace nvcre -o json --kubeconfig <kubeconfig>",
+      "template nvcre-values-probe <workspace>/probe --set rbac.runNamespaces={team-a}",
+      "show crds oci://ghcr.io/nvidia/cluster-readiness-engine --version v0.8.0",
+      "upgrade --install nvcre oci://ghcr.io/nvidia/cluster-readiness-engine --namespace nvcre --create-namespace --version v0.8.0 --wait --timeout 5m0s -f <workspace>/values.json --kubeconfig <kubeconfig>"
+    ],
+    "upgradeValues": {
+      "manager": {
+        "image": {
+          "repository": "ghcr.io/nvidia/cluster-readiness-engine/manager",
+          "tag": "v0.8.0"
+        }
+      },
+      "rbac": {
+        "runNamespaces": [
+          "team-a"
+        ],
+        "scope": "namespaced"
+      }
+    },
+    "workspaceRemoved": true,
+    "pullSecret": false
+  },
+  {
+    "args": [
+      "--set-json",
+      "rbac={\"runNamespaces\":[\"team-b\"]}"
+    ],
+    "summary": [
+      "[preflight] Values for release \"nvcre\" (paths only; values are not printed):",
+      "  rbac.runNamespaces  (this run)",
+      "[preflight] rbac.scope: namespaced (installed release)",
+      "[preflight] Controller image: ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0 (CLI version)"
+    ],
+    "helmCalls": [
+      "get values nvcre --namespace nvcre -o json --kubeconfig <kubeconfig>",
+      "template nvcre-values-probe <workspace>/probe --set-json rbac={\"runNamespaces\":[\"team-b\"]}",
+      "template nvcre-values-probe <workspace>/probe -f <workspace>/kept.json --set-json rbac={\"runNamespaces\":[\"team-b\"]}",
+      "show crds oci://ghcr.io/nvidia/cluster-readiness-engine --version v0.8.0",
+      "upgrade --install nvcre oci://ghcr.io/nvidia/cluster-readiness-engine --namespace nvcre --create-namespace --version v0.8.0 --wait --timeout 5m0s -f <workspace>/values.json --kubeconfig <kubeconfig>"
+    ],
+    "upgradeValues": {
+      "manager": {
+        "image": {
+          "repository": "ghcr.io/nvidia/cluster-readiness-engine/manager",
+          "tag": "v0.8.0"
+        }
+      },
+      "rbac": {
+        "runNamespaces": [
+          "team-b"
+        ],
+        "scope": "namespaced"
+      }
+    },
+    "workspaceRemoved": true,
+    "pullSecret": false
+  }
+]

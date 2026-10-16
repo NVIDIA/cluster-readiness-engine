@@ -1,0 +1,7 @@
+# A partial manager.resources is kept as written, so Helm deep-merges it with
+# the chart defaults (the requests stay at the default).
+release:
+  manager:
+    resources:
+      limits:
+        memory: 8Gi

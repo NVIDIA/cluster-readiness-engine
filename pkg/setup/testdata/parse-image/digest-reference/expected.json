@@ -1,4 +1,5 @@
 {
   "name": "ghcr.io/nvidia/repo",
-  "tag": "sha256:abc123def456"
+  "tag": "",
+  "digest": "sha256:abc123def456"
 }

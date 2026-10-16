@@ -1,0 +1,13 @@
+# The second probe puts the kept values in front of this run's flags: both
+# memory values reach the chart, and the kept namespaced scope still renders
+# a RoleBinding.
+release:
+  manager:
+    resources:
+      limits:
+        memory: 8Gi
+  rbac:
+    scope: namespaced
+    runNamespaces: [team-a]
+set:
+  - manager.resources.requests.memory=4Gi

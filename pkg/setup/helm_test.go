@@ -59,9 +59,7 @@ func TestHelmChartArgs(t *testing.T) {
 			ChartRef        string `yaml:"chartRef"`
 			TrainerChartRef string `yaml:"trainerChartRef"`
 			ChartVersion    string `yaml:"chartVersion"`
-			ImageName       string `yaml:"imageName"`
-			ImageTag        string `yaml:"imageTag"`
-			PullSecretName  string `yaml:"pullSecretName"`
+			ValuesFile      string `yaml:"valuesFile"`
 		}
 		if err := sigsyaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
 			return err
@@ -72,7 +70,7 @@ func TestHelmChartArgs(t *testing.T) {
 			NVCREShowCRDsArgs  []string `json:"nvcreShowCRDsArgs"`
 			TrainerUpgradeArgs []string `json:"trainerUpgradeArgs"`
 		}{
-			nvcreHelmUpgradeArgs(in.ChartRef, in.ChartVersion, in.ImageName, in.ImageTag, in.PullSecretName),
+			nvcreHelmUpgradeArgs(in.ChartRef, in.ChartVersion, in.ValuesFile),
 			chartCRDsArgs(in.ChartRef, in.ChartVersion),
 			trainerHelmUpgradeArgs(in.TrainerChartRef, true),
 		}, "", "  ")

@@ -1,0 +1,14 @@
+# An operator null clears the kept list; --image-pull-secret then starts from
+# an empty list.
+release:
+  manager:
+    imagePullSecrets:
+      - name: old-pull-secret
+operator:
+  manager:
+    imagePullSecrets: null
+probed:
+  manager:
+    imagePullSecrets: null
+options:
+  pullSecret: true

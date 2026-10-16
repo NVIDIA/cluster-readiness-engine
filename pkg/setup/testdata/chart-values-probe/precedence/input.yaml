@@ -1,0 +1,6 @@
+# Helm's precedence: values files in order, then --set-json, then --set.
+files: [first.yaml, second.yaml]
+setJSON:
+  - manager.replicas=3
+set:
+  - manager.replicas=4

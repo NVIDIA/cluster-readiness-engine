@@ -1,0 +1,64 @@
+[
+  {
+    "args": [
+      "--set",
+      "manager.resources.limits.memory=8Gi"
+    ],
+    "summary": [
+      "[preflight] Values for release \"nvcre\" (paths only; values are not printed):",
+      "  manager.resources.limits.memory  (this run)",
+      "[preflight] Controller image: ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0 (CLI version)"
+    ],
+    "helmCalls": [
+      "get values nvcre --namespace nvcre -o json --kubeconfig <kubeconfig>",
+      "template nvcre-values-probe <workspace>/probe --set manager.resources.limits.memory=8Gi",
+      "show crds oci://ghcr.io/nvidia/cluster-readiness-engine --version v0.8.0",
+      "upgrade --install nvcre oci://ghcr.io/nvidia/cluster-readiness-engine --namespace nvcre --create-namespace --version v0.8.0 --wait --timeout 5m0s -f <workspace>/values.json --kubeconfig <kubeconfig>"
+    ],
+    "upgradeValues": {
+      "manager": {
+        "image": {
+          "repository": "ghcr.io/nvidia/cluster-readiness-engine/manager",
+          "tag": "v0.8.0"
+        },
+        "resources": {
+          "limits": {
+            "memory": "8Gi"
+          }
+        }
+      }
+    },
+    "workspaceRemoved": true,
+    "pullSecret": false
+  },
+  {
+    "args": [
+      "--image",
+      "registry.example.com/mirror/manager:v0.8.0",
+      "--set",
+      "manager.image.tag=v0.8.1"
+    ],
+    "error": "[preflight] --image and this run's values both set the controller image (manager.image.repository, tag or digest); give --image or the values, not both",
+    "helmCalls": [
+      "get values nvcre --namespace nvcre -o json --kubeconfig <kubeconfig>",
+      "template nvcre-values-probe <workspace>/probe --set manager.image.tag=v0.8.1",
+      "template nvcre-values-probe <workspace>/probe -f <workspace>/kept.json --set manager.image.tag=v0.8.1"
+    ],
+    "pullSecret": false
+  },
+  {
+    "args": [
+      "--rbac-scope",
+      "namespaced",
+      "--set",
+      "rbac.scope=cluster"
+    ],
+    "error": "[preflight] --rbac-scope and this run's values both set rbac.scope; give --rbac-scope or the value, not both",
+    "helmCalls": [
+      "get values nvcre --namespace nvcre -o json --kubeconfig <kubeconfig>",
+      "template nvcre-values-probe <workspace>/probe --set rbac.scope=cluster",
+      "template nvcre-values-probe <workspace>/probe -f <workspace>/kept.json --set rbac.scope=cluster"
+    ],
+    "pullSecret": false
+  }
+]

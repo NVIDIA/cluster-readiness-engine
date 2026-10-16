@@ -1,0 +1,5 @@
+# Without --image-pull-secret a kept list is kept unchanged.
+release:
+  manager:
+    imagePullSecrets:
+      - name: mirror-pull-secret

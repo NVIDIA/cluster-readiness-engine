@@ -1,0 +1,9 @@
+# A kept list from an earlier --image-pull-secret run already holds
+# nvcrectl-pull-secret, so it is not added again.
+release:
+  manager:
+    imagePullSecrets:
+      - name: mirror-pull-secret
+      - name: nvcrectl-pull-secret
+options:
+  pullSecret: true

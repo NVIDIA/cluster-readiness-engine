@@ -1,0 +1,3 @@
+# --image repo:tag sets the repository and the tag.
+options:
+  image: registry.example.com/mirror/manager:v0.8.0

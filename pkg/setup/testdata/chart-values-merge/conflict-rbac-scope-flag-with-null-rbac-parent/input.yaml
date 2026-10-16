@@ -1,0 +1,6 @@
+# --set rbac=null removes rbac.scope with its parent, so it conflicts with
+# --rbac-scope.
+operator:
+  rbac: null
+options:
+  rbacScope: namespaced

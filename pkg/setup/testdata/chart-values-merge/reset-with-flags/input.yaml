@@ -1,0 +1,24 @@
+# --reset-values with this run's values: only rbac.* is kept under them, and
+# --image-pull-secret starts from an empty list, not the dropped kept one.
+release:
+  manager:
+    resources:
+      limits:
+        memory: 8Gi
+    imagePullSecrets:
+      - name: old-pull-secret
+  rbac:
+    scope: namespaced
+    runNamespaces: [team-a]
+operator:
+  manager:
+    replicas: 2
+probed:
+  manager:
+    replicas: 2
+  rbac:
+    scope: namespaced
+    runNamespaces: [team-a]
+options:
+  reset: true
+  pullSecret: true

@@ -356,7 +356,7 @@ func trainerDeploymentImageTag(ctx context.Context, c client.Client) string {
 			continue
 		}
 		image, _ := container["image"].(string)
-		_, tag := parseImage(image)
+		_, tag, _ := parseImage(image)
 		if !isReleaseBuild(tag) {
 			return ""
 		}
