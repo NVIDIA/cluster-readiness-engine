@@ -124,11 +124,14 @@ and some failed group of two or more nodes recorded no bandwidth of its own. Tho
 are the signature of a collective that never moved bytes. The hint names `testScale: diagnose`
 and says what bisection can distinguish; it asserts nothing about the fault.
 
-The bandwidth test is per failed group rather than category-wide. `buildGroupBandwidthRows`
-emits a row for every failed group even when nothing was measured, so any category with more
-than one group has a non-empty `GroupBandwidth` and a category-wide emptiness test would never
-fire. A row counts as measured only when it carries a `BusBW`. That keeps one bad pair among
-several healthy groups eligible, which is the common fleet case.
+The bandwidth test is per failed group rather than category-wide, in both directions.
+`buildGroupBandwidthRows` emits a row for every failed group even when nothing was measured,
+so any category with more than one group has a non-empty `GroupBandwidth` and a category-wide
+emptiness test would never fire. A row counts as measured only when it carries a `BusBW`.
+The aggregate row is built from every group's measurements, so it is consulted only when there
+are no per-group rows to judge; otherwise a healthy group's bandwidth would suppress the hint
+for a failed sibling. Both halves protect the same case: one bad pair among several healthy
+groups, which is the common fleet shape.
 
 ## Rationale
 

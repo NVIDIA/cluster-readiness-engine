@@ -952,9 +952,12 @@ func diagnoseHint(cat *CategoryReport, measuresBandwidth bool) string {
 	if !measuresBandwidth || cat.Status != statusFailed || cat.Diagnose != nil {
 		return ""
 	}
-	// An aggregate row is category-wide, so any bandwidth there means the
-	// collective moved bytes somewhere and the signature does not hold.
-	if len(cat.Bandwidth) > 0 {
+	// The aggregate row is built from every group's measurements, so on a
+	// multi-group category a healthy group's bandwidth would otherwise
+	// suppress the hint for a failed sibling: the one-bad-pair case this
+	// exists for. Consult it only when there are no per-group rows to judge,
+	// where it is the single thing that says whether bytes moved at all.
+	if len(cat.GroupBandwidth) == 0 && len(cat.Bandwidth) > 0 {
 		return ""
 	}
 	// A row counts as measured only when it carries a BusBW: groupBandwidthRow
