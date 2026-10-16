@@ -47,7 +47,7 @@ It does not change:
 
 ## Decision
 
-1. **`setup init` takes chart values for the NVCRE release.** It gains three repeatable flags, `--values`/`-f <file>`, `--set key=value` and `--set-json key=json`. They have Helm's syntax and Helm's precedence: values files apply in the order given, `--set-json` overrides them, and `--set` overrides both. They apply to the NVCRE release only, not to Kubeflow Trainer. Giving any of them with `--skip-phases` including `helm` is an error, since the phase that would use them does not run.
+1. **`setup init` takes chart values for the NVCRE release.** It gains three repeatable flags, `--values`/`-f <file>`, `--set key=value` and `--set-json key=json`. They have Helm's syntax and Helm's precedence: values files apply in the order given, `--set-json` overrides them, and `--set` overrides both. They apply to the NVCRE release only, not to Kubeflow Trainer. Giving any of them, or `--reset-values` (decision 2), with `--skip-phases` including `helm` is an error, since the phase that would use them does not run.
 
 2. **`setup init` keeps the values set on the installed release.** This supersedes ADR-092's "every other value returns to its default" contract. Each value is resolved in this order, lowest first:
 
@@ -126,7 +126,7 @@ Everything `setup init` passes already works on Helm 3.10, the release that adde
 
 - `pkg/setup/setup.go`:
   - add the flags `--values`/`-f`, `--set`, `--set-json` (string arrays) and `--reset-values`
-  - reject value flags combined with a skipped `helm` phase
+  - reject the value flags and `--reset-values` when the `helm` phase is skipped
   - move the reading of the installed release's values and the probe into preflight
   - make the phase summary (`initPhaseSummary`, `:1101-1104`) name the image's source
 - `pkg/setup/helm_values.go` (new):
@@ -167,7 +167,7 @@ Everything `setup init` passes already works on Helm 3.10, the release that adde
   - `manager.image` (dropped)
   - with `--reset-values`, only `rbac.*` kept
   - an unreadable release (error)
-- **Conflicts:** `--image` with `--set manager.image.tag`, with `-f` setting `manager.image.repository`, and with `--set-json manager={…}` containing an image (all rejected); `--rbac-scope` with `--set rbac.scope` (rejected); `--set rbac.scope` alone (allowed); value flags with `--skip-phases=helm` (rejected).
+- **Conflicts:** `--image` with `--set manager.image.tag`, with `-f` setting `manager.image.repository`, and with `--set-json manager={…}` containing an image (all rejected); `--rbac-scope` with `--set rbac.scope` (rejected); `--set rbac.scope` alone (allowed); the value flags or `--reset-values` with `--skip-phases=helm` (rejected).
 - **Image:** operator-set (nvcrectl sets nothing), `--image repo:tag`, `--image repo@sha256:…` (sets `digest`, not `tag`), the CLI default, and a digest in the installed release that is not kept.
 - **Pull secrets:** each combination of flag, operator list and kept list, including an operator list that already holds `nvcrectl-pull-secret`; check that the result is passed as one `--set-json` and never as `[0]`.
 - **Argument order:** the kept file comes before the operator's flags, which come before nvcrectl's own values.
