@@ -1,0 +1,33 @@
+│                                                                │
+│  Bandwidth by group:                                           │
+│      ✗  group-0 (n0, n1)                                       │
+│         12.00 GB/s                                             │
+│         - n0                                                   │
+│         - n1                                                   │
+│      ✓  group-1 (n2, n3)                                       │
+│         400.00 GB/s                                            │
+--- rows ---
+[
+  {
+    "group": "group-0",
+    "groupName": "group-0 (n0, n1)",
+    "nodes": [
+      "n0",
+      "n1"
+    ],
+    "busBW": "12.00 GB/s",
+    "belowMin": false,
+    "failed": true
+  },
+  {
+    "group": "group-1",
+    "groupName": "group-1 (n2, n3)",
+    "nodes": [
+      "n2",
+      "n3"
+    ],
+    "busBW": "400.00 GB/s",
+    "belowMin": false,
+    "failed": false
+  }
+]

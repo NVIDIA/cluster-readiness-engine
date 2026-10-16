@@ -54,7 +54,9 @@ jobTemplate:
           args:
           - diag
           - --host
-          - nvidia-dcgm.gpu-operator.svc:5555
+          # dcgmHost replaces the GPU Operator's DCGM Service. Quoted so a
+          # host that looks like a number or a boolean stays a string.
+          - "{{ if .DCGMHost }}{{ .DCGMHost }}{{ else }}nvidia-dcgm.gpu-operator.svc:5555{{ end }}"
           - --run
           - "4"
           - --json
@@ -117,7 +119,8 @@ overrides:
 # The fragment sets no tolerations, so the base tolerate-everything toleration
 # survives. NKS runs the DRA-flavoured DCGM hostengine as
 # nvidia-platform/nvidia-dcgm-dra, not gpu-operator/nvidia-dcgm, so --host is
-# repointed; the test op fails the render if the base args ever move.
+# repointed; the test op fails the render if the base args ever move. A
+# user-set dcgmHost wins, so the patch is left out when one is set.
 - when:
     platform:
       equals: nscale
@@ -125,6 +128,7 @@ overrides:
       in: [b200, gb300]
   dependencies:
 {{ lib "deps/nscale-gpu.yaml" . | indent 2 }}
+{{- if not .DCGMHost }}
   jobTemplatePatch:
   - op: test
     path: /spec/workload/trainJob/trainer/args/2
@@ -132,6 +136,7 @@ overrides:
   - op: replace
     path: /spec/workload/trainJob/trainer/args/2
     value: nvidia-dcgm-dra.nvidia-platform.svc:5555
+{{- end }}
 # --- Nscale + GB300 topology key (ADR-085) ---
 # Nscale runs no GFD, so nvidia.com/gpu.clique from the arch-only block above
 # never exists there; the NVLink domain is published as

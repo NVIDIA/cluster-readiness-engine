@@ -172,6 +172,11 @@ type BuildConfig struct {
 	// entries that fetch source at pod start. Empty means each entry uses its
 	// own default upstream; entries that clone no source ignore it.
 	SourceRepo string
+
+	// DCGMHost is the DCGM hostengine address (host[:port]) dcgm-level4
+	// passes to `dcgmi diag --host`. Empty means the entry's default
+	// address; other entries ignore it.
+	DCGMHost string
 }
 
 // Entry holds a builder that produces a WorkflowSpec for a given target.

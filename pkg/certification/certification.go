@@ -596,6 +596,7 @@ func renderCertification(
 			TimeoutPerJob:      opts.TimeoutPerJob,
 			MeasurementTimeout: opts.MeasurementTimeout,
 			SourceRepo:         opts.SourceRepo,
+			DCGMHost:           opts.DCGMHost,
 		})
 		if buildErr != nil {
 			return nil, fmt.Errorf("building workflow for %s/%s: %w", cat.Domain, cat.Variant, buildErr)
