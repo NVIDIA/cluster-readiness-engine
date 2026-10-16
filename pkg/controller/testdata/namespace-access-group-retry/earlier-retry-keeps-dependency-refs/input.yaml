@@ -1,0 +1,9 @@
+# Each group has a job-scoped dependency. Group a's retry is recorded before
+# group b's node-result write is denied. Recording a retry deletes nothing, so
+# a's dependency and its ref survive the wait alongside a's retry. Once access
+# returns, the recovery pass starts with b still Running and retires a's failed
+# Job. a's dependency outlives the Job (ADR-053 order), so it and its ref are
+# still there after this pass; TestDurableGroupRetry follows them to the end.
+# b's retry, recorded on the same pass, keeps b's dependency the same way.
+recover: true
+jobScopedDependencies: true

@@ -11,6 +11,7 @@ import (
 	"maps"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -38,6 +39,14 @@ const (
 	// cluster-scoped resources, and job-scoped copies that are created before
 	// the Job that later owns them.
 	annotationWorkflowUID = "nvcre.nvidia.com/workflow-uid"
+
+	// annotationGroupAttempt records the retry attempt a job-scoped dependency
+	// copy was created for. Copies keep their names across a group's retries,
+	// so the name alone cannot tell the attempt being launched from the one
+	// being retired. It is stamped only on retries: an absent annotation means
+	// attempt 0, which is also what every copy created before the annotation
+	// existed was.
+	annotationGroupAttempt = "nvcre.nvidia.com/group-attempt"
 )
 
 // errDependencyNotReady is returned when a job-scoped dependency (e.g. ComputeDomain)
@@ -45,6 +54,25 @@ const (
 // (e.g. the channel ResourceClaimTemplate). The caller should requeue to give the
 // external controller time to reconcile.
 var errDependencyNotReady = errors.New("job-scoped dependency not ready: waiting for external controller")
+
+// errPreviousAttemptRetiring is returned when a group's next attempt would
+// reuse an object its previous attempt still holds: a Job or job-scoped
+// dependency that is being deleted, or one created for an earlier attempt.
+// Adopting it would bind the new attempt to an object that is about to vanish,
+// or that belongs to the attempt being retired. The caller requeues; the
+// retirement in retirePreviousAttempts frees the name.
+var errPreviousAttemptRetiring = errors.New("previous attempt's objects are still being retired")
+
+// dependencyAttempt returns the retry attempt a job-scoped dependency copy was
+// created for. A copy without the annotation, or with one that does not parse,
+// is attempt 0.
+func dependencyAttempt(obj metav1.Object) int {
+	n, err := strconv.Atoi(obj.GetAnnotations()[annotationGroupAttempt])
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
+}
 
 // resourceNameRegex matches valid Kubernetes resource names (RFC 1123 subdomain).
 var resourceNameRegex = regexp.MustCompile(`^[a-z0-9][-a-z0-9.]*[a-z0-9]$`)
@@ -668,6 +696,14 @@ func (r *WorkflowReconciler) createJobDependencies(
 		if err := json.Unmarshal(prepared.renamed[i].Raw, &obj.Object); err != nil {
 			return refs, fmt.Errorf("failed to unmarshal suffixed dependency: %w", err)
 		}
+		if group.Retries > 0 {
+			annotations := obj.GetAnnotations()
+			if annotations == nil {
+				annotations = make(map[string]string)
+			}
+			annotations[annotationGroupAttempt] = strconv.Itoa(group.Retries)
+			obj.SetAnnotations(annotations)
+		}
 
 		ref, created, err := r.createDependencyResource(ctx, nil, workflow, dep, obj)
 		if err != nil {
@@ -712,10 +748,6 @@ func (r *WorkflowReconciler) cleanupScopedDependencies(ctx context.Context, work
 	}
 
 	// Delete in reverse topological order (reverse of creation order).
-	// Each delete is gated on ownership: the object is fetched and verified to
-	// carry this Workflow's creation identity before it is removed. A foreign
-	// object with a colliding name is skipped (and dropped from tracking) — we
-	// never delete what we did not create.
 	for _, ref := range reverseDependencyRefs(toDelete) {
 		obj, err := r.getDependencyObject(ctx, ref)
 		if err != nil {
@@ -724,64 +756,75 @@ func (r *WorkflowReconciler) cleanupScopedDependencies(ctx context.Context, work
 			remaining = append(remaining, ref)
 			continue
 		}
-
-		foreign := obj != nil && !dependencyOwnedForCleanup(obj, workflow)
-		if foreign {
-			log.Info("Skipping scoped dependency resource not owned by this Workflow",
-				"scope", scope, "group", groupName, "iteration", iteration,
-				"kind", ref.Kind, "name", ref.Name)
-		}
-
-		if ref.Kind == kindPVC {
-			// Delete PVC first, then check if PV is Released and patchable.
-			// If PV is still Bound, keep the ref for retry on next reconcile.
-			// A foreign PVC is neither deleted nor is its backing PV patched.
-			if foreign {
-				continue
-			}
-			if obj != nil {
-				// Stamp the backing PV with our creation identity before the PVC
-				// disappears — cleanupPVForPVC only patches PVs that carry it.
-				if err := r.markPVOwnedByWorkflow(ctx, workflow, obj); err != nil {
-					log.Error(err, "Failed to mark PV for owned PVC before deletion", "name", ref.Name)
-					remaining = append(remaining, ref)
-					continue
-				}
-				log.Info("Deleting scoped dependency resource", "scope", scope, "group", groupName, "iteration", iteration,
-					"kind", ref.Kind, "name", ref.Name)
-				// The UID precondition closes the window between the ownership
-				// check above and this delete: if the owned object was replaced
-				// by a same-named foreign one in between, the API server rejects
-				// the delete with a conflict and we leave the newcomer alone.
-				if err := r.Delete(ctx, obj, client.Preconditions{UID: new(obj.GetUID())}); err != nil &&
-					!apierrors.IsNotFound(err) && !apierrors.IsConflict(err) {
-					log.Error(err, "Failed to delete scoped dependency resource", "name", ref.Name)
-					remaining = append(remaining, ref)
-					continue
-				}
-			}
-			if !r.cleanupPVForPVC(ctx, workflow, ref.Namespace, ref.Name) {
-				remaining = append(remaining, ref)
-			}
-			continue
-		}
-
-		if foreign || obj == nil {
-			continue
-		}
-
-		log.Info("Deleting scoped dependency resource", "scope", scope, "group", groupName, "iteration", iteration,
-			"kind", ref.Kind, "name", ref.Name)
-		// UID precondition: never delete a same-named object that replaced the
-		// one whose ownership was verified above.
-		if err := r.Delete(ctx, obj, client.Preconditions{UID: new(obj.GetUID())}); err != nil &&
-			!apierrors.IsNotFound(err) && !apierrors.IsConflict(err) {
-			log.Error(err, "Failed to delete scoped dependency resource", "name", ref.Name)
-			// Keep the ref so we can retry later
+		if r.deleteScopedDependency(ctx, workflow, ref, obj) {
 			remaining = append(remaining, ref)
 		}
 	}
 	workflow.Status.DependencyRefs = remaining
+}
+
+// deleteScopedDependency deletes one tracked scoped dependency, given the object
+// as just read (nil when it is already gone), and reports whether its ref must
+// be kept so a later reconcile can retry.
+//
+// The delete is gated on ownership: the object must carry this Workflow's
+// creation identity. A foreign object with a colliding name is skipped and its
+// ref dropped; we never delete what we did not create. A PVC also has its
+// backing PV released, and keeps its ref while the PV is still Bound.
+func (r *WorkflowReconciler) deleteScopedDependency(
+	ctx context.Context, workflow *nvcrev1alpha1.Workflow,
+	ref nvcrev1alpha1.DependencyResourceRef, obj *unstructured.Unstructured,
+) (keepRef bool) {
+	log := logf.FromContext(ctx).WithValues("scope", ref.Scope, "group", ref.GroupName, "iteration", ref.Iteration,
+		"kind", ref.Kind, "name", ref.Name)
+
+	foreign := obj != nil && !dependencyOwnedForCleanup(obj, workflow)
+	if foreign {
+		log.Info("Skipping scoped dependency resource not owned by this Workflow")
+	}
+
+	if ref.Kind == kindPVC {
+		// Delete PVC first, then check if PV is Released and patchable.
+		// If PV is still Bound, keep the ref for retry on next reconcile.
+		// A foreign PVC is neither deleted nor is its backing PV patched.
+		if foreign {
+			return false
+		}
+		if obj != nil {
+			// Stamp the backing PV with our creation identity before the PVC
+			// disappears — cleanupPVForPVC only patches PVs that carry it.
+			if err := r.markPVOwnedByWorkflow(ctx, workflow, obj); err != nil {
+				log.Error(err, "Failed to mark PV for owned PVC before deletion")
+				return true
+			}
+			log.Info("Deleting scoped dependency resource")
+			// The UID precondition closes the window between the ownership
+			// check above and this delete: if the owned object was replaced
+			// by a same-named foreign one in between, the API server rejects
+			// the delete with a conflict and we leave the newcomer alone.
+			if err := r.Delete(ctx, obj, client.Preconditions{UID: new(obj.GetUID())}); err != nil &&
+				!apierrors.IsNotFound(err) && !apierrors.IsConflict(err) {
+				log.Error(err, "Failed to delete scoped dependency resource")
+				return true
+			}
+		}
+		return !r.cleanupPVForPVC(ctx, workflow, ref.Namespace, ref.Name)
+	}
+
+	if foreign || obj == nil {
+		return false
+	}
+
+	log.Info("Deleting scoped dependency resource")
+	// UID precondition: never delete a same-named object that replaced the
+	// one whose ownership was verified above.
+	if err := r.Delete(ctx, obj, client.Preconditions{UID: new(obj.GetUID())}); err != nil &&
+		!apierrors.IsNotFound(err) && !apierrors.IsConflict(err) {
+		log.Error(err, "Failed to delete scoped dependency resource")
+		// Keep the ref so we can retry later
+		return true
+	}
+	return false
 }
 
 // collectAllStrings recursively walks a JSON value and collects all string values.

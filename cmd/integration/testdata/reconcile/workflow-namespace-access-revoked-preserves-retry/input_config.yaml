@@ -1,9 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Group 0 deletes its failed Job for a retry. Group 1 then encounters a
+# Group 0 records a retry for its failed Job. Group 1 then encounters a
 # forbidden node-result write. The wait must retain group 0 as Pending with
-# retries=1, and leave group 1 Running on its still-existing Job.
+# retries=1, and leave group 1 Running on its still-existing Job. Recording a
+# retry deletes nothing: group 0's failed Job stays, Failed, until the next
+# attempt's launch retires it, and the access wait holds that launch.
 rejectNodeResultWrites: true
 waitFor:
   kind: Workflow
@@ -15,7 +17,6 @@ collect:
   - kind: Workflow
     name: wf-retry-denied
     namespace: access-retry
-expectAbsent:
   - kind: Job
     name: wf-retry-denied-job-a
     namespace: access-retry

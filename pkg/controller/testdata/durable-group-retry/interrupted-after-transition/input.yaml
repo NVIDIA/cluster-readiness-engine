@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The retry is recorded (Pending, retries=1) and the controller stopped before
+# retiring anything: the failed Job and its tracked dependency copy are both
+# still there. The next attempt has its own name, so it can never adopt the
+# failed Job. The Job goes first, then the copy, then attempt 1 launches.
+retryFailedGroups: 2
+groupA:
+  phase: Pending
+  retries: 1
+oldJob: failed
+dep: previous
+depTracked: true
+passes: 3

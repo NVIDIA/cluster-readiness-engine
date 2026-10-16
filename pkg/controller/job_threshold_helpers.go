@@ -26,7 +26,7 @@ func missingJobThresholdKeys(thresholds map[string]string, measured map[string]f
 
 // findJobGoodputMeasurement returns the first GoodputMeasurement in the namespace
 // that measures this Job, or nil if none exists. A measurement created for an
-// earlier Job with the same name (a retried group) is skipped.
+// earlier Job with the same name (see ensureBandwidthMeasurement) is skipped.
 func findJobGoodputMeasurement(ctx context.Context, c client.Reader, job *nvcrev1alpha1.Job) *nvcrev1alpha1.GoodputMeasurement {
 	var measurements nvcrev1alpha1.GoodputMeasurementList
 	if err := c.List(ctx, &measurements, matchingJobRef(job.Namespace, job.Name)...); err != nil {
@@ -56,8 +56,8 @@ func findJobBandwidthMeasurement(ctx context.Context, c client.Reader, job *nvcr
 }
 
 // annotationJobUID records the UID of the Job a BandwidthMeasurement or
-// GoodputMeasurement was created for. The Job is referenced by name, and a
-// retried group reuses its Job's name.
+// GoodputMeasurement was created for. The Job is referenced by name, and a Job
+// can be replaced under its name (see ensureBandwidthMeasurement).
 const annotationJobUID = "nvcre.nvidia.com/job-uid"
 
 // measuresJob reports whether a measurement was created for this instance of
