@@ -47,7 +47,7 @@ It does not change:
 
 ## Decision
 
-1. **`setup init` takes chart values for the NVCRE release.** It gains three repeatable flags, `--values`/`-f <file>`, `--set key=value` and `--set-json key=json`. They have Helm's syntax and Helm's precedence: values files apply in the order given, `--set-json` overrides them, and `--set` overrides both. They apply to the NVCRE release only, not to Kubeflow Trainer. Giving any of them, or `--reset-values` (decision 2), with `--skip-phases` including `helm` is an error, since the phase that would use them does not run.
+1. **`setup init` takes chart values for the NVCRE release.** It gains three repeatable flags, `--values`/`-f <file>`, `--set key=value` and `--set-json key=json`. They have Helm's syntax and Helm's precedence: values files apply in the order given, `--set-json` overrides them, and `--set` overrides both. They are passed to Helm as given, so `--set-json` needs Helm 3.10 or later, as it would with Helm directly. They apply to the NVCRE release only, not to Kubeflow Trainer. Giving any of them, or `--reset-values` (decision 2), with `--skip-phases` including `helm` is an error, since the phase that would use them does not run.
 
 2. **`setup init` keeps the values set on the installed release.** This supersedes ADR-092's "every other value returns to its default" contract. Each value is resolved in this order, lowest first:
 
@@ -75,11 +75,11 @@ It does not change:
    Because the image is never kept, a digest pinned on an earlier run cannot hold the controller on an old image after the chart and CRDs move to a new version.
 
 5. **`--image-pull-secret` adds its secret to the list rather than replacing it.** When the flag is given, `manager.imagePullSecrets` is built as follows:
-   - Start from this run's list if the operator set one, otherwise the installed release's list, otherwise an empty list.
-   - Add `{name: nvcrectl-pull-secret}` unless an entry with that name is already there.
-   - Pass the whole list with one `--set-json manager.imagePullSecrets=…`, after the operator's flags. The `[0]` index write is removed.
+   - Start from the list Helm would produce from the kept values and this run's `--values`, `--set-json` and `--set`. The chart's default list is empty (`helm/cluster-readiness-engine/values.yaml:33`), so with neither a kept nor an operator list this is an empty list.
+   - Add `{name: nvcrectl-pull-secret}` at the end, unless an entry with that name is already there.
+   - After the operator's flags, write each entry with `--set manager.imagePullSecrets[<i>].name=…`. The single `[0]` write is removed.
 
-   The operator's entries keep their order and positions, so an operator `--set manager.imagePullSecrets[0].name=…` that Helm applies after the `--set-json` writes the same value again. Without the flag, nvcrectl passes nothing for this value, and Helm uses the operator's list or the kept one. The flag's other two jobs are unchanged: creating the `ghcr.io`-scoped `nvcrectl-pull-secret` Secret, and logging Helm in to GHCR for chart pulls.
+   Starting from Helm's own result matters because an operator's index write edits a kept list rather than replacing it. With a kept `[a, b, c]` and an operator `--set manager.imagePullSecrets[0].name=x`, Helm produces `[x, b, c]`, so nvcrectl writes `[x, b, c, nvcrectl-pull-secret]`. Starting from the operator's values alone (`[x]`) would drop `b` and `c`. The new list keeps every entry of Helm's result at the same position and adds at most one at the end, so writing it by index reproduces it exactly on every Helm 3 and Helm 4 release. Without the flag, nvcrectl passes nothing for this value, and Helm uses the operator's list or the kept one. The flag's other two jobs are unchanged: creating the `ghcr.io`-scoped `nvcrectl-pull-secret` Secret, and logging Helm in to GHCR for chart pulls.
 
 6. **Values are checked and shown before anything changes.** Preflight does three things before the confirmation prompt (`pkg/setup/setup.go:238-240`), and before the deps phase installs anything:
    - Reads the installed release's values.
@@ -102,7 +102,11 @@ It does not change:
 
 ### Reading the operator's values
 
-Decisions 3 to 5 need the operator's values as data. To get them, nvcrectl renders a probe chart with the operator's own flags: `helm template` on a chart that has no `values.yaml` and a single template, `{{ toJson .Values }}`. Helm parses the flags exactly as it will for the upgrade, including the `--set` syntax (comma-separated pairs, `{a,b}` lists, escaped dots, list indices, `null`). The probe chart is two small files written to a temporary directory created with mode 0700. The probe needs no cluster access, and it runs only when the operator passed `--values`, `--set` or `--set-json`.
+Decisions 3 to 5 need the operator's values as data. To get them, nvcrectl renders a probe chart with the operator's own flags: `helm template` on a chart that has no `values.yaml` and a single template, `{{ toJson .Values }}`. Helm parses the flags exactly as it will for the upgrade, including the `--set` syntax (comma-separated pairs, `{a,b}` lists, escaped dots, list indices, `null`). The probe chart is two small files written to a temporary directory created with mode 0700. The probe needs no cluster access. It runs up to twice:
+- **With the operator's flags alone,** when the operator passed `--values`, `--set` or `--set-json`. This is what decisions 3 and 4 read, because only what the operator passed on this run can conflict with a flag or choose the image.
+- **With the kept-values file in front of the operator's flags,** when `--image-pull-secret` is given and either a kept file or operator flags exist. This gives the list decision 5 starts from: the same list the upgrade would produce before nvcrectl's own values.
+
+An operator's `--set-json` needs Helm 3.10 or later. On an older Helm, the probe fails with Helm's own error during preflight, before anything changes.
 
 The probe's output is used only to detect conflicts, to decide the image and to build the pull-secret list. The upgrade receives the operator's original flags unchanged, so Helm's own merge semantics, including `null` removing a chart default, apply exactly as the operator wrote them.
 
@@ -115,12 +119,20 @@ The probe's output is used only to detect conflicts, to decide the image and to 
 3. The operator's `--values`, `--set-json` and `--set` flags, in the order given.
 4. nvcrectl's own values:
    - the image values from decision 4, when it sets them
-   - `--set-json manager.imagePullSecrets=…` from decision 5, when `--image-pull-secret` is given
+   - `--set manager.imagePullSecrets[<i>].name=…` for each entry of the list from decision 5, when `--image-pull-secret` is given
    - `--set rbac.scope=…`, when `--rbac-scope` is given
 
-Decision 3 guarantees that nvcrectl's values and the operator's never name the same key on one run, so step 4's position matters only against the kept file, which it overrides. ADR-092's dedicated carry of `rbac.*` folds into step 2. `pkg/setup/helm_rbac.go` keeps `--rbac-scope` validation and the "Setting rbac.scope" message.
+Apart from the pull-secret list, decision 3 guarantees that nvcrectl's values and the operator's never name the same key on one run, so step 4's position matters only against the kept file, which it overrides. The pull-secret list is built from the operator's values and the kept ones (decision 5), so writing it last keeps their entries and adds nvcrectl's. ADR-092's dedicated carry of `rbac.*` folds into step 2. `pkg/setup/helm_rbac.go` keeps `--rbac-scope` validation and the "Setting rbac.scope" message.
 
-Everything `setup init` passes already works on Helm 3.10, the release that added `--set-json` (nvcrectl already passes `--set-json` for `rbac.runNamespaces`, `pkg/setup/helm_rbac.go:98`). This record adds no new Helm version requirement.
+### Helm version
+
+nvcrectl does not check the Helm version, and this record does not add a check. The arguments nvcrectl adds itself are only `-f` and `--set`, never `--set-json`:
+- The kept values travel in the `-f` file.
+- The pull-secret list is written by index.
+
+The conditional `--set-json` for `rbac.runNamespaces` that `main` passes today (`pkg/setup/helm_rbac.go:89-98`) goes away with the rest of the `rbac.*` carry. What nvcrectl needs is then what the default `oci://` chart reference already needs: Helm 3.8 or later, the release where OCI support became generally available.
+
+An operator's own `--set-json` needs Helm 3.10 or later, as it would with Helm directly. The operator's flags are passed to Helm unchanged, so `--set` and `--values` work on any Helm 3 or Helm 4 release, and `--set-json` works wherever Helm accepts it.
 
 ### Files
 
@@ -146,6 +158,8 @@ Everything `setup init` passes already works on Helm 3.10, the release that adde
   - document the new flags
   - add a "Values across runs" section covering decisions 2 to 5
   - replace "Every other chart value returns to its default on each run."
+  - state the Helm requirement: 3.8 or later, and 3.10 or later for an operator's own `--set-json`
+- **`docs/getting-started/install.md`:** change the prerequisite "Helm 3.x" (`:14`) to "Helm 3.8 or later"
 - **`docs/operations/deployment.md`:**
   - show setting chart values through `setup init`
   - rewrite the mirror pull-secret guidance (`:115`): a custom-named secret no longer requires bypassing `setup init`
@@ -169,9 +183,17 @@ Everything `setup init` passes already works on Helm 3.10, the release that adde
   - an unreadable release (error)
 - **Conflicts:** `--image` with `--set manager.image.tag`, with `-f` setting `manager.image.repository`, and with `--set-json manager={…}` containing an image (all rejected); `--rbac-scope` with `--set rbac.scope` (rejected); `--set rbac.scope` alone (allowed); the value flags or `--reset-values` with `--skip-phases=helm` (rejected).
 - **Image:** operator-set (nvcrectl sets nothing), `--image repo:tag`, `--image repo@sha256:…` (sets `digest`, not `tag`), the CLI default, and a digest in the installed release that is not kept.
-- **Pull secrets:** each combination of flag, operator list and kept list, including an operator list that already holds `nvcrectl-pull-secret`; check that the result is passed as one `--set-json` and never as `[0]`.
-- **Argument order:** the kept file comes before the operator's flags, which come before nvcrectl's own values.
-- **Probe, against real Helm:** use `requireHelm` from `test/helm/render_test.go:105`, which fails in CI without Helm and skips locally. Cover comma-separated `--set` pairs, lists, escaped dots, `null`, and the precedence `-f` < `--set-json` < `--set`.
+- **Pull secrets:**
+  - each combination of flag, operator list and kept list, including an operator list that already holds `nvcrectl-pull-secret`
+  - an operator index write over a kept list (kept `[a, b, c]` with `--set manager.imagePullSecrets[0].name=x` gives `[x, b, c, nvcrectl-pull-secret]`)
+  - the list is written with one indexed `--set` per entry
+  - the chart's default list is empty, pinned so a non-empty default cannot slip past the probe
+- **Argument order:** the kept file comes before the operator's flags, which come before nvcrectl's own values. nvcrectl's own arguments contain no `--set-json`.
+- **Probe, against real Helm:** use `requireHelm` from `test/helm/render_test.go:105`, which fails in CI without Helm and skips locally. Cover:
+  - comma-separated `--set` pairs, lists, escaped dots and `null`
+  - the precedence `-f` < `--set-json` < `--set`
+  - the second run with the kept-values file in front
+  - writing the pull-secret list by index, which must reproduce the list exactly
 - **Output:** the summary lines, with and without `--auto-approve`.
 
 ## Rationale
@@ -179,7 +201,7 @@ Everything `setup init` passes already works on Helm 3.10, the release that adde
 - **It closes the #504 failure with no change to how a harness calls `setup init`.** A harness that pins an nvcrectl version must move to a release that includes this change. After that, once an operator sets the memory, a later `setup init` with no flags, which is what the harness runs, keeps it. The flags also let an operator or a harness set it through nvcrectl in the first place.
 - **Chart values are already the documented interface** (`docs/operations/deployment.md`, key chart values). Accepting them in Helm's syntax costs operators nothing new to learn, and it covers values beyond memory, such as placement and the mirror pull secret, without a flag for each.
 - **Keeping every value matches what an operator expects.** Once `--set` exists, a value that survives some runs and not others, depending on its key, is a trap. ADR-092 carried `rbac.*` because a reset there was unsafe. #504 shows a reset of `manager.resources` is just as harmful.
-- **Doing the carry-forward in nvcrectl, not with a Helm flag,** is what makes the exceptions possible: dropping `manager.image` and merging the pull-secret list. It also works on any Helm version that supports `--set-json`.
+- **Doing the carry-forward in nvcrectl, not with a Helm flag,** is what makes the exceptions possible: dropping `manager.image` and merging the pull-secret list. It also keeps nvcrectl's own arguments within what Helm 3.8 accepts, the floor the default OCI chart reference already sets.
 - **The probe chart reuses Helm's parser.** Values are interpreted by the same Helm binary that runs the upgrade, so detection and installation cannot disagree.
 - **Checking in preflight** means a rejected run changes nothing on the cluster, including the Trainer release the deps phase would otherwise install first.
 
@@ -188,7 +210,8 @@ Everything `setup init` passes already works on Helm 3.10, the release that adde
 - **Values set with `helm upgrade` now survive `setup init`.** This is intended, and it is a change of contract. An operator who relied on `setup init` to restore the chart defaults uses `--reset-values`.
 - **A kept value outlives a change of chart default.** If a later chart raises a default the operator had pinned, the pin wins. The chart has no `values.schema.json`, so a kept key that a later chart removed is ignored silently rather than failing the upgrade. `--reset-values` clears both cases.
 - **Releases installed by earlier `setup init` versions upgrade cleanly.** Their stored values are the image, which is dropped; `manager.imagePullSecrets[0]`, which is kept and merged; and `rbac.*`, which was already kept. Values an operator added with `helm upgrade`, such as the #504 workaround's memory and tolerations, are kept from the first run of the new version.
-- **`setup init` runs one more local Helm command** (`helm template`) when value flags are given. It needs no cluster access.
+- **`setup init` runs up to two more local Helm commands** (`helm template`), only when value flags or `--image-pull-secret` are given. They need no cluster access.
+- **nvcrectl's Helm requirement stays at 3.8.** The conditional need for 3.10 that `main` has when `rbac.runNamespaces` is set goes away. Only an operator who passes `--set-json` needs 3.10.
 - **The installed release's values are read before the confirmation prompt** rather than in the helm phase. A cluster where `helm get values` fails now stops `setup init` before the deps phase, where before it failed after Trainer was installed.
 - **An operator who wants the GHCR chart login and their own pull secrets can now use both,** since the lists are combined rather than one rejected.
 
@@ -225,6 +248,14 @@ Everything `setup init` passes already works on Helm 3.10, the release that adde
 ### Reject `--image-pull-secret` when a list is present, instead of combining
 
 **Rejected.** It needs the same reading of the kept list and the operator's values as combining does, and it gives a worse result. A pod can name several pull secrets, so there is nothing to choose between.
+
+### Write the pull-secret list with `--set-json`
+
+**Rejected.** Writing the whole list as one value would raise the Helm requirement to 3.10 for every operator who uses `--image-pull-secret`, which no other part of nvcrectl needs. Writing it by index gives the same list on every Helm 3 and Helm 4 release.
+
+### Detect the Helm version and choose `--set-json` or `--set`
+
+**Rejected.** It would mean a version check and two code paths to test, producing the same list. Writing by index works everywhere.
 
 ### Parse `--set` in Go
 
