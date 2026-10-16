@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# This Workflow's copy for the same attempt, but mid-deletion (a ComputeDomain
+# whose controller is tearing it down, say). Adopting it would hand the pods an
+# object that is about to vanish: the create waits.
+holder: owned
+holderAttempt: 1
+attempt: 1
+terminating: true

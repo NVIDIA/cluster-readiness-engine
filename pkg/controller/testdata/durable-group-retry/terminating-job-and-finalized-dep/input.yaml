@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The fixture the #389 thread asked for. The failed attempt's Job is
+# terminating, its dependency copy is held by a finalizer (a ComputeDomain
+# whose controller is still tearing it down, say), and DependencyRefs no longer
+# names the copy. The copy keeps its name across attempts, so attempt 1 must not
+# launch, and must not adopt it, until the API server says it is gone. The
+# finalizers are released after pass 2; attempt 1 launches on pass 3.
+retryFailedGroups: 1
+groupA:
+  phase: Pending
+  retries: 1
+oldJob: terminating
+dep: previous-terminating
+depTracked: false
+releaseFinalizersAfterPass: 2
+passes: 4

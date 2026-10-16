@@ -1,6 +1,8 @@
-# Same failed job once the pods are gone: now the retry proceeds — the Job and
-# the job-scoped dependency are deleted and the group resets to Pending with
-# the retry counted.
+# Same failed job once the pods are gone: now the retry proceeds. The group
+# resets to Pending with the retry counted, and nothing is deleted: the Job and
+# the job-scoped dependency (and its ref) stay until retirePreviousAttempts
+# retires them before the next attempt launches, so a pass that stops before
+# the status write cannot lose the retry (issue #389).
 retryFailedGroups: 1
 jobFailedReason: WorkloadFailed
 pods: []

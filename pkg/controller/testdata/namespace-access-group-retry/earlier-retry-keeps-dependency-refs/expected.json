@@ -19,9 +19,14 @@
     "hasFailedNodesRef": true,
     "namespaceAccessReason": "NamespaceAccessGranted"
   },
-  "afterRecoveryDependencyRefs": [],
-  "firstDependencyDeleted": true,
-  "firstJobDeleted": true,
+  "afterRecoveryDependencyRefs": [
+    "dep-a",
+    "dep-b"
+  ],
+  "afterRecoveryFirstDependencyDeleted": false,
+  "afterRecoveryFirstJobDeleted": true,
+  "firstDependencyDeleted": false,
+  "firstJobDeleted": false,
   "waiting": {
     "groups": [
       {
@@ -43,6 +48,7 @@
     "namespaceAccessReason": "NamespacePermissionsMissing"
   },
   "waitingDependencyRefs": [
+    "dep-a",
     "dep-b"
   ]
 }

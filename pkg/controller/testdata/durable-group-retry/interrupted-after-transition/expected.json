@@ -1,0 +1,57 @@
+[
+  {
+    "dependencies": [
+      "dep-cm-5947a-job"
+    ],
+    "dependencyRefs": [
+      "dep-cm-5947a-job"
+    ],
+    "failedNodes": [],
+    "groups": [
+      {
+        "name": "a",
+        "phase": "Pending",
+        "retries": 1
+      }
+    ],
+    "jobs": [],
+    "pass": 1
+  },
+  {
+    "dependencies": [],
+    "dependencyRefs": [
+      "dep-cm-5947a-job"
+    ],
+    "failedNodes": [],
+    "groups": [
+      {
+        "name": "a",
+        "phase": "Pending",
+        "retries": 1
+      }
+    ],
+    "jobs": [],
+    "pass": 2
+  },
+  {
+    "dependencies": [
+      "dep-cm-5947a-job attempt=1"
+    ],
+    "dependencyRefs": [
+      "dep-cm-5947a-job"
+    ],
+    "failedNodes": [],
+    "groups": [
+      {
+        "jobRef": "wf-job-retry-1",
+        "name": "a",
+        "phase": "Running",
+        "retries": 1
+      }
+    ],
+    "jobs": [
+      "wf-job-retry-1"
+    ],
+    "pass": 3
+  }
+]

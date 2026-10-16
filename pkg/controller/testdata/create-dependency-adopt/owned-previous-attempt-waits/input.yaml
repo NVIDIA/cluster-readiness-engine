@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The previous attempt's copy, not yet retired. The new attempt must not bind
+# to it: the create waits for retirement instead.
+holder: owned
+holderAttempt: 0
+attempt: 1

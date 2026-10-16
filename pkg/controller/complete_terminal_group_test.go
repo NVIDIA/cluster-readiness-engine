@@ -56,7 +56,11 @@ func TestCompleteTerminalGroup(t *testing.T) {
 			JobFailedReason   string `yaml:"jobFailedReason"`
 			JobSucceeded      bool   `yaml:"jobSucceeded"`
 			Placement         string `yaml:"placement"`
-			Pods              []struct {
+			// LiveRetries, when set, is the group's retry count on the API
+			// server: a value ahead of groupRetries means the cached view this
+			// pass acts on is behind a retry transition already written.
+			LiveRetries *int `yaml:"liveRetries"`
+			Pods        []struct {
 				Name  string `yaml:"name"`
 				Phase string `yaml:"phase"`
 			} `yaml:"pods"`
@@ -131,7 +135,14 @@ func TestCompleteTerminalGroup(t *testing.T) {
 			return err
 		}
 
+		live := workflow.DeepCopy()
+		if input.LiveRetries != nil {
+			live.Status.Orchestration.Groups[0].Retries = *input.LiveRetries
+			live.Status.Orchestration.Groups[0].Phase = nvcrev1alpha1.GroupPending
+			live.Status.Orchestration.Groups[0].JobRef = nil
+		}
 		objs := []client.Object{
+			live,
 			job.DeepCopy(),
 			&corev1.ConfigMap{Name: "dep-cm", Namespace: ns},
 			&corev1.ConfigMap{Name: "workload-cm", Namespace: ns},
@@ -159,7 +170,7 @@ func TestCompleteTerminalGroup(t *testing.T) {
 
 		g := &workflow.Status.Orchestration.Groups[0]
 		ts := getJobTerminalState(job)
-		draining, err := r.completeTerminalGroup(context.Background(), workflow, workflow.Status.Orchestration, g, job, ts)
+		outcome, err := r.completeTerminalGroup(context.Background(), workflow, workflow.Status.Orchestration, g, job, ts)
 		if err != nil {
 			return err
 		}
@@ -191,6 +202,7 @@ func TestCompleteTerminalGroup(t *testing.T) {
 
 		out := struct {
 			Draining          bool     `json:"draining"`
+			Stale             bool     `json:"stale,omitempty"`
 			GroupPhase        string   `json:"groupPhase"`
 			Retries           int      `json:"retries"`
 			HasJobRef         bool     `json:"hasJobRef"`
@@ -201,7 +213,8 @@ func TestCompleteTerminalGroup(t *testing.T) {
 			WorkloadExists    bool     `json:"workloadExists"`
 			JobExists         bool     `json:"jobExists"`
 		}{
-			Draining:          draining,
+			Draining:          outcome == groupStillRunning,
+			Stale:             outcome == groupViewStale,
 			GroupPhase:        string(g.Phase),
 			Retries:           g.Retries,
 			HasJobRef:         g.JobRef != nil,

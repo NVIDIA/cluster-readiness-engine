@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The retry for this failure was already written (the API server has the group
+# Pending with retries=1), but this pass acts on a cached view that still shows
+# it Running on the failed Job with retries=0. The failed Job is no longer
+# deleted at the transition, so the stale view can reach the retry decision
+# again. Deciding it would spend a second retry on the same failure, so the
+# pass reports the view stale and changes nothing.
+retryFailedGroups: 2
+jobFailedReason: WorkloadFailed
+liveRetries: 1
+pods: []
