@@ -5,6 +5,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
@@ -17,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -73,6 +75,13 @@ const (
 	// (ADR-083). Overridable via spec.schedulingStallGraceSeconds.
 	defaultSchedulingStallGrace = 5 * time.Minute
 
+	// DefaultWorkloadCreationDeadline bounds how long a rejected workload
+	// create is retried before the Job fails (issue #488). cmd/manager's
+	// --workload-creation-deadline overrides it. It is independent
+	// of timeoutPerJob, which may be unset, and long enough to cover a
+	// TrainingRuntime created moments before the TrainJob.
+	DefaultWorkloadCreationDeadline = 10 * time.Minute
+
 	// Job tier reason constants are in helpers.go.
 
 	// defaultMeasurementTimeout is how long after the Job succeeds to wait for
@@ -114,6 +123,17 @@ type JobReconciler struct {
 	// data before failing threshold validation. If zero, defaults to defaultMeasurementTimeout (5m).
 	MeasurementTimeout time.Duration
 
+	// WorkloadCreationDeadline is how long a rejected workload create is
+	// retried before the Job fails. If zero, defaults to
+	// DefaultWorkloadCreationDeadline (10m).
+	WorkloadCreationDeadline time.Duration
+
+	// AccessReviewer tells an RBAC denial of the workload create from an
+	// admission or quota rejection (ADR-092). The manager shares one with the
+	// WorkflowReconciler, so both read the same cached answers. If nil,
+	// SetupWithManager uses NewAccessReviewer.
+	AccessReviewer AccessReviewer
+
 	// detectorCache caches compiled CEL detectors by expression string to avoid
 	// recompiling on every reconcile. Protected by detectorCacheMu.
 	detectorCache   map[string]*cel.Detector
@@ -139,6 +159,14 @@ func (r *JobReconciler) getWorkloadRequeueInterval() time.Duration {
 	return workloadRequeueInterval
 }
 
+// getWorkloadCreationDeadline returns the effective workload creation deadline.
+func (r *JobReconciler) getWorkloadCreationDeadline() time.Duration {
+	if r.WorkloadCreationDeadline > 0 {
+		return r.WorkloadCreationDeadline
+	}
+	return DefaultWorkloadCreationDeadline
+}
+
 // getMeasurementTimeout returns the effective timeout for waiting on measurement data
 // after a Job has succeeded. Priority: Job.Spec > reconciler field > default (5m).
 func (r *JobReconciler) getMeasurementTimeout(job *nvcrev1alpha1.Job) time.Duration {
@@ -160,8 +188,14 @@ func measurementTimeoutFor(job *nvcrev1alpha1.Job, configured time.Duration) tim
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs/finalizers,verbs=update
-// +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainjobs,verbs=get;list;watch;create;update;patch;delete
+//
+// TrainJob reads stay in nvcre-manager-role, cluster-wide, because Owns()
+// watches them across all namespaces. Writes are in nvcre-run-role, granted
+// per run namespace (ADR-092).
+// +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainjobs,verbs=get;list;watch
 // +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainjobs/status,verbs=get
+// +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainjobs,verbs=create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 
@@ -313,6 +347,20 @@ func (r *JobReconciler) deleteWorkloadByRef(ctx context.Context, job *nvcrev1alp
 	}
 
 	if err := r.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
+		// Forbidden in a terminating namespace: the RoleBinding that granted
+		// the delete may be gone already, and the namespace controller
+		// deletes the workload anyway. Retrying would hold this finalizer,
+		// the Workflow's that waits on it, and the namespace (ADR-092
+		// decision 5). A failed namespace read keeps the finalizer instead.
+		skip, nsErr := forbiddenInTerminatingNamespace(ctx, r.workloadReader(), ns, err)
+		if nsErr != nil {
+			return errors.Join(fmt.Errorf("failed to delete workload %s/%s: %w", ref.Kind, ref.Name, err), nsErr)
+		}
+		if skip {
+			logf.FromContext(ctx).V(1).Info("Leaving workload to the terminating namespace",
+				"kind", ref.Kind, "name", ref.Name, "error", err.Error())
+			return nil
+		}
 		return fmt.Errorf("failed to delete workload %s/%s: %w", ref.Kind, ref.Name, err)
 	}
 	return nil
@@ -328,6 +376,9 @@ func (r *JobReconciler) reconcileWorkload(ctx context.Context, job *nvcrev1alpha
 			// A retried group's Job can finish while the measurement left by
 			// the attempt it replaced is still being deleted; create its own
 			// once that one is gone, or the thresholds wait on nothing.
+			if err := r.ensureGoodputMeasurement(ctx, job); err != nil {
+				logf.FromContext(ctx).Error(err, "Failed to ensure GoodputMeasurement")
+			}
 			if err := r.ensureBandwidthMeasurement(ctx, job); err != nil {
 				logf.FromContext(ctx).Error(err, "Failed to ensure BandwidthMeasurement")
 			}
@@ -460,13 +511,7 @@ func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *nvcrev1
 		message = fmt.Sprintf("Workload %s/%s was already created by this Job and has been adopted",
 			gvk.Kind, workloadName)
 	default:
-		// Return the error so controller-runtime applies exponential backoff.
-		// Do not mark the Job as Failed — creation errors are transient
-		// (e.g. webhook denial because TrainingRuntime isn't ready yet).
-		log.Error(createErr, "Failed to create workload, will retry", "kind", gvk.Kind, "name", workloadName)
-		r.warnf(job, ReasonWorkloadCreationError,
-			"Failed to create %s/%s: %v", gvk.Kind, workloadName, createErr)
-		return ctrl.Result{}, fmt.Errorf("failed to create workload: %w", createErr)
+		return r.handleWorkloadCreateError(ctx, job, gvk, workloadName, createErr)
 	}
 
 	// Set initial InProgress status, recording the workload reference inside
@@ -482,8 +527,10 @@ func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *nvcrev1
 				Name:       workloadName,
 				Namespace:  job.Namespace,
 			}
+			changed := j.Status.WorkloadCreationRejectedSince != nil
+			j.Status.WorkloadCreationRejectedSince = nil
 			if j.Status.WorkloadRef != nil && *j.Status.WorkloadRef == *ref {
-				return false
+				return changed
 			}
 			j.Status.WorkloadRef = ref
 			return true
@@ -492,6 +539,184 @@ func (r *JobReconciler) createWorkloadFromSpec(ctx context.Context, job *nvcrev1
 	}
 
 	return ctrl.Result{RequeueAfter: r.getWorkloadRequeueInterval()}, nil
+}
+
+// isWorkloadCreateRejection reports whether a workload create error is the
+// API server refusing the object (admission webhook or policy denial,
+// ResourceQuota, validation) rather than a failure to reach it. Only
+// rejections can run against the workload creation deadline; other errors
+// keep retrying with backoff as before. A Forbidden error may still be an
+// RBAC denial, which classifyWorkloadCreateError separates out.
+func isWorkloadCreateRejection(err error) bool {
+	return apierrors.IsForbidden(err) || apierrors.IsInvalid(err) || apierrors.IsBadRequest(err)
+}
+
+// workloadCreateErrorClass is how a failed workload create is handled.
+type workloadCreateErrorClass int
+
+const (
+	// createErrorTransient: the request did not reach a verdict on the
+	// object (timeout, throttling, connection error). Retried unbounded.
+	createErrorTransient workloadCreateErrorClass = iota
+	// createErrorRBACDenied: the controller lacks create permission in the
+	// namespace. The Job retries without writing status and without this
+	// deadline. The bound is the Workflow's: while a running group's Job has
+	// no workload (groupAwaitingWorkload), gateNamespaceAccess runs the full
+	// access check, finds the denial and waits with
+	// NamespacePermissionsMissing until --namespace-access-timeout (ADR-092).
+	// timeoutPerJob, when set, still applies as well.
+	createErrorRBACDenied
+	// createErrorAccessUnknown: Forbidden, but the access review failed, so
+	// RBAC cannot be ruled out. Retried unbounded; the deadline never runs on
+	// an unconfirmed answer.
+	createErrorAccessUnknown
+	// createErrorRejected: admission, policy, quota or validation refused the
+	// object. Runs against the workload creation deadline.
+	createErrorRejected
+)
+
+// classifyWorkloadCreateError sorts a failed workload create (issue #488).
+// A Forbidden create is confirmed with a fresh access review, the way ADR-092
+// does for dependencies: an admission webhook, ValidatingAdmissionPolicy or
+// ResourceQuota denial also comes back Forbidden, and only those count as
+// rejections.
+func (r *JobReconciler) classifyWorkloadCreateError(ctx context.Context, namespace string,
+	gvk schema.GroupVersionKind, createErr error,
+) (workloadCreateErrorClass, error) {
+	if !isWorkloadCreateRejection(createErr) {
+		return createErrorTransient, nil
+	}
+	if !apierrors.IsForbidden(createErr) {
+		return createErrorRejected, nil
+	}
+	if r.AccessReviewer == nil {
+		return createErrorAccessUnknown, errors.New("no access reviewer configured")
+	}
+	gr, ok := forbiddenGroupResource(createErr)
+	if !ok {
+		mapping, err := r.RESTMapper().RESTMapping(gvk.GroupKind(), gvk.Version)
+		if err != nil {
+			return createErrorAccessUnknown, fmt.Errorf("resolve resource for %s: %w", gvk.Kind, err)
+		}
+		gr = mapping.Resource.GroupResource()
+	}
+	checks := []AccessCheck{{Group: gr.Group, Resource: gr.Resource, Verb: verbCreate}}
+	// A cached denial is reused, so a create that stays RBAC-denied sends at
+	// most one review per cache TTL instead of one per retry. A cached allow
+	// is not: it may predate a removed binding, and treating that as an
+	// admission rejection would start the clock on an RBAC denial.
+	if cached, ok := r.AccessReviewer.(CachedAccessReviewer); ok && len(cached.CachedDenials(namespace, checks)) > 0 {
+		return createErrorRBACDenied, nil
+	}
+	denied, err := r.AccessReviewer.Review(ctx, namespace, checks, true)
+	if err != nil {
+		return createErrorAccessUnknown, err
+	}
+	if len(denied) > 0 {
+		return createErrorRBACDenied, nil
+	}
+	return createErrorRejected, nil
+}
+
+// forbiddenGroupResource returns the group and resource a Forbidden API error
+// names. The API server fills StatusDetails with the resource it refused, so
+// the review asks about exactly what was denied.
+func forbiddenGroupResource(err error) (schema.GroupResource, bool) {
+	var status apierrors.APIStatus
+	if !errors.As(err, &status) {
+		return schema.GroupResource{}, false
+	}
+	details := status.Status().Details
+	if details == nil || details.Kind == "" {
+		return schema.GroupResource{}, false
+	}
+	return schema.GroupResource{Group: details.Group, Resource: details.Kind}, true
+}
+
+// handleWorkloadCreateError handles a failed workload create (issue #488).
+// Every failure is returned so controller-runtime retries with backoff,
+// because some rejections clear on their own: a TrainingRuntime that is not
+// ready yet, quota that frees up. A rejection also marks the Job InProgress
+// with WorkloadCreationRejected and starts a persisted clock on the first
+// rejected attempt; once the rejection outlasts the workload creation
+// deadline, the Job fails with the rejection's message. Without that bound a
+// permanent denial, such as an admission policy rule, is retried for as long
+// as the Job exists when timeoutPerJob is unset.
+//
+// The failure records no failed nodes: nothing ran, and the rejection says
+// nothing about the hardware, so the group's nodes must not reach the
+// Certification's failed-node list (the same as failTimedOutJob).
+func (r *JobReconciler) handleWorkloadCreateError(ctx context.Context, job *nvcrev1alpha1.Job,
+	gvk schema.GroupVersionKind, name string, createErr error,
+) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+	kind := gvk.Kind
+	class, reviewErr := r.classifyWorkloadCreateError(ctx, job.Namespace, gvk, createErr)
+	switch class {
+	case createErrorTransient, createErrorRBACDenied, createErrorAccessUnknown:
+		if reviewErr != nil {
+			log.Error(reviewErr, "Could not confirm whether a Forbidden workload create is an RBAC denial; "+
+				"retrying without the workload creation deadline", "kind", kind, "name", name)
+		}
+		log.Error(createErr, "Failed to create workload, will retry", "kind", kind, "name", name)
+		r.warnf(job, ReasonWorkloadCreationError, "Failed to create %s/%s: %v", kind, name, createErr)
+		return ctrl.Result{}, fmt.Errorf("failed to create workload: %w", createErr)
+	case createErrorRejected:
+	}
+
+	deadline := r.getWorkloadCreationDeadline()
+	if since := job.Status.WorkloadCreationRejectedSince; since != nil && time.Since(since.Time) >= deadline {
+		msg := fmt.Sprintf("Workload %s/%s creation rejected for longer than %s: %v",
+			kind, name, deadline, createErr)
+		log.Info("Workload creation deadline exceeded, failing Job", "kind", kind, "name", name)
+		if err := r.setExclusiveCondition(ctx, job, nvcrev1alpha1.JobFailed, ReasonWorkloadCreationError, msg); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to update Job status: %w", err)
+		}
+		return ctrl.Result{}, nil
+	}
+
+	log.Info("Workload create rejected, will retry", "kind", kind, "name", name, "error", createErr.Error())
+	msg := fmt.Sprintf("Workload %s/%s: %v", kind, name, createErr)
+	started, err := r.markWorkloadCreationRejected(ctx, job, msg)
+	if err != nil {
+		log.Error(err, "Failed to record workload creation rejection")
+	}
+	if started {
+		r.warnf(job, ReasonWorkloadCreationRejected, "%s", msg)
+	}
+	return ctrl.Result{}, fmt.Errorf("failed to create workload: %w", createErr)
+}
+
+// markWorkloadCreationRejected sets InProgress/WorkloadCreationRejected and
+// starts the rejection clock if it is not running. It reports whether the
+// Job entered the rejected state on this write, so the caller emits one
+// Warning when the state starts rather than one per retried create.
+//
+// started is computed inside the mutation, which a conflict retry reruns,
+// but the stop guard can end the retry before the mutation runs (the
+// Workflow timed the Job out in between). The stored Job then never took on
+// the rejected state, so the result also requires that the write happened.
+func (r *JobReconciler) markWorkloadCreationRejected(ctx context.Context, job *nvcrev1alpha1.Job, msg string) (bool, error) {
+	started := false
+	wrote, _, err := setExclusiveStatusConditionUnless(ctx, r.Client, job,
+		func(j *nvcrev1alpha1.Job) *[]metav1.Condition { return &j.Status.Conditions },
+		[]string{nvcrev1alpha1.JobInProgress, nvcrev1alpha1.JobSucceeded, nvcrev1alpha1.JobFailed},
+		nvcrev1alpha1.JobInProgress, ReasonWorkloadCreationRejected, msg,
+		r.isTerminalState,
+		func(j *nvcrev1alpha1.Job) bool {
+			cond := meta.FindStatusCondition(j.Status.Conditions, nvcrev1alpha1.JobInProgress)
+			started = cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != ReasonWorkloadCreationRejected
+			if j.Status.WorkloadCreationRejectedSince != nil {
+				return false
+			}
+			now := metav1.Now()
+			j.Status.WorkloadCreationRejectedSince = &now
+			return true
+		})
+	if err != nil {
+		return false, err
+	}
+	return wrote && started, nil
 }
 
 // handleWorkloadNotFound handles a cache miss on the Job's workload: it
@@ -707,8 +932,8 @@ func (r *JobReconciler) shouldRestart(ctx context.Context, job *nvcrev1alpha1.Jo
 	return r.hasCheckpoint(ctx, job)
 }
 
-// hasCheckpoint returns true if there is a GoodputMeasurement for this Job that has recorded
-// at least one checkpoint step (LastCheckpointStep > 0).
+// hasCheckpoint returns true if there is a GoodputMeasurement for this Job instance that has
+// recorded at least one checkpoint step (LastCheckpointStep > 0).
 func (r *JobReconciler) hasCheckpoint(ctx context.Context, job *nvcrev1alpha1.Job) bool {
 	log := logf.FromContext(ctx)
 	var measurements nvcrev1alpha1.GoodputMeasurementList
@@ -717,6 +942,11 @@ func (r *JobReconciler) hasCheckpoint(ctx context.Context, job *nvcrev1alpha1.Jo
 		return false
 	}
 	for _, m := range measurements.Items {
+		// An earlier attempt's measurement can outlive it while its delete
+		// waits on the finalizer; its checkpoints are not this attempt's.
+		if !measuresJob(&m, job) {
+			continue
+		}
 		if m.Status.LastCheckpointStep > 0 {
 			return true
 		}
@@ -1765,10 +1995,25 @@ func (r *JobReconciler) ensureGoodputMeasurement(ctx context.Context, job *nvcre
 	log := logf.FromContext(ctx)
 	gmName := r.getGoodputMeasurementName(job)
 
-	// Check if already exists
 	existing := &nvcrev1alpha1.GoodputMeasurement{}
 	if err := r.Get(ctx, client.ObjectKey{Namespace: job.Namespace, Name: gmName}, existing); err == nil {
-		return nil // already exists
+		if measuresJob(existing, job) {
+			return nil
+		}
+		// A retried group recreates its Job under the same name, and the
+		// Workflow-owned measurement of the failed attempt outlives it. The
+		// GoodputMeasurement controller never re-measures a Complete one, so
+		// left in place it would stand in for this attempt in thresholds and
+		// stall detection. Replace it, as ensureBandwidthMeasurement does; the
+		// next reconcile creates the new one once it is gone.
+		if existing.DeletionTimestamp.IsZero() {
+			log.Info("Replacing GoodputMeasurement of an earlier Job with the same name", "name", gmName)
+			if err := r.Delete(ctx, existing, client.Preconditions{UID: new(existing.UID)}); err != nil &&
+				!apierrors.IsNotFound(err) && !apierrors.IsConflict(err) {
+				return fmt.Errorf("failed to delete stale GoodputMeasurement: %w", err)
+			}
+		}
+		return nil
 	}
 
 	apiGroup := "nvcre.nvidia.com"
@@ -1779,6 +2024,7 @@ func (r *JobReconciler) ensureGoodputMeasurement(ctx context.Context, job *nvcre
 			labelManagedBy: managedByValue,
 			labelJobKey:    job.Name,
 		},
+		Annotations: map[string]string{annotationJobUID: string(job.UID)},
 		Spec: nvcrev1alpha1.GoodputMeasurementSpec{
 			JobRef: corev1.TypedLocalObjectReference{
 				APIGroup: &apiGroup,
@@ -1910,6 +2156,9 @@ func (r *JobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.APIReader == nil {
 		r.APIReader = mgr.GetAPIReader()
 	}
+	if r.AccessReviewer == nil {
+		r.AccessReviewer = NewAccessReviewer(mgr.GetClient())
+	}
 
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&nvcrev1alpha1.Job{}).
@@ -1918,6 +2167,13 @@ func (r *JobReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&nvcrev1alpha1.GoodputMeasurement{})
 
 	return b.
+		// A restored namespace grant wakes Jobs whose workload creates may
+		// otherwise remain under the error rate limiter's delayed retry.
+		Watches(
+			&nvcrev1alpha1.Workflow{},
+			handler.EnqueueRequestsFromMapFunc(namespaceAccessToJobs),
+			builder.WithPredicates(namespaceAccessGrantedPredicate()),
+		).
 		// BandwidthMeasurements are owned by the Workflow when there is one,
 		// so Owns cannot map them back to the Job; the Job is named in spec.
 		Watches(

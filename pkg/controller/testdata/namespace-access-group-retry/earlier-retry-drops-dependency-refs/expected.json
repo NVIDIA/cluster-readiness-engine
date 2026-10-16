@@ -1,0 +1,48 @@
+{
+  "afterRecovery": {
+    "groups": [
+      {
+        "hasCompletionTime": false,
+        "hasJobRef": false,
+        "name": "a",
+        "phase": "Pending",
+        "retries": 1
+      },
+      {
+        "hasCompletionTime": false,
+        "hasJobRef": false,
+        "name": "b",
+        "phase": "Pending",
+        "retries": 1
+      }
+    ],
+    "hasFailedNodesRef": true,
+    "namespaceAccessReason": "NamespaceAccessGranted"
+  },
+  "afterRecoveryDependencyRefs": [],
+  "firstDependencyDeleted": true,
+  "firstJobDeleted": true,
+  "waiting": {
+    "groups": [
+      {
+        "hasCompletionTime": false,
+        "hasJobRef": false,
+        "name": "a",
+        "phase": "Pending",
+        "retries": 1
+      },
+      {
+        "hasCompletionTime": false,
+        "hasJobRef": true,
+        "name": "b",
+        "phase": "Running",
+        "retries": 0
+      }
+    ],
+    "hasFailedNodesRef": false,
+    "namespaceAccessReason": "NamespacePermissionsMissing"
+  },
+  "waitingDependencyRefs": [
+    "dep-b"
+  ]
+}

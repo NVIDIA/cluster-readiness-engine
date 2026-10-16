@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# One group passed and one failed, so the Workflow is about to fail, and its
+# final status records the passing node. That succeeded-nodes write is
+# forbidden after access is revoked. The Workflow must not fail without the
+# record: it waits for access instead, with both groups completed and the
+# iteration not yet counted (ADR-092).
+rejectNodeResultWrites: true
+waitFor:
+  kind: Workflow
+  name: wf-revoked-failed-groups
+  namespace: access-revoked-failed-groups
+  condition: InProgress
+  reason: NamespacePermissionsMissing
+collect:
+  - kind: Workflow
+    name: wf-revoked-failed-groups
+    namespace: access-revoked-failed-groups

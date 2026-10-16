@@ -1,0 +1,7 @@
+[namespace] Creating namespace wr-cleanup-ns...
+Discovered 1 GPU nodes with product: NVIDIA-H100-80GB-HBM3
+[rbac] Created RoleBinding wr-cleanup-ns/nvcre-manager-run granting ServiceAccount nvcre/nvcre-manager write access in namespace wr-cleanup-ns.
+WorkloadRun demo-run created in namespace wr-cleanup-ns.
+
+To check status:
+  kubectl get workloadrun demo-run -n wr-cleanup-ns

@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -33,6 +34,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/catalog"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/rbac"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -49,6 +51,33 @@ const (
 	defaultMeasurementMaxConcurrentReconciles = 5
 )
 
+// The chart sets these from the downward API, so the RoleBinding a waiting
+// Workflow asks for names the ServiceAccount this controller actually runs as.
+const (
+	envPodNamespace       = "POD_NAMESPACE"
+	envServiceAccountName = "SERVICE_ACCOUNT_NAME"
+)
+
+// controllerServiceAccount returns the ServiceAccount the manager runs as, from
+// the environment, with defaults for any field it does not set.
+func controllerServiceAccount(getenv func(string) string) rbac.ServiceAccount {
+	sa := rbac.DefaultServiceAccount()
+	if ns := getenv(envPodNamespace); ns != "" {
+		sa.Namespace = ns
+	}
+	if name := getenv(envServiceAccountName); name != "" {
+		sa.Name = name
+	}
+	return sa
+}
+
+func validateNamespaceAccessTimeout(d time.Duration) error {
+	if d <= 0 {
+		return fmt.Errorf("--namespace-access-timeout must be greater than 0, got %s", d)
+	}
+	return nil
+}
+
 type controllerConcurrencyOptions struct {
 	maxConcurrentReconciles            int
 	measurementMaxConcurrentReconciles int
@@ -63,6 +92,15 @@ func (o controllerConcurrencyOptions) validate() error {
 			"--measurement-max-concurrent-reconciles must be greater than 0, got %d",
 			o.measurementMaxConcurrentReconciles,
 		)
+	}
+	return nil
+}
+
+// validateWorkloadCreationDeadline rejects a deadline that would fail every
+// rejected workload create on its first attempt.
+func validateWorkloadCreationDeadline(d time.Duration) error {
+	if d <= 0 {
+		return fmt.Errorf("--workload-creation-deadline must be greater than 0, got %s", d)
 	}
 	return nil
 }
@@ -90,6 +128,8 @@ func newRootCommand() *cobra.Command {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	namespaceAccessTimeout := controller.DefaultNamespaceAccessTimeout
+	workloadCreationDeadline := controller.DefaultWorkloadCreationDeadline
 	concurrency := controllerConcurrencyOptions{
 		maxConcurrentReconciles:            defaultMaxConcurrentReconciles,
 		measurementMaxConcurrentReconciles: defaultMeasurementMaxConcurrentReconciles,
@@ -105,6 +145,12 @@ func newRootCommand() *cobra.Command {
 		Version: version,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := concurrency.validate(); err != nil {
+				return err
+			}
+			if err := validateNamespaceAccessTimeout(namespaceAccessTimeout); err != nil {
+				return err
+			}
+			if err := validateWorkloadCreationDeadline(workloadCreationDeadline); err != nil {
 				return err
 			}
 
@@ -176,6 +222,7 @@ func newRootCommand() *cobra.Command {
 				WebhookServer:          webhookServer,
 				HealthProbeBindAddress: probeAddr,
 				Cache:                  controller.CacheOptions(),
+				Client:                 controller.ClientOptions(),
 				LeaderElection:         enableLeaderElection,
 				LeaderElectionID:       "240fe9c6.nvidia.com",
 				// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
@@ -211,13 +258,19 @@ func newRootCommand() *cobra.Command {
 				return fmt.Errorf("unable to create kubernetes clientset: %w", err)
 			}
 
+			// One reviewer for both reconcilers, so the Job controller's
+			// check on a Forbidden workload create and the Workflow's access
+			// check share cached answers (ADR-092, issue #488).
+			accessReviewer := controller.NewAccessReviewer(mgr.GetClient())
 			if err := (&controller.JobReconciler{
-				Client:                  mgr.GetClient(),
-				APIReader:               mgr.GetAPIReader(),
-				Scheme:                  mgr.GetScheme(),
-				Clientset:               clientset,
-				Recorder:                mgr.GetEventRecorder("job-controller"),
-				MaxConcurrentReconciles: concurrency.maxConcurrentReconciles,
+				Client:                   mgr.GetClient(),
+				APIReader:                mgr.GetAPIReader(),
+				Scheme:                   mgr.GetScheme(),
+				Clientset:                clientset,
+				Recorder:                 mgr.GetEventRecorder("job-controller"),
+				MaxConcurrentReconciles:  concurrency.maxConcurrentReconciles,
+				WorkloadCreationDeadline: workloadCreationDeadline,
+				AccessReviewer:           accessReviewer,
 			}).SetupWithManager(mgr); err != nil {
 				return fmt.Errorf("unable to create controller Job: %w", err)
 			}
@@ -228,6 +281,9 @@ func newRootCommand() *cobra.Command {
 				Clientset:               clientset,
 				Recorder:                mgr.GetEventRecorder("workflow-controller"),
 				MaxConcurrentReconciles: concurrency.maxConcurrentReconciles,
+				NamespaceAccessTimeout:  namespaceAccessTimeout,
+				AccessReviewer:          accessReviewer,
+				ServiceAccount:          controllerServiceAccount(os.Getenv),
 			}).SetupWithManager(mgr); err != nil {
 				return fmt.Errorf("unable to create controller Workflow: %w", err)
 			}
@@ -297,6 +353,10 @@ func newRootCommand() *cobra.Command {
 	cmd.Flags().IntVar(&concurrency.measurementMaxConcurrentReconciles, "measurement-max-concurrent-reconciles",
 		defaultMeasurementMaxConcurrentReconciles,
 		"Maximum number of concurrent reconciles for GoodputMeasurement and BandwidthMeasurement controllers.")
+	cmd.Flags().DurationVar(&namespaceAccessTimeout, "namespace-access-timeout",
+		controller.DefaultNamespaceAccessTimeout,
+		"How long a Workflow waits for the controller's write access in its namespace before it fails. "+
+			"Applies with rbac.scope: namespaced, where each run namespace needs a RoleBinding.")
 	cmd.Flags().BoolVar(&secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	cmd.Flags().StringVar(&webhookCertPath, "webhook-cert-path", "",
@@ -310,6 +370,11 @@ func newRootCommand() *cobra.Command {
 	cmd.Flags().StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	cmd.Flags().BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+
+	cmd.Flags().DurationVar(&workloadCreationDeadline, "workload-creation-deadline",
+		controller.DefaultWorkloadCreationDeadline,
+		"How long a Job keeps retrying a workload create that the API server rejects "+
+			"(admission webhook or policy denial, ResourceQuota) before it fails. Independent of timeoutPerJob.")
 
 	cmd.Flags().AddGoFlagSet(flag.CommandLine)
 

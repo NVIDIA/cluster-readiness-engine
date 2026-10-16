@@ -1,0 +1,6 @@
+# The TrainJob delete is forbidden in a terminating namespace: the Job
+# finalizer is removed, which also unblocks the Workflow's, which waits for
+# its Jobs to be gone.
+owner: job-finalizer
+forbid: delete
+namespace: terminating

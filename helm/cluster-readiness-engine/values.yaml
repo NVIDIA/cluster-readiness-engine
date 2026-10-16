@@ -12,6 +12,15 @@ manager:
   maxConcurrentReconciles: 10
   # Measurement controllers fetch and parse Pod logs, so their default is lower.
   measurementMaxConcurrentReconciles: 5
+  # How long a Workflow waits for the controller's write access in its
+  # namespace before it fails with NamespacePermissionsMissing, as a Go
+  # duration. Only a namespace without a run RoleBinding ever waits, which
+  # needs rbac.scope: namespaced.
+  namespaceAccessTimeout: 10m
+  # How long a Job keeps retrying a workload create the API server rejects
+  # (admission webhook or policy denial, ResourceQuota) before it fails with
+  # WorkloadCreationError, as a Go duration. Independent of timeoutPerJob.
+  workloadCreationDeadline: 10m
   image:
     repository: ghcr.io/nvidia/cluster-readiness-engine/manager
     tag: ""
@@ -35,6 +44,26 @@ manager:
   tolerations:
     - operator: Exists
   terminationGracePeriodSeconds: 10
+
+# Where the controller may write. Its reads, its own CRDs and events are
+# granted cluster-wide by nvcre-manager-role. Every write to a namespaced
+# resource outside NVCRE's API group (ConfigMaps, PVCs, TrainJobs,
+# TrainingRuntimes, ResourceClaimTemplates, ComputeDomains, pod logs) is in
+# nvcre-run-role, and scope decides where that role is bound. See ADR-092.
+rbac:
+  # cluster: bind nvcre-run-role cluster-wide, so the controller can write in
+  #   every namespace. This matches earlier releases. Default for this release;
+  #   the default becomes namespaced in the next minor release.
+  # namespaced: bind it only in the namespaces below. nvcrectl certification
+  #   run and workloadrun run bind it in the namespaces they create, and
+  #   `nvcrectl rbac print --namespace <ns>` writes the RoleBinding for any
+  #   other. A Workflow in a namespace without one waits with reason
+  #   NamespacePermissionsMissing for up to manager.namespaceAccessTimeout.
+  scope: cluster
+  # Long-lived run namespaces to bind under scope: namespaced, for GitOps or
+  # Run:ai project namespaces. Each must already exist: the chart does not
+  # create them, and a missing one fails the install with NotFound.
+  runNamespaces: []
 
 # Protect the controller from voluntary evictions. With one replica and
 # minAvailable: 1, node drains are blocked even when no Certification is running.

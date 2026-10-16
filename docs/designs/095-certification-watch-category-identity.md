@@ -29,7 +29,7 @@ key.
 - Determine duplicate display labels across the full category-status slice.
 - Preserve the existing MNNVL suffix for duplicate domain/variant pairs.
 - Add a stable category ordinal when labels still collide, including when
-  categories differ by options such as `maxSteps` or `testScale`.
+  categories differ by options such as `testScale`.
 - Key remembered status by category index so output-label formatting cannot
   conflate transitions.
 - Add focused package-level regression coverage for duplicate categories and

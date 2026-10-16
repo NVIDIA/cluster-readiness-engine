@@ -1,0 +1,8 @@
+# Without --cleanup the WorkloadRun stays, so the binding it needs stays too,
+# and nvcrectl says so.
+rbacScope: namespaced
+namespaceExists: true
+grantRunAccess: true
+expectRunExists: true
+expectNamespaceExists: true
+expectBinding: true

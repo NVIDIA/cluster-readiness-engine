@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+---
+{{- /*
+  nvcre-run-role holds every write the controller makes to a namespaced
+  resource outside NVCRE's API group, plus pod log reads. A ClusterRole with
+  no binding grants nothing: run-rolebinding.yaml binds it cluster-wide under
+  rbac.scope: cluster, or once per rbac.runNamespaces entry under
+  rbac.scope: namespaced, and nvcrectl binds it in the namespaces it runs in
+  (ADR-092). None of these resources is listed: the controller reads each one
+  by name. Maintained by hand: controller-gen runs with output:rbac:none.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    {{- include "nvcre.labels" . | nindent 4 }}
+  name: nvcre-run-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - create
+  - delete
+  - get
+  - patch
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
+  verbs:
+  - create
+  - delete
+  - get
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - pods/log
+  verbs:
+  - get
+- apiGroups:
+  - resource.k8s.io
+  resources:
+  - resourceclaimtemplates
+  verbs:
+  - create
+  - delete
+  - get
+  - patch
+  - update
+- apiGroups:
+  - resource.nvidia.com
+  resources:
+  - computedomains
+  verbs:
+  - create
+  - delete
+  - get
+  - patch
+  - update
+- apiGroups:
+  - trainer.kubeflow.org
+  resources:
+  - trainingruntimes
+  verbs:
+  - create
+  - delete
+  - get
+  - patch
+  - update
+- apiGroups:
+  - trainer.kubeflow.org
+  resources:
+  - trainjobs
+  verbs:
+  - create
+  - delete
+  - patch
+  - update

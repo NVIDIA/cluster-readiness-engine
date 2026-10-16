@@ -29,6 +29,9 @@ const helmTemplateTimeout = 30 * time.Second
 
 const deploymentKind = "Deployment"
 
+// managerContainer is the controller's container in the manager Deployment.
+const managerContainer = "manager"
+
 func TestHelmTemplateRendersConcurrencyArgs(t *testing.T) {
 	requireHelm(t)
 	chartDir := chartDir(t)
@@ -179,7 +182,7 @@ func managerArgs(rendered []byte) ([]string, error) {
 			return nil, fmt.Errorf("convert manager Deployment: %w", err)
 		}
 		for i := range dep.Spec.Template.Spec.Containers {
-			if dep.Spec.Template.Spec.Containers[i].Name == "manager" {
+			if dep.Spec.Template.Spec.Containers[i].Name == managerContainer {
 				return dep.Spec.Template.Spec.Containers[i].Args, nil
 			}
 		}
@@ -207,7 +210,7 @@ func managerImage(rendered []byte) (string, error) {
 			return "", fmt.Errorf("convert manager Deployment: %w", err)
 		}
 		for i := range dep.Spec.Template.Spec.Containers {
-			if dep.Spec.Template.Spec.Containers[i].Name == "manager" {
+			if dep.Spec.Template.Spec.Containers[i].Name == managerContainer {
 				return dep.Spec.Template.Spec.Containers[i].Image, nil
 			}
 		}

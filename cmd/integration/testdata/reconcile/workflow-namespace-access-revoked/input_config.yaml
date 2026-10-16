@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The check passes, then the dependency create is forbidden and a fresh
+# review confirms the denial, as when the binding is removed between the two:
+# the Workflow waits with NamespacePermissionsMissing rather than failing with
+# DependencyCreationError.
+generateNodes:
+  count: 1
+rejectDependencyCreates: true
+waitFor:
+  kind: Workflow
+  name: wf-access-revoked
+  namespace: access-revoked
+  condition: InProgress
+  reason: NamespacePermissionsMissing
+collect:
+  - kind: Workflow
+    name: wf-access-revoked
+    namespace: access-revoked
+expectAbsent:
+  - kind: ConfigMap
+    name: hostfile
+    namespace: access-revoked
+events:
+  - involvedKind: Workflow
+    involvedName: wf-access-revoked
+    namespace: access-revoked
+    expect:
+      - {type: Warning, reason: NamespaceAccessDenied}

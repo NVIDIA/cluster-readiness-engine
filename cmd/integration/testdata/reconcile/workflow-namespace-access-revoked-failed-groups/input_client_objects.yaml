@@ -1,0 +1,127 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: access-revoked-failed-groups
+  labels:
+    test.nvcre.nvidia.com/access: revoked-after-check
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: wf-revoked-failed-groups
+  namespace: access-revoked-failed-groups
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 2
+    nodesPerJob: 1
+    totalGroups: 2
+    currentIteration: 1
+    groups:
+      - name: group-0
+        nodes: [gpu-node-01]
+        phase: Running
+        jobRef: {apiVersion: nvcre.nvidia.com/v1alpha1, kind: Job, name: wf-revoked-failed-groups-group-0, namespace: access-revoked-failed-groups}
+      - name: group-1
+        nodes: [gpu-node-02]
+        phase: Running
+        jobRef: {apiVersion: nvcre.nvidia.com/v1alpha1, kind: Job, name: wf-revoked-failed-groups-group-1, namespace: access-revoked-failed-groups}
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: wf-revoked-failed-groups-group-0
+  namespace: access-revoked-failed-groups
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: wf-revoked-failed-groups
+    nvcre.nvidia.com/group: group-0
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: WorkloadCompleted
+      message: "Workload has completed"
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "True"
+      reason: WorkloadCompleted
+      message: "Workload completed"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: Failed
+      status: "False"
+      reason: WorkloadFailed
+      message: "Workload failed"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: wf-revoked-failed-groups-group-1
+  namespace: access-revoked-failed-groups
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: wf-revoked-failed-groups
+    nvcre.nvidia.com/group: group-1
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1
+status:
+  conditions:
+    - type: InProgress
+      status: "False"
+      reason: WorkloadCompleted
+      message: "Workload has completed"
+      lastTransitionTime: "2026-01-22T10:00:00Z"
+    - type: Succeeded
+      status: "False"
+      reason: WorkloadCompleted
+      message: "Workload completed"
+      lastTransitionTime: "2026-01-22T10:05:00Z"
+    - type: Failed
+      status: "True"
+      reason: WorkloadFailed
+      message: "Workload failed"
+      lastTransitionTime: "2026-01-22T10:05:00Z"

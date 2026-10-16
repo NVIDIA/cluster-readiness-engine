@@ -27,6 +27,7 @@ nvcrectl certification run --category communication/nccl-all-reduce [flags]
 | `--wait` | `false` | Block until the certification completes and print a report |
 | `--timeout` | derived | Timeout for `--wait`. Ignored without `--wait`. When `--wait` is set, must be at least `1s`. When not set, derived from the selected categories' `timeoutPerJob` budgets (max across categories × iterations × 1.5), floored at `30m`; the CLI prints the derived value when the watch starts. The catalog's `timeoutPerJob` defaults are 1h for the communication entries and 24h for the two training entries, so a training category derives a 36h wait on its own. Pass `--timeout` (or set `timeoutPerJob` on the category) in pipelines that need a tighter bound. An explicit value always wins. On timeout, the CLI prints a partial report and leaves the Certification running unless `--cleanup` is set. |
 | `--cleanup` | `false` | Delete the certification, namespace, and installed components after completion |
+| `--grant-run-access` | `false` | With the chart's `rbac.scope: namespaced`, create the RoleBinding that grants the controller write access in a namespace that already existed. Namespaces this run creates are granted without it. See [Controller access to the run namespace](#controller-access-to-the-run-namespace) |
 | `--nodes-per-job` | `0` | Nodes per job (0 = auto-select) |
 | `--gpus-per-node` | `0` | GPUs per node (0 = auto-detect from GPU architecture) |
 | `--enable-checkpoint` | `false` | Enable checkpoint storage for training workloads |
@@ -42,6 +43,19 @@ nvcrectl certification run --category communication/nccl-all-reduce [flags]
 | `--workload-registry` | — | Registry server for workload image pull (e.g. `nvcr.io`, `ghcr.io`) — required when `--workload-registry-password` is set |
 | `--workload-registry-username` | — | Registry username for workload image pull (e.g. `$oauthtoken` for NGC) — required when `--workload-registry-password` is set |
 | `--workload-registry-password` | — | Registry password or API key — creates an `nvcrectl-pull-<name>` imagePullSecret in the namespace, deleted automatically when the Certification is deleted |
+
+### Controller access to the run namespace
+
+With the chart's `rbac.scope: namespaced`, the controller can write only in namespaces that have a RoleBinding granting it `nvcre-run-role` ([ADR-092](../designs/092-per-namespace-controller-rbac.md)). Before creating the Certification, `run` makes sure the run namespace has one:
+
+- A namespace this run created (the generated `nvcrectl-<timestamp>`, or a `-n` namespace that did not exist yet) gets the binding automatically. Deleting the namespace removes it.
+- A namespace that already existed gets it only with `--grant-run-access`. Without the flag, `run` stops before submitting anything and prints the binding, so a shared namespace never becomes a standing grant by accident. A binding `--grant-run-access` created is deleted by `--cleanup` once the Certification is fully gone and no other Certification, WorkloadRun or Workflow is left in the namespace or recently adopted the binding, because the controller's finalizers need it until then; a binding kept for another run stays for you to delete once no run needs it. Without `--cleanup` it stays, and `run` says so.
+- A binding that already exists, from `rbac.runNamespaces`, another run, or applied by hand, is used and never deleted.
+- The binding is created only after the pull secret, right before the Certification, so a run that fails earlier leaves no binding behind.
+- If you cannot read the cluster-scoped `nvcre-run-rolebinding` and `nvcre-run-role`, `run` cannot tell which scope is installed. It submits with a warning instead of stopping, and does not create a binding whose subject it cannot read from `nvcre-manager-rolebinding`.
+- Adopting a binding another nvcrectl run created marks it as in use, so that run's cleanup does not delete it before this one is submitted. If you are not allowed to mark it, which is the case with the default `edit` role, `run` warns and submits anyway; in the rare case the other run's cleanup deletes the binding first, your run waits for access and then fails, naming the binding. A binding from `rbac.runNamespaces` or applied by hand is never deleted by a run's cleanup.
+
+Under `rbac.scope: cluster`, the default, none of this applies and nothing is printed. Creating the binding uses your own credentials, which need every permission in `nvcre-run-role` within the namespace (a namespace admin has them), or `bind` on `clusterroles/nvcre-run-role`. See [RBAC requirements](../operations/deployment.md#rbac-requirements).
 
 When `--wait` reaches its timeout, the command prints the Certification's current report, writes it to `--results-file` when requested, and exits with a timeout error. Without `--cleanup`, the Certification continues running in the cluster; the timeout stops only the CLI watch. The timeout output includes commands to watch its progress, print an updated report, or stop it. `nvcrectl certification report` exits nonzero while the Certification is still running. With `--cleanup`, the partial report is produced before the Certification and its child resources are deleted.
 

@@ -1,0 +1,10 @@
+# --grant-run-access, but the run fails at node discovery. The binding is the
+# last step before the WorkloadRun is created, so a failure before it leaves
+# no standing grant behind, with or without --cleanup.
+rbacScope: namespaced
+namespaceExists: true
+grantRunAccess: true
+noGPUNodes: true
+expectRunExists: false
+expectNamespaceExists: true
+expectBinding: false

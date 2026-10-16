@@ -70,6 +70,7 @@ NVCRE does not refresh an existing JobSet CRD schema. When Trainer or JobSet is 
 | `--skip-phases` | — | Comma-separated valid phases to skip (`deps`, `helm`) |
 | `--version` | — | Helm chart version to install (required for dev builds) |
 | `--auto-approve` | `false` | Skip the interactive confirmation prompt (for CI/automation) |
+| `--rbac-scope` | — | Where the controller may write: `cluster` or `namespaced` (chart value `rbac.scope`, [ADR-092](../designs/092-per-namespace-controller-rbac.md)). Unset keeps the installed release's `rbac.scope` and `rbac.runNamespaces`, or the chart default on a first install. Every other chart value returns to its default on each run. See [RBAC requirements](../operations/deployment.md#rbac-requirements) |
 
 The chart versions are unaffected by the `-ref` flags: the NVCRE chart is still pulled at the CLI version (or `--version`), and Kubeflow Trainer at the pinned version, so a mirror must host those chart versions.
 

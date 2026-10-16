@@ -1,0 +1,4 @@
+# A review that cannot be created is never read as permission: the Workflow
+# waits with its own reason and event.
+call: gate
+reviewError: 'selfsubjectaccessreviews.authorization.k8s.io is forbidden: no create'

@@ -1,0 +1,7 @@
+{
+  "conditions": [],
+  "events": [],
+  "orchestrationPersisted": false,
+  "requeueAfter": "0s",
+  "reviewsAskFresh": null
+}
