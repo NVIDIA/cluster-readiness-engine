@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Issue #488: no timeoutPerJob, so only the workload creation deadline bounds
+# a rejected create. While the marker ConfigMap exists the harness fails every
+# TrainJob create with an admission-style Forbidden.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: reject-workload-creates-clears
+  namespace: default
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: test-wf-create-rejected-clears
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: test-runtime
+          trainer:
+            image: test-image:latest
+            command:
+              - python
+              - train.py
+            numNodes: 1
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 1
+    nodesPerJob: 1
+    totalGroups: 1
+    currentIteration: 1
+    groups:
+      - name: group-0
+        nodes:
+          - gpu-node-01
+        phase: Running
+        startTime: "2020-01-01T00:00:00Z"
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: test-wf-create-rejected-clears-job
+          namespace: default
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: test-wf-create-rejected-clears-job
+  namespace: default
+  labels:
+    app.kubernetes.io/managed-by: nvcre
+    nvcre.nvidia.com/workflow: test-wf-create-rejected-clears
+    nvcre.nvidia.com/group: group-0
+  annotations:
+    nvcre.nvidia.com/group-nodes: "gpu-node-01"
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: test-runtime
+      trainer:
+        image: test-image:latest
+        command:
+          - python
+          - train.py
+        numNodes: 1

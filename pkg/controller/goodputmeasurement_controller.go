@@ -145,6 +145,13 @@ func (r *GoodputMeasurementReconciler) reconcileMeasurement(ctx context.Context,
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get referenced Job: %w", err)
 	}
+	if !measuresJob(measurement, job) {
+		// The Job was replaced under the same name (a group retry). The Job
+		// controller replaces this measurement; reading the new attempt's
+		// logs into it would only be thrown away, or worse, judged.
+		log.V(1).Info("Referenced Job was replaced under the same name, not measuring", "job", jobKey)
+		return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
+	}
 
 	// Determine Job phase from conditions. All terminal-time computation is
 	// anchored to the Job's terminal condition timestamp so that replaying the

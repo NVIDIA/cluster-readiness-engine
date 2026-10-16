@@ -1,0 +1,14 @@
+# Issue #389 follow-up: a retried group recreates its Job under the same name.
+# The failed attempt's Complete GoodputMeasurement names the Job but was
+# created for an earlier instance of it, so its goodput (0.42 here) is not this
+# attempt's and must not be judged against the thresholds. The bandwidth keys
+# still come from this attempt's BandwidthMeasurement.
+goodputComplete: true
+result: "0.42"
+avgTFLOPSPerGPU: "512.5"
+avgStepTimeSec: "1.25"
+goodputJobUID: uid-earlier
+busBW: "980.1"
+algBW: "450.2"
+bandwidthReason: JobSucceeded
+bandwidthJobUID: uid-current
