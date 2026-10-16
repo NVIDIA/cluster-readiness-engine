@@ -943,8 +943,9 @@ func (r *JobReconciler) hasCheckpoint(ctx context.Context, job *nvcrev1alpha1.Jo
 		return false
 	}
 	for _, m := range measurements.Items {
-		// An earlier attempt's measurement can outlive it while its delete
-		// waits on the finalizer; its checkpoints are not this attempt's.
+		// The measurement of an earlier Job of the same name can outlive it
+		// while its delete waits on the finalizer; its checkpoints are not
+		// this Job's.
 		if !measuresJob(&m, job) {
 			continue
 		}
