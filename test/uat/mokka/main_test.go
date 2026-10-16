@@ -162,27 +162,35 @@ func requireProfile(t *testing.T, profiles ...string) {
 // testNamespace creates a namespace for one test, so the leftover checks see
 // only what that test created, and deletes it afterwards.
 //
-// Both ends wait for the namespace to be gone. One Certification takes every
-// GPU in the cluster (two workers, nodesPerJob 2, the whole node's GPUs), so
-// workers left terminating by one test would hold the next one Pending and
-// report one failure as two. And the name is fixed per test, so a quick
-// re-run would otherwise create into a namespace that is still terminating.
+// Both ends clear the namespace and wait for it to be gone. One Certification
+// takes every GPU in the cluster (two workers, nodesPerJob 2, the whole node's
+// GPUs), so workers left terminating by one test would hold the next one
+// Pending and report one failure as two. And the name is fixed per test, so a
+// re-run would otherwise meet the previous run's namespace: still terminating
+// after a quick re-run, or still active if that run was interrupted before its
+// cleanup.
 func testNamespace(ctx context.Context, t *testing.T) string {
 	t.Helper()
 	name := "mokka-" + strings.ToLower(regexp.MustCompile(`[^A-Za-z0-9]+`).ReplaceAllString(t.Name(), "-"))
 	if len(name) > 63 {
 		name = strings.TrimRight(name[:63], "-")
 	}
-	waitNamespaceGone(ctx, t, name)
+	clearNamespace(ctx, t, name)
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
 	require.NoError(t, c.Create(ctx, ns))
-	t.Cleanup(func() {
-		ctx := context.Background()
-		_ = c.DeleteAllOf(ctx, &nvcrev1alpha1.Certification{}, client.InNamespace(name))
-		require.NoError(t, util.DeleteNamespace(ctx, c, name))
-		waitNamespaceGone(ctx, t, name)
-	})
+	t.Cleanup(func() { clearNamespace(context.Background(), t, name) })
 	return name
+}
+
+// clearNamespace deletes the namespace's Certifications and the namespace
+// itself, if they exist, and waits until the namespace is gone. Deleting the
+// Certifications first lets NVCRE run its own cleanup rather than racing the
+// namespace teardown.
+func clearNamespace(ctx context.Context, t *testing.T, name string) {
+	t.Helper()
+	_ = c.DeleteAllOf(ctx, &nvcrev1alpha1.Certification{}, client.InNamespace(name))
+	require.NoError(t, util.DeleteNamespace(ctx, c, name))
+	waitNamespaceGone(ctx, t, name)
 }
 
 // waitNamespaceGone waits until the namespace no longer exists, reporting what
