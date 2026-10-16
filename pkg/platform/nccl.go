@@ -15,6 +15,14 @@ import (
 //
 // Platform-specific NCCL vars (FastRak, IB settings) are injected via
 // overrides, not here.
+//
+// NCCL_NVLS_ENABLE is deliberately absent. NCCL's own default of 2 is the
+// only value that probes CU_DEVICE_ATTRIBUTE_MULTICAST_SUPPORTED before
+// using NVLink SHARP; forcing 1 asserts support on hardware that may not
+// have it, and on NCCL older than 2.29 it is the one value that turns a
+// failed multicast bind into an aborted job rather than a logged fallback.
+// A site that needs NVLS off sets it through spec.env or mpiArgs, which
+// take precedence over everything here.
 func BaseNCCLEnvVars(enableMNNVL bool) []corev1.EnvVar {
 	mnnvl := "0"
 	if enableMNNVL {
@@ -23,7 +31,6 @@ func BaseNCCLEnvVars(enableMNNVL bool) []corev1.EnvVar {
 
 	return []corev1.EnvVar{
 		{Name: "NCCL_DEBUG", Value: "INFO"},
-		{Name: "NCCL_NVLS_ENABLE", Value: "1"},
 		{Name: "NCCL_CUMEM_ENABLE", Value: "1"},
 		{Name: "NCCL_NET_GDR_C2C", Value: "1"},
 		{Name: "NCCL_NET_GDR_LEVEL", Value: "PHB"},

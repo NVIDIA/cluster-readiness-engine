@@ -50,8 +50,6 @@
                   "-x",
                   "NCCL_DEBUG=INFO",
                   "-x",
-                  "NCCL_NVLS_ENABLE=1",
-                  "-x",
                   "NCCL_CUMEM_ENABLE=1",
                   "-x",
                   "NCCL_NET_GDR_C2C=1",
@@ -194,10 +192,6 @@
                                   {
                                     "name": "NCCL_DEBUG",
                                     "value": "INFO"
-                                  },
-                                  {
-                                    "name": "NCCL_NVLS_ENABLE",
-                                    "value": "1"
                                   },
                                   {
                                     "name": "NCCL_CUMEM_ENABLE",
@@ -360,10 +354,6 @@
                                   {
                                     "name": "NCCL_DEBUG",
                                     "value": "INFO"
-                                  },
-                                  {
-                                    "name": "NCCL_NVLS_ENABLE",
-                                    "value": "1"
                                   },
                                   {
                                     "name": "NCCL_CUMEM_ENABLE",
