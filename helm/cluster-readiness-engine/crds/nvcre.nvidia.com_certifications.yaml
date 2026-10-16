@@ -94,6 +94,203 @@ spec:
                             (e.g., GB300 NVL72). Can be overridden per-category via
                             categories[].options.enableMNNVL.
                           type: boolean
+                        env:
+                          description: |-
+                            env sets environment variables on this category's workload, applied
+                            after the catalog entry and the platform overrides resolve, so a name
+                            set here wins over both. Use it for a site-specific value a release has
+                            not caught up with, for example NCCL_NVLS_ENABLE=0 on a fabric with a
+                            known NVLink SHARP defect. Prefer a catalog entry when the setting
+                            follows from the hardware rather than from one site.
+
+                            Because CertificationSpec inlines CategoryOptions, this field is read
+                            both globally at spec.env and per category at
+                            spec.categories[].options.env. Like workloadMetadata and unlike the
+                            slices beside it, the two levels merge per name rather than replacing
+                            wholesale: a category can change or add a variable but cannot remove a
+                            global one. Set variables per category instead of globally when
+                            categories need genuinely different sets.
+
+                            Where a variable lands depends on the entry. The communication/nccl-*
+                            variants run under mpirun, whose ranks start under sshd with a fresh
+                            environment and never read container env, so their variables become
+                            "-x NAME=VALUE" launcher arguments. Every other entry gets a trainer
+                            env var, which Kubeflow upserts by name onto the workload container.
+                            diagnostics/dcgm-level4 runs dcgmi and reads no NCCL variables, so the
+                            field has no effect there.
+
+                            A certification that sets this is tuned: the variable names (not their
+                            values) appear on the category's report entry, so a reader of a passing
+                            result can see what the run was configured with.
+
+                            valueFrom is rejected: a variable reaches MPI ranks by value on a
+                            command line, which cannot carry a reference. Use a WorkloadRun for
+                            secret-sourced values. Names that Kubeflow Trainer owns (PET_* and the
+                            OMPI_MCA_* launcher settings) are rejected because a user value there
+                            breaks the launch rather than overriding a default.
+                          items:
+                            description: EnvVar represents an environment variable
+                              present in a Container.
+                            properties:
+                              name:
+                                description: |-
+                                  Name of the environment variable.
+                                  May consist of any printable ASCII characters except '='.
+                                type: string
+                              value:
+                                description: |-
+                                  Variable references $(VAR_NAME) are expanded
+                                  using the previously defined environment variables in the container and
+                                  any service environment variables. If a variable cannot be resolved,
+                                  the reference in the input string will be unchanged. Double $$ are reduced
+                                  to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e.
+                                  "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)".
+                                  Escaped references will never be expanded, regardless of whether the variable
+                                  exists or not.
+                                  Defaults to "".
+                                type: string
+                              valueFrom:
+                                description: Source for the environment variable's
+                                  value. Cannot be used if value is not empty.
+                                properties:
+                                  configMapKeyRef:
+                                    description: Selects a key of a ConfigMap.
+                                    properties:
+                                      key:
+                                        description: The key to select.
+                                        type: string
+                                      name:
+                                        default: ""
+                                        description: |-
+                                          Name of the referent.
+                                          This field is effectively required, but due to backwards compatibility is
+                                          allowed to be empty. Instances of this type with an empty value here are
+                                          almost certainly wrong.
+                                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                        type: string
+                                      optional:
+                                        description: Specify whether the ConfigMap
+                                          or its key must be defined
+                                        type: boolean
+                                    required:
+                                    - key
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                  fieldRef:
+                                    description: |-
+                                      Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
+                                      spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
+                                    properties:
+                                      apiVersion:
+                                        description: Version of the schema the FieldPath
+                                          is written in terms of, defaults to "v1".
+                                        type: string
+                                      fieldPath:
+                                        description: Path of the field to select in
+                                          the specified API version.
+                                        type: string
+                                    required:
+                                    - fieldPath
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                  fileKeyRef:
+                                    description: |-
+                                      FileKeyRef selects a key of the env file.
+                                      Requires the EnvFiles feature gate to be enabled.
+                                    properties:
+                                      key:
+                                        description: |-
+                                          The key within the env file. An invalid key will prevent the pod from starting.
+                                          The keys defined within a source may consist of any printable ASCII characters except '='.
+                                          During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                        type: string
+                                      optional:
+                                        default: false
+                                        description: |-
+                                          Specify whether the file or its key must be defined. If the file or key
+                                          does not exist, then the env var is not published.
+                                          If optional is set to true and the specified key does not exist,
+                                          the environment variable will not be set in the Pod's containers.
+
+                                          If optional is set to false and the specified key does not exist,
+                                          an error will be returned during Pod creation.
+                                        type: boolean
+                                      path:
+                                        description: |-
+                                          The path within the volume from which to select the file.
+                                          Must be relative and may not contain the '..' path or start with '..'.
+                                        type: string
+                                      volumeName:
+                                        description: The name of the volume mount
+                                          containing the env file.
+                                        type: string
+                                    required:
+                                    - key
+                                    - path
+                                    - volumeName
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                  resourceFieldRef:
+                                    description: |-
+                                      Selects a resource of the container: only resources limits and requests
+                                      (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
+                                    properties:
+                                      containerName:
+                                        description: 'Container name: required for
+                                          volumes, optional for env vars'
+                                        type: string
+                                      divisor:
+                                        anyOf:
+                                        - type: integer
+                                        - type: string
+                                        description: Specifies the output format of
+                                          the exposed resources, defaults to "1"
+                                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                        x-kubernetes-int-or-string: true
+                                      resource:
+                                        description: 'Required: resource to select'
+                                        type: string
+                                    required:
+                                    - resource
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                  secretKeyRef:
+                                    description: Selects a key of a secret in the
+                                      pod's namespace
+                                    properties:
+                                      key:
+                                        description: The key of the secret to select
+                                          from.  Must be a valid secret key.
+                                        type: string
+                                      name:
+                                        default: ""
+                                        description: |-
+                                          Name of the referent.
+                                          This field is effectively required, but due to backwards compatibility is
+                                          allowed to be empty. Instances of this type with an empty value here are
+                                          almost certainly wrong.
+                                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                                        type: string
+                                      optional:
+                                        description: Specify whether the Secret or
+                                          its key must be defined
+                                        type: boolean
+                                    required:
+                                    - key
+                                    type: object
+                                    x-kubernetes-map-type: atomic
+                                type: object
+                            required:
+                            - name
+                            type: object
+                          maxItems: 32
+                          type: array
+                          x-kubernetes-validations:
+                          - message: env entries must not use valueFrom and must not
+                              name a variable Kubeflow Trainer owns (PET_* or the
+                              OMPI_MCA_* launcher settings)
+                            rule: self.all(e, !has(e.valueFrom) && !e.name.startsWith('PET_')
+                              && !(e.name in ['OMPI_MCA_orte_default_hostfile','OMPI_MCA_plm_rsh_args','OMPI_MCA_orte_keep_fqdn_hostnames','OMPI_MCA_orte_set_default_slots']))
                         exitDurationMins:
                           description: |-
                             exitDurationMins sets the training duration in minutes. Maps to
@@ -604,6 +801,202 @@ spec:
                   (e.g., GB300 NVL72). Can be overridden per-category via
                   categories[].options.enableMNNVL.
                 type: boolean
+              env:
+                description: |-
+                  env sets environment variables on this category's workload, applied
+                  after the catalog entry and the platform overrides resolve, so a name
+                  set here wins over both. Use it for a site-specific value a release has
+                  not caught up with, for example NCCL_NVLS_ENABLE=0 on a fabric with a
+                  known NVLink SHARP defect. Prefer a catalog entry when the setting
+                  follows from the hardware rather than from one site.
+
+                  Because CertificationSpec inlines CategoryOptions, this field is read
+                  both globally at spec.env and per category at
+                  spec.categories[].options.env. Like workloadMetadata and unlike the
+                  slices beside it, the two levels merge per name rather than replacing
+                  wholesale: a category can change or add a variable but cannot remove a
+                  global one. Set variables per category instead of globally when
+                  categories need genuinely different sets.
+
+                  Where a variable lands depends on the entry. The communication/nccl-*
+                  variants run under mpirun, whose ranks start under sshd with a fresh
+                  environment and never read container env, so their variables become
+                  "-x NAME=VALUE" launcher arguments. Every other entry gets a trainer
+                  env var, which Kubeflow upserts by name onto the workload container.
+                  diagnostics/dcgm-level4 runs dcgmi and reads no NCCL variables, so the
+                  field has no effect there.
+
+                  A certification that sets this is tuned: the variable names (not their
+                  values) appear on the category's report entry, so a reader of a passing
+                  result can see what the run was configured with.
+
+                  valueFrom is rejected: a variable reaches MPI ranks by value on a
+                  command line, which cannot carry a reference. Use a WorkloadRun for
+                  secret-sourced values. Names that Kubeflow Trainer owns (PET_* and the
+                  OMPI_MCA_* launcher settings) are rejected because a user value there
+                  breaks the launch rather than overriding a default.
+                items:
+                  description: EnvVar represents an environment variable present in
+                    a Container.
+                  properties:
+                    name:
+                      description: |-
+                        Name of the environment variable.
+                        May consist of any printable ASCII characters except '='.
+                      type: string
+                    value:
+                      description: |-
+                        Variable references $(VAR_NAME) are expanded
+                        using the previously defined environment variables in the container and
+                        any service environment variables. If a variable cannot be resolved,
+                        the reference in the input string will be unchanged. Double $$ are reduced
+                        to a single $, which allows for escaping the $(VAR_NAME) syntax: i.e.
+                        "$$(VAR_NAME)" will produce the string literal "$(VAR_NAME)".
+                        Escaped references will never be expanded, regardless of whether the variable
+                        exists or not.
+                        Defaults to "".
+                      type: string
+                    valueFrom:
+                      description: Source for the environment variable's value. Cannot
+                        be used if value is not empty.
+                      properties:
+                        configMapKeyRef:
+                          description: Selects a key of a ConfigMap.
+                          properties:
+                            key:
+                              description: The key to select.
+                              type: string
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the ConfigMap or its key
+                                must be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        fieldRef:
+                          description: |-
+                            Selects a field of the pod: supports metadata.name, metadata.namespace, `metadata.labels['<KEY>']`, `metadata.annotations['<KEY>']`,
+                            spec.nodeName, spec.serviceAccountName, status.hostIP, status.podIP, status.podIPs.
+                          properties:
+                            apiVersion:
+                              description: Version of the schema the FieldPath is
+                                written in terms of, defaults to "v1".
+                              type: string
+                            fieldPath:
+                              description: Path of the field to select in the specified
+                                API version.
+                              type: string
+                          required:
+                          - fieldPath
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        fileKeyRef:
+                          description: |-
+                            FileKeyRef selects a key of the env file.
+                            Requires the EnvFiles feature gate to be enabled.
+                          properties:
+                            key:
+                              description: |-
+                                The key within the env file. An invalid key will prevent the pod from starting.
+                                The keys defined within a source may consist of any printable ASCII characters except '='.
+                                During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                              type: string
+                            optional:
+                              default: false
+                              description: |-
+                                Specify whether the file or its key must be defined. If the file or key
+                                does not exist, then the env var is not published.
+                                If optional is set to true and the specified key does not exist,
+                                the environment variable will not be set in the Pod's containers.
+
+                                If optional is set to false and the specified key does not exist,
+                                an error will be returned during Pod creation.
+                              type: boolean
+                            path:
+                              description: |-
+                                The path within the volume from which to select the file.
+                                Must be relative and may not contain the '..' path or start with '..'.
+                              type: string
+                            volumeName:
+                              description: The name of the volume mount containing
+                                the env file.
+                              type: string
+                          required:
+                          - key
+                          - path
+                          - volumeName
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        resourceFieldRef:
+                          description: |-
+                            Selects a resource of the container: only resources limits and requests
+                            (limits.cpu, limits.memory, limits.ephemeral-storage, requests.cpu, requests.memory and requests.ephemeral-storage) are currently supported.
+                          properties:
+                            containerName:
+                              description: 'Container name: required for volumes,
+                                optional for env vars'
+                              type: string
+                            divisor:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              description: Specifies the output format of the exposed
+                                resources, defaults to "1"
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            resource:
+                              description: 'Required: resource to select'
+                              type: string
+                          required:
+                          - resource
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        secretKeyRef:
+                          description: Selects a key of a secret in the pod's namespace
+                          properties:
+                            key:
+                              description: The key of the secret to select from.  Must
+                                be a valid secret key.
+                              type: string
+                            name:
+                              default: ""
+                              description: |-
+                                Name of the referent.
+                                This field is effectively required, but due to backwards compatibility is
+                                allowed to be empty. Instances of this type with an empty value here are
+                                almost certainly wrong.
+                                More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                              type: string
+                            optional:
+                              description: Specify whether the Secret or its key must
+                                be defined
+                              type: boolean
+                          required:
+                          - key
+                          type: object
+                          x-kubernetes-map-type: atomic
+                      type: object
+                  required:
+                  - name
+                  type: object
+                maxItems: 32
+                type: array
+                x-kubernetes-validations:
+                - message: env entries must not use valueFrom and must not name a
+                    variable Kubeflow Trainer owns (PET_* or the OMPI_MCA_* launcher
+                    settings)
+                  rule: self.all(e, !has(e.valueFrom) && !e.name.startsWith('PET_')
+                    && !(e.name in ['OMPI_MCA_orte_default_hostfile','OMPI_MCA_plm_rsh_args','OMPI_MCA_orte_keep_fqdn_hostnames','OMPI_MCA_orte_set_default_slots']))
               exitDurationMins:
                 description: |-
                   exitDurationMins sets the training duration in minutes. Maps to

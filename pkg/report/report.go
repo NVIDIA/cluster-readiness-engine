@@ -105,6 +105,13 @@ type CategoryReport struct {
 	// falls back to the requested size rather than printing nothing.
 	ExercisedNodes int    `json:"exercisedNodes,omitempty"`
 	MNNVL          string `json:"mnnvl,omitempty"` // "Enabled", "Disabled", or "" (unknown)
+	// Env lists the names of the environment variables the category resolved
+	// from spec.env and its own options.env, in resolution order. Names only:
+	// a value can carry a path or a hostname, and a report is a document
+	// people forward. It is here because a variable can change what the run
+	// exercises — the case this field was added for disables NVLink SHARP —
+	// so a reader of a passing result has to be able to see that it was tuned.
+	Env []string `json:"env,omitempty"`
 	// FailedGroups lists groups that failed with their reason.
 	FailedGroups []FailedGroupReport `json:"failedGroups,omitempty"`
 	// Cliques lists topology domains with node counts and validation status.
@@ -312,6 +319,34 @@ func CertFailedNodes(ctx context.Context, c client.Client, cert *nvcrev1alpha1.C
 	return union
 }
 
+// CategoryEnvNames returns the names of the environment variables the category
+// at index i resolved, in the order ResolveOptions produces them: the global
+// spec.env entries first, then any name the category added on top. Names only;
+// the values stay out of the report because they can carry a path or a
+// hostname and a report is a document people forward.
+//
+// The merge is read from the spec rather than from the Workflow, for the same
+// reason CategoryMNNVL reads it there: the report has to describe the run even
+// when the Workflow is gone.
+func CategoryEnvNames(cert *nvcrev1alpha1.Certification, i int) []string {
+	if i >= len(cert.Spec.Categories) {
+		return nil
+	}
+	var override *nvcrev1alpha1.CategoryOptions
+	if opts := cert.Spec.Categories[i].Options; opts != nil {
+		override = opts
+	}
+	resolved := controller.ResolveOptions(&cert.Spec.CategoryOptions, override)
+	if len(resolved.Env) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(resolved.Env))
+	for _, e := range resolved.Env {
+		names = append(names, e.Name)
+	}
+	return names
+}
+
 // CategoryMNNVL returns the MNNVL label for the category at index i of the
 // Certification's status: "Enabled", "Disabled", or "" when unknown.
 // Per-category spec options take precedence over the global spec value.
@@ -362,6 +397,10 @@ func Build(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certificati
 
 		// Populate MNNVL: check per-category options first, fall back to global.
 		cat.MNNVL = CategoryMNNVL(cert, i)
+
+		// And the names of any variables the category resolved, so a passing
+		// result says what it was configured with (ADR-097).
+		cat.Env = CategoryEnvNames(cert, i)
 
 		if cs.WorkflowRef != nil {
 			wf := &nvcrev1alpha1.Workflow{}
@@ -1539,6 +1578,20 @@ func exercisedNodeCount(cat *CategoryReport) (exercised int, known bool) {
 	return requested, requested > 0
 }
 
+// printCategoryEnv prints the names of the environment variables the category
+// resolved, so a reader of a passing result can see the run was tuned. Names
+// only: a value can carry a path or a hostname and a report is a document
+// people forward. The list wraps rather than truncating, because a reader
+// deciding whether to trust the verdict needs all of it.
+func printCategoryEnv(w io.Writer, cat *CategoryReport) {
+	if len(cat.Env) == 0 {
+		return
+	}
+	for _, line := range wrapList("Env:       ", cat.Env, boxWidth-4) {
+		_, _ = fmt.Fprintf(w, "│  %s%s│\n", line, pad(boxWidth-4-len(line)))
+	}
+}
+
 // printCategoryScope prints the lines describing how much of the fleet the
 // category ran against. A diagnose run has none of them: its groups come from
 // bisection rather than a requested size, so the counts would describe
@@ -1567,6 +1620,34 @@ func printCategoryScope(w io.Writer, cat *CategoryReport) {
 		mnnvlLine := fmt.Sprintf("MNNVL:     %s", cat.MNNVL)
 		_, _ = fmt.Fprintf(w, "│  %s%s│\n", mnnvlLine, pad(boxWidth-4-len(mnnvlLine)))
 	}
+}
+
+// wrapList renders label plus a comma-separated list across as many lines as
+// it takes to stay inside width, indenting continuations under the first
+// item so the list reads as one block.
+func wrapList(label string, items []string, maxLen int) []string {
+	indent := strings.Repeat(" ", len(label))
+	var lines []string
+	current := label
+	for i, item := range items {
+		piece := item
+		if i < len(items)-1 {
+			piece += ","
+		}
+		switch {
+		case current == label || current == indent:
+			current += piece
+		case len(current)+1+len(piece) <= maxLen:
+			current += " " + piece
+		default:
+			lines = append(lines, current)
+			current = indent + piece
+		}
+	}
+	if current != label && current != indent {
+		lines = append(lines, current)
+	}
+	return lines
 }
 
 func printCategoryCard(w io.Writer, cat *CategoryReport) {
@@ -1606,6 +1687,12 @@ func printCategoryCard(w io.Writer, cat *CategoryReport) {
 	if cat.Diagnose == nil {
 		printCategoryScope(w, cat)
 	}
+	// Outside that conditional on purpose. The scope lines describe a fleet
+	// size a diagnose run never requested, but what the run was configured
+	// with is just as true of a diagnose category, and a bisection that
+	// passed with a hardware feature disabled is exactly the result a reader
+	// must not take at face value.
+	printCategoryEnv(w, cat)
 
 	// Failed groups with reasons.
 	printFailedGroups(w, cat.FailedGroups)

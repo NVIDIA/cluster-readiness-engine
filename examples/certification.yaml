@@ -14,6 +14,14 @@ spec:
   # Uncomment when your workload images require a pull secret.
   # imagePullSecrets:
   #   - name: ngc-secret
+  # Uncomment to carry a site-specific setting the catalog cannot know, for
+  # example on a fabric with a known NVLink SHARP defect. Variables set here
+  # apply to every category and win over whatever the catalog resolved; a
+  # category can add or change one under its own options.env without losing
+  # the ones set here.
+  # env:
+  #   - name: NCCL_NVLS_ENABLE
+  #     value: "0"
   categories:
     - domain: communication
       variant: nccl-all-reduce

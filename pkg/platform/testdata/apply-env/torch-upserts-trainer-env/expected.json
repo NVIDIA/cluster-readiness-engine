@@ -1,0 +1,10 @@
+{
+  "args": [],
+  "env": [
+    {
+      "name": "NCCL_NVLS_ENABLE",
+      "value": "0"
+    }
+  ],
+  "depsUnchanged": true
+}

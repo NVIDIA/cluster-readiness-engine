@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# valueFrom is rejected because a variable reaches MPI ranks by value on an
+# mpirun command line, which cannot carry a reference to a Secret or ConfigMap.
+# Accepting it would give a field that works on the torch entries and silently
+# does nothing on the three MPI ones. The CEL rule binds server-side only, so
+# the offline render has to refuse it too.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: test-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  env:
+    - name: NCCL_SOCKET_IFNAME
+      valueFrom:
+        configMapKeyRef:
+          name: net-config
+          key: iface
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

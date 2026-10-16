@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A category that carried spec.env or options.env (ADR-097). The names appear
+# on the scope box so a reader of a passing result can see the run was tuned:
+# the variable this field was added for disables NVLink SHARP, so a PASSED
+# verdict with it set has not exercised what the reader would assume.
+#
+# Names only, never values. A value can carry a path or a hostname, and a
+# report is a document people forward.
+#
+# The list here is long enough to wrap, which is the behaviour worth pinning:
+# a reader who needs to know what was tuned needs the whole list, so the line
+# wraps under the label rather than truncating.
+domain: communication
+variant: nccl-all-reduce
+status: Succeeded
+runtime: 3m 4s
+nodesPerJob: 2
+jobs: 1
+mnnvl: Disabled
+env:
+  - NCCL_NVLS_ENABLE
+  - NCCL_IB_HCA
+  - NCCL_SOCKET_IFNAME
+  - NCCL_DEBUG
+  - UCX_NET_DEVICES
