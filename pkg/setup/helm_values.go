@@ -434,6 +434,12 @@ func resolveValues(kept, operator, probed map[string]any, opts valuesOptions) (r
 	}
 	if opts.pullSecret {
 		list, _ := valueAt(merged, pathImagePullSecrets...)
+		if _, isList := list.([]any); list != nil && !isList {
+			// Appending to anything but a list would silently replace it.
+			return resolvedValues{}, fmt.Errorf(
+				"manager.imagePullSecrets is %s, not a list; --image-pull-secret adds nvcrectl-pull-secret "+
+					"to a list of {name: …} entries, so give a list or null", describeValueType(list))
+		}
 		if withSecret, added := appendPullSecret(list, pullSecretName); added {
 			setPath(merged, withSecret, pathImagePullSecrets...)
 			r.pullSecretSources = append(r.pullSecretSources, sourcePullSecret)
@@ -468,7 +474,8 @@ func resolveValues(kept, operator, probed map[string]any, opts valuesOptions) (r
 }
 
 // appendPullSecret returns list with {name: name} at the end, unless an entry
-// with that name is already there. A value that is not a list starts empty.
+// with that name is already there. A null or absent list starts empty;
+// resolveValues rejects any other value that is not a list before calling it.
 func appendPullSecret(list any, name string) ([]any, bool) {
 	entries, _ := list.([]any)
 	for _, e := range entries {
@@ -519,6 +526,23 @@ func printValuesSummary(out io.Writer, r resolvedValues) {
 		}
 		_, _ = fmt.Fprintf(out, "[preflight] Image pull secrets: [%s] (%s)\n",
 			strings.Join(names, ", "), strings.Join(r.pullSecretSources, ", "))
+	}
+}
+
+// describeValueType names the kind of a decoded values entry for an error,
+// without printing the value itself.
+func describeValueType(v any) string {
+	switch v.(type) {
+	case map[string]any:
+		return "an object"
+	case string:
+		return "a string"
+	case json.Number:
+		return "a number"
+	case bool:
+		return "a boolean"
+	default:
+		return fmt.Sprintf("a %T", v)
 	}
 }
 
