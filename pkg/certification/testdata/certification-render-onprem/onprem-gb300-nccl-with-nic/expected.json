@@ -18,8 +18,6 @@
       "-x",
       "NCCL_DEBUG=INFO",
       "-x",
-      "NCCL_NVLS_ENABLE=1",
-      "-x",
       "NCCL_CUMEM_ENABLE=1",
       "-x",
       "NCCL_P2P_NET_CHUNKSIZE=2097152",
@@ -120,7 +118,6 @@
     ],
     "trainerEnv": [
       "NCCL_DEBUG=INFO",
-      "NCCL_NVLS_ENABLE=1",
       "NCCL_CUMEM_ENABLE=1",
       "NCCL_P2P_NET_CHUNKSIZE=2097152",
       "NCCL_MNNVL_ENABLE=1",

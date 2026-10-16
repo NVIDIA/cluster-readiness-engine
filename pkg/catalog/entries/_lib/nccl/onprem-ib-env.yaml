@@ -7,11 +7,15 @@
 # fabric-portable subset of the Mistral IB set. NCCL_IB_HCA and
 # UCX_NET_DEVICES are deliberately omitted: HCA names are per-site facts and
 # NCCL auto-detects HCAs when they are unpinned.
+#
+# NCCL_NVLS_ENABLE is deliberately omitted. It used to be here because this
+# fragment carried the base vars verbatim (#331), not because NVLS was
+# measured on a generic on-prem fabric, and that base no longer sets it. At
+# NCCL's own default the capability probe decides; see BaseNCCLEnvVars in
+# pkg/platform/nccl.go for why 1 is the wrong value to assert (#514).
 
 - name: NCCL_DEBUG
   value: INFO
-- name: NCCL_NVLS_ENABLE
-  value: "1"
 - name: NCCL_CUMEM_ENABLE
   value: "1"
 - name: NCCL_P2P_NET_CHUNKSIZE

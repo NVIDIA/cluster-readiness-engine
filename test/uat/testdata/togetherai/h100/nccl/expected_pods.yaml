@@ -80,8 +80,6 @@ spec:
     - -x
     - NCCL_IB_HCA==mlx5_7:1,mlx5_8:1,mlx5_9:1,mlx5_10:1,mlx5_11:1,mlx5_12:1,mlx5_5:1,mlx5_6:1,mlx5_2:1,mlx5_3:1,mlx5_0:1,mlx5_1:1
     - -x
-    - NCCL_NVLS_ENABLE=1
-    - -x
     - NCCL_CUMEM_ENABLE=1
     - /usr/local/bin/all_reduce_perf_mpi
     - -b

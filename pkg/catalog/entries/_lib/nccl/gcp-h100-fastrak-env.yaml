@@ -58,6 +58,9 @@
   value: "524288"
 - name: NCCL_FASTRAK_LLCM_DEVICE_DIRECTORY
   value: "/dev/aperture_devices"
+# NVLink SHARP, off rather than left to NCCL's default: the FastRak/TCPXO
+# plugin enforces its own guest configuration and this set is aligned with
+# it (#437). A3 Mega has no NVSwitch fabric for NVLS to use.
 - name: NCCL_NVLS_ENABLE
   value: "0"
 - name: NCCL_CUMEM_ENABLE

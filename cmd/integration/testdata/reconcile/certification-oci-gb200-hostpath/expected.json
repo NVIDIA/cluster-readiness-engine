@@ -157,8 +157,6 @@
                   "-x",
                   "NCCL_DEBUG=INFO",
                   "-x",
-                  "NCCL_NVLS_ENABLE=1",
-                  "-x",
                   "NCCL_CUMEM_ENABLE=1",
                   "-x",
                   "NCCL_P2P_NET_CHUNKSIZE=2097152",

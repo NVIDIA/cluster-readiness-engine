@@ -634,10 +634,6 @@
                                     "value": "2097152"
                                   },
                                   {
-                                    "name": "NCCL_NVLS_ENABLE",
-                                    "value": "1"
-                                  },
-                                  {
                                     "name": "NCCL_CUMEM_ENABLE",
                                     "value": "1"
                                   },

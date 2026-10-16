@@ -20,6 +20,11 @@
   value: eth0
 - name: NCCL_DEBUG
   value: INFO
+# NVLink SHARP, forced on rather than left to NCCL's default: SHARP is the
+# reason this profile leaves NCCL_NET unpinned, since pinning it drops the
+# HPC-X CollNet path and took 4-node all-reduce from 549 to 336 GB/s
+# (ADR-085 decision 4). Turning NVLS off here would give up the same thing
+# from the other direction.
 - name: NCCL_NVLS_ENABLE
   value: "1"
 - name: NCCL_CUMEM_ENABLE
