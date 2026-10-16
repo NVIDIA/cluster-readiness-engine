@@ -1578,6 +1578,20 @@ func exercisedNodeCount(cat *CategoryReport) (exercised int, known bool) {
 	return requested, requested > 0
 }
 
+// printCategoryEnv prints the names of the environment variables the category
+// resolved, so a reader of a passing result can see the run was tuned. Names
+// only: a value can carry a path or a hostname and a report is a document
+// people forward. The list wraps rather than truncating, because a reader
+// deciding whether to trust the verdict needs all of it.
+func printCategoryEnv(w io.Writer, cat *CategoryReport) {
+	if len(cat.Env) == 0 {
+		return
+	}
+	for _, line := range wrapList("Env:       ", cat.Env, boxWidth-4) {
+		_, _ = fmt.Fprintf(w, "│  %s%s│\n", line, pad(boxWidth-4-len(line)))
+	}
+}
+
 // printCategoryScope prints the lines describing how much of the fleet the
 // category ran against. A diagnose run has none of them: its groups come from
 // bisection rather than a requested size, so the counts would describe
@@ -1605,13 +1619,6 @@ func printCategoryScope(w io.Writer, cat *CategoryReport) {
 	if cat.MNNVL != "" {
 		mnnvlLine := fmt.Sprintf("MNNVL:     %s", cat.MNNVL)
 		_, _ = fmt.Fprintf(w, "│  %s%s│\n", mnnvlLine, pad(boxWidth-4-len(mnnvlLine)))
-	}
-	if len(cat.Env) > 0 {
-		// Names only, and wrapped rather than truncated: a reader who needs to
-		// know the run was tuned needs the whole list, not the first line of it.
-		for _, line := range wrapList("Env:       ", cat.Env, boxWidth-4) {
-			_, _ = fmt.Fprintf(w, "│  %s%s│\n", line, pad(boxWidth-4-len(line)))
-		}
 	}
 }
 
@@ -1680,6 +1687,12 @@ func printCategoryCard(w io.Writer, cat *CategoryReport) {
 	if cat.Diagnose == nil {
 		printCategoryScope(w, cat)
 	}
+	// Outside that conditional on purpose. The scope lines describe a fleet
+	// size a diagnose run never requested, but what the run was configured
+	// with is just as true of a diagnose category, and a bisection that
+	// passed with a hardware feature disabled is exactly the result a reader
+	// must not take at face value.
+	printCategoryEnv(w, cat)
 
 	// Failed groups with reasons.
 	printFailedGroups(w, cat.FailedGroups)

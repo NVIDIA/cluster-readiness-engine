@@ -1282,10 +1282,15 @@ func envToken(env []corev1.EnvVar) string {
 	}
 	pairs := make([]string, 0, len(env))
 	for _, e := range env {
-		pairs = append(pairs, e.Name+"="+e.Value)
+		// Length-prefixed, not delimited. A value may contain any byte a
+		// Kubernetes string may contain, newline included, so joining on a
+		// separator lets one variable impersonate two: A="x\nB=y" and the pair
+		// A="x", B="y" would otherwise hash the same and collide on a name.
+		pairs = append(pairs, fmt.Sprintf("%d:%s=%d:%s",
+			len(e.Name), e.Name, len(e.Value), e.Value))
 	}
 	sort.Strings(pairs)
-	sum := sha256.Sum256([]byte(strings.Join(pairs, "\n")))
+	sum := sha256.Sum256([]byte(strings.Join(pairs, "")))
 	return "env" + hex.EncodeToString(sum[:])[:8]
 }
 
