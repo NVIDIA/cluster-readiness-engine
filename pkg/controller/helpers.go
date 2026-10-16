@@ -115,8 +115,9 @@ const (
 	ReasonJobValidationFailed = "JobValidationFailed"
 
 	// ReasonJobSchedulingBlocked marks a running Workflow iteration in which
-	// at least one group's Job reports WorkloadSchedulingBlocked. The message
-	// relays that Job's scheduler diagnosis (ADR-083).
+	// at least one group's Job reports WorkloadSchedulingBlocked or
+	// WorkloadCreationRejected. The message relays that Job's diagnosis
+	// (ADR-083, issue #488).
 	ReasonJobSchedulingBlocked = "JobSchedulingBlocked"
 
 	// ReasonJobTimedOut marks a Job's Failed condition set by the Workflow when
@@ -211,6 +212,15 @@ const (
 	// the same clock-neutral treatment as WorkloadPending (issue #213).
 	// See ADR-083.
 	ReasonWorkloadSchedulingBlocked = "WorkloadSchedulingBlocked"
+
+	// ReasonWorkloadCreationRejected indicates the API server is rejecting
+	// the workload create (admission webhook or policy denial, exhausted
+	// ResourceQuota). The Job stays InProgress and the controller keeps
+	// retrying, since some rejections clear (a TrainingRuntime that is not
+	// ready yet, quota that frees up). A rejection that outlasts the
+	// workload creation deadline fails the Job with
+	// ReasonWorkloadCreationError. See issue #488.
+	ReasonWorkloadCreationRejected = "WorkloadCreationRejected"
 
 	// ReasonMeasurementCreationError indicates a GoodputMeasurement or
 	// BandwidthMeasurement child resource could not be created. Handling is
