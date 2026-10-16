@@ -5,5 +5,27 @@
     "node-c",
     "node-d"
   ],
+  "entries": [
+    {
+      "name": "node-a",
+      "reason": "HardwareFailureDetected",
+      "message": "Hardware failure detected by node health check"
+    },
+    {
+      "name": "node-b",
+      "reason": "HardwareFailureDetected",
+      "message": "Hardware failure detected by node health check"
+    },
+    {
+      "name": "node-c",
+      "reason": "HardwareFailureDetected",
+      "message": "Hardware failure detected by node health check"
+    },
+    {
+      "name": "node-d",
+      "reason": "HardwareFailureDetected",
+      "message": "Hardware failure detected by node health check"
+    }
+  ],
   "hasNew": true
 }

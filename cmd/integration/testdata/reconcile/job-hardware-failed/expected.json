@@ -74,12 +74,12 @@
         {
           "name": "test-hw-node",
           "reason": "HardwareFailureDetected",
-          "message": "Hardware failure detected by node health check"
+          "message": "CEL expression evaluated to true for node test-hw-node"
         },
         {
           "name": "test-hw-second-node",
           "reason": "HardwareFailureDetected",
-          "message": "Hardware failure detected by node health check"
+          "message": "CEL expression evaluated to true for node test-hw-second-node"
         }
       ],
       "workloadRef": {

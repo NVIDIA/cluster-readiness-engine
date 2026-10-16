@@ -60,6 +60,13 @@
           "message": "Job exceeded timeoutPerJob"
         }
       ],
+      "failedNodes": [
+        {
+          "name": "gpu-node-01",
+          "reason": "WorkloadFailed",
+          "message": "Job exceeded timeoutPerJob"
+        }
+      ],
       "workloadRef": {
         "apiVersion": "trainer.kubeflow.org/v1alpha1",
         "kind": "TrainJob",

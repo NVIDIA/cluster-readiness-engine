@@ -104,3 +104,4 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 094 | [HGX B300 Architecture Defaults, an On-Prem x86 HGX NIC Override, and a Fallback Event for Unknown Architectures](094-hgx-b300-architecture-and-onprem-nic-override.md) |
 | 095 | [Preserve Category Identity in Certification Watch Output](095-certification-watch-category-identity.md) |
 | 096 | [Mokka GPU Simulation for Local Development and a UAT Runtime Lane](096-mokka-local-environment-and-uat-runtime-lane.md) |
+| 099 | [Relay the Failure Attribution NVCRE Already Has, and Do Not Classify Causes from Log Text](099-failed-node-attribution-relay.md) |

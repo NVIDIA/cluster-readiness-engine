@@ -3,5 +3,17 @@
     "node-a",
     "node-b"
   ],
+  "entries": [
+    {
+      "name": "node-a",
+      "reason": "HardwareFailureDetected",
+      "message": "Hardware failure detected by node health check"
+    },
+    {
+      "name": "node-b",
+      "reason": "HardwareFailureDetected",
+      "message": "Hardware failure detected by node health check"
+    }
+  ],
   "hasNew": false
 }

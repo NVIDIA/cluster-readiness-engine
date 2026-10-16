@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Each node carries the message its own detector evaluation produced. node-c has
+# none, so it falls back to the shared constant: a detector that reports no
+# message must still produce a usable entry.
+existing:
+  - node-a
+new:
+  - node-b
+  - node-c
+messages:
+  node-a: "node.spec.unschedulable == true"
+  node-b: "GPU fell off the bus (Xid 79)"

@@ -1780,6 +1780,16 @@ func (r *WorkflowReconciler) failTimedOutJob(
 	applyExclusiveConditions(&job.Status.Conditions,
 		[]string{nvcrev1alpha1.JobInProgress, nvcrev1alpha1.JobSucceeded, nvcrev1alpha1.JobFailed},
 		nvcrev1alpha1.JobFailed, ReasonJobTimedOut, timeoutMsg, job.Generation)
+	// Attribute the timeout to the group's nodes. This path writes the Job
+	// status directly rather than going through setJobFailed, which is the only
+	// other place a failing Job seeds FailedNodes, so without this a timed-out
+	// certification reports no failed nodes at all (ADR-099). The reason is
+	// WorkloadFailed because the enum has no timeout value; the condition above
+	// carries ReasonJobTimedOut, the same split the threshold path already makes.
+	if len(job.Status.FailedNodes) == 0 {
+		job.Status.FailedNodes = noderesults.NodesWithFailureDetails(
+			g.Nodes, ReasonWorkloadFailed, timeoutMsg)
+	}
 	if err := r.Status().Update(ctx, job); err != nil {
 		return false, fmt.Errorf("failed to update timed-out Job %s status: %w", job.Name, err)
 	}

@@ -1816,8 +1816,15 @@ func (r *JobReconciler) checkNodeHealth(ctx context.Context, job *nvcrev1alpha1.
 		close(resultsCh)
 	}()
 
-	// Collect newly detected failed nodes
+	// Collect newly detected failed nodes, keeping each node's own message.
+	//
+	// The detector evaluates one node at a time and returns why that node
+	// failed, so this is real per-node evidence rather than a group-scoped
+	// guess. Flattening it to names and re-deriving one constant would discard
+	// the only per-node attribution the system produces (ADR-099). Nodes whose
+	// detector supplied no message fall back to the constant.
 	var newFailedNodes []string
+	detectorMessages := make(map[string]string)
 	for result := range resultsCh {
 		if result.failed {
 			log.Info("Hardware failure detected on node",
@@ -1825,6 +1832,9 @@ func (r *JobReconciler) checkNodeHealth(ctx context.Context, job *nvcrev1alpha1.
 				"reason", result.reason,
 				"message", result.message)
 			newFailedNodes = append(newFailedNodes, result.nodeName)
+			if result.message != "" {
+				detectorMessages[result.nodeName] = result.message
+			}
 		}
 	}
 
@@ -1841,8 +1851,14 @@ func (r *JobReconciler) checkNodeHealth(ctx context.Context, job *nvcrev1alpha1.
 	// Merge with existing failed nodes (additive - nodes that recover stay in the list)
 	// This ensures flappy nodes only appear once and recovered nodes aren't removed.
 	// CEL-detected failures are attributed to ReasonHardwareFailureDetected.
-	allFailedNodes, hasNewFailures := mergeFailedNodes(job.Status.FailedNodes, newFailedNodes,
-		ReasonHardwareFailureDetected, "Hardware failure detected by node health check")
+	incoming := noderesults.NodesWithPerNodeDetails(newFailedNodes, ReasonHardwareFailureDetected,
+		func(name string) string {
+			if msg := detectorMessages[name]; msg != "" {
+				return msg
+			}
+			return defaultNodeHealthFailureMessage
+		})
+	allFailedNodes, hasNewFailures := mergeFailedNodes(job.Status.FailedNodes, incoming)
 
 	// Only update if there are actual new failures (deep comparison, not just length)
 	if hasNewFailures {
@@ -1855,29 +1871,33 @@ func (r *JobReconciler) checkNodeHealth(ctx context.Context, job *nvcrev1alpha1.
 	return ctrl.Result{}, nil
 }
 
-// mergeFailedNodes merges newly detected node names (all attributed to the given
-// reason and message) into the existing FailedNode list, deduplicating by the
-// (name, reason) pair and sorting the result. Existing entries are preserved
-// (nodes are never removed from the list). Returns the merged list and a boolean
-// indicating whether any new (name, reason) attribution was added — so a new
-// reason for an already-listed node still counts as a new failure.
-func mergeFailedNodes(existing []nvcrev1alpha1.FailedNode, newNames []string, reason nvcrev1alpha1.NodeFailureReason, message string) ([]nvcrev1alpha1.FailedNode, bool) {
+// mergeFailedNodes merges newly detected FailedNode entries into the existing
+// list, deduplicating by the (name, reason) pair and sorting the result. Existing
+// entries are preserved (nodes are never removed from the list). Returns the
+// merged list and a boolean indicating whether any new (name, reason) attribution
+// was added — so a new reason for an already-listed node still counts as a new
+// failure.
+//
+// Entries arrive already built so each can carry its own message; building them
+// here from a name list and one constant is what discarded per-node detector
+// output before ADR-099.
+func mergeFailedNodes(existing, incoming []nvcrev1alpha1.FailedNode) ([]nvcrev1alpha1.FailedNode, bool) {
 	existingSet := make(map[[2]string]struct{}, len(existing))
 	for _, fn := range existing {
 		existingSet[[2]string{fn.Name, string(fn.Reason)}] = struct{}{}
 	}
 
 	hasNewFailures := false
-	for _, n := range newNames {
-		if n == "" {
+	for _, fn := range incoming {
+		if fn.Name == "" {
 			continue
 		}
-		if _, exists := existingSet[[2]string{n, string(reason)}]; !exists {
+		if _, exists := existingSet[[2]string{fn.Name, string(fn.Reason)}]; !exists {
 			hasNewFailures = true
 		}
 	}
 
-	merged := sortMergedFailedNodes(existing, noderesults.NodesWithFailureDetails(newNames, reason, message))
+	merged := sortMergedFailedNodes(existing, incoming)
 	return merged, hasNewFailures
 }
 
