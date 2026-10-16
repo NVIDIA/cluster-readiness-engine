@@ -91,13 +91,16 @@ It does not change:
 
    When `--skip-phases` includes `helm`, none of this runs and the NVCRE release is not read, as today (`pkg/setup/setup.go:261-268`).
 
-   Preflight then prints the values the NVCRE release will be given: the merged result from "Building the upgrade", not its inputs, so a kept value that this run overrides is not listed as kept. Each value is labelled with where it came from. The printout appears with `--auto-approve` too, so a CI log records what was applied. Lists are printed whole at their path, never flattened into indices.
+   Preflight then prints the values the NVCRE release will be given: the merged result from "Building the upgrade", not its inputs, so a kept value that this run overrides is not listed as kept. Each value is printed as its path and where it came from, without the value itself. The printout appears with `--auto-approve` too, so it reaches CI logs, and a kept or operator value can hold anything, including a credential under a key the chart never reads. A list is printed as one path, never flattened into indices.
+
+   Three things are printed with their values, because nvcrectl sets or checks them itself and none can hold a credential: the controller image, the pull-secret list (Secret names, not their contents), and `rbac.scope`. To see the other values, the operator reads their own inputs or runs `helm get values`, which needs access to the release.
 
    ```text
-   [preflight] Values for release "nvcre":
-     manager.resources.limits.memory=8Gi        (installed release)
-     manager.resources.requests.memory=4Gi      (this run)
-     rbac.scope=namespaced                      (installed release)
+   [preflight] Values for release "nvcre" (paths only; values are not printed):
+     manager.resources.limits.memory            (installed release)
+     manager.resources.requests.memory          (this run)
+     manager.tolerations                        (installed release)
+   [preflight] rbac.scope: namespaced (installed release)
    [preflight] Controller image: ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0 (CLI version)
    [preflight] Image pull secrets: [mirror-pull-secret, nvcrectl-pull-secret] (installed release, --image-pull-secret)
    ```
@@ -222,7 +225,7 @@ Cases to cover:
   - the precedence `-f` < `--set-json` < `--set`
   - the second run with the kept-values file in front
   - the merged values file rendered against the real chart for the parent-key `--set-json` cases above, checking that `rbac.scope: namespaced` still renders a RoleBinding and no ClusterRoleBinding
-- **Output:** the summary lists the merged values with their sources, with and without `--auto-approve`.
+- **Output:** the summary lists the merged values' paths with their sources, and never a value outside the image, the pull-secret names and `rbac.scope`, with and without `--auto-approve`. Include a case where a kept value under a key the chart does not read holds a token-like string that must not appear.
 
 ## Rationale
 
