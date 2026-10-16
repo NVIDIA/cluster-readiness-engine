@@ -117,6 +117,13 @@ followed them.
   worker pods did, so a launcher pulling from a private registry failed at image pull
   while the workers started. It now gets the same secrets as the workers (#483)
 
+### Changed
+
+- NCCL bandwidth metrics now include the Job's `workflow` label. This changes
+  Prometheus series identity, so queries matching an absent or empty `workflow`
+  label will not match new measurements. Measurements created before this change
+  retain the empty label until they are removed.
+
 ## [0.7.0] - 2026-10-12
 
 ### Added

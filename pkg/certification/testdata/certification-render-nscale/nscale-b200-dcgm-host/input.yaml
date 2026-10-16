@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A user-set dcgmHost wins over the Nscale repoint to nvidia-dcgm-dra (issue
+# #428): --host carries the user's address, the render does not fail on the
+# override's test op, and the GPU-only claim and toleration are unchanged.
+platform: nscale
+gpuArch: b200

@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # group-0 finished with a transport but no bandwidth rows. It keeps its row
-# with an empty BusBW and is not judged against the threshold.
-minBusBandwidthGBps: "300"
+# with an empty BusBW and is not judged against the threshold. Its measurement
+# is not final (BandwidthFinal needs results), so the row is marked
+# provisional rather than shown as passing.
+busBandwidthThreshold: "value >= 300"
 groups:
   - name: group-0
     nodes: [node-0, node-1]
@@ -23,6 +25,8 @@ measurements:
   - spec:
       jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: job-1}
     status:
+      conditions:
+        - {type: Complete, status: "True", reason: JobSucceeded, message: Job succeeded, lastTransitionTime: "2026-10-01T00:00:00Z"}
       transport: [Socket]
       results:
         - {sizeBytes: 1024, algBW: "0.50", busBW: "1.0", samples: 1}

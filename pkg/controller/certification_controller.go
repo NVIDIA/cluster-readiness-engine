@@ -609,6 +609,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		TimeoutPerJob:              opts.TimeoutPerJob,
 		MeasurementTimeout:         opts.MeasurementTimeout,
 		SourceRepo:                 opts.SourceRepo,
+		DCGMHost:                   opts.DCGMHost,
 	})
 	if buildErr != nil {
 		return "", fmt.Errorf("building workflow for %s/%s: %w", category.Domain, category.Variant, buildErr)
@@ -829,7 +830,7 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 		resolved.EnableMNNVL = override.EnableMNNVL
 	}
 	// String options take the override whenever it is non-empty. Written with
-	// cmp.Or rather than a branch each: there are seven of them, they are
+	// cmp.Or rather than a branch each: there are eight of them, they are
 	// mutually independent, and spelled as ifs they were most of this
 	// function's cyclomatic complexity for no reader benefit.
 	resolved.Image = cmp.Or(override.Image, resolved.Image)
@@ -839,6 +840,7 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	resolved.TimeoutPerJob = cmp.Or(override.TimeoutPerJob, resolved.TimeoutPerJob)
 	resolved.MeasurementTimeout = cmp.Or(override.MeasurementTimeout, resolved.MeasurementTimeout)
 	resolved.SourceRepo = cmp.Or(override.SourceRepo, resolved.SourceRepo)
+	resolved.DCGMHost = cmp.Or(override.DCGMHost, resolved.DCGMHost)
 	if len(override.ImagePullSecrets) > 0 {
 		resolved.ImagePullSecrets = override.ImagePullSecrets
 	}

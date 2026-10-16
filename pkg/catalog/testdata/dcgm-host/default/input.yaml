@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No dcgmHost: --host stays the GPU Operator's DCGM Service, exactly as before
+# the option existed, and the Nscale override keeps its repoint patch.
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-B200
+gpusPerNode: 8

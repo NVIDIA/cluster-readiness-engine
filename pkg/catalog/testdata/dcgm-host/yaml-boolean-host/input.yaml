@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# "on" passes the CRD pattern, but an unquoted YAML 1.1 scalar "on" is the
+# boolean true and would reach dcgmi as "true". The template quotes the value,
+# so --host must stay exactly "on".
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-B200
+gpusPerNode: 8
+dcgmHost: "on"

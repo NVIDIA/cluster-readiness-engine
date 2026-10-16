@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# group-0 failed but has a measurement. Its measured row and its failed-group
+# row used to get different labels ("group-0 (n0, n1)" and "group-0 (2 nodes)"),
+# so the label dedupe missed and the group was listed twice (#449).
+groups:
+  - name: group-0
+    nodes: [n0, n1]
+    phase: Failed
+    jobRef: {name: j0}
+  - name: group-1
+    nodes: [n2, n3]
+    phase: Succeeded
+    jobRef: {name: j1}
+measurements:
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: j0}
+    status:
+      conditions:
+        - {type: Complete, status: "True", reason: JobSucceeded, message: Job succeeded, lastTransitionTime: "2026-10-01T00:00:00Z"}
+      results:
+        - {sizeBytes: 1073741824, algBW: "12.00", busBW: "12.00", samples: 1}
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: j1}
+    status:
+      conditions:
+        - {type: Complete, status: "True", reason: JobSucceeded, message: Job succeeded, lastTransitionTime: "2026-10-01T00:00:00Z"}
+      results:
+        - {sizeBytes: 1073741824, algBW: "400.00", busBW: "400.00", samples: 1}

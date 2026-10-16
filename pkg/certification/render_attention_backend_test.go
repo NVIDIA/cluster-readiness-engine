@@ -99,7 +99,7 @@ func TestCertificationRenderAttentionBackend(t *testing.T) {
 		var results []attentionBackendResult
 		var conflicts []error
 		for _, cat := range catalog.List() {
-			if cat.Domain != "training" {
+			if cat.Domain != testDomainTraining {
 				continue
 			}
 			minGPUs := catalog.Lookup(cat.Domain, cat.Variant).MinGPUs

@@ -1211,11 +1211,11 @@ func (r *WorkflowReconciler) isBelowBandwidthThreshold(ctx context.Context, jobN
 	if !meta.IsStatusConditionTrue(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete) {
 		return false, true, nil
 	}
-	if !bandwidthFinal(bm) {
+	if !BandwidthFinal(bm) {
 		reason := meta.FindStatusCondition(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete).Reason
 		return false, false, fmt.Errorf("BandwidthMeasurement %s completed without final results (%s)", bm.Name, reason)
 	}
-	measured := maxBusBandwidth(bm.Status.Results)
+	measured := MaxBusBandwidth(bm.Status.Results)
 	passed, evalErr := threshold.Evaluate(measured, expr)
 	if evalErr != nil {
 		return false, false, fmt.Errorf("evaluate bandwidth threshold for job %s: %w", jobName, evalErr)
