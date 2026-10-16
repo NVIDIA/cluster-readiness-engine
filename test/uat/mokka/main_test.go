@@ -24,6 +24,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -31,6 +32,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	resourcev1 "k8s.io/api/resource/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -55,11 +57,20 @@ const (
 	// backoffLimit at the Kubernetes default of 6, so the kubelet's
 	// crash-loop backoff runs before the Job fails and NVCRE sees it. That
 	// measured about seven minutes locally; the budget leaves room for a
-	// loaded CI runner.
+	// loaded CI runner. Bring this down with the fix for #498.
 	workloadFailureTimeout = 15 * time.Minute
+	// A namespace goes only after NVCRE has cleaned up, and a test that
+	// failed mid-run can leave workers behind the controller's 5-minute
+	// pod-drain grace period (podDrainGracePeriod in pkg/controller).
+	namespaceDeleteTimeout = 8 * time.Minute
 
 	nvcreNamespace = "nvcre"
 )
+
+// knownProfiles are the profiles the lane has expectations for. setup refuses
+// any other, so a profile added to setup.sh or the CI matrix without tests
+// fails instead of skipping everything.
+var knownProfiles = []string{"h100", "b200", "gb200", "gb300"}
 
 var (
 	kubeContext string
@@ -110,8 +121,10 @@ func setup() error {
 		return fmt.Errorf("read the profile setup.sh records (is %s a Mokka cluster?): %w", cluster, err)
 	}
 	profile = cm.Data["profile"]
-	if profile == "" {
-		return fmt.Errorf("configmap kube-system/nvcre-mokka has no profile")
+	if !slices.Contains(knownProfiles, profile) {
+		return fmt.Errorf("cluster runs profile %q, which the lane has no expectations for; "+
+			"add it to knownProfiles, TestClusterInfo and the requireProfile lists of the tests that apply, "+
+			"or every test would skip and the leg would pass having asserted nothing", profile)
 	}
 	fmt.Printf("mokka lane: cluster %s, profile %s\n", cluster, profile)
 	return nil
@@ -148,20 +161,42 @@ func requireProfile(t *testing.T, profiles ...string) {
 
 // testNamespace creates a namespace for one test, so the leftover checks see
 // only what that test created, and deletes it afterwards.
+//
+// Both ends wait for the namespace to be gone. One Certification takes every
+// GPU in the cluster (two workers, nodesPerJob 2, the whole node's GPUs), so
+// workers left terminating by one test would hold the next one Pending and
+// report one failure as two. And the name is fixed per test, so a quick
+// re-run would otherwise create into a namespace that is still terminating.
 func testNamespace(ctx context.Context, t *testing.T) string {
 	t.Helper()
 	name := "mokka-" + strings.ToLower(regexp.MustCompile(`[^A-Za-z0-9]+`).ReplaceAllString(t.Name(), "-"))
 	if len(name) > 63 {
 		name = strings.TrimRight(name[:63], "-")
 	}
+	waitNamespaceGone(ctx, t, name)
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
-	require.NoError(t, client.IgnoreAlreadyExists(c.Create(ctx, ns)))
+	require.NoError(t, c.Create(ctx, ns))
 	t.Cleanup(func() {
 		ctx := context.Background()
 		_ = c.DeleteAllOf(ctx, &nvcrev1alpha1.Certification{}, client.InNamespace(name))
-		_ = util.DeleteNamespace(ctx, c, name)
+		require.NoError(t, util.DeleteNamespace(ctx, c, name))
+		waitNamespaceGone(ctx, t, name)
 	})
 	return name
+}
+
+// waitNamespaceGone waits until the namespace no longer exists, reporting what
+// still holds it on timeout.
+func waitNamespaceGone(ctx context.Context, t *testing.T, name string) {
+	t.Helper()
+	pollUntil(t, namespaceDeleteTimeout, pollInterval, func() bool {
+		err := c.Get(ctx, client.ObjectKey{Name: name}, &corev1.Namespace{})
+		return apierrors.IsNotFound(err)
+	}, func() string {
+		pods := &corev1.PodList{}
+		_ = c.List(ctx, pods, client.InNamespace(name))
+		return fmt.Sprintf("namespace %s still terminating with %d pod(s)", name, len(pods.Items))
+	})
 }
 
 // createCertification creates the Certification in testdata/<file> in the

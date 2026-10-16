@@ -28,9 +28,7 @@ func TestClusterInfo(t *testing.T) {
 		"gb300": {"gb300", 4},
 	}
 	exp, ok := want[profile]
-	if !ok {
-		t.Skipf("no expectation for profile %s", profile)
-	}
+	require.True(t, ok, "no expectation for profile %s; add it here", profile)
 
 	var info struct {
 		Platform        string `json:"platform"`

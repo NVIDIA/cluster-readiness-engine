@@ -184,7 +184,11 @@ jobs:
     if: >-
       github.repository == 'NVIDIA/cluster-readiness-engine' &&
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-    timeout-minutes: 60
+    # Setup's own waits are generous (the gb200 and gb300 legs also rebuild
+    # the IMEX-shim image, since the disk cleanup prunes it), and the test
+    # binary may take up to 60 minutes. A job that hits this limit is
+    # recorded as cancelled, which the diagnostics steps below still cover.
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -243,7 +247,7 @@ jobs:
           kind export logs /tmp/kind-logs --name "${MOKKA_CLUSTER}" || true
 
       - name: Collect debug artifacts
-        if: failure()
+        if: failure() || cancelled()
         run: |
           mkdir -p /tmp/debug-artifacts
           ctx="kind-${MOKKA_CLUSTER}"
@@ -263,7 +267,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Upload debug artifacts
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: uat-mokka-${{ matrix.profile }}-debug-${{ github.run_id }}

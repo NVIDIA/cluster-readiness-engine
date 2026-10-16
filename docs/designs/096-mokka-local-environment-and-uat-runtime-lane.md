@@ -59,8 +59,8 @@ Three consequences follow, and recent history shows each one.
 
 ```text
 test/uat/mokka/
-  kind/               Kind configs per profile (workers labelled mokka.nvidia.com/type=sgpu)
-  values/             nvml-mock, DRA driver and NVCRE values per profile
+  kind/cluster.yaml   one Kind config shared by every profile (workers labelled mokka.nvidia.com/type=sgpu)
+  values/             nvml-mock values per profile, and DRA driver values; NVCRE reuses test/uat/tilt/nvcre-values.yaml
   manifests/          device plugin and GFD DaemonSets
   stub/               Dockerfile, all_reduce_perf_mpi, recorded logs, mpirun wrapper
   setup.sh            brings up one profile; shared by make mokka-up and the CI lane

@@ -14,7 +14,15 @@ Use this environment to develop and debug the controller against real scheduling
 - Docker with 8 GB of memory or more. One cluster uses about 2.5 GiB while idle.
 - [Kind](https://kind.sigs.k8s.io/), `kubectl`, Helm 3, Go, and `make`.
 - For `tilt-mokka`, [Tilt](https://tilt.dev/).
-- Network access to `ghcr.io`, `nvcr.io`, `helm.ngc.nvidia.com`, and GitHub. The GB200 and GB300 profiles also build an image from Ubuntu's package archive.
+- Network access to everything the setup pulls from. Every profile needs:
+  - Docker Hub (`docker.io`), for the Kind node image and the stub's Ubuntu base
+  - Ubuntu's package archive (`archive.ubuntu.com`, or `ports.ubuntu.com` on arm64), for the stub's OpenMPI and OpenSSH
+  - `public.ecr.aws` and `proxy.golang.org`, to build the NVCRE manager image
+  - `nvcr.io`, `ghcr.io` and `registry.k8s.io`, for the GPU stack, Mokka, Kubeflow Trainer and NFD images
+  - `helm.ngc.nvidia.com` and `kubernetes-sigs.github.io`, for the Helm charts
+  - `github.com`, for the Prometheus Operator CRDs
+
+  GB200 and GB300 also clone Mokka from GitHub and build its IMEX shim, which pulls `golang` and `ubuntu:22.04` from Docker Hub and packages from the Ubuntu archive.
 
 ## Bring up a cluster
 
@@ -107,6 +115,6 @@ The simulation covers the contracts between Kubernetes, the GPU stack and NVCRE.
 - CUDA, NCCL, or any kernel running on a GPU.
 - Bandwidth. The numbers in the BandwidthMeasurement are the recorded log's, not a measurement.
 - Goodput of a real training run.
-- DCGM diagnostics levels 2 to 4.
+- DCGM diagnostics. No DCGM runs in this environment.
 
 Those still need hardware.

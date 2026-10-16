@@ -75,7 +75,7 @@ make tilt-mokka PROFILE=gb200     # same, with controller hot reload on Tilt por
 make mokka-down
 ```
 
-Everything lives in `test/uat/mokka/`; `setup.sh` is the single recipe and pins every version. A cluster holds one profile: `mokka-down` before switching, or set `MOKKA_CLUSTER`. The user guide is `docs/how-to-guides/run-locally-without-gpus.md`.
+Everything lives in `test/uat/mokka/`; `setup.sh` is the single recipe. Versions are pinned in three places, so a bump touches all of them: the Pins block at the top of `setup.sh` (charts, Mokka, DRA driver), the device plugin and GFD image tags in `manifests/device-plugin.yaml` and `manifests/gfd.yaml`, and the Ubuntu digest and OpenMPI version in `stub/Dockerfile`. A cluster holds one profile: `mokka-down` before switching, or set `MOKKA_CLUSTER`. The user guide is `docs/how-to-guides/run-locally-without-gpus.md`.
 
 ## Architecture
 

@@ -179,10 +179,14 @@ tilt-mokka: ## Like mokka-up, with Tilt rebuilding and reloading the controller 
 setup-test-uat-mokka: ## Bring up the UAT runtime lane cluster for PROFILE (CI; same recipe as mokka-up).
 	$(MOKKA_ENV) test/uat/mokka/setup.sh cluster infra stub nvcre
 
+# The package timeout must exceed the sum of the per-test budgets for the
+# heaviest profile (h100: about 36 minutes of poll budgets, plus namespace
+# cleanup waits), or a slow but healthy run panics the test binary and skips
+# the remaining tests and their cleanup.
 .PHONY: test-uat-mokka-run
 test-uat-mokka-run: ## Run the UAT runtime lane against the existing Mokka cluster; cases for other profiles skip.
 	MOKKA_CLUSTER=$(MOKKA_CLUSTER) NVCRECTL=$(LOCALBIN)/nvcrectl \
-		go test -tags=uat_mokka ./test/uat/mokka/ -v -timeout 1800s -count=1
+		go test -tags=uat_mokka ./test/uat/mokka/ -v -timeout 3600s -count=1
 
 .PHONY: cleanup-test-uat-mokka
 cleanup-test-uat-mokka: mokka-down ## Delete the UAT runtime lane cluster.
