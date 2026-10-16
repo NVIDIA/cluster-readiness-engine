@@ -713,8 +713,6 @@ func readCertification(path string) (*nvcrev1alpha1.Certification, error) {
 	return &cert, nil
 }
 
-// validateRDMADeviceAccess rejects any non-empty rdmaDeviceAccess that is not
-// one of the enum values. Empty means unset, which is the devicePlugin default.
 // validateCategoryEnv rejects the env entries the CRD's CEL rule rejects, so
 // an offline render fails the same way a cluster apply would. Mirrors
 // validateRDMADeviceAccess: the kubebuilder markers bind server-side only.
@@ -735,6 +733,8 @@ func validateCategoryEnv(env []corev1.EnvVar) error {
 	return nil
 }
 
+// validateRDMADeviceAccess rejects any non-empty rdmaDeviceAccess that is not
+// one of the enum values. Empty means unset, which is the devicePlugin default.
 func validateRDMADeviceAccess(value string) error {
 	if value == "" {
 		return nil

@@ -160,8 +160,7 @@ func upsertTrainerEnv(trainer *trainerv1alpha1.Trainer, env []corev1.EnvVar) {
 func applyEnvAsMPIArgs(trainer *trainerv1alpha1.Trainer, env []corev1.EnvVar) error {
 	for _, e := range env {
 		operand := e.Name + "=" + e.Value
-		if i, ok := indexOfMPIEnvArg(trainer.Args, e.Name); ok {
-			trainer.Args[i+1] = operand
+		if replaceMPIEnvArgs(trainer.Args, e.Name, operand) {
 			continue
 		}
 		last, ok := lastMPIEnvArgIndex(trainer.Args)
@@ -186,15 +185,23 @@ func applyEnvAsMPIArgs(trainer *trainerv1alpha1.Trainer, env []corev1.EnvVar) er
 	return nil
 }
 
-// indexOfMPIEnvArg returns the index of the "-x" that forwards name.
-func indexOfMPIEnvArg(args []string, name string) (int, bool) {
+// replaceMPIEnvArgs rewrites the operand of EVERY "-x" that forwards name and
+// reports whether it found any.
+//
+// Every one, not the first: some catalog arms forward a name twice on purpose
+// or by accident (the OCI GB200 arms list NCCL_DEBUG twice, and the GB300 arms
+// list NCCL_IB_GID_INDEX and NCCL_IB_SPLIT_DATA_ON_QPS twice). mpirun takes the
+// last -x for a name, so rewriting only the first would leave the catalog's
+// later pair winning and the operator's value silently discarded.
+func replaceMPIEnvArgs(args []string, name, operand string) bool {
+	found := false
 	for i := range args {
-		forwarded, ok := mpiEnvArgName(args, i)
-		if ok && forwarded == name {
-			return i, true
+		if forwarded, ok := mpiEnvArgName(args, i); ok && forwarded == name {
+			args[i+1] = operand
+			found = true
 		}
 	}
-	return 0, false
+	return found
 }
 
 // lastMPIEnvArgIndex returns the index of the final "-x" in args.

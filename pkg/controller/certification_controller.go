@@ -6,6 +6,8 @@ package controller
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -1249,10 +1251,42 @@ func categoryOptionsSuffix(opts *nvcrev1alpha1.CategoryOptions) string {
 	if opts.RDMADeviceAccess != "" {
 		parts = append(parts, rdmaDeviceAccessToken(opts.RDMADeviceAccess))
 	}
+	// Running one variant twice with a setting on and off is the obvious use of
+	// env, and those two categories must not share a Workflow name: the second
+	// Create would come back AlreadyExists, the holder would pass the owner
+	// check, and the second category would report the first's result for a
+	// configuration that never ran.
+	//
+	// A hash rather than readable tokens, because a variable name alone does
+	// not distinguish the two categories this protects (both set NCCL_ALGO; the
+	// values differ) and the names are long enough that spelling them out would
+	// push every name into Truncate's own hash. Issue #430 is this problem
+	// across the options the suffix still omits; when its derivation lands this
+	// token should give way to it.
+	if token := envToken(opts.Env); token != "" {
+		parts = append(parts, token)
+	}
 	if len(parts) == 0 {
 		return ""
 	}
 	return "-" + strings.Join(parts, "-")
+}
+
+// envToken derives a short, stable token from a category's environment
+// variables. Names and values both, sorted so declaration order cannot change
+// a Workflow name, and deduplicated by name because ResolveOptions has already
+// collapsed duplicates before this runs.
+func envToken(env []corev1.EnvVar) string {
+	if len(env) == 0 {
+		return ""
+	}
+	pairs := make([]string, 0, len(env))
+	for _, e := range env {
+		pairs = append(pairs, e.Name+"="+e.Value)
+	}
+	sort.Strings(pairs)
+	sum := sha256.Sum256([]byte(strings.Join(pairs, "\n")))
+	return "env" + hex.EncodeToString(sum[:])[:8]
 }
 
 // rdmaDeviceAccessToken shortens an rdmaDeviceAccess value into a name-safe
