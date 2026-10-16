@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The passing stub with a minimum far above the replayed bus bandwidth (about 0.03 GB/s at its peak).
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: nccl-threshold
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  nodesPerJob: 2
+  image: nvcre-nccl-stub:pass
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        thresholds:
+          busBandwidthGBps: "value >= 1"

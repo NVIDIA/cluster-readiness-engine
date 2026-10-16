@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The stub prints the log without a single result row. The threshold would pass
+# on any measured value, so only missing data can fail it. measurementTimeout is
+# shortened from the 5m default so the lane does not idle waiting for data the
+# completed BandwidthMeasurement already says will not come.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: nccl-no-data
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  nodesPerJob: 2
+  image: nvcre-nccl-stub:empty
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        measurementTimeout: 30s
+        thresholds:
+          busBandwidthGBps: "value >= 0"

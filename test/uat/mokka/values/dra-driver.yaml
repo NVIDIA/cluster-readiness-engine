@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# dra-driver-nvidia-gpu values for the gb200 and gb300 profiles (ADR-096).
+# This is the GPU Operator's own split on GB200: the device plugin allocates
+# GPUs and the DRA driver handles ComputeDomains only. setup.sh overrides the
+# image with Mokka's IMEX-shim build, which runs the real IMEX daemon in
+# no-GPU mode.
+nvidiaDriverRoot: /var/lib/nvml-mock/driver
+altProcDevices: /var/lib/nvml-mock/imex/proc-devices
+resources:
+  gpus:
+    enabled: false
+  computeDomains:
+    enabled: true
+kubeletPlugin:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: mokka.nvidia.com/type
+                operator: In
+                values: ["sgpu"]
