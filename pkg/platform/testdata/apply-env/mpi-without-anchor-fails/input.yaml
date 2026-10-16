@@ -12,6 +12,7 @@ jobTemplate:
     workload:
       trainJob:
         runtimeRef:
+          kind: TrainingRuntime
           name: nccl-bare-runtime
         trainer:
           args:

@@ -1,0 +1,163 @@
+# Kubeflow caps trainer.args at 128 items. Each forwarded variable costs two,
+# and the platform arms already render up to 75 on GCP H100, so a Certification
+# inside its own 32-entry limit at each level can still push an entry past the
+# cap. Caught here, where the render names the entry and the count; without the
+# check it would surface as a TrainJob the API server refuses to admit, long
+# after the render that caused it.
+env:
+  - name: TEST_VAR_0
+    value: "0"
+  - name: TEST_VAR_1
+    value: "1"
+  - name: TEST_VAR_2
+    value: "2"
+  - name: TEST_VAR_3
+    value: "3"
+  - name: TEST_VAR_4
+    value: "4"
+  - name: TEST_VAR_5
+    value: "5"
+  - name: TEST_VAR_6
+    value: "6"
+  - name: TEST_VAR_7
+    value: "7"
+  - name: TEST_VAR_8
+    value: "8"
+  - name: TEST_VAR_9
+    value: "9"
+  - name: TEST_VAR_10
+    value: "10"
+  - name: TEST_VAR_11
+    value: "11"
+  - name: TEST_VAR_12
+    value: "12"
+  - name: TEST_VAR_13
+    value: "13"
+  - name: TEST_VAR_14
+    value: "14"
+  - name: TEST_VAR_15
+    value: "15"
+  - name: TEST_VAR_16
+    value: "16"
+  - name: TEST_VAR_17
+    value: "17"
+  - name: TEST_VAR_18
+    value: "18"
+  - name: TEST_VAR_19
+    value: "19"
+  - name: TEST_VAR_20
+    value: "20"
+  - name: TEST_VAR_21
+    value: "21"
+  - name: TEST_VAR_22
+    value: "22"
+  - name: TEST_VAR_23
+    value: "23"
+  - name: TEST_VAR_24
+    value: "24"
+  - name: TEST_VAR_25
+    value: "25"
+  - name: TEST_VAR_26
+    value: "26"
+  - name: TEST_VAR_27
+    value: "27"
+  - name: TEST_VAR_28
+    value: "28"
+  - name: TEST_VAR_29
+    value: "29"
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          kind: TrainingRuntime
+          name: nccl-all-reduce-runtime
+        trainer:
+          args:
+            - -x
+            - EXISTING_0=0
+            - -x
+            - EXISTING_1=1
+            - -x
+            - EXISTING_2=2
+            - -x
+            - EXISTING_3=3
+            - -x
+            - EXISTING_4=4
+            - -x
+            - EXISTING_5=5
+            - -x
+            - EXISTING_6=6
+            - -x
+            - EXISTING_7=7
+            - -x
+            - EXISTING_8=8
+            - -x
+            - EXISTING_9=9
+            - -x
+            - EXISTING_10=10
+            - -x
+            - EXISTING_11=11
+            - -x
+            - EXISTING_12=12
+            - -x
+            - EXISTING_13=13
+            - -x
+            - EXISTING_14=14
+            - -x
+            - EXISTING_15=15
+            - -x
+            - EXISTING_16=16
+            - -x
+            - EXISTING_17=17
+            - -x
+            - EXISTING_18=18
+            - -x
+            - EXISTING_19=19
+            - -x
+            - EXISTING_20=20
+            - -x
+            - EXISTING_21=21
+            - -x
+            - EXISTING_22=22
+            - -x
+            - EXISTING_23=23
+            - -x
+            - EXISTING_24=24
+            - -x
+            - EXISTING_25=25
+            - -x
+            - EXISTING_26=26
+            - -x
+            - EXISTING_27=27
+            - -x
+            - EXISTING_28=28
+            - -x
+            - EXISTING_29=29
+            - -x
+            - EXISTING_30=30
+            - -x
+            - EXISTING_31=31
+            - -x
+            - EXISTING_32=32
+            - -x
+            - EXISTING_33=33
+            - -x
+            - EXISTING_34=34
+            - /usr/local/bin/all_reduce_perf_mpi
+            - -b
+            - "8"
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nccl-all-reduce-runtime
+    spec:
+      mlPolicy:
+        mpi:
+          mpiImplementation: OpenMPI
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+            - name: launcher

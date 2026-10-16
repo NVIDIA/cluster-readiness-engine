@@ -15,6 +15,7 @@ jobTemplate:
     workload:
       trainJob:
         runtimeRef:
+          kind: TrainingRuntime
           name: nccl-all-reduce-runtime
         trainer:
           args:

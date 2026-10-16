@@ -6,6 +6,7 @@ package platform
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
@@ -59,18 +60,25 @@ func ApplyEnvToJobTemplate(
 	return applyEnvAsMPIArgs(trainJob.Trainer, env)
 }
 
-// runtimeIsMPI reports whether the TrainingRuntime the trainer references
-// declares mlPolicy.mpi. A trainJob whose runtimeRef matches no dependency is
-// not MPI as far as this rewrite is concerned: the catalog always ships the
-// runtime it references, so an unmatched ref is a torch-shaped entry resolved
-// from elsewhere rather than an MPI entry whose runtime went missing.
+// runtimeIsMPI reports whether the runtime the trainer references declares
+// mlPolicy.mpi.
+//
+// The reference is resolved the way Kubeflow resolves it — by API group, kind
+// and name, with the CRD's defaults applied to an underspecified ref — rather
+// than by name alone. Matching on the name would accept a same-named runtime
+// of another kind and read the wrong policy off it.
+//
+// Not finding the referenced runtime among the dependencies is an error, not a
+// torch verdict. The catalog always ships the runtime it references, so a ref
+// that resolves to nothing means the shape cannot be determined; guessing torch
+// would write container env that an MPI entry's ranks never read, which is the
+// silent no-op this transform exists to prevent. A ClusterTrainingRuntime is
+// cluster-scoped and never supplied as a dependency, so it fails here for the
+// same reason ValidateResolvedJobTemplate fails on one.
 func runtimeIsMPI(
 	trainJob *trainerv1alpha1.TrainJobSpec, deps []nvcrev1alpha1.DependencySpec,
 ) (bool, error) {
-	name := trainJob.RuntimeRef.Name
-	if name == "" {
-		return false, nil
-	}
+	apiGroup, kind, name := resolveRuntimeRef(trainJob.RuntimeRef)
 	for i := range deps {
 		if len(deps[i].Raw) == 0 {
 			continue
@@ -79,7 +87,11 @@ func runtimeIsMPI(
 		if err := json.Unmarshal(deps[i].Raw, &obj); err != nil {
 			return false, fmt.Errorf("unmarshal dependency %d: %w", i, err)
 		}
-		if kind, _ := obj[keyKind].(string); kind != kindTrainingRuntime {
+		if depKind, _ := obj[keyKind].(string); depKind != kind {
+			continue
+		}
+		apiVersion, _ := obj[keyAPIVersion].(string)
+		if depGroup, _, _ := strings.Cut(apiVersion, "/"); depGroup != apiGroup {
 			continue
 		}
 		metadata, ok := nestedMap(obj, keyMetadata)
@@ -91,7 +103,10 @@ func runtimeIsMPI(
 		}
 		return hasMPIPolicy(obj), nil
 	}
-	return false, nil
+	return false, fmt.Errorf(
+		"cannot set env: the workload references runtime %s %s/%s, which is not among the "+
+			"resolved dependencies, so whether its ranks read container env cannot be determined",
+		kind, apiGroup, name)
 }
 
 // upsertTrainerEnv replaces by name and appends otherwise, matching how
@@ -135,6 +150,13 @@ func upsertTrainerEnv(trainer *trainerv1alpha1.Trainer, env []corev1.EnvVar) {
 // An MPI entry with no -x pair at all leaves no anchor for the insertion, and
 // there is no safe way to locate the binary without one. That fails closed:
 // guessing would reintroduce the silent no-op.
+//
+// The result is also checked against Kubeflow's own cap on trainer.args. Each
+// variable costs two arguments, and the platform arms already render up to 75,
+// so a Certification well inside its own 32-entry limit at each level can push
+// an entry past the cap. Failing here names the entry and the count; letting it
+// through would surface as a TrainJob the API server refuses to admit, long
+// after the render that caused it.
 func applyEnvAsMPIArgs(trainer *trainerv1alpha1.Trainer, env []corev1.EnvVar) error {
 	for _, e := range env {
 		operand := e.Name + "=" + e.Value
@@ -154,6 +176,12 @@ func applyEnvAsMPIArgs(trainer *trainerv1alpha1.Trainer, env []corev1.EnvVar) er
 		args = append(args, mpiEnvFlag, operand)
 		args = append(args, trainer.Args[at:]...)
 		trainer.Args = args
+	}
+	if n := len(trainer.Args); n > maxTrainerArgs {
+		return fmt.Errorf(
+			"cannot set env: forwarding %d variables leaves %d mpirun arguments, over the %d "+
+				"Kubeflow Trainer accepts; set fewer variables on this category",
+			len(env), n, maxTrainerArgs)
 	}
 	return nil
 }
@@ -182,3 +210,10 @@ func lastMPIEnvArgIndex(args []string) (int, bool) {
 
 // mpiEnvFlag is mpirun's environment-forwarding flag.
 const mpiEnvFlag = "-x"
+
+// maxTrainerArgs mirrors the MaxItems marker Kubeflow Trainer puts on
+// Trainer.Args (kubeflow/trainer/v2@v2.2.1, trainjob_types.go). Duplicated
+// rather than derived because the bound is a kubebuilder marker with no
+// exported constant; a Trainer upgrade that changes it will show up as an
+// admission failure the golden case for this limit then pins.
+const maxTrainerArgs = 128
