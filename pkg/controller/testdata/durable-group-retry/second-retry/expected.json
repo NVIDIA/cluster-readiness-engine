@@ -1,0 +1,85 @@
+[
+  {
+    "dependencies": [
+      "dep-cm-5947a-job attempt=1"
+    ],
+    "dependencyRefs": [
+      "dep-cm-5947a-job"
+    ],
+    "failedNodes": [
+      "node-a:WorkloadFailed"
+    ],
+    "groups": [
+      {
+        "name": "a",
+        "phase": "Pending",
+        "retries": 2
+      }
+    ],
+    "jobs": [
+      "wf-job-retry-1"
+    ],
+    "pass": 1
+  },
+  {
+    "dependencies": [
+      "dep-cm-5947a-job attempt=1"
+    ],
+    "dependencyRefs": [
+      "dep-cm-5947a-job"
+    ],
+    "failedNodes": [
+      "node-a:WorkloadFailed"
+    ],
+    "groups": [
+      {
+        "name": "a",
+        "phase": "Pending",
+        "retries": 2
+      }
+    ],
+    "jobs": [],
+    "pass": 2
+  },
+  {
+    "dependencies": [],
+    "dependencyRefs": [
+      "dep-cm-5947a-job"
+    ],
+    "failedNodes": [
+      "node-a:WorkloadFailed"
+    ],
+    "groups": [
+      {
+        "name": "a",
+        "phase": "Pending",
+        "retries": 2
+      }
+    ],
+    "jobs": [],
+    "pass": 3
+  },
+  {
+    "dependencies": [
+      "dep-cm-5947a-job attempt=2"
+    ],
+    "dependencyRefs": [
+      "dep-cm-5947a-job"
+    ],
+    "failedNodes": [
+      "node-a:WorkloadFailed"
+    ],
+    "groups": [
+      {
+        "jobRef": "wf-job-retry-2",
+        "name": "a",
+        "phase": "Running",
+        "retries": 2
+      }
+    ],
+    "jobs": [
+      "wf-job-retry-2"
+    ],
+    "pass": 4
+  }
+]

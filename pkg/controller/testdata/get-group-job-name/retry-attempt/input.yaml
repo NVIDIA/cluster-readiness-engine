@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A retried group's Job is named for its attempt, so it never shares a name
+# with the attempt it replaces. Attempt 0 keeps the unindexed name.
+workflowName: my-workflow
+groupName: group-0
+iteration: 1
+iterations: 1
+totalGroups: 2
+attempt: 1

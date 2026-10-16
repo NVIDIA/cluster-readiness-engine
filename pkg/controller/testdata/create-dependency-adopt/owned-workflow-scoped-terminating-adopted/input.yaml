@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# This Workflow's workflow-scoped dependency, mid-deletion (an operator deleted
+# a finalizer-held TrainingRuntime, say) before its ref was recorded. Workflow-
+# scoped dependencies are not retried per attempt, so there is no retirement to
+# wait on, and an error here would fail the Workflow with
+# DependencyCreationError: adopted, as before attempts were recorded.
+holder: owned
+workflowScoped: true
+terminating: true

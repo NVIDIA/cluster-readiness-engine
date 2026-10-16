@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Attempt 1 fails with the budget spent. The group fails as before: its
+# dependency copy is cleaned up, the failed Job is kept for the report, and the
+# failed node is recorded.
+retryFailedGroups: 1
+groupA:
+  phase: Running
+  retries: 1
+oldJob: failed
+dep: previous
+depTracked: true
+passes: 2

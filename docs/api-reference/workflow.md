@@ -165,9 +165,18 @@ Two fields are incompatible with `Unpinned` and fail the Workflow with reason `P
 
 Workflows are named `<certificationName>-<domain>-<variant>`.
 
+A Workflow with one group and one iteration names its Job `<workflowName>-job`. Otherwise each Job is named `<workflowName>-<group>-iter-<iteration>`. A retried group's Job adds the attempt, as in `<workflowName>-job-retry-1`, so each attempt has its own Job, GoodputMeasurement and BandwidthMeasurement. Names longer than the Job name limit are truncated and end in a hash of the full name, so attempts stay distinct.
+
 ## Lifecycle
 
 1. Pulls `WorkflowSpec` from the catalog for the assigned `{domain, variant}`.
 2. Detects platform and GPU architecture; applies matching overrides.
 3. Creates a child `Job`.
 4. Manages iteration count; marks Succeeded or Failed when complete.
+
+### Group retries
+
+With `orchestration.execution.retryFailedGroups` above 0, a group whose Job fails (other than by `timeoutPerJob`) is retried until the count is spent. A retry happens in two steps:
+
+1. Once the failed Job's pods have drained, the group's `retries` is incremented and the group returns to `Pending`. Nothing is deleted yet. If the status write doesn't happen, for example because another group's read failed or the controller restarted, the group is still `Running` on the failed Job, and the next reconcile counts the retry then. A retry is never counted twice.
+2. The previous attempt is then retired, starting on the next reconcile. A retried group launches only once no other group is running, but its previous attempt doesn't wait for that: it is retired while the other groups run. Its Job is deleted first, then its GoodputMeasurement and BandwidthMeasurement, then its job-scoped dependency copies. The next attempt launches only once the API server reports the Job and the copies gone. Job-scoped copies keep their names across attempts, so a copy that is still terminating (a ComputeDomain being torn down, for example) holds the launch instead of being adopted. Copies created for a retry record the attempt in the `nvcre.nvidia.com/group-attempt` annotation.
