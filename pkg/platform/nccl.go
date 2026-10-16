@@ -23,6 +23,13 @@ import (
 // failed multicast bind into an aborted job rather than a logged fallback.
 // A site that needs NVLS off sets it through spec.env or mpiArgs, which
 // take precedence over everything here.
+//
+// Leaving it out here does not mean no render sets it. Several platform
+// fragments set 1 for their own hardware (_lib/nccl/onprem-ib-env.yaml,
+// nscale-ib-env.yaml, togetherai-ib-env.yaml, aws-gb300-roce-transport-env.yaml
+// among them), and those values are field-tuned for fabrics this function
+// knows nothing about. What this changes is the default a workload gets when
+// no fragment has an opinion: NCCL's, rather than ours.
 func BaseNCCLEnvVars(enableMNNVL bool) []corev1.EnvVar {
 	mnnvl := "0"
 	if enableMNNVL {
