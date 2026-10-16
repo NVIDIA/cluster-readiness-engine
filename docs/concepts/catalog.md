@@ -62,6 +62,22 @@ categories:
       timeoutPerJob: 30m
 ```
 
+### DCGM endpoint
+
+`dcgm-level4` runs `dcgmi diag` against an existing DCGM hostengine; installing DCGM stays the cluster operator's job. By default it connects to the GPU Operator's `nvidia-dcgm.gpu-operator.svc:5555` (on Nscale NKS, `nvidia-dcgm-dra.nvidia-platform.svc:5555`). To use a DCGM Service in another namespace, or on another port, set `dcgmHost` to `host[:port]`:
+
+```yaml
+categories:
+  - domain: diagnostics
+    variant: dcgm-level4
+    options:
+      dcgmHost: nvidia-dcgm.gpu-system.svc:5555
+```
+
+Each per-node Job must reach the hostengine on **its own node**; otherwise the diagnostics exercise another node's GPUs, and the result is reported against the wrong node. The `dcgm-level4` pod runs on the host network, so the address must route node-locally. Either use a Service with `internalTrafficPolicy: Local`, as the GPU Operator's and NKS's Services are, or `localhost:5555` when the hostengine itself listens on the node's network. Pointing `dcgmHost` at a Service that load-balances across nodes does not give that routing.
+
+`nvcrectl setup status` checks only the GPU Operator's `gpu-operator/nvidia-dcgm` Service, so it reports DCGM as missing when only your own endpoint exists.
+
 ## Training category options
 
 The training entries (`nemotron5-8b`, `nemotron5-56b`) size their containers for DGX-class nodes by default: limits of `cpu: "128"` / `memory: 800Gi` and requests of `cpu: "64"` / `memory: 500Gi`. On smaller GPU nodes those defaults make training pods unschedulable (`Insufficient cpu` / `Insufficient memory`), so the CPU and memory values can be overridden with the `resources` option:

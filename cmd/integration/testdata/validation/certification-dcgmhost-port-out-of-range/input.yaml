@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The port must be a TCP port number, 1-65535, not just one to five digits:
+# 0 at the spec level and 65536 per category are both rejected at admission.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-dcgmhost-port-out-of-range
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  dcgmHost: nvidia-dcgm.gpu-operator.svc:0
+  categories:
+    - domain: diagnostics
+      variant: dcgm-level4
+      options:
+        dcgmHost: nvidia-dcgm.gpu-operator.svc:65536

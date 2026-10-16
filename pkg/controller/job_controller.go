@@ -1259,9 +1259,10 @@ func parseStallFloat(s string) float64 {
 	return f
 }
 
-// maxBusBandwidth returns the maximum bus bandwidth across all message sizes in the results.
+// MaxBusBandwidth returns the maximum bus bandwidth across all message sizes in the results.
+// It is the value the busBandwidthGBps threshold gate evaluates.
 // Returns 0 if no results are present.
-func maxBusBandwidth(results []nvcrev1alpha1.BandwidthResult) float64 {
+func MaxBusBandwidth(results []nvcrev1alpha1.BandwidthResult) float64 {
 	var max float64
 	for _, r := range results {
 		bw := parseStallFloat(r.BusBW)

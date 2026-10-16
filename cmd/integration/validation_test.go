@@ -48,7 +48,9 @@ type validationCause struct {
 // that both CRDs hold the field to the extended resource name rules — the
 // pattern caps the name segment after the slash at 63 characters and the CEL
 // rule rejects the reserved kubernetes.io and k8s.io domains (including
-// subdomains) — at every level the field appears (ADR-075).
+// subdomains) — at every level the field appears (ADR-075). The dcgmHost
+// cases check that the pattern holds the port to 1-65535 rather than to a
+// digit count and rejects empty DNS labels, at both levels (issue #428).
 func TestCertificationValidation(t *testing.T) {
 	suite := &testutil.IntegrationTestSuite{}
 	suite.Environment.CRDDirectoryPaths = []string{nvcreCRDDirectory}

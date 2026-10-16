@@ -257,6 +257,13 @@ type TemplateData struct {
 	// Templates use: {{ if .SourceRepo }}{{ .SourceRepo }}{{ else }}<entry default>{{ end }}
 	SourceRepo string
 
+	// DCGMHost is the DCGM hostengine address overriding the default
+	// `dcgmi diag --host` value. Stays empty when the user sets nothing; the
+	// entry supplies its own default, and platform overrides that repoint the
+	// default skip their patch when it is set.
+	// Templates use: {{ if .DCGMHost }}{{ .DCGMHost }}{{ else }}<entry default>{{ end }}
+	DCGMHost string
+
 	// TP is tensor-model-parallel size from meta.yaml for the resolved architecture.
 	// Templates use: {{ .TP }}
 	TP int32
@@ -511,6 +518,7 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 		MeasurementTimeout:         config.MeasurementTimeout,
 		Thresholds:                 config.Thresholds,
 		SourceRepo:                 config.SourceRepo,
+		DCGMHost:                   config.DCGMHost,
 	}
 	if len(td.GKETCPXONetworks) == 0 {
 		td.GKETCPXONetworks = DefaultGKETCPXONetworks()

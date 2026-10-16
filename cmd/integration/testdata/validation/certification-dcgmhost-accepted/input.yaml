@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# dcgmHost takes a DNS name or an IPv4 address with an optional port in
+# 1-65535, at the spec level and per category (issue #428). 65535 is the
+# upper bound of the port range and must pass.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-dcgmhost-accepted
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  dcgmHost: 10.0.0.1:65535
+  categories:
+    - domain: diagnostics
+      variant: dcgm-level4
+      options:
+        dcgmHost: nvidia-dcgm.gpu-system.svc:5555
