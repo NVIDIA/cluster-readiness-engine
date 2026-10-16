@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A LogsUnavailable measurement is provisional: the gate ignores it. At
+# 120 GB/s under "value >= 300" it must show "?" with belowMin false, and the
+# clique must not be LOW.
+busBandwidthThreshold: "value >= 300"
+cliques:
+  - name: clique-a
+    total: 2
+    validated: 2
+    passed: true
+groups:
+  - name: group-0
+    nodes: [node-0, node-1]
+    domains: [clique-a]
+    phase: Succeeded
+    jobRef: {name: job-0}
+measurements:
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: job-0}
+    status:
+      conditions:
+        - type: Complete
+          status: "True"
+          reason: LogsUnavailable
+          message: Referenced Job no longer exists; results are provisional and are not used for threshold evaluation
+          lastTransitionTime: "2026-10-01T00:00:00Z"
+      results:
+        - {sizeBytes: 17179869184, algBW: "60.0", busBW: "120.0", samples: 1}

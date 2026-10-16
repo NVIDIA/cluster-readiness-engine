@@ -6,6 +6,8 @@ package controller
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -609,6 +611,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		TimeoutPerJob:              opts.TimeoutPerJob,
 		MeasurementTimeout:         opts.MeasurementTimeout,
 		SourceRepo:                 opts.SourceRepo,
+		DCGMHost:                   opts.DCGMHost,
 	})
 	if buildErr != nil {
 		return "", fmt.Errorf("building workflow for %s/%s: %w", category.Domain, category.Variant, buildErr)
@@ -637,6 +640,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		GangScheduler:  certification.Spec.GangScheduler,
 		Image:          opts.Image,
 		WorkloadLabels: workload.LabelsOf(opts.WorkloadMetadata),
+		Env:            opts.Env,
 	}); err != nil {
 		return "", fmt.Errorf("applying resolved transforms for %s/%s: %w", category.Domain, category.Variant, err)
 	}
@@ -793,6 +797,11 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	// merge would edit the Certification's own global map. This runs before
 	// the early return so the result is never aliased either way.
 	resolved.WorkloadMetadata = resolveWorkloadMetadata(global, override)
+	// Environment variables merge by name for the same reason labels merge by
+	// key: two variables are independent intents, and a category that names one
+	// should not silently drop a global one. Detached here, before the early
+	// return, so the result never aliases the Certification's own slice.
+	resolved.Env = resolveEnv(global, override)
 	if override == nil {
 		return resolved
 	}
@@ -829,7 +838,7 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 		resolved.EnableMNNVL = override.EnableMNNVL
 	}
 	// String options take the override whenever it is non-empty. Written with
-	// cmp.Or rather than a branch each: there are seven of them, they are
+	// cmp.Or rather than a branch each: there are eight of them, they are
 	// mutually independent, and spelled as ifs they were most of this
 	// function's cyclomatic complexity for no reader benefit.
 	resolved.Image = cmp.Or(override.Image, resolved.Image)
@@ -839,6 +848,7 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	resolved.TimeoutPerJob = cmp.Or(override.TimeoutPerJob, resolved.TimeoutPerJob)
 	resolved.MeasurementTimeout = cmp.Or(override.MeasurementTimeout, resolved.MeasurementTimeout)
 	resolved.SourceRepo = cmp.Or(override.SourceRepo, resolved.SourceRepo)
+	resolved.DCGMHost = cmp.Or(override.DCGMHost, resolved.DCGMHost)
 	if len(override.ImagePullSecrets) > 0 {
 		resolved.ImagePullSecrets = override.ImagePullSecrets
 	}
@@ -898,6 +908,50 @@ func resolveWorkloadMetadata(global, override *nvcrev1alpha1.CategoryOptions) *n
 	}
 	return workload.MetadataFrom(workload.MergeLabels(
 		workload.LabelsOf(global.WorkloadMetadata), overrideLabels))
+}
+
+// resolveEnv merges global and per-category environment variables by name,
+// with the per-category value winning, and preserves the order in which they
+// were declared: global variables first, in their own order, then any
+// per-category name the global set did not carry.
+//
+// Per name rather than wholesale, for the reason resolveWorkloadMetadata
+// gives: two variables are independent intents. The failure mode under
+// wholesale replacement is worse here than for labels, because the dropped
+// value is usually the site-wide one — a category that adds an HCA pin would
+// silently lose a global NCCL_NVLS_ENABLE=0 and run with NVLS on, which shows
+// up as a failed or slow run rather than as anything wrong in the spec.
+//
+// The returned slice is freshly allocated, so no caller can reach back into
+// the Certification through the result.
+func resolveEnv(global, override *nvcrev1alpha1.CategoryOptions) []corev1.EnvVar {
+	var overrideEnv []corev1.EnvVar
+	if override != nil {
+		overrideEnv = override.Env
+	}
+	if len(global.Env) == 0 && len(overrideEnv) == 0 {
+		return nil
+	}
+
+	merged := make([]corev1.EnvVar, 0, len(global.Env)+len(overrideEnv))
+	index := make(map[string]int, len(global.Env)+len(overrideEnv))
+	for _, e := range global.Env {
+		if i, seen := index[e.Name]; seen {
+			merged[i] = e
+			continue
+		}
+		index[e.Name] = len(merged)
+		merged = append(merged, e)
+	}
+	for _, e := range overrideEnv {
+		if i, seen := index[e.Name]; seen {
+			merged[i] = e
+			continue
+		}
+		index[e.Name] = len(merged)
+		merged = append(merged, e)
+	}
+	return merged
 }
 
 // dropUnderCapacityNodes removes nodes that cannot supply gpusPerNode before
@@ -1197,10 +1251,47 @@ func categoryOptionsSuffix(opts *nvcrev1alpha1.CategoryOptions) string {
 	if opts.RDMADeviceAccess != "" {
 		parts = append(parts, rdmaDeviceAccessToken(opts.RDMADeviceAccess))
 	}
+	// Running one variant twice with a setting on and off is the obvious use of
+	// env, and those two categories must not share a Workflow name: the second
+	// Create would come back AlreadyExists, the holder would pass the owner
+	// check, and the second category would report the first's result for a
+	// configuration that never ran.
+	//
+	// A hash rather than readable tokens, because a variable name alone does
+	// not distinguish the two categories this protects (both set NCCL_ALGO; the
+	// values differ) and the names are long enough that spelling them out would
+	// push every name into Truncate's own hash. Issue #430 is this problem
+	// across the options the suffix still omits; when its derivation lands this
+	// token should give way to it.
+	if token := envToken(opts.Env); token != "" {
+		parts = append(parts, token)
+	}
 	if len(parts) == 0 {
 		return ""
 	}
 	return "-" + strings.Join(parts, "-")
+}
+
+// envToken derives a short, stable token from a category's environment
+// variables. Names and values both, sorted so declaration order cannot change
+// a Workflow name, and deduplicated by name because ResolveOptions has already
+// collapsed duplicates before this runs.
+func envToken(env []corev1.EnvVar) string {
+	if len(env) == 0 {
+		return ""
+	}
+	pairs := make([]string, 0, len(env))
+	for _, e := range env {
+		// Length-prefixed, not delimited. A value may contain any byte a
+		// Kubernetes string may contain, newline included, so joining on a
+		// separator lets one variable impersonate two: A="x\nB=y" and the pair
+		// A="x", B="y" would otherwise hash the same and collide on a name.
+		pairs = append(pairs, fmt.Sprintf("%d:%s=%d:%s",
+			len(e.Name), e.Name, len(e.Value), e.Value))
+	}
+	sort.Strings(pairs)
+	sum := sha256.Sum256([]byte(strings.Join(pairs, "")))
+	return "env" + hex.EncodeToString(sum[:])[:8]
 }
 
 // rdmaDeviceAccessToken shortens an rdmaDeviceAccess value into a name-safe

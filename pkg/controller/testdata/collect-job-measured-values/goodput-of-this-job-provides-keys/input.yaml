@@ -1,0 +1,11 @@
+# A GoodputMeasurement created for this instance of the Job feeds threshold
+# evaluation.
+goodputComplete: true
+result: "0.92"
+avgTFLOPSPerGPU: "512.5"
+avgStepTimeSec: "1.25"
+goodputJobUID: uid-current
+busBW: "980.1"
+algBW: "450.2"
+bandwidthReason: JobSucceeded
+bandwidthJobUID: uid-current

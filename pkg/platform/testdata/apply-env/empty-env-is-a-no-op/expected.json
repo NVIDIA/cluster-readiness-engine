@@ -1,0 +1,11 @@
+{
+  "args": [
+    "-x",
+    "NCCL_DEBUG=INFO",
+    "/usr/local/bin/all_reduce_perf_mpi",
+    "-b",
+    "8"
+  ],
+  "env": [],
+  "depsUnchanged": true
+}

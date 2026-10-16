@@ -86,7 +86,7 @@ Kubebuilder-based Kubernetes controller for GPU cluster burn-in certification. S
 Follows the Deployment → ReplicaSet → Pod composition pattern:
 
 - **Certification** creates one Workflow per category from the catalog. Records failed nodes per category with a reason. Workflow named `<certName>-<domain>-<variant>`.
-- **Workflow** creates a single Job from `spec.jobTemplate`. Applies orchestration target, manages iterations, creates dependency resources. Job named `<workflowName>-job`.
+- **Workflow** creates a single Job from `spec.jobTemplate`. Applies orchestration target, manages iterations, creates dependency resources. Job named `<workflowName>-job`; a retried group's next attempt adds `-retry-<N>`.
 - **Job** creates a workload (TrainJob) via the adapter pattern. Manages health monitoring, goodput measurement, checkpoint restart.
 - **GoodputMeasurement** watches a Job, parses pod logs via LogProfile regex patterns, computes goodput ratio.
 - **BandwidthMeasurement** watches a Job, parses NCCL log output, and computes per-bus bandwidth metrics.

@@ -1,0 +1,12 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A long name loses the attempt suffix to truncation, but the hash covers the
+# full name, so the retry still gets a name distinct from attempt 0's
+# (gpu-cluster-cert-communic-873b9-job).
+workflowName: gpu-cluster-cert-communic-873b9
+groupName: group-0
+iteration: 1
+iterations: 1
+totalGroups: 1
+attempt: 1

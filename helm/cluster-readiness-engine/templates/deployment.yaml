@@ -46,6 +46,7 @@ spec:
         - --max-concurrent-reconciles={{ required "manager.maxConcurrentReconciles is required" .Values.manager.maxConcurrentReconciles }}
         - --measurement-max-concurrent-reconciles={{ required "manager.measurementMaxConcurrentReconciles is required" .Values.manager.measurementMaxConcurrentReconciles }}
         - --namespace-access-timeout={{ required "manager.namespaceAccessTimeout is required" .Values.manager.namespaceAccessTimeout }}
+        - --workload-creation-deadline={{ required "manager.workloadCreationDeadline is required" .Values.manager.workloadCreationDeadline }}
         command:
         - /manager
         {{- /*

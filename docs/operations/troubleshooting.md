@@ -67,7 +67,54 @@ kubectl logs -n nvcre deploy/nvcre-manager \
 - The workload resource exists but is not completing — check Kubeflow Trainer logs and pod events.
 - Pods are `Pending` — verify GPU resources are available on target nodes (`kubectl describe node <node>`).
 - The `InProgress` condition has reason `WorkloadSchedulingBlocked` — the workload is admitted but its pods cannot be placed (e.g. GPUs held by another tenant). The condition message relays the scheduler's own diagnosis (also shown on the Workflow as reason `JobSchedulingBlocked` and as a `Blocked:` line in `nvcrectl certification report`); blocked time does not count against `timeoutPerJob` or stall detection. Tune with `spec.schedulingStallGraceSeconds` (default 5m).
+- The `InProgress` condition has reason `WorkloadCreationRejected`: the API server is refusing the workload create, usually an admission webhook, a ValidatingAdmissionPolicy or Kyverno/Gatekeeper rule, or an exhausted ResourceQuota. The condition message carries the API server's own error, and the Workflow relays it under `JobSchedulingBlocked` as the `Blocked:` line in `nvcrectl certification report`. Check `kubectl get events -n <namespace> --field-selector reason=WorkloadCreationRejected`. NVCRE keeps retrying, so a rejection that clears (a TrainingRuntime created late, quota freed) recovers on its own. One that lasts past the controller's `--workload-creation-deadline` (Helm `manager.workloadCreationDeadline`, default 10m, independent of `timeoutPerJob`) fails the Job with reason `WorkloadCreationError` and leaves its `status.failedNodes` empty, since nothing ran on them. The deadline is per Job attempt: with `spec.orchestration.execution.retryFailedGroups` set, each retry gets a fresh Job and a fresh clock, so a permanent denial costs (retries + 1) times the deadline before the group gives up. A missing RoleBinding is not a rejection: the controller confirms a `Forbidden` create with a SelfSubjectAccessReview, and an RBAC denial keeps retrying without this deadline.
 - Kubeflow Trainer is not running — confirm its pods are healthy (`kubectl get pods -n kubeflow-system`).
+
+## NCCL aborts on an NVLS multicast bind failure
+
+**Symptoms:** A communication category fails early, before any bandwidth number is produced. The launcher log ends with this, repeated once per rank:
+
+```
+transport/nvls.cc:284 NCCL WARN Failed to bind NVLink SHARP (NVLS) Multicast memory of size 2097152 :
+CUDA error 401 'the operation cannot be performed in the present state'.
+This is usually caused by a system or configuration error in the Fabric Manager or NVSwitches.
+Disable NVLS (NCCL_NVLS_ENABLE=0) if you wish to avoid this error in the future.
+```
+
+Every rank reports it at the same instant, and the Job fails with the generic reason `WorkloadFailed`. The text above is also captured to `Job.status.failureLog`.
+
+**What it means:** NVLS is NVLink SHARP, the NVSwitch's in-network reduction. NCCL binds GPU memory to a multicast object the switch can operate on; this is that bind being refused. Four things about it are easy to misread:
+
+- **On a chassis-local NVSwitch the failing call is intra-node.** Where the log reports `MNNVL 0` — an HGX baseboard, or an NVL72 tray with MNNVL off — the multicast team is built over the local ranks only and the handle never leaves the host, so a failure here is not a fabric, network, or multi-node problem even when the job spans nodes. The absence of `via NET/IB` channel lines is then a consequence of the abort happening during init, not independent evidence of a network fault. On GB200 or GB300 NVL72 with `MNNVL 1`, the multicast group spans the NVLink domain through IMEX and this does not hold: the team crosses trays, so the per-node checks below are the wrong place to start. Check the IMEX domain and the NVLink Subnet Manager first, and read the rack as one fabric rather than one node at a time.
+- **The `NVLS Head` table is not a cross-chassis group.** On a multi-node job NCCL prints `NVLS Head 0: 0 4`, `NVLS Head 1: 1 5`, and so on, which reads as if ranks on different nodes were joined into one multicast team. The row lists one rank *per node*: these are the per-node heads of an NVLS tree, not members of a multicast group. The block is printed only by the first node's ranks, so its absence elsewhere is not an asymmetry.
+- **The capability probe passing does not mean multicast works.** `NVLS multicast support is available on dev N` is the driver answering `CU_DEVICE_ATTRIBUTE_MULTICAST_SUPPORTED`. Seeing that line followed by a failed bind is the signature of a host whose switch-side multicast state is wrong, not of hardware that lacks the feature.
+- **NCCL 2.29 made this fatal.** Through NCCL 2.28 a failed bind at the default setting logged `Proceeding without NVLS support.` and the job continued. From 2.29 the fallback is gone and the failure aborts the job. The same cluster state that was survivable on an older image fails on a newer one with no change on the NVCRE side. The last line distinguishes the two: `Disable NVLS (NCCL_NVLS_ENABLE=0)` is 2.29 or later, `Do not force-enable NVLS (NCCL_NVLS_ENABLE=1)` is 2.28 or earlier.
+
+**Diagnosis:**
+
+```bash
+# Confirm the signature and which NCCL version produced it
+kubectl logs <launcher-pod> -n <namespace> | grep -E "nvls\.cc|NCCL version|multicast support"
+
+# The captured tail is on the Job as well
+kubectl get jobs.nvcre.nvidia.com <name> -n <namespace> -o jsonpath='{.status.failureLog}'
+```
+
+On each affected node, which is where the answer usually is:
+
+```bash
+systemctl status nvidia-fabricmanager
+nvidia-smi -q | grep -i -A4 fabric
+grep -i error /var/log/fabricmanager.log
+```
+
+**Solutions:**
+
+- Fabric Manager was restarted without a subsequent GPU reset — multicast stays non-functional while capability detection still reports success. Rebooting the node is the simplest fix. To reset in place instead, follow the order the [Fabric Manager User Guide](https://docs.nvidia.com/hgx-platforms/fabric-manager-user-guide/index.html) gives: drain the GPU workloads, stop Fabric Manager, run `nvidia-smi -r`, start Fabric Manager, then resume the workloads. Note that `nvidia-smi -r` with no `-i` resets every GPU on the host, and on an HGX system that can reset the NVSwitches with them.
+- Fabric Manager is not running, or its version does not match the driver — start it and align the versions. On a fourth-generation NVSwitch system (HGX B100, B200 and B300 8-GPU, and DGX B200/B300) Fabric Manager also needs NVLSM, the NVLink Subnet Manager, so confirm that service is installed and running too. Third-generation systems such as H100 and H200 have no such dependency.
+- The run must proceed before the host can be fixed — a WorkloadRun can disable NVLS with `NCCL_NVLS_ENABLE=0` in `spec.env`, or `-x NCCL_NVLS_ENABLE=0` in `spec.framework.mpi.mpiArgs`. A Certification has no equivalent field today ([#501](https://github.com/NVIDIA/cluster-readiness-engine/issues/501)). Treat this as a way to keep working, not as a fix: a certification that passes with NVLS disabled has not exercised NVLink SHARP, and the underlying fault is still there.
+
+Check what your own render carries before assuming either way. The WorkloadRun base environment no longer sets `NCCL_NVLS_ENABLE`, so where nothing else sets it NCCL's default decides from the device attribute. Several platform fragments still set `1` explicitly, as field-tuned values for their hardware: `onprem` GB200/GB300, `nscale` B200/GB300, `togetherai`, `azure` H100, and the AWS GB300 transport profile; GCP H100 and the AWS GB200 training profile set `0`. `nvcrectl certification render` and `nvcrectl workloadrun render` show the resolved value for your platform and GPU architecture.
 
 ## MPI workers refuse SSH sessions
 
@@ -348,7 +395,7 @@ kubectl get events --field-selector involvedObject.name=<name>
 - `LogsUnavailable` with an error reading the pod log — the launcher pod or its log was gone or unreachable for the whole retry period, or the LogProfile's `containerName` names no container in the pod. Check that nothing deletes the TrainJob or its pods before thresholds are evaluated, and that the controller can reach the kubelet for `pods/log`. If the log is only slow to become readable, raise `measurementTimeout`; the read is retried for as long as the Job waits (see [BandwidthMeasurement](../api-reference/bandwidth-measurement.md#how-it-works) for where to set it).
 - `LogsUnavailable` with an error naming the LogProfile (`getting LogProfile ...`, a pattern that does not compile) or a missing pod (`no pods found for ... replicatedJob ...`) — the measurement never found the log to read. Check `logProfileRef` and `workerStrategy.replicatedJobName` as described in [BandwidthMeasurement not reporting results](#bandwidthmeasurement-not-reporting-results).
 - `LogsUnavailable` because the log cannot be read in full — for example a line longer than 1 MiB. Retrying cannot help; reduce the workload's log output.
-- `LogsUnavailable` because the referenced Job no longer exists — it was deleted, or replaced when its group was retried. The replacement Job gets its own BandwidthMeasurement.
+- `LogsUnavailable` because the referenced Job no longer exists — it was deleted, or retired when its group was retried. The retry's Job has its own name (`…-retry-<n>`) and its own BandwidthMeasurement.
 - `NoDataCollected` — the whole log was read but no line matched the `bandwidthResult` pattern. See [BandwidthMeasurement not reporting results](#bandwidthmeasurement-not-reporting-results).
 
 ## Enable debug logging

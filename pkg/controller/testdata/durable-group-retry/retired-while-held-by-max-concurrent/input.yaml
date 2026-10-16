@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Group a's retry is recorded while group b is still running, and maxConcurrent
+# is 1, so b holds the only slot besides. A Pending group launches only once no
+# group is running, so every pass here observes b and launches nothing. a's
+# failed Job and its dependency copy (a ComputeDomain on a's nodes, say) are
+# retired anyway, from that same pass, instead of staying alive until b
+# finishes: the Job on pass 1 and the copy on pass 2. On pass 3 the copy is
+# confirmed gone and its ref is dropped, written with b's status. a stays
+# Pending with retries=1 throughout.
+retryFailedGroups: 1
+maxConcurrent: 1
+groupB: true
+groupA:
+  phase: Pending
+  retries: 1
+oldJob: failed
+dep: previous
+depTracked: true
+passes: 3

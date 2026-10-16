@@ -1,4 +1,59 @@
 {
+  "Job/wf-retry-denied-job-a": {
+    "kind": "Job",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "wf-retry-denied-job-a",
+      "namespace": "access-retry",
+      "labels": {
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/group": "group-0",
+        "nvcre.nvidia.com/workflow": "wf-retry-denied"
+      },
+      "finalizers": [
+        "nvcre.nvidia.com/finalizer"
+      ]
+    },
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "test-runtime",
+            "apiGroup": "trainer.kubeflow.org",
+            "kind": "TrainingRuntime"
+          },
+          "trainer": {
+            "image": "test-image:latest",
+            "command": [
+              "python",
+              "train.py"
+            ],
+            "numNodes": 1
+          },
+          "suspend": false,
+          "managedBy": "trainer.kubeflow.org/trainjob-controller"
+        }
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "lastTransitionTime": null,
+          "reason": "WorkloadFailed",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "lastTransitionTime": null,
+          "reason": "WorkloadFailed",
+          "message": "Workload failed"
+        }
+      ]
+    }
+  },
   "Workflow/wf-retry-denied": {
     "kind": "Workflow",
     "apiVersion": "nvcre.nvidia.com/v1alpha1",
@@ -110,8 +165,5 @@
         ]
       }
     }
-  },
-  "expectAbsent": {
-    "Job/wf-retry-denied-job-a": "notCreated"
   }
 }

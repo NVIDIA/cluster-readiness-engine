@@ -470,12 +470,25 @@ func startManager(
 	if caseCfg.RejectWorkloadCreates {
 		jobClient = &workloadCreateRejectingClient{Client: jobClient}
 	}
+	if marker := caseCfg.RejectWorkloadCreatesWhile; marker != nil {
+		jobClient = &workloadAdmissionRejectingClient{Client: jobClient, reader: mgr.GetAPIReader(), marker: *marker}
+	}
+	// One reviewer for both reconcilers, as in the manager: the Job
+	// controller's check on a Forbidden workload create sees the same
+	// namespace labels and cached answers as the Workflow's access check.
+	accessReviewer := &labelAccessReviewer{
+		reader:  mgr.GetAPIReader(),
+		real:    controller.NewAccessReviewer(mgr.GetClient()),
+		revoked: map[string]bool{},
+	}
 	err = (&controller.JobReconciler{
-		Client:                  jobClient,
-		Scheme:                  mgr.GetScheme(),
-		Recorder:                jobRecorder,
-		WorkloadRequeueInterval: 1 * time.Second,
-		MeasurementTimeout:      3 * time.Second,
+		Client:                   jobClient,
+		Scheme:                   mgr.GetScheme(),
+		Recorder:                 jobRecorder,
+		WorkloadRequeueInterval:  1 * time.Second,
+		MeasurementTimeout:       3 * time.Second,
+		WorkloadCreationDeadline: time.Duration(caseCfg.WorkloadCreationDeadlineSeconds) * time.Second,
+		AccessReviewer:           accessReviewer,
 	}).SetupWithManager(mgr)
 	require.NoError(t, err)
 
@@ -487,15 +500,11 @@ func startManager(
 		workflowClient = &nodeResultWriteRejectingClient{Client: workflowClient, reader: mgr.GetAPIReader()}
 	}
 	err = (&controller.WorkflowReconciler{
-		Client:             workflowClient,
-		Scheme:             mgr.GetScheme(),
-		Recorder:           mgr.GetEventRecorder("workflow-controller"),
-		JobRequeueInterval: 1 * time.Second,
-		AccessReviewer: &labelAccessReviewer{
-			reader:  mgr.GetAPIReader(),
-			real:    controller.NewAccessReviewer(mgr.GetClient()),
-			revoked: map[string]bool{},
-		},
+		Client:                 workflowClient,
+		Scheme:                 mgr.GetScheme(),
+		Recorder:               mgr.GetEventRecorder("workflow-controller"),
+		JobRequeueInterval:     1 * time.Second,
+		AccessReviewer:         accessReviewer,
 		NamespaceAccessTimeout: time.Duration(caseCfg.NamespaceAccessTimeoutSeconds) * time.Second,
 	}).SetupWithManager(mgr)
 	require.NoError(t, err)
@@ -660,8 +669,19 @@ type waitConfig struct {
 	RejectWorkloadCreates bool `json:"rejectWorkloadCreates,omitempty"`
 	// NamespaceAccessTimeoutSeconds sets the Workflow controller's
 	// --namespace-access-timeout. Zero uses the default.
-	NamespaceAccessTimeoutSeconds int           `json:"namespaceAccessTimeoutSeconds,omitempty"`
-	WaitFor                       conditionWait `json:"waitFor"`
+	// RejectWorkloadCreatesWhile makes the Job controller's workload creates
+	// fail with an admission-style Forbidden while the named ConfigMap
+	// exists, so a step can clear the rejection by deleting it (issue #488).
+	// The SelfSubjectAccessReview still reaches the real API server, which
+	// allows it, so the rejection is classified as admission, not RBAC.
+	RejectWorkloadCreatesWhile *collectSpec `json:"rejectWorkloadCreatesWhile,omitempty"`
+	// NamespaceAccessTimeoutSeconds sets the Workflow controller's
+	// --namespace-access-timeout. Zero uses the default.
+	NamespaceAccessTimeoutSeconds int `json:"namespaceAccessTimeoutSeconds,omitempty"`
+	// WorkloadCreationDeadlineSeconds sets JobReconciler.WorkloadCreationDeadline;
+	// zero keeps the 10m default.
+	WorkloadCreationDeadlineSeconds int           `json:"workloadCreationDeadlineSeconds,omitempty"`
+	WaitFor                         conditionWait `json:"waitFor"`
 	// Steps drive external changes only after observing the preceding state.
 	// All waits and writes share the event case's original deadline.
 	Steps                   []eventTestStep              `json:"steps,omitempty"`
@@ -789,6 +809,32 @@ func (c *workloadCreateRejectingClient) Create(
 	if _, ok := obj.(*trainerv1alpha1.TrainJob); ok {
 		return apierrors.NewForbidden(schema.GroupResource{Group: trainerv1alpha1.GroupVersion.Group, Resource: "trainjobs"},
 			obj.GetName(), fmt.Errorf("injected TrainJob Create rejection"))
+	}
+	return c.Client.Create(ctx, obj, opts...)
+}
+
+// workloadAdmissionRejectingClient fails TrainJob creates the way an
+// admission webhook or ValidatingAdmissionPolicy denial does, for as long as
+// the marker ConfigMap exists. Every other call, including the access review,
+// goes to the real API server.
+type workloadAdmissionRejectingClient struct {
+	client.Client
+	reader client.Reader
+	marker collectSpec
+}
+
+func (c *workloadAdmissionRejectingClient) Create(
+	ctx context.Context, obj client.Object, opts ...client.CreateOption,
+) error {
+	if _, ok := obj.(*trainerv1alpha1.TrainJob); ok {
+		err := c.reader.Get(ctx, client.ObjectKey{Namespace: c.marker.Namespace, Name: c.marker.Name}, &corev1.ConfigMap{})
+		switch {
+		case err == nil:
+			return apierrors.NewForbidden(schema.GroupResource{Group: trainerv1alpha1.GroupVersion.Group, Resource: "trainjobs"},
+				obj.GetName(), errors.New(`admission webhook "deny.example.com" denied the request: injected rejection`))
+		case !apierrors.IsNotFound(err):
+			return err
+		}
 	}
 	return c.Client.Create(ctx, obj, opts...)
 }
@@ -1660,6 +1706,10 @@ func sanitizeObject(obj client.Object) {
 		// pinning whether a blocked episode is recorded (ADR-083).
 		if o.Status.SchedulingBlockedSince != nil {
 			o.Status.SchedulingBlockedSince = &metav1.Time{Time: time.Unix(0, 0).UTC()}
+		}
+		// workloadCreationRejectedSince is wall clock too (issue #488).
+		if o.Status.WorkloadCreationRejectedSince != nil {
+			o.Status.WorkloadCreationRejectedSince = &metav1.Time{Time: time.Unix(0, 0).UTC()}
 		}
 	case *nvcrev1alpha1.Workflow:
 		clearConditionTimestamps(o.Status.Conditions)

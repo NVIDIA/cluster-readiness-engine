@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	trainerv1alpha1 "github.com/kubeflow/trainer/v2/pkg/apis/trainer/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
@@ -48,6 +49,11 @@ type ResolvedWorkflowTransforms struct {
 	// its own API surface — for Certification, global labels already merged
 	// with per-category labels.
 	WorkloadLabels map[string]string
+
+	// Env are the workload environment variables the owner resolved from its
+	// own API surface — for Certification, global variables already merged by
+	// name with per-category ones. Empty means no override.
+	Env []corev1.EnvVar
 }
 
 // ApplyResolvedWorkflowTransforms applies every post-resolve transform to a
@@ -64,12 +70,13 @@ type ResolvedWorkflowTransforms struct {
 //  1. ApplyGangSchedulerToDependencies
 //  2. ApplyImageToJobTemplate
 //  3. ApplyImageToDependencies
-//  4. resolve and write JobTemplate.spec.workloadMetadata
+//  4. ApplyEnvToJobTemplate
+//  5. resolve and write JobTemplate.spec.workloadMetadata
 //
-// Gang scheduling and image replacement still touch disjoint fields, so only
-// step 4's position matters: writing workload metadata last makes the resolved
-// catalog and override JobSpec the base map, which makes its precedence
-// unambiguous.
+// Gang scheduling, image replacement and the environment write touch disjoint
+// fields, so only step 5's position matters: writing workload metadata last
+// makes the resolved catalog and override JobSpec the base map, which makes
+// its precedence unambiguous.
 //
 // It then records the resolved intent on spec.gangScheduler and runs
 // ValidateResolvedJobTemplate, so a caller cannot forget either.
@@ -82,6 +89,10 @@ func ApplyResolvedWorkflowTransforms(
 
 	ApplyImageToJobTemplate(&spec.JobTemplate, t.Image)
 	if err := ApplyImageToDependencies(spec.Dependencies, t.Image); err != nil {
+		return err
+	}
+
+	if err := ApplyEnvToJobTemplate(&spec.JobTemplate, spec.Dependencies, t.Env); err != nil {
 		return err
 	}
 

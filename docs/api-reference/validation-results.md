@@ -632,9 +632,9 @@ Each entry in `categories`:
 | `nodesPerJob` | int | Nodes per job group |
 | `jobs` | int | Number of jobs run |
 | `mnnvl` | string | `Enabled`, `Disabled`, or omitted when unknown |
-| `bandwidth` | []object | NCCL results per message size: `size`, `algBW`, `busBW`, `samples` |
+| `bandwidth` | []object | NCCL results per message size: `size`, `algBW`, `busBW`, `samples`, and `provisional`/`provisionalReason` when the result is not final |
 | `transport` | []string | Distinct NCCL network names recorded on the category's BandwidthMeasurements (for example `IB`, `Socket`). Omitted when the `Using network` line never appeared |
-| `groupBandwidth` | []object | Per-group peak bandwidth: `groupName`, `nodes`, `busBW`, `transport` (optional), `belowMin`, `failed` |
+| `groupBandwidth` | []object | Per-group peak bandwidth, one row per group: `group`, `groupName` (display label), `nodes`, `busBW`, `transport` (optional), `belowMin` (true when BusBW fails a minimum `busBandwidthGBps` threshold such as `value >= 300`), `failed`, and `provisional`/`provisionalReason` when the result is not final |
 | `domains` | []object | Training results per topology domain: `name`, `nodeCount`, `goodput`, `tflops`, `stepTime` |
 | `failedGroups` | []object | Failed orchestration groups: `name`, `nodeCount`, `nodes`, `reason`, and `failureLog` when the Job captured one |
 | `iterations` | []object | Per-iteration results: `number`, `status`, `duration` |

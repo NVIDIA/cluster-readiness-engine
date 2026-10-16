@@ -1,0 +1,33 @@
+# A Certification that never set spec.env or options.env, which is every
+# Certification that exists today. The transform returns before touching
+# anything, so args keep their order and the trainer gains no env key. This is
+# the regression guard for the whole feature: if this case ever renders
+# differently, every existing certification's output moved.
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          kind: TrainingRuntime
+          name: nccl-all-reduce-runtime
+        trainer:
+          args:
+            - -x
+            - NCCL_DEBUG=INFO
+            - /usr/local/bin/all_reduce_perf_mpi
+            - -b
+            - "8"
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nccl-all-reduce-runtime
+    spec:
+      mlPolicy:
+        mpi:
+          mpiImplementation: OpenMPI
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+            - name: launcher

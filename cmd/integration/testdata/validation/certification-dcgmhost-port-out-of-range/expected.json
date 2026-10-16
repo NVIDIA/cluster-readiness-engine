@@ -1,0 +1,15 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.categories[0].options.dcgmHost",
+      "message": "Invalid value: \"nvidia-dcgm.gpu-operator.svc:65536\": spec.categories[0].options.dcgmHost in body should match '^[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$'"
+    },
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec.dcgmHost",
+      "message": "Invalid value: \"nvidia-dcgm.gpu-operator.svc:0\": spec.dcgmHost in body should match '^[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$'"
+    }
+  ]
+}

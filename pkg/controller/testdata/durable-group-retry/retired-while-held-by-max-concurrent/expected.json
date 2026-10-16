@@ -1,0 +1,74 @@
+[
+  {
+    "dependencies": [
+      "dep-cm-5947a-a-iter-1"
+    ],
+    "dependencyRefs": [
+      "dep-cm-5947a-a-iter-1"
+    ],
+    "failedNodes": [],
+    "groups": [
+      {
+        "name": "a",
+        "phase": "Pending",
+        "retries": 1
+      },
+      {
+        "jobRef": "wf-b-iter-1",
+        "name": "b",
+        "phase": "Running",
+        "retries": 0
+      }
+    ],
+    "jobs": [
+      "wf-b-iter-1"
+    ],
+    "pass": 1
+  },
+  {
+    "dependencies": [],
+    "dependencyRefs": [
+      "dep-cm-5947a-a-iter-1"
+    ],
+    "failedNodes": [],
+    "groups": [
+      {
+        "name": "a",
+        "phase": "Pending",
+        "retries": 1
+      },
+      {
+        "jobRef": "wf-b-iter-1",
+        "name": "b",
+        "phase": "Running",
+        "retries": 0
+      }
+    ],
+    "jobs": [
+      "wf-b-iter-1"
+    ],
+    "pass": 2
+  },
+  {
+    "dependencies": [],
+    "dependencyRefs": [],
+    "failedNodes": [],
+    "groups": [
+      {
+        "name": "a",
+        "phase": "Pending",
+        "retries": 1
+      },
+      {
+        "jobRef": "wf-b-iter-1",
+        "name": "b",
+        "phase": "Running",
+        "retries": 0
+      }
+    ],
+    "jobs": [
+      "wf-b-iter-1"
+    ],
+    "pass": 3
+  }
+]

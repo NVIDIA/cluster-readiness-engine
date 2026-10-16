@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Both measurements peak at the same largest size. The category row used to
+# take the first one listed (400), so one healthy group stood in for the
+# category. It takes the lowest BusBW at that size.
+measurements:
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: j1}
+    status:
+      conditions:
+        - {type: Complete, status: "True", reason: JobSucceeded, message: Job succeeded, lastTransitionTime: "2026-10-01T00:00:00Z"}
+      results:
+        - {sizeBytes: 1073741824, algBW: "210.00", busBW: "400.00", samples: 20}
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: j0}
+    status:
+      conditions:
+        - {type: Complete, status: "True", reason: JobSucceeded, message: Job succeeded, lastTransitionTime: "2026-10-01T00:00:00Z"}
+      results:
+        - {sizeBytes: 1048576, algBW: "1.00", busBW: "2.00", samples: 20}
+        - {sizeBytes: 1073741824, algBW: "55.00", busBW: "100.00", samples: 20}

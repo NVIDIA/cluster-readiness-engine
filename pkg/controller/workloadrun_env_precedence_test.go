@@ -47,7 +47,7 @@ func TestWorkloadRunControllerCarriesUserEnvIntoMatchingPlatformOverride(t *test
 				Torch: &nvcrev1alpha1.TorchFramework{Script: "/workspace/train.py"},
 			},
 			Env: []corev1.EnvVar{
-				{Name: "NCCL_DEBUG", Value: "TRACE"},
+				{Name: debugVar, Value: "TRACE"},
 				{Name: "USER_ONLY", Value: "kept-on-runtime"},
 				{Name: "PET_NNODES", Value: "999"},
 			},
@@ -68,7 +68,7 @@ func TestWorkloadRunControllerCarriesUserEnvIntoMatchingPlatformOverride(t *test
 	}
 
 	env := ws.JobTemplate.Spec.Workload.TrainJob.Trainer.Env
-	assertTrainerEnvValue(t, env, "NCCL_DEBUG", "TRACE")
+	assertTrainerEnvValue(t, env, debugVar, "TRACE")
 	assertNoTrainerEnvValue(t, env, "USER_ONLY")
 	assertNoTrainerEnvValue(t, env, "PET_NNODES")
 }
@@ -96,7 +96,7 @@ func TestWorkloadRunControllerCarriesUserEnvIntoGCPGB200RuntimeDependency(t *tes
 				Torch: &nvcrev1alpha1.TorchFramework{Script: "/workspace/train.py"},
 			},
 			Env: []corev1.EnvVar{
-				{Name: "NCCL_DEBUG", Value: "TRACE"},
+				{Name: debugVar, Value: "TRACE"},
 				{Name: "USER_ONLY", Value: "kept-on-runtime"},
 			},
 		},
@@ -134,7 +134,7 @@ func TestWorkloadRunControllerCarriesUserEnvIntoGCPGB200RuntimeDependency(t *tes
 	require.NoError(t, err)
 	var env []corev1.EnvVar
 	require.NoError(t, json.Unmarshal(envJSON, &env))
-	assertTrainerEnvValue(t, env, "NCCL_DEBUG", "TRACE")
+	assertTrainerEnvValue(t, env, debugVar, "TRACE")
 	assertTrainerEnvValue(t, env, "USER_ONLY", "kept-on-runtime")
 }
 
@@ -181,7 +181,7 @@ func TestWorkloadRunControllerForwardsUserEnvToMPIRanks(t *testing.T) {
 	args := ws.JobTemplate.Spec.Workload.TrainJob.Trainer.Args
 	require.Equal(t, []string{"0"}, mpiEnvArgValues(args, "NCCL_IB_PCI_RELAXED_ORDERING"))
 	require.Equal(t, []string{"0"}, mpiEnvArgValues(args, "NCCL_SHM_DISABLE"))
-	require.Equal(t, []string{"INFO"}, mpiEnvArgValues(args, "NCCL_DEBUG"))
+	require.Equal(t, []string{debugInfo}, mpiEnvArgValues(args, debugVar))
 	require.Equal(t, []string{"0"}, mpiEnvArgValues(args, "NCCL_MNNVL_ENABLE"))
 }
 

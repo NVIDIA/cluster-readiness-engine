@@ -107,7 +107,7 @@
             "jobRef": {
               "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
-              "name": "unpin-reattr-job",
+              "name": "unpin-reattr-job-retry-1",
               "namespace": "default"
             }
           }

@@ -24,9 +24,10 @@ import (
 
 // A reconcile that sees a Running group whose Job is gone or being deleted is
 // about to fail that group, which cannot be undone. The Workflow itself deletes
-// a group's Job on retry and between iterations and moves the group off Running
-// in the same reconcile, so a reconcile started by the Job's deletion event can
-// be reading a cached Workflow from before that write. The guard confirms the
+// a group's Job on retry (retiring the failed attempt once the retry is
+// recorded) and between iterations, after moving the group off Running, so a
+// reconcile started by the Job's deletion event can be reading a cached
+// Workflow from before that write. The guard confirms the
 // group against the API server first and leaves it alone when the cached view
 // is behind, and the tail write carries over only the groups the pass changed,
 // so a stale group is neither failed nor written back over the live state.

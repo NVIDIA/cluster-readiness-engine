@@ -49,6 +49,22 @@ const (
 	RDMADeviceAccessHostPath = "hostPath"
 )
 
+// ReservedLauncherEnvNames are the environment variables Kubeflow Trainer's
+// MPI plugin writes on the launcher: the hostfile it generates and the rsh
+// settings mpirun uses to reach the workers. A user value for any of them
+// replaces the plugin's, and the launch fails rather than being tuned. The
+// PET_* family is rejected alongside these by prefix, mirroring what the
+// torch plugin already rejects at TrainJob admission.
+//
+// Kept beside the env field so the CRD's CEL rule and the offline CLI check
+// cannot drift apart.
+var ReservedLauncherEnvNames = []string{
+	"OMPI_MCA_orte_default_hostfile",
+	"OMPI_MCA_plm_rsh_args",
+	"OMPI_MCA_orte_keep_fqdn_hostnames",
+	"OMPI_MCA_orte_set_default_slots",
+}
+
 // ValidRDMADeviceAccessValues lists the accepted rdmaDeviceAccess values, in
 // the order they are reported in validation errors.
 var ValidRDMADeviceAccessValues = []string{RDMADeviceAccessHostPath, RDMADeviceAccessDevicePlugin}
@@ -445,6 +461,23 @@ type CategoryOptions struct {
 	// +kubebuilder:validation:Pattern=`^(https|ssh)://[A-Za-z0-9._~:/@%+-]+$`
 	SourceRepo string `json:"sourceRepo,omitempty"`
 
+	// dcgmHost is the DCGM hostengine address the diagnostics/dcgm-level4
+	// category passes to `dcgmi diag --host`, as host[:port] where host is a
+	// DNS name or an IPv4 address and port is 1-65535 (for example
+	// "nvidia-dcgm.gpu-system.svc:5555"). When unset, the category connects
+	// to the GPU Operator's nvidia-dcgm.gpu-operator.svc:5555 (on Nscale NKS,
+	// nvidia-dcgm-dra.nvidia-platform.svc:5555); when set, it replaces that
+	// address on every platform. Each diag runs on one node and must reach
+	// the hostengine on that same node: the dcgm pod runs on the host
+	// network, so use a Service with internalTrafficPolicy: Local, as the GPU
+	// Operator's is, or localhost:5555 when the hostengine itself listens on
+	// the node's network. A Service that load-balances across nodes would run
+	// the diagnostics on another node's GPUs. Other categories ignore it.
+	// +optional
+	// +kubebuilder:validation:MaxLength=259
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?(\.[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$`
+	DCGMHost string `json:"dcgmHost,omitempty"`
+
 	// workloadMetadata sets labels on the workload object each category's Job
 	// creates (today a Kubeflow TrainJob). Use it to place the workload in a
 	// Kueue local queue with kueue.x-k8s.io/queue-name, or for any other
@@ -463,6 +496,43 @@ type CategoryOptions struct {
 	// supplies that same key with a different value fails.
 	// +optional
 	WorkloadMetadata *WorkloadMetadata `json:"workloadMetadata,omitempty"`
+
+	// env sets environment variables on this category's workload, applied
+	// after the catalog entry and the platform overrides resolve, so a name
+	// set here wins over both. Use it for a site-specific value a release has
+	// not caught up with, for example NCCL_NVLS_ENABLE=0 on a fabric with a
+	// known NVLink SHARP defect. Prefer a catalog entry when the setting
+	// follows from the hardware rather than from one site.
+	//
+	// Because CertificationSpec inlines CategoryOptions, this field is read
+	// both globally at spec.env and per category at
+	// spec.categories[].options.env. Like workloadMetadata and unlike the
+	// slices beside it, the two levels merge per name rather than replacing
+	// wholesale: a category can change or add a variable but cannot remove a
+	// global one. Set variables per category instead of globally when
+	// categories need genuinely different sets.
+	//
+	// Where a variable lands depends on the entry. The communication/nccl-*
+	// variants run under mpirun, whose ranks start under sshd with a fresh
+	// environment and never read container env, so their variables become
+	// "-x NAME=VALUE" launcher arguments. Every other entry gets a trainer
+	// env var, which Kubeflow upserts by name onto the workload container.
+	// diagnostics/dcgm-level4 runs dcgmi and reads no NCCL variables, so the
+	// field has no effect there.
+	//
+	// A certification that sets this is tuned: the variable names (not their
+	// values) appear on the category's report entry, so a reader of a passing
+	// result can see what the run was configured with.
+	//
+	// valueFrom is rejected: a variable reaches MPI ranks by value on a
+	// command line, which cannot carry a reference. Use a WorkloadRun for
+	// secret-sourced values. Names that Kubeflow Trainer owns (PET_* and the
+	// OMPI_MCA_* launcher settings) are rejected because a user value there
+	// breaks the launch rather than overriding a default.
+	// +optional
+	// +kubebuilder:validation:MaxItems=32
+	// +kubebuilder:validation:XValidation:rule="self.all(e, !has(e.valueFrom) && !e.name.startsWith('PET_') && !(e.name in ['OMPI_MCA_orte_default_hostfile','OMPI_MCA_plm_rsh_args','OMPI_MCA_orte_keep_fqdn_hostnames','OMPI_MCA_orte_set_default_slots']))",message="env entries must not use valueFrom and must not name a variable Kubeflow Trainer owns (PET_* or the OMPI_MCA_* launcher settings)"
+	Env []corev1.EnvVar `json:"env,omitempty"`
 }
 
 type CertificateCategory struct {
