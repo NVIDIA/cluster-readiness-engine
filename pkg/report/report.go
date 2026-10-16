@@ -925,19 +925,26 @@ const diagnoseHintText = "No bandwidth was recorded on a multi-node group. " +
 	"Re-running this category with testScale: diagnose bisects the group to " +
 	"separate a node-local fault from one on the path between nodes."
 
-// diagnoseHint returns the next-step hint for a category whose collective never
-// moved bytes, and "" otherwise. measuresBandwidth reports whether the Workflow
-// asked for a BandwidthMeasurement at all.
+// diagnoseHint returns the next-step hint for a category where a multi-node
+// group failed without moving bytes, and "" otherwise. measuresBandwidth
+// reports whether the Workflow asked for a BandwidthMeasurement at all.
 //
 // The conditions together are that signature: the category measures bandwidth,
-// it failed, a failed group held at least two nodes, and no bandwidth row was
-// recorded. The measuresBandwidth gate is load-bearing rather than defensive.
-// Training categories never measure bandwidth, so for them "no bandwidth rows"
-// is the normal state and not a signal; without the gate a goodput threshold
-// violation on a two-node training run would be told to bisect a fabric it
-// never exercised. A single-node group has nothing to bisect, and a group that
+// it failed, and some failed group of two or more nodes recorded no bandwidth.
+// The measuresBandwidth gate is load-bearing rather than defensive. Training
+// categories never measure bandwidth, so for them "no bandwidth rows" is the
+// normal state and not a signal; without the gate a goodput threshold violation
+// on a two-node training run would be told to bisect a fabric it never
+// exercised. A single-node group has nothing to bisect, and a group that
 // reported bandwidth did communicate, so neither gets the hint. Categories
 // already running diagnose are skipped: they are doing this.
+//
+// The per-group check matters on a fleet. buildGroupBandwidthRows emits a row
+// for every FAILED group even when nothing was measured, so a category with
+// more than one group always has a non-empty GroupBandwidth and a
+// category-wide emptiness test would never fire. Judging each failed group
+// against its own row means one bad pair among several healthy groups still
+// gets the hint, which is the common case.
 //
 // The hint says what bisection can distinguish and asserts nothing about the
 // fault. Naming a cause from a failed run's logs is what ADR-099 declined to do.
@@ -945,11 +952,21 @@ func diagnoseHint(cat *CategoryReport, measuresBandwidth bool) string {
 	if !measuresBandwidth || cat.Status != statusFailed || cat.Diagnose != nil {
 		return ""
 	}
-	if len(cat.Bandwidth) > 0 || len(cat.GroupBandwidth) > 0 {
+	// An aggregate row is category-wide, so any bandwidth there means the
+	// collective moved bytes somewhere and the signature does not hold.
+	if len(cat.Bandwidth) > 0 {
 		return ""
 	}
+	// A row counts as measured only when it carries a BusBW: groupBandwidthRow
+	// emits a bare row for a failed group with no measurement.
+	measured := make(map[string]bool, len(cat.GroupBandwidth))
+	for _, row := range cat.GroupBandwidth {
+		if row.BusBW != "" {
+			measured[row.Group] = true
+		}
+	}
 	for _, fg := range cat.FailedGroups {
-		if fg.NodeCount >= 2 {
+		if fg.NodeCount >= 2 && !measured[fg.Name] {
 			return diagnoseHintText
 		}
 	}
@@ -1480,11 +1497,15 @@ func PrintMulti(w io.Writer, reports []*CertReport) {
 			printBoxLine(w, fmt.Sprintf("Failed Nodes: %d", len(r.FailedNodes)))
 			reasons := failedNodeReasons(r.FailedNodeDetails)
 			for _, node := range r.FailedNodes {
-				line := "  - " + node
+				// Wrapped, not concatenated: printBoxLine neither wraps nor
+				// truncates, and a cloud-style node name plus reasons joined
+				// across categories runs past the content width and breaks the
+				// right border.
 				if reason := reasons[node]; reason != "" {
-					line += "  " + reason
+					printWrappedBoxText(w, "  - "+node+"  ", reason)
+					continue
 				}
-				printBoxLine(w, line)
+				printBoxLine(w, "  - "+node)
 			}
 		}
 		_, _ = fmt.Fprintf(w, "│  Result:       %s%s│\n",

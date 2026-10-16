@@ -50,7 +50,8 @@ attribution than it reports, and loses it at three identifiable places.
    This ADR makes no CRD change.
 
 2. **`failTimedOutJob` records the group's nodes.** A timed-out Job seeds `FailedNodes` from
-   the group it ran on, with reason `WorkloadFailed`, before its status update.
+   the group it ran on, with reason `WorkloadFailed`, before its status update. A Job that
+   timed out while its pods were unschedulable is excluded: nothing ran on those nodes.
 
 3. **The CEL detector's per-node message survives.** `checkNodeHealth` builds `FailedNode`
    entries carrying each node's own detector message, falling back to the existing constant
@@ -69,10 +70,23 @@ attribution than it reports, and loses it at three identifiable places.
 ### Timeout attribution
 
 In `failTimedOutJob`, after the exclusive conditions are applied and before
-`r.Status().Update`, seed `job.Status.FailedNodes` from `g.Nodes` when the list is empty,
-reusing the `timeoutMsg` already built there (which distinguishes the unschedulable case).
-The `*GroupStatus` is a parameter, so this needs no lookup and no `groupNodeNames` call from
-the Workflow tier.
+`r.Status().Update`, seed `job.Status.FailedNodes` from `g.Nodes` when the list is empty and
+`SchedulingBlockedSince` is nil, reusing the `timeoutMsg` already built there. The
+`*GroupStatus` is a parameter, so this needs no lookup and no `groupNodeNames` call from the
+Workflow tier.
+
+The unschedulable branch records nothing. The workload never ran on those nodes, and the Job
+tier already treats scheduling-blocked time as not-running: `resumeFromSchedulingBlock` shifts
+`WorkloadStartTime` forward by the paused interval, and the blocked branch returns before
+stall detection. Recording them would place them in `failedNodes` and `CertFailedNodes`
+indistinguishable from nodes that ran and crashed, since only `failedNodeDetails` carries the
+message that separates the two, and ADR-061 designates that list as the signal external
+systems consume. The Job still fails and its condition still explains why.
+
+The timeout branch also re-runs `backfillGroupNodes` with `terminal` true before attributing.
+The surrounding dispatch calls it with the Job's own terminal state, which is false here, so
+under Unpinned a partially placed group would otherwise reach attribution with no nodes
+recorded at all. The timeout ends the group, so this is the last chance to record where it ran.
 
 The condition reason stays `JobTimedOut`. The node reason is `WorkloadFailed`, mirroring the
 existing asymmetry at `job_controller.go:1374`, where the condition reason varies across
@@ -105,10 +119,16 @@ which deterministically.
 `CertFailedNodeDetails`, which `Build` already reaches through `CertFailedNodes`. No new
 fetch. The summary block prints the reason after each failed node name.
 
-`CategoryReport` gains a `hint` field, set when the category failed, a failed group holds at
-least two nodes, and no bandwidth rows were recorded. Those three together are the signature
-of a collective that never moved bytes. The hint names `testScale: diagnose` and says what
-bisection can distinguish; it asserts nothing about the fault.
+`CategoryReport` gains a `hint` field, set when the category measures bandwidth, it failed,
+and some failed group of two or more nodes recorded no bandwidth of its own. Those together
+are the signature of a collective that never moved bytes. The hint names `testScale: diagnose`
+and says what bisection can distinguish; it asserts nothing about the fault.
+
+The bandwidth test is per failed group rather than category-wide. `buildGroupBandwidthRows`
+emits a row for every failed group even when nothing was measured, so any category with more
+than one group has a non-empty `GroupBandwidth` and a category-wide emptiness test would never
+fire. A row counts as measured only when it carries a `BusBW`. That keeps one bad pair among
+several healthy groups eligible, which is the common fleet case.
 
 ## Rationale
 
@@ -150,10 +170,12 @@ controlled experiment, and it is the only thing available that can separate "wen
 
 ## Consequences
 
-- A certification that times out now reports failed nodes where it previously reported none.
-  Consumers that read failed nodes to make a pass/fail or exclusion decision will see a
-  non-empty list for a case that was previously silent. This is the intended correction, but
-  it is a behavioural change for anyone keying on the old emptiness.
+- A certification whose workload ran and then timed out now reports failed nodes where it
+  previously reported none. Consumers that read failed nodes to make a pass/fail or exclusion
+  decision will see a non-empty list for a case that was previously silent. This is the
+  intended correction, but it is a behavioural change for anyone keying on the old emptiness.
+  A run that timed out without ever being scheduled stays silent, so the two cases are
+  distinguishable from the node list alone rather than only from a message.
 - A node flagged by a CEL detector now carries that detector's own message. Operators writing
   CEL expressions get their message surfaced, which makes expression wording
   operator-visible in a way it was not before.

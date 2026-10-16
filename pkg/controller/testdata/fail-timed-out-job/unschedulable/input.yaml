@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The timeout elapsed while the pods were unschedulable, so the workload never
+# ran on these nodes. They must not be recorded: the condition still says the
+# Job timed out, and the message says it was blocked.
+schedulingBlocked: true
+groupNodes:
+  - gpu-node-01
+  - gpu-node-02

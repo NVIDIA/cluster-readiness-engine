@@ -1833,7 +1833,15 @@ func (r *WorkflowReconciler) failTimedOutJob(
 	// certification reports no failed nodes at all (ADR-099). The reason is
 	// WorkloadFailed because the enum has no timeout value; the condition above
 	// carries ReasonJobTimedOut, the same split the threshold path already makes.
-	if len(job.Status.FailedNodes) == 0 {
+	//
+	// A job that timed out while its pods were unschedulable is excluded. The
+	// workload never ran on those nodes, and the Job tier already treats
+	// scheduling-blocked time as not-running: it pauses the runtime clock and
+	// skips stall detection. Recording them would make them indistinguishable
+	// from nodes that ran and crashed, since only failedNodeDetails carries the
+	// message that tells the two apart. The Job still fails and its condition
+	// still explains why.
+	if len(job.Status.FailedNodes) == 0 && job.Status.SchedulingBlockedSince == nil {
 		job.Status.FailedNodes = noderesults.NodesWithFailureDetails(
 			g.Nodes, ReasonWorkloadFailed, timeoutMsg)
 	}
@@ -2090,6 +2098,12 @@ func (r *WorkflowReconciler) observeRunningGroup(
 	if !ts.terminal {
 		if r.isJobTimedOut(workflow, g, job) {
 			log.Info("Job timed out, terminating workload", "group", g.Name, "job", ref.Name)
+			// The timeout ends the group, so this is the last chance to record
+			// where it ran. The backfill above was told terminal=false because
+			// the Job itself is not terminal, and under Unpinned that leaves a
+			// partially placed group's nodes unrecorded. Re-run it as terminal
+			// so the attribution below has them.
+			r.backfillGroupNodes(ctx, workflow, orch, g, job.Namespace, job.Name, true)
 			outcome, err = r.failTimedOutJob(ctx, workflow, orch, g, job)
 			if err != nil {
 				return 0, "", err
