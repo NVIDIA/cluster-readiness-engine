@@ -373,9 +373,10 @@ func (r *JobReconciler) reconcileWorkload(ctx context.Context, job *nvcrev1alpha
 	// happens via owner reference cascade when the Certification is deleted.
 	if r.isTerminalState(job) {
 		if isJobAwaitingThresholdEvaluation(job) {
-			// A retried group's Job can finish while the measurement left by
-			// the attempt it replaced is still being deleted; create its own
-			// once that one is gone, or the thresholds wait on nothing.
+			// A Job can finish while the measurement of an earlier Job of the
+			// same name (see ensureBandwidthMeasurement) is still being
+			// deleted; create its own once that one is gone, or the thresholds
+			// wait on nothing.
 			if err := r.ensureGoodputMeasurement(ctx, job); err != nil {
 				logf.FromContext(ctx).Error(err, "Failed to ensure GoodputMeasurement")
 			}
@@ -942,8 +943,9 @@ func (r *JobReconciler) hasCheckpoint(ctx context.Context, job *nvcrev1alpha1.Jo
 		return false
 	}
 	for _, m := range measurements.Items {
-		// An earlier attempt's measurement can outlive it while its delete
-		// waits on the finalizer; its checkpoints are not this attempt's.
+		// The measurement of an earlier Job of the same name can outlive it
+		// while its delete waits on the finalizer; its checkpoints are not
+		// this Job's.
 		if !measuresJob(&m, job) {
 			continue
 		}
@@ -1989,7 +1991,19 @@ func (r *JobReconciler) getWorkloadName(job *nvcrev1alpha1.Job) string {
 
 // getGoodputMeasurementName returns the name of the auto-created GoodputMeasurement for a given Job
 func (r *JobReconciler) getGoodputMeasurementName(job *nvcrev1alpha1.Job) string {
-	return naming.Truncate(job.Name+"-goodput", naming.MaxK8sNameLen)
+	return goodputMeasurementName(job.Name)
+}
+
+// goodputMeasurementName is the name of the GoodputMeasurement the Job
+// controller creates for the Job named jobName.
+func goodputMeasurementName(jobName string) string {
+	return naming.Truncate(jobName+"-goodput", naming.MaxK8sNameLen)
+}
+
+// bandwidthMeasurementName is the name of the BandwidthMeasurement the Job
+// controller creates for the Job named jobName.
+func bandwidthMeasurementName(jobName string) string {
+	return naming.Truncate(jobName+"-bandwidth", naming.MaxK8sNameLen)
 }
 
 // getOwnerWorkflow returns the parent Workflow for a Job by looking up its OwnerReference.
@@ -2021,12 +2035,13 @@ func (r *JobReconciler) ensureGoodputMeasurement(ctx context.Context, job *nvcre
 		if measuresJob(existing, job) {
 			return nil
 		}
-		// A retried group recreates its Job under the same name, and the
-		// Workflow-owned measurement of the failed attempt outlives it. The
+		// The measurement of an earlier Job of the same name, which outlives
+		// its Job because the Workflow owns it (see ensureBandwidthMeasurement
+		// for when a Job is still replaced under its name). The
 		// GoodputMeasurement controller never re-measures a Complete one, so
-		// left in place it would stand in for this attempt in thresholds and
-		// stall detection. Replace it, as ensureBandwidthMeasurement does; the
-		// next reconcile creates the new one once it is gone.
+		// left in place it would stand in for this Job in thresholds and stall
+		// detection. Replace it, as ensureBandwidthMeasurement does; the next
+		// reconcile creates the new one once it is gone.
 		if existing.DeletionTimestamp.IsZero() {
 			log.Info("Replacing GoodputMeasurement of an earlier Job with the same name", "name", gmName)
 			if err := r.Delete(ctx, existing, client.Preconditions{UID: new(existing.UID)}); err != nil &&
@@ -2086,17 +2101,23 @@ func (r *JobReconciler) ensureBandwidthMeasurement(ctx context.Context, job *nvc
 	}
 
 	log := logf.FromContext(ctx)
-	bmName := naming.Truncate(job.Name+"-bandwidth", naming.MaxK8sNameLen)
+	bmName := bandwidthMeasurementName(job.Name)
 
 	existing := &nvcrev1alpha1.BandwidthMeasurement{}
 	if err := r.Get(ctx, client.ObjectKey{Namespace: job.Namespace, Name: bmName}, existing); err == nil {
 		if measuresJob(existing, job) {
 			return nil
 		}
-		// A retried group recreates its Job under the same name, and the
-		// Workflow-owned measurement of the failed attempt outlives it. Left in
-		// place it would stand in for this attempt's measurement, so replace it;
-		// the next reconcile creates the new one once it is gone.
+		// The measurement of an earlier Job of the same name. The Workflow
+		// owns measurements, so they outlive their Job. A group retry no
+		// longer causes this: each attempt's Job has its own name
+		// (getGroupJobName), and retirePreviousAttempts deletes the earlier
+		// attempts' measurements. A Job can still be replaced under its name,
+		// as when a controller from before attempt-indexed names relaunched a
+		// retried group, or a Workflow is recreated under the same name before
+		// its old measurements are collected. Left in place the measurement
+		// would stand in for this Job's, so replace it; the next reconcile
+		// creates the new one once it is gone.
 		if existing.DeletionTimestamp.IsZero() {
 			log.Info("Replacing BandwidthMeasurement of an earlier Job with the same name", "name", bmName)
 			if err := r.Delete(ctx, existing, client.Preconditions{UID: new(existing.UID)}); err != nil &&

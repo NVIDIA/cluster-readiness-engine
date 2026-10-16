@@ -5,8 +5,10 @@
   "hasJobRef": false,
   "hasCompletionTime": false,
   "groupNodes": [],
-  "dependencyRefs": [],
-  "depConfigMapExists": false,
+  "dependencyRefs": [
+    "ConfigMap/dep-cm"
+  ],
+  "depConfigMapExists": true,
   "workloadExists": false,
-  "jobExists": false
+  "jobExists": true
 }

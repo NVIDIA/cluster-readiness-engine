@@ -334,6 +334,7 @@ func applyWorkflowTransforms(
 			GangScheduler:  cert.Spec.GangScheduler,
 			Image:          opts.Image,
 			WorkloadLabels: workload.LabelsOf(opts.WorkloadMetadata),
+			Env:            opts.Env,
 		}); err != nil {
 		return fmt.Errorf("apply transforms for %s: %w", workflows[i].Name, err)
 	}
@@ -691,7 +692,45 @@ func readCertification(path string) (*nvcrev1alpha1.Certification, error) {
 				cert.Name, cat.Domain, cat.Variant, err)
 		}
 	}
+
+	// And reject an env entry the CRD's own CEL rule would reject, for the
+	// third time for the same reason: the markers bind server-side only. A
+	// valueFrom here would render as a bare name on an mpirun command line,
+	// and a PET_* or OMPI_MCA_* name would render into the launcher's own
+	// settings, both of which look fine in a preview and break on the cluster.
+	if err := validateCategoryEnv(cert.Spec.Env); err != nil {
+		return nil, fmt.Errorf("certification %s: %w", cert.Name, err)
+	}
+	for _, cat := range cert.Spec.Categories {
+		if cat.Options == nil {
+			continue
+		}
+		if err := validateCategoryEnv(cat.Options.Env); err != nil {
+			return nil, fmt.Errorf("certification %s: category %s/%s: %w",
+				cert.Name, cat.Domain, cat.Variant, err)
+		}
+	}
 	return &cert, nil
+}
+
+// validateCategoryEnv rejects the env entries the CRD's CEL rule rejects, so
+// an offline render fails the same way a cluster apply would. Mirrors
+// validateRDMADeviceAccess: the kubebuilder markers bind server-side only.
+func validateCategoryEnv(env []corev1.EnvVar) error {
+	for _, e := range env {
+		if e.ValueFrom != nil {
+			return fmt.Errorf(
+				"invalid env %q: valueFrom is not supported; a variable reaches MPI ranks "+
+					"by value on a command line, which cannot carry a reference", e.Name)
+		}
+		if strings.HasPrefix(e.Name, "PET_") ||
+			slices.Contains(nvcrev1alpha1.ReservedLauncherEnvNames, e.Name) {
+			return fmt.Errorf(
+				"invalid env %q: the name is owned by Kubeflow Trainer and setting it "+
+					"breaks the launch rather than overriding a default", e.Name)
+		}
+	}
+	return nil
 }
 
 // validateRDMADeviceAccess rejects any non-empty rdmaDeviceAccess that is not

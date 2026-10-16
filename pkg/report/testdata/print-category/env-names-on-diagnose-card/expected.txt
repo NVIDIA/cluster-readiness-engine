@@ -1,0 +1,13 @@
+┌────────────────────────────────────────────────────────────────┐
+│  communication/nccl-all-reduce                                 │
+├────────────────────────────────────────────────────────────────┤
+│  Status:    Succeeded                                          │
+│  Runtime:   12m 30s                                            │
+│  Scale:     diagnose                                           │
+│  Env:       NCCL_NVLS_ENABLE                                   │
+│                                                                │
+│  Diagnosis:                                                    │
+│    Stage:     Confirmation                                     │
+│    Rounds:    0                                                │
+│    Healthy:   0 nodes                                          │
+└────────────────────────────────────────────────────────────────┘

@@ -1,0 +1,17 @@
+{
+  "draining": false,
+  "stale": true,
+  "groupPhase": "Running",
+  "retries": 0,
+  "hasJobRef": true,
+  "hasCompletionTime": false,
+  "groupNodes": [
+    "node-a"
+  ],
+  "dependencyRefs": [
+    "ConfigMap/dep-cm"
+  ],
+  "depConfigMapExists": true,
+  "workloadExists": false,
+  "jobExists": true
+}

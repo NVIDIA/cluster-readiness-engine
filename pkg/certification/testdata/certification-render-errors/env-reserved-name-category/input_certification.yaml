@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# PET_* is rejected at the category level as well as the spec level. Kubeflow's
+# torch plugin rejects these at TrainJob admission, so the alternative is an
+# opaque webhook failure three tiers below the field that caused it.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: test-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        env:
+          - name: PET_NPROC_PER_NODE
+            value: "8"

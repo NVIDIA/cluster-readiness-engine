@@ -1,0 +1,25 @@
+{
+  "args": [
+    "-N",
+    "8",
+    "--allow-run-as-root",
+    "--mca",
+    "plm_rsh_args",
+    "-o StrictHostKeyChecking=no",
+    "-x",
+    "NCCL_DEBUG=INFO",
+    "-x",
+    "NCCL_MNNVL_ENABLE=0",
+    "-x",
+    "NCCL_NVLS_ENABLE=0",
+    "-x",
+    "NCCL_IB_HCA=mlx5_0,mlx5_1",
+    "/usr/local/bin/all_reduce_perf_mpi",
+    "-b",
+    "8",
+    "-e",
+    "16G"
+  ],
+  "env": [],
+  "depsUnchanged": true
+}

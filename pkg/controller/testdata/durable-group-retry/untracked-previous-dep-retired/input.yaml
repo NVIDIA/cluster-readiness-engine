@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The failed attempt's dependency copy still exists and nothing tracks it: an
+# earlier controller version dropped the ref when it issued the delete, or the
+# ref was never written. Retirement finds it by the name the next attempt will
+# use, sees it was not created for that attempt, deletes it, and tracks it until
+# it is gone. Attempt 1 then creates its own copy.
+retryFailedGroups: 1
+groupA:
+  phase: Pending
+  retries: 1
+oldJob: absent
+dep: previous
+depTracked: false
+passes: 3

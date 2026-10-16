@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An earlier pass launched attempt 1 (its dependency copy, stamped attempt=1,
+# and its Job) and stopped before recording the launch. Those are this
+# attempt's own objects, not a previous attempt's: retirement leaves them, and
+# the launch adopts both. Nothing is deleted.
+retryFailedGroups: 1
+groupA:
+  phase: Pending
+  retries: 1
+oldJob: absent
+currentJob: true
+dep: current
+depTracked: false
+passes: 2
