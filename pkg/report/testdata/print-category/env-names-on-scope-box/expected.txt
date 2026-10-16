@@ -1,0 +1,11 @@
+┌────────────────────────────────────────────────────────────────┐
+│  communication/nccl-all-reduce                                 │
+├────────────────────────────────────────────────────────────────┤
+│  Status:    Succeeded                                          │
+│  Runtime:   3m 4s                                              │
+│  Nodes/Job: 2                                                  │
+│  Jobs:      1                                                  │
+│  MNNVL:     Disabled                                           │
+│  Env:       NCCL_NVLS_ENABLE, NCCL_IB_HCA, NCCL_SOCKET_IFNAME, │
+│             NCCL_DEBUG, UCX_NET_DEVICES                        │
+└────────────────────────────────────────────────────────────────┘

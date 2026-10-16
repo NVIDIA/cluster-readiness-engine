@@ -1,0 +1,11 @@
+{
+  "args": [
+    "--allow-run-as-root",
+    "/usr/local/bin/all_reduce_perf_mpi",
+    "-b",
+    "8"
+  ],
+  "env": [],
+  "err": "cannot set env NCCL_NVLS_ENABLE: the resolved MPI trainer args carry no \"-x\" pair to anchor an insertion",
+  "depsUnchanged": true
+}

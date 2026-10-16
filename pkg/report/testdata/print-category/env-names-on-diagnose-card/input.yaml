@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A diagnose category that set env. printCategoryCard skips the scope box for
+# a diagnose run, because its groups come from bisection rather than from a
+# requested size, so Nodes/Job and Jobs would describe something nobody asked
+# for. The env names are not scope: what the run was configured with is just
+# as true of a diagnose category, and a bisection that cleared a node with a
+# hardware feature disabled is exactly the result a reader must not take at
+# face value. The names print outside that conditional.
+domain: communication
+variant: nccl-all-reduce
+status: Succeeded
+runtime: 12m 30s
+testScale: diagnose
+env:
+  - NCCL_NVLS_ENABLE
+diagnose:
+  stage: Confirmation
+  round: 3
+  healthyNodes:
+    - worker3
+  suspectNodes:
+    - worker4
