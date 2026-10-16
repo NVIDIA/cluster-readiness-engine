@@ -1,6 +1,6 @@
 # ADR-096: Mokka GPU Simulation for Local Development and a UAT Runtime Lane
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 
@@ -59,8 +59,8 @@ Three consequences follow, and recent history shows each one.
 
 ```text
 test/uat/mokka/
-  kind/               Kind configs per profile (workers labelled mokka.nvidia.com/type=sgpu)
-  values/             nvml-mock, DRA driver and NVCRE values per profile
+  kind/cluster.yaml   one Kind config shared by every profile (workers labelled mokka.nvidia.com/type=sgpu)
+  values/             nvml-mock values per profile, and DRA driver values; NVCRE reuses test/uat/tilt/nvcre-values.yaml
   manifests/          device plugin and GFD DaemonSets
   stub/               Dockerfile, all_reduce_perf_mpi, recorded logs, mpirun wrapper
   setup.sh            brings up one profile; shared by make mokka-up and the CI lane
@@ -115,7 +115,7 @@ These are the versions and flags proven locally (see Notes).
 
 ### Documentation
 
-A `docs/how-to-guides/` page, "Run NVCRE locally without GPUs", registered in `docs/index.yml`. It covers `make mokka-up`, the profiles, running a Certification with the stub image, and a short "what this does not prove" section: CUDA, NCCL, bandwidth, goodput and DCGM levels 2–4.
+A `docs/how-to-guides/` page, "Run NVCRE locally without GPUs", registered in `docs/index.yml`. It covers `make mokka-up`, the profiles, running a Certification with the stub image, and a short "what this does not prove" section: CUDA, NCCL, bandwidth, goodput and DCGM diagnostics.
 
 ### CI
 

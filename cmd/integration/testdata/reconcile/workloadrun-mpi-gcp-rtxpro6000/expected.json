@@ -50,8 +50,6 @@
               "plm_rsh_args",
               "-o StrictHostKeyChecking=no -o ConnectionAttempts=10",
               "-x",
-              "NCCL_NVLS_ENABLE=1",
-              "-x",
               "NCCL_CUMEM_ENABLE=1",
               "-x",
               "NCCL_NET_GDR_C2C=1",
@@ -294,10 +292,6 @@
                               "value": "INFO"
                             },
                             {
-                              "name": "NCCL_NVLS_ENABLE",
-                              "value": "1"
-                            },
-                            {
                               "name": "NCCL_CUMEM_ENABLE",
                               "value": "1"
                             },
@@ -420,10 +414,6 @@
                             {
                               "name": "NCCL_DEBUG",
                               "value": "INFO"
-                            },
-                            {
-                              "name": "NCCL_NVLS_ENABLE",
-                              "value": "1"
                             },
                             {
                               "name": "NCCL_CUMEM_ENABLE",

@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# nvml-mock values for the h100 profile (ADR-096). GPUs are allocated by the
+# device plugin in manifests/device-plugin.yaml.
+gpu:
+  profile: h100
+nodeSelector:
+  mokka.nvidia.com/type: sgpu
