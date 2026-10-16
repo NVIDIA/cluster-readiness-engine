@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: nscale-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  nodesPerJob: 1
+  enableMNNVL: false
+  dcgmHost: nvidia-dcgm.gpu-system.svc:5555
+  categories:
+    - domain: diagnostics
+      variant: dcgm-level4
+      options:
+        maxConcurrent: 1

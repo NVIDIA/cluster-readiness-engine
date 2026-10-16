@@ -1,0 +1,5 @@
+[
+  "training/nemotron5-8b",
+  "communication/nccl-all-reduce (MNNVL Enabled) [category 2]",
+  "communication/nccl-all-reduce (MNNVL Enabled) [category 3]"
+]

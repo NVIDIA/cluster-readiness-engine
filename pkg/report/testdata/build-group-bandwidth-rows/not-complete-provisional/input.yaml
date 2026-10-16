@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+
+# The controller writes Status.Results long before the Complete condition, so
+# a running measurement has results and no Complete condition. The row is
+# provisional with reason NotComplete, and its 100.00 below the minimum is
+# not judged LOW because the result is not final.
+busBandwidthThreshold: "value >= 300"
+groups:
+  - name: group-0
+    nodes: [n0, n1]
+    domains: [clique-a]
+    phase: Running
+    jobRef: {name: j0}
+measurements:
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: j0}
+    status:
+      results:
+        - {sizeBytes: 1073741824, algBW: "55.00", busBW: "100.00", samples: 3}

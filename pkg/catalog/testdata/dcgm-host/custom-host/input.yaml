@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# dcgmHost names a DCGM Service in another namespace (issue #428): --host
+# must carry it, and the Nscale override must drop its repoint patch so the
+# user's address wins there too.
+target:
+  nodeSelector:
+    nvidia.com/gpu.product: NVIDIA-B200
+gpusPerNode: 8
+dcgmHost: nvidia-dcgm.gpu-system.svc:5555
