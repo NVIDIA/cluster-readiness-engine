@@ -1,0 +1,22 @@
+│                                                                │
+│  Diagnosis:                                                    │
+│    Stage:     complete                                         │
+│    Rounds:    1                                                │
+│    Healthy:   6 nodes                                          │
+│    Max BW:    400.0 GB/s                                       │
+│        clique-a (2 nodes)                                      │
+│    Min BW:    350.0 GB/s                                       │
+│        clique-b (2 nodes)                                      │
+│                                                                │
+│  Test Results:                                                 │
+│                                                                │
+│    intra-rack screening:                                       │
+│      ✓  clique-a                                               │
+│         (2 nodes)                                              │
+│         400.0 GB/s                                             │
+│      ✓  clique-b                                               │
+│         (2 nodes)                                              │
+│         350.0 GB/s                                             │
+│      ?  clique-c                                               │
+│         (2 nodes)                                              │
+│         27.0 GB/s (provisional: LogsUnavailable)               │

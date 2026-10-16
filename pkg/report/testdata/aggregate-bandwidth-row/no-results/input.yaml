@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# No measurement has bandwidth rows, so there is no category row.
+measurements:
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: j0}
+    status:
+      transport: [IB]

@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+
+# group-0 reached 1 GiB at 880.00; group-1 slowed out after 1 MiB at 12.00.
+# The row reports one size, so the largest size wins outright and the
+# smaller-size measurement contributes nothing. This is a decision, not a
+# side effect of the tie-break.
+measurements:
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: j0}
+    status:
+      conditions:
+        - {type: Complete, status: "True", reason: JobSucceeded, message: Job succeeded, lastTransitionTime: "2026-10-01T00:00:00Z"}
+      results:
+        - {sizeBytes: 1073741824, algBW: "440.00", busBW: "880.00", samples: 20}
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: j1}
+    status:
+      conditions:
+        - {type: Complete, status: "True", reason: JobSucceeded, message: Job succeeded, lastTransitionTime: "2026-10-01T00:00:00Z"}
+      results:
+        - {sizeBytes: 1048576, algBW: "6.00", busBW: "12.00", samples: 20}

@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A screening test whose Job passed on provisional results is marked "?",
+# not passing, and is left out of Max/Min BW, which state measured values.
+stage: complete
+rounds: 1
+healthyCount: 6
+tests:
+  - stage: screening
+    name: screen-0
+    nodes: [n0, n1]
+    domain: clique-a
+    busBW: "400.0 GB/s"
+    passed: true
+  - stage: screening
+    name: screen-1
+    nodes: [n2, n3]
+    domain: clique-b
+    busBW: "350.0 GB/s"
+    passed: true
+  - stage: screening
+    name: screen-2
+    nodes: [n4, n5]
+    domain: clique-c
+    busBW: "27.0 GB/s"
+    passed: true
+    provisional: true
+    provisionalReason: LogsUnavailable

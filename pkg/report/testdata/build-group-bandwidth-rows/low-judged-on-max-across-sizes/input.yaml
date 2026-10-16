@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The gate evaluates the maximum BusBW across message sizes. Here 8 GiB
+# peaked at 905 GB/s and the largest size, 16 GiB, at 880 GB/s. Under
+# "value >= 900" the gate passes, so the row and clique must not be LOW even
+# though the displayed largest-size BusBW is below 900.
+busBandwidthThreshold: "value >= 900"
+cliques:
+  - name: clique-a
+    total: 2
+    validated: 2
+    passed: true
+groups:
+  - name: group-0
+    nodes: [node-0, node-1]
+    domains: [clique-a]
+    phase: Succeeded
+    jobRef: {name: job-0}
+measurements:
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: job-0}
+    status:
+      conditions:
+        - {type: Complete, status: "True", reason: JobSucceeded, message: Job succeeded, lastTransitionTime: "2026-10-01T00:00:00Z"}
+      results:
+        - {sizeBytes: 8589934592, algBW: "452.5", busBW: "905.0", samples: 1}
+        - {sizeBytes: 17179869184, algBW: "440.0", busBW: "880.0", samples: 1}

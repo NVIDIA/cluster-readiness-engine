@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# group-0 is final at 300.00, group-1 is LogsUnavailable at 380.00. The clique
+# prints 300.00 and is marked provisional, but the LogsUnavailable reason
+# belongs to 380.00, so it is not attached to the printed value.
+cliques:
+  - name: clique-a
+    total: 4
+    validated: 4
+    passed: true
+groups:
+  - group: group-0
+    groupName: "clique-a (2 nodes)"
+    nodes: [n0, n1]
+    busBW: "300.00 GB/s"
+  - group: group-1
+    groupName: "clique-a (2 nodes)"
+    nodes: [n2, n3]
+    busBW: "380.00 GB/s"
+    provisional: true
+    provisionalReason: LogsUnavailable

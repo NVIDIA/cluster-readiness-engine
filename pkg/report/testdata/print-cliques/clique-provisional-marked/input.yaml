@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# One group in clique-a holds provisional results. The clique still shows the
+# minimum, and carries the provisional marker so it does not read as final.
+cliques:
+  - name: clique-a
+    total: 4
+    validated: 4
+    passed: true
+groups:
+  - group: group-0
+    groupName: "clique-a (2 nodes)"
+    nodes: [n0, n1]
+    busBW: "400.00 GB/s"
+  - group: group-1
+    groupName: "clique-a (2 nodes)"
+    nodes: [n2, n3]
+    busBW: "380.00 GB/s"
+    provisional: true
+    provisionalReason: LogsUnavailable
