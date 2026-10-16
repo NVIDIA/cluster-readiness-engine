@@ -2028,6 +2028,75 @@ spec:
                 format: int32
                 minimum: 0
                 type: integer
+              networkAttachments:
+                description: |-
+                  networkAttachments attaches the workload's worker pods to Multus
+                  secondary networks and requests the extended resource behind each one
+                  (issue #400), for fabrics that expose one resource and one
+                  NetworkAttachmentDefinition per rail, such as Spectrum-X RoCE. The
+                  networks are written to the worker pod's k8s.v1.cni.cncf.io/networks
+                  annotation in list order, and each entry requests count units of its
+                  resourceName on the worker container, so the n-th network lines up
+                  with the n-th resource. The list replaces the NIC wiring the catalog
+                  would otherwise render: it is mutually exclusive with nicResourceName
+                  and disables NIC resource auto-detection. It cannot be combined with
+                  mlnxPerNode: 0. At most 16 entries.
+                items:
+                  description: |-
+                    NetworkAttachment pairs one Multus secondary network with the extended
+                    resource that backs it (issue #400). Each entry adds the network to the
+                    worker pod's k8s.v1.cni.cncf.io/networks annotation, in list order, and
+                    requests count units of resourceName on the worker container. The two are
+                    kept in one entry rather than two parallel lists because the Network
+                    Operator matches them by position: the n-th attachment in the annotation is
+                    wired to a device of the n-th requested resource.
+                  properties:
+                    count:
+                      description: |-
+                        count is the number of resourceName units requested for this
+                        attachment. Defaults to 1 when unset. Entries that share a resourceName
+                        add up on the container.
+                      format: int32
+                      maximum: 64
+                      minimum: 1
+                      type: integer
+                    network:
+                      description: |-
+                        network names the NetworkAttachmentDefinition, either "<name>" (resolved
+                        in the workload's namespace) or "<namespace>/<name>". The namespace must
+                        be a DNS-1123 label and the name a DNS-1123 subdomain.
+                      maxLength: 317
+                      minLength: 1
+                      pattern: ^([a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?/)?[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                      type: string
+                      x-kubernetes-validations:
+                      - message: network name must be at most 253 characters
+                        rule: self.split('/')[self.split('/').size() - 1].size() <=
+                          253
+                    resourceName:
+                      description: |-
+                        resourceName is the extended resource requested for this attachment on
+                        the worker container (for example "nvidia.com/r0"). It follows the same
+                        rules as nicResourceName: a DNS-subdomain domain, a slash, and a name
+                        segment of at most 63 characters, outside the reserved kubernetes.io and
+                        k8s.io domains.
+                      maxLength: 253
+                      minLength: 1
+                      pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]{0,61}[a-zA-Z0-9])?$
+                      type: string
+                      x-kubernetes-validations:
+                      - message: resourceName must not use the reserved kubernetes.io
+                          or k8s.io domains
+                        rule: '!self.contains(''kubernetes.io/'') && !self.startsWith(''k8s.io/'')
+                          && !self.contains(''.k8s.io/'')'
+                  required:
+                  - network
+                  - resourceName
+                  type: object
+                maxItems: 16
+                minItems: 1
+                type: array
+                x-kubernetes-list-type: atomic
               nicResourceName:
                 description: |-
                   nicResourceName sets the Kubernetes extended resource name of the RDMA
@@ -4672,6 +4741,11 @@ spec:
             x-kubernetes-validations:
             - message: spec is immutable after creation
               rule: self == oldSelf
+            - message: networkAttachments and nicResourceName are mutually exclusive
+              rule: '!has(self.networkAttachments) || !has(self.nicResourceName)'
+            - message: 'networkAttachments cannot be combined with mlnxPerNode: 0'
+              rule: '!has(self.networkAttachments) || !has(self.mlnxPerNode) || self.mlnxPerNode
+                != 0'
           status:
             description: status defines the observed state of WorkloadRun
             properties:

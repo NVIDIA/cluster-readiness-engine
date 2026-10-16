@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# OCI L40S renders network-operator/sriov-net twice plus
+# nvidia.com/mlnxnics: 2 by default. An explicit list replaces both: the
+# annotation names only the listed networks and no mlnxnics request is left.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-l40s-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-L40S
+  nodesPerJob: 2
+  enableMNNVL: false
+  networkAttachments:
+    - {network: east-west-a, resourceName: example.com/ew-a}
+    - {network: east-west-b, resourceName: example.com/ew-b}
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

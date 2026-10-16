@@ -152,6 +152,9 @@ type CategoryResources struct {
 // and as per-category overrides in CertificateCategory.Options.
 // Per-category values take precedence over globals. Nil means "use global"
 // (or auto-select for nodesPerJob).
+// +kubebuilder:validation:XValidation:rule="!has(self.networkAttachments) || !has(self.nicResourceName)",message="networkAttachments and nicResourceName are mutually exclusive"
+// +kubebuilder:validation:XValidation:rule="!has(self.networkAttachments) || !has(self.rdmaDeviceAccess) || self.rdmaDeviceAccess != 'hostPath'",message="networkAttachments cannot be combined with rdmaDeviceAccess: hostPath"
+// +kubebuilder:validation:XValidation:rule="!has(self.networkAttachments) || !has(self.mlnxPerNode) || self.mlnxPerNode != 0",message="networkAttachments cannot be combined with mlnxPerNode: 0"
 type CategoryOptions struct {
 	// nodesPerJob is the number of nodes per job for multi-node workloads.
 	//
@@ -243,6 +246,27 @@ type CategoryOptions struct {
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]{0,61}[a-zA-Z0-9])?$`
 	// +kubebuilder:validation:XValidation:rule="!self.contains('kubernetes.io/') && !self.startsWith('k8s.io/') && !self.contains('.k8s.io/')",message="nicResourceName must not use the reserved kubernetes.io or k8s.io domains"
 	NicResourceName *string `json:"nicResourceName,omitempty"`
+
+	// networkAttachments attaches the workload's worker pods to Multus
+	// secondary networks and requests the extended resource behind each one
+	// (issue #400), for fabrics that expose one resource and one
+	// NetworkAttachmentDefinition per rail, such as Spectrum-X RoCE. The
+	// networks are written to the worker pod's k8s.v1.cni.cncf.io/networks
+	// annotation in list order, and each entry requests count units of its
+	// resourceName on the worker container, so the n-th network lines up
+	// with the n-th resource. The list replaces the NIC wiring the catalog
+	// would otherwise render: it is mutually exclusive with nicResourceName
+	// and disables NIC resource auto-detection, and on OCI it replaces the
+	// default network-operator/sriov-net attachments and their
+	// nvidia.com/mlnxnics request rather than appending to them. A
+	// per-category networkAttachments or nicResourceName replaces whichever of
+	// the two the spec level set. It cannot be combined with
+	// rdmaDeviceAccess: hostPath or with mlnxPerNode: 0. At most 16 entries.
+	// +optional
+	// +listType=atomic
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
+	NetworkAttachments []NetworkAttachment `json:"networkAttachments,omitempty"`
 
 	// rdmaDeviceAccess selects how workload containers reach the host's RDMA
 	// devices. Leave it unset unless the cluster has no RDMA device plugin.

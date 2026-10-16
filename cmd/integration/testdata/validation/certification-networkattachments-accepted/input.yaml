@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A valid list at both levels: namespaced and bare networks, a count, and
+# a per-category list next to a spec-level nicResourceName (resolution, not a
+# conflict, since the rule reads one options block at a time).
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-netatt-ok
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-B300-SXM6-AC
+  nicResourceName: rdma/ib
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+      options:
+        networkAttachments:
+          - {network: nvcre/r0, resourceName: nvidia.com/r0}
+          - {network: r1, resourceName: nvidia.com/r1, count: 2}

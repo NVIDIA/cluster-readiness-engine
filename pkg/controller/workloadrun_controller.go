@@ -483,11 +483,16 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 	// container — on every discovered target node. Zero or multiple
 	// candidates means nothing is injected and a Normal event says why;
 	// detection never guesses (ADR-075).
-	nicDetected := resolveNICResourceName(
-		spec.NicResourceName, detectedPlatform, gpuArch, nodes, mlnxPerNode)
-	nicResourceName := nicDetected.Name
-	if nicDetected.Ran && nicResourceName == "" {
-		r.normalf(run, ReasonNICResourceDetection, "%s", nicDetectionMessage(nicDetected))
+	// An explicit networkAttachments list owns the NIC wiring (issue #400),
+	// so detection is skipped rather than adding a second NIC request.
+	nicResourceName := ""
+	if len(spec.NetworkAttachments) == 0 {
+		nicDetected := resolveNICResourceName(
+			spec.NicResourceName, detectedPlatform, gpuArch, nodes, mlnxPerNode)
+		nicResourceName = nicDetected.Name
+		if nicDetected.Ran && nicResourceName == "" {
+			r.normalf(run, ReasonNICResourceDetection, "%s", nicDetectionMessage(nicDetected))
+		}
 	}
 	if spec.EnableMNNVL != nil {
 		enableMNNVL = *spec.EnableMNNVL
@@ -569,8 +574,13 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 		runtimeDep = platform.BuildExecRuntime(rtCfg)
 	}
 
-	// Build dependencies list.
+	// Build dependencies list. The networkAttachments annotation and
+	// resources go on the runtime now: no WorkloadRun override renders a
+	// networks annotation, so nothing later competes with them.
 	deps := []nvcrev1alpha1.DependencySpec{runtimeDep}
+	if err := platform.ApplyNetworkAttachmentsToDependencies(deps, spec.NetworkAttachments); err != nil {
+		return nil, "", err
+	}
 
 	// ConfigMap dependency (if inline config provided).
 	if spec.Config != nil && len(spec.Config.Inline) > 0 {
