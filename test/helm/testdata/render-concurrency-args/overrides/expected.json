@@ -4,5 +4,6 @@
   "--health-probe-bind-address=:8081",
   "--max-concurrent-reconciles=20",
   "--measurement-max-concurrent-reconciles=7",
-  "--namespace-access-timeout=10m"
+  "--namespace-access-timeout=10m",
+  "--workload-creation-deadline=10m"
 ]
