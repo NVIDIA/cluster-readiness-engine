@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Two groups in clique-a. The LOW group is listed first and the healthy one
+# last. The clique used to show whichever group came last (400), hiding the
+# LOW group. It shows the minimum and LOW when any group is below threshold.
+cliques:
+  - name: clique-a
+    total: 4
+    validated: 4
+    passed: true
+groups:
+  - group: group-0
+    groupName: "clique-a (2 nodes)"
+    nodes: [n0, n1]
+    busBW: "100.00 GB/s"
+    belowMin: true
+  - group: group-1
+    groupName: "clique-a (2 nodes)"
+    nodes: [n2, n3]
+    busBW: "400.00 GB/s"

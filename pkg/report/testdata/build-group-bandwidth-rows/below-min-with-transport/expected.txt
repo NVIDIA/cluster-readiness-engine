@@ -8,6 +8,7 @@
 --- rows ---
 [
   {
+    "group": "group-0",
     "groupName": "clique-0 (2 nodes)",
     "nodes": [
       "node-0",

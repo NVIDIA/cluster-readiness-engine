@@ -7,7 +7,8 @@
       "namespace": "default",
       "labels": {
         "app.kubernetes.io/managed-by": "nvcre",
-        "nvcre.nvidia.com/job": "test-auto-bandwidth"
+        "nvcre.nvidia.com/job": "test-auto-bandwidth",
+        "nvcre.nvidia.com/workflow": "test-auto-bandwidth-wf"
       },
       "annotations": {
         "nvcre.nvidia.com/job-uid": "job-uid"
@@ -43,6 +44,9 @@
     "metadata": {
       "name": "test-auto-bandwidth",
       "namespace": "default",
+      "labels": {
+        "nvcre.nvidia.com/workflow": "test-auto-bandwidth-wf"
+      },
       "finalizers": [
         "nvcre.nvidia.com/finalizer"
       ]

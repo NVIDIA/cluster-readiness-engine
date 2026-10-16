@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A strict "value > 300" fails at exactly 300, so that peak is LOW.
+busBandwidthThreshold: "value > 300"
+groups:
+  - name: group-0
+    nodes: [node-0, node-1]
+    domains: [clique-0]
+    phase: Succeeded
+    jobRef: {name: job-0}
+measurements:
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: job-0}
+    status:
+      conditions:
+        - {type: Complete, status: "True", reason: JobSucceeded, message: Job succeeded, lastTransitionTime: "2026-10-01T00:00:00Z"}
+      results:
+        - {sizeBytes: 17179869184, algBW: "150.0", busBW: "300.0", samples: 1}

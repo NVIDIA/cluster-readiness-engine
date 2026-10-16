@@ -1211,11 +1211,11 @@ func (r *WorkflowReconciler) isBelowBandwidthThreshold(ctx context.Context, jobN
 	if !meta.IsStatusConditionTrue(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete) {
 		return false, true, nil
 	}
-	if !bandwidthFinal(bm) {
+	if !BandwidthFinal(bm) {
 		reason := meta.FindStatusCondition(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete).Reason
 		return false, false, fmt.Errorf("BandwidthMeasurement %s completed without final results (%s)", bm.Name, reason)
 	}
-	measured := maxBusBandwidth(bm.Status.Results)
+	measured := MaxBusBandwidth(bm.Status.Results)
 	passed, evalErr := threshold.Evaluate(measured, expr)
 	if evalErr != nil {
 		return false, false, fmt.Errorf("evaluate bandwidth threshold for job %s: %w", jobName, evalErr)
@@ -1295,12 +1295,24 @@ func (r *WorkflowReconciler) isJobTimedOut(workflow *nvcrev1alpha1.Workflow, g *
 // when the Job's InProgress condition carries WorkloadSchedulingBlocked, or
 // "" otherwise. The Job condition message already relays the scheduler's
 // diagnosis, so the Workflow relays it verbatim (ADR-083).
+//
+// A Job whose workload create is being rejected (WorkloadCreationRejected,
+// issue #488) is relayed the same way, as "job <name> creation rejected:
+// <reason>", so the Workflow does not report a group as running when nothing
+// was created.
 func schedulingBlockedMessage(job *nvcrev1alpha1.Job) string {
 	cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobInProgress)
-	if cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != ReasonWorkloadSchedulingBlocked {
+	if cond == nil || cond.Status != metav1.ConditionTrue {
 		return ""
 	}
-	return fmt.Sprintf("job %s scheduling blocked: %s", job.Name, cond.Message)
+	switch cond.Reason {
+	case ReasonWorkloadSchedulingBlocked:
+		return fmt.Sprintf("job %s scheduling blocked: %s", job.Name, cond.Message)
+	case ReasonWorkloadCreationRejected:
+		return fmt.Sprintf("job %s creation rejected: %s", job.Name, cond.Message)
+	default:
+		return ""
+	}
 }
 
 func (r *WorkflowReconciler) hasRunningGroups(orch *nvcrev1alpha1.OrchestrationStatus) bool {

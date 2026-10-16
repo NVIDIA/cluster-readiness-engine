@@ -412,6 +412,16 @@ type JobStatus struct {
 	// +optional
 	SchedulingResumedTime *metav1.Time `json:"schedulingResumedTime,omitempty"`
 
+	// workloadCreationRejectedSince records when the API server first
+	// rejected this Job's workload create (admission webhook, admission
+	// policy, ResourceQuota). Set on the first rejected create and cleared
+	// once the create succeeds. While set, the Job stays InProgress with
+	// reason "WorkloadCreationRejected"; a rejection that outlasts the
+	// controller's workload creation deadline fails the Job. Persisted so
+	// controller restarts do not reset the deadline. See issue #488.
+	// +optional
+	WorkloadCreationRejectedSince *metav1.Time `json:"workloadCreationRejectedSince,omitempty"`
+
 	// restartCount tracks the number of times the workload has been restarted from checkpoint.
 	// +optional
 	RestartCount int32 `json:"restartCount,omitempty"`

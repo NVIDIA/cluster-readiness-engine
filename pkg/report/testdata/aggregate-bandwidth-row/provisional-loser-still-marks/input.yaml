@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+
+# A (final) at 100.00 wins the minimum over B (LogsUnavailable) at 400.00.
+# The row is still provisional because one measurement is not final, and the
+# reason is dropped since it does not describe the printed 100.00.
+measurements:
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: a}
+    status:
+      conditions:
+        - {type: Complete, status: "True", reason: JobSucceeded, message: Job succeeded, lastTransitionTime: "2026-10-01T00:00:00Z"}
+      results:
+        - {sizeBytes: 1073741824, algBW: "55.00", busBW: "100.00", samples: 20}
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: b}
+    status:
+      conditions:
+        - {type: Complete, status: "True", reason: LogsUnavailable, message: Referenced Job no longer exists, lastTransitionTime: "2026-10-01T00:00:00Z"}
+      results:
+        - {sizeBytes: 1073741824, algBW: "210.00", busBW: "400.00", samples: 20}

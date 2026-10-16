@@ -1,0 +1,22 @@
+{
+  "measurementWorkflow": "workflow-with-metrics",
+  "recordedSeries": [
+    {
+      "metric": "nvcre_nccl_algbw_gbps",
+      "workflow": "workflow-with-metrics"
+    },
+    {
+      "metric": "nvcre_nccl_algbw_gbs",
+      "workflow": "workflow-with-metrics"
+    },
+    {
+      "metric": "nvcre_nccl_busbw_gbps",
+      "workflow": "workflow-with-metrics"
+    },
+    {
+      "metric": "nvcre_nccl_busbw_gbs",
+      "workflow": "workflow-with-metrics"
+    }
+  ],
+  "cleanupRemovedAllSeries": true
+}
