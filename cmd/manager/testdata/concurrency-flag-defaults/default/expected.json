@@ -44,6 +44,10 @@
     "default": "true"
   },
   {
+    "name": "namespace-access-timeout",
+    "default": "10m0s"
+  },
+  {
     "name": "webhook-cert-key",
     "default": "tls.key"
   },
@@ -54,6 +58,10 @@
   {
     "name": "webhook-cert-path",
     "default": ""
+  },
+  {
+    "name": "workload-creation-deadline",
+    "default": "10m0s"
   },
   {
     "name": "zap-devel",

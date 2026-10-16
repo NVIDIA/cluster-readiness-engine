@@ -37,6 +37,7 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/orchestration"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/podlogs"
+	"github.com/NVIDIA/cluster-readiness-engine/pkg/rbac"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/threshold"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/workload"
 )
@@ -68,8 +69,31 @@ type WorkflowReconciler struct {
 	NodeDiscoverer *nodemonitor.NodeDiscoverer
 	// MaxConcurrentReconciles bounds the number of Workflow objects reconciled concurrently.
 	MaxConcurrentReconciles int
+	// AccessReviewer checks the controller's write access in a Workflow's
+	// namespace before anything is written there (ADR-092). SetupWithManager
+	// defaults it to SelfSubjectAccessReviews; nil skips the check, which only
+	// unit tests that build the reconciler directly rely on.
+	AccessReviewer AccessReviewer
+	// NamespaceAccessTimeout bounds a Workflow's wait for that access. Zero
+	// means DefaultNamespaceAccessTimeout.
+	NamespaceAccessTimeout time.Duration
+	// ServiceAccount is the controller's own ServiceAccount, named in the
+	// RoleBinding a waiting Workflow asks for. Empty fields default to the one
+	// `nvcrectl setup init` installs.
+	ServiceAccount rbac.ServiceAccount
+
+	// now is the clock for the namespace access wait; nil means time.Now.
+	now func() time.Time
 }
 
+// RBAC. controller-gen runs with output:rbac:none, so these markers document
+// the grants; the chart's templates are maintained by hand and test/helm checks
+// them. The grants are split between two ClusterRoles (ADR-092):
+// nvcre-manager-role, bound cluster-wide, and nvcre-run-role, bound per run
+// namespace under rbac.scope: namespaced and cluster-wide under
+// rbac.scope: cluster.
+//
+// nvcre-manager-role: reads, cluster-scoped writes, NVCRE's own CRDs, events.
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workflows,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workflows/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=workflows/finalizers,verbs=update
@@ -80,44 +104,54 @@ type WorkflowReconciler struct {
 // Pods are read for the timeout failure-log capture and for the pod-drain
 // barrier (shouldWaitForPodDrain) that gates scoped-dependency cleanup.
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
-// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get
 // +kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;patch;watch
-// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
+//
+// The run namespace is read live in handleDeletion to tell whether it is
+// terminating, and the access check reviews the controller's own permissions.
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get
+// +kubebuilder:rbac:groups=authorization.k8s.io,resources=selfsubjectaccessreviews,verbs=create
 //
 // Event emission. controller-runtime's recorder writes through both the legacy
 // core/v1 Event API and events.k8s.io/v1, so both are granted. These were
 // previously covered only by a wildcard grant; without them the recorder fails
-// silently and Workflow/Job events never appear in `kubectl describe`.
+// silently and Workflow/Job events never appear in `kubectl describe`. They
+// stay cluster-wide so a Workflow can report a missing binding in the
+// namespace that lacks it.
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
+//
+// GPU architecture fallback for platforms with no nvidia.com/gpu.product
+// label (DRA-only GPU stacks): augmentGPUProductLabels reads productName from
+// gpu.nvidia.com ResourceSlices.
+// +kubebuilder:rbac:groups=resource.k8s.io,resources=resourceslices,verbs=get;list;watch
+//
+// nvcre-run-role: every write to a namespaced resource outside NVCRE's API
+// group. Node-result ConfigMaps, then the dependency resources.
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;create;update;patch;delete
 //
 // Dependency resources. The Workflow controller materialises DependencySpec
 // entries as unstructured objects, so these grants define the complete set of
 // kinds a Workflow may create. They are enumerated rather than wildcarded: a
 // wildcard here is cluster-admin, which is not an acceptable posture for an
-// operator running on a shared GPU cluster.
+// operator running on a shared GPU cluster. None is listed: dependencies are
+// read one at a time by name.
 //
 // Adding a new dependency kind to pkg/catalog/entries/_lib/deps/ or
-// pkg/platform/overrides/ requires a matching grant below, otherwise dependency
-// creation fails with a Forbidden error surfaced on the Workflow's
-// DependencyCreationError condition.
+// pkg/platform/overrides/ requires a matching grant in nvcre-run-role,
+// otherwise dependency creation is forbidden and the Workflow waits with
+// NamespacePermissionsMissing until --namespace-access-timeout.
 //
 // Each dependency kind (PVCs, TrainingRuntimes, ResourceClaimTemplates and
 // ComputeDomains below, ConfigMaps above) needs update as well as create, get
 // and delete: a dependency becomes job-scoped when the Job template references
 // its name (for example a checkpoint PVC named by spec.checkpoint.pvcName), and
 // setDependencyOwners stamps the Job owner reference on job-scoped dependencies
-// with Update. test/helm's manager-role-dependency-access case checks the chart.
-// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;create;update;delete
-// +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainingruntimes,verbs=get;list;create;update;patch;delete
-// +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainjobs,verbs=get;list;delete
-// +kubebuilder:rbac:groups=resource.k8s.io,resources=resourceclaimtemplates,verbs=get;list;create;update;patch;delete
-// +kubebuilder:rbac:groups=resource.nvidia.com,resources=computedomains,verbs=get;list;create;update;patch;delete
-//
-// GPU architecture fallback for platforms with no nvidia.com/gpu.product
-// label (DRA-only GPU stacks): augmentGPUProductLabels reads productName from
-// gpu.nvidia.com ResourceSlices.
-// +kubebuilder:rbac:groups=resource.k8s.io,resources=resourceslices,verbs=get;list;watch
+// with Update. test/helm's run-namespace-access case checks the chart.
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;create;update;delete
+// +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainingruntimes,verbs=get;create;update;patch;delete
+// +kubebuilder:rbac:groups=trainer.kubeflow.org,resources=trainjobs,verbs=delete
+// +kubebuilder:rbac:groups=resource.k8s.io,resources=resourceclaimtemplates,verbs=get;create;update;patch;delete
+// +kubebuilder:rbac:groups=resource.nvidia.com,resources=computedomains,verbs=get;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -191,8 +225,23 @@ func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *nvcrev1
 	// resources merged into TrainingRuntime) take effect before the resource is
 	// created. This is required because some dependencies (e.g. TrainingRuntime)
 	// are immutable after creation.
+	//
+	// The namespace access check runs first (ADR-092): a Workflow without the
+	// write access it needs waits here, before discovery, so a wait does not
+	// re-run discovery and re-emit its events on every requeue.
 	if orch.TotalGroups == 0 {
+		if result, stop, err := r.gateNamespaceAccess(ctx, workflow); stop || err != nil {
+			return result, err
+		}
 		return r.discoverAndPartition(ctx, workflow, orch)
+	}
+
+	// A Workflow already waiting for access stays waiting until the check
+	// passes, whichever write sent it there.
+	if namespaceAccessWaiting(workflow) {
+		if result, stop, err := r.gateNamespaceAccess(ctx, workflow); stop || err != nil {
+			return result, err
+		}
 	}
 
 	// Re-apply overrides on subsequent reconciles using cached detection results.
@@ -200,6 +249,10 @@ func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *nvcrev1
 	// inside discoverAndPartition, but guards against partial failures).
 	if err := r.ensureWorkflowDependencies(ctx, workflow); err != nil {
 		log := logf.FromContext(ctx)
+		if result, stop, waitErr := r.awaitAccessOnForbidden(ctx, workflow, err,
+			applyDependencyRefs(workflow.Status.DependencyRefs)); stop {
+			return result, waitErr
+		}
 		log.Error(err, "Failed to create dependencies")
 		reason := ReasonDependencyCreationError
 		message := fmt.Sprintf("Failed to create dependency: %v", err)
@@ -229,18 +282,75 @@ func (r *WorkflowReconciler) reconcileJob(ctx context.Context, workflow *nvcrev1
 		return ctrl.Result{}, err
 	}
 
+	// Observing groups and completing an iteration write node results. A
+	// forbidden write holds back its unfinished transition; earlier completed
+	// groups are persisted before requeueAfterForbiddenWrite records the wait
+	// (ADR-092). This check catches a denial already cached, before the
+	// writes are attempted. It consults cached denials only, so a running
+	// Workflow pays nothing for it.
+	//
+	// The exception is a running group whose Job has not created its TrainJob
+	// yet. The Job controller retries a forbidden TrainJob create without
+	// writing status, so a binding removed between the Job and its TrainJob
+	// would otherwise go unnoticed, bounded only by timeoutPerJob, which is
+	// optional. While a group is in that state the full check runs, live
+	// reviews cached for 30 seconds, so the wait and its timeout start.
+	if r.hasRunningGroups(orch) || r.allGroupsTerminal(orch) {
+		gate := r.gateKnownDenial
+		if r.hasRunningGroups(orch) && r.groupAwaitingWorkload(ctx, orch) {
+			gate = r.gateNamespaceAccess
+		}
+		if result, stop, err := gate(ctx, workflow); stop || err != nil {
+			return result, err
+		}
+	}
+
 	// Check for running groups — update their status from Jobs
 	if r.hasRunningGroups(orch) {
-		return r.updateStatusFromJobs(ctx, workflow)
+		return r.requeueAfterForbiddenWrite(ctx, workflow)(r.updateStatusFromJobs(ctx, workflow))
 	}
 
 	// Check if current iteration is complete (all groups terminal)
 	if r.allGroupsTerminal(orch) {
-		return r.handleIterationComplete(ctx, workflow, orch)
+		return r.requeueAfterForbiddenWrite(ctx, workflow)(r.handleIterationComplete(ctx, workflow, orch))
+	}
+
+	// Launching creates job-scoped dependencies and the Job's TrainJob, so the
+	// access check runs again first. It covers retries and iteration rollover,
+	// long after discovery ran, and answers from its cache in between.
+	if result, stop, err := r.gateNamespaceAccess(ctx, workflow); stop || err != nil {
+		return result, err
 	}
 
 	// Launch pending groups respecting maxConcurrent and overflow constraints
 	return r.launchPendingGroups(ctx, workflow, orch)
+}
+
+// groupAwaitingWorkload reports whether a running group's Job has not created
+// its workload yet. It reads the Jobs from the cache: a Job that is missing
+// there, or already terminal, is left to updateStatusFromJobs.
+func (r *WorkflowReconciler) groupAwaitingWorkload(ctx context.Context, orch *nvcrev1alpha1.OrchestrationStatus) bool {
+	for i := range orch.Groups {
+		g := &orch.Groups[i]
+		if g.Phase != nvcrev1alpha1.GroupRunning || g.JobRef == nil {
+			continue
+		}
+		job := &nvcrev1alpha1.Job{}
+		if err := r.Get(ctx, client.ObjectKey{Namespace: g.JobRef.Namespace, Name: g.JobRef.Name}, job); err != nil {
+			continue
+		}
+		if job.Status.WorkloadRef == nil && !getJobTerminalState(job).terminal {
+			return true
+		}
+	}
+	return false
+}
+
+// namespaceAccessWaiting reports whether the Workflow is waiting for the
+// controller's write access in its namespace.
+func namespaceAccessWaiting(workflow *nvcrev1alpha1.Workflow) bool {
+	cond := meta.FindStatusCondition(workflow.Status.Conditions, nvcrev1alpha1.WorkflowNamespaceAccess)
+	return cond != nil && cond.Status == metav1.ConditionFalse
 }
 
 // exclusionSummary lists every node that was targeted but left uncertified, and
@@ -650,6 +760,14 @@ func (r *WorkflowReconciler) discoverAndPartition(ctx context.Context, workflow 
 	// Dependency refs are accumulated in memory; setWorkflowInProgress below
 	// writes the full status (including refs) in a single update.
 	if err := r.ensureWorkflowDependencies(ctx, workflow); err != nil {
+		// A dependency kind an override added was not part of the check
+		// before discovery, so its create can be the first sign the binding
+		// does not cover it.
+		if result, stop, waitErr := r.awaitAccessOnForbidden(ctx, workflow, err,
+			applyDependencyRefs(workflow.Status.DependencyRefs),
+			applyExclusionRecord(orch.ExcludedNodes, orch.ExclusionReason)); stop {
+			return result, waitErr
+		}
 		log.Error(err, "Failed to create dependencies")
 		return r.failWorkflowForDependencyError(ctx, workflow, orch, err)
 	}
@@ -1177,12 +1295,24 @@ func (r *WorkflowReconciler) isJobTimedOut(workflow *nvcrev1alpha1.Workflow, g *
 // when the Job's InProgress condition carries WorkloadSchedulingBlocked, or
 // "" otherwise. The Job condition message already relays the scheduler's
 // diagnosis, so the Workflow relays it verbatim (ADR-083).
+//
+// A Job whose workload create is being rejected (WorkloadCreationRejected,
+// issue #488) is relayed the same way, as "job <name> creation rejected:
+// <reason>", so the Workflow does not report a group as running when nothing
+// was created.
 func schedulingBlockedMessage(job *nvcrev1alpha1.Job) string {
 	cond := meta.FindStatusCondition(job.Status.Conditions, nvcrev1alpha1.JobInProgress)
-	if cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != ReasonWorkloadSchedulingBlocked {
+	if cond == nil || cond.Status != metav1.ConditionTrue {
 		return ""
 	}
-	return fmt.Sprintf("job %s scheduling blocked: %s", job.Name, cond.Message)
+	switch cond.Reason {
+	case ReasonWorkloadSchedulingBlocked:
+		return fmt.Sprintf("job %s scheduling blocked: %s", job.Name, cond.Message)
+	case ReasonWorkloadCreationRejected:
+		return fmt.Sprintf("job %s creation rejected: %s", job.Name, cond.Message)
+	default:
+		return ""
+	}
 }
 
 func (r *WorkflowReconciler) hasRunningGroups(orch *nvcrev1alpha1.OrchestrationStatus) bool {
@@ -1299,6 +1429,28 @@ func (r *WorkflowReconciler) launchPendingGroups(ctx context.Context, workflow *
 				}
 				return ctrl.Result{}, nil
 			}
+			// A forbidden job-scoped dependency write after the access check
+			// passed means the binding went away mid-run, unless a fresh
+			// review says otherwise. Groups launched earlier in this pass
+			// are already running, so they are recorded first and this
+			// group stays Pending for the check before the next launch.
+			if launched && r.AccessReviewer != nil && apierrors.IsForbidden(err) {
+				logf.FromContext(ctx).Info("Write forbidden while launching group; leaving it pending",
+					"group", g.Name, "error", err.Error())
+				break
+			}
+			if result, stop, waitErr := r.awaitAccessOnForbidden(ctx, workflow, err,
+				applyDependencyRefs(workflow.Status.DependencyRefs)); stop {
+				return result, waitErr
+			}
+			// Forbidden although a fresh review allows the write: an
+			// admission policy, webhook or ResourceQuota rejected it.
+			// Retrying would leave the group Pending, where neither
+			// timeoutPerJob nor the access timeout runs, so the Workflow
+			// fails now with the rejection's message (ADR-092).
+			if r.AccessReviewer != nil && apierrors.IsForbidden(err) {
+				return r.failLaunchRejected(ctx, workflow, err)
+			}
 			return ctrl.Result{}, err
 		}
 		running++
@@ -1314,6 +1466,23 @@ func (r *WorkflowReconciler) launchPendingGroups(ctx context.Context, workflow *
 	}
 
 	return ctrl.Result{RequeueAfter: r.getJobRequeueInterval()}, nil
+}
+
+// failLaunchRejected fails the Workflow for a launch write that admission or
+// quota rejected: the Job itself (JobCreationError) or one of its job-scoped
+// dependencies (DependencyCreationError). Refs for dependency copies created
+// before the rejection are persisted so the finalizer can clean them up.
+func (r *WorkflowReconciler) failLaunchRejected(ctx context.Context, workflow *nvcrev1alpha1.Workflow, err error) (ctrl.Result, error) {
+	reason, message := ReasonDependencyCreationError, fmt.Sprintf("Failed to create dependency: %v", err)
+	if _, ok := errors.AsType[*jobCreateError](err); ok {
+		reason, message = ReasonJobCreationError, fmt.Sprintf("Failed to create Job: %v", err)
+	}
+	logf.FromContext(ctx).Error(err, "Launch write rejected by admission or quota")
+	if statusErr := r.setWorkflowFailed(ctx, workflow, reason, message,
+		applyDependencyRefs(workflow.Status.DependencyRefs)); statusErr != nil {
+		return ctrl.Result{}, statusErr
+	}
+	return ctrl.Result{}, nil
 }
 
 // createJobForGroup creates a Job for a specific group, pinned to that group's nodes.
@@ -1481,7 +1650,7 @@ func (r *WorkflowReconciler) createJobForGroup(ctx context.Context, workflow *nv
 
 	log.Info("Creating Job for group", "name", jobName, "group", group.Name, "iteration", orch.CurrentIteration)
 	if err := r.createOrAdoptJob(ctx, workflow, job); err != nil {
-		return err
+		return &jobCreateError{err: err}
 	}
 
 	if err := r.setDependencyOwners(ctx, job, jobRefs); err != nil {
@@ -1659,6 +1828,13 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 	// blockedMsg carries the first running Job's scheduling-blocked diagnosis
 	// up to the Workflow condition (ADR-083).
 	blockedMsg := ""
+	var accessWriteErr error
+	// A group retried or finished this pass deletes its job-scoped
+	// dependencies and drops their refs in memory. The tail write carries
+	// those removals, as it carries the groups: launching skips creating a
+	// group's dependencies while refs for it remain, so a stale ref would
+	// relaunch the group against objects that no longer exist.
+	refsBefore := slices.Clone(workflow.Status.DependencyRefs)
 
 	for i := range orch.Groups {
 		g := &orch.Groups[i]
@@ -1667,6 +1843,13 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		}
 		outcome, blocked, err := r.observeRunningGroup(ctx, workflow, orch, g)
 		if err != nil {
+			if _, denied := errors.AsType[*accessDeniedWriteError](err); denied {
+				// Earlier groups may already have deleted their Jobs for a retry.
+				// Persist their completed transitions before recording the wait;
+				// this group's unfinished transition is not in changed.
+				accessWriteErr = err
+				break
+			}
 			return ctrl.Result{}, err
 		}
 		switch outcome {
@@ -1682,7 +1865,7 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 		}
 	}
 
-	if statusChanged || anyRunning {
+	if statusChanged || (anyRunning && accessWriteErr == nil) {
 		runningCount := countRunningGroups(orch)
 		msg := fmt.Sprintf("Iteration %d/%d: %d groups running",
 			orch.CurrentIteration, effectiveIterations(workflow.Spec.Orchestration), runningCount)
@@ -1727,11 +1910,31 @@ func (r *WorkflowReconciler) updateStatusFromJobs(ctx context.Context, workflow 
 			}
 			return applied
 		}
-		if err := r.setWorkflowInProgress(ctx, workflow, reason, msg, applyGroups); err != nil {
+		statusTarget := workflow
+		if accessWriteErr != nil {
+			// applyGroups protects untouched groups after a conflict refetch,
+			// but the first attempt would otherwise write the rejected group's
+			// in-memory mutations too. Start from persisted status here.
+			statusTarget = &nvcrev1alpha1.Workflow{}
+			if err := r.jobReader().Get(ctx, client.ObjectKeyFromObject(workflow), statusTarget); err != nil {
+				return ctrl.Result{}, fmt.Errorf("reload Workflow to preserve completed groups before the access wait: %w", err)
+			}
+		}
+		// A group that completed this pass may have written node results and
+		// pointed the Workflow at them. Carry those refs like the groups, so a
+		// conflict refetch or the reload above does not drop them while the
+		// ConfigMap they name survives. A denied write never sets a ref.
+		if err := r.setWorkflowInProgress(ctx, statusTarget, reason, msg, applyGroups,
+			applySucceededNodesRef(workflow.Status.SucceededNodesRef),
+			applyFailedNodesRef(workflow.Status.FailedNodesRef),
+			removeDependencyRefs(droppedDependencyRefs(refsBefore, workflow.Status.DependencyRefs))); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
+	if accessWriteErr != nil {
+		return ctrl.Result{}, accessWriteErr
+	}
 	if stale {
 		return ctrl.Result{RequeueAfter: requeueImmediate}, nil
 	}
@@ -2095,8 +2298,9 @@ func (r *WorkflowReconciler) completeTerminalGroup(
 	g.CompletionTime = &now
 
 	if len(job.Status.FailedNodes) > 0 {
-		if err := r.recordFailedNodes(ctx, workflow, job.Status.FailedNodes); err != nil {
-			log.Error(err, "Failed to record failed nodes to ConfigMap")
+		if err := r.nodeResultsWriteError(ctx, workflow, r.recordFailedNodes(ctx, workflow, job.Status.FailedNodes),
+			"Failed to record failed nodes to ConfigMap"); err != nil {
+			return false, err
 		}
 	}
 
@@ -2379,11 +2583,13 @@ func (r *WorkflowReconciler) handleDiagnoseRoundComplete(ctx context.Context, wo
 		msg := fmt.Sprintf("Diagnosis complete: %d faulty nodes confirmed", len(confirmedFaulty))
 		log.Info(msg)
 
-		if err := r.recordFailedNodes(ctx, workflow, noderesults.NodesWithFailureDetails(confirmedFaulty, ReasonWorkloadFailed, msg)); err != nil {
-			log.Error(err, "Failed to record failed nodes to ConfigMap")
+		if err := r.nodeResultsWriteError(ctx, workflow, r.recordFailedNodes(ctx, workflow, noderesults.NodesWithFailureDetails(confirmedFaulty, ReasonWorkloadFailed, msg)),
+			"Failed to record failed nodes to ConfigMap"); err != nil {
+			return ctrl.Result{}, err
 		}
-		if err := r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)); err != nil {
-			log.Error(err, "Failed to record succeeded nodes to ConfigMap")
+		if err := r.nodeResultsWriteError(ctx, workflow, r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)),
+			"Failed to record succeeded nodes to ConfigMap"); err != nil {
+			return ctrl.Result{}, err
 		}
 		diag.Stage = nvcrev1alpha1.DiagnoseStageComplete
 
@@ -2631,11 +2837,13 @@ func (r *WorkflowReconciler) diagnoseNextGroups(
 		groups := orchestration.BuildConfirmationGroups(diag.SuspectNodes, diag.HealthyNodes)
 		if len(groups) == 0 {
 			msg := fmt.Sprintf("No healthy reference node; %d suspects marked failed", len(diag.SuspectNodes))
-			if err := r.recordFailedNodes(ctx, workflow, noderesults.NodesWithFailureDetails(diag.SuspectNodes, ReasonWorkloadFailed, msg)); err != nil {
-				logf.FromContext(ctx).Error(err, "Failed to record failed nodes to ConfigMap")
+			if err := r.nodeResultsWriteError(ctx, workflow, r.recordFailedNodes(ctx, workflow, noderesults.NodesWithFailureDetails(diag.SuspectNodes, ReasonWorkloadFailed, msg)),
+				"Failed to record failed nodes to ConfigMap"); err != nil {
+				return ctrl.Result{}, err
 			}
-			if err := r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)); err != nil {
-				logf.FromContext(ctx).Error(err, "Failed to record succeeded nodes to ConfigMap")
+			if err := r.nodeResultsWriteError(ctx, workflow, r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)),
+				"Failed to record succeeded nodes to ConfigMap"); err != nil {
+				return ctrl.Result{}, err
 			}
 			diag.Stage = nvcrev1alpha1.DiagnoseStageComplete
 			return ctrl.Result{}, r.setWorkflowFailed(ctx, workflow, ReasonIterationsFailed, msg,
@@ -2690,8 +2898,9 @@ func (r *WorkflowReconciler) diagnoseDone(
 	logf.FromContext(ctx).Info(msg, "round", diag.Round,
 		"healthy", len(diag.HealthyNodes), "suspects", len(diag.SuspectNodes))
 
-	if err := r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)); err != nil {
-		logf.FromContext(ctx).Error(err, "Failed to record succeeded nodes to ConfigMap")
+	if err := r.nodeResultsWriteError(ctx, workflow, r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)),
+		"Failed to record succeeded nodes to ConfigMap"); err != nil {
+		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, r.setWorkflowSucceeded(ctx, workflow, ReasonJobCompleted, msg,
 		applySucceededNodesRef(workflow.Status.SucceededNodesRef),
@@ -2778,8 +2987,9 @@ func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *nvcre
 			msg += "; hardware failures occurred on one or more nodes"
 		}
 
-		if err := r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)); err != nil {
-			logf.FromContext(ctx).Error(err, "Failed to record succeeded nodes to ConfigMap")
+		if err := r.nodeResultsWriteError(ctx, workflow, r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)),
+			"Failed to record succeeded nodes to ConfigMap"); err != nil {
+			return ctrl.Result{}, err
 		}
 
 		extras := []func(*nvcrev1alpha1.Workflow) bool{
@@ -2805,8 +3015,9 @@ func (r *WorkflowReconciler) setFinalStatus(ctx context.Context, workflow *nvcre
 
 	msg := fmt.Sprintf("All %d iterations completed successfully", totalIter)
 
-	if err := r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)); err != nil {
-		logf.FromContext(ctx).Error(err, "Failed to record succeeded nodes to ConfigMap")
+	if err := r.nodeResultsWriteError(ctx, workflow, r.recordSucceededNodes(ctx, workflow, succeededNodesForWorkflow(workflow)),
+		"Failed to record succeeded nodes to ConfigMap"); err != nil {
+		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, r.setWorkflowSucceeded(ctx, workflow, ReasonJobCompleted, msg,
 		applySucceededNodesRef(workflow.Status.SucceededNodesRef),
@@ -3181,6 +3392,48 @@ func applyOrchestration(orch *nvcrev1alpha1.OrchestrationStatus) func(*nvcrev1al
 	}
 }
 
+// droppedDependencyRefs returns the refs in before that after no longer holds.
+func droppedDependencyRefs(before, after []nvcrev1alpha1.DependencyResourceRef) []nvcrev1alpha1.DependencyResourceRef {
+	kept := make(map[string]bool, len(after))
+	for _, ref := range after {
+		kept[scopedDependencyRefKey(ref)] = true
+	}
+	var dropped []nvcrev1alpha1.DependencyResourceRef
+	for _, ref := range before {
+		if !kept[scopedDependencyRefKey(ref)] {
+			dropped = append(dropped, ref)
+		}
+	}
+	return dropped
+}
+
+// removeDependencyRefs returns an extra func that removes the given
+// dependency refs inside the updateStatusWithRetry closure, the counterpart of
+// applyDependencyRefs for refs whose objects this pass deleted. Without it the
+// removal is lost when the write starts from a refetched or reloaded object.
+func removeDependencyRefs(refs []nvcrev1alpha1.DependencyResourceRef) func(*nvcrev1alpha1.Workflow) bool {
+	if len(refs) == 0 {
+		return nil
+	}
+	drop := make(map[string]bool, len(refs))
+	for _, ref := range refs {
+		drop[scopedDependencyRefKey(ref)] = true
+	}
+	return func(w *nvcrev1alpha1.Workflow) bool {
+		kept := w.Status.DependencyRefs[:0:0]
+		for _, ref := range w.Status.DependencyRefs {
+			if !drop[scopedDependencyRefKey(ref)] {
+				kept = append(kept, ref)
+			}
+		}
+		if len(kept) == len(w.Status.DependencyRefs) {
+			return false
+		}
+		w.Status.DependencyRefs = kept
+		return true
+	}
+}
+
 // applyDependencyRefs returns an extra func for setWorkflowFailed that
 // re-applies the given dependency refs inside the updateStatusWithRetry
 // closure. Refs appended to workflow.Status.DependencyRefs in memory (e.g.
@@ -3424,13 +3677,16 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *nvcre
 	// controller version) is skipped and logged — we never delete what we did
 	// not create. Foreign PVCs are remembered so Phase 3 does not patch their
 	// backing PV's reclaim policy either.
+	//
+	// A read or delete forbidden in a terminating namespace is left to the
+	// namespace controller; see recordDependencyCleanupError.
 	var depErrs []error
 	foreignRefs := make(map[string]bool)
 	for _, ref := range reverseDependencyRefs(workflow.Status.DependencyRefs) {
 		obj, err := r.getDependencyObject(ctx, ref)
 		if err != nil {
-			log.Error(err, "Failed to fetch dependency resource before deletion", "name", ref.Name)
-			depErrs = append(depErrs, err)
+			depErrs = r.recordDependencyCleanupError(ctx, ref, err, depErrs,
+				"Failed to fetch dependency resource before deletion")
 			continue
 		}
 		if obj == nil {
@@ -3464,8 +3720,8 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *nvcre
 				foreignRefs[dependencyRefKey(ref)] = true
 				continue
 			}
-			log.Error(err, "Failed to delete dependency resource", "name", ref.Name)
-			depErrs = append(depErrs, err)
+			depErrs = r.recordDependencyCleanupError(ctx, ref, err, depErrs,
+				"Failed to delete dependency resource")
 		}
 	}
 	if err := errors.Join(depErrs...); err != nil {
@@ -3509,6 +3765,30 @@ func (r *WorkflowReconciler) handleDeletion(ctx context.Context, workflow *nvcre
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// recordDependencyCleanupError records a dependency read or delete that failed
+// during teardown, and returns errs with it appended.
+//
+// A Forbidden in a terminating namespace is skipped rather than recorded
+// (ADR-092 decision 5): the RoleBinding that granted access may already be
+// gone with the namespace, and the namespace controller deletes what is left.
+// Recording it would hold the finalizer, and so the namespace, Terminating
+// forever. If the namespace cannot be read, both errors are recorded and the
+// finalizer stays. Each error is classified where it happens, so one skipped
+// dependency does not stop the others being deleted.
+func (r *WorkflowReconciler) recordDependencyCleanupError(
+	ctx context.Context, ref nvcrev1alpha1.DependencyResourceRef, err error, errs []error, msg string,
+) []error {
+	log := logf.FromContext(ctx)
+	skip, nsErr := forbiddenInTerminatingNamespace(ctx, r.jobReader(), ref.Namespace, err)
+	if skip {
+		log.V(1).Info("Leaving dependency resource to the terminating namespace",
+			"scope", ref.Scope, "kind", ref.Kind, "name", ref.Name, "error", err.Error())
+		return errs
+	}
+	log.Error(err, msg, "name", ref.Name)
+	return append(errs, err, nsErr)
 }
 
 // effectiveIterations returns the number of normal iterations to run, ensuring at least 1.
@@ -4015,10 +4295,11 @@ func (r *WorkflowReconciler) cleanupPVForPVC(ctx context.Context, workflow *nvcr
 	log := logf.FromContext(ctx)
 	var pvName string
 
-	// Read the PVC live: a cached read would start a cluster-wide PVC
-	// informer, which the manager role cannot watch (issue #424).
+	// PVCs are never cached (ClientOptions), so this read goes to the API
+	// server. A read forbidden in a terminating namespace takes the claimRef
+	// fallback below, which uses the cluster-wide PV index.
 	pvc := &corev1.PersistentVolumeClaim{}
-	if err := r.jobReader().Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, pvc); err == nil {
+	if err := r.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, pvc); err == nil {
 		pvName = pvc.Spec.VolumeName
 	} else {
 		// PVC already gone; find PV by claimRef.
@@ -4107,6 +4388,9 @@ func (r *WorkflowReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 	if r.NodeDiscoverer == nil {
 		r.NodeDiscoverer = nodemonitor.NewNodeDiscoverer(mgr.GetClient())
+	}
+	if r.AccessReviewer == nil {
+		r.AccessReviewer = NewAccessReviewer(mgr.GetClient())
 	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&nvcrev1alpha1.Workflow{}).

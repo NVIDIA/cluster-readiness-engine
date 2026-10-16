@@ -1,0 +1,11 @@
+# This run created the binding with --grant-run-access, another WorkloadRun
+# adopted it, and then this run's create was rejected. The rollback keeps the
+# binding: deleting it would revoke the other run's access.
+rbacScope: namespaced
+namespaceExists: true
+grantRunAccess: true
+otherRun: true
+createError: 'admission webhook "policy.example.com" denied the request'
+expectRunExists: false
+expectNamespaceExists: true
+expectBinding: true

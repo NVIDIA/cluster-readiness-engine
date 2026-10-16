@@ -1,0 +1,1 @@
+rbac.scope must be "cluster" or "namespaced", got "namespace"

@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The same, with access never returning: the wait ends at the access timeout
+# and the Workflow fails with NamespacePermissionsMissing, even though it sets
+# no timeoutPerJob.
+rejectWorkloadCreates: true
+namespaceAccessTimeoutSeconds: 2
+waitFor:
+  kind: Workflow
+  name: wf-revoked-workload-timeout
+  namespace: access-revoked-workload-timeout
+  condition: Failed
+  reason: NamespacePermissionsMissing
+collect:
+  - kind: Workflow
+    name: wf-revoked-workload-timeout
+    namespace: access-revoked-workload-timeout

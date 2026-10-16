@@ -1,0 +1,129 @@
+{
+  "Workflow/wf-node-results-rejected": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "wf-node-results-rejected",
+      "namespace": "node-results-rejected",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "JobCompleted",
+          "message": "All 1 iterations completed successfully"
+        },
+        {
+          "type": "Failed",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 1,
+        "nodesPerJob": 1,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "completedIterations": 1,
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "gpu-node-01"
+            ],
+            "phase": "Succeeded",
+            "jobRef": {
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "wf-node-results-rejected-job",
+              "namespace": "node-results-rejected"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "events": [
+    {
+      "type": "Normal",
+      "reason": "JobCompleted",
+      "message": "All 1 iterations completed successfully",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "wf-node-results-rejected"
+      },
+      "count": 1
+    },
+    {
+      "type": "Normal",
+      "reason": "JobRunning",
+      "message": "Iteration 1/1: 0 groups running",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "wf-node-results-rejected"
+      },
+      "count": 1
+    },
+    {
+      "type": "Warning",
+      "reason": "NodeResultsWriteRejected",
+      "message": "Failed to record succeeded nodes to ConfigMap: failed to write node-results ConfigMap succeeded-nodes: configmaps \"succeeded-nodes\" is forbidden: injected node-result write rejection. The write was rejected although the controller has access in the namespace, so an admission policy or ResourceQuota refused it; the Workflow continues without this record.",
+      "involvedObject": {
+        "kind": "Workflow",
+        "name": "wf-node-results-rejected"
+      },
+      "count": 1
+    }
+  ]
+}

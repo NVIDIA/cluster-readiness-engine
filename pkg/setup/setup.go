@@ -98,6 +98,7 @@ func newInitCommand(version string) *cobra.Command {
 	var chartRef, trainerChartRef string
 	var autoApprove bool
 	var versionOverride string
+	var rbacScope string
 
 	configFlags := kubeconfig.NewConfigFlags(true)
 	configFlags.Namespace = nil
@@ -132,11 +133,18 @@ Earlier cleanup is not rolled back.
 
 The NVCRE CRDs are server-side-applied from the chart before every Helm
 upgrade, so re-running init after a version bump also updates the CRD
-schemas (Helm alone only installs CRDs on the first install).`,
+schemas (Helm alone only installs CRDs on the first install).
+
+Re-running init keeps the installed release's rbac.scope and
+rbac.runNamespaces (ADR-092); every other chart value returns to its default.
+Pass --rbac-scope to change the scope.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateRBACScope(rbacScope); err != nil {
+				return err
+			}
 			return RunInit(version, image, imagePullSecret, skipPhases, autoApprove,
-				configFlags, versionOverride, chartRef, trainerChartRef,
+				configFlags, versionOverride, chartRef, trainerChartRef, rbacScope,
 				os.Stdin, os.Stderr)
 		},
 	}
@@ -156,6 +164,9 @@ schemas (Helm alone only installs CRDs on the first install).`,
 		"Skip interactive confirmation prompt (for CI/automation)")
 	cmd.Flags().StringVar(&versionOverride, "version", "",
 		"Helm chart version to install (required for dev builds)")
+	cmd.Flags().StringVar(&rbacScope, "rbac-scope", "",
+		"Where the controller may write: cluster or namespaced (chart value rbac.scope, ADR-092). "+
+			"Default: keep the installed release's value, or the chart default on a first install")
 	configFlags.AddFlags(cmd.Flags())
 
 	return cmd
@@ -163,12 +174,13 @@ schemas (Helm alone only installs CRDs on the first install).`,
 
 // RunInit executes the init phases sequentially. chartRef and trainerChartRef
 // override the chart locations the NVCRE and Kubeflow Trainer releases are
-// installed from; empty means the published GHCR charts.
+// installed from; empty means the published GHCR charts. rbacScope sets the
+// chart's rbac.scope; empty keeps the installed release's value.
 func RunInit(
 	version string,
 	image, imagePullSecret, skipPhases string, autoApprove bool,
 	configFlags *kubeconfig.ConfigFlags, versionOverride string,
-	chartRef, trainerChartRef string,
+	chartRef, trainerChartRef, rbacScope string,
 	in io.Reader, out io.Writer,
 ) error {
 	skip, err := parseSkipPhases(skipPhases, initSkipPhases...)
@@ -270,6 +282,7 @@ func RunInit(
 		image:           image,
 		chartRef:        chartRef,
 		pullSecretName:  pullSecret,
+		rbacScope:       rbacScope,
 		out:             out,
 	}); err != nil {
 		// Same attempt-then-classify wrapper as the [deps] phase for
@@ -1552,7 +1565,7 @@ func EnsureNamespace(ctx context.Context, c client.Client, name string, out io.W
 		ns = &corev1.Namespace{
 			Name: name,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by": "nvcrectl",
+				"app.kubernetes.io/managed-by": managedByNvcrectl,
 			},
 		}
 		_, _ = fmt.Fprintf(out, "[namespace] Creating namespace %s...\n", name)
@@ -1579,6 +1592,10 @@ func defaultImage(version string) string {
 // ---------------------------------------------------------------------------
 // Image pull secret helpers
 // ---------------------------------------------------------------------------
+
+// managedByNvcrectl is the app.kubernetes.io/managed-by value on objects
+// nvcrectl creates for a run: the namespace and the run RoleBinding.
+const managedByNvcrectl = "nvcrectl"
 
 const (
 	// pullSecretName is the controller image pull secret created by setup init.

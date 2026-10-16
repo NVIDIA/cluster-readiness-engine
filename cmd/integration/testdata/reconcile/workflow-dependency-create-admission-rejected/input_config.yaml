@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The dependency create is forbidden but a fresh access review allows it, as
+# when an admission policy, a webhook or a ResourceQuota rejects it: the 403 is
+# not about RBAC, so the Workflow fails at once with DependencyCreationError
+# and the rejection's message, as before ADR-092, instead of waiting out the
+# timeout. The review is a real SelfSubjectAccessReview against envtest.
+generateNodes:
+  count: 1
+rejectDependencyCreates: true
+waitFor:
+  kind: Workflow
+  name: wf-admission-rejected
+  namespace: admission-rejected
+  condition: Failed
+  reason: DependencyCreationError
+collect:
+  - kind: Workflow
+    name: wf-admission-rejected
+    namespace: admission-rejected
+expectAbsent:
+  - kind: ConfigMap
+    name: hostfile
+    namespace: admission-rejected

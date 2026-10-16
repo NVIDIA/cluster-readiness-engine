@@ -1,0 +1,6 @@
+# A Forbidden write whose review cannot run, one minute into an existing
+# NamespaceAccessCheckFailed wait: the recheck backs off with the time waited.
+call: requeue
+reviewError: "connection refused"
+waiting: "1m"
+waitingReason: NamespaceAccessCheckFailed

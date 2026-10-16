@@ -1,0 +1,10 @@
+# This run created the binding with --grant-run-access and its create was
+# rejected. With no other run in the namespace, the rollback deletes the
+# binding, so a failed run leaves no standing grant.
+rbacScope: namespaced
+namespaceExists: true
+grantRunAccess: true
+createError: 'admission webhook "policy.example.com" denied the request'
+expectRunExists: false
+expectNamespaceExists: true
+expectBinding: false

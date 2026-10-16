@@ -1,0 +1,6 @@
+# Bindings name the ServiceAccount of the release they are rendered with,
+# not the nvcre-manager default nvcrectl assumes.
+set:
+- fullnameOverride=readiness
+- rbac.scope=namespaced
+- rbac.runNamespaces={team-a}

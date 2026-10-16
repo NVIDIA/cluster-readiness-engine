@@ -5,6 +5,7 @@ package controller
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,15 +13,37 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
-// cleanupPVForPVC must read the PVC from the API server, not the cache: the
-// manager role cannot watch PVCs (issue #424). Client plays the cache and
-// APIReader the API server; the PVC exists only on the API server.
-func TestCleanupPVForPVCReadsPVCLive(t *testing.T) {
+// The manager client must never cache ConfigMaps or PVCs (ADR-092): a cached
+// read starts a cluster-wide informer that rbac.scope: namespaced cannot list,
+// and the manager loops on a forbidden watch (issue #424). PersistentVolumes
+// must stay cached, since findPVByClaimRef reads the cached claimRef index.
+func TestClientOptionsReadConfigMapsAndPVCsLive(t *testing.T) {
+	opts := ClientOptions()
+	require.NotNil(t, opts.Cache)
+
+	uncached := map[reflect.Type]bool{}
+	for _, obj := range opts.Cache.DisableFor {
+		uncached[reflect.TypeOf(obj)] = true
+	}
+	for _, tc := range []struct {
+		obj  client.Object
+		want bool
+	}{
+		{obj: &corev1.ConfigMap{}, want: true},
+		{obj: &corev1.PersistentVolumeClaim{}, want: true},
+		{obj: &corev1.PersistentVolume{}, want: false},
+	} {
+		require.Equal(t, tc.want, uncached[reflect.TypeOf(tc.obj)], "%T uncached", tc.obj)
+	}
+}
+
+// cleanupPVForPVC reads the PVC through the reconciler's client, which
+// ClientOptions keeps uncached for PVCs, so it needs no separate APIReader.
+func TestCleanupPVForPVCReadsPVCThroughClient(t *testing.T) {
 	const (
 		pvcName     = "checkpoint"
 		pvName      = "pv-checkpoint"
@@ -42,26 +65,12 @@ func TestCleanupPVForPVCReadsPVCLive(t *testing.T) {
 		Name: pvcName, Namespace: testNS,
 		Spec: corev1.PersistentVolumeClaimSpec{VolumeName: pvName},
 	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(pv, pvc).Build()
 
-	cachedPVCReads := 0
-	cache := fake.NewClientBuilder().WithScheme(scheme).WithObjects(pv).
-		WithInterceptorFuncs(interceptor.Funcs{
-			Get: func(
-				ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption,
-			) error {
-				if _, ok := obj.(*corev1.PersistentVolumeClaim); ok {
-					cachedPVCReads++
-				}
-				return c.Get(ctx, key, obj, opts...)
-			},
-		}).Build()
-	api := fake.NewClientBuilder().WithScheme(scheme).WithObjects(pvc).Build()
-
-	r := &WorkflowReconciler{Client: cache, APIReader: api, Scheme: scheme}
+	r := &WorkflowReconciler{Client: c, Scheme: scheme}
 	require.True(t, r.cleanupPVForPVC(ctx, workflow, testNS, pvcName))
 
-	require.Zero(t, cachedPVCReads, "PVC read through the cache")
 	got := &corev1.PersistentVolume{}
-	require.NoError(t, cache.Get(ctx, client.ObjectKey{Name: pvName}, got))
+	require.NoError(t, c.Get(ctx, client.ObjectKey{Name: pvName}, got))
 	require.Equal(t, corev1.PersistentVolumeReclaimDelete, got.Spec.PersistentVolumeReclaimPolicy)
 }

@@ -1,0 +1,6 @@
+# The backoff is capped at two minutes.
+call: gate
+inProgress: NamespaceAccessCheckFailed
+waiting: 6m
+waitingReason: NamespaceAccessCheckFailed
+reviewError: 'the server is currently unable to handle the request'

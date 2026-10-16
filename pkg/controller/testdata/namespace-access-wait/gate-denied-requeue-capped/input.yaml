@@ -1,0 +1,7 @@
+# The requeue never overshoots the timeout.
+call: gate
+inProgress: NamespacePermissionsMissing
+waiting: 9m59s
+waitingReason: NamespacePermissionsMissing
+denied:
+- {resource: configmaps, verb: create}

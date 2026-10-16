@@ -1,0 +1,4 @@
+# Group a reports failed nodes: its write creates the node-results ConfigMap and
+# points the Workflow at it. Group b's update of that ConfigMap is denied. The
+# wait must keep a's retry and the failedNodesRef its write set.
+firstRecordsFailedNodes: true

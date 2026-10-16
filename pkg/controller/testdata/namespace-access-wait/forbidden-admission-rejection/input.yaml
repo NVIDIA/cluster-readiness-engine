@@ -1,0 +1,4 @@
+# A write was forbidden but a fresh review allows it: the 403 came from an
+# admission policy or quota, so the caller's error path runs unchanged.
+call: forbidden
+inProgress: GroupsPartitioned

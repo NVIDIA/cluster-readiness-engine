@@ -1,0 +1,188 @@
+{
+  "Job/test-wf-create-rejected-persists-job": {
+    "kind": "Job",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-wf-create-rejected-persists-job",
+      "namespace": "default",
+      "labels": {
+        "app.kubernetes.io/managed-by": "nvcre",
+        "nvcre.nvidia.com/group": "group-0",
+        "nvcre.nvidia.com/workflow": "test-wf-create-rejected-persists"
+      },
+      "annotations": {
+        "nvcre.nvidia.com/group-nodes": "gpu-node-01"
+      },
+      "finalizers": [
+        "nvcre.nvidia.com/finalizer"
+      ]
+    },
+    "spec": {
+      "workload": {
+        "trainJob": {
+          "runtimeRef": {
+            "name": "test-runtime",
+            "apiGroup": "trainer.kubeflow.org",
+            "kind": "TrainingRuntime"
+          },
+          "trainer": {
+            "image": "test-image:latest",
+            "command": [
+              "python",
+              "train.py"
+            ],
+            "numNodes": 1
+          },
+          "suspend": false,
+          "managedBy": "trainer.kubeflow.org/trainjob-controller"
+        }
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "WorkloadCreationError",
+          "message": "Workload TrainJob/test-wf-create-rejected-persists-job-w-df431 creation rejected for longer than 3s: trainjobs.trainer.kubeflow.org \"test-wf-create-rejected-persists-job-w-df431\" is forbidden: admission webhook \"deny.example.com\" denied the request: injected rejection"
+        }
+      ],
+      "workloadCreationRejectedSince": "1970-01-01T00:00:00Z"
+    }
+  },
+  "Workflow/test-wf-create-rejected-persists": {
+    "kind": "Workflow",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-wf-create-rejected-persists",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/workflow-finalizer"
+      ]
+    },
+    "spec": {
+      "jobTemplate": {
+        "spec": {
+          "workload": {
+            "trainJob": {
+              "runtimeRef": {
+                "name": "test-runtime",
+                "apiGroup": "trainer.kubeflow.org",
+                "kind": "TrainingRuntime"
+              },
+              "trainer": {
+                "image": "test-image:latest",
+                "command": [
+                  "python",
+                  "train.py"
+                ],
+                "numNodes": 1
+              },
+              "suspend": false,
+              "managedBy": "trainer.kubeflow.org/trainjob-controller"
+            }
+          }
+        }
+      },
+      "orchestration": {
+        "target": {
+          "nodeSelector": {
+            "nvidia.com/gpu.present": "true"
+          }
+        },
+        "execution": {},
+        "iterations": 1
+      }
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "IterationsFailed",
+          "message": "1 groups failed across 1 iterations"
+        }
+      ],
+      "orchestration": {
+        "totalNodes": 1,
+        "nodesPerJob": 1,
+        "totalGroups": 1,
+        "currentIteration": 1,
+        "completedIterations": 1,
+        "groups": [
+          {
+            "name": "group-0",
+            "nodes": [
+              "gpu-node-01"
+            ],
+            "phase": "Failed",
+            "jobRef": {
+              "apiVersion": "nvcre.nvidia.com/v1alpha1",
+              "kind": "Job",
+              "name": "test-wf-create-rejected-persists-job",
+              "namespace": "default"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "WorkloadCreationError",
+      "message": "Workload TrainJob/test-wf-create-rejected-persists-job-w-df431 creation rejected for longer than 3s: trainjobs.trainer.kubeflow.org \"test-wf-create-rejected-persists-job-w-df431\" is forbidden: admission webhook \"deny.example.com\" denied the request: injected rejection",
+      "involvedObject": {
+        "kind": "Job",
+        "name": "test-wf-create-rejected-persists-job"
+      },
+      "count": 1
+    },
+    {
+      "type": "Warning",
+      "reason": "WorkloadCreationRejected",
+      "message": "Workload TrainJob/test-wf-create-rejected-persists-job-w-df431: trainjobs.trainer.kubeflow.org \"test-wf-create-rejected-persists-job-w-df431\" is forbidden: admission webhook \"deny.example.com\" denied the request: injected rejection",
+      "involvedObject": {
+        "kind": "Job",
+        "name": "test-wf-create-rejected-persists-job"
+      },
+      "count": 1
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "create": false,
+  "delete": false,
+  "generic": false,
+  "requests": [
+    "run-ns/waiting-job"
+  ],
+  "update": true
+}

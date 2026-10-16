@@ -115,8 +115,9 @@ const (
 	ReasonJobValidationFailed = "JobValidationFailed"
 
 	// ReasonJobSchedulingBlocked marks a running Workflow iteration in which
-	// at least one group's Job reports WorkloadSchedulingBlocked. The message
-	// relays that Job's scheduler diagnosis (ADR-083).
+	// at least one group's Job reports WorkloadSchedulingBlocked or
+	// WorkloadCreationRejected. The message relays that Job's diagnosis
+	// (ADR-083, issue #488).
 	ReasonJobSchedulingBlocked = "JobSchedulingBlocked"
 
 	// ReasonJobTimedOut marks a Job's Failed condition set by the Workflow when
@@ -149,6 +150,34 @@ const (
 	// name is already taken by an object this Workflow did not create. The
 	// foreign object is neither adopted nor recorded for cleanup.
 	ReasonDependencyNameCollision = "DependencyNameCollision"
+	// ReasonNamespacePermissionsMissing marks a Workflow waiting for the
+	// controller's write access in its namespace: a SelfSubjectAccessReview
+	// was denied, or a write was forbidden and a fresh review confirmed the
+	// denial. Non-terminal until --namespace-access-timeout expires, when the
+	// Workflow fails with the same reason and the RoleBinding to apply
+	// (ADR-092).
+	ReasonNamespacePermissionsMissing = "NamespacePermissionsMissing"
+	// ReasonNamespaceAccessCheckFailed marks a Workflow whose access check
+	// could not run because a SelfSubjectAccessReview could not be created.
+	// An unanswered check is never treated as permission, so the Workflow
+	// waits under the same bound as ReasonNamespacePermissionsMissing.
+	ReasonNamespaceAccessCheckFailed = "NamespaceAccessCheckFailed"
+	// ReasonNamespaceAccessGranted is the NamespaceAccess condition's reason
+	// once a Workflow that waited has its access.
+	ReasonNamespaceAccessGranted = "NamespaceAccessGranted"
+	// ReasonNamespaceAccessDenied and ReasonNamespaceAccessReviewError are the
+	// Warning events emitted when a Workflow starts waiting. They differ from
+	// the InProgress reasons on purpose: a Warning sharing the transition's
+	// reason would aggregate with it into one row (ADR-080 decision 5), and a
+	// wait that begins mid-run makes no transition at all.
+	ReasonNamespaceAccessDenied      = "NamespaceAccessDenied"
+	ReasonNamespaceAccessReviewError = "NamespaceAccessReviewError"
+	// ReasonNodeResultsWriteRejected is the Warning event emitted when a
+	// node-result ConfigMap write is rejected although the controller has
+	// access, by an admission policy or ResourceQuota. The Workflow goes on
+	// without the record, as before ADR-092, but no longer only in the log.
+	ReasonNodeResultsWriteRejected = "NodeResultsWriteRejected"
+
 	// ReasonGangSchedulingConflict marks a Workflow whose resolved Job template
 	// is invalid after overrides. This includes workload metadata that fails
 	// label validation even when no gang scheduler is configured, as well as a
@@ -184,6 +213,15 @@ const (
 	// See ADR-083.
 	ReasonWorkloadSchedulingBlocked = "WorkloadSchedulingBlocked"
 
+	// ReasonWorkloadCreationRejected indicates the API server is rejecting
+	// the workload create (admission webhook or policy denial, exhausted
+	// ResourceQuota). The Job stays InProgress and the controller keeps
+	// retrying, since some rejections clear (a TrainingRuntime that is not
+	// ready yet, quota that frees up). A rejection that outlasts the
+	// workload creation deadline fails the Job with
+	// ReasonWorkloadCreationError. See issue #488.
+	ReasonWorkloadCreationRejected = "WorkloadCreationRejected"
+
 	// ReasonMeasurementCreationError indicates a GoodputMeasurement or
 	// BandwidthMeasurement child resource could not be created. Handling is
 	// non-fatal, so this event is the operator-visible signal; a threshold that
@@ -216,6 +254,17 @@ type nameCollisionError struct {
 }
 
 func (e *nameCollisionError) Error() string { return e.Message }
+
+// jobCreateError marks a failure to create (or adopt) a group's Job, as
+// opposed to one of its job-scoped dependencies, so a rejection is reported
+// with the reason that names what was rejected.
+type jobCreateError struct {
+	err error
+}
+
+func (e *jobCreateError) Error() string { return e.err.Error() }
+
+func (e *jobCreateError) Unwrap() error { return e.err }
 
 // gangSchedulingConflictError reports that a resolved Workflow no longer
 // agrees with the gang-scheduling intent its owner persisted. It is terminal:

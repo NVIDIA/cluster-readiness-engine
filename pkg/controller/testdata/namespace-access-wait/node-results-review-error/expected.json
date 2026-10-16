@@ -1,0 +1,11 @@
+{
+  "carriedDenials": null,
+  "carriedReviewError": "timeout",
+  "endsPass": true,
+  "error": "configmaps \"node-results\" is forbidden: injected",
+  "events": [],
+  "originalForbiddenPreserved": true,
+  "reviewsAskFresh": [
+    true
+  ]
+}

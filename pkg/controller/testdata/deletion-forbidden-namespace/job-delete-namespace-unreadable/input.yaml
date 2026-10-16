@@ -1,0 +1,3 @@
+owner: job-finalizer
+forbid: delete
+namespace: unreadable

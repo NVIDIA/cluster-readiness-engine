@@ -25,16 +25,19 @@ func missingJobThresholdKeys(thresholds map[string]string, measured map[string]f
 }
 
 // findJobGoodputMeasurement returns the first GoodputMeasurement in the namespace
-// that references this Job, or nil if none exists.
+// that measures this Job, or nil if none exists. A measurement created for an
+// earlier Job with the same name (a retried group) is skipped.
 func findJobGoodputMeasurement(ctx context.Context, c client.Reader, job *nvcrev1alpha1.Job) *nvcrev1alpha1.GoodputMeasurement {
 	var measurements nvcrev1alpha1.GoodputMeasurementList
 	if err := c.List(ctx, &measurements, matchingJobRef(job.Namespace, job.Name)...); err != nil {
 		return nil
 	}
-	if len(measurements.Items) == 0 {
-		return nil
+	for i := range measurements.Items {
+		if measuresJob(&measurements.Items[i], job) {
+			return &measurements.Items[i]
+		}
 	}
-	return &measurements.Items[0]
+	return nil
 }
 
 // findJobBandwidthMeasurement returns the first BandwidthMeasurement in the namespace
@@ -52,15 +55,16 @@ func findJobBandwidthMeasurement(ctx context.Context, c client.Reader, job *nvcr
 	return nil
 }
 
-// annotationJobUID records the UID of the Job a BandwidthMeasurement was
-// created for. The Job is referenced by name, and a retried group reuses its
-// Job's name.
+// annotationJobUID records the UID of the Job a BandwidthMeasurement or
+// GoodputMeasurement was created for. The Job is referenced by name, and a
+// retried group reuses its Job's name.
 const annotationJobUID = "nvcre.nvidia.com/job-uid"
 
-// measuresJob reports whether bm was created for this instance of job. A
-// measurement without the annotation predates it and is taken at its name.
-func measuresJob(bm *nvcrev1alpha1.BandwidthMeasurement, job *nvcrev1alpha1.Job) bool {
-	uid, ok := bm.Annotations[annotationJobUID]
+// measuresJob reports whether a measurement was created for this instance of
+// job. A measurement without the annotation predates it and is taken at its
+// name.
+func measuresJob(measurement metav1.Object, job *nvcrev1alpha1.Job) bool {
+	uid, ok := measurement.GetAnnotations()[annotationJobUID]
 	return !ok || uid == string(job.UID)
 }
 

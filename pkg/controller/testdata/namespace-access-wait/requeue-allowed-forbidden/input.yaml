@@ -1,0 +1,3 @@
+# A pass ends on a Forbidden write that a fresh review allows. The error is
+# returned unchanged and no wait is recorded.
+call: requeue

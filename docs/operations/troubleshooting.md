@@ -67,6 +67,7 @@ kubectl logs -n nvcre deploy/nvcre-manager \
 - The workload resource exists but is not completing — check Kubeflow Trainer logs and pod events.
 - Pods are `Pending` — verify GPU resources are available on target nodes (`kubectl describe node <node>`).
 - The `InProgress` condition has reason `WorkloadSchedulingBlocked` — the workload is admitted but its pods cannot be placed (e.g. GPUs held by another tenant). The condition message relays the scheduler's own diagnosis (also shown on the Workflow as reason `JobSchedulingBlocked` and as a `Blocked:` line in `nvcrectl certification report`); blocked time does not count against `timeoutPerJob` or stall detection. Tune with `spec.schedulingStallGraceSeconds` (default 5m).
+- The `InProgress` condition has reason `WorkloadCreationRejected`: the API server is refusing the workload create, usually an admission webhook, a ValidatingAdmissionPolicy or Kyverno/Gatekeeper rule, or an exhausted ResourceQuota. The condition message carries the API server's own error, and the Workflow relays it under `JobSchedulingBlocked` as the `Blocked:` line in `nvcrectl certification report`. Check `kubectl get events -n <namespace> --field-selector reason=WorkloadCreationRejected`. NVCRE keeps retrying, so a rejection that clears (a TrainingRuntime created late, quota freed) recovers on its own. One that lasts past the controller's `--workload-creation-deadline` (Helm `manager.workloadCreationDeadline`, default 10m, independent of `timeoutPerJob`) fails the Job with reason `WorkloadCreationError` and leaves its `status.failedNodes` empty, since nothing ran on them. The deadline is per Job attempt: with `spec.orchestration.execution.retryFailedGroups` set, each retry gets a fresh Job and a fresh clock, so a permanent denial costs (retries + 1) times the deadline before the group gives up. A missing RoleBinding is not a rejection: the controller confirms a `Forbidden` create with a SelfSubjectAccessReview, and an RBAC denial keeps retrying without this deadline.
 - Kubeflow Trainer is not running — confirm its pods are healthy (`kubectl get pods -n kubeflow-system`).
 
 ## MPI workers refuse SSH sessions
@@ -115,9 +116,48 @@ kubectl get workflows.nvcre.nvidia.com <name> \
 
 **Solutions:**
 
-- Dependency creation failed — check controller logs for RBAC errors when creating ConfigMaps, PVCs, or other dependency resources.
+- The InProgress reason is `NamespacePermissionsMissing` or `NamespaceAccessCheckFailed` — the controller has no write access in the namespace yet. See [Workflow waits with NamespacePermissionsMissing](#workflow-waits-with-namespacepermissionsmissing).
+- The Workflow failed with `DependencyCreationError` and a `forbidden` message — an admission policy, webhook or ResourceQuota rejected the dependency. The controller checked that its own RBAC allows the write before failing, so the rejection's message names the policy that blocked it.
 - Target nodes do not match — verify the Workflow's `nodeSelector` or `nodeNames` matches existing nodes (`kubectl get nodes -l <selector>`).
 - The Workflow spec is invalid — look for validation errors in the controller logs.
+
+## Workflow waits with NamespacePermissionsMissing
+
+**Symptoms:** a Workflow, or the Certification category above it, stays `InProgress` with reason `NamespacePermissionsMissing` or `NamespaceAccessCheckFailed`. Nothing is created in the namespace. `kubectl describe` shows a `NamespaceAccessDenied` or `NamespaceAccessReviewError` Warning, and `certification run --wait` shows the same message on the category's `Blocked:` line. After `manager.namespaceAccessTimeout` (default 10 minutes) the Workflow fails with the same reason.
+
+**Cause:** the chart is installed with `rbac.scope: namespaced`, and the namespace has no RoleBinding granting `nvcre-run-role` to the controller ([ADR-092](../designs/092-per-namespace-controller-rbac.md)). Before it writes anything, the controller checks its own access with SelfSubjectAccessReviews. A denied review means the binding is missing (`NamespacePermissionsMissing`). A review that could not be created at all means the check could not run (`NamespaceAccessCheckFailed`); an unanswered check is never treated as permission.
+
+**Diagnosis:**
+
+```bash
+# The message names the ServiceAccount and every permission it lacks
+kubectl get workflows.nvcre.nvidia.com <name> -n <namespace> \
+  -o jsonpath='{.status.conditions[?(@.type=="NamespaceAccess")]}' | jq .
+
+# Is there a binding, and does it name the right ServiceAccount?
+kubectl get rolebinding nvcre-manager-run -n <namespace> -o yaml
+
+# Ask the API server what the controller may do there
+kubectl auth can-i create configmaps -n <namespace> \
+  --as=system:serviceaccount:nvcre:nvcre-manager
+
+# Which scope is the chart installed with?
+helm get values nvcre -n nvcre -a | grep -A2 '^rbac:'
+```
+
+**Solutions:**
+
+- Apply the binding. The Workflow resumes on its own within a minute, and its `NamespaceAccess` condition turns `True`:
+
+  ```bash
+  nvcrectl rbac print --namespace <namespace> | kubectl apply -f -
+  ```
+
+- The binding exists but names another ServiceAccount: the release was installed under another name or namespace. Compare the subject with `kubectl get clusterrolebinding nvcre-manager-rolebinding -o yaml` and print the binding with `--service-account` and `--controller-namespace`.
+- `NamespaceAccessCheckFailed` for any other reason: the reviews themselves fail, usually because the API server or an admission webhook is struggling. The Workflow keeps rechecking, backing off to once every two minutes, and resumes on its own once reviews succeed again.
+- `NamespaceAccessCheckFailed` with `selfsubjectaccessreviews ... is forbidden`: Kubernetes normally grants these reviews to authenticated identities, including ServiceAccounts, through `system:basic-user`. This error means that default grant was removed or narrowed and the controller has no other grant. Check the `system:basic-user` role and binding, and `nvcre-manager-role`. Upgrading the NVCRE release adds an explicit `create` grant on `selfsubjectaccessreviews` to `nvcre-manager-role`; an older chart alone does not cause this error.
+- For a long-lived namespace, list it in `rbac.runNamespaces` so the chart keeps the binding.
+- The Workflow already failed after the timeout: apply the binding and run again. A failed Workflow does not retry.
 
 ## Workflow cleanup or deletion pauses on terminating pods
 

@@ -27,6 +27,14 @@ const (
 	// conditions (InProgress/Succeeded/Failed) and provides a quality signal
 	// that can be aggregated up to the Certification level.
 	WorkflowValidationFailed = "ValidationFailed"
+
+	// WorkflowNamespaceAccess tracks a wait for the controller's write access
+	// in the Workflow's namespace (ADR-092). Like ValidationFailed it sits
+	// outside the exclusive InProgress/Succeeded/Failed set. It is written only
+	// once a Workflow has had to wait: False while waiting, with its
+	// lastTransitionTime marking when the wait began, and True once access is
+	// granted, so a later wait starts its own clock.
+	WorkflowNamespaceAccess = "NamespaceAccess"
 )
 
 // GroupPhase represents the phase of a scheduling group's job.

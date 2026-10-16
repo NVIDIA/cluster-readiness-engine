@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A SelfSubjectAccessReview that cannot be created is never read as
+# permission: the Workflow waits with NamespaceAccessCheckFailed and creates
+# no dependency.
+generateNodes:
+  count: 1
+waitFor:
+  kind: Workflow
+  name: wf-access-review-error
+  namespace: access-review-error
+  condition: InProgress
+  reason: NamespaceAccessCheckFailed
+collect:
+  - kind: Workflow
+    name: wf-access-review-error
+    namespace: access-review-error
+expectAbsent:
+  - kind: ConfigMap
+    name: hostfile
+    namespace: access-review-error
+events:
+  - involvedKind: Workflow
+    involvedName: wf-access-review-error
+    namespace: access-review-error
+    expect:
+      - {type: Warning, reason: NamespaceAccessReviewError}

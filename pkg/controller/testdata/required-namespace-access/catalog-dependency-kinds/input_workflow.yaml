@@ -1,0 +1,45 @@
+# Each namespaced dependency kind adds its lifecycle verbs, deduplicated, in
+# the namespace it is created in: the Workflow's, unless the dependency names
+# its own. A cluster-scoped kind is not grantable per namespace, and a kind the
+# API server does not serve fails creation with its own error, so neither is
+# checked.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: wf
+  namespace: run-ns
+spec:
+  dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: runtime
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: checkpoint
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: scratch
+  - apiVersion: resource.k8s.io/v1
+    kind: ResourceClaimTemplate
+    metadata:
+      name: roce-channel
+  - apiVersion: resource.nvidia.com/v1beta1
+    kind: ComputeDomain
+    metadata:
+      name: imex
+  - apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: hostfile
+      namespace: shared-config
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: ClusterTrainingRuntime
+    metadata:
+      name: cluster-runtime
+  - apiVersion: example.com/v1
+    kind: NotInstalled
+    metadata:
+      name: missing-crd

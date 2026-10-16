@@ -1,0 +1,6 @@
+# Forbidden in a namespace that is not terminating: the binding is missing
+# while the namespace lives on, so the finalizer holds and the reconcile
+# retries until access returns.
+owner: workflow-finalizer
+forbid: get
+namespace: active

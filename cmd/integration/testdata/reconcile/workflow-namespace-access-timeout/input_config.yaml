@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A binding that never arrives: once NamespaceAccess has been False longer
+# than --namespace-access-timeout, the Workflow fails with the same reason and
+# the RoleBinding to apply in its message.
+generateNodes:
+  count: 1
+namespaceAccessTimeoutSeconds: 2
+waitFor:
+  kind: Workflow
+  name: wf-access-timeout
+  namespace: access-timeout
+  condition: Failed
+  reason: NamespacePermissionsMissing
+collect:
+  - kind: Workflow
+    name: wf-access-timeout
+    namespace: access-timeout
+expectAbsent:
+  - kind: ConfigMap
+    name: hostfile
+    namespace: access-timeout
+events:
+  - involvedKind: Workflow
+    involvedName: wf-access-timeout
+    namespace: access-timeout
+    expect:
+      - {type: Warning, reason: NamespaceAccessDenied}
+      - {type: Warning, reason: NamespacePermissionsMissing}

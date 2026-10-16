@@ -26,7 +26,10 @@ import (
 	syaml "sigs.k8s.io/yaml"
 )
 
-const managerRoleName = "nvcre-manager-role"
+const (
+	managerRoleName = "nvcre-manager-role"
+	runRoleName     = "nvcre-run-role"
+)
 
 // requiredAccess is one resource the controller must be able to act on, and
 // the verbs it uses.
@@ -36,11 +39,12 @@ type requiredAccess struct {
 	Verbs    []string `json:"verbs"`
 }
 
-// TestHelmManagerRoleGrantsDependencyAccess checks the rendered manager
-// ClusterRole against the access each testdata case requires. envtest runs as
-// an admin, so a verb missing from the role passes every integration test and
-// fails only on a cluster that enforces RBAC.
-func TestHelmManagerRoleGrantsDependencyAccess(t *testing.T) {
+// TestHelmRunNamespaceGrantsDependencyAccess checks what a run namespace holds,
+// nvcre-manager-role plus nvcre-run-role, against the access each testdata
+// case requires. That union is also everything rbac.scope: cluster grants.
+// envtest runs as an admin, so a verb missing from either role passes every
+// integration test and fails only on a cluster that enforces RBAC.
+func TestHelmRunNamespaceGrantsDependencyAccess(t *testing.T) {
 	requireHelm(t)
 	chartDir := chartDir(t)
 	requireChartInputs(t, chartDir)
@@ -49,13 +53,13 @@ func TestHelmManagerRoleGrantsDependencyAccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rules, err := clusterRoleRules(rendered, managerRoleName)
+	rules, err := runNamespaceRules(rendered)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	p := testutil.TestCaseParser{
-		Subdir:         "manager-role-dependency-access",
+		Subdir:         "run-namespace-access",
 		ExpectedSuffix: testutil.SuffixJSON,
 	}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
@@ -106,6 +110,20 @@ func TestHelmManagerRoleGrantsDependencyAccess(t *testing.T) {
 		tc.Actual = string(data) + "\n"
 		return nil
 	})
+}
+
+// runNamespaceRules returns the rules the controller holds in a namespace where
+// nvcre-run-role is bound: those of both ClusterRoles.
+func runNamespaceRules(rendered []byte) ([]rbacv1.PolicyRule, error) {
+	manager, err := clusterRoleRules(rendered, managerRoleName)
+	if err != nil {
+		return nil, err
+	}
+	run, err := clusterRoleRules(rendered, runRoleName)
+	if err != nil {
+		return nil, err
+	}
+	return append(manager, run...), nil
 }
 
 // clusterRoleRules returns the rules of the named ClusterRole in the rendered chart.
@@ -162,7 +180,7 @@ func qualifiedResource(group, resource string) string {
 
 // dependencyKindToResource maps each kind a Workflow can create as a dependency
 // to the API group and resource its RBAC rule names. A kind absent here is
-// reported by TestManagerRoleCoversEveryDependencyKind rather than skipped, so
+// reported by TestRunRoleCoversEveryDependencyKind rather than skipped, so
 // adding a dependency kind to the catalog forces a decision about its grant.
 var dependencyKindToResource = map[string]requiredAccess{
 	"ConfigMap":             {Group: "", Resource: "configmaps"},
@@ -179,13 +197,15 @@ var dependencyKindToResource = map[string]requiredAccess{
 // and scoped-dependency cleanup).
 var dependencyLifecycleVerbs = []string{"create", "get", "update", "delete"}
 
-// TestManagerRoleCoversEveryDependencyKind derives the dependency kinds from
-// the catalog itself and checks the rendered role grants the lifecycle verbs on
-// each. The sibling testdata case pins the mapping that is known today; this
-// one fails when the catalog grows a kind nobody granted, which is the drift
-// that left PersistentVolumeClaims without update until #463. envtest runs as
-// an admin, so neither gap shows up in an integration test.
-func TestManagerRoleCoversEveryDependencyKind(t *testing.T) {
+// TestRunRoleCoversEveryDependencyKind derives the dependency kinds from the
+// catalog itself and checks that nvcre-run-role, on its own, grants the
+// lifecycle verbs on each. Dependency writes must be in the run role: under
+// rbac.scope: namespaced it is the only grant a run namespace gets beyond the
+// cluster-wide reads. The sibling testdata case pins the mapping that is known
+// today; this one fails when the catalog grows a kind nobody granted, which is
+// the drift that left PersistentVolumeClaims without update until #463.
+// envtest runs as an admin, so neither gap shows up in an integration test.
+func TestRunRoleCoversEveryDependencyKind(t *testing.T) {
 	requireHelm(t)
 	dir := chartDir(t)
 	requireChartInputs(t, dir)
@@ -194,7 +214,7 @@ func TestManagerRoleCoversEveryDependencyKind(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rules, err := clusterRoleRules(rendered, managerRoleName)
+	rules, err := clusterRoleRules(rendered, runRoleName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,12 +231,12 @@ func TestManagerRoleCoversEveryDependencyKind(t *testing.T) {
 		access, known := dependencyKindToResource[kind]
 		if !known {
 			t.Errorf("catalog declares dependency kind %s, which maps to no RBAC resource here; "+
-				"add it to dependencyKindToResource and grant it in the chart's manager role", kind)
+				"add it to dependencyKindToResource and grant it in the chart's run role", kind)
 			continue
 		}
 		for _, verb := range dependencyLifecycleVerbs {
 			if !rulesAllow(rules, access.Group, access.Resource, verb) {
-				t.Errorf("manager role does not grant %s on %s, needed for dependency kind %s",
+				t.Errorf("run role does not grant %s on %s, needed for dependency kind %s",
 					verb, qualifiedResource(access.Group, access.Resource), kind)
 			}
 		}
