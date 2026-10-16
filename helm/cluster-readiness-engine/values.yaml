@@ -17,6 +17,10 @@ manager:
   # duration. Only a namespace without a run RoleBinding ever waits, which
   # needs rbac.scope: namespaced.
   namespaceAccessTimeout: 10m
+  # How long a Job keeps retrying a workload create the API server rejects
+  # (admission webhook or policy denial, ResourceQuota) before it fails with
+  # WorkloadCreationError, as a Go duration. Independent of timeoutPerJob.
+  workloadCreationDeadline: 10m
   image:
     repository: ghcr.io/nvidia/cluster-readiness-engine/manager
     tag: ""

@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Issue #488: a rejection that clears before the deadline. The Job reports
+# WorkloadCreationRejected, the Workflow relays it under JobSchedulingBlocked,
+# then the rejection is lifted and the next create succeeds: the clock is
+# cleared, the Job carries on, and no node is recorded as failed.
+rejectWorkloadCreatesWhile:
+  kind: ConfigMap
+  name: reject-workload-creates-clears
+  namespace: default
+steps:
+  - waitFor:
+      kind: Job
+      name: test-wf-create-rejected-clears-job
+      namespace: default
+      condition: InProgress
+      reason: WorkloadCreationRejected
+  - waitFor:
+      kind: Workflow
+      name: test-wf-create-rejected-clears
+      namespace: default
+      condition: InProgress
+      reason: JobSchedulingBlocked
+    deletes:
+      - kind: ConfigMap
+        name: reject-workload-creates-clears
+        namespace: default
+waitFor:
+  kind: Workflow
+  name: test-wf-create-rejected-clears
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Job
+    name: test-wf-create-rejected-clears-job
+    namespace: default
+  - kind: Workflow
+    name: test-wf-create-rejected-clears
+    namespace: default
+events:
+  - involvedKind: Job
+    involvedName: test-wf-create-rejected-clears-job
+    namespace: default
+    expect:
+      - {type: Warning, reason: WorkloadCreationRejected}
+timeoutSeconds: 60
