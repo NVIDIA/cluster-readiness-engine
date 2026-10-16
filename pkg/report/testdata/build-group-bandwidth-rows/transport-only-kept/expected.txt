@@ -1,7 +1,7 @@
 │                                                                │
 │  Bandwidth by group:                                           │
-│      ✓  clique-0 (2 nodes)                                     │
-│         no bandwidth data                                      │
+│      ?  clique-0 (2 nodes)                                     │
+│         no bandwidth data (provisional: NotComplete)           │
 │         Transport: IB                                          │
 │      ✓  clique-1 (2 nodes)                                     │
 │         350.0 GB/s                                             │
@@ -20,7 +20,9 @@
       "IB"
     ],
     "belowMin": false,
-    "failed": false
+    "failed": false,
+    "provisional": true,
+    "provisionalReason": "NotComplete"
   },
   {
     "group": "group-1",

@@ -160,7 +160,16 @@ type DiagnoseTestRow struct {
 	Passed bool     `json:"passed"`           // job succeeded
 	// Provisional is true when BusBW comes from a measurement that is not
 	// final (see controller.BandwidthFinal); ProvisionalReason is its
-	// Complete condition reason, for example LogsUnavailable.
+	// Complete condition reason, for example LogsUnavailable, or NotComplete
+	// while the measurement is still running.
+	//
+	// The same contract holds on BandwidthRow and GroupBandwidthRow in the
+	// --results-file JSON: "provisional" is true when any measurement the
+	// row was built from is not final, so the row must not be read as a
+	// result threshold evaluation used. "provisionalReason" is set only when
+	// it describes the measurement that supplied the displayed BusBW; it is
+	// empty when that value is final but another measurement in the row's
+	// set is not. Both keys are omitted when every measurement is final.
 	Provisional       bool   `json:"provisional,omitempty"`
 	ProvisionalReason string `json:"provisionalReason,omitempty"`
 }
@@ -180,8 +189,9 @@ type BandwidthRow struct {
 	AlgBW   string `json:"algBW"`
 	BusBW   string `json:"busBW"`
 	Samples int    `json:"samples"`
-	// Provisional and ProvisionalReason mark a row taken from a measurement
-	// that is not final, as on DiagnoseTestRow.
+	// Provisional is true when any measurement reaching the row's size is
+	// not final; ProvisionalReason describes the measurement that supplied
+	// BusBW. See DiagnoseTestRow for the full contract.
 	Provisional       bool   `json:"provisional,omitempty"`
 	ProvisionalReason string `json:"provisionalReason,omitempty"`
 }
@@ -224,8 +234,9 @@ type GroupBandwidthRow struct {
 	Transport []string `json:"transport,omitempty"` // NCCL network names for this group
 	BelowMin  bool     `json:"belowMin"`            // true if BusBW is below the busBandwidthGBps minimum
 	Failed    bool     `json:"failed"`              // true if the group's Job failed
-	// Provisional and ProvisionalReason mark a row taken from a measurement
-	// that is not final, as on DiagnoseTestRow.
+	// Provisional and ProvisionalReason describe the group's one
+	// measurement, including one that recorded a transport but no
+	// bandwidth rows. See DiagnoseTestRow for the full contract.
 	Provisional       bool   `json:"provisional,omitempty"`
 	ProvisionalReason string `json:"provisionalReason,omitempty"`
 }
@@ -808,7 +819,15 @@ func PopulateCategoryFromWorkflow(
 // aggregateBandwidthRow returns the category's Bandwidth row: the peak result
 // at the largest message size measured and, when several measurements reach
 // that size, the lowest BusBW among them. Taking the minimum means one healthy
-// group cannot stand in for a slow one. Nil when no measurement has results.
+// group cannot stand in for a slow one at the same size. A measurement that
+// stopped at a smaller size contributes nothing to the row; that is a
+// deliberate choice (the row reports one size), pinned by the
+// aggregate-bandwidth-row/unequal-size-largest-wins fixture. The clique line
+// differs: it compares BusBW across groups with no size term.
+//
+// The row is provisional when any measurement with results is not final, so
+// the flag does not depend on which measurement won. The reason is kept only
+// when it describes the winner. Nil when no measurement has results.
 func aggregateBandwidthRow(measurements []nvcrev1alpha1.BandwidthMeasurement) *BandwidthRow {
 	var peak *nvcrev1alpha1.BandwidthResult
 	var from *nvcrev1alpha1.BandwidthMeasurement
@@ -832,15 +851,28 @@ func aggregateBandwidthRow(measurements []nvcrev1alpha1.BandwidthMeasurement) *B
 		Samples: peak.Samples,
 	}
 	row.Provisional, row.ProvisionalReason = bandwidthProvisional(from)
+	for i := range measurements {
+		if row.Provisional {
+			break
+		}
+		if len(measurements[i].Status.Results) == 0 {
+			continue
+		}
+		// Another measurement is not final; the winner's value is, so
+		// mark the row without a reason that would misdescribe it.
+		row.Provisional, _ = bandwidthProvisional(&measurements[i])
+	}
 	return row
 }
 
-// bandwidthProvisional reports whether a measurement holds results that are
-// not final, and the reason to show. It defers to controller.BandwidthFinal,
-// so the report marks exactly the results threshold evaluation ignores. A
-// measurement with no results has nothing to mark.
+// bandwidthProvisional reports whether a measurement is not final, and the
+// reason to show. It defers to controller.BandwidthFinal, so the report marks
+// exactly what threshold evaluation ignores. A measurement with a transport
+// but no bandwidth rows (NoDataCollected, or LogsUnavailable after a failed
+// read) is not final either, so it is marked rather than shown as passing.
+// Callers that only show measured values check for results themselves.
 func bandwidthProvisional(bm *nvcrev1alpha1.BandwidthMeasurement) (bool, string) {
-	if len(bm.Status.Results) == 0 || controller.BandwidthFinal(bm) {
+	if controller.BandwidthFinal(bm) {
 		return false, ""
 	}
 	cond := meta.FindStatusCondition(bm.Status.Conditions, nvcrev1alpha1.BandwidthMeasurementComplete)
@@ -854,6 +886,9 @@ func bandwidthProvisional(bm *nvcrev1alpha1.BandwidthMeasurement) (bool, string)
 func provisionalSuffix(provisional bool, reason string) string {
 	if !provisional {
 		return ""
+	}
+	if reason == "" {
+		return " (provisional)"
 	}
 	return " (provisional: " + reason + ")"
 }
@@ -945,7 +980,11 @@ func groupBandwidthRow(
 		// Peak BusBW is taken at the largest message size.
 		peak = peakBandwidthResult(bm.Status.Results)
 		row.Transport = unionSortedStrings(bm.Status.Transport)
-		row.Provisional, row.ProvisionalReason = bandwidthProvisional(bm)
+		// A measurement with neither results nor a transport has nothing
+		// to show, so there is nothing to mark.
+		if peak != nil || len(row.Transport) > 0 {
+			row.Provisional, row.ProvisionalReason = bandwidthProvisional(bm)
+		}
 	}
 	if peak == nil && len(row.Transport) == 0 && !row.Failed {
 		return row, false
@@ -1693,7 +1732,7 @@ func printGroupBandwidth(w io.Writer, groups []GroupBandwidthRow) {
 		if gb.BusBW != "" {
 			printBoxLine(w, "       "+gb.BusBW+status+provisionalSuffix(gb.Provisional, gb.ProvisionalReason))
 		} else {
-			printBoxLine(w, "       no bandwidth data")
+			printBoxLine(w, "       no bandwidth data"+provisionalSuffix(gb.Provisional, gb.ProvisionalReason))
 		}
 		if len(gb.Transport) > 0 {
 			printBoxLine(w, "       "+formatTransportLine(gb.Transport))
@@ -1709,18 +1748,22 @@ func printGroupBandwidth(w io.Writer, groups []GroupBandwidthRow) {
 // cliqueBandwidth is the bandwidth shown under one clique, aggregated over
 // the groups in it.
 type cliqueBandwidth struct {
-	busBW             string   // lowest measured BusBW among the groups
+	busBW             string   // lowest measured BusBW among non-failed groups
 	value             float64  // busBW parsed, for comparison
 	low               bool     // any group below the threshold
-	provisional       bool     // any group's result not final
-	provisionalReason string   // reason from the first provisional group
+	provisional       bool     // any non-failed group's result not final
+	provisionalReason string   // reason of the group that supplied busBW, if provisional
 	transport         []string // union of the groups' transports
 }
 
 // aggregateCliqueBandwidth folds group rows into per-clique bandwidth, keyed
 // by the clique name the row label starts with. The clique shows the minimum
-// BusBW across its groups, LOW when any group is below the threshold, so
-// neither list order nor a healthy sibling can hide a slow group.
+// BusBW across its non-failed groups, LOW when any group is below the
+// threshold, so neither list order nor a healthy sibling can hide a slow
+// group. A failed group's partial BusBW is not a measurement of the clique and
+// is never printed beside it; the clique is already marked failed and the
+// group is itemized under Failed Groups. The provisional mark is an ANY over
+// groups, but its reason is shown only when it belongs to the printed value.
 func aggregateCliqueBandwidth(groupBW []GroupBandwidthRow) map[string]*cliqueBandwidth {
 	out := make(map[string]*cliqueBandwidth)
 	for _, gb := range groupBW {
@@ -1735,16 +1778,20 @@ func aggregateCliqueBandwidth(groupBW []GroupBandwidthRow) map[string]*cliqueBan
 		}
 		// A transport-only row has no BusBW; keep a measured value from
 		// another group in the same clique.
-		if gb.BusBW != "" {
+		if gb.BusBW != "" && !gb.Failed {
 			v := parseFloat(strings.TrimSuffix(gb.BusBW, " GB/s"))
 			if cb.busBW == "" || v < cb.value {
 				cb.busBW, cb.value = gb.BusBW, v
+				cb.provisionalReason = ""
+				if gb.Provisional {
+					cb.provisionalReason = gb.ProvisionalReason
+				}
 			}
 		}
 		cb.low = cb.low || gb.BelowMin
-		if gb.Provisional && !cb.provisional {
-			cb.provisional, cb.provisionalReason = true, gb.ProvisionalReason
-		}
+		// A failed group's result is excluded from busBW, so its finality
+		// says nothing about the printed value.
+		cb.provisional = cb.provisional || (gb.Provisional && !gb.Failed)
 		cb.transport = unionSortedStrings(cb.transport, gb.Transport)
 	}
 	return out

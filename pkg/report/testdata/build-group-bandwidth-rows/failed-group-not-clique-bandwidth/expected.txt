@@ -1,0 +1,39 @@
+│                                                                │
+│  Bandwidth by group:                                           │
+│      ✓  clique-a (2 nodes)                                     │
+│         400.00 GB/s                                            │
+│      ✗  clique-a (2 nodes)                                     │
+│         12.00 GB/s (provisional: NotComplete)                  │
+│         - n2                                                   │
+│         - n3                                                   │
+│                                                                │
+│  Cliques:                                                      │
+│      ✗  clique-a  2/4 nodes                                    │
+│         400.00 GB/s                                            │
+--- rows ---
+[
+  {
+    "group": "group-0",
+    "groupName": "clique-a (2 nodes)",
+    "nodes": [
+      "n0",
+      "n1"
+    ],
+    "busBW": "400.00 GB/s",
+    "belowMin": false,
+    "failed": false
+  },
+  {
+    "group": "group-1",
+    "groupName": "clique-a (2 nodes)",
+    "nodes": [
+      "n2",
+      "n3"
+    ],
+    "busBW": "12.00 GB/s",
+    "belowMin": false,
+    "failed": true,
+    "provisional": true,
+    "provisionalReason": "NotComplete"
+  }
+]

@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+
+# A healthy group at 400.00 and a crashed group that parsed 12.00 from a
+# truncated log share clique-a. The clique is failed, but the number printed
+# beside it is the healthy group's, not the failed group's partial reading,
+# and the failed group's unfinished measurement does not mark it provisional.
+cliques:
+  - name: clique-a
+    total: 4
+    validated: 2
+    passed: false
+groups:
+  - name: group-0
+    nodes: [n0, n1]
+    domains: [clique-a]
+    phase: Succeeded
+    jobRef: {name: j0}
+  - name: group-1
+    nodes: [n2, n3]
+    domains: [clique-a]
+    phase: Failed
+    jobRef: {name: j1}
+measurements:
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: j0}
+    status:
+      conditions:
+        - {type: Complete, status: "True", reason: JobSucceeded, message: Job succeeded, lastTransitionTime: "2026-10-01T00:00:00Z"}
+      results:
+        - {sizeBytes: 1073741824, algBW: "210.00", busBW: "400.00", samples: 20}
+  - spec:
+      jobRef: {apiGroup: nvcre.nvidia.com, kind: Job, name: j1}
+    status:
+      results:
+        - {sizeBytes: 1048576, algBW: "6.00", busBW: "12.00", samples: 2}

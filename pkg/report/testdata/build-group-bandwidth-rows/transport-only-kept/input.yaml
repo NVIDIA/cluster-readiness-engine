@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # group-0 finished with a transport but no bandwidth rows. It keeps its row
-# with an empty BusBW and is not judged against the threshold.
+# with an empty BusBW and is not judged against the threshold. Its measurement
+# is not final (BandwidthFinal needs results), so the row is marked
+# provisional rather than shown as passing.
 busBandwidthThreshold: "value >= 300"
 groups:
   - name: group-0
