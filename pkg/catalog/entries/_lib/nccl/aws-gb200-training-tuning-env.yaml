@@ -17,9 +17,11 @@
 # --attention-backend and refuses to start on when they conflict.
 - name: ATTENTION_BACKEND
   value: auto
-# NVLink SHARP. The base enables it; on GB200 the all-reduce sizes this model
-# produces are better served by the NVLink/EFA path than by NVLS reduction
-# trees, and the GB200 comm entries do not depend on it either.
+# NVLink SHARP, off rather than left to NCCL's default: on GB200 the
+# all-reduce sizes this model produces are better served by the NVLink/EFA
+# path than by NVLS reduction trees, and the GB200 comm entries do not depend
+# on it either. Nothing upstream of this fragment enables it any more (#514),
+# so this is the value that decides.
 - name: NCCL_NVLS_ENABLE
   value: "0"
 # GPUDirect RDMA up to a PCIe host bridge. Without this NCCL picks its own
