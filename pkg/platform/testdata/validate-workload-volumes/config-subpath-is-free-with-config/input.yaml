@@ -1,0 +1,12 @@
+# /config is reserved exactly, not as a subtree: nothing built in reads a named
+# file under it, so a mount below it collides with nothing of ours and is left
+# alone. Trailing slash again, to show the cleaned path is compared.
+framework: mpi
+hasConfig: true
+volumes:
+  - name: datasets
+    persistentVolumeClaim:
+      claimName: datasets
+volumeMounts:
+  - name: datasets
+    mountPath: /config/data/

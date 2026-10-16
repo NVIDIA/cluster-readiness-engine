@@ -1,0 +1,15 @@
+# Ordinary entries on torch pass, including a volume named ssh-keys and a
+# mount at /etc/mpi: both names belong to the MPI launcher alone, which user
+# volumes never reach, so neither is reserved on any framework.
+framework: torch
+volumes:
+  - name: datasets
+    persistentVolumeClaim:
+      claimName: datasets
+  - name: ssh-keys
+    emptyDir: {}
+volumeMounts:
+  - name: datasets
+    mountPath: /data
+  - name: ssh-keys
+    mountPath: /etc/mpi

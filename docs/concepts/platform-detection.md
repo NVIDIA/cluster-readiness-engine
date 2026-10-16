@@ -75,7 +75,7 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 
 | Architecture | Platform | Interconnect | Key resources |
 |-------------|---------|-------------|--------------|
-| GB200 | AWS | EFA | `hugepages-2Mi`, `vpc.amazonaws.com/efa`, EFA hostPath volume, ComputeDomain |
+| GB200 | AWS | EFA | `hugepages-2Mi`, `vpc.amazonaws.com/efa`, ComputeDomain |
 | GB200 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
 | GB300 | AWS | RoCE | `roce-channel` resource claim (DRA), no hugepages, no EFA |
 | GB300 | Azure | InfiniBand | mlnxnics dep, topo ConfigMap, ComputeDomain |
@@ -85,6 +85,7 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | GB200/GB300 | GCP | RoCE | `networking.gke.io.networks/rdma-0`..`rdma-3` (fixed network names), ComputeDomain |
 | RTX PRO 6000 Blackwell | GCP G4 | TCP over `eth0`, PCIe GPU peer-to-peer | Variable GPU count by G4 machine size; `nvidia.com/gpu=present:NoSchedule` toleration; no RDMA resource request |
 | GB200/GB300 | On-prem | InfiniBand | arm64/GPU taint tolerations, portable IB NCCL env (no HCA pinning), NIC resource auto-detected or set via `nicResourceName`, ComputeDomain |
+| B200/B300 (x86 HGX) | On-prem | InfiniBand or RoCE via the site's RDMA device plugin | `nvidia.com/gpu:NoSchedule` toleration (any taint value, on the MPI launcher too), NIC resource auto-detected or set via `nicResourceName`; no NCCL environment, no ComputeDomain (NVLink does not span nodes) |
 | GB200 | OCI | RoCE | No NIC request by default (`mlnxPerNode: 0`); ComputeDomain. Set `mlnxPerNode` to request `nvidia.com/mlnxnics` and the matching `network-operator/sriov-net` attachments |
 | GB300 | OCI | RoCE | `nvidia.com/mlnxnics: 4`, four `network-operator/sriov-net` attachments, ComputeDomain |
 | L40S | OCI | RoCE | `nvidia.com/mlnxnics: 2`, two `network-operator/sriov-net` attachments |
@@ -124,15 +125,96 @@ otherwise attempts to initialize even on this TCP-only network.
 
 The live controller tracks which overrides matched in `status.orchestration.appliedOverrides`. When using `nvcrectl workflow render`, the same information is also written to the `nvcrectl.nvidia.com/applied-overrides` annotation on the rendered manifest.
 
+## Host RDMA device access
+
+Requesting no NIC resource leaves the workload with no RDMA access at all.
+That is the right default where the site runs a device plugin and just needs
+to name it, but some clusters expose the Mellanox devices only as host device
+nodes under `/dev/infiniband`, with no SR-IOV policy and no plugin to request.
+OCI GB200 shapes are the common case.
+
+For those, set `rdmaDeviceAccess: hostPath` on the Certification (or on one
+category's `options`). It mounts the host's `/dev/infiniband` into the workload
+container and runs that container privileged:
+
+```yaml
+spec:
+  rdmaDeviceAccess: hostPath
+```
+
+The mount and the privileged flag are one unit rather than two independent
+choices. Kubelet builds a container's device cgroup allowlist from the
+resources it requests, so a `hostPath` mount on its own makes
+`/dev/infiniband/uverbs0` visible while `open()` on it still fails with
+`EPERM`. No capability changes that, including `IPC_LOCK`, which the
+communication entries already grant.
+
+The option applies on every platform and architecture, because how a cluster
+plumbs RDMA is a property of the cluster rather than of its cloud. Leaving it
+unset, or setting it to `devicePlugin`, renders exactly what it rendered
+before: the NIC resource request described above and nothing else. Workload
+pods will be rejected in namespaces that enforce a `restricted` or `baseline`
+[Pod Security Standard](https://kubernetes.io/docs/concepts/security/pod-security-standards/),
+which forbid privileged containers. See
+[ADR-088](../designs/088-oci-gb200-roce-and-rdma-device-access.md).
+
+A privileged container is root-equivalent on the node. It runs without the
+runtime's default seccomp filter and without AppArmor or SELinux confinement,
+so the pod-level `seccompProfile: RuntimeDefault` the training entries set no
+longer constrains the worker container even though the pod spec still shows
+it. The `/dev/infiniband` mount names the devices the workload uses; it is not
+what limits access. Treat the option as granting the workload root on the
+node, because that is what `privileged: true` does.
+
+Some CRI-O runtimes reject a privileged container whose GPUs come from the
+NVIDIA device plugin, on the grounds that the device paths are already present
+on the host. The catalog records one such configuration: the OCI arm of the
+DCGM entry turns `privileged` off for exactly that reason. Every container this
+option patches requests `nvidia.com/gpu`, so if your runtime enforces that
+rule, the pods fail to start rather than running without the mount. Try one
+category before turning the option on for a whole certification.
+
+The value is case-sensitive and is validated by `nvcrectl` as well as by the
+API server, so `rdmaDeviceAccess: HostPath` is an error rather than a render
+that silently omits the mount.
+
+### When a node has no RDMA devices
+
+The volume is declared `type: Directory`, so kubelet refuses to start the pod
+on a node where `/dev/infiniband` does not exist rather than mounting an empty
+directory that NCCL would later report as "no devices found". Kubelet retries
+the mount indefinitely, so the pod stays in `ContainerCreating` with a
+`FailedMount` event naming the path.
+
+`timeoutPerJob` bounds that wait and is the only thing that does. The
+communication entries time the Job out after one hour by default; the
+training entries after 24 hours, a backstop chosen because a healthy training
+run can legitimately exceed an hour. In both cases the Workflow reports the
+failure. Set `spec.timeoutPerJob` (or `categories[].options.timeoutPerJob`)
+to tighten either bound; on a training category that is the difference
+between learning about a missing `/dev/infiniband` in minutes and in a day.
+Watch for a pod stuck in `ContainerCreating` with a `FailedMount` event, and
+try one category before enabling the option across a whole certification.
+
+`startupStallTimeoutSeconds`, which the training entries do set, does **not**
+cover this case on any entry. Startup-stall detection is anchored on the
+GoodputMeasurement, and the GoodputMeasurement only starts sampling once
+worker-0 reaches `Running`, which a pod held in `ContainerCreating` never
+does.
+
 ## On-prem clusters
 
 `onprem` is the detection fallback: a node with an empty `spec.providerID` (and no Forge hostname or NKE site-name label) resolves to the `onprem` platform. Nodes provisioned by bare-metal stacks such as BCM typically carry no providerID, so they land here without any configuration.
 
-For GB200/GB300 targets, the on-prem override contributes:
+For GB200/GB300 (NVL72) targets, the on-prem override contributes:
 
-- **Tolerations** for the `kubernetes.io/arch=arm64:NoSchedule` and `nvidia.com/gpu=present:NoSchedule` taints common on NVL72 deployments. Without them, workload pods never schedule on tainted arm64 nodes.
+- **Tolerations** for the `kubernetes.io/arch=arm64:NoSchedule` and `nvidia.com/gpu=present:NoSchedule` taints common on NVL72 deployments, on the MPI launcher pod as well as the node pods. Without them, workload pods never schedule on tainted arm64 nodes.
 - **A portable InfiniBand NCCL environment** without HCA pinning: NCCL auto-detects HCAs when `NCCL_IB_HCA` is unset, so the same override works across sites with different HCA layouts.
-- **A NIC resource request**, detected automatically or configured via `nicResourceName`. Resource names vary by RDMA device plugin (`rdma/ib`, `nvidia.com/mlnxnics`, and others are all in the wild), so when the field is unset the controller inspects the target nodes: if exactly one candidate resource (any `rdma/*` name, or the exact name `nvidia.com/mlnxnics`) is allocatable at the resolved `mlnxPerNode` count on every target node, that name is requested. Detection never guesses or over-commits: with zero candidates, with several, or when candidates exist but no node set can cover the requested count, no NIC resource is requested (pods still schedule, without an explicit NIC allocation) and a Normal `NICResourceDetection` event on the Certification or WorkloadRun explains what was found, naming the requested count when candidates fall below it. Set `nicResourceName` to override detection or to resolve an ambiguous fleet. The per-container count always comes from `mlnxPerNode`, detected or not. GB200/GB300 default `mlnxPerNode` to 8; sites running a shared-device plugin (one pooled resource per pod) should set `mlnxPerNode: 1`; with the default of 8, a pooled resource advertised as `rdma/ib: 1` is not detected, because the resulting request could never schedule.
+- **A NIC resource request**, detected automatically or configured via `nicResourceName`. Resource names vary by RDMA device plugin (`rdma/ib`, `nvidia.com/mlnxnics`, and others are all in the wild), so when the field is unset the controller inspects the target nodes: if exactly one candidate resource (any `rdma/*` name, or the exact name `nvidia.com/mlnxnics`) is allocatable at the resolved `mlnxPerNode` count on every target node, that name is requested. Detection never guesses or over-commits: with zero candidates, with several, or when candidates exist but no node set can cover the requested count, no NIC resource is requested (pods still schedule, without an explicit NIC allocation) and a Normal `NICResourceDetection` event on the Certification or WorkloadRun explains what was found, naming the requested count when candidates fall below it. Set `nicResourceName` to override detection or to resolve an ambiguous fleet. The per-container count always comes from `mlnxPerNode`, detected or not. GB200, GB300, B200, and B300 default `mlnxPerNode` to 8; sites running a shared-device plugin (one pooled resource per pod) should set `mlnxPerNode: 1`; with the default of 8, a pooled resource advertised as `rdma/ib: 1` is not detected, because the resulting request could never schedule.
+
+For x86 HGX B200/B300 targets, the on-prem override is deliberately smaller: a toleration for the `nvidia.com/gpu` taint with any value (`operator: Exists`, since generic on-prem fleets do not agree on `present`), applied to the MPI launcher as well as the node pods, and the same NIC resource request, detected or set via `nicResourceName`, with the count from `mlnxPerNode`. It sets no NCCL environment: an HGX chassis has no multi-node NVLink, so the NVL72 tuning does not apply, and fabric-specific tuning (RoCE GID index, HCA selection) waits on multi-node validation. Sites running a shared RDMA device plugin (one pooled resource such as `rdma/rdma_shared_device_a` advertised at a large count) should set `mlnxPerNode: 1`; the default of 8 schedules, but consumes eight quota units for the same device access. On a WorkloadRun, `spec.resources` and the NIC request merge by resource name and the NIC request's count wins, so when both name the same resource, `mlnxPerNode` sets the count and `spec.resources` should carry only other resources. See [ADR-094](../designs/094-hgx-b300-architecture-and-onprem-nic-override.md).
+
+An architecture missing from the catalog's GPU defaults table (`gpu-defaults.yaml`) has no node shape and falls back to four GPUs and no NICs unless `gpusPerNode` and `mlnxPerNode` are set. The controllers emit a Warning event, reason `GPUArchitectureDefaults`, on the Certification or WorkloadRun whenever the detected architecture is missing from the table, naming the fallback and the counts the run is actually sized at; every `nvcrectl` render path and `nvcrectl cluster info` print the same message to stderr. Set `gpusPerNode` and `mlnxPerNode` explicitly to correct the counts, and file an issue so the architecture can be added.
 
 Offline `nvcrectl certification render` and `nvcrectl workloadrun render` have no cluster to inspect, so without `--dry-run` they render field-only: the NIC resource appears only when `nicResourceName` is set. With `--dry-run`, real nodes are discovered and detection runs exactly as in the controllers.
 
@@ -160,7 +242,7 @@ spec:
 ```
 
 <Warning>
-**Metal3 detection trap.** Nodes with a `metal3://` providerID resolve to the `mistral` platform, not `onprem`. An on-prem site provisioned by Cluster API + Metal3 therefore silently picks up the Mistral site-specific override, which pins HCA names (`NCCL_IB_HCA`, `UCX_NET_DEVICES`) and the `rdma/ib` resource name. To preview what a generic on-prem render looks like regardless of providerID, pass the platform explicitly: `nvcrectl certification render --platform onprem <cert.yaml>`.
+**Metal3 detection trap.** Nodes with a `metal3://` providerID resolve to the `mistral` platform, not `onprem`. An on-prem site provisioned by Cluster API + Metal3 therefore silently picks up the Mistral site-specific override, which pins HCA names (`NCCL_IB_HCA`, `UCX_NET_DEVICES`) and the `rdma/ib` resource name. To preview what a generic on-prem render looks like regardless of providerID, pass the platform explicitly: `nvcrectl certification render --platform onprem <cert.yaml>`. An x86 HGX B200/B300 site provisioned the same way matches neither the Mistral block (gated on GB300) nor the HGX block (gated on `onprem`), so the controller applies no toleration and no NIC request there.
 </Warning>
 
 Diagnostics (`dcgm-level4`) needs no on-prem override: it already tolerates all taints and runs intra-node, so it schedules on tainted arm64 nodes unchanged.

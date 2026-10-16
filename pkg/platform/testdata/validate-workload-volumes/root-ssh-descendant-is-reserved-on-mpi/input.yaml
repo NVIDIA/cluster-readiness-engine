@@ -1,0 +1,10 @@
+# A mount below /root/.ssh hides the file at that path just as a mount of the
+# directory does: an emptyDir at /root/.ssh/authorized_keys turns the file the
+# worker's sshd reads into a directory, and the launcher can no longer log in.
+framework: mpi
+volumes:
+  - name: keys
+    emptyDir: {}
+volumeMounts:
+  - name: keys
+    mountPath: /root/.ssh/authorized_keys

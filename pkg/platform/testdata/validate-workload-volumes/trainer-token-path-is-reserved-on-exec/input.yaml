@@ -1,0 +1,11 @@
+# The same plugin upserts its mount by path, /var/run/secrets/kubeflow/trainer,
+# on every container of that pod, so a user mount there is silently replaced
+# too. exec shares the torch runtime shape, so the rule applies to it as well;
+# the trailing slash shows the path is compared cleaned.
+framework: exec
+volumes:
+  - name: scratch
+    emptyDir: {}
+volumeMounts:
+  - name: scratch
+    mountPath: /var/run/secrets/kubeflow/trainer/

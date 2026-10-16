@@ -1,0 +1,4 @@
+# A node-result write is forbidden and the review cannot run. The pass ends,
+# carrying the review error, so the wait records NamespaceAccessCheckFailed.
+call: node-results
+reviewError: timeout

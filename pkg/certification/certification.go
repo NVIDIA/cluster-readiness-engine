@@ -12,6 +12,7 @@ import (
 	"maps"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -31,7 +32,6 @@ import (
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/cluster"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/controller"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/gpu"
-	"github.com/NVIDIA/cluster-readiness-engine/pkg/naming"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/platform"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/render"
 	"github.com/NVIDIA/cluster-readiness-engine/pkg/report"
@@ -344,7 +344,7 @@ func applyWorkflowTransforms(
 // allocatable for the dry-run render path, mirroring the certification
 // controller: the field always wins (a per-category nicResourceName still
 // overrides the injected global via controller.ResolveOptions), detection
-// runs only for on-prem GB200/GB300 targets, and only a single qualifying
+// runs only for on-prem GB200/GB300 and x86 HGX B200/B300 targets, and only a single qualifying
 // candidate (rdma/* or nvidia.com/mlnxnics, allocatable at the resolved
 // mlnxPerNode count on every target node) is used. On zero or multiple
 // candidates it prints the note the controllers emit as a
@@ -525,6 +525,15 @@ func renderCertification(
 		if opts.MlnxPerNode != nil {
 			mlnxPerNode = *opts.MlnxPerNode
 		}
+		// --gpu-arch is validated against gpu-defaults.yaml; an architecture
+		// that arrived from the nodeSelector or from dry-run discovery is not,
+		// so say when the catalog had no node shape for it, once per category
+		// with the resolved counts, in the text the controller emits as the
+		// GPUArchitectureDefaults event (ADR-094).
+		if msg := controller.GPUArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode,
+			controller.GPUArchFieldHintCertification); msg != "" {
+			_, _ = fmt.Fprintf(os.Stderr, "%s/%s: %s\n", cat.Domain, cat.Variant, msg)
+		}
 		// The NIC resource name has no architecture default: it depends on
 		// the RDMA device plugin the site runs. Offline (no --dry-run) it is
 		// only ever user-supplied; on the dry-run path applyNICDetection has
@@ -557,6 +566,7 @@ func renderCertification(
 			GpusPerNode:                gpusPerNode,
 			MlnxPerNode:                mlnxPerNode,
 			NicResourceName:            nicResourceName,
+			RDMADeviceAccess:           opts.RDMADeviceAccess,
 			GKETCPXONetworks:           gkeTCPXONetworks,
 			TCPXOPluginVersion:         tcpxoPluginVersion,
 			Resources:                  opts.Resources,
@@ -591,10 +601,13 @@ func renderCertification(
 			return nil, fmt.Errorf("building workflow for %s/%s: %w", cat.Domain, cat.Variant, buildErr)
 		}
 
-		workflowName := naming.Truncate(
-			fmt.Sprintf("%s-%s-%s", cert.Name, cat.Domain, cat.Variant),
-			naming.MaxWorkflowNameLen,
-		)
+		// The controller's rule, not a copy of it. Rebuilding the name here
+		// is how render drifted from the controller before: it dropped the
+		// per-category options suffix, so a Certification with per-category
+		// options previewed under a name the controller never creates, and
+		// two categories differing only in options rendered two documents
+		// with one metadata.name.
+		workflowName := controller.WorkflowName(cert.Name, cat)
 
 		workflow := nvcrev1alpha1.Workflow{
 			APIVersion: nvcreAPIVersion,
@@ -659,7 +672,38 @@ func readCertification(path string) (*nvcrev1alpha1.Certification, error) {
 				cert.Name, cat.Domain, cat.Variant, err)
 		}
 	}
+
+	// Reject an out-of-enum rdmaDeviceAccess here for the same reason. The
+	// kubebuilder Enum marker only binds server-side, and offline render never
+	// reaches an API server, so a wrong-case "HostPath" would otherwise render
+	// cleanly with no mount and no privileged flag, handing an operator a
+	// manifest that looks right and still fails with EPERM on the cluster.
+	if err := validateRDMADeviceAccess(cert.Spec.RDMADeviceAccess); err != nil {
+		return nil, fmt.Errorf("certification %s: %w", cert.Name, err)
+	}
+	for _, cat := range cert.Spec.Categories {
+		if cat.Options == nil {
+			continue
+		}
+		if err := validateRDMADeviceAccess(cat.Options.RDMADeviceAccess); err != nil {
+			return nil, fmt.Errorf("certification %s: category %s/%s: %w",
+				cert.Name, cat.Domain, cat.Variant, err)
+		}
+	}
 	return &cert, nil
+}
+
+// validateRDMADeviceAccess rejects any non-empty rdmaDeviceAccess that is not
+// one of the enum values. Empty means unset, which is the devicePlugin default.
+func validateRDMADeviceAccess(value string) error {
+	if value == "" {
+		return nil
+	}
+	if slices.Contains(nvcrev1alpha1.ValidRDMADeviceAccessValues, value) {
+		return nil
+	}
+	return fmt.Errorf("invalid rdmaDeviceAccess %q; valid values: [%s]",
+		value, strings.Join(nvcrev1alpha1.ValidRDMADeviceAccessValues, ", "))
 }
 
 // platformToProviderID is now syntheticProviderID in run_common.go.
@@ -720,6 +764,7 @@ type certRunConfig struct {
 	doWait                   bool   // --wait: watch + report
 	doSetup                  bool   // --setup: runInit before create
 	doCleanup                bool   // --cleanup: runReset + delete cert/ns after
+	grantRunAccess           bool   // --grant-run-access: bind the controller in a namespace that already existed
 	resultsFile              string // --results-file: path to write JSON report
 	timeout                  time.Duration
 	timeoutDerived           bool // timeout was derived from category timeouts, not passed via --timeout
@@ -748,7 +793,7 @@ func newRunCommand(version string) *cobra.Command {
 	var nodesPerJob, maxSteps, exitDurationMins, startupStallTimeoutSeconds, gpusPerNode, repeatCount, maxRestarts int32
 	var enableCheckpoint, enableMNNVL bool
 	var storageClass string
-	var doWait, doSetup, doCleanup bool
+	var doWait, doSetup, doCleanup, grantRunAccess bool
 	var certFile string
 	var controllerImage string
 	var controllerPullSecret string
@@ -835,6 +880,7 @@ Use --cleanup to teardown installed components after completion.`,
 			}
 			cfg.version = version
 			cfg.resultsFile = resultsFile
+			cfg.grantRunAccess = grantRunAccess
 			cfg.timeout, cfg.timeoutDerived = resolveWaitTimeout(
 				cfg.cert, timeout, cmd.Flags().Changed("timeout"))
 			return executeCertificationRun(cfg)
@@ -851,6 +897,9 @@ Use --cleanup to teardown installed components after completion.`,
 		"Watch for completion and print a report")
 	cmd.Flags().BoolVar(&doCleanup, "cleanup", false,
 		"Delete certification, namespace, and installed components after completion")
+	cmd.Flags().BoolVar(&grantRunAccess, "grant-run-access", false,
+		"With the chart's rbac.scope: namespaced, create the RoleBinding that grants the controller write access "+
+			"in a namespace that already existed (namespaces this run creates are granted automatically)")
 	cmd.Flags().StringVar(&controllerPullSecret, "controller-pull-secret", "",
 		"Token for controller registry authentication during --setup (e.g. GitHub PAT for ghcr.io) — separate from workload image credentials")
 	cmd.Flags().StringVar(&workloadRegistry, "workload-registry", "",
@@ -1131,61 +1180,14 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 	// --- Cleanup defer (registered BEFORE setup so it runs on setup failures) ---
 	certCreated := false
 	createdNamespace := ""
+	// createdRunBinding is a RoleBinding this run created in a namespace it
+	// did not create. Deleting the namespace cannot remove it, so cleanup
+	// does, once the Certification is gone.
+	createdRunBinding := false
 
 	if cfg.doCleanup {
 		defer func() {
-			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Minute)
-			defer cleanupCancel()
-
-			_, _ = fmt.Fprintln(out, "[cleanup] Cleaning up...")
-			warnings := false
-
-			// Delete certification resource and wait for the controller to
-			// cascade-delete all Workflows, Jobs, and workloads. The controller
-			// needs its RBAC and Deployment to process this cascade, so we MUST
-			// wait for the Certification to be fully gone before running reset.
-			if certCreated {
-				_, _ = fmt.Fprintln(out, "[cleanup] Deleting certification...")
-				if err := wc.Delete(cleanupCtx, cfg.cert); err != nil && !apierrors.IsNotFound(err) {
-					_, _ = fmt.Fprintf(out, "[cleanup] Warning: failed to delete certification: %v\n", err)
-					warnings = true
-				} else {
-					waitForDeletion(cleanupCtx, wc, cfg.cert.Name, cfg.cert.Namespace, out)
-				}
-			}
-
-			// Note: the workload pull secret is owned by the Certification and
-			// will be garbage-collected automatically when the Certification is
-			// deleted above. No explicit deletion needed.
-
-			// Delete namespace if we created it, and wait for it to fully
-			// terminate so the next run doesn't fail with "namespace is being
-			// terminated".
-			if createdNamespace != "" {
-				_, _ = fmt.Fprintf(out, "[cleanup] Deleting namespace %s...\n", createdNamespace)
-				ns := &corev1.Namespace{Name: createdNamespace}
-				if err := wc.Delete(cleanupCtx, ns); err != nil && !apierrors.IsNotFound(err) {
-					_, _ = fmt.Fprintf(out, "[cleanup] Warning: failed to delete namespace %s: %v\n", createdNamespace, err)
-					warnings = true
-				} else {
-					setup.WaitForNamespaceDeletion(cleanupCtx, wc, createdNamespace, out)
-				}
-			}
-
-			// Reset all installed phases via runReset. SSA makes setup
-			// idempotent, so we reset everything unconditionally.
-			if cfg.doSetup {
-				if err := setup.RunReset("", true, cfg.configFlags, nil, out); err != nil {
-					_, _ = fmt.Fprintf(out, "[cleanup] Warning: reset failed: %v\n", err)
-					warnings = true
-				}
-			}
-
-			if warnings {
-				_, _ = fmt.Fprintln(out, "[cleanup] Done (with warnings).")
-			} else {
-				_, _ = fmt.Fprintln(out, "[cleanup] Done.")
-			}
+			runCertificationCleanup(wc, cfg, certCreated, createdNamespace, createdRunBinding)
 		}()
 	}
 
@@ -1193,7 +1195,7 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 	if cfg.doSetup {
 		_, _ = fmt.Fprintln(out, "[setup] Installing dependencies...")
 		initErr := setup.RunInit(cfg.version, cfg.controllerImage, cfg.controllerPullSecret, "", true,
-			cfg.configFlags, "", "", "", nil, out)
+			cfg.configFlags, "", "", "", "", nil, out)
 		if initErr != nil {
 			return fmt.Errorf("[setup] %w", initErr)
 		}
@@ -1228,6 +1230,20 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 		_, _ = fmt.Fprintf(out, "Created image pull secret %q in namespace %s.\n", secretName, cfg.namespace)
 	}
 
+	// Grant the controller write access in the namespace (ADR-092). This is
+	// the last step before the run object is created, so a failure anywhere
+	// earlier (pull secret, node discovery) leaves no standing grant behind,
+	// and the only later failure, the create, rolls it back below.
+	bindingCreated, err := setup.EnsureRunBinding(ctx, wc, cfg.namespace,
+		setup.RunBindingOptions{NamespaceCreated: wasCreated, Grant: cfg.grantRunAccess}, out)
+	if err != nil {
+		if wasCreatedByUs {
+			_ = wc.Delete(ctx, &corev1.Secret{Name: setup.WorkloadPullSecretName(cfg.cert.Name), Namespace: cfg.namespace})
+		}
+		return err
+	}
+	createdRunBinding = bindingCreated && !wasCreated
+
 	// --- Create Certification ---
 	if err := wc.Create(ctx, cfg.cert); err != nil {
 		// Clean up only if we actually created the secret (not if we updated one
@@ -1237,6 +1253,20 @@ func executeCertificationRun(cfg *certRunConfig) (pipelineErr error) {
 			pullSec := &corev1.Secret{
 				Name: setup.WorkloadPullSecretName(cfg.cert.Name), Namespace: cfg.namespace}
 			_ = wc.Delete(ctx, pullSec)
+		}
+		// Nothing was submitted, so a binding this run added to an existing
+		// namespace has nothing to serve and must not stay as a standing grant,
+		// unless another run uses or adopted it in the meantime. ReleaseRunBinding
+		// keeps it then, like cleanup does, and this run no longer owns it.
+		// It gets its own context: an interrupt cancels ctx, which is often why
+		// the create failed. If the release could not complete, this run keeps
+		// ownership so --cleanup tries again.
+		if createdRunBinding {
+			releaseCtx, releaseCancel := context.WithTimeout(context.Background(), setup.RunBindingRollbackTimeout)
+			if _, retry := setup.ReleaseRunBinding(releaseCtx, wc, cfg.namespace, true, "certification", out); !retry {
+				createdRunBinding = false
+			}
+			releaseCancel()
 		}
 		return fmt.Errorf("create certification: %w", err)
 	}
@@ -1620,11 +1650,81 @@ func processWatchEvents(
 	}
 }
 
-// waitForDeletion waits for a Certification to be fully deleted.
-// The timeout is generous because the controller must cascade-delete all
-// Workflows, Jobs, workloads, and dependencies before the Certification
-// finalizer is removed. The controller needs its RBAC to process this.
-func waitForDeletion(ctx context.Context, c client.Client, name, namespace string, out io.Writer) {
+// runCertificationCleanup is the --cleanup phase of executeCertificationRun. It
+// runs on every exit path, and deletes only what this run created: the
+// Certification, a RoleBinding it added to an existing namespace, the
+// namespace, and with --setup the installed components.
+func runCertificationCleanup(wc client.Client, cfg *certRunConfig, certCreated bool, createdNamespace string, createdRunBinding bool) {
+	out := cfg.out
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cleanupCancel()
+
+	_, _ = fmt.Fprintln(out, "[cleanup] Cleaning up...")
+	warnings := false
+
+	// Delete certification resource and wait for the controller to
+	// cascade-delete all Workflows, Jobs, and workloads. The controller
+	// needs its RBAC and Deployment to process this cascade, so we MUST
+	// wait for the Certification to be fully gone before running reset.
+	certGone := !certCreated
+	if certCreated {
+		_, _ = fmt.Fprintln(out, "[cleanup] Deleting certification...")
+		if err := wc.Delete(cleanupCtx, cfg.cert); err != nil && !apierrors.IsNotFound(err) {
+			_, _ = fmt.Fprintf(out, "[cleanup] Warning: failed to delete certification: %v\n", err)
+			warnings = true
+		} else {
+			certGone = waitForDeletion(cleanupCtx, wc, cfg.cert.Name, cfg.cert.Namespace, out)
+		}
+	}
+
+	// The controller's finalizers write in the namespace until the
+	// Certification is gone, so the binding goes only after it.
+	if createdRunBinding {
+		if warned, _ := setup.ReleaseRunBinding(cleanupCtx, wc, cfg.namespace, certGone, "certification", out); warned {
+			warnings = true
+		}
+	}
+
+	// Note: the workload pull secret is owned by the Certification and
+	// will be garbage-collected automatically when the Certification is
+	// deleted above. No explicit deletion needed.
+
+	// Delete namespace if we created it, and wait for it to fully
+	// terminate so the next run doesn't fail with "namespace is being
+	// terminated".
+	if createdNamespace != "" {
+		_, _ = fmt.Fprintf(out, "[cleanup] Deleting namespace %s...\n", createdNamespace)
+		ns := &corev1.Namespace{Name: createdNamespace}
+		if err := wc.Delete(cleanupCtx, ns); err != nil && !apierrors.IsNotFound(err) {
+			_, _ = fmt.Fprintf(out, "[cleanup] Warning: failed to delete namespace %s: %v\n", createdNamespace, err)
+			warnings = true
+		} else {
+			setup.WaitForNamespaceDeletion(cleanupCtx, wc, createdNamespace, out)
+		}
+	}
+
+	// Reset all installed phases via runReset. SSA makes setup
+	// idempotent, so we reset everything unconditionally.
+	if cfg.doSetup {
+		if err := setup.RunReset("", true, cfg.configFlags, nil, out); err != nil {
+			_, _ = fmt.Fprintf(out, "[cleanup] Warning: reset failed: %v\n", err)
+			warnings = true
+		}
+	}
+
+	if warnings {
+		_, _ = fmt.Fprintln(out, "[cleanup] Done (with warnings).")
+	} else {
+		_, _ = fmt.Fprintln(out, "[cleanup] Done.")
+	}
+}
+
+// waitForDeletion waits for a Certification to be fully deleted and reports
+// whether it is gone. The timeout is generous because the controller must
+// cascade-delete all Workflows, Jobs, workloads, and dependencies before the
+// Certification finalizer is removed. The controller needs its RBAC to process
+// this, which is why cleanup deletes a run RoleBinding only once this is true.
+func waitForDeletion(ctx context.Context, c client.Client, name, namespace string, out io.Writer) bool {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
@@ -1635,12 +1735,12 @@ func waitForDeletion(ctx context.Context, c client.Client, name, namespace strin
 		select {
 		case <-ctx.Done():
 			_, _ = fmt.Fprintln(out, "[cleanup] Timed out waiting for deletion.")
-			return
+			return false
 		case <-ticker.C:
 			cert := &nvcrev1alpha1.Certification{}
 			if err := c.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, cert); err != nil {
 				if apierrors.IsNotFound(err) {
-					return // deleted
+					return true // deleted
 				}
 			}
 		}

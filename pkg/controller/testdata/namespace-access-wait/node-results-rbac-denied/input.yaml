@@ -1,0 +1,6 @@
+# A node-result write is forbidden and a fresh review confirms the controller
+# lacks create on ConfigMaps. The pass ends with the original Forbidden, carrying
+# the review's denial so it is not asked twice.
+call: node-results
+denied:
+- {resource: configmaps, verb: create}

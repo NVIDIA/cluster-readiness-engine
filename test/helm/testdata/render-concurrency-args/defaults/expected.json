@@ -3,5 +3,7 @@
   "--leader-elect",
   "--health-probe-bind-address=:8081",
   "--max-concurrent-reconciles=10",
-  "--measurement-max-concurrent-reconciles=5"
+  "--measurement-max-concurrent-reconciles=5",
+  "--namespace-access-timeout=10m",
+  "--workload-creation-deadline=10m"
 ]

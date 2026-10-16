@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# rdmaDeviceAccess: hostPath through the controller rather than the CLI.
+#
+# All eight render goldens in pkg/certification go through the offline nvcrectl
+# path, which builds its own catalog.BuildConfig in
+# pkg/certification/certification.go. The controller builds a second one in
+# certification_controller.go, and the two have drifted before: that file's own
+# comment records five options the render literal was missing, which made a
+# preview disagree with what an applied run did. Deleting RDMADeviceAccess from
+# the controller literal alone leaves every render golden green, so this is the
+# case that catches it.
+#
+# It also puts the privileged patch in front of a real API server. The render
+# path marshals a Workflow and never submits it; here the TrainingRuntime
+# dependency is stored and read back, so a securityContext the apiserver would
+# reject or prune shows up as a failure rather than as a passing render.
+apiVersion: v1
+kind: Node
+metadata:
+  name: oci-gb200-hostpath-01
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200
+    kubernetes.io/hostname: oci-gb200-hostpath-01
+spec:
+  providerID: "ocid1.instance.oc1.iad.anuwcljt00000000000000000000000000000000000000000000000021"
+---
+apiVersion: v1
+kind: Node
+metadata:
+  name: oci-gb200-hostpath-02
+  labels:
+    nvidia.com/gpu.present: "true"
+    nvidia.com/gpu.product: NVIDIA-GB200
+    kubernetes.io/hostname: oci-gb200-hostpath-02
+spec:
+  providerID: "ocid1.instance.oc1.iad.anuwcljt00000000000000000000000000000000000000000000000022"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-gb200-hostpath
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  rdmaDeviceAccess: hostPath
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce

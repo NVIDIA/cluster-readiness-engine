@@ -1,0 +1,7 @@
+# A namespace this run creates is granted without --grant-run-access: deleting
+# the namespace removes the binding with it.
+rbacScope: namespaced
+namespaceExists: false
+expectRunExists: true
+expectNamespaceExists: true
+expectBinding: true

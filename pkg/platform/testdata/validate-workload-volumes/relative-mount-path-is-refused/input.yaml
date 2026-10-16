@@ -1,0 +1,10 @@
+# A mountPath that is not absolute is refused before any reserved-path
+# comparison: none of them would mean anything for it, and root/.ssh must not
+# slip past the /root/.ssh rule on a technicality.
+framework: mpi
+volumes:
+  - name: keys
+    emptyDir: {}
+volumeMounts:
+  - name: keys
+    mountPath: root/.ssh

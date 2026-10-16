@@ -212,6 +212,8 @@ type WorkloadRunSpec struct {
 	// config provides model configuration data.
 	// When inline is specified, a ConfigMap is created and mounted at /config.
 	// When configMapRef is specified, the referenced ConfigMap is mounted at /config.
+	// On the mpi framework the mount is on the worker pods, where the ranks run,
+	// and read-only on the launcher pod, where mpirun runs.
 	// +optional
 	Config *WorkloadConfig `json:"config,omitempty"`
 
@@ -233,11 +235,11 @@ type WorkloadRunSpec struct {
 	MlnxPerNode *int32 `json:"mlnxPerNode,omitempty"`
 
 	// nicResourceName sets the Kubernetes extended resource name of the RDMA
-	// NIC devices requested on workload containers for on-prem GB200/GB300
-	// targets (e.g., "rdma/ib", "nvidia.com/mlnxnics"); the name depends on
-	// the RDMA device plugin the site runs, and the per-container count
-	// comes from mlnxPerNode. When unset, the controller auto-detects the
-	// name on on-prem GB200/GB300 targets: a single candidate resource
+	// NIC devices requested on workload containers for on-prem GB200/GB300 and
+	// x86 HGX B200/B300 targets (e.g., "rdma/ib", "nvidia.com/mlnxnics"); the
+	// name depends on the RDMA device plugin the site runs, and the
+	// per-container count comes from mlnxPerNode. When unset, the controller
+	// auto-detects the name on those targets: a single candidate resource
 	// (rdma/* or nvidia.com/mlnxnics) allocatable at the resolved
 	// mlnxPerNode count on every target node is requested; zero or several
 	// qualifying candidates inject nothing and emit a NICResourceDetection
@@ -255,6 +257,8 @@ type WorkloadRunSpec struct {
 	NicResourceName *string `json:"nicResourceName,omitempty"`
 
 	// imagePullSecrets references secrets for pulling the container image.
+	// They apply to every pod of the run: the node pods on every framework and,
+	// on the mpi framework, the launcher pod as well.
 	// +optional
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
 
@@ -264,12 +268,24 @@ type WorkloadRunSpec struct {
 	// +optional
 	Env []corev1.EnvVar `json:"env,omitempty"`
 
-	// volumes defines additional volumes for the workload pods.
-	// A shared-memory volume (/dev/shm) is always auto-created.
+	// volumes defines additional volumes for the workload pods: the node pods on
+	// the torch and exec frameworks, and the worker pods on the mpi framework,
+	// where the ranks run. The mpi launcher pod gets none of them.
+	// A shared-memory volume (/dev/shm) is always auto-created. The names dshm and
+	// config-volume, on mpi mpi-ssh-auth, and on torch and exec
+	// kubeflow-trainer-token, are reserved for the built-in volumes and rejected.
 	// +optional
 	Volumes []corev1.Volume `json:"volumes,omitempty"`
 
-	// volumeMounts defines additional volume mounts for the workload container.
+	// volumeMounts defines additional volume mounts for the workload container:
+	// the node container on the torch and exec frameworks, and the worker pods'
+	// node container on the mpi framework, where the ranks run. The mpi launcher
+	// container gets none of them. The paths /dev/shm, /config when config is
+	// set, on mpi /tmp/mpi-ssh-raw and /root/.ssh, and on torch and exec
+	// /var/run/secrets/kubeflow/trainer, are reserved for the built-in mounts
+	// and rejected, the SSH and token directories together with every path
+	// below them, as is a mount that names config-volume when config is not
+	// set.
 	// +optional
 	VolumeMounts []corev1.VolumeMount `json:"volumeMounts,omitempty"`
 
@@ -288,7 +304,11 @@ type WorkloadRunSpec struct {
 	// +optional
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 
-	// initContainers specifies init containers to run before the workload.
+	// initContainers specifies init containers to run before the workload, in
+	// the node pods on the torch and exec frameworks and in the worker pods on
+	// the mpi framework. The mpi launcher pod keeps only its built-in init
+	// container. The name node is reserved for the workload container and
+	// rejected.
 	// +optional
 	InitContainers []corev1.Container `json:"initContainers,omitempty"`
 

@@ -1,0 +1,7 @@
+Discovered 1 GPU nodes with product: NVIDIA-H100-80GB-HBM3
+[rbac] Created RoleBinding wr-cleanup-ns/nvcre-manager-run granting ServiceAccount nvcre/nvcre-manager write access in namespace wr-cleanup-ns.
+[rbac] The binding stays until the run object is gone: its finalizers need it. --cleanup deletes it after that unless another run in the namespace still uses it; otherwise delete it yourself once the run is deleted.
+WorkloadRun demo-run created in namespace wr-cleanup-ns.
+
+To check status:
+  kubectl get workloadrun demo-run -n wr-cleanup-ns

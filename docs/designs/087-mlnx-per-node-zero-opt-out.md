@@ -1,6 +1,6 @@
 # ADR-087: `mlnxPerNode: 0` As a Real Opt-Out, and OCI GB200 NIC Defaults
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 

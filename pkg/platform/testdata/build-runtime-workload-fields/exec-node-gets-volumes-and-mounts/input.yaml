@@ -1,0 +1,19 @@
+# The same input as mpi-worker-gets-volumes-and-mounts on the exec framework.
+# BuildExecRuntime delegates to BuildTorchRuntime, so this must render exactly
+# as the torch case does; it is recorded separately so a future exec-specific
+# runtime cannot drop the fields unnoticed.
+frameworkType: exec
+volumes:
+  - name: ib-dev
+    hostPath:
+      path: /dev/infiniband
+      type: Directory
+  - name: ib-sys
+    hostPath:
+      path: /sys/class/infiniband
+      type: Directory
+volumeMounts:
+  - name: ib-dev
+    mountPath: /dev/infiniband
+  - name: ib-sys
+    mountPath: /sys/class/infiniband

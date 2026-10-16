@@ -1,0 +1,6 @@
+# A pass ends on a Forbidden write and a fresh review confirms the denial. The
+# wait is recorded at once on a freshly loaded Workflow, so the unsaved
+# in-memory iteration is not persisted.
+call: requeue
+denied:
+- {resource: configmaps, verb: create}

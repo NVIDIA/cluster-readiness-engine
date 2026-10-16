@@ -1,0 +1,10 @@
+{
+  "run-ns": [
+    "create configmaps",
+    "get configmaps",
+    "update configmaps",
+    "get pods/log",
+    "create trainjobs.trainer.kubeflow.org",
+    "delete trainjobs.trainer.kubeflow.org"
+  ]
+}

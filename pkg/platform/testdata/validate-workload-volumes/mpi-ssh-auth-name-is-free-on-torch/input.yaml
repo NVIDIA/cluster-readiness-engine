@@ -1,0 +1,10 @@
+# The same volume on torch: no MPI plugin runs on a torch runtime, so the name
+# collides with nothing and is accepted.
+framework: torch
+volumes:
+  - name: mpi-ssh-auth
+    secret:
+      secretName: my-keys
+volumeMounts:
+  - name: mpi-ssh-auth
+    mountPath: /etc/my-keys

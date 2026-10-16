@@ -22,7 +22,7 @@ import (
 //   - 4 GPUs per node (not 8)
 //   - NCCL_MNNVL_ENABLE=1 (MNNVL enabled)
 //   - EFA with 4 devices (not 32 like H100)
-//   - hugepages-2Mi, /opt/amazon-efa-ofi hostPath volume
+//   - hugepages-2Mi
 //   - ComputeDomain dependency for topology-aware networking
 //   - nvidia.com/gpu.clique label for topology grouping
 func TestAWSGB200NCCL(t *testing.T) {

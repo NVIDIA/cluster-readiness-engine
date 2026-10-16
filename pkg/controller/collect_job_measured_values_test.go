@@ -44,6 +44,9 @@ func TestCollectJobMeasuredValues(t *testing.T) {
 			// created for; empty leaves it unannotated (created before the
 			// annotation existed).
 			BandwidthJobUID string `yaml:"bandwidthJobUID"`
+			// GoodputJobUID is the Job UID the GoodputMeasurement was created
+			// for; empty leaves it unannotated.
+			GoodputJobUID string `yaml:"goodputJobUID"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &in); err != nil {
 			return err
@@ -88,6 +91,9 @@ func TestCollectJobMeasuredValues(t *testing.T) {
 				Reason:             in.BandwidthReason,
 				LastTransitionTime: metav1.Now(),
 			}}
+		}
+		if in.GoodputJobUID != "" {
+			gm.Annotations = map[string]string{annotationJobUID: in.GoodputJobUID}
 		}
 		if in.BandwidthJobUID != "" {
 			bm.Annotations = map[string]string{annotationJobUID: in.BandwidthJobUID}

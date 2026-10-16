@@ -118,9 +118,15 @@ type TemplateData struct {
 	MlnxPerNode int32
 
 	// NicResourceName is the extended resource name of the RDMA NIC devices
-	// for the on-prem GB200/GB300 templates. Empty means omit the NIC resource
+	// for the on-prem GB200/GB300 and HGX B200/B300 templates. Empty means omit the NIC resource
 	// block. Templates use: {{- if .NicResourceName }} ... {{ .NicResourceName }}
 	NicResourceName string
+
+	// RDMADeviceAccess selects how workload containers reach the host's RDMA
+	// devices. "hostPath" mounts /dev/infiniband and runs the workload
+	// container privileged; "devicePlugin" and empty render nothing extra.
+	// Templates use: {{- if eq .RDMADeviceAccess "hostPath" }}
+	RDMADeviceAccess string
 
 	// GKETCPXONetworks are the GKE Network names the GCP H100 TCPXO patch
 	// attaches to the pod as eth1..eth8, in that order (always
@@ -482,6 +488,7 @@ func buildTemplateData(config BuildConfig, configArch, variant string, meta entr
 		GpusPerNode:                config.GpusPerNode,
 		MlnxPerNode:                config.MlnxPerNode,
 		NicResourceName:            config.NicResourceName,
+		RDMADeviceAccess:           config.RDMADeviceAccess,
 		GKETCPXONetworks:           config.GKETCPXONetworks,
 		EnableMNNVL:                config.EnableMNNVL,
 		EnableCheckpoint:           config.EnableCheckpoint,

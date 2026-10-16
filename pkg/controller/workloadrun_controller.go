@@ -108,7 +108,7 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	workflowSpec, buildErr := r.buildWorkflowSpec(ctx, &run)
+	workflowSpec, archFallbackMessage, buildErr := r.buildWorkflowSpecWithWarning(ctx, &run)
 	if buildErr != nil {
 		// The spec is immutable, so this cannot succeed on a later reconcile;
 		// fail the WorkloadRun rather than retrying forever. Record it the way
@@ -140,7 +140,14 @@ func (r *WorkloadRunReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, fmt.Errorf("setting owner reference: %w", err)
 	}
 
-	if err := r.Create(ctx, workflow); err != nil {
+	if err := r.Create(ctx, workflow); err == nil {
+		// Only the reconcile whose Create succeeded warns, so a retry that
+		// adopts the Workflow it already created does not repeat it
+		// (ADR-094).
+		if archFallbackMessage != "" {
+			r.warnf(&run, ReasonGPUArchitectureDefaults, "%s", archFallbackMessage)
+		}
+	} else {
 		if !apierrors.IsAlreadyExists(err) {
 			// One event per failed Create attempt. This path is only reached
 			// while status.workflowRef is unset.
@@ -415,10 +422,22 @@ func NodesPerJobForScale(orch *nvcrev1alpha1.WorkloadOrchestration, numNodes int
 // example when workloadMetadata names the gang scheduler's queue key with a
 // different queue than gangScheduler configures.
 func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcrev1alpha1.WorkloadRun) (*nvcrev1alpha1.WorkflowSpec, error) {
+	ws, _, err := r.buildWorkflowSpecWithWarning(ctx, run)
+	return ws, err
+}
+
+// buildWorkflowSpecWithWarning is buildWorkflowSpec plus the
+// GPUArchitectureDefaults message to emit once the Workflow is created, or ""
+// when the detected architecture is listed in gpu-defaults.yaml (ADR-094).
+// Reconcile emits it only after a successful Create so a retry does not
+// repeat it; the tests that only need the spec call buildWorkflowSpec.
+func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
+	ctx context.Context, run *nvcrev1alpha1.WorkloadRun,
+) (*nvcrev1alpha1.WorkflowSpec, string, error) {
 	spec := &run.Spec
 
 	if err := ValidateWRPlacement(spec.Orchestration); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// Best-effort node discovery for GPU + platform defaults. The Workflow
@@ -429,6 +448,7 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 	enableMNNVL := false
 	detectedPlatform := ""
 	gpuArch := ""
+	archFallbackMessage := ""
 	// Cordoned nodes are discarded here: this call only detects GPU and platform
 	// defaults, and a WorkloadRun has no coverage verdict to qualify.
 	nodes, _, _, _ := discoverTargetNodes(ctx, r.Client, r.APIReader, spec.Target)
@@ -447,9 +467,16 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 	if spec.MlnxPerNode != nil {
 		mlnxPerNode = *spec.MlnxPerNode
 	}
+	// An architecture missing from gpu-defaults.yaml had no node shape and
+	// fell back to the Go-side default unless the spec set the counts;
+	// Reconcile says so on the WorkloadRun, with the resolved counts, once the
+	// Workflow is created instead of running silently at the wrong rank count
+	// (ADR-094). With no nodes gpuArch is "" and the message stays empty.
+	archFallbackMessage = gpuArchFallbackMessage(gpuArch, gpusPerNode, mlnxPerNode, gpuArchFieldHintWorkloadRun)
 	// The NIC resource name has no architecture default: it depends on the
 	// RDMA device plugin the site runs. The field always wins; when it is
-	// unset on the on-prem GB200/GB300 target the override matches, detection
+	// unset on the on-prem GB200/GB300 or x86 HGX B200/B300 target the
+	// overrides match, detection
 	// fills the gap from node allocatable, but only when exactly one
 	// candidate (rdma/* or nvidia.com/mlnxnics) is allocatable at the
 	// resolved mlnxPerNode count — the amount the templates will request per
@@ -474,6 +501,16 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 		frameworkType = "mpi"
 	}
 
+	// A user volume, mount or init container that reuses a built-in name or
+	// path is refused here, before the Workflow exists, with the checks the
+	// render path runs.
+	if err := platform.ValidateWorkloadVolumes(spec.Volumes, spec.VolumeMounts, frameworkType, spec.Config != nil); err != nil {
+		return nil, "", err
+	}
+	if err := platform.ValidateWorkloadInitContainers(spec.InitContainers); err != nil {
+		return nil, "", err
+	}
+
 	// Build merged env vars.
 	baseEnv := platform.BaseNCCLEnvVars(enableMNNVL)
 	mergedEnv := platform.MergeEnvVars(baseEnv, spec.Env)
@@ -487,15 +524,15 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 			configMapName = spec.Config.ConfigMapRef.Name
 		}
 		volumes = append(volumes, corev1.Volume{
-			Name: "config-volume",
+			Name: platform.ConfigVolumeName,
 			ConfigMap: &corev1.ConfigMapVolumeSource{
 				Name:        configMapName,
 				DefaultMode: func() *int32 { m := int32(0755); return &m }(),
 			},
 		})
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      "config-volume",
-			MountPath: "/config",
+			Name:      platform.ConfigVolumeName,
+			MountPath: platform.ConfigMountPath,
 		})
 	}
 
@@ -506,16 +543,15 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 
 	// Build runtime dependency.
 	rtCfg := platform.RuntimeConfig{
-		EntryName:        run.Name,
-		Image:            spec.Image,
-		NodesPerJob:      nodesPerJob,
-		GpusPerNode:      gpusPerNode,
-		Env:              mergedEnv,
-		Volumes:          volumes,
-		VolumeMounts:     volumeMounts,
-		InitContainers:   spec.InitContainers,
-		Resources:        spec.Resources,
-		ImagePullSecrets: spec.ImagePullSecrets,
+		EntryName:      run.Name,
+		Image:          spec.Image,
+		NodesPerJob:    nodesPerJob,
+		GpusPerNode:    gpusPerNode,
+		Env:            mergedEnv,
+		Volumes:        volumes,
+		VolumeMounts:   volumeMounts,
+		InitContainers: spec.InitContainers,
+		Resources:      spec.Resources,
 	}
 	if spec.GangScheduler != nil {
 		rtCfg.GangSchedulerName = spec.GangScheduler.SchedulerName
@@ -607,10 +643,10 @@ func (r *WorkloadRunReconciler) buildWorkflowSpec(ctx context.Context, run *nvcr
 
 	if err := platform.ApplyWorkloadRunScheduling(
 		workflowSpec, spec.GangScheduler, spec.WorkloadMetadata); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return workflowSpec, nil
+	return workflowSpec, archFallbackMessage, nil
 }
 
 // buildJobTemplate constructs the JobTemplateSpec for the workload.
@@ -673,15 +709,16 @@ func (r *WorkloadRunReconciler) buildJobTemplate(run *nvcrev1alpha1.WorkloadRun,
 		},
 	}
 
-	workload.SetImagePullSecrets(trainJobSpec, spec.ImagePullSecrets)
-
 	// MPI runs have a launcher replicated job that must be pinned and
 	// tolerated like the workers (issue #175 UAT: an unregistered launcher
 	// gets no node affinity from the Workflow controller and schedules on
-	// arbitrary nodes).
+	// arbitrary nodes). Pull secrets are applied to every registered job,
+	// so the launcher has to be registered before SetImagePullSecrets runs.
 	if frameworkType == FrameworkMPI {
 		workload.EnsureLauncherTarget(trainJobSpec)
 	}
+
+	workload.SetImagePullSecrets(trainJobSpec, spec.ImagePullSecrets)
 
 	jobSpec := nvcrev1alpha1.JobSpec{
 		Workload: nvcrev1alpha1.WorkloadSpec{

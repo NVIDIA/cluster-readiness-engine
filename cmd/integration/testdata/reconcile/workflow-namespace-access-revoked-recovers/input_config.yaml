@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Access is revoked before the Workflow records its results, so it waits with
+# NamespacePermissionsMissing. Access then returns (the step clears the
+# namespace's revocation): the Workflow flips NamespaceAccess to True, records
+# the succeeded nodes it held back, and succeeds with succeededNodesRef set
+# and the iteration counted once (ADR-092).
+rejectNodeResultWrites: true
+steps:
+  - waitFor:
+      kind: Workflow
+      name: wf-revoked-recovers
+      namespace: access-revoked-recovers
+      condition: InProgress
+      reason: NamespacePermissionsMissing
+    patches:
+      - target:
+          kind: Namespace
+          name: access-revoked-recovers
+        patch: {"metadata": {"labels": {"test.nvcre.nvidia.com/access": null}}}
+waitFor:
+  kind: Workflow
+  name: wf-revoked-recovers
+  namespace: access-revoked-recovers
+  condition: Succeeded
+collect:
+  - kind: Workflow
+    name: wf-revoked-recovers
+    namespace: access-revoked-recovers
+events:
+  - involvedKind: Workflow
+    involvedName: wf-revoked-recovers
+    namespace: access-revoked-recovers
+    expect:
+      - {type: Warning, reason: NamespaceAccessDenied}
+      - {type: Normal, reason: NamespaceAccessGranted}

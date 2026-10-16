@@ -1,6 +1,6 @@
 [
   {
-    "workflow": "gang-cert-training-nemotron5-8b",
+    "workflow": "gang-cert-training-nemotr-6288e",
     "dependencyKinds": [
       "TrainingRuntime",
       "ConfigMap",

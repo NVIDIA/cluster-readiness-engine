@@ -1,0 +1,8 @@
+# Every platform override rendered for an MPI WorkloadRun. A fragment that
+# restates the worker's capability list replaces the builder's, so it must
+# carry SYS_CHROOT itself; a fragment that restates the probe must not reach
+# for tcpSocket.
+source: overrides
+frameworkType: mpi
+nodesPerJob: 2
+gpusPerNode: 8

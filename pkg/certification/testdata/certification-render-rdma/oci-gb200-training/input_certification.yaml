@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The missing-arm half of issue #456, which is a different defect from the
+# communication entries' ordering problem and so needs its own case. Nothing
+# was clobbering these entries: their platform: oci block is scoped to
+# gpuArchitecture in [l40, l40s], their OCI arm for GB300 is scoped to gb300,
+# and their gpuArchitecture in [gb200, gb300] block sets only dependencies and
+# orchestration. OCI GB200 matched no arm that carried RoCE env.
+#
+# The golden pins trainer.env carrying the full OCI RoCE profile plus the GID
+# pair. nemotron5-56b is included alongside 8b because its override list is a
+# separate file with its own ordering; a fix applied to one and not the other
+# would otherwise pass.
+#
+# nodesPerJob is 8 for 8b and must stay at or above 8 for 56b, which declares
+# minGPUs and fails to render below it.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-gb200-training-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB200
+  nodesPerJob: 8
+  enableMNNVL: true
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 50
+    - domain: training
+      variant: nemotron5-56b
+      options:
+        maxSteps: 50

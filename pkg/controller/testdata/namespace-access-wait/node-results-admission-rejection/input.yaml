@@ -1,0 +1,4 @@
+# A node-result write is forbidden but a fresh review allows it: an admission
+# policy or ResourceQuota refused it. The pass goes on without the record and a
+# Warning event carries the rejection.
+call: node-results

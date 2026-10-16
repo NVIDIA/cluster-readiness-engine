@@ -1,0 +1,5 @@
+# The read succeeds but the delete is forbidden, as when the binding is
+# removed between the two.
+owner: workflow-finalizer
+forbid: delete
+namespace: terminating

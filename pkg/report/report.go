@@ -84,7 +84,7 @@ type CategoryReport struct {
 	Variant       string `json:"variant"`
 	Status        string `json:"status"`
 	FailureReason string `json:"failureReason,omitempty"` // populated from Workflow Failed condition message
-	StatusDetail  string `json:"statusDetail,omitempty"`  // why a Running category is not progressing, e.g. scheduling blocked (ADR-083)
+	StatusDetail  string `json:"statusDetail,omitempty"`  // why a Running category is not progressing: scheduling blocked (ADR-083) or waiting for namespace access (ADR-092)
 	Runtime       string `json:"runtime,omitempty"`       // total runtime across all iterations
 	TestScale     string `json:"testScale,omitempty"`
 	NodesPerJob   int    `json:"nodesPerJob,omitempty"`
@@ -375,7 +375,7 @@ func Build(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certificati
 					cat.FailureReason = failureReasonFromConditions(wf.Status.Conditions)
 				}
 				if cat.Status == statusRunning {
-					cat.StatusDetail = schedulingBlockedDetail(wf.Status.Conditions)
+					cat.StatusDetail = runningStatusDetail(wf.Status.Conditions)
 				}
 			}
 		}
@@ -463,13 +463,22 @@ func failureReasonFromConditions(conditions []metav1.Condition) string {
 	return ""
 }
 
-// schedulingBlockedDetail returns the Workflow InProgress message when its
-// reason is JobSchedulingBlocked, so a stalled Running category says why
-// (ADR-083). Returns "" otherwise.
-func schedulingBlockedDetail(conditions []metav1.Condition) string {
+// blockedReasons are the Workflow InProgress reasons that mean a Running
+// category is not progressing: scheduling blocked (ADR-083), or waiting for
+// the controller's write access in the namespace (ADR-092).
+var blockedReasons = map[string]bool{
+	controller.ReasonJobSchedulingBlocked:        true,
+	controller.ReasonNamespacePermissionsMissing: true,
+	controller.ReasonNamespaceAccessCheckFailed:  true,
+}
+
+// runningStatusDetail returns the Workflow InProgress message when its reason
+// says the category is blocked, so a stalled Running category says why.
+// Returns "" otherwise.
+func runningStatusDetail(conditions []metav1.Condition) string {
 	for _, cond := range conditions {
 		if cond.Type == nvcrev1alpha1.WorkflowInProgress && cond.Status == metav1.ConditionTrue &&
-			cond.Reason == controller.ReasonJobSchedulingBlocked {
+			blockedReasons[cond.Reason] {
 			return cond.Message
 		}
 	}

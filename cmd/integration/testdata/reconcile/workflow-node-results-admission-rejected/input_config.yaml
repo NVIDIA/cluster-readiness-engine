@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The succeeded-nodes ConfigMap write is forbidden while the controller keeps
+# its access, as an admission policy or a ResourceQuota on ConfigMaps would
+# reject it. No RoleBinding can fix that, so the write stays best effort, as
+# before ADR-092: the Workflow succeeds without succeededNodesRef rather than
+# retrying forever, and a NodeResultsWriteRejected Warning records the loss.
+rejectNodeResultWrites: true
+waitFor:
+  kind: Workflow
+  name: wf-node-results-rejected
+  namespace: node-results-rejected
+  condition: Succeeded
+collect:
+  - kind: Workflow
+    name: wf-node-results-rejected
+    namespace: node-results-rejected
+events:
+  - involvedKind: Workflow
+    involvedName: wf-node-results-rejected
+    namespace: node-results-rejected
+    expect:
+      - {type: Warning, reason: NodeResultsWriteRejected}
+      - {type: Normal, reason: JobCompleted}

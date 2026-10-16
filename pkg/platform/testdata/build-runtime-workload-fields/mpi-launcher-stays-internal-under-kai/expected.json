@@ -1,0 +1,49 @@
+{
+  "userItemsChecked": 8,
+  "replicatedJobs": [
+    {
+      "replicatedJob": "node",
+      "volumes": [
+        "dshm: emptyDir medium=Memory",
+        "ib-dev: hostPath /dev/infiniband type=Directory",
+        "ib-sys: hostPath /sys/class/infiniband type=Directory"
+      ],
+      "containers": [
+        {
+          "name": "node",
+          "volumeMounts": [
+            "mpi-ssh-auth at /tmp/mpi-ssh-raw (ro)",
+            "dshm at /dev/shm",
+            "ib-dev at /dev/infiniband",
+            "ib-sys at /sys/class/infiniband"
+          ]
+        }
+      ]
+    },
+    {
+      "replicatedJob": "launcher",
+      "volumes": [
+        "ssh-keys: emptyDir"
+      ],
+      "containers": [
+        {
+          "name": "fix-ssh-permissions",
+          "init": true,
+          "volumeMounts": [
+            "mpi-ssh-auth at /tmp/mpi-ssh-raw (ro)",
+            "ssh-keys at /root/.ssh",
+            "mpi-hostfile at /etc/mpi (ro)"
+          ]
+        },
+        {
+          "name": "node",
+          "volumeMounts": [
+            "mpi-ssh-auth at /tmp/mpi-ssh-raw (ro)",
+            "ssh-keys at /root/.ssh"
+          ]
+        }
+      ]
+    }
+  ],
+  "violations": []
+}

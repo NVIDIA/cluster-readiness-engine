@@ -15,60 +15,417 @@ followed them.
 
 ## [Unreleased]
 
+### Deprecated
+
+- The chart's `rbac.scope` default becomes `namespaced` in the next minor release.
+  Under `namespaced`, the controller writes only in namespaces with a RoleBinding to
+  `nvcre-run-role`: `nvcrectl certification run` and `workloadrun run` create it in
+  the namespaces they create, and Certifications or Workflows applied with `kubectl`
+  or GitOps need it applied beside them (`nvcrectl rbac print`) or listed in
+  `rbac.runNamespaces`. To keep today's grant, set `rbac.scope: cluster` explicitly
+  (`nvcrectl setup init --rbac-scope cluster`, or `--set rbac.scope=cluster` with Helm);
+  later `setup init` runs keep it
+  ([ADR-092](docs/designs/092-per-namespace-controller-rbac.md), #143).
+
 ### Added
 
-- GCP H100 detects the TCPXO NCCL plugin release from the `nccl-tcpxo-installer` pods
-  on the target nodes and picks the NCCL and training images and the paired
-  `tcpxo-daemon` from it: v1.0.15 and v1.0.16 run `pytorch:25.06-py3` (CUDA 12) with
-  daemon v1.0.21 and v1.0.22, v1.0.17 runs the CUDA 13 images with daemon v1.0.23.
-  A build suffix is ignored, so a rebuild such as `v1.0.17-1` gets the v1.0.17 images.
-  v1.0.15 is the minimum supported release. A newer release renders the latest
-  mapping, and an older release or none found renders v1.0.15; each fallback emits a
-  Warning `TCPXOPluginDetection` event. `certification render --dry-run` runs the
-  same detection. Validated on an AICR A3 Mega cluster at plugin v1.0.15 and v1.0.16
-  (#438)
+- Chart value `rbac.scope` decides where the controller may write. `cluster`, the
+  default, keeps the grant earlier releases made. `namespaced` grants every write to a
+  namespaced resource outside NVCRE's API group (ConfigMaps, PVCs, TrainJobs,
+  TrainingRuntimes, ResourceClaimTemplates, ComputeDomains, pod logs) only in
+  namespaces with a RoleBinding `nvcre-manager-run` to the new ClusterRole
+  `nvcre-run-role`. `rbac.runNamespaces` renders that binding for long-lived
+  namespaces. `nvcrectl setup init` keeps both from the installed release when it
+  re-runs, and its new `--rbac-scope` flag sets the scope.
+- A Workflow checks the controller's access in its namespace with
+  SelfSubjectAccessReviews before writing anything there. Without access it stays
+  `InProgress` with reason `NamespacePermissionsMissing` (or
+  `NamespaceAccessCheckFailed` when the review cannot run), emits a Warning naming the
+  RoleBinding to create, and proceeds on its own once the binding exists. The wait is
+  clocked on a new `NamespaceAccess` condition and bounded by the controller flag
+  `--namespace-access-timeout` (chart value `manager.namespaceAccessTimeout`, default
+  `10m`), after which the Workflow fails with the RoleBinding in its message.
+  `certification run --wait` and `certification report` show the wait on the
+  category.
+- `nvcrectl certification run` and `nvcrectl workloadrun run` grant the controller
+  access in a namespace they create. In a namespace that already existed, such as
+  `default` for `workloadrun run` without `-n`, they stop and print the binding unless
+  `--grant-run-access` is passed. When the scope cannot be determined from
+  cluster-scoped RBAC, they submit with a warning; a missing grant surfaces as the
+  Workflow's access wait. `--cleanup` deletes a binding they created once the run is
+  gone, unless another run uses it or recently adopted it. Under
+  `rbac.scope: cluster` nothing changes.
+- `nvcrectl rbac print --namespace <ns>` writes the RoleBinding for runs that do not
+  go through `nvcrectl`.
 
 ### Changed
 
-- GCP H100 training (`nemotron5-8b`, `nemotron5-56b`) runs the CUDA image that
-  matches the detected TCPXO plugin, so plugin v1.0.15 and v1.0.16 now get
-  `pytorch:25.06-py3` instead of `pytorch:25.08-py3`, which could not load the CUDA 12
-  plugin (#439)
-- The GCP H100 `tcpxo-daemon` follows the detected plugin release instead of the
-  early-2024 `v1.0.8` pin (#438)
+- The controller's permissions are split between `nvcre-manager-role`, still bound
+  cluster-wide, and `nvcre-run-role`. Under the default `rbac.scope: cluster` the
+  union is today's grant, except that `list` is dropped on PVCs, TrainingRuntimes,
+  ResourceClaimTemplates and ComputeDomains and `list` and `watch` on ConfigMaps, which
+  the controller never used, and `get` on Namespaces and `create` on
+  SelfSubjectAccessReviews are added.
+- The controller reads ConfigMaps and PVCs from the API server instead of its
+  informer cache, so it no longer watches, or holds in memory, every ConfigMap in the
+  cluster.
+- A dependency create rejected with `Forbidden` while a fresh access review allows
+  it, as from an admission policy, webhook or ResourceQuota, still fails the Workflow
+  with `DependencyCreationError` at once. A rejection the review confirms as a missing
+  binding waits instead.
 
 ### Fixed
 
-- `nvcre_job_status` now reports `failed` for a Job that timed out on
-  `timeoutPerJob`. The gauge was written only by the Job tier, so the Workflow
-  reconciler's timeout write left it at `in_progress` for the rest of the run, and
-  after a controller restart terminal Jobs had no series at all. It is now built at
-  scrape time from the informer cache, like `nvcre_certification_status` and
-  `nvcre_workflow_status`; series of a deleting Job remain until the Job leaves the
-  cache (#401)
+- A Workflow or Job finalizer no longer holds a terminating namespace when the
+  controller's access there is already gone: a child read or delete that is forbidden
+  in a terminating namespace is left to the namespace controller.
+- A job-scoped dependency, or a group's Job, rejected by an admission policy, webhook
+  or ResourceQuota now fails the Workflow with `DependencyCreationError` or
+  `JobCreationError`. It was retried indefinitely with the group Pending, where no
+  timeout applied.
+- A Workflow whose node-result ConfigMap write is forbidden because the controller
+  lost its access no longer reports `Succeeded` or `Failed` without its results. It
+  waits for access with `NamespacePermissionsMissing` like any other forbidden write.
+  A write an admission policy or ResourceQuota rejects stays best effort, as before,
+  and now leaves a `NodeResultsWriteRejected` Warning on the Workflow.
+- On the `mpi` framework a WorkloadRun's `spec.volumes`, `spec.volumeMounts`,
+  `spec.config`, and `spec.initContainers` were silently dropped: the rendered
+  TrainingRuntime carried none of them while `torch` and `exec` honoured them, so an
+  NCCL run that reached its RDMA devices through `hostPath` mounts came up without
+  them and a binary shipped in `spec.config` was not reachable at `/config`. They now
+  land on the MPI worker pods, where the ranks run, and `spec.config` is also mounted
+  read-only on the launcher pod, where `mpirun` runs; the launcher is otherwise
+  unchanged. A new `mpi` WorkloadRun that already set any of them now mounts them, so
+  a volume that cannot attach, such as a `ReadWriteOnce` claim across nodes, holds the
+  pods in `ContainerCreating` where it used to be ignored; existing objects are
+  unaffected because `spec` is immutable and the Workflow is never rebuilt. Under KAI
+  the launcher's wait for the workers' `sshd` now names slow worker start-up (image
+  pull, volume attach, init containers) alongside network policy when it gives up
+  (#483)
+- A WorkloadRun whose `spec.volumes` or `spec.volumeMounts` reuse a built-in volume
+  name or mount path (`dshm`, `config-volume`, `/dev/shm`, `/config` with
+  `spec.config`, on `mpi` `mpi-ssh-auth`, `/tmp/mpi-ssh-raw` and `/root/.ssh`, and
+  on `torch` and `exec` `kubeflow-trainer-token` and
+  `/var/run/secrets/kubeflow/trainer`, the SSH and token directories together with
+  every path below them), or whose `spec.initContainers` take the
+  workload container's name `node`, now fails with `BuildFailed` naming the entry,
+  and `nvcrectl workloadrun render` refuses it. A volume named `mpi-ssh-auth` or
+  `kubeflow-trainer-token` used to be silently replaced by the one Kubeflow Trainer
+  upserts under that name, and the other collisions surfaced only at pod creation
+  (#483)
+- The MPI launcher pod of a WorkloadRun received no `spec.imagePullSecrets`; only the
+  worker pods did, so a launcher pulling from a private registry failed at image pull
+  while the workers started. It now gets the same secrets as the workers (#483)
+
+## [0.7.0] - 2026-10-12
+
+### Added
+
+- `orchestration.placement: Unpinned` on a WorkloadRun, or on a hand-written Workflow,
+  runs exactly one job of exactly `numNodes` nodes and leaves the rest of the target
+  untouched. The default, `Pinned`, still partitions every target node into groups of
+  `numNodes` and pins each job to its group by a `kubernetes.io/hostname` affinity.
+  Under Unpinned no hostname affinity is written and the scheduler places the pods
+  inside the target. The size is honored or the run fails with reason `PartitionError`:
+  a workload that declares no size, or a target with fewer qualifying nodes than
+  `numNodes`, fails instead of being resized. `diagnose`, `topology.strictDomain`, and
+  `testScale: intra-node` or `intra-rack` are rejected beside it, and a
+  `topology.topologyKey` is ignored. `nvcrectl workloadrun run` rejects a `--node-list`
+  naming fewer nodes than `numNodes` and rejects `--topology-domain` outright rather
+  than rewriting `numNodes`; `workloadrun render` and `workflow render` apply the same
+  checks. The Workflow records `status.orchestration.placement` and `gpuProducts`, each
+  group's `nodes` is backfilled from where the pods actually landed, and the report
+  prints a `Placement` line with how many of the target nodes were exercised and no
+  `Scale` line. Certification has no placement option: its verdict covers every node it
+  targets (#454)
+- Nscale NKS clusters, platform `nscale`, detected from the `nscale://` providerID, on
+  B200 and GB300. Every catalog entry and the WorkloadRun path claim GPUs through a
+  `gpu.nvidia.com` ResourceClaimTemplate in place of the `nvidia.com/gpu` request, and
+  RDMA NICs through an `rdma.nscale.com` claim sized from `mlnxPerNode` (8 on B200, 4 on
+  GB300, omitted at 0). `dcgm-level4`, which runs `hostNetwork`, and
+  `nccl-loopback-nvswitch`, which exercises NVLink only, claim GPUs alone, and
+  `dcgm-level4` connects to `nvidia-dcgm-dra.nvidia-platform.svc:5555`. The NCCL
+  environment is InfiniBand with no HCA names pinned and `NCCL_NET` left unset, since
+  pinning it to `IB` selects NCCL's built-in transport over the HPC-X plugin and loses
+  SHARP; on B200 `nccl-all-reduce`, `nccl-all-gather`, and `nccl-alltoall` add
+  `NCCL_IB_QPS_PER_CONNECTION=8`, `NCCL_MIN_NCHANNELS=32`, and `NCCL_MIN_CTAS=64`.
+  Nscale runs no GPU Feature Discovery, so on GB300 the `nvidia.com/gpu.clique` topology
+  key becomes `topology.nks.nscale.com/accelerator-domain`, which needed a new optional
+  `diagnose` field on `OrchestrationOverrideSpec`. The previous Nscale integration,
+  matched on `openstack://` plus an `nscale.com/rdmashare` allocatable, is removed, so
+  `openstack://` resolves to `onprem` again (#380)
+- The x86 HGX B300 GPU architecture (`b300`, product label `NVIDIA-B300-SXM6-AC`) is in
+  the catalog's GPU defaults table at eight GPUs and eight NICs per node, so it renders
+  at the right rank count and `--gpu-arch b300` is accepted, and the Nemotron 5 8B and
+  56B training entries carry a `b300` parallelism row. A new on-prem override for x86
+  HGX B200/B300 nodes tolerates the `nvidia.com/gpu` taint with any value, on the MPI
+  launcher too, and makes `nicResourceName` and `mlnxPerNode` request RDMA devices on
+  those nodes, with NIC auto-detection widened to match. It sets no NCCL environment. On
+  every on-prem fragment, `nicResourceName` with `mlnxPerNode: 0` now omits the NIC
+  request instead of rendering a count of zero (#464)
+- A Warning event, reason `GPUArchitectureDefaults`, on the Certification or WorkloadRun
+  when the detected GPU architecture is missing from the catalog's defaults table,
+  naming the four-GPU fallback the catalog has for it and the counts the run is actually
+  sized at. The Certification and WorkloadRun render commands, offline and with
+  `--dry-run`, and `nvcrectl cluster info` print the same message (#464)
+- `WorkloadSchedulingBlocked`, a Job `InProgress` reason for a workload whose pods the
+  scheduler has rejected (`PodScheduled=False`, reason `Unschedulable`) for longer than
+  the Job's `spec.schedulingStallGraceSeconds` (default 300). The message relays the
+  scheduler's own diagnosis from the pod condition, the Workflow reports
+  `JobSchedulingBlocked` and appends that diagnosis to its own message, and
+  `nvcrectl certification report` prints it on a `Blocked:` line (JSON `statusDetail`)
+  for a Running category. `SchedulingGated` pods are held on purpose and do not count.
+  The `timeoutPerJob` clock pauses at `status.schedulingBlockedSince` from the first
+  blocked observation, grace window included; on recovery `workloadStartTime` advances
+  by the paused interval, so runtime used before the block still counts, and
+  `status.schedulingResumedTime` restarts the startup and training stall budgets. A
+  single blocked episode longer than `timeoutPerJob` still times the Job out. Previously
+  the Job reported `WorkloadRunning` while its pods sat Pending, and `timeoutPerJob`
+  kept counting the whole time (#371)
+- `startupStallTimeoutSeconds` on `CategoryOptions`, so the budget for the first parsed
+  training step is set once at `spec.startupStallTimeoutSeconds` or per category at
+  `spec.categories[].options.startupStallTimeoutSeconds`, which wins when both are set.
+  `nvcrectl certification run --startup-stall-timeout-seconds` sets the spec-level value
+  and is rejected when combined with `--cert-file`. The `nemotron5-8b` and
+  `nemotron5-56b` entries render the option into `Job.spec.startupStallTimeoutSeconds`
+  and keep 1200 s when it is unset; `stallMultiplier` stays 3. Previously the window was
+  a literal 1200 in the catalog entries and no `Certification` field or `nvcrectl` flag
+  could change it, so a workload whose first step landed after 20 minutes failed
+  `WorkloadStalled` with no supported way to widen the window (#394)
+- `rdmaDeviceAccess` on the Certification spec and under `categories[].options`, with
+  values `hostPath` and `devicePlugin`, for clusters that expose RDMA devices as host
+  device nodes with no device plugin to request them from. `hostPath` mounts the host's
+  `/dev/infiniband` (hostPath `type: Directory`) into the `node` container and runs that
+  container privileged; the mount alone is not enough, because kubelet builds the device
+  cgroup allowlist from requested resources, so `open()` on the device nodes fails with
+  `EPERM` without the privilege. Unset means `devicePlugin`, which renders what every
+  entry rendered before. A pod carrying `hostPath` is rejected under a restricted or
+  baseline Pod Security Standard, so it is opt-in rather than a platform default.
+  `nvcrectl certification render` rejects an invalid value the same way the CRD enum
+  does, and the value joins the Workflow name suffix (`hostrdma` / `dprdma`) so two
+  categories of one variant that differ only here get distinct Workflows. The five NCCL
+  entries and the two nemotron training entries honor it on every platform (#467)
+- GCP H100 detects the TCPXO NCCL plugin release from the `nccl-tcpxo-installer` pods on
+  the target nodes and picks the NCCL and training images and the paired `tcpxo-daemon`
+  from it: v1.0.15 and v1.0.16 run `pytorch:25.06-py3` (CUDA 12) with daemon v1.0.21 and
+  v1.0.22, v1.0.17 runs the CUDA 13 images with daemon v1.0.23. A build suffix is
+  ignored, so a rebuild such as `v1.0.17-1` gets the v1.0.17 images. v1.0.15 is the
+  minimum supported release. A newer release renders the latest mapping, and an older
+  release or none found renders v1.0.15; each fallback emits a Warning
+  `TCPXOPluginDetection` event. `certification render --dry-run` runs the same detection
+  (#445)
+- `status.transport` on BandwidthMeasurement records the NCCL network names seen in
+  `NCCL INFO Using network` log lines as a sorted set of distinct values, for example
+  `IB` or `Socket`, when the LogProfile carries the new optional `networkTransport`
+  pattern. The shipped `nccl-bandwidth` LogProfile matches
+  `NCCL INFO Using network (?P<transport>.+)`; a custom pattern must name its capture
+  group `transport`, and a LogProfile without the pattern still compiles and records
+  nothing. The certification report prints a `Transport:` line per category, per group,
+  and per clique, and `--results-file` carries the same `transport` arrays. The field is
+  record-only, no threshold or pass/fail verdict reads it, and it is omitted when the
+  line never appears. Names are unioned from the first log sample on and again from the
+  final read, so a transport line logged before any bandwidth row, or in a Job that
+  finished between samples, is still recorded (#444)
+
+### Changed
+
+- The GCP H100 NCCL entries (`nccl-all-reduce`, `nccl-all-gather`, `nccl-alltoall`,
+  `nccl-loopback`, `nccl-loopback-nvswitch`) and training entries (`nemotron5-8b`,
+  `nemotron5-56b`) run the CUDA image that matches the detected TCPXO plugin, so plugin
+  v1.0.15 and v1.0.16 now get `pytorch:25.06-py3` instead of the base
+  `pytorch:26.01-py3` for NCCL and `pytorch:25.08-py3` for training, neither of which
+  could load the CUDA 12 plugin (#437, #445)
+- The GCP H100 `tcpxo-daemon` follows the detected plugin release instead of the
+  `v1.0.8` pin (#445)
+- The target selector now reaches the workload pods in both placement modes.
+  `target.nodeSelector` and `target.matchExpressions` are carried onto every pod as a
+  required node affinity, with an `nvidia.com/gpu.product` `In` term built from the
+  distinct product labels discovery kept, all inside the one `NodeSelectorTerm` that
+  holds the hostname list under Pinned, so the requirements AND and the hostname values
+  are unchanged. Before, the target was a discovery-only filter: nothing wrote it to the
+  pod spec and only the hostname pin kept pods on the nodes it had approved. On a
+  DRA-only fleet whose product labels were synthesized from ResourceSlices, the product
+  term is omitted under Pinned, and under Unpinned the run fails with `PartitionError`
+  when discovery also excluded nodes of another architecture, since the term would match
+  nothing on the API server. An MPI job under Unpinned tolerates
+  `nvidia.com/gpu=present:NoSchedule` and `kubernetes.io/arch=arm64:NoSchedule` on its
+  launcher and workers instead of the blanket `Exists` toleration Pinned keeps;
+  `target.taintSelectors` still takes precedence (#454)
+- WorkloadRun MPI ranks receive the base NCCL environment and `spec.env` through
+  `mpirun -x` on every platform. The launcher previously forwarded only `NCCL_DEBUG` and
+  `NCCL_MNNVL_ENABLE` from that set, so the other NCCL defaults and all of `spec.env`
+  reached the launcher and worker containers but never the ranks, which start under
+  `sshd` with a fresh environment. A name that platform or user `mpiArgs` already
+  forward is sent once, and a `spec.env` value replaces a platform `-x` pair of the same
+  name, so the documented user-wins precedence now holds at the ranks. The NCCL settings
+  every MPI WorkloadRun runs with change as a result: on AWS EFA nodes, for example,
+  `NCCL_SHM_DISABLE=1`, `NCCL_NET_GDR_LEVEL=PHB`, and `NCCL_SOCKET_IFNAME=eth0` now
+  reach the ranks (#380)
+- `NCCL_DEBUG_SUBSYS=NET,INIT` is dropped from the base WorkloadRun NCCL environment, so
+  every WorkloadRun, torch and MPI, on every platform logs with NCCL's default subsystem
+  filter rather than only the `NET` and `INIT` lines. AWS GB300 still forwards
+  `NCCL_DEBUG_SUBSYS=NET,INIT` from its own RoCE transport env (#380)
+- `nvcrectl certification render` names Workflows through the controller's rule instead
+  of a local `<cert>-<domain>-<variant>` copy that omitted the options suffix. Rendered
+  names now carry the suffix the controller has always built from a category's
+  `options`: `nodesPerJob` (`n<N>`), `enableMNNVL` (`mnnvl` / `nomnnvl`), `testScale`,
+  `enableCheckpoint` (`ckpt`), `maxSteps` (`s<N>`), `exitDurationMins` (`e<N>`), and
+  `gpusPerNode` (`g<N>`), plus the new `rdmaDeviceAccess` token, then truncated with the
+  same hash, so a rendered name matches what the controller creates. Names on a cluster
+  do not change (#467)
+
+### Fixed
+
+- `communication/nccl-loopback` and `nccl-loopback-nvswitch` on on-prem GB200/GB300,
+  Mistral GB300, and GCP GB200/GB300 rendered a TrainingRuntime with both `torch` and
+  `mpi` policies, which the API server rejects at dependency creation, and lost the
+  entry's tolerate-everything toleration. The platform comm fragments no longer set
+  `mlPolicy` (the MPI entries' base runtimes already do) and the loopback entries
+  restore the toleration after each of them (#464)
+- The MPI launcher pod of the on-prem GB200/GB300 communication entries had no
+  toleration for the arm64 and GPU taints the node pods tolerate, so on a fleet with no
+  untainted node it stayed Pending; it now tolerates both (#464)
+- OCI GB200 `nccl-all-reduce`, `nccl-all-gather`, `nccl-alltoall`, `nccl-loopback`,
+  `nccl-loopback-nvswitch`, `nemotron5-8b`, and `nemotron5-56b` now set the RoCEv2 GID
+  index: `NCCL_IB_GID_INDEX=3` for the ranks and `UCX_IB_GID_INDEX=3` for the MPI
+  launcher, which initializes UCX from its container env rather than from the
+  `mpirun -x` args. The three NCCL perf entries set it from a `platform: oci` block that
+  a later `gpuArchitecture in [gb200, gb300]` block replaced, since overrides apply in
+  file order and `trainer.args` replaces whole, and the training entries had OCI arms
+  for L40/L40S and GB300 only, so GB200 rendered no GID index at all and the queue pair
+  failed at connection setup with `IBV_WC_REM_ACCESS_ERR`. Those five entries now carry
+  an `oci` + `gb200` arm after the architecture block that renders `oci-roce-env.yaml`
+  plus the new `_lib/nccl/oci-gb200-roce-env.yaml`, which adds the UCX variable; the two
+  loopback entries append both variables with a `jobTemplatePatch` (#467)
+- OCI GB300 `nccl-all-reduce`, `nccl-all-gather`, `nccl-alltoall`, `nemotron5-8b`, and
+  `nemotron5-56b` ship an NCCL topology file in a ConfigMap mounted at `/etc/nccl` and
+  set `NCCL_TOPO_FILE` to it. Without the file NCCL paired GPUs with the wrong RoCE
+  rails (#458)
+- OCI GB300 entries no longer force `NCCL_DMABUF_ENABLE=0` when MNNVL is off. NCCL keeps
+  its default of enabled and turns DMA-BUF off itself on a node that does not support it
+  (#458)
+- OCI GB200 workloads no longer request `nvidia.com/mlnxnics` or attach
+  `network-operator/sriov-net` by default. The `gb200` architecture default of 8 applied
+  unchanged on OCI, where the shapes do not consistently advertise the resource and the
+  NetworkAttachmentDefinition is absent on a stock cluster, so every worker pod stayed
+  Pending on `Insufficient nvidia.com/mlnxnics`. The OCI GB200 platform default is now
+  `mlnxPerNode: 0`; sites running the SR-IOV device plugin set `mlnxPerNode` to their
+  own count (#443)
+- `mlnxPerNode: 0` now omits the NIC request. No template branched on the count, so zero
+  rendered a literal `nvidia.com/mlnxnics: "0"` request and, on OCI, a null
+  `k8s.v1.cni.cncf.io/networks` annotation. The Azure, OCI, TogetherAI, and Forge
+  templates, and the Azure WorkloadRun override, drop the request entirely at zero, the
+  OCI template drops the annotation with it, and a platform default can now lower an
+  architecture's count to none (#443)
+- A Certification with a checkpointed training run, and a WorkloadRun with
+  `spec.checkpoint`, now complete on clusters that enforce RBAC. The checkpoint PVC is a
+  job-scoped dependency, and the controller sets the Job as its owner with an Update,
+  which the manager role did not grant on PersistentVolumeClaims. The Job and its
+  TrainJob were created and kept running, but the Workflow never marked the group
+  Running, so it never observed the Job and the run never completed (#463)
+- Multi-node MPI workers (the multi-node NCCL categories and WorkloadRun
+  `framework.mpi`) now request `SYS_CHROOT` alongside `IPC_LOCK`. `sshd` chroots during
+  privilege separation before authenticating, so on CRI-O, which does not grant the
+  capability by default, every SSH session died preauth while the listener stayed up and
+  `mpirun` failed with the generic ORTE banner. The worker readiness probe now opens a
+  real loopback SSH session instead of a TCP connect, so a worker whose `sshd` cannot
+  serve sessions stays `NotReady`, `mpirun` is never released against it, and the
+  worker's events name the failure; the Job then waits on `timeoutPerJob`. An image
+  without an `ssh` client keeps the previous listening check. The AWS GB200 and H100
+  override blocks, which restate the worker's capability list, carry the capability for
+  MPI as well (#466)
+- `nvcre_job_status` now reports `failed` for a Job that timed out on `timeoutPerJob`.
+  The gauge was written only by the Job tier, so the Workflow reconciler's timeout write
+  left it at `in_progress` for the rest of the run, and after a controller restart
+  terminal Jobs had no series at all. It is now built at scrape time from the informer
+  cache, like `nvcre_certification_status` and `nvcre_workflow_status`; series of a
+  deleting Job remain until the Job leaves the cache (#448)
 - A Job that times out on `timeoutPerJob` no longer carries `InProgress=True` beside
   `Failed=True`. The Workflow reconciler's timeout write now sets the same exclusive
-  InProgress / Succeeded / Failed shape as every other Job transition; Jobs that
-  timed out before the upgrade keep their old conditions (#401)
+  InProgress / Succeeded / Failed shape as every other Job transition; Jobs that timed
+  out before the upgrade keep their old conditions (#448)
 - The GCP H100 `tcpxo-daemon` now gets `NET_ADMIN`. The capability was listed as
-  `CAP_NET_ADMIN`, which containerd drops, so daemon v1.0.21 and later crash-looped
-  on their NIC tuning step; their entrypoint flags now match the release, since
-  they reject `--enforce_kernel_ipv6_support` (#438)
+  `CAP_NET_ADMIN`, which containerd drops, so daemon v1.0.21 and later crash-looped on
+  their NIC tuning step; their entrypoint flags now match the release, since they reject
+  `--enforce_kernel_ipv6_support` (#445)
 - GCP H100 training sets `TRITON_LIBCUDA_PATH` to the GKE driver directory. The NGC
-  image's ldconfig cache points `libcuda.so.1` at a CUDA compat path that does not
-  exist on GKE, so Megatron failed at import with `libcuda.so cannot found!` (#439)
-- OCI GB200 workloads no longer request `nvidia.com/mlnxnics` or attach
-  `network-operator/sriov-net` by default. The architecture default of 8 applied
-  unchanged on OCI, where the shapes do not consistently advertise the resource and
-  the NetworkAttachmentDefinition is absent on a stock cluster, so every worker pod
-  stayed Pending on `Insufficient nvidia.com/mlnxnics`. Sites running the SR-IOV
-  device plugin set `mlnxPerNode` to their own count (#350)
-- `mlnxPerNode: 0` is now the opt-out the API reference has always described. No
-  template branched on the count, so zero rendered as a literal
-  `nvidia.com/mlnxnics: "0"` request and, on OCI, a null
-  `k8s.v1.cni.cncf.io/networks` annotation. The Azure, OCI, TogetherAI, and Forge
-  templates now drop the request entirely at zero, and a platform default can lower
-  an architecture's count to none (#350)
+  image's ldconfig cache points `libcuda.so.1` at a CUDA compat path that does not exist
+  on GKE, so Megatron failed at import with `libcuda.so cannot found!` (#445)
+- GCP H100 reads the GKE network names its TCPXO pod annotation attaches from the target
+  nodes instead of assuming `gpu-nic0` through `gpu-nic7`. GKE resolves every name in
+  `networking.gke.io/interfaces` to a Network object at admission and rejects the pod
+  when one is missing, and the provisioner picks the names (AICR uses
+  `<deployment-id>-gpu-nic-N`), so on such a cluster every TCPXO worker pod was
+  rejected. The controller now uses the `networking.gke.io.networks/<name>` resources
+  allocatable at a positive quantity on every node the job can run on, only when there
+  are exactly eight of them (`default` and the `.IP` twins ignored), ordered by the host
+  NIC each sits on per the `networking.gke.io/north-interfaces` and `nic-info` node
+  annotations, else sorted by name. Any other count renders the `gpu-nic0..gpu-nic7`
+  default and emits a Warning `GKENetworkDetection` event naming what was found.
+  `certification render --dry-run` runs the same detection; offline render is unchanged
+  (#437)
+- GCP H100 NCCL and training entries set `NCCL_PROTO=Simple,LL128` and
+  `NCCL_NVLSTREE_MAX_CHUNKSIZE=131072` and no longer set `NCCL_ALGO`. The TCPXO NCCL
+  shim checks the job's environment against the node's `a3plus_guest_config.textproto`
+  (`NCCL_SHIMNET_GUEST_CONFIG_CHECKER_CONFIG_FILE`) and aborts on an enforced mismatch;
+  current installers enforce both values, so the previous `NCCL_PROTO=Simple` made the
+  shim abort, and the file recommends leaving `NCCL_ALGO` unset so the tuner plugin
+  chooses (#437)
+- `communication/nccl-loopback`, `training/nemotron5-8b`, and `training/nemotron5-56b`
+  now render `timeoutPerJob`. The loopback entry rendered `execution: {}` and the two
+  training entries no `execution` block at all, so their Jobs had no bound and an
+  explicit `timeoutPerJob` on the category was discarded. An explicit value still wins;
+  otherwise the loopback entry takes the catalog default of `1h` and the training
+  entries take `24h` from their `meta.yaml`. `certification run --wait` derives its
+  default `--timeout` from that budget, so a training category with no explicit timeout
+  now derives a 36h wait (24h times the 3/2 margin) (#467)
+- A group retry is no longer lost to a stale cache read. On a retry the Workflow
+  controller deletes the failed Job and resets the group to Pending in one reconcile,
+  but the Job deletion is a watch event of its own, and the reconcile it triggered could
+  read the Workflow from the informer cache before that status write landed. It then saw
+  a Running group on a deleting Job, treated it as an external deletion, marked the
+  group Failed, and the Workflow failed while the relaunched Job ran to completion with
+  nothing observing it. Both Job-gone branches now confirm against the API server that
+  the group is still Running on that Job, at the same retry count and iteration, before
+  failing it, and leave the group alone when the live view has moved on. The status
+  write carries only the groups the pass changed, and `createOrAdoptJob` no longer
+  adopts the Workflow's own Job while it is still terminating, retrying with backoff
+  until the name is free (#454)
+- `nvcrectl cluster info` counts GPUs on DRA-only nodes. It read each node's count only
+  from allocatable `nvidia.com/gpu`, so on a stack such as Nscale NKS, where no device
+  plugin advertises that resource, it reported zero GPUs per node and warned that
+  nothing would schedule. A node with no allocatable `nvidia.com/gpu` now counts the
+  full GPUs (`type: gpu`) in the newest generation of its `gpu.nvidia.com` ResourceSlice
+  pool; MIG and VFIO devices and slices without a `nodeName` are left out, and the
+  allocatable count still wins on any node that has one. A cluster where every node has
+  the allocatable makes no ResourceSlice List; when the List fails the command prints a
+  warning to stderr, so `-o json` and `-o yaml` stay parseable, and the affected nodes
+  stay at 0 (#419)
+
+### Security
+
+- The manager image and the `nvcrectl` binaries are built with Go 1.27.2 and
+  `golang.org/x/net` v0.60.0, picking up the fixes from the Go 1.27.2 security release
+  that `govulncheck` reported as reachable from this code. The `go` directive, which
+  every workflow builds from through `go-version-file: go.mod`, and the Dockerfile
+  builder image both move to 1.27.2; `x/net` v0.60.0 raises `golang.org/x/sys` to
+  v0.48.0 and `golang.org/x/term` to v0.46.0 (#459)
+- `attest.yml` refuses a `cosign_version` below v3.1.3, the first v3 release that
+  patches GHSA-fx35-mq7g-6g98, a verification bypass on the legacy blob path. The input
+  was only matched against `vMAJOR.MINOR.PATCH`, so a pin of v3.1.2 reached the signing
+  job. The three components are compared as integers, each capped at six digits so the
+  comparison cannot error out and fail open; the default was already v3.1.3, so the
+  floor stops a caller from pinning lower. A release policy test runs the extracted
+  validate step against pins on both sides of the floor, fails if the floor is removed,
+  and holds every `cosign-installer` pin in the workflows to the same floor (#460)
+- The release verify gate refuses legacy signature formats rather than letting cosign
+  fall back to reading them. Every detached `.sigstore.json` must be a protobuf Sigstore
+  bundle with no sibling `.sig` before `verify-blob-attestation` runs, and the image
+  index, both platform digests, the `${IMAGE}:${TAG}` reference, and the Helm chart are
+  probed with `crane manifest` for the old `sha256-<digest>.sig` / `.att` sidecar tags,
+  using a `crane` v0.20.6 the gate installs and checks against a recorded SHA-256. Only
+  a `MANIFEST_UNKNOWN` or `NAME_UNKNOWN` answer counts as absent; a hard inspect failure
+  fails the gate, and each `cosign tree` and `crane` attempt is bounded at 120s (#369)
 
 ## [0.6.0] - 2026-10-05
 
@@ -297,6 +654,7 @@ failed node with a reason.
 - Certification and WorkloadRun specs are immutable after creation (#240)
 - `spec.env` is passed to MPI containers instead of silently dropped (#230)
 
+[0.7.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.7.0
 [0.6.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.6.0
 [0.5.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.5.0
 [0.4.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.4.0

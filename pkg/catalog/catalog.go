@@ -50,10 +50,18 @@ type BuildConfig struct {
 	MlnxPerNode int32
 
 	// NicResourceName is the extended resource name of the RDMA NIC devices
-	// requested by the on-prem GB200/GB300 templates (e.g., "rdma/ib"). Empty
+	// requested by the on-prem GB200/GB300 and HGX B200/B300 templates (e.g., "rdma/ib"). Empty
 	// means the templates omit the NIC resource block. The per-container count
 	// comes from MlnxPerNode.
 	NicResourceName string
+
+	// RDMADeviceAccess selects how workload containers reach the host's RDMA
+	// devices: "hostPath" mounts /dev/infiniband and runs the workload
+	// container privileged, "devicePlugin" and empty both leave the templates
+	// requesting NIC devices as an extended resource (see MlnxPerNode and
+	// NicResourceName). Fragments wrap the hostPath patch in
+	// {{- if eq .RDMADeviceAccess "hostPath" }}.
+	RDMADeviceAccess string
 
 	// GKETCPXONetworks are the GKE Network names the GCP H100 TCPXO patch
 	// attaches to the pod as eth1..eth8, in that order. The controller

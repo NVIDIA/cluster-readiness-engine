@@ -1,0 +1,3 @@
+{
+  "error": "spec.volumeMounts[0].mountPath: \"/tmp/mpi-ssh-raw/id_rsa\" is reserved on the mpi framework: Kubeflow Trainer mounts its SSH key Secret at /tmp/mpi-ssh-raw for the worker to copy its keys from, and a mount there or below it hides them; choose another path"
+}

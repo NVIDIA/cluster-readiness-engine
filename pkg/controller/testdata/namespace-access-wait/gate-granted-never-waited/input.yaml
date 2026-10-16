@@ -1,0 +1,4 @@
+# Access was there all along: nothing is written, so a Workflow that never
+# waited carries no NamespaceAccess condition.
+call: gate
+inProgress: GroupsPartitioned

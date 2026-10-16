@@ -1,0 +1,22 @@
+# The reproduction from issue #455: a WorkloadRun on the mpi framework that
+# mounts the host's InfiniBand devices with spec.volumes and spec.volumeMounts.
+# BuildMPIRuntime never read either field, so an MPI run rendered only the two
+# built-in mounts and the dshm volume while a torch run with the same spec got
+# the user's entries. Read the "node" replicatedJob in the expected file: both
+# volumes follow dshm and both mounts follow mpi-ssh-auth and dshm on the node
+# container. The launcher carries none of them.
+frameworkType: mpi
+volumes:
+  - name: ib-dev
+    hostPath:
+      path: /dev/infiniband
+      type: Directory
+  - name: ib-sys
+    hostPath:
+      path: /sys/class/infiniband
+      type: Directory
+volumeMounts:
+  - name: ib-dev
+    mountPath: /dev/infiniband
+  - name: ib-sys
+    mountPath: /sys/class/infiniband

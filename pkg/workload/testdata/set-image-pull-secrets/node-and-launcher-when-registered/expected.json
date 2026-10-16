@@ -1,0 +1,22 @@
+[
+  {
+    "imagePullSecrets": [
+      {
+        "name": "a"
+      }
+    ],
+    "targetJobs": [
+      "node"
+    ]
+  },
+  {
+    "imagePullSecrets": [
+      {
+        "name": "a"
+      }
+    ],
+    "targetJobs": [
+      "launcher"
+    ]
+  }
+]

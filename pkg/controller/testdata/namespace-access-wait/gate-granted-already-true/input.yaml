@@ -1,0 +1,5 @@
+# The gate passes when access is still granted and the condition already says
+# so: nothing is written, no event is emitted, and the cached review is used.
+call: gate
+inProgress: JobCreated
+granted: true

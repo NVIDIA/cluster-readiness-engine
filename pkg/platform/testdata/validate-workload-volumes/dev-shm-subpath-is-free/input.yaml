@@ -1,0 +1,10 @@
+# /dev/shm is reserved exactly, not as a subtree: the built-in memory volume
+# is a plain emptyDir that nothing built in reads a named file from, so a mount
+# below it collides with nothing and passes on every framework.
+framework: torch
+volumes:
+  - name: scratch
+    emptyDir: {}
+volumeMounts:
+  - name: scratch
+    mountPath: /dev/shm/scratch

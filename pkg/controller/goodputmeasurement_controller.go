@@ -84,6 +84,9 @@ func (r *GoodputMeasurementReconciler) getLogFetcher() podlogs.PodLogFetcher {
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=jobs,verbs=get;list;watch
 // +kubebuilder:rbac:groups=nvcre.nvidia.com,resources=logprofiles,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+//
+// Pod logs are read only in run namespaces, so the grant is in nvcre-run-role
+// rather than cluster-wide (ADR-092).
 // +kubebuilder:rbac:groups="",resources=pods/log,verbs=get
 
 // Reconcile is part of the main kubernetes reconciliation loop.
@@ -141,6 +144,13 @@ func (r *GoodputMeasurementReconciler) reconcileMeasurement(ctx context.Context,
 			return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
 		}
 		return ctrl.Result{}, fmt.Errorf("failed to get referenced Job: %w", err)
+	}
+	if !measuresJob(measurement, job) {
+		// The Job was replaced under the same name (a group retry). The Job
+		// controller replaces this measurement; reading the new attempt's
+		// logs into it would only be thrown away, or worse, judged.
+		log.V(1).Info("Referenced Job was replaced under the same name, not measuring", "job", jobKey)
+		return ctrl.Result{RequeueAfter: r.getSampleInterval(measurement)}, nil
 	}
 
 	// Determine Job phase from conditions. All terminal-time computation is

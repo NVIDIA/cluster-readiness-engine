@@ -1,0 +1,11 @@
+# The Kubeflow Trainer MPI plugin upserts the mpi-ssh-auth volume by name on
+# every worker and launcher pod, so this Secret would be silently replaced by
+# the generated SSH key Secret and /etc/my-keys would hold SSH keys.
+framework: mpi
+volumes:
+  - name: mpi-ssh-auth
+    secret:
+      secretName: my-keys
+volumeMounts:
+  - name: mpi-ssh-auth
+    mountPath: /etc/my-keys
