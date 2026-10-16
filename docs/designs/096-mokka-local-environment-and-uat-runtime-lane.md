@@ -115,7 +115,7 @@ These are the versions and flags proven locally (see Notes).
 
 ### Documentation
 
-A `docs/how-to-guides/` page, "Run NVCRE locally without GPUs", registered in `docs/index.yml`. It covers `make mokka-up`, the profiles, running a Certification with the stub image, and a short "what this does not prove" section: CUDA, NCCL, bandwidth, goodput and DCGM levels 2–4.
+A `docs/how-to-guides/` page, "Run NVCRE locally without GPUs", registered in `docs/index.yml`. It covers `make mokka-up`, the profiles, running a Certification with the stub image, and a short "what this does not prove" section: CUDA, NCCL, bandwidth, goodput and DCGM diagnostics.
 
 ### CI
 
