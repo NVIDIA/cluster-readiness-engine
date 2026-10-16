@@ -445,6 +445,23 @@ type CategoryOptions struct {
 	// +kubebuilder:validation:Pattern=`^(https|ssh)://[A-Za-z0-9._~:/@%+-]+$`
 	SourceRepo string `json:"sourceRepo,omitempty"`
 
+	// dcgmHost is the DCGM hostengine address the diagnostics/dcgm-level4
+	// category passes to `dcgmi diag --host`, as host[:port] where host is a
+	// DNS name or an IPv4 address and port is 1-65535 (for example
+	// "nvidia-dcgm.gpu-system.svc:5555"). When unset, the category connects
+	// to the GPU Operator's nvidia-dcgm.gpu-operator.svc:5555 (on Nscale NKS,
+	// nvidia-dcgm-dra.nvidia-platform.svc:5555); when set, it replaces that
+	// address on every platform. Each diag runs on one node and must reach
+	// the hostengine on that same node: the dcgm pod runs on the host
+	// network, so use a Service with internalTrafficPolicy: Local, as the GPU
+	// Operator's is, or localhost:5555 when the hostengine itself listens on
+	// the node's network. A Service that load-balances across nodes would run
+	// the diagnostics on another node's GPUs. Other categories ignore it.
+	// +optional
+	// +kubebuilder:validation:MaxLength=259
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?(\.[A-Za-z0-9]([-A-Za-z0-9]*[A-Za-z0-9])?)*(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?$`
+	DCGMHost string `json:"dcgmHost,omitempty"`
+
 	// workloadMetadata sets labels on the workload object each category's Job
 	// creates (today a Kubeflow TrainJob). Use it to place the workload in a
 	// Kueue local queue with kueue.x-k8s.io/queue-name, or for any other

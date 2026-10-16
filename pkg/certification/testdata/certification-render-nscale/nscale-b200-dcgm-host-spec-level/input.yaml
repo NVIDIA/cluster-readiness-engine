@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# dcgmHost is set only at the spec level, and the category carries an options
+# block that sets something else. ResolveOptions takes its non-nil-override
+# path, so --host must fall back to the spec-level address rather than to an
+# empty value, which would let the Nscale repoint to nvidia-dcgm-dra back in.
+platform: nscale
+gpuArch: b200
