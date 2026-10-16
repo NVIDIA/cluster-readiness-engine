@@ -1,0 +1,19 @@
+# A trainJob whose runtimeRef names no dependency in the resolved Workflow.
+# The catalog always ships the runtime it references, so this is a
+# torch-shaped entry resolved from elsewhere rather than an MPI entry whose
+# runtime went missing. Treating an unmatched ref as MPI would write -x pairs
+# into the args of a workload that never runs mpirun; treating it as torch
+# writes a container env var, which is inert at worst.
+env:
+  - name: NCCL_NVLS_ENABLE
+    value: "0"
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          name: some-cluster-runtime
+        trainer:
+          command:
+            - /bin/bash
+dependencies: []

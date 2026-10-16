@@ -1,0 +1,45 @@
+# onprem + gb300, where onprem-ib-env.yaml already forwards NCCL_NVLS_ENABLE=1.
+# The operand is replaced where it sits rather than a second pair appended.
+# Two pairs would not be merely untidy: mpirun takes the last value while
+# isMNNVLEnabledInJobTemplate's scan takes the first, so for a name like
+# NCCL_MNNVL_ENABLE the controller's belief about the run would diverge from
+# what the ranks received. The list length is unchanged and the binary stays
+# where it was.
+env:
+  - name: NCCL_NVLS_ENABLE
+    value: "0"
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          name: nccl-all-reduce-runtime
+        trainer:
+          args:
+            - -N
+            - "4"
+            - --allow-run-as-root
+            - -x
+            - NCCL_DEBUG=INFO
+            - -x
+            - NCCL_NVLS_ENABLE=1
+            - -x
+            - NCCL_CUMEM_ENABLE=1
+            - /usr/local/bin/all_reduce_perf_mpi
+            - -b
+            - "8"
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nccl-all-reduce-runtime
+    spec:
+      mlPolicy:
+        mpi:
+          mpiImplementation: OpenMPI
+          numProcPerNode: 4
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+            - name: launcher

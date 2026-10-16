@@ -1,0 +1,50 @@
+# onprem + b300 nccl-all-reduce, which forwards NCCL_DEBUG and
+# NCCL_MNNVL_ENABLE and nothing else. Both resolved variables are new names, so
+# both pairs are inserted, and the position is the whole point: everything from
+# the test binary onward is argv for all_reduce_perf_mpi, not for mpirun, so a
+# pair appended to the end would be handed to the binary and never reach a
+# rank. The pairs land after the last existing -x and before the binary, in the
+# order the resolved list carries them.
+env:
+  - name: NCCL_NVLS_ENABLE
+    value: "0"
+  - name: NCCL_IB_HCA
+    value: mlx5_0,mlx5_1
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          name: nccl-all-reduce-runtime
+        trainer:
+          args:
+            - -N
+            - "8"
+            - --allow-run-as-root
+            - --mca
+            - plm_rsh_args
+            - -o StrictHostKeyChecking=no
+            - -x
+            - NCCL_DEBUG=INFO
+            - -x
+            - NCCL_MNNVL_ENABLE=0
+            - /usr/local/bin/all_reduce_perf_mpi
+            - -b
+            - "8"
+            - -e
+            - 16G
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nccl-all-reduce-runtime
+    spec:
+      mlPolicy:
+        mpi:
+          mpiImplementation: OpenMPI
+          numProcPerNode: 8
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+            - name: launcher

@@ -637,6 +637,7 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 		GangScheduler:  certification.Spec.GangScheduler,
 		Image:          opts.Image,
 		WorkloadLabels: workload.LabelsOf(opts.WorkloadMetadata),
+		Env:            opts.Env,
 	}); err != nil {
 		return "", fmt.Errorf("applying resolved transforms for %s/%s: %w", category.Domain, category.Variant, err)
 	}
@@ -793,6 +794,11 @@ func ResolveOptions(global *nvcrev1alpha1.CategoryOptions, override *nvcrev1alph
 	// merge would edit the Certification's own global map. This runs before
 	// the early return so the result is never aliased either way.
 	resolved.WorkloadMetadata = resolveWorkloadMetadata(global, override)
+	// Environment variables merge by name for the same reason labels merge by
+	// key: two variables are independent intents, and a category that names one
+	// should not silently drop a global one. Detached here, before the early
+	// return, so the result never aliases the Certification's own slice.
+	resolved.Env = resolveEnv(global, override)
 	if override == nil {
 		return resolved
 	}
@@ -898,6 +904,50 @@ func resolveWorkloadMetadata(global, override *nvcrev1alpha1.CategoryOptions) *n
 	}
 	return workload.MetadataFrom(workload.MergeLabels(
 		workload.LabelsOf(global.WorkloadMetadata), overrideLabels))
+}
+
+// resolveEnv merges global and per-category environment variables by name,
+// with the per-category value winning, and preserves the order in which they
+// were declared: global variables first, in their own order, then any
+// per-category name the global set did not carry.
+//
+// Per name rather than wholesale, for the reason resolveWorkloadMetadata
+// gives: two variables are independent intents. The failure mode under
+// wholesale replacement is worse here than for labels, because the dropped
+// value is usually the site-wide one — a category that adds an HCA pin would
+// silently lose a global NCCL_NVLS_ENABLE=0 and run with NVLS on, which shows
+// up as a failed or slow run rather than as anything wrong in the spec.
+//
+// The returned slice is freshly allocated, so no caller can reach back into
+// the Certification through the result.
+func resolveEnv(global, override *nvcrev1alpha1.CategoryOptions) []corev1.EnvVar {
+	var overrideEnv []corev1.EnvVar
+	if override != nil {
+		overrideEnv = override.Env
+	}
+	if len(global.Env) == 0 && len(overrideEnv) == 0 {
+		return nil
+	}
+
+	merged := make([]corev1.EnvVar, 0, len(global.Env)+len(overrideEnv))
+	index := make(map[string]int, len(global.Env)+len(overrideEnv))
+	for _, e := range global.Env {
+		if i, seen := index[e.Name]; seen {
+			merged[i] = e
+			continue
+		}
+		index[e.Name] = len(merged)
+		merged = append(merged, e)
+	}
+	for _, e := range overrideEnv {
+		if i, seen := index[e.Name]; seen {
+			merged[i] = e
+			continue
+		}
+		index[e.Name] = len(merged)
+		merged = append(merged, e)
+	}
+	return merged
 }
 
 // dropUnderCapacityNodes removes nodes that cannot supply gpusPerNode before

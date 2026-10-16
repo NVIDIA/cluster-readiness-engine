@@ -1,0 +1,35 @@
+# An MPI entry whose resolved args carry no -x pair. Every arm in the catalog
+# forwards at least one today, but that is a property of the catalog rather
+# than of the structure, and without a pair there is nothing to locate the
+# test binary by: the mpirun flags and the binary's own flags are both bare
+# tokens. Guessing a position would reintroduce the silent no-op this whole
+# transform exists to remove, so it fails closed and names the variable.
+env:
+  - name: NCCL_NVLS_ENABLE
+    value: "0"
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          name: nccl-bare-runtime
+        trainer:
+          args:
+            - --allow-run-as-root
+            - /usr/local/bin/all_reduce_perf_mpi
+            - -b
+            - "8"
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nccl-bare-runtime
+    spec:
+      mlPolicy:
+        mpi:
+          mpiImplementation: OpenMPI
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+            - name: launcher

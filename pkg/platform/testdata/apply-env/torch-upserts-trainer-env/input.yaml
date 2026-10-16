@@ -1,0 +1,45 @@
+# training/nemotron5-8b, which declares mlPolicy.torch and carries its NCCL
+# settings as container env on the dependency runtime, where NCCL_NVLS_ENABLE
+# is already "1". The transform writes trainer.env only: Kubeflow upserts that
+# by name onto the container named "node" in the replicatedJob labelled
+# trainjob-ancestor-step: trainer, which for a torch entry is where the ranks
+# actually run, and that upsert already wins over the runtime's own value.
+# depsUnchanged therefore has to stay true — rewriting the dependency as well
+# would be a second source of truth for the same variable.
+env:
+  - name: NCCL_NVLS_ENABLE
+    value: "0"
+jobTemplate:
+  spec:
+    workload:
+      trainJob:
+        runtimeRef:
+          name: nemotron5-8b-runtime
+        trainer:
+          command:
+            - /bin/bash
+            - /config/train.sh
+dependencies:
+  - apiVersion: trainer.kubeflow.org/v1alpha1
+    kind: TrainingRuntime
+    metadata:
+      name: nemotron5-8b-runtime
+    spec:
+      mlPolicy:
+        torch:
+          numProcPerNode: "8"
+      template:
+        spec:
+          replicatedJobs:
+            - name: node
+              template:
+                spec:
+                  template:
+                    spec:
+                      containers:
+                        - name: node
+                          env:
+                            - name: NCCL_DEBUG
+                              value: INFO
+                            - name: NCCL_NVLS_ENABLE
+                              value: "1"
