@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# A failed WorkloadRun whose two nodes failed for different reasons. The
+# summary must name each node's reason rather than printing bare names, and
+# results.json must carry failedNodeDetails alongside failedNodes.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: WorkloadRun
+metadata:
+  name: run-failed
+  namespace: default
+spec:
+  numNodes: 2
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: rt
+      trainer:
+        image: img:latest
+        numNodes: 2
+status:
+  detectedPlatform: onprem
+  detectedGPUArchitecture: h100
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: WorkflowFailed
+      message: workflow failed
+      lastTransitionTime: "2026-08-07T01:00:00Z"
+  workflowRef:
+    name: run-failed-workflow
+    namespace: default
+  failedNodesRef:
+    kind: ConfigMap
+    name: run-failed-node-results

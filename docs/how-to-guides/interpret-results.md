@@ -61,6 +61,18 @@ Or use the CLI for a formatted report:
 nvcrectl certification report <name>
 ```
 
+The report lists each failed node with its reason next to the name, and the
+machine-readable report carries the full per-node reason and message under
+`failedNodeDetails`. A node that failed different ways across categories appears
+once per distinct reason and message.
+
+A category that measures bandwidth, failed, and recorded no bandwidth for a
+group of two or more nodes also shows a **Next step** line. That combination
+means the collective never moved bytes, and re-running the category with
+`testScale: diagnose` bisects the group to separate a node-local fault from one
+on the path between nodes. See
+[Adaptive Fault Isolation](./adaptive-fault-isolation.md).
+
 For execution failures, the failed-group section also shows the captured pod,
 node, exit code, termination reason, and workload log tail. Machine-readable
 reports include the same data under

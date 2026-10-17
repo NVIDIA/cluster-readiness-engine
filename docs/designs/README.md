@@ -106,3 +106,4 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
 | 096 | [Mokka GPU Simulation for Local Development and a UAT Runtime Lane](096-mokka-local-environment-and-uat-runtime-lane.md) |
 | 097 | [Environment Variables on CategoryOptions](097-certification-category-env.md) |
 | 098 | [`nvcrectl setup init` Takes Chart Values and Keeps Them Across Runs](098-setup-init-chart-values.md) |
+| 099 | [Relay the Failure Attribution NVCRE Already Has, and Do Not Classify Causes from Log Text](099-failed-node-attribution-relay.md) |

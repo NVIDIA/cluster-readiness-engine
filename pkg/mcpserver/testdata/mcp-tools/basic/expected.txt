@@ -127,6 +127,18 @@
         "variant": "nemotron5-8b"
       }
     ],
+    "failedNodeDetails": [
+      {
+        "message": "Hardware failure detected: CEL expression 'nvidia.com/gpu.health != Healthy' matched node condition",
+        "name": "node001",
+        "reason": "HardwareFailureDetected"
+      },
+      {
+        "message": "Threshold \"busBandwidth\" violated: measured 412.50 GB/s, expression: value \u003e= 400",
+        "name": "node002",
+        "reason": "ThresholdViolation"
+      }
+    ],
     "failedNodes": [
       "node001",
       "node002"

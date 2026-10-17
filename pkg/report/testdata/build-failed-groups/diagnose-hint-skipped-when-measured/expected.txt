@@ -1,0 +1,95 @@
+
+╔════════════════════════════════════════════════════════════════╗
+║                      Certification Report                      ║
+╚════════════════════════════════════════════════════════════════╝
+
+  Name:      cert-measured
+  Platform:  onprem
+  GPU:       h100
+  Nodes:     2
+
+┌────────────────────────────────────────────────────────────────┐
+│  communication/nccl-all-reduce                                 │
+├────────────────────────────────────────────────────────────────┤
+│  Status:    Failed                                             │
+│  Reason:    1 groups failed across 1 iterations                │
+│  Runtime:   10m 0s                                             │
+│  Scale:     full-scale                                         │
+│  Nodes/Job: 2                                                  │
+│  Jobs:      1                                                  │
+│                                                                │
+│  Failed Groups:                                                │
+│      ✗  group-0 (2 nodes)                                      │
+│         Workload default/nccl failed: transport error on fi... │
+│           - node001                                            │
+│           - node002                                            │
+│         Failure Log (one captured pod):                        │
+│           Pod: nccl-launcher-0                                 │
+│           Node: node001                                        │
+│           Exit: 1 (Error)                                      │
+│           Tail:                                                │
+│             NCCL WARN NET/IB : Got completion from peer with er│
+│             ror 12, opcode 0, len 0, vendor err 129 (Recv) hca │
+│             mlx5_1                                             │
+│             node001: Test failure common.cu:401                │
+│                                                                │
+│  Bandwidth:                                                    │
+│    Size       AlgBW        BusBW        Samples                │
+│    1 GB       180.00 GB/s  350.00 GB/s  0                      │
+└────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────┐
+│  Summary                                                       │
+├────────────────────────────────────────────────────────────────┤
+│  Categories:   0/1 passed                                      │
+│  Failed Nodes: none                                            │
+│  Result:       FAILED                                          │
+└────────────────────────────────────────────────────────────────┘
+
+--- results.json ---
+{
+  "name": "cert-measured",
+  "platform": "onprem",
+  "gpu": "h100",
+  "totalNodes": 2,
+  "categories": [
+    {
+      "domain": "communication",
+      "variant": "nccl-all-reduce",
+      "status": "Failed",
+      "failureReason": "1 groups failed across 1 iterations",
+      "runtime": "10m 0s",
+      "testScale": "full-scale",
+      "nodesPerJob": 2,
+      "jobs": 1,
+      "failedGroups": [
+        {
+          "name": "group-0",
+          "nodeCount": 2,
+          "nodes": [
+            "node001",
+            "node002"
+          ],
+          "reason": "Workload default/nccl failed: transport error on first send",
+          "failureLog": {
+            "podName": "nccl-launcher-0",
+            "nodeName": "node001",
+            "exitCode": 1,
+            "reason": "Error",
+            "tail": "NCCL WARN NET/IB : Got completion from peer with error 12, opcode 0, len 0, vendor err 129 (Recv) hca mlx5_1\nnode001: Test failure common.cu:401"
+          }
+        }
+      ],
+      "bandwidth": [
+        {
+          "size": "1 GB",
+          "algBW": "180.00 GB/s",
+          "busBW": "350.00 GB/s",
+          "samples": 0
+        }
+      ]
+    }
+  ],
+  "failedNodes": [],
+  "result": "FAILED"
+}

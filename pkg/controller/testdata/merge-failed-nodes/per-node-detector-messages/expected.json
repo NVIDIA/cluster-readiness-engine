@@ -1,0 +1,25 @@
+{
+  "result": [
+    "node-a",
+    "node-b",
+    "node-c"
+  ],
+  "entries": [
+    {
+      "name": "node-a",
+      "reason": "HardwareFailureDetected",
+      "message": "node.spec.unschedulable == true"
+    },
+    {
+      "name": "node-b",
+      "reason": "HardwareFailureDetected",
+      "message": "GPU fell off the bus (Xid 79)"
+    },
+    {
+      "name": "node-c",
+      "reason": "HardwareFailureDetected",
+      "message": "Hardware failure detected by node health check"
+    }
+  ],
+  "hasNew": true
+}

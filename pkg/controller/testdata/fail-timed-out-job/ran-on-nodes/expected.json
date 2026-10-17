@@ -1,0 +1,16 @@
+{
+  "failedNodes": [
+    {
+      "name": "gpu-node-01",
+      "reason": "WorkloadFailed",
+      "message": "Job exceeded timeoutPerJob"
+    },
+    {
+      "name": "gpu-node-02",
+      "reason": "WorkloadFailed",
+      "message": "Job exceeded timeoutPerJob"
+    }
+  ],
+  "failedCondition": "JobTimedOut",
+  "conditionMessage": "Job exceeded timeoutPerJob"
+}
