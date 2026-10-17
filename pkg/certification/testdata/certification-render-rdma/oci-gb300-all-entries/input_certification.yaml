@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Every OCI GB300 arm in one case, because five of the seven were rendered by
+# no test at all. oci-gb300-nccl-control covers nccl-all-reduce and
+# nccl-loopback; nothing reached nccl-all-gather, nccl-alltoall,
+# nccl-loopback-nvswitch, nemotron5-8b or nemotron5-56b on this platform and
+# board.
+#
+# That gap is why issue #507 could sit in three entries while one of them was
+# pinned. The conflicting NCCL_IB_SPLIT_DATA_ON_QPS pair lived in all three
+# collective entries, and the two unpinned ones could have inverted their
+# fragment order — reverting a measured 70% bandwidth win — with every test
+# still green.
+#
+# What this case pins, per ADR-100: each of NCCL_IB_GID_INDEX and
+# NCCL_IB_SPLIT_DATA_ON_QPS appears exactly once in every arm's trainer.args,
+# with SPLIT_DATA_ON_QPS at the GB300 value 1 rather than the shared OCI
+# default of 0. An arm that went back to composing nccl/oci-roce-env.yaml
+# alongside nccl/oci-gb300-roce-env.yaml would show both names twice here.
+#
+# nodesPerJob is 8 because nemotron5-56b declares minGPUs and fails to render
+# below it. maxSteps keeps the two training renders small.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: oci-gb300-allentries-cert
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-GB300
+  nodesPerJob: 8
+  enableMNNVL: true
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: communication
+      variant: nccl-all-gather
+    - domain: communication
+      variant: nccl-alltoall
+    - domain: communication
+      variant: nccl-loopback
+    - domain: communication
+      variant: nccl-loopback-nvswitch
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        maxSteps: 50
+    - domain: training
+      variant: nemotron5-56b
+      options:
+        maxSteps: 50

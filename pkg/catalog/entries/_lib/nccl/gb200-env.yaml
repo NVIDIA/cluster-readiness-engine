@@ -2,7 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # The shared GB200/GB300 base, composed by the on-prem, OCI GB200 and Azure
-# GB200 arms.
+# GB200 arms: NCCL_DEBUG plus the NVLink tuning.
+#
+# An arm that already sets NCCL_DEBUG from a platform profile should compose
+# nccl/gb200-tuning-env.yaml instead, so the name is not forwarded twice
+# (ADR-100).
 #
 # NCCL_NVLS_ENABLE is deliberately omitted. It predates any record of being
 # measured on this hardware, and NVL72 trays report multicast support through
@@ -12,9 +16,4 @@
 
 - name: NCCL_DEBUG
   value: INFO
-- name: NCCL_CUMEM_ENABLE
-  value: "1"
-- name: NCCL_P2P_NET_CHUNKSIZE
-  value: "2097152"
-- name: NCCL_MNNVL_ENABLE
-  value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"
+{{ lib "nccl/gb200-tuning-env.yaml" . }}
