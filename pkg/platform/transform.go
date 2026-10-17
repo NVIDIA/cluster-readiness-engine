@@ -54,6 +54,9 @@ type ResolvedWorkflowTransforms struct {
 	// own API surface — for Certification, global variables already merged by
 	// name with per-category ones. Empty means no override.
 	Env []corev1.EnvVar
+	// NetworkAttachments are the resolved Multus attachments and their
+	// extended resources (issue #400). Empty means no attachment is written.
+	NetworkAttachments []nvcrev1alpha1.NetworkAttachment
 }
 
 // ApplyResolvedWorkflowTransforms applies every post-resolve transform to a
@@ -70,13 +73,16 @@ type ResolvedWorkflowTransforms struct {
 //  1. ApplyGangSchedulerToDependencies
 //  2. ApplyImageToJobTemplate
 //  3. ApplyImageToDependencies
-//  4. ApplyEnvToJobTemplate
-//  5. resolve and write JobTemplate.spec.workloadMetadata
+//  4. ApplyNetworkAttachmentsToDependencies
+//  5. ApplyEnvToJobTemplate
+//  6. resolve and write JobTemplate.spec.workloadMetadata
 //
-// Gang scheduling, image replacement and the environment write touch disjoint
-// fields, so only step 5's position matters: writing workload metadata last
-// makes the resolved catalog and override JobSpec the base map, which makes
-// its precedence unambiguous.
+// Gang scheduling, image replacement, network attachments and the environment
+// write touch disjoint fields, so only step 6's position matters. Network
+// attachments run after platform overrides for the same reason the image does:
+// an explicit list must win over any networks annotation an override rendered.
+// Writing workload metadata last makes the resolved catalog and override
+// JobSpec the base map, which makes its precedence unambiguous.
 //
 // It then records the resolved intent on spec.gangScheduler and runs
 // ValidateResolvedJobTemplate, so a caller cannot forget either.
@@ -89,6 +95,9 @@ func ApplyResolvedWorkflowTransforms(
 
 	ApplyImageToJobTemplate(&spec.JobTemplate, t.Image)
 	if err := ApplyImageToDependencies(spec.Dependencies, t.Image); err != nil {
+		return err
+	}
+	if err := ApplyNetworkAttachmentsToDependencies(spec.Dependencies, t.NetworkAttachments); err != nil {
 		return err
 	}
 

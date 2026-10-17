@@ -1,0 +1,10 @@
+{
+  "accepted": false,
+  "causes": [
+    {
+      "type": "FieldValueInvalid",
+      "field": "spec",
+      "message": "Invalid value: networkAttachments cannot be combined with mlnxPerNode: 0"
+    }
+  ]
+}

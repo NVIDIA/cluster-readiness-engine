@@ -355,6 +355,9 @@ func BuildWorkflowSpec(
 	}
 
 	deps := []nvcrev1alpha1.DependencySpec{runtimeDep}
+	if err := platform.ApplyNetworkAttachmentsToDependencies(deps, spec.NetworkAttachments); err != nil {
+		return nil, err
+	}
 
 	if spec.Config != nil && len(spec.Config.Inline) > 0 {
 		deps = append(deps, buildWRCLIConfigMapDep(run.Name, spec.Config.Inline))
@@ -663,18 +666,12 @@ func runWorkloadRunRenderDryRun(
 	// GB200/GB300 or x86 HGX B200/B300 target, the single candidate (rdma/* or
 	// nvidia.com/mlnxnics) allocatable at the resolved mlnxPerNode count on
 	// every discovered node is used. On zero or multiple candidates nothing
-	// is injected and the note below matches the controllers'
+	// is injected and the printed note matches the controllers'
 	// NICResourceDetection event. The offline render (no --dry-run) has no
-	// cluster and stays field-only.
-	if name, refusalMessage, ran := controller.ResolveNICResourceName(
-		run.Spec.NicResourceName, effectivePlatform, gpuArch, nodes, mlnxPerNode); ran {
-		if name == "" {
-			_, _ = fmt.Fprintln(os.Stderr, refusalMessage)
-		} else {
-			_, _ = fmt.Fprintf(os.Stderr,
-				"Auto-detected NIC resource %q (allocatable at the requested count on every target node)\n", name)
-			run.Spec.NicResourceName = &name
-		}
+	// cluster and stays field-only. An explicit networkAttachments list owns
+	// the NIC wiring (issue #400), so then there is nothing to detect.
+	if len(run.Spec.NetworkAttachments) == 0 {
+		applyWRNICDetection(run, effectivePlatform, gpuArch, nodes, mlnxPerNode)
 	}
 
 	// Bake platform mpirun args into the spec before the job template is
@@ -1483,6 +1480,11 @@ func readWorkloadRun(file string) (*nvcrev1alpha1.WorkloadRun, error) {
 		return nil, fmt.Errorf("workloadrun %s: %w", run.Name, err)
 	}
 
+	// networkAttachments: the CRD rules, mirrored for the offline path.
+	if err := validateWRNetworkAttachments(&run.Spec); err != nil {
+		return nil, fmt.Errorf("workloadrun %s: %w", run.Name, err)
+	}
+
 	return &run, nil
 }
 
@@ -1897,4 +1899,46 @@ func newWorkloadRunCancelCommand() *cobra.Command {
 	configFlags.AddFlags(cmd.Flags())
 
 	return cmd
+}
+
+// validateWRNetworkAttachments mirrors the CRD rules on
+// WorkloadRunSpec.networkAttachments: each entry's pattern, the 16-entry cap,
+// and the exclusions with nicResourceName and mlnxPerNode: 0.
+func validateWRNetworkAttachments(spec *nvcrev1alpha1.WorkloadRunSpec) error {
+	if spec.NetworkAttachments == nil {
+		return nil
+	}
+	if len(spec.NetworkAttachments) == 0 {
+		return fmt.Errorf("networkAttachments must not be empty when set")
+	}
+	if err := platform.ValidateNetworkAttachments(spec.NetworkAttachments); err != nil {
+		return err
+	}
+	if spec.NicResourceName != nil {
+		return fmt.Errorf("networkAttachments and nicResourceName are mutually exclusive")
+	}
+	if spec.MlnxPerNode != nil && *spec.MlnxPerNode == 0 {
+		return fmt.Errorf("networkAttachments cannot be combined with mlnxPerNode: 0")
+	}
+	return nil
+}
+
+// applyWRNICDetection fills run.Spec.NicResourceName from node allocatable
+// on the dry-run path, printing the controllers' NICResourceDetection note
+// when detection refuses.
+func applyWRNICDetection(
+	run *nvcrev1alpha1.WorkloadRun, platformName, gpuArch string, nodes []corev1.Node, mlnxPerNode int32,
+) {
+	name, refusalMessage, ran := controller.ResolveNICResourceName(
+		run.Spec.NicResourceName, platformName, gpuArch, nodes, mlnxPerNode)
+	if !ran {
+		return
+	}
+	if name == "" {
+		_, _ = fmt.Fprintln(os.Stderr, refusalMessage)
+		return
+	}
+	_, _ = fmt.Fprintf(os.Stderr,
+		"Auto-detected NIC resource %q (allocatable at the requested count on every target node)\n", name)
+	run.Spec.NicResourceName = &name
 }

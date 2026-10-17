@@ -1,0 +1,3 @@
+{
+  "error": "networkAttachments[0].count must be between 1 and 64 (got 0)"
+}

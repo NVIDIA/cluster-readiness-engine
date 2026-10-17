@@ -1,0 +1,33 @@
+[
+  {
+    "workflow": "onprem-b300-cert-communic-bdba7",
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "networks": "net-a,net-b,other-ns/net-c",
+        "resources": {
+          "node": [
+            "limits/nvidia.com/gpu=8",
+            "limits/rdma/extra=2",
+            "limits/rdma/shared=2",
+            "requests/nvidia.com/gpu=8",
+            "requests/rdma/extra=2",
+            "requests/rdma/shared=2"
+          ]
+        }
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "networks": "",
+        "resources": {
+          "node": [
+            "limits/cpu=2",
+            "limits/memory=1Gi"
+          ]
+        }
+      }
+    ]
+  }
+]

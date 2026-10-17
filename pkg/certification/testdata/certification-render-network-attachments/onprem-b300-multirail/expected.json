@@ -1,0 +1,45 @@
+[
+  {
+    "workflow": "onprem-b300-cert-communic-bdba7",
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "networks": "nvcre/r0,nvcre/r1,nvcre/r2,nvcre/r3,nvcre/r4,nvcre/r5,nvcre/r6,nvcre/r7",
+        "resources": {
+          "node": [
+            "limits/nvidia.com/gpu=8",
+            "limits/nvidia.com/r0=1",
+            "limits/nvidia.com/r1=1",
+            "limits/nvidia.com/r2=1",
+            "limits/nvidia.com/r3=1",
+            "limits/nvidia.com/r4=1",
+            "limits/nvidia.com/r5=1",
+            "limits/nvidia.com/r6=1",
+            "limits/nvidia.com/r7=1",
+            "requests/nvidia.com/gpu=8",
+            "requests/nvidia.com/r0=1",
+            "requests/nvidia.com/r1=1",
+            "requests/nvidia.com/r2=1",
+            "requests/nvidia.com/r3=1",
+            "requests/nvidia.com/r4=1",
+            "requests/nvidia.com/r5=1",
+            "requests/nvidia.com/r6=1",
+            "requests/nvidia.com/r7=1"
+          ]
+        }
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "networks": "",
+        "resources": {
+          "node": [
+            "limits/cpu=2",
+            "limits/memory=1Gi"
+          ]
+        }
+      }
+    ]
+  }
+]
