@@ -1,0 +1,11 @@
+# --reset-values with --rbac-scope: the flag sets the scope, and the kept run
+# namespaces stay.
+release:
+  rbac:
+    scope: namespaced
+    runNamespaces: [team-a]
+  pdb:
+    enabled: true
+options:
+  reset: true
+  rbacScope: cluster

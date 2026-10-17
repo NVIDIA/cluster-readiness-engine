@@ -1,0 +1,7 @@
+# --image with --set manager.image.tag is rejected; the error names --image.
+operator:
+  manager:
+    image:
+      tag: v0.8.1
+options:
+  image: registry.example.com/mirror/manager:v0.8.0

@@ -1,0 +1,9 @@
+# The image's repository, tag and digest are never kept (decision 4), so an
+# old digest cannot hold the controller on an old image. pullPolicy is kept.
+release:
+  manager:
+    image:
+      repository: registry.example.com/old/manager
+      tag: v0.6.0
+      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+      pullPolicy: Always

@@ -1,0 +1,9 @@
+# --set-json at the rbac parent: Helm alone would drop the kept scope and
+# render the cluster-wide ClusterRoleBinding. The merge keeps it namespaced,
+# so the chart renders a RoleBinding in team-b and no run ClusterRoleBinding.
+release:
+  rbac:
+    scope: namespaced
+    runNamespaces: [team-a]
+setJSON:
+  - 'rbac={"runNamespaces":["team-b"]}'

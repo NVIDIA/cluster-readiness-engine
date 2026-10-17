@@ -1,0 +1,13 @@
+# --set-json at the manager parent keeps the kept memory limit and the kept
+# pull-secret list, and --image-pull-secret appends nvcrectl-pull-secret.
+release:
+  manager:
+    resources:
+      limits:
+        memory: 8Gi
+    imagePullSecrets:
+      - name: mirror-pull-secret
+setJSON:
+  - 'manager={"replicas":2}'
+options:
+  pullSecret: true

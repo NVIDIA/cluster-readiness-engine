@@ -1,0 +1,17 @@
+{
+  "values": {
+    "manager": {
+      "affinity": {},
+      "image": {
+        "repository": "ghcr.io/nvidia/cluster-readiness-engine/manager",
+        "tag": "v0.8.0"
+      }
+    }
+  },
+  "image": "ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0",
+  "summary": [
+    "[preflight] Values for release \"nvcre\" (paths only; values are not printed):",
+    "  manager.affinity  (installed release)",
+    "[preflight] Controller image: ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0 (CLI version)"
+  ]
+}

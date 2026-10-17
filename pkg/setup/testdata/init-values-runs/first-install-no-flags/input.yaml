@@ -1,0 +1,4 @@
+# A first install with no flags: nothing is kept, and the upgrade gets one -f
+# holding only the CLI-version image.
+runs:
+  - args: []

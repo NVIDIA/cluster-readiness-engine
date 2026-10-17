@@ -1,0 +1,12 @@
+# An index write edits the kept list as Helm reads it: kept [a, b, c] with
+# manager.imagePullSecrets[0].name=x renders [x, b, c, nvcrectl-pull-secret].
+release:
+  manager:
+    imagePullSecrets:
+      - name: a
+      - name: b
+      - name: c
+set:
+  - manager.imagePullSecrets[0].name=x
+options:
+  pullSecret: true

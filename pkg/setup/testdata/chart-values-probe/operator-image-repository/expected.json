@@ -1,0 +1,35 @@
+{
+  "values": {
+    "manager": {
+      "image": {
+        "repository": "registry.example.com/mirror/manager"
+      }
+    }
+  },
+  "image": "registry.example.com/mirror/manager:<chart appVersion>",
+  "summary": [
+    "[preflight] Controller image: registry.example.com/mirror/manager:<chart appVersion> (this run)"
+  ],
+  "rendered": {
+    "image": "registry.example.com/mirror/manager:dev",
+    "replicas": 1,
+    "resources": {
+      "limits": {
+        "cpu": "500m",
+        "memory": "1Gi"
+      },
+      "requests": {
+        "cpu": "10m",
+        "memory": "1Gi"
+      }
+    },
+    "tolerations": [
+      {
+        "operator": "Exists"
+      }
+    ],
+    "runRoleBindings": [
+      "ClusterRoleBinding/nvcre-run-rolebinding"
+    ]
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "values": {
+    "manager": {
+      "image": {
+        "repository": "ghcr.io/nvidia/cluster-readiness-engine/manager",
+        "tag": "v0.8.0"
+      },
+      "replicas": 4,
+      "resources": {
+        "limits": {
+          "memory": "2Gi"
+        }
+      }
+    }
+  },
+  "image": "ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0",
+  "summary": [
+    "[preflight] Values for release \"nvcre\" (paths only; values are not printed):",
+    "  manager.replicas                 (this run)",
+    "  manager.resources.limits.memory  (this run)",
+    "[preflight] Controller image: ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0 (CLI version)"
+  ],
+  "rendered": {
+    "image": "ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0",
+    "replicas": 4,
+    "resources": {
+      "limits": {
+        "cpu": "500m",
+        "memory": "2Gi"
+      },
+      "requests": {
+        "cpu": "10m",
+        "memory": "1Gi"
+      }
+    },
+    "tolerations": [
+      {
+        "operator": "Exists"
+      }
+    ],
+    "runRoleBindings": [
+      "ClusterRoleBinding/nvcre-run-rolebinding"
+    ]
+  }
+}

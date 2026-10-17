@@ -1,0 +1,10 @@
+# --set manager.imagePullSecrets[1].name=x on no list gives [null, x] in
+# Helm's reading. The entries are kept at their positions, and
+# nvcrectl-pull-secret is added at the end.
+operator:
+  manager:
+    imagePullSecrets:
+      - null
+      - name: x
+options:
+  pullSecret: true

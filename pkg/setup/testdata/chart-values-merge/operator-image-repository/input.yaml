@@ -1,0 +1,6 @@
+# The operator chose the image: nvcrectl sets no image values, and the chart
+# fills the tag from its appVersion.
+operator:
+  manager:
+    image:
+      repository: registry.example.com/mirror/manager

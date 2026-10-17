@@ -1,0 +1,14 @@
+{
+  "values": {
+    "manager": {
+      "image": {
+        "repository": "registry.example.com/mirror/manager",
+        "tag": "v0.8.0"
+      }
+    }
+  },
+  "image": "registry.example.com/mirror/manager:v0.8.0",
+  "summary": [
+    "[preflight] Controller image: registry.example.com/mirror/manager:v0.8.0 (--image)"
+  ]
+}

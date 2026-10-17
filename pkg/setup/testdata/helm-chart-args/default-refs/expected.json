@@ -9,13 +9,11 @@
     "--create-namespace",
     "--version",
     "0.2.0",
-    "--set",
-    "manager.image.repository=ghcr.io/nvidia/cluster-readiness-engine/manager",
-    "--set",
-    "manager.image.tag=v0.2.0",
     "--wait",
     "--timeout",
-    "5m0s"
+    "5m0s",
+    "-f",
+    "/tmp/nvcrectl-values-1/values.json"
   ],
   "nvcreShowCRDsArgs": [
     "show",

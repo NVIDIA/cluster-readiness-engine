@@ -1,0 +1,9 @@
+# --image with a digest renders repo@digest, and a digest kept from an earlier
+# run is not kept.
+release:
+  manager:
+    image:
+      repository: ghcr.io/nvidia/cluster-readiness-engine/manager
+      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+options:
+  image: ghcr.io/nvidia/cluster-readiness-engine/manager@sha256:735ad1e142a378b0919510bd1fc113cd53ab754bc79b7f0980d647d50a914523

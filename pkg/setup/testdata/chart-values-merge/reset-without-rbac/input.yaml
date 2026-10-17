@@ -1,0 +1,8 @@
+# --reset-values on a release with no rbac values keeps nothing.
+release:
+  manager:
+    resources:
+      limits:
+        memory: 8Gi
+options:
+  reset: true

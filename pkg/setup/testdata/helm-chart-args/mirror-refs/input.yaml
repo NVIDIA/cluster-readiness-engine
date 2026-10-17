@@ -1,9 +1,7 @@
 # Mirrored chart refs (restricted egress): both installs and the CRD fetch
 # use the mirror instead of GHCR. Everything else (release names, namespaces,
-# versions, set flags) is unchanged.
+# versions, the values file) is unchanged.
 chartRef: "oci://registry.example.com/mirror/cluster-readiness-engine"
 trainerChartRef: "oci://registry.example.com/mirror/kubeflow-trainer"
 chartVersion: "0.2.0"
-imageName: "registry.example.com/mirror/manager"
-imageTag: "v0.2.0"
-pullSecretName: "nvcrectl-pull-secret"
+valuesFile: "/tmp/nvcrectl-values-1/values.json"

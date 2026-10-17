@@ -1,0 +1,16 @@
+# A list from this run replaces the kept list; --image-pull-secret then adds
+# nvcrectl-pull-secret after it.
+release:
+  manager:
+    imagePullSecrets:
+      - name: old-pull-secret
+operator:
+  manager:
+    imagePullSecrets:
+      - name: mirror-pull-secret
+probed:
+  manager:
+    imagePullSecrets:
+      - name: mirror-pull-secret
+options:
+  pullSecret: true

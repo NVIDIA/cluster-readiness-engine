@@ -1,0 +1,13 @@
+# Without --image-pull-secret this run's list replaces the kept one.
+release:
+  manager:
+    imagePullSecrets:
+      - name: old-pull-secret
+operator:
+  manager:
+    imagePullSecrets:
+      - name: mirror-pull-secret
+probed:
+  manager:
+    imagePullSecrets:
+      - name: mirror-pull-secret

@@ -1,0 +1,12 @@
+# An operator null still removes a kept value.
+release:
+  manager:
+    tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+operator:
+  manager:
+    tolerations: null
+probed:
+  manager:
+    tolerations: null

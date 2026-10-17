@@ -1,0 +1,9 @@
+# Values files, given repeated or comma-separated as Helm accepts them, and
+# stdin with --auto-approve, read once and given to both probes.
+runs:
+  - args: [-f, "{case}/first.yaml,{case}/second.yaml"]
+  - args: [-f, "-", --values, "{case}/second.yaml"]
+    stdin: |
+      manager:
+        replicas: 3
+        terminationGracePeriodSeconds: 45

@@ -1,0 +1,75 @@
+[
+  {
+    "args": [
+      "-f",
+      "{case}/first.yaml,{case}/second.yaml"
+    ],
+    "summary": [
+      "[preflight] Values for release \"nvcre\" (paths only; values are not printed):",
+      "  manager.replicas                 (this run)",
+      "  manager.resources.limits.memory  (this run)",
+      "[preflight] Controller image: ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0 (CLI version)"
+    ],
+    "helmCalls": [
+      "get values nvcre --namespace nvcre -o json --kubeconfig <kubeconfig>",
+      "template nvcre-values-probe <workspace>/probe -f <workspace>/values-0-first.yaml -f <workspace>/values-1-second.yaml",
+      "show crds oci://ghcr.io/nvidia/cluster-readiness-engine --version v0.8.0",
+      "upgrade --install nvcre oci://ghcr.io/nvidia/cluster-readiness-engine --namespace nvcre --create-namespace --version v0.8.0 --wait --timeout 5m0s -f <workspace>/values.json --kubeconfig <kubeconfig>"
+    ],
+    "upgradeValues": {
+      "manager": {
+        "image": {
+          "repository": "ghcr.io/nvidia/cluster-readiness-engine/manager",
+          "tag": "v0.8.0"
+        },
+        "replicas": 2,
+        "resources": {
+          "limits": {
+            "memory": "2Gi"
+          }
+        }
+      }
+    },
+    "workspaceRemoved": true,
+    "pullSecret": false
+  },
+  {
+    "args": [
+      "-f",
+      "-",
+      "--values",
+      "{case}/second.yaml"
+    ],
+    "summary": [
+      "[preflight] Values for release \"nvcre\" (paths only; values are not printed):",
+      "  manager.replicas                       (this run)",
+      "  manager.resources.limits.memory        (installed release)",
+      "  manager.terminationGracePeriodSeconds  (this run)",
+      "[preflight] Controller image: ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0 (CLI version)"
+    ],
+    "helmCalls": [
+      "get values nvcre --namespace nvcre -o json --kubeconfig <kubeconfig>",
+      "template nvcre-values-probe <workspace>/probe -f <workspace>/values-0-stdin -f <workspace>/values-1-second.yaml",
+      "template nvcre-values-probe <workspace>/probe -f <workspace>/kept.json -f <workspace>/values-0-stdin -f <workspace>/values-1-second.yaml",
+      "show crds oci://ghcr.io/nvidia/cluster-readiness-engine --version v0.8.0",
+      "upgrade --install nvcre oci://ghcr.io/nvidia/cluster-readiness-engine --namespace nvcre --create-namespace --version v0.8.0 --wait --timeout 5m0s -f <workspace>/values.json --kubeconfig <kubeconfig>"
+    ],
+    "upgradeValues": {
+      "manager": {
+        "image": {
+          "repository": "ghcr.io/nvidia/cluster-readiness-engine/manager",
+          "tag": "v0.8.0"
+        },
+        "replicas": 2,
+        "resources": {
+          "limits": {
+            "memory": "2Gi"
+          }
+        },
+        "terminationGracePeriodSeconds": 45
+      }
+    },
+    "workspaceRemoved": true,
+    "pullSecret": false
+  }
+]

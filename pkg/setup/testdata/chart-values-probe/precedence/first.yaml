@@ -1,0 +1,5 @@
+manager:
+  replicas: 1
+  resources:
+    limits:
+      memory: 2Gi

@@ -44,6 +44,16 @@ nvcrectl setup init --version <chart-version>
 
 The image and chart are public on GHCR, so no token is needed. For a private fork on GHCR, `--image-pull-secret <github-token>` creates the `nvcrectl-pull-secret` image pull secret in the `nvcre` namespace and authenticates chart pulls from GHCR. For a chart hosted on a private non-GHCR mirror, run `helm registry login <mirror>` before `setup init` instead. Use `--skip-phases=deps` when Kubeflow Trainer is already installed, `--skip-phases=helm` to run only dependency setup, and `--auto-approve` to skip the confirmation prompt in CI. Unknown phase names are rejected. On clusters that cannot reach GHCR at all, `--chart-ref` and `--trainer-chart-ref` point both chart pulls at a mirror registry; see [Restricted egress and air-gapped installs](#restricted-egress-and-air-gapped-installs).
 
+Chart values for the NVCRE release go through `setup init` with Helm's own flags, `--values`/`-f`, `--set` and `--set-json`, and are kept on later runs. That includes runs with no flags, such as an automation that re-runs `setup init` when `setup status` reports a missing component. Values set on the release with `helm upgrade` are kept the same way:
+
+```bash
+nvcrectl setup init \
+  --set manager.resources.requests.memory=4Gi \
+  --set manager.resources.limits.memory=8Gi
+```
+
+The controller image is the exception: it is worked out on every run, from this run's values, else `--image`, else the CLI version. `--reset-values` returns every value except `rbac.scope` and `rbac.runNamespaces` to the chart default. Preflight prints the paths of the values the release will be given, without their contents. See [Values across runs](../cli-reference/setup.md#values-across-runs).
+
 Before installing or upgrading Trainer, `setup init` checks the shared JobSet CRD and correlates the supported JobSet controller fingerprints with live resources and the exact Trainer release manifest. A verified external JobSet controller makes Trainer install with `jobset.install=false`; a bundled controller stays bundled. An orphaned JobSet CRD with no controller, supporting resources, release evidence, or JobSets keeps the CRD and installs the bundled controller without refreshing the CRD schema. An existing Trainer release with a missing JobSet CRD stops with repair guidance because Helm does not restore a chart CRD during upgrade. Ambiguous or unreadable ownership stops before Helm mutation and prints the manual Trainer installation followed by the `nvcrectl setup init --skip-phases=deps` path. The bounded fingerprint scan covers the published chart pattern, not arbitrary customized controllers; operators who cannot establish that assumption must manage the Trainer installation explicitly. Operator-managed Trainer and JobSet installations are responsible for compatible Trainer and JobSet CRD schemas, controllers, external consumers, and any required migrations. Automatic reconciliation of the shared JobSet CRD is deferred work that needs its own design, covering schema compatibility, stored-version migration, and coordination with external controllers and workloads.
 
 Check the installation at any time:
@@ -112,7 +122,7 @@ nvcrectl setup init \
 For a controller image mirrored off GHCR, omit `--image-pull-secret`: both its token and the secret it creates are scoped to `ghcr.io`, so they cannot authenticate pulls from the mirror. Authenticate the mirror pull one of two ways instead:
 
 - **Node-level registry credentials.** Configure the mirror credentials in the nodes' container runtime (containerd registry configuration or a kubelet credential provider). Nothing is bound to the controller pod, so `setup init` works exactly as shown above.
-- **A pull secret bound through the chart.** Create the secret in the `nvcre` namespace and bind it through the chart's `manager.imagePullSecrets` value. `setup init` has no flag to bind a custom-named pull secret today (the only secret it wires into `manager.imagePullSecrets` is the `ghcr.io`-scoped `nvcrectl-pull-secret`), so this path means installing the chart directly with Helm, from the mirrored chart ref or from the in-repo chart described below:
+- **A pull secret bound through the chart.** Create the secret in the `nvcre` namespace and bind it through the chart's `manager.imagePullSecrets` value with `setup init`:
 
   ```bash
   kubectl create namespace nvcre
@@ -120,14 +130,14 @@ For a controller image mirrored off GHCR, omit `--image-pull-secret`: both its t
     --docker-server registry.example.com \
     --docker-username <user> --docker-password <password>
 
-  helm upgrade --install nvcre oci://registry.example.com/mirror/cluster-readiness-engine \
-    --version <version> --namespace nvcre \
+  nvcrectl setup init \
+    --chart-ref oci://registry.example.com/mirror/cluster-readiness-engine \
+    --trainer-chart-ref oci://registry.example.com/mirror/kubeflow-trainer \
     --set manager.image.repository=registry.example.com/mirror/manager \
-    --set manager.image.tag=<version> \
     --set 'manager.imagePullSecrets[0].name=mirror-pull-secret'
   ```
 
-  Installing the chart with Helm directly carries the same caveats as bypassing `setup init` below: install Kubeflow Trainer yourself, and re-apply the CRDs on upgrades.
+  Setting only `manager.image.repository` is enough: the chart takes the tag from its `appVersion`, which is the release version. Later `setup init` runs keep the binding. If you also pass `--image-pull-secret`, its `nvcrectl-pull-secret` is added after yours rather than replacing it.
 
 **When no registry is reachable at all.** The mirroring and credential paths above assume the cluster can reach *some* registry. A detached segment may have none, in which case preload the images into each node's container runtime instead of pulling them:
 
@@ -168,13 +178,21 @@ resources:
     memory: 1Gi
 ```
 
-Size it according to the number of nodes and concurrent workloads in the cluster:
+Size CPU according to the number of nodes and concurrent workloads in the cluster:
 
 | Cluster size | CPU request / limit | Memory request / limit | Notes |
 |--------------|---------------------|------------------------|-------|
 | Up to ~100 nodes | 10m / 500m | 1Gi / 1Gi | Shipped chart defaults |
 | ~100 – 500 nodes | 200m / 500m | 1Gi / 1Gi | Increase CPU if reconcile latency rises |
 | ~500 – 1000 nodes | 500m / 1000m | 1Gi / 2Gi | Raise both CPU and memory for heavier concurrency |
+
+Size memory by the cluster-wide **Pod count**, not the node count. The controller caches every Pod in the cluster, so its memory grows with all the cluster's Pods, including Pods NVCRE did not create. On a 2,678-node cluster with about 80,000 Pods, the controller peaked at 3.83 GiB during its initial cache sync and stayed at 3.1–3.8 GiB while idle ([issue #504](https://github.com/NVIDIA/cluster-readiness-engine/issues/504)); at the 1Gi default it was OOMKilled about 15 seconds after every start. Measure a cluster like that before choosing a limit, and leave headroom over the peak. Set it through `setup init`, which keeps it on later runs:
+
+```bash
+nvcrectl setup init \
+  --set manager.resources.requests.memory=4Gi \
+  --set manager.resources.limits.memory=8Gi
+```
 
 ## High availability
 
@@ -283,7 +301,7 @@ Under `namespaced`, a run namespace gets its RoleBinding in one of three ways:
 
 A Workflow in a namespace without the binding does not fail at once. It stays `InProgress` with reason `NamespacePermissionsMissing`, emits a `NamespaceAccessDenied` Warning naming the binding, and proceeds on its own when the binding appears, so a GitOps sync that applies the Certification before the RoleBinding still runs. If the binding has not appeared after `manager.namespaceAccessTimeout` (default 10 minutes), the Workflow fails with the same reason and the RoleBinding manifest in its message. See [Troubleshooting](./troubleshooting.md#workflow-waits-with-namespacepermissionsmissing).
 
-**`nvcrectl setup init` keeps `rbac.*`.** Re-running it carries the installed release's `rbac.scope` and `rbac.runNamespaces` into the upgrade; every other chart value returns to its default, as before. Pass `--rbac-scope cluster|namespaced` to change the scope:
+**`nvcrectl setup init` keeps `rbac.*`.** Re-running it keeps the installed release's `rbac.scope` and `rbac.runNamespaces`, as it keeps every other value set on the release ([Values across runs](../cli-reference/setup.md#values-across-runs)). Even `--reset-values` keeps these two, so a re-run never widens a namespaced grant. Pass `--rbac-scope cluster|namespaced` to change the scope:
 
 ```bash
 nvcrectl setup init --rbac-scope namespaced
@@ -364,7 +382,7 @@ The controller has no external database, no admission webhook, and no sidecar in
 | Parameter | Default | Large cluster | Notes |
 |-----------|---------|---------------|-------|
 | Controller CPU limit | 500m | 1000m | CEL evaluation scales with node count |
-| Controller memory limit | 1Gi | 2Gi | Status objects grow with group count |
+| Controller memory limit | 1Gi | By Pod count | Follows the cluster-wide Pod count, not the node count: 3.83 GiB peak at about 80,000 Pods ([Resource requirements](#resource-requirements)). Set with `setup init --set manager.resources.limits.memory=…` |
 | GoodputMeasurement `sampleInterval` | 60s | 120s | Reduces API server log fetch load |
 | Certification category concurrency | Unlimited | Partition by node groups | Use multiple Certifications for >500 nodes |
 

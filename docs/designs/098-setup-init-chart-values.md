@@ -133,7 +133,7 @@ The kept values and the operator's flags are not handed to the upgrade as separa
 
 `nvcreHelmUpgradeArgs` then assembles `helm upgrade --install` from the fixed arguments as today (release, chart, namespace, `--create-namespace`, `--version`, `--wait`, `--timeout`) and `-f <that file>`. The operator's flags reach Helm only through the probes; their effect reaches the upgrade through the merged file. A `null` in that file removes the chart default, as it would on the command line.
 
-ADR-092's dedicated carry of `rbac.*` folds into the kept values. `pkg/setup/helm_rbac.go` keeps `--rbac-scope` validation and the "Setting rbac.scope" message.
+ADR-092's dedicated carry of `rbac.*` folds into the kept values. `pkg/setup/helm_rbac.go` keeps `--rbac-scope` validation. The preflight summary shows the scope with its source, for example `rbac.scope: cluster (--rbac-scope)`, in place of a separate "Setting rbac.scope" message.
 
 ### Helm version
 

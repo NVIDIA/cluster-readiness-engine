@@ -1,0 +1,14 @@
+# --reset-values drops the kept values except rbac.scope and
+# rbac.runNamespaces, so a reset never widens a namespaced grant.
+release:
+  manager:
+    resources:
+      limits:
+        memory: 8Gi
+  rbac:
+    scope: namespaced
+    runNamespaces: [team-a]
+  pdb:
+    enabled: true
+options:
+  reset: true

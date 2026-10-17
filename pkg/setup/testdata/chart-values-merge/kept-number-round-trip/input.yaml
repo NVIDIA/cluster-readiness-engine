@@ -1,0 +1,6 @@
+# Numbers are written back exactly as Helm stored them, including an integer
+# beyond float64 precision.
+release:
+  manager:
+    replicas: 3
+    terminationGracePeriodSeconds: 9007199254740993

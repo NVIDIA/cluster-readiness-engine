@@ -1,0 +1,5 @@
+# --set-json at the rbac parent changes only the run namespaces; the scope
+# kept from the first run stays namespaced.
+runs:
+  - args: [--rbac-scope, namespaced, --set, "rbac.runNamespaces={team-a}"]
+  - args: [--set-json, 'rbac={"runNamespaces":["team-b"]}']
