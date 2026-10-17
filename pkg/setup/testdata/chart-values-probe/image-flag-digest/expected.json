@@ -1,0 +1,36 @@
+{
+  "values": {
+    "manager": {
+      "image": {
+        "digest": "sha256:735ad1e142a378b0919510bd1fc113cd53ab754bc79b7f0980d647d50a914523",
+        "repository": "ghcr.io/nvidia/cluster-readiness-engine/manager"
+      }
+    }
+  },
+  "image": "ghcr.io/nvidia/cluster-readiness-engine/manager@sha256:735ad1e142a378b0919510bd1fc113cd53ab754bc79b7f0980d647d50a914523",
+  "summary": [
+    "[preflight] Controller image: ghcr.io/nvidia/cluster-readiness-engine/manager@sha256:735ad1e142a378b0919510bd1fc113cd53ab754bc79b7f0980d647d50a914523 (--image)"
+  ],
+  "rendered": {
+    "image": "ghcr.io/nvidia/cluster-readiness-engine/manager@sha256:735ad1e142a378b0919510bd1fc113cd53ab754bc79b7f0980d647d50a914523",
+    "replicas": 1,
+    "resources": {
+      "limits": {
+        "cpu": "500m",
+        "memory": "1Gi"
+      },
+      "requests": {
+        "cpu": "10m",
+        "memory": "1Gi"
+      }
+    },
+    "tolerations": [
+      {
+        "operator": "Exists"
+      }
+    ],
+    "runRoleBindings": [
+      "ClusterRoleBinding/nvcre-run-rolebinding"
+    ]
+  }
+}

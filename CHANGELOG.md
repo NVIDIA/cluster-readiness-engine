@@ -57,6 +57,13 @@ followed them.
   `rbac.scope: cluster` nothing changes.
 - `nvcrectl rbac print --namespace <ns>` writes the RoleBinding for runs that do not
   go through `nvcrectl`.
+- `nvcrectl setup init` takes chart values for the NVCRE release with
+  `--values`/`-f`, `--set` and `--set-json`, in Helm's syntax and precedence, and
+  `--reset-values` drops the kept values except `rbac.scope` and
+  `rbac.runNamespaces`. `-f -` needs `--auto-approve`, and URLs are rejected. Before
+  the confirmation prompt, and with `--auto-approve` too, preflight prints the paths
+  and sources of the values the release will be given, without their contents
+  ([ADR-098](docs/designs/098-setup-init-chart-values.md), #504).
 
 ### Changed
 
@@ -69,6 +76,20 @@ followed them.
 - The controller reads ConfigMaps and PVCs from the API server instead of its
   informer cache, so it no longer watches, or holds in memory, every ConfigMap in the
   cluster.
+- `nvcrectl setup init` keeps the values set on the installed release, including
+  values set with `helm upgrade`, instead of returning every value but `rbac.*` to its
+  default on each run. A memory limit raised for a large cluster now survives an
+  automated re-run. The controller image's repository, tag and digest are the
+  exception: they are worked out on every run from this run's values, `--image` or
+  the CLI version. `--image` or `--rbac-scope` given together with values that set the
+  same key is rejected before anything changes. `--image-pull-secret` adds
+  `nvcrectl-pull-secret` to the end of `manager.imagePullSecrets` instead of writing
+  index 0, so a mirror pull secret is no longer replaced. A binding to
+  `nvcrectl-pull-secret` stored by an earlier `--image-pull-secret` run is kept by
+  later runs without the flag, where it used to be dropped. With no values set, a
+  run renders the chart exactly as before. `setup init` needs Helm 3.8 or later; an
+  operator's own `--set-json` needs 3.10
+  ([ADR-098](docs/designs/098-setup-init-chart-values.md), #504).
 - A dependency create rejected with `Forbidden` while a fresh access review allows
   it, as from an admission policy, webhook or ResourceQuota, still fails the Workflow
   with `DependencyCreationError` at once. A rejection the review confirms as a missing
@@ -76,6 +97,9 @@ followed them.
 
 ### Fixed
 
+- `nvcrectl setup init --image repo@sha256:<digest>` passed the digest as the image
+  tag, so the chart rendered the invalid reference `repo:sha256:<digest>`. It now sets
+  `manager.image.digest`, and the chart renders `repo@sha256:<digest>`.
 - A Workflow or Job finalizer no longer holds a terminating namespace when the
   controller's access there is already gone: a child read or delete that is forbidden
   in a terminating namespace is left to the namespace controller.

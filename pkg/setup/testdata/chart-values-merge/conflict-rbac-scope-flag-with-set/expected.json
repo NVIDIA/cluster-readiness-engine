@@ -1,0 +1,3 @@
+{
+  "error": "--rbac-scope and this run's values both set rbac.scope; give --rbac-scope or the value, not both"
+}

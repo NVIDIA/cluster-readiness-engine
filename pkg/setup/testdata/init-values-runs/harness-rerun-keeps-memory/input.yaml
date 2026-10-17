@@ -1,0 +1,9 @@
+# Issue #504: once the memory is set, a later setup init with no flags, which
+# is what a harness runs when setup status reports a missing component, keeps
+# it instead of returning the controller to the 1Gi default.
+runs:
+  - args:
+      - --set
+      - manager.resources.requests.memory=4Gi,manager.resources.limits.memory=8Gi
+  - args: []
+  - args: []

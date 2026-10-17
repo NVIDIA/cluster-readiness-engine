@@ -1,0 +1,21 @@
+# Kept [a, b, c] with --set manager.imagePullSecrets[0].name=x: Helm's
+# reading (P) edits the kept list, giving [x, b, c], and the flag appends
+# nvcrectl-pull-secret.
+release:
+  manager:
+    imagePullSecrets:
+      - name: a
+      - name: b
+      - name: c
+operator:
+  manager:
+    imagePullSecrets:
+      - name: x
+probed:
+  manager:
+    imagePullSecrets:
+      - name: x
+      - name: b
+      - name: c
+options:
+  pullSecret: true

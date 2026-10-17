@@ -1,0 +1,6 @@
+# null entries are kept: they remove a chart default, as they did when the
+# operator set them.
+release:
+  manager:
+    affinity: null
+  pdb: null

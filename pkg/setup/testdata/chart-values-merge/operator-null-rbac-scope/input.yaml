@@ -1,0 +1,11 @@
+# --set rbac.scope=null without --rbac-scope is allowed; the null removes the
+# chart default, and the chart reports it at render time.
+release:
+  rbac:
+    scope: namespaced
+operator:
+  rbac:
+    scope: null
+probed:
+  rbac:
+    scope: null

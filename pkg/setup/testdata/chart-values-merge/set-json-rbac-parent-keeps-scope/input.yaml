@@ -1,0 +1,13 @@
+# --set-json 'rbac={"runNamespaces":["team-b"]}' replaces the rbac subtree in
+# Helm's reading (P), but a kept rbac.scope survives the merge: an operator
+# value replaces only what it names (decision 2).
+release:
+  rbac:
+    scope: namespaced
+    runNamespaces: [team-a]
+operator:
+  rbac:
+    runNamespaces: [team-b]
+probed:
+  rbac:
+    runNamespaces: [team-b]

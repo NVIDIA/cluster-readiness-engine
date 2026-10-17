@@ -1,0 +1,6 @@
+# --rbac-scope with --set rbac.scope is rejected; the error names --rbac-scope.
+operator:
+  rbac:
+    scope: namespaced
+options:
+  rbacScope: cluster

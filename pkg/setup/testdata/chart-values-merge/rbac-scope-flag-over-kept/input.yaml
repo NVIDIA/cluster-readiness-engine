@@ -1,0 +1,7 @@
+# --rbac-scope overrides a kept scope and keeps the kept run namespaces.
+release:
+  rbac:
+    scope: namespaced
+    runNamespaces: [team-a]
+options:
+  rbacScope: cluster

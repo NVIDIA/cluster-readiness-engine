@@ -1,0 +1,4 @@
+# --image-pull-secret with no list anywhere: the chart's empty default plus
+# nvcrectl-pull-secret.
+options:
+  pullSecret: true

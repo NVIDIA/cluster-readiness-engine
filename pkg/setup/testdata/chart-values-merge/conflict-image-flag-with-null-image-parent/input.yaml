@@ -1,0 +1,7 @@
+# --set-json manager.image=null replaces the whole image object, so it sets the
+# image and conflicts with --image.
+operator:
+  manager:
+    image: null
+options:
+  image: registry.example.com/mirror/manager:v0.8.0

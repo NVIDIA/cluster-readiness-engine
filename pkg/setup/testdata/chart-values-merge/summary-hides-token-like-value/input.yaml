@@ -1,0 +1,36 @@
+# The summary reaches CI logs, so it prints paths and sources only. A kept
+# value under a key the chart never reads may be a credential and must not
+# appear; the image, pull-secret names and rbac.scope are printed.
+release:
+  extra:
+    apiToken: ghp_0123456789abcdefghijklmnopqrstuvwxyzAB
+  manager:
+    resources:
+      limits:
+        memory: 8Gi
+    imagePullSecrets:
+      - name: mirror-pull-secret
+  rbac:
+    scope: namespaced
+    runNamespaces: [team-a]
+operator:
+  manager:
+    resources:
+      requests:
+        memory: 4Gi
+probed:
+  extra:
+    apiToken: ghp_0123456789abcdefghijklmnopqrstuvwxyzAB
+  manager:
+    resources:
+      limits:
+        memory: 8Gi
+      requests:
+        memory: 4Gi
+    imagePullSecrets:
+      - name: mirror-pull-secret
+  rbac:
+    scope: namespaced
+    runNamespaces: [team-a]
+options:
+  pullSecret: true

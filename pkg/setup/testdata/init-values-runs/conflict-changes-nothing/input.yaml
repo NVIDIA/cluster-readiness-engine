@@ -1,0 +1,10 @@
+# --image with --set manager.image.tag is rejected in preflight: Helm is only
+# read, never upgraded, and the release's values are unchanged.
+runs:
+  - args: [--set, manager.resources.limits.memory=8Gi]
+  - args:
+      - --image
+      - registry.example.com/mirror/manager:v0.8.0
+      - --set
+      - manager.image.tag=v0.8.1
+  - args: [--rbac-scope, namespaced, --set, rbac.scope=cluster]

@@ -1,0 +1,24 @@
+{
+  "values": {
+    "manager": {
+      "image": {
+        "repository": "ghcr.io/nvidia/cluster-readiness-engine/manager",
+        "tag": "v0.8.0"
+      }
+    },
+    "rbac": {
+      "runNamespaces": [
+        "team-a"
+      ],
+      "scope": "namespaced"
+    }
+  },
+  "image": "ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0",
+  "summary": [
+    "[preflight] --reset-values: the installed release's values are not kept, except rbac.scope and rbac.runNamespaces.",
+    "[preflight] Values for release \"nvcre\" (paths only; values are not printed):",
+    "  rbac.runNamespaces  (installed release)",
+    "[preflight] rbac.scope: namespaced (installed release)",
+    "[preflight] Controller image: ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0 (CLI version)"
+  ]
+}

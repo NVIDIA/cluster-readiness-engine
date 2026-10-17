@@ -1,0 +1,5 @@
+# Without --image-pull-secret this run's list is used unchanged.
+operator:
+  manager:
+    imagePullSecrets:
+      - name: mirror-pull-secret

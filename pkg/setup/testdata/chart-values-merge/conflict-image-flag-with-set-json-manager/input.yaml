@@ -1,0 +1,9 @@
+# --set-json 'manager={...}' that contains an image sets the image, so it
+# conflicts with --image.
+operator:
+  manager:
+    replicas: 2
+    image:
+      tag: v0.8.1
+options:
+  image: registry.example.com/mirror/manager:v0.8.0

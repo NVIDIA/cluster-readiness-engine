@@ -63,18 +63,57 @@ NVCRE does not refresh an existing JobSet CRD schema. When Trainer or JobSet is 
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--image-pull-secret` | — | GitHub token for clusters that pull from a private GHCR mirror or fork: the CLI creates the `ghcr.io`-scoped Kubernetes pull secret and authenticates Helm chart pulls only when the chart ref is on GHCR. For a chart on a non-GHCR mirror, run `helm registry login <mirror>` before `setup init` instead. The public image and chart need no token. |
-| `--image` | — | Override the controller image (default: `ghcr.io/nvidia/cluster-readiness-engine/manager:<version>`) |
+| `--image-pull-secret` | — | GitHub token for clusters that pull from a private GHCR mirror or fork: the CLI creates the `ghcr.io`-scoped Kubernetes pull secret and authenticates Helm chart pulls only when the chart ref is on GHCR. For a chart on a non-GHCR mirror, run `helm registry login <mirror>` before `setup init` instead. The secret is added at the end of `manager.imagePullSecrets`, after any list already set. The public image and chart need no token. |
+| `--image` | — | Override the controller image, as `repo:tag` or `repo@sha256:<digest>` (default: `ghcr.io/nvidia/cluster-readiness-engine/manager:<version>`). A digest sets `manager.image.digest`, so the chart renders `repo@sha256:<digest>`. Cannot be combined with values that set `manager.image.repository`, `.tag` or `.digest` on the same run |
+| `--values`, `-f` | — | Values file for the NVCRE release, as with `helm --values`. Repeatable, or comma-separated; files apply in the order given. `-f -` reads stdin and needs `--auto-approve`. URLs are not accepted: download the file and pass its path |
+| `--set-json` | — | JSON value for the NVCRE release, as with `helm --set-json`. Repeatable; overrides `--values`. Needs Helm 3.10 or later |
+| `--set` | — | Value for the NVCRE release, as with `helm --set`. Repeatable; overrides `--values` and `--set-json` |
+| `--reset-values` | `false` | Do not keep the installed release's values, except `rbac.scope` and `rbac.runNamespaces`. See [Values across runs](#values-across-runs) |
 | `--chart-ref` | `oci://ghcr.io/nvidia/cluster-readiness-engine` | NVCRE Helm chart location. Override to install from a mirror registry; used for both the release install and the CRD extraction (`helm show crds`). |
 | `--trainer-chart-ref` | `oci://ghcr.io/kubeflow/charts/kubeflow-trainer` | Kubeflow Trainer Helm chart location. Override to install from a mirror registry. |
 | `--skip-phases` | — | Comma-separated valid phases to skip (`deps`, `helm`) |
 | `--version` | — | Helm chart version to install (required for dev builds) |
 | `--auto-approve` | `false` | Skip the interactive confirmation prompt (for CI/automation) |
-| `--rbac-scope` | — | Where the controller may write: `cluster` or `namespaced` (chart value `rbac.scope`, [ADR-092](../designs/092-per-namespace-controller-rbac.md)). Unset keeps the installed release's `rbac.scope` and `rbac.runNamespaces`, or the chart default on a first install. Every other chart value returns to its default on each run. See [RBAC requirements](../operations/deployment.md#rbac-requirements) |
+| `--rbac-scope` | — | Where the controller may write: `cluster` or `namespaced` (chart value `rbac.scope`, [ADR-092](../designs/092-per-namespace-controller-rbac.md)). Unset keeps the installed release's `rbac.scope`, or the chart default on a first install. Cannot be combined with values that set `rbac.scope` on the same run. See [RBAC requirements](../operations/deployment.md#rbac-requirements) |
+
+The value flags (`--values`, `--set`, `--set-json`, `--reset-values`) apply to the NVCRE release only, never to Kubeflow Trainer. Giving any of them with `--skip-phases` including `helm` is an error, since the phase that would use them does not run.
+
+`setup init` needs Helm 3.8 or later, the release where OCI chart support became generally available. The only flag it adds to the upgrade itself is one `-f`. An operator's own `--set-json` needs Helm 3.10 or later, as it would with Helm directly.
 
 The chart versions are unaffected by the `-ref` flags: the NVCRE chart is still pulled at the CLI version (or `--version`), and Kubeflow Trainer at the pinned version, so a mirror must host those chart versions.
 
-For a controller image on a private non-GHCR mirror, `--image-pull-secret` does not help: its token and the secret it creates are scoped to `ghcr.io`, and `setup init` has no flag to bind a custom-named pull secret to the controller pod. Either configure node-level registry credentials for the mirror (containerd/kubelet), or install the chart directly with Helm and bind the secret via `--set 'manager.imagePullSecrets[0].name=<secret-name>'`; see [Restricted egress and air-gapped installs](../operations/deployment.md#restricted-egress-and-air-gapped-installs).
+For a controller image on a private non-GHCR mirror, `--image-pull-secret` does not help: its token and the secret it creates are scoped to `ghcr.io`. Create the mirror's pull secret in the `nvcre` namespace yourself and bind it with `--set 'manager.imagePullSecrets[0].name=<secret-name>'`, or configure node-level registry credentials for the mirror (containerd/kubelet); see [Restricted egress and air-gapped installs](../operations/deployment.md#restricted-egress-and-air-gapped-installs). The binding is kept on later runs.
+
+### Values across runs
+
+`setup init` keeps the values set on the installed release ([ADR-098](../designs/098-setup-init-chart-values.md)). A value you set once, with `setup init` or with `helm upgrade`, survives every later `setup init`, including one with no flags. Each value is resolved in this order, lowest first:
+
+> chart defaults → values set on the installed release → this run's `--values` files → this run's `--set-json` → this run's `--set` → values `setup init` sets itself
+
+"Values set on the installed release" are what `helm get values nvcre --namespace nvcre` prints, not the chart defaults. The chain holds for each value separately: a value given as a parent object replaces only the keys it names. `--set-json 'rbac={"runNamespaces":["team-b"]}'` changes `rbac.runNamespaces` and keeps an installed `rbac.scope: namespaced`, where Helm on its own would drop it. A `null` removes a value, kept or default. A list replaces the kept list; an index write such as `--set 'manager.imagePullSecrets[0].name=x'` edits it.
+
+Exceptions and rules:
+
+- **The controller image is worked out on every run and never kept.** `manager.image.repository`, `.tag` and `.digest` are dropped from the kept values, so a digest pinned on an earlier run cannot hold the controller on an old image after an upgrade. Each run uses this run's values when they set any of those three keys (`setup init` then sets none, and the chart fills the rest: an unset tag is the chart's `appVersion`, so `--set manager.image.repository=<mirror>/manager` is enough for a mirror), else `--image`, else the CLI-version image. Other keys under `manager.image`, such as `pullPolicy`, are kept and do not choose the image.
+- **A value with its own flag is set by the flag or by a value on one run, not both.** `--image` with values that set `manager.image.repository`, `.tag` or `.digest`, and `--rbac-scope` with a value for `rbac.scope`, are rejected before anything changes. A kept value never conflicts with a flag.
+- **`--image-pull-secret` adds to the pull-secret list.** It appends `nvcrectl-pull-secret` to `manager.imagePullSecrets` as resolved from the kept values and this run's values, unless it is already listed. It never overwrites an existing entry.
+- **`--reset-values` starts again from the chart defaults,** except `rbac.scope` and `rbac.runNamespaces`, which are still kept so a reset never widens a namespaced grant. Use it to restore a chart default that a kept value pins, or to drop a kept key a later chart no longer reads.
+
+Before the confirmation prompt, and with `--auto-approve` too, preflight reads the installed release's values, checks this run's against them and prints what the release will be given. Values are printed by path and source only, never with their contents, because the output reaches CI logs and a value can hold a credential. The controller image, the pull-secret names and `rbac.scope` are printed with their values:
+
+```text
+[preflight] Values for release "nvcre" (paths only; values are not printed):
+  manager.resources.limits.memory    (installed release)
+  manager.resources.requests.memory  (this run)
+  rbac.runNamespaces                 (installed release)
+[preflight] rbac.scope: namespaced (installed release)
+[preflight] Controller image: ghcr.io/nvidia/cluster-readiness-engine/manager:v0.8.0 (CLI version)
+[preflight] Image pull secrets: [mirror-pull-secret, nvcrectl-pull-secret] (installed release, --image-pull-secret)
+```
+
+To see the values themselves, read your own inputs or run `helm get values nvcre --namespace nvcre`. When `--skip-phases` includes `helm`, the release is not read and nothing is printed.
+
+`setup init` runs Helm up to three times for the values: two local `helm template` runs that read the values, then the upgrade. It reads each `--values` source once before any of them, so stdin, a named pipe or process substitution reach every run with the same content.
 
 ### Example
 
@@ -88,6 +127,18 @@ nvcrectl setup init --image-pull-secret $GITHUB_TOKEN
 
 # Skip Kubeflow Trainer (already installed)
 nvcrectl setup init --skip-phases=deps
+
+# Size the controller for a large cluster; later runs keep it
+nvcrectl setup init \
+  --set manager.resources.requests.memory=4Gi \
+  --set manager.resources.limits.memory=8Gi
+
+# Values from a file, or from stdin in automation
+nvcrectl setup init -f nvcre-values.yaml
+generate-values | nvcrectl setup init --auto-approve -f -
+
+# Drop the kept values (rbac.scope and rbac.runNamespaces stay)
+nvcrectl setup init --reset-values
 
 # Restricted egress: pull both charts and the controller image from a mirror
 nvcrectl setup init \

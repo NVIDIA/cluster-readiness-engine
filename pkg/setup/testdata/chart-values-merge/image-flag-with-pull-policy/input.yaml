@@ -1,0 +1,8 @@
+# pullPolicy does not choose the image: --image with
+# --set manager.image.pullPolicy=Always is allowed, and --image applies.
+operator:
+  manager:
+    image:
+      pullPolicy: Always
+options:
+  image: registry.example.com/mirror/manager:v0.8.0

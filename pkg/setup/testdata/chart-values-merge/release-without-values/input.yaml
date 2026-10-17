@@ -1,0 +1,3 @@
+# A release Helm stored no values for (helm get values prints null) keeps
+# nothing: the upgrade gets only the CLI-version image.
+release: null

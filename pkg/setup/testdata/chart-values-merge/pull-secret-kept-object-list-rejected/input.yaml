@@ -1,0 +1,8 @@
+# The check applies to the merged list, so a kept value that is not a list is
+# rejected as well, before anything changes.
+release:
+  manager:
+    imagePullSecrets:
+      name: old-pull-secret
+options:
+  pullSecret: true

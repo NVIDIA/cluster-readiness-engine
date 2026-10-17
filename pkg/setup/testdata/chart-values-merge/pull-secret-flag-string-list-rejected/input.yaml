@@ -1,0 +1,7 @@
+# --image-pull-secret cannot append to a manager.imagePullSecrets that is a
+# string; it is rejected rather than silently replaced by a one-entry list.
+operator:
+  manager:
+    imagePullSecrets: mirror-pull-secret
+options:
+  pullSecret: true

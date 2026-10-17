@@ -1,0 +1,7 @@
+# Helm's --set syntax, read by the probe: comma-separated pairs, a {a,b} list,
+# an escaped dot in a key, and null removing a chart default.
+set:
+  - manager.replicas=2,manager.terminationGracePeriodSeconds=30
+  - extra.list={a,b}
+  - manager.podLabels.example\.com/team=ml
+  - manager.tolerations=null

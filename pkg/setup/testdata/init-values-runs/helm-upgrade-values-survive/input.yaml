@@ -1,0 +1,16 @@
+# Values set on the release with helm upgrade, as the #504 workaround did,
+# survive setup init. The image an earlier setup init stored is not kept.
+release:
+  manager:
+    image:
+      repository: ghcr.io/nvidia/cluster-readiness-engine/manager
+      tag: v0.7.0
+    resources:
+      limits:
+        memory: 8Gi
+    tolerations:
+      - operator: Exists
+  rbac:
+    scope: cluster
+runs:
+  - args: []
