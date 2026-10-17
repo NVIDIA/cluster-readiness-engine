@@ -48,8 +48,9 @@ For complete prerequisites, installation, a first run, and cleanup, see
 NVCRE requires the NVIDIA GPU Operator and, with the default metrics settings,
 the Prometheus Operator CRDs that serve `monitoring.coreos.com/v1`; GB200 and
 GB300 catalog entries also require the NVIDIA DRA driver for `ComputeDomain`
-resources. The `diagnostics/dcgm-level4` category additionally requires the
-standalone DCGM service, which the GPU Operator creates only when
+resources. The `diagnostics/dcgm-level1` through `diagnostics/dcgm-level4`
+categories additionally require the standalone DCGM service, which the GPU
+Operator creates only when
 `spec.dcgm.enabled` is true. Because the operator normally uses embedded DCGM
 for metrics, standalone DCGM is off by default; enable it with:
 
@@ -236,7 +237,7 @@ NVCRE certifies clusters with burn-in workloads and reports the nodes that fail.
 
 - The [NVIDIA GPU Operator](https://github.com/NVIDIA/gpu-operator) is a prerequisite, not a component: it provides the driver stack and the GPU node labels (such as `nvidia.com/gpu.product`) that NVCRE reads for architecture detection, and NVCRE does not manage it.
 - [Kubeflow Trainer](https://github.com/kubeflow/trainer) is the execution engine NVCRE drives: the Job controller creates TrainJobs through an adapter, and `setup init` installs Trainer as a dependency, not an alternative.
-- DCGM diagnostics check the health of a single node; NVCRE complements them with multi-node distributed burn-in, and its `diagnostics/dcgm-level4` catalog entry runs DCGM level 4 diagnostics as one certification category.
+- DCGM diagnostics check the health of a single node; NVCRE complements them with multi-node distributed burn-in, and its `diagnostics/dcgm-level1` through `diagnostics/dcgm-level4` catalog entries make the diagnostic depth selectable per certification category.
 - [node-problem-detector](https://github.com/kubernetes/node-problem-detector) and node health check operators do continuous production monitoring with remediation, whereas NVCRE is a one-shot pre-production certification pass that watches nodes only while its workloads run and never cordons, taints, or modifies a node.
 - What NVCRE combines that none of the above do alone: a catalog of real training and communication burn-in workloads, topology-aware node partitioning with adaptive fault isolation, and per-node failure attribution with a reason for every failed node.
 

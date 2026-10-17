@@ -40,7 +40,7 @@ Helm release kubeflow-trainer   ✓ unknown
 
 Status: ready
 
-Note: service gpu-operator/nvidia-dcgm is missing. Only the diagnostics/dcgm-level4
-      category needs it. Your cluster administrator can add it with:
+Note: service gpu-operator/nvidia-dcgm is missing. DCGM diagnostics categories
+      need it. Your cluster administrator can add it with:
       kubectl patch clusterpolicy cluster-policy --type=merge \
         -p '{"spec":{"dcgm":{"enabled":true}}}'

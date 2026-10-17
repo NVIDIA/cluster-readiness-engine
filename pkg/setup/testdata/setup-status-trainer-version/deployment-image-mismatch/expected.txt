@@ -41,7 +41,7 @@ Helm release kubeflow-trainer   ✓ not installed
 Status: not ready — run 'nvcrectl setup init' to install missing components
   Kubeflow Trainer v2.1.0 is installed but this NVCRE build supports v2.2.1 — run 'nvcrectl setup init' to install the supported version
 
-Note: service gpu-operator/nvidia-dcgm is missing. Only the diagnostics/dcgm-level4
-      category needs it. Your cluster administrator can add it with:
+Note: service gpu-operator/nvidia-dcgm is missing. DCGM diagnostics categories
+      need it. Your cluster administrator can add it with:
       kubectl patch clusterpolicy cluster-policy --type=merge \
         -p '{"spec":{"dcgm":{"enabled":true}}}'
