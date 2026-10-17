@@ -188,11 +188,15 @@ func applyEnvAsMPIArgs(trainer *trainerv1alpha1.Trainer, env []corev1.EnvVar) er
 // replaceMPIEnvArgs rewrites the operand of EVERY "-x" that forwards name and
 // reports whether it found any.
 //
-// Every one, not the first: some catalog arms forward a name twice on purpose
-// or by accident (the OCI GB200 arms list NCCL_DEBUG twice, and the GB300 arms
-// list NCCL_IB_GID_INDEX and NCCL_IB_SPLIT_DATA_ON_QPS twice). mpirun takes the
-// last -x for a name, so rewriting only the first would leave the catalog's
-// later pair winning and the operator's value silently discarded.
+// Every one, not the first: an arg list may forward a name twice. mpirun takes
+// the last -x for a name, so rewriting only the first would leave the later
+// pair winning and the operator's value silently discarded.
+//
+// The catalog no longer produces such a list. The OCI arms did, until ADR-100
+// gave each variable a single owning fragment, and the invariant test in
+// pkg/certification keeps it that way. This still rewrites every pair, because
+// what reaches here is not only catalog output: a WorkloadRun's own
+// spec.framework.mpi.mpiArgs is written by hand and may repeat a name.
 func replaceMPIEnvArgs(args []string, name, operand string) bool {
 	found := false
 	for i := range args {

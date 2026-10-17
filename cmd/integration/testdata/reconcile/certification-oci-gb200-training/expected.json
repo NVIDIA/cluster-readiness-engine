@@ -132,14 +132,6 @@
                     "value": "4"
                   },
                   {
-                    "name": "NCCL_IB_GID_INDEX",
-                    "value": "3"
-                  },
-                  {
-                    "name": "NCCL_IB_SPLIT_DATA_ON_QPS",
-                    "value": "0"
-                  },
-                  {
                     "name": "NCCL_SOCKET_IFNAME",
                     "value": "eth0"
                   },
@@ -150,6 +142,14 @@
                   {
                     "name": "OMPI_MCA_orte_keep_fqdn_hostnames",
                     "value": "t"
+                  },
+                  {
+                    "name": "NCCL_IB_GID_INDEX",
+                    "value": "3"
+                  },
+                  {
+                    "name": "NCCL_IB_SPLIT_DATA_ON_QPS",
+                    "value": "0"
                   },
                   {
                     "name": "UCX_IB_GID_INDEX",

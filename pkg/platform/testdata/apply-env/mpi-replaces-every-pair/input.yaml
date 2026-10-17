@@ -1,12 +1,16 @@
-# Some catalog arms forward a name twice. The OCI GB200 arms list NCCL_DEBUG
-# in both oci-roce-env.yaml and gb200-env.yaml; the GB300 arms do the same with
-# NCCL_IB_GID_INDEX and NCCL_IB_SPLIT_DATA_ON_QPS, the latter with conflicting
-# values.
+# An mpirun arg list may forward a name twice, and mpirun takes the last -x for
+# a name. Rewriting only the first occurrence would leave the later pair
+# winning: an operator setting NCCL_DEBUG=WARN would get INFO on the ranks,
+# with the render showing their value and the run ignoring it. Every pair is
+# rewritten, which is what this case pins.
 #
-# mpirun takes the last -x for a name, so rewriting only the first occurrence
-# would leave the catalog's later pair winning: an operator setting
-# NCCL_DEBUG=WARN on OCI GB200 would get INFO on the ranks, with the render
-# showing their value and the run ignoring it. Every pair is rewritten.
+# The doubled args below are written by hand. The catalog used to produce them
+# -- the OCI GB200 arms listed NCCL_DEBUG in both oci-roce-env.yaml and
+# gb200-env.yaml, and the GB300 arms did the same with NCCL_IB_GID_INDEX and
+# NCCL_IB_SPLIT_DATA_ON_QPS at conflicting values -- until ADR-100 gave each
+# variable one owning fragment. A WorkloadRun's own
+# spec.framework.mpi.mpiArgs is still hand-written and can repeat a name, so
+# the behaviour this pins outlives the catalog defect that motivated it.
 env:
   - name: NCCL_DEBUG
     value: WARN

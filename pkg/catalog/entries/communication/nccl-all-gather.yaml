@@ -475,7 +475,7 @@ overrides:
             args:
 {{ lib "nccl/oci-roce-mpirun-args.yaml" . | indent 12 }}
 {{ lib "nccl/oci-roce-env.yaml" . | toMpiArgs | indent 12 }}
-{{ lib "nccl/gb200-env.yaml" . | toMpiArgs | indent 12 }}
+{{ lib "nccl/gb200-tuning-env.yaml" . | toMpiArgs | indent 12 }}
 {{ lib "nccl/oci-gb200-roce-env.yaml" . | toMpiArgs | indent 12 }}
             - /usr/local/bin/all_gather_perf_mpi
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
@@ -503,7 +503,7 @@ overrides:
 {{ lib "nccl/oci-gb300-roce-env.yaml" . | indent 12 }}
             args:
 {{ lib "nccl/oci-roce-mpirun-args.yaml" . | indent 12 }}
-{{ lib "nccl/oci-roce-env.yaml" . | toMpiArgs | indent 12 }}
+{{ lib "nccl/oci-roce-base-env.yaml" . | toMpiArgs | indent 12 }}
 {{ lib "nccl/oci-gb300-roce-env.yaml" . | toMpiArgs | indent 12 }}
             - /usr/local/bin/all_gather_perf_mpi
 {{ lib "nccl/nccl-perf-args.yaml" . | indent 12 }}
