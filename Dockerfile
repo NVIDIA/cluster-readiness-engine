@@ -5,7 +5,7 @@
 # Base images are pinned by digest so a rebuild uses the same bits every time.
 # The tag is kept for readability; the digest is what resolves. Dependabot
 # raises the digest on its weekly docker run.
-FROM public.ecr.aws/docker/library/golang:1.27.2-trixie@sha256:e58d6f83b3416618d8bcac2b3dde1b7f7e3c4a77d25e88637f8bbae81536c48d AS builder
+FROM public.ecr.aws/docker/library/golang:1.27.2-trixie@sha256:47667934874913a449b96faa7ef4777fa285d9ec29126ee80ed61c45b7cccf0e AS builder
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION=dev
@@ -29,7 +29,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
     go build -a -ldflags "-s -w -X main.version=${VERSION}" -o manager ./cmd/manager/
 
-FROM nvcr.io/nvidia/distroless/static:v4.1.3@sha256:ec947edce045116008a8aeab38c5da643fbf110990b133bad200dbf5e4b6e296
+FROM nvcr.io/nvidia/distroless/static:v4.1.4@sha256:d9bff7801f2963231e01e567ab73d70f443b80c62306cec77d9f973a544db776
 WORKDIR /
 COPY --from=builder /workspace/manager .
 USER 65532:65532
