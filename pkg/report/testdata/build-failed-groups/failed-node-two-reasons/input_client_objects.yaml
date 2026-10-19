@@ -1,0 +1,57 @@
+# node001 fails two different ways across two categories: the health detector
+# flags it during the communication run, and it misses a bandwidth threshold.
+# The summary must name BOTH reasons on its line, and failedNodes must still
+# list the node once. Each category's ConfigMap holds its own entries:
+#   A: [{"name":"node001","reason":"HardwareFailureDetected","message":"CEL expression evaluated to true for node node001"}]
+#   B: [{"name":"node001","reason":"ThresholdViolation","message":"Threshold \"busBandwidthGBps\" violated: measured 120.00, expression: value >= 300"},
+#       {"name":"node002","reason":"WorkloadFailed","message":"Workload default/nccl failed: exit code 1"}]
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: cert-two-reasons
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+    - domain: training
+      variant: nemotron5-8b
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: WorkflowsFailed
+      message: 2 of 2 certification categories failed
+      lastTransitionTime: "2026-08-07T01:00:00Z"
+  categoryStatuses:
+    - domain: communication
+      variant: nccl-all-reduce
+      status: Failed
+      failedNodesRef:
+        kind: ConfigMap
+        name: cert-two-reasons-a-node-results
+    - domain: training
+      variant: nemotron5-8b
+      status: Failed
+      failedNodesRef:
+        kind: ConfigMap
+        name: cert-two-reasons-b-node-results
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cert-two-reasons-a-node-results
+  namespace: default
+binaryData:
+  failed-nodes.json.gz: H4sIAFik0moC/zWNsQrCQBBEf2XY2iK2tpqQwj8QiyU3kUByK3t3JiD+uznB9vHmze0tURfKCRItsGmOcoA4NVmssFcPqzo7nebivDBzyAxVWpiSPn7Tc3sFt6fvZLIIvnQuumvIhuyFGM1R+/iffO5f+JcGhnoAAAA=
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cert-two-reasons-b-node-results
+  namespace: default
+binaryData:
+  failed-nodes.json.gz: H4sIAFik0moC/12OTQ6CMBCFrzKZNdGCOxJduNALGF2Ii5EZpLG0pAU0MdzdSuICtu/ne+/6QUuNYA5oHYtSKSaAXig4+xNPtZdQO8Nn7Qx1OqrRbyQEesgsAAXe+7Anyy/NXX3ct6FAGKaacA5NZPZeGNJMrZRKQN5trIaIzGEg0wvstrBRCscElq+y+auL80/jiA+kjfDi0d8Elop6061tWRqopmgeV3UHZYRCiuPtC1yx9nf/AAAA

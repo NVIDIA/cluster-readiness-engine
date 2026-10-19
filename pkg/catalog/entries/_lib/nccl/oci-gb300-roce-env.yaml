@@ -31,8 +31,12 @@
 # on a subset of ECMP paths instead of spreading across the rails. Enabling adaptive
 # routing and splitting data across QPs raised peak bus bandwidth by about 70% on a
 # multi-rack all-reduce, and neither regressed any configuration measured.
-# SPLIT_DATA_ON_QPS overrides the shared nccl/oci-roce-env.yaml default of "0";
-# this fragment is always included after that one, and mpirun -x takes the last value.
+#
+# This fragment owns NCCL_IB_GID_INDEX and NCCL_IB_SPLIT_DATA_ON_QPS on GB300.
+# Compose it with nccl/oci-roce-base-env.yaml, never with the full
+# nccl/oci-roce-env.yaml, which carries its own value for both: mpirun takes
+# the last -x for a name, so composing both made the splice order decide the
+# tuning (ADR-100).
 - name: UCX_IB_GID_INDEX
   value: "3"
 - name: NCCL_IB_GID_INDEX

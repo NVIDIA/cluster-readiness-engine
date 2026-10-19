@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The gzip payload holds the two entries the run's failedNodesRef resolves to:
+#   [{"name":"gpu-node-01","reason":"HardwareFailureDetected",
+#     "message":"CEL expression evaluated to true for node gpu-node-01"},
+#    {"name":"gpu-node-02","reason":"WorkloadFailed",
+#     "message":"Job exceeded timeoutPerJob"}]
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: run-failed-node-results
+  namespace: default
+binaryData:
+  failed-nodes.json.gz: H4sIAHiC0moC/22OPQ/CMAxE/4qVuZWAkZUPIcTAxoAYTHNUFUlcuQkgof53EiYQrOc7v3d8msAeZk6m7VMdxKKeTE1FRsGDhHLYsNo7K9bcuaRYIqKJsKXkMQzcvueL1Y7w6DUnnQTCjV3iXKMoFDWBLqJU/tMnaKzon8Hs2+AgenXCthj8gLdyzuAGsAXWeUiKe2iOzXh6AcwZVXvgAAAA
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: run-failed-workflow
+  namespace: default
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: rt
+          trainer:
+            image: img:latest
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 2
+    nodesPerJob: 2
+    totalGroups: 1
+    currentIteration: 1
+    detectedPlatform: onprem
+    detectedGPUArchitecture: h100
+    groups:
+      - name: group-0
+        nodes:
+          - gpu-node-01
+          - gpu-node-02
+        phase: Failed
+        startTime: "2026-08-07T00:00:00Z"
+        completionTime: "2026-08-07T00:10:00Z"
+  failedNodesRef:
+    kind: ConfigMap
+    name: run-failed-node-results
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: GroupsFailed
+      message: 1 groups failed across 1 iterations
+      lastTransitionTime: "2026-08-07T00:10:00Z"

@@ -1827,6 +1827,24 @@ func (r *WorkflowReconciler) failTimedOutJob(
 	applyExclusiveConditions(&job.Status.Conditions,
 		[]string{nvcrev1alpha1.JobInProgress, nvcrev1alpha1.JobSucceeded, nvcrev1alpha1.JobFailed},
 		nvcrev1alpha1.JobFailed, ReasonJobTimedOut, timeoutMsg, job.Generation)
+	// Attribute the timeout to the group's nodes. This path writes the Job
+	// status directly rather than going through setJobFailed, which is the only
+	// other place a failing Job seeds FailedNodes, so without this a timed-out
+	// certification reports no failed nodes at all (ADR-099). The reason is
+	// WorkloadFailed because the enum has no timeout value; the condition above
+	// carries ReasonJobTimedOut, the same split the threshold path already makes.
+	//
+	// A job that timed out while its pods were unschedulable is excluded. The
+	// workload never ran on those nodes, and the Job tier already treats
+	// scheduling-blocked time as not-running: it pauses the runtime clock and
+	// skips stall detection. Recording them would make them indistinguishable
+	// from nodes that ran and crashed, since only failedNodeDetails carries the
+	// message that tells the two apart. The Job still fails and its condition
+	// still explains why.
+	if len(job.Status.FailedNodes) == 0 && job.Status.SchedulingBlockedSince == nil {
+		job.Status.FailedNodes = noderesults.NodesWithFailureDetails(
+			g.Nodes, ReasonWorkloadFailed, timeoutMsg)
+	}
 	if err := r.Status().Update(ctx, job); err != nil {
 		return 0, fmt.Errorf("failed to update timed-out Job %s status: %w", job.Name, err)
 	}
@@ -2080,6 +2098,12 @@ func (r *WorkflowReconciler) observeRunningGroup(
 	if !ts.terminal {
 		if r.isJobTimedOut(workflow, g, job) {
 			log.Info("Job timed out, terminating workload", "group", g.Name, "job", ref.Name)
+			// The timeout ends the group, so this is the last chance to record
+			// where it ran. The backfill above was told terminal=false because
+			// the Job itself is not terminal, and under Unpinned that leaves a
+			// partially placed group's nodes unrecorded. Re-run it as terminal
+			// so the attribution below has them.
+			r.backfillGroupNodes(ctx, workflow, orch, g, job.Namespace, job.Name, true)
 			outcome, err = r.failTimedOutJob(ctx, workflow, orch, g, job)
 			if err != nil {
 				return 0, "", err

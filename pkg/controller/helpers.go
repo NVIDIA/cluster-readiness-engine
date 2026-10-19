@@ -232,6 +232,11 @@ const (
 	ReasonHardwareFailureDetected = "HardwareFailureDetected"
 )
 
+// defaultNodeHealthFailureMessage is the per-node message recorded when the node
+// health detector flags a node but supplies no message of its own. A detector
+// that does supply one has it kept verbatim (ADR-099).
+const defaultNodeHealthFailureMessage = "Hardware failure detected by node health check"
+
 // Framework type constants for WorkloadRun, shared with pkg/platform so the
 // builders and ValidateWorkloadVolumes read the names this package selects by.
 const (
