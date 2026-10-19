@@ -92,6 +92,8 @@ func TestBrokenLinksCatchesWhatFernMisses(t *testing.T) {
 			broken: 1,
 		},
 		{name: "two broken links on one line", body: "[a](../designs/1.md) and [b](../designs/2.md)", broken: 2},
+		{name: "link after a fence closed by a longer run", body: "```\ncode\n````\n[a](../designs/x.md)", broken: 1},
+		{name: "link after a backtick a blank line leaves unclosed", body: "a ` b\n\n[a](../designs/x.md) `", broken: 1},
 
 		{name: "GitHub link to an ADR", body: "[ADR](" + repoURL + "blob/main/docs/designs/092-rbac.md#context)"},
 		{name: "GitHub link to a directory", body: "[samples](" + repoURL + "tree/main/config/samples/policy)"},
@@ -105,6 +107,9 @@ func TestBrokenLinksCatchesWhatFernMisses(t *testing.T) {
 		{name: "link inside a double-backtick span", body: "``[a](../designs/`x`.md)`` is literal"},
 		{name: "link inside a fenced block", body: "```markdown\n[a](../designs/x.md)\n```\n"},
 		{name: "link inside a tilde fence", body: "~~~\n[a](../designs/x.md)\n~~~\n"},
+		{name: "link inside a longer fence", body: "~~~~\n~~~\n[a](../designs/x.md)\n~~~~\n"},
+		{name: "fence line with an info string does not close", body: "```\n```go\n[a](../designs/x.md)\n```\n"},
+		{name: "link inside a code span that crosses a line", body: "see `[a](../designs/x.md)\nb` here"},
 	}
 
 	for _, c := range cases {
@@ -200,46 +205,66 @@ func brokenLinks(page, body string, nav map[string]bool, exists func(string) boo
 
 // stripCode blanks fenced blocks and inline code spans, where link syntax is
 // literal text rather than a link.
+//
+// A fence closes only on a run of its own marker at least as long as the one
+// that opened it, with nothing after the run but whitespace. A code span may
+// cross a line ending but not a blank line, so spans are stripped a paragraph
+// at a time.
 func stripCode(body string) string {
-	var b strings.Builder
-	fence := ""
+	var b, para strings.Builder
+	flush := func() {
+		b.WriteString(stripCodeSpans(para.String()))
+		para.Reset()
+	}
+
+	var marker byte
+	fenceLen := 0
 	for _, line := range strings.SplitAfter(body, "\n") {
 		trimmed := strings.TrimLeft(line, " ")
-		if fence != "" {
-			if strings.HasPrefix(trimmed, fence) {
-				fence = ""
+		if fenceLen > 0 {
+			if n := runLength(trimmed, 0, marker); n >= fenceLen && strings.TrimSpace(trimmed[n:]) == "" {
+				fenceLen = 0
 			}
 			b.WriteString("\n")
 			continue
 		}
-		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
-			fence = trimmed[:3]
-			b.WriteString("\n")
-			continue
+		if trimmed != "" && (trimmed[0] == '`' || trimmed[0] == '~') {
+			if n := runLength(trimmed, 0, trimmed[0]); n >= 3 {
+				flush()
+				marker, fenceLen = trimmed[0], n
+				b.WriteString("\n")
+				continue
+			}
 		}
-		b.WriteString(stripCodeSpans(line))
+		para.WriteString(line)
+		if strings.TrimSpace(line) == "" {
+			flush()
+		}
 	}
+	flush()
 	return b.String()
 }
 
-// stripCodeSpans removes inline code from a line. A span opened by a run of N
-// backticks closes at the next run of exactly N, as CommonMark has it.
-func stripCodeSpans(line string) string {
+// stripCodeSpans removes inline code from a paragraph. A span opened by a run
+// of N backticks closes at the next run of exactly N, as CommonMark has it.
+// Line endings inside a removed span are kept, so line-anchored patterns still
+// see the same lines.
+func stripCodeSpans(para string) string {
 	var b strings.Builder
-	for i := 0; i < len(line); {
-		if line[i] != '`' {
-			b.WriteByte(line[i])
+	for i := 0; i < len(para); {
+		if para[i] != '`' {
+			b.WriteByte(para[i])
 			i++
 			continue
 		}
-		n := runLength(line, i)
+		n := runLength(para, i, '`')
 		closeAt := -1
-		for j := i + n; j < len(line); {
-			if line[j] != '`' {
+		for j := i + n; j < len(para); {
+			if para[j] != '`' {
 				j++
 				continue
 			}
-			m := runLength(line, j)
+			m := runLength(para, j, '`')
 			if m == n {
 				closeAt = j + m
 				break
@@ -248,18 +273,20 @@ func stripCodeSpans(line string) string {
 		}
 		if closeAt < 0 {
 			// An unclosed run is literal backticks.
-			b.WriteString(line[i : i+n])
+			b.WriteString(para[i : i+n])
 			i += n
 			continue
 		}
+		b.WriteString(strings.Repeat("\n", strings.Count(para[i:closeAt], "\n")))
 		i = closeAt
 	}
 	return b.String()
 }
 
-func runLength(s string, i int) int {
+// runLength counts the run of c starting at s[i].
+func runLength(s string, i int, c byte) int {
 	n := 0
-	for i+n < len(s) && s[i+n] == '`' {
+	for i+n < len(s) && s[i+n] == c {
 		n++
 	}
 	return n
