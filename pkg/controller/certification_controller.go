@@ -511,6 +511,9 @@ func (r *CertificationReconciler) createWorkflowForCategory(ctx context.Context,
 
 	// --- 2. Resolve options + nodesPerJob ---
 	opts := ResolveOptions(&certification.Spec.CategoryOptions, category.Options)
+	if err := CheckResolvedNetworkAttachments(&opts); err != nil {
+		return "", fmt.Errorf("%s/%s: %w", category.Domain, category.Variant, err)
+	}
 
 	nd := catalog.GPUDefaults(gpuArch, detectedPlatform)
 	gpusPerNode := nd.GpusPerNode
@@ -793,6 +796,31 @@ type workflowCreateRejectedError struct {
 
 func (e *workflowCreateRejectedError) Error() string { return e.err.Error() }
 func (e *workflowCreateRejectedError) Unwrap() error { return e.err }
+
+// CheckResolvedNetworkAttachments checks the networkAttachments exclusions on
+// one category's merged options. The CRD rules and readCertification each read
+// one options block, so a spec-level rdmaDeviceAccess: hostPath and a
+// per-category list (or the reverse) pass both and only meet here. Unlike
+// nicResourceName, which a category's list replaces in ResolveOptions,
+// hostPath is not cleared: it changes how every container reaches the RDMA
+// devices, and dropping it silently would run a configuration nobody asked
+// for. The category fails instead, with the fix in the message. The
+// nicResourceName check is defensive, since ResolveOptions never leaves both.
+func CheckResolvedNetworkAttachments(opts *nvcrev1alpha1.CategoryOptions) error {
+	if len(opts.NetworkAttachments) == 0 {
+		return nil
+	}
+	if opts.NicResourceName != nil {
+		return errors.New("networkAttachments and nicResourceName are mutually exclusive")
+	}
+	if opts.RDMADeviceAccess == nvcrev1alpha1.RDMADeviceAccessHostPath {
+		return errors.New("networkAttachments cannot be combined with rdmaDeviceAccess: hostPath," +
+			" including when one is set at the spec level and the other in the category's options;" +
+			" set rdmaDeviceAccess: devicePlugin in a category that inherits hostPath with a list," +
+			" or nicResourceName in a category that inherits the list and needs hostPath")
+	}
+	return nil
+}
 
 // ResolveOptions merges per-category overrides with global defaults.
 // Returns a flat CategoryOptions with all values resolved.

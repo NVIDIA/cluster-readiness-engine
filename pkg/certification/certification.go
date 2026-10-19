@@ -519,6 +519,9 @@ func renderCertification(
 		}
 
 		opts := controller.ResolveOptions(&cert.Spec.CategoryOptions, cat.Options)
+		if err := controller.CheckResolvedNetworkAttachments(&opts); err != nil {
+			return nil, fmt.Errorf("category %s/%s: %w", cat.Domain, cat.Variant, err)
+		}
 
 		nd := catalog.GPUDefaults(gpuArch, platformName)
 		gpusPerNode := nd.GpusPerNode
@@ -751,7 +754,9 @@ func validateCategoryEnv(env []corev1.EnvVar) error {
 // cap, and the exclusions with nicResourceName and rdmaDeviceAccess:
 // hostPath. Like the CRD, it checks one options block at a time;
 // a per-category list replacing a spec-level nicResourceName is resolution,
-// not a conflict.
+// not a conflict. A hostPath and a list on different levels only meet once
+// the options merge, so renderCertification checks that pair per category
+// with controller.CheckResolvedNetworkAttachments, as the controller does.
 func validateCategoryNetworkAttachments(opts *nvcrev1alpha1.CategoryOptions) error {
 	if opts.NetworkAttachments == nil {
 		return nil
