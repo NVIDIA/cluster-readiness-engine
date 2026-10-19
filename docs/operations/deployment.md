@@ -255,7 +255,7 @@ More generally, voluntary eviction of a healthy controller pod is blocked while 
 
 ## RBAC requirements
 
-The controller's permissions are split between two ClusterRoles, and neither has wildcard rules ([ADR-092](../designs/092-per-namespace-controller-rbac.md)):
+The controller's permissions are split between two ClusterRoles, and neither has wildcard rules ([ADR-092](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/092-per-namespace-controller-rbac.md)):
 
 - **`nvcre-manager-role`** is always bound cluster-wide. It holds reads, cluster-scoped writes, writes to NVCRE's own CRDs, and event creation.
 - **`nvcre-run-role`** holds every write to a namespaced resource outside NVCRE's API group, plus pod log reads. `rbac.scope` decides where it is bound.

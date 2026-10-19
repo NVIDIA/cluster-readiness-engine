@@ -14,6 +14,11 @@ Read the relevant record before you change the behaviour it describes. `CLAUDE.m
   decision, kept for readers who want the short form.
 - New records follow the structure in `CLAUDE.md`: Context, Decision, Implementation,
   Rationale, Consequences, Alternatives Considered, Notes, References.
+- ADRs are not published on the docs site and are not in `docs/index.yml`. A page under
+  `docs/` that cites one links it by GitHub URL,
+  `https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/NNN-name.md`,
+  because a relative `../designs/` link renders as "Page Not Found" on the site.
+  `TestPublishedPagesLinkOnlyToPublishedPages` in `test/docspolicy/` enforces this.
 
 ## Index
 

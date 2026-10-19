@@ -171,7 +171,7 @@ kubectl get workflows.nvcre.nvidia.com <name> \
 
 **Symptoms:** a Workflow, or the Certification category above it, stays `InProgress` with reason `NamespacePermissionsMissing` or `NamespaceAccessCheckFailed`. Nothing is created in the namespace. `kubectl describe` shows a `NamespaceAccessDenied` or `NamespaceAccessReviewError` Warning, and `certification run --wait` shows the same message on the category's `Blocked:` line. After `manager.namespaceAccessTimeout` (default 10 minutes) the Workflow fails with the same reason.
 
-**Cause:** the chart is installed with `rbac.scope: namespaced`, and the namespace has no RoleBinding granting `nvcre-run-role` to the controller ([ADR-092](../designs/092-per-namespace-controller-rbac.md)). Before it writes anything, the controller checks its own access with SelfSubjectAccessReviews. A denied review means the binding is missing (`NamespacePermissionsMissing`). A review that could not be created at all means the check could not run (`NamespaceAccessCheckFailed`); an unanswered check is never treated as permission.
+**Cause:** the chart is installed with `rbac.scope: namespaced`, and the namespace has no RoleBinding granting `nvcre-run-role` to the controller ([ADR-092](https://github.com/NVIDIA/cluster-readiness-engine/blob/main/docs/designs/092-per-namespace-controller-rbac.md)). Before it writes anything, the controller checks its own access with SelfSubjectAccessReviews. A denied review means the binding is missing (`NamespacePermissionsMissing`). A review that could not be created at all means the check could not run (`NamespaceAccessCheckFailed`); an unanswered check is never treated as permission.
 
 **Diagnosis:**
 
