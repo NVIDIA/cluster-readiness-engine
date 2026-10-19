@@ -13,6 +13,19 @@ the full pull request list for a release is in its release notes. Pre-release ta
 (`-rc.N`) are not listed here; their changes appear under the stable release that
 followed them.
 
+## [Unreleased]
+
+### Fixed
+
+- `nvcrectl setup init` reported success for a controller that was crash-looping.
+  Helm's `--wait` passes on a single Ready sample, so a controller OOMKilled a few
+  seconds after turning Ready passed it. Init now reports success only once every
+  controller pod has stayed Ready for one minute with no restart, and fails as soon
+  as the controller exits or restarts. When Helm's own wait times out, init prints
+  the cause. Both errors name the pod and its last exit, and an OOMKill names the
+  memory limit and the `--set manager.resources.limits.memory` flag that raises it
+  (#504).
+
 ## [0.8.0] - 2026-10-19
 
 ### Deprecated
