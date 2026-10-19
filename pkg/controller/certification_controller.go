@@ -1319,6 +1319,15 @@ func categoryOptionsSuffix(opts *nvcrev1alpha1.CategoryOptions) string {
 	if len(opts.NetworkAttachments) > 0 {
 		parts = append(parts, networkAttachmentsToken(opts.NetworkAttachments))
 	}
+	// A category's nicResourceName replaces a spec-level networkAttachments
+	// list in ResolveOptions, so a category with no options (which inherits
+	// the list) and one that sets only nicResourceName attach to different
+	// fabrics. Without a token both would get the bare name, and the second
+	// would adopt the first's Workflow. Hashed like env, since a resource name
+	// carries a slash and can be long.
+	if opts.NicResourceName != nil {
+		parts = append(parts, nicResourceNameToken(*opts.NicResourceName))
+	}
 	if len(parts) == 0 {
 		return ""
 	}
@@ -1360,6 +1369,13 @@ func networkAttachmentsToken(atts []nvcrev1alpha1.NetworkAttachment) string {
 		_, _ = fmt.Fprintf(h, "%s|%s\n", a.Network, a.ResourceName)
 	}
 	return fmt.Sprintf("net%d-%s", len(atts), hex.EncodeToString(h.Sum(nil))[:8])
+}
+
+// nicResourceNameToken renders "nic<hash8>", the first eight hex digits of a
+// SHA-256 over the resource name.
+func nicResourceNameToken(name string) string {
+	sum := sha256.Sum256([]byte(name))
+	return "nic" + hex.EncodeToString(sum[:])[:8]
 }
 
 // rdmaDeviceAccessToken shortens an rdmaDeviceAccess value into a name-safe

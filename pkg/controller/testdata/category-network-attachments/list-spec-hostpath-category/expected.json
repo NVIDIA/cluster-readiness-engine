@@ -10,7 +10,7 @@
   },
   {
     "category": "communication/nccl-all-gather",
-    "workflow": "c3-communication-nccl-all-ceeab",
+    "workflow": "c3-communication-nccl-all-2f056",
     "nicResourceName": "rdma/ib",
     "rdmaDeviceAccess": "hostPath"
   }

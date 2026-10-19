@@ -27,7 +27,7 @@ A Spectrum-X site with one resource and one NAD per rail (`nvidia.com/r0` to `nv
 
 4. **CLI.** `nvcrectl certification run` gains `--network-attachments network=resource,...` and the issue's zipped pair `--multus-networks` / `--extended-resources`, which renders to the same list and fails on a length mismatch. `--cert-file` users write the YAML.
 
-5. **Workflow names.** `categoryOptionsSuffix` gains a `net<N>-<hash8>` token over the (network, resourceName) pairs in list order, so two categories differing only in attachments do not share a Workflow. Issue #430 is reworking how option differences reach the name; this token follows whatever it settles on.
+5. **Workflow names.** `categoryOptionsSuffix` gains a `net<N>-<hash8>` token over the (network, resourceName) pairs in list order, so two categories differing only in attachments do not share a Workflow. Because a category's `nicResourceName` replaces a spec-level list, it also gains a `nic<hash8>` token when a category sets `nicResourceName`, so a category that inherits the list and one that replaces it with a NIC resource do not share a Workflow either. Issue #430 is reworking how option differences reach the name; this token follows whatever it settles on.
 
 ## Implementation
 
