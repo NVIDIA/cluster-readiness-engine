@@ -65,9 +65,6 @@ func ValidateNetworkAttachments(atts []nvcrev1alpha1.NetworkAttachment) error {
 			return fmt.Errorf("networkAttachments[%d].resourceName %q must not use the reserved"+
 				" kubernetes.io or k8s.io domains", i, a.ResourceName)
 		}
-		if a.Count != nil && (*a.Count < 1 || *a.Count > 64) {
-			return fmt.Errorf("networkAttachments[%d].count must be between 1 and 64 (got %d)", i, *a.Count)
-		}
 	}
 	return nil
 }
@@ -82,12 +79,13 @@ func NetworkAttachmentsAnnotationValue(atts []nvcrev1alpha1.NetworkAttachment) s
 	return strings.Join(names, ",")
 }
 
-// networkAttachmentResources sums the requested count per resourceName, so
-// two attachments backed by the same resource request both devices.
+// networkAttachmentResources counts the attachments per resourceName. Each
+// attachment is one interface and needs one device, so two attachments backed
+// by the same resource request two.
 func networkAttachmentResources(atts []nvcrev1alpha1.NetworkAttachment) map[string]int64 {
 	out := make(map[string]int64, len(atts))
 	for _, a := range atts {
-		out[a.ResourceName] += int64(a.EffectiveCount())
+		out[a.ResourceName]++
 	}
 	return out
 }

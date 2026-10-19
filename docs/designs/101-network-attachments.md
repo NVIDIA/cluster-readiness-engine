@@ -15,23 +15,23 @@ A Spectrum-X site with one resource and one NAD per rail (`nvidia.com/r0` to `nv
 
 ## Decision
 
-1. **Add `networkAttachments` to `CategoryOptions` and to `WorkloadRunSpec`.** It is a list of `{network, resourceName, count}`:
+1. **Add `networkAttachments` to `CategoryOptions` and to `WorkloadRunSpec`.** It is a list of `{network, resourceName}`:
    - `network` names a NAD as `<name>` or `<namespace>/<name>` (DNS-1123 label namespace, DNS-1123 subdomain name).
    - `resourceName` follows the `nicResourceName` rules: a fully qualified extended resource name outside the reserved `kubernetes.io` and `k8s.io` domains.
-   - `count` is 1 to 64 and defaults to 1. Entries sharing a `resourceName` add up.
+   - Each entry is one interface and requests one unit of its resource. Entries sharing a `resourceName` add up, so a second interface on one network is a second entry.
    - At most 16 entries.
 
 2. **Render.** Each TrainingRuntime replicatedJob other than the MPI `launcher` gets the networks annotation, in list order, on its pod template, and its worker container (named `node`, else the first) gets limits and requests for each resource. The annotation replaces any value already rendered.
 
 3. **The list owns the NIC wiring.** It is mutually exclusive with `nicResourceName` in one options block and disables NIC auto-detection. On OCI it replaces the default `sriov-net` attachments and their `nvidia.com/mlnxnics` request rather than appending to them. A per-category `networkAttachments` or `nicResourceName` replaces whichever of the two the spec level set. It cannot be combined with `rdmaDeviceAccess: hostPath` (which requests no device) or with `mlnxPerNode: 0` (the NIC opt-out).
 
-4. **CLI.** `nvcrectl certification run` gains `--network-attachments network=resource[:count],...` and the issue's zipped pair `--multus-networks` / `--extended-resources`, which renders to the same list and fails on a length mismatch. `--cert-file` users write the YAML.
+4. **CLI.** `nvcrectl certification run` gains `--network-attachments network=resource,...` and the issue's zipped pair `--multus-networks` / `--extended-resources`, which renders to the same list and fails on a length mismatch. `--cert-file` users write the YAML.
 
-5. **Workflow names.** `categoryOptionsSuffix` gains a `net<N>-<hash8>` token over the (network, resourceName, count) tuples in list order, so two categories differing only in attachments do not share a Workflow. Issue #430 is reworking how option differences reach the name; this token follows whatever it settles on.
+5. **Workflow names.** `categoryOptionsSuffix` gains a `net<N>-<hash8>` token over the (network, resourceName) pairs in list order, so two categories differing only in attachments do not share a Workflow. Issue #430 is reworking how option differences reach the name; this token follows whatever it settles on.
 
 ## Implementation
 
-- `api/v1alpha1/network_attachment_types.go`: the `NetworkAttachment` type with Pattern, length and range markers, and `EffectiveCount()`. Three type-level CEL rules on `CategoryOptions` (inherited by `CertificationSpec` through the inline embed, so they bind at the spec level and under `categories[].options`) and two on `WorkloadRunSpec`.
+- `api/v1alpha1/network_attachment_types.go`: the `NetworkAttachment` type with Pattern and length markers. Three type-level CEL rules on `CategoryOptions` (inherited by `CertificationSpec` through the inline embed, so they bind at the spec level and under `categories[].options`) and two on `WorkloadRunSpec`.
 - `pkg/platform/network_attachments.go`: `ValidateNetworkAttachments` (the per-entry and cap rules, for offline use) and `ApplyNetworkAttachmentsToDependencies`.
 - `pkg/platform/transform.go`: `ApplyResolvedWorkflowTransforms` gains the attachments as step 4, after image replacement and before workload metadata. Both the controller and offline render already funnel through this stage, after platform overrides resolve, so the explicit list wins over any annotation an override rendered.
 - WorkloadRun applies the attachments to its runtime dependency at construction (controller and `nvcrectl workloadrun render`). No WorkloadRun platform override renders a networks annotation, so nothing later competes with it.

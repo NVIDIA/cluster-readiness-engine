@@ -18,7 +18,8 @@ run:
     networkAttachments:
       - {network: nvcre/r0, resourceName: nvidia.com/r0}
       - {network: nvcre/r1, resourceName: nvidia.com/r1}
-      - {network: nvcre/r2, resourceName: nvidia.com/r2, count: 2}
+      - {network: nvcre/r2, resourceName: nvidia.com/r2}
+      - {network: nvcre/r2, resourceName: nvidia.com/r2}
 gpusPerNode: 8
 mlnxPerNode: 8
 enableMNNVL: false

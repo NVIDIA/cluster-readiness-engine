@@ -70,7 +70,7 @@
   "overrideCount": 22,
   "networkAttachments": {
     "node": [
-      "networks=nvcre/r0,nvcre/r1,nvcre/r2",
+      "networks=nvcre/r0,nvcre/r1,nvcre/r2,nvcre/r2",
       "node:limits/nvidia.com/gpu=8",
       "node:limits/nvidia.com/r0=1",
       "node:limits/nvidia.com/r1=1",

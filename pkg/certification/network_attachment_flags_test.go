@@ -14,7 +14,7 @@ import (
 )
 
 // TestParseNetworkAttachmentFlags pins how the run command's attachment flags
-// become a networkAttachments list: network=resource[:count] entries, the
+// become a networkAttachments list: network=resource entries, the
 // issue #400 zipped --multus-networks/--extended-resources pair (including
 // the length-mismatch error), the two forms being exclusive, and the CRD
 // rules applied before anything is created.

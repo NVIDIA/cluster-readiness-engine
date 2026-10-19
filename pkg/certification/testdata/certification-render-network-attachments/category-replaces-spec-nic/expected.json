@@ -29,7 +29,7 @@
     ]
   },
   {
-    "workflow": "onprem-b300-cert-communic-20298",
+    "workflow": "onprem-b300-cert-communic-6555d",
     "replicatedJobs": [
       {
         "dependency": "nccl-all-gather-runtime",

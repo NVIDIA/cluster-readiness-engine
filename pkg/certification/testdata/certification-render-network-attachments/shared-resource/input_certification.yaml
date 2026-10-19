@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# count defaults to 1 and entries sharing a resourceName add up: two
-# attachments on rdma/shared plus one with count 2 on rdma/extra request
-# rdma/shared=2 and rdma/extra=2, while the annotation still lists three
-# networks in order.
+# Each entry requests one device and entries sharing a resourceName add up:
+# two attachments on rdma/shared plus other-ns/net-c listed twice (two
+# interfaces on one network) request rdma/shared=2 and rdma/extra=2, while
+# the annotation lists all four networks in order.
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
@@ -17,7 +17,8 @@ spec:
   networkAttachments:
     - {network: net-a, resourceName: rdma/shared}
     - {network: net-b, resourceName: rdma/shared}
-    - {network: other-ns/net-c, resourceName: rdma/extra, count: 2}
+    - {network: other-ns/net-c, resourceName: rdma/extra}
+    - {network: other-ns/net-c, resourceName: rdma/extra}
   categories:
     - domain: communication
       variant: nccl-all-reduce

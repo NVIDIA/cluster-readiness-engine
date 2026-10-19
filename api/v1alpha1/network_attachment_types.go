@@ -12,7 +12,7 @@ const MaxNetworkAttachments = 16
 // NetworkAttachment pairs one Multus secondary network with the extended
 // resource that backs it (issue #400). Each entry adds the network to the
 // worker pod's k8s.v1.cni.cncf.io/networks annotation, in list order, and
-// requests count units of resourceName on the worker container. The two are
+// requests one unit of resourceName on the worker container. The two are
 // kept in one entry rather than two parallel lists because the Network
 // Operator matches them by position: the n-th attachment in the annotation is
 // wired to a device of the n-th requested resource.
@@ -30,26 +30,13 @@ type NetworkAttachment struct {
 	// the worker container (for example "nvidia.com/r0"). It follows the same
 	// rules as nicResourceName: a DNS-subdomain domain, a slash, and a name
 	// segment of at most 63 characters, outside the reserved kubernetes.io and
-	// k8s.io domains.
+	// k8s.io domains. Each entry requests one unit, since one entry attaches
+	// one interface; entries that share a resourceName add up on the
+	// container, so listing a network twice requests two devices for its two
+	// interfaces.
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]{0,61}[a-zA-Z0-9])?$`
 	// +kubebuilder:validation:XValidation:rule="!self.contains('kubernetes.io/') && !self.startsWith('k8s.io/') && !self.contains('.k8s.io/')",message="resourceName must not use the reserved kubernetes.io or k8s.io domains"
 	ResourceName string `json:"resourceName"`
-
-	// count is the number of resourceName units requested for this
-	// attachment. Defaults to 1 when unset. Entries that share a resourceName
-	// add up on the container.
-	// +optional
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=64
-	Count *int32 `json:"count,omitempty"`
-}
-
-// EffectiveCount returns count, or 1 when unset.
-func (a NetworkAttachment) EffectiveCount() int32 {
-	if a.Count == nil {
-		return 1
-	}
-	return *a.Count
 }

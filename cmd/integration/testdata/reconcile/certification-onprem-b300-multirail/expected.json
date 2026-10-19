@@ -90,7 +90,7 @@
           "domain": "communication",
           "variant": "nccl-all-gather",
           "workflowRef": {
-            "name": "onprem-mr-b3-communicatio-d47b3",
+            "name": "onprem-mr-b3-communicatio-a0133",
             "namespace": "default"
           },
           "status": "InProgress"
@@ -98,11 +98,11 @@
       ]
     }
   },
-  "Workflow/onprem-mr-b3-communicatio-d47b3": {
+  "Workflow/onprem-mr-b3-communicatio-a0133": {
     "kind": "Workflow",
     "apiVersion": "nvcre.nvidia.com/v1alpha1",
     "metadata": {
-      "name": "onprem-mr-b3-communicatio-d47b3",
+      "name": "onprem-mr-b3-communicatio-a0133",
       "namespace": "default",
       "labels": {
         "app.kubernetes.io/managed-by": "nvcre",
@@ -481,7 +481,7 @@
         {
           "apiVersion": "trainer.kubeflow.org/v1alpha1",
           "kind": "TrainingRuntime",
-          "name": "nccl-all-gather-runtime-d47b3-job",
+          "name": "nccl-all-gather-runtime-a0133-job",
           "namespace": "default",
           "scope": "job",
           "groupName": "group-0",
@@ -509,7 +509,7 @@
             "jobRef": {
               "apiVersion": "nvcre.nvidia.com/v1alpha1",
               "kind": "Job",
-              "name": "onprem-mr-b3-communicatio-d47b3-job",
+              "name": "onprem-mr-b3-communicatio-a0133-job",
               "namespace": "default"
             }
           }

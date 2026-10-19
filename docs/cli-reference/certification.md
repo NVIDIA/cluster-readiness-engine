@@ -30,7 +30,7 @@ nvcrectl certification run --category communication/nccl-all-reduce [flags]
 | `--grant-run-access` | `false` | With the chart's `rbac.scope: namespaced`, create the RoleBinding that grants the controller write access in a namespace that already existed. Namespaces this run creates are granted without it. See [Controller access to the run namespace](#controller-access-to-the-run-namespace) |
 | `--nodes-per-job` | `0` | Nodes per job (0 = auto-select) |
 | `--gpus-per-node` | `0` | GPUs per node (0 = auto-detect from GPU architecture) |
-| `--network-attachments` | none | Multus networks and their extended resources as `network=resource[:count],...` in rail order (for example `nvcre/r0=nvidia.com/r0,nvcre/r1=nvidia.com/r1`); sets spec-level `networkAttachments`. Incompatible with `--cert-file` and with the pair below |
+| `--network-attachments` | none | Multus networks and their extended resources as `network=resource,...` in interface order (for example `nvcre/r0=nvidia.com/r0,nvcre/r1=nvidia.com/r1`); sets spec-level `networkAttachments`. Incompatible with `--cert-file` and with the pair below |
 | `--multus-networks` | none | Multus networks to attach, in order; paired by position with `--extended-resources`. The two lists must be the same length |
 | `--extended-resources` | none | Extended resources to request on worker containers, one per `--multus-networks` entry, in the same order |
 | `--enable-checkpoint` | `false` | Enable checkpoint storage for training workloads |

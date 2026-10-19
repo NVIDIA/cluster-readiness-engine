@@ -6,8 +6,11 @@
     },
     {
       "network": "r1",
-      "resourceName": "nvidia.com/r1",
-      "count": 2
+      "resourceName": "nvidia.com/r1"
+    },
+    {
+      "network": "r1",
+      "resourceName": "nvidia.com/r1"
     }
   ]
 }

@@ -5,7 +5,7 @@
       {
         "dependency": "nccl-all-reduce-runtime",
         "replicatedJob": "node",
-        "networks": "net-a,net-b,other-ns/net-c",
+        "networks": "net-a,net-b,other-ns/net-c,other-ns/net-c",
         "resources": {
           "node": [
             "limits/nvidia.com/gpu=8",

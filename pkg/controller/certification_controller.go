@@ -1321,16 +1321,15 @@ func envToken(env []corev1.EnvVar) string {
 
 // networkAttachmentsToken renders "net<N>-<hash8>": N is the number of
 // attachments and hash8 the first eight hex digits of a SHA-256 over the
-// (network, resourceName, count) tuples in list order. Order is hashed, not
-// sorted away, because it is part of what the pods get: the Network Operator
-// pairs the n-th network with the n-th resource, so two lists that differ
-// only in order are different configurations. A nil count hashes as 1, its
-// default, so the CLI path (which never sees CRD defaulting) and the
-// controller agree.
+// (network, resourceName) pairs in list order. Order is hashed, not sorted
+// away, because it is part of what the pods get: Multus attaches the networks
+// in annotation order, so the list order decides which network becomes
+// net1, net2 and so on, and two lists that differ only in order are different
+// configurations.
 func networkAttachmentsToken(atts []nvcrev1alpha1.NetworkAttachment) string {
 	h := sha256.New()
 	for _, a := range atts {
-		_, _ = fmt.Fprintf(h, "%s|%s|%d\n", a.Network, a.ResourceName, a.EffectiveCount())
+		_, _ = fmt.Fprintf(h, "%s|%s\n", a.Network, a.ResourceName)
 	}
 	return fmt.Sprintf("net%d-%s", len(atts), hex.EncodeToString(h.Sum(nil))[:8])
 }

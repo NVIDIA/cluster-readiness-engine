@@ -252,7 +252,7 @@ type CategoryOptions struct {
 	// (issue #400), for fabrics that expose one resource and one
 	// NetworkAttachmentDefinition per rail, such as Spectrum-X RoCE. The
 	// networks are written to the worker pod's k8s.v1.cni.cncf.io/networks
-	// annotation in list order, and each entry requests count units of its
+	// annotation in list order, and each entry requests one unit of its
 	// resourceName on the worker container, so the n-th network lines up
 	// with the n-th resource. The list replaces the NIC wiring the catalog
 	// would otherwise render: it is mutually exclusive with nicResourceName

@@ -3,7 +3,7 @@
 
 waitFor:
   kind: Workflow
-  name: onprem-mr-b3-communicatio-d47b3
+  name: onprem-mr-b3-communicatio-a0133
   namespace: default
   condition: InProgress
   reason: JobRunning
@@ -12,7 +12,7 @@ collect:
     name: onprem-mr-b3
     namespace: default
   - kind: Workflow
-    name: onprem-mr-b3-communicatio-d47b3
+    name: onprem-mr-b3-communicatio-a0133
     namespace: default
 events:
   # b300 is a listed architecture and NIC detection is skipped because the

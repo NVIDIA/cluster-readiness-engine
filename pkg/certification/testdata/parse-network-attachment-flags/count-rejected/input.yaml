@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# A count that is not an integer.
-networkAttachments: ["r0=nvidia.com/r0:two"]
+# The old network=resource:count form is rejected with a pointer to repeating
+# the entry.
+networkAttachments: ["r0=nvidia.com/r0:2"]

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# An upper-case network, a reserved-domain resource and a zero count.
+# An upper-case network and a reserved-domain resource.
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:
@@ -14,7 +14,6 @@ spec:
   networkAttachments:
     - {network: nvcre/R0, resourceName: nvidia.com/r0}
     - {network: r1, resourceName: kubernetes.io/r1}
-    - {network: r2, resourceName: nvidia.com/r2, count: 0}
   categories:
     - domain: communication
       variant: nccl-all-reduce

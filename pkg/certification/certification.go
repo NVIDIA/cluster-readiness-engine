@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/signal"
 	"slices"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -984,7 +983,7 @@ Use --cleanup to teardown installed components after completion.`,
 	cmd.Flags().StringVar(&certFile, "cert-file", "",
 		"Certification YAML file (mutually exclusive with --category)")
 	cmd.Flags().StringSliceVar(&networkAttachments, "network-attachments", nil,
-		"Multus networks and the extended resource behind each, as network=resource[:count],... in rail order"+
+		"Multus networks and the extended resource behind each, as network=resource,... in interface order"+
 			" (e.g. nvcre/r0=nvidia.com/r0,nvcre/r1=nvidia.com/r1); sets networkAttachments")
 	cmd.Flags().StringSliceVar(&multusNetworks, "multus-networks", nil,
 		"Multus networks to attach to worker pods, in order; paired by position with --extended-resources")
@@ -1935,7 +1934,7 @@ func runReport(names []string, configFlags *kubeconfig.ConfigFlags, resultsFile 
 }
 
 // parseNetworkAttachmentFlags turns the run command's attachment flags into a
-// networkAttachments list. --network-attachments takes network=resource[:count]
+// networkAttachments list. --network-attachments takes network=resource
 // entries. --multus-networks and --extended-resources are the issue #400
 // spelling: two lists zipped by position, which must be the same length. The
 // two forms are mutually exclusive. The result is checked against the same
@@ -1974,25 +1973,19 @@ func parseNetworkAttachmentFlags(attachments, networks, resources []string) ([]n
 	return atts, nil
 }
 
-// parseNetworkAttachment parses one network=resource[:count] entry. The count
-// is split on the last colon, since neither a network nor a resource name may
-// contain one.
+// parseNetworkAttachment parses one network=resource entry. Each entry is one
+// interface and requests one device; repeat an entry for a second interface
+// on the same rail.
 func parseNetworkAttachment(entry string) (nvcrev1alpha1.NetworkAttachment, error) {
-	network, rest, ok := strings.Cut(strings.TrimSpace(entry), "=")
-	if !ok || network == "" || rest == "" {
+	network, resource, ok := strings.Cut(strings.TrimSpace(entry), "=")
+	if !ok || network == "" || resource == "" {
 		return nvcrev1alpha1.NetworkAttachment{}, fmt.Errorf(
-			"--network-attachments entry %q must be network=resource[:count]", entry)
+			"--network-attachments entry %q must be network=resource", entry)
 	}
-	a := nvcrev1alpha1.NetworkAttachment{Network: network, ResourceName: rest}
-	if resource, countText, found := strings.CutLast(rest, ":"); found {
-		n, err := strconv.ParseInt(countText, 10, 32)
-		if err != nil {
-			return nvcrev1alpha1.NetworkAttachment{}, fmt.Errorf(
-				"--network-attachments entry %q: count %q is not an integer", entry, countText)
-		}
-		count := int32(n)
-		a.ResourceName = resource
-		a.Count = &count
+	if strings.Contains(resource, ":") {
+		return nvcrev1alpha1.NetworkAttachment{}, fmt.Errorf(
+			"--network-attachments entry %q: an entry takes no count; repeat it for a second interface"+
+				" on the same network", entry)
 	}
-	return a, nil
+	return nvcrev1alpha1.NetworkAttachment{Network: network, ResourceName: resource}, nil
 }
