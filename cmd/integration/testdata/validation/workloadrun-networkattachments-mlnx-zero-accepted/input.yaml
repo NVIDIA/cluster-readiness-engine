@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# The WorkloadRun CRD carries the list too, with the mlnxPerNode: 0
-# exclusion.
+# The WorkloadRun CRD carries the list too. mlnxPerNode: 0 is accepted with it:
+# it is how a run drops a platform NIC request the list does not replace.
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: WorkloadRun
 metadata:

@@ -38,9 +38,11 @@ type netAttachWorkflow struct {
 // TestCertificationRenderNetworkAttachments covers issue #400 through the path
 // "nvcrectl certification render --platform <csp>" uses: the annotation in list
 // order, per-rail limits and requests on the worker container only (never the
-// MPI launcher), the OCI sriov-net default replaced rather than appended to, a
-// per-category list replacing a spec-level nicResourceName, and two categories
-// differing only in their attachments rendering under distinct Workflow names.
+// MPI launcher), the OCI sriov-net default replaced rather than appended to,
+// TogetherAI's non-Multus mlnxnics request kept beside the list unless
+// mlnxPerNode: 0 drops it, a per-category list replacing a spec-level
+// nicResourceName, and two categories differing only in their attachments
+// rendering under distinct Workflow names.
 func TestCertificationRenderNetworkAttachments(t *testing.T) {
 	p := testutil.TestCaseParser{
 		Subdir:         "certification-render-network-attachments",

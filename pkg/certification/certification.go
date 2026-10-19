@@ -748,8 +748,8 @@ func validateCategoryEnv(env []corev1.EnvVar) error {
 
 // validateCategoryNetworkAttachments mirrors the CRD rules on
 // CategoryOptions.networkAttachments: each entry's pattern, the 16-entry
-// cap, and the exclusions with nicResourceName, rdmaDeviceAccess: hostPath
-// and mlnxPerNode: 0. Like the CRD, it checks one options block at a time;
+// cap, and the exclusions with nicResourceName and rdmaDeviceAccess:
+// hostPath. Like the CRD, it checks one options block at a time;
 // a per-category list replacing a spec-level nicResourceName is resolution,
 // not a conflict.
 func validateCategoryNetworkAttachments(opts *nvcrev1alpha1.CategoryOptions) error {
@@ -767,9 +767,6 @@ func validateCategoryNetworkAttachments(opts *nvcrev1alpha1.CategoryOptions) err
 	}
 	if opts.RDMADeviceAccess == nvcrev1alpha1.RDMADeviceAccessHostPath {
 		return fmt.Errorf("networkAttachments cannot be combined with rdmaDeviceAccess: hostPath")
-	}
-	if opts.MlnxPerNode != nil && *opts.MlnxPerNode == 0 {
-		return fmt.Errorf("networkAttachments cannot be combined with mlnxPerNode: 0")
 	}
 	return nil
 }

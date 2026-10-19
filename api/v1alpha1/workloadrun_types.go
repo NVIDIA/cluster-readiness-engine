@@ -188,7 +188,6 @@ type WorkloadOrchestration struct {
 
 // WorkloadRunSpec defines the desired state of WorkloadRun.
 // +kubebuilder:validation:XValidation:rule="!has(self.networkAttachments) || !has(self.nicResourceName)",message="networkAttachments and nicResourceName are mutually exclusive"
-// +kubebuilder:validation:XValidation:rule="!has(self.networkAttachments) || !has(self.mlnxPerNode) || self.mlnxPerNode != 0",message="networkAttachments cannot be combined with mlnxPerNode: 0"
 type WorkloadRunSpec struct {
 	// target specifies which nodes to run the workload on.
 	// When omitted, all GPU nodes (nvidia.com/gpu.present=true) are selected.
@@ -267,8 +266,9 @@ type WorkloadRunSpec struct {
 	// resourceName on the worker container, so the n-th network lines up
 	// with the n-th resource. The list replaces the NIC wiring the catalog
 	// would otherwise render: it is mutually exclusive with nicResourceName
-	// and disables NIC resource auto-detection. It cannot be combined with
-	// mlnxPerNode: 0. At most 16 entries.
+	// and disables NIC resource auto-detection. A platform NIC request the
+	// WorkloadRun overrides render without Multus stays alongside the
+	// attachments; set mlnxPerNode: 0 to drop it. At most 16 entries.
 	// +optional
 	// +listType=atomic
 	// +kubebuilder:validation:MinItems=1

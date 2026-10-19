@@ -154,7 +154,6 @@ type CategoryResources struct {
 // (or auto-select for nodesPerJob).
 // +kubebuilder:validation:XValidation:rule="!has(self.networkAttachments) || !has(self.nicResourceName)",message="networkAttachments and nicResourceName are mutually exclusive"
 // +kubebuilder:validation:XValidation:rule="!has(self.networkAttachments) || !has(self.rdmaDeviceAccess) || self.rdmaDeviceAccess != 'hostPath'",message="networkAttachments cannot be combined with rdmaDeviceAccess: hostPath"
-// +kubebuilder:validation:XValidation:rule="!has(self.networkAttachments) || !has(self.mlnxPerNode) || self.mlnxPerNode != 0",message="networkAttachments cannot be combined with mlnxPerNode: 0"
 type CategoryOptions struct {
 	// nodesPerJob is the number of nodes per job for multi-node workloads.
 	//
@@ -260,8 +259,11 @@ type CategoryOptions struct {
 	// default network-operator/sriov-net attachments and their
 	// nvidia.com/mlnxnics request rather than appending to them. A
 	// per-category networkAttachments or nicResourceName replaces whichever of
-	// the two the spec level set. It cannot be combined with
-	// rdmaDeviceAccess: hostPath or with mlnxPerNode: 0. At most 16 entries.
+	// the two the spec level set. On platforms whose catalog requests its own
+	// NIC resource without Multus (Azure, TogetherAI and Forge
+	// nvidia.com/mlnxnics, the nscale rdma claim), that request stays
+	// alongside the attachments; set mlnxPerNode: 0 to drop it. It cannot be
+	// combined with rdmaDeviceAccess: hostPath. At most 16 entries.
 	// +optional
 	// +listType=atomic
 	// +kubebuilder:validation:MinItems=1

@@ -2039,8 +2039,9 @@ spec:
                   resourceName on the worker container, so the n-th network lines up
                   with the n-th resource. The list replaces the NIC wiring the catalog
                   would otherwise render: it is mutually exclusive with nicResourceName
-                  and disables NIC resource auto-detection. It cannot be combined with
-                  mlnxPerNode: 0. At most 16 entries.
+                  and disables NIC resource auto-detection. A platform NIC request the
+                  WorkloadRun overrides render without Multus stays alongside the
+                  attachments; set mlnxPerNode: 0 to drop it. At most 16 entries.
                 items:
                   description: |-
                     NetworkAttachment pairs one Multus secondary network with the extended
@@ -4737,9 +4738,6 @@ spec:
               rule: self == oldSelf
             - message: networkAttachments and nicResourceName are mutually exclusive
               rule: '!has(self.networkAttachments) || !has(self.nicResourceName)'
-            - message: 'networkAttachments cannot be combined with mlnxPerNode: 0'
-              rule: '!has(self.networkAttachments) || !has(self.mlnxPerNode) || self.mlnxPerNode
-                != 0'
           status:
             description: status defines the observed state of WorkloadRun
             properties:

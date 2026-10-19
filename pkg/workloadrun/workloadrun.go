@@ -1908,7 +1908,7 @@ func newWorkloadRunCancelCommand() *cobra.Command {
 
 // validateWRNetworkAttachments mirrors the CRD rules on
 // WorkloadRunSpec.networkAttachments: each entry's pattern, the 16-entry cap,
-// and the exclusions with nicResourceName and mlnxPerNode: 0.
+// and the exclusion with nicResourceName.
 func validateWRNetworkAttachments(spec *nvcrev1alpha1.WorkloadRunSpec) error {
 	if spec.NetworkAttachments == nil {
 		return nil
@@ -1921,9 +1921,6 @@ func validateWRNetworkAttachments(spec *nvcrev1alpha1.WorkloadRunSpec) error {
 	}
 	if spec.NicResourceName != nil {
 		return fmt.Errorf("networkAttachments and nicResourceName are mutually exclusive")
-	}
-	if spec.MlnxPerNode != nil && *spec.MlnxPerNode == 0 {
-		return fmt.Errorf("networkAttachments cannot be combined with mlnxPerNode: 0")
 	}
 	return nil
 }
