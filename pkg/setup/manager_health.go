@@ -62,6 +62,7 @@ type managerStability struct {
 	sleep       func(context.Context, time.Duration) error
 }
 
+// newManagerStability returns the check with production timings and the real clock.
 func newManagerStability(c client.Reader) managerStability {
 	return managerStability{
 		c:           c,
@@ -74,6 +75,7 @@ func newManagerStability(c client.Reader) managerStability {
 	}
 }
 
+// sleepContext waits for d, or returns ctx.Err() if ctx ends first.
 func sleepContext(ctx context.Context, d time.Duration) error {
 	t := time.NewTimer(d)
 	defer t.Stop()
@@ -202,36 +204,53 @@ func managerContainerStatus(pod *corev1.Pod) *corev1.ContainerStatus {
 	return nil
 }
 
+// isCrashLoopBackOff reports whether the kubelet is backing off restarts of the container.
 func isCrashLoopBackOff(cs *corev1.ContainerStatus) bool {
 	return cs.State.Waiting != nil && cs.State.Waiting.Reason == reasonCrashLoopBackOff
 }
 
 // managerPodsStable reports whether there is at least one controller pod and
-// every one is Ready with its manager container running since at least
-// stableFor before now.
+// every one has been Ready, with its manager container running, since at
+// least stableFor before now. Ready time is taken from the PodReady
+// condition, not the container's start: readiness can drop and return
+// without a restart, and a pod that turned Ready seconds ago has not been
+// Ready for a minute however long its container has run.
 func managerPodsStable(pods []corev1.Pod, now time.Time, stableFor time.Duration) bool {
 	if len(pods) == 0 {
 		return false
 	}
 	for i := range pods {
 		cs := managerContainerStatus(&pods[i])
-		if cs == nil || !cs.Ready || cs.State.Running == nil || !podReady(&pods[i]) {
+		readySince, ready := podReadySince(&pods[i])
+		if cs == nil || !cs.Ready || cs.State.Running == nil || !ready {
 			return false
 		}
-		if now.Sub(cs.State.Running.StartedAt.Time) < stableFor {
+		if now.Sub(readySince) < stableFor {
 			return false
 		}
 	}
 	return true
 }
 
+// podReady reports whether the pod is Ready now, by the rule podReadySince applies.
 func podReady(pod *corev1.Pod) bool {
+	_, ready := podReadySince(pod)
+	return ready
+}
+
+// podReadySince returns when the pod last turned Ready and whether it is
+// Ready now. A Ready condition with no transition time counts as not Ready,
+// since how long it has been Ready cannot be known.
+func podReadySince(pod *corev1.Pod) (time.Time, bool) {
 	for _, cond := range pod.Status.Conditions {
 		if cond.Type == corev1.PodReady {
-			return cond.Status == corev1.ConditionTrue
+			if cond.Status == corev1.ConditionTrue && !cond.LastTransitionTime.IsZero() {
+				return cond.LastTransitionTime.Time, true
+			}
+			return time.Time{}, false
 		}
 	}
-	return false
+	return time.Time{}, false
 }
 
 // managerCrashError describes a crash-looping controller container: how often
@@ -278,6 +297,7 @@ func oomHint(pod *corev1.Pod) string {
 		limit.String(), doubled.String())
 }
 
+// terminationReason returns the kubelet's reason for an exit, or Error when it gave none.
 func terminationReason(t *corev1.ContainerStateTerminated) string {
 	if t.Reason != "" {
 		return t.Reason
@@ -313,6 +333,7 @@ func managerNotStableError(pods []corev1.Pod, stableFor, timeout time.Duration) 
 		stableFor, timeout, strings.Join(states, ", "))
 }
 
+// plural returns one when n is 1 and many otherwise.
 func plural(n int, one, many string) string {
 	if n == 1 {
 		return one

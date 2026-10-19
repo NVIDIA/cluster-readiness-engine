@@ -41,10 +41,15 @@ type managerPod struct {
 	name       string
 	ready      bool
 	startedAgo time.Duration // before testStart; zero means not running
-	restarts   int32
-	waiting    string
-	lastReason string
-	lastExit   int32
+	// readyAgo is when the pod last turned Ready, before testStart; zero
+	// means when its container started. noReadyTime leaves the Ready
+	// condition's transition time unset.
+	readyAgo    time.Duration
+	noReadyTime bool
+	restarts    int32
+	waiting     string
+	lastReason  string
+	lastExit    int32
 	// exitReason and exitCode set a current termination: the container has
 	// exited and the kubelet has not restarted it yet.
 	exitReason  string
@@ -79,7 +84,15 @@ func (p managerPod) build() corev1.Pod {
 	if p.ready {
 		readyStatus = corev1.ConditionTrue
 	}
-	pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: readyStatus}}
+	readyCond := corev1.PodCondition{Type: corev1.PodReady, Status: readyStatus}
+	if p.ready && !p.noReadyTime {
+		readyAgo := p.readyAgo
+		if readyAgo == 0 {
+			readyAgo = p.startedAgo
+		}
+		readyCond.LastTransitionTime = metav1.Time{Time: testStart.Add(-readyAgo)}
+	}
+	pod.Status.Conditions = []corev1.PodCondition{readyCond}
 	cs := corev1.ContainerStatus{Name: managerContainerName, Ready: p.ready, RestartCount: p.restarts}
 	switch {
 	case p.exitReason != "":
@@ -247,6 +260,19 @@ func TestManagerStabilityVerify(t *testing.T) {
 			wantErr: "restarted 1 time, last exit OOMKilled (exit code 137).\n" +
 				"It ran out of memory at its 1Gi limit.",
 			wantLists: 2,
+		},
+		{
+			name:  "a pod running for hours that turned Ready seconds ago waits a minute from Ready",
+			polls: [][]managerPod{{{name: testManagerPod, ready: true, startedAgo: 2 * time.Hour, readyAgo: 10 * time.Second}}},
+			// Ready 10s at the first read; the read at +50s sees it Ready 60s.
+			wantLists: 26,
+		},
+		{
+			name:  "a Ready condition with no transition time never counts as settled",
+			polls: [][]managerPod{{{name: testManagerPod, ready: true, startedAgo: time.Hour, noReadyTime: true}}},
+			wantErr: "the NVCRE controller did not stay Ready for 1m0s within 3m0s: " +
+				"nvcre-manager-a (running, not Ready)",
+			wantLists: 91,
 		},
 		{
 			name: "another release's manager pod in the namespace is ignored",

@@ -251,7 +251,11 @@ func createStableManagerPod(t *testing.T, c client.Client) {
 		Spec:      corev1.PodSpec{Containers: []corev1.Container{{Name: managerContainerName, Image: stableManagerImage}}},
 	}
 	require.NoError(t, c.Create(ctx, pod))
-	pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
+	pod.Status.Conditions = []corev1.PodCondition{{
+		Type:               corev1.PodReady,
+		Status:             corev1.ConditionTrue,
+		LastTransitionTime: metav1.NewTime(time.Now().Add(-time.Hour)),
+	}}
 	pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
 		Name:  managerContainerName,
 		Image: stableManagerImage,
