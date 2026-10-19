@@ -354,6 +354,9 @@ func BuildWorkflowSpec(
 		runtimeDep = platform.BuildExecRuntime(rtCfg)
 	}
 
+	// The attachments go on the runtime before any override, as in the
+	// controller: platform overrides never render a networks annotation, and
+	// the user's spec.overrides, applied later, replace what is written here.
 	deps := []nvcrev1alpha1.DependencySpec{runtimeDep}
 	if err := platform.ApplyNetworkAttachmentsToDependencies(deps, spec.NetworkAttachments); err != nil {
 		return nil, err

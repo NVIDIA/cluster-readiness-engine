@@ -575,8 +575,15 @@ func (r *WorkloadRunReconciler) buildWorkflowSpecWithWarning(
 	}
 
 	// Build dependencies list. The networkAttachments annotation and
-	// resources go on the runtime now: no WorkloadRun override renders a
-	// networks annotation, so nothing later competes with them.
+	// resources go on the runtime now, before any override runs. No WorkloadRun
+	// platform override renders a networks annotation, so the platform
+	// overrides applied later never compete with them. The user's own
+	// spec.overrides are applied after them, when the Workflow reconciles, so
+	// one that sets the networks annotation or one of these resources on the
+	// runtime replaces the value written here. That is deliberate and matches
+	// every other WorkloadRun field: spec.overrides is the last word on the
+	// rendered objects. Certification has no user overrides, so there the
+	// list is final.
 	deps := []nvcrev1alpha1.DependencySpec{runtimeDep}
 	if err := platform.ApplyNetworkAttachmentsToDependencies(deps, spec.NetworkAttachments); err != nil {
 		return nil, "", err

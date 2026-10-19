@@ -1,0 +1,26 @@
+[
+  {
+    "dependency": "wr-netatt-runtime",
+    "replicatedJob": "node",
+    "networks": "site/override",
+    "resources": {
+      "node": [
+        "limits/nvidia.com/gpu=8",
+        "limits/nvidia.com/r0=1",
+        "requests/nvidia.com/gpu=8",
+        "requests/nvidia.com/r0=1"
+      ]
+    }
+  },
+  {
+    "dependency": "wr-netatt-runtime",
+    "replicatedJob": "launcher",
+    "networks": "",
+    "resources": {
+      "node": [
+        "limits/cpu=2",
+        "limits/memory=1Gi"
+      ]
+    }
+  }
+]
