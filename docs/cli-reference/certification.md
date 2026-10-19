@@ -31,8 +31,8 @@ nvcrectl certification run --category communication/nccl-all-reduce [flags]
 | `--nodes-per-job` | `0` | Nodes per job (0 = auto-select) |
 | `--gpus-per-node` | `0` | GPUs per node (0 = auto-detect from GPU architecture) |
 | `--network-attachments` | none | Multus networks and their extended resources as `network=resource,...` in interface order (for example `nvcre/r0=nvidia.com/r0,nvcre/r1=nvidia.com/r1`); sets spec-level `networkAttachments`. Incompatible with `--cert-file` and with the pair below |
-| `--multus-networks` | none | Multus networks to attach, in order; paired by position with `--extended-resources`. The two lists must be the same length |
-| `--extended-resources` | none | Extended resources to request on worker containers, one per `--multus-networks` entry, in the same order |
+| `--multus-networks` | none | Multus networks to attach, in order; zipped by position with `--extended-resources` into `networkAttachments` entries. The two lists must be the same length |
+| `--extended-resources` | none | Extended resources to request on worker containers, one per `--multus-networks` entry, in the same order; each must be the resource that network's NetworkAttachmentDefinition declares |
 | `--enable-checkpoint` | `false` | Enable checkpoint storage for training workloads |
 | `--enable-mnnvl` | `false` | Enable Multi-Node NVLink (`NCCL_MNNVL_ENABLE=1`) |
 | `--max-steps` | `0` | Max training steps for NeMo 4 workloads (0 = catalog default) |

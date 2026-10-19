@@ -988,9 +988,10 @@ Use --cleanup to teardown installed components after completion.`,
 		"Multus networks and the extended resource behind each, as network=resource,... in interface order"+
 			" (e.g. nvcre/r0=nvidia.com/r0,nvcre/r1=nvidia.com/r1); sets networkAttachments")
 	cmd.Flags().StringSliceVar(&multusNetworks, "multus-networks", nil,
-		"Multus networks to attach to worker pods, in order; paired by position with --extended-resources")
+		"Multus networks to attach to worker pods, in order; zipped by position with --extended-resources into entries")
 	cmd.Flags().StringSliceVar(&extendedResources, "extended-resources", nil,
-		"Extended resources to request on worker containers, one per --multus-networks entry, in the same order")
+		"Extended resources to request on worker containers, one per --multus-networks entry, in the same order;"+
+			" each must be the resource that network's NetworkAttachmentDefinition declares")
 	cmd.Flags().BoolVar(&doSetup, "setup", false,
 		"Install CRDs, controller, and LogProfiles before creating the certification")
 	cmd.Flags().BoolVar(&doWait, "wait", false,

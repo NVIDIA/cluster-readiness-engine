@@ -4,7 +4,7 @@
 
 ## Context
 
-Modern AI clusters attach workload pods to the east-west fabric through the NVIDIA Network Operator: Multus secondary networks (a NetworkAttachmentDefinition per rail, addressed by NV-IPAM) plus an extended resource per rail from the RDMA or SR-IOV device plugin. A pod reaches the fabric only when its spec names both, and the Network Operator wires them together by position: the n-th network in the `k8s.v1.cni.cncf.io/networks` annotation is attached to a device of the n-th requested resource.
+Modern AI clusters attach workload pods to the east-west fabric through the NVIDIA Network Operator: Multus secondary networks (a NetworkAttachmentDefinition per rail, addressed by NV-IPAM) plus an extended resource per rail from the RDMA or SR-IOV device plugin. A pod reaches the fabric only when its spec names both. Multus does not match the two by position: each NetworkAttachmentDefinition names its own resource in its `k8s.v1.cni.cncf.io/resourceName` annotation, and Multus hands the CNI a device that the kubelet allocated to the pod for that resource. What has to hold is that every attached network's resource is requested in a large enough count. `resources.limits` is a map and keeps no order. The order of the `k8s.v1.cni.cncf.io/networks` annotation still matters, because it decides which network becomes `net1`, `net2` and so on inside the pod, and that is what rail and HCA mapping keys on.
 
 NVCRE can express only part of that ([issue #400](https://github.com/NVIDIA/cluster-readiness-engine/issues/400)):
 
@@ -17,50 +17,60 @@ A Spectrum-X site with one resource and one NAD per rail (`nvidia.com/r0` to `nv
 
 1. **Add `networkAttachments` to `CategoryOptions` and to `WorkloadRunSpec`.** It is a list of `{network, resourceName}`:
    - `network` names a NAD as `<name>` or `<namespace>/<name>` (DNS-1123 label namespace, DNS-1123 subdomain name).
-   - `resourceName` follows the `nicResourceName` rules: a fully qualified extended resource name outside the reserved `kubernetes.io` and `k8s.io` domains.
-   - Each entry is one interface and requests one unit of its resource. Entries sharing a `resourceName` add up, so a second interface on one network is a second entry.
+   - `resourceName` follows the `nicResourceName` rules: a fully qualified extended resource name outside the reserved `kubernetes.io` and `k8s.io` domains. It must be the resource the named NAD declares.
+   - Each entry is one interface and requests one unit of its resource. Entries sharing a `resourceName` add up, so a second interface on one network is a second entry. There is no per-entry count: a count above one would reserve devices that no interface uses.
    - At most 16 entries.
 
 2. **Render.** Each TrainingRuntime replicatedJob other than the MPI `launcher` gets the networks annotation, in list order, on its pod template, and its worker container (named `node`, else the first) gets limits and requests for each resource. The annotation replaces any value already rendered.
 
-3. **The list owns the NIC wiring.** It is mutually exclusive with `nicResourceName` in one options block and disables NIC auto-detection. On OCI it replaces the default `sriov-net` attachments and their `nvidia.com/mlnxnics` request rather than appending to them. A per-category `networkAttachments` or `nicResourceName` replaces whichever of the two the spec level set. It cannot be combined with `rdmaDeviceAccess: hostPath` (which requests no device) or with `mlnxPerNode: 0` (the NIC opt-out).
+3. **What the list replaces.** It is mutually exclusive with `nicResourceName` in one options block and disables NIC auto-detection. On OCI the default NIC wiring is itself Multus (`sriov-net` plus `nvidia.com/mlnxnics`), so the list replaces it rather than appending to it. Azure, TogetherAI and Forge request `nvidia.com/mlnxnics`, and nscale its `rdma` DRA claim, without Multus; their NCCL environment names those HCAs, so the list adds to that request, and `mlnxPerNode: 0` drops it as on any other run (ADR-087). A per-category `networkAttachments` or `nicResourceName` replaces whichever of the two the spec level set. The list cannot be combined with `rdmaDeviceAccess: hostPath`, which requests no device; that rule holds per options block at admission and on each category's merged options in the controller and in `nvcrectl`, where the category fails.
 
 4. **CLI.** `nvcrectl certification run` gains `--network-attachments network=resource,...` and the issue's zipped pair `--multus-networks` / `--extended-resources`, which renders to the same list and fails on a length mismatch. `--cert-file` users write the YAML.
 
-5. **Workflow names.** `categoryOptionsSuffix` gains a `net<N>-<hash8>` token over the (network, resourceName) pairs in list order, so two categories differing only in attachments do not share a Workflow. Because a category's `nicResourceName` replaces a spec-level list, it also gains a `nic<hash8>` token when a category sets `nicResourceName`, so a category that inherits the list and one that replaces it with a NIC resource do not share a Workflow either. Issue #430 is reworking how option differences reach the name; this token follows whatever it settles on.
+5. **Workflow names.** `categoryOptionsSuffix` gains a `net<N>-<hash8>` token over the (network, resourceName) pairs in list order, so two categories differing only in attachments do not share a Workflow. Because a category's `nicResourceName` replaces a spec-level list, it also gains a `nic<hash8>` token when a category sets `nicResourceName`, so a category that inherits the list and one that replaces it with a NIC resource do not share a Workflow either. Issue #430 is reworking how option differences reach the name; these tokens follow whatever it settles on.
+
+6. **Precedence.** On Certification the list is applied after platform overrides resolve and is final; Certification has no user overrides. On WorkloadRun the list goes on the runtime at construction. No WorkloadRun platform override renders a networks annotation, but the user's own `spec.overrides` are applied later, when the Workflow reconciles, and win, as they do over every other WorkloadRun field.
 
 ## Implementation
 
-- `api/v1alpha1/network_attachment_types.go`: the `NetworkAttachment` type with Pattern and length markers. Three type-level CEL rules on `CategoryOptions` (inherited by `CertificationSpec` through the inline embed, so they bind at the spec level and under `categories[].options`) and two on `WorkloadRunSpec`.
+- `api/v1alpha1/network_attachment_types.go`: the `NetworkAttachment` type with Pattern and length markers. Two type-level CEL rules on `CategoryOptions` (inherited by `CertificationSpec` through the inline embed, so they bind at the spec level and under `categories[].options`) and one on `WorkloadRunSpec`.
 - `pkg/platform/network_attachments.go`: `ValidateNetworkAttachments` (the per-entry and cap rules, for offline use) and `ApplyNetworkAttachmentsToDependencies`.
 - `pkg/platform/transform.go`: `ApplyResolvedWorkflowTransforms` gains the attachments as step 4, after image replacement and before workload metadata. Both the controller and offline render already funnel through this stage, after platform overrides resolve, so the explicit list wins over any annotation an override rendered.
-- WorkloadRun applies the attachments to its runtime dependency at construction (controller and `nvcrectl workloadrun render`). No WorkloadRun platform override renders a networks annotation, so nothing later competes with it.
+- WorkloadRun applies the attachments to its runtime dependency at construction (controller and `nvcrectl workloadrun render`).
 - `pkg/catalog`: `BuildConfig.NetworkAttachments` and `TemplateData.HasNetworkAttachments`; `oci-mlnxnics-comm.yaml` is gated on its absence.
-- `ResolveOptions` clears the inherited counterpart when a category sets either field. NIC detection is skipped in both controllers and both dry-run paths when the list is set.
+- `ResolveOptions` clears the inherited counterpart when a category sets either field. `CheckResolvedNetworkAttachments` checks the merged options per category in `createWorkflowForCategory` and `renderCertification`. NIC detection is skipped in both controllers and both dry-run paths when the list is set.
 - `readCertification` and `readWorkloadRun` mirror the CRD rules, since offline render never reaches an API server.
 
 ## Rationale
 
-- One list of pairs rather than two parallel lists keeps each network next to its resource. Parallel lists must stay aligned by index and fail silently when they do not; the CLI accepts the flat pair as sugar and rejects a mismatch up front.
+- One list of entries rather than two parallel lists keeps each network next to the resource its NAD declares, so a reader sees both in one place and the CLI rejects a length mismatch up front. Multus does not need the pairing; the user and the resource request do.
 - Applying the attachments in the post-resolve stage, rather than in every catalog fragment, covers every entry and platform with one code path and keeps a platform override from clobbering an explicit choice.
-- Hashing the tuples in list order, not sorted, follows from the positional pairing: two lists with the same entries in a different order attach different devices to different networks, and are different configurations.
+- Hashing the pairs in list order, not sorted, follows from the annotation order: two lists with the same entries in a different order give the pod's interfaces different names, and are different configurations.
+- Gating only the OCI fragment, not every platform's NIC request, keeps an InfiniBand platform working when a user adds a Multus network to it; `mlnxPerNode: 0` remains the one way to drop a platform NIC request.
 
 ## Consequences
 
 - Sites with per-rail resources and NADs can certify their east-west fabric from the Certification or WorkloadRun alone.
-- NCCL tuning for the rails (`NCCL_IB_HCA`, the RoCE GID index) is not first-class. It is site-specific and remains available through `spec.overrides` and `env`.
-- A Certification that lists attachments on a platform whose catalog renders its own NIC request other than OCI (Azure, TogetherAI, Forge `nvidia.com/mlnxnics`) still gets that request alongside the attachments. Those platforms do not use Multus today; if one does, its fragment gains the same `HasNetworkAttachments` gate.
+- NCCL tuning for the rails (`NCCL_IB_HCA`, the RoCE GID index) is not first-class. It is site-specific and remains available through `env` (and `spec.overrides` on WorkloadRun).
+- On Azure, TogetherAI, Forge and nscale the platform's own NIC request stays alongside the attachments unless `mlnxPerNode: 0` is set.
+- Workflow names change for categories that already set `nicResourceName`. A category whose Workflow is already recorded keeps it, since the controller finds it through the recorded `workflowRef`.
+- Known gaps, not addressed here:
+  - **A wrong `resourceName` is not caught.** `{network: r0, resourceName: nvidia.com/r1}` passes every check, and the pods stay in `ContainerCreating` until the timeout because Multus finds no device for `r0`'s resource.
+  - **Transport fallback.** The on-prem B300 entries set no NCCL environment, and pass/fail thresholds exist only if the user sets them. If RDMA setup fails, NCCL falls back to `NET/Socket` and the run can still pass. A follow-up should fail a run with attachments on transport fallback, by pinning the transport or checking for `NET/IB` in the log.
+  - **Resources no node advertises.** A listed resource that no target node advertises leaves the pods Pending until the timeout. A follow-up should check the resources against node allocatable, which the controller already reads for NIC detection, and fail or warn up front.
 
 ## Alternatives Considered
 
 - **Two parallel lists** (`nicResourceNames`, `multusNetworks`). Closest to the issue's CLI, but the alignment is easy to get wrong. Rejected for the API, kept as CLI sugar.
+- **Derive the resources from the NADs.** Users would name only the networks, and the controller would read each NAD's `k8s.v1.cni.cncf.io/resourceName` and request it, which also closes the mismatch gap. Rejected for now: it needs RBAC to read `network-attachment-definitions` in every namespace a workload can name, a dependency on the Multus CRD being installed, and a cluster at render time, which offline `nvcrectl certification render` does not have. Sites that run the network-resources-injector admission webhook (k8snetworkplumbingwg) already get the requests derived from the NADs, outside NVCRE. If the explicit `resourceName` proves to be the common source of mistakes, making it optional and deriving it when the controller can read the NAD is a compatible follow-up.
+- **Gate every platform's NIC fragment on the list.** Makes "the list replaces the NIC wiring" true everywhere, but on Azure, TogetherAI, Forge and nscale that wiring is how NCCL reaches InfiniBand and their NCCL environment names those HCAs, so adding one Multus network would silently break the run.
 - **Platform override only** (`pkg/platform/overrides` per site). Fits fixed fabrics but not an operator certifying their own on-prem cluster, which is the issue's case.
 - **Template variable in each fragment.** The NIC fragments differ per platform and entry; a Go transform in the existing post-resolve stage is one place instead of many.
 
 ## Notes
 
 - The proposal on the issue was agreed by the issue author ("Shape A"), including the WorkloadRun half.
-- The suffix token is deliberately local. If #430 lands a broader options hash or rejects duplicate categories, this token is replaced by that mechanism.
+- The suffix tokens are deliberately local. If #430 lands a broader options hash or rejects duplicate categories, these tokens are replaced by that mechanism.
 
 ## References
 

@@ -251,19 +251,21 @@ type CategoryOptions struct {
 	// (issue #400), for fabrics that expose one resource and one
 	// NetworkAttachmentDefinition per rail, such as Spectrum-X RoCE. The
 	// networks are written to the worker pod's k8s.v1.cni.cncf.io/networks
-	// annotation in list order, and each entry requests one unit of its
-	// resourceName on the worker container, so the n-th network lines up
-	// with the n-th resource. The list replaces the NIC wiring the catalog
-	// would otherwise render: it is mutually exclusive with nicResourceName
-	// and disables NIC resource auto-detection, and on OCI it replaces the
-	// default network-operator/sriov-net attachments and their
-	// nvidia.com/mlnxnics request rather than appending to them. A
-	// per-category networkAttachments or nicResourceName replaces whichever of
-	// the two the spec level set. On platforms whose catalog requests its own
-	// NIC resource without Multus (Azure, TogetherAI and Forge
-	// nvidia.com/mlnxnics, the nscale rdma claim), that request stays
-	// alongside the attachments; set mlnxPerNode: 0 to drop it. It cannot be
-	// combined with rdmaDeviceAccess: hostPath. At most 16 entries.
+	// annotation in list order, which decides which network becomes net1, net2
+	// and so on, and each entry requests one unit of its resourceName on the
+	// worker container. Multus finds each network's device through the
+	// resourceName its NetworkAttachmentDefinition declares, so an entry's
+	// resourceName must be that resource. The list is mutually exclusive with
+	// nicResourceName and disables NIC resource auto-detection. On OCI it
+	// replaces the default network-operator/sriov-net attachments and their
+	// nvidia.com/mlnxnics request rather than appending to them. On platforms
+	// whose catalog requests its own NIC resource without Multus (Azure,
+	// TogetherAI and Forge nvidia.com/mlnxnics, the nscale rdma claim), that
+	// request stays alongside the attachments; set mlnxPerNode: 0 to drop it.
+	// A per-category networkAttachments or nicResourceName replaces whichever
+	// of the two the spec level set. It cannot be combined with
+	// rdmaDeviceAccess: hostPath, including across the spec level and a
+	// category. At most 16 entries.
 	// +optional
 	// +listType=atomic
 	// +kubebuilder:validation:MinItems=1

@@ -262,13 +262,17 @@ type WorkloadRunSpec struct {
 	// (issue #400), for fabrics that expose one resource and one
 	// NetworkAttachmentDefinition per rail, such as Spectrum-X RoCE. The
 	// networks are written to the worker pod's k8s.v1.cni.cncf.io/networks
-	// annotation in list order, and each entry requests one unit of its
-	// resourceName on the worker container, so the n-th network lines up
-	// with the n-th resource. The list replaces the NIC wiring the catalog
-	// would otherwise render: it is mutually exclusive with nicResourceName
-	// and disables NIC resource auto-detection. A platform NIC request the
-	// WorkloadRun overrides render without Multus stays alongside the
-	// attachments; set mlnxPerNode: 0 to drop it. At most 16 entries.
+	// annotation in list order, which decides which network becomes net1, net2
+	// and so on, and each entry requests one unit of its resourceName on the
+	// worker container. Multus finds each network's device through the
+	// resourceName its NetworkAttachmentDefinition declares, so an entry's
+	// resourceName must be that resource. The list is mutually exclusive with
+	// nicResourceName and disables NIC resource auto-detection. A platform NIC
+	// request the WorkloadRun overrides render without Multus stays alongside
+	// the attachments; set mlnxPerNode: 0 to drop it. spec.overrides apply
+	// after the list, as they do after every other field, so an override that
+	// sets the networks annotation or one of these resources on the runtime
+	// replaces it. At most 16 entries.
 	// +optional
 	// +listType=atomic
 	// +kubebuilder:validation:MinItems=1

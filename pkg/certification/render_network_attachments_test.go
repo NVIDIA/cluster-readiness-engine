@@ -21,7 +21,7 @@ import (
 
 // netAttachReplicatedJob records what networkAttachments controls on one
 // replicatedJob: the Multus networks annotation, verbatim because its order
-// is the rail order, and each container's limits and requests as sorted
+// is the interface order, and each container's limits and requests as sorted
 // "limits/<name>=<qty>" entries.
 type netAttachReplicatedJob struct {
 	Dependency    string              `json:"dependency"`

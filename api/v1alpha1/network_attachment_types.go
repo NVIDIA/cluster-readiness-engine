@@ -9,13 +9,20 @@ package v1alpha1
 // same cap offline, since the CRD rule only binds server-side.
 const MaxNetworkAttachments = 16
 
-// NetworkAttachment pairs one Multus secondary network with the extended
+// NetworkAttachment names one Multus secondary network and the extended
 // resource that backs it (issue #400). Each entry adds the network to the
 // worker pod's k8s.v1.cni.cncf.io/networks annotation, in list order, and
-// requests one unit of resourceName on the worker container. The two are
-// kept in one entry rather than two parallel lists because the Network
-// Operator matches them by position: the n-th attachment in the annotation is
-// wired to a device of the n-th requested resource.
+// requests one unit of resourceName on the worker container.
+//
+// Multus does not pair the two by position. The NetworkAttachmentDefinition
+// names its own resource in its k8s.v1.cni.cncf.io/resourceName annotation,
+// and Multus hands the CNI a device allocated to the pod for that resource,
+// so what has to hold is that every attached network's resource is requested
+// often enough. resourceName must therefore be the resource the named
+// NetworkAttachmentDefinition declares; NVCRE does not read the definition
+// and cannot check that. List order still matters: it decides which network
+// becomes net1, net2 and so on inside the pod, which is what rail and HCA
+// mapping keys on.
 type NetworkAttachment struct {
 	// network names the NetworkAttachmentDefinition, either "<name>" (resolved
 	// in the workload's namespace) or "<namespace>/<name>". The namespace must
