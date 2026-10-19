@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The GB200/GB300 NVLink tuning, without NCCL_DEBUG. A profile defined by
+# subtraction, which the name cannot say.
+#
+# nccl/gb200-env.yaml is NCCL_DEBUG plus this, and is what an arm wants unless
+# it already composes a platform profile that sets NCCL_DEBUG itself. The OCI
+# GB200 arms do (nccl/oci-roce-env.yaml), so they take this fragment and
+# forward the name once rather than twice (ADR-100).
+#
+# NCCL_NVLS_ENABLE is omitted here for the reason gb200-env.yaml gives: NCCL's
+# default decides it correctly on NVL72 and no measurement backs asserting 1
+# (#514).
+- name: NCCL_CUMEM_ENABLE
+  value: "1"
+- name: NCCL_P2P_NET_CHUNKSIZE
+  value: "2097152"
+- name: NCCL_MNNVL_ENABLE
+  value: "{{ if .EnableMNNVL }}1{{ else }}0{{ end }}"

@@ -1612,13 +1612,18 @@ func buildWorkloadRunReport(
 		result = "PASSED"
 	}
 
+	// Resolved once: the names and their per-node reasons come from the same
+	// read, so the summary line can name a reason here exactly as a
+	// Certification report does.
+	failedNodeDetails := report.FailedNodesFromRef(ctx, c, run.Namespace, run.Status.FailedNodesRef)
 	r := &report.CertReport{
-		Title:       "WorkloadRun Report",
-		Name:        run.Name,
-		Platform:    run.Status.DetectedPlatform,
-		GPU:         run.Status.DetectedGPUArchitecture,
-		FailedNodes: noderesults.FailedNodeNames(report.FailedNodesFromRef(ctx, c, run.Namespace, run.Status.FailedNodesRef)),
-		Result:      result,
+		Title:             "WorkloadRun Report",
+		Name:              run.Name,
+		Platform:          run.Status.DetectedPlatform,
+		GPU:               run.Status.DetectedGPUArchitecture,
+		FailedNodes:       noderesults.FailedNodeNames(failedNodeDetails),
+		FailedNodeDetails: failedNodeDetails,
+		Result:            result,
 	}
 
 	// Build a single category from the WorkloadRun's Workflow.

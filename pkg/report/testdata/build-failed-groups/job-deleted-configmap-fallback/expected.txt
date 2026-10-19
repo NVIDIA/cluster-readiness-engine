@@ -30,8 +30,8 @@
 ├────────────────────────────────────────────────────────────────┤
 │  Categories:   0/1 passed                                      │
 │  Failed Nodes: 2                                               │
-│    - node001                                                   │
-│    - node002                                                   │
+│    - node001  WorkloadFailed                                   │
+│    - node002  ThresholdViolation                               │
 │  Result:       FAILED                                          │
 └────────────────────────────────────────────────────────────────┘
 
@@ -67,6 +67,18 @@
   "failedNodes": [
     "node001",
     "node002"
+  ],
+  "failedNodeDetails": [
+    {
+      "name": "node001",
+      "reason": "WorkloadFailed",
+      "message": "workload exited non-zero"
+    },
+    {
+      "name": "node002",
+      "reason": "ThresholdViolation",
+      "message": "Threshold \"goodputRatio\" violated: measured 0.8800, expression: value \u003e= 0.95"
+    }
   ],
   "result": "FAILED"
 }

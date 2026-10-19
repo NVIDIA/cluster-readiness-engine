@@ -1,0 +1,111 @@
+# A two-node training group that failed with no bandwidth recorded. Training
+# never measures bandwidth, so the absent row says nothing, and the category
+# must NOT be told to bisect a fabric it never exercised. This pins the
+# measuresBandwidth gate in diagnoseHint: every other hint condition is met
+# here, and only the missing bandwidthMeasurement suppresses it.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: cert-no-hint
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: WorkflowsFailed
+      message: 1 of 1 certification categories failed
+      lastTransitionTime: "2026-08-07T01:00:00Z"
+  categoryStatuses:
+    - domain: training
+      variant: nemotron5-8b
+      status: Failed
+      workflowRef:
+        name: cert-no-hint-training-nemotron5-8b
+        namespace: default
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: cert-no-hint-training-nemotron5-8b
+  namespace: default
+  labels:
+    nvcre.nvidia.com/certification: cert-no-hint
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: rt
+          trainer:
+            image: img:latest
+            numNodes: 2
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 2
+    nodesPerJob: 2
+    totalGroups: 1
+    currentIteration: 1
+    detectedPlatform: onprem
+    detectedGPUArchitecture: h100
+    groups:
+      - name: group-0
+        nodes:
+          - node001
+          - node002
+        phase: Failed
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: cert-no-hint-training-nemotron5-8b-job-group-0
+          namespace: default
+        startTime: "2026-08-07T00:00:00Z"
+        completionTime: "2026-08-07T00:10:00Z"
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: GroupsFailed
+      message: 1 groups failed across 1 iterations
+      lastTransitionTime: "2026-08-07T00:10:00Z"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: cert-no-hint-training-nemotron5-8b-job-group-0
+  namespace: default
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: rt
+      trainer:
+        image: img:latest
+        numNodes: 2
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: WorkloadFailed
+      message: "Workload default/train failed: exit code 1"
+      lastTransitionTime: "2026-08-07T00:10:00Z"
+  failedNodes:
+    - name: node001
+      reason: WorkloadFailed
+      message: "Workload default/train failed: exit code 1"
+    - name: node002
+      reason: WorkloadFailed
+      message: "Workload default/train failed: exit code 1"

@@ -62,12 +62,19 @@ type CertReport struct {
 	// ExcludedNodes lists nodes that matched the target but were left
 	// untested, with ExclusionReason saying why. A run reports PASSED even
 	// when it excludes nodes, so these keep that from being invisible.
-	ExcludedNodes   []string           `json:"excludedNodes,omitempty"`
-	ExclusionReason string             `json:"exclusionReason,omitempty"`
-	Categories      []CategoryReport   `json:"categories"`
-	FailedNodes     []string           `json:"failedNodes"`
-	Result          string             `json:"result"` // "PASSED", "INCOMPLETE", "FAILED", or "RUNNING"
-	NodeResults     []NodeResultReport `json:"nodeResults,omitempty"`
+	ExcludedNodes   []string         `json:"excludedNodes,omitempty"`
+	ExclusionReason string           `json:"exclusionReason,omitempty"`
+	Categories      []CategoryReport `json:"categories"`
+	FailedNodes     []string         `json:"failedNodes"`
+	// FailedNodeDetails carries the per-node reason and message behind the names
+	// in FailedNodes. FailedNodes keeps its []string shape because promoting it
+	// would break existing consumers of results.json (ADR-071); this is the
+	// additive sibling that ADR left open, landed by ADR-099. A node appears once
+	// per distinct (reason, message), so it can hold more than one entry when it
+	// failed different ways across categories.
+	FailedNodeDetails []nvcrev1alpha1.FailedNode `json:"failedNodeDetails,omitempty"`
+	Result            string                     `json:"result"` // "PASSED", "INCOMPLETE", "FAILED", or "RUNNING"
+	NodeResults       []NodeResultReport         `json:"nodeResults,omitempty"`
 }
 
 // NodeResultReport holds per-node pass/fail status for programmatic consumers.
@@ -130,6 +137,9 @@ type CategoryReport struct {
 	Diagnose *DiagnoseReport `json:"diagnose,omitempty"`
 	// Iterations shows per-iteration timing and outcome.
 	Iterations []IterationReport `json:"iterations,omitempty"`
+	// Hint is a suggested next step for a failure the run could not narrow on
+	// its own. Empty when there is nothing useful to suggest.
+	Hint string `json:"hint,omitempty"`
 }
 
 // IterationReport holds per-iteration timing and outcome.
@@ -308,10 +318,50 @@ func CertFailedNodeDetails(ctx context.Context, c client.Client, cert *nvcrev1al
 // CertFailedNodes returns the deduped union of failed node names across all
 // categories: the unique names from CertFailedNodeDetails.
 func CertFailedNodes(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certification) []string {
+	return failedNodeNameUnion(CertFailedNodeDetails(ctx, c, cert))
+}
+
+// failedNodeReasons maps each failed node to the distinct reasons recorded for
+// it, joined with ", ". A node that failed different ways across categories has
+// several entries, and naming only the first would describe one failure as the
+// whole story. Reasons are joined rather than messages: a message can run to
+// several hundred characters and the summary line is width-bounded, so the full
+// text stays in failedNodeDetails and in the failed group's card.
+func failedNodeReasons(details []nvcrev1alpha1.FailedNode) map[string]string {
+	if len(details) == 0 {
+		return nil
+	}
+	seen := make(map[string]map[string]struct{}, len(details))
+	order := make(map[string][]string, len(details))
+	for _, fn := range details {
+		if fn.Name == "" || fn.Reason == "" {
+			continue
+		}
+		reason := string(fn.Reason)
+		if seen[fn.Name] == nil {
+			seen[fn.Name] = make(map[string]struct{}, 2)
+		}
+		if _, dup := seen[fn.Name][reason]; dup {
+			continue
+		}
+		seen[fn.Name][reason] = struct{}{}
+		order[fn.Name] = append(order[fn.Name], reason)
+	}
+	out := make(map[string]string, len(order))
+	for name, reasons := range order {
+		out[name] = strings.Join(reasons, ", ")
+	}
+	return out
+}
+
+// failedNodeNameUnion reduces sorted FailedNode entries to their unique names.
+// Callers that already hold the details use this instead of CertFailedNodes so
+// the failed-nodes ConfigMaps are read once per report rather than twice.
+func failedNodeNameUnion(details []nvcrev1alpha1.FailedNode) []string {
 	// Non-nil so an empty result serializes as [] rather than null: null reads
 	// as "unknown" to a consumer, where the truth is "no nodes failed".
 	union := []string{}
-	for _, n := range CertFailedNodeDetails(ctx, c, cert) {
+	for _, n := range details {
 		if len(union) == 0 || union[len(union)-1] != n.Name {
 			union = append(union, n.Name)
 		}
@@ -377,10 +427,12 @@ func Build(ctx context.Context, c client.Client, cert *nvcrev1alpha1.Certificati
 	} else if controller.CondIsTrue(cert.Status.Conditions, nvcrev1alpha1.CertificationSucceeded) {
 		result = "PASSED"
 	}
+	failedNodeDetails := CertFailedNodeDetails(ctx, c, cert)
 	report := &CertReport{
-		Name:        cert.Name,
-		FailedNodes: CertFailedNodes(ctx, c, cert),
-		Result:      result,
+		Name:              cert.Name,
+		FailedNodes:       failedNodeNameUnion(failedNodeDetails),
+		FailedNodeDetails: failedNodeDetails,
+		Result:            result,
 	}
 
 	// Fetch metrics per category from Workflows.
@@ -862,6 +914,66 @@ func PopulateCategoryFromWorkflow(
 			}
 		}
 	}
+
+	// Set last: the hint reads the bandwidth rows populated above.
+	cat.Hint = diagnoseHint(cat, wf.Spec.JobTemplate.Spec.BandwidthMeasurement != nil)
+}
+
+// diagnoseHintText points a reader at the mechanism that can narrow a
+// multi-node collective failure to a node or a link.
+const diagnoseHintText = "No bandwidth was recorded on a multi-node group. " +
+	"Re-running this category with testScale: diagnose bisects the group to " +
+	"separate a node-local fault from one on the path between nodes."
+
+// diagnoseHint returns the next-step hint for a category where a multi-node
+// group failed without moving bytes, and "" otherwise. measuresBandwidth
+// reports whether the Workflow asked for a BandwidthMeasurement at all.
+//
+// The conditions together are that signature: the category measures bandwidth,
+// it failed, and some failed group of two or more nodes recorded no bandwidth.
+// The measuresBandwidth gate is load-bearing rather than defensive. Training
+// categories never measure bandwidth, so for them "no bandwidth rows" is the
+// normal state and not a signal; without the gate a goodput threshold violation
+// on a two-node training run would be told to bisect a fabric it never
+// exercised. A single-node group has nothing to bisect, and a group that
+// reported bandwidth did communicate, so neither gets the hint. Categories
+// already running diagnose are skipped: they are doing this.
+//
+// The per-group check matters on a fleet. buildGroupBandwidthRows emits a row
+// for every FAILED group even when nothing was measured, so a category with
+// more than one group always has a non-empty GroupBandwidth and a
+// category-wide emptiness test would never fire. Judging each failed group
+// against its own row means one bad pair among several healthy groups still
+// gets the hint, which is the common case.
+//
+// The hint says what bisection can distinguish and asserts nothing about the
+// fault. Naming a cause from a failed run's logs is what ADR-099 declined to do.
+func diagnoseHint(cat *CategoryReport, measuresBandwidth bool) string {
+	if !measuresBandwidth || cat.Status != statusFailed || cat.Diagnose != nil {
+		return ""
+	}
+	// The aggregate row is built from every group's measurements, so on a
+	// multi-group category a healthy group's bandwidth would otherwise
+	// suppress the hint for a failed sibling: the one-bad-pair case this
+	// exists for. Consult it only when there are no per-group rows to judge,
+	// where it is the single thing that says whether bytes moved at all.
+	if len(cat.GroupBandwidth) == 0 && len(cat.Bandwidth) > 0 {
+		return ""
+	}
+	// A row counts as measured only when it carries a BusBW: groupBandwidthRow
+	// emits a bare row for a failed group with no measurement.
+	measured := make(map[string]bool, len(cat.GroupBandwidth))
+	for _, row := range cat.GroupBandwidth {
+		if row.BusBW != "" {
+			measured[row.Group] = true
+		}
+	}
+	for _, fg := range cat.FailedGroups {
+		if fg.NodeCount >= 2 && !measured[fg.Name] {
+			return diagnoseHintText
+		}
+	}
+	return ""
 }
 
 // aggregateBandwidthRow returns the category's Bandwidth row: the peak result
@@ -1386,7 +1498,16 @@ func PrintMulti(w io.Writer, reports []*CertReport) {
 			printBoxLine(w, fmt.Sprintf("Failed Nodes: %s", noneString))
 		} else {
 			printBoxLine(w, fmt.Sprintf("Failed Nodes: %d", len(r.FailedNodes)))
+			reasons := failedNodeReasons(r.FailedNodeDetails)
 			for _, node := range r.FailedNodes {
+				// Wrapped, not concatenated: printBoxLine neither wraps nor
+				// truncates, and a cloud-style node name plus reasons joined
+				// across categories runs past the content width and breaks the
+				// right border.
+				if reason := reasons[node]; reason != "" {
+					printWrappedBoxText(w, "  - "+node+"  ", reason)
+					continue
+				}
 				printBoxLine(w, "  - "+node)
 			}
 		}
@@ -1694,8 +1815,12 @@ func printCategoryCard(w io.Writer, cat *CategoryReport) {
 	// must not take at face value.
 	printCategoryEnv(w, cat)
 
-	// Failed groups with reasons.
+	// Failed groups with reasons, then the next step for this failure.
 	printFailedGroups(w, cat.FailedGroups)
+	if cat.Hint != "" {
+		_, _ = fmt.Fprintf(w, "│%s│\n", pad(boxWidth-2))
+		printWrappedBoxText(w, "  Next step: ", cat.Hint)
+	}
 
 	// Per-clique validation status.
 	if len(cat.Cliques) > 0 {
