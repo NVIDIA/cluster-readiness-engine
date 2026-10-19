@@ -14,10 +14,12 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	sigsyaml "sigs.k8s.io/yaml"
@@ -73,6 +75,7 @@ func TestInitValuesAcrossRuns(t *testing.T) {
 	require.NoError(t, err)
 	crds, err := os.ReadFile(filepath.Join("testdata", "apply-chart-crds", "fresh-install-creates", "input_crds.yaml"))
 	require.NoError(t, err)
+	createStableManagerPod(t, suite.Client)
 
 	p := testutil.TestCaseParser{Subdir: "init-values-runs", ExpectedSuffix: testutil.SuffixJSON}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
@@ -225,6 +228,39 @@ func readHelmLog(log, kubeconfigPath string) ([]string, string, error) {
 		calls = append(calls, workspacePath.ReplaceAllString(line, "<workspace>/"))
 	}
 	return calls, valuesFile, nil
+}
+
+// stableManagerImage is the stand-in controller pod's image; nothing pulls it.
+const stableManagerImage = "nvcre-manager:test"
+
+// createStableManagerPod stands in for the controller a successful upgrade
+// leaves running. The fake helm's upgrade creates nothing and envtest runs no
+// kubelet, so without it init's post-install check would wait out its
+// timeout on every run. The pod has been Ready for an hour, so the check
+// passes on its first read.
+func createStableManagerPod(t *testing.T, c client.Client) {
+	t.Helper()
+	ctx := context.Background()
+	ns := &corev1.Namespace{Name: nvcreNamespace}
+	require.NoError(t, client.IgnoreAlreadyExists(c.Create(ctx, ns)))
+
+	pod := &corev1.Pod{
+		Name:      "nvcre-manager-stable",
+		Namespace: nvcreNamespace,
+		Labels:    map[string]string{managerPodLabel: managerPodLabelValue, releaseInstanceLabel: helmReleaseName},
+		Spec:      corev1.PodSpec{Containers: []corev1.Container{{Name: managerContainerName, Image: stableManagerImage}}},
+	}
+	require.NoError(t, c.Create(ctx, pod))
+	pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
+	pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
+		Name:  managerContainerName,
+		Image: stableManagerImage,
+		Ready: true,
+		State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{
+			StartedAt: metav1.NewTime(time.Now().Add(-time.Hour)),
+		}},
+	}}
+	require.NoError(t, c.Status().Update(ctx, pod))
 }
 
 // preflightSummary returns the preflight values summary lines from init's
