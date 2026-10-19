@@ -1,0 +1,5 @@
+{
+  "failedNodes": [],
+  "failedCondition": "JobTimedOut",
+  "conditionMessage": "Job exceeded timeoutPerJob while its pods were unschedulable"
+}

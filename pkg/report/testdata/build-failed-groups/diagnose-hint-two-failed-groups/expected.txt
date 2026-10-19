@@ -1,0 +1,152 @@
+
+╔════════════════════════════════════════════════════════════════╗
+║                      Certification Report                      ║
+╚════════════════════════════════════════════════════════════════╝
+
+  Name:      cert-hint2
+  Platform:  onprem
+  GPU:       h100
+  Nodes:     4
+
+┌────────────────────────────────────────────────────────────────┐
+│  communication/nccl-all-reduce                                 │
+├────────────────────────────────────────────────────────────────┤
+│  Status:    Failed                                             │
+│  Reason:    1 groups failed across 1 iterations                │
+│  Runtime:   10m 0s                                             │
+│  Scale:     full-scale                                         │
+│  Nodes/Job: 2                                                  │
+│  Jobs:      2                                                  │
+│                                                                │
+│  Failed Groups:                                                │
+│      ✗  group-0 (2 nodes)                                      │
+│         Workload default/nccl failed: transport error on fi... │
+│           - node001                                            │
+│           - node002                                            │
+│         Failure Log (one captured pod):                        │
+│           Pod: nccl-launcher-0                                 │
+│           Node: node001                                        │
+│           Exit: 1 (Error)                                      │
+│           Tail:                                                │
+│             NCCL WARN NET/IB : Got completion from peer with er│
+│             ror 12, opcode 0, len 0, vendor err 129 (Recv) hca │
+│             mlx5_1                                             │
+│             node001: Test failure common.cu:401                │
+│      ✗  group-1 (2 nodes)                                      │
+│         Workload default/nccl failed: transport error on fi... │
+│           - node003                                            │
+│           - node004                                            │
+│         Failure Log (one captured pod):                        │
+│           Pod: nccl-launcher-1                                 │
+│           Node: node003                                        │
+│           Exit: 1 (Error)                                      │
+│           Tail:                                                │
+│             NCCL WARN NET/IB : Got completion from peer with er│
+│             ror 12, opcode 0, len 0, vendor err 129 (Recv) hca │
+│             mlx5_1                                             │
+│             node003: Test failure common.cu:401                │
+│                                                                │
+│    Next step: No bandwidth was recorded on a multi-node group. │
+│               Re-running this category with testScale: diagnose│
+│                bisects the group to separate a node-local fault│
+│                from one on the path between nodes.             │
+│                                                                │
+│  Bandwidth by group:                                           │
+│      ✗  group-0 (node001, node002)                             │
+│         no bandwidth data                                      │
+│         - node001                                              │
+│         - node002                                              │
+│      ✗  group-1 (node003, node004)                             │
+│         no bandwidth data                                      │
+│         - node003                                              │
+│         - node004                                              │
+└────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────┐
+│  Summary                                                       │
+├────────────────────────────────────────────────────────────────┤
+│  Categories:   0/1 passed                                      │
+│  Failed Nodes: none                                            │
+│  Result:       FAILED                                          │
+└────────────────────────────────────────────────────────────────┘
+
+--- results.json ---
+{
+  "name": "cert-hint2",
+  "platform": "onprem",
+  "gpu": "h100",
+  "totalNodes": 4,
+  "categories": [
+    {
+      "domain": "communication",
+      "variant": "nccl-all-reduce",
+      "status": "Failed",
+      "failureReason": "1 groups failed across 1 iterations",
+      "runtime": "10m 0s",
+      "testScale": "full-scale",
+      "nodesPerJob": 2,
+      "jobs": 2,
+      "failedGroups": [
+        {
+          "name": "group-0",
+          "nodeCount": 2,
+          "nodes": [
+            "node001",
+            "node002"
+          ],
+          "reason": "Workload default/nccl failed: transport error on first send",
+          "failureLog": {
+            "podName": "nccl-launcher-0",
+            "nodeName": "node001",
+            "exitCode": 1,
+            "reason": "Error",
+            "tail": "NCCL WARN NET/IB : Got completion from peer with error 12, opcode 0, len 0, vendor err 129 (Recv) hca mlx5_1\nnode001: Test failure common.cu:401"
+          }
+        },
+        {
+          "name": "group-1",
+          "nodeCount": 2,
+          "nodes": [
+            "node003",
+            "node004"
+          ],
+          "reason": "Workload default/nccl failed: transport error on first send",
+          "failureLog": {
+            "podName": "nccl-launcher-1",
+            "nodeName": "node003",
+            "exitCode": 1,
+            "reason": "Error",
+            "tail": "NCCL WARN NET/IB : Got completion from peer with error 12, opcode 0, len 0, vendor err 129 (Recv) hca mlx5_1\nnode003: Test failure common.cu:401"
+          }
+        }
+      ],
+      "groupBandwidth": [
+        {
+          "group": "group-0",
+          "groupName": "group-0 (node001, node002)",
+          "nodes": [
+            "node001",
+            "node002"
+          ],
+          "busBW": "",
+          "belowMin": false,
+          "failed": true
+        },
+        {
+          "group": "group-1",
+          "groupName": "group-1 (node003, node004)",
+          "nodes": [
+            "node003",
+            "node004"
+          ],
+          "busBW": "",
+          "belowMin": false,
+          "failed": true
+        }
+      ],
+      "hint": "No bandwidth was recorded on a multi-node group. Re-running this category with testScale: diagnose bisects the group to separate a node-local fault from one on the path between nodes."
+    }
+  ],
+  "failedNodes": [],
+  "result": "FAILED"
+}
