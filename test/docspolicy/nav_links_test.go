@@ -94,6 +94,8 @@ func TestBrokenLinksCatchesWhatFernMisses(t *testing.T) {
 		{name: "two broken links on one line", body: "[a](../designs/1.md) and [b](../designs/2.md)", broken: 2},
 		{name: "link after a fence closed by a longer run", body: "```\ncode\n````\n[a](../designs/x.md)", broken: 1},
 		{name: "link after a backtick a blank line leaves unclosed", body: "a ` b\n\n[a](../designs/x.md) `", broken: 1},
+		{name: "link after a fence indented four spaces", body: "    ~~~\n[a](../designs/x.md)", broken: 1},
+		{name: "link between escaped backticks", body: "\\` [a](../designs/x.md) \\`", broken: 1},
 
 		{name: "GitHub link to an ADR", body: "[ADR](" + repoURL + "blob/main/docs/designs/092-rbac.md#context)"},
 		{name: "GitHub link to a directory", body: "[samples](" + repoURL + "tree/main/config/samples/policy)"},
@@ -109,6 +111,8 @@ func TestBrokenLinksCatchesWhatFernMisses(t *testing.T) {
 		{name: "link inside a tilde fence", body: "~~~\n[a](../designs/x.md)\n~~~\n"},
 		{name: "link inside a longer fence", body: "~~~~\n~~~\n[a](../designs/x.md)\n~~~~\n"},
 		{name: "fence line with an info string does not close", body: "```\n```go\n[a](../designs/x.md)\n```\n"},
+		{name: "link inside a span after an escaped backslash", body: "\\\\`[a](../designs/x.md)`"},
+		{name: "fence line indented four spaces does not close", body: "```\n    ```\n[a](../designs/x.md)\n```\n"},
 		{name: "link inside a code span that crosses a line", body: "see `[a](../designs/x.md)\nb` here"},
 	}
 
@@ -207,7 +211,8 @@ func brokenLinks(page, body string, nav map[string]bool, exists func(string) boo
 // literal text rather than a link.
 //
 // A fence closes only on a run of its own marker at least as long as the one
-// that opened it, with nothing after the run but whitespace. A code span may
+// that opened it, with nothing after the run but whitespace. Either fence may
+// be indented at most three spaces; four makes it indented code. A code span may
 // cross a line ending but not a blank line, so spans are stripped a paragraph
 // at a time.
 func stripCode(body string) string {
@@ -221,14 +226,15 @@ func stripCode(body string) string {
 	fenceLen := 0
 	for _, line := range strings.SplitAfter(body, "\n") {
 		trimmed := strings.TrimLeft(line, " ")
+		fenceIndent := len(line)-len(trimmed) <= 3
 		if fenceLen > 0 {
-			if n := runLength(trimmed, 0, marker); n >= fenceLen && strings.TrimSpace(trimmed[n:]) == "" {
+			if n := runLength(trimmed, 0, marker); fenceIndent && n >= fenceLen && strings.TrimSpace(trimmed[n:]) == "" {
 				fenceLen = 0
 			}
 			b.WriteString("\n")
 			continue
 		}
-		if trimmed != "" && (trimmed[0] == '`' || trimmed[0] == '~') {
+		if fenceIndent && trimmed != "" && (trimmed[0] == '`' || trimmed[0] == '~') {
 			if n := runLength(trimmed, 0, trimmed[0]); n >= 3 {
 				flush()
 				marker, fenceLen = trimmed[0], n
@@ -246,13 +252,14 @@ func stripCode(body string) string {
 }
 
 // stripCodeSpans removes inline code from a paragraph. A span opened by a run
-// of N backticks closes at the next run of exactly N, as CommonMark has it.
+// of N backticks closes at the next run of exactly N, as CommonMark has it. A
+// backslash-escaped backtick is literal and opens nothing.
 // Line endings inside a removed span are kept, so line-anchored patterns still
 // see the same lines.
 func stripCodeSpans(para string) string {
 	var b strings.Builder
 	for i := 0; i < len(para); {
-		if para[i] != '`' {
+		if para[i] != '`' || escaped(para, i) {
 			b.WriteByte(para[i])
 			i++
 			continue
@@ -281,6 +288,15 @@ func stripCodeSpans(para string) string {
 		i = closeAt
 	}
 	return b.String()
+}
+
+// escaped reports whether s[i] is preceded by an odd number of backslashes.
+func escaped(s string, i int) bool {
+	n := 0
+	for j := i - 1; j >= 0 && s[j] == '\\'; j-- {
+		n++
+	}
+	return n%2 == 1
 }
 
 // runLength counts the run of c starting at s[i].
