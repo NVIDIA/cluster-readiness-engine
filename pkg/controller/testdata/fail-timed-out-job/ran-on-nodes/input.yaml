@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# The workload ran and then exceeded timeoutPerJob. Its group's nodes are
+# recorded, because without this the run reports no failed nodes at all.
+schedulingBlocked: false
+groupNodes:
+  - gpu-node-01
+  - gpu-node-02

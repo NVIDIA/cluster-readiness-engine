@@ -1,0 +1,194 @@
+# One bad pair among healthy groups: group-0 failed with no bandwidth, group-1
+# passed at 350 GB/s. aggregateBandwidthRow spans EVERY group's measurements, so
+# the healthy sibling produces a category-wide row. The hint must still fire for
+# the failed group. Originally a two-node NCCL group that failed with no bandwidth recorded: the collective
+# never moved bytes. The jobTemplate asks for a BandwidthMeasurement, so an
+# absent bandwidth row is a signal rather than this category's normal state,
+# and the category gets the diagnose hint (ADR-099).
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: cert-mixed
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: WorkflowsFailed
+      message: 1 of 1 certification categories failed
+      lastTransitionTime: "2026-08-07T01:00:00Z"
+  categoryStatuses:
+    - domain: communication
+      variant: nccl-all-reduce
+      status: Failed
+      workflowRef:
+        name: cert-mixed-communication-nccl-all-reduce
+        namespace: default
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Workflow
+metadata:
+  name: cert-mixed-communication-nccl-all-reduce
+  namespace: default
+  labels:
+    nvcre.nvidia.com/certification: cert-mixed
+spec:
+  jobTemplate:
+    spec:
+      workload:
+        trainJob:
+          runtimeRef:
+            kind: TrainingRuntime
+            name: rt
+          trainer:
+            image: img:latest
+            numNodes: 2
+      bandwidthMeasurement:
+        logProfileRef: nccl-bandwidth
+  orchestration:
+    iterations: 1
+    target:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+status:
+  orchestration:
+    totalNodes: 4
+    nodesPerJob: 2
+    totalGroups: 2
+    currentIteration: 1
+    detectedPlatform: onprem
+    detectedGPUArchitecture: h100
+    groups:
+      - name: group-0
+        nodes:
+          - node001
+          - node002
+        phase: Failed
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: cert-mixed-communication-nccl-all-reduce-job-group-0
+          namespace: default
+        startTime: "2026-08-07T00:00:00Z"
+        completionTime: "2026-08-07T00:10:00Z"
+      - name: group-1
+        nodes:
+          - node003
+          - node004
+        phase: Succeeded
+        jobRef:
+          apiVersion: nvcre.nvidia.com/v1alpha1
+          kind: Job
+          name: cert-mixed-communication-nccl-all-reduce-job-group-1
+          namespace: default
+        startTime: "2026-08-07T00:00:00Z"
+        completionTime: "2026-08-07T00:10:00Z"
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: GroupsFailed
+      message: 1 groups failed across 1 iterations
+      lastTransitionTime: "2026-08-07T00:10:00Z"
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: cert-mixed-communication-nccl-all-reduce-job-group-0
+  namespace: default
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: rt
+      trainer:
+        image: img:latest
+        numNodes: 2
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: WorkloadFailed
+      message: "Workload default/nccl failed: transport error on first send"
+      lastTransitionTime: "2026-08-07T00:10:00Z"
+  failedNodes:
+    - name: node001
+      reason: WorkloadFailed
+      message: "Workload default/nccl failed: transport error on first send"
+    - name: node002
+      reason: WorkloadFailed
+      message: "Workload default/nccl failed: transport error on first send"
+  failureLog:
+    podName: nccl-launcher-0
+    nodeName: node001
+    exitCode: 1
+    reason: Error
+    tail: |
+      NCCL WARN NET/IB : Got completion from peer with error 12, opcode 0, len 0, vendor err 129 (Recv) hca mlx5_1
+      node001: Test failure common.cu:401
+
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Job
+metadata:
+  name: cert-mixed-communication-nccl-all-reduce-job-group-1
+  namespace: default
+spec:
+  workload:
+    trainJob:
+      runtimeRef:
+        kind: TrainingRuntime
+        name: rt
+      trainer:
+        image: img:latest
+        numNodes: 2
+status:
+  conditions:
+    - type: Failed
+      status: "True"
+      reason: WorkloadFailed
+      message: "Workload default/nccl failed: transport error on first send"
+      lastTransitionTime: "2026-08-07T00:10:00Z"
+  failedNodes:
+    - name: node003
+      reason: WorkloadFailed
+      message: "Workload default/nccl failed: transport error on first send"
+    - name: node002
+      reason: WorkloadFailed
+      message: "Workload default/nccl failed: transport error on first send"
+  failureLog:
+    podName: nccl-launcher-1
+    nodeName: node003
+    exitCode: 1
+    reason: Error
+    tail: |
+      NCCL WARN NET/IB : Got completion from peer with error 12, opcode 0, len 0, vendor err 129 (Recv) hca mlx5_1
+      node003: Test failure common.cu:401
+---
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: BandwidthMeasurement
+metadata:
+  name: cert-mixed-bm-group-1
+  namespace: default
+spec:
+  jobRef:
+    name: cert-mixed-communication-nccl-all-reduce-job-group-1
+  logProfileRef: nccl-bandwidth
+status:
+  results:
+    - sizeBytes: 1073741824
+      algBW: "180.00"
+      busBW: "350.00"
+  conditions:
+    - type: Complete
+      status: "True"
+      reason: JobSucceeded
+      message: done
+      lastTransitionTime: "2026-08-07T00:10:00Z"

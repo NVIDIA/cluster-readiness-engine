@@ -1,0 +1,78 @@
+
+╔════════════════════════════════════════════════════════════════╗
+║                       WorkloadRun Report                       ║
+╚════════════════════════════════════════════════════════════════╝
+
+  Name:      run-failed
+  Platform:  onprem
+  GPU:       h100
+  Nodes:     2
+
+┌────────────────────────────────────────────────────────────────┐
+│  workloadrun/run-failed                                        │
+├────────────────────────────────────────────────────────────────┤
+│  Status:    Failed                                             │
+│  Runtime:   10m 0s                                             │
+│  Scale:     full-scale                                         │
+│  Nodes/Job: 2                                                  │
+│  Jobs:      1                                                  │
+└────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────┐
+│  Summary                                                       │
+├────────────────────────────────────────────────────────────────┤
+│  Categories:   0/1 passed                                      │
+│  Failed Nodes: 2                                               │
+│    - gpu-node-01  HardwareFailureDetected                      │
+│    - gpu-node-02  WorkloadFailed                               │
+│  Result:       FAILED                                          │
+└────────────────────────────────────────────────────────────────┘
+
+--- results.json ---
+{
+  "title": "WorkloadRun Report",
+  "name": "run-failed",
+  "platform": "onprem",
+  "gpu": "h100",
+  "totalNodes": 2,
+  "categories": [
+    {
+      "domain": "workloadrun",
+      "variant": "run-failed",
+      "status": "Failed",
+      "runtime": "10m 0s",
+      "testScale": "full-scale",
+      "nodesPerJob": 2,
+      "jobs": 1
+    }
+  ],
+  "failedNodes": [
+    "gpu-node-01",
+    "gpu-node-02"
+  ],
+  "failedNodeDetails": [
+    {
+      "name": "gpu-node-01",
+      "reason": "HardwareFailureDetected",
+      "message": "CEL expression evaluated to true for node gpu-node-01"
+    },
+    {
+      "name": "gpu-node-02",
+      "reason": "WorkloadFailed",
+      "message": "Job exceeded timeoutPerJob"
+    }
+  ],
+  "result": "FAILED",
+  "nodeResults": [
+    {
+      "name": "gpu-node-01",
+      "group": "group-0",
+      "status": "Failed"
+    },
+    {
+      "name": "gpu-node-02",
+      "group": "group-0",
+      "status": "Failed"
+    }
+  ]
+}

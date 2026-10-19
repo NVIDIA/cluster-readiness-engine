@@ -1,23 +1,20 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-- name: NCCL_DEBUG
-  value: INFO
-- name: NCCL_IB_PCI_RELAXED_ORDERING
-  value: "1"
-- name: NCCL_IB_TC
-  value: "41"
-- name: NCCL_IB_SL
-  value: "0"
-- name: NCCL_IB_QPS_PER_CONNECTION
-  value: "4"
+# The full OCI RoCE profile: the board-independent base plus the two names
+# GB300 retunes. Every OCI arm wants this one, except the three GB300 arms,
+# which compose nccl/oci-roce-base-env.yaml with nccl/oci-gb300-roce-env.yaml
+# so that neither name is forwarded twice (ADR-100).
+#
+# GID index 3: OCI exposes RoCEv2, where the routable GID lives at index 3.
+# NCCL defaults to index 0, which is link-local, and the queue pair then fails
+# at connection setup with IBV_WC_REM_ACCESS_ERR.
+#
+# SPLIT_DATA_ON_QPS 0 is stated rather than left to NCCL, which has defaulted
+# it to 0 only since 2.20 and to 1 in 2.18 and 2.19. The catalog pins images it
+# does not build, so an unset variable is not a stable 0.
+{{ lib "nccl/oci-roce-base-env.yaml" . }}
 - name: NCCL_IB_GID_INDEX
   value: "3"
 - name: NCCL_IB_SPLIT_DATA_ON_QPS
   value: "0"
-- name: NCCL_SOCKET_IFNAME
-  value: eth0
-- name: OMPI_MCA_coll_hcoll_enable
-  value: "0"
-- name: OMPI_MCA_orte_keep_fqdn_hostnames
-  value: t
