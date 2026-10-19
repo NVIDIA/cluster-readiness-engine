@@ -13,7 +13,7 @@ the full pull request list for a release is in its release notes. Pre-release ta
 (`-rc.N`) are not listed here; their changes appear under the stable release that
 followed them.
 
-## [Unreleased]
+## [0.8.0] - 2026-10-19
 
 ### Deprecated
 
@@ -64,6 +64,33 @@ followed them.
   the confirmation prompt, and with `--auto-approve` too, preflight prints the paths
   and sources of the values the release will be given, without their contents
   ([ADR-098](docs/designs/098-setup-init-chart-values.md), #504).
+- `env` on a Certification, read globally at `spec.env` and per category at
+  `spec.categories[].options.env`, sets environment variables on the workload the
+  category runs. The two levels merge per name rather than replacing wholesale, so a
+  category that adds one variable does not drop a site-wide one. Where a variable
+  lands depends on how the entry launches its ranks: MPI entries get `-x NAME=VALUE`
+  pairs in `trainer.args`, because their ranks start under `sshd` with a fresh
+  environment and a trainer env var would never reach them; every other entry gets a
+  trainer env var. An MPI entry with no `-x` pair to anchor an insertion fails rather
+  than guessing, and an entry pushed past Kubeflow's 128-item `trainer.args` cap is
+  named instead of producing a TrainJob the API server refuses. A Certification that
+  sets nothing renders byte-identically to before. The resolved variable names, never
+  their values, print on the category card
+  ([ADR-097](docs/designs/097-certification-category-env.md), #501).
+- `dcgmHost` on `CategoryOptions`, settable on the spec or per category, points
+  `dcgm-level4` at a DCGM Service other than the hardcoded
+  `nvidia-dcgm.gpu-operator.svc:5555`. Unset, the rendered Workflows are unchanged;
+  set, it also wins on Nscale, where the override that repoints `--host` at
+  `nvidia-dcgm-dra` is left out rather than failing the render (#428)
+- `failedNodeDetails` on the Certification and WorkloadRun reports carries the
+  reason and message already resolved for each failed node, beside the `failedNodes`
+  name list that keeps its shape. A failed category that measures bandwidth and
+  recorded none on a multi-node group now points at `testScale: diagnose`
+  ([ADR-099](docs/designs/099-failed-node-attribution-relay.md), #505).
+- Mokka, a local environment that simulates NVML on real Kind workers so the device
+  plugin, GFD and DRA driver run and NVCRE's pods actually schedule and bootstrap
+  MPI, with `make mokka-up PROFILE=<h100|b200|gb200|gb300>`, and a UAT runtime lane
+  that exercises it ([ADR-096](docs/designs/096-mokka-local-environment-and-uat-runtime-lane.md), #497)
 
 ### Changed
 
@@ -94,6 +121,38 @@ followed them.
   it, as from an admission policy, webhook or ResourceQuota, still fails the Workflow
   with `DependencyCreationError` at once. A rejection the review confirms as a missing
   binding waits instead.
+- NCCL bandwidth metrics now include the Job's `workflow` label. This changes
+  Prometheus series identity, so queries matching an absent or empty `workflow`
+  label will not match new measurements. Measurements created before this change
+  retain the empty label until they are removed.
+- The base NCCL environment no longer sets `NCCL_NVLS_ENABLE=1`. Only NCCL's own
+  default of 2 probes `CU_DEVICE_ATTRIBUTE_MULTICAST_SUPPORTED`; at 1 the probe is
+  skipped and the NVLS path is entered on hardware that may not support multicast,
+  and on NCCL older than 2.29 a failed multicast bind aborts the job where the
+  default logs a fallback and proceeds. A site that needs NVLS off still sets it
+  through `spec.env` or `mpiArgs` (#499, #500)
+- Four NCCL fragments with no recorded measurement behind the value stop setting
+  `NCCL_NVLS_ENABLE`, so NCCL's probe decides: on-prem InfiniBand, TogetherAI, and
+  the GB200 base and training profiles. On-prem GB200/GB300, TogetherAI, OCI GB200
+  and Azure GB200 renders lose the variable. The five fragments that have a reason
+  keep it and now cite it, so Azure H100, AWS GB300, Nscale and GCP H100 are
+  unchanged ([ADR-100](docs/designs/100-catalog-env-fragment-ownership.md), #514)
+- Each NCCL variable has one owning fragment on OCI. Three OCI arms forwarded a
+  variable to `mpirun` twice, and on the GB300 arms the two values disagreed:
+  `NCCL_IB_SPLIT_DATA_ON_QPS` was sent as both 0 and 1, and the ranks got the
+  measured value only because that fragment happened to be spliced second. The
+  shared profile is split at the point GB300 diverges from it, so every existing
+  consumer renders the same names and values, six duplicate pairs disappear, and a
+  regression names the arm and both values instead of going unnoticed
+  ([ADR-100](docs/designs/100-catalog-env-fragment-ownership.md), #507)
+- The `nemotron5` training entries select the attention kernel through
+  `--attention-backend ${ATTENTION_BACKEND:-flash}` instead of pinning the
+  `NVTE_*_ATTN` variables. megatron-core derives those three from
+  `--attention-backend` and asserts when one is already set to a conflicting value,
+  so on AWS H100 and GB200 every rank failed in `GPTModel.__init__` before the first
+  step and JobSet restarted the job indefinitely. The AWS H100 and GB200 overrides
+  now set `ATTENTION_BACKEND=auto`, which keeps the fused kernel they were after;
+  every other platform still renders `flash` (#486)
 
 ### Fixed
 
@@ -140,13 +199,48 @@ followed them.
 - The MPI launcher pod of a WorkloadRun received no `spec.imagePullSecrets`; only the
   worker pods did, so a launcher pulling from a private registry failed at image pull
   while the workers started. It now gets the same secrets as the workers (#483)
-
-### Changed
-
-- NCCL bandwidth metrics now include the Job's `workflow` label. This changes
-  Prometheus series identity, so queries matching an absent or empty `workflow`
-  label will not match new measurements. Measurements created before this change
-  retain the empty label until they are removed.
+- A group retry records the retry in status before the failed attempt is retired,
+  instead of deleting the failed Job and its job-scoped dependencies first. When that
+  write did not happen, from a later group's read error, a failed status update or a
+  restart in between, the next pass found the group Running on a Job that was gone
+  and failed it with the retry budget unused. Each attempt now has its own Job name
+  (`-retry-N`; attempt 0 is unchanged), so a relaunch never adopts the previous
+  attempt's Job and each attempt gets its own goodput and bandwidth measurements. A
+  retried group is retired while its siblings run, so its failed Job and a
+  ComputeDomain on its nodes no longer stay alive until every sibling finishes (#389)
+- Each Job attempt is judged on its own GoodputMeasurement. A retried group's
+  measurement outlived the failed attempt and was matched by Job name alone, so the
+  new attempt could be judged on the old attempt's goodput and declared stalled from
+  the old attempt's last step. The Job UID is recorded on the measurement, a
+  same-name measurement belonging to another Job is replaced, and a checkpoint an
+  earlier attempt recorded cannot restart this one (#389)
+- A Job whose workload create stays rejected now fails instead of retrying forever.
+  The first rejected TrainJob create, from an admission webhook, policy denial,
+  ResourceQuota or validation, sets `WorkloadCreationRejected` with the rejection
+  message; a rejection that outlasts `--workload-creation-deadline` (Helm
+  `manager.workloadCreationDeadline`, default 10 minutes, independent of
+  `timeoutPerJob`) fails the Job with `WorkloadCreationError`. Rejections that clear,
+  such as a TrainingRuntime that is not ready yet or quota that frees up, still
+  recover, and a `Forbidden` create the access review attributes to RBAC is left to
+  the Workflow's `NamespacePermissionsMissing` wait (#488)
+- A timed-out Job recorded no failed nodes: `failTimedOutJob` wrote the Job status
+  directly and bypassed the only path that seeds them. A per-node reason and message
+  from a health detector is no longer replaced by one constant, and both report
+  surfaces carry the per-node reason they already resolved. A Job that timed out
+  while its pods were unschedulable records nothing, because nothing ran on those
+  nodes ([ADR-099](docs/designs/099-failed-node-attribution-relay.md), #505)
+- Report group bandwidth is keyed by group name, so a failed group with a
+  measurement is no longer listed twice and a failed group sharing a clique label
+  with a measured sibling is no longer dropped. Clique bandwidth is the minimum
+  across the clique's groups rather than whichever was listed last, so a healthy
+  sibling cannot hide a LOW group, and the category row takes the lowest BusBW at the
+  largest message size. A provisional measurement, such as `LogsUnavailable` after
+  its Job was deleted, renders as `(provisional: <reason>)` with a `?` mark instead
+  of being shown as final. The LOW marker evaluates the `busBandwidthGBps` threshold
+  as the CEL expression it is, where it used to parse it as a plain number and always
+  fail, so a group below the minimum was never marked (#449)
+- `nvcrectl certification watch` preserves the identity of duplicate categories in
+  its output (#473)
 
 ## [0.7.0] - 2026-10-12
 
@@ -685,6 +779,7 @@ failed node with a reason.
 - Certification and WorkloadRun specs are immutable after creation (#240)
 - `spec.env` is passed to MPI containers instead of silently dropped (#230)
 
+[0.8.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.8.0
 [0.7.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.7.0
 [0.6.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.6.0
 [0.5.0]: https://github.com/NVIDIA/cluster-readiness-engine/releases/tag/v0.5.0
