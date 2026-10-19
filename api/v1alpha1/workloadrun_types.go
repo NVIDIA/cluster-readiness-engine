@@ -187,6 +187,8 @@ type WorkloadOrchestration struct {
 }
 
 // WorkloadRunSpec defines the desired state of WorkloadRun.
+// +kubebuilder:validation:XValidation:rule="!has(self.networkAttachments) || !has(self.nicResourceName)",message="networkAttachments and nicResourceName are mutually exclusive"
+// +kubebuilder:validation:XValidation:rule="!has(self.networkAttachments) || !has(self.mlnxPerNode) || self.mlnxPerNode != 0",message="networkAttachments cannot be combined with mlnxPerNode: 0"
 type WorkloadRunSpec struct {
 	// target specifies which nodes to run the workload on.
 	// When omitted, all GPU nodes (nvidia.com/gpu.present=true) are selected.
@@ -255,6 +257,23 @@ type WorkloadRunSpec struct {
 	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/[a-zA-Z0-9]([-A-Za-z0-9_.]{0,61}[a-zA-Z0-9])?$`
 	// +kubebuilder:validation:XValidation:rule="!self.contains('kubernetes.io/') && !self.startsWith('k8s.io/') && !self.contains('.k8s.io/')",message="nicResourceName must not use the reserved kubernetes.io or k8s.io domains"
 	NicResourceName *string `json:"nicResourceName,omitempty"`
+
+	// networkAttachments attaches the workload's worker pods to Multus
+	// secondary networks and requests the extended resource behind each one
+	// (issue #400), for fabrics that expose one resource and one
+	// NetworkAttachmentDefinition per rail, such as Spectrum-X RoCE. The
+	// networks are written to the worker pod's k8s.v1.cni.cncf.io/networks
+	// annotation in list order, and each entry requests count units of its
+	// resourceName on the worker container, so the n-th network lines up
+	// with the n-th resource. The list replaces the NIC wiring the catalog
+	// would otherwise render: it is mutually exclusive with nicResourceName
+	// and disables NIC resource auto-detection. It cannot be combined with
+	// mlnxPerNode: 0. At most 16 entries.
+	// +optional
+	// +listType=atomic
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
+	NetworkAttachments []NetworkAttachment `json:"networkAttachments,omitempty"`
 
 	// imagePullSecrets references secrets for pulling the container image.
 	// They apply to every pod of the run: the node pods on every framework and,

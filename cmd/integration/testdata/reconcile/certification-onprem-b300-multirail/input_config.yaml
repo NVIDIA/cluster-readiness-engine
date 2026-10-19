@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+waitFor:
+  kind: Workflow
+  name: onprem-mr-b3-communicatio-d47b3
+  namespace: default
+  condition: InProgress
+  reason: JobRunning
+collect:
+  - kind: Certification
+    name: onprem-mr-b3
+    namespace: default
+  - kind: Workflow
+    name: onprem-mr-b3-communicatio-d47b3
+    namespace: default
+events:
+  # b300 is a listed architecture and NIC detection is skipped because the
+  # category lists networkAttachments, so the projection must contain neither
+  # GPUArchitectureDefaults nor NICResourceDetection. WorkflowCreated is the
+  # last event the create path emits, so waiting for it makes the projection
+  # deterministic.
+  - involvedKind: Certification
+    involvedName: onprem-mr-b3
+    namespace: default
+    expect:
+      - {type: Normal, reason: WorkflowCreated}

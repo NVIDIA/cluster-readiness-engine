@@ -1,0 +1,3 @@
+{
+  "error": "--network-attachments cannot be combined with --multus-networks/--extended-resources"
+}
