@@ -298,14 +298,23 @@ func runCertificationRender(certFile, outputFormat string, dryRun bool,
 // the Certification's nodeSelector, then runs the post-resolve transform stage.
 // The synthetic node lets GPU-architecture-specific overrides (images, env
 // vars) apply even without connecting to a real cluster.
+//
+// Each Workflow gets the same nvcrectl.nvidia.com/ render annotations as the
+// --dry-run path and "nvcrectl workflow render": the platform and architecture
+// detected from the synthetic node, and the overrides that matched. They
+// record what override matching saw, so a render without --platform shows
+// detected-platform: onprem (the synthetic node has no providerID) rather
+// than silently applying the on-prem overrides.
 func resolveWorkflowsOffline(
 	cert *nvcrev1alpha1.Certification, workflows []nvcrev1alpha1.Workflow, platformFlag, gpuArchOverride string,
 ) error {
 	syntheticNodes := []corev1.Node{syntheticRenderNode(platformFlag, cert.Spec.Target.NodeSelector, gpuArchOverride)}
 	for i := range workflows {
-		if _, err := render.ResolveWorkflow(&workflows[i], syntheticNodes); err != nil {
+		meta, err := render.ResolveWorkflow(&workflows[i], syntheticNodes)
+		if err != nil {
 			return fmt.Errorf("resolve workflow %s: %w", workflows[i].Name, err)
 		}
+		render.SetRenderAnnotations(&workflows[i], meta)
 		if err := applyWorkflowTransforms(cert, workflows, i); err != nil {
 			return err
 		}

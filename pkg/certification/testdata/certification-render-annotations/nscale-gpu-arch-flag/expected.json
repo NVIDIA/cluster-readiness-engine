@@ -1,0 +1,21 @@
+[
+  {
+    "workflow": "nscale-cert-communication-96ff5",
+    "annotations": {
+      "nvcrectl.nvidia.com/detected-gpu-architecture": "gb300",
+      "nvcrectl.nvidia.com/detected-platform": "nscale"
+    },
+    "appliedOverrides": [
+      {
+        "index": 7,
+        "when": "gpuArchitecture=in [gb200,gb300]",
+        "patches": "jobTemplate, 2 dependencies"
+      },
+      {
+        "index": 18,
+        "when": "gpuArchitecture=in [b200,gb300], platform=nscale",
+        "patches": "jobTemplate, 3 dependencies"
+      }
+    ]
+  }
+]

@@ -1,0 +1,16 @@
+[
+  {
+    "workflow": "aws-l20-cert-communicatio-54643",
+    "annotations": {
+      "nvcrectl.nvidia.com/detected-gpu-architecture": "l20",
+      "nvcrectl.nvidia.com/detected-platform": "aws"
+    },
+    "appliedOverrides": [
+      {
+        "index": 0,
+        "when": "gpuArchitecture=notIn [gb200,gb300], platform=aws",
+        "patches": "jobTemplate, 1 dependencies"
+      }
+    ]
+  }
+]

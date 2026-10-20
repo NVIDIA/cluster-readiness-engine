@@ -1,0 +1,21 @@
+[
+  {
+    "workflow": "gb300-cert-communication-6c147",
+    "annotations": {
+      "nvcrectl.nvidia.com/detected-gpu-architecture": "gb300",
+      "nvcrectl.nvidia.com/detected-platform": "onprem"
+    },
+    "appliedOverrides": [
+      {
+        "index": 7,
+        "when": "gpuArchitecture=in [gb200,gb300]",
+        "patches": "jobTemplate, 2 dependencies"
+      },
+      {
+        "index": 15,
+        "when": "gpuArchitecture=in [gb200,gb300], platform=onprem",
+        "patches": "jobTemplate, 2 dependencies"
+      }
+    ]
+  }
+]
