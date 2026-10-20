@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/api/resource"
+
 	nvcrev1alpha1 "github.com/NVIDIA/cluster-readiness-engine/api/v1alpha1"
 )
 
@@ -95,7 +97,11 @@ func networkAttachmentResources(atts []nvcrev1alpha1.NetworkAttachment) map[stri
 // gets the Multus networks annotation on its pod template, replacing any
 // value the catalog rendered, and its worker container (the one named
 // "node", else the first) gets limits and requests for each resourceName.
-// It is a no-op for an empty list, and a dependency it does not change comes
+// Those add to a quantity the catalog already rendered for the same resource
+// (for example nvidia.com/mlnxnics on Azure or TogetherAI), so the list adds
+// interfaces rather than shrinking the platform request. On OCI the default
+// mlnxnics wiring is not rendered when a list is set, so there the list's
+// count is the whole request. It is a no-op for an empty list, and a dependency it does not change comes
 // back with the exact bytes it went in with.
 func ApplyNetworkAttachmentsToDependencies(
 	deps []nvcrev1alpha1.DependencySpec, atts []nvcrev1alpha1.NetworkAttachment,
@@ -107,11 +113,12 @@ func ApplyNetworkAttachmentsToDependencies(
 	resources := networkAttachmentResources(atts)
 
 	for i := range deps {
-		if len(deps[i].Raw) == 0 {
+		dep := &deps[i]
+		if len(dep.Raw) == 0 {
 			continue
 		}
 		obj := map[string]any{}
-		if err := json.Unmarshal(deps[i].Raw, &obj); err != nil {
+		if err := json.Unmarshal(dep.Raw, &obj); err != nil {
 			return fmt.Errorf("unmarshal dependency %d: %w", i, err)
 		}
 		if kind, _ := obj[keyKind].(string); kind != kindTrainingRuntime {
@@ -131,7 +138,11 @@ func ApplyNetworkAttachmentsToDependencies(
 			if name, _ := job[keyName].(string); name == launcherJobName {
 				continue
 			}
-			if applyNetworkAttachmentsToJob(job, annotation, resources) {
+			jobChanged, err := applyNetworkAttachmentsToJob(job, annotation, resources)
+			if err != nil {
+				return fmt.Errorf("dependency %d: %w", i, err)
+			}
+			if jobChanged {
 				changed = true
 			}
 		}
@@ -142,7 +153,7 @@ func ApplyNetworkAttachmentsToDependencies(
 		if err != nil {
 			return fmt.Errorf("marshal dependency %d: %w", i, err)
 		}
-		deps[i].Raw = raw
+		dep.Raw = raw
 	}
 	return nil
 }
@@ -150,33 +161,81 @@ func ApplyNetworkAttachmentsToDependencies(
 // applyNetworkAttachmentsToJob patches one replicatedJob's pod template.
 // replicatedJobs[].template.spec.template is JobTemplateSpec -> JobSpec ->
 // PodTemplateSpec.
-func applyNetworkAttachmentsToJob(job map[string]any, annotation string, resources map[string]int64) bool {
+func applyNetworkAttachmentsToJob(job map[string]any, annotation string, resources map[string]int64) (bool, error) {
 	podTemplate, ok := nestedMap(job, keyTemplate, keySpec, keyTemplate)
 	if !ok {
-		return false
+		return false, nil
 	}
 	containers, found := nestedSlice(podTemplate, keySpec, keyContainers)
 	if !found || len(containers) == 0 {
-		return false
+		return false, nil
 	}
 	worker := workerContainer(containers)
 	if worker == nil {
-		return false
+		return false, nil
+	}
+
+	res := ensureMap(worker, keyResources)
+	limits := ensureMap(res, keyLimits)
+	requests := ensureMap(res, keyRequests)
+	// Compute every sum before writing any, so an error leaves the job as it was.
+	sums := make(map[string]string, len(resources))
+	for name, qty := range resources {
+		// An extended resource's request must equal its limit, and an omitted
+		// request defaults to the limit, so one base serves both: the limit
+		// when set, else the request.
+		base, present := limits[name]
+		if !present {
+			base, present = requests[name]
+		}
+		sum, err := addResourceQuantity(base, present, qty)
+		if err != nil {
+			return false, fmt.Errorf("resource %s: %w", name, err)
+		}
+		sums[name] = sum
 	}
 
 	metadata := ensureMap(podTemplate, keyMetadata)
 	annotations := ensureMap(metadata, keyAnnotations)
 	annotations[MultusNetworksAnnotation] = annotation
-
-	res := ensureMap(worker, keyResources)
-	limits := ensureMap(res, keyLimits)
-	requests := ensureMap(res, keyRequests)
-	for name, qty := range resources {
-		v := strconv.FormatInt(qty, 10)
-		limits[name] = v
-		requests[name] = v
+	for name, sum := range sums {
+		limits[name] = sum
+		requests[name] = sum
 	}
-	return true
+	return true, nil
+}
+
+// addResourceQuantity adds qty devices to a quantity already rendered in a
+// limits or requests map, which JSON decoding leaves as a string ("8") or a
+// number (8). With nothing rendered the result is qty itself.
+func addResourceQuantity(existing any, present bool, qty int64) (string, error) {
+	if !present || existing == nil {
+		return strconv.FormatInt(qty, 10), nil
+	}
+	var q resource.Quantity
+	switch v := existing.(type) {
+	case string:
+		parsed, err := resource.ParseQuantity(v)
+		if err != nil {
+			return "", fmt.Errorf("existing quantity %q: %w", v, err)
+		}
+		q = parsed
+	case float64:
+		if v != float64(int64(v)) {
+			return "", fmt.Errorf("existing quantity %v is not a whole number", v)
+		}
+		q = *resource.NewQuantity(int64(v), resource.DecimalSI)
+	case json.Number:
+		parsed, err := resource.ParseQuantity(v.String())
+		if err != nil {
+			return "", fmt.Errorf("existing quantity %q: %w", v, err)
+		}
+		q = parsed
+	default:
+		return "", fmt.Errorf("existing quantity has unsupported type %T", existing)
+	}
+	q.Add(*resource.NewQuantity(qty, resource.DecimalSI))
+	return q.String(), nil
 }
 
 // workerContainer returns the container named "node", or the first container

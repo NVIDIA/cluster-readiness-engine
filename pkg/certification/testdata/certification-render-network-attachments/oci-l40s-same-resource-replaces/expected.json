@@ -1,0 +1,31 @@
+[
+  {
+    "workflow": "oci-l40s-cert-communicati-e5296",
+    "replicatedJobs": [
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "node",
+        "networks": "east-west-a",
+        "resources": {
+          "node": [
+            "limits/nvidia.com/gpu=4",
+            "limits/nvidia.com/mlnxnics=1",
+            "requests/nvidia.com/gpu=4",
+            "requests/nvidia.com/mlnxnics=1"
+          ]
+        }
+      },
+      {
+        "dependency": "nccl-all-reduce-runtime",
+        "replicatedJob": "launcher",
+        "networks": "",
+        "resources": {
+          "node": [
+            "limits/cpu=2",
+            "limits/memory=1Gi"
+          ]
+        }
+      }
+    ]
+  }
+]
