@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Negative request and limit that compare equal: the pairwise rule passes,
-# the per-field non-negative rule must reject both.
+# Negative request and limit that compare equal: the per-field non-negative
+# Pattern must reject both strings at admission (ADR-101).
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:

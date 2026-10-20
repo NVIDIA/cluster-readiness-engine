@@ -106,6 +106,23 @@ test-integration: fmt vet setup-envtest ## Run integration tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	go test ./cmd/integration/ -v -timeout 600s -count=1
 
+# Every minor, not only the oldest: the API server's CEL cost estimator differs
+# between minors, and a rule can fit on 1.29 yet be refused by 1.30 (ADR-101).
+.PHONY: test-crd-compat
+test-crd-compat: envtest ## Install every chart CRD on each Kubernetes minor from MIN_K8S_VERSION to ENVTEST_K8S_VERSION.
+	@set -e; \
+	lo=$(word 2,$(subst ., ,$(MIN_K8S_VERSION))); \
+	hi=$(word 2,$(subst ., ,$(ENVTEST_K8S_VERSION))); \
+	failed=""; \
+	for minor in $$(seq "$$lo" "$$hi"); do \
+		v="1.$$minor"; \
+		echo "--- Kubernetes $$v"; \
+		assets="$$("$(ENVTEST)" use "$$v" --bin-dir "$(LOCALBIN)" -p path)"; \
+		KUBEBUILDER_ASSETS="$$assets" NVCRE_CRD_COMPAT_K8S_VERSION="$$v" \
+			go test ./test/crdcompat/ -run '^TestCRDsInstall$$' -count=1 || failed="$$failed $$v"; \
+	done; \
+	if [ -n "$$failed" ]; then echo "CRDs refused on Kubernetes:$$failed"; exit 1; fi
+
 ##@ UAT Tests (Kind + KWOK + Tilt + e2e-framework)
 
 KIND_CLUSTER_UAT ?= nvcre-test-uat
@@ -411,6 +428,12 @@ ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; 
 ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
   [ -n "$$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api replace has no tag)" >&2; exit 1; }; \
   printf '%s\n' "$$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
+
+# MIN_K8S_VERSION is the oldest Kubernetes minor NVCRE supports, the one
+# docs/getting-started/install.md states (test/crdcompat fails if they differ).
+# test-crd-compat installs every chart CRD on each minor from here up to
+# ENVTEST_K8S_VERSION (ADR-101).
+MIN_K8S_VERSION ?= 1.29
 
 GOLANGCI_LINT_VERSION ?= v2.14.0
 

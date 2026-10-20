@@ -108,22 +108,44 @@ type CertificationCategoryStatus struct {
 
 // CategoryResourceList holds CPU and memory quantities for one side
 // (limits or requests) of a training container's resources.
-// The MaxLength bounds keep the CEL request/limit comparison on
-// CategoryResources within the API server's validation cost budget; any
-// realistic quantity is far shorter.
+//
+// No CEL rule may read these fields (ADR-101). They are int-or-string, and
+// API servers through 1.33 cost any CEL on such a value as a 3 MiB string
+// whatever its maxLength, which puts a rule nested under categories over the
+// validation budget and makes the API server refuse the whole CRD. The
+// Pattern rejects a negative or malformed string at admission at no CEL cost;
+// a negative integer, which no marker here can express, is rejected by
+// ValidateCertificationResources in the controller and in nvcrectl. MaxLength
+// only bounds input size; any realistic quantity is far shorter.
+//
+// Every typed client decodes these fields with resource.ParseQuantity, and
+// one Certification that fails to decode breaks the typed List the
+// controller's informer uses, for every Certification in the namespace. So
+// the exponent must be a whole number: the controller-gen Quantity pattern
+// this replaces also allows a fractional one ("1e1.5"), which ParseQuantity
+// refuses.
+//
+// Schemaless drops the schema controller-gen generates for every Quantity.
+// Its signed pattern would otherwise be combined with this one in an allOf,
+// which adds a second error with no field path to every rejection.
+// XIntOrString and Pattern then rebuild the schema with only the
+// non-negative pattern; x-kubernetes-int-or-string alone still restricts the
+// value to an integer or a string.
 type CategoryResourceList struct {
-	// cpu is the CPU quantity (e.g., "6", "1500m").
+	// cpu is the CPU quantity (e.g., "6", "1500m"). Must not be negative.
 	// +optional
+	// +kubebuilder:validation:Schemaless
 	// +kubebuilder:validation:XIntOrString
 	// +kubebuilder:validation:MaxLength=32
-	// +kubebuilder:validation:XValidation:rule="quantity(string(self)).compareTo(quantity(\"0\")) >= 0",message="cpu must be a non-negative quantity"
+	// +kubebuilder:validation:Pattern=`^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]+))?$`
 	CPU *resource.Quantity `json:"cpu,omitempty"`
 
-	// memory is the memory quantity (e.g., "48Gi").
+	// memory is the memory quantity (e.g., "48Gi"). Must not be negative.
 	// +optional
+	// +kubebuilder:validation:Schemaless
 	// +kubebuilder:validation:XIntOrString
 	// +kubebuilder:validation:MaxLength=32
-	// +kubebuilder:validation:XValidation:rule="quantity(string(self)).compareTo(quantity(\"0\")) >= 0",message="memory must be a non-negative quantity"
+	// +kubebuilder:validation:Pattern=`^\+?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?[0-9]+))?$`
 	Memory *resource.Quantity `json:"memory,omitempty"`
 }
 
@@ -131,12 +153,12 @@ type CategoryResourceList struct {
 // training workload containers. Each value that is unset keeps the catalog
 // default for that value. GPU count is controlled by gpusPerNode, not here.
 // When a request and its matching limit are both set, the request must not
-// exceed the limit; the CRD rejects the inverted pair at admission. A request
-// set without its matching limit is only checked against the resolved default
-// at pod admission, so raise the limit alongside the request when overriding
-// upward.
-// +kubebuilder:validation:XValidation:rule="!has(self.requests) || !has(self.limits) || !has(self.requests.cpu) || !has(self.limits.cpu) || quantity(string(self.requests.cpu)).compareTo(quantity(string(self.limits.cpu))) <= 0",message="requests.cpu must not exceed limits.cpu"
-// +kubebuilder:validation:XValidation:rule="!has(self.requests) || !has(self.limits) || !has(self.requests.memory) || !has(self.limits.memory) || quantity(string(self.requests.memory)).compareTo(quantity(string(self.limits.memory))) <= 0",message="requests.memory must not exceed limits.memory"
+// exceed the limit. The controller fails the Certification with reason
+// InvalidResources before it creates any Workflow, and nvcrectl refuses the
+// file before submitting it; the check is not a CEL rule because no CEL rule
+// may read a quantity (ADR-101). A request set without its matching limit is
+// only checked against the resolved default at pod admission, so raise the
+// limit alongside the request when overriding upward.
 type CategoryResources struct {
 	// limits overrides the container resource limits.
 	// +optional
@@ -558,8 +580,9 @@ type CertificationSpec struct {
 
 	// Categories are the list of certificate categories required for the Target.
 	// The MaxItems bound keeps the CEL rules nested under each category (the
-	// resources request/limit comparison) within the API server's validation
-	// cost budget; the catalog defines far fewer entries than 64.
+	// env and workload label rules) within the API server's validation cost
+	// budget, which charges each such rule once per possible item. Every chart
+	// CRD must install on every supported Kubernetes minor (ADR-101).
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	// +kubebuilder:validation:MaxItems=64

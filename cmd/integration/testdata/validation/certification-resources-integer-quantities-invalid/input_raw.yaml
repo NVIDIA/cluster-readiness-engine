@@ -1,8 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Quantities are int-or-string; bare integers must go through the same
-# comparison (string() conversion inside the CEL rule) and be rejected.
+# Quantities are int-or-string. Submitted raw, so the API server receives
+# the integers 128 and 256 rather than strings: the inverted pair is
+# accepted at admission and rejected by the controller (ADR-101).
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:

@@ -1,0 +1,81 @@
+{
+  "Certification/test-cert-invalid-resources": {
+    "kind": "Certification",
+    "apiVersion": "nvcre.nvidia.com/v1alpha1",
+    "metadata": {
+      "name": "test-cert-invalid-resources",
+      "namespace": "default",
+      "finalizers": [
+        "nvcre.nvidia.com/certification-finalizer"
+      ]
+    },
+    "spec": {
+      "target": {
+        "nodeSelector": {
+          "nvidia.com/gpu.present": "true",
+          "nvidia.com/gpu.product": "NVIDIA-GB200-NVL72"
+        }
+      },
+      "categories": [
+        {
+          "domain": "training",
+          "variant": "nemotron5-8b",
+          "options": {
+            "resources": {
+              "limits": {
+                "cpu": "128"
+              },
+              "requests": {
+                "cpu": "256"
+              }
+            }
+          }
+        }
+      ],
+      "nodesPerJob": 2
+    },
+    "status": {
+      "conditions": [
+        {
+          "type": "InProgress",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Succeeded",
+          "status": "False",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "NotApplicable",
+          "message": ""
+        },
+        {
+          "type": "Failed",
+          "status": "True",
+          "observedGeneration": 1,
+          "lastTransitionTime": null,
+          "reason": "InvalidResources",
+          "message": "invalid resources: spec.categories[0].options.resources: requests.cpu (256) must not exceed limits.cpu (128)"
+        }
+      ]
+    }
+  },
+  "events": [
+    {
+      "type": "Warning",
+      "reason": "InvalidResources",
+      "message": "invalid resources: spec.categories[0].options.resources: requests.cpu (256) must not exceed limits.cpu (128)",
+      "involvedObject": {
+        "kind": "Certification",
+        "name": "test-cert-invalid-resources"
+      },
+      "count": 1
+    }
+  ],
+  "expectAbsent": {
+    "Workflow/test-cert-invalid-resourc-fcaa0": "notCreated"
+  }
+}

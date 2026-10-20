@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Negative spec-level memory request with no limit set: rejected by the
-# per-field non-negative rule.
+# Negative spec-level memory request with no limit set: rejected at
+# admission by the per-field non-negative Pattern (ADR-101).
 apiVersion: nvcre.nvidia.com/v1alpha1
 kind: Certification
 metadata:

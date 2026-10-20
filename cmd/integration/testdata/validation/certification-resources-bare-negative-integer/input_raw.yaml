@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# An unquoted negative integer is accepted at admission: the Pattern binds
+# strings only, controller-gen cannot emit a minimum on a quantity, and no CEL
+# rule may read one (ADR-101). The controller rejects it with InvalidResources.
+# Submitted raw, so the API server receives the integer -1, not the string.
+apiVersion: nvcre.nvidia.com/v1alpha1
+kind: Certification
+metadata:
+  name: val-bare-negative-integer
+  namespace: default
+spec:
+  target:
+    nodeSelector:
+      nvidia.com/gpu.product: NVIDIA-A100-SXM4-80GB
+  categories:
+    - domain: training
+      variant: nemotron5-8b
+      options:
+        resources:
+          limits:
+            cpu: -1

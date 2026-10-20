@@ -82,6 +82,12 @@ const (
 	ReasonWorkflowSucceeded        = "WorkflowSucceeded"
 	ReasonThresholdViolation       = "ThresholdViolation"
 
+	// ReasonInvalidResources marks a Certification whose resources the CRD
+	// schema cannot reject on every supported API server: a request above its
+	// limit, or a negative integer quantity (ADR-101). Set before any Workflow
+	// is created, like ReasonCategoryNotFound.
+	ReasonInvalidResources = "InvalidResources"
+
 	// ReasonWorkflowNameCollision marks a Certification whose generated child
 	// Workflow name is already taken by a Workflow this Certification does not
 	// own. The foreign object is neither adopted nor recorded for cleanup.

@@ -4,7 +4,7 @@
     {
       "type": "FieldValueInvalid",
       "field": "spec.resources.requests.memory",
-      "message": "Invalid value: \"-1Gi\": memory must be a non-negative quantity"
+      "message": "Invalid value: \"-1Gi\": spec.resources.requests.memory in body should match '^\\+?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?[0-9]+))?$'"
     }
   ]
 }

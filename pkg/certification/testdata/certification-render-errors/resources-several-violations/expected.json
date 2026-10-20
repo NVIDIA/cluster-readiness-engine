@@ -1,0 +1,3 @@
+{
+  "error": "certification test-cert: invalid resources: spec.resources.requests.memory: memory must be a non-negative quantity, got -1Gi; spec.categories[0].options.resources: requests.cpu (128) must not exceed limits.cpu (64); spec.categories[0].options.resources: requests.memory (200Gi) must not exceed limits.memory (100Gi)"
+}
