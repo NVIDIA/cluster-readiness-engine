@@ -34,7 +34,7 @@ fi
 # Dynamic computation — values from Go template at render time.
 {{- $totalGPUs := mul (int .NodesPerJob) (int .GpusPerNode) -}}
 {{- $mbs := 1 -}}
-{{- $gbs := mul $totalGPUs $mbs -}}
+{{- $gbs := mul $totalGPUs $mbs }}
 TOTAL_GPUS={{ $totalGPUs }}
 TP=${TENSOR_PARALLELISM:-{{ .TP }}}
 PP=${PIPELINE_PARALLELISM:-{{ .PP }}}
