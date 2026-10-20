@@ -1,6 +1,6 @@
 # ADR-098: `nvcrectl setup init` Takes Chart Values and Keeps Them Across Runs
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 > **Supersedes:** the `setup init` contract in ADR-092's amendment that "every other value still returns to its default, as before"
 

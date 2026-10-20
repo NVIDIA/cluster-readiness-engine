@@ -1,6 +1,6 @@
 # ADR-100: One Fragment Owns Each Variable in a Composed NCCL Profile
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 

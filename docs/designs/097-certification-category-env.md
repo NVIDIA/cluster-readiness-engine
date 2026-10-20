@@ -1,6 +1,6 @@
 # ADR-097: Environment Variables on CategoryOptions
 
-> **Status:** Proposed
+> **Status:** Accepted
 
 ## Context
 
