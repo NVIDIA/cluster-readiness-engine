@@ -17,6 +17,14 @@ The controller detects two dimensions at runtime:
 
 On a mixed-architecture target, the detected GPU architecture is the one reported by the most nodes, with ties resolved to the architecture whose earliest node sorts first by name. Nodes missing the `nvidia.com/gpu.product` label do not participate in that vote, so an unlabeled node never outvotes labeled ones; `unknown` is detected only when no target node carries the label. Every path uses the same rule: the Certification, Workflow, and WorkloadRun controllers as well as the `nvcrectl` render, cluster info, and workloadrun commands.
 
+Nodes with a `spec.providerID` starting with `linode://` are detected as `akamai` (Akamai LKE). The CLI also accepts `--platform akamai` for offline rendering.
+
+### Akamai RTX PRO 6000 TCP
+
+Akamai RTX PRO 6000 overlays configure NCCL for TCP over `eth0`, disable InfiniBand and the external network plugin, and request standard `nvidia.com/gpu` resources. They do not request RDMA devices or add a GPU taint toleration: the inspected LKE GPU nodes have no GPU taint. The same transport settings apply to the three NCCL collectives, Nemotron 5 8B, and MPI or Torch WorkloadRuns.
+
+Set `gpusPerNode: 1` explicitly for the one-GPU development VMs. The architecture default remains eight GPUs per node for production shapes. Multi-GPU renders set `NCCL_P2P_LEVEL=PHB`; PCIe peer-to-peer on Akamai VMs remains unqualified (NVBug 6100345). These overlays have no measured performance baseline yet. A single-GPU smoke test does not establish multi-node NCCL qualification.
+
 ### ResourceSlice fallback (no device plugin/GFD)
 
 Platforms that claim GPUs via Dynamic Resource Allocation instead of a device plugin, such as Nscale NKS, run no NVIDIA GPU Feature Discovery DaemonSet, so no node ever carries the `nvidia.com/gpu.product` label. Before the majority-architecture vote runs, node discovery lists `gpu.nvidia.com` `ResourceSlice` objects cluster-wide and reads each device's `productName` attribute, writing it as the `nvidia.com/gpu.product` label onto the corresponding node's in-memory copy (never persisted back to the API server). The driver reports the space-separated NVML name (`NVIDIA GB300`), so it is sanitized exactly as GPU Feature Discovery writes the label: characters outside `[A-Za-z0-9-_. ]` are dropped and each run of whitespace becomes one hyphen (`NVIDIA-GB300`); identical hardware therefore reports one product in a fleet that mixes both, provided GPU Feature Discovery is not time-slicing (it then appends `-SHARED` to its label, so the products differ while the architecture still matches). Every existing label-based consumer — the architecture vote, catalog architecture defaults, NIC detection — is unaffected: they only ever read the label, and simply see it populated from a different source. Devices of type `vfio` (GPU passthrough) are skipped, because they report a PCI-IDs name rather than the NVML product name.

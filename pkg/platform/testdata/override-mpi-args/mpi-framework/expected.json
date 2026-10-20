@@ -122,6 +122,28 @@
   {
     "when": {
       "gpuArchitecture": {
+        "equals": "rtxpro6000"
+      },
+      "platform": {
+        "equals": "akamai"
+      }
+    },
+    "mpiArgs": [
+      "-x",
+      "NCCL_DEBUG=INFO",
+      "-x",
+      "NCCL_IB_DISABLE=1",
+      "-x",
+      "NCCL_NET_PLUGIN=none",
+      "-x",
+      "NCCL_SOCKET_IFNAME=eth0",
+      "-x",
+      "NCCL_P2P_LEVEL=PHB"
+    ]
+  },
+  {
+    "when": {
+      "gpuArchitecture": {
         "in": [
           "b200",
           "gb300"

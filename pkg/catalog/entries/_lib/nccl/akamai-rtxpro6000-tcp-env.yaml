@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Akamai LKE RTX PRO 6000 VMs use eth0 and have no RDMA resources.
+- name: NCCL_DEBUG
+  value: INFO
+- name: NCCL_IB_DISABLE
+  value: "1"
+# Avoid initializing an image-bundled RDMA plugin on the TCP-only VM network.
+- name: NCCL_NET_PLUGIN
+  value: none
+- name: NCCL_SOCKET_IFNAME
+  value: eth0
+# NKX-18032 uses PHB for multi-GPU VMs. Do not inherit GCP's eight-GPU SYS
+# setting: VM PCIe peer-to-peer remains unqualified (NVBug 6100345).
+{{- if gt (int .GpusPerNode) 1 }}
+- name: NCCL_P2P_LEVEL
+  value: PHB
+{{- end }}
