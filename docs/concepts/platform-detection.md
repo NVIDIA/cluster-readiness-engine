@@ -19,12 +19,6 @@ On a mixed-architecture target, the detected GPU architecture is the one reporte
 
 Nodes with a `spec.providerID` starting with `linode://` are detected as `akamai` (Akamai LKE). The CLI also accepts `--platform akamai` for offline rendering.
 
-### Akamai RTX PRO 6000 TCP
-
-Akamai RTX PRO 6000 overlays configure NCCL for TCP over `eth0`, disable InfiniBand and the external network plugin, and request standard `nvidia.com/gpu` resources. They do not request RDMA devices or add a GPU taint toleration: the inspected LKE GPU nodes have no GPU taint. The same transport settings apply to the three NCCL collectives, Nemotron 5 8B, and MPI or Torch WorkloadRuns.
-
-Set `gpusPerNode: 1` explicitly for the one-GPU development VMs. The architecture default remains eight GPUs per node for production shapes. Multi-GPU renders set `NCCL_P2P_LEVEL=PHB`; PCIe peer-to-peer on Akamai VMs remains unqualified (NVBug 6100345). These overlays have no measured performance baseline yet. A single-GPU smoke test does not establish multi-node NCCL qualification.
-
 ### ResourceSlice fallback (no device plugin/GFD)
 
 Platforms that claim GPUs via Dynamic Resource Allocation instead of a device plugin, such as Nscale NKS, run no NVIDIA GPU Feature Discovery DaemonSet, so no node ever carries the `nvidia.com/gpu.product` label. Before the majority-architecture vote runs, node discovery lists `gpu.nvidia.com` `ResourceSlice` objects cluster-wide and reads each device's `productName` attribute, writing it as the `nvidia.com/gpu.product` label onto the corresponding node's in-memory copy (never persisted back to the API server). The driver reports the space-separated NVML name (`NVIDIA GB300`), so it is sanitized exactly as GPU Feature Discovery writes the label: characters outside `[A-Za-z0-9-_. ]` are dropped and each run of whitespace becomes one hyphen (`NVIDIA-GB300`); identical hardware therefore reports one product in a fleet that mixes both, provided GPU Feature Discovery is not time-slicing (it then appends `-SHARED` to its label, so the products differ while the architecture still matches). Every existing label-based consumer — the architecture vote, catalog architecture defaults, NIC detection — is unaffected: they only ever read the label, and simply see it populated from a different source. Devices of type `vfio` (GPU passthrough) are skipped, because they report a PCI-IDs name rather than the NVML product name.
@@ -92,6 +86,7 @@ Different GPU architectures and cloud platforms require different Kubernetes res
 | H100 | GCP | TCPXO (FastRak) | `tcpxo-daemon` sidecar, `NCCL_FASTRAK_*` env, the 8 GPU NIC networks auto-detected from node allocatable, workload and `tcpxo-daemon` images chosen from the TCPXO plugin version detected on the nodes (A3 Mega only, see [GCP H100 clusters](#gcp-h100-clusters)) |
 | GB200/GB300 | GCP | RoCE | `networking.gke.io.networks/rdma-0`..`rdma-3` (fixed network names), ComputeDomain |
 | RTX PRO 6000 Blackwell | GCP G4 | TCP over `eth0`, PCIe GPU peer-to-peer | Variable GPU count by G4 machine size; `nvidia.com/gpu=present:NoSchedule` toleration; no RDMA resource request |
+| RTX PRO 6000 Blackwell | Akamai LKE | TCP over `eth0` | Standard `nvidia.com/gpu` resources; inspected GPU nodes are untainted; no RDMA request; set `gpusPerNode` to the VM GPU count |
 | GB200/GB300 | On-prem | InfiniBand | arm64/GPU taint tolerations, portable IB NCCL env (no HCA pinning), NIC resource auto-detected or set via `nicResourceName`, ComputeDomain |
 | B200/B300 (x86 HGX) | On-prem | InfiniBand or RoCE via the site's RDMA device plugin | `nvidia.com/gpu:NoSchedule` toleration (any taint value, on the MPI launcher too), NIC resource auto-detected or set via `nicResourceName`; no NCCL environment, no ComputeDomain (NVLink does not span nodes) |
 | GB200 | OCI | RoCE | No NIC request by default (`mlnxPerNode: 0`); ComputeDomain. Set `mlnxPerNode` to request `nvidia.com/mlnxnics` and the matching `network-operator/sriov-net` attachments |
@@ -121,7 +116,7 @@ excluded by the capacity filter; an all-four-GPU target fails rather than
 silently reducing the request. An explicit smaller request on an eight-GPU
 node tests only the requested GPUs and does not establish full-device coverage.
 
-The NCCL overlay selects `NCCL_P2P_LEVEL=SYS` for eight GPUs and `PHB` for two
+The GCP NCCL overlay selects `NCCL_P2P_LEVEL=SYS` for eight GPUs and `PHB` for two
 or four GPUs, following [Google's G4 guidance](https://docs.cloud.google.com/compute/docs/accelerator-optimized-machines#g4_series).
 Offline rendering also uses the eight-GPU default and does not validate node
 capacity. Set `gpusPerNode: 4` explicitly when previewing the four-GPU
@@ -132,6 +127,38 @@ The GCP RTX PRO 6000 override sets `NCCL_NET_PLUGIN=none` in addition to
 otherwise attempts to initialize even on this TCP-only network.
 
 The live controller tracks which overrides matched in `status.orchestration.appliedOverrides`. When using `nvcrectl workflow render`, the same information is also written to the `nvcrectl.nvidia.com/applied-overrides` annotation on the rendered manifest.
+
+### Akamai RTX PRO 6000 TCP
+
+See [ADR-101](../designs/101-akamai-rtxpro6000-tcp.md) for the transport and qualification decisions.
+
+Akamai RTX PRO 6000 overlays configure NCCL for TCP over `eth0`, disable InfiniBand and the external network plugin, and request standard `nvidia.com/gpu` resources. They do not request RDMA devices or add a GPU taint toleration: the inspected LKE GPU nodes have no GPU taint. The same transport settings apply to the three NCCL collectives, Nemotron 5 8B, and MPI or Torch WorkloadRuns.
+
+Set `gpusPerNode: 1` explicitly for the one-GPU development VMs. The architecture default remains eight GPUs per node for production shapes. Multi-GPU renders set `NCCL_P2P_DISABLE=1` until the VM PCIe peer-to-peer paths are qualified; one-GPU renders leave P2P settings unset. These overlays have no measured performance baseline yet. The hardware-qualified run used two nodes with one GPU each; multi-GPU nodes are not yet qualified.
+
+The generic NCCL defaults (`maxBytes: 16G`, `numIterations: 100`,
+`numCycles: 10`) are too large for the observed Akamai TCP bandwidth to finish
+within the one-hour launcher timeout. Set all three options explicitly for
+Akamai all-reduce, all-gather, and alltoall. This bounded configuration matches
+the completed two-node all-reduce run:
+
+```yaml
+spec:
+  gpusPerNode: 1
+  nodesPerJob: 2
+  maxBytes: 1G
+  numIterations: 20
+  numCycles: 1
+  categories:
+    - domain: communication
+      variant: nccl-all-reduce
+```
+
+Use the same bounds when selecting `nccl-all-gather` or `nccl-alltoall`;
+those collectives still require hardware validation. Increase the workload
+only after measuring its duration on the target network. The completed
+all-reduce run checked sizes from 8 bytes through 1 GiB with zero correctness
+errors; no performance threshold was enforced.
 
 ## Host RDMA device access
 

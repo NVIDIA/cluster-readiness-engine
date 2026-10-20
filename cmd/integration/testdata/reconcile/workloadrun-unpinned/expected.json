@@ -1619,8 +1619,8 @@
                         "value": "eth0"
                       },
                       {
-                        "name": "NCCL_P2P_LEVEL",
-                        "value": "PHB"
+                        "name": "NCCL_P2P_DISABLE",
+                        "value": "1"
                       }
                     ]
                   }

@@ -22,11 +22,14 @@ func TestAkamaiTCPRendering(t *testing.T) {
 	p := testutil.TestCaseParser{Subdir: "akamai-tcp", ExpectedSuffix: testutil.SuffixJSON}
 	p.TestDir(t, func(tc *testutil.TestCase) error {
 		var input struct {
-			Platform    string `json:"platform"`
-			Domain      string `json:"domain"`
-			Variant     string `json:"variant"`
-			GpusPerNode int32  `json:"gpusPerNode"`
-			NodesPerJob int32  `json:"nodesPerJob"`
+			Platform      string `json:"platform"`
+			Domain        string `json:"domain"`
+			Variant       string `json:"variant"`
+			GpusPerNode   int32  `json:"gpusPerNode"`
+			NodesPerJob   int32  `json:"nodesPerJob"`
+			MaxBytes      string `json:"maxBytes"`
+			NumIterations *int32 `json:"numIterations"`
+			NumCycles     *int32 `json:"numCycles"`
 		}
 		if err := yaml.Unmarshal([]byte(tc.Inputs["input.yaml"]), &input); err != nil {
 			return err
@@ -38,6 +41,7 @@ func TestAkamaiTCPRendering(t *testing.T) {
 			Categories: []nvcrev1alpha1.CertificateCategory{{Domain: input.Domain, Variant: input.Variant}},
 			CategoryOptions: nvcrev1alpha1.CategoryOptions{
 				GpusPerNode: &input.GpusPerNode, NodesPerJob: &input.NodesPerJob,
+				MaxBytes: input.MaxBytes, NumIterations: input.NumIterations, NumCycles: input.NumCycles,
 			},
 		}}
 		workflows, err := renderCertification(cert, input.Platform, "rtxpro6000", nil, "")
@@ -56,14 +60,12 @@ func TestAkamaiTCPRendering(t *testing.T) {
 			GPULimits         string            `json:"gpuLimits"`
 			ExtendedResources map[string]string `json:"extendedResources"`
 			Executable        string            `json:"executable,omitempty"`
+			PerfArgs          []string          `json:"perfArgs,omitempty"`
 		}
 		result.NCCLEnv = map[string]string{}
 		result.ExtendedResources = map[string]string{}
 		capture := func(name, value string) {
-			switch name {
-			case "NCCL_DEBUG", "NCCL_IB_DISABLE", "NCCL_NET_PLUGIN", "NCCL_SOCKET_IFNAME", "NCCL_P2P_LEVEL":
-				result.NCCLEnv[name] = value
-			}
+			recordAkamaiTransportEnv(result.NCCLEnv, name, value)
 		}
 		wf := &workflows[0]
 		for _, dep := range wf.Spec.Dependencies {
@@ -118,6 +120,9 @@ func TestAkamaiTCPRendering(t *testing.T) {
 			}
 			if strings.HasSuffix(arg, "_perf_mpi") {
 				result.Executable = arg
+				if input.MaxBytes != "" {
+					result.PerfArgs = job.Trainer.Args[i+1:]
+				}
 			}
 		}
 		data, err := json.MarshalIndent(result, "", "  ")
@@ -127,4 +132,12 @@ func TestAkamaiTCPRendering(t *testing.T) {
 		tc.Actual = string(data) + "\n"
 		return nil
 	})
+}
+
+// recordAkamaiTransportEnv keeps the projection focused on transport selection.
+func recordAkamaiTransportEnv(values map[string]string, name, value string) {
+	switch name {
+	case "NCCL_DEBUG", "NCCL_IB_DISABLE", "NCCL_NET_PLUGIN", "NCCL_SOCKET_IFNAME", "NCCL_P2P_LEVEL", "NCCL_P2P_DISABLE":
+		values[name] = value
+	}
 }

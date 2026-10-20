@@ -9,7 +9,7 @@
     "-x",
     "NCCL_SOCKET_IFNAME=eth0",
     "-x",
-    "NCCL_P2P_LEVEL=PHB",
+    "NCCL_P2P_DISABLE=1",
     "--tag-output"
   ]
 }
