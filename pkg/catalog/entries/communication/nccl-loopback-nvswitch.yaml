@@ -22,6 +22,16 @@ dependencies:
               labels:
                 trainer.kubeflow.org/trainjob-ancestor-step: trainer
             spec:
+              # The one pod is the test: a non-zero exit fails the Job at once.
+              backoffLimit: 0
+              # An evicted or preempted pod is replaced without counting
+              # against backoffLimit. podFailurePolicy requires restartPolicy Never.
+              podFailurePolicy:
+                rules:
+                - action: Ignore
+                  onPodConditions:
+                  - status: "True"
+                    type: DisruptionTarget
               template:
                 spec:
                   containers:
@@ -36,7 +46,12 @@ dependencies:
                       capabilities:
                         add:
                         - IPC_LOCK
-                  restartPolicy: OnFailure
+                  # Fail fast (issue #498). The one pod is the test, so an
+                  # in-place OnFailure restart only repeats a failure while the
+                  # node holds its GPUs. Never keeps the failed pod and its log
+                  # for status.failureLog; NVCRE's own retryFailedGroups
+                  # re-creates the whole Job when a retry is wanted.
+                  restartPolicy: Never
                   tolerations:
                   - operator: Exists
 jobTemplate:

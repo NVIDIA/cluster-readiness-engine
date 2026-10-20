@@ -309,3 +309,50 @@ func TestBuildMPIRuntime_NoGangScheduler_KeepsDependsOn(t *testing.T) {
 		t.Errorf("startupPolicyOrder = %q, want empty without a gang scheduler", got)
 	}
 }
+
+// TestBuildMPIRuntime_LauncherFailsFast pins issue #498 on the WorkloadRun
+// path. The launcher used restartPolicy OnFailure with the default
+// backoffLimit of 6, so a launcher that failed deterministically crash-looped
+// for minutes while every worker held its GPUs. It now uses Never, one
+// replacement pod (backoffLimit 1, covering a launcher that starts before it
+// can reach a worker outside KAI), and a podFailurePolicy that replaces an
+// evicted or preempted launcher without counting it. The worker keeps
+// OnFailure: it only runs sshd, and the JobSet tears it down once the launcher
+// Job fails. The shape is the same with and without KAI.
+func TestBuildMPIRuntime_LauncherFailsFast(t *testing.T) {
+	for _, scheduler := range []string{"", testSchedulerName} {
+		cfg := baseRuntimeConfig()
+		cfg.GangSchedulerName = scheduler
+
+		dep := BuildMPIRuntime(cfg)
+
+		var rt map[string]any
+		if err := json.Unmarshal(dep.Raw, &rt); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		jobs := rt["spec"].(map[string]any)["template"].(map[string]any)["spec"].(map[string]any)["replicatedJobs"].([]any)
+		jobSpec := func(i int) map[string]any {
+			return jobs[i].(map[string]any)["template"].(map[string]any)["spec"].(map[string]any)
+		}
+		podSpec := func(i int) map[string]any {
+			return jobSpec(i)["template"].(map[string]any)["spec"].(map[string]any)
+		}
+
+		if got := podSpec(1)["restartPolicy"]; got != "Never" {
+			t.Errorf("scheduler %q: launcher restartPolicy = %v, want Never", scheduler, got)
+		}
+		if got := jobSpec(1)["backoffLimit"]; got != float64(1) {
+			t.Errorf("scheduler %q: launcher backoffLimit = %v, want 1", scheduler, got)
+		}
+		pfp, _ := json.Marshal(jobSpec(1)["podFailurePolicy"])
+		if want := `{"rules":[{"action":"Ignore","onPodConditions":[{"status":"True","type":"DisruptionTarget"}]}]}`; string(pfp) != want {
+			t.Errorf("scheduler %q: launcher podFailurePolicy = %s, want %s", scheduler, pfp, want)
+		}
+		if got := podSpec(0)["restartPolicy"]; got != "OnFailure" {
+			t.Errorf("scheduler %q: worker restartPolicy = %v, want OnFailure", scheduler, got)
+		}
+		if _, ok := jobSpec(0)["backoffLimit"]; ok {
+			t.Errorf("scheduler %q: worker backoffLimit is set, want the default", scheduler)
+		}
+	}
+}

@@ -1585,23 +1585,7 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *nvcrev1alpha
 		return
 	}
 
-	// Find the pod that caused the failure: first pod with a non-zero exit code,
-	// preferring OOMKilled (root cause) over other failures.
-	var failedPod *corev1.Pod
-	var failedContainer *corev1.ContainerStatus
-	for i := range podList.Items {
-		pod := &podList.Items[i]
-		for j := range pod.Status.ContainerStatuses {
-			cs := &pod.Status.ContainerStatuses[j]
-			if cs.State.Terminated == nil || cs.State.Terminated.ExitCode == 0 {
-				continue
-			}
-			if failedPod == nil || cs.State.Terminated.Reason == "OOMKilled" {
-				failedPod = pod
-				failedContainer = cs
-			}
-		}
-	}
+	failedPod, failedContainer := failedContainerOf(podList.Items)
 	// Record why there is no log rather than leaving the field unset. A Job whose
 	// pod was reaped before the failure was recorded (backoff limit exceeded, for
 	// example) would otherwise carry no diagnostics at all, and the operator would
@@ -1648,6 +1632,56 @@ func (r *JobReconciler) captureFailureLog(ctx context.Context, job *nvcrev1alpha
 	job.Status.FailureLog = fl
 	log.Info("Captured failure log", "pod", failedPod.Name, "node", failedPod.Spec.NodeName,
 		"exitCode", fl.ExitCode, "bytes", len(fl.Tail))
+}
+
+// failedContainerOf picks the container whose failure the Job reports: an
+// OOMKilled container first (the root cause), otherwise the container that
+// terminated non-zero earliest. Order matters because the failure is recorded
+// while the rest of the workload is being torn down: when an MPI launcher
+// fails, JobSet stops the workers, and a worker whose sshd exits non-zero on
+// the way down must not be reported in place of the launcher, which stopped
+// first. List order is not a substitute; it carries no meaning.
+//
+// Init containers count too. Under KAI the launcher's wait for the workers
+// runs in an init container (launcherWaitScript), and with restartPolicy
+// Never its failure ends the pod there, so its log, which names the worker
+// that never answered, is the diagnosis.
+func failedContainerOf(pods []corev1.Pod) (*corev1.Pod, *corev1.ContainerStatus) {
+	var failedPod *corev1.Pod
+	var failedContainer *corev1.ContainerStatus
+	for i := range pods {
+		pod := &pods[i]
+		for _, statuses := range [][]corev1.ContainerStatus{pod.Status.InitContainerStatuses, pod.Status.ContainerStatuses} {
+			for j := range statuses {
+				cs := &statuses[j]
+				if cs.State.Terminated == nil || cs.State.Terminated.ExitCode == 0 {
+					continue
+				}
+				if failedContainer == nil || failsBefore(cs.State.Terminated, failedContainer.State.Terminated) {
+					failedPod = pod
+					failedContainer = cs
+				}
+			}
+		}
+	}
+	return failedPod, failedContainer
+}
+
+// failsBefore reports whether termination a outranks b as the Job's failure:
+// OOMKilled over any other reason, then the earlier finish. A zero FinishedAt
+// sorts last, so a recorded time always wins over a missing one.
+func failsBefore(a, b *corev1.ContainerStateTerminated) bool {
+	if aOOM, bOOM := a.Reason == "OOMKilled", b.Reason == "OOMKilled"; aOOM != bOOM {
+		return aOOM
+	}
+	switch {
+	case a.FinishedAt.IsZero():
+		return false
+	case b.FinishedAt.IsZero():
+		return true
+	default:
+		return a.FinishedAt.Before(&b.FinishedAt)
+	}
 }
 
 // setJobHardwareFailed sets the HardwareFailed condition and records the failed nodes.

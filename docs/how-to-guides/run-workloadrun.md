@@ -265,11 +265,13 @@ minutes. Anything that delays a worker's start now delays that probe: a slow
 image pull, a volume that is slow to attach, a `hostPath` directory missing on
 a node, or an init container that stages data. Past the limit the init
 container exits with `not every worker answered sshd within 20 minutes` and
-points at the worker pods, whose events carry the actual cause; the pod then
-restarts the init container and waits again. Each restart counts toward the
-launcher Job's `backoffLimit`, 6 unless an override sets one, after which the
-launcher Job fails. Outside KAI the launcher is only created once every worker
-is Ready, and the Job waits until `spec.timeoutPerJob`.
+points at the worker pods, whose events carry the actual cause. The launcher
+pod uses `restartPolicy: Never`, so that pod fails, and the launcher Job's
+`backoffLimit` of 1 (unless an override sets another) gives it one replacement
+pod, which waits again. When that one times out too, the launcher Job fails and
+`status.failureLog` carries the init container's message. Outside KAI the
+launcher is only created once every worker is Ready, and the Job waits until
+`spec.timeoutPerJob`.
 
 ## With bandwidth measurement
 

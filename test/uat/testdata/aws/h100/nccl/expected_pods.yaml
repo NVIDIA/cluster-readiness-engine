@@ -162,7 +162,7 @@ spec:
       readOnly: true
   preemptionPolicy: PreemptLowerPriority
   priority: 0
-  restartPolicy: OnFailure
+  restartPolicy: Never
   schedulerName: default-scheduler
   securityContext: {}
   serviceAccount: default

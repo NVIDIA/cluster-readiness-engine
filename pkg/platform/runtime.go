@@ -578,10 +578,16 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 		}
 	}
 
+	// The launcher fails fast (issue #498). Once the workers are up, a launcher
+	// that exits non-zero fails the same way on every retry, so an in-place
+	// OnFailure restart only crash-loops while every worker holds its GPUs.
+	// Never keeps the failed pod and its log for status.failureLog, and
+	// NVCRE's own retryFailedGroups re-creates the whole Job when a retry is
+	// wanted. See launcherJobBackoffLimit for the one replacement pod.
 	launcherPodSpec := map[string]any{
 		"initContainers": []any{launcherInitContainer},
 		keyContainers:    []any{launcherContainer},
-		"restartPolicy":  "OnFailure",
+		"restartPolicy":  "Never",
 		keyVolumes:       launcherVolumes,
 	}
 	launcherJobLabels := map[string]any{
@@ -614,7 +620,9 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 				keyLabels: launcherJobLabels,
 			},
 			keySpec: map[string]any{
-				keyTemplate: launcherPodTemplate,
+				"backoffLimit":     launcherJobBackoffLimit,
+				"podFailurePolicy": launcherPodFailurePolicy(),
+				keyTemplate:        launcherPodTemplate,
 			},
 		},
 	}
@@ -704,4 +712,33 @@ func BuildExecRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	// Exec uses the same runtime shape as torch (simple single-replicatedJob)
 	// since the command is injected via the JobTemplate trainer field.
 	return BuildTorchRuntime(cfg)
+}
+
+// launcherJobBackoffLimit is the launcher Job's backoffLimit: one replacement
+// pod. Outside KAI the dependsOn gate proves each worker's own loopback sshd
+// session, not that the launcher can reach it (DNS for the worker's hostname,
+// network policy on port 22), and launcherWaitScript runs only under KAI. With
+// restartPolicy Never a replacement pod costs seconds, so one retry covers a
+// launcher that started a moment too early without the crash-loop backoff an
+// in-place restart brings. A deterministic failure is reported after the
+// second attempt.
+const launcherJobBackoffLimit = 1
+
+// launcherPodFailurePolicy keeps an evicted or preempted launcher from failing
+// the run: a pod failure carrying the DisruptionTarget condition is replaced
+// without counting against backoffLimit. Kubernetes accepts a podFailurePolicy
+// only on a Job whose pods use restartPolicy Never. The condition status is
+// spelled out because Trainer's TrainingRuntime schema requires it; the Job
+// API would default it to True.
+func launcherPodFailurePolicy() map[string]any {
+	return map[string]any{
+		"rules": []any{
+			map[string]any{
+				"action": "Ignore",
+				"onPodConditions": []any{
+					map[string]any{"type": "DisruptionTarget", "status": "True"},
+				},
+			},
+		},
+	}
 }

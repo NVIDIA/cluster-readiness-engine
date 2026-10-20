@@ -346,6 +346,20 @@
                         }
                       },
                       "spec": {
+                        "backoffLimit": 1,
+                        "podFailurePolicy": {
+                          "rules": [
+                            {
+                              "action": "Ignore",
+                              "onPodConditions": [
+                                {
+                                  "status": "True",
+                                  "type": "DisruptionTarget"
+                                }
+                              ]
+                            }
+                          ]
+                        },
                         "template": {
                           "spec": {
                             "containers": [
@@ -434,7 +448,7 @@
                                 ]
                               }
                             ],
-                            "restartPolicy": "OnFailure",
+                            "restartPolicy": "Never",
                             "volumes": [
                               {
                                 "emptyDir": {},
