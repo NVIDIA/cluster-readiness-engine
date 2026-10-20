@@ -73,7 +73,7 @@ jobTemplate:
                           {{- if .ImagePullSecrets }}
                           imagePullSecrets:
                           {{- range .ImagePullSecrets }}
-                          - name: {{ .Name }}
+                          - name: {{ printf "%q" .Name }}
                           {{- end }}
                           {{- end }}
         runtimeRef:
