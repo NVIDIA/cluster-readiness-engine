@@ -169,6 +169,22 @@ func TestSSHDWorkerInvariants(t *testing.T) {
 	})
 }
 
+// TestSSHDInstallViolationsPin pins the install predicate in both directions.
+// Every rendered worker passes it, so the golden cases alone cannot show that
+// it would catch the unbounded install it replaced.
+func TestSSHDInstallViolationsPin(t *testing.T) {
+	unbounded := map[string]any{keyArgs: []any{"set -x && " +
+		"test -x /usr/sbin/sshd || (apt-get update && apt-get install -y --no-install-recommends openssh-server) && " +
+		sshdLaunchMarker}}
+	require.NotEmpty(t, sshdInstallViolations("unbounded", unbounded))
+
+	bounded := map[string]any{keyArgs: []string{"set -x && " + sshdInstallCommand + " && " + sshdLaunchMarker}}
+	require.Empty(t, sshdInstallViolations("bounded", bounded))
+
+	prebaked := map[string]any{keyArgs: []any{sshdLaunchMarker}}
+	require.Empty(t, sshdInstallViolations("prebaked", prebaked))
+}
+
 // renderSSHDCase runs the renderer the case names and returns every container
 // it produced.
 func renderSSHDCase(t testing.TB, in sshdInvariantsInput) ([]foundContainer, []string, error) {
@@ -356,17 +372,23 @@ func projectContainer(fc foundContainer) (*containerProjection, []string, bool) 
 	caps := capabilitiesAdded(fc.c)
 	probe := projectProbe(fc.c)
 	workerSlot := fc.job == nodeJobName && name == nodeJobName && !fc.init
+	where := describeContainer(fc, name)
+	// Evaluated before the relevance gate: a container whose only bearing on
+	// the invariant is an unbounded openssh-server install (an init container,
+	// say) execs no sshd and carries no capability or probe, so the gate
+	// would otherwise skip it.
+	installViolations := sshdInstallViolations(where, fc.c)
 
 	// A base worker is always recorded, even a torch one with nothing on it,
 	// so the golden shows the slot. A fragment is recorded only when it says
 	// something about the invariant; most fragments patch env or resources
 	// on the worker and inherit everything this test cares about.
-	relevant := sshd || len(caps) > 0 || probe != nil || (workerSlot && !fc.fragment)
+	relevant := sshd || len(caps) > 0 || probe != nil || (workerSlot && !fc.fragment) ||
+		len(installViolations) > 0
 	if !relevant {
 		return nil, nil, false
 	}
 
-	where := describeContainer(fc, name)
 	var violations []string
 	restated := false
 	switch {
@@ -380,6 +402,7 @@ func projectContainer(fc foundContainer) (*containerProjection, []string, bool) 
 	case slices.Contains(caps, capSYSChroot):
 		violations = []string{where + ": does not run sshd but requests " + capSYSChroot}
 	}
+	violations = append(violations, installViolations...)
 
 	return &containerProjection{
 		Source:            fc.source,
@@ -546,6 +569,41 @@ func walkContainers(node any, job string, visit func(job string, init bool, c ma
 			walkContainers(value, job, visit)
 		}
 	}
+}
+
+// sshdInstallViolations reports a container that installs openssh-server any
+// other way than sshdInstallCommand. An unbounded install that hangs keeps the
+// worker NotReady, so the launcher is never created and the Job waits out
+// timeoutPerJob (issue #527). Requiring the command verbatim also keeps the
+// catalog's copy in _lib/nccl/mpi-worker-sshd-args.yaml from drifting from
+// the builder's.
+func sshdInstallViolations(where string, c map[string]any) []string {
+	script := containerScript(c)
+	if !strings.Contains(script, "openssh-server") || strings.Contains(script, sshdInstallCommand) {
+		return nil
+	}
+	return []string{where + ": installs openssh-server without sshdInstallCommand; " +
+		"an unbounded install that hangs keeps the worker NotReady until timeoutPerJob"}
+}
+
+// containerScript joins the container's command and args as plain strings.
+// Unlike runsSSHD it does not match against JSON, which escapes the & and >
+// that sshdInstallCommand contains.
+func containerScript(c map[string]any) string {
+	var parts []string
+	for _, key := range []string{keyCommand, keyArgs} {
+		switch typed := c[key].(type) {
+		case []string:
+			parts = append(parts, typed...)
+		case []any:
+			for _, v := range typed {
+				if s, ok := v.(string); ok {
+					parts = append(parts, s)
+				}
+			}
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 // runsSSHD reports whether the container execs sshd, checking command and args
