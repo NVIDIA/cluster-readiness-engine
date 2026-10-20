@@ -57,6 +57,7 @@ func indexedClient(pods ...*corev1.Pod) client.Client {
 		Build()
 }
 
+// names returns the pods' names, sorted.
 func names(pods []corev1.Pod) []string {
 	out := make([]string, 0, len(pods))
 	for i := range pods {

@@ -60,6 +60,7 @@ var podReadsTotal = prometheus.NewCounterVec(
 	[]string{"read", "source", "result"},
 )
 
+// init registers the Pod read counter with the controller-runtime registry.
 func init() {
 	metrics.Registry.MustRegister(podReadsTotal)
 }
@@ -163,6 +164,7 @@ func (r *Reader) NamespacePods(ctx context.Context, namespace string) ([]corev1.
 	return finish(ctx, "NamespacePods", sourceLive, namespace, pods, err)
 }
 
+// list reads the pods matching opts from reader.
 func list(ctx context.Context, reader client.Reader, opts ...client.ListOption) ([]corev1.Pod, error) {
 	var pods corev1.PodList
 	if err := reader.List(ctx, &pods, opts...); err != nil {

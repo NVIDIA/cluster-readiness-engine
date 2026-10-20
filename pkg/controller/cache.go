@@ -140,6 +140,7 @@ var unscopedCacheReadsTotal = prometheus.NewCounterVec(
 	[]string{labelKind, labelOp},
 )
 
+// init registers the refused-read counter with the controller-runtime registry.
 func init() {
 	metrics.Registry.MustRegister(unscopedCacheReadsTotal)
 }
@@ -217,6 +218,7 @@ func (c *scopedCache) scopeOf(obj kruntime.Object) *cacheScope {
 	return scopeForGVK(gvk)
 }
 
+// scopeForGVK returns the guarded scope for gvk, or nil when the kind is not guarded.
 func scopeForGVK(gvk schema.GroupVersionKind) *cacheScope {
 	for i := range guardedScopes {
 		if guardedScopes[i].gvk == gvk {

@@ -33,26 +33,31 @@ type recordingCache struct {
 	reached int
 }
 
+// Get records that the call reached the inner cache.
 func (c *recordingCache) Get(context.Context, client.ObjectKey, client.Object, ...client.GetOption) error {
 	c.reached++
 	return nil
 }
 
+// List records that the call reached the inner cache.
 func (c *recordingCache) List(context.Context, client.ObjectList, ...client.ListOption) error {
 	c.reached++
 	return nil
 }
 
+// GetInformer records that the call reached the inner cache.
 func (c *recordingCache) GetInformer(context.Context, client.Object, ...cache.InformerGetOption) (cache.Informer, error) {
 	c.reached++
 	return nil, nil
 }
 
+// GetInformerForKind records that the call reached the inner cache.
 func (c *recordingCache) GetInformerForKind(context.Context, schema.GroupVersionKind, ...cache.InformerGetOption) (cache.Informer, error) {
 	c.reached++
 	return nil, nil
 }
 
+// newTestScopedCache returns a guard over a recordingCache, and the recordingCache.
 func newTestScopedCache() (*scopedCache, *recordingCache) {
 	inner := &recordingCache{}
 	return &scopedCache{Cache: inner, scheme: clientgoscheme.Scheme}, inner
