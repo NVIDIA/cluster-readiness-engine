@@ -583,7 +583,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	// OnFailure restart only crash-loops while every worker holds its GPUs.
 	// Never keeps the failed pod and its log for status.failureLog, and
 	// NVCRE's own retryFailedGroups re-creates the whole Job when a retry is
-	// wanted. See launcherJobBackoffLimit for the one replacement pod.
+	// wanted. See launcherJobBackoffLimitFor for the replacement pod outside KAI.
 	launcherPodSpec := map[string]any{
 		"initContainers": []any{launcherInitContainer},
 		keyContainers:    []any{launcherContainer},
@@ -620,7 +620,7 @@ func BuildMPIRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 				keyLabels: launcherJobLabels,
 			},
 			keySpec: map[string]any{
-				"backoffLimit":     launcherJobBackoffLimit,
+				"backoffLimit":     launcherJobBackoffLimitFor(cfg),
 				"podFailurePolicy": launcherPodFailurePolicy(),
 				keyTemplate:        launcherPodTemplate,
 			},
@@ -714,15 +714,30 @@ func BuildExecRuntime(cfg RuntimeConfig) nvcrev1alpha1.DependencySpec {
 	return BuildTorchRuntime(cfg)
 }
 
-// launcherJobBackoffLimit is the launcher Job's backoffLimit: one replacement
-// pod. Outside KAI the dependsOn gate proves each worker's own loopback sshd
-// session, not that the launcher can reach it (DNS for the worker's hostname,
-// network policy on port 22), and launcherWaitScript runs only under KAI. With
-// restartPolicy Never a replacement pod costs seconds, so one retry covers a
-// launcher that started a moment too early without the crash-loop backoff an
-// in-place restart brings. A deterministic failure is reported after the
-// second attempt.
+// launcherJobBackoffLimit is the launcher Job's backoffLimit outside KAI: one
+// replacement pod. There the dependsOn gate proves each worker's own loopback
+// sshd session, not that the launcher can reach it (DNS for the worker's
+// hostname, network policy on port 22), so one retry covers a launcher that
+// started a moment too early. With restartPolicy Never the Job controller
+// re-creates the failed pod after its pod-failure backoff (about 10s), without
+// the kubelet's crash-loop backoff. A deterministic failure is reported after
+// the second attempt.
 const launcherJobBackoffLimit = 1
+
+// launcherJobBackoffLimitKAI is the launcher Job's backoffLimit under KAI: no
+// replacement pod. launcherWaitScript already waits for every worker's sshd
+// from the launcher itself before mpirun starts, so the early-start race the
+// outside-KAI retry covers cannot happen, and a retry would only add a second
+// 20-minute wait while the whole gang holds its GPUs.
+const launcherJobBackoffLimitKAI = 0
+
+// launcherJobBackoffLimitFor returns the launcher Job's backoffLimit for cfg.
+func launcherJobBackoffLimitFor(cfg RuntimeConfig) int {
+	if isKAIGangScheduler(cfg) {
+		return launcherJobBackoffLimitKAI
+	}
+	return launcherJobBackoffLimit
+}
 
 // launcherPodFailurePolicy keeps an evicted or preempted launcher from failing
 // the run: a pod failure carrying the DisruptionTarget condition is replaced

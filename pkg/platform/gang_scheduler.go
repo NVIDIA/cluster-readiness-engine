@@ -239,6 +239,12 @@ func ApplyGangSchedulerToDependencies(deps []nvcrev1alpha1.DependencySpec, gs *n
 						inits, _ := podSpec[keyInitContainers].([]any)
 						podSpec[keyInitContainers] = append(inits, launcherWaitInitContainer(launcherImage(launcherJob)))
 					}
+					// The wait step covers launcher-to-worker reachability, so the
+					// catalog's one replacement pod (launcherJobBackoffLimit) would
+					// only add a second 20-minute wait while the gang holds its
+					// GPUs (see launcherJobBackoffLimitKAI). A backoffLimit other
+					// than the catalog's was set on purpose and is kept.
+					setKAILauncherBackoffLimit(launcherJob)
 				}
 			}
 		}
@@ -250,6 +256,23 @@ func ApplyGangSchedulerToDependencies(deps []nvcrev1alpha1.DependencySpec, gs *n
 		deps[i].Raw = raw
 	}
 	return nil
+}
+
+// setKAILauncherBackoffLimit lowers the launcher Job's backoffLimit from the
+// catalog's launcherJobBackoffLimit to launcherJobBackoffLimitKAI. Any other
+// value, or none, is left as it is.
+func setKAILauncherBackoffLimit(launcherJob map[string]any) {
+	jobTemplate, ok := launcherJob[keyTemplate].(map[string]any)
+	if !ok {
+		return
+	}
+	jobSpec, ok := jobTemplate[keySpec].(map[string]any)
+	if !ok {
+		return
+	}
+	if limit, ok := jobSpec["backoffLimit"].(float64); ok && limit == launcherJobBackoffLimit {
+		jobSpec["backoffLimit"] = launcherJobBackoffLimitKAI
+	}
 }
 
 // keyStartupPolicy is the JobSet field that orders replicated jobs. It is
