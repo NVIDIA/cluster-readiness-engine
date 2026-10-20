@@ -4,6 +4,7 @@
 package platform
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"os/exec"
@@ -21,7 +22,9 @@ import (
 // apt-get and dpkg, so they exercise what the text-only invariants cannot:
 // that a hung attempt is killed and leaves nothing behind, that an interrupted
 // install is recovered before the retry, and that the attempts run out. They
-// use the host's GNU timeout and skip without it.
+// need the host's GNU timeout (and one needs util-linux setsid): without them
+// they skip locally and fail in CI, where they are the only coverage of the
+// command's runtime behaviour.
 //
 // The fakes log every call to $CALLS and keep state in $STATE. The command's
 // sshd path is moved into the test directory, and its timeouts are shortened
@@ -59,15 +62,47 @@ echo "dpkg $*" >> "$CALLS"
 /bin/rm -f "$STATE/half-installed"
 `
 
+// requireHostTool returns the path of a host tool these tests need. Without it
+// they skip locally but fail in CI, the same split requireHelm makes in
+// test/helm: a runner that lost the tool would otherwise skip the only tests
+// that execute sshdInstallCommand, and stay green.
+func requireHostTool(t *testing.T, name, what string) string {
+	t.Helper()
+	path, err := exec.LookPath(name)
+	if err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("%s is required in CI but %s is not on PATH", what, name)
+		}
+		t.Skipf("no %s on PATH; these tests need %s", name, what)
+	}
+	return path
+}
+
+// processGone reports whether pid has exited. A killed process whose parent
+// died with it is reparented, and stays a zombie until something reaps it:
+// briefly under a real init, forever in a container whose PID 1 is go test
+// itself. kill(pid, 0) still succeeds on a zombie, so on Linux the state in
+// /proc counts a zombie as gone; elsewhere only ESRCH does.
+func processGone(pid int) bool {
+	if errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) {
+		return true
+	}
+	stat, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return false
+	}
+	// The state follows the parenthesised command name, which may itself
+	// contain spaces or parentheses.
+	i := bytes.LastIndexByte(stat, ')')
+	return i >= 0 && i+2 < len(stat) && stat[i+2] == 'Z'
+}
+
 // runSSHDInstall writes the fakes into a fresh directory and runs the command.
 // withTimeout puts the host's timeout on PATH; prebaked creates the sshd the
 // command checks for.
 func runSSHDInstall(t *testing.T, fakeAptGet string, withTimeout, prebaked bool) sshdInstallRun {
 	t.Helper()
-	timeoutPath, err := exec.LookPath("timeout")
-	if err != nil {
-		t.Skip("no timeout on PATH; these tests need GNU coreutils timeout")
-	}
+	timeoutPath := requireHostTool(t, "timeout", "GNU coreutils timeout")
 
 	dir := t.TempDir()
 	write := func(name, body string) {
@@ -159,9 +194,7 @@ esac
 		require.NoError(t, err)
 		pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
 		require.NoError(t, err)
-		// Killed orphans stay zombies until init reaps them, and kill(pid, 0)
-		// succeeds on a zombie, so allow a moment for the reap.
-		require.Eventually(t, func() bool { return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) },
+		require.Eventually(t, func() bool { return processGone(pid) },
 			5*time.Second, 50*time.Millisecond, "the hung %s (pid %d) survived its attempt", name, pid)
 	}
 }
@@ -193,9 +226,7 @@ esac
 // Dpkg::Use-Pty=0 must leave the fake dpkg alive and fail the PID assertion.
 func TestSSHDInstallCommandKeepsDpkgInTimeoutGroup(t *testing.T) {
 	t.Parallel()
-	if _, err := exec.LookPath("setsid"); err != nil {
-		t.Skip("no setsid on PATH; this test needs util-linux setsid")
-	}
+	requireHostTool(t, "setsid", "util-linux setsid")
 	run := runSSHDInstall(t, `#!/bin/sh
 echo "apt-get $*" >> "$CALLS"
 case "$*" in
@@ -220,7 +251,7 @@ esac
 	// Also clean up the deliberately detached child if this regresses.
 	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
 	require.Equal(t, 0, run.exitCode, run.stderr)
-	require.Eventually(t, func() bool { return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) },
+	require.Eventually(t, func() bool { return processGone(pid) },
 		5*time.Second, 50*time.Millisecond, "dpkg (pid %d) escaped the timeout process group", pid)
 	require.Equal(t, 2, run.count(fakeCallInstall))
 	require.Equal(t, 1, run.count(fakeCallConfigure))

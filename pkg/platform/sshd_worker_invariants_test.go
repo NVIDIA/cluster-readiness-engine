@@ -372,17 +372,23 @@ func projectContainer(fc foundContainer) (*containerProjection, []string, bool) 
 	caps := capabilitiesAdded(fc.c)
 	probe := projectProbe(fc.c)
 	workerSlot := fc.job == nodeJobName && name == nodeJobName && !fc.init
+	where := describeContainer(fc, name)
+	// Evaluated before the relevance gate: a container whose only bearing on
+	// the invariant is an unbounded openssh-server install (an init container,
+	// say) execs no sshd and carries no capability or probe, so the gate
+	// would otherwise skip it.
+	installViolations := sshdInstallViolations(where, fc.c)
 
 	// A base worker is always recorded, even a torch one with nothing on it,
 	// so the golden shows the slot. A fragment is recorded only when it says
 	// something about the invariant; most fragments patch env or resources
 	// on the worker and inherit everything this test cares about.
-	relevant := sshd || len(caps) > 0 || probe != nil || (workerSlot && !fc.fragment)
+	relevant := sshd || len(caps) > 0 || probe != nil || (workerSlot && !fc.fragment) ||
+		len(installViolations) > 0
 	if !relevant {
 		return nil, nil, false
 	}
 
-	where := describeContainer(fc, name)
 	var violations []string
 	restated := false
 	switch {
@@ -396,7 +402,7 @@ func projectContainer(fc foundContainer) (*containerProjection, []string, bool) 
 	case slices.Contains(caps, capSYSChroot):
 		violations = []string{where + ": does not run sshd but requests " + capSYSChroot}
 	}
-	violations = append(violations, sshdInstallViolations(where, fc.c)...)
+	violations = append(violations, installViolations...)
 
 	return &containerProjection{
 		Source:            fc.source,
