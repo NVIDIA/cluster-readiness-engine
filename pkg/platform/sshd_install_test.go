@@ -36,6 +36,7 @@ type sshdInstallRun struct {
 	dir      string
 }
 
+// count returns how many logged calls start with prefix.
 func (r sshdInstallRun) count(prefix string) int {
 	n := 0
 	for _, c := range r.calls {
@@ -111,6 +112,8 @@ func runSSHDInstall(t *testing.T, fakeAptGet string, withTimeout, prebaked bool)
 	return run
 }
 
+// A working apt installs on the first attempt, with no recovery step and no
+// failure message.
 func TestSSHDInstallCommandSucceedsFirstTime(t *testing.T) {
 	t.Parallel()
 	run := runSSHDInstall(t, "#!/bin/sh\necho \"apt-get $*\" >> \"$CALLS\"\n", true, false)
@@ -223,6 +226,8 @@ esac
 	require.Equal(t, 1, run.count(fakeCallConfigure))
 }
 
+// An apt that always fails uses all three attempts, runs dpkg --configure -a
+// before each retry, and exits 1 with the last attempt named.
 func TestSSHDInstallCommandGivesUpAfterThreeAttempts(t *testing.T) {
 	t.Parallel()
 	run := runSSHDInstall(t, "#!/bin/sh\necho \"apt-get $*\" >> \"$CALLS\"\nexit 100\n", true, false)
@@ -234,6 +239,7 @@ func TestSSHDInstallCommandGivesUpAfterThreeAttempts(t *testing.T) {
 	require.Contains(t, run.stderr, "sshd install attempt 3 of 3 failed or timed out")
 }
 
+// An image that ships sshd never reaches apt.
 func TestSSHDInstallCommandSkipsPrebakedSSHD(t *testing.T) {
 	t.Parallel()
 	run := runSSHDInstall(t, "#!/bin/sh\necho \"apt-get $*\" >> \"$CALLS\"\n", true, true)
