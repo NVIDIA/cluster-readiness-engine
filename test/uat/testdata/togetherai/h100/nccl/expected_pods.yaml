@@ -286,7 +286,7 @@ spec:
           echo "sshd is not installed and the image has no apt-get or timeout to install it; use an image that ships /usr/sbin/sshd" >&2
           exit 1
         fi
-        apt="-o Acquire::Retries=3 -o Acquire::http::Timeout=30"
+        apt="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Dpkg::Use-Pty=0"
         for attempt in 1 2 3; do
           [ "$attempt" -eq 1 ] || timeout -s KILL 120 dpkg --configure -a
           timeout -s KILL 120 apt-get $apt update &&
@@ -468,7 +468,7 @@ spec:
           echo "sshd is not installed and the image has no apt-get or timeout to install it; use an image that ships /usr/sbin/sshd" >&2
           exit 1
         fi
-        apt="-o Acquire::Retries=3 -o Acquire::http::Timeout=30"
+        apt="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Dpkg::Use-Pty=0"
         for attempt in 1 2 3; do
           [ "$attempt" -eq 1 ] || timeout -s KILL 120 dpkg --configure -a
           timeout -s KILL 120 apt-get $apt update &&

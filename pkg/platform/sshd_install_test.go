@@ -47,8 +47,8 @@ func (r sshdInstallRun) count(prefix string) int {
 }
 
 const (
-	fakeCallUpdate    = "apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update"
-	fakeCallInstall   = "apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install"
+	fakeCallUpdate    = "apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Dpkg::Use-Pty=0 update"
+	fakeCallInstall   = "apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Dpkg::Use-Pty=0 install"
 	fakeCallConfigure = "dpkg --configure -a"
 )
 
@@ -181,6 +181,44 @@ esac
 `, true, false)
 
 	require.Equal(t, 0, run.exitCode, run.stderr)
+	require.Equal(t, 2, run.count(fakeCallInstall))
+	require.Equal(t, 1, run.count(fakeCallConfigure))
+}
+
+// apt normally starts dpkg in a separate session for its PTY, even without
+// an interactive terminal. Model that session boundary with setsid: removing
+// Dpkg::Use-Pty=0 must leave the fake dpkg alive and fail the PID assertion.
+func TestSSHDInstallCommandKeepsDpkgInTimeoutGroup(t *testing.T) {
+	t.Parallel()
+	if _, err := exec.LookPath("setsid"); err != nil {
+		t.Skip("no setsid on PATH; this test needs util-linux setsid")
+	}
+	run := runSSHDInstall(t, `#!/bin/sh
+echo "apt-get $*" >> "$CALLS"
+case "$*" in
+*" install "*)
+  [ -e "$STATE/half-installed" ] && exit 100
+  if [ ! -e "$STATE/dpkg-pid" ]; then
+    : > "$STATE/half-installed"
+    case " $* " in
+      *" -o Dpkg::Use-Pty=0 "*) /bin/sleep 60 </dev/null >/dev/null 2>&1 & ;;
+      *) setsid /bin/sleep 60 </dev/null >/dev/null 2>&1 & ;;
+    esac
+    echo $! > "$STATE/dpkg-pid"
+    exec /bin/sleep 60
+  fi ;;
+esac
+`, true, false)
+
+	raw, err := os.ReadFile(filepath.Join(run.dir, "dpkg-pid"))
+	require.NoError(t, err)
+	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	require.NoError(t, err)
+	// Also clean up the deliberately detached child if this regresses.
+	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+	require.Equal(t, 0, run.exitCode, run.stderr)
+	require.Eventually(t, func() bool { return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) },
+		5*time.Second, 50*time.Millisecond, "dpkg (pid %d) escaped the timeout process group", pid)
 	require.Equal(t, 2, run.count(fakeCallInstall))
 	require.Equal(t, 1, run.count(fakeCallConfigure))
 }

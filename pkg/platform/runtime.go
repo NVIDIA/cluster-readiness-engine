@@ -388,9 +388,11 @@ func sshdReadinessProbe() map[string]any {
 //
 // At the limit, timeout sends SIGKILL straight away (-s KILL) to the step's
 // whole process group: apt-get or dpkg, apt's method helpers, and the dpkg that
-// apt-get install runs. Nothing in the group can ignore it, so no process from
-// a timed-out attempt is left to hold the apt or dpkg lock against the next
-// one. A SIGTERM first would not guarantee that: timeout escalates to SIGKILL
+// apt-get install runs. Dpkg::Use-Pty=0 keeps dpkg in this group: apt otherwise
+// starts it in a separate session for its PTY, beyond timeout's reach.
+// Nothing in the group can ignore SIGKILL, so a timed-out attempt cannot
+// leave these processes holding the apt or dpkg lock against the next one.
+// A SIGTERM first would not guarantee that: timeout escalates to SIGKILL
 // only while its own child is alive, so a child that exits on SIGTERM leaves
 // any descendant that ignores it running. Nothing is lost by skipping the
 // SIGTERM: apt-get update needs no cleanup, and dpkg does not shut down
@@ -413,7 +415,7 @@ const sshdInstallCommand = `if ! test -x /usr/sbin/sshd; then
     echo "sshd is not installed and the image has no apt-get or timeout to install it; use an image that ships /usr/sbin/sshd" >&2
     exit 1
   fi
-  apt="-o Acquire::Retries=3 -o Acquire::http::Timeout=30"
+  apt="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Dpkg::Use-Pty=0"
   for attempt in 1 2 3; do
     [ "$attempt" -eq 1 ] || timeout -s KILL 120 dpkg --configure -a
     timeout -s KILL 120 apt-get $apt update &&
