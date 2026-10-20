@@ -386,23 +386,22 @@ func sshdReadinessProbe() map[string]any {
 // hang is rare per worker but routine per run. apt's own timeouts did not end
 // the observed hang, so timeout is the bound.
 //
-// timeout runs apt-get itself, not a shell around it. timeout only escalates
-// to SIGKILL while the process it runs is alive, so with a wrapper shell that
-// dies on SIGTERM an apt-get ignoring it would survive, keep the apt lock, and
-// fail every later attempt. Run directly, apt-get is gone when timeout
-// returns. Its method helpers get SIGTERM with the rest of the process group
-// but not the later SIGKILL, which timeout sends only while apt-get lives; that
-// is acceptable because they hold no apt lock (apt's lock is an fcntl lock on
-// a close-on-exec fd) and exit when apt-get's pipe closes, and if anything is
-// still left after three failed attempts, the container's exit kills it.
-// dpkg --configure -a before a retry attempts to finish an install the
-// previous attempt's timeout interrupted, since apt refuses to run until that
-// is done; its result is ignored, because a recovery that fails leaves the
-// next apt-get to fail the attempt. The Acquire options only make apt retry a
-// failed fetch sooner.
+// At the limit, timeout sends SIGKILL straight away (-s KILL) to the step's
+// whole process group: apt-get or dpkg, apt's method helpers, and the dpkg that
+// apt-get install runs. Nothing in the group can ignore it, so no process from
+// a timed-out attempt is left to hold the apt or dpkg lock against the next
+// one. A SIGTERM first would not guarantee that: timeout escalates to SIGKILL
+// only while its own child is alive, so a child that exits on SIGTERM leaves
+// any descendant that ignores it running. Nothing is lost by skipping the
+// SIGTERM: apt-get update needs no cleanup, and dpkg does not shut down
+// gracefully on SIGTERM either. dpkg --configure -a before a retry attempts to
+// finish an install the previous attempt's timeout interrupted, since apt
+// refuses to run until that is done; its result is ignored, because a recovery
+// that fails leaves the next apt-get to fail the attempt. The Acquire options
+// only make apt retry a failed fetch sooner.
 //
-// Worst case, with every step running to its limit: about 4 minutes for the
-// first attempt and 6.5 for each retry, 17 in all.
+// Worst case, with every step running to its limit: 4 minutes for the first
+// attempt and 6 for each retry, 16 in all.
 //
 // The retry lives in the script rather than in restartPolicy so it holds
 // however the restart behaviour changes (issue #498). An image that needs the
@@ -416,9 +415,9 @@ const sshdInstallCommand = `if ! test -x /usr/sbin/sshd; then
   fi
   apt="-o Acquire::Retries=3 -o Acquire::http::Timeout=30"
   for attempt in 1 2 3; do
-    [ "$attempt" -eq 1 ] || timeout -k 10 120 dpkg --configure -a
-    timeout -k 10 120 apt-get $apt update &&
-      timeout -k 10 120 apt-get $apt install -y --no-install-recommends openssh-server && break
+    [ "$attempt" -eq 1 ] || timeout -s KILL 120 dpkg --configure -a
+    timeout -s KILL 120 apt-get $apt update &&
+      timeout -s KILL 120 apt-get $apt install -y --no-install-recommends openssh-server && break
     echo "sshd install attempt $attempt of 3 failed or timed out" >&2
     [ "$attempt" -lt 3 ] || exit 1
   done

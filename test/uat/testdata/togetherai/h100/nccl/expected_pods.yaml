@@ -288,9 +288,9 @@ spec:
         fi
         apt="-o Acquire::Retries=3 -o Acquire::http::Timeout=30"
         for attempt in 1 2 3; do
-          [ "$attempt" -eq 1 ] || timeout -k 10 120 dpkg --configure -a
-          timeout -k 10 120 apt-get $apt update &&
-            timeout -k 10 120 apt-get $apt install -y --no-install-recommends openssh-server && break
+          [ "$attempt" -eq 1 ] || timeout -s KILL 120 dpkg --configure -a
+          timeout -s KILL 120 apt-get $apt update &&
+            timeout -s KILL 120 apt-get $apt install -y --no-install-recommends openssh-server && break
           echo "sshd install attempt $attempt of 3 failed or timed out" >&2
           [ "$attempt" -lt 3 ] || exit 1
         done
@@ -470,9 +470,9 @@ spec:
         fi
         apt="-o Acquire::Retries=3 -o Acquire::http::Timeout=30"
         for attempt in 1 2 3; do
-          [ "$attempt" -eq 1 ] || timeout -k 10 120 dpkg --configure -a
-          timeout -k 10 120 apt-get $apt update &&
-            timeout -k 10 120 apt-get $apt install -y --no-install-recommends openssh-server && break
+          [ "$attempt" -eq 1 ] || timeout -s KILL 120 dpkg --configure -a
+          timeout -s KILL 120 apt-get $apt update &&
+            timeout -s KILL 120 apt-get $apt install -y --no-install-recommends openssh-server && break
           echo "sshd install attempt $attempt of 3 failed or timed out" >&2
           [ "$attempt" -lt 3 ] || exit 1
         done

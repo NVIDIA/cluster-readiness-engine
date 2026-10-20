@@ -4,6 +4,7 @@
 package platform
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -23,8 +25,8 @@ import (
 //
 // The fakes log every call to $CALLS and keep state in $STATE. The command's
 // sshd path is moved into the test directory, and its timeouts are shortened
-// to ten seconds plus one before SIGKILL: short enough to keep the hang cases
-// quick, long enough that a fake never times out under a loaded test run.
+// to ten seconds: short enough to keep the hang cases quick, long enough that a
+// fake never times out under a loaded test run.
 
 // sshdInstallRun is the outcome of one run of sshdInstallCommand.
 type sshdInstallRun struct {
@@ -78,8 +80,8 @@ func runSSHDInstall(t *testing.T, fakeAptGet string, withTimeout, prebaked bool)
 
 	script := sshdInstallCommand
 	for old, replacement := range map[string]string{
-		"/usr/sbin/sshd":    filepath.Join(dir, "sshd"),
-		"timeout -k 10 120": "timeout -k 1 10",
+		"/usr/sbin/sshd":      filepath.Join(dir, "sshd"),
+		"timeout -s KILL 120": "timeout -s KILL 10",
 	} {
 		require.Positive(t, strings.Count(script, old),
 			"sshdInstallCommand no longer contains %q; update this test with it", old)
@@ -120,10 +122,14 @@ func TestSSHDInstallCommandSucceedsFirstTime(t *testing.T) {
 	require.NotContains(t, run.stderr, "install attempt")
 }
 
-// A first apt-get update that hangs and ignores SIGTERM is the #527 case. The
-// pid check is the point of running apt-get under timeout directly: behind a
-// wrapper shell that dies on SIGTERM, timeout never escalates to SIGKILL and
-// the hung apt-get outlives the attempt, holding the apt lock.
+// A first apt-get update that hangs is the #527 case. The fake hangs the way
+// that defeats a SIGTERM-first timeout: it would exit on SIGTERM, but a helper
+// it started ignores SIGTERM, and timeout escalates to SIGKILL only while its
+// own child lives, so the helper would outlive the attempt and could hold a
+// lock against the next one. The pid checks are the point: under -s KILL the
+// whole process group dies at the limit. The helper's stdio is detached, as a
+// daemonising helper's would be; on the test's stderr pipe it would hold
+// cmd.Run open until it exited, and the survival would go unseen.
 func TestSSHDInstallCommandKillsHungAttemptAndRetries(t *testing.T) {
 	t.Parallel()
 	run := runSSHDInstall(t, `#!/bin/sh
@@ -131,8 +137,9 @@ echo "apt-get $*" >> "$CALLS"
 case "$*" in
 *" update")
   if [ ! -e "$STATE/hung" ]; then
+    ( trap '' TERM; exec /bin/sleep 60 ) </dev/null >/dev/null 2>&1 &
+    echo $! > "$STATE/helper"
     echo $$ > "$STATE/hung"
-    trap '' TERM
     exec /bin/sleep 60
   fi ;;
 esac
@@ -144,12 +151,16 @@ esac
 	require.Equal(t, 1, run.count(fakeCallConfigure))
 	require.Contains(t, run.stderr, "sshd install attempt 1 of 3 failed or timed out")
 
-	raw, err := os.ReadFile(filepath.Join(run.dir, "hung"))
-	require.NoError(t, err)
-	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
-	require.NoError(t, err)
-	require.ErrorIs(t, syscall.Kill(pid, 0), syscall.ESRCH,
-		"the hung apt-get (pid %d) survived its attempt", pid)
+	for _, name := range []string{"hung", "helper"} {
+		raw, err := os.ReadFile(filepath.Join(run.dir, name))
+		require.NoError(t, err)
+		pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+		require.NoError(t, err)
+		// Killed orphans stay zombies until init reaps them, and kill(pid, 0)
+		// succeeds on a zombie, so allow a moment for the reap.
+		require.Eventually(t, func() bool { return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) },
+			5*time.Second, 50*time.Millisecond, "the hung %s (pid %d) survived its attempt", name, pid)
+	}
 }
 
 // An install interrupted by its timeout leaves dpkg half-configured, and apt
